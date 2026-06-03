@@ -62,6 +62,37 @@ void main() {
     expect(find.byType(BarChart), findsOneWidget);
   });
 
+  testWidgets('renders time in heart rate zones when heart stream exists', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: HeartRateZoneChart(
+            streams: {
+              'time': [0, 60, 180, 300, 420],
+              'heartrate': [120, 135, 155, 175, 190],
+            },
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('TIME IN HEART ZONES'), findsOneWidget);
+    expect(find.text('Z1'), findsOneWidget);
+    expect(find.text('Z5'), findsOneWidget);
+    expect(find.textContaining('2:00'), findsWidgets);
+  });
+
+  test('calculates heart rate zone durations from stream samples', () {
+    final zones = heartRateZoneDurations(
+      times: const [0, 60, 180, 300, 420],
+      heartRates: const [120, 135, 155, 175, 190],
+    );
+
+    expect(zones.map((zone) => zone.seconds), [60, 120, 120, 120, 120]);
+  });
+
   test('shows only the first, middle and last bar axis labels', () {
     const points = [
       FlSpot(0.1, 1),

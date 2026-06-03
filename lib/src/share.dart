@@ -39,12 +39,12 @@ Future<ShareResult> shareActivityRecap({
 
 Future<ShareResult> shareDashboardCard({
   required GlobalKey cardKey,
-  required BuildContext shareButtonContext,
+  required BuildContext shareOriginContext,
   required String title,
 }) async {
   final boundary =
       cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-  final renderBox = shareButtonContext.findRenderObject() as RenderBox?;
+  final renderBox = shareOriginContext.findRenderObject() as RenderBox?;
   final sharePositionOrigin = renderBox == null
       ? null
       : renderBox.localToGlobal(Offset.zero) & renderBox.size;

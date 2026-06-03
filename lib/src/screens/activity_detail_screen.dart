@@ -40,6 +40,10 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
           children: [
             RouteMap(encodedPolyline: item.summary.polyline),
             const SizedBox(height: 16),
+            if (item.streams['heartrate']?.isNotEmpty == true) ...[
+              HeartRateZoneChart(streams: item.streams),
+              const SizedBox(height: 12),
+            ],
             StreamChart(streams: item.streams),
           ],
         ),

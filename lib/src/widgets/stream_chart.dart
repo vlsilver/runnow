@@ -66,6 +66,159 @@ class StreamChart extends StatelessWidget {
   }
 }
 
+class HeartRateZoneChart extends StatelessWidget {
+  const HeartRateZoneChart({required this.streams, super.key});
+
+  final Map<String, List<double>> streams;
+
+  @override
+  Widget build(BuildContext context) {
+    final zones = heartRateZoneDurations(
+      heartRates: streams['heartrate'],
+      times: streams['time'],
+    );
+    final activeZones = zones.where((zone) => zone.seconds > 0).toList();
+    if (activeZones.isEmpty) return const SizedBox.shrink();
+    final totalSeconds = activeZones.fold<double>(
+      0,
+      (sum, zone) => sum + zone.seconds,
+    );
+    final maxSeconds = zones.fold<double>(
+      0,
+      (max, item) => item.seconds > max ? item.seconds : max,
+    );
+    return GlassPanel(
+      padding: const EdgeInsets.all(16),
+      gradient: const LinearGradient(
+        colors: [Color(0xe607172b), Color(0xaa2b0713)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.favorite, color: AppColors.red, size: 18),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'TIME IN HEART ZONES',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+              ),
+              Text(
+                formatDuration(totalSeconds.round()),
+                style: const TextStyle(
+                  color: AppColors.red,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          for (final zone in zones) ...[
+            _HeartRateZoneRow(
+              zone: zone,
+              totalSeconds: totalSeconds,
+              maxSeconds: maxSeconds,
+            ),
+            if (zone != zones.last) const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _HeartRateZoneRow extends StatelessWidget {
+  const _HeartRateZoneRow({
+    required this.zone,
+    required this.totalSeconds,
+    required this.maxSeconds,
+  });
+
+  final HeartRateZoneDuration zone;
+  final double totalSeconds;
+  final double maxSeconds;
+
+  @override
+  Widget build(BuildContext context) {
+    final percent = totalSeconds <= 0 ? 0 : zone.seconds / totalSeconds;
+    final widthFactor = maxSeconds <= 0 ? 0 : zone.seconds / maxSeconds;
+    return Row(
+      children: [
+        SizedBox(
+          width: 76,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                zone.label,
+                style: TextStyle(
+                  color: zone.color,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              Text(
+                zone.rangeLabel,
+                style: const TextStyle(color: Colors.white38, fontSize: 10),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: SizedBox(
+              height: 14,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  const ColoredBox(color: Color(0x2600d9ff)),
+                  FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: widthFactor.clamp(0, 1).toDouble(),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            zone.color.withValues(alpha: 0.52),
+                            zone.color,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 72,
+          child: Text(
+            '${formatDuration(zone.seconds.round())} · ${(percent * 100).round()}%',
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _TrainingChartCard extends StatefulWidget {
   const _TrainingChartCard({required this.series});
 
@@ -678,3 +831,83 @@ String _formatPace(double seconds) => formatPace(seconds);
 
 String _formatPaceAxis(double seconds) =>
     formatPace(seconds).replaceFirst(' /km', '');
+
+class HeartRateZoneDuration {
+  const HeartRateZoneDuration({
+    required this.label,
+    required this.rangeLabel,
+    required this.color,
+    required this.seconds,
+  });
+
+  final String label;
+  final String rangeLabel;
+  final Color color;
+  final double seconds;
+}
+
+@visibleForTesting
+List<HeartRateZoneDuration> heartRateZoneDurations({
+  required List<double>? heartRates,
+  required List<double>? times,
+}) {
+  if (heartRates == null || heartRates.isEmpty) return const [];
+  final secondsByZone = List<double>.filled(_heartRateZones.length, 0);
+  for (var index = 0; index < heartRates.length; index++) {
+    final heartRate = heartRates[index];
+    if (heartRate <= 0) continue;
+    final duration = _sampleDurationSeconds(times, index);
+    if (duration <= 0) continue;
+    final zoneIndex = _heartRateZoneIndex(heartRate);
+    secondsByZone[zoneIndex] += duration;
+  }
+  return [
+    for (var index = 0; index < _heartRateZones.length; index++)
+      HeartRateZoneDuration(
+        label: _heartRateZones[index].label,
+        rangeLabel: _heartRateZones[index].rangeLabel,
+        color: _heartRateZones[index].color,
+        seconds: secondsByZone[index],
+      ),
+  ];
+}
+
+double _sampleDurationSeconds(List<double>? times, int index) {
+  if (times == null || times.isEmpty) return 1;
+  if (index < times.length - 1) {
+    return math.max(times[index + 1] - times[index], 0);
+  }
+  if (index > 0 && index < times.length) {
+    return math.max(times[index] - times[index - 1], 0);
+  }
+  return 1;
+}
+
+int _heartRateZoneIndex(double heartRate) {
+  for (var index = 0; index < _heartRateZones.length; index++) {
+    if (heartRate < _heartRateZones[index].upperExclusiveBpm) return index;
+  }
+  return _heartRateZones.length - 1;
+}
+
+const _heartRateZones = [
+  _HeartRateZone('Z1', '<130 bpm', Color(0xff00d9ff), 130),
+  _HeartRateZone('Z2', '130-149', Color(0xff19d27f), 150),
+  _HeartRateZone('Z3', '150-169', Color(0xffffd166), 170),
+  _HeartRateZone('Z4', '170-184', Color(0xffff8f00), 185),
+  _HeartRateZone('Z5', '185+', AppColors.red, double.infinity),
+];
+
+class _HeartRateZone {
+  const _HeartRateZone(
+    this.label,
+    this.rangeLabel,
+    this.color,
+    this.upperExclusiveBpm,
+  );
+
+  final String label;
+  final String rangeLabel;
+  final Color color;
+  final double upperExclusiveBpm;
+}

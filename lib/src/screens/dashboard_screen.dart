@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/dashboard_analytics.dart';
 import 'package:myrun/src/formatters.dart';
@@ -208,32 +209,20 @@ class _ShareableDashboardCardState extends State<_ShareableDashboardCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        RepaintBoundary(key: _cardKey, child: widget.child),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Builder(
-            builder: (buttonContext) {
-              return _DashboardShareButton(
-                sharing: _sharing,
-                onPressed: () => _share(buttonContext),
-              );
-            },
-          ),
-        ),
-      ],
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: _sharing ? null : _share,
+      child: RepaintBoundary(key: _cardKey, child: widget.child),
     );
   }
 
-  Future<void> _share(BuildContext buttonContext) async {
+  Future<void> _share() async {
     setState(() => _sharing = true);
+    HapticFeedback.mediumImpact();
     try {
       await shareDashboardCard(
         cardKey: _cardKey,
-        shareButtonContext: buttonContext,
+        shareOriginContext: context,
         title: widget.title,
       );
     } catch (error) {
@@ -244,36 +233,6 @@ class _ShareableDashboardCardState extends State<_ShareableDashboardCard> {
     } finally {
       if (mounted) setState(() => _sharing = false);
     }
-  }
-}
-
-class _DashboardShareButton extends StatelessWidget {
-  const _DashboardShareButton({required this.sharing, required this.onPressed});
-
-  final bool sharing;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: const Color(0x99020812),
-      borderRadius: BorderRadius.circular(999),
-      child: InkWell(
-        onTap: sharing ? null : onPressed,
-        borderRadius: BorderRadius.circular(999),
-        child: SizedBox.square(
-          dimension: 36,
-          child: Center(
-            child: sharing
-                ? const SizedBox.square(
-                    dimension: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.ios_share, size: 17),
-          ),
-        ),
-      ),
-    );
   }
 }
 
