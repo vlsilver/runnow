@@ -38,9 +38,7 @@ void main() {
     expect(find.text('RPM'), findsOneWidget);
     expect(find.text('KJ'), findsOneWidget);
     expect(find.byType(LineChart), findsNothing);
-
-    await tester.tap(find.text('Pace'));
-    await tester.pumpAndSettle();
+    expect(find.byType(BarChart), findsOneWidget);
 
     expect(find.text('TB'), findsOneWidget);
     expect(find.text('MIN'), findsOneWidget);
@@ -53,13 +51,12 @@ void main() {
       (widget) => widget is DropdownButton,
     );
     expect(dropdowns, findsNWidgets(2));
-    expect(find.byType(LineChart), findsOneWidget);
 
     await tester.tap(dropdowns.first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Cột').last);
+    await tester.tap(find.text('Line').last);
     await tester.pumpAndSettle();
-    expect(find.byType(BarChart), findsOneWidget);
+    expect(find.byType(LineChart), findsOneWidget);
   });
 
   testWidgets('renders time in heart rate zones when heart stream exists', (
@@ -79,6 +76,11 @@ void main() {
     );
 
     expect(find.text('TIME IN HEART ZONES'), findsOneWidget);
+    expect(find.text('Z1'), findsNothing);
+
+    await tester.tap(find.text('TIME IN HEART ZONES'));
+    await tester.pumpAndSettle();
+
     expect(find.text('Z1'), findsOneWidget);
     expect(find.text('Z5'), findsOneWidget);
     expect(find.textContaining('2:00'), findsWidgets);

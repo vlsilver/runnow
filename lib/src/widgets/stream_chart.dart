@@ -66,16 +66,23 @@ class StreamChart extends StatelessWidget {
   }
 }
 
-class HeartRateZoneChart extends StatelessWidget {
+class HeartRateZoneChart extends StatefulWidget {
   const HeartRateZoneChart({required this.streams, super.key});
 
   final Map<String, List<double>> streams;
 
   @override
+  State<HeartRateZoneChart> createState() => _HeartRateZoneChartState();
+}
+
+class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
     final zones = heartRateZoneDurations(
-      heartRates: streams['heartrate'],
-      times: streams['time'],
+      heartRates: widget.streams['heartrate'],
+      times: widget.streams['time'],
     );
     final activeZones = zones.where((zone) => zone.seconds > 0).toList();
     if (activeZones.isEmpty) return const SizedBox.shrink();
@@ -97,39 +104,65 @@ class HeartRateZoneChart extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.favorite, color: AppColors.red, size: 18),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'TIME IN HEART ZONES',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.1,
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  const Icon(Icons.favorite, color: AppColors.red, size: 18),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'TIME IN HEART ZONES',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.1,
+                      ),
+                    ),
                   ),
-                ),
+                  Text(
+                    formatDuration(totalSeconds.round()),
+                    style: const TextStyle(
+                      color: AppColors.red,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: const Icon(
+                      Icons.keyboard_arrow_down,
+                      color: AppColors.blueGlow,
+                    ),
+                  ),
+                ],
               ),
-              Text(
-                formatDuration(totalSeconds.round()),
-                style: const TextStyle(
-                  color: AppColors.red,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          for (final zone in zones) ...[
-            _HeartRateZoneRow(
-              zone: zone,
-              totalSeconds: totalSeconds,
-              maxSeconds: maxSeconds,
             ),
-            if (zone != zones.last) const SizedBox(height: 10),
-          ],
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            alignment: Alignment.topCenter,
+            child: _expanded
+                ? Column(
+                    children: [
+                      const SizedBox(height: 14),
+                      for (final zone in zones) ...[
+                        _HeartRateZoneRow(
+                          zone: zone,
+                          totalSeconds: totalSeconds,
+                          maxSeconds: maxSeconds,
+                        ),
+                        if (zone != zones.last) const SizedBox(height: 10),
+                      ],
+                    ],
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
         ],
       ),
     );
@@ -229,9 +262,15 @@ class _TrainingChartCard extends StatefulWidget {
 }
 
 class _TrainingChartCardState extends State<_TrainingChartCard> {
-  _ChartMode _mode = _ChartMode.line;
+  _ChartMode _mode = _ChartMode.bar;
   _DistanceRange _range = _DistanceRange.meters250;
-  bool _expanded = false;
+  late bool _expanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.series.defaultExpanded;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -652,6 +691,7 @@ class _ChartSeries {
     required this.accept,
     required this.format,
     required this.formatAxis,
+    this.defaultExpanded = false,
   });
 
   factory _ChartSeries.pace(List<double> speeds, List<double>? distances) {
@@ -665,6 +705,7 @@ class _ChartSeries {
       accept: (speed) => speed >= 0.8,
       format: _formatPace,
       formatAxis: _formatPaceAxis,
+      defaultExpanded: true,
     );
   }
 
@@ -733,6 +774,7 @@ class _ChartSeries {
   final bool Function(double value) accept;
   final String Function(double value) format;
   final String Function(double value) formatAxis;
+  final bool defaultExpanded;
 
   List<FlSpot> points(_DistanceRange range) {
     final samples = standardizeDistanceSeries(
