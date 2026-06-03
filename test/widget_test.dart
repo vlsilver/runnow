@@ -4,6 +4,7 @@ import 'package:myrun/src/app.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/repository.dart';
+import 'package:myrun/src/theme_controller.dart';
 
 void main() {
   testWidgets('renders dashboard in demo mode', (tester) async {
@@ -20,6 +21,9 @@ void main() {
                 monthlyDistanceMeters: 40000,
               ),
             ),
+          ),
+          themeControllerProvider.overrideWith(
+            (ref) => ThemeController(loadFromStorage: false),
           ),
         ],
         child: const RunNowApp(requireAuthentication: false),

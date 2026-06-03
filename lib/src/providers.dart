@@ -6,6 +6,7 @@ import 'package:myrun/src/auth.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/repository.dart';
 import 'package:myrun/src/sync.dart';
+import 'package:myrun/src/theme_controller.dart';
 
 final activityRepositoryProvider = Provider<ActivityRepository>((ref) {
   return FirestoreStravaActivityRepository(
@@ -53,6 +54,10 @@ final userProfileProvider = StreamProvider<UserProfile?>((ref) {
 
 final stravaAuthProvider = ChangeNotifierProvider<StravaAuthController>(
   (ref) => StravaAuthController(FirebaseAuth.instance),
+);
+
+final themeControllerProvider = ChangeNotifierProvider<ThemeController>(
+  (ref) => ThemeController(),
 );
 
 final activitiesProvider = StreamProvider<List<ActivitySummary>>(

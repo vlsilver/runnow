@@ -199,55 +199,139 @@ Future<void> _editTrainingGoals(
         ? (goals.monthlyDistanceMeters / 1000).toStringAsFixed(1)
         : '',
   );
-  final result = await showDialog<TrainingGoals>(
+  final result = await showModalBottomSheet<TrainingGoals>(
     context: context,
-    builder: (context) => AlertDialog(
-      backgroundColor: AppColors.black,
-      title: const Text('Mục tiêu luyện tập'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: weeklyController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Mục tiêu tuần',
-              suffixText: 'km',
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: monthlyController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Mục tiêu tháng',
-              suffixText: 'km',
-            ),
-          ),
-        ],
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => Padding(
+      padding: EdgeInsets.only(
+        left: 14,
+        right: 14,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 12,
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Huỷ'),
+      child: GlassPanel(
+        borderRadius: 22,
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+        gradient: const LinearGradient(
+          colors: [Color(0xf207172b), Color(0xe0062442), Color(0xcc151637)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(
-            TrainingGoals(
-              weeklyDistanceMeters: _parseGoalKm(weeklyController.text) * 1000,
-              monthlyDistanceMeters:
-                  _parseGoalKm(monthlyController.text) * 1000,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white30,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
             ),
-          ),
-          child: const Text('Lưu'),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                const Icon(Icons.flag, color: AppColors.red),
+                const SizedBox(width: 8),
+                Text(
+                  'Mục tiêu luyện tập',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _GoalInputField(
+              controller: weeklyController,
+              label: 'Tuần',
+              hint: 'VD: 15',
+            ),
+            const SizedBox(height: 10),
+            _GoalInputField(
+              controller: monthlyController,
+              label: 'Tháng',
+              hint: 'VD: 60',
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Huỷ'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop(
+                      TrainingGoals(
+                        weeklyDistanceMeters:
+                            _parseGoalKm(weeklyController.text) * 1000,
+                        monthlyDistanceMeters:
+                            _parseGoalKm(monthlyController.text) * 1000,
+                      ),
+                    ),
+                    child: const Text('Lưu'),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
-      ],
+      ),
     ),
   );
   weeklyController.dispose();
   monthlyController.dispose();
   if (result == null) return;
   await ref.read(trainingGoalRepositoryProvider).saveGoals(result);
+}
+
+class _GoalInputField extends StatelessWidget {
+  const _GoalInputField({
+    required this.controller,
+    required this.label,
+    required this.hint,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final String hint;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+      decoration: InputDecoration(
+        isDense: true,
+        labelText: 'Mục tiêu $label',
+        hintText: hint,
+        suffixText: 'km',
+        filled: true,
+        fillColor: const Color(0x52020812),
+        labelStyle: const TextStyle(color: Colors.white70),
+        hintStyle: const TextStyle(color: Colors.white30),
+        suffixStyle: const TextStyle(color: AppColors.blueGlow),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0x3300d9ff)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.blueGlow),
+        ),
+      ),
+    );
+  }
 }
 
 class _SyncAction extends StatefulWidget {

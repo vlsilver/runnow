@@ -10,6 +10,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final sync = ref.watch(syncControllerProvider);
     final profile = ref.watch(userProfileProvider);
+    final themeController = ref.watch(themeControllerProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Cài đặt')),
       body: ListView(
@@ -20,6 +21,52 @@ class SettingsScreen extends ConsumerWidget {
               leading: Icon(Icons.link),
               title: Text('Strava'),
               subtitle: Text('Đã kết nối Firebase Auth và Firestore.'),
+            ),
+          ),
+          const SizedBox(height: 10),
+          _SettingsPanel(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.palette_outlined),
+                    title: Text('Giao diện'),
+                    subtitle: Text('Đổi nhanh giữa sáng và tối.'),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: SegmentedButton<ThemeMode>(
+                      segments: const [
+                        ButtonSegment(
+                          value: ThemeMode.light,
+                          icon: Icon(Icons.light_mode_outlined),
+                          label: Text('Sáng'),
+                        ),
+                        ButtonSegment(
+                          value: ThemeMode.dark,
+                          icon: Icon(Icons.dark_mode_outlined),
+                          label: Text('Tối'),
+                        ),
+                        ButtonSegment(
+                          value: ThemeMode.system,
+                          icon: Icon(Icons.settings_suggest_outlined),
+                          label: Text('Máy'),
+                        ),
+                      ],
+                      selected: {themeController.mode},
+                      onSelectionChanged: (selection) {
+                        ref
+                            .read(themeControllerProvider)
+                            .setMode(selection.single);
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 10),

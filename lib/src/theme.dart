@@ -8,12 +8,15 @@ abstract final class AppColors {
   static const blueGlow = Color(0xff00d9ff);
   static const amber = Color(0xffffd166);
   static const background = Color(0xff000000);
+  static const lightBackground = Color(0xfff3f7fb);
+  static const lightSurface = Color(0xd9ffffff);
+  static const lightText = Color(0xff071426);
   static const glass = Color(0x4d071426);
   static const glassStrong = Color(0x9908172b);
   static const glassBorder = Color(0x4200d9ff);
 }
 
-ThemeData buildRunNowTheme() {
+ThemeData buildRunNowDarkTheme() {
   const colorScheme = ColorScheme.dark(
     primary: AppColors.red,
     onPrimary: Colors.white,
@@ -25,47 +28,9 @@ ThemeData buildRunNowTheme() {
     surface: AppColors.glass,
     onSurface: Colors.white,
   );
-  return ThemeData(
+  return _baseRunNowTheme(colorScheme).copyWith(
     brightness: Brightness.dark,
-    colorScheme: colorScheme,
-    fontFamily: 'Exo 2',
     scaffoldBackgroundColor: Colors.transparent,
-    useMaterial3: true,
-    textTheme: const TextTheme(
-      displaySmall: TextStyle(
-        fontSize: 42,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 1,
-      ),
-      headlineMedium: TextStyle(
-        fontSize: 34,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0.8,
-      ),
-      headlineSmall: TextStyle(
-        fontSize: 28,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.5,
-      ),
-      titleLarge: TextStyle(
-        fontSize: 24,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.5,
-      ),
-      titleMedium: TextStyle(
-        fontSize: 19,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.3,
-      ),
-      bodyLarge: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
-      bodyMedium: TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
-      bodySmall: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-      labelLarge: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0.5,
-      ),
-    ),
     appBarTheme: const AppBarTheme(
       backgroundColor: Colors.transparent,
       foregroundColor: Colors.white,
@@ -115,6 +80,116 @@ ThemeData buildRunNowTheme() {
       contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 4),
     ),
     dividerColor: Colors.white12,
+    progressIndicatorTheme: const ProgressIndicatorThemeData(
+      color: AppColors.red,
+    ),
+  );
+}
+
+ThemeData buildRunNowLightTheme() {
+  const colorScheme = ColorScheme.light(
+    primary: AppColors.red,
+    onPrimary: Colors.white,
+    secondary: AppColors.blue,
+    onSecondary: Colors.white,
+    tertiary: AppColors.amber,
+    error: AppColors.red,
+    onError: Colors.white,
+    surface: AppColors.lightSurface,
+    onSurface: AppColors.lightText,
+  );
+  return _baseRunNowTheme(colorScheme).copyWith(
+    brightness: Brightness.light,
+    scaffoldBackgroundColor: Colors.transparent,
+    appBarTheme: const AppBarTheme(
+      backgroundColor: Colors.transparent,
+      foregroundColor: AppColors.lightText,
+      surfaceTintColor: Colors.transparent,
+      centerTitle: false,
+      elevation: 0,
+      titleTextStyle: TextStyle(
+        color: AppColors.lightText,
+        fontFamily: 'Exo 2',
+        fontSize: 28,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.5,
+      ),
+    ),
+    cardTheme: CardThemeData(
+      color: AppColors.lightSurface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.lightText,
+        side: const BorderSide(color: Color(0x330075ff)),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    ),
+    listTileTheme: const ListTileThemeData(
+      iconColor: AppColors.blue,
+      textColor: AppColors.lightText,
+      contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+    ),
+    dividerColor: Colors.black12,
+  );
+}
+
+ThemeData _baseRunNowTheme(ColorScheme colorScheme) {
+  return ThemeData(
+    colorScheme: colorScheme,
+    fontFamily: 'Exo 2',
+    useMaterial3: true,
+    textTheme: const TextTheme(
+      displaySmall: TextStyle(
+        fontSize: 42,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 1,
+      ),
+      headlineMedium: TextStyle(
+        fontSize: 34,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.8,
+      ),
+      headlineSmall: TextStyle(
+        fontSize: 28,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.5,
+      ),
+      titleLarge: TextStyle(
+        fontSize: 24,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.5,
+      ),
+      titleMedium: TextStyle(
+        fontSize: 19,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.3,
+      ),
+      bodyLarge: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+      bodyMedium: TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
+      bodySmall: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+      labelLarge: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.5,
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: AppColors.red,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(foregroundColor: AppColors.red),
+    ),
     progressIndicatorTheme: const ProgressIndicatorThemeData(
       color: AppColors.red,
     ),

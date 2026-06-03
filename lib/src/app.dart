@@ -50,17 +50,20 @@ final _router = GoRouter(
   ],
 );
 
-class RunNowApp extends StatelessWidget {
+class RunNowApp extends ConsumerWidget {
   const RunNowApp({super.key, this.requireAuthentication = true});
 
   final bool requireAuthentication;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeControllerProvider).mode;
     return MaterialApp.router(
       title: 'RunNow',
       debugShowCheckedModeBanner: false,
-      theme: buildRunNowTheme(),
+      theme: buildRunNowLightTheme(),
+      darkTheme: buildRunNowDarkTheme(),
+      themeMode: themeMode,
       routerConfig: _router,
       builder: (context, child) => RunNowBackdrop(
         child: requireAuthentication ? _AuthGate(child: child!) : child!,

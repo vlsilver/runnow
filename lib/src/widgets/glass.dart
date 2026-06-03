@@ -9,19 +9,26 @@ class RunNowBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
     return ColoredBox(
-      color: AppColors.background,
+      color: isLight ? AppColors.lightBackground : AppColors.background,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          const DecoratedBox(
+          DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [
-                  Color(0xff000000),
-                  Color(0xff020202),
-                  Color(0xff000000),
-                ],
+                colors: isLight
+                    ? const [
+                        Color(0xfff7fbff),
+                        Color(0xffeef5ff),
+                        Color(0xffffffff),
+                      ]
+                    : const [
+                        Color(0xff000000),
+                        Color(0xff020202),
+                        Color(0xff000000),
+                      ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -68,6 +75,7 @@ class GlassPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
     return Container(
       margin: margin,
       decoration: BoxDecoration(
@@ -90,8 +98,10 @@ class GlassPanel extends StatelessWidget {
             decoration: BoxDecoration(
               gradient:
                   gradient ??
-                  const LinearGradient(
-                    colors: [Color(0xb307172b), Color(0x8a06101e)],
+                  LinearGradient(
+                    colors: isLight
+                        ? const [Color(0xeaffffff), Color(0xcff2f7ff)]
+                        : const [Color(0xb307172b), Color(0x8a06101e)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
