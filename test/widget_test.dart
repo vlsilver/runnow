@@ -27,12 +27,14 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Tổng quan'), findsNWidgets(2));
-    expect(find.text('7 NGÀY GẦN NHẤT'), findsOneWidget);
+    expect(find.text('TIẾN ĐỘ TUẦN'), findsOneWidget);
+    expect(find.text('7 ngày gần nhất'), findsOneWidget);
+    expect(find.text('Tuần này'), findsWidgets);
     expect(find.text('Nhịp luyện tập từ dữ liệu đã đồng bộ'), findsNothing);
     expect(find.textContaining('Đồng bộ Strava hoàn tất'), findsNothing);
     expect(find.text('Quãng đường'), findsOneWidget);
-    expect(find.text('MỤC TIÊU'), findsOneWidget);
-    expect(find.text('Tuần này'), findsOneWidget);
+    expect(find.text('Mục tiêu tuần'), findsOneWidget);
+    expect(find.text('MỤC TIÊU'), findsNothing);
     await tester.scrollUntilVisible(find.text('CONSISTENCY'), 300);
     expect(find.text('CONSISTENCY'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Gần đây'), 300);

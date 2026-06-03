@@ -62,23 +62,36 @@ TrainingComparison rollingSevenDayComparison(
   );
 }
 
+TrainingComparison currentWeekComparison(
+  List<ActivitySummary> activities,
+  DateTime now,
+) {
+  final currentStart = startOfCurrentWeek(now);
+  final currentEnd = currentStart.add(const Duration(days: 7));
+  final previousStart = currentStart.subtract(const Duration(days: 7));
+  return TrainingComparison(
+    current: trainingSummary(activities, start: currentStart, end: currentEnd),
+    previous: trainingSummary(
+      activities,
+      start: previousStart,
+      end: currentStart,
+    ),
+  );
+}
+
 List<DailyDistance> rollingSevenDayDistances(
   List<ActivitySummary> activities,
   DateTime now,
 ) {
-  final start = startOfRollingSevenDays(now);
-  final buckets = <DateTime, double>{
-    for (var index = 0; index < 7; index++) start.add(Duration(days: index)): 0,
-  };
-  for (final activity in activities) {
-    final day = _day(activity.startedAt);
-    if (!buckets.containsKey(day)) continue;
-    buckets[day] = buckets[day]! + activity.distanceMeters;
-  }
-  return [
-    for (final entry in buckets.entries)
-      DailyDistance(date: entry.key, distanceMeters: entry.value),
-  ];
+  return _dailyDistances(activities, startOfRollingSevenDays(now));
+}
+
+List<DailyDistance> currentWeekDistances(
+  List<ActivitySummary> activities,
+  DateTime now,
+) {
+  final start = startOfCurrentWeek(now);
+  return _dailyDistances(activities, start);
 }
 
 TrainingSummary trainingSummary(
@@ -143,5 +156,26 @@ DateTime startOfRollingSevenDays(DateTime now) =>
     _day(now).subtract(const Duration(days: 6));
 
 DateTime endOfToday(DateTime now) => _day(now).add(const Duration(days: 1));
+
+DateTime startOfCurrentWeek(DateTime now) =>
+    _day(now).subtract(Duration(days: now.weekday - 1));
+
+List<DailyDistance> _dailyDistances(
+  List<ActivitySummary> activities,
+  DateTime start,
+) {
+  final buckets = <DateTime, double>{
+    for (var index = 0; index < 7; index++) start.add(Duration(days: index)): 0,
+  };
+  for (final activity in activities) {
+    final day = _day(activity.startedAt);
+    if (!buckets.containsKey(day)) continue;
+    buckets[day] = buckets[day]! + activity.distanceMeters;
+  }
+  return [
+    for (final entry in buckets.entries)
+      DailyDistance(date: entry.key, distanceMeters: entry.value),
+  ];
+}
 
 DateTime _day(DateTime date) => DateTime(date.year, date.month, date.day);

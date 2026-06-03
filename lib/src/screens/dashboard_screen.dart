@@ -71,18 +71,42 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 }
 
-class _DashboardBody extends ConsumerWidget {
+enum _WeekViewMode { rollingSevenDays, currentWeek }
+
+class _DashboardBody extends ConsumerStatefulWidget {
   const _DashboardBody({required this.activities});
   final List<ActivitySummary> activities;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_DashboardBody> createState() => _DashboardBodyState();
+}
+
+class _DashboardBodyState extends ConsumerState<_DashboardBody> {
+  _WeekViewMode _weekViewMode = _WeekViewMode.rollingSevenDays;
+
+  @override
+  Widget build(BuildContext context) {
     final now = DateTime.now();
-    final comparison = rollingSevenDayComparison(activities, now);
-    final dailyDistances = rollingSevenDayDistances(activities, now);
-    final monthSummary = currentMonthSummary(activities, now);
+    final comparison = switch (_weekViewMode) {
+      _WeekViewMode.rollingSevenDays => rollingSevenDayComparison(
+        widget.activities,
+        now,
+      ),
+      _WeekViewMode.currentWeek => currentWeekComparison(
+        widget.activities,
+        now,
+      ),
+    };
+    final dailyDistances = switch (_weekViewMode) {
+      _WeekViewMode.rollingSevenDays => rollingSevenDayDistances(
+        widget.activities,
+        now,
+      ),
+      _WeekViewMode.currentWeek => currentWeekDistances(widget.activities, now),
+    };
+    final monthSummary = currentMonthSummary(widget.activities, now);
     final goals = ref.watch(trainingGoalsProvider);
-    final recent = [...activities]
+    final recent = [...widget.activities]
       ..sort((left, right) => right.startedAt.compareTo(left.startedAt));
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -95,47 +119,48 @@ class _DashboardBody extends ConsumerWidget {
         ),
         const SizedBox(height: 12),
         _ShareableDashboardCard(
-          title: 'RunNow 7 ngày gần nhất',
-          child: _SummaryCard(
-            comparison: comparison,
-            dailyDistances: dailyDistances,
-          ),
-        ),
-        const SizedBox(height: 20),
-        _ShareableDashboardCard(
-          title: 'RunNow mục tiêu luyện tập',
+          title: 'RunNow tiến độ tuần',
           child: goals.when(
-            data: (item) => _TrainingGoalCard(
+            data: (item) => _SummaryCard(
+              comparison: comparison,
+              dailyDistances: dailyDistances,
               goals: item,
-              weekDistanceMeters: comparison.current.distanceMeters,
               monthDistanceMeters: monthSummary.distanceMeters,
-              onEdit: () => _editTrainingGoals(context, ref, item),
+              mode: _weekViewMode,
+              onModeChanged: (mode) => setState(() => _weekViewMode = mode),
+              onEditGoals: () => _editTrainingGoals(context, ref, item),
             ),
-            error: (error, stack) => _TrainingGoalCard(
+            error: (error, stack) => _SummaryCard(
+              comparison: comparison,
+              dailyDistances: dailyDistances,
               goals: TrainingGoals.empty,
-              weekDistanceMeters: comparison.current.distanceMeters,
               monthDistanceMeters: monthSummary.distanceMeters,
-              onEdit: () =>
+              mode: _weekViewMode,
+              onModeChanged: (mode) => setState(() => _weekViewMode = mode),
+              onEditGoals: () =>
                   _editTrainingGoals(context, ref, TrainingGoals.empty),
             ),
-            loading: () => _TrainingGoalCard(
+            loading: () => _SummaryCard(
+              comparison: comparison,
+              dailyDistances: dailyDistances,
               goals: TrainingGoals.empty,
-              weekDistanceMeters: comparison.current.distanceMeters,
               monthDistanceMeters: monthSummary.distanceMeters,
-              onEdit: null,
+              mode: _weekViewMode,
+              onModeChanged: (mode) => setState(() => _weekViewMode = mode),
+              onEditGoals: null,
             ),
           ),
         ),
         const SizedBox(height: 20),
         _ShareableDashboardCard(
           title: 'RunNow consistency 8 tuần',
-          child: ConsistencyHeatmap(activities: activities),
+          child: ConsistencyHeatmap(activities: widget.activities),
         ),
         const SizedBox(height: 20),
         _ShareableDashboardCard(
           title: 'RunNow km theo thời gian',
           child: TrainingVolumeChart(
-            activities: activities,
+            activities: widget.activities,
             period: TrainingVolumePeriod.month,
             showControls: true,
           ),
@@ -329,75 +354,6 @@ class _ShareableDashboardCardState extends State<_ShareableDashboardCard> {
   }
 }
 
-class _TrainingGoalCard extends StatelessWidget {
-  const _TrainingGoalCard({
-    required this.goals,
-    required this.weekDistanceMeters,
-    required this.monthDistanceMeters,
-    required this.onEdit,
-  });
-
-  final TrainingGoals goals;
-  final double weekDistanceMeters;
-  final double monthDistanceMeters;
-  final VoidCallback? onEdit;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassPanel(
-      padding: const EdgeInsets.all(18),
-      gradient: const LinearGradient(
-        colors: [Color(0xf207172b), Color(0xcc151637), Color(0xa8073260)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.flag, color: AppColors.red, size: 20),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'MỤC TIÊU',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-              ),
-              IconButton(
-                onPressed: onEdit,
-                tooltip: 'Sửa mục tiêu',
-                icon: const Icon(Icons.tune, size: 18),
-                color: AppColors.blueGlow,
-                visualDensity: VisualDensity.compact,
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _GoalProgressRow(
-            label: 'Tuần này',
-            currentMeters: weekDistanceMeters,
-            goalMeters: goals.weeklyDistanceMeters,
-            color: AppColors.red,
-          ),
-          const SizedBox(height: 14),
-          _GoalProgressRow(
-            label: 'Tháng này',
-            currentMeters: monthDistanceMeters,
-            goalMeters: goals.monthlyDistanceMeters,
-            color: AppColors.blueGlow,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _GoalProgressRow extends StatelessWidget {
   const _GoalProgressRow({
     required this.label,
@@ -483,9 +439,23 @@ class _GoalProgressRow extends StatelessWidget {
 }
 
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.comparison, required this.dailyDistances});
+  const _SummaryCard({
+    required this.comparison,
+    required this.dailyDistances,
+    required this.goals,
+    required this.monthDistanceMeters,
+    required this.mode,
+    required this.onModeChanged,
+    required this.onEditGoals,
+  });
+
   final TrainingComparison comparison;
   final List<DailyDistance> dailyDistances;
+  final TrainingGoals goals;
+  final double monthDistanceMeters;
+  final _WeekViewMode mode;
+  final ValueChanged<_WeekViewMode> onModeChanged;
+  final VoidCallback? onEditGoals;
 
   @override
   Widget build(BuildContext context) {
@@ -506,17 +476,28 @@ class _SummaryCard extends StatelessWidget {
               children: [
                 const Icon(Icons.bolt, color: AppColors.blueGlow, size: 20),
                 const SizedBox(width: 6),
-                Text(
-                  '7 NGÀY GẦN NHẤT',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.1,
+                const Expanded(
+                  child: Text(
+                    'TIẾN ĐỘ TUẦN',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.1,
+                    ),
                   ),
+                ),
+                IconButton(
+                  onPressed: onEditGoals,
+                  tooltip: 'Sửa mục tiêu',
+                  icon: const Icon(Icons.tune, size: 18),
+                  color: AppColors.blueGlow,
+                  visualDensity: VisualDensity.compact,
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            _WeekViewToggle(value: mode, onChanged: onModeChanged),
             const SizedBox(height: 18),
             _SevenDayPulseChart(days: dailyDistances),
             const SizedBox(height: 18),
@@ -541,14 +522,101 @@ class _SummaryCard extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              _comparisonLabel(comparison),
+              _comparisonLabel(comparison, mode),
               style: const TextStyle(
                 color: AppColors.blueGlow,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
             ),
+            const SizedBox(height: 16),
+            _GoalProgressRow(
+              label: _weekGoalLabel(mode),
+              currentMeters: summary.distanceMeters,
+              goalMeters: goals.weeklyDistanceMeters,
+              color: AppColors.red,
+            ),
+            const SizedBox(height: 14),
+            _GoalProgressRow(
+              label: 'Tháng này',
+              currentMeters: monthDistanceMeters,
+              goalMeters: goals.monthlyDistanceMeters,
+              color: AppColors.blueGlow,
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WeekViewToggle extends StatelessWidget {
+  const _WeekViewToggle({required this.value, required this.onChanged});
+
+  final _WeekViewMode value;
+  final ValueChanged<_WeekViewMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0x52020812),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(3),
+        child: Row(
+          children: [
+            _WeekViewOption(
+              label: '7 ngày gần nhất',
+              selected: value == _WeekViewMode.rollingSevenDays,
+              onTap: () => onChanged(_WeekViewMode.rollingSevenDays),
+            ),
+            _WeekViewOption(
+              label: 'Tuần này',
+              selected: value == _WeekViewMode.currentWeek,
+              onTap: () => onChanged(_WeekViewMode.currentWeek),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WeekViewOption extends StatelessWidget {
+  const _WeekViewOption({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.red : Colors.transparent,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: selected ? Colors.white : Colors.white60,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ),
       ),
     );
@@ -697,12 +765,21 @@ String _weekdayLabel(DateTime date) => switch (date.weekday) {
   _ => '',
 };
 
-String _comparisonLabel(TrainingComparison comparison) {
+String _weekGoalLabel(_WeekViewMode mode) => switch (mode) {
+  _WeekViewMode.rollingSevenDays => 'Mục tiêu tuần',
+  _WeekViewMode.currentWeek => 'Tuần này',
+};
+
+String _comparisonLabel(TrainingComparison comparison, _WeekViewMode mode) {
   final ratio = comparison.distanceChangeRatio;
-  if (ratio == null) return 'Chưa có quãng đường trong 7 ngày trước để so sánh';
+  final previousLabel = switch (mode) {
+    _WeekViewMode.rollingSevenDays => '7 ngày trước',
+    _WeekViewMode.currentWeek => 'tuần trước',
+  };
+  if (ratio == null) return 'Chưa có quãng đường $previousLabel để so sánh';
   final percent = (ratio * 100).round();
   final prefix = percent > 0 ? '+' : '';
-  return '$prefix$percent% quãng đường so với 7 ngày trước';
+  return '$prefix$percent% quãng đường so với $previousLabel';
 }
 
 double _parseGoalKm(String value) {
