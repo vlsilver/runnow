@@ -38,6 +38,13 @@ class ActivityKindDistance {
   final double distanceMeters;
 }
 
+class DailyDistance {
+  const DailyDistance({required this.date, required this.distanceMeters});
+
+  final DateTime date;
+  final double distanceMeters;
+}
+
 TrainingComparison rollingSevenDayComparison(
   List<ActivitySummary> activities,
   DateTime now,
@@ -53,6 +60,25 @@ TrainingComparison rollingSevenDayComparison(
       end: currentStart,
     ),
   );
+}
+
+List<DailyDistance> rollingSevenDayDistances(
+  List<ActivitySummary> activities,
+  DateTime now,
+) {
+  final start = startOfRollingSevenDays(now);
+  final buckets = <DateTime, double>{
+    for (var index = 0; index < 7; index++) start.add(Duration(days: index)): 0,
+  };
+  for (final activity in activities) {
+    final day = _day(activity.startedAt);
+    if (!buckets.containsKey(day)) continue;
+    buckets[day] = buckets[day]! + activity.distanceMeters;
+  }
+  return [
+    for (final entry in buckets.entries)
+      DailyDistance(date: entry.key, distanceMeters: entry.value),
+  ];
 }
 
 TrainingSummary trainingSummary(

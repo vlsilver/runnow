@@ -78,6 +78,7 @@ class _DashboardBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final comparison = rollingSevenDayComparison(activities, now);
+    final dailyDistances = rollingSevenDayDistances(activities, now);
     final recent = [...activities]
       ..sort((left, right) => right.startedAt.compareTo(left.startedAt));
     return ListView(
@@ -92,7 +93,10 @@ class _DashboardBody extends StatelessWidget {
         const SizedBox(height: 12),
         _ShareableDashboardCard(
           title: 'RunNow 7 ngày gần nhất',
-          child: _SummaryCard(comparison: comparison),
+          child: _SummaryCard(
+            comparison: comparison,
+            dailyDistances: dailyDistances,
+          ),
         ),
         const SizedBox(height: 20),
         _ShareableDashboardCard(
@@ -204,18 +208,20 @@ class _ShareableDashboardCardState extends State<_ShareableDashboardCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         RepaintBoundary(key: _cardKey, child: widget.child),
-        Positioned(
-          top: 8,
-          right: 8,
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerRight,
           child: Builder(
-            builder: (buttonContext) => _DashboardShareButton(
-              sharing: _sharing,
-              onPressed: () => _share(buttonContext),
-            ),
+            builder: (buttonContext) {
+              return _DashboardShareButton(
+                sharing: _sharing,
+                onPressed: () => _share(buttonContext),
+              );
+            },
           ),
         ),
       ],
@@ -250,7 +256,7 @@ class _DashboardShareButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xbf020812),
+      color: const Color(0x99020812),
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: sharing ? null : onPressed,
@@ -260,10 +266,10 @@ class _DashboardShareButton extends StatelessWidget {
           child: Center(
             child: sharing
                 ? const SizedBox.square(
-                    dimension: 16,
+                    dimension: 14,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.ios_share, size: 18),
+                : const Icon(Icons.ios_share, size: 17),
           ),
         ),
       ),
@@ -272,8 +278,9 @@ class _DashboardShareButton extends StatelessWidget {
 }
 
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.comparison});
+  const _SummaryCard({required this.comparison, required this.dailyDistances});
   final TrainingComparison comparison;
+  final List<DailyDistance> dailyDistances;
 
   @override
   Widget build(BuildContext context) {
@@ -305,6 +312,8 @@ class _SummaryCard extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 18),
+            _SevenDayPulseChart(days: dailyDistances),
             const SizedBox(height: 18),
             Wrap(
               spacing: 24,
@@ -341,6 +350,110 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
+class _SevenDayPulseChart extends StatelessWidget {
+  const _SevenDayPulseChart({required this.days});
+
+  final List<DailyDistance> days;
+
+  @override
+  Widget build(BuildContext context) {
+    final maxDistance = days.fold<double>(
+      0,
+      (max, day) => day.distanceMeters > max ? day.distanceMeters : max,
+    );
+    return SizedBox(
+      height: 112,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (final day in days)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: _SevenDayBar(
+                  day: day,
+                  maxDistance: maxDistance,
+                  active: day.distanceMeters > 0,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SevenDayBar extends StatelessWidget {
+  const _SevenDayBar({
+    required this.day,
+    required this.maxDistance,
+    required this.active,
+  });
+
+  final DailyDistance day;
+  final double maxDistance;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = maxDistance <= 0 ? 0.04 : day.distanceMeters / maxDistance;
+    final label = _weekdayLabel(day.date);
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Text(
+          day.distanceMeters > 0 ? _compactDistance(day.distanceMeters) : '-',
+          style: TextStyle(
+            color: active ? Colors.white : Colors.white38,
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Expanded(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: FractionallySizedBox(
+              heightFactor: ratio.clamp(0.06, 1.0),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  gradient: LinearGradient(
+                    colors: active
+                        ? const [AppColors.red, AppColors.blueGlow]
+                        : const [Color(0x33ffffff), Color(0x1affffff)],
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                  ),
+                  boxShadow: active
+                      ? const [
+                          BoxShadow(
+                            color: Color(0x6600d9ff),
+                            blurRadius: 14,
+                            offset: Offset(0, 6),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: const SizedBox(width: 12),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white54,
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _Metric extends StatelessWidget {
   const _Metric({required this.label, required this.value});
   final String label;
@@ -364,6 +477,20 @@ class _Metric extends StatelessWidget {
     ),
   );
 }
+
+String _compactDistance(double meters) =>
+    '${(meters / 1000).toStringAsFixed(1)}k';
+
+String _weekdayLabel(DateTime date) => switch (date.weekday) {
+  DateTime.monday => 'T2',
+  DateTime.tuesday => 'T3',
+  DateTime.wednesday => 'T4',
+  DateTime.thursday => 'T5',
+  DateTime.friday => 'T6',
+  DateTime.saturday => 'T7',
+  DateTime.sunday => 'CN',
+  _ => '',
+};
 
 String _comparisonLabel(TrainingComparison comparison) {
   final ratio = comparison.distanceChangeRatio;
