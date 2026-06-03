@@ -37,6 +37,28 @@ Future<ShareResult> shareActivityRecap({
   );
 }
 
+Future<ShareResult> shareDashboardCard({
+  required GlobalKey cardKey,
+  required BuildContext shareButtonContext,
+  required String title,
+}) async {
+  final boundary =
+      cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+  final renderBox = shareButtonContext.findRenderObject() as RenderBox?;
+  final sharePositionOrigin = renderBox == null
+      ? null
+      : renderBox.localToGlobal(Offset.zero) & renderBox.size;
+  final png = await captureRecapPng(boundary);
+  return SharePlus.instance.share(
+    ShareParams(
+      text: '$title\nChia sẻ từ RunNow',
+      files: [XFile.fromData(png, mimeType: 'image/png')],
+      fileNameOverrides: ['runnow-${_shareFileName(title)}.png'],
+      sharePositionOrigin: sharePositionOrigin,
+    ),
+  );
+}
+
 Future<Uint8List> captureRecapPng(RenderRepaintBoundary? boundary) async {
   if (boundary == null) {
     throw StateError('Recap card chưa sẵn sàng.');
@@ -47,4 +69,11 @@ Future<Uint8List> captureRecapPng(RenderRepaintBoundary? boundary) async {
     throw StateError('Không thể tạo ảnh recap.');
   }
   return data.buffer.asUint8List();
+}
+
+String _shareFileName(String value) {
+  return value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+      .replaceAll(RegExp(r'^-|-$'), '');
 }

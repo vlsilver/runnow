@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/screens/activity_detail_screen.dart';
 import 'package:myrun/src/screens/dashboard_screen.dart';
-import 'package:myrun/src/screens/feed_screen.dart';
 import 'package:myrun/src/screens/journal_screen.dart';
 import 'package:myrun/src/screens/onboarding_screen.dart';
 import 'package:myrun/src/screens/settings_screen.dart';
@@ -30,14 +29,6 @@ final _router = GoRouter(
             GoRoute(
               path: '/journal',
               builder: (context, state) => const JournalScreen(),
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/feed',
-              builder: (context, state) => const FeedScreen(),
             ),
           ],
         ),
@@ -122,11 +113,6 @@ class _Scaffold extends StatelessWidget {
                 icon: Icon(Icons.directions_run_outlined),
                 selectedIcon: Icon(Icons.directions_run),
                 label: 'Nhật ký',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.people_outline),
-                selectedIcon: Icon(Icons.people),
-                label: 'Feed',
               ),
               NavigationDestination(
                 icon: Icon(Icons.settings_outlined),

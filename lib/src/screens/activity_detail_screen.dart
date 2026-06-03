@@ -73,7 +73,6 @@ class _ShareComposer extends ConsumerStatefulWidget {
 class _ShareComposerState extends ConsumerState<_ShareComposer> {
   final _recapKey = GlobalKey();
   bool _sharing = false;
-  bool _publishing = false;
 
   @override
   Widget build(BuildContext context) {
@@ -114,7 +113,7 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
             ),
             const SizedBox(height: 4),
             const Text(
-              'Tạo poster thành tích hoặc đăng hoạt động lên feed.',
+              'Tạo poster thành tích để chia sẻ.',
               style: TextStyle(color: Colors.white60),
             ),
             const SizedBox(height: 16),
@@ -135,22 +134,6 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
                     : const Icon(Icons.ios_share),
                 label: Text(_sharing ? 'Đang tạo poster...' : 'Chia sẻ poster'),
               ),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: _publishing ? null : _publish,
-              icon: _publishing
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.people),
-              label: Text(_publishing ? 'Đang cập nhật...' : 'Đăng lên feed'),
-            ),
-            TextButton.icon(
-              onPressed: _publishing ? null : _removeFromFeed,
-              icon: const Icon(Icons.delete_outline),
-              label: const Text('Gỡ khỏi feed'),
             ),
           ],
         ),
@@ -173,42 +156,6 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
       );
     } finally {
       if (mounted) setState(() => _sharing = false);
-    }
-  }
-
-  Future<void> _publish() async {
-    setState(() => _publishing = true);
-    try {
-      await ref.read(feedRepositoryProvider).publish(widget.detail.summary);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đã đăng hoạt động lên feed.')),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không thể đăng lên feed: $error')),
-      );
-    } finally {
-      if (mounted) setState(() => _publishing = false);
-    }
-  }
-
-  Future<void> _removeFromFeed() async {
-    setState(() => _publishing = true);
-    try {
-      await ref.read(feedRepositoryProvider).remove(widget.detail.summary);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đã gỡ hoạt động khỏi feed.')),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Không thể gỡ khỏi feed: $error')));
-    } finally {
-      if (mounted) setState(() => _publishing = false);
     }
   }
 }

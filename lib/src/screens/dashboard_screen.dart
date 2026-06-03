@@ -4,18 +4,32 @@ import 'package:myrun/src/dashboard_analytics.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
-import 'package:myrun/src/sync.dart';
+import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/consistency_heatmap.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/training_volume_chart.dart';
 
-class DashboardScreen extends ConsumerWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(syncControllerProvider).startBackgroundSync();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final activities = ref.watch(activitiesProvider);
     final sync = ref.watch(syncControllerProvider);
     return Scaffold(
@@ -38,23 +52,16 @@ class DashboardScreen extends ConsumerWidget {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: GlassIconButton(
-              tooltip: 'Đồng bộ Strava',
-              onPressed: sync.syncing
-                  ? null
-                  : ref.read(syncControllerProvider).startBackgroundSync,
-              icon: sync.syncing
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.sync),
+            child: _SyncAction(
+              syncing: sync.syncing,
+              synced: sync.lastSyncSucceeded,
+              onPressed: ref.read(syncControllerProvider).startBackgroundSync,
             ),
           ),
         ],
       ),
       body: activities.when(
-        data: (items) => _DashboardBody(activities: items, sync: sync),
+        data: (items) => _DashboardBody(activities: items),
         error: (error, stack) =>
             Center(child: Text('Không thể tải dữ liệu: $error')),
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -64,19 +71,13 @@ class DashboardScreen extends ConsumerWidget {
 }
 
 class _DashboardBody extends StatelessWidget {
-  const _DashboardBody({required this.activities, required this.sync});
+  const _DashboardBody({required this.activities});
   final List<ActivitySummary> activities;
-  final SyncController sync;
 
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final comparison = rollingSevenDayComparison(activities, now);
-    final distribution = distanceByActivityKind(
-      activities,
-      start: startOfRollingSevenDays(now),
-      end: endOfToday(now),
-    );
     final recent = [...activities]
       ..sort((left, right) => right.startedAt.compareTo(left.startedAt));
     return ListView(
@@ -88,40 +89,25 @@ class _DashboardBody extends StatelessWidget {
             context,
           ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w600),
         ),
-        const Text(
-          'Nhịp luyện tập từ dữ liệu đã đồng bộ',
-          style: TextStyle(color: Colors.white60),
-        ),
-        if (sync.message != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            sync.message!,
-            style: TextStyle(
-              color: sync.lastSyncSucceeded
-                  ? Theme.of(context).colorScheme.secondary
-                  : Theme.of(context).colorScheme.error,
-            ),
-          ),
-        ],
         const SizedBox(height: 12),
-        _SummaryCard(comparison: comparison),
-        const SizedBox(height: 20),
-        Text(
-          'Phân bổ km theo thời gian',
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
-        const SizedBox(height: 8),
-        TrainingVolumeChart(
-          activities: activities,
-          period: TrainingVolumePeriod.month,
-          showControls: true,
+        _ShareableDashboardCard(
+          title: 'RunNow 7 ngày gần nhất',
+          child: _SummaryCard(comparison: comparison),
         ),
         const SizedBox(height: 20),
-        ConsistencyHeatmap(activities: activities),
-        if (distribution.isNotEmpty) ...[
-          const SizedBox(height: 20),
-          _ActivityDistribution(items: distribution),
-        ],
+        _ShareableDashboardCard(
+          title: 'RunNow consistency 8 tuần',
+          child: ConsistencyHeatmap(activities: activities),
+        ),
+        const SizedBox(height: 20),
+        _ShareableDashboardCard(
+          title: 'RunNow km theo thời gian',
+          child: TrainingVolumeChart(
+            activities: activities,
+            period: TrainingVolumePeriod.month,
+            showControls: true,
+          ),
+        ),
         const SizedBox(height: 20),
         Text('Gần đây', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
@@ -134,6 +120,153 @@ class _DashboardBody extends StatelessWidget {
           for (var index = 0; index < recent.take(3).length; index++)
             ActivityTile(activity: recent[index], sequence: index + 1),
       ],
+    );
+  }
+}
+
+class _SyncAction extends StatefulWidget {
+  const _SyncAction({
+    required this.syncing,
+    required this.synced,
+    required this.onPressed,
+  });
+
+  final bool syncing;
+  final bool synced;
+  final VoidCallback onPressed;
+
+  @override
+  State<_SyncAction> createState() => _SyncActionState();
+}
+
+class _SyncActionState extends State<_SyncAction>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 850),
+    );
+    _syncAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SyncAction oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.syncing != widget.syncing) _syncAnimation();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _syncAnimation() {
+    if (widget.syncing) {
+      _controller.repeat();
+    } else {
+      _controller.stop();
+      _controller.reset();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = widget.syncing
+        ? RotationTransition(turns: _controller, child: const Icon(Icons.sync))
+        : Icon(widget.synced ? Icons.check : Icons.sync);
+    return GlassIconButton(
+      tooltip: 'Đồng bộ Strava',
+      onPressed: widget.syncing ? null : widget.onPressed,
+      icon: icon,
+    );
+  }
+}
+
+class _ShareableDashboardCard extends StatefulWidget {
+  const _ShareableDashboardCard({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  State<_ShareableDashboardCard> createState() =>
+      _ShareableDashboardCardState();
+}
+
+class _ShareableDashboardCardState extends State<_ShareableDashboardCard> {
+  final _cardKey = GlobalKey();
+  bool _sharing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        RepaintBoundary(key: _cardKey, child: widget.child),
+        Positioned(
+          top: 8,
+          right: 8,
+          child: Builder(
+            builder: (buttonContext) => _DashboardShareButton(
+              sharing: _sharing,
+              onPressed: () => _share(buttonContext),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _share(BuildContext buttonContext) async {
+    setState(() => _sharing = true);
+    try {
+      await shareDashboardCard(
+        cardKey: _cardKey,
+        shareButtonContext: buttonContext,
+        title: widget.title,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Không thể chia sẻ: $error')));
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+}
+
+class _DashboardShareButton extends StatelessWidget {
+  const _DashboardShareButton({required this.sharing, required this.onPressed});
+
+  final bool sharing;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xbf020812),
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: sharing ? null : onPressed,
+        borderRadius: BorderRadius.circular(999),
+        child: SizedBox.square(
+          dimension: 36,
+          child: Center(
+            child: sharing
+                ? const SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.ios_share, size: 18),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -232,57 +365,6 @@ class _Metric extends StatelessWidget {
   );
 }
 
-class _ActivityDistribution extends StatelessWidget {
-  const _ActivityDistribution({required this.items});
-
-  final List<ActivityKindDistance> items;
-
-  @override
-  Widget build(BuildContext context) => GlassPanel(
-    padding: const EdgeInsets.all(16),
-    gradient: const LinearGradient(
-      colors: [Color(0xe607172b), Color(0xb3062442)],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'PHÂN BỔ 7 NGÀY',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1,
-          ),
-        ),
-        const SizedBox(height: 12),
-        for (final item in items)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _activityKindLabel(item.kind),
-                  style: const TextStyle(color: Colors.white70),
-                ),
-                Text(
-                  formatDistance(item.distanceMeters),
-                  style: const TextStyle(
-                    color: AppColors.blueGlow,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    ),
-  );
-}
-
 String _comparisonLabel(TrainingComparison comparison) {
   final ratio = comparison.distanceChangeRatio;
   if (ratio == null) return 'Chưa có quãng đường trong 7 ngày trước để so sánh';
@@ -290,11 +372,3 @@ String _comparisonLabel(TrainingComparison comparison) {
   final prefix = percent > 0 ? '+' : '';
   return '$prefix$percent% quãng đường so với 7 ngày trước';
 }
-
-String _activityKindLabel(ActivityKind kind) => switch (kind) {
-  ActivityKind.run => 'Chạy bộ',
-  ActivityKind.trailRun => 'Trail run',
-  ActivityKind.virtualRun => 'Virtual run',
-  ActivityKind.walk => 'Đi bộ',
-  ActivityKind.hike => 'Hiking',
-};
