@@ -120,7 +120,7 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
         const SizedBox(height: 12),
         _ShareableDashboardCard(
           title: 'RunNow tiến độ tuần',
-          child: goals.when(
+          builder: (sharing) => goals.when(
             data: (item) => _SummaryCard(
               comparison: comparison,
               dailyDistances: dailyDistances,
@@ -129,6 +129,7 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
               mode: _weekViewMode,
               onModeChanged: (mode) => setState(() => _weekViewMode = mode),
               onEditGoals: () => _editTrainingGoals(context, ref, item),
+              showControls: !sharing,
             ),
             error: (error, stack) => _SummaryCard(
               comparison: comparison,
@@ -139,6 +140,7 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
               onModeChanged: (mode) => setState(() => _weekViewMode = mode),
               onEditGoals: () =>
                   _editTrainingGoals(context, ref, TrainingGoals.empty),
+              showControls: !sharing,
             ),
             loading: () => _SummaryCard(
               comparison: comparison,
@@ -148,21 +150,22 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
               mode: _weekViewMode,
               onModeChanged: (mode) => setState(() => _weekViewMode = mode),
               onEditGoals: null,
+              showControls: !sharing,
             ),
           ),
         ),
         const SizedBox(height: 20),
         _ShareableDashboardCard(
           title: 'RunNow consistency 8 tuần',
-          child: ConsistencyHeatmap(activities: widget.activities),
+          builder: (_) => ConsistencyHeatmap(activities: widget.activities),
         ),
         const SizedBox(height: 20),
         _ShareableDashboardCard(
           title: 'RunNow km theo thời gian',
-          child: TrainingVolumeChart(
+          builder: (sharing) => TrainingVolumeChart(
             activities: widget.activities,
             period: TrainingVolumePeriod.month,
-            showControls: true,
+            showControls: !sharing,
           ),
         ),
         const SizedBox(height: 20),
@@ -311,10 +314,10 @@ class _SyncActionState extends State<_SyncAction>
 }
 
 class _ShareableDashboardCard extends StatefulWidget {
-  const _ShareableDashboardCard({required this.title, required this.child});
+  const _ShareableDashboardCard({required this.title, required this.builder});
 
   final String title;
-  final Widget child;
+  final Widget Function(bool sharing) builder;
 
   @override
   State<_ShareableDashboardCard> createState() =>
@@ -330,7 +333,7 @@ class _ShareableDashboardCardState extends State<_ShareableDashboardCard> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onLongPress: _sharing ? null : _share,
-      child: RepaintBoundary(key: _cardKey, child: widget.child),
+      child: RepaintBoundary(key: _cardKey, child: widget.builder(_sharing)),
     );
   }
 
@@ -338,6 +341,8 @@ class _ShareableDashboardCardState extends State<_ShareableDashboardCard> {
     setState(() => _sharing = true);
     HapticFeedback.mediumImpact();
     try {
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
       await shareDashboardCard(
         cardKey: _cardKey,
         shareOriginContext: context,
@@ -447,6 +452,7 @@ class _SummaryCard extends StatelessWidget {
     required this.mode,
     required this.onModeChanged,
     required this.onEditGoals,
+    required this.showControls,
   });
 
   final TrainingComparison comparison;
@@ -456,6 +462,7 @@ class _SummaryCard extends StatelessWidget {
   final _WeekViewMode mode;
   final ValueChanged<_WeekViewMode> onModeChanged;
   final VoidCallback? onEditGoals;
+  final bool showControls;
 
   @override
   Widget build(BuildContext context) {
@@ -487,17 +494,30 @@ class _SummaryCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                IconButton(
-                  onPressed: onEditGoals,
-                  tooltip: 'Sửa mục tiêu',
-                  icon: const Icon(Icons.tune, size: 18),
-                  color: AppColors.blueGlow,
-                  visualDensity: VisualDensity.compact,
-                ),
+                if (showControls)
+                  IconButton(
+                    onPressed: onEditGoals,
+                    tooltip: 'Sửa mục tiêu',
+                    icon: const Icon(Icons.tune, size: 18),
+                    color: AppColors.blueGlow,
+                    visualDensity: VisualDensity.compact,
+                  ),
               ],
             ),
-            const SizedBox(height: 10),
-            _WeekViewToggle(value: mode, onChanged: onModeChanged),
+            if (showControls) ...[
+              const SizedBox(height: 10),
+              _WeekViewToggle(value: mode, onChanged: onModeChanged),
+            ] else ...[
+              const SizedBox(height: 6),
+              Text(
+                _weekModeLabel(mode),
+                style: const TextStyle(
+                  color: AppColors.blueGlow,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
             const SizedBox(height: 18),
             _SevenDayPulseChart(days: dailyDistances),
             const SizedBox(height: 18),
@@ -767,6 +787,11 @@ String _weekdayLabel(DateTime date) => switch (date.weekday) {
 
 String _weekGoalLabel(_WeekViewMode mode) => switch (mode) {
   _WeekViewMode.rollingSevenDays => 'Mục tiêu tuần',
+  _WeekViewMode.currentWeek => 'Tuần này',
+};
+
+String _weekModeLabel(_WeekViewMode mode) => switch (mode) {
+  _WeekViewMode.rollingSevenDays => '7 ngày gần nhất',
   _WeekViewMode.currentWeek => 'Tuần này',
 };
 

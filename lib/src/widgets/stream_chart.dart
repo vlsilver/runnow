@@ -62,7 +62,8 @@ class StreamChart extends StatelessWidget {
         for (final item in series) ...[
           _ShareableTelemetryCard(
             title: 'RunNow ${item.label}',
-            child: _TrainingChartCard(series: item),
+            builder: (sharing) =>
+                _TrainingChartCard(series: item, shareMode: sharing),
           ),
           if (item != series.last) const SizedBox(height: 12),
         ],
@@ -101,7 +102,7 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
     );
     return _ShareableTelemetryCard(
       title: 'RunNow heart zones',
-      child: GlassPanel(
+      builder: (sharing) => GlassPanel(
         padding: const EdgeInsets.all(16),
         gradient: const LinearGradient(
           colors: [Color(0xe607172b), Color(0xaa2b0713)],
@@ -138,15 +139,17 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    AnimatedRotation(
-                      turns: _expanded ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 180),
-                      child: const Icon(
-                        Icons.keyboard_arrow_down,
-                        color: AppColors.blueGlow,
+                    if (!sharing) ...[
+                      const SizedBox(width: 8),
+                      AnimatedRotation(
+                        turns: _expanded ? 0.5 : 0,
+                        duration: const Duration(milliseconds: 180),
+                        child: const Icon(
+                          Icons.keyboard_arrow_down,
+                          color: AppColors.blueGlow,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -178,10 +181,10 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
 }
 
 class _ShareableTelemetryCard extends StatefulWidget {
-  const _ShareableTelemetryCard({required this.title, required this.child});
+  const _ShareableTelemetryCard({required this.title, required this.builder});
 
   final String title;
-  final Widget child;
+  final Widget Function(bool sharing) builder;
 
   @override
   State<_ShareableTelemetryCard> createState() =>
@@ -197,7 +200,7 @@ class _ShareableTelemetryCardState extends State<_ShareableTelemetryCard> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onLongPress: _sharing ? null : _share,
-      child: RepaintBoundary(key: _cardKey, child: widget.child),
+      child: RepaintBoundary(key: _cardKey, child: widget.builder(_sharing)),
     );
   }
 
@@ -205,6 +208,8 @@ class _ShareableTelemetryCardState extends State<_ShareableTelemetryCard> {
     setState(() => _sharing = true);
     HapticFeedback.mediumImpact();
     try {
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
       await shareDashboardCard(
         cardKey: _cardKey,
         shareOriginContext: context,
@@ -305,9 +310,10 @@ class _HeartRateZoneRow extends StatelessWidget {
 }
 
 class _TrainingChartCard extends StatefulWidget {
-  const _TrainingChartCard({required this.series});
+  const _TrainingChartCard({required this.series, required this.shareMode});
 
   final _ChartSeries series;
+  final bool shareMode;
 
   @override
   State<_TrainingChartCard> createState() => _TrainingChartCardState();
@@ -386,15 +392,17 @@ class _TrainingChartCardState extends State<_TrainingChartCard> {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  AnimatedRotation(
-                    turns: _expanded ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 180),
-                    child: const Icon(
-                      Icons.keyboard_arrow_down,
-                      color: AppColors.blueGlow,
+                  if (!widget.shareMode) ...[
+                    const SizedBox(width: 8),
+                    AnimatedRotation(
+                      turns: _expanded ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      child: const Icon(
+                        Icons.keyboard_arrow_down,
+                        color: AppColors.blueGlow,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -417,31 +425,35 @@ class _TrainingChartCardState extends State<_TrainingChartCard> {
                         ],
                       ),
                       const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _CompactSelector<_ChartMode>(
-                              label: 'KIỂU',
-                              value: _mode,
-                              items: _ChartMode.values,
-                              itemLabel: (mode) => mode.label,
-                              onChanged: (mode) => setState(() => _mode = mode),
+                      if (!widget.shareMode) ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _CompactSelector<_ChartMode>(
+                                label: 'KIỂU',
+                                value: _mode,
+                                items: _ChartMode.values,
+                                itemLabel: (mode) => mode.label,
+                                onChanged: (mode) =>
+                                    setState(() => _mode = mode),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _CompactSelector<_DistanceRange>(
-                              label: 'RANGE',
-                              value: _range,
-                              items: _DistanceRange.values,
-                              itemLabel: (range) => range.label,
-                              onChanged: (range) =>
-                                  setState(() => _range = range),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _CompactSelector<_DistanceRange>(
+                                label: 'RANGE',
+                                value: _range,
+                                items: _DistanceRange.values,
+                                itemLabel: (range) => range.label,
+                                onChanged: (range) =>
+                                    setState(() => _range = range),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                      ] else
+                        const SizedBox(height: 4),
                       SizedBox(
                         height: 190,
                         child: _mode == _ChartMode.line
