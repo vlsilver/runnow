@@ -21,6 +21,13 @@ final feedRepositoryProvider = Provider<FeedRepository>((ref) {
   );
 });
 
+final trainingGoalRepositoryProvider = Provider<TrainingGoalRepository>((ref) {
+  return FirestoreTrainingGoalRepository(
+    FirebaseAuth.instance,
+    FirebaseFirestore.instance,
+  );
+});
+
 final firebaseUserProvider = StreamProvider<User?>(
   (ref) => FirebaseAuth.instance.authStateChanges(),
 );
@@ -65,4 +72,8 @@ final syncControllerProvider = ChangeNotifierProvider<SyncController>(
 
 final feedPostsProvider = StreamProvider<List<FeedPost>>(
   (ref) => ref.watch(feedRepositoryProvider).watchPosts(),
+);
+
+final trainingGoalsProvider = StreamProvider<TrainingGoals>(
+  (ref) => ref.watch(trainingGoalRepositoryProvider).watchGoals(),
 );

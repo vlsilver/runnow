@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/app.dart';
+import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/repository.dart';
 
@@ -12,6 +13,14 @@ void main() {
           activityRepositoryProvider.overrideWithValue(
             DemoActivityRepository(),
           ),
+          trainingGoalRepositoryProvider.overrideWithValue(
+            DemoTrainingGoalRepository(
+              const TrainingGoals(
+                weeklyDistanceMeters: 10000,
+                monthlyDistanceMeters: 40000,
+              ),
+            ),
+          ),
         ],
         child: const RunNowApp(requireAuthentication: false),
       ),
@@ -22,6 +31,8 @@ void main() {
     expect(find.text('Nhịp luyện tập từ dữ liệu đã đồng bộ'), findsNothing);
     expect(find.textContaining('Đồng bộ Strava hoàn tất'), findsNothing);
     expect(find.text('Quãng đường'), findsOneWidget);
+    expect(find.text('MỤC TIÊU'), findsOneWidget);
+    expect(find.text('Tuần này'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('CONSISTENCY'), 300);
     expect(find.text('CONSISTENCY'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Gần đây'), 300);

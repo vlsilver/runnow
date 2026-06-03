@@ -17,6 +17,11 @@ abstract interface class FeedRepository {
   Future<void> remove(ActivitySummary activity);
 }
 
+abstract interface class TrainingGoalRepository {
+  Stream<TrainingGoals> watchGoals();
+  Future<void> saveGoals(TrainingGoals goals);
+}
+
 class FirestoreStravaActivityRepository implements ActivityRepository {
   FirestoreStravaActivityRepository(this._auth, this._firestore);
 
@@ -250,6 +255,67 @@ class DemoFeedRepository implements FeedRepository {
 
   void dispose() {
     _controller.close();
+  }
+}
+
+class DemoTrainingGoalRepository implements TrainingGoalRepository {
+  DemoTrainingGoalRepository([TrainingGoals goals = TrainingGoals.empty])
+    : _goals = goals;
+
+  final _controller = StreamController<TrainingGoals>.broadcast();
+  TrainingGoals _goals;
+
+  @override
+  Stream<TrainingGoals> watchGoals() async* {
+    yield _goals;
+    yield* _controller.stream;
+  }
+
+  @override
+  Future<void> saveGoals(TrainingGoals goals) async {
+    _goals = goals;
+    _controller.add(_goals);
+  }
+
+  void dispose() {
+    _controller.close();
+  }
+}
+
+class FirestoreTrainingGoalRepository implements TrainingGoalRepository {
+  FirestoreTrainingGoalRepository(this._auth, this._firestore);
+
+  final FirebaseAuth _auth;
+  final FirebaseFirestore _firestore;
+
+  String get _uid {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) throw StateError('Bạn chưa đăng nhập Firebase.');
+    return uid;
+  }
+
+  DocumentReference<Map<String, dynamic>> get _userDocument =>
+      _firestore.collection('users').doc(_uid);
+
+  @override
+  Stream<TrainingGoals> watchGoals() {
+    return _userDocument.snapshots().map((snapshot) {
+      final data = snapshot.data();
+      return TrainingGoals.fromMap(
+        data?['trainingGoals'] as Map<String, dynamic>?,
+      );
+    });
+  }
+
+  @override
+  Future<void> saveGoals(TrainingGoals goals) {
+    return _userDocument.set({
+      'trainingGoals': {
+        'weeklyDistanceMeters': goals.weeklyDistanceMeters,
+        'monthlyDistanceMeters': goals.monthlyDistanceMeters,
+      },
+      'trainingGoalsUpdatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 }
 

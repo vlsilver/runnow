@@ -2,7 +2,9 @@ import 'dart:math' as math;
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:myrun/src/formatters.dart';
+import 'package:myrun/src/share.dart';
 import 'package:myrun/src/stream_sampling.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
@@ -58,7 +60,10 @@ class StreamChart extends StatelessWidget {
     return Column(
       children: [
         for (final item in series) ...[
-          _TrainingChartCard(series: item),
+          _ShareableTelemetryCard(
+            title: 'RunNow ${item.label}',
+            child: _TrainingChartCard(series: item),
+          ),
           if (item != series.last) const SizedBox(height: 12),
         ],
       ],
@@ -94,78 +99,125 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
       0,
       (max, item) => item.seconds > max ? item.seconds : max,
     );
-    return GlassPanel(
-      padding: const EdgeInsets.all(16),
-      gradient: const LinearGradient(
-        colors: [Color(0xe607172b), Color(0xaa2b0713)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(
-                children: [
-                  const Icon(Icons.favorite, color: AppColors.red, size: 18),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'TIME IN HEART ZONES',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.1,
+    return _ShareableTelemetryCard(
+      title: 'RunNow heart zones',
+      child: GlassPanel(
+        padding: const EdgeInsets.all(16),
+        gradient: const LinearGradient(
+          colors: [Color(0xe607172b), Color(0xaa2b0713)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              onTap: () => setState(() => _expanded = !_expanded),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    const Icon(Icons.favorite, color: AppColors.red, size: 18),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'TIME IN HEART ZONES',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.1,
+                        ),
                       ),
                     ),
-                  ),
-                  Text(
-                    formatDuration(totalSeconds.round()),
-                    style: const TextStyle(
-                      color: AppColors.red,
-                      fontWeight: FontWeight.w800,
+                    Text(
+                      formatDuration(totalSeconds.round()),
+                      style: const TextStyle(
+                        color: AppColors.red,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  AnimatedRotation(
-                    turns: _expanded ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 180),
-                    child: const Icon(
-                      Icons.keyboard_arrow_down,
-                      color: AppColors.blueGlow,
+                    const SizedBox(width: 8),
+                    AnimatedRotation(
+                      turns: _expanded ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      child: const Icon(
+                        Icons.keyboard_arrow_down,
+                        color: AppColors.blueGlow,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 180),
-            alignment: Alignment.topCenter,
-            child: _expanded
-                ? Column(
-                    children: [
-                      const SizedBox(height: 14),
-                      for (final zone in zones) ...[
-                        _HeartRateZoneRow(
-                          zone: zone,
-                          totalSeconds: totalSeconds,
-                          maxSeconds: maxSeconds,
-                        ),
-                        if (zone != zones.last) const SizedBox(height: 10),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              alignment: Alignment.topCenter,
+              child: _expanded
+                  ? Column(
+                      children: [
+                        const SizedBox(height: 14),
+                        for (final zone in zones) ...[
+                          _HeartRateZoneRow(
+                            zone: zone,
+                            totalSeconds: totalSeconds,
+                            maxSeconds: maxSeconds,
+                          ),
+                          if (zone != zones.last) const SizedBox(height: 10),
+                        ],
                       ],
-                    ],
-                  )
-                : const SizedBox(width: double.infinity),
-          ),
-        ],
+                    )
+                  : const SizedBox(width: double.infinity),
+            ),
+          ],
+        ),
       ),
     );
+  }
+}
+
+class _ShareableTelemetryCard extends StatefulWidget {
+  const _ShareableTelemetryCard({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  State<_ShareableTelemetryCard> createState() =>
+      _ShareableTelemetryCardState();
+}
+
+class _ShareableTelemetryCardState extends State<_ShareableTelemetryCard> {
+  final _cardKey = GlobalKey();
+  bool _sharing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: _sharing ? null : _share,
+      child: RepaintBoundary(key: _cardKey, child: widget.child),
+    );
+  }
+
+  Future<void> _share() async {
+    setState(() => _sharing = true);
+    HapticFeedback.mediumImpact();
+    try {
+      await shareDashboardCard(
+        cardKey: _cardKey,
+        shareOriginContext: context,
+        title: widget.title,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Không thể chia sẻ: $error')));
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
   }
 }
 

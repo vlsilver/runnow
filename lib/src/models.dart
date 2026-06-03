@@ -132,6 +132,32 @@ class ActivityDetail {
   final Map<String, List<double>> streams;
 }
 
+class TrainingGoals {
+  const TrainingGoals({
+    required this.weeklyDistanceMeters,
+    required this.monthlyDistanceMeters,
+  });
+
+  factory TrainingGoals.fromMap(Map<String, dynamic>? map) {
+    return TrainingGoals(
+      weeklyDistanceMeters:
+          (map?['weeklyDistanceMeters'] as num?)?.toDouble() ?? 0,
+      monthlyDistanceMeters:
+          (map?['monthlyDistanceMeters'] as num?)?.toDouble() ?? 0,
+    );
+  }
+
+  static const empty = TrainingGoals(
+    weeklyDistanceMeters: 0,
+    monthlyDistanceMeters: 0,
+  );
+
+  final double weeklyDistanceMeters;
+  final double monthlyDistanceMeters;
+
+  bool get hasAnyGoal => weeklyDistanceMeters > 0 || monthlyDistanceMeters > 0;
+}
+
 class FeedPost {
   const FeedPost({
     required this.id,

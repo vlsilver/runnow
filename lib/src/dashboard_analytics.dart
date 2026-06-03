@@ -103,6 +103,15 @@ TrainingSummary trainingSummary(
   );
 }
 
+TrainingSummary currentMonthSummary(
+  List<ActivitySummary> activities,
+  DateTime now,
+) {
+  final start = DateTime(now.year, now.month);
+  final end = DateTime(now.year, now.month + 1);
+  return trainingSummary(activities, start: start, end: end);
+}
+
 List<ActivityKindDistance> distanceByActivityKind(
   List<ActivitySummary> activities, {
   required DateTime start,
