@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:myrun/src/auth.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/repository.dart';
+import 'package:myrun/src/strava_client.dart';
 import 'package:myrun/src/sync.dart';
 import 'package:myrun/src/theme_controller.dart';
 
@@ -17,6 +18,13 @@ final activityRepositoryProvider = Provider<ActivityRepository>((ref) {
 
 final feedRepositoryProvider = Provider<FeedRepository>((ref) {
   return FirestoreFeedRepository(
+    FirebaseAuth.instance,
+    FirebaseFirestore.instance,
+  );
+});
+
+final memberRepositoryProvider = Provider<MemberRepository>((ref) {
+  return FirestoreMemberRepository(
     FirebaseAuth.instance,
     FirebaseFirestore.instance,
   );
@@ -53,7 +61,19 @@ final userProfileProvider = StreamProvider<UserProfile?>((ref) {
 });
 
 final stravaAuthProvider = ChangeNotifierProvider<StravaAuthController>(
-  (ref) => StravaAuthController(FirebaseAuth.instance),
+  (ref) =>
+      StravaAuthController(FirebaseAuth.instance, FirebaseFirestore.instance),
+);
+
+final stravaConnectionProvider = Provider<bool>((ref) {
+  ref.watch(stravaAuthProvider);
+  ref.watch(firebaseUserProvider);
+  return StravaClient.instance.isSignedIn;
+});
+
+final googleAuthProvider = ChangeNotifierProvider<GoogleAuthController>(
+  (ref) =>
+      GoogleAuthController(FirebaseAuth.instance, FirebaseFirestore.instance),
 );
 
 final themeControllerProvider = ChangeNotifierProvider<ThemeController>(
@@ -78,6 +98,26 @@ final syncControllerProvider = ChangeNotifierProvider<SyncController>(
 final feedPostsProvider = StreamProvider<List<FeedPost>>(
   (ref) => ref.watch(feedRepositoryProvider).watchPosts(),
 );
+
+final membersProvider = StreamProvider<List<MemberProfile>>(
+  (ref) => ref.watch(memberRepositoryProvider).watchMembers(),
+);
+
+final leaderboardEntriesProvider = StreamProvider<List<LeaderboardEntry>>(
+  (ref) => ref.watch(memberRepositoryProvider).watchLeaderboardEntries(),
+);
+
+final memberProfileProvider = StreamProvider.family<MemberProfile?, String>((
+  ref,
+  uid,
+) {
+  return ref.watch(memberRepositoryProvider).watchMember(uid);
+});
+
+final memberActivitiesProvider =
+    StreamProvider.family<List<ActivitySummary>, String>((ref, uid) {
+      return ref.watch(memberRepositoryProvider).watchMemberActivities(uid);
+    });
 
 final trainingGoalsProvider = StreamProvider<TrainingGoals>(
   (ref) => ref.watch(trainingGoalRepositoryProvider).watchGoals(),

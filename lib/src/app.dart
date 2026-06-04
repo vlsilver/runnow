@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/screens/activity_detail_screen.dart';
+import 'package:myrun/src/screens/club_screen.dart';
 import 'package:myrun/src/screens/dashboard_screen.dart';
 import 'package:myrun/src/screens/journal_screen.dart';
+import 'package:myrun/src/screens/member_profile_screen.dart';
 import 'package:myrun/src/screens/onboarding_screen.dart';
 import 'package:myrun/src/screens/settings_screen.dart';
 import 'package:myrun/src/theme.dart';
@@ -35,6 +37,14 @@ final _router = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
+              path: '/club',
+              builder: (context, state) => const ClubScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
               path: '/settings',
               builder: (context, state) => const SettingsScreen(),
             ),
@@ -46,6 +56,11 @@ final _router = GoRouter(
       path: '/activity/:id',
       builder: (context, state) =>
           ActivityDetailScreen(activityId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/club/:uid',
+      builder: (context, state) =>
+          MemberProfileScreen(uid: state.pathParameters['uid']!),
     ),
   ],
 );
@@ -116,6 +131,11 @@ class _Scaffold extends StatelessWidget {
                 icon: Icon(Icons.directions_run_outlined),
                 selectedIcon: Icon(Icons.directions_run),
                 label: 'Nhật ký',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.groups_2_outlined),
+                selectedIcon: Icon(Icons.groups_2),
+                label: 'Club',
               ),
               NavigationDestination(
                 icon: Icon(Icons.settings_outlined),

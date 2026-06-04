@@ -1,6 +1,7 @@
 /.gradle
 /captures/
 /local.properties
+/app/google-services.json
 GeneratedPluginRegistrant.java
 .cxx/
 

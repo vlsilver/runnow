@@ -10,10 +10,27 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == userId;
     }
 
+    function isPublicProfile(userId) {
+      return signedIn()
+        && get(/databases/$(database)/documents/publicProfiles/$(userId)).data.profileVisibility == 'public';
+    }
+
     match /users/{userId} {
-      allow read, write: if owns(userId);
+      allow read: if owns(userId);
+      allow create: if owns(userId);
+      allow update: if owns(userId)
+        && (
+          !('lockedStravaAthleteId' in resource.data)
+          || !('lockedStravaAthleteId' in request.resource.data)
+          || request.resource.data.lockedStravaAthleteId == resource.data.lockedStravaAthleteId
+        );
 
       match /activities/{activityId} {
+        allow read: if owns(userId) || isPublicProfile(userId);
+        allow write: if owns(userId);
+      }
+
+      match /trainingGoalHistory/{historyId} {
         allow read, write: if owns(userId);
       }
     }
@@ -24,6 +41,29 @@ service cloud.firestore {
         && request.resource.data.authorUid == request.auth.uid;
       allow delete: if signedIn()
         && resource.data.authorUid == request.auth.uid;
+    }
+
+    match /stravaLinks/{athleteId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid;
+      allow delete: if signedIn()
+        && resource.data.uid == request.auth.uid;
+    }
+
+    match /publicProfiles/{userId} {
+      allow read: if signedIn();
+      allow create, update, delete: if owns(userId);
+    }
+
+    match /leaderboardEntries/{userId} {
+      allow read: if signedIn();
+      allow create, update: if owns(userId)
+        && request.resource.data.uid == request.auth.uid;
+      allow delete: if owns(userId);
     }
   }
 }

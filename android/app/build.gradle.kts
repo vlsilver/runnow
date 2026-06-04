@@ -1,11 +1,12 @@
 plugins {
     id("com.android.application")
+    id("com.google.gms.google-services")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
-    namespace = "com.u3ae.myrun"
+    namespace = "com.threeaeidiot.runnow"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -15,8 +16,7 @@ android {
     }
 
     defaultConfig {
-        // Android package segments cannot begin with a digit, so 3ae maps to u3ae.
-        applicationId = "com.u3ae.myrun"
+        applicationId = "com.threeaeidiot.runnow"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

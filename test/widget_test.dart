@@ -22,6 +22,10 @@ void main() {
               ),
             ),
           ),
+          userProfileProvider.overrideWith(
+            (ref) => Stream.value(UserProfile.demo),
+          ),
+          stravaConnectionProvider.overrideWithValue(true),
           themeControllerProvider.overrideWith(
             (ref) => ThemeController(loadFromStorage: false),
           ),

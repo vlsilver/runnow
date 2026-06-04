@@ -8,7 +8,7 @@ class OnboardingScreen extends ConsumerWidget {
   const OnboardingScreen({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final controller = ref.watch(stravaAuthProvider);
+    final controller = ref.watch(googleAuthProvider);
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -51,19 +51,19 @@ class OnboardingScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 14),
                   const Text(
-                    'Kết nối Strava để xem nhật ký chạy và đi bộ trong 12 tháng gần nhất.',
+                    'Đăng nhập để tham gia cộng đồng chạy. Bạn có thể kết nối Strava trong Cài đặt để đồng bộ hoạt động.',
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
-                      onPressed: controller.loading ? null : controller.connect,
-                      icon: const Icon(Icons.link),
+                      onPressed: controller.loading ? null : controller.signIn,
+                      icon: const Icon(Icons.login),
                       label: Text(
                         controller.loading
-                            ? 'Đang kết nối...'
-                            : 'Kết nối Strava',
+                            ? 'Đang đăng nhập...'
+                            : 'Đăng nhập Google',
                       ),
                     ),
                   ),

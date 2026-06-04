@@ -1,5 +1,21 @@
 enum ActivityKind { run, trailRun, virtualRun, walk, hike }
 
+enum ProfileVisibility {
+  public('public'),
+  private('private');
+
+  const ProfileVisibility(this.value);
+
+  factory ProfileVisibility.fromValue(String? value) {
+    return switch (value) {
+      'public' => ProfileVisibility.public,
+      _ => ProfileVisibility.private,
+    };
+  }
+
+  final String value;
+}
+
 ActivityKind? parseActivityKind(String? value) {
   return switch (value) {
     'Run' => ActivityKind.run,
@@ -15,6 +31,11 @@ class UserProfile {
   const UserProfile({
     required this.athleteId,
     required this.displayName,
+    this.email,
+    this.avatarUrl,
+    this.nickname,
+    this.visibility = ProfileVisibility.private,
+    this.stravaConnected = false,
     this.lastSyncedAt,
   });
 
@@ -22,11 +43,26 @@ class UserProfile {
     final athlete = map['athlete'] as Map<String, dynamic>? ?? const {};
     final firstName = athlete['firstname'] as String? ?? '';
     final lastName = athlete['lastname'] as String? ?? '';
-    final name = '$firstName $lastName'.trim();
+    final athleteName = '$firstName $lastName'.trim();
+    final nickname = map['nickname'] as String?;
+    final displayName = map['displayName'] as String?;
     final syncedAt = map['lastSyncedAt'];
     return UserProfile(
-      athleteId: '${map['athleteId'] ?? ''}',
-      displayName: name.isEmpty ? 'Strava athlete' : name,
+      athleteId: '${map['stravaAthleteId'] ?? map['athleteId'] ?? ''}',
+      displayName: nickname?.trim().isNotEmpty == true
+          ? nickname!.trim()
+          : displayName?.trim().isNotEmpty == true
+          ? displayName!.trim()
+          : athleteName.isEmpty
+          ? 'RunNow member'
+          : athleteName,
+      email: map['email'] as String?,
+      avatarUrl: map['avatarUrl'] as String?,
+      nickname: nickname,
+      visibility: ProfileVisibility.fromValue(
+        map['profileVisibility'] as String?,
+      ),
+      stravaConnected: map['stravaConnected'] as bool? ?? false,
       lastSyncedAt: syncedAt is DateTime ? syncedAt.toLocal() : null,
     );
   }
@@ -34,12 +70,144 @@ class UserProfile {
   static final demo = UserProfile(
     athleteId: 'demo',
     displayName: 'Demo runner',
+    stravaConnected: true,
     lastSyncedAt: DateTime.now(),
   );
 
   final String athleteId;
   final String displayName;
+  final String? email;
+  final String? avatarUrl;
+  final String? nickname;
+  final ProfileVisibility visibility;
+  final bool stravaConnected;
   final DateTime? lastSyncedAt;
+}
+
+class MemberProfile {
+  const MemberProfile({
+    required this.uid,
+    required this.displayName,
+    required this.visibility,
+    this.avatarUrl,
+    this.stravaConnected = false,
+    this.updatedAt,
+  });
+
+  factory MemberProfile.fromMap(Map<String, dynamic> map) {
+    final nickname = map['nickname'] as String?;
+    final displayName = map['displayName'] as String?;
+    return MemberProfile(
+      uid: map['uid'] as String? ?? '',
+      displayName: nickname?.trim().isNotEmpty == true
+          ? nickname!.trim()
+          : displayName?.trim().isNotEmpty == true
+          ? displayName!.trim()
+          : 'RunNow member',
+      avatarUrl: map['avatarUrl'] as String?,
+      visibility: ProfileVisibility.fromValue(
+        map['profileVisibility'] as String?,
+      ),
+      stravaConnected: map['stravaConnected'] as bool? ?? false,
+      updatedAt: map['updatedAt'] is DateTime
+          ? (map['updatedAt'] as DateTime).toLocal()
+          : null,
+    );
+  }
+
+  final String uid;
+  final String displayName;
+  final String? avatarUrl;
+  final ProfileVisibility visibility;
+  final bool stravaConnected;
+  final DateTime? updatedAt;
+
+  bool get isPublic => visibility == ProfileVisibility.public;
+}
+
+class LeaderboardStats {
+  const LeaderboardStats({
+    required this.distanceMeters,
+    required this.movingTimeSeconds,
+    required this.activityCount,
+    required this.activeDays,
+  });
+
+  factory LeaderboardStats.fromMap(Map<String, dynamic>? map) {
+    return LeaderboardStats(
+      distanceMeters: (map?['distanceMeters'] as num?)?.toDouble() ?? 0,
+      movingTimeSeconds: (map?['movingTimeSeconds'] as num?)?.toInt() ?? 0,
+      activityCount: (map?['activityCount'] as num?)?.toInt() ?? 0,
+      activeDays: (map?['activeDays'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  final double distanceMeters;
+  final int movingTimeSeconds;
+  final int activityCount;
+  final int activeDays;
+
+  Map<String, dynamic> toMap() {
+    return {
+      'distanceMeters': distanceMeters,
+      'movingTimeSeconds': movingTimeSeconds,
+      'activityCount': activityCount,
+      'activeDays': activeDays,
+    };
+  }
+}
+
+class LeaderboardEntry {
+  const LeaderboardEntry({
+    required this.uid,
+    required this.displayName,
+    required this.visibility,
+    required this.rollingSevenDays,
+    required this.currentWeek,
+    required this.currentMonth,
+    this.avatarUrl,
+    this.updatedAt,
+  });
+
+  factory LeaderboardEntry.fromMap(Map<String, dynamic> map) {
+    final nickname = map['nickname'] as String?;
+    final displayName = map['displayName'] as String?;
+    return LeaderboardEntry(
+      uid: map['uid'] as String? ?? '',
+      displayName: nickname?.trim().isNotEmpty == true
+          ? nickname!.trim()
+          : displayName?.trim().isNotEmpty == true
+          ? displayName!.trim()
+          : 'RunNow member',
+      avatarUrl: map['avatarUrl'] as String?,
+      visibility: ProfileVisibility.fromValue(
+        map['profileVisibility'] as String?,
+      ),
+      rollingSevenDays: LeaderboardStats.fromMap(
+        map['rollingSevenDays'] as Map<String, dynamic>?,
+      ),
+      currentWeek: LeaderboardStats.fromMap(
+        map['currentWeek'] as Map<String, dynamic>?,
+      ),
+      currentMonth: LeaderboardStats.fromMap(
+        map['currentMonth'] as Map<String, dynamic>?,
+      ),
+      updatedAt: map['updatedAt'] is DateTime
+          ? (map['updatedAt'] as DateTime).toLocal()
+          : null,
+    );
+  }
+
+  final String uid;
+  final String displayName;
+  final String? avatarUrl;
+  final ProfileVisibility visibility;
+  final LeaderboardStats rollingSevenDays;
+  final LeaderboardStats currentWeek;
+  final LeaderboardStats currentMonth;
+  final DateTime? updatedAt;
+
+  bool get isPublic => visibility == ProfileVisibility.public;
 }
 
 class ActivitySummary {
@@ -156,6 +324,13 @@ class TrainingGoals {
   final double monthlyDistanceMeters;
 
   bool get hasAnyGoal => weeklyDistanceMeters > 0 || monthlyDistanceMeters > 0;
+
+  Map<String, dynamic> toMap() {
+    return {
+      'weeklyDistanceMeters': weeklyDistanceMeters,
+      'monthlyDistanceMeters': monthlyDistanceMeters,
+    };
+  }
 }
 
 class FeedPost {

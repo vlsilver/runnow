@@ -8,7 +8,7 @@ void main() {
     final controller = SyncController(_StubRepository(imported: 3));
     await controller.sync();
     expect(controller.lastSyncSucceeded, isTrue);
-    expect(controller.message, 'Đồng bộ Strava hoàn tất: 3 hoạt động.');
+    expect(controller.message, 'Đồng bộ Strava hoàn tất: cập nhật 3 hoạt động.');
   });
 
   test('reports repository failures', () async {
@@ -30,12 +30,30 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(controller.lastSyncSucceeded, isTrue);
   });
+
+  test('runs automatic background sync once per controller', () async {
+    final repository = _StubRepository(imported: 0);
+    final controller = SyncController(repository);
+
+    controller.startBackgroundSync();
+    await Future<void>.delayed(Duration.zero);
+    controller.startBackgroundSync();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(repository.syncCalls, 1);
+
+    controller.startBackgroundSync(force: true);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(repository.syncCalls, 2);
+  });
 }
 
 class _StubRepository implements ActivityRepository {
   _StubRepository({this.imported = 0, this.error});
   final int imported;
   final Object? error;
+  int syncCalls = 0;
 
   @override
   Future<ActivityDetail> getDetail(String activityId) =>
@@ -43,6 +61,7 @@ class _StubRepository implements ActivityRepository {
 
   @override
   Future<int> sync() async {
+    syncCalls += 1;
     if (error != null) throw error!;
     return imported;
   }

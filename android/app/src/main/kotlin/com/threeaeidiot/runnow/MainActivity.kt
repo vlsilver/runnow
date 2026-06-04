@@ -1,4 +1,4 @@
-package com.u3ae.myrun
+package com.threeaeidiot.runnow
 
 import io.flutter.embedding.android.FlutterActivity
 

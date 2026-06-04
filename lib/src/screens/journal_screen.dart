@@ -1,18 +1,42 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
+import 'package:myrun/src/widgets/glass.dart';
 
 class JournalScreen extends ConsumerWidget {
   const JournalScreen({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final profileState = ref.watch(userProfileProvider);
+    final profileLoading = profileState.maybeWhen(
+      loading: () => true,
+      orElse: () => false,
+    );
+    final stravaConnected = ref.watch(stravaConnectionProvider);
+    if (!profileLoading && !stravaConnected) {
+      final strava = ref.watch(stravaAuthProvider);
+      return Scaffold(
+        appBar: AppBar(title: const Text('Nhật ký')),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            _JournalConnectStravaCard(
+              loading: strava.loading,
+              errorMessage: strava.errorMessage,
+              onConnect: ref.read(stravaAuthProvider).connect,
+            ),
+          ],
+        ),
+      );
+    }
     final activities = ref.watch(activitiesProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Nhật ký')),
       body: RefreshIndicator(
         onRefresh: () async {
-          ref.read(syncControllerProvider).startBackgroundSync();
+          ref.read(syncControllerProvider).startBackgroundSync(force: true);
         },
         child: activities.when(
           data: (items) => ListView(
@@ -41,6 +65,75 @@ class JournalScreen extends ConsumerWidget {
           ),
           loading: () => const Center(child: CircularProgressIndicator()),
         ),
+      ),
+    );
+  }
+}
+
+class _JournalConnectStravaCard extends StatelessWidget {
+  const _JournalConnectStravaCard({
+    required this.loading,
+    required this.errorMessage,
+    required this.onConnect,
+  });
+
+  final bool loading;
+  final String? errorMessage;
+  final VoidCallback onConnect;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassPanel(
+      padding: const EdgeInsets.all(18),
+      gradient: const LinearGradient(
+        colors: [Color(0xf207172b), Color(0xd4062442), Color(0xb3151637)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.directions_run, color: AppColors.blueGlow),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'NHẬT KÝ STRAVA',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Kết nối Strava để tải nhật ký chạy và đi bộ vào RunNow.',
+            style: TextStyle(color: Colors.white70),
+          ),
+          if (errorMessage != null) ...[
+            const SizedBox(height: 10),
+            Text(errorMessage!, style: const TextStyle(color: AppColors.red)),
+          ],
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: loading ? null : onConnect,
+              icon: loading
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.link),
+              label: Text(loading ? 'Đang kết nối...' : 'Kết nối Strava'),
+            ),
+          ),
+        ],
       ),
     );
   }

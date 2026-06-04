@@ -10,8 +10,11 @@ class SyncController extends ChangeNotifier {
   bool syncing = false;
   String? message;
   bool lastSyncSucceeded = false;
+  bool _autoSyncStarted = false;
 
-  void startBackgroundSync() {
+  void startBackgroundSync({bool force = false}) {
+    if (!force && _autoSyncStarted) return;
+    if (!force) _autoSyncStarted = true;
     unawaited(sync());
   }
 
@@ -21,9 +24,11 @@ class SyncController extends ChangeNotifier {
     message = null;
     notifyListeners();
     try {
-      final imported = await _repository.sync();
+      final changed = await _repository.sync();
       lastSyncSucceeded = true;
-      message = 'Đồng bộ Strava hoàn tất: $imported hoạt động.';
+      message = changed == 0
+          ? 'Đồng bộ Strava hoàn tất. Không có hoạt động mới.'
+          : 'Đồng bộ Strava hoàn tất: cập nhật $changed hoạt động.';
     } catch (error) {
       lastSyncSucceeded = false;
       message = 'Không thể đồng bộ Strava: $error';

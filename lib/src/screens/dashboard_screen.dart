@@ -6,6 +6,7 @@ import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/share.dart';
+import 'package:myrun/src/strava_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/consistency_heatmap.dart';
@@ -25,14 +26,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      if (!StravaClient.instance.isSignedIn) return;
       ref.read(syncControllerProvider).startBackgroundSync();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final activities = ref.watch(activitiesProvider);
     final sync = ref.watch(syncControllerProvider);
+    final profileState = ref.watch(userProfileProvider);
+    final profileLoading = profileState.maybeWhen(
+      loading: () => true,
+      orElse: () => false,
+    );
+    final stravaConnected = ref.watch(stravaConnectionProvider);
     return Scaffold(
       appBar: AppBar(
         title: const Column(
@@ -51,22 +58,48 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ],
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: _SyncAction(
-              syncing: sync.syncing,
-              synced: sync.lastSyncSucceeded,
-              onPressed: ref.read(syncControllerProvider).startBackgroundSync,
+          if (stravaConnected)
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: _SyncAction(
+                syncing: sync.syncing,
+                synced: sync.lastSyncSucceeded,
+                onPressed: () => ref
+                    .read(syncControllerProvider)
+                    .startBackgroundSync(force: true),
+              ),
             ),
-          ),
         ],
       ),
-      body: activities.when(
-        data: (items) => _DashboardBody(activities: items),
-        error: (error, stack) =>
-            Center(child: Text('Không thể tải dữ liệu: $error')),
-        loading: () => const Center(child: CircularProgressIndicator()),
-      ),
+      body: profileLoading
+          ? const Center(child: CircularProgressIndicator())
+          : stravaConnected
+          ? ref
+                .watch(activitiesProvider)
+                .when(
+                  data: (items) => _DashboardBody(activities: items),
+                  error: (error, stack) =>
+                      Center(child: Text('Không thể tải dữ liệu: $error')),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                )
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Text(
+                  'Tổng quan',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _ConnectStravaCard(
+                  loading: ref.watch(stravaAuthProvider).loading,
+                  errorMessage: ref.watch(stravaAuthProvider).errorMessage,
+                  onConnect: ref.read(stravaAuthProvider).connect,
+                ),
+              ],
+            ),
     );
   }
 }
@@ -106,17 +139,18 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
     };
     final monthSummary = currentMonthSummary(widget.activities, now);
     final goals = ref.watch(trainingGoalsProvider);
+    final header = Text(
+      'Tổng quan',
+      style: Theme.of(
+        context,
+      ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w600),
+    );
     final recent = [...widget.activities]
       ..sort((left, right) => right.startedAt.compareTo(left.startedAt));
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text(
-          'Tổng quan',
-          style: Theme.of(
-            context,
-          ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w600),
-        ),
+        header,
         const SizedBox(height: 12),
         _ShareableDashboardCard(
           title: 'RunNow tiến độ tuần',
@@ -440,6 +474,75 @@ class _ShareableDashboardCardState extends State<_ShareableDashboardCard> {
     } finally {
       if (mounted) setState(() => _sharing = false);
     }
+  }
+}
+
+class _ConnectStravaCard extends StatelessWidget {
+  const _ConnectStravaCard({
+    required this.loading,
+    required this.errorMessage,
+    required this.onConnect,
+  });
+
+  final bool loading;
+  final String? errorMessage;
+  final VoidCallback onConnect;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassPanel(
+      padding: const EdgeInsets.all(18),
+      gradient: const LinearGradient(
+        colors: [Color(0xf207172b), Color(0xd4062442), Color(0xb3151637)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.link, color: AppColors.blueGlow),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'KẾT NỐI STRAVA',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Đồng bộ hoạt động chạy vào tài khoản Google hiện tại để xem tiến độ, nhật ký và bảng xếp hạng.',
+            style: TextStyle(color: Colors.white70),
+          ),
+          if (errorMessage != null) ...[
+            const SizedBox(height: 10),
+            Text(errorMessage!, style: const TextStyle(color: AppColors.red)),
+          ],
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: loading ? null : onConnect,
+              icon: loading
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.link),
+              label: Text(loading ? 'Đang kết nối...' : 'Kết nối Strava'),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
