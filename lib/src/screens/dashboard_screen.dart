@@ -42,14 +42,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final stravaConnected = ref.watch(stravaConnectionProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Column(
+        title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('RunNow'),
+            const Text('RunNow'),
             Text(
               'YOUR TRAINING SPACE',
               style: TextStyle(
-                color: Colors.white54,
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.52),
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 1.4,
@@ -206,9 +208,13 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
         Text('Gần đây', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
         if (recent.isEmpty)
-          const Text(
+          Text(
             'Chưa có hoạt động. Bấm đồng bộ để tải nhật ký Strava.',
-            style: TextStyle(color: Colors.white60),
+            style: TextStyle(
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
           )
         else
           for (var index = 0; index < recent.take(3).length; index++)
@@ -238,89 +244,99 @@ Future<void> _editTrainingGoals(
     isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
-    builder: (context) => Padding(
-      padding: EdgeInsets.only(
-        left: 14,
-        right: 14,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + 12,
-      ),
-      child: GlassPanel(
-        borderRadius: 22,
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-        gradient: const LinearGradient(
-          colors: [Color(0xf207172b), Color(0xe0062442), Color(0xcc151637)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    builder: (context) {
+      final isLight = Theme.of(context).brightness == Brightness.light;
+      final onSurface = Theme.of(context).colorScheme.onSurface;
+      return Padding(
+        padding: EdgeInsets.only(
+          left: 14,
+          right: 14,
+          bottom: MediaQuery.viewInsetsOf(context).bottom + 12,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 42,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white30,
-                  borderRadius: BorderRadius.circular(999),
+        child: GlassPanel(
+          borderRadius: 22,
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+          gradient: LinearGradient(
+            colors: isLight
+                ? const [Color(0xfffbfcff), Color(0xffe8f0f8)]
+                : const [
+                    Color(0xf207172b),
+                    Color(0xe0062442),
+                    Color(0xcc151637),
+                  ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: onSurface.withValues(alpha: 0.24),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                const Icon(Icons.flag, color: AppColors.red),
-                const SizedBox(width: 8),
-                Text(
-                  'Mục tiêu luyện tập',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _GoalInputField(
-              controller: weeklyController,
-              label: 'Tuần',
-              hint: 'VD: 15',
-            ),
-            const SizedBox(height: 10),
-            _GoalInputField(
-              controller: monthlyController,
-              label: 'Tháng',
-              hint: 'VD: 60',
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Huỷ'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () => Navigator.of(context).pop(
-                      TrainingGoals(
-                        weeklyDistanceMeters:
-                            _parseGoalKm(weeklyController.text) * 1000,
-                        monthlyDistanceMeters:
-                            _parseGoalKm(monthlyController.text) * 1000,
-                      ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  const Icon(Icons.flag, color: AppColors.red),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Mục tiêu luyện tập',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: onSurface,
+                      fontWeight: FontWeight.w800,
                     ),
-                    child: const Text('Lưu'),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+              const SizedBox(height: 12),
+              _GoalInputField(
+                controller: weeklyController,
+                label: 'Tuần',
+                hint: 'VD: 15',
+              ),
+              const SizedBox(height: 10),
+              _GoalInputField(
+                controller: monthlyController,
+                label: 'Tháng',
+                hint: 'VD: 60',
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Huỷ'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).pop(
+                        TrainingGoals(
+                          weeklyDistanceMeters:
+                              _parseGoalKm(weeklyController.text) * 1000,
+                          monthlyDistanceMeters:
+                              _parseGoalKm(monthlyController.text) * 1000,
+                        ),
+                      ),
+                      child: const Text('Lưu'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-      ),
-    ),
+      );
+    },
   );
   weeklyController.dispose();
   monthlyController.dispose();
@@ -341,19 +357,21 @@ class _GoalInputField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return TextField(
       controller: controller,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+      style: TextStyle(color: onSurface, fontWeight: FontWeight.w700),
       decoration: InputDecoration(
         isDense: true,
         labelText: 'Mục tiêu $label',
         hintText: hint,
         suffixText: 'km',
         filled: true,
-        fillColor: const Color(0x52020812),
-        labelStyle: const TextStyle(color: Colors.white70),
-        hintStyle: const TextStyle(color: Colors.white30),
+        fillColor: isLight ? const Color(0xffeef4fb) : const Color(0x52020812),
+        labelStyle: TextStyle(color: onSurface.withValues(alpha: 0.64)),
+        hintStyle: TextStyle(color: onSurface.withValues(alpha: 0.34)),
         suffixStyle: const TextStyle(color: AppColors.blueGlow),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -490,25 +508,29 @@ class _ConnectStravaCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return GlassPanel(
       padding: const EdgeInsets.all(18),
-      gradient: const LinearGradient(
-        colors: [Color(0xf207172b), Color(0xd4062442), Color(0xb3151637)],
+      gradient: LinearGradient(
+        colors: isLight
+            ? const [Color(0xfff8fbff), Color(0xffe9f1fa)]
+            : const [Color(0xf207172b), Color(0xd4062442), Color(0xb3151637)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.link, color: AppColors.blueGlow),
-              SizedBox(width: 8),
+              const Icon(Icons.link, color: AppColors.blueGlow),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'KẾT NỐI STRAVA',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: onSurface,
                     fontSize: 13,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 1.1,
@@ -518,9 +540,9 @@ class _ConnectStravaCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             'Đồng bộ hoạt động chạy vào tài khoản Google hiện tại để xem tiến độ, nhật ký và bảng xếp hạng.',
-            style: TextStyle(color: Colors.white70),
+            style: TextStyle(color: onSurface.withValues(alpha: 0.68)),
           ),
           if (errorMessage != null) ...[
             const SizedBox(height: 10),
@@ -564,6 +586,7 @@ class _GoalProgressRow extends StatelessWidget {
     final hasGoal = goalMeters > 0;
     final progress = hasGoal ? (currentMeters / goalMeters).clamp(0, 1) : 0.0;
     final percent = hasGoal ? (progress * 100).round() : 0;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -573,8 +596,8 @@ class _GoalProgressRow extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: onSurface,
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
                 ),
@@ -584,8 +607,8 @@ class _GoalProgressRow extends StatelessWidget {
               hasGoal
                   ? '${formatDistance(currentMeters)} / ${formatDistance(goalMeters)}'
                   : '${formatDistance(currentMeters)} / chưa đặt',
-              style: const TextStyle(
-                color: Colors.white70,
+              style: TextStyle(
+                color: onSurface.withValues(alpha: 0.64),
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
@@ -600,7 +623,7 @@ class _GoalProgressRow extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                const ColoredBox(color: Color(0x2600d9ff)),
+                ColoredBox(color: AppColors.blueGlow.withValues(alpha: 0.14)),
                 FractionallySizedBox(
                   alignment: Alignment.centerLeft,
                   widthFactor: progress.toDouble(),
@@ -620,7 +643,7 @@ class _GoalProgressRow extends StatelessWidget {
         Text(
           hasGoal ? '$percent% hoàn thành' : 'Bấm icon để đặt mục tiêu',
           style: TextStyle(
-            color: hasGoal ? color : Colors.white38,
+            color: hasGoal ? color : onSurface.withValues(alpha: 0.36),
             fontSize: 12,
             fontWeight: FontWeight.w800,
           ),
@@ -654,15 +677,19 @@ class _SummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final summary = comparison.current;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return GlassPanel(
       padding: const EdgeInsets.all(18),
-      gradient: const LinearGradient(
-        colors: [Color(0xf207172b), Color(0xdb06365c), Color(0xb3151637)],
+      gradient: LinearGradient(
+        colors: isLight
+            ? const [Color(0xfff9fbff), Color(0xffe7eff8), Color(0xfff3f6fb)]
+            : const [Color(0xf207172b), Color(0xdb06365c), Color(0xb3151637)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
       child: DefaultTextStyle(
-        style: const TextStyle(color: Colors.white),
+        style: TextStyle(color: onSurface),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -670,11 +697,11 @@ class _SummaryCard extends StatelessWidget {
               children: [
                 const Icon(Icons.bolt, color: AppColors.blueGlow, size: 20),
                 const SizedBox(width: 6),
-                const Expanded(
+                Expanded(
                   child: Text(
                     'TIẾN ĐỘ TUẦN',
                     style: TextStyle(
-                      color: Colors.white70,
+                      color: onSurface.withValues(alpha: 0.64),
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 1.1,
@@ -765,9 +792,10 @@ class _WeekViewToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0x52020812),
+        color: isLight ? const Color(0x1408172b) : const Color(0x52020812),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Padding(
@@ -804,6 +832,7 @@ class _WeekViewOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Expanded(
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -819,7 +848,7 @@ class _WeekViewOption extends StatelessWidget {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: selected ? Colors.white : Colors.white60,
+              color: selected ? Colors.white : onSurface.withValues(alpha: 0.6),
               fontSize: 12,
               fontWeight: FontWeight.w800,
             ),
@@ -878,13 +907,14 @@ class _SevenDayBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final ratio = maxDistance <= 0 ? 0.04 : day.distanceMeters / maxDistance;
     final label = _weekdayLabel(day.date);
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         Text(
           day.distanceMeters > 0 ? _compactDistance(day.distanceMeters) : '-',
           style: TextStyle(
-            color: active ? Colors.white : Colors.white38,
+            color: active ? onSurface : onSurface.withValues(alpha: 0.35),
             fontSize: 10,
             fontWeight: FontWeight.w800,
           ),
@@ -901,7 +931,10 @@ class _SevenDayBar extends StatelessWidget {
                   gradient: LinearGradient(
                     colors: active
                         ? const [AppColors.red, AppColors.blueGlow]
-                        : const [Color(0x33ffffff), Color(0x1affffff)],
+                        : [
+                            onSurface.withValues(alpha: 0.12),
+                            onSurface.withValues(alpha: 0.06),
+                          ],
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
                   ),
@@ -923,8 +956,8 @@ class _SevenDayBar extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           label,
-          style: const TextStyle(
-            color: Colors.white54,
+          style: TextStyle(
+            color: onSurface.withValues(alpha: 0.52),
             fontSize: 10,
             fontWeight: FontWeight.w800,
           ),
@@ -939,23 +972,29 @@ class _Metric extends StatelessWidget {
   final String label;
   final String value;
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: 120,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(color: Colors.white70)),
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return SizedBox(
+      width: 120,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(color: onSurface.withValues(alpha: 0.62)),
           ),
-        ),
-      ],
-    ),
-  );
+          Text(
+            value,
+            style: TextStyle(
+              color: onSurface,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 String _compactDistance(double meters) =>

@@ -58,6 +58,13 @@ final _router = GoRouter(
           ActivityDetailScreen(activityId: state.pathParameters['id']!),
     ),
     GoRoute(
+      path: '/club/:uid/activity/:id',
+      builder: (context, state) => ActivityDetailScreen(
+        activityId: state.pathParameters['id']!,
+        ownerUid: state.pathParameters['uid']!,
+      ),
+    ),
+    GoRoute(
       path: '/club/:uid',
       builder: (context, state) =>
           MemberProfileScreen(uid: state.pathParameters['uid']!),

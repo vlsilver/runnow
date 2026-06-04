@@ -8,9 +8,11 @@ abstract final class AppColors {
   static const blueGlow = Color(0xff00d9ff);
   static const amber = Color(0xffffd166);
   static const background = Color(0xff000000);
-  static const lightBackground = Color(0xfff3f7fb);
-  static const lightSurface = Color(0xd9ffffff);
-  static const lightText = Color(0xff071426);
+  static const lightBackground = Color(0xffeef3f8);
+  static const lightSurface = Color(0xfff9fbff);
+  static const lightSurfaceAlt = Color(0xffeef4fb);
+  static const lightText = Color(0xff07111f);
+  static const lightMuted = Color(0xff607086);
   static const glass = Color(0x4d071426);
   static const glassStrong = Color(0x9908172b);
   static const glassBorder = Color(0x4200d9ff);
@@ -90,13 +92,14 @@ ThemeData buildRunNowLightTheme() {
   const colorScheme = ColorScheme.light(
     primary: AppColors.red,
     onPrimary: Colors.white,
-    secondary: AppColors.blue,
+    secondary: Color(0xff005ed6),
     onSecondary: Colors.white,
     tertiary: AppColors.amber,
     error: AppColors.red,
     onError: Colors.white,
     surface: AppColors.lightSurface,
     onSurface: AppColors.lightText,
+    outline: Color(0x330b1d33),
   );
   return _baseRunNowTheme(colorScheme).copyWith(
     brightness: Brightness.light,
@@ -118,24 +121,55 @@ ThemeData buildRunNowLightTheme() {
     cardTheme: CardThemeData(
       color: AppColors.lightSurface,
       surfaceTintColor: Colors.transparent,
-      elevation: 0,
+      elevation: 4,
+      shadowColor: const Color(0x2608172b),
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
-    outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        foregroundColor: AppColors.lightText,
-        side: const BorderSide(color: Color(0x330075ff)),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: AppColors.red,
+        foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.lightText,
+        side: const BorderSide(color: Color(0x330b1d33)),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(foregroundColor: AppColors.red),
+    ),
     listTileTheme: const ListTileThemeData(
-      iconColor: AppColors.blue,
+      iconColor: Color(0xff005ed6),
       textColor: AppColors.lightText,
       contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 4),
     ),
-    dividerColor: Colors.black12,
+    dividerColor: const Color(0x1f071426),
+    iconTheme: const IconThemeData(color: AppColors.lightText),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: Colors.transparent,
+      indicatorColor: AppColors.red,
+      iconTheme: WidgetStateProperty.resolveWith((states) {
+        final selected = states.contains(WidgetState.selected);
+        return IconThemeData(
+          color: selected ? Colors.white : AppColors.lightText,
+        );
+      }),
+      labelTextStyle: WidgetStateProperty.resolveWith((states) {
+        final selected = states.contains(WidgetState.selected);
+        return TextStyle(
+          color: selected ? AppColors.lightText : AppColors.lightMuted,
+          fontSize: 13,
+          fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
+        );
+      }),
+    ),
   );
 }
 

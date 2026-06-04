@@ -20,9 +20,9 @@ class RunNowBackdrop extends StatelessWidget {
               gradient: LinearGradient(
                 colors: isLight
                     ? const [
-                        Color(0xfff7fbff),
-                        Color(0xffeef5ff),
-                        Color(0xffffffff),
+                        Color(0xffeaf1f8),
+                        Color(0xfff8fbff),
+                        Color(0xffe9eef6),
                       ]
                     : const [
                         Color(0xff000000),
@@ -34,21 +34,21 @@ class RunNowBackdrop extends StatelessWidget {
               ),
             ),
           ),
-          const IgnorePointer(child: CustomPaint(painter: _TechGridPainter())),
-          const _Glow(
+          IgnorePointer(child: CustomPaint(painter: _TechGridPainter(isLight))),
+          _Glow(
             alignment: Alignment.topRight,
-            color: Color(0x2600a8ff),
-            size: 190,
+            color: isLight ? const Color(0x180075ff) : const Color(0x2600a8ff),
+            size: isLight ? 220 : 190,
           ),
-          const _Glow(
+          _Glow(
             alignment: Alignment.centerLeft,
-            color: Color(0x180057b8),
-            size: 170,
+            color: isLight ? const Color(0x12ff3b4f) : const Color(0x180057b8),
+            size: isLight ? 210 : 170,
           ),
-          const _Glow(
+          _Glow(
             alignment: Alignment.bottomRight,
-            color: Color(0x26ff1744),
-            size: 150,
+            color: isLight ? const Color(0x16ff3b4f) : const Color(0x26ff1744),
+            size: isLight ? 190 : 150,
           ),
           child,
         ],
@@ -80,13 +80,16 @@ class GlassPanel extends StatelessWidget {
       margin: margin,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(borderRadius),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x8a000000),
-            blurRadius: 24,
-            offset: Offset(0, 12),
+            color: isLight ? const Color(0x3308172b) : const Color(0x8a000000),
+            blurRadius: isLight ? 22 : 24,
+            offset: Offset(0, isLight ? 10 : 12),
           ),
-          BoxShadow(color: Color(0x1600d9ff), blurRadius: 18),
+          BoxShadow(
+            color: isLight ? const Color(0x0f0075ff) : const Color(0x1600d9ff),
+            blurRadius: 18,
+          ),
         ],
       ),
       child: ClipRRect(
@@ -100,12 +103,17 @@ class GlassPanel extends StatelessWidget {
                   gradient ??
                   LinearGradient(
                     colors: isLight
-                        ? const [Color(0xeaffffff), Color(0xcff2f7ff)]
+                        ? const [Color(0xfff8fbff), Color(0xffe6eef7)]
                         : const [Color(0xb307172b), Color(0x8a06101e)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
               borderRadius: BorderRadius.circular(borderRadius),
+              border: Border.all(
+                color: isLight
+                    ? const Color(0x2408172b)
+                    : const Color(0x2600d9ff),
+              ),
             ),
             child: Padding(padding: padding ?? EdgeInsets.zero, child: child),
           ),
@@ -129,29 +137,32 @@ class GlassIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
     return GlassPanel(
       borderRadius: 999,
       child: IconButton(
         tooltip: tooltip,
         onPressed: onPressed,
         icon: icon,
-        color: Colors.white,
+        color: isLight ? AppColors.lightText : Colors.white,
       ),
     );
   }
 }
 
 class _TechGridPainter extends CustomPainter {
-  const _TechGridPainter();
+  const _TechGridPainter(this.isLight);
+
+  final bool isLight;
 
   @override
   void paint(Canvas canvas, Size size) {
     const spacing = 32.0;
     final minor = Paint()
-      ..color = const Color(0x1200d9ff)
+      ..color = isLight ? const Color(0x100075ff) : const Color(0x1200d9ff)
       ..strokeWidth = 0.6;
     final major = Paint()
-      ..color = const Color(0x1f00d9ff)
+      ..color = isLight ? const Color(0x180075ff) : const Color(0x1f00d9ff)
       ..strokeWidth = 0.8;
     for (var x = 0.0; x <= size.width; x += spacing) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), minor);
@@ -165,7 +176,8 @@ class _TechGridPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_TechGridPainter oldDelegate) => false;
+  bool shouldRepaint(_TechGridPainter oldDelegate) =>
+      oldDelegate.isLight != isLight;
 }
 
 class _Glow extends StatelessWidget {

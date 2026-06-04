@@ -119,6 +119,16 @@ final memberActivitiesProvider =
       return ref.watch(memberRepositoryProvider).watchMemberActivities(uid);
     });
 
+final memberActivityDetailProvider =
+    FutureProvider.family<ActivityDetail, ({String uid, String activityId})>((
+      ref,
+      request,
+    ) {
+      return ref
+          .watch(memberRepositoryProvider)
+          .getMemberActivityDetail(request.uid, request.activityId);
+    });
+
 final trainingGoalsProvider = StreamProvider<TrainingGoals>(
   (ref) => ref.watch(trainingGoalRepositoryProvider).watchGoals(),
 );

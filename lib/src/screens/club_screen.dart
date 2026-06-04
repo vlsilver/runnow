@@ -36,7 +36,7 @@ class _ClubScreenState extends ConsumerState<ClubScreen> {
     final members = ref.watch(membersProvider);
     return DefaultTabController(
       length: 2,
-      initialIndex: 1,
+      initialIndex: 0,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Câu lạc bộ'),
@@ -89,8 +89,6 @@ class _MembersTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
       children: [
-        Text('Thành viên', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 14),
         for (final member in members)
           _MemberCard(member: member, currentUid: currentUid),
       ],
@@ -136,27 +134,10 @@ class _RankingTab extends ConsumerWidget {
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Xếp hạng',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                ),
-                Text(
-                  '${entries.length} public',
-                  style: const TextStyle(
-                    color: Colors.white54,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
             _RankingControls(
               metric: metric,
               range: range,
+              publicCount: entries.length,
               onMetricChanged: onMetricChanged,
               onRangeChanged: onRangeChanged,
             ),
@@ -184,6 +165,7 @@ class _RankingTab extends ConsumerWidget {
           _RankingControls(
             metric: metric,
             range: range,
+            publicCount: null,
             onMetricChanged: onMetricChanged,
             onRangeChanged: onRangeChanged,
           ),
@@ -199,20 +181,22 @@ class _RankingControls extends StatelessWidget {
   const _RankingControls({
     required this.metric,
     required this.range,
+    required this.publicCount,
     required this.onMetricChanged,
     required this.onRangeChanged,
   });
 
   final _RankingMetric metric;
   final _RankingRange range;
+  final int? publicCount;
   final ValueChanged<_RankingMetric> onMetricChanged;
   final ValueChanged<_RankingRange> onRangeChanged;
 
   @override
   Widget build(BuildContext context) {
     return GlassPanel(
-      borderRadius: 18,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      borderRadius: 22,
+      padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
       child: Row(
         children: [
           Expanded(
@@ -240,6 +224,10 @@ class _RankingControls extends StatelessWidget {
               onChanged: onRangeChanged,
             ),
           ),
+          if (publicCount != null) ...[
+            const SizedBox(width: 8),
+            _PublicCountBadge(count: publicCount!),
+          ],
         ],
       ),
     );
@@ -261,13 +249,20 @@ class _ControlDropdown<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
     return DropdownButtonHideUnderline(
       child: DropdownButton<T>(
         isExpanded: true,
         value: value,
         borderRadius: BorderRadius.circular(16),
         icon: const Icon(Icons.keyboard_arrow_down_rounded),
-        dropdownColor: const Color(0xff071426),
+        dropdownColor: isLight
+            ? const Color(0xfff8fbff)
+            : const Color(0xff071426),
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w800,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
         items: [
           for (final entry in items.entries)
             DropdownMenuItem<T>(
@@ -291,6 +286,33 @@ class _ControlDropdown<T> extends StatelessWidget {
           if (value == null) return;
           onChanged(value);
         },
+      ),
+    );
+  }
+}
+
+class _PublicCountBadge extends StatelessWidget {
+  const _PublicCountBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.blueGlow.withValues(alpha: 0.11),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        child: Text(
+          '$count',
+          style: const TextStyle(
+            color: AppColors.blueGlow,
+            fontWeight: FontWeight.w900,
+            fontSize: 13,
+          ),
+        ),
       ),
     );
   }
@@ -342,6 +364,7 @@ class _RankingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final member = entry.entry;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return GlassPanel(
       margin: const EdgeInsets.only(bottom: 10),
       borderRadius: 20,
@@ -372,21 +395,14 @@ class _RankingCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '${formatDistance(entry.stats.distanceMeters)} • '
-                      '${formatDuration(entry.stats.movingTimeSeconds)} • '
-                      '${entry.stats.activeDays} ngày',
-                      style: const TextStyle(color: Colors.white54),
-                    ),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
               Text(
                 _scoreLabel(entry, metric),
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: onSurface,
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                 ),
@@ -406,11 +422,14 @@ class _RankBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final muted = Theme.of(
+      context,
+    ).colorScheme.onSurface.withValues(alpha: 0.42);
     final color = switch (rank) {
       1 => AppColors.amber,
       2 => AppColors.blueGlow,
       3 => AppColors.red,
-      _ => Colors.white38,
+      _ => muted,
     };
     final icon = switch (rank) {
       1 => Icons.emoji_events,
@@ -483,9 +502,6 @@ class _MemberCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMe = currentUid == member.uid;
-    final muted = Theme.of(
-      context,
-    ).colorScheme.onSurface.withValues(alpha: 0.64);
     return GlassPanel(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
@@ -528,13 +544,8 @@ class _MemberCard extends StatelessWidget {
                       ],
                     ],
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    member.isPublic ? 'Public profile' : 'Private profile',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: muted),
-                  ),
+                  const SizedBox(height: 6),
+                  _VisibilityPill(isPublic: member.isPublic),
                 ],
               ),
             ),
@@ -670,6 +681,38 @@ class _MiniChip extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _VisibilityPill extends StatelessWidget {
+  const _VisibilityPill({required this.isPublic});
+
+  final bool isPublic;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isPublic
+        ? AppColors.blueGlow
+        : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.36);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          isPublic ? Icons.public : Icons.lock_outline,
+          color: color,
+          size: 16,
+        ),
+        const SizedBox(width: 6),
+        Container(
+          width: 42,
+          height: 4,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: isPublic ? 0.7 : 0.45),
+            borderRadius: BorderRadius.circular(999),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -15,6 +15,12 @@ class ActivityTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visual = _ActivityVisual.fromKind(activity.kind);
+    final muted = Theme.of(
+      context,
+    ).colorScheme.onSurface.withValues(alpha: 0.62);
+    final faint = Theme.of(
+      context,
+    ).colorScheme.onSurface.withValues(alpha: 0.42);
     return GlassPanel(
       margin: const EdgeInsets.only(bottom: 12),
       borderRadius: 14,
@@ -43,10 +49,7 @@ class ActivityTile extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           formatDate(activity.startedAt),
-                          style: const TextStyle(
-                            color: Colors.white60,
-                            fontSize: 13,
-                          ),
+                          style: TextStyle(color: muted, fontSize: 13),
                         ),
                       ],
                     ),
@@ -67,8 +70,8 @@ class ActivityTile extends StatelessWidget {
                         sequence == null
                             ? 'ACTIVITY'
                             : 'LOG // ${sequence!.toString().padLeft(2, '0')}',
-                        style: const TextStyle(
-                          color: Colors.white38,
+                        style: TextStyle(
+                          color: faint,
                           fontSize: 9,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 1.2,
@@ -104,9 +107,7 @@ class ActivityTile extends StatelessWidget {
                           ? (activity.hydrated ? 'CACHED' : 'SYNCED')
                           : '${activity.averageHeartRate!.round()} bpm',
                       valueColor: activity.averageHeartRate == null
-                          ? (activity.hydrated
-                                ? AppColors.blueGlow
-                                : Colors.white)
+                          ? (activity.hydrated ? AppColors.blueGlow : null)
                           : AppColors.red,
                     ),
                   ),
@@ -122,9 +123,7 @@ class ActivityTile extends StatelessWidget {
                       Text(
                         activity.hydrated ? 'DETAIL READY' : 'OPEN DETAIL',
                         style: TextStyle(
-                          color: activity.hydrated
-                              ? AppColors.blueGlow
-                              : Colors.white54,
+                          color: activity.hydrated ? AppColors.blueGlow : muted,
                           fontSize: 9,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 1.1,
@@ -134,9 +133,7 @@ class ActivityTile extends StatelessWidget {
                       Icon(
                         Icons.chevron_right,
                         size: 18,
-                        color: activity.hydrated
-                            ? AppColors.blueGlow
-                            : Colors.white54,
+                        color: activity.hydrated ? AppColors.blueGlow : muted,
                       ),
                     ],
                   ),
@@ -157,6 +154,7 @@ class _ActivityBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
     return Container(
       width: 48,
       height: 48,
@@ -170,7 +168,13 @@ class _ActivityBadge extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          Center(child: Icon(visual.icon, color: Colors.white, size: 25)),
+          Center(
+            child: Icon(
+              visual.icon,
+              color: isLight ? visual.color : Colors.white,
+              size: 25,
+            ),
+          ),
           Positioned(
             right: 4,
             bottom: 3,
@@ -194,19 +198,22 @@ class _TileMetric extends StatelessWidget {
   const _TileMetric({
     required this.label,
     required this.value,
-    this.valueColor = Colors.white,
+    this.valueColor,
   });
 
   final String label;
   final String value;
-  final Color valueColor;
+  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final resolvedValueColor =
+        valueColor ?? Theme.of(context).colorScheme.onSurface;
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
       decoration: BoxDecoration(
-        color: const Color(0x3d020812),
+        color: isLight ? const Color(0xffeef3f8) : const Color(0x3d020812),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
@@ -214,8 +221,10 @@ class _TileMetric extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white54,
+            style: TextStyle(
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.56),
               fontSize: 9,
               fontWeight: FontWeight.w700,
               letterSpacing: 1,
@@ -227,7 +236,7 @@ class _TileMetric extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: valueColor.withValues(alpha: 0.92),
+              color: resolvedValueColor.withValues(alpha: 0.92),
               fontSize: 14,
               fontWeight: FontWeight.w700,
             ),

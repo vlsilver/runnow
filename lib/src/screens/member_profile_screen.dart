@@ -39,8 +39,11 @@ class MemberProfileScreen extends ConsumerWidget {
           return ref
               .watch(memberActivitiesProvider(uid))
               .when(
-                data: (activities) =>
-                    _MemberDashboard(member: member, activities: activities),
+                data: (activities) => _MemberDashboard(
+                  uid: uid,
+                  member: member,
+                  activities: activities,
+                ),
                 error: (error, stack) =>
                     Center(child: Text('Không thể tải hoạt động: $error')),
                 loading: () => const Center(child: CircularProgressIndicator()),
@@ -55,8 +58,13 @@ class MemberProfileScreen extends ConsumerWidget {
 }
 
 class _MemberDashboard extends StatelessWidget {
-  const _MemberDashboard({required this.member, required this.activities});
+  const _MemberDashboard({
+    required this.uid,
+    required this.member,
+    required this.activities,
+  });
 
+  final String uid;
   final MemberProfile member;
   final List<ActivitySummary> activities;
 
@@ -84,7 +92,7 @@ class _MemberDashboard extends StatelessWidget {
         TrainingVolumeChart(
           activities: activities,
           period: TrainingVolumePeriod.month,
-          showControls: false,
+          showControls: true,
         ),
         const SizedBox(height: 20),
         Text('Gần đây', style: Theme.of(context).textTheme.titleLarge),
@@ -93,7 +101,11 @@ class _MemberDashboard extends StatelessWidget {
           const Text('Thành viên này chưa có hoạt động public.')
         else
           for (var index = 0; index < recent.take(10).length; index++)
-            _MemberActivityTile(activity: recent[index], sequence: index + 1),
+            _MemberActivityTile(
+              uid: uid,
+              activity: recent[index],
+              sequence: index + 1,
+            ),
       ],
     );
   }
@@ -192,34 +204,38 @@ class _MemberSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final summary = comparison.current;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return GlassPanel(
       padding: const EdgeInsets.all(18),
-      gradient: const LinearGradient(
-        colors: [Color(0xf207172b), Color(0xdb06365c), Color(0xb3151637)],
+      gradient: LinearGradient(
+        colors: isLight
+            ? const [Color(0xfff9fbff), Color(0xffe7eff8), Color(0xfff3f6fb)]
+            : const [Color(0xf207172b), Color(0xdb06365c), Color(0xb3151637)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
       child: DefaultTextStyle(
-        style: const TextStyle(color: Colors.white),
+        style: TextStyle(color: onSurface),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Row(
+            Row(
               children: [
-                Icon(Icons.bolt, color: AppColors.blueGlow, size: 20),
-                SizedBox(width: 6),
+                const Icon(Icons.bolt, color: AppColors.blueGlow, size: 20),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     'TIẾN ĐỘ TUẦN',
                     style: TextStyle(
-                      color: Colors.white70,
+                      color: onSurface.withValues(alpha: 0.64),
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 1.1,
                     ),
                   ),
                 ),
-                Text(
+                const Text(
                   '7 NGÀY',
                   style: TextStyle(
                     color: AppColors.blueGlow,
@@ -323,13 +339,14 @@ class _SevenDayMiniBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final active = day.distanceMeters > 0;
     final ratio = maxDistance <= 0 ? 0.04 : day.distanceMeters / maxDistance;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         Text(
           active ? _compactDistance(day.distanceMeters) : '-',
           style: TextStyle(
-            color: active ? Colors.white : Colors.white38,
+            color: active ? onSurface : onSurface.withValues(alpha: 0.35),
             fontSize: 10,
             fontWeight: FontWeight.w800,
           ),
@@ -346,7 +363,10 @@ class _SevenDayMiniBar extends StatelessWidget {
                   gradient: LinearGradient(
                     colors: active
                         ? const [AppColors.red, AppColors.blueGlow]
-                        : const [Color(0x33ffffff), Color(0x1affffff)],
+                        : [
+                            onSurface.withValues(alpha: 0.12),
+                            onSurface.withValues(alpha: 0.06),
+                          ],
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
                   ),
@@ -368,8 +388,8 @@ class _SevenDayMiniBar extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           _weekdayLabel(day.date),
-          style: const TextStyle(
-            color: Colors.white54,
+          style: TextStyle(
+            color: onSurface.withValues(alpha: 0.52),
             fontSize: 10,
             fontWeight: FontWeight.w800,
           ),
@@ -386,23 +406,29 @@ class _Metric extends StatelessWidget {
   final String value;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: 120,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(color: Colors.white70)),
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return SizedBox(
+      width: 120,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(color: onSurface.withValues(alpha: 0.62)),
           ),
-        ),
-      ],
-    ),
-  );
+          Text(
+            value,
+            style: TextStyle(
+              color: onSurface,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _MonthMetric extends StatelessWidget {
@@ -413,15 +439,16 @@ class _MonthMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: Colors.white54)),
+        Text(label, style: TextStyle(color: onSurface.withValues(alpha: 0.52))),
         const SizedBox(height: 2),
         Text(
           value,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: onSurface,
             fontSize: 20,
             fontWeight: FontWeight.w900,
           ),
@@ -454,63 +481,86 @@ String _weekdayLabel(DateTime date) => switch (date.weekday) {
 };
 
 class _MemberActivityTile extends StatelessWidget {
-  const _MemberActivityTile({required this.activity, required this.sequence});
+  const _MemberActivityTile({
+    required this.uid,
+    required this.activity,
+    required this.sequence,
+  });
 
+  final String uid;
   final ActivitySummary activity;
   final int sequence;
 
   @override
   Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return GlassPanel(
       margin: const EdgeInsets.only(bottom: 12),
       borderRadius: 18,
-      padding: const EdgeInsets.all(14),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: AppColors.red.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(Icons.directions_run, color: AppColors.red),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  activity.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                Text(
-                  formatDate(activity.startedAt),
-                  style: const TextStyle(color: Colors.white54, fontSize: 13),
-                ),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => context.push('/club/$uid/activity/${activity.id}'),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
             children: [
-              Text(
-                formatDistance(activity.distanceMeters),
-                style: const TextStyle(
-                  color: AppColors.blueGlow,
-                  fontWeight: FontWeight.w900,
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.red.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.directions_run, color: AppColors.red),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      activity.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    Text(
+                      formatDate(activity.startedAt),
+                      style: TextStyle(
+                        color: onSurface.withValues(alpha: 0.54),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              Text(
-                'LOG ${sequence.toString().padLeft(2, '0')}',
-                style: const TextStyle(color: Colors.white38, fontSize: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    formatDistance(activity.distanceMeters),
+                    style: const TextStyle(
+                      color: AppColors.blueGlow,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  Text(
+                    'LOG ${sequence.toString().padLeft(2, '0')}',
+                    style: TextStyle(
+                      color: onSurface.withValues(alpha: 0.38),
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 6),
+              Icon(
+                Icons.chevron_right,
+                color: onSurface.withValues(alpha: 0.38),
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }

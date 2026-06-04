@@ -13,6 +13,8 @@ class ConsistencyHeatmap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     final days = _heatmapDays(now ?? DateTime.now(), activities);
     final maxDistance = days.fold<double>(
       0,
@@ -22,27 +24,29 @@ class ConsistencyHeatmap extends StatelessWidget {
     final streak = _activeWeekStreak(days);
     return GlassPanel(
       padding: const EdgeInsets.all(16),
-      gradient: const LinearGradient(
-        colors: [Color(0xe607172b), Color(0xb3062442)],
+      gradient: LinearGradient(
+        colors: isLight
+            ? const [Color(0xfff9fbff), Color(0xffe9f1fa)]
+            : const [Color(0xe607172b), Color(0xb3062442)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 'CONSISTENCY',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: onSurface,
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1,
                 ),
               ),
-              Text(
+              const Text(
                 '8 TUẦN',
                 style: TextStyle(
                   color: AppColors.blueGlow,
@@ -64,7 +68,7 @@ class ConsistencyHeatmap extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(right: 8),
                 child: Column(
                   children: [
@@ -109,6 +113,7 @@ class _HeatmapCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strength = maxDistance <= 0 ? 0.0 : day.distanceMeters / maxDistance;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Tooltip(
       message:
           '${day.date.day}/${day.date.month}: '
@@ -119,14 +124,14 @@ class _HeatmapCell extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 4),
         decoration: BoxDecoration(
           color: day.distanceMeters <= 0
-              ? Colors.white.withValues(alpha: 0.06)
+              ? onSurface.withValues(alpha: 0.06)
               : Color.lerp(
                   AppColors.blue.withValues(alpha: 0.5),
                   AppColors.blueGlow,
                   strength,
                 ),
           borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.white12),
+          border: Border.all(color: onSurface.withValues(alpha: 0.12)),
         ),
       ),
     );
@@ -143,7 +148,10 @@ class _DayLabel extends StatelessWidget {
     height: 44,
     child: Text(
       label,
-      style: const TextStyle(color: Colors.white38, fontSize: 10),
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38),
+        fontSize: 10,
+      ),
     ),
   );
 }
@@ -155,27 +163,30 @@ class _HeatmapStat extends StatelessWidget {
   final String value;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white54,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: onSurface.withValues(alpha: 0.54),
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+          ),
         ),
-      ),
-      Text(
-        value,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.w800,
+        Text(
+          value,
+          style: TextStyle(
+            color: onSurface,
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+          ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 }
 
 List<_HeatmapDay> _heatmapDays(DateTime now, List<ActivitySummary> activities) {

@@ -86,6 +86,8 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     final zones = heartRateZoneDurations(
       heartRates: widget.streams['heartrate'],
       times: widget.streams['time'],
@@ -104,8 +106,10 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
       title: 'RunNow heart zones',
       builder: (sharing) => GlassPanel(
         padding: const EdgeInsets.all(16),
-        gradient: const LinearGradient(
-          colors: [Color(0xe607172b), Color(0xaa2b0713)],
+        gradient: LinearGradient(
+          colors: isLight
+              ? const [Color(0xfff9fbff), Color(0xffedf3f9)]
+              : const [Color(0xe607172b), Color(0xaa2b0713)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -121,12 +125,12 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
                   children: [
                     const Icon(Icons.favorite, color: AppColors.red, size: 18),
                     const SizedBox(width: 8),
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         'TIME IN HEART ZONES',
                         style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
+                          color: onSurface,
+                          fontSize: 12,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 1.1,
                         ),
@@ -241,6 +245,7 @@ class _HeartRateZoneRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final percent = totalSeconds <= 0 ? 0 : zone.seconds / totalSeconds;
     final widthFactor = maxSeconds <= 0 ? 0 : zone.seconds / maxSeconds;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Row(
       children: [
         SizedBox(
@@ -258,7 +263,10 @@ class _HeartRateZoneRow extends StatelessWidget {
               ),
               Text(
                 zone.rangeLabel,
-                style: const TextStyle(color: Colors.white38, fontSize: 10),
+                style: TextStyle(
+                  color: onSurface.withValues(alpha: 0.42),
+                  fontSize: 10,
+                ),
               ),
             ],
           ),
@@ -271,7 +279,7 @@ class _HeartRateZoneRow extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  const ColoredBox(color: Color(0x2600d9ff)),
+                  ColoredBox(color: AppColors.blueGlow.withValues(alpha: 0.14)),
                   FractionallySizedBox(
                     alignment: Alignment.centerLeft,
                     widthFactor: widthFactor.clamp(0, 1).toDouble(),
@@ -297,8 +305,8 @@ class _HeartRateZoneRow extends StatelessWidget {
           child: Text(
             '${formatDuration(zone.seconds.round())} · ${(percent * 100).round()}%',
             textAlign: TextAlign.right,
-            style: const TextStyle(
-              color: Colors.white70,
+            style: TextStyle(
+              color: onSurface.withValues(alpha: 0.68),
               fontSize: 11,
               fontWeight: FontWeight.w700,
             ),
@@ -333,6 +341,8 @@ class _TrainingChartCardState extends State<_TrainingChartCard> {
   @override
   Widget build(BuildContext context) {
     final series = widget.series;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     final points = series.points(_range);
     if (points.isEmpty) {
       return const SizedBox.shrink();
@@ -350,8 +360,10 @@ class _TrainingChartCardState extends State<_TrainingChartCard> {
     final xInterval = math.max(maxX / 2, 0.1).toDouble();
     return GlassPanel(
       padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
-      gradient: const LinearGradient(
-        colors: [Color(0xe607172b), Color(0xaa062442)],
+      gradient: LinearGradient(
+        colors: isLight
+            ? const [Color(0xfff9fbff), Color(0xffe9f1fa)]
+            : const [Color(0xe607172b), Color(0xaa062442)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -379,17 +391,19 @@ class _TrainingChartCardState extends State<_TrainingChartCard> {
                       series.label,
                       style: TextStyle(
                         color: series.color,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.6,
                       ),
                     ),
                   ),
                   Text(
                     series.unit,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
+                    style: TextStyle(
+                      color: onSurface.withValues(alpha: 0.6),
+                      fontSize: 10,
                       fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
                     ),
                   ),
                   if (!widget.shareMode) ...[
@@ -474,11 +488,14 @@ class _TrainingChartCardState extends State<_TrainingChartCard> {
                                 xInterval: xInterval,
                               ),
                       ),
-                      const Padding(
+                      Padding(
                         padding: EdgeInsets.only(left: 52),
                         child: Text(
                           'Quãng đường đã chạy',
-                          style: TextStyle(color: Colors.white54, fontSize: 11),
+                          style: TextStyle(
+                            color: onSurface.withValues(alpha: 0.52),
+                            fontSize: 10,
+                          ),
                         ),
                       ),
                     ],
@@ -517,8 +534,13 @@ class _LineTrainingChart extends StatelessWidget {
         minY: chartMin,
         maxY: chartMax,
         borderData: FlBorderData(show: false),
-        gridData: _gridData(yInterval: yInterval, xInterval: xInterval),
+        gridData: _gridData(
+          context,
+          yInterval: yInterval,
+          xInterval: xInterval,
+        ),
         titlesData: _titlesData(
+          context,
           series: series,
           yInterval: yInterval,
           xInterval: xInterval,
@@ -593,8 +615,13 @@ class _BarTrainingChart extends StatelessWidget {
         maxY: chartMax,
         alignment: BarChartAlignment.spaceAround,
         borderData: FlBorderData(show: false),
-        gridData: _gridData(yInterval: yInterval, xInterval: xInterval),
+        gridData: _gridData(
+          context,
+          yInterval: yInterval,
+          xInterval: xInterval,
+        ),
         titlesData: _titlesData(
+          context,
           series: series,
           yInterval: yInterval,
           xInterval: xInterval,
@@ -660,10 +687,14 @@ class _CompactSelector<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0x52020812),
-        border: Border.all(color: AppColors.glassBorder),
+        color: isLight ? const Color(0xffeef4fb) : const Color(0x52020812),
+        border: Border.all(
+          color: isLight ? const Color(0x2208172b) : AppColors.glassBorder,
+        ),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Padding(
@@ -672,8 +703,8 @@ class _CompactSelector<T> extends StatelessWidget {
           children: [
             Text(
               label,
-              style: const TextStyle(
-                color: Colors.white54,
+              style: TextStyle(
+                color: onSurface.withValues(alpha: 0.52),
                 fontSize: 9,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.9,
@@ -686,10 +717,12 @@ class _CompactSelector<T> extends StatelessWidget {
                   value: value,
                   isExpanded: true,
                   isDense: true,
-                  dropdownColor: AppColors.black,
+                  dropdownColor: isLight
+                      ? const Color(0xfff8fbff)
+                      : AppColors.black,
                   iconEnabledColor: AppColors.blueGlow,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: onSurface,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -721,23 +754,21 @@ class _Stat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(
-            color: Colors.white54,
+          style: TextStyle(
+            color: onSurface.withValues(alpha: 0.54),
             fontSize: 10,
             fontWeight: FontWeight.w700,
           ),
         ),
         Text(
           value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-          ),
+          style: TextStyle(color: onSurface, fontWeight: FontWeight.w700),
         ),
       ],
     );
@@ -856,23 +887,30 @@ class _ChartSeries {
   String formatDistance(double value) => '${value.toStringAsFixed(1)} km';
 }
 
-FlGridData _gridData({required double yInterval, required double xInterval}) {
+FlGridData _gridData(
+  BuildContext context, {
+  required double yInterval,
+  required double xInterval,
+}) {
+  final onSurface = Theme.of(context).colorScheme.onSurface;
   return FlGridData(
     horizontalInterval: yInterval,
     verticalInterval: xInterval,
     getDrawingHorizontalLine: (_) =>
-        const FlLine(color: Colors.white24, strokeWidth: 1),
+        FlLine(color: onSurface.withValues(alpha: 0.14), strokeWidth: 1),
     getDrawingVerticalLine: (_) =>
-        const FlLine(color: Colors.white12, strokeWidth: 1),
+        FlLine(color: onSurface.withValues(alpha: 0.08), strokeWidth: 1),
   );
 }
 
-FlTitlesData _titlesData({
+FlTitlesData _titlesData(
+  BuildContext context, {
   required _ChartSeries series,
   required double yInterval,
   required double xInterval,
   List<FlSpot>? barPoints,
 }) {
+  final onSurface = Theme.of(context).colorScheme.onSurface;
   return FlTitlesData(
     topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
     rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -885,7 +923,10 @@ FlTitlesData _titlesData({
           meta: meta,
           child: Text(
             series.formatAxis(value),
-            style: const TextStyle(color: Colors.white54, fontSize: 11),
+            style: TextStyle(
+              color: onSurface.withValues(alpha: 0.54),
+              fontSize: 10,
+            ),
           ),
         ),
       ),
@@ -904,7 +945,10 @@ FlTitlesData _titlesData({
             meta: meta,
             child: Text(
               series.formatDistance(distance),
-              style: const TextStyle(color: Colors.white54, fontSize: 11),
+              style: TextStyle(
+                color: onSurface.withValues(alpha: 0.54),
+                fontSize: 10,
+              ),
             ),
           );
         },

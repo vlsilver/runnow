@@ -10,8 +10,13 @@ import 'package:myrun/src/widgets/route_map.dart';
 import 'package:myrun/src/widgets/stream_chart.dart';
 
 class ActivityDetailScreen extends ConsumerStatefulWidget {
-  const ActivityDetailScreen({required this.activityId, super.key});
+  const ActivityDetailScreen({
+    required this.activityId,
+    this.ownerUid,
+    super.key,
+  });
   final String activityId;
+  final String? ownerUid;
 
   @override
   ConsumerState<ActivityDetailScreen> createState() =>
@@ -21,7 +26,14 @@ class ActivityDetailScreen extends ConsumerStatefulWidget {
 class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
   @override
   Widget build(BuildContext context) {
-    final detail = ref.watch(activityDetailProvider(widget.activityId));
+    final detail = widget.ownerUid == null
+        ? ref.watch(activityDetailProvider(widget.activityId))
+        : ref.watch(
+            memberActivityDetailProvider((
+              uid: widget.ownerUid!,
+              activityId: widget.activityId,
+            )),
+          );
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chi tiết hoạt động'),

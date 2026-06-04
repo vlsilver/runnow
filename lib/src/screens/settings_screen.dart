@@ -427,7 +427,7 @@ class _SettingsSection extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(
                   context,
-                ).colorScheme.onSurface.withValues(alpha: 0.48),
+                ).colorScheme.onSurface.withValues(alpha: 0.62),
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1.2,
               ),

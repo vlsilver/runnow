@@ -59,6 +59,8 @@ class _TrainingVolumeChartState extends State<TrainingVolumeChart> {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     final buckets = _buildBuckets(
       widget.now ?? DateTime.now(),
       widget.activities,
@@ -85,8 +87,10 @@ class _TrainingVolumeChartState extends State<TrainingVolumeChart> {
           );
     return GlassPanel(
       padding: const EdgeInsets.fromLTRB(16, 16, 12, 14),
-      gradient: const LinearGradient(
-        colors: [Color(0xe607172b), Color(0xb3062442)],
+      gradient: LinearGradient(
+        colors: isLight
+            ? const [Color(0xfff9fbff), Color(0xffe9f1fa)]
+            : const [Color(0xe607172b), Color(0xb3062442)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -96,10 +100,10 @@ class _TrainingVolumeChartState extends State<TrainingVolumeChart> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'QUÃNG ĐƯỜNG',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: onSurface,
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1,
@@ -195,8 +199,8 @@ class _VolumeBarChart extends StatelessWidget {
         maxY: maxY,
         alignment: BarChartAlignment.spaceAround,
         borderData: FlBorderData(show: false),
-        gridData: _gridData(maxY),
-        titlesData: _titlesData(maxY: maxY, buckets: buckets),
+        gridData: _gridData(context, maxY),
+        titlesData: _titlesData(context, maxY: maxY, buckets: buckets),
         barTouchData: BarTouchData(
           touchTooltipData: BarTouchTooltipData(
             getTooltipColor: (_) => AppColors.black,
@@ -256,8 +260,8 @@ class _VolumeLineChart extends StatelessWidget {
         minY: 0,
         maxY: maxY,
         borderData: FlBorderData(show: false),
-        gridData: _gridData(maxY),
-        titlesData: _titlesData(maxY: maxY, buckets: buckets),
+        gridData: _gridData(context, maxY),
+        titlesData: _titlesData(context, maxY: maxY, buckets: buckets),
         lineTouchData: LineTouchData(
           touchTooltipData: LineTouchTooltipData(
             fitInsideHorizontally: true,
@@ -306,19 +310,22 @@ class _VolumeLineChart extends StatelessWidget {
   }
 }
 
-FlGridData _gridData(double maxY) {
+FlGridData _gridData(BuildContext context, double maxY) {
+  final onSurface = Theme.of(context).colorScheme.onSurface;
   return FlGridData(
     drawVerticalLine: false,
     horizontalInterval: math.max(maxY / 3, 1).toDouble(),
     getDrawingHorizontalLine: (_) =>
-        const FlLine(color: Colors.white24, strokeWidth: 1),
+        FlLine(color: onSurface.withValues(alpha: 0.14), strokeWidth: 1),
   );
 }
 
-FlTitlesData _titlesData({
+FlTitlesData _titlesData(
+  BuildContext context, {
   required double maxY,
   required List<_TrainingBucket> buckets,
 }) {
+  final onSurface = Theme.of(context).colorScheme.onSurface;
   return FlTitlesData(
     topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
     rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -331,7 +338,10 @@ FlTitlesData _titlesData({
           meta: meta,
           child: Text(
             '${value.toStringAsFixed(0)} km',
-            style: const TextStyle(color: Colors.white54, fontSize: 10),
+            style: TextStyle(
+              color: onSurface.withValues(alpha: 0.54),
+              fontSize: 10,
+            ),
           ),
         ),
       ),
@@ -356,8 +366,8 @@ FlTitlesData _titlesData({
               child: Text(
                 buckets[index].label,
                 maxLines: 1,
-                style: const TextStyle(
-                  color: Colors.white70,
+                style: TextStyle(
+                  color: onSurface.withValues(alpha: 0.66),
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
                 ),
@@ -393,9 +403,11 @@ class _CompactSelector<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0x52020812),
+        color: isLight ? const Color(0xffeef4fb) : const Color(0x52020812),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Padding(
@@ -404,8 +416,8 @@ class _CompactSelector<T> extends StatelessWidget {
           children: [
             Text(
               label,
-              style: const TextStyle(
-                color: Colors.white54,
+              style: TextStyle(
+                color: onSurface.withValues(alpha: 0.52),
                 fontSize: 9,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.9,
@@ -418,10 +430,12 @@ class _CompactSelector<T> extends StatelessWidget {
                   value: value,
                   isExpanded: true,
                   isDense: true,
-                  dropdownColor: AppColors.black,
+                  dropdownColor: isLight
+                      ? const Color(0xfff8fbff)
+                      : AppColors.black,
                   iconEnabledColor: AppColors.blueGlow,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: onSurface,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -453,21 +467,22 @@ class _ChartStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(
-            color: Colors.white54,
+          style: TextStyle(
+            color: onSurface.withValues(alpha: 0.54),
             fontSize: 10,
             fontWeight: FontWeight.w700,
           ),
         ),
         Text(
           value,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: onSurface,
             fontSize: 16,
             fontWeight: FontWeight.w800,
           ),

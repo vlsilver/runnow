@@ -27,6 +27,7 @@ abstract interface class MemberRepository {
   Stream<List<MemberProfile>> watchMembers();
   Stream<MemberProfile?> watchMember(String uid);
   Stream<List<ActivitySummary>> watchMemberActivities(String uid);
+  Future<ActivityDetail> getMemberActivityDetail(String uid, String activityId);
   Stream<List<LeaderboardEntry>> watchLeaderboardEntries();
   Future<void> ensureCurrentLeaderboardEntry();
   Future<void> updateCurrentProfile({
@@ -500,6 +501,25 @@ class FirestoreMemberRepository implements MemberRepository {
               .map((document) => ActivitySummary.fromMap(document.data()))
               .toList(),
         );
+  }
+
+  @override
+  Future<ActivityDetail> getMemberActivityDetail(
+    String uid,
+    String activityId,
+  ) async {
+    final document = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('activities')
+        .doc(activityId)
+        .get();
+    final data = document.data();
+    if (data == null) throw StateError('Không tìm thấy hoạt động.');
+    if (hasCachedActivityDetail(data)) {
+      return ActivityDetail.fromMap(data);
+    }
+    return ActivityDetail(summary: ActivitySummary.fromMap(data));
   }
 
   @override
