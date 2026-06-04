@@ -1,7 +1,16 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:maplibre_gl/maplibre_gl.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/glass.dart';
+
+const _lightTileTemplate =
+    'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+const _darkTileTemplate =
+    'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+const _tileAttribution = '© OpenStreetMap contributors · CARTO';
 
 class RouteMap extends StatelessWidget {
   const RouteMap({required this.encodedPolyline, super.key});
@@ -14,7 +23,8 @@ class RouteMap extends StatelessWidget {
         ? const <LatLng>[]
         : decodePolyline(encodedPolyline!);
     if (points.isEmpty) {
-      return const Card(
+      return const GlassPanel(
+        borderRadius: 20,
         child: SizedBox(
           height: 180,
           child: Center(child: Text('Không có dữ liệu route.')),
@@ -22,27 +32,37 @@ class RouteMap extends StatelessWidget {
       );
     }
     return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(22),
       child: SizedBox(
-        height: 260,
+        height: 270,
         child: Stack(
           children: [
-            Positioned.fill(child: _MapLibreRoute(points: points)),
-            const Positioned(
-              left: 8,
-              bottom: 6,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Color(0xcc101820),
-                  borderRadius: BorderRadius.all(Radius.circular(6)),
-                ),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                  child: Text(
-                    '© OpenStreetMap contributors · OpenFreeMap',
-                    style: TextStyle(color: Colors.white70, fontSize: 9),
+            Positioned.fill(child: _FlutterRouteMap(points: points)),
+            const Positioned.fill(child: _MapVignette()),
+            Positioned(
+              left: 10,
+              right: 10,
+              bottom: 10,
+              child: Row(
+                children: [
+                  const _RoutePill(label: 'START', color: AppColors.blueGlow),
+                  const SizedBox(width: 6),
+                  const _RoutePill(label: 'FINISH', color: AppColors.red),
+                  const Spacer(),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.48),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: Text(
+                        _tileAttribution,
+                        style: TextStyle(color: Colors.white70, fontSize: 9),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
           ],
@@ -52,107 +72,174 @@ class RouteMap extends StatelessWidget {
   }
 }
 
-class _MapLibreRoute extends StatefulWidget {
-  const _MapLibreRoute({required this.points});
+class _FlutterRouteMap extends StatelessWidget {
+  const _FlutterRouteMap({required this.points});
 
   final List<LatLng> points;
 
   @override
-  State<_MapLibreRoute> createState() => _MapLibreRouteState();
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return FlutterMap(
+      options: MapOptions(
+        initialCameraFit: CameraFit.bounds(
+          bounds: routeBounds(points),
+          padding: const EdgeInsets.all(42),
+          maxZoom: 16,
+        ),
+        minZoom: 3,
+        maxZoom: 18,
+        backgroundColor: isLight ? const Color(0xffdfe9f4) : AppColors.black,
+        interactionOptions: const InteractionOptions(
+          flags:
+              InteractiveFlag.drag |
+              InteractiveFlag.flingAnimation |
+              InteractiveFlag.pinchMove |
+              InteractiveFlag.pinchZoom |
+              InteractiveFlag.doubleTapZoom,
+        ),
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: isLight ? _lightTileTemplate : _darkTileTemplate,
+          userAgentPackageName: 'com.threeaeidiot.runnow',
+          retinaMode: RetinaMode.isHighDensity(context),
+        ),
+        PolylineLayer(
+          polylines: [
+            Polyline(
+              points: points,
+              color: Colors.black.withValues(alpha: isLight ? 0.16 : 0.56),
+              strokeWidth: 10,
+              borderStrokeWidth: 0,
+            ),
+            Polyline(
+              points: points,
+              color: isLight ? AppColors.red : AppColors.blueGlow,
+              strokeWidth: 5,
+              borderColor: isLight ? Colors.white : const Color(0xff02111e),
+              borderStrokeWidth: 2,
+            ),
+          ],
+        ),
+        MarkerLayer(
+          markers: [
+            _routeMarker(points.first, AppColors.blueGlow),
+            _routeMarker(points.last, AppColors.red),
+          ],
+        ),
+      ],
+    );
+  }
 }
 
-class _MapLibreRouteState extends State<_MapLibreRoute> {
-  static const _style = 'https://tiles.openfreemap.org/styles/dark';
-  MapLibreMapController? _controller;
+Marker _routeMarker(LatLng point, Color color) {
+  return Marker(
+    point: point,
+    width: 26,
+    height: 26,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 3),
+        boxShadow: [
+          BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: 14),
+        ],
+      ),
+    ),
+  );
+}
+
+class _RoutePill extends StatelessWidget {
+  const _RoutePill({required this.label, required this.color});
+
+  final String label;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return MapLibreMap(
-      styleString: _style,
-      initialCameraPosition: routeCameraPosition(widget.points),
-      attributionButtonPosition: AttributionButtonPosition.topRight,
-      compassEnabled: false,
-      rotateGesturesEnabled: false,
-      tiltGesturesEnabled: false,
-      myLocationEnabled: false,
-      onMapCreated: (controller) => _controller = controller,
-      onStyleLoadedCallback: _drawRoute,
-    );
-  }
-
-  Future<void> _drawRoute() async {
-    final controller = _controller;
-    if (controller == null) return;
-    await controller.addLine(
-      LineOptions(
-        geometry: widget.points,
-        lineColor: '#101820',
-        lineOpacity: 0.78,
-        lineWidth: 9,
-        lineJoin: 'round',
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.46),
+        borderRadius: BorderRadius.circular(999),
       ),
-    );
-    await controller.addLine(
-      LineOptions(
-        geometry: widget.points,
-        lineColor: '#D62828',
-        lineWidth: 5,
-        lineJoin: 'round',
-      ),
-    );
-    await controller.addCircle(
-      CircleOptions(
-        geometry: widget.points.first,
-        circleRadius: 7,
-        circleColor: '#0057B8',
-        circleStrokeWidth: 2,
-        circleStrokeColor: '#FFFFFF',
-      ),
-    );
-    await controller.addCircle(
-      CircleOptions(
-        geometry: widget.points.last,
-        circleRadius: 7,
-        circleColor: '#D62828',
-        circleStrokeWidth: 2,
-        circleStrokeColor: '#FFFFFF',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              child: const SizedBox.square(dimension: 7),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-CameraPosition routeCameraPosition(List<LatLng> points) {
+class _MapVignette extends StatelessWidget {
+  const _MapVignette();
+
+  @override
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return IgnorePointer(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.transparent,
+              (isLight ? Colors.white : AppColors.black).withValues(
+                alpha: isLight ? 0.08 : 0.28,
+              ),
+            ],
+          ),
+          border: Border.all(
+            color: (isLight ? AppColors.lightText : AppColors.blueGlow)
+                .withValues(alpha: isLight ? 0.1 : 0.18),
+          ),
+          borderRadius: BorderRadius.circular(22),
+        ),
+      ),
+    );
+  }
+}
+
+RouteCamera routeCameraPosition(List<LatLng> points) {
   final bounds = routeBounds(points);
-  final latitudeSpan = bounds.northeast.latitude - bounds.southwest.latitude;
-  final longitudeSpan = bounds.northeast.longitude - bounds.southwest.longitude;
+  final latitudeSpan = bounds.north - bounds.south;
+  final longitudeSpan = bounds.east - bounds.west;
   final span = math.max(latitudeSpan, longitudeSpan);
   final zoom = span <= 0
       ? 15.0
       : (math.log(360 / span) / math.ln2 - 1.4).clamp(8.0, 16.0);
-  return CameraPosition(
-    target: LatLng(
-      (bounds.southwest.latitude + bounds.northeast.latitude) / 2,
-      (bounds.southwest.longitude + bounds.northeast.longitude) / 2,
-    ),
-    zoom: zoom,
-  );
+  return RouteCamera(center: bounds.simpleCenter, zoom: zoom);
+}
+
+class RouteCamera {
+  const RouteCamera({required this.center, required this.zoom});
+
+  final LatLng center;
+  final double zoom;
 }
 
 LatLngBounds routeBounds(List<LatLng> points) {
-  var minLatitude = points.first.latitude;
-  var maxLatitude = points.first.latitude;
-  var minLongitude = points.first.longitude;
-  var maxLongitude = points.first.longitude;
-  for (final point in points.skip(1)) {
-    if (point.latitude < minLatitude) minLatitude = point.latitude;
-    if (point.latitude > maxLatitude) maxLatitude = point.latitude;
-    if (point.longitude < minLongitude) minLongitude = point.longitude;
-    if (point.longitude > maxLongitude) maxLongitude = point.longitude;
-  }
-  return LatLngBounds(
-    southwest: LatLng(minLatitude, minLongitude),
-    northeast: LatLng(maxLatitude, maxLongitude),
-  );
+  return LatLngBounds.fromPoints(points);
 }
 
 List<LatLng> decodePolyline(String encoded) {

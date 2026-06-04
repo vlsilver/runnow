@@ -18,8 +18,8 @@ void main() {
   test('calculates an initial camera without a native bounds update', () {
     final points = decodePolyline('_p~iF~ps|U_ulLnnqC_mqNvxq`@');
     final camera = routeCameraPosition(points);
-    expect(camera.target.latitude, closeTo(40.876, 0.00001));
-    expect(camera.target.longitude, closeTo(-123.3265, 0.00001));
+    expect(camera.center.latitude, closeTo(40.876, 0.00001));
+    expect(camera.center.longitude, closeTo(-123.3265, 0.00001));
     expect(camera.zoom, inInclusiveRange(8, 16));
   });
 }
