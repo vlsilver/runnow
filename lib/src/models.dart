@@ -131,6 +131,8 @@ class LeaderboardStats {
     required this.movingTimeSeconds,
     required this.activityCount,
     required this.activeDays,
+    required this.longestDistanceMeters,
+    required this.fastestPaceSecondsPerKm,
   });
 
   factory LeaderboardStats.fromMap(Map<String, dynamic>? map) {
@@ -139,6 +141,10 @@ class LeaderboardStats {
       movingTimeSeconds: (map?['movingTimeSeconds'] as num?)?.toInt() ?? 0,
       activityCount: (map?['activityCount'] as num?)?.toInt() ?? 0,
       activeDays: (map?['activeDays'] as num?)?.toInt() ?? 0,
+      longestDistanceMeters:
+          (map?['longestDistanceMeters'] as num?)?.toDouble() ?? 0,
+      fastestPaceSecondsPerKm: (map?['fastestPaceSecondsPerKm'] as num?)
+          ?.toDouble(),
     );
   }
 
@@ -146,6 +152,8 @@ class LeaderboardStats {
   final int movingTimeSeconds;
   final int activityCount;
   final int activeDays;
+  final double longestDistanceMeters;
+  final double? fastestPaceSecondsPerKm;
 
   Map<String, dynamic> toMap() {
     return {
@@ -153,6 +161,9 @@ class LeaderboardStats {
       'movingTimeSeconds': movingTimeSeconds,
       'activityCount': activityCount,
       'activeDays': activeDays,
+      'longestDistanceMeters': longestDistanceMeters,
+      if (fastestPaceSecondsPerKm != null)
+        'fastestPaceSecondsPerKm': fastestPaceSecondsPerKm,
     };
   }
 }

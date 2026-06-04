@@ -546,7 +546,12 @@ class FirestoreMemberRepository implements MemberRepository {
         .collection('leaderboardEntries')
         .doc(_uid)
         .get();
-    if (existing.exists) return;
+    final data = existing.data();
+    if (existing.exists &&
+        data != null &&
+        _leaderboardEntryHasModernStats(data)) {
+      return;
+    }
     await refreshLeaderboardEntryForUser(
       uid: _uid,
       firestore: _firestore,
@@ -611,6 +616,19 @@ class FirestoreMemberRepository implements MemberRepository {
     );
     await batch.commit();
   }
+}
+
+bool _leaderboardEntryHasModernStats(Map<String, dynamic> data) {
+  for (final key in const ['rollingSevenDays', 'currentWeek', 'currentMonth']) {
+    final stats = data[key];
+    if (stats is! Map<String, dynamic>) return false;
+    if (!stats.containsKey('longestDistanceMeters')) return false;
+    final distance = (stats['distanceMeters'] as num?)?.toDouble() ?? 0;
+    if (distance > 0 && !stats.containsKey('fastestPaceSecondsPerKm')) {
+      return false;
+    }
+  }
+  return true;
 }
 
 ActivitySummary _summaryFromRaw(
@@ -827,11 +845,30 @@ Map<String, dynamic> _leaderboardStatsMap(
   required DateTime end,
 }) {
   final summary = trainingSummary(activities, start: start, end: end);
+  final selected = activities.where(
+    (activity) =>
+        !activity.startedAt.isBefore(start) && activity.startedAt.isBefore(end),
+  );
+  var longestDistance = 0.0;
+  double? fastestPace;
+  for (final activity in selected) {
+    if (activity.distanceMeters > longestDistance) {
+      longestDistance = activity.distanceMeters;
+    }
+    final pace = activity.paceSecondsPerKm;
+    if (pace != null &&
+        pace > 0 &&
+        (fastestPace == null || pace < fastestPace)) {
+      fastestPace = pace;
+    }
+  }
   return LeaderboardStats(
     distanceMeters: summary.distanceMeters,
     movingTimeSeconds: summary.movingTimeSeconds,
     activityCount: summary.activityCount,
     activeDays: _activeDays(activities, start: start, end: end),
+    longestDistanceMeters: longestDistance,
+    fastestPaceSecondsPerKm: fastestPace,
   ).toMap();
 }
 

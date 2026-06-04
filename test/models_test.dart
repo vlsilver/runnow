@@ -121,6 +121,16 @@ void main() {
       (entry['rollingSevenDays'] as Map<String, dynamic>)['distanceMeters'],
       5000,
     );
+    expect(
+      (entry['rollingSevenDays']
+          as Map<String, dynamic>?)?['longestDistanceMeters'],
+      5000,
+    );
+    expect(
+      (entry['rollingSevenDays']
+          as Map<String, dynamic>?)?['fastestPaceSecondsPerKm'],
+      360,
+    );
     expect((entry['currentMonth'] as Map<String, dynamic>)['activeDays'], 1);
   });
 }

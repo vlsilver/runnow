@@ -10,6 +10,7 @@ import 'package:myrun/src/strava_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/consistency_heatmap.dart';
+import 'package:myrun/src/widgets/discipline_card.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/training_volume_chart.dart';
 
@@ -140,6 +141,7 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
       _WeekViewMode.currentWeek => currentWeekDistances(widget.activities, now),
     };
     final monthSummary = currentMonthSummary(widget.activities, now);
+    final discipline = personalDisciplineStats(widget.activities, now);
     final goals = ref.watch(trainingGoalsProvider);
     final header = Text(
       'Tổng quan',
@@ -189,6 +191,11 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
               showControls: !sharing,
             ),
           ),
+        ),
+        const SizedBox(height: 20),
+        _ShareableDashboardCard(
+          title: 'RunNow kỷ luật cá nhân',
+          builder: (_) => DisciplineCard(stats: discipline),
         ),
         const SizedBox(height: 20),
         _ShareableDashboardCard(

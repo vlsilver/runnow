@@ -34,12 +34,33 @@ void main() {
     ]);
     expect(distribution.map((item) => item.distanceMeters), [5000, 2000]);
   });
+
+  test('calculates personal discipline from recent activity days', () {
+    final stats = personalDisciplineStats([
+      _activity(DateTime(2026, 6, 4, 8), 5000),
+      _activity(DateTime(2026, 6, 3, 8), 4000),
+      _activity(DateTime(2026, 6, 1, 8), 3000, movingTimeSeconds: 1200),
+      _activity(DateTime(2026, 5, 25, 8), 6000, movingTimeSeconds: 4000),
+      _activity(DateTime(2026, 5, 18, 8), 7000),
+      _activity(DateTime(2026, 4, 1, 8), 9000),
+    ], DateTime(2026, 6, 5, 10));
+
+    expect(stats.days, hasLength(30));
+    expect(stats.activeDays, 5);
+    expect(stats.currentDayStreak, 2);
+    expect(stats.weeklyStreak, 3);
+    expect(stats.averageActivitiesPerWeek, 1.25);
+    expect(stats.totalDistanceMeters, 25000);
+    expect(stats.longestDistanceMeters, 7000);
+    expect(stats.fastestPaceSecondsPerKm, closeTo(257.142, 0.001));
+  });
 }
 
 ActivitySummary _activity(
   DateTime startedAt,
   double distanceMeters, {
   ActivityKind kind = ActivityKind.run,
+  int movingTimeSeconds = 1800,
 }) {
   return ActivitySummary(
     id: startedAt.toIso8601String(),
@@ -47,7 +68,7 @@ ActivitySummary _activity(
     kind: kind,
     startedAt: startedAt,
     distanceMeters: distanceMeters,
-    movingTimeSeconds: 1800,
+    movingTimeSeconds: movingTimeSeconds,
     elapsedTimeSeconds: 1900,
   );
 }

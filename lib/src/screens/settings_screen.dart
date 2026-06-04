@@ -190,129 +190,13 @@ Future<void> _editClubProfile(
   WidgetRef ref,
   UserProfile profile,
 ) async {
-  final nicknameController = TextEditingController(
-    text: profile.nickname?.trim().isNotEmpty == true
-        ? profile.nickname!.trim()
-        : profile.displayName,
-  );
-  final avatarController = TextEditingController(text: profile.avatarUrl ?? '');
-  var visibility = profile.visibility;
   final result = await showModalBottomSheet<_ProfileEditResult>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setSheetState) => Padding(
-        padding: EdgeInsets.only(
-          left: 14,
-          right: 14,
-          bottom: MediaQuery.viewInsetsOf(context).bottom + 12,
-        ),
-        child: GlassPanel(
-          borderRadius: 22,
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Hồ sơ Club', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 12),
-              TextField(
-                controller: nicknameController,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'Nickname',
-                  hintText: 'Tên hiển thị trong Club',
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: avatarController,
-                keyboardType: TextInputType.url,
-                decoration: const InputDecoration(
-                  labelText: 'Avatar URL',
-                  hintText: 'https://...',
-                ),
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: SegmentedButton<ProfileVisibility>(
-                  segments: const [
-                    ButtonSegment(
-                      value: ProfileVisibility.private,
-                      icon: Icon(Icons.lock_outline),
-                      label: Text('Private'),
-                    ),
-                    ButtonSegment(
-                      value: ProfileVisibility.public,
-                      icon: Icon(Icons.public),
-                      label: Text('Public'),
-                    ),
-                  ],
-                  selected: {visibility},
-                  onSelectionChanged: (selection) {
-                    setSheetState(() => visibility = selection.single);
-                  },
-                ),
-              ),
-              if (visibility == ProfileVisibility.public) ...[
-                const SizedBox(height: 12),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: AppColors.red.withValues(alpha: 0.16),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.warning_amber_rounded, color: AppColors.red),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Public nghĩa là thành viên khác có thể xem dữ liệu luyện tập của bạn khi tính năng hồ sơ public được mở rộng.',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Huỷ'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => Navigator.of(context).pop(
-                        _ProfileEditResult(
-                          nickname: nicknameController.text,
-                          avatarUrl: avatarController.text,
-                          visibility: visibility,
-                        ),
-                      ),
-                      child: const Text('Lưu'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
+    builder: (context) => _ClubProfileEditorSheet(profile: profile),
   );
-  nicknameController.dispose();
-  avatarController.dispose();
   if (result == null) return;
   await ref
       .read(memberRepositoryProvider)
@@ -321,6 +205,152 @@ Future<void> _editClubProfile(
         avatarUrl: result.avatarUrl,
         visibility: result.visibility,
       );
+}
+
+class _ClubProfileEditorSheet extends StatefulWidget {
+  const _ClubProfileEditorSheet({required this.profile});
+
+  final UserProfile profile;
+
+  @override
+  State<_ClubProfileEditorSheet> createState() =>
+      _ClubProfileEditorSheetState();
+}
+
+class _ClubProfileEditorSheetState extends State<_ClubProfileEditorSheet> {
+  late final TextEditingController _nicknameController;
+  late final TextEditingController _avatarController;
+  late ProfileVisibility _visibility;
+
+  @override
+  void initState() {
+    super.initState();
+    final profile = widget.profile;
+    _nicknameController = TextEditingController(
+      text: profile.nickname?.trim().isNotEmpty == true
+          ? profile.nickname!.trim()
+          : profile.displayName,
+    );
+    _avatarController = TextEditingController(text: profile.avatarUrl ?? '');
+    _visibility = profile.visibility;
+  }
+
+  @override
+  void dispose() {
+    _nicknameController.dispose();
+    _avatarController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 14,
+        right: 14,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 12,
+      ),
+      child: GlassPanel(
+        borderRadius: 22,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Hồ sơ Club', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _nicknameController,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Nickname',
+                hintText: 'Tên hiển thị trong Club',
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _avatarController,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(
+                labelText: 'Avatar URL',
+                hintText: 'https://...',
+              ),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<ProfileVisibility>(
+                segments: const [
+                  ButtonSegment(
+                    value: ProfileVisibility.private,
+                    icon: Icon(Icons.lock_outline),
+                    label: Text('Private'),
+                  ),
+                  ButtonSegment(
+                    value: ProfileVisibility.public,
+                    icon: Icon(Icons.public),
+                    label: Text('Public'),
+                  ),
+                ],
+                selected: {_visibility},
+                onSelectionChanged: (selection) {
+                  setState(() => _visibility = selection.single);
+                },
+              ),
+            ),
+            if (_visibility == ProfileVisibility.public) ...[
+              const SizedBox(height: 12),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppColors.red.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: AppColors.red),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Public nghĩa là thành viên khác có thể xem dữ liệu luyện tập của bạn khi tính năng hồ sơ public được mở rộng.',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Huỷ'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop(
+                      _ProfileEditResult(
+                        nickname: _nicknameController.text,
+                        avatarUrl: _avatarController.text,
+                        visibility: _visibility,
+                      ),
+                    ),
+                    child: const Text('Lưu'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _ProfileEditResult {

@@ -6,7 +6,9 @@ import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/consistency_heatmap.dart';
+import 'package:myrun/src/widgets/discipline_card.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/training_volume_chart.dart';
 
@@ -74,6 +76,7 @@ class _MemberDashboard extends StatelessWidget {
     final comparison = rollingSevenDayComparison(activities, now);
     final dailyDistances = rollingSevenDayDistances(activities, now);
     final month = currentMonthSummary(activities, now);
+    final discipline = personalDisciplineStats(activities, now);
     final recent = [...activities]
       ..sort((left, right) => right.startedAt.compareTo(left.startedAt));
     return ListView(
@@ -86,6 +89,8 @@ class _MemberDashboard extends StatelessWidget {
           dailyDistances: dailyDistances,
           month: month,
         ),
+        const SizedBox(height: 20),
+        DisciplineCard(stats: discipline),
         const SizedBox(height: 20),
         ConsistencyHeatmap(activities: activities),
         const SizedBox(height: 20),
@@ -101,10 +106,10 @@ class _MemberDashboard extends StatelessWidget {
           const Text('Thành viên này chưa có hoạt động public.')
         else
           for (var index = 0; index < recent.take(10).length; index++)
-            _MemberActivityTile(
-              uid: uid,
+            ActivityTile(
               activity: recent[index],
               sequence: index + 1,
+              ownerUid: uid,
             ),
       ],
     );
@@ -479,89 +484,3 @@ String _weekdayLabel(DateTime date) => switch (date.weekday) {
   DateTime.sunday => 'CN',
   _ => '',
 };
-
-class _MemberActivityTile extends StatelessWidget {
-  const _MemberActivityTile({
-    required this.uid,
-    required this.activity,
-    required this.sequence,
-  });
-
-  final String uid;
-  final ActivitySummary activity;
-  final int sequence;
-
-  @override
-  Widget build(BuildContext context) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    return GlassPanel(
-      margin: const EdgeInsets.only(bottom: 12),
-      borderRadius: 18,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: () => context.push('/club/$uid/activity/${activity.id}'),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.red.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(Icons.directions_run, color: AppColors.red),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      activity.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    Text(
-                      formatDate(activity.startedAt),
-                      style: TextStyle(
-                        color: onSurface.withValues(alpha: 0.54),
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    formatDistance(activity.distanceMeters),
-                    style: const TextStyle(
-                      color: AppColors.blueGlow,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  Text(
-                    'LOG ${sequence.toString().padLeft(2, '0')}',
-                    style: TextStyle(
-                      color: onSurface.withValues(alpha: 0.38),
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 6),
-              Icon(
-                Icons.chevron_right,
-                color: onSurface.withValues(alpha: 0.38),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

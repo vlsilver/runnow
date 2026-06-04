@@ -45,6 +45,39 @@ class DailyDistance {
   final double distanceMeters;
 }
 
+class DisciplineDay {
+  const DisciplineDay({required this.date, required this.distanceMeters});
+
+  final DateTime date;
+  final double distanceMeters;
+
+  bool get active => distanceMeters > 0;
+}
+
+class DisciplineStats {
+  const DisciplineStats({
+    required this.days,
+    required this.activeDays,
+    required this.currentDayStreak,
+    required this.weeklyStreak,
+    required this.averageActivitiesPerWeek,
+    required this.totalDistanceMeters,
+    required this.longestDistanceMeters,
+    required this.fastestPaceSecondsPerKm,
+  });
+
+  final List<DisciplineDay> days;
+  final int activeDays;
+  final int currentDayStreak;
+  final int weeklyStreak;
+  final double averageActivitiesPerWeek;
+  final double totalDistanceMeters;
+  final double longestDistanceMeters;
+  final double? fastestPaceSecondsPerKm;
+
+  double get activeRatio => days.isEmpty ? 0 : activeDays / days.length;
+}
+
 TrainingComparison rollingSevenDayComparison(
   List<ActivitySummary> activities,
   DateTime now,
@@ -152,6 +185,63 @@ List<ActivityKindDistance> distanceByActivityKind(
   return result;
 }
 
+DisciplineStats personalDisciplineStats(
+  List<ActivitySummary> activities,
+  DateTime now,
+) {
+  final today = _day(now);
+  final start = today.subtract(const Duration(days: 29));
+  final tomorrow = today.add(const Duration(days: 1));
+  final dailyDistance = <DateTime, double>{
+    for (var index = 0; index < 30; index++)
+      start.add(Duration(days: index)): 0,
+  };
+  var totalDistance = 0.0;
+  var longestDistance = 0.0;
+  double? fastestPace;
+  var recentActivityCount = 0;
+  final fourWeeksAgo = tomorrow.subtract(const Duration(days: 28));
+  for (final activity in activities) {
+    if (!activity.startedAt.isBefore(start) &&
+        activity.startedAt.isBefore(tomorrow)) {
+      final day = _day(activity.startedAt);
+      dailyDistance[day] = (dailyDistance[day] ?? 0) + activity.distanceMeters;
+      totalDistance += activity.distanceMeters;
+      if (activity.distanceMeters > longestDistance) {
+        longestDistance = activity.distanceMeters;
+      }
+      final pace = activity.paceSecondsPerKm;
+      if (pace != null &&
+          pace > 0 &&
+          (fastestPace == null || pace < fastestPace)) {
+        fastestPace = pace;
+      }
+    }
+    if (!activity.startedAt.isBefore(fourWeeksAgo) &&
+        activity.startedAt.isBefore(tomorrow)) {
+      recentActivityCount++;
+    }
+  }
+  final days = [
+    for (final entry in dailyDistance.entries)
+      DisciplineDay(date: entry.key, distanceMeters: entry.value),
+  ];
+  final activeDaySet = {
+    for (final day in days)
+      if (day.active) day.date,
+  };
+  return DisciplineStats(
+    days: days,
+    activeDays: activeDaySet.length,
+    currentDayStreak: _currentDayStreak(activeDaySet, today),
+    weeklyStreak: _weeklyActivityStreak(activities, today),
+    averageActivitiesPerWeek: recentActivityCount / 4,
+    totalDistanceMeters: totalDistance,
+    longestDistanceMeters: longestDistance,
+    fastestPaceSecondsPerKm: fastestPace,
+  );
+}
+
 DateTime startOfRollingSevenDays(DateTime now) =>
     _day(now).subtract(const Duration(days: 6));
 
@@ -176,6 +266,35 @@ List<DailyDistance> _dailyDistances(
     for (final entry in buckets.entries)
       DailyDistance(date: entry.key, distanceMeters: entry.value),
   ];
+}
+
+int _currentDayStreak(Set<DateTime> activeDays, DateTime today) {
+  var cursor = activeDays.contains(today)
+      ? today
+      : today.subtract(const Duration(days: 1));
+  var streak = 0;
+  while (activeDays.contains(cursor)) {
+    streak++;
+    cursor = cursor.subtract(const Duration(days: 1));
+  }
+  return streak;
+}
+
+int _weeklyActivityStreak(List<ActivitySummary> activities, DateTime today) {
+  final activeWeeks = <DateTime>{};
+  for (final activity in activities) {
+    activeWeeks.add(startOfCurrentWeek(activity.startedAt));
+  }
+  var cursor = startOfCurrentWeek(today);
+  if (!activeWeeks.contains(cursor)) {
+    cursor = cursor.subtract(const Duration(days: 7));
+  }
+  var streak = 0;
+  while (activeWeeks.contains(cursor)) {
+    streak++;
+    cursor = cursor.subtract(const Duration(days: 7));
+  }
+  return streak;
 }
 
 DateTime _day(DateTime date) => DateTime(date.year, date.month, date.day);

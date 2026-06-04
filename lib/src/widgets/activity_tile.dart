@@ -1,194 +1,274 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
-import 'package:myrun/src/widgets/prc_brand_mark.dart';
 
 class ActivityTile extends StatelessWidget {
-  const ActivityTile({required this.activity, this.sequence, super.key});
+  const ActivityTile({
+    required this.activity,
+    this.sequence,
+    this.ownerUid,
+    super.key,
+  });
 
   final ActivitySummary activity;
   final int? sequence;
+  final String? ownerUid;
 
   @override
   Widget build(BuildContext context) {
     final visual = _ActivityVisual.fromKind(activity.kind);
-    final muted = Theme.of(
-      context,
-    ).colorScheme.onSurface.withValues(alpha: 0.62);
+    final isLight = Theme.of(context).brightness == Brightness.light;
     final faint = Theme.of(
       context,
     ).colorScheme.onSurface.withValues(alpha: 0.42);
-    return GlassPanel(
-      margin: const EdgeInsets.only(bottom: 12),
-      borderRadius: 14,
-      child: InkWell(
-        onTap: () => context.push('/activity/${activity.id}'),
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  _ActivityBadge(visual: visual),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          activity.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          formatDate(activity.startedAt),
-                          style: TextStyle(color: muted, fontSize: 13),
-                        ),
-                      ],
-                    ),
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _TimelineRail(activity: activity),
+            const SizedBox(width: 10),
+            Expanded(
+              child: GlassPanel(
+                borderRadius: 22,
+                padding: EdgeInsets.zero,
+                child: InkWell(
+                  onTap: () => context.push(
+                    ownerUid == null
+                        ? '/activity/${activity.id}'
+                        : '/club/$ownerUid/activity/${activity.id}',
                   ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                  borderRadius: BorderRadius.circular(22),
+                  child: Stack(
                     children: [
-                      Text(
-                        formatDistance(activity.distanceMeters),
-                        style: const TextStyle(
-                          color: AppColors.blueGlow,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(22),
+                            gradient: LinearGradient(
+                              colors: isLight
+                                  ? [
+                                      Colors.white.withValues(alpha: 0.72),
+                                      visual.color.withValues(alpha: 0.08),
+                                    ]
+                                  : [
+                                      const Color(0x2600d9ff),
+                                      visual.color.withValues(alpha: 0.12),
+                                      Colors.transparent,
+                                    ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        sequence == null
-                            ? 'ACTIVITY'
-                            : 'LOG // ${sequence!.toString().padLeft(2, '0')}',
-                        style: TextStyle(
-                          color: faint,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.2,
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          _KindTag(visual: visual),
+                                          const SizedBox(width: 7),
+                                          Expanded(
+                                            child: Text(
+                                              activity.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .titleMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w900,
+                                                  ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      formatDistance(activity.distanceMeters),
+                                      style: const TextStyle(
+                                        color: AppColors.blueGlow,
+                                        fontSize: 21,
+                                        fontWeight: FontWeight.w900,
+                                        height: 1,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Text(
+                                      sequence == null
+                                          ? 'LOG'
+                                          : '#${sequence!.toString().padLeft(2, '0')}',
+                                      style: TextStyle(
+                                        color: faint,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 1.2,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 13),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _TileMetric(
+                                    label: 'PACE',
+                                    value: formatPace(
+                                      activity.paceSecondsPerKm,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _TileMetric(
+                                    label: 'TIME',
+                                    value: formatDuration(
+                                      activity.movingTimeSeconds,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _TileMetric(
+                                    label: activity.averageHeartRate == null
+                                        ? 'ELEV'
+                                        : 'HR',
+                                    value: activity.averageHeartRate == null
+                                        ? _elevationLabel(activity)
+                                        : '${activity.averageHeartRate!.round()} bpm',
+                                    valueColor:
+                                        activity.averageHeartRate == null
+                                        ? AppColors.blueGlow
+                                        : AppColors.red,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _TileMetric(
-                      label: 'PACE',
-                      value: formatPace(activity.paceSecondsPerKm),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _TileMetric(
-                      label: 'TIME',
-                      value: formatDuration(activity.movingTimeSeconds),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _TileMetric(
-                      label: activity.averageHeartRate == null
-                          ? 'STATUS'
-                          : 'HR',
-                      value: activity.averageHeartRate == null
-                          ? (activity.hydrated ? 'CACHED' : 'SYNCED')
-                          : '${activity.averageHeartRate!.round()} bpm',
-                      valueColor: activity.averageHeartRate == null
-                          ? (activity.hydrated ? AppColors.blueGlow : null)
-                          : AppColors.red,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 11),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const PrcBrandMark(compact: true),
-                  Row(
-                    children: [
-                      Text(
-                        activity.hydrated ? 'DETAIL READY' : 'OPEN DETAIL',
-                        style: TextStyle(
-                          color: activity.hydrated ? AppColors.blueGlow : muted,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.1,
-                        ),
-                      ),
-                      const SizedBox(width: 3),
-                      Icon(
-                        Icons.chevron_right,
-                        size: 18,
-                        color: activity.hydrated ? AppColors.blueGlow : muted,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _ActivityBadge extends StatelessWidget {
-  const _ActivityBadge({required this.visual});
+class _TimelineRail extends StatelessWidget {
+  const _TimelineRail({required this.activity});
+
+  final ActivitySummary activity;
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return SizedBox(
+      width: 38,
+      child: Column(
+        children: [
+          Text(
+            DateFormat('dd').format(activity.startedAt),
+            style: TextStyle(
+              color: onSurface,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            DateFormat('MMM').format(activity.startedAt).toUpperCase(),
+            style: TextStyle(
+              color: onSurface.withValues(alpha: 0.48),
+              fontSize: 9,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: AppColors.amber,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.amber.withValues(alpha: 0.45),
+                  blurRadius: 12,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Expanded(
+            child: Container(
+              width: 2,
+              decoration: BoxDecoration(
+                color: AppColors.amber.withValues(alpha: 0.24),
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _KindTag extends StatelessWidget {
+  const _KindTag({required this.visual});
 
   final _ActivityVisual visual;
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    return Container(
-      width: 48,
-      height: 48,
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: visual.color.withValues(alpha: 0.2),
-        border: Border.all(color: visual.color),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(color: visual.color.withValues(alpha: 0.3), blurRadius: 12),
-        ],
+        color: visual.color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
       ),
-      child: Stack(
-        children: [
-          Center(
-            child: Icon(
-              visual.icon,
-              color: isLight ? visual.color : Colors.white,
-              size: 25,
-            ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        child: Text(
+          visual.code,
+          style: TextStyle(
+            color: visual.color,
+            fontSize: 8,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.9,
           ),
-          Positioned(
-            right: 4,
-            bottom: 3,
-            child: Text(
-              visual.code,
-              style: TextStyle(
-                color: visual.color,
-                fontSize: 7,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.8,
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -214,7 +294,7 @@ class _TileMetric extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
       decoration: BoxDecoration(
         color: isLight ? const Color(0xffeef3f8) : const Color(0x3d020812),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -226,19 +306,19 @@ class _TileMetric extends StatelessWidget {
                 context,
               ).colorScheme.onSurface.withValues(alpha: 0.56),
               fontSize: 9,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w900,
               letterSpacing: 1,
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 3),
           Text(
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: resolvedValueColor.withValues(alpha: 0.92),
+              color: resolvedValueColor.withValues(alpha: 0.94),
               fontSize: 14,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],
@@ -259,22 +339,22 @@ class _ActivityVisual {
       ActivityKind.walk => const _ActivityVisual(
         icon: Icons.directions_walk,
         color: AppColors.blueGlow,
-        code: 'WLK',
+        code: 'WALK',
       ),
       ActivityKind.hike => const _ActivityVisual(
         icon: Icons.terrain,
-        color: AppColors.amber,
-        code: 'HKE',
+        color: AppColors.blueGlow,
+        code: 'HIKE',
       ),
       ActivityKind.trailRun => const _ActivityVisual(
         icon: Icons.terrain,
-        color: AppColors.amber,
-        code: 'TRL',
+        color: AppColors.blueGlow,
+        code: 'TRAIL',
       ),
       ActivityKind.virtualRun => const _ActivityVisual(
         icon: Icons.bolt,
         color: AppColors.blueGlow,
-        code: 'VRT',
+        code: 'VIRTUAL',
       ),
       ActivityKind.run => const _ActivityVisual(
         icon: Icons.directions_run,
@@ -287,4 +367,10 @@ class _ActivityVisual {
   final IconData icon;
   final Color color;
   final String code;
+}
+
+String _elevationLabel(ActivitySummary activity) {
+  final elevation = activity.elevationGainMeters;
+  if (elevation == null) return '--';
+  return '${elevation.round()} m';
 }
