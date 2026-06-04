@@ -12,4 +12,7 @@ class AppConfig {
   static const stravaRedirectUri =
       '$stravaRedirectScheme://$stravaRedirectHost$stravaRedirectPath';
   static const stravaScope = 'activity:read_all';
+
+  static const googleServerClientId =
+      '267607013114-qud9nba6kopvqfut8umgtor2cqp846u0.apps.googleusercontent.com';
 }
