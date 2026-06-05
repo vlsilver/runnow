@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -129,6 +131,67 @@ final memberActivityDetailProvider =
           .getMemberActivityDetail(request.uid, request.activityId);
     });
 
+final clubActivityLogProvider = StreamProvider<List<ClubActivityLogItem>>((
+  ref,
+) {
+  final repository = ref.watch(memberRepositoryProvider);
+  final membersState = ref.watch(membersProvider);
+  return membersState.when(
+    data: (members) {
+      final publicMembers = members.where((member) => member.isPublic).toList();
+      if (publicMembers.isEmpty) {
+        return Stream.value(const <ClubActivityLogItem>[]);
+      }
+      final controller = StreamController<List<ClubActivityLogItem>>();
+      final latestByUid = <String, List<ActivitySummary>>{};
+      final subscriptions = <StreamSubscription<List<ActivitySummary>>>[];
+
+      void emit() {
+        final items = <ClubActivityLogItem>[];
+        for (final member in publicMembers) {
+          final activities =
+              latestByUid[member.uid] ?? const <ActivitySummary>[];
+          for (final activity in activities.take(20)) {
+            items.add(ClubActivityLogItem(member: member, activity: activity));
+          }
+        }
+        items.sort(
+          (left, right) =>
+              right.activity.startedAt.compareTo(left.activity.startedAt),
+        );
+        if (!controller.isClosed) {
+          controller.add(items.take(60).toList());
+        }
+      }
+
+      for (final member in publicMembers) {
+        subscriptions.add(
+          repository.watchMemberActivities(member.uid).listen((activities) {
+            latestByUid[member.uid] = activities;
+            emit();
+          }, onError: controller.addError),
+        );
+      }
+
+      controller.onCancel = () async {
+        for (final subscription in subscriptions) {
+          await subscription.cancel();
+        }
+      };
+      return controller.stream;
+    },
+    loading: () => Stream.value(const <ClubActivityLogItem>[]),
+    error: (error, stack) => Stream.error(error, stack),
+  );
+});
+
 final trainingGoalsProvider = StreamProvider<TrainingGoals>(
   (ref) => ref.watch(trainingGoalRepositoryProvider).watchGoals(),
 );
+
+class ClubActivityLogItem {
+  const ClubActivityLogItem({required this.member, required this.activity});
+
+  final MemberProfile member;
+  final ActivitySummary activity;
+}

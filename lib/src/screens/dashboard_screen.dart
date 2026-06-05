@@ -12,6 +12,7 @@ import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/consistency_heatmap.dart';
 import 'package:myrun/src/widgets/discipline_card.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/personal_power_card.dart';
 import 'package:myrun/src/widgets/training_volume_chart.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -190,6 +191,14 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
               onEditGoals: null,
               showControls: !sharing,
             ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        _ShareableDashboardCard(
+          title: 'RunNow personal power',
+          builder: (sharing) => PersonalPowerCard(
+            activities: widget.activities,
+            showControls: !sharing,
           ),
         ),
         const SizedBox(height: 20),

@@ -5,7 +5,10 @@ import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/training_power.dart';
+import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/power_radar_card.dart';
 
 enum _RankingMetric {
   distance,
@@ -45,7 +48,7 @@ class _ClubScreenState extends ConsumerState<ClubScreen> {
   Widget build(BuildContext context) {
     final members = ref.watch(membersProvider);
     return DefaultTabController(
-      length: 3,
+      length: 4,
       initialIndex: 0,
       child: Scaffold(
         appBar: AppBar(
@@ -54,6 +57,7 @@ class _ClubScreenState extends ConsumerState<ClubScreen> {
             tabs: [
               Tab(text: 'Xếp hạng'),
               Tab(text: 'Tổng kết'),
+              Tab(text: 'Nhật ký'),
               Tab(text: 'Thành viên'),
             ],
           ),
@@ -76,6 +80,7 @@ class _ClubScreenState extends ConsumerState<ClubScreen> {
                       onRangeChanged: (value) =>
                           setState(() => _recapRange = value),
                     ),
+                    const _ClubJournalTab(),
                     _MembersTab(members: items, currentUid: _currentUid(ref)),
                   ],
                 ),
@@ -117,6 +122,41 @@ class _MembersTab extends StatelessWidget {
               for (final member in publicMembers)
                 _MemberCard(member: member, currentUid: currentUid),
             ],
+    );
+  }
+}
+
+class _ClubJournalTab extends ConsumerWidget {
+  const _ClubJournalTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final log = ref.watch(clubActivityLogProvider);
+    return log.when(
+      data: (items) => ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+        children: items.isEmpty
+            ? const [
+                GlassPanel(
+                  borderRadius: 22,
+                  padding: EdgeInsets.all(18),
+                  child: Text('Chưa có hoạt động public trong club.'),
+                ),
+              ]
+            : [
+                for (var index = 0; index < items.length; index++)
+                  ActivityTile(
+                    activity: items[index].activity,
+                    sequence: index + 1,
+                    ownerUid: items[index].member.uid,
+                    memberName: items[index].member.displayName,
+                    memberAvatarUrl: items[index].member.avatarUrl,
+                  ),
+              ],
+      ),
+      error: (error, stack) =>
+          Center(child: Text('Không thể tải nhật ký club: $error')),
+      loading: () => const Center(child: CircularProgressIndicator()),
     );
   }
 }
@@ -168,16 +208,26 @@ class _ClubRecapTab extends ConsumerWidget {
         final activeRate = entries.isEmpty
             ? 0.0
             : activeMembers / entries.length;
-        final averageDistancePerActiveMember = activeMembers == 0
-            ? 0.0
-            : totalDistance / activeMembers;
-        final averageDistancePerActivity = totalActivities == 0
-            ? 0.0
-            : totalDistance / totalActivities;
-        final averagePace = totalDistance <= 0
-            ? null
-            : totalTime / (totalDistance / 1000);
-        final totalHours = totalTime / 3600;
+        final fastestPace = _fastestPace(stats);
+        final longestRun = stats.fold<double>(
+          0,
+          (max, item) => item.longestDistanceMeters > max
+              ? item.longestDistanceMeters
+              : max,
+        );
+        final topActiveDays = stats.fold<int>(
+          0,
+          (max, item) => item.activeDays > max ? item.activeDays : max,
+        );
+        final powerMetrics = _clubPowerMetrics(
+          range: range,
+          memberCount: entries.length,
+          totalDistanceMeters: totalDistance,
+          totalMovingTimeSeconds: totalTime,
+          totalActivities: totalActivities,
+          activeRate: activeRate,
+          fastestPaceSecondsPerKm: fastestPace,
+        );
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
           children: [
@@ -192,93 +242,36 @@ class _ClubRecapTab extends ConsumerWidget {
               memberCount: entries.length,
             ),
             const SizedBox(height: 14),
-            _ClubMetricBarCard(
-              title: 'NHỊP CLUB',
-              rows: [
-                _ClubMetricBarData(
-                  label: 'QUÃNG ĐƯỜNG',
-                  value: formatDistance(totalDistance),
-                  score: totalDistance / 1000,
-                  color: _clubChartColor(1),
-                  subtitle: '$activeMembers thành viên active',
-                  onTap: () => _showContributionSheet(
-                    context,
-                    title: 'Đóng góp quãng đường',
-                    items: _contributionItems(
-                      entries,
-                      range,
-                      score: (stats) => stats.distanceMeters,
-                      value: (stats) => formatDistance(stats.distanceMeters),
-                    ),
-                  ),
-                ),
-                _ClubMetricBarData(
-                  label: 'THỜI GIAN',
-                  value: formatDuration(totalTime),
-                  score: totalHours,
-                  color: _clubChartColor(0.9),
-                  subtitle: 'tổng thời gian chạy',
-                  onTap: () => _showContributionSheet(
-                    context,
-                    title: 'Đóng góp thời gian',
-                    items: _contributionItems(
-                      entries,
-                      range,
-                      score: (stats) => stats.movingTimeSeconds.toDouble(),
-                      value: (stats) => formatDuration(stats.movingTimeSeconds),
-                    ),
-                  ),
-                ),
-                _ClubMetricBarData(
-                  label: 'SỐ BUỔI',
-                  value: '$totalActivities',
-                  score: totalActivities.toDouble(),
-                  color: _clubChartColor(0.8),
-                  subtitle: 'hoạt động trong $period',
-                  onTap: () => _showContributionSheet(
-                    context,
-                    title: 'Đóng góp số buổi',
-                    items: _contributionItems(
-                      entries,
-                      range,
-                      score: (stats) => stats.activityCount.toDouble(),
-                      value: (stats) => '${stats.activityCount} buổi',
-                    ),
-                  ),
-                ),
-              ],
+            PowerRadarCard(
+              title: 'CLUB POWER $periodTitle',
+              metrics: powerMetrics,
+              powerScore: averagePowerScore(powerMetrics),
             ),
             const SizedBox(height: 14),
-            _ClubQualityCard(
+            _ClubSignalCard(
               periodTitle: periodTitle,
               activeRate: activeRate,
-              averageDistancePerActiveMember: averageDistancePerActiveMember,
-              averageDistancePerActivity: averageDistancePerActivity,
-              averagePace: averagePace,
-              onKmPerActiveTap: () => _showContributionSheet(
+              fastestPace: fastestPace,
+              longestRun: longestRun,
+              topActiveDays: topActiveDays,
+              onActiveRateTap: () => _showContributionSheet(
                 context,
-                title: 'Km theo thành viên active',
+                title: 'Thành viên active',
                 items: _contributionItems(
                   entries,
                   range,
-                  score: (stats) => stats.distanceMeters,
-                  value: (stats) => formatDistance(stats.distanceMeters),
+                  score: (stats) => stats.distanceMeters > 0 ? 1 : 0,
+                  value: (stats) => stats.distanceMeters > 0 ? 'Active' : '--',
                 ),
               ),
-              onKmPerActivityTap: () => _showContributionSheet(
+              onTopActiveTap: () => _showContributionSheet(
                 context,
-                title: 'Km / buổi từng thành viên',
+                title: 'Ngày active từng thành viên',
                 items: _contributionItems(
                   entries,
                   range,
-                  score: (stats) => stats.activityCount == 0
-                      ? 0
-                      : stats.distanceMeters / stats.activityCount,
-                  value: (stats) => stats.activityCount == 0
-                      ? '--'
-                      : formatDistance(
-                          stats.distanceMeters / stats.activityCount,
-                        ),
+                  score: (stats) => stats.activeDays.toDouble(),
+                  value: (stats) => '${stats.activeDays} ngày',
                 ),
               ),
               onPaceTap: () => _showContributionSheet(
@@ -293,14 +286,14 @@ class _ClubRecapTab extends ConsumerWidget {
                   value: (stats) => formatPace(stats.fastestPaceSecondsPerKm),
                 ),
               ),
-              onActiveRateTap: () => _showContributionSheet(
+              onLongestRunTap: () => _showContributionSheet(
                 context,
-                title: 'Thành viên active',
+                title: 'Run dài nhất từng thành viên',
                 items: _contributionItems(
                   entries,
                   range,
-                  score: (stats) => stats.distanceMeters > 0 ? 1 : 0,
-                  value: (stats) => stats.distanceMeters > 0 ? 'Active' : '--',
+                  score: (stats) => stats.longestDistanceMeters,
+                  value: (stats) => formatDistance(stats.longestDistanceMeters),
                 ),
               ),
             ),
@@ -339,28 +332,28 @@ class _ClubRecapTab extends ConsumerWidget {
   }
 }
 
-class _ClubQualityCard extends StatelessWidget {
-  const _ClubQualityCard({
+class _ClubSignalCard extends StatelessWidget {
+  const _ClubSignalCard({
     required this.periodTitle,
     required this.activeRate,
-    required this.averageDistancePerActiveMember,
-    required this.averageDistancePerActivity,
-    required this.averagePace,
-    required this.onKmPerActiveTap,
-    required this.onKmPerActivityTap,
-    required this.onPaceTap,
+    required this.fastestPace,
+    required this.longestRun,
+    required this.topActiveDays,
     required this.onActiveRateTap,
+    required this.onTopActiveTap,
+    required this.onPaceTap,
+    required this.onLongestRunTap,
   });
 
   final String periodTitle;
   final double activeRate;
-  final double averageDistancePerActiveMember;
-  final double averageDistancePerActivity;
-  final double? averagePace;
-  final VoidCallback onKmPerActiveTap;
-  final VoidCallback onKmPerActivityTap;
+  final double? fastestPace;
+  final double longestRun;
+  final int topActiveDays;
   final VoidCallback onPaceTap;
   final VoidCallback onActiveRateTap;
+  final VoidCallback onTopActiveTap;
+  final VoidCallback onLongestRunTap;
 
   @override
   Widget build(BuildContext context) {
@@ -372,7 +365,7 @@ class _ClubQualityCard extends StatelessWidget {
         children: [
           _ClubSectionHeader(
             icon: Icons.auto_graph,
-            title: 'CHẤT LƯỢNG $periodTitle',
+            title: 'DẤU HIỆU $periodTitle',
             trailing: '${(activeRate * 100).round()}% active',
           ),
           const SizedBox(height: 12),
@@ -380,19 +373,19 @@ class _ClubQualityCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _RecapStat(
-                  label: 'KM / ACTIVE',
-                  value: formatDistance(averageDistancePerActiveMember),
+                  label: 'ACTIVE RATE',
+                  value: '${(activeRate * 100).round()}%',
                   color: _clubChartColor(1),
-                  onTap: onKmPerActiveTap,
+                  onTap: onActiveRateTap,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _RecapStat(
-                  label: 'KM / BUỔI',
-                  value: formatDistance(averageDistancePerActivity),
+                  label: 'TOP ACTIVE',
+                  value: '$topActiveDays ngày',
                   color: _clubChartColor(0.9),
-                  onTap: onKmPerActivityTap,
+                  onTap: onTopActiveTap,
                 ),
               ),
             ],
@@ -402,8 +395,8 @@ class _ClubQualityCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _RecapStat(
-                  label: 'PACE CLUB',
-                  value: formatPace(averagePace),
+                  label: 'PACE NHANH',
+                  value: formatPace(fastestPace),
                   color: _clubChartColor(1),
                   onTap: onPaceTap,
                 ),
@@ -411,10 +404,10 @@ class _ClubQualityCard extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: _RecapStat(
-                  label: 'MẬT ĐỘ',
-                  value: '${(activeRate * 100).round()}%',
+                  label: 'RUN DÀI',
+                  value: formatDistance(longestRun),
                   color: _clubChartColor(0.9),
-                  onTap: onActiveRateTap,
+                  onTap: onLongestRunTap,
                 ),
               ),
             ],
@@ -782,36 +775,6 @@ class _RecapStat extends StatelessWidget {
   }
 }
 
-class _ClubMetricBarCard extends StatelessWidget {
-  const _ClubMetricBarCard({required this.title, required this.rows});
-
-  final String title;
-  final List<_ClubMetricBarData> rows;
-
-  @override
-  Widget build(BuildContext context) {
-    final maxScore = rows.fold<double>(
-      0,
-      (max, row) => row.score > max ? row.score : max,
-    );
-    return GlassPanel(
-      borderRadius: 22,
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _ClubSectionHeader(icon: Icons.stacked_line_chart, title: title),
-          const SizedBox(height: 12),
-          for (final row in rows) ...[
-            _ClubMetricBarRow(row: row, maxScore: maxScore),
-            if (row != rows.last) const SizedBox(height: 14),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 class _ClubMetricBarData {
   const _ClubMetricBarData({
     required this.label,
@@ -1107,6 +1070,70 @@ class _ContributionItem {
   final LeaderboardEntry entry;
   final double score;
   final String value;
+}
+
+List<PowerRadarMetric> _clubPowerMetrics({
+  required _ClubRecapRange range,
+  required int memberCount,
+  required double totalDistanceMeters,
+  required int totalMovingTimeSeconds,
+  required int totalActivities,
+  required double activeRate,
+  required double? fastestPaceSecondsPerKm,
+}) {
+  final safeMemberCount = memberCount <= 0 ? 1 : memberCount;
+  final weekly = range == _ClubRecapRange.currentWeek;
+  final volumeTargetKm = safeMemberCount * (weekly ? 15.0 : 60.0);
+  final loadTargetSeconds = safeMemberCount * (weekly ? 3 * 3600 : 12 * 3600);
+  final averageDistanceMeters = totalActivities == 0
+      ? 0.0
+      : totalDistanceMeters / totalActivities;
+
+  return [
+    PowerRadarMetric(
+      label: 'VOLUME',
+      value: formatDistance(totalDistanceMeters),
+      score: powerScoreRatio(totalDistanceMeters / 1000, volumeTargetKm),
+      color: AppColors.blueGlow,
+    ),
+    PowerRadarMetric(
+      label: 'ACTIVE',
+      value: '${(activeRate * 100).round()}%',
+      score: activeRate.clamp(0.0, 1.0).toDouble(),
+      color: AppColors.amber,
+    ),
+    PowerRadarMetric(
+      label: 'LOAD',
+      value: formatDuration(totalMovingTimeSeconds),
+      score: powerScoreRatio(
+        totalMovingTimeSeconds.toDouble(),
+        loadTargetSeconds.toDouble(),
+      ),
+      color: AppColors.red,
+    ),
+    PowerRadarMetric(
+      label: 'AVG',
+      value: formatDistance(averageDistanceMeters),
+      score: powerScoreRatio(averageDistanceMeters / 1000, 5),
+      color: const Color(0xff8b5cf6),
+    ),
+    PowerRadarMetric(
+      label: 'TỐC',
+      value: formatPace(fastestPaceSecondsPerKm),
+      score: powerSpeedScore(fastestPaceSecondsPerKm),
+      color: const Color(0xff22c55e),
+    ),
+  ];
+}
+
+double? _fastestPace(List<LeaderboardStats> stats) {
+  double? fastest;
+  for (final item in stats) {
+    final pace = item.fastestPaceSecondsPerKm;
+    if (pace == null || !pace.isFinite || pace <= 0) continue;
+    if (fastest == null || pace < fastest) fastest = pace;
+  }
+  return fastest;
 }
 
 List<_ContributionItem> _contributionItems(

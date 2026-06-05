@@ -11,12 +11,16 @@ class ActivityTile extends StatelessWidget {
     required this.activity,
     this.sequence,
     this.ownerUid,
+    this.memberName,
+    this.memberAvatarUrl,
     super.key,
   });
 
   final ActivitySummary activity;
   final int? sequence;
   final String? ownerUid;
+  final String? memberName;
+  final String? memberAvatarUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -73,6 +77,13 @@ class ActivityTile extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            if (memberName != null) ...[
+                              _MemberStamp(
+                                name: memberName!,
+                                avatarUrl: memberAvatarUrl,
+                              ),
+                              const SizedBox(height: 10),
+                            ],
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -180,6 +191,51 @@ class ActivityTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _MemberStamp extends StatelessWidget {
+  const _MemberStamp({required this.name, required this.avatarUrl});
+
+  final String name;
+  final String? avatarUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return Row(
+      children: [
+        CircleAvatar(
+          radius: 13,
+          backgroundColor: AppColors.blueGlow.withValues(alpha: 0.16),
+          backgroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl!),
+          child: avatarUrl == null
+              ? Text(
+                  name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(),
+                  style: const TextStyle(
+                    color: AppColors.blueGlow,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                )
+              : null,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: onSurface.withValues(alpha: 0.72),
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

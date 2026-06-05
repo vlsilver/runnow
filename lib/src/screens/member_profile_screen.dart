@@ -10,6 +10,7 @@ import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/consistency_heatmap.dart';
 import 'package:myrun/src/widgets/discipline_card.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/personal_power_card.dart';
 import 'package:myrun/src/widgets/training_volume_chart.dart';
 
 class MemberProfileScreen extends ConsumerWidget {
@@ -89,6 +90,8 @@ class _MemberDashboard extends StatelessWidget {
           dailyDistances: dailyDistances,
           month: month,
         ),
+        const SizedBox(height: 20),
+        PersonalPowerCard(activities: activities),
         const SizedBox(height: 20),
         DisciplineCard(stats: discipline),
         const SizedBox(height: 20),
