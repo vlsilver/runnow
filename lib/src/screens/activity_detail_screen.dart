@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/share.dart';
@@ -51,11 +52,20 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             RouteMap(encodedPolyline: item.summary.polyline),
+            if (item.streams.isEmpty) ...[
+              const SizedBox(height: 16),
+              _CachedSummaryFallback(
+                detail: item,
+                isMemberView: widget.ownerUid != null,
+              ),
+            ],
             const SizedBox(height: 16),
-            StreamChart(streams: item.streams),
-            if (item.streams['heartrate']?.isNotEmpty == true) ...[
-              const SizedBox(height: 12),
-              HeartRateZoneChart(streams: item.streams),
+            if (item.streams.isNotEmpty) ...[
+              StreamChart(streams: item.streams),
+              if (item.streams['heartrate']?.isNotEmpty == true) ...[
+                const SizedBox(height: 12),
+                HeartRateZoneChart(streams: item.streams),
+              ],
             ],
           ],
         ),
@@ -73,6 +83,142 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (context) => _ShareComposer(detail: detail),
+    );
+  }
+}
+
+class _CachedSummaryFallback extends StatelessWidget {
+  const _CachedSummaryFallback({
+    required this.detail,
+    required this.isMemberView,
+  });
+
+  final ActivityDetail detail;
+  final bool isMemberView;
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = detail.summary;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return GlassPanel(
+      borderRadius: 22,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.info_outline, color: AppColors.amber, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isMemberView ? 'DETAIL CHƯA CACHE' : 'DETAIL CHƯA HYDRATE',
+                  style: TextStyle(
+                    color: onSurface.withValues(alpha: 0.66),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _FallbackMetric(
+                label: 'KM',
+                value: formatDistance(summary.distanceMeters),
+              ),
+              _FallbackMetric(
+                label: 'TIME',
+                value: formatDuration(summary.movingTimeSeconds),
+              ),
+              _FallbackMetric(
+                label: 'PACE',
+                value: formatPace(summary.paceSecondsPerKm),
+              ),
+              if (summary.averageHeartRate != null)
+                _FallbackMetric(
+                  label: 'HR',
+                  value: '${summary.averageHeartRate!.round()} bpm',
+                ),
+              if (summary.averageCadence != null)
+                _FallbackMetric(
+                  label: 'CADENCE',
+                  value: '${summary.averageCadence!.round()} rpm',
+                ),
+              if (summary.elevationGainMeters != null)
+                _FallbackMetric(
+                  label: 'ELEV',
+                  value: '${summary.elevationGainMeters!.round()} m',
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            isMemberView
+                ? 'Hoạt động public này mới có summary. Charts/streams chỉ hiện khi chủ hoạt động đã hydrate detail lên Firestore.'
+                : 'Charts/streams sẽ hiện sau khi tải detail từ Strava thành công.',
+            style: TextStyle(
+              color: onSurface.withValues(alpha: 0.58),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FallbackMetric extends StatelessWidget {
+  const _FallbackMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return SizedBox(
+      width: 96,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: onSurface.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: onSurface.withValues(alpha: 0.48),
+                  fontSize: 9,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppColors.blueGlow,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/training_power.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
@@ -468,13 +470,16 @@ class _RankingTab extends ConsumerWidget {
             if (entries.isEmpty)
               const _EmptyRanking()
             else
-              for (var index = 0; index < entries.length; index++)
-                _RankingCard(
-                  rank: index + 1,
-                  entry: entries[index],
+              _ShareableClubCard(
+                title:
+                    'RunNow bảng xếp hạng ${_rankingMetricLabel(metric)} ${_rankingRangeLabel(range)}',
+                child: _RankingBoardCard(
+                  entries: entries,
                   metric: metric,
+                  range: range,
                   currentUid: currentUid,
                 ),
+              ),
           ],
         );
       },
@@ -547,6 +552,93 @@ class _RankingControls extends StatelessWidget {
               onChanged: onRangeChanged,
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ShareableClubCard extends StatefulWidget {
+  const _ShareableClubCard({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  State<_ShareableClubCard> createState() => _ShareableClubCardState();
+}
+
+class _ShareableClubCardState extends State<_ShareableClubCard> {
+  final _cardKey = GlobalKey();
+  bool _sharing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: _sharing ? null : _share,
+      child: RepaintBoundary(key: _cardKey, child: widget.child),
+    );
+  }
+
+  Future<void> _share() async {
+    setState(() => _sharing = true);
+    HapticFeedback.mediumImpact();
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      await shareDashboardCard(
+        cardKey: _cardKey,
+        shareOriginContext: context,
+        title: widget.title,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Không thể chia sẻ: $error')));
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+}
+
+class _RankingBoardCard extends StatelessWidget {
+  const _RankingBoardCard({
+    required this.entries,
+    required this.metric,
+    required this.range,
+    required this.currentUid,
+  });
+
+  final List<_RankingEntry> entries;
+  final _RankingMetric metric;
+  final _RankingRange range;
+  final String? currentUid;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassPanel(
+      borderRadius: 22,
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _ClubSectionHeader(
+            icon: Icons.emoji_events,
+            title: 'BẢNG XẾP HẠNG',
+            trailing:
+                '${_rankingMetricLabel(metric)} · ${_rankingRangeLabel(range)}',
+            color: AppColors.amber,
+          ),
+          const SizedBox(height: 12),
+          for (var index = 0; index < entries.length; index++)
+            _RankingCard(
+              rank: index + 1,
+              entry: entries[index],
+              metric: metric,
+              currentUid: currentUid,
+            ),
         ],
       ),
     );
@@ -1572,6 +1664,25 @@ String _scoreLabel(_RankingEntry entry, _RankingMetric metric) {
       entry.stats.longestDistanceMeters,
     ),
     _RankingMetric.activityCount => '${entry.stats.activityCount} buổi',
+  };
+}
+
+String _rankingMetricLabel(_RankingMetric metric) {
+  return switch (metric) {
+    _RankingMetric.distance => 'Km',
+    _RankingMetric.time => 'Thời gian',
+    _RankingMetric.consistency => 'Đều',
+    _RankingMetric.pace => 'Pace',
+    _RankingMetric.longestRun => 'Dài nhất',
+    _RankingMetric.activityCount => 'Buổi',
+  };
+}
+
+String _rankingRangeLabel(_RankingRange range) {
+  return switch (range) {
+    _RankingRange.rollingSevenDays => '7 ngày',
+    _RankingRange.currentWeek => 'Tuần này',
+    _RankingRange.currentMonth => 'Tháng này',
   };
 }
 

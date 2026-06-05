@@ -183,8 +183,8 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
         'athleteId': StravaClient.instance.athleteId,
         'lastSyncedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-      await _refreshCurrentLeaderboardEntry();
     }
+    await _refreshCurrentLeaderboardEntry();
     _debugLog('Sync completed: changed $changed activities.');
     return changed;
   }
@@ -615,6 +615,15 @@ class FirestoreMemberRepository implements MemberRepository {
       SetOptions(merge: true),
     );
     await batch.commit();
+    await refreshLeaderboardEntryForUser(
+      uid: _uid,
+      firestore: _firestore,
+      debugLog: (message) {
+        if (kDebugMode) {
+          debugPrint('[MemberRepository] $message');
+        }
+      },
+    );
   }
 }
 
