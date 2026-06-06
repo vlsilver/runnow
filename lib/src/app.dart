@@ -9,6 +9,7 @@ import 'package:myrun/src/screens/journal_screen.dart';
 import 'package:myrun/src/screens/member_profile_screen.dart';
 import 'package:myrun/src/screens/onboarding_screen.dart';
 import 'package:myrun/src/screens/settings_screen.dart';
+import 'package:myrun/src/screens/tracking_screen.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
 
@@ -39,6 +40,14 @@ final _router = GoRouter(
             GoRoute(
               path: '/club',
               builder: (context, state) => const ClubScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/tracking',
+              builder: (context, state) => const TrackingScreen(),
             ),
           ],
         ),
@@ -143,6 +152,11 @@ class _Scaffold extends StatelessWidget {
                 icon: Icon(Icons.groups_2_outlined),
                 selectedIcon: Icon(Icons.groups_2),
                 label: 'Club',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.radio_button_checked_outlined),
+                selectedIcon: Icon(Icons.radio_button_checked),
+                label: 'Chạy',
               ),
               NavigationDestination(
                 icon: Icon(Icons.settings_outlined),

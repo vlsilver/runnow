@@ -86,6 +86,10 @@ final activitiesProvider = StreamProvider<List<ActivitySummary>>(
   (ref) => ref.watch(activityRepositoryProvider).watchActivities(),
 );
 
+final trackedTrialActivitiesProvider = StreamProvider<List<ActivitySummary>>(
+  (ref) => ref.watch(activityRepositoryProvider).watchTrackedTrialActivities(),
+);
+
 final activityDetailProvider = FutureProvider.family<ActivityDetail, String>((
   ref,
   activityId,

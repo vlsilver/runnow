@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/app.dart';
@@ -43,9 +44,18 @@ void main() {
     expect(find.text('Quãng đường'), findsOneWidget);
     expect(find.text('Mục tiêu tuần'), findsOneWidget);
     expect(find.text('MỤC TIÊU'), findsNothing);
-    await tester.scrollUntilVisible(find.text('CONSISTENCY'), 300);
+    final dashboardScroll = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+      find.text('CONSISTENCY'),
+      300,
+      scrollable: dashboardScroll,
+    );
     expect(find.text('CONSISTENCY'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Gần đây'), 300);
+    await tester.scrollUntilVisible(
+      find.text('Gần đây'),
+      300,
+      scrollable: dashboardScroll,
+    );
     expect(find.text('Gần đây'), findsOneWidget);
     expect(find.text('Feed'), findsNothing);
   });

@@ -8,7 +8,10 @@ void main() {
     final controller = SyncController(_StubRepository(imported: 3));
     await controller.sync();
     expect(controller.lastSyncSucceeded, isTrue);
-    expect(controller.message, 'Đồng bộ Strava hoàn tất: cập nhật 3 hoạt động.');
+    expect(
+      controller.message,
+      'Đồng bộ Strava hoàn tất: cập nhật 3 hoạt động.',
+    );
   });
 
   test('reports repository failures', () async {
@@ -60,11 +63,21 @@ class _StubRepository implements ActivityRepository {
       throw UnimplementedError();
 
   @override
+  Stream<List<ActivitySummary>> watchTrackedTrialActivities() =>
+      const Stream.empty();
+
+  @override
   Future<int> sync() async {
     syncCalls += 1;
     if (error != null) throw error!;
     return imported;
   }
+
+  @override
+  Future<void> saveTrackedActivity(
+    ActivityDetail detail, {
+    Map<String, dynamic>? trackingDebug,
+  }) async {}
 
   @override
   Stream<List<ActivitySummary>> watchActivities() => const Stream.empty();

@@ -8,8 +8,13 @@ import 'package:myrun/src/models.dart';
 
 abstract interface class ActivityRepository {
   Stream<List<ActivitySummary>> watchActivities();
+  Stream<List<ActivitySummary>> watchTrackedTrialActivities();
   Future<ActivityDetail> getDetail(String activityId);
   Future<int> sync();
+  Future<void> saveTrackedActivity(
+    ActivityDetail detail, {
+    Map<String, dynamic>? trackingDebug,
+  });
 }
 
 abstract interface class FeedRepository {
@@ -62,6 +67,19 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
       _debugLog('Firestore snapshot: ${snapshot.docs.length} activities.');
       return snapshot.docs
           .map((document) => ActivitySummary.fromMap(document.data()))
+          .where((activity) => activity.source == ActivitySource.strava)
+          .toList();
+    });
+  }
+
+  @override
+  Stream<List<ActivitySummary>> watchTrackedTrialActivities() {
+    return _activities.orderBy('startedAt', descending: true).snapshots().map((
+      snapshot,
+    ) {
+      return snapshot.docs
+          .map((document) => ActivitySummary.fromMap(document.data()))
+          .where((activity) => activity.source == ActivitySource.runnow)
           .toList();
     });
   }
@@ -189,6 +207,26 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
     return changed;
   }
 
+  @override
+  Future<void> saveTrackedActivity(
+    ActivityDetail detail, {
+    Map<String, dynamic>? trackingDebug,
+  }) async {
+    if (detail.summary.source != ActivitySource.runnow) {
+      throw StateError('Chỉ lưu activity tracking nội bộ bằng API này.');
+    }
+    final document = _activities.doc(detail.summary.id);
+    await document.set(
+      trackedActivityToFirestoreMap(
+        detail,
+        trackingDebug: trackingDebug,
+        savedAt: FieldValue.serverTimestamp(),
+      ),
+      SetOptions(merge: true),
+    );
+    _debugLog('Saved tracked trial activity ${detail.summary.id}.');
+  }
+
   void _debugLog(String message) {
     if (kDebugMode) debugPrint('[ActivityRepository] $message');
   }
@@ -238,7 +276,22 @@ class DemoActivityRepository implements ActivityRepository {
   ];
 
   @override
-  Stream<List<ActivitySummary>> watchActivities() => Stream.value(_activities);
+  Stream<List<ActivitySummary>> watchActivities() {
+    return Stream.value(
+      _activities
+          .where((activity) => activity.source == ActivitySource.strava)
+          .toList(),
+    );
+  }
+
+  @override
+  Stream<List<ActivitySummary>> watchTrackedTrialActivities() {
+    return Stream.value(
+      _activities
+          .where((activity) => activity.source == ActivitySource.runnow)
+          .toList(),
+    );
+  }
 
   @override
   Future<ActivityDetail> getDetail(String activityId) async {
@@ -254,6 +307,15 @@ class DemoActivityRepository implements ActivityRepository {
 
   @override
   Future<int> sync() async => _activities.length;
+
+  @override
+  Future<void> saveTrackedActivity(
+    ActivityDetail detail, {
+    Map<String, dynamic>? trackingDebug,
+  }) async {
+    _activities.removeWhere((activity) => activity.id == detail.summary.id);
+    _activities.insert(0, detail.summary);
+  }
 }
 
 class DemoFeedRepository implements FeedRepository {
@@ -499,6 +561,7 @@ class FirestoreMemberRepository implements MemberRepository {
         .map(
           (snapshot) => snapshot.docs
               .map((document) => ActivitySummary.fromMap(document.data()))
+              .where((activity) => activity.source == ActivitySource.strava)
               .toList(),
         );
   }
@@ -655,6 +718,9 @@ ActivitySummary _summaryFromRaw(
     distanceMeters: (raw['distance'] as num?)?.toDouble() ?? 0,
     movingTimeSeconds: (raw['moving_time'] as num?)?.toInt() ?? 0,
     elapsedTimeSeconds: (raw['elapsed_time'] as num?)?.toInt() ?? 0,
+    source: ActivitySource.strava,
+    sourceActivityId: '${raw['id']}',
+    recordingDevice: raw['device_name'] as String?,
     averageHeartRate:
         (raw['average_heartrate'] as num?)?.toDouble() ??
         averageHeartRateFallback,
@@ -704,8 +770,12 @@ Map<String, dynamic> _summaryToMap(
   bool includeHydrated = true,
 }) {
   return {
+    'schemaVersion': summary.schemaVersion,
     'id': summary.id,
     'name': summary.name,
+    'source': summary.source.value,
+    'sourceActivityId': summary.sourceActivityId,
+    'recordingDevice': summary.recordingDevice,
     'sportType': _sportType(summary.kind),
     'startedAt': summary.startedAt.toUtc().toIso8601String(),
     'distanceMeters': summary.distanceMeters,
@@ -715,6 +785,8 @@ Map<String, dynamic> _summaryToMap(
     'averageCadence': summary.averageCadence,
     'elevationGainMeters': summary.elevationGainMeters,
     if (includePolyline) 'polyline': summary.polyline,
+    if (summary.routePoints.isNotEmpty)
+      'routePoints': summary.routePoints.map((point) => point.toMap()).toList(),
     if (includeHydrated) 'hydrated': summary.hydrated,
   }..removeWhere((key, value) => value == null);
 }
@@ -722,6 +794,25 @@ Map<String, dynamic> _summaryToMap(
 @visibleForTesting
 Map<String, dynamic> activitySummaryToSyncMap(ActivitySummary summary) {
   return _summaryToMap(summary, includeHydrated: false);
+}
+
+@visibleForTesting
+Map<String, dynamic> trackedActivityToFirestoreMap(
+  ActivityDetail detail, {
+  Map<String, dynamic>? trackingDebug,
+  Object? savedAt,
+}) {
+  if (detail.summary.source != ActivitySource.runnow) {
+    throw StateError('Tracked activity phải có source=runnow.');
+  }
+  return {
+    ..._detailToMap(detail),
+    'hydrated': true,
+    'streamsHydrated': true,
+    'streamsVersion': FirestoreStravaActivityRepository._streamsVersion,
+    'trackingDebug': ?trackingDebug,
+    'trackingSavedAt': ?savedAt,
+  };
 }
 
 @visibleForTesting
@@ -762,6 +853,7 @@ Future<void> refreshLeaderboardEntryForUser({
       .then(
         (snapshot) => snapshot.docs
             .map((document) => ActivitySummary.fromMap(document.data()))
+            .where((activity) => activity.source == ActivitySource.strava)
             .toList(),
       );
   final user = await firestore.collection('users').doc(uid).get();
