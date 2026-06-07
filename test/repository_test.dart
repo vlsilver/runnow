@@ -38,6 +38,102 @@ void main() {
     expect(activitySummaryToSyncMap(summary)['schemaVersion'], 1);
   });
 
+  test('builds route points from Strava latlng stream fallback', () {
+    final points = stravaRoutePointsFromStreams({
+      'time': {
+        'data': [0, 12, 25],
+      },
+      'latlng': {
+        'data': [
+          [10.1, 106.1],
+          [10.2, 106.2],
+          [10.3, 106.3],
+        ],
+      },
+    }, startedAt: DateTime.utc(2026, 6, 6, 14, 25, 47));
+
+    expect(points, hasLength(3));
+    expect(points.first.latitude, 10.1);
+    expect(points.first.longitude, 106.1);
+    expect(points.last.timestamp.toUtc(), DateTime.utc(2026, 6, 6, 14, 26, 12));
+  });
+
+  test('backfills missing Strava streams without touching RunNow trials', () {
+    expect(
+      shouldBackfillStravaStreams({
+        'source': 'runnow',
+        'streamsVersion': 3,
+      }, currentStreamsVersion: 4),
+      isFalse,
+    );
+    expect(
+      shouldBackfillStravaStreams({
+        'source': 'strava',
+        'streamsVersion': 3,
+        'streams': <String, dynamic>{},
+      }, currentStreamsVersion: 4),
+      isTrue,
+    );
+    expect(
+      shouldBackfillStravaStreams({
+        'source': 'strava',
+        'streamsVersion': 3,
+      }, currentStreamsVersion: 4),
+      isTrue,
+    );
+    expect(
+      shouldBackfillStravaStreams({
+        'source': 'strava',
+        'streamsVersion': 4,
+      }, currentStreamsVersion: 4),
+      isTrue,
+    );
+    expect(
+      shouldBackfillStravaStreams({
+        'source': 'strava',
+        'streamsHydrated': false,
+        'streamsVersion': 4,
+      }, currentStreamsVersion: 4),
+      isTrue,
+    );
+    expect(
+      shouldBackfillStravaStreams({
+        'source': 'strava',
+        'streamsHydrated': true,
+        'streamsVersion': 4,
+      }, currentStreamsVersion: 4),
+      isFalse,
+    );
+  });
+
+  test('downsamples long Strava streams before Firestore caching', () {
+    final streams = {
+      'distance': [for (var index = 0; index < 14169; index++) index * 10.0],
+      'heartrate': [for (var index = 0; index < 14169; index++) 120.0 + index],
+      'velocity_smooth': [
+        for (var index = 0; index < 14169; index++) 2.5 + index / 1000,
+      ],
+    };
+
+    final sampled = downsampleStreams(streams, maxSamples: 300);
+
+    expect(sampled['distance'], hasLength(300));
+    expect(sampled['heartrate'], hasLength(300));
+    expect(sampled['velocity_smooth'], hasLength(300));
+    expect(sampled['distance']!.first, streams['distance']!.first);
+    expect(sampled['distance']!.last, streams['distance']!.last);
+  });
+
+  test('removes empty and non-finite stream values before caching', () {
+    final sampled = downsampleStreams({
+      'distance': [0, double.nan, 1000, double.infinity],
+      'latlng': const [],
+    }, maxSamples: 300);
+
+    expect(sampled.keys, ['distance']);
+    expect(sampled['distance'], [0, 1000]);
+  });
+
   test('tracked activity map stores detail and trial debug payload', () {
     final detail = ActivityDetail(
       summary: ActivitySummary(

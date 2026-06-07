@@ -8,6 +8,7 @@ import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/share.dart';
 import 'package:myrun/src/strava_client.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/activity_records_card.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/consistency_heatmap.dart';
 import 'package:myrun/src/widgets/discipline_card.dart';
@@ -203,13 +204,24 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
         ),
         const SizedBox(height: 20),
         _ShareableDashboardCard(
+          title: 'RunNow consistency 8 tuần',
+          builder: (_) => ConsistencyHeatmap(activities: widget.activities),
+        ),
+        const SizedBox(height: 20),
+        _ShareableDashboardCard(
           title: 'RunNow kỷ luật cá nhân',
           builder: (_) => DisciplineCard(stats: discipline),
         ),
         const SizedBox(height: 20),
         _ShareableDashboardCard(
-          title: 'RunNow consistency 8 tuần',
-          builder: (_) => ConsistencyHeatmap(activities: widget.activities),
+          title: 'RunNow kỷ lục cá nhân',
+          builder: (_) => ActivityRecordsCard(
+            title: 'KỶ LỤC CÁ NHÂN',
+            entries: [
+              for (final activity in widget.activities)
+                ActivityRecordEntry(activity: activity),
+            ],
+          ),
         ),
         const SizedBox(height: 20),
         _ShareableDashboardCard(
@@ -245,119 +257,142 @@ Future<void> _editTrainingGoals(
   WidgetRef ref,
   TrainingGoals goals,
 ) async {
-  final weeklyController = TextEditingController(
-    text: goals.weeklyDistanceMeters > 0
-        ? (goals.weeklyDistanceMeters / 1000).toStringAsFixed(1)
-        : '',
-  );
-  final monthlyController = TextEditingController(
-    text: goals.monthlyDistanceMeters > 0
-        ? (goals.monthlyDistanceMeters / 1000).toStringAsFixed(1)
-        : '',
-  );
   final result = await showModalBottomSheet<TrainingGoals>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
-    builder: (context) {
-      final isLight = Theme.of(context).brightness == Brightness.light;
-      final onSurface = Theme.of(context).colorScheme.onSurface;
-      return Padding(
-        padding: EdgeInsets.only(
-          left: 14,
-          right: 14,
-          bottom: MediaQuery.viewInsetsOf(context).bottom + 12,
-        ),
-        child: GlassPanel(
-          borderRadius: 22,
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-          gradient: LinearGradient(
-            colors: isLight
-                ? const [Color(0xfffbfcff), Color(0xffe8f0f8)]
-                : const [
-                    Color(0xf207172b),
-                    Color(0xe0062442),
-                    Color(0xcc151637),
-                  ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: onSurface.withValues(alpha: 0.24),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  const Icon(Icons.flag, color: AppColors.red),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Mục tiêu luyện tập',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: onSurface,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _GoalInputField(
-                controller: weeklyController,
-                label: 'Tuần',
-                hint: 'VD: 15',
-              ),
-              const SizedBox(height: 10),
-              _GoalInputField(
-                controller: monthlyController,
-                label: 'Tháng',
-                hint: 'VD: 60',
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Huỷ'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => Navigator.of(context).pop(
-                        TrainingGoals(
-                          weeklyDistanceMeters:
-                              _parseGoalKm(weeklyController.text) * 1000,
-                          monthlyDistanceMeters:
-                              _parseGoalKm(monthlyController.text) * 1000,
-                        ),
-                      ),
-                      child: const Text('Lưu'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      );
-    },
+    builder: (context) => _TrainingGoalsSheet(goals: goals),
   );
-  weeklyController.dispose();
-  monthlyController.dispose();
   if (result == null) return;
   await ref.read(trainingGoalRepositoryProvider).saveGoals(result);
+}
+
+class _TrainingGoalsSheet extends StatefulWidget {
+  const _TrainingGoalsSheet({required this.goals});
+
+  final TrainingGoals goals;
+
+  @override
+  State<_TrainingGoalsSheet> createState() => _TrainingGoalsSheetState();
+}
+
+class _TrainingGoalsSheetState extends State<_TrainingGoalsSheet> {
+  late final TextEditingController _weeklyController;
+  late final TextEditingController _monthlyController;
+
+  @override
+  void initState() {
+    super.initState();
+    _weeklyController = TextEditingController(
+      text: widget.goals.weeklyDistanceMeters > 0
+          ? (widget.goals.weeklyDistanceMeters / 1000).toStringAsFixed(1)
+          : '',
+    );
+    _monthlyController = TextEditingController(
+      text: widget.goals.monthlyDistanceMeters > 0
+          ? (widget.goals.monthlyDistanceMeters / 1000).toStringAsFixed(1)
+          : '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _weeklyController.dispose();
+    _monthlyController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 14,
+        right: 14,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 12,
+      ),
+      child: GlassPanel(
+        borderRadius: 22,
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+        gradient: LinearGradient(
+          colors: isLight
+              ? const [Color(0xfffbfcff), Color(0xffe8f0f8)]
+              : const [Color(0xf207172b), Color(0xe0062442), Color(0xcc151637)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: onSurface.withValues(alpha: 0.24),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                const Icon(Icons.flag, color: AppColors.red),
+                const SizedBox(width: 8),
+                Text(
+                  'Mục tiêu luyện tập',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: onSurface,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _GoalInputField(
+              controller: _weeklyController,
+              label: 'Tuần',
+              hint: 'VD: 15',
+            ),
+            const SizedBox(height: 10),
+            _GoalInputField(
+              controller: _monthlyController,
+              label: 'Tháng',
+              hint: 'VD: 60',
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Huỷ'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop(
+                      TrainingGoals(
+                        weeklyDistanceMeters:
+                            _parseGoalKm(_weeklyController.text) * 1000,
+                        monthlyDistanceMeters:
+                            _parseGoalKm(_monthlyController.text) * 1000,
+                      ),
+                    ),
+                    child: const Text('Lưu'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _GoalInputField extends StatelessWidget {

@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -45,10 +46,12 @@ abstract interface class MemberRepository {
 class FirestoreStravaActivityRepository implements ActivityRepository {
   FirestoreStravaActivityRepository(this._auth, this._firestore);
 
-  static const _streamsVersion = 3;
+  static const _streamsVersion = 4;
+  static const _maxCachedStreamSamples = 300;
 
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
+  final Map<String, Future<ActivityDetail>> _detailRequests = {};
 
   String get _uid {
     final uid = _auth.currentUser?.uid;
@@ -86,6 +89,21 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
 
   @override
   Future<ActivityDetail> getDetail(String activityId) async {
+    final existing = _detailRequests[activityId];
+    if (existing != null) {
+      _debugLog('Detail request already running for $activityId. Reusing it.');
+      return existing;
+    }
+    final request = _loadDetail(activityId);
+    _detailRequests[activityId] = request;
+    try {
+      return await request;
+    } finally {
+      _detailRequests.remove(activityId);
+    }
+  }
+
+  Future<ActivityDetail> _loadDetail(String activityId) async {
     final document = _activities.doc(activityId);
     final cached = await document.get();
     var cachedData = cached.data();
@@ -95,20 +113,41 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
       if (detailData['hydrated'] != true) {
         await document.set({'hydrated': true}, SetOptions(merge: true));
       }
-      if (detailData['streamsVersion'] != _streamsVersion) {
+      if (shouldBackfillStravaStreams(
+        detailData,
+        currentStreamsVersion: _streamsVersion,
+      )) {
         try {
-          final streams = await _fetchStreams(activityId);
+          final fetchedStreams = await _fetchStreams(
+            activityId,
+            startedAt: DateTime.parse(detailData['startedAt'] as String),
+          );
           await document.set({
-            'streams': streams,
+            'streams': fetchedStreams.streams,
+            if (fetchedStreams.routePoints.isNotEmpty)
+              'routePoints': fetchedStreams.routePoints
+                  .map((point) => point.toMap())
+                  .toList(),
             'streamsHydrated': true,
             'streamsVersion': _streamsVersion,
           }, SetOptions(merge: true));
-          detailData = {...detailData, 'streams': streams};
+          detailData = {
+            ...detailData,
+            'streams': fetchedStreams.streams,
+            if (fetchedStreams.routePoints.isNotEmpty)
+              'routePoints': fetchedStreams.routePoints
+                  .map((point) => point.toMap())
+                  .toList(),
+          };
           _debugLog(
             'Backfilled streams version $_streamsVersion for $activityId.',
           );
         } catch (error) {
           _debugLog('Could not backfill streams for $activityId: $error');
+          await document.set({
+            'streamsHydrated': false,
+            'streamsVersion': _streamsVersion,
+          }, SetOptions(merge: true));
         }
       }
       return ActivityDetail.fromMap({...detailData, 'hydrated': true});
@@ -117,8 +156,14 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
     final raw = await StravaClient.instance.getActivityDetail(activityId);
     var streamsHydrated = false;
     var streams = <String, List<double>>{};
+    var routePoints = <RoutePoint>[];
     try {
-      streams = await _fetchStreams(activityId);
+      final fetchedStreams = await _fetchStreams(
+        activityId,
+        startedAt: DateTime.parse(raw['start_date'] as String),
+      );
+      streams = fetchedStreams.streams;
+      routePoints = fetchedStreams.routePoints;
       streamsHydrated = true;
       _debugLog(
         'Hydrated streams for $activityId: '
@@ -132,6 +177,7 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
         raw,
         hydrated: true,
         averageHeartRateFallback: _average(streams['heartrate']),
+        routePoints: routePoints,
       ),
       calories: (raw['calories'] as num?)?.toDouble(),
       gearName: (raw['gear'] as Map<String, dynamic>?)?['name'] as String?,
@@ -140,11 +186,31 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
       streams: streams,
     );
     await document.set({
-      ..._detailToMap(detail),
+      ..._detailToMap(detail, includeStreams: false),
       'detailHydratedAt': FieldValue.serverTimestamp(),
-      'streamsHydrated': streamsHydrated,
-      if (streamsHydrated) 'streamsVersion': _streamsVersion,
+      'streamsHydrated': false,
     }, SetOptions(merge: true));
+    if (streamsHydrated) {
+      try {
+        await document.set({
+          'streams': streams,
+          'streamsHydrated': true,
+          'streamsVersion': _streamsVersion,
+        }, SetOptions(merge: true));
+      } catch (error) {
+        _debugLog('Could not cache streams for $activityId: $error');
+        try {
+          await document.set({
+            'streamsHydrated': false,
+            'streamsVersion': _streamsVersion,
+          }, SetOptions(merge: true));
+        } catch (markerError) {
+          _debugLog(
+            'Could not mark streams cache failure for $activityId: $markerError',
+          );
+        }
+      }
+    }
     return detail;
   }
 
@@ -231,9 +297,22 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
     if (kDebugMode) debugPrint('[ActivityRepository] $message');
   }
 
-  Future<Map<String, List<double>>> _fetchStreams(String activityId) async {
-    return _normalizeStreams(
-      await StravaClient.instance.getActivityStreams(activityId),
+  Future<_FetchedStreams> _fetchStreams(
+    String activityId, {
+    required DateTime startedAt,
+  }) async {
+    final rawStreams = await StravaClient.instance.getActivityStreams(
+      activityId,
+    );
+    return _FetchedStreams(
+      streams: downsampleStreams(
+        _normalizeStreams(rawStreams),
+        maxSamples: _maxCachedStreamSamples,
+      ),
+      routePoints: stravaRoutePointsFromStreams(
+        rawStreams,
+        startedAt: startedAt,
+      ),
     );
   }
 
@@ -707,6 +786,7 @@ ActivitySummary _summaryFromRaw(
   Map<String, dynamic> raw, {
   bool hydrated = false,
   double? averageHeartRateFallback,
+  List<RoutePoint> routePoints = const [],
 }) {
   final sportType = raw['sport_type'] as String? ?? raw['type'] as String?;
   final map = raw['map'] as Map<String, dynamic>?;
@@ -728,6 +808,7 @@ ActivitySummary _summaryFromRaw(
     elevationGainMeters: (raw['total_elevation_gain'] as num?)?.toDouble(),
     polyline:
         map?['polyline'] as String? ?? map?['summary_polyline'] as String?,
+    routePoints: routePoints,
     hydrated: hydrated,
   );
 }
@@ -755,13 +836,78 @@ List<Map<String, dynamic>> _normalizeIntervals(dynamic intervals) {
 Map<String, List<double>> _normalizeStreams(Map<String, dynamic> streams) {
   return streams.map((key, value) {
     final data = value is Map<String, dynamic> ? value['data'] : null;
-    return MapEntry(
-      key,
-      data is List<dynamic>
-          ? data.whereType<num>().map((item) => item.toDouble()).toList()
-          : <double>[],
+    final values = data is List<dynamic>
+        ? data
+              .whereType<num>()
+              .map((item) => item.toDouble())
+              .where((item) => item.isFinite)
+              .toList()
+        : <double>[];
+    return MapEntry(key, values);
+  })..removeWhere((key, value) => value.isEmpty);
+}
+
+@visibleForTesting
+Map<String, List<double>> downsampleStreams(
+  Map<String, List<double>> streams, {
+  required int maxSamples,
+}) {
+  if (maxSamples < 2) return streams;
+  return streams.map((key, values) {
+    final finiteValues = values.where((item) => item.isFinite).toList();
+    if (finiteValues.isEmpty) return MapEntry(key, <double>[]);
+    final valuesToSample = finiteValues;
+    if (valuesToSample.length <= maxSamples) {
+      return MapEntry(key, valuesToSample);
+    }
+    final lastIndex = valuesToSample.length - 1;
+    return MapEntry(key, [
+      for (var outputIndex = 0; outputIndex < maxSamples; outputIndex++)
+        valuesToSample[(outputIndex * lastIndex / (maxSamples - 1)).round()],
+    ]);
+  })..removeWhere((key, value) => value.isEmpty);
+}
+
+@visibleForTesting
+List<RoutePoint> stravaRoutePointsFromStreams(
+  Map<String, dynamic> streams, {
+  required DateTime startedAt,
+}) {
+  final latLngData = _streamData(streams['latlng']);
+  if (latLngData.length < 2) return const [];
+  final timeData = _streamData(streams['time']);
+  final points = <RoutePoint>[];
+  for (var index = 0; index < latLngData.length; index += 1) {
+    final rawPoint = latLngData[index];
+    if (rawPoint is! List<dynamic> || rawPoint.length < 2) continue;
+    final latitude = rawPoint[0];
+    final longitude = rawPoint[1];
+    if (latitude is! num || longitude is! num) continue;
+    final seconds = index < timeData.length && timeData[index] is num
+        ? (timeData[index] as num).round()
+        : index;
+    points.add(
+      RoutePoint(
+        latitude: latitude.toDouble(),
+        longitude: longitude.toDouble(),
+        timestamp: startedAt.toLocal().add(Duration(seconds: seconds)),
+      ),
     );
-  });
+  }
+  return points.length < 2 ? const [] : points;
+}
+
+List<dynamic> _streamData(dynamic stream) {
+  if (stream is! Map<String, dynamic>) return const [];
+  final data = stream['data'];
+  return data is List<dynamic> ? data : const [];
+}
+
+class _FetchedStreams {
+  const _FetchedStreams({required this.streams, required this.routePoints});
+
+  final Map<String, List<double>> streams;
+  final List<RoutePoint> routePoints;
 }
 
 Map<String, dynamic> _summaryToMap(
@@ -1014,14 +1160,28 @@ bool hasCachedActivityDetail(Map<String, dynamic>? data) {
       data.containsKey('streams');
 }
 
-Map<String, dynamic> _detailToMap(ActivityDetail detail) {
+@visibleForTesting
+bool shouldBackfillStravaStreams(
+  Map<String, dynamic> data, {
+  required int currentStreamsVersion,
+}) {
+  final source = ActivitySource.fromValue(data['source'] as String?);
+  return source == ActivitySource.strava &&
+      (data['streamsHydrated'] != true ||
+          data['streamsVersion'] != currentStreamsVersion);
+}
+
+Map<String, dynamic> _detailToMap(
+  ActivityDetail detail, {
+  bool includeStreams = true,
+}) {
   return {
     ..._summaryToMap(detail.summary),
     'calories': detail.calories,
     'gearName': detail.gearName,
     'splits': detail.splits,
     'laps': detail.laps,
-    'streams': detail.streams,
+    if (includeStreams) 'streams': detail.streams,
   }..removeWhere((key, value) => value == null);
 }
 

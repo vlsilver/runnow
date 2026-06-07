@@ -8,6 +8,7 @@ import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/training_power.dart';
+import 'package:myrun/src/widgets/activity_records_card.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/power_radar_card.dart';
@@ -135,27 +136,30 @@ class _ClubJournalTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final log = ref.watch(clubActivityLogProvider);
     return log.when(
-      data: (items) => ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
-        children: items.isEmpty
-            ? const [
-                GlassPanel(
-                  borderRadius: 22,
-                  padding: EdgeInsets.all(18),
-                  child: Text('Chưa có hoạt động public trong club.'),
-                ),
-              ]
-            : [
-                for (var index = 0; index < items.length; index++)
-                  ActivityTile(
-                    activity: items[index].activity,
-                    sequence: index + 1,
-                    ownerUid: items[index].member.uid,
-                    memberName: items[index].member.displayName,
-                    memberAvatarUrl: items[index].member.avatarUrl,
+      data: (items) {
+        final visibleItems = items.take(60).toList();
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+          children: items.isEmpty
+              ? const [
+                  GlassPanel(
+                    borderRadius: 22,
+                    padding: EdgeInsets.all(18),
+                    child: Text('Chưa có hoạt động public trong club.'),
                   ),
-              ],
-      ),
+                ]
+              : [
+                  for (var index = 0; index < visibleItems.length; index++)
+                    ActivityTile(
+                      activity: visibleItems[index].activity,
+                      sequence: index + 1,
+                      ownerUid: visibleItems[index].member.uid,
+                      memberName: visibleItems[index].member.displayName,
+                      memberAvatarUrl: visibleItems[index].member.avatarUrl,
+                    ),
+                ],
+        );
+      },
       error: (error, stack) =>
           Center(child: Text('Không thể tải nhật ký club: $error')),
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -224,6 +228,7 @@ class _ClubRecapTab extends ConsumerWidget {
               : max,
         );
         final previousStats = _previousClubStats(clubLog, entries, range);
+        final currentLog = _currentClubLog(clubLog, entries, range);
         final powerMetrics = _clubPowerMetrics(
           range: range,
           memberCount: entries.length,
@@ -238,44 +243,75 @@ class _ClubRecapTab extends ConsumerWidget {
           children: [
             _ClubRecapRangeControl(value: range, onChanged: onRangeChanged),
             const SizedBox(height: 14),
-            _ClubSummaryCard(
-              title: 'TỔNG KẾT $periodTitle',
-              totalDistanceMeters: totalDistance,
-              totalMovingTimeSeconds: totalTime,
-              totalActivities: totalActivities,
-              activeMembers: activeMembers,
-              memberCount: entries.length,
-            ),
-            const SizedBox(height: 14),
-            PowerRadarCard(
-              title: 'CLUB POWER $periodTitle',
-              metrics: powerMetrics,
-              powerScore: averagePowerScore(powerMetrics),
-            ),
-            const SizedBox(height: 14),
-            _ClubSignalCard(
-              previousPeriodLabel: switch (range) {
-                _ClubRecapRange.currentWeek => 'tuần trước',
-                _ClubRecapRange.currentMonth => 'tháng trước',
-              },
-              distanceDeltaRatio: _deltaRatio(
-                totalDistance,
-                previousStats.distanceMeters,
+            _ShareableClubCard(
+              title: 'RunNow tổng kết club $period',
+              child: _ClubSummaryCard(
+                title: 'TỔNG KẾT $periodTitle',
+                totalDistanceMeters: totalDistance,
+                totalMovingTimeSeconds: totalTime,
+                totalActivities: totalActivities,
+                activeMembers: activeMembers,
+                memberCount: entries.length,
               ),
-              timeDeltaRatio: _deltaRatio(
-                totalTime.toDouble(),
-                previousStats.movingTimeSeconds.toDouble(),
-              ),
-              fastestPace: fastestPace,
-              longestRun: longestRun,
             ),
             const SizedBox(height: 14),
-            _InactiveMembersCard(
-              entries: [
-                for (var index = 0; index < entries.length; index++)
-                  if (stats[index].distanceMeters <= 0) entries[index],
-              ],
-              period: period,
+            _ShareableClubCard(
+              title: 'RunNow club power $period',
+              child: PowerRadarCard(
+                title: 'CLUB POWER $periodTitle',
+                metrics: powerMetrics,
+                powerScore: averagePowerScore(powerMetrics),
+              ),
+            ),
+            const SizedBox(height: 14),
+            _ShareableClubCard(
+              title: 'RunNow kỷ lục club $period',
+              child: ActivityRecordsCard(
+                title: 'KỶ LỤC CLUB $periodTitle',
+                showOwner: true,
+                showWhenEmpty: true,
+                emptyMessage: 'Chưa có hoạt động public trong $period.',
+                entries: [
+                  for (final item in currentLog)
+                    ActivityRecordEntry(
+                      activity: item.activity,
+                      ownerUid: item.member.uid,
+                      ownerName: item.member.displayName,
+                      ownerAvatarUrl: item.member.avatarUrl,
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            _ShareableClubCard(
+              title: 'RunNow dấu hiệu club $period',
+              child: _ClubSignalCard(
+                previousPeriodLabel: switch (range) {
+                  _ClubRecapRange.currentWeek => 'tuần trước',
+                  _ClubRecapRange.currentMonth => 'tháng trước',
+                },
+                distanceDeltaRatio: _deltaRatio(
+                  totalDistance,
+                  previousStats.distanceMeters,
+                ),
+                timeDeltaRatio: _deltaRatio(
+                  totalTime.toDouble(),
+                  previousStats.movingTimeSeconds.toDouble(),
+                ),
+                fastestPace: fastestPace,
+                longestRun: longestRun,
+              ),
+            ),
+            const SizedBox(height: 14),
+            _ShareableClubCard(
+              title: 'RunNow thành viên chưa active $period',
+              child: _InactiveMembersCard(
+                entries: [
+                  for (var index = 0; index < entries.length; index++)
+                    if (stats[index].distanceMeters <= 0) entries[index],
+                ],
+                period: period,
+              ),
             ),
           ],
         );
@@ -1118,6 +1154,31 @@ LeaderboardStats _previousClubStats(
     longestDistanceMeters: longestRun,
     fastestPaceSecondsPerKm: fastestPace,
   );
+}
+
+List<ClubActivityLogItem> _currentClubLog(
+  List<ClubActivityLogItem> log,
+  List<LeaderboardEntry> entries,
+  _ClubRecapRange range,
+) {
+  final publicUids = entries.map((entry) => entry.uid).toSet();
+  final now = DateTime.now();
+  final start = switch (range) {
+    _ClubRecapRange.currentWeek => _startOfWeek(now),
+    _ClubRecapRange.currentMonth => DateTime(now.year, now.month),
+  };
+  final end = switch (range) {
+    _ClubRecapRange.currentWeek => start.add(const Duration(days: 7)),
+    _ClubRecapRange.currentMonth => DateTime(now.year, now.month + 1),
+  };
+  return log
+      .where((item) => publicUids.contains(item.member.uid))
+      .where(
+        (item) =>
+            !item.activity.startedAt.isBefore(start) &&
+            item.activity.startedAt.isBefore(end),
+      )
+      .toList();
 }
 
 DateTime _startOfWeek(DateTime date) {

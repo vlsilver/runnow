@@ -167,12 +167,15 @@ class StravaClient {
 
   Future<Map<String, dynamic>> getActivityStreams(String activityId) async {
     await _refreshIfNeeded();
-    final uri =
-        Uri.https('www.strava.com', '/api/v3/activities/$activityId/streams', {
-          'keys':
-              'distance,time,velocity_smooth,heartrate,altitude,cadence,watts',
-          'key_by_type': 'true',
-        });
+    final uri = Uri.https(
+      'www.strava.com',
+      '/api/v3/activities/$activityId/streams',
+      {
+        'keys':
+            'distance,time,velocity_smooth,heartrate,altitude,cadence,watts,latlng',
+        'key_by_type': 'true',
+      },
+    );
     _debugLog('GET $uri');
     final resp = await http.get(
       uri,

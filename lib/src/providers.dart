@@ -9,6 +9,8 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/repository.dart';
 import 'package:myrun/src/strava_client.dart';
 import 'package:myrun/src/sync.dart';
+import 'package:myrun/src/tracking_draft_store.dart';
+import 'package:myrun/src/tracking_location_provider.dart';
 import 'package:myrun/src/theme_controller.dart';
 
 final activityRepositoryProvider = Provider<ActivityRepository>((ref) {
@@ -38,6 +40,14 @@ final trainingGoalRepositoryProvider = Provider<TrainingGoalRepository>((ref) {
     FirebaseFirestore.instance,
   );
 });
+
+final trackingDraftStoreProvider = Provider<TrackingDraftStore>(
+  (ref) => const TrackingDraftStore(),
+);
+
+final trackingLocationProvider = Provider<TrackingLocationProvider>(
+  (ref) => const GeolocatorTrackingLocationProvider(),
+);
 
 final firebaseUserProvider = StreamProvider<User?>(
   (ref) => FirebaseAuth.instance.authStateChanges(),
@@ -155,7 +165,7 @@ final clubActivityLogProvider = StreamProvider<List<ClubActivityLogItem>>((
         for (final member in publicMembers) {
           final activities =
               latestByUid[member.uid] ?? const <ActivitySummary>[];
-          for (final activity in activities.take(20)) {
+          for (final activity in activities) {
             items.add(ClubActivityLogItem(member: member, activity: activity));
           }
         }
@@ -164,7 +174,7 @@ final clubActivityLogProvider = StreamProvider<List<ClubActivityLogItem>>((
               right.activity.startedAt.compareTo(left.activity.startedAt),
         );
         if (!controller.isClosed) {
-          controller.add(items.take(60).toList());
+          controller.add(items);
         }
       }
 

@@ -49,6 +49,18 @@ class TrackingLocationSample {
   final double? speedMetersPerSecond;
   final double? headingDegrees;
 
+  factory TrackingLocationSample.fromMap(Map<String, dynamic> map) {
+    return TrackingLocationSample(
+      latitude: (map['latitude'] as num).toDouble(),
+      longitude: (map['longitude'] as num).toDouble(),
+      timestamp: DateTime.parse(map['timestamp'] as String).toLocal(),
+      altitudeMeters: (map['altitudeMeters'] as num?)?.toDouble(),
+      accuracyMeters: (map['accuracyMeters'] as num?)?.toDouble(),
+      speedMetersPerSecond: (map['speedMetersPerSecond'] as num?)?.toDouble(),
+      headingDegrees: (map['headingDegrees'] as num?)?.toDouble(),
+    );
+  }
+
   RoutePoint toRoutePoint() {
     return RoutePoint(
       latitude: latitude,
@@ -93,6 +105,23 @@ class TrackingPointLog {
   final double totalDistanceMeters;
   final int movingTimeSeconds;
 
+  factory TrackingPointLog.fromMap(Map<String, dynamic> map) {
+    final reason = map['rejectReason'] as String?;
+    return TrackingPointLog(
+      sample: TrackingLocationSample.fromMap(map),
+      decision: TrackingPointDecision.values.byName(map['decision'] as String),
+      rejectReason: reason == null
+          ? null
+          : TrackingRejectReason.values.byName(reason),
+      segmentDistanceMeters:
+          (map['segmentDistanceMeters'] as num?)?.toDouble() ?? 0,
+      segmentSeconds: (map['segmentSeconds'] as num?)?.toInt() ?? 0,
+      totalDistanceMeters:
+          (map['totalDistanceMeters'] as num?)?.toDouble() ?? 0,
+      movingTimeSeconds: (map['movingTimeSeconds'] as num?)?.toInt() ?? 0,
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
       ...sample.toMap(),
@@ -120,6 +149,16 @@ class TrackingSplit {
   final int movingTimeSeconds;
   final int elapsedTimeSeconds;
   final DateTime completedAt;
+
+  factory TrackingSplit.fromMap(Map<String, dynamic> map) {
+    return TrackingSplit(
+      index: (map['split'] as num?)?.toInt() ?? (map['index'] as num).toInt(),
+      distanceMeters: (map['distanceMeters'] as num).toDouble(),
+      movingTimeSeconds: (map['movingTimeSeconds'] as num).toInt(),
+      elapsedTimeSeconds: (map['elapsedTimeSeconds'] as num).toInt(),
+      completedAt: DateTime.parse(map['completedAt'] as String).toLocal(),
+    );
+  }
 
   double? get paceSecondsPerKm =>
       distanceMeters <= 0 ? null : movingTimeSeconds / (distanceMeters / 1000);
@@ -260,6 +299,52 @@ class TrackingSessionSnapshot {
 class TrackingSession {
   TrackingSession({required this.id, this.config = const TrackingConfig()});
 
+  factory TrackingSession.fromDraftMap(Map<String, dynamic> map) {
+    final session = TrackingSession(id: map['id'] as String);
+    session._status = TrackingSessionStatus.values.byName(
+      map['status'] as String,
+    );
+    session._startedAt = DateTime.parse(map['startedAt'] as String).toLocal();
+    session._updatedAt = DateTime.parse(map['updatedAt'] as String).toLocal();
+    final movingStartedAt = map['movingStartedAt'] as String?;
+    session._movingStartedAt = movingStartedAt == null
+        ? null
+        : DateTime.parse(movingStartedAt).toLocal();
+    session._needsAnchorAfterPause =
+        map['needsAnchorAfterPause'] as bool? ?? false;
+    session._distanceMeters = (map['distanceMeters'] as num?)?.toDouble() ?? 0;
+    session._accumulatedMovingTimeSeconds =
+        (map['accumulatedMovingTimeSeconds'] as num?)?.toInt() ?? 0;
+    session._gpsMovingTimeSeconds =
+        (map['gpsMovingTimeSeconds'] as num?)?.toInt() ?? 0;
+
+    final lastAccepted = map['lastAccepted'] as Map<String, dynamic>?;
+    session._lastAccepted = lastAccepted == null
+        ? null
+        : TrackingLocationSample.fromMap(lastAccepted);
+    session._routePoints.addAll(
+      (map['routePoints'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(RoutePoint.fromMap),
+    );
+    session._pointLogs.addAll(
+      (map['pointLogs'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(TrackingPointLog.fromMap),
+    );
+    session._segments.addAll(
+      (map['segments'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(_AcceptedSegment.fromMap),
+    );
+    session._splits.addAll(
+      (map['splits'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(TrackingSplit.fromMap),
+    );
+    return session;
+  }
+
   final String id;
   final TrackingConfig config;
 
@@ -374,6 +459,17 @@ class TrackingSession {
     return snapshot();
   }
 
+  TrackingSessionSnapshot interruptForRestore() {
+    _ensureStarted();
+    if (_status != TrackingSessionStatus.running) return snapshot();
+    final updatedAt = _updatedAt!;
+    _accumulatedMovingTimeSeconds = _currentMovingTimeSeconds(updatedAt);
+    _movingStartedAt = null;
+    _status = TrackingSessionStatus.paused;
+    _needsAnchorAfterPause = true;
+    return snapshot();
+  }
+
   TrackingSessionSnapshot finish(DateTime finishedAt) {
     _ensureStarted();
     if (_status == TrackingSessionStatus.running) {
@@ -407,6 +503,26 @@ class TrackingSession {
       splits: List.unmodifiable(_splits),
       currentPaceSecondsPerKm: _currentPaceSecondsPerKm(updatedAt),
     );
+  }
+
+  Map<String, dynamic> toDraftMap() {
+    return {
+      'schemaVersion': 1,
+      'id': id,
+      'status': _status.name,
+      'startedAt': _startedAt?.toUtc().toIso8601String(),
+      'updatedAt': _updatedAt?.toUtc().toIso8601String(),
+      'movingStartedAt': _movingStartedAt?.toUtc().toIso8601String(),
+      'needsAnchorAfterPause': _needsAnchorAfterPause,
+      'distanceMeters': _distanceMeters,
+      'accumulatedMovingTimeSeconds': _accumulatedMovingTimeSeconds,
+      'gpsMovingTimeSeconds': _gpsMovingTimeSeconds,
+      'lastAccepted': _lastAccepted?.toMap(),
+      'routePoints': _routePoints.map((point) => point.toMap()).toList(),
+      'pointLogs': _pointLogs.map((log) => log.toMap()).toList(),
+      'segments': _segments.map((segment) => segment.toMap()).toList(),
+      'splits': _splits.map((split) => split.toMap()).toList(),
+    }..removeWhere((key, value) => value == null);
   }
 
   void _acceptAnchor(TrackingLocationSample sample) {
@@ -560,6 +676,22 @@ class _AcceptedSegment {
   final double distanceMeters;
   final int seconds;
   final DateTime completedAt;
+
+  factory _AcceptedSegment.fromMap(Map<String, dynamic> map) {
+    return _AcceptedSegment(
+      distanceMeters: (map['distanceMeters'] as num).toDouble(),
+      seconds: (map['seconds'] as num).toInt(),
+      completedAt: DateTime.parse(map['completedAt'] as String).toLocal(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'distanceMeters': distanceMeters,
+      'seconds': seconds,
+      'completedAt': completedAt.toUtc().toIso8601String(),
+    };
+  }
 }
 
 double haversineDistanceMeters(

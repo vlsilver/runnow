@@ -10,6 +10,7 @@ import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/tracking_draft_store.dart';
 import 'package:myrun/src/tracking_session.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/route_map.dart';
@@ -25,22 +26,20 @@ class TrackingScreen extends ConsumerStatefulWidget {
 
 enum _GpsSignal { idle, locking, weak, fair, ready }
 
-class _TrackingScreenState extends ConsumerState<TrackingScreen> {
+class _TrackingScreenState extends ConsumerState<TrackingScreen>
+    with WidgetsBindingObserver {
   static const _gpsWarmupTimeout = Duration(seconds: 45);
-  static const _gpsWarmupMinDuration = Duration(seconds: 16);
-  static const _gpsWarmupMinStableSamples = 8;
-  static const _gpsWarmupMaxBestAccuracyMeters = 8.0;
-  static const _gpsWarmupMaxAverageAccuracyMeters = 10.0;
-  static const _gpsWarmupMaxCurrentAccuracyMeters = 12.0;
-  static const _gpsWarmupMaxStepMeters = 4.0;
-  static const _gpsWarmupMaxDriftMeters = 8.0;
-  static const _gpsWarmupMaxStandingSpeedMetersPerSecond = 0.9;
-  static const _gpsWarmupMaxReportedSpeedMetersPerSecond = 1.2;
+  static const _gpsWarmupWindowSamples = 10;
+  static const _gpsWarmupMinGoodSamples = 7;
+  static const _gpsWarmupGoodAccuracyMeters = 25.0;
+  static const _gpsWarmupFairAccuracyMeters = 40.0;
+  static const _gpsWarmupMaxWindowDriftMeters = 45.0;
+  static const _gpsWarmupMaxReportedSpeedMetersPerSecond = 3.0;
 
   TrackingSession? _session;
   TrackingSessionSnapshot? _snapshot;
-  Position? _gpsReadyAnchor;
-  StreamSubscription<Position>? _positionSubscription;
+  TrackingLocationSample? _gpsReadyAnchor;
+  StreamSubscription<TrackingLocationSample>? _positionSubscription;
   Timer? _ticker;
   var _checkingPermission = false;
   var _saving = false;
@@ -50,6 +49,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
   var _gpsStableSamples = 0;
   var _gpsElapsedSeconds = 0;
   var _autoLockStarted = false;
+  DateTime? _lastDraftSavedAt;
 
   bool get _running => _snapshot?.status == TrackingSessionStatus.running;
   bool get _paused => _snapshot?.status == TrackingSessionStatus.paused;
@@ -66,18 +66,29 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _autoLockStarted) return;
       _autoLockStarted = true;
-      if (widget.autoLock) _lockGps();
+      _restoreDraftThenMaybeLock();
     });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _positionSubscription?.cancel();
     _ticker?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_persistDraft());
+    }
   }
 
   @override
@@ -126,8 +137,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
                   signal: _gpsSignal,
                   elapsedSeconds: _gpsElapsedSeconds,
                   stableSamples: _gpsStableSamples,
-                  minSeconds: _gpsWarmupMinDuration.inSeconds,
-                  minSamples: _gpsWarmupMinStableSamples,
+                  minSeconds: 0,
+                  minSamples: _gpsWarmupMinGoodSamples,
                   subtitle: _distanceSubtitle,
                   onMap: snapshot == null || snapshot.routePoints.length < 2
                       ? null
@@ -175,6 +186,30 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
     );
   }
 
+  Future<void> _restoreDraftThenMaybeLock() async {
+    final draft = await ref.read(trackingDraftStoreProvider).load();
+    if (!mounted) return;
+    if (draft != null) {
+      final session = draft.session;
+      final snapshot = session.status == TrackingSessionStatus.running
+          ? session.interruptForRestore()
+          : session.snapshot();
+      setState(() {
+        _session = session;
+        _snapshot = snapshot;
+        _lastWarmupDebug = draft.gpsWarmup;
+        _gpsSignal = _GpsSignal.idle;
+        _message =
+            'Đã khôi phục phiên chạy bị gián đoạn. Bấm RESUME để tiếp tục từ GPS point mới.';
+      });
+      await _persistDraft();
+      return;
+    }
+    if (widget.autoLock) {
+      await _lockGps();
+    }
+  }
+
   Future<void> _lockGps() async {
     if (_running || _checkingPermission || _saving) return;
     if (_finished) {
@@ -205,7 +240,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
         _gpsReadyAnchor = anchor;
         _gpsSignal = _GpsSignal.ready;
         _message =
-            'GPS READY (${anchor.accuracy.toStringAsFixed(0)}m). Bấm START NOW để bắt đầu tính distance.';
+            'GPS READY (${(anchor.accuracyMeters ?? 0).toStringAsFixed(0)}m). Bấm START NOW để bắt đầu tính distance.';
       });
       HapticFeedback.selectionClick();
     } finally {
@@ -225,14 +260,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
       final session = TrackingSession(
         id: 'runnow-${now.toUtc().millisecondsSinceEpoch}',
       )..start(now);
-      await _positionSubscription?.cancel();
-      _positionSubscription = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.bestForNavigation,
-          distanceFilter: 5,
-        ),
-      ).listen(_onPosition, onError: _onLocationError);
-      _startTicker();
       setState(() {
         _session = session;
         _snapshot = session.snapshot();
@@ -241,6 +268,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
         _message =
             'Đã bắt đầu tracking. Điểm GPS đầu tiên sau START NOW sẽ làm anchor.';
       });
+      await _startRunningLocationStream();
+      _startTicker();
+      unawaited(_persistDraft());
       HapticFeedback.mediumImpact();
     } catch (error) {
       if (!mounted) return;
@@ -251,10 +281,17 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
   void _pause() {
     final session = _session;
     if (session == null) return;
+    final subscription = _positionSubscription;
+    if (subscription != null) {
+      unawaited(subscription.cancel());
+    }
+    _positionSubscription = null;
+    _ticker?.cancel();
     setState(() {
       _snapshot = session.pause(DateTime.now());
       _message = 'Đã pause. Route sau resume sẽ không nối qua đoạn nghỉ.';
     });
+    unawaited(_persistDraft());
   }
 
   void _resume() {
@@ -264,6 +301,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
       _snapshot = session.resume(DateTime.now());
       _message = 'Đã resume. GPS point tiếp theo sẽ làm anchor mới.';
     });
+    unawaited(_startRunningLocationStream());
+    _startTicker();
+    unawaited(_persistDraft());
   }
 
   Future<void> _stopAndSave() async {
@@ -286,6 +326,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
       await ref
           .read(activityRepositoryProvider)
           .saveTrackedActivity(detail, trackingDebug: debug);
+      await ref.read(trackingDraftStoreProvider).clear();
       if (!mounted) return;
       setState(() {
         _snapshot = snapshot;
@@ -302,6 +343,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
   }
 
   Future<void> _discard() async {
+    await ref.read(trackingDraftStoreProvider).clear();
     await _resetSession(message: 'Đã bỏ phiên tracking thử.');
   }
 
@@ -367,21 +409,42 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
     });
   }
 
-  void _onPosition(Position position) {
+  Future<void> _startRunningLocationStream() async {
+    await _positionSubscription?.cancel();
+    _positionSubscription = ref
+        .read(trackingLocationProvider)
+        .runningSamples()
+        .listen(_onPosition, onError: _onLocationError);
+  }
+
+  Future<void> _persistDraft() async {
+    final session = _session;
+    if (session == null || _finished) return;
+    await ref
+        .read(trackingDraftStoreProvider)
+        .save(TrackingDraft(session: session, gpsWarmup: _lastWarmupDebug));
+    _lastDraftSavedAt = DateTime.now();
+  }
+
+  void _onPosition(TrackingLocationSample sample) {
     final session = _session;
     if (session == null || !_running) return;
-    final snapshot = session.addLocation(_sampleFromPosition(position));
+    final snapshot = session.addLocation(sample);
     final latestLog = snapshot.pointLogs.isEmpty
         ? null
         : snapshot.pointLogs.last;
     setState(() {
       _snapshot = snapshot;
-      _gpsSignal = _runningGpsSignal(position, latestLog);
+      _gpsSignal = _runningGpsSignal(sample, latestLog);
     });
+    unawaited(_persistDraft());
   }
 
-  _GpsSignal _runningGpsSignal(Position position, TrackingPointLog? log) {
-    final accuracy = position.accuracy;
+  _GpsSignal _runningGpsSignal(
+    TrackingLocationSample sample,
+    TrackingPointLog? log,
+  ) {
+    final accuracy = sample.accuracyMeters ?? double.infinity;
     if (log?.decision == TrackingPointDecision.rejected) {
       return switch (log?.rejectReason) {
         TrackingRejectReason.lowAccuracy ||
@@ -394,7 +457,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
       };
     }
 
-    final reportedSpeed = position.speed.isFinite ? position.speed : 0.0;
+    final sampleSpeed = sample.speedMetersPerSecond ?? 0.0;
+    final reportedSpeed = sampleSpeed.isFinite ? sampleSpeed : 0.0;
     if (accuracy <= 12 && reportedSpeed <= 7.5) return _GpsSignal.ready;
     if (accuracy <= 25 && reportedSpeed <= 9) return _GpsSignal.fair;
     return _GpsSignal.weak;
@@ -405,27 +469,30 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       final session = _session;
       if (!mounted || session == null || !_running) return;
-      setState(() => _snapshot = session.tick(DateTime.now()));
+      final now = DateTime.now();
+      setState(() => _snapshot = session.tick(now));
+      final lastDraftSavedAt = _lastDraftSavedAt;
+      if (lastDraftSavedAt == null ||
+          now.difference(lastDraftSavedAt) >= const Duration(seconds: 10)) {
+        unawaited(_persistDraft());
+      }
     });
   }
 
-  Future<Position?> _waitForStableGps() async {
-    final completer = Completer<Position?>();
-    StreamSubscription<Position>? subscription;
+  Future<TrackingLocationSample?> _waitForStableGps() async {
+    final completer = Completer<TrackingLocationSample?>();
+    StreamSubscription<TrackingLocationSample>? subscription;
     Timer? timeout;
-    var stableSamples = 0;
     var sampleCount = 0;
-    var unstableJumps = 0;
-    var accuracySum = 0.0;
-    var bestAccuracy = double.infinity;
-    var maxWindowStepMeters = 0.0;
-    var maxWindowDriftMeters = 0.0;
-    Position? best;
-    Position? previous;
-    Position? stableAnchor;
+    var goodSamples = 0;
+    var fairSamples = 0;
+    var averageAccuracy = double.infinity;
+    var windowDriftMeters = 0.0;
+    TrackingLocationSample? best;
+    final window = <TrackingLocationSample>[];
     final startedAt = DateTime.now();
 
-    void complete(Position? position) {
+    void complete(TrackingLocationSample? position) {
       if (completer.isCompleted) return;
       timeout?.cancel();
       subscription?.cancel();
@@ -433,32 +500,24 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
         'startedAt': startedAt.toUtc().toIso8601String(),
         'endedAt': DateTime.now().toUtc().toIso8601String(),
         'sampleCount': sampleCount,
-        'stableSamples': stableSamples,
-        'unstableJumps': unstableJumps,
-        'minWarmupSeconds': _gpsWarmupMinDuration.inSeconds,
-        'minStableSamples': _gpsWarmupMinStableSamples,
-        'maxBestAccuracyMeters': _gpsWarmupMaxBestAccuracyMeters,
-        'maxAverageAccuracyMeters': _gpsWarmupMaxAverageAccuracyMeters,
-        'maxCurrentAccuracyMeters': _gpsWarmupMaxCurrentAccuracyMeters,
-        'maxStepMeters': _gpsWarmupMaxStepMeters,
-        'maxDriftMeters': _gpsWarmupMaxDriftMeters,
-        'maxWindowStepMeters': maxWindowStepMeters,
-        'maxWindowDriftMeters': maxWindowDriftMeters,
+        'windowSamples': window.length,
+        'goodSamples': goodSamples,
+        'fairSamples': fairSamples,
+        'windowSize': _gpsWarmupWindowSamples,
+        'minGoodSamples': _gpsWarmupMinGoodSamples,
+        'goodAccuracyMeters': _gpsWarmupGoodAccuracyMeters,
+        'fairAccuracyMeters': _gpsWarmupFairAccuracyMeters,
+        'maxWindowDriftMeters': _gpsWarmupMaxWindowDriftMeters,
+        'actualWindowDriftMeters': windowDriftMeters,
+        'averageAccuracyMeters': averageAccuracy.isFinite
+            ? averageAccuracy
+            : null,
         'maxReportedSpeedMetersPerSecond':
             _gpsWarmupMaxReportedSpeedMetersPerSecond,
-        'bestAccuracyMeters': best?.accuracy,
-        'lockedAccuracyMeters': position?.accuracy,
+        'bestAccuracyMeters': best?.accuracyMeters,
+        'lockedAccuracyMeters': position?.accuracyMeters,
       }..removeWhere((key, value) => value == null);
       completer.complete(position);
-    }
-
-    void resetStableWindow() {
-      stableSamples = 0;
-      accuracySum = 0;
-      bestAccuracy = double.infinity;
-      maxWindowStepMeters = 0;
-      maxWindowDriftMeters = 0;
-      stableAnchor = null;
     }
 
     timeout = Timer(_gpsWarmupTimeout, () {
@@ -474,107 +533,66 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
       complete(null);
     });
 
-    subscription =
-        Geolocator.getPositionStream(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.bestForNavigation,
-            distanceFilter: 0,
-          ),
-        ).listen(
+    subscription = ref
+        .read(trackingLocationProvider)
+        .warmupSamples()
+        .listen(
           (position) {
             sampleCount += 1;
-            if (best == null || position.accuracy < best!.accuracy) {
+            final accuracy = position.accuracyMeters ?? double.infinity;
+            if (best == null ||
+                accuracy < (best!.accuracyMeters ?? double.infinity)) {
               best = position;
             }
-            final prior = previous;
-            var unstable = false;
-            var stepMeters = 0.0;
-            var impliedSpeed = 0.0;
-            if (prior != null) {
-              final seconds =
-                  position.timestamp
-                      .difference(prior.timestamp)
-                      .inMilliseconds /
-                  1000;
-              if (seconds > 0) {
-                stepMeters = haversineDistanceMeters(
-                  prior.latitude,
-                  prior.longitude,
-                  position.latitude,
-                  position.longitude,
-                );
-                impliedSpeed = stepMeters / seconds;
-                final allowedJump = math.min(
-                  _gpsWarmupMaxStepMeters,
-                  math.max(2.0, position.accuracy * 0.45),
-                );
-                unstable =
-                    stepMeters > allowedJump ||
-                    impliedSpeed > _gpsWarmupMaxStandingSpeedMetersPerSecond;
+            window.add(position);
+            if (window.length > _gpsWarmupWindowSamples) {
+              window.removeAt(0);
+            }
+            goodSamples = 0;
+            fairSamples = 0;
+            var accuracySum = 0.0;
+            var finiteAccuracyCount = 0;
+            for (final sample in window) {
+              final sampleAccuracy = sample.accuracyMeters ?? double.infinity;
+              final speed = sample.speedMetersPerSecond ?? 0;
+              final cleanSpeed = speed.isFinite ? speed : 0;
+              if (sampleAccuracy.isFinite) {
+                accuracySum += sampleAccuracy;
+                finiteAccuracyCount += 1;
+              }
+              final speedOk =
+                  cleanSpeed <= _gpsWarmupMaxReportedSpeedMetersPerSecond;
+              if (sampleAccuracy <= _gpsWarmupGoodAccuracyMeters && speedOk) {
+                goodSamples += 1;
+              }
+              if (sampleAccuracy <= _gpsWarmupFairAccuracyMeters && speedOk) {
+                fairSamples += 1;
               }
             }
-            previous = position;
-
-            final reportedSpeed = position.speed.isFinite ? position.speed : 0;
-            if (reportedSpeed > _gpsWarmupMaxReportedSpeedMetersPerSecond) {
-              unstable = true;
-            }
-
-            if (unstable ||
-                position.accuracy > _gpsWarmupMaxCurrentAccuracyMeters) {
-              unstableJumps += 1;
-              resetStableWindow();
-            } else {
-              stableAnchor ??= position;
-              final anchor = stableAnchor!;
-              final driftMeters = haversineDistanceMeters(
-                anchor.latitude,
-                anchor.longitude,
-                position.latitude,
-                position.longitude,
-              );
-              if (driftMeters > _gpsWarmupMaxDriftMeters) {
-                unstableJumps += 1;
-                resetStableWindow();
-              } else {
-                stableSamples += 1;
-                accuracySum += position.accuracy;
-                bestAccuracy = math.min(bestAccuracy, position.accuracy);
-                maxWindowStepMeters = math.max(maxWindowStepMeters, stepMeters);
-                maxWindowDriftMeters = math.max(
-                  maxWindowDriftMeters,
-                  driftMeters,
-                );
-              }
-            }
-            final elapsed = DateTime.now().difference(startedAt);
-            final averageAccuracy = stableSamples == 0
+            averageAccuracy = finiteAccuracyCount == 0
                 ? double.infinity
-                : accuracySum / stableSamples;
-            final hasEnoughTime = elapsed >= _gpsWarmupMinDuration;
-            final hasEnoughSamples =
-                stableSamples >= _gpsWarmupMinStableSamples;
-            final hasStrongAccuracy =
-                bestAccuracy <= _gpsWarmupMaxBestAccuracyMeters &&
-                averageAccuracy <= _gpsWarmupMaxAverageAccuracyMeters &&
-                position.accuracy <= _gpsWarmupMaxCurrentAccuracyMeters &&
-                maxWindowStepMeters <= _gpsWarmupMaxStepMeters &&
-                maxWindowDriftMeters <= _gpsWarmupMaxDriftMeters;
+                : accuracySum / finiteAccuracyCount;
+            windowDriftMeters = _windowDriftMeters(window);
+            final elapsed = DateTime.now().difference(startedAt);
+            final hasEnoughSamples = window.length >= _gpsWarmupWindowSamples;
+            final hasEnoughGoodSamples =
+                goodSamples >= _gpsWarmupMinGoodSamples;
+            final hasAcceptableDrift =
+                windowDriftMeters <= _gpsWarmupMaxWindowDriftMeters;
             final ready =
-                hasEnoughTime && hasEnoughSamples && hasStrongAccuracy;
+                hasEnoughSamples && hasEnoughGoodSamples && hasAcceptableDrift;
             if (mounted) {
               setState(() {
                 _gpsElapsedSeconds = elapsed.inSeconds;
-                _gpsStableSamples = stableSamples;
+                _gpsStableSamples = goodSamples;
                 _gpsSignal = ready
                     ? _GpsSignal.ready
-                    : stableSamples >= 4 &&
-                          averageAccuracy <= 14 &&
-                          maxWindowDriftMeters <= 10
+                    : fairSamples >= _gpsWarmupMinGoodSamples &&
+                          windowDriftMeters <= _gpsWarmupMaxWindowDriftMeters
                     ? _GpsSignal.fair
                     : _GpsSignal.weak;
                 _message =
-                    'Đang khóa GPS... ${elapsed.inSeconds}/${_gpsWarmupMinDuration.inSeconds}s · stable $stableSamples/$_gpsWarmupMinStableSamples · acc ${position.accuracy.toStringAsFixed(0)}m';
+                    'Đang khóa GPS... good $goodSamples/$_gpsWarmupWindowSamples · acc ${accuracy.toStringAsFixed(0)}m';
               });
             }
             if (ready) {
@@ -595,24 +613,43 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
     return completer.future;
   }
 
+  double _windowDriftMeters(List<TrackingLocationSample> samples) {
+    if (samples.length < 2) return 0;
+    final first = samples.first;
+    var maxDrift = 0.0;
+    for (final sample in samples.skip(1)) {
+      maxDrift = math.max(
+        maxDrift,
+        haversineDistanceMeters(
+          first.latitude,
+          first.longitude,
+          sample.latitude,
+          sample.longitude,
+        ),
+      );
+    }
+    return maxDrift;
+  }
+
   void _onLocationError(Object error) {
     if (!mounted) return;
     setState(() => _message = 'Lỗi GPS: $error');
   }
 
   Future<bool> _ensureLocationReady() async {
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    final locationProvider = ref.read(trackingLocationProvider);
+    final serviceEnabled = await locationProvider.isLocationServiceEnabled();
     if (!serviceEnabled) {
       setState(
         () => _message = 'Location Service đang tắt. Hãy bật GPS để chạy thử.',
       );
-      await Geolocator.openLocationSettings();
+      await locationProvider.openLocationSettings();
       return false;
     }
 
-    var permission = await Geolocator.checkPermission();
+    var permission = await locationProvider.checkPermission();
     if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
+      permission = await locationProvider.requestPermission();
     }
 
     if (permission == LocationPermission.denied) {
@@ -627,7 +664,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
         () => _message =
             'Quyền vị trí đang bị chặn. Mở Settings để cấp lại quyền.',
       );
-      await Geolocator.openAppSettings();
+      await locationProvider.openAppSettings();
       return false;
     }
 
@@ -641,18 +678,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
       TrackingSessionStatus.finished => 'SAVED TRIAL',
       TrackingSessionStatus.idle || null => _gpsReady ? 'GPS LOCKED' : 'READY',
     };
-  }
-
-  TrackingLocationSample _sampleFromPosition(Position position) {
-    return TrackingLocationSample(
-      latitude: position.latitude,
-      longitude: position.longitude,
-      timestamp: position.timestamp,
-      altitudeMeters: position.altitude,
-      accuracyMeters: position.accuracy,
-      speedMetersPerSecond: position.speed,
-      headingDegrees: position.heading,
-    );
   }
 }
 

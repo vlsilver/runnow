@@ -6,6 +6,7 @@ import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/activity_records_card.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/consistency_heatmap.dart';
 import 'package:myrun/src/widgets/discipline_card.dart';
@@ -107,13 +108,22 @@ class _MemberDashboard extends StatelessWidget {
         const SizedBox(height: 8),
         if (recent.isEmpty)
           const Text('Thành viên này chưa có hoạt động public.')
-        else
+        else ...[
+          ActivityRecordsCard(
+            title: 'BEST BOARD',
+            entries: [
+              for (final activity in activities)
+                ActivityRecordEntry(activity: activity, ownerUid: uid),
+            ],
+          ),
+          const SizedBox(height: 16),
           for (var index = 0; index < recent.take(10).length; index++)
             ActivityTile(
               activity: recent[index],
               sequence: index + 1,
               ownerUid: uid,
             ),
+        ],
       ],
     );
   }

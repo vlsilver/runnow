@@ -158,6 +158,45 @@ void main() {
       'unrealisticSpeed',
     );
   });
+
+  test('restores draft session and continues distance calculation', () {
+    final original = TrackingSession(
+      id: 'trial-draft',
+      config: const TrackingConfig(minSegmentDistanceMeters: 0.5),
+    )..start(DateTime.utc(2026, 6, 1, 6));
+
+    original.addLocation(_sample(0, latitude: 10, longitude: 106));
+    original.addLocation(_sample(120, latitude: 10, longitude: 106.0055));
+
+    final restored = TrackingSession.fromDraftMap(original.toDraftMap());
+    final snapshot = restored.addLocation(
+      _sample(240, latitude: 10, longitude: 106.011),
+    );
+
+    expect(snapshot.status, TrackingSessionStatus.running);
+    expect(snapshot.routePoints, hasLength(3));
+    expect(snapshot.pointLogs, hasLength(3));
+    expect(snapshot.distanceMeters, closeTo(1200, 80));
+    expect(snapshot.averagePaceSecondsPerKm, closeTo(200, 16));
+  });
+
+  test('interrupted restore pauses without counting dead app time', () {
+    final original = TrackingSession(
+      id: 'trial-interrupted',
+      config: const TrackingConfig(minSegmentDistanceMeters: 0.5),
+    )..start(DateTime.utc(2026, 6, 1, 6));
+
+    original.addLocation(_sample(0, latitude: 10, longitude: 106));
+    original.addLocation(_sample(120, latitude: 10, longitude: 106.0055));
+
+    final restored = TrackingSession.fromDraftMap(original.toDraftMap());
+    final interrupted = restored.interruptForRestore();
+
+    expect(interrupted.status, TrackingSessionStatus.paused);
+    expect(interrupted.movingTimeSeconds, 120);
+    final later = restored.tick(DateTime.utc(2026, 6, 1, 7));
+    expect(later.movingTimeSeconds, 120);
+  });
 }
 
 TrackingLocationSample _sample(
