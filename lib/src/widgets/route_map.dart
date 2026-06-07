@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
 
@@ -13,15 +14,27 @@ const _darkTileTemplate =
 const _tileAttribution = '© OpenStreetMap contributors · CARTO';
 
 class RouteMap extends StatelessWidget {
-  const RouteMap({required this.encodedPolyline, super.key});
+  const RouteMap({
+    required this.encodedPolyline,
+    this.routePoints,
+    this.height = 270,
+    super.key,
+  });
+
+  const RouteMap.fromRoutePoints({
+    required List<RoutePoint> points,
+    this.height = 270,
+    super.key,
+  }) : encodedPolyline = null,
+       routePoints = points;
 
   final String? encodedPolyline;
+  final List<RoutePoint>? routePoints;
+  final double height;
 
   @override
   Widget build(BuildContext context) {
-    final points = encodedPolyline == null
-        ? const <LatLng>[]
-        : decodePolyline(encodedPolyline!);
+    final points = _mapPoints();
     if (points.isEmpty) {
       return const GlassPanel(
         borderRadius: 20,
@@ -34,7 +47,7 @@ class RouteMap extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(22),
       child: SizedBox(
-        height: 270,
+        height: height,
         child: Stack(
           children: [
             Positioned.fill(child: _FlutterRouteMap(points: points)),
@@ -69,6 +82,18 @@ class RouteMap extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  List<LatLng> _mapPoints() {
+    final directPoints = routePoints;
+    if (directPoints != null && directPoints.isNotEmpty) {
+      return directPoints
+          .map((point) => LatLng(point.latitude, point.longitude))
+          .toList();
+    }
+    final encoded = encodedPolyline;
+    if (encoded == null || encoded.isEmpty) return const <LatLng>[];
+    return decodePolyline(encoded);
   }
 }
 

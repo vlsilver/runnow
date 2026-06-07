@@ -45,6 +45,8 @@ MVP dùng foreground high-accuracy location:
 - iOS: Core Location qua plugin Flutter location/geolocator.
 - Android: Fused Location Provider qua plugin Flutter.
 - Yêu cầu iOS Precise Location; nếu reduced accuracy thì cảnh báo user.
+- Warm-up dùng `distanceFilter = 0` để đọc tín hiệu liên tục.
+- Tracking sau `START RUN` dùng `distanceFilter = 5m` để giảm jitter và giảm số point.
 
 Chưa làm:
 
@@ -52,6 +54,35 @@ Chưa làm:
 - auto-pause.
 - barometer/elevation smoothing.
 - dual-frequency GNSS/raw GNSS.
+
+### GPS Warm-up
+
+Tracking không được bắt đầu ngay khi user bấm nút đầu tiên.
+
+Flow đúng cho giai đoạn MVP:
+
+1. User bấm `LOCK GPS`.
+2. App xin quyền location và đọc GPS ở chế độ high accuracy.
+3. User đứng yên vài giây để app kiểm tra GPS lock.
+4. Chỉ khi có nhiều sample ổn định, app mới hiện `START NOW`.
+5. Chỉ sau `START NOW` mới tính distance, time và pace.
+6. GPS point trong giai đoạn `LOCK GPS` chỉ dùng để đánh giá chất lượng tín hiệu, không được dùng làm route anchor.
+
+Không auto-start khi warm-up timeout. Nếu GPS chưa ổn định, app yêu cầu user ra nơi thoáng hơn và khóa lại.
+
+Warm-up hiện kiểm tra:
+
+- thời gian warm-up tối thiểu `10s`.
+- ít nhất `6` sample ổn định liên tiếp.
+- best accuracy phải `<= 12m`.
+- average accuracy trong cửa sổ ổn định phải `<= 15m`.
+- current accuracy phải `<= 15m`.
+- mỗi bước nhảy khi đang đứng yên không được vượt ngưỡng drift.
+- tổng drift trong cửa sổ warm-up không được vượt `16m`.
+- nếu sample warm-up nhảy xa bất thường hoặc implied speed lớn khi đang đứng yên, reset chuỗi ổn định.
+- timeout `45s` thì không unlock; user phải ra nơi thoáng hơn rồi lock lại.
+
+Lý do: accuracy reported bởi OS có thể trông tốt nhưng vị trí vẫn drift. Garmin cũng tách bước chờ GPS tốt khỏi start thật, nên RunNow cần cùng invariant này.
 
 ### Distance
 
@@ -61,7 +92,7 @@ Tính quãng đường bằng Haversine giữa hai accepted GPS points.
 
 - accuracy lớn hơn ngưỡng cấu hình, mặc định `25m`.
 - timestamp không tăng.
-- implied speed vượt ngưỡng chạy người, mặc định `7 m/s`.
+- implied speed vượt ngưỡng chạy người, mặc định `6 m/s`.
 - distance quá nhỏ, mặc định dưới `2m`, coi như nhiễu đứng yên.
 - session đang pause.
 
@@ -172,6 +203,23 @@ Session đầu tiên đọc từ Firestore:
 - Max accepted speed giảm từ `7m/s` xuống `6m/s` để loại bớt spike pace quá nhanh đầu buổi.
 - GPS warm-up cần nhiều sample ổn định hơn trước khi cho start.
 
+## Trial 002 Findings
+
+So sánh RunNow trial với Garmin sync qua Strava của user `vlsilver`:
+
+- RunNow trial: `446.71m`, moving `335s`, pace khoảng `12:30/km`.
+- Garmin/Strava: `376.7m`, moving `261s`, elapsed `300s`, pace khoảng `11:33/km`.
+- RunNow start lúc `09:00:52`, Garmin start lúc `09:01:30`.
+- Tại thời điểm Garmin start, RunNow đã cộng khoảng `43m`.
+- Sau `30s`, RunNow đã nhảy lên khoảng `40m` dù user đang đứng đợi GPS.
+
+Kết luận:
+
+- Sai số chính không phải do Firestore hay sync.
+- Sai số đến từ việc RunNow vừa warm-up vừa tính distance.
+- Accuracy P50/P95 khoảng `14m`, nghĩa là accuracy đơn thuần không đủ để quyết định start.
+- Cần đổi UI flow thành `LOCK GPS` trước, `START NOW` sau, và không tính warm-up point vào session distance.
+
 ## TODO
 
 1. Core model
@@ -180,9 +228,9 @@ Session đầu tiên đọc từ Firestore:
    - [x] Unit test distance, filter, pause/resume, split, debug log.
 
 2. Repository
-   - [ ] Thêm API lưu activity tự record.
-   - [ ] Lưu trial debug log trong giai đoạn MVP.
-   - [ ] Không tính tracking trial vào leaderboard/stats chính.
+   - [x] Thêm API lưu activity tự record.
+   - [x] Lưu trial debug log trong giai đoạn MVP.
+   - [x] Không tính tracking trial vào leaderboard/stats chính.
    - [ ] Không push realtime từng GPS point lên Firestore trong MVP.
 
 3. UI

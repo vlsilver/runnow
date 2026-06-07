@@ -67,6 +67,11 @@ final _router = GoRouter(
           ActivityDetailScreen(activityId: state.pathParameters['id']!),
     ),
     GoRoute(
+      path: '/tracking/session/:id',
+      builder: (context, state) =>
+          ActivityDetailScreen(activityId: state.pathParameters['id']!),
+    ),
+    GoRoute(
       path: '/club/:uid/activity/:id',
       builder: (context, state) => ActivityDetailScreen(
         activityId: state.pathParameters['id']!,
@@ -130,42 +135,170 @@ class _Scaffold extends StatelessWidget {
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         child: GlassPanel(
-          borderRadius: 16,
-          child: NavigationBar(
-            height: 70,
-            backgroundColor: Colors.transparent,
-            indicatorColor: AppColors.red.withValues(alpha: 0.85),
-            selectedIndex: shell.currentIndex,
-            onDestinationSelected: shell.goBranch,
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.insights_outlined),
-                selectedIcon: Icon(Icons.insights),
-                label: 'Tổng quan',
+          borderRadius: 22,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: _NavItem(
+                  selected: shell.currentIndex == 0,
+                  icon: Icons.insights_outlined,
+                  selectedIcon: Icons.insights,
+                  label: 'Tổng quan',
+                  onTap: () => shell.goBranch(0),
+                ),
               ),
-              NavigationDestination(
-                icon: Icon(Icons.directions_run_outlined),
-                selectedIcon: Icon(Icons.directions_run),
-                label: 'Nhật ký',
+              Expanded(
+                child: _NavItem(
+                  selected: shell.currentIndex == 1,
+                  icon: Icons.directions_run_outlined,
+                  selectedIcon: Icons.directions_run,
+                  label: 'Nhật ký',
+                  onTap: () => shell.goBranch(1),
+                ),
               ),
-              NavigationDestination(
-                icon: Icon(Icons.groups_2_outlined),
-                selectedIcon: Icon(Icons.groups_2),
-                label: 'Club',
+              Expanded(
+                child: _RunNavItem(
+                  selected: shell.currentIndex == 3,
+                  onTap: () => shell.goBranch(3),
+                ),
               ),
-              NavigationDestination(
-                icon: Icon(Icons.radio_button_checked_outlined),
-                selectedIcon: Icon(Icons.radio_button_checked),
-                label: 'Chạy',
+              Expanded(
+                child: _NavItem(
+                  selected: shell.currentIndex == 2,
+                  icon: Icons.groups_2_outlined,
+                  selectedIcon: Icons.groups_2,
+                  label: 'Club',
+                  onTap: () => shell.goBranch(2),
+                ),
               ),
-              NavigationDestination(
-                icon: Icon(Icons.settings_outlined),
-                selectedIcon: Icon(Icons.settings),
-                label: 'Cài đặt',
+              Expanded(
+                child: _NavItem(
+                  selected: shell.currentIndex == 4,
+                  icon: Icons.settings_outlined,
+                  selectedIcon: Icons.settings,
+                  label: 'Cài đặt',
+                  onTap: () => shell.goBranch(4),
+                ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  const _NavItem({
+    required this.selected,
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final bool selected;
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected
+        ? Theme.of(context).colorScheme.primary
+        : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72);
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(selected ? selectedIcon : icon, color: color, size: 24),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              maxLines: 1,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RunNavItem extends StatelessWidget {
+  const _RunNavItem({required this.selected, required this.onTap});
+
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(22),
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: selected
+                    ? const [
+                        Color(0xff19f58a),
+                        AppColors.blueGlow,
+                        AppColors.red,
+                      ]
+                    : const [
+                        AppColors.red,
+                        Color(0xffaa1228),
+                        Color(0xff1a0711),
+                      ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: (selected ? AppColors.blueGlow : AppColors.red)
+                      .withValues(alpha: 0.45),
+                  blurRadius: 26,
+                  spreadRadius: 1,
+                ),
+              ],
+              border: Border.all(
+                color: Colors.white.withValues(alpha: selected ? 0.65 : 0.28),
+              ),
+            ),
+            child: const Icon(
+              Icons.directions_run_rounded,
+              color: Colors.white,
+              size: 30,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Chạy',
+            style: TextStyle(
+              color: selected
+                  ? AppColors.blueGlow
+                  : Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.76),
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
       ),
     );
   }

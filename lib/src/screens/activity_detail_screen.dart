@@ -51,7 +51,10 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
         data: (item) => ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            RouteMap(encodedPolyline: item.summary.polyline),
+            RouteMap(
+              encodedPolyline: item.summary.polyline,
+              routePoints: item.summary.routePoints,
+            ),
             if (item.streams.isEmpty) ...[
               const SizedBox(height: 16),
               _CachedSummaryFallback(

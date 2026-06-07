@@ -50,20 +50,7 @@ class PowerRadarCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           if (controls != null) ...[controls!, const SizedBox(height: 14)],
-          SizedBox(height: 214, child: _PowerRadar(metrics: metrics)),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final metric in metrics)
-                _PowerChip(
-                  label: metric.label,
-                  value: metric.value,
-                  color: metric.color,
-                ),
-            ],
-          ),
+          SizedBox(height: 292, child: _PowerRadar(metrics: metrics)),
         ],
       ),
     );
@@ -114,55 +101,6 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _PowerChip extends StatelessWidget {
-  const _PowerChip({
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  final String label;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.11),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: onSurface.withValues(alpha: 0.58),
-                fontSize: 9,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.9,
-              ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              value,
-              style: TextStyle(
-                color: color,
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _PowerRadar extends StatelessWidget {
   const _PowerRadar({required this.metrics});
 
@@ -170,28 +108,126 @@ class _PowerRadar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _PowerRadarPainter(
-        metrics: metrics,
-        textColor: Theme.of(context).colorScheme.onSurface,
-      ),
-      child: const SizedBox.expand(),
+    final top = _metricAt(0);
+    final right = _metricAt(1);
+    final bottomRight = _metricAt(2);
+    final bottomLeft = _metricAt(3);
+    final left = _metricAt(4);
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: CustomPaint(painter: _PowerRadarPainter(metrics: metrics)),
+        ),
+        if (top != null)
+          Positioned(
+            top: 26,
+            left: 0,
+            right: 0,
+            child: Center(child: _RadarMetricBadge(metric: top)),
+          ),
+        if (left != null)
+          Positioned(
+            left: 36,
+            top: 118,
+            width: 92,
+            child: _RadarMetricBadge(metric: left, alignment: TextAlign.left),
+          ),
+        if (right != null)
+          Positioned(
+            right: 36,
+            top: 118,
+            width: 92,
+            child: _RadarMetricBadge(metric: right, alignment: TextAlign.right),
+          ),
+        if (bottomLeft != null)
+          Positioned(
+            left: 62,
+            bottom: 26,
+            width: 128,
+            child: _RadarMetricBadge(
+              metric: bottomLeft,
+              alignment: TextAlign.center,
+            ),
+          ),
+        if (bottomRight != null)
+          Positioned(
+            right: 62,
+            bottom: 26,
+            width: 128,
+            child: _RadarMetricBadge(
+              metric: bottomRight,
+              alignment: TextAlign.center,
+            ),
+          ),
+      ],
+    );
+  }
+
+  PowerRadarMetric? _metricAt(int index) {
+    return index < metrics.length ? metrics[index] : null;
+  }
+}
+
+class _RadarMetricBadge extends StatelessWidget {
+  const _RadarMetricBadge({
+    required this.metric,
+    this.alignment = TextAlign.center,
+  });
+
+  final PowerRadarMetric metric;
+  final TextAlign alignment;
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return Column(
+      crossAxisAlignment: switch (alignment) {
+        TextAlign.left => CrossAxisAlignment.start,
+        TextAlign.right => CrossAxisAlignment.end,
+        _ => CrossAxisAlignment.center,
+      },
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          metric.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: alignment,
+          style: TextStyle(
+            color: onSurface.withValues(alpha: 0.58),
+            fontSize: 10,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          metric.value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: alignment,
+          style: TextStyle(
+            color: metric.color,
+            fontSize: 13,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
     );
   }
 }
 
 class _PowerRadarPainter extends CustomPainter {
-  const _PowerRadarPainter({required this.metrics, required this.textColor});
+  const _PowerRadarPainter({required this.metrics});
 
   final List<PowerRadarMetric> metrics;
-  final Color textColor;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (metrics.length < 3) return;
 
-    final center = Offset(size.width / 2, size.height / 2 + 4);
-    final radius = math.min(size.width, size.height) * 0.34;
+    final center = Offset(size.width / 2, size.height / 2 + 12);
+    final radius = math.min(size.width, size.height) * 0.24;
     final axisCount = metrics.length;
     final gridPaint = Paint()
       ..color = AppColors.blueGlow.withValues(alpha: 0.18)
@@ -271,22 +307,6 @@ class _PowerRadarPainter extends CustomPainter {
         Paint()..color = metric.color.withValues(alpha: 0.18),
       );
     }
-
-    for (var index = 0; index < axisCount; index++) {
-      final metric = metrics[index];
-      final labelPoint = _point(center, radius + 30, index, axisCount);
-      _drawCenteredText(
-        canvas,
-        metric.label,
-        labelPoint,
-        TextStyle(
-          color: textColor.withValues(alpha: 0.62),
-          fontSize: 10,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 1,
-        ),
-      );
-    }
   }
 
   Offset _point(Offset center, double radius, int index, int total) {
@@ -297,25 +317,8 @@ class _PowerRadarPainter extends CustomPainter {
     );
   }
 
-  void _drawCenteredText(
-    Canvas canvas,
-    String text,
-    Offset center,
-    TextStyle style,
-  ) {
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textAlign: TextAlign.center,
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: 72);
-    painter.paint(
-      canvas,
-      Offset(center.dx - painter.width / 2, center.dy - painter.height / 2),
-    );
-  }
-
   @override
   bool shouldRepaint(covariant _PowerRadarPainter oldDelegate) {
-    return oldDelegate.metrics != metrics || oldDelegate.textColor != textColor;
+    return oldDelegate.metrics != metrics;
   }
 }

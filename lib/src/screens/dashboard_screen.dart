@@ -751,22 +751,33 @@ class _SummaryCard extends StatelessWidget {
             const SizedBox(height: 18),
             _SevenDayPulseChart(days: dailyDistances),
             const SizedBox(height: 18),
-            Wrap(
-              spacing: 24,
-              runSpacing: 16,
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 2.2,
               children: [
                 _Metric(
                   label: 'Quãng đường',
                   value: formatDistance(summary.distanceMeters),
+                  color: AppColors.blueGlow,
                 ),
                 _Metric(
                   label: 'Thời gian',
                   value: formatDuration(summary.movingTimeSeconds),
+                  color: Colors.white,
                 ),
-                _Metric(label: 'Số buổi', value: '${summary.activityCount}'),
+                _Metric(
+                  label: 'Số buổi',
+                  value: '${summary.activityCount}',
+                  color: AppColors.amber,
+                ),
                 _Metric(
                   label: 'Pace TB',
                   value: formatPace(summary.paceSecondsPerKm),
+                  color: AppColors.red,
                 ),
               ],
             ),
@@ -984,30 +995,66 @@ class _SevenDayBar extends StatelessWidget {
 }
 
 class _Metric extends StatelessWidget {
-  const _Metric({required this.label, required this.value});
+  const _Metric({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
   final String label;
   final String value;
+  final Color color;
+
   @override
   Widget build(BuildContext context) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    return SizedBox(
-      width: 120,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(color: onSurface.withValues(alpha: 0.62)),
-          ),
-          Text(
-            value,
-            style: TextStyle(
-              color: onSurface,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-            ),
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: isLight
+            ? Colors.white.withValues(alpha: 0.58)
+            : Colors.black.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isLight ? 0.06 : 0.12),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
         ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.5),
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.2,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: isLight
+                    ? Theme.of(context).colorScheme.onSurface
+                    : color,
+                fontSize: 21,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
