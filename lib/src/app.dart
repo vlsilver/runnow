@@ -137,8 +137,13 @@ class _Scaffold extends StatelessWidget {
         child: GlassPanel(
           borderRadius: 22,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
+              DashboardNavFilter(branchActive: shell.currentIndex == 0),
+              ClubNavFilter(branchActive: shell.currentIndex == 2),
+              Row(
+                children: [
               Expanded(
                 child: _NavItem(
                   selected: shell.currentIndex == 0,
@@ -180,6 +185,8 @@ class _Scaffold extends StatelessWidget {
                   label: 'Cài đặt',
                   onTap: () => shell.goBranch(4),
                 ),
+              ),
+                ],
               ),
             ],
           ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/dashboard_analytics.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
@@ -11,20 +12,11 @@ import 'package:myrun/src/training_power.dart';
 import 'package:myrun/src/widgets/activity_records_card.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/nav_filter.dart';
 import 'package:myrun/src/widgets/power_radar_card.dart';
 
-enum _RankingMetric {
-  distance,
-  time,
-  consistency,
-  pace,
-  longestRun,
-  activityCount,
-}
-
-enum _RankingRange { rollingSevenDays, currentWeek, currentMonth }
-
-enum _ClubRecapRange { currentWeek, currentMonth }
+const _rankingTabIndex = 0;
+const _recapTabIndex = 1;
 
 class ClubScreen extends ConsumerStatefulWidget {
   const ClubScreen({super.key});
@@ -33,64 +25,68 @@ class ClubScreen extends ConsumerStatefulWidget {
   ConsumerState<ClubScreen> createState() => _ClubScreenState();
 }
 
-class _ClubScreenState extends ConsumerState<ClubScreen> {
-  _RankingMetric _metric = _RankingMetric.distance;
-  _RankingRange _range = _RankingRange.rollingSevenDays;
-  _ClubRecapRange _recapRange = _ClubRecapRange.currentMonth;
+class _ClubScreenState extends ConsumerState<ClubScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 4, vsync: this)
+      ..addListener(_syncActiveSubTab);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      _syncActiveSubTab();
       ref.read(memberRepositoryProvider).ensureCurrentLeaderboardEntry();
     });
   }
 
   @override
+  void dispose() {
+    _tabController
+      ..removeListener(_syncActiveSubTab)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _syncActiveSubTab() {
+    final index = _tabController.index;
+    if (ref.read(clubActiveSubTabProvider) != index) {
+      ref.read(clubActiveSubTabProvider.notifier).state = index;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final members = ref.watch(membersProvider);
-    return DefaultTabController(
-      length: 4,
-      initialIndex: 0,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Câu lạc bộ'),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Xếp hạng'),
-              Tab(text: 'Tổng kết'),
-              Tab(text: 'Nhật ký'),
-              Tab(text: 'Thành viên'),
-            ],
-          ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Câu lạc bộ'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Xếp hạng'),
+            Tab(text: 'Tổng kết'),
+            Tab(text: 'Nhật ký'),
+            Tab(text: 'Thành viên'),
+          ],
         ),
-        body: members.when(
-          data: (items) => items.isEmpty
-              ? const _EmptyClub()
-              : TabBarView(
-                  children: [
-                    _RankingTab(
-                      currentUid: _currentUid(ref),
-                      metric: _metric,
-                      range: _range,
-                      onMetricChanged: (value) =>
-                          setState(() => _metric = value),
-                      onRangeChanged: (value) => setState(() => _range = value),
-                    ),
-                    _ClubRecapTab(
-                      range: _recapRange,
-                      onRangeChanged: (value) =>
-                          setState(() => _recapRange = value),
-                    ),
-                    const _ClubJournalTab(),
-                    _MembersTab(members: items, currentUid: _currentUid(ref)),
-                  ],
-                ),
-          error: (error, stack) =>
-              Center(child: Text('Không thể tải thành viên: $error')),
-          loading: () => const Center(child: CircularProgressIndicator()),
-        ),
+      ),
+      body: members.when(
+        data: (items) => items.isEmpty
+            ? const _EmptyClub()
+            : TabBarView(
+                controller: _tabController,
+                children: [
+                  _RankingTab(currentUid: _currentUid(ref)),
+                  const _ClubRecapTab(),
+                  const _ClubJournalTab(),
+                  _MembersTab(members: items, currentUid: _currentUid(ref)),
+                ],
+              ),
+        error: (error, stack) =>
+            Center(child: Text('Không thể tải thành viên: $error')),
+        loading: () => const Center(child: CircularProgressIndicator()),
       ),
     );
   }
@@ -136,30 +132,27 @@ class _ClubJournalTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final log = ref.watch(clubActivityLogProvider);
     return log.when(
-      data: (items) {
-        final visibleItems = items.take(60).toList();
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
-          children: items.isEmpty
-              ? const [
-                  GlassPanel(
-                    borderRadius: 22,
-                    padding: EdgeInsets.all(18),
-                    child: Text('Chưa có hoạt động public trong club.'),
+      data: (items) => ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+        children: items.isEmpty
+            ? const [
+                GlassPanel(
+                  borderRadius: 22,
+                  padding: EdgeInsets.all(18),
+                  child: Text('Chưa có hoạt động public trong club.'),
+                ),
+              ]
+            : [
+                for (var index = 0; index < items.length; index++)
+                  ActivityTile(
+                    activity: items[index].activity,
+                    sequence: index + 1,
+                    ownerUid: items[index].member.uid,
+                    memberName: items[index].member.displayName,
+                    memberAvatarUrl: items[index].member.avatarUrl,
                   ),
-                ]
-              : [
-                  for (var index = 0; index < visibleItems.length; index++)
-                    ActivityTile(
-                      activity: visibleItems[index].activity,
-                      sequence: index + 1,
-                      ownerUid: visibleItems[index].member.uid,
-                      memberName: visibleItems[index].member.displayName,
-                      memberAvatarUrl: visibleItems[index].member.avatarUrl,
-                    ),
-                ],
-        );
-      },
+              ],
+      ),
       error: (error, stack) =>
           Center(child: Text('Không thể tải nhật ký club: $error')),
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -168,20 +161,12 @@ class _ClubJournalTab extends ConsumerWidget {
 }
 
 class _ClubRecapTab extends ConsumerWidget {
-  const _ClubRecapTab({required this.range, required this.onRangeChanged});
-
-  final _ClubRecapRange range;
-  final ValueChanged<_ClubRecapRange> onRangeChanged;
+  const _ClubRecapTab();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final range = ref.watch(clubRecapRangeProvider);
     final leaderboard = ref.watch(leaderboardEntriesProvider);
-    final clubLog = ref
-        .watch(clubActivityLogProvider)
-        .maybeWhen(
-          data: (items) => items,
-          orElse: () => const <ClubActivityLogItem>[],
-        );
     return leaderboard.when(
       data: (items) {
         final entries = items.where((entry) => entry.isPublic).toList();
@@ -189,18 +174,18 @@ class _ClubRecapTab extends ConsumerWidget {
         final stats = entries
             .map(
               (entry) => switch (range) {
-                _ClubRecapRange.currentWeek => entry.currentWeek,
-                _ClubRecapRange.currentMonth => entry.currentMonth,
+                ClubRecapRange.currentWeek => entry.currentWeek,
+                ClubRecapRange.currentMonth => entry.currentMonth,
               },
             )
             .toList();
         final period = switch (range) {
-          _ClubRecapRange.currentWeek => 'tuần',
-          _ClubRecapRange.currentMonth => 'tháng',
+          ClubRecapRange.currentWeek => 'tuần',
+          ClubRecapRange.currentMonth => 'tháng',
         };
         final periodTitle = switch (range) {
-          _ClubRecapRange.currentWeek => 'TUẦN',
-          _ClubRecapRange.currentMonth => 'THÁNG',
+          ClubRecapRange.currentWeek => 'TUẦN',
+          ClubRecapRange.currentMonth => 'THÁNG',
         };
         final totalDistance = stats.fold<double>(
           0,
@@ -221,14 +206,6 @@ class _ClubRecapTab extends ConsumerWidget {
             ? 0.0
             : activeMembers / entries.length;
         final fastestPace = _fastestPace(stats);
-        final longestRun = stats.fold<double>(
-          0,
-          (max, item) => item.longestDistanceMeters > max
-              ? item.longestDistanceMeters
-              : max,
-        );
-        final previousStats = _previousClubStats(clubLog, entries, range);
-        final currentLog = _currentClubLog(clubLog, entries, range);
         final powerMetrics = _clubPowerMetrics(
           range: range,
           memberCount: entries.length,
@@ -239,79 +216,30 @@ class _ClubRecapTab extends ConsumerWidget {
           fastestPaceSecondsPerKm: fastestPace,
         );
         return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           children: [
-            _ClubRecapRangeControl(value: range, onChanged: onRangeChanged),
-            const SizedBox(height: 14),
-            _ShareableClubCard(
-              title: 'RunNow tổng kết club $period',
-              child: _ClubSummaryCard(
-                title: 'TỔNG KẾT $periodTitle',
-                totalDistanceMeters: totalDistance,
-                totalMovingTimeSeconds: totalTime,
-                totalActivities: totalActivities,
-                activeMembers: activeMembers,
-                memberCount: entries.length,
-              ),
+            _ClubSummaryCard(
+              title: 'TỔNG KẾT $periodTitle',
+              totalDistanceMeters: totalDistance,
+              totalMovingTimeSeconds: totalTime,
+              totalActivities: totalActivities,
+              activeMembers: activeMembers,
+              memberCount: entries.length,
             ),
             const SizedBox(height: 14),
-            _ShareableClubCard(
-              title: 'RunNow club power $period',
-              child: PowerRadarCard(
-                title: 'CLUB POWER $periodTitle',
-                metrics: powerMetrics,
-                powerScore: averagePowerScore(powerMetrics),
-              ),
+            PowerRadarCard(
+              title: 'CLUB POWER $periodTitle',
+              metrics: powerMetrics,
+              powerScore: averagePowerScore(powerMetrics),
             ),
             const SizedBox(height: 14),
-            _ShareableClubCard(
-              title: 'RunNow kỷ lục club $period',
-              child: ActivityRecordsCard(
-                title: 'KỶ LỤC CLUB $periodTitle',
-                showOwner: true,
-                showWhenEmpty: true,
-                emptyMessage: 'Chưa có hoạt động public trong $period.',
-                entries: [
-                  for (final item in currentLog)
-                    ActivityRecordEntry(
-                      activity: item.activity,
-                      ownerUid: item.member.uid,
-                      ownerName: item.member.displayName,
-                      ownerAvatarUrl: item.member.avatarUrl,
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            _ShareableClubCard(
-              title: 'RunNow dấu hiệu club $period',
-              child: _ClubSignalCard(
-                previousPeriodLabel: switch (range) {
-                  _ClubRecapRange.currentWeek => 'tuần trước',
-                  _ClubRecapRange.currentMonth => 'tháng trước',
-                },
-                distanceDeltaRatio: _deltaRatio(
-                  totalDistance,
-                  previousStats.distanceMeters,
-                ),
-                timeDeltaRatio: _deltaRatio(
-                  totalTime.toDouble(),
-                  previousStats.movingTimeSeconds.toDouble(),
-                ),
-                fastestPace: fastestPace,
-                longestRun: longestRun,
-              ),
-            ),
-            const SizedBox(height: 14),
-            _ShareableClubCard(
-              title: 'RunNow thành viên chưa active $period',
-              child: _InactiveMembersCard(
-                entries: [
-                  for (var index = 0; index < entries.length; index++)
-                    if (stats[index].distanceMeters <= 0) entries[index],
-                ],
-                period: period,
-              ),
+            _ClubRecordsCard(range: range, periodTitle: periodTitle),
+            _InactiveMembersCard(
+              entries: [
+                for (var index = 0; index < entries.length; index++)
+                  if (stats[index].distanceMeters <= 0) entries[index],
+              ],
+              period: period,
             ),
           ],
         );
@@ -323,23 +251,63 @@ class _ClubRecapTab extends ConsumerWidget {
   }
 }
 
-class _RankingTab extends ConsumerWidget {
-  const _RankingTab({
-    required this.currentUid,
-    required this.metric,
-    required this.range,
-    required this.onMetricChanged,
-    required this.onRangeChanged,
-  });
+class _ClubRecordsCard extends ConsumerWidget {
+  const _ClubRecordsCard({required this.range, required this.periodTitle});
 
-  final String? currentUid;
-  final _RankingMetric metric;
-  final _RankingRange range;
-  final ValueChanged<_RankingMetric> onMetricChanged;
-  final ValueChanged<_RankingRange> onRangeChanged;
+  final ClubRecapRange range;
+  final String periodTitle;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final log = ref.watch(clubActivityLogProvider);
+    return log.maybeWhen(
+      data: (items) {
+        final now = DateTime.now();
+        final (start, end) = switch (range) {
+          ClubRecapRange.currentWeek => (
+            startOfCurrentWeek(now),
+            startOfCurrentWeek(now).add(const Duration(days: 7)),
+          ),
+          ClubRecapRange.currentMonth => (
+            DateTime(now.year, now.month),
+            DateTime(now.year, now.month + 1),
+          ),
+        };
+        final entries = [
+          for (final item in items)
+            if (!item.activity.startedAt.isBefore(start) &&
+                item.activity.startedAt.isBefore(end))
+              ActivityRecordEntry(
+                activity: item.activity,
+                ownerUid: item.member.uid,
+                ownerName: item.member.displayName,
+                ownerAvatarUrl: item.member.avatarUrl,
+              ),
+        ];
+        if (entries.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: ActivityRecordsCard(
+            title: 'KỶ LỤC CLUB $periodTitle',
+            showOwner: true,
+            entries: entries,
+          ),
+        );
+      },
+      orElse: () => const SizedBox.shrink(),
+    );
+  }
+}
+
+class _RankingTab extends ConsumerWidget {
+  const _RankingTab({required this.currentUid});
+
+  final String? currentUid;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final metric = ref.watch(clubRankingMetricProvider);
+    final range = ref.watch(clubRankingRangeProvider);
     final leaderboard = ref.watch(leaderboardEntriesProvider);
     return leaderboard.when(
       data: (items) {
@@ -352,7 +320,7 @@ class _RankingTab extends ConsumerWidget {
                 )
                 .toList()
               ..sort((left, right) {
-                final byScore = metric == _RankingMetric.pace
+                final byScore = metric == ClubRankingMetric.pace
                     ? left.score.compareTo(right.score)
                     : right.score.compareTo(left.score);
                 if (byScore != 0) return byScore;
@@ -361,15 +329,8 @@ class _RankingTab extends ConsumerWidget {
                 );
               });
         return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           children: [
-            _RankingControls(
-              metric: metric,
-              range: range,
-              onMetricChanged: onMetricChanged,
-              onRangeChanged: onRangeChanged,
-            ),
-            const SizedBox(height: 14),
             if (entries.isEmpty)
               const _EmptyRanking()
             else
@@ -388,74 +349,97 @@ class _RankingTab extends ConsumerWidget {
       },
       error: (error, stack) =>
           Center(child: Text('Không thể tải bảng xếp hạng: $error')),
-      loading: () => ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+      loading: () => const Center(child: CircularProgressIndicator()),
+    );
+  }
+}
+
+/// Filter của club render gộp chung trong navigation bar (cùng [GlassPanel]).
+/// Tuỳ tab con đang chọn mà hiện bộ lọc phù hợp: Xếp hạng (dropdown metric +
+/// range) hoặc Tổng kết (toggle Tuần/Tháng).
+class ClubNavFilter extends ConsumerWidget {
+  const ClubNavFilter({required this.branchActive, super.key});
+
+  final bool branchActive;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tab = branchActive ? ref.watch(clubActiveSubTabProvider) : -1;
+    final Widget child = switch (tab) {
+      _rankingTabIndex => const _RankingNavControls(),
+      _recapTabIndex => const _RecapToggle(),
+      _ => const SizedBox(width: double.infinity),
+    };
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: child,
+    );
+  }
+}
+
+class _RankingNavControls extends ConsumerWidget {
+  const _RankingNavControls();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final metric = ref.watch(clubRankingMetricProvider);
+    final range = ref.watch(clubRankingRangeProvider);
+    return NavFilterShell(
+      child: Row(
         children: [
-          Text('Xếp hạng', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 10),
-          _RankingControls(
-            metric: metric,
-            range: range,
-            onMetricChanged: onMetricChanged,
-            onRangeChanged: onRangeChanged,
+          Expanded(
+            child: NavDropdown<ClubRankingMetric>(
+              icon: Icons.leaderboard_outlined,
+              value: metric,
+              items: const {
+                ClubRankingMetric.distance: 'Km',
+                ClubRankingMetric.time: 'Thời gian',
+                ClubRankingMetric.consistency: 'Đều',
+                ClubRankingMetric.pace: 'Pace',
+                ClubRankingMetric.longestRun: 'Dài nhất',
+                ClubRankingMetric.activityCount: 'Buổi',
+              },
+              onChanged: (value) =>
+                  ref.read(clubRankingMetricProvider.notifier).state = value,
+            ),
           ),
-          const SizedBox(height: 16),
-          const LinearProgressIndicator(minHeight: 2),
+          const SizedBox(width: 8),
+          Expanded(
+            child: NavDropdown<ClubRankingRange>(
+              icon: Icons.date_range_outlined,
+              value: range,
+              items: const {
+                ClubRankingRange.rollingSevenDays: '7 ngày',
+                ClubRankingRange.currentWeek: 'Tuần này',
+                ClubRankingRange.currentMonth: 'Tháng này',
+              },
+              onChanged: (value) =>
+                  ref.read(clubRankingRangeProvider.notifier).state = value,
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _RankingControls extends StatelessWidget {
-  const _RankingControls({
-    required this.metric,
-    required this.range,
-    required this.onMetricChanged,
-    required this.onRangeChanged,
-  });
-
-  final _RankingMetric metric;
-  final _RankingRange range;
-  final ValueChanged<_RankingMetric> onMetricChanged;
-  final ValueChanged<_RankingRange> onRangeChanged;
+class _RecapToggle extends ConsumerWidget {
+  const _RecapToggle();
 
   @override
-  Widget build(BuildContext context) {
-    return GlassPanel(
-      borderRadius: 18,
-      padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
-      child: Row(
-        children: [
-          Expanded(
-            child: _ControlDropdown<_RankingMetric>(
-              icon: Icons.leaderboard_outlined,
-              value: metric,
-              items: const {
-                _RankingMetric.distance: 'Km',
-                _RankingMetric.time: 'Thời gian',
-                _RankingMetric.consistency: 'Đều',
-                _RankingMetric.pace: 'Pace',
-                _RankingMetric.longestRun: 'Dài nhất',
-                _RankingMetric.activityCount: 'Buổi',
-              },
-              onChanged: onMetricChanged,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _ControlDropdown<_RankingRange>(
-              icon: Icons.date_range_outlined,
-              value: range,
-              items: const {
-                _RankingRange.rollingSevenDays: '7 ngày',
-                _RankingRange.currentWeek: 'Tuần này',
-                _RankingRange.currentMonth: 'Tháng này',
-              },
-              onChanged: onRangeChanged,
-            ),
-          ),
-        ],
+  Widget build(BuildContext context, WidgetRef ref) {
+    final range = ref.watch(clubRecapRangeProvider);
+    return NavFilterShell(
+      child: NavPillToggle<ClubRecapRange>(
+        value: range,
+        items: const {
+          ClubRecapRange.currentWeek: 'Tuần',
+          ClubRecapRange.currentMonth: 'Tháng',
+        },
+        onChanged: (value) =>
+            ref.read(clubRecapRangeProvider.notifier).state = value,
       ),
     );
   }
@@ -515,8 +499,8 @@ class _RankingBoardCard extends StatelessWidget {
   });
 
   final List<_RankingEntry> entries;
-  final _RankingMetric metric;
-  final _RankingRange range;
+  final ClubRankingMetric metric;
+  final ClubRankingRange range;
   final String? currentUid;
 
   @override
@@ -543,42 +527,6 @@ class _RankingBoardCard extends StatelessWidget {
               currentUid: currentUid,
             ),
         ],
-      ),
-    );
-  }
-}
-
-class _ClubRecapRangeControl extends StatelessWidget {
-  const _ClubRecapRangeControl({required this.value, required this.onChanged});
-
-  final _ClubRecapRange value;
-  final ValueChanged<_ClubRecapRange> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassPanel(
-      borderRadius: 18,
-      padding: const EdgeInsets.all(5),
-      child: SegmentedButton<_ClubRecapRange>(
-        showSelectedIcon: false,
-        style: ButtonStyle(
-          visualDensity: VisualDensity.compact,
-          textStyle: WidgetStateProperty.all(
-            const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
-          ),
-        ),
-        segments: const [
-          ButtonSegment(
-            value: _ClubRecapRange.currentWeek,
-            label: Text('Tuần'),
-          ),
-          ButtonSegment(
-            value: _ClubRecapRange.currentMonth,
-            label: Text('Tháng'),
-          ),
-        ],
-        selected: {value},
-        onSelectionChanged: (selection) => onChanged(selection.single),
       ),
     );
   }
@@ -697,80 +645,6 @@ class _ClubSummaryCard extends StatelessWidget {
   }
 }
 
-class _ClubSignalCard extends StatelessWidget {
-  const _ClubSignalCard({
-    required this.previousPeriodLabel,
-    required this.distanceDeltaRatio,
-    required this.timeDeltaRatio,
-    required this.fastestPace,
-    required this.longestRun,
-  });
-
-  final String previousPeriodLabel;
-  final double? distanceDeltaRatio;
-  final double? timeDeltaRatio;
-  final double? fastestPace;
-  final double longestRun;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassPanel(
-      borderRadius: 22,
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _ClubSectionHeader(
-            icon: Icons.auto_graph,
-            title: 'TÍN HIỆU CLUB',
-            trailing: 'vs $previousPeriodLabel',
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _RecapStat(
-                  label: 'KM VS TRƯỚC',
-                  value: _deltaLabel(distanceDeltaRatio),
-                  color: _deltaColor(distanceDeltaRatio),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _RecapStat(
-                  label: 'TIME VS TRƯỚC',
-                  value: _deltaLabel(timeDeltaRatio),
-                  color: _deltaColor(timeDeltaRatio),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _RecapStat(
-                  label: 'PACE NHANH',
-                  value: formatPace(fastestPace),
-                  color: _clubChartColor(1),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _RecapStat(
-                  label: 'RUN DÀI',
-                  value: formatDistance(longestRun),
-                  color: _clubChartColor(0.9),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _RecapStat extends StatelessWidget {
   const _RecapStat({
     required this.label,
@@ -786,49 +660,55 @@ class _RecapStat extends StatelessWidget {
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: isLight ? const Color(0xffeef4fb) : const Color(0x36020812),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: 0.16)),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.14),
-            blurRadius: 18,
-            spreadRadius: -10,
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: onSurface.withValues(alpha: 0.52),
-                fontSize: 9,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: color,
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                height: 1,
-                shadows: [
-                  Shadow(color: color.withValues(alpha: 0.36), blurRadius: 12),
-                ],
-              ),
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: isLight ? const Color(0xffeef4fb) : const Color(0x36020812),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.16)),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.14),
+              blurRadius: 18,
+              spreadRadius: -10,
             ),
           ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: onSurface.withValues(alpha: 0.52),
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                  shadows: [
+                    Shadow(
+                      color: color.withValues(alpha: 0.36),
+                      blurRadius: 12,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -962,67 +842,8 @@ class _ClubSectionHeader extends StatelessWidget {
   }
 }
 
-class _ControlDropdown<T> extends StatelessWidget {
-  const _ControlDropdown({
-    required this.icon,
-    required this.value,
-    required this.items,
-    required this.onChanged,
-  });
-
-  final IconData icon;
-  final T value;
-  final Map<T, String> items;
-  final ValueChanged<T> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    return DropdownButtonHideUnderline(
-      child: DropdownButton<T>(
-        isExpanded: true,
-        isDense: true,
-        value: value,
-        borderRadius: BorderRadius.circular(14),
-        icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
-        dropdownColor: isLight
-            ? const Color(0xfff8fbff)
-            : const Color(0xff071426),
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          fontWeight: FontWeight.w900,
-          fontSize: 14,
-          color: Theme.of(context).colorScheme.onSurface,
-        ),
-        items: [
-          for (final entry in items.entries)
-            DropdownMenuItem<T>(
-              value: entry.key,
-              child: Row(
-                children: [
-                  Icon(icon, size: 18, color: AppColors.blueGlow),
-                  const SizedBox(width: 7),
-                  Expanded(
-                    child: Text(
-                      entry.value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-        onChanged: (value) {
-          if (value == null) return;
-          onChanged(value);
-        },
-      ),
-    );
-  }
-}
-
 List<PowerRadarMetric> _clubPowerMetrics({
-  required _ClubRecapRange range,
+  required ClubRecapRange range,
   required int memberCount,
   required double totalDistanceMeters,
   required int totalMovingTimeSeconds,
@@ -1031,7 +852,7 @@ List<PowerRadarMetric> _clubPowerMetrics({
   required double? fastestPaceSecondsPerKm,
 }) {
   final safeMemberCount = memberCount <= 0 ? 1 : memberCount;
-  final weekly = range == _ClubRecapRange.currentWeek;
+  final weekly = range == ClubRecapRange.currentWeek;
   final volumeTargetKm = safeMemberCount * (weekly ? 15.0 : 60.0);
   final loadTargetSeconds = safeMemberCount * (weekly ? 3 * 3600 : 12 * 3600);
   final averageDistanceMeters = totalActivities == 0
@@ -1085,126 +906,6 @@ double? _fastestPace(List<LeaderboardStats> stats) {
   return fastest;
 }
 
-LeaderboardStats _previousClubStats(
-  List<ClubActivityLogItem> log,
-  List<LeaderboardEntry> entries,
-  _ClubRecapRange range,
-) {
-  final publicUids = entries.map((entry) => entry.uid).toSet();
-  final now = DateTime.now();
-  final currentStart = switch (range) {
-    _ClubRecapRange.currentWeek => _startOfWeek(now),
-    _ClubRecapRange.currentMonth => DateTime(now.year, now.month),
-  };
-  final previousStart = switch (range) {
-    _ClubRecapRange.currentWeek => currentStart.subtract(
-      const Duration(days: 7),
-    ),
-    _ClubRecapRange.currentMonth => DateTime(now.year, now.month - 1),
-  };
-  final previousActivities = log
-      .where((item) => publicUids.contains(item.member.uid))
-      .map((item) => item.activity)
-      .where(
-        (activity) =>
-            !activity.startedAt.isBefore(previousStart) &&
-            activity.startedAt.isBefore(currentStart),
-      )
-      .toList();
-  if (previousActivities.isEmpty) {
-    return const LeaderboardStats(
-      distanceMeters: 0,
-      movingTimeSeconds: 0,
-      activityCount: 0,
-      activeDays: 0,
-      longestDistanceMeters: 0,
-      fastestPaceSecondsPerKm: null,
-    );
-  }
-
-  final activeDays = <DateTime>{};
-  double? fastestPace;
-  var totalDistance = 0.0;
-  var totalTime = 0;
-  var longestRun = 0.0;
-  for (final activity in previousActivities) {
-    totalDistance += activity.distanceMeters;
-    totalTime += activity.movingTimeSeconds;
-    if (activity.distanceMeters > longestRun) {
-      longestRun = activity.distanceMeters;
-    }
-    activeDays.add(
-      DateTime(
-        activity.startedAt.year,
-        activity.startedAt.month,
-        activity.startedAt.day,
-      ),
-    );
-    final pace = activity.distanceMeters <= 0
-        ? null
-        : activity.movingTimeSeconds / (activity.distanceMeters / 1000);
-    if (pace == null || !pace.isFinite || pace <= 0) continue;
-    if (fastestPace == null || pace < fastestPace) fastestPace = pace;
-  }
-  return LeaderboardStats(
-    distanceMeters: totalDistance,
-    movingTimeSeconds: totalTime,
-    activityCount: previousActivities.length,
-    activeDays: activeDays.length,
-    longestDistanceMeters: longestRun,
-    fastestPaceSecondsPerKm: fastestPace,
-  );
-}
-
-List<ClubActivityLogItem> _currentClubLog(
-  List<ClubActivityLogItem> log,
-  List<LeaderboardEntry> entries,
-  _ClubRecapRange range,
-) {
-  final publicUids = entries.map((entry) => entry.uid).toSet();
-  final now = DateTime.now();
-  final start = switch (range) {
-    _ClubRecapRange.currentWeek => _startOfWeek(now),
-    _ClubRecapRange.currentMonth => DateTime(now.year, now.month),
-  };
-  final end = switch (range) {
-    _ClubRecapRange.currentWeek => start.add(const Duration(days: 7)),
-    _ClubRecapRange.currentMonth => DateTime(now.year, now.month + 1),
-  };
-  return log
-      .where((item) => publicUids.contains(item.member.uid))
-      .where(
-        (item) =>
-            !item.activity.startedAt.isBefore(start) &&
-            item.activity.startedAt.isBefore(end),
-      )
-      .toList();
-}
-
-DateTime _startOfWeek(DateTime date) {
-  final localDate = DateTime(date.year, date.month, date.day);
-  return localDate.subtract(Duration(days: localDate.weekday - 1));
-}
-
-double? _deltaRatio(double current, double previous) {
-  if (previous <= 0) return current > 0 ? 1 : null;
-  return (current - previous) / previous;
-}
-
-String _deltaLabel(double? ratio) {
-  if (ratio == null) return '--';
-  final percent = (ratio * 100).round();
-  if (percent == 0) return '0%';
-  return '${percent > 0 ? '+' : ''}$percent%';
-}
-
-Color _deltaColor(double? ratio) {
-  if (ratio == null) return AppColors.blueGlow;
-  if (ratio < 0) return AppColors.red;
-  if (ratio == 0) return AppColors.amber;
-  return const Color(0xff22c55e);
-}
-
 class _RankingEntry {
   const _RankingEntry({
     required this.entry,
@@ -1214,21 +915,21 @@ class _RankingEntry {
 
   factory _RankingEntry.fromLeaderboard(
     LeaderboardEntry entry,
-    _RankingMetric metric,
-    _RankingRange range,
+    ClubRankingMetric metric,
+    ClubRankingRange range,
   ) {
     final stats = switch (range) {
-      _RankingRange.rollingSevenDays => entry.rollingSevenDays,
-      _RankingRange.currentWeek => entry.currentWeek,
-      _RankingRange.currentMonth => entry.currentMonth,
+      ClubRankingRange.rollingSevenDays => entry.rollingSevenDays,
+      ClubRankingRange.currentWeek => entry.currentWeek,
+      ClubRankingRange.currentMonth => entry.currentMonth,
     };
     final score = switch (metric) {
-      _RankingMetric.distance => stats.distanceMeters,
-      _RankingMetric.time => stats.movingTimeSeconds.toDouble(),
-      _RankingMetric.consistency => stats.activeDays.toDouble(),
-      _RankingMetric.pace => stats.fastestPaceSecondsPerKm ?? double.infinity,
-      _RankingMetric.longestRun => stats.longestDistanceMeters,
-      _RankingMetric.activityCount => stats.activityCount.toDouble(),
+      ClubRankingMetric.distance => stats.distanceMeters,
+      ClubRankingMetric.time => stats.movingTimeSeconds.toDouble(),
+      ClubRankingMetric.consistency => stats.activeDays.toDouble(),
+      ClubRankingMetric.pace => stats.averagePaceSecondsPerKm ?? double.infinity,
+      ClubRankingMetric.longestRun => stats.longestDistanceMeters,
+      ClubRankingMetric.activityCount => stats.activityCount.toDouble(),
     };
     return _RankingEntry(entry: entry, stats: stats, score: score);
   }
@@ -1248,7 +949,7 @@ class _RankingCard extends StatelessWidget {
 
   final int rank;
   final _RankingEntry entry;
-  final _RankingMetric metric;
+  final ClubRankingMetric metric;
   final String? currentUid;
 
   @override
@@ -1468,38 +1169,37 @@ class _EmptyRanking extends StatelessWidget {
   }
 }
 
-String _scoreLabel(_RankingEntry entry, _RankingMetric metric) {
+String _scoreLabel(_RankingEntry entry, ClubRankingMetric metric) {
   return switch (metric) {
-    _RankingMetric.distance => formatDistance(entry.stats.distanceMeters),
-    _RankingMetric.time => formatDuration(entry.stats.movingTimeSeconds),
-    _RankingMetric.consistency => '${entry.stats.activeDays} ngày',
-    _RankingMetric.pace =>
-      entry.stats.fastestPaceSecondsPerKm == null
-          ? '--'
-          : formatPace(entry.stats.fastestPaceSecondsPerKm),
-    _RankingMetric.longestRun => formatDistance(
+    ClubRankingMetric.distance => formatDistance(entry.stats.distanceMeters),
+    ClubRankingMetric.time => formatDuration(entry.stats.movingTimeSeconds),
+    ClubRankingMetric.consistency => '${entry.stats.activeDays} ngày',
+    ClubRankingMetric.pace => entry.stats.averagePaceSecondsPerKm == null
+        ? '--'
+        : formatPace(entry.stats.averagePaceSecondsPerKm),
+    ClubRankingMetric.longestRun => formatDistance(
       entry.stats.longestDistanceMeters,
     ),
-    _RankingMetric.activityCount => '${entry.stats.activityCount} buổi',
+    ClubRankingMetric.activityCount => '${entry.stats.activityCount} buổi',
   };
 }
 
-String _rankingMetricLabel(_RankingMetric metric) {
+String _rankingMetricLabel(ClubRankingMetric metric) {
   return switch (metric) {
-    _RankingMetric.distance => 'Km',
-    _RankingMetric.time => 'Thời gian',
-    _RankingMetric.consistency => 'Đều',
-    _RankingMetric.pace => 'Pace',
-    _RankingMetric.longestRun => 'Dài nhất',
-    _RankingMetric.activityCount => 'Buổi',
+    ClubRankingMetric.distance => 'Km',
+    ClubRankingMetric.time => 'Thời gian',
+    ClubRankingMetric.consistency => 'Đều',
+    ClubRankingMetric.pace => 'Pace',
+    ClubRankingMetric.longestRun => 'Dài nhất',
+    ClubRankingMetric.activityCount => 'Buổi',
   };
 }
 
-String _rankingRangeLabel(_RankingRange range) {
+String _rankingRangeLabel(ClubRankingRange range) {
   return switch (range) {
-    _RankingRange.rollingSevenDays => '7 ngày',
-    _RankingRange.currentWeek => 'Tuần này',
-    _RankingRange.currentMonth => 'Tháng này',
+    ClubRankingRange.rollingSevenDays => '7 ngày',
+    ClubRankingRange.currentWeek => 'Tuần này',
+    ClubRankingRange.currentMonth => 'Tháng này',
   };
 }
 

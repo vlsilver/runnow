@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:myrun/src/dashboard_analytics.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
@@ -8,11 +9,13 @@ import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/share.dart';
 import 'package:myrun/src/strava_client.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/training_power.dart';
 import 'package:myrun/src/widgets/activity_records_card.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/consistency_heatmap.dart';
 import 'package:myrun/src/widgets/discipline_card.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/nav_filter.dart';
 import 'package:myrun/src/widgets/personal_power_card.dart';
 import 'package:myrun/src/widgets/training_volume_chart.dart';
 
@@ -111,6 +114,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
 enum _WeekViewMode { rollingSevenDays, currentWeek }
 
+/// Các card ở Tổng quan có filter (đưa lên navigation bar).
+enum DashboardCard { week, power, volume }
+
+/// Card đang ở vùng trên viewport (theo scroll). Null = đang ở card không có
+/// filter -> nav ẩn filter đi.
+final dashboardActiveCardProvider = StateProvider<DashboardCard?>(
+  (ref) => null,
+);
+final dashboardWeekModeProvider = StateProvider<_WeekViewMode>(
+  (ref) => _WeekViewMode.currentWeek,
+);
+final dashboardPowerRangeProvider = StateProvider<PersonalPowerRange>(
+  (ref) => PersonalPowerRange.rollingSevenDays,
+);
+final dashboardVolumePeriodProvider = StateProvider<TrainingVolumePeriod>(
+  (ref) => TrainingVolumePeriod.month,
+);
+final dashboardVolumeModeProvider = StateProvider<TrainingVolumeChartMode>(
+  (ref) => TrainingVolumeChartMode.bar,
+);
+
 class _DashboardBody extends ConsumerStatefulWidget {
   const _DashboardBody({required this.activities});
   final List<ActivitySummary> activities;
@@ -120,12 +144,51 @@ class _DashboardBody extends ConsumerStatefulWidget {
 }
 
 class _DashboardBodyState extends ConsumerState<_DashboardBody> {
-  _WeekViewMode _weekViewMode = _WeekViewMode.rollingSevenDays;
+  final _scrollKey = GlobalKey();
+  final _weekKey = GlobalKey();
+  final _powerKey = GlobalKey();
+  final _volumeKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateActiveCard());
+  }
+
+  /// Xác định card filter nào đang chiếm vùng trên cùng của viewport để nav bar
+  /// hiện đúng filter của card đó (null nếu đang là card không có filter).
+  void _updateActiveCard() {
+    if (!mounted) return;
+    final listBox = _scrollKey.currentContext?.findRenderObject() as RenderBox?;
+    if (listBox == null) return;
+    // Lấy đường ngang ~25% từ trên viewport làm mốc "đang xem"; card filter nào
+    // phủ qua mốc này thì nav hiện filter của card đó.
+    final threshold =
+        listBox.localToGlobal(Offset.zero).dy + listBox.size.height * 0.25;
+    DashboardCard? active;
+    for (final section in <(GlobalKey, DashboardCard)>[
+      (_weekKey, DashboardCard.week),
+      (_powerKey, DashboardCard.power),
+      (_volumeKey, DashboardCard.volume),
+    ]) {
+      final box = section.$1.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null) continue;
+      final top = box.localToGlobal(Offset.zero).dy;
+      if (top <= threshold && top + box.size.height > threshold) {
+        active = section.$2;
+        break;
+      }
+    }
+    if (ref.read(dashboardActiveCardProvider) != active) {
+      ref.read(dashboardActiveCardProvider.notifier).state = active;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final comparison = switch (_weekViewMode) {
+    final weekMode = ref.watch(dashboardWeekModeProvider);
+    final comparison = switch (weekMode) {
       _WeekViewMode.rollingSevenDays => rollingSevenDayComparison(
         widget.activities,
         now,
@@ -135,7 +198,7 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
         now,
       ),
     };
-    final dailyDistances = switch (_weekViewMode) {
+    final dailyDistances = switch (weekMode) {
       _WeekViewMode.rollingSevenDays => rollingSevenDayDistances(
         widget.activities,
         now,
@@ -153,101 +216,232 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
     );
     final recent = [...widget.activities]
       ..sort((left, right) => right.startedAt.compareTo(left.startedAt));
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        header,
-        const SizedBox(height: 12),
-        _ShareableDashboardCard(
-          title: 'RunNow tiến độ tuần',
-          builder: (sharing) => goals.when(
-            data: (item) => _SummaryCard(
-              comparison: comparison,
-              dailyDistances: dailyDistances,
-              goals: item,
-              monthDistanceMeters: monthSummary.distanceMeters,
-              mode: _weekViewMode,
-              onModeChanged: (mode) => setState(() => _weekViewMode = mode),
-              onEditGoals: () => _editTrainingGoals(context, ref, item),
-              showControls: !sharing,
-            ),
-            error: (error, stack) => _SummaryCard(
-              comparison: comparison,
-              dailyDistances: dailyDistances,
-              goals: TrainingGoals.empty,
-              monthDistanceMeters: monthSummary.distanceMeters,
-              mode: _weekViewMode,
-              onModeChanged: (mode) => setState(() => _weekViewMode = mode),
-              onEditGoals: () =>
-                  _editTrainingGoals(context, ref, TrainingGoals.empty),
-              showControls: !sharing,
-            ),
-            loading: () => _SummaryCard(
-              comparison: comparison,
-              dailyDistances: dailyDistances,
-              goals: TrainingGoals.empty,
-              monthDistanceMeters: monthSummary.distanceMeters,
-              mode: _weekViewMode,
-              onModeChanged: (mode) => setState(() => _weekViewMode = mode),
-              onEditGoals: null,
-              showControls: !sharing,
+    return NotificationListener<ScrollNotification>(
+      onNotification: (_) {
+        _updateActiveCard();
+        return false;
+      },
+      child: ListView(
+        key: _scrollKey,
+        padding: const EdgeInsets.all(16),
+        children: [
+          header,
+          const SizedBox(height: 12),
+          KeyedSubtree(
+            key: _weekKey,
+            child: _ShareableDashboardCard(
+              title: 'RunNow tiến độ tuần',
+              builder: (sharing) => goals.when(
+                data: (item) => _SummaryCard(
+                  comparison: comparison,
+                  dailyDistances: dailyDistances,
+                  goals: item,
+                  monthDistanceMeters: monthSummary.distanceMeters,
+                  mode: weekMode,
+                  onModeChanged: (mode) => ref
+                      .read(dashboardWeekModeProvider.notifier)
+                      .state = mode,
+                  onEditGoals: () => _editTrainingGoals(context, ref, item),
+                  showControls: false,
+                ),
+                error: (error, stack) => _SummaryCard(
+                  comparison: comparison,
+                  dailyDistances: dailyDistances,
+                  goals: TrainingGoals.empty,
+                  monthDistanceMeters: monthSummary.distanceMeters,
+                  mode: weekMode,
+                  onModeChanged: (mode) => ref
+                      .read(dashboardWeekModeProvider.notifier)
+                      .state = mode,
+                  onEditGoals: () =>
+                      _editTrainingGoals(context, ref, TrainingGoals.empty),
+                  showControls: false,
+                ),
+                loading: () => _SummaryCard(
+                  comparison: comparison,
+                  dailyDistances: dailyDistances,
+                  goals: TrainingGoals.empty,
+                  monthDistanceMeters: monthSummary.distanceMeters,
+                  mode: weekMode,
+                  onModeChanged: (mode) => ref
+                      .read(dashboardWeekModeProvider.notifier)
+                      .state = mode,
+                  onEditGoals: null,
+                  showControls: false,
+                ),
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 20),
-        _ShareableDashboardCard(
-          title: 'RunNow personal power',
-          builder: (sharing) => PersonalPowerCard(
-            activities: widget.activities,
-            showControls: !sharing,
-          ),
-        ),
-        const SizedBox(height: 20),
-        _ShareableDashboardCard(
-          title: 'RunNow consistency 8 tuần',
-          builder: (_) => ConsistencyHeatmap(activities: widget.activities),
-        ),
-        const SizedBox(height: 20),
-        _ShareableDashboardCard(
-          title: 'RunNow kỷ luật cá nhân',
-          builder: (_) => DisciplineCard(stats: discipline),
-        ),
-        const SizedBox(height: 20),
-        _ShareableDashboardCard(
-          title: 'RunNow kỷ lục cá nhân',
-          builder: (_) => ActivityRecordsCard(
-            title: 'KỶ LỤC CÁ NHÂN',
-            entries: [
-              for (final activity in widget.activities)
-                ActivityRecordEntry(activity: activity),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-        _ShareableDashboardCard(
-          title: 'RunNow km theo thời gian',
-          builder: (sharing) => TrainingVolumeChart(
-            activities: widget.activities,
-            period: TrainingVolumePeriod.month,
-            showControls: !sharing,
-          ),
-        ),
-        const SizedBox(height: 20),
-        Text('Gần đây', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
-        if (recent.isEmpty)
-          Text(
-            'Chưa có hoạt động. Bấm đồng bộ để tải nhật ký Strava.',
-            style: TextStyle(
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurface.withValues(alpha: 0.6),
+          const SizedBox(height: 20),
+          KeyedSubtree(
+            key: _powerKey,
+            child: _ShareableDashboardCard(
+              title: 'RunNow personal power',
+              builder: (sharing) => PersonalPowerCard(
+                activities: widget.activities,
+                showControls: false,
+                range: ref.watch(dashboardPowerRangeProvider),
+              ),
             ),
-          )
-        else
-          for (var index = 0; index < recent.take(3).length; index++)
-            ActivityTile(activity: recent[index], sequence: index + 1),
-      ],
+          ),
+          const SizedBox(height: 20),
+          _ShareableDashboardCard(
+            title: 'RunNow consistency 8 tuần',
+            builder: (_) => ConsistencyHeatmap(activities: widget.activities),
+          ),
+          const SizedBox(height: 20),
+          _ShareableDashboardCard(
+            title: 'RunNow kỷ luật cá nhân',
+            builder: (_) => DisciplineCard(stats: discipline),
+          ),
+          const SizedBox(height: 20),
+          _ShareableDashboardCard(
+            title: 'RunNow kỷ lục cá nhân',
+            builder: (_) => ActivityRecordsCard(
+              title: 'KỶ LỤC CÁ NHÂN',
+              entries: [
+                for (final activity in widget.activities)
+                  ActivityRecordEntry(activity: activity),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          KeyedSubtree(
+            key: _volumeKey,
+            child: _ShareableDashboardCard(
+              title: 'RunNow km theo thời gian',
+              builder: (sharing) => TrainingVolumeChart(
+                activities: widget.activities,
+                period: ref.watch(dashboardVolumePeriodProvider),
+                mode: ref.watch(dashboardVolumeModeProvider),
+                showControls: false,
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text('Gần đây', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          if (recent.isEmpty)
+            Text(
+              'Chưa có hoạt động. Bấm đồng bộ để tải nhật ký Strava.',
+              style: TextStyle(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+            )
+          else
+            for (var index = 0; index < recent.take(3).length; index++)
+              ActivityTile(activity: recent[index], sequence: index + 1),
+        ],
+      ),
+    );
+  }
+}
+
+/// Filter của Tổng quan render gộp trong navigation bar, tự đổi theo card đang
+/// được scroll tới ([dashboardActiveCardProvider]).
+class DashboardNavFilter extends ConsumerWidget {
+  const DashboardNavFilter({required this.branchActive, super.key});
+
+  final bool branchActive;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final card = branchActive
+        ? ref.watch(dashboardActiveCardProvider)
+        : null;
+    final Widget child = switch (card) {
+      DashboardCard.week => const _WeekModeNavControl(),
+      DashboardCard.power => const _PowerRangeNavControl(),
+      DashboardCard.volume => const _VolumeNavControl(),
+      null => const SizedBox(width: double.infinity),
+    };
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: child,
+    );
+  }
+}
+
+class _WeekModeNavControl extends ConsumerWidget {
+  const _WeekModeNavControl();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return NavFilterShell(
+      child: NavPillToggle<_WeekViewMode>(
+        value: ref.watch(dashboardWeekModeProvider),
+        items: const {
+          _WeekViewMode.currentWeek: 'Tuần này',
+          _WeekViewMode.rollingSevenDays: '7 ngày',
+        },
+        onChanged: (value) =>
+            ref.read(dashboardWeekModeProvider.notifier).state = value,
+      ),
+    );
+  }
+}
+
+class _PowerRangeNavControl extends ConsumerWidget {
+  const _PowerRangeNavControl();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return NavFilterShell(
+      child: NavPillToggle<PersonalPowerRange>(
+        value: ref.watch(dashboardPowerRangeProvider),
+        items: const {
+          PersonalPowerRange.currentWeek: 'Tuần',
+          PersonalPowerRange.rollingSevenDays: '7 ngày',
+          PersonalPowerRange.currentMonth: 'Tháng',
+        },
+        onChanged: (value) =>
+            ref.read(dashboardPowerRangeProvider.notifier).state = value,
+      ),
+    );
+  }
+}
+
+class _VolumeNavControl extends ConsumerWidget {
+  const _VolumeNavControl();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return NavFilterShell(
+      child: Row(
+        children: [
+          Expanded(
+            child: NavDropdown<TrainingVolumeChartMode>(
+              icon: Icons.show_chart_rounded,
+              value: ref.watch(dashboardVolumeModeProvider),
+              items: const {
+                TrainingVolumeChartMode.bar: 'Cột',
+                TrainingVolumeChartMode.line: 'Line',
+              },
+              onChanged: (value) =>
+                  ref.read(dashboardVolumeModeProvider.notifier).state = value,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: NavDropdown<TrainingVolumePeriod>(
+              icon: Icons.date_range_outlined,
+              value: ref.watch(dashboardVolumePeriodProvider),
+              items: const {
+                TrainingVolumePeriod.month: 'Tháng',
+                TrainingVolumePeriod.quarter: 'Quý',
+                TrainingVolumePeriod.year: 'Năm',
+              },
+              onChanged: (value) =>
+                  ref.read(dashboardVolumePeriodProvider.notifier).state =
+                      value,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

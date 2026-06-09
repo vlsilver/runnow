@@ -587,6 +587,7 @@ class FirestoreMemberRepository implements MemberRepository {
 
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
+  final _refreshingLeaderboardUids = <String>{};
 
   String get _uid {
     final uid = _auth.currentUser?.uid;
@@ -669,8 +670,16 @@ class FirestoreMemberRepository implements MemberRepository {
     return _firestore
         .collection('leaderboardEntries')
         .snapshots()
-        .map(
-          (snapshot) => snapshot.docs.map((document) {
+        .map((snapshot) {
+          final now = DateTime.now();
+          for (final document in snapshot.docs) {
+            final data = document.data();
+            if (!_leaderboardEntryHasModernStats(data) ||
+                shouldRefreshLeaderboardEntry(data, now)) {
+              _scheduleLeaderboardEntryRefresh(document.id);
+            }
+          }
+          return snapshot.docs.map((document) {
             final data = document.data();
             final updatedAt = data['updatedAt'];
             return LeaderboardEntry.fromMap({
@@ -678,20 +687,38 @@ class FirestoreMemberRepository implements MemberRepository {
               'uid': document.id,
               if (updatedAt is Timestamp) 'updatedAt': updatedAt.toDate(),
             });
-          }).toList(),
-        );
+          }).toList();
+        });
+  }
+
+  void _scheduleLeaderboardEntryRefresh(String uid) {
+    if (!_refreshingLeaderboardUids.add(uid)) return;
+    unawaited(
+      refreshLeaderboardEntryForUser(
+        uid: uid,
+        firestore: _firestore,
+        debugLog: (message) {
+          if (kDebugMode) {
+            debugPrint('[MemberRepository] $message');
+          }
+        },
+      ).whenComplete(() {
+        _refreshingLeaderboardUids.remove(uid);
+      }),
+    );
   }
 
   @override
   Future<void> ensureCurrentLeaderboardEntry() async {
+    final now = DateTime.now();
     final existing = await _firestore
         .collection('leaderboardEntries')
         .doc(_uid)
         .get();
     final data = existing.data();
-    if (existing.exists &&
-        data != null &&
-        _leaderboardEntryHasModernStats(data)) {
+    if (existing.exists && data != null &&
+        _leaderboardEntryHasModernStats(data) &&
+        !shouldRefreshLeaderboardEntry(data, now)) {
       return;
     }
     await refreshLeaderboardEntryForUser(
@@ -703,6 +730,28 @@ class FirestoreMemberRepository implements MemberRepository {
         }
       },
     );
+  }
+
+  @visibleForTesting
+  bool shouldRefreshLeaderboardEntry(
+    Map<String, dynamic> data,
+    DateTime now,
+  ) {
+    final updatedAt = data['updatedAt'];
+    DateTime? lastRefresh;
+    if (updatedAt is Timestamp) {
+      lastRefresh = updatedAt.toDate();
+    } else if (updatedAt is DateTime) {
+      lastRefresh = updatedAt;
+    }
+    if (lastRefresh == null) return true;
+
+    final rollingStart = startOfRollingSevenDays(now);
+    final currentWeekStart = startOfCurrentWeek(now);
+    final currentMonthStart = DateTime(now.year, now.month);
+    return lastRefresh.isBefore(rollingStart) ||
+        lastRefresh.isBefore(currentWeekStart) ||
+        lastRefresh.isBefore(currentMonthStart);
   }
 
   @override

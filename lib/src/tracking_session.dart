@@ -17,7 +17,7 @@ enum TrackingRejectReason {
 class TrackingConfig {
   const TrackingConfig({
     this.maxAccuracyMeters = 25,
-    this.maxRunningSpeedMetersPerSecond = 6,
+    this.maxRunningSpeedMetersPerSecond = 10,
     this.minSegmentDistanceMeters = 2,
     this.splitDistanceMeters = 1000,
     this.currentPaceWindow = const Duration(seconds: 12),
@@ -595,10 +595,11 @@ class TrackingSession {
       final splitCompletedAt = previousTimestamp.add(
         Duration(seconds: (segmentSeconds * ratio).round()),
       );
-      final previousSplitMovingTime = _splits.isEmpty
-          ? 0
-          : _splits.last.movingTimeSeconds + _previousSplitsMovingTime();
-      final splitSeconds = splitMovingTime - previousSplitMovingTime;
+      final assignedSplitMovingTime = _splits.fold<int>(
+        0,
+        (sum, split) => sum + split.movingTimeSeconds,
+      );
+      final splitSeconds = splitMovingTime - assignedSplitMovingTime;
       _splits.add(
         TrackingSplit(
           index: _splits.length + 1,
@@ -612,13 +613,6 @@ class TrackingSession {
       );
       nextSplitDistance = (_splits.length + 1) * config.splitDistanceMeters;
     }
-  }
-
-  int _previousSplitsMovingTime() {
-    if (_splits.length <= 1) return 0;
-    return _splits
-        .take(_splits.length - 1)
-        .fold<int>(0, (sum, split) => sum + split.movingTimeSeconds);
   }
 
   TrackingPointLog _rejected(

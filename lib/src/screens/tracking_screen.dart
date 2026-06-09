@@ -14,6 +14,7 @@ import 'package:myrun/src/tracking_draft_store.dart';
 import 'package:myrun/src/tracking_session.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/route_map.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 class TrackingScreen extends ConsumerStatefulWidget {
   const TrackingScreen({super.key, this.autoLock = true});
@@ -49,6 +50,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   var _gpsStableSamples = 0;
   var _gpsElapsedSeconds = 0;
   var _autoLockStarted = false;
+  var _persistingDraft = false;
+  var _backgroundLocationGranted = false;
   DateTime? _lastDraftSavedAt;
 
   bool get _running => _snapshot?.status == TrackingSessionStatus.running;
@@ -79,7 +82,12 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     WidgetsBinding.instance.removeObserver(this);
     _positionSubscription?.cancel();
     _ticker?.cancel();
+    _setWakelock(false);
     super.dispose();
+  }
+
+  void _setWakelock(bool enable) {
+    unawaited(WakelockPlus.toggle(enable: enable));
   }
 
   @override
@@ -236,11 +244,14 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       final anchor = await _waitForStableGps();
       if (anchor == null) return;
       if (!mounted) return;
+      final backgroundHint = _backgroundLocationGranted
+          ? ''
+          : ' Bật "Luôn cho phép" vị trí để vẫn tracking khi khóa màn hình.';
       setState(() {
         _gpsReadyAnchor = anchor;
         _gpsSignal = _GpsSignal.ready;
         _message =
-            'GPS READY (${(anchor.accuracyMeters ?? 0).toStringAsFixed(0)}m). Bấm START NOW để bắt đầu tính distance.';
+            'GPS READY (${(anchor.accuracyMeters ?? 0).toStringAsFixed(0)}m). Bấm START NOW để bắt đầu tính distance.$backgroundHint';
       });
       HapticFeedback.selectionClick();
     } finally {
@@ -270,6 +281,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       });
       await _startRunningLocationStream();
       _startTicker();
+      _setWakelock(true);
       unawaited(_persistDraft());
       HapticFeedback.mediumImpact();
     } catch (error) {
@@ -287,6 +299,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     }
     _positionSubscription = null;
     _ticker?.cancel();
+    _setWakelock(false);
     setState(() {
       _snapshot = session.pause(DateTime.now());
       _message = 'Đã pause. Route sau resume sẽ không nối qua đoạn nghỉ.';
@@ -303,6 +316,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     });
     unawaited(_startRunningLocationStream());
     _startTicker();
+    _setWakelock(true);
     unawaited(_persistDraft());
   }
 
@@ -314,6 +328,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       await _positionSubscription?.cancel();
       _positionSubscription = null;
       _ticker?.cancel();
+      _setWakelock(false);
       final snapshot = session.finish(DateTime.now());
       final detail = snapshot.toActivityDetail(
         name: 'RunNow Trial',
@@ -395,6 +410,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   Future<void> _resetSession({required String? message}) async {
     await _positionSubscription?.cancel();
     _ticker?.cancel();
+    _setWakelock(false);
     if (!mounted) return;
     setState(() {
       _positionSubscription = null;
@@ -419,11 +435,27 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
 
   Future<void> _persistDraft() async {
     final session = _session;
-    if (session == null || _finished) return;
-    await ref
-        .read(trackingDraftStoreProvider)
-        .save(TrackingDraft(session: session, gpsWarmup: _lastWarmupDebug));
-    _lastDraftSavedAt = DateTime.now();
+    if (session == null || _finished || _persistingDraft) return;
+    _persistingDraft = true;
+    try {
+      await ref
+          .read(trackingDraftStoreProvider)
+          .save(TrackingDraft(session: session, gpsWarmup: _lastWarmupDebug));
+      _lastDraftSavedAt = DateTime.now();
+    } finally {
+      _persistingDraft = false;
+    }
+  }
+
+  Future<void> _persistDraftThrottled({
+    Duration minInterval = const Duration(seconds: 10),
+  }) async {
+    final lastSavedAt = _lastDraftSavedAt;
+    if (lastSavedAt != null &&
+        DateTime.now().difference(lastSavedAt) < minInterval) {
+      return;
+    }
+    await _persistDraft();
   }
 
   void _onPosition(TrackingLocationSample sample) {
@@ -437,7 +469,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _snapshot = snapshot;
       _gpsSignal = _runningGpsSignal(sample, latestLog);
     });
-    unawaited(_persistDraft());
+    unawaited(_persistDraftThrottled());
   }
 
   _GpsSignal _runningGpsSignal(
@@ -471,11 +503,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       if (!mounted || session == null || !_running) return;
       final now = DateTime.now();
       setState(() => _snapshot = session.tick(now));
-      final lastDraftSavedAt = _lastDraftSavedAt;
-      if (lastDraftSavedAt == null ||
-          now.difference(lastDraftSavedAt) >= const Duration(seconds: 10)) {
-        unawaited(_persistDraft());
-      }
+      unawaited(_persistDraftThrottled());
     });
   }
 
@@ -668,6 +696,12 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       return false;
     }
 
+    // Foreground đã được cấp (whileInUse hoặc always). Cố gắng nâng lên quyền
+    // nền "Always" để tracking tiếp tục khi khóa màn hình / chuyển app khác.
+    if (permission == LocationPermission.whileInUse) {
+      permission = await locationProvider.requestPermission();
+    }
+    _backgroundLocationGranted = permission == LocationPermission.always;
     return true;
   }
 
@@ -1162,10 +1196,15 @@ class _GpsRadar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _gpsSignalColor(signal);
-    final progress = math.min(
-      1.0,
-      ((elapsedSeconds / minSeconds) + (stableSamples / minSamples)) / 2,
-    );
+    final sampleProgress = minSamples <= 0
+        ? 0.0
+        : (stableSamples / minSamples).clamp(0.0, 1.0);
+    final timeProgress = minSeconds <= 0
+        ? null
+        : (elapsedSeconds / minSeconds).clamp(0.0, 1.0);
+    final progress = timeProgress == null
+        ? sampleProgress
+        : (timeProgress + sampleProgress) / 2;
     return SizedBox(
       width: 238,
       height: 238,

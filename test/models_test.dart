@@ -163,4 +163,16 @@ void main() {
     );
     expect((entry['currentMonth'] as Map<String, dynamic>)['activeDays'], 1);
   });
+
+  test('LeaderboardStats computes average pace correctly', () {
+    final stats = LeaderboardStats(
+      distanceMeters: 5000,
+      movingTimeSeconds: 1500,
+      activityCount: 1,
+      activeDays: 1,
+      longestDistanceMeters: 5000,
+      fastestPaceSecondsPerKm: 300,
+    );
+    expect(stats.averagePaceSecondsPerKm, 300);
+  });
 }

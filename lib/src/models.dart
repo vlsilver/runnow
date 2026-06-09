@@ -215,6 +215,9 @@ class LeaderboardStats {
   final double longestDistanceMeters;
   final double? fastestPaceSecondsPerKm;
 
+  double? get averagePaceSecondsPerKm =>
+      distanceMeters <= 0 ? null : movingTimeSeconds / (distanceMeters / 1000);
+
   Map<String, dynamic> toMap() {
     return {
       'distanceMeters': distanceMeters,

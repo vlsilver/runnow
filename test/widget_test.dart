@@ -40,10 +40,13 @@ void main() {
     expect(find.textContaining('Đồng bộ Strava hoàn tất'), findsNothing);
     final dashboardScroll = find.byType(Scrollable).first;
     expect(find.text('TIẾN ĐỘ TUẦN'), findsOneWidget);
-    expect(find.text('7 ngày gần nhất'), findsOneWidget);
+    // Filter Tuần/7 ngày của card "tiến độ tuần" giờ nằm trong navigation bar.
+    expect(find.text('7 ngày'), findsWidgets);
     expect(find.text('Tuần này'), findsWidgets);
     expect(find.text('Quãng đường'), findsOneWidget);
-    expect(find.text('Mục tiêu tuần'), findsOneWidget);
+    // Default tổng quan giờ là "Tuần này" nên nhãn mục tiêu hiển thị theo tuần
+    // hiện tại thay vì "Mục tiêu tuần" (chế độ 7 ngày gần nhất).
+    expect(find.text('Mục tiêu tuần'), findsNothing);
     expect(find.text('MỤC TIÊU'), findsNothing);
     await tester.scrollUntilVisible(
       find.text('CONSISTENCY'),

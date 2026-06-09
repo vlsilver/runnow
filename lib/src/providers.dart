@@ -41,6 +41,37 @@ final trainingGoalRepositoryProvider = Provider<TrainingGoalRepository>((ref) {
   );
 });
 
+enum ClubRecapRange { currentWeek, currentMonth }
+
+enum ClubRankingMetric {
+  distance,
+  time,
+  consistency,
+  pace,
+  longestRun,
+  activityCount,
+}
+
+enum ClubRankingRange { rollingSevenDays, currentWeek, currentMonth }
+
+/// Khoảng thời gian của tab "Tổng kết" club. Được hoist ra provider để filter
+/// có thể render gộp chung trong navigation bar (xem [app.dart]).
+final clubRecapRangeProvider = StateProvider<ClubRecapRange>(
+  (ref) => ClubRecapRange.currentWeek,
+);
+
+/// Bộ lọc của tab "Xếp hạng" club, cũng hoist ra để gộp vào navigation bar.
+final clubRankingMetricProvider = StateProvider<ClubRankingMetric>(
+  (ref) => ClubRankingMetric.distance,
+);
+final clubRankingRangeProvider = StateProvider<ClubRankingRange>(
+  (ref) => ClubRankingRange.currentWeek,
+);
+
+/// Index tab con của club đang được chọn (0 = Xếp hạng, 1 = Tổng kết...),
+/// hoặc -1 khi không ở màn hình club. Nav bar dựa vào đây để hiện đúng filter.
+final clubActiveSubTabProvider = StateProvider<int>((ref) => -1);
+
 final trackingDraftStoreProvider = Provider<TrackingDraftStore>(
   (ref) => const TrackingDraftStore(),
 );
