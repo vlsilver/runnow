@@ -8,6 +8,7 @@ import 'package:myrun/src/share.dart';
 import 'package:myrun/src/stream_sampling.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/nav_filter.dart';
 
 enum _ChartMode { line, bar }
 
@@ -377,14 +378,7 @@ class _TrainingChartCardState extends State<_TrainingChartCard> {
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: Row(
                 children: [
-                  Container(
-                    width: 3,
-                    height: 26,
-                    decoration: BoxDecoration(
-                      color: series.color,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
+                  Icon(series.icon, color: series.color, size: 20),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -689,57 +683,57 @@ class _CompactSelector<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: isLight ? const Color(0xffeef4fb) : const Color(0x52020812),
-        border: Border.all(
-          color: isLight ? const Color(0x2208172b) : AppColors.glassBorder,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () async {
+        final selected = await showNavSelectMenu<T>(
+          context: context,
+          value: value,
+          items: {for (final item in items) item: itemLabel(item)},
+        );
+        if (selected != null) onChanged(selected);
+      },
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: isLight ? const Color(0xffeef4fb) : const Color(0x52020812),
+          border: Border.all(
+            color: isLight ? const Color(0x2208172b) : AppColors.glassBorder,
+          ),
+          borderRadius: BorderRadius.circular(6),
         ),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 9),
-        child: Row(
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: onSurface.withValues(alpha: 0.52),
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.9,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+          child: Row(
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: onSurface.withValues(alpha: 0.52),
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.9,
+                ),
               ),
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<T>(
-                  value: value,
-                  isExpanded: true,
-                  isDense: true,
-                  dropdownColor: isLight
-                      ? const Color(0xfff8fbff)
-                      : AppColors.black,
-                  iconEnabledColor: AppColors.blueGlow,
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  itemLabel(value),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: onSurface,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
-                  items: [
-                    for (final item in items)
-                      DropdownMenuItem<T>(
-                        value: item,
-                        child: Text(itemLabel(item)),
-                      ),
-                  ],
-                  onChanged: (item) {
-                    if (item != null) onChanged(item);
-                  },
                 ),
               ),
-            ),
-          ],
+              const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 18,
+                color: AppColors.accent,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -779,6 +773,7 @@ class _ChartSeries {
   const _ChartSeries({
     required this.label,
     required this.unit,
+    required this.icon,
     required this.color,
     required this.values,
     required this.distances,
@@ -793,7 +788,8 @@ class _ChartSeries {
     return _ChartSeries(
       label: 'Pace',
       unit: 'PHÚT / KM',
-      color: const Color(0xffff8f00),
+      icon: Icons.speed_rounded,
+      color: const Color(0xff5bc8ff),
       values: speeds,
       distances: distances,
       normalize: (speed) => 1000 / speed,
@@ -808,7 +804,8 @@ class _ChartSeries {
     return _ChartSeries(
       label: 'Nhịp tim',
       unit: 'BPM',
-      color: AppColors.red,
+      icon: Icons.favorite_rounded,
+      color: const Color(0xff2f8dff),
       values: values,
       distances: distances,
       normalize: (value) => value,
@@ -822,7 +819,8 @@ class _ChartSeries {
     return _ChartSeries(
       label: 'Cao độ',
       unit: 'MÉT',
-      color: AppColors.blue,
+      icon: Icons.terrain_rounded,
+      color: const Color(0xff7c9bef),
       values: values,
       distances: distances,
       normalize: (value) => value,
@@ -836,7 +834,8 @@ class _ChartSeries {
     return _ChartSeries(
       label: 'Cadence',
       unit: 'RPM',
-      color: AppColors.amber,
+      icon: Icons.directions_walk_rounded,
+      color: const Color(0xff58b0d8),
       values: values,
       distances: distances,
       normalize: (value) => value,
@@ -850,7 +849,8 @@ class _ChartSeries {
     return _ChartSeries(
       label: 'Năng lượng',
       unit: 'KJ',
-      color: const Color(0xff9c6cff),
+      icon: Icons.bolt_rounded,
+      color: const Color(0xff8f7fe0),
       values: values,
       distances: distances,
       normalize: (value) => value,
@@ -862,6 +862,7 @@ class _ChartSeries {
 
   final String label;
   final String unit;
+  final IconData icon;
   final Color color;
   final List<double> values;
   final List<double>? distances;

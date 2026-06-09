@@ -1,21 +1,30 @@
 import 'package:flutter/material.dart';
 
 abstract final class AppColors {
-  static const red = Color(0xffff3b4f);
-  static const redDeep = Color(0xffb50024);
-  static const black = Color(0xff050a12);
-  static const blue = Color(0xff0075ff);
-  static const blueGlow = Color(0xff00d9ff);
-  static const amber = Color(0xffffd166);
-  static const background = Color(0xff000000);
+  /// Accent chính của app: xanh điện (FitPulse-style). Để giữ tương thích với
+  /// ~80 chỗ đang gọi [red]/[amber], các tên cũ được trỏ về bảng màu xanh đơn
+  /// sắc thay vì đỏ/vàng — toàn app dịu lại mà không phải sửa từng widget.
+  static const accent = Color(0xff2f8dff);
+  static const accentDeep = Color(0xff123f7e);
+  static const red = accent;
+  static const redDeep = accentDeep;
+  static const black = Color(0xff071019);
+  static const blue = Color(0xff2f8dff);
+  static const blueGlow = Color(0xff5bc8ff);
+  static const amber = Color(0xff86b9ec);
+
+  /// Chỉ dùng cho trạng thái lỗi/cảnh báo thật sự.
+  static const alert = Color(0xffff5a6a);
+
+  static const background = Color(0xff0b1623);
   static const lightBackground = Color(0xffeef3f8);
   static const lightSurface = Color(0xfff9fbff);
   static const lightSurfaceAlt = Color(0xffeef4fb);
   static const lightText = Color(0xff07111f);
   static const lightMuted = Color(0xff607086);
-  static const glass = Color(0x4d071426);
-  static const glassStrong = Color(0x9908172b);
-  static const glassBorder = Color(0x4200d9ff);
+  static const glass = Color(0x4d0e2138);
+  static const glassStrong = Color(0x99102a45);
+  static const glassBorder = Color(0x3a5bc8ff);
 }
 
 ThemeData buildRunNowDarkTheme() {
@@ -25,7 +34,7 @@ ThemeData buildRunNowDarkTheme() {
     secondary: AppColors.blueGlow,
     onSecondary: Colors.white,
     tertiary: AppColors.amber,
-    error: AppColors.red,
+    error: AppColors.alert,
     onError: Colors.white,
     surface: AppColors.glass,
     onSurface: Colors.white,
@@ -95,7 +104,7 @@ ThemeData buildRunNowLightTheme() {
     secondary: Color(0xff005ed6),
     onSecondary: Colors.white,
     tertiary: AppColors.amber,
-    error: AppColors.red,
+    error: AppColors.alert,
     onError: Colors.white,
     surface: AppColors.lightSurface,
     onSurface: AppColors.lightText,

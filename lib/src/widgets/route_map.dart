@@ -17,13 +17,13 @@ class RouteMap extends StatelessWidget {
   const RouteMap({
     required this.encodedPolyline,
     this.routePoints,
-    this.height = 270,
+    this.height = 330,
     super.key,
   });
 
   const RouteMap.fromRoutePoints({
     required List<RoutePoint> points,
-    this.height = 270,
+    this.height = 330,
     super.key,
   }) : encodedPolyline = null,
        routePoints = points;
@@ -109,7 +109,7 @@ class _FlutterRouteMap extends StatelessWidget {
       options: MapOptions(
         initialCameraFit: CameraFit.bounds(
           bounds: routeBounds(points),
-          padding: const EdgeInsets.all(42),
+          padding: const EdgeInsets.all(28),
           maxZoom: 16,
         ),
         minZoom: 3,
@@ -134,16 +134,16 @@ class _FlutterRouteMap extends StatelessWidget {
           polylines: [
             Polyline(
               points: points,
-              color: Colors.black.withValues(alpha: isLight ? 0.16 : 0.56),
-              strokeWidth: 10,
+              color: Colors.black.withValues(alpha: isLight ? 0.16 : 0.5),
+              strokeWidth: 6.5,
               borderStrokeWidth: 0,
             ),
             Polyline(
               points: points,
               color: isLight ? AppColors.red : AppColors.blueGlow,
-              strokeWidth: 5,
+              strokeWidth: 3.5,
               borderColor: isLight ? Colors.white : const Color(0xff02111e),
-              borderStrokeWidth: 2,
+              borderStrokeWidth: 1.5,
             ),
           ],
         ),
@@ -230,13 +230,9 @@ class _MapVignette extends StatelessWidget {
             colors: [
               Colors.transparent,
               (isLight ? Colors.white : AppColors.black).withValues(
-                alpha: isLight ? 0.08 : 0.28,
+                alpha: isLight ? 0.06 : 0.22,
               ),
             ],
-          ),
-          border: Border.all(
-            color: (isLight ? AppColors.lightText : AppColors.blueGlow)
-                .withValues(alpha: isLight ? 0.1 : 0.18),
           ),
           borderRadius: BorderRadius.circular(22),
         ),

@@ -97,22 +97,19 @@ void main() {
     expect(find.text('RANGE'), findsOneWidget);
     expect(find.byType(BarChart), findsOneWidget);
 
-    final dropdowns = find.byWidgetPredicate(
-      (widget) => widget is DropdownButton,
-    );
-    await tester.tap(dropdowns.first);
+    await tester.tap(find.text('KIỂU'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Line').last);
     await tester.pumpAndSettle();
     expect(find.byType(LineChart), findsOneWidget);
 
-    await tester.tap(dropdowns.last);
+    await tester.tap(find.text('RANGE'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Quý').last);
     await tester.pumpAndSettle();
     expect(find.text('Q2/2026'), findsOneWidget);
 
-    await tester.tap(dropdowns.last);
+    await tester.tap(find.text('RANGE'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Năm').last);
     await tester.pumpAndSettle();

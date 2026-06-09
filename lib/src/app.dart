@@ -269,9 +269,9 @@ class _RunNavItem extends StatelessWidget {
                         AppColors.red,
                       ]
                     : const [
-                        AppColors.red,
-                        Color(0xffaa1228),
-                        Color(0xff1a0711),
+                        AppColors.accent,
+                        Color(0xff123f7e),
+                        Color(0xff0a1622),
                       ],
               ),
               boxShadow: [

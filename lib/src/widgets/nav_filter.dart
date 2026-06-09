@@ -10,26 +10,14 @@ class NavFilterShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 2, 4, 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          child,
-          const SizedBox(height: 8),
-          Divider(
-            height: 1,
-            thickness: 1,
-            color: onSurface.withValues(alpha: 0.08),
-          ),
-        ],
-      ),
+      padding: const EdgeInsets.fromLTRB(2, 0, 2, 6),
+      child: child,
     );
   }
 }
 
-/// Toggle dạng pill (track + ô chọn fill) cho 2-3 lựa chọn ngắn.
+/// Toggle gọn, không khung viền — chỉ ô đang chọn được tô nền.
 class NavPillToggle<T> extends StatelessWidget {
   const NavPillToggle({
     required this.items,
@@ -44,26 +32,17 @@ class NavPillToggle<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.28),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.blueGlow.withValues(alpha: 0.22)),
-      ),
-      child: Row(
-        children: [
-          for (final entry in items.entries)
-            Expanded(
-              child: _NavSegment(
-                label: entry.value,
-                selected: entry.key == value,
-                onTap: () => onChanged(entry.key),
-              ),
+    return Row(
+      children: [
+        for (final entry in items.entries)
+          Expanded(
+            child: _NavSegment(
+              label: entry.value,
+              selected: entry.key == value,
+              onTap: () => onChanged(entry.key),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }
@@ -86,27 +65,21 @@ class _NavSegment extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+        duration: const Duration(milliseconds: 160),
         curve: Curves.easeOut,
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 8),
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? AppColors.blueGlow : Colors.transparent,
+          color: selected ? AppColors.accent : Colors.transparent,
           borderRadius: BorderRadius.circular(999),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: AppColors.blueGlow.withValues(alpha: 0.4),
-                    blurRadius: 14,
-                  ),
-                ]
-              : null,
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: selected ? AppColors.black : onSurface.withValues(alpha: 0.72),
-            fontSize: 13,
-            fontWeight: FontWeight.w900,
+            color: selected ? Colors.white : onSurface.withValues(alpha: 0.6),
+            fontSize: 12.5,
+            fontWeight: FontWeight.w800,
           ),
         ),
       ),
@@ -129,48 +102,153 @@ class NavDropdown<T> extends StatelessWidget {
   final Map<T, String> items;
   final ValueChanged<T> onChanged;
 
+  Future<void> _open(BuildContext context) async {
+    final selected = await showNavSelectMenu<T>(
+      context: context,
+      items: items,
+      value: value,
+      icon: icon,
+    );
+    if (selected != null) onChanged(selected);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    return DropdownButtonHideUnderline(
-      child: DropdownButton<T>(
-        isExpanded: true,
-        isDense: true,
-        value: value,
-        borderRadius: BorderRadius.circular(14),
-        icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
-        dropdownColor: isLight
-            ? const Color(0xfff8fbff)
-            : const Color(0xff071426),
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          fontWeight: FontWeight.w900,
-          fontSize: 14,
-          color: Theme.of(context).colorScheme.onSurface,
-        ),
-        items: [
-          for (final entry in items.entries)
-            DropdownMenuItem<T>(
-              value: entry.key,
-              child: Row(
-                children: [
-                  Icon(icon, size: 18, color: AppColors.blueGlow),
-                  const SizedBox(width: 7),
-                  Expanded(
-                    child: Text(
-                      entry.value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _open(context),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: AppColors.accent),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(
+                items[value] ?? '',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: onSurface,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
-        ],
-        onChanged: (value) {
-          if (value == null) return;
-          onChanged(value);
-        },
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 20,
+              color: onSurface.withValues(alpha: 0.45),
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+class _MenuRow extends StatelessWidget {
+  const _MenuRow({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onSurface,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final Color onSurface;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: selected
+            ? AppColors.accent.withValues(alpha: 0.16)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 17,
+            color: selected
+                ? AppColors.accent
+                : onSurface.withValues(alpha: 0.55),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: selected ? AppColors.accent : onSurface,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          if (selected)
+            const Icon(Icons.check_rounded, size: 17, color: AppColors.accent),
+        ],
+      ),
+    );
+  }
+}
+
+/// Mở menu chọn tuỳ biến (navy bo góc, ô chọn tô accent + tick) ngay tại vị trí
+/// widget gọi. Dùng chung cho nav bar và các selector trong chart/activity
+/// detail để mọi dropdown trông đồng nhất.
+Future<T?> showNavSelectMenu<T>({
+  required BuildContext context,
+  required Map<T, String> items,
+  required T value,
+  IconData icon = Icons.tune_rounded,
+}) {
+  final isLight = Theme.of(context).brightness == Brightness.light;
+  final onSurface = Theme.of(context).colorScheme.onSurface;
+  final button = context.findRenderObject() as RenderBox;
+  final overlayBox =
+      Overlay.of(context).context.findRenderObject() as RenderBox;
+  final position = RelativeRect.fromRect(
+    Rect.fromPoints(
+      button.localToGlobal(Offset.zero, ancestor: overlayBox),
+      button.localToGlobal(
+        button.size.bottomRight(Offset.zero),
+        ancestor: overlayBox,
+      ),
+    ),
+    Offset.zero & overlayBox.size,
+  );
+  return showMenu<T>(
+    context: context,
+    position: position,
+    elevation: 14,
+    constraints: const BoxConstraints(minWidth: 168),
+    menuPadding: const EdgeInsets.symmetric(vertical: 6),
+    color: isLight ? const Color(0xfff7faff) : const Color(0xff112439),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(18),
+      side: BorderSide(color: AppColors.accent.withValues(alpha: 0.2)),
+    ),
+    items: [
+      for (final entry in items.entries)
+        PopupMenuItem<T>(
+          value: entry.key,
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: _MenuRow(
+            icon: icon,
+            label: entry.value,
+            selected: entry.key == value,
+            onSurface: onSurface,
+          ),
+        ),
+    ],
+  );
 }

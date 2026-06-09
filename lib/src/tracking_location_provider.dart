@@ -83,7 +83,7 @@ class GeolocatorTrackingLocationProvider implements TrackingLocationProvider {
           notificationChannelName: 'RunNow Tracking',
           enableWakeLock: true,
           setOngoing: true,
-          color: Color(0xffff3b5f),
+          color: Color(0xff2f8dff),
         ),
       );
     }

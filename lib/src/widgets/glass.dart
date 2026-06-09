@@ -25,9 +25,9 @@ class RunNowBackdrop extends StatelessWidget {
                         Color(0xffe9eef6),
                       ]
                     : const [
-                        Color(0xff000000),
-                        Color(0xff020202),
-                        Color(0xff000000),
+                        Color(0xff0d1a2a),
+                        Color(0xff0a1421),
+                        Color(0xff080f19),
                       ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -37,17 +37,17 @@ class RunNowBackdrop extends StatelessWidget {
           IgnorePointer(child: CustomPaint(painter: _TechGridPainter(isLight))),
           _Glow(
             alignment: Alignment.topRight,
-            color: isLight ? const Color(0x180075ff) : const Color(0x2600a8ff),
+            color: isLight ? const Color(0x18006fff) : const Color(0x2238b0ff),
             size: isLight ? 220 : 190,
           ),
           _Glow(
             alignment: Alignment.centerLeft,
-            color: isLight ? const Color(0x12ff3b4f) : const Color(0x180057b8),
+            color: isLight ? const Color(0x10206ed0) : const Color(0x16215f9e),
             size: isLight ? 210 : 170,
           ),
           _Glow(
             alignment: Alignment.bottomRight,
-            color: isLight ? const Color(0x16ff3b4f) : const Color(0x26ff1744),
+            color: isLight ? const Color(0x12206ed0) : const Color(0x1c3a9bff),
             size: isLight ? 190 : 150,
           ),
           child,
