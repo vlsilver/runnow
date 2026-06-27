@@ -9,6 +9,12 @@ import 'package:myrun/src/theme_controller.dart';
 
 void main() {
   testWidgets('renders dashboard in demo mode', (tester) async {
+    // Ép kích thước điện thoại để dùng bottom nav (layout web rộng có rail
+    // riêng làm thay đổi cây widget/scroll).
+    tester.view.physicalSize = const Size(420, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -61,11 +67,11 @@ void main() {
     );
     expect(find.text('KỶ LUẬT CÁ NHÂN'), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.text('Gần đây'),
+      find.text('GẦN ĐÂY'),
       300,
       scrollable: dashboardScroll,
     );
-    expect(find.text('Gần đây'), findsOneWidget);
+    expect(find.text('GẦN ĐÂY'), findsOneWidget);
     expect(find.text('Feed'), findsNothing);
   });
 }

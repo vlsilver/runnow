@@ -71,7 +71,7 @@ class _PersonalPowerRangeControl extends StatelessWidget {
     final isLight = Theme.of(context).brightness == Brightness.light;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: isLight ? const Color(0xffeef4fb) : const Color(0x36020812),
+        color: isLight ? const Color(0xffd8dee6) : const Color(0x36020812),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Padding(

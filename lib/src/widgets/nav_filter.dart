@@ -231,7 +231,7 @@ Future<T?> showNavSelectMenu<T>({
     elevation: 14,
     constraints: const BoxConstraints(minWidth: 168),
     menuPadding: const EdgeInsets.symmetric(vertical: 6),
-    color: isLight ? const Color(0xfff7faff) : const Color(0xff112439),
+    color: isLight ? const Color(0xffe2e6ed) : const Color(0xff112439),
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(18),
       side: BorderSide(color: AppColors.accent.withValues(alpha: 0.2)),

@@ -47,7 +47,10 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
             ),
         ],
       ),
-      body: detail.when(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: detail.when(
         data: (item) => ListView(
           padding: const EdgeInsets.symmetric(vertical: 16),
           children: [
@@ -83,6 +86,8 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
         error: (error, stack) =>
             Center(child: Text('Không thể tải chi tiết: $error')),
         loading: () => const Center(child: CircularProgressIndicator()),
+          ),
+        ),
       ),
     );
   }

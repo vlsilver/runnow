@@ -65,5 +65,17 @@ service cloud.firestore {
         && request.resource.data.uid == request.auth.uid;
       allow delete: if owns(userId);
     }
+
+    match /liveSessions/{sessionId} {
+      allow read: if signedIn()
+        && resource.data.visibility == 'club';
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow delete: if signedIn()
+        && resource.data.ownerUid == request.auth.uid;
+    }
   }
 }

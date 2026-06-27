@@ -109,7 +109,7 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
         padding: const EdgeInsets.all(16),
         gradient: LinearGradient(
           colors: isLight
-              ? const [Color(0xfff9fbff), Color(0xffedf3f9)]
+              ? const [Color(0xffe2e6ed), Color(0xffd4dbe3)]
               : const [Color(0xe607172b), Color(0xaa2b0713)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -363,7 +363,7 @@ class _TrainingChartCardState extends State<_TrainingChartCard> {
       padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
       gradient: LinearGradient(
         colors: isLight
-            ? const [Color(0xfff9fbff), Color(0xffe9f1fa)]
+            ? const [Color(0xffe2e6ed), Color(0xffd3dae3)]
             : const [Color(0xe607172b), Color(0xaa062442)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
@@ -695,7 +695,7 @@ class _CompactSelector<T> extends StatelessWidget {
       },
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: isLight ? const Color(0xffeef4fb) : const Color(0x52020812),
+          color: isLight ? const Color(0xffd8dee6) : const Color(0x52020812),
           border: Border.all(
             color: isLight ? const Color(0x2208172b) : AppColors.glassBorder,
           ),

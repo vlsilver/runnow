@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:myrun/src/dashboard_analytics.dart';
 import 'package:myrun/src/strava_client.dart';
 import 'package:myrun/src/models.dart';
+import 'package:myrun/src/tracking_session.dart';
 
 abstract interface class ActivityRepository {
   Stream<List<ActivitySummary>> watchActivities();
@@ -41,6 +42,16 @@ abstract interface class MemberRepository {
     required String? avatarUrl,
     required ProfileVisibility visibility,
   });
+}
+
+abstract interface class LiveTrackingRepository {
+  Stream<List<LiveTrackingSession>> watchClubLiveSessions();
+  Future<void> publishSnapshot({
+    required TrackingSessionSnapshot snapshot,
+    required LiveTrackingStatus status,
+    required List<RoutePoint> routePreview,
+  });
+  Future<void> finishSession(String sessionId, LiveTrackingStatus status);
 }
 
 class FirestoreStravaActivityRepository implements ActivityRepository {
@@ -587,7 +598,6 @@ class FirestoreMemberRepository implements MemberRepository {
 
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
-  final _refreshingLeaderboardUids = <String>{};
 
   String get _uid {
     final uid = _auth.currentUser?.uid;
@@ -667,45 +677,19 @@ class FirestoreMemberRepository implements MemberRepository {
 
   @override
   Stream<List<LeaderboardEntry>> watchLeaderboardEntries() {
-    return _firestore
-        .collection('leaderboardEntries')
-        .snapshots()
-        .map((snapshot) {
-          final now = DateTime.now();
-          for (final document in snapshot.docs) {
-            final data = document.data();
-            if (!_leaderboardEntryHasModernStats(data) ||
-                shouldRefreshLeaderboardEntry(data, now)) {
-              _scheduleLeaderboardEntryRefresh(document.id);
-            }
-          }
-          return snapshot.docs.map((document) {
-            final data = document.data();
-            final updatedAt = data['updatedAt'];
-            return LeaderboardEntry.fromMap({
-              ...data,
-              'uid': document.id,
-              if (updatedAt is Timestamp) 'updatedAt': updatedAt.toDate(),
-            });
-          }).toList();
+    return _firestore.collection('leaderboardEntries').snapshots().map((
+      snapshot,
+    ) {
+      return snapshot.docs.map((document) {
+        final data = document.data();
+        final updatedAt = data['updatedAt'];
+        return LeaderboardEntry.fromMap({
+          ...data,
+          'uid': document.id,
+          if (updatedAt is Timestamp) 'updatedAt': updatedAt.toDate(),
         });
-  }
-
-  void _scheduleLeaderboardEntryRefresh(String uid) {
-    if (!_refreshingLeaderboardUids.add(uid)) return;
-    unawaited(
-      refreshLeaderboardEntryForUser(
-        uid: uid,
-        firestore: _firestore,
-        debugLog: (message) {
-          if (kDebugMode) {
-            debugPrint('[MemberRepository] $message');
-          }
-        },
-      ).whenComplete(() {
-        _refreshingLeaderboardUids.remove(uid);
-      }),
-    );
+      }).toList();
+    });
   }
 
   @override
@@ -716,7 +700,8 @@ class FirestoreMemberRepository implements MemberRepository {
         .doc(_uid)
         .get();
     final data = existing.data();
-    if (existing.exists && data != null &&
+    if (existing.exists &&
+        data != null &&
         _leaderboardEntryHasModernStats(data) &&
         !shouldRefreshLeaderboardEntry(data, now)) {
       return;
@@ -733,10 +718,7 @@ class FirestoreMemberRepository implements MemberRepository {
   }
 
   @visibleForTesting
-  bool shouldRefreshLeaderboardEntry(
-    Map<String, dynamic> data,
-    DateTime now,
-  ) {
+  bool shouldRefreshLeaderboardEntry(Map<String, dynamic> data, DateTime now) {
     final updatedAt = data['updatedAt'];
     DateTime? lastRefresh;
     if (updatedAt is Timestamp) {
@@ -815,6 +797,130 @@ class FirestoreMemberRepository implements MemberRepository {
         }
       },
     );
+  }
+}
+
+class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
+  FirestoreLiveTrackingRepository(this._auth, this._firestore);
+
+  final FirebaseAuth _auth;
+  final FirebaseFirestore _firestore;
+  Map<String, dynamic>? _cachedOwner;
+  String? _cachedOwnerUid;
+  DateTime? _cachedOwnerAt;
+
+  static const _ownerCacheDuration = Duration(seconds: 30);
+
+  String get _uid {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) throw StateError('Bạn chưa đăng nhập Firebase.');
+    return uid;
+  }
+
+  CollectionReference<Map<String, dynamic>> get _liveSessions =>
+      _firestore.collection('liveSessions');
+
+  @override
+  Stream<List<LiveTrackingSession>> watchClubLiveSessions() {
+    return _liveSessions
+        .where('visibility', isEqualTo: LiveTrackingVisibility.club.value)
+        .snapshots()
+        .map((snapshot) {
+          final now = DateTime.now();
+          final items =
+              snapshot.docs
+                  .map((document) {
+                    final data = document.data();
+                    final startedAt = data['startedAt'];
+                    final updatedAt = data['updatedAt'];
+                    return LiveTrackingSession.fromMap({
+                      ...data,
+                      'id': document.id,
+                      if (startedAt is Timestamp)
+                        'startedAt': startedAt.toDate(),
+                      if (updatedAt is Timestamp)
+                        'updatedAt': updatedAt.toDate(),
+                    });
+                  })
+                  .where(
+                    (session) => session.isActive && !session.isExpired(now),
+                  )
+                  .toList()
+                ..sort(
+                  (left, right) => right.updatedAt.compareTo(left.updatedAt),
+                );
+          return items;
+        });
+  }
+
+  @override
+  Future<void> publishSnapshot({
+    required TrackingSessionSnapshot snapshot,
+    required LiveTrackingStatus status,
+    required List<RoutePoint> routePreview,
+  }) async {
+    final owner = await _ownerProfile();
+    final profileVisibility = ProfileVisibility.fromValue(
+      owner['profileVisibility'] as String?,
+    );
+    final liveVisibility = profileVisibility == ProfileVisibility.public
+        ? LiveTrackingVisibility.club
+        : LiveTrackingVisibility.private;
+    final data = <String, dynamic>{
+      'id': snapshot.id,
+      'ownerUid': _uid,
+      'ownerName': owner['displayName'] as String? ?? 'RunNow member',
+      'visibility': liveVisibility.value,
+      'status': status.value,
+      'startedAt': Timestamp.fromDate(snapshot.startedAt.toUtc()),
+      'updatedAt': FieldValue.serverTimestamp(),
+      'distanceMeters': snapshot.distanceMeters,
+      'movingTimeSeconds': snapshot.movingTimeSeconds,
+      'avgPaceSecondsPerKm': snapshot.averagePaceSecondsPerKm,
+      if (snapshot.routePoints.isNotEmpty)
+        'lastLocation': snapshot.routePoints.last.toMap(),
+      if (routePreview.isNotEmpty)
+        'routePreview': routePreview.map((point) => point.toMap()).toList(),
+    }..removeWhere((key, value) => value == null);
+    final avatarUrl = owner['avatarUrl'] as String?;
+    if (avatarUrl != null && avatarUrl.trim().isNotEmpty) {
+      data['ownerAvatarUrl'] = avatarUrl.trim();
+    }
+    await _liveSessions.doc(snapshot.id).set(data, SetOptions(merge: true));
+  }
+
+  @override
+  Future<void> finishSession(
+    String sessionId,
+    LiveTrackingStatus status,
+  ) async {
+    await _liveSessions.doc(sessionId).set({
+      'ownerUid': _uid,
+      'status': status.value,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<Map<String, dynamic>> _ownerProfile() async {
+    final uid = _uid;
+    final cached = _cachedOwner;
+    final cachedAt = _cachedOwnerAt;
+    if (cached != null &&
+        _cachedOwnerUid == uid &&
+        cachedAt != null &&
+        DateTime.now().difference(cachedAt) < _ownerCacheDuration) {
+      return cached;
+    }
+    final publicProfile = await _firestore
+        .collection('publicProfiles')
+        .doc(uid)
+        .get();
+    final userProfile = await _firestore.collection('users').doc(uid).get();
+    final data = {...?userProfile.data(), ...?publicProfile.data()};
+    _cachedOwner = data;
+    _cachedOwnerUid = uid;
+    _cachedOwnerAt = DateTime.now();
+    return data;
   }
 }
 

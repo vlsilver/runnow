@@ -10,18 +10,18 @@ abstract final class AppColors {
   static const redDeep = accentDeep;
   static const black = Color(0xff071019);
   static const blue = Color(0xff2f8dff);
-  static const blueGlow = Color(0xff5bc8ff);
+  static const blueGlow = Color(0xff4f9bd6);
   static const amber = Color(0xff86b9ec);
 
   /// Chỉ dùng cho trạng thái lỗi/cảnh báo thật sự.
   static const alert = Color(0xffff5a6a);
 
   static const background = Color(0xff0b1623);
-  static const lightBackground = Color(0xffeef3f8);
-  static const lightSurface = Color(0xfff9fbff);
-  static const lightSurfaceAlt = Color(0xffeef4fb);
-  static const lightText = Color(0xff07111f);
-  static const lightMuted = Color(0xff607086);
+  static const lightBackground = Color(0xffd6dbe2);
+  static const lightSurface = Color(0xffe4e8ee);
+  static const lightSurfaceAlt = Color(0xffd8dee6);
+  static const lightText = Color(0xff18222f);
+  static const lightMuted = Color(0xff5c6878);
   static const glass = Color(0x4d0e2138);
   static const glassStrong = Color(0x99102a45);
   static const glassBorder = Color(0x3a5bc8ff);

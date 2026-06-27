@@ -48,7 +48,7 @@ class ActivityRecordsCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       gradient: LinearGradient(
         colors: isLight
-            ? const [Color(0xfff9fbff), Color(0xffeaf2fb), Color(0xfff5f8fc)]
+            ? const [Color(0xffe2e6ed), Color(0xffd4dbe4), Color(0xffd8dee6)]
             : const [Color(0xf207172b), Color(0xe005243f), Color(0xb3121027)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,

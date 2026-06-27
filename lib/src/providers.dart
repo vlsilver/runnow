@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:myrun/src/auth.dart';
@@ -36,6 +37,13 @@ final memberRepositoryProvider = Provider<MemberRepository>((ref) {
 
 final trainingGoalRepositoryProvider = Provider<TrainingGoalRepository>((ref) {
   return FirestoreTrainingGoalRepository(
+    FirebaseAuth.instance,
+    FirebaseFirestore.instance,
+  );
+});
+
+final liveTrackingRepositoryProvider = Provider<LiveTrackingRepository>((ref) {
+  return FirestoreLiveTrackingRepository(
     FirebaseAuth.instance,
     FirebaseFirestore.instance,
   );
@@ -111,7 +119,18 @@ final stravaAuthProvider = ChangeNotifierProvider<StravaAuthController>(
 final stravaConnectionProvider = Provider<bool>((ref) {
   ref.watch(stravaAuthProvider);
   ref.watch(firebaseUserProvider);
-  return StravaClient.instance.isSignedIn;
+  if (StravaClient.instance.isSignedIn) return true;
+  // Web có thể vừa reload sau OAuth callback nên local token chưa kịp restore;
+  // Firestore profile là trạng thái kết nối bền hơn cho UI.
+  if (kIsWeb) {
+    return ref
+        .watch(userProfileProvider)
+        .maybeWhen(
+          data: (profile) => profile?.stravaConnected ?? false,
+          orElse: () => false,
+        );
+  }
+  return false;
 });
 
 final googleAuthProvider = ChangeNotifierProvider<GoogleAuthController>(
@@ -152,6 +171,10 @@ final membersProvider = StreamProvider<List<MemberProfile>>(
 
 final leaderboardEntriesProvider = StreamProvider<List<LeaderboardEntry>>(
   (ref) => ref.watch(memberRepositoryProvider).watchLeaderboardEntries(),
+);
+
+final clubLiveSessionsProvider = StreamProvider<List<LiveTrackingSession>>(
+  (ref) => ref.watch(liveTrackingRepositoryProvider).watchClubLiveSessions(),
 );
 
 final memberProfileProvider = StreamProvider.family<MemberProfile?, String>((

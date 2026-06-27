@@ -26,7 +26,7 @@ class ConsistencyHeatmap extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       gradient: LinearGradient(
         colors: isLight
-            ? const [Color(0xfff9fbff), Color(0xffe9f1fa)]
+            ? const [Color(0xffe2e6ed), Color(0xffd3dae3)]
             : const [Color(0xe607172b), Color(0xb3062442)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,

@@ -34,7 +34,10 @@ class MemberProfileScreen extends ConsumerWidget {
     final profile = ref.watch(memberProfileProvider(uid));
     return Scaffold(
       appBar: AppBar(title: const Text('Tổng quan')),
-      body: profile.when(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: profile.when(
         data: (member) {
           if (member == null) {
             return const Center(child: Text('Không tìm thấy thành viên.'));
@@ -56,6 +59,8 @@ class MemberProfileScreen extends ConsumerWidget {
         error: (error, stack) =>
             Center(child: Text('Không thể tải hồ sơ: $error')),
         loading: () => const Center(child: CircularProgressIndicator()),
+          ),
+        ),
       ),
     );
   }
@@ -228,7 +233,7 @@ class _MemberSummaryCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       gradient: LinearGradient(
         colors: isLight
-            ? const [Color(0xfff9fbff), Color(0xffe7eff8), Color(0xfff3f6fb)]
+            ? const [Color(0xffe2e6ed), Color(0xffd1d8e1), Color(0xffdde3ea)]
             : const [Color(0xf207172b), Color(0xdb06365c), Color(0xb3151637)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,

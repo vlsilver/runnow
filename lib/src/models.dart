@@ -284,6 +284,119 @@ class LeaderboardEntry {
   bool get isPublic => visibility == ProfileVisibility.public;
 }
 
+enum LiveTrackingStatus {
+  running('running'),
+  paused('paused'),
+  finished('finished'),
+  expired('expired');
+
+  const LiveTrackingStatus(this.value);
+
+  factory LiveTrackingStatus.fromValue(String? value) {
+    return switch (value) {
+      'paused' => LiveTrackingStatus.paused,
+      'finished' => LiveTrackingStatus.finished,
+      'expired' => LiveTrackingStatus.expired,
+      _ => LiveTrackingStatus.running,
+    };
+  }
+
+  final String value;
+}
+
+enum LiveTrackingVisibility {
+  club('club'),
+  private('private');
+
+  const LiveTrackingVisibility(this.value);
+
+  factory LiveTrackingVisibility.fromValue(String? value) {
+    return switch (value) {
+      'private' => LiveTrackingVisibility.private,
+      _ => LiveTrackingVisibility.club,
+    };
+  }
+
+  final String value;
+}
+
+class LiveTrackingSession {
+  const LiveTrackingSession({
+    required this.id,
+    required this.ownerUid,
+    required this.ownerName,
+    required this.visibility,
+    required this.status,
+    required this.startedAt,
+    required this.updatedAt,
+    required this.distanceMeters,
+    required this.movingTimeSeconds,
+    this.ownerAvatarUrl,
+    this.lastLocation,
+    this.averagePaceSecondsPerKm,
+    this.routePreview = const [],
+  });
+
+  factory LiveTrackingSession.fromMap(Map<String, dynamic> map) {
+    final startedAt = map['startedAt'];
+    final updatedAt = map['updatedAt'];
+    final lastLocation = map['lastLocation'];
+    final routePreview = map['routePreview'] as List<dynamic>? ?? const [];
+    return LiveTrackingSession(
+      id: '${map['id'] ?? ''}',
+      ownerUid: map['ownerUid'] as String? ?? '',
+      ownerName: map['ownerName'] as String? ?? 'RunNow member',
+      ownerAvatarUrl: map['ownerAvatarUrl'] as String?,
+      visibility: LiveTrackingVisibility.fromValue(
+        map['visibility'] as String?,
+      ),
+      status: LiveTrackingStatus.fromValue(map['status'] as String?),
+      startedAt: _dateTimeFromLiveValue(startedAt) ?? DateTime.now(),
+      updatedAt: _dateTimeFromLiveValue(updatedAt) ?? DateTime.now(),
+      lastLocation: lastLocation is Map<String, dynamic>
+          ? RoutePoint.fromMap(lastLocation)
+          : null,
+      distanceMeters: (map['distanceMeters'] as num?)?.toDouble() ?? 0,
+      movingTimeSeconds: (map['movingTimeSeconds'] as num?)?.toInt() ?? 0,
+      averagePaceSecondsPerKm: (map['avgPaceSecondsPerKm'] as num?)?.toDouble(),
+      routePreview: routePreview
+          .whereType<Map<String, dynamic>>()
+          .map(RoutePoint.fromMap)
+          .toList(),
+    );
+  }
+
+  final String id;
+  final String ownerUid;
+  final String ownerName;
+  final String? ownerAvatarUrl;
+  final LiveTrackingVisibility visibility;
+  final LiveTrackingStatus status;
+  final DateTime startedAt;
+  final DateTime updatedAt;
+  final RoutePoint? lastLocation;
+  final double distanceMeters;
+  final int movingTimeSeconds;
+  final double? averagePaceSecondsPerKm;
+  final List<RoutePoint> routePreview;
+
+  bool get isActive =>
+      status == LiveTrackingStatus.running ||
+      status == LiveTrackingStatus.paused;
+
+  bool isStale(DateTime now) =>
+      isActive && now.difference(updatedAt) > const Duration(seconds: 30);
+
+  bool isExpired(DateTime now) =>
+      isActive && now.difference(updatedAt) > const Duration(minutes: 3);
+}
+
+DateTime? _dateTimeFromLiveValue(Object? value) {
+  if (value is DateTime) return value.toLocal();
+  if (value is String) return DateTime.tryParse(value)?.toLocal();
+  return null;
+}
+
 class ActivitySummary {
   const ActivitySummary({
     required this.id,

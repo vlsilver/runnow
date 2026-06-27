@@ -14,6 +14,7 @@ class SettingsScreen extends ConsumerWidget {
     final profile = ref.watch(userProfileProvider);
     final themeController = ref.watch(themeControllerProvider);
     final strava = ref.watch(stravaAuthProvider);
+    final stravaConnected = ref.watch(stravaConnectionProvider);
     final googleAuth = ref.watch(googleAuthProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Cài đặt')),
@@ -66,16 +67,16 @@ class SettingsScreen extends ConsumerWidget {
             title: 'Kết nối',
             children: [
               _SettingsRow(
-                icon: strava.connected ? Icons.link : Icons.link_off_outlined,
+                icon: stravaConnected ? Icons.link : Icons.link_off_outlined,
                 title: 'Strava',
                 value: strava.loading
                     ? 'Đang xử lý'
-                    : strava.connected
+                    : stravaConnected
                     ? 'Đã kết nối'
                     : 'Chưa kết nối',
                 onTap: strava.loading ? null : strava.connect,
               ),
-              if (strava.connected)
+              if (stravaConnected)
                 _SettingsRow(
                   icon: Icons.sync,
                   title: 'Đồng bộ Strava',
@@ -86,7 +87,7 @@ class SettingsScreen extends ConsumerWidget {
                             .read(syncControllerProvider)
                             .startBackgroundSync(force: true),
                 ),
-              if (strava.connected)
+              if (stravaConnected)
                 _SettingsRow(
                   icon: Icons.link_off,
                   title: 'Ngắt kết nối Strava',

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,6 +37,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   static const _gpsWarmupFairAccuracyMeters = 40.0;
   static const _gpsWarmupMaxWindowDriftMeters = 45.0;
   static const _gpsWarmupMaxReportedSpeedMetersPerSecond = 3.0;
+  static const _livePublishMinInterval = Duration(seconds: 10);
+  static const _liveHeartbeatInterval = Duration(seconds: 30);
+  static const _livePublishMinDistanceMeters = 50.0;
+  static const _liveRoutePreviewStepMeters = 100.0;
 
   TrackingSession? _session;
   TrackingSessionSnapshot? _snapshot;
@@ -52,7 +57,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   var _autoLockStarted = false;
   var _persistingDraft = false;
   var _backgroundLocationGranted = false;
+  Future<void> _livePublishQueue = Future<void>.value();
   DateTime? _lastDraftSavedAt;
+  DateTime? _lastLivePublishedAt;
+  double _lastLivePublishedDistanceMeters = 0;
 
   bool get _running => _snapshot?.status == TrackingSessionStatus.running;
   bool get _paused => _snapshot?.status == TrackingSessionStatus.paused;
@@ -283,6 +291,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _startTicker();
       _setWakelock(true);
       unawaited(_persistDraft());
+      unawaited(_publishLiveSnapshot(force: true));
       HapticFeedback.mediumImpact();
     } catch (error) {
       if (!mounted) return;
@@ -305,6 +314,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _message = 'Đã pause. Route sau resume sẽ không nối qua đoạn nghỉ.';
     });
     unawaited(_persistDraft());
+    unawaited(
+      _publishLiveSnapshot(force: true, status: LiveTrackingStatus.paused),
+    );
   }
 
   void _resume() {
@@ -318,6 +330,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     _startTicker();
     _setWakelock(true);
     unawaited(_persistDraft());
+    unawaited(_publishLiveSnapshot(force: true));
   }
 
   Future<void> _stopAndSave() async {
@@ -330,6 +343,11 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _ticker?.cancel();
       _setWakelock(false);
       final snapshot = session.finish(DateTime.now());
+      setState(() => _snapshot = snapshot);
+      await _publishLiveSnapshot(
+        force: true,
+        status: LiveTrackingStatus.finished,
+      );
       final detail = snapshot.toActivityDetail(
         name: 'RunNow Trial',
         recordingDevice: 'RunNow app',
@@ -358,6 +376,14 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   }
 
   Future<void> _discard() async {
+    final sessionId = _session?.id;
+    if (sessionId != null) {
+      unawaited(
+        ref
+            .read(liveTrackingRepositoryProvider)
+            .finishSession(sessionId, LiveTrackingStatus.expired),
+      );
+    }
     await ref.read(trackingDraftStoreProvider).clear();
     await _resetSession(message: 'Đã bỏ phiên tracking thử.');
   }
@@ -421,6 +447,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _gpsSignal = _GpsSignal.idle;
       _gpsStableSamples = 0;
       _gpsElapsedSeconds = 0;
+      _lastLivePublishedAt = null;
+      _lastLivePublishedDistanceMeters = 0;
       _message = message;
     });
   }
@@ -470,6 +498,78 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _gpsSignal = _runningGpsSignal(sample, latestLog);
     });
     unawaited(_persistDraftThrottled());
+    unawaited(_publishLiveSnapshot());
+  }
+
+  Future<void> _publishLiveSnapshot({
+    bool force = false,
+    LiveTrackingStatus? status,
+  }) {
+    final operation = _livePublishQueue.then(
+      (_) => _publishLiveSnapshotNow(force: force, status: status),
+    );
+    _livePublishQueue = operation.catchError((Object _) {});
+    return operation;
+  }
+
+  Future<void> _publishLiveSnapshotNow({
+    required bool force,
+    LiveTrackingStatus? status,
+  }) async {
+    final snapshot = _snapshot;
+    if (snapshot == null) return;
+    final now = DateTime.now();
+    final lastPublishedAt = _lastLivePublishedAt;
+    final movedEnough =
+        (snapshot.distanceMeters - _lastLivePublishedDistanceMeters).abs() >=
+        _livePublishMinDistanceMeters;
+    final waitedEnough =
+        lastPublishedAt == null ||
+        now.difference(lastPublishedAt) >= _livePublishMinInterval;
+    if (!force && !movedEnough && !waitedEnough) return;
+    try {
+      await ref
+          .read(liveTrackingRepositoryProvider)
+          .publishSnapshot(
+            snapshot: snapshot,
+            status: status ?? _liveStatusForSnapshot(snapshot),
+            routePreview: _downsampleLiveRoute(snapshot.routePoints),
+          );
+      _lastLivePublishedAt = now;
+      _lastLivePublishedDistanceMeters = snapshot.distanceMeters;
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('[LiveTracking] publish failed: $error');
+      }
+    }
+  }
+
+  LiveTrackingStatus _liveStatusForSnapshot(TrackingSessionSnapshot snapshot) {
+    return switch (snapshot.status) {
+      TrackingSessionStatus.running => LiveTrackingStatus.running,
+      TrackingSessionStatus.paused => LiveTrackingStatus.paused,
+      TrackingSessionStatus.finished => LiveTrackingStatus.finished,
+      TrackingSessionStatus.idle => LiveTrackingStatus.expired,
+    };
+  }
+
+  List<RoutePoint> _downsampleLiveRoute(List<RoutePoint> points) {
+    if (points.length <= 2) return points;
+    final preview = <RoutePoint>[points.first];
+    var lastAccepted = points.first;
+    for (final point in points.skip(1)) {
+      final distance = Geolocator.distanceBetween(
+        lastAccepted.latitude,
+        lastAccepted.longitude,
+        point.latitude,
+        point.longitude,
+      );
+      if (distance >= _liveRoutePreviewStepMeters || point == points.last) {
+        preview.add(point);
+        lastAccepted = point;
+      }
+    }
+    return preview;
   }
 
   _GpsSignal _runningGpsSignal(
@@ -504,6 +604,11 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       final now = DateTime.now();
       setState(() => _snapshot = session.tick(now));
       unawaited(_persistDraftThrottled());
+      final lastPublishedAt = _lastLivePublishedAt;
+      if (lastPublishedAt == null ||
+          now.difference(lastPublishedAt) >= _liveHeartbeatInterval) {
+        unawaited(_publishLiveSnapshot());
+      }
     });
   }
 

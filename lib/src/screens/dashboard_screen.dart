@@ -186,6 +186,8 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final wide = screenWidth >= 900;
     final now = DateTime.now();
     final weekMode = ref.watch(dashboardWeekModeProvider);
     final comparison = switch (weekMode) {
@@ -216,9 +218,164 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
     );
     final recent = [...widget.activities]
       ..sort((left, right) => right.startedAt.compareTo(left.startedAt));
+
+    Widget summaryCard({required bool showControls}) => goals.when(
+      data: (item) => _SummaryCard(
+        comparison: comparison,
+        dailyDistances: dailyDistances,
+        goals: item,
+        monthDistanceMeters: monthSummary.distanceMeters,
+        mode: weekMode,
+        onModeChanged: (mode) =>
+            ref.read(dashboardWeekModeProvider.notifier).state = mode,
+        onEditGoals: () => _editTrainingGoals(context, ref, item),
+        showControls: showControls,
+      ),
+      error: (error, stack) => _SummaryCard(
+        comparison: comparison,
+        dailyDistances: dailyDistances,
+        goals: TrainingGoals.empty,
+        monthDistanceMeters: monthSummary.distanceMeters,
+        mode: weekMode,
+        onModeChanged: (mode) =>
+            ref.read(dashboardWeekModeProvider.notifier).state = mode,
+        onEditGoals: () =>
+            _editTrainingGoals(context, ref, TrainingGoals.empty),
+        showControls: showControls,
+      ),
+      loading: () => _SummaryCard(
+        comparison: comparison,
+        dailyDistances: dailyDistances,
+        goals: TrainingGoals.empty,
+        monthDistanceMeters: monthSummary.distanceMeters,
+        mode: weekMode,
+        onModeChanged: (mode) =>
+            ref.read(dashboardWeekModeProvider.notifier).state = mode,
+        onEditGoals: null,
+        showControls: showControls,
+      ),
+    );
+
+    Widget powerCard({required bool showControls}) => PersonalPowerCard(
+      activities: widget.activities,
+      showControls: showControls,
+      range: ref.watch(dashboardPowerRangeProvider),
+    );
+
+    Widget volumeCard({required bool showControls}) => TrainingVolumeChart(
+      activities: widget.activities,
+      period: ref.watch(dashboardVolumePeriodProvider),
+      mode: ref.watch(dashboardVolumeModeProvider),
+      showControls: showControls,
+    );
+
+    final recentCard = _RecentActivitiesCard(recent: recent);
+
+    if (wide) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (ref.read(dashboardActiveCardProvider) != null) {
+          ref.read(dashboardActiveCardProvider.notifier).state = null;
+        }
+      });
+      final columns = screenWidth >= 1320 ? 3 : 2;
+      final webColumns = columns == 3
+          ? [
+              _DashboardWebColumn(
+                children: [
+                  _ShareableDashboardCard(
+                    title: 'RunNow tiến độ tuần',
+                    builder: (_) => summaryCard(showControls: true),
+                  ),
+                  _ShareableDashboardCard(
+                    title: 'RunNow kỷ luật cá nhân',
+                    builder: (_) => DisciplineCard(stats: discipline),
+                  ),
+                ],
+              ),
+              _DashboardWebColumn(
+                children: [
+                  _ShareableDashboardCard(
+                    title: 'RunNow personal power',
+                    builder: (_) => powerCard(showControls: true),
+                  ),
+                  _ShareableDashboardCard(
+                    title: 'RunNow consistency 8 tuần',
+                    builder: (_) =>
+                        ConsistencyHeatmap(activities: widget.activities),
+                  ),
+                ],
+              ),
+              _DashboardWebColumn(
+                children: [
+                  _ShareableDashboardCard(
+                    title: 'RunNow km theo thời gian',
+                    builder: (_) => volumeCard(showControls: true),
+                  ),
+                  _ShareableDashboardCard(
+                    title: 'RunNow kỷ lục cá nhân',
+                    builder: (_) => ActivityRecordsCard(
+                      title: 'KỶ LỤC CÁ NHÂN',
+                      entries: [
+                        for (final activity in widget.activities)
+                          ActivityRecordEntry(activity: activity),
+                      ],
+                    ),
+                  ),
+                  recentCard,
+                ],
+              ),
+            ]
+          : [
+              _DashboardWebColumn(
+                children: [
+                  _ShareableDashboardCard(
+                    title: 'RunNow tiến độ tuần',
+                    builder: (_) => summaryCard(showControls: true),
+                  ),
+                  _ShareableDashboardCard(
+                    title: 'RunNow personal power',
+                    builder: (_) => powerCard(showControls: true),
+                  ),
+                  _ShareableDashboardCard(
+                    title: 'RunNow kỷ luật cá nhân',
+                    builder: (_) => DisciplineCard(stats: discipline),
+                  ),
+                ],
+              ),
+              _DashboardWebColumn(
+                children: [
+                  _ShareableDashboardCard(
+                    title: 'RunNow consistency 8 tuần',
+                    builder: (_) =>
+                        ConsistencyHeatmap(activities: widget.activities),
+                  ),
+                  _ShareableDashboardCard(
+                    title: 'RunNow km theo thời gian',
+                    builder: (_) => volumeCard(showControls: true),
+                  ),
+                  _ShareableDashboardCard(
+                    title: 'RunNow kỷ lục cá nhân',
+                    builder: (_) => ActivityRecordsCard(
+                      title: 'KỶ LỤC CÁ NHÂN',
+                      entries: [
+                        for (final activity in widget.activities)
+                          ActivityRecordEntry(activity: activity),
+                      ],
+                    ),
+                  ),
+                  recentCard,
+                ],
+              ),
+            ];
+      return _DashboardWebGrid(columns: webColumns);
+    }
+
     return NotificationListener<ScrollNotification>(
       onNotification: (_) {
-        _updateActiveCard();
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _updateActiveCard(),
+        );
         return false;
       },
       child: ListView(
@@ -231,45 +388,7 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
             key: _weekKey,
             child: _ShareableDashboardCard(
               title: 'RunNow tiến độ tuần',
-              builder: (sharing) => goals.when(
-                data: (item) => _SummaryCard(
-                  comparison: comparison,
-                  dailyDistances: dailyDistances,
-                  goals: item,
-                  monthDistanceMeters: monthSummary.distanceMeters,
-                  mode: weekMode,
-                  onModeChanged: (mode) => ref
-                      .read(dashboardWeekModeProvider.notifier)
-                      .state = mode,
-                  onEditGoals: () => _editTrainingGoals(context, ref, item),
-                  showControls: false,
-                ),
-                error: (error, stack) => _SummaryCard(
-                  comparison: comparison,
-                  dailyDistances: dailyDistances,
-                  goals: TrainingGoals.empty,
-                  monthDistanceMeters: monthSummary.distanceMeters,
-                  mode: weekMode,
-                  onModeChanged: (mode) => ref
-                      .read(dashboardWeekModeProvider.notifier)
-                      .state = mode,
-                  onEditGoals: () =>
-                      _editTrainingGoals(context, ref, TrainingGoals.empty),
-                  showControls: false,
-                ),
-                loading: () => _SummaryCard(
-                  comparison: comparison,
-                  dailyDistances: dailyDistances,
-                  goals: TrainingGoals.empty,
-                  monthDistanceMeters: monthSummary.distanceMeters,
-                  mode: weekMode,
-                  onModeChanged: (mode) => ref
-                      .read(dashboardWeekModeProvider.notifier)
-                      .state = mode,
-                  onEditGoals: null,
-                  showControls: false,
-                ),
-              ),
+              builder: (sharing) => summaryCard(showControls: false),
             ),
           ),
           const SizedBox(height: 20),
@@ -277,11 +396,7 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
             key: _powerKey,
             child: _ShareableDashboardCard(
               title: 'RunNow personal power',
-              builder: (sharing) => PersonalPowerCard(
-                activities: widget.activities,
-                showControls: false,
-                range: ref.watch(dashboardPowerRangeProvider),
-              ),
+              builder: (sharing) => powerCard(showControls: false),
             ),
           ),
           const SizedBox(height: 20),
@@ -310,28 +425,88 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
             key: _volumeKey,
             child: _ShareableDashboardCard(
               title: 'RunNow km theo thời gian',
-              builder: (sharing) => TrainingVolumeChart(
-                activities: widget.activities,
-                period: ref.watch(dashboardVolumePeriodProvider),
-                mode: ref.watch(dashboardVolumeModeProvider),
-                showControls: false,
-              ),
+              builder: (sharing) => volumeCard(showControls: false),
             ),
           ),
           const SizedBox(height: 20),
-          Text('Gần đây', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
+          recentCard,
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardWebGrid extends StatelessWidget {
+  const _DashboardWebGrid({required this.columns});
+
+  final List<Widget> columns;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 22),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var index = 0; index < columns.length; index++) ...[
+            Expanded(child: columns[index]),
+            if (index != columns.length - 1) const SizedBox(width: 16),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardWebColumn extends StatelessWidget {
+  const _DashboardWebColumn({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (var index = 0; index < children.length; index++) ...[
+          children[index],
+          if (index != children.length - 1) const SizedBox(height: 16),
+        ],
+      ],
+    );
+  }
+}
+
+class _RecentActivitiesCard extends StatelessWidget {
+  const _RecentActivitiesCard({required this.recent});
+
+  final List<ActivitySummary> recent;
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return GlassPanel(
+      borderRadius: 22,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'GẦN ĐÂY',
+            style: TextStyle(
+              color: onSurface.withValues(alpha: 0.62),
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.4,
+            ),
+          ),
+          const SizedBox(height: 10),
           if (recent.isEmpty)
             Text(
               'Chưa có hoạt động. Bấm đồng bộ để tải nhật ký Strava.',
-              style: TextStyle(
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurface.withValues(alpha: 0.6),
-              ),
+              style: TextStyle(color: onSurface.withValues(alpha: 0.6)),
             )
           else
-            for (var index = 0; index < recent.take(3).length; index++)
+            for (var index = 0; index < recent.take(4).length; index++)
               ActivityTile(activity: recent[index], sequence: index + 1),
         ],
       ),
@@ -342,14 +517,20 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
 /// Filter của Tổng quan render gộp trong navigation bar, tự đổi theo card đang
 /// được scroll tới ([dashboardActiveCardProvider]).
 class DashboardNavFilter extends ConsumerWidget {
-  const DashboardNavFilter({required this.branchActive, super.key});
+  const DashboardNavFilter({
+    required this.branchActive,
+    this.showFallback = false,
+    super.key,
+  });
 
   final bool branchActive;
+  final bool showFallback;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final activeCard = ref.watch(dashboardActiveCardProvider);
     final card = branchActive
-        ? ref.watch(dashboardActiveCardProvider)
+        ? activeCard ?? (showFallback ? DashboardCard.week : null)
         : null;
     final Widget child = switch (card) {
       DashboardCard.week => const _WeekModeNavControl(),
@@ -512,7 +693,7 @@ class _TrainingGoalsSheetState extends State<_TrainingGoalsSheet> {
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
         gradient: LinearGradient(
           colors: isLight
-              ? const [Color(0xfffbfcff), Color(0xffe8f0f8)]
+              ? const [Color(0xffe2e6ed), Color(0xffd2d9e2)]
               : const [Color(0xf207172b), Color(0xe0062442), Color(0xcc151637)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -614,7 +795,7 @@ class _GoalInputField extends StatelessWidget {
         hintText: hint,
         suffixText: 'km',
         filled: true,
-        fillColor: isLight ? const Color(0xffeef4fb) : const Color(0x52020812),
+        fillColor: isLight ? const Color(0xffd8dee6) : const Color(0x52020812),
         labelStyle: TextStyle(color: onSurface.withValues(alpha: 0.64)),
         hintStyle: TextStyle(color: onSurface.withValues(alpha: 0.34)),
         suffixStyle: const TextStyle(color: AppColors.blueGlow),
@@ -759,7 +940,7 @@ class _ConnectStravaCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       gradient: LinearGradient(
         colors: isLight
-            ? const [Color(0xfff8fbff), Color(0xffe9f1fa)]
+            ? const [Color(0xffe2e6ed), Color(0xffd3dae3)]
             : const [Color(0xf207172b), Color(0xd4062442), Color(0xb3151637)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
@@ -928,7 +1109,7 @@ class _SummaryCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       gradient: LinearGradient(
         colors: isLight
-            ? const [Color(0xfff9fbff), Color(0xffe7eff8), Color(0xfff3f6fb)]
+            ? const [Color(0xffe2e6ed), Color(0xffd1d8e1), Color(0xffdde3ea)]
             : const [Color(0xf207172b), Color(0xdb06365c), Color(0xb3151637)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
