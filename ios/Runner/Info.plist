@@ -43,6 +43,16 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>RunNow cần quyền vị trí khi bạn bấm chạy để ghi lại quãng đường, pace và route thử nghiệm.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>RunNow cần quyền vị trí nền khi bạn khóa màn hình hoặc dùng app khác trong lúc đang chạy.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>RunNow cần quyền vị trí nền khi bạn khóa màn hình hoặc dùng app khác trong lúc đang chạy.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

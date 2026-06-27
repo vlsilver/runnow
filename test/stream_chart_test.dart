@@ -47,12 +47,8 @@ void main() {
     expect(find.text('2.0 km'), findsWidgets);
     expect(find.text('KIỂU'), findsOneWidget);
     expect(find.text('RANGE'), findsOneWidget);
-    final dropdowns = find.byWidgetPredicate(
-      (widget) => widget is DropdownButton,
-    );
-    expect(dropdowns, findsNWidgets(2));
 
-    await tester.tap(dropdowns.first);
+    await tester.tap(find.text('KIỂU'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Line').last);
     await tester.pumpAndSettle();

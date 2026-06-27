@@ -20,14 +20,14 @@ class RunNowBackdrop extends StatelessWidget {
               gradient: LinearGradient(
                 colors: isLight
                     ? const [
-                        Color(0xffeaf1f8),
-                        Color(0xfff8fbff),
-                        Color(0xffe9eef6),
+                        Color(0xffd7dce3),
+                        Color(0xffdde2e9),
+                        Color(0xffd2d8e0),
                       ]
                     : const [
-                        Color(0xff000000),
-                        Color(0xff020202),
-                        Color(0xff000000),
+                        Color(0xff0d1a2a),
+                        Color(0xff0a1421),
+                        Color(0xff080f19),
                       ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -37,17 +37,17 @@ class RunNowBackdrop extends StatelessWidget {
           IgnorePointer(child: CustomPaint(painter: _TechGridPainter(isLight))),
           _Glow(
             alignment: Alignment.topRight,
-            color: isLight ? const Color(0x180075ff) : const Color(0x2600a8ff),
+            color: isLight ? const Color(0x00000000) : const Color(0x2238b0ff),
             size: isLight ? 220 : 190,
           ),
           _Glow(
             alignment: Alignment.centerLeft,
-            color: isLight ? const Color(0x12ff3b4f) : const Color(0x180057b8),
+            color: isLight ? const Color(0x00000000) : const Color(0x16215f9e),
             size: isLight ? 210 : 170,
           ),
           _Glow(
             alignment: Alignment.bottomRight,
-            color: isLight ? const Color(0x16ff3b4f) : const Color(0x26ff1744),
+            color: isLight ? const Color(0x00000000) : const Color(0x1c3a9bff),
             size: isLight ? 190 : 150,
           ),
           child,
@@ -87,7 +87,7 @@ class GlassPanel extends StatelessWidget {
             offset: Offset(0, isLight ? 10 : 12),
           ),
           BoxShadow(
-            color: isLight ? const Color(0x0f0075ff) : const Color(0x1600d9ff),
+            color: isLight ? const Color(0x0a141d2b) : const Color(0x1600d9ff),
             blurRadius: 18,
           ),
         ],
@@ -103,7 +103,7 @@ class GlassPanel extends StatelessWidget {
                   gradient ??
                   LinearGradient(
                     colors: isLight
-                        ? const [Color(0xfff8fbff), Color(0xffe6eef7)]
+                        ? const [Color(0xffe2e6ed), Color(0xffd2d8e2)]
                         : const [Color(0xb307172b), Color(0x8a06101e)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -159,10 +159,10 @@ class _TechGridPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     const spacing = 32.0;
     final minor = Paint()
-      ..color = isLight ? const Color(0x100075ff) : const Color(0x1200d9ff)
+      ..color = isLight ? const Color(0x0a203044) : const Color(0x1200d9ff)
       ..strokeWidth = 0.6;
     final major = Paint()
-      ..color = isLight ? const Color(0x180075ff) : const Color(0x1f00d9ff)
+      ..color = isLight ? const Color(0x12203044) : const Color(0x1f00d9ff)
       ..strokeWidth = 0.8;
     for (var x = 0.0; x <= size.width; x += spacing) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), minor);

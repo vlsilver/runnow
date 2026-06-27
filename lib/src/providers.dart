@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:myrun/src/auth.dart';
@@ -9,6 +10,8 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/repository.dart';
 import 'package:myrun/src/strava_client.dart';
 import 'package:myrun/src/sync.dart';
+import 'package:myrun/src/tracking_draft_store.dart';
+import 'package:myrun/src/tracking_location_provider.dart';
 import 'package:myrun/src/theme_controller.dart';
 
 final activityRepositoryProvider = Provider<ActivityRepository>((ref) {
@@ -38,6 +41,52 @@ final trainingGoalRepositoryProvider = Provider<TrainingGoalRepository>((ref) {
     FirebaseFirestore.instance,
   );
 });
+
+final liveTrackingRepositoryProvider = Provider<LiveTrackingRepository>((ref) {
+  return FirestoreLiveTrackingRepository(
+    FirebaseAuth.instance,
+    FirebaseFirestore.instance,
+  );
+});
+
+enum ClubRecapRange { currentWeek, currentMonth }
+
+enum ClubRankingMetric {
+  distance,
+  time,
+  consistency,
+  pace,
+  longestRun,
+  activityCount,
+}
+
+enum ClubRankingRange { rollingSevenDays, currentWeek, currentMonth }
+
+/// Khoảng thời gian của tab "Tổng kết" club. Được hoist ra provider để filter
+/// có thể render gộp chung trong navigation bar (xem [app.dart]).
+final clubRecapRangeProvider = StateProvider<ClubRecapRange>(
+  (ref) => ClubRecapRange.currentWeek,
+);
+
+/// Bộ lọc của tab "Xếp hạng" club, cũng hoist ra để gộp vào navigation bar.
+final clubRankingMetricProvider = StateProvider<ClubRankingMetric>(
+  (ref) => ClubRankingMetric.distance,
+);
+final clubRankingRangeProvider = StateProvider<ClubRankingRange>(
+  (ref) => ClubRankingRange.currentWeek,
+);
+
+/// Index tab con của club đang được chọn (0 = Xếp hạng, 1 = Tổng kết...),
+/// hoặc -1 khi không ở màn hình club. Nav bar dựa vào đây để hiện đúng filter.
+final clubActiveSubTabProvider = StateProvider<int>((ref) => -1);
+
+final trackingDraftStoreProvider = Provider<TrackingDraftStore>(
+  (ref) => const TrackingDraftStore(),
+);
+
+final trackingLocationProvider = Provider<TrackingLocationProvider>(
+  (ref) => const GeolocatorTrackingLocationProvider(),
+);
 
 final firebaseUserProvider = StreamProvider<User?>(
   (ref) => FirebaseAuth.instance.authStateChanges(),
@@ -70,7 +119,18 @@ final stravaAuthProvider = ChangeNotifierProvider<StravaAuthController>(
 final stravaConnectionProvider = Provider<bool>((ref) {
   ref.watch(stravaAuthProvider);
   ref.watch(firebaseUserProvider);
-  return StravaClient.instance.isSignedIn;
+  if (StravaClient.instance.isSignedIn) return true;
+  // Web có thể vừa reload sau OAuth callback nên local token chưa kịp restore;
+  // Firestore profile là trạng thái kết nối bền hơn cho UI.
+  if (kIsWeb) {
+    return ref
+        .watch(userProfileProvider)
+        .maybeWhen(
+          data: (profile) => profile?.stravaConnected ?? false,
+          orElse: () => false,
+        );
+  }
+  return false;
 });
 
 final googleAuthProvider = ChangeNotifierProvider<GoogleAuthController>(
@@ -84,6 +144,10 @@ final themeControllerProvider = ChangeNotifierProvider<ThemeController>(
 
 final activitiesProvider = StreamProvider<List<ActivitySummary>>(
   (ref) => ref.watch(activityRepositoryProvider).watchActivities(),
+);
+
+final trackedTrialActivitiesProvider = StreamProvider<List<ActivitySummary>>(
+  (ref) => ref.watch(activityRepositoryProvider).watchTrackedTrialActivities(),
 );
 
 final activityDetailProvider = FutureProvider.family<ActivityDetail, String>((
@@ -107,6 +171,10 @@ final membersProvider = StreamProvider<List<MemberProfile>>(
 
 final leaderboardEntriesProvider = StreamProvider<List<LeaderboardEntry>>(
   (ref) => ref.watch(memberRepositoryProvider).watchLeaderboardEntries(),
+);
+
+final clubLiveSessionsProvider = StreamProvider<List<LiveTrackingSession>>(
+  (ref) => ref.watch(liveTrackingRepositoryProvider).watchClubLiveSessions(),
 );
 
 final memberProfileProvider = StreamProvider.family<MemberProfile?, String>((
@@ -151,7 +219,7 @@ final clubActivityLogProvider = StreamProvider<List<ClubActivityLogItem>>((
         for (final member in publicMembers) {
           final activities =
               latestByUid[member.uid] ?? const <ActivitySummary>[];
-          for (final activity in activities.take(20)) {
+          for (final activity in activities) {
             items.add(ClubActivityLogItem(member: member, activity: activity));
           }
         }
@@ -160,7 +228,7 @@ final clubActivityLogProvider = StreamProvider<List<ClubActivityLogItem>>((
               right.activity.startedAt.compareTo(left.activity.startedAt),
         );
         if (!controller.isClosed) {
-          controller.add(items.take(60).toList());
+          controller.add(items);
         }
       }
 

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/nav_filter.dart';
 
 enum TrainingVolumePeriod { week, month, quarter, year, eightWeeks }
 
@@ -89,7 +90,7 @@ class _TrainingVolumeChartState extends State<TrainingVolumeChart> {
       padding: const EdgeInsets.fromLTRB(16, 16, 12, 14),
       gradient: LinearGradient(
         colors: isLight
-            ? const [Color(0xfff9fbff), Color(0xffe9f1fa)]
+            ? const [Color(0xffe2e6ed), Color(0xffd3dae3)]
             : const [Color(0xe607172b), Color(0xb3062442)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
@@ -405,54 +406,54 @@ class _CompactSelector<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: isLight ? const Color(0xffeef4fb) : const Color(0x52020812),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 9),
-        child: Row(
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: onSurface.withValues(alpha: 0.52),
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.9,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () async {
+        final selected = await showNavSelectMenu<T>(
+          context: context,
+          value: value,
+          items: {for (final item in items) item: itemLabel(item)},
+        );
+        if (selected != null) onChanged(selected);
+      },
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: isLight ? const Color(0xffd8dee6) : const Color(0x52020812),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+          child: Row(
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: onSurface.withValues(alpha: 0.52),
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.9,
+                ),
               ),
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<T>(
-                  value: value,
-                  isExpanded: true,
-                  isDense: true,
-                  dropdownColor: isLight
-                      ? const Color(0xfff8fbff)
-                      : AppColors.black,
-                  iconEnabledColor: AppColors.blueGlow,
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  itemLabel(value),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: onSurface,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
-                  items: [
-                    for (final item in items)
-                      DropdownMenuItem<T>(
-                        value: item,
-                        child: Text(itemLabel(item)),
-                      ),
-                  ],
-                  onChanged: (item) {
-                    if (item != null) onChanged(item);
-                  },
                 ),
               ),
-            ),
-          ],
+              const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 18,
+                color: AppColors.accent,
+              ),
+            ],
+          ),
         ),
       ),
     );

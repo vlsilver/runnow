@@ -42,7 +42,7 @@ class ActivityRecapCard extends StatelessWidget {
           decoration: BoxDecoration(
             border: Border.all(color: AppColors.blueGlow, width: 1.2),
             gradient: const LinearGradient(
-              colors: [Color(0xff020812), Color(0xff06365c), Color(0xff630f2d)],
+              colors: [Color(0xff020812), Color(0xff06365c), Color(0xff0a2444)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),

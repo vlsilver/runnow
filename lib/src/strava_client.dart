@@ -54,6 +54,21 @@ class StravaClient {
       utf8.encode(DateTime.now().toIso8601String()),
     ).replaceAll('=', '');
 
+    if (kIsWeb) {
+      // Web: redirect HTTP về /oauth trên chính origin của app (vd
+      // https://run-now-79767.web.app/oauth). Domain này phải nằm trong
+      // "Authorization Callback Domain" của Strava app.
+      final redirect = '${Uri.base.origin}${AppConfig.stravaRedirectPath}';
+      final params = {
+        'client_id': clientId,
+        'redirect_uri': redirect,
+        'response_type': 'code',
+        'approval_prompt': 'auto',
+        'scope': scope,
+        'state': state,
+      };
+      return Uri.https('www.strava.com', '/oauth/authorize', params);
+    }
     final params = {
       'client_id': clientId,
       'redirect_uri': redirectUri,
@@ -68,21 +83,35 @@ class StravaClient {
 
   /// TODO: Move OAuth exchange and refresh to a backend before distribution.
   Future<void> exchangeCode(String code) async {
+    // Dev-only web note: on Flutter web this exposes the client secret in the
+    // compiled app and depends on Strava allowing browser requests. This is
+    // accepted only for the current internal RunNow demo.
     final body = {
       'client_id': clientId,
       'client_secret': clientSecret,
       'code': code,
       'grant_type': 'authorization_code',
     };
-    final response = await http.post(
-      Uri.parse('https://www.strava.com/oauth/token'),
-      body: body,
-    );
+    http.Response response;
+    try {
+      response = await http.post(
+        Uri.parse('https://www.strava.com/oauth/token'),
+        body: body,
+      );
+    } catch (error) {
+      throw StateError('Không gọi được Strava token endpoint: $error');
+    }
     if (response.statusCode != 200) {
-      throw Exception('Strava token exchange failed: ${response.statusCode}');
+      throw StateError(
+        'Strava token exchange failed: ${response.statusCode} ${response.body}',
+      );
     }
     final data = json.decode(response.body) as Map<String, dynamic>;
-    await _storeTokenFromResponse(data);
+    try {
+      await _storeTokenFromResponse(data);
+    } catch (error) {
+      throw StateError('Đã nhận token Strava nhưng không lưu được: $error');
+    }
   }
 
   Future<void> _storeTokenFromResponse(Map<String, dynamic> data) async {
@@ -167,12 +196,15 @@ class StravaClient {
 
   Future<Map<String, dynamic>> getActivityStreams(String activityId) async {
     await _refreshIfNeeded();
-    final uri =
-        Uri.https('www.strava.com', '/api/v3/activities/$activityId/streams', {
-          'keys':
-              'distance,time,velocity_smooth,heartrate,altitude,cadence,watts',
-          'key_by_type': 'true',
-        });
+    final uri = Uri.https(
+      'www.strava.com',
+      '/api/v3/activities/$activityId/streams',
+      {
+        'keys':
+            'distance,time,velocity_smooth,heartrate,altitude,cadence,watts,latlng',
+        'key_by_type': 'true',
+      },
+    );
     _debugLog('GET $uri');
     final resp = await http.get(
       uri,

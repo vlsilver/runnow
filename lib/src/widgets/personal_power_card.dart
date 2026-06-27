@@ -9,6 +9,8 @@ class PersonalPowerCard extends StatefulWidget {
     required this.activities,
     this.title = 'PERSONAL POWER',
     this.showControls = true,
+    this.range,
+    this.onRangeChanged,
     super.key,
   });
 
@@ -16,12 +18,26 @@ class PersonalPowerCard extends StatefulWidget {
   final String title;
   final bool showControls;
 
+  /// Khi được cấp, card hiển thị theo range ngoài (controlled) — dùng cho
+  /// trường hợp filter nằm ở navigation bar. Bỏ trống thì card tự quản lý.
+  final PersonalPowerRange? range;
+  final ValueChanged<PersonalPowerRange>? onRangeChanged;
+
   @override
   State<PersonalPowerCard> createState() => _PersonalPowerCardState();
 }
 
 class _PersonalPowerCardState extends State<PersonalPowerCard> {
-  var _range = PersonalPowerRange.rollingSevenDays;
+  var _internalRange = PersonalPowerRange.rollingSevenDays;
+
+  PersonalPowerRange get _range => widget.range ?? _internalRange;
+
+  void _setRange(PersonalPowerRange value) {
+    widget.onRangeChanged?.call(value);
+    if (widget.range == null) {
+      setState(() => _internalRange = value);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,10 +51,7 @@ class _PersonalPowerCardState extends State<PersonalPowerCard> {
       metrics: metrics,
       powerScore: averagePowerScore(metrics),
       controls: widget.showControls
-          ? _PersonalPowerRangeControl(
-              value: _range,
-              onChanged: (value) => setState(() => _range = value),
-            )
+          ? _PersonalPowerRangeControl(value: _range, onChanged: _setRange)
           : null,
     );
   }
@@ -58,7 +71,7 @@ class _PersonalPowerRangeControl extends StatelessWidget {
     final isLight = Theme.of(context).brightness == Brightness.light;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: isLight ? const Color(0xffeef4fb) : const Color(0x36020812),
+        color: isLight ? const Color(0xffd8dee6) : const Color(0x36020812),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Padding(

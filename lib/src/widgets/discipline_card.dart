@@ -17,7 +17,7 @@ class DisciplineCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       gradient: LinearGradient(
         colors: isLight
-            ? const [Color(0xfff9fbff), Color(0xffe8f0f8)]
+            ? const [Color(0xffe2e6ed), Color(0xffd2d9e2)]
             : const [Color(0xe607172b), Color(0xaa071426)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
@@ -238,7 +238,7 @@ class _DisciplineMetric extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
-        color: isLight ? const Color(0xffeef4fb) : const Color(0x36020812),
+        color: isLight ? const Color(0xffd8dee6) : const Color(0x36020812),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(

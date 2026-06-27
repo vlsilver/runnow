@@ -22,6 +22,36 @@ void main() {
     expect(activity.paceSecondsPerKm, 300);
   });
 
+  test('parses shared activity storage fields for Strava and RunNow', () {
+    final activity = ActivitySummary.fromMap({
+      'schemaVersion': 1,
+      'id': 'local-1',
+      'name': 'Tracked run',
+      'source': 'runnow',
+      'sourceActivityId': 'local-1',
+      'recordingDevice': 'iPhone',
+      'sportType': 'Run',
+      'startedAt': '2026-05-30T00:00:00Z',
+      'distanceMeters': 5000,
+      'movingTimeSeconds': 1500,
+      'elapsedTimeSeconds': 1600,
+      'routePoints': [
+        {
+          'latitude': 10.1,
+          'longitude': 106.2,
+          'timestamp': '2026-05-30T00:00:01Z',
+          'accuracyMeters': 8,
+        },
+      ],
+    });
+
+    expect(activity.source, ActivitySource.runnow);
+    expect(activity.sourceActivityId, 'local-1');
+    expect(activity.recordingDevice, 'iPhone');
+    expect(activity.routePoints, hasLength(1));
+    expect(activity.routePoints.first.latitude, 10.1);
+  });
+
   test('parses athlete profile and last sync timestamp', () {
     final lastSyncedAt = DateTime.utc(2026, 5, 31, 8);
     final profile = UserProfile.fromMap({
@@ -132,5 +162,17 @@ void main() {
       360,
     );
     expect((entry['currentMonth'] as Map<String, dynamic>)['activeDays'], 1);
+  });
+
+  test('LeaderboardStats computes average pace correctly', () {
+    final stats = LeaderboardStats(
+      distanceMeters: 5000,
+      movingTimeSeconds: 1500,
+      activityCount: 1,
+      activeDays: 1,
+      longestDistanceMeters: 5000,
+      fastestPaceSecondsPerKm: 300,
+    );
+    expect(stats.averagePaceSecondsPerKm, 300);
   });
 }

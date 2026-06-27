@@ -47,31 +47,47 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
             ),
         ],
       ),
-      body: detail.when(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: detail.when(
         data: (item) => ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(vertical: 16),
           children: [
-            RouteMap(encodedPolyline: item.summary.polyline),
-            if (item.streams.isEmpty) ...[
-              const SizedBox(height: 16),
-              _CachedSummaryFallback(
-                detail: item,
-                isMemberView: widget.ownerUid != null,
+            RouteMap(
+              encodedPolyline: item.summary.polyline,
+              routePoints: item.summary.routePoints,
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (item.streams.isEmpty) ...[
+                    const SizedBox(height: 16),
+                    _CachedSummaryFallback(
+                      detail: item,
+                      isMemberView: widget.ownerUid != null,
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  if (item.streams.isNotEmpty) ...[
+                    StreamChart(streams: item.streams),
+                    if (item.streams['heartrate']?.isNotEmpty == true) ...[
+                      const SizedBox(height: 12),
+                      HeartRateZoneChart(streams: item.streams),
+                    ],
+                  ],
+                ],
               ),
-            ],
-            const SizedBox(height: 16),
-            if (item.streams.isNotEmpty) ...[
-              StreamChart(streams: item.streams),
-              if (item.streams['heartrate']?.isNotEmpty == true) ...[
-                const SizedBox(height: 12),
-                HeartRateZoneChart(streams: item.streams),
-              ],
-            ],
+            ),
           ],
         ),
         error: (error, stack) =>
             Center(child: Text('Không thể tải chi tiết: $error')),
         loading: () => const Center(child: CircularProgressIndicator()),
+          ),
+        ),
       ),
     );
   }
@@ -108,11 +124,15 @@ class _CachedSummaryFallback extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.info_outline, color: AppColors.amber, size: 18),
+              const Icon(
+                Icons.insights_rounded,
+                color: AppColors.accent,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  isMemberView ? 'DETAIL CHƯA CACHE' : 'DETAIL CHƯA HYDRATE',
+                  'TỔNG QUAN HOẠT ĐỘNG',
                   style: TextStyle(
                     color: onSurface.withValues(alpha: 0.66),
                     fontSize: 11,
@@ -160,8 +180,8 @@ class _CachedSummaryFallback extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             isMemberView
-                ? 'Hoạt động public này mới có summary. Charts/streams chỉ hiện khi chủ hoạt động đã hydrate detail lên Firestore.'
-                : 'Charts/streams sẽ hiện sau khi tải detail từ Strava thành công.',
+                ? 'Hoạt động này chưa có biểu đồ chi tiết (pace, nhịp tim, độ cao theo thời gian).'
+                : 'Biểu đồ chi tiết sẽ hiện sau khi đồng bộ xong dữ liệu hoạt động.',
             style: TextStyle(
               color: onSurface.withValues(alpha: 0.58),
               fontSize: 12,
@@ -248,7 +268,7 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF041221), Color(0xFF06263E), Color(0xFF220A20)],
+          colors: [Color(0xFF041221), Color(0xFF06263E), Color(0xFF0A2238)],
         ),
         child: ListView(
           controller: scrollController,

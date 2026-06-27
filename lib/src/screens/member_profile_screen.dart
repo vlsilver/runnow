@@ -6,6 +6,7 @@ import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/activity_records_card.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/consistency_heatmap.dart';
 import 'package:myrun/src/widgets/discipline_card.dart';
@@ -33,7 +34,10 @@ class MemberProfileScreen extends ConsumerWidget {
     final profile = ref.watch(memberProfileProvider(uid));
     return Scaffold(
       appBar: AppBar(title: const Text('Tổng quan')),
-      body: profile.when(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: profile.when(
         data: (member) {
           if (member == null) {
             return const Center(child: Text('Không tìm thấy thành viên.'));
@@ -55,6 +59,8 @@ class MemberProfileScreen extends ConsumerWidget {
         error: (error, stack) =>
             Center(child: Text('Không thể tải hồ sơ: $error')),
         loading: () => const Center(child: CircularProgressIndicator()),
+          ),
+        ),
       ),
     );
   }
@@ -107,13 +113,22 @@ class _MemberDashboard extends StatelessWidget {
         const SizedBox(height: 8),
         if (recent.isEmpty)
           const Text('Thành viên này chưa có hoạt động public.')
-        else
+        else ...[
+          ActivityRecordsCard(
+            title: 'BEST BOARD',
+            entries: [
+              for (final activity in activities)
+                ActivityRecordEntry(activity: activity, ownerUid: uid),
+            ],
+          ),
+          const SizedBox(height: 16),
           for (var index = 0; index < recent.take(10).length; index++)
             ActivityTile(
               activity: recent[index],
               sequence: index + 1,
               ownerUid: uid,
             ),
+        ],
       ],
     );
   }
@@ -218,7 +233,7 @@ class _MemberSummaryCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       gradient: LinearGradient(
         colors: isLight
-            ? const [Color(0xfff9fbff), Color(0xffe7eff8), Color(0xfff3f6fb)]
+            ? const [Color(0xffe2e6ed), Color(0xffd1d8e1), Color(0xffdde3ea)]
             : const [Color(0xf207172b), Color(0xdb06365c), Color(0xb3151637)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
