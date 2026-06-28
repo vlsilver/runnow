@@ -60,7 +60,7 @@ class _TrainingVolumeChartState extends State<TrainingVolumeChart> {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final buckets = _buildBuckets(
       widget.now ?? DateTime.now(),
@@ -87,11 +87,10 @@ class _TrainingVolumeChartState extends State<TrainingVolumeChart> {
             (left, right) => left.distanceKm >= right.distanceKm ? left : right,
           );
     return GlassPanel(
+      borderRadius: 0,
       padding: const EdgeInsets.fromLTRB(16, 16, 12, 14),
       gradient: LinearGradient(
-        colors: isLight
-            ? const [Color(0xffe2e6ed), Color(0xffd3dae3)]
-            : const [Color(0xe607172b), Color(0xb3062442)],
+        colors: [palette.glassStart, palette.glassEnd],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -112,8 +111,8 @@ class _TrainingVolumeChartState extends State<TrainingVolumeChart> {
               ),
               Text(
                 _periodLabel(_period),
-                style: const TextStyle(
-                  color: AppColors.blueGlow,
+                style: TextStyle(
+                  color: palette.accent,
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                 ),
@@ -194,6 +193,7 @@ class _VolumeBarChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     return BarChart(
       BarChartData(
         minY: 0,
@@ -204,15 +204,15 @@ class _VolumeBarChart extends StatelessWidget {
         titlesData: _titlesData(context, maxY: maxY, buckets: buckets),
         barTouchData: BarTouchData(
           touchTooltipData: BarTouchTooltipData(
-            getTooltipColor: (_) => AppColors.black,
+            getTooltipColor: (_) => palette.backgroundDeep,
             getTooltipItem: (group, groupIndex, rod, rodIndex) {
               final bucket = buckets[group.x];
               return BarTooltipItem(
                 '${bucket.label}\n'
                 '${bucket.distanceKm.toStringAsFixed(2)} km\n'
                 '${bucket.activityCount} buổi',
-                const TextStyle(
-                  color: Colors.white,
+                TextStyle(
+                  color: palette.foreground,
                   fontWeight: FontWeight.w700,
                 ),
               );
@@ -230,12 +230,8 @@ class _VolumeBarChart extends StatelessWidget {
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(8),
                   ),
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: buckets[index].isCurrent
-                        ? [AppColors.red, const Color(0xffff5a5f)]
-                        : [AppColors.blue, const Color(0xff35a7ff)],
+                  color: palette.accent.withValues(
+                    alpha: buckets[index].isCurrent ? 1 : 0.58,
                   ),
                 ),
               ],
@@ -254,6 +250,7 @@ class _VolumeLineChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     return LineChart(
       LineChartData(
         minX: 0,
@@ -267,14 +264,14 @@ class _VolumeLineChart extends StatelessWidget {
           touchTooltipData: LineTouchTooltipData(
             fitInsideHorizontally: true,
             fitInsideVertically: true,
-            getTooltipColor: (_) => AppColors.black,
+            getTooltipColor: (_) => palette.backgroundDeep,
             getTooltipItems: (spots) => spots.map((spot) {
               final index = spot.x.round().clamp(0, buckets.length - 1);
               final bucket = buckets[index];
               return LineTooltipItem(
                 '${bucket.label}\n${bucket.distanceKm.toStringAsFixed(2)} km',
-                const TextStyle(
-                  color: Colors.white,
+                TextStyle(
+                  color: palette.foreground,
                   fontWeight: FontWeight.w700,
                 ),
               );
@@ -287,7 +284,7 @@ class _VolumeLineChart extends StatelessWidget {
               for (var index = 0; index < buckets.length; index++)
                 FlSpot(index.toDouble(), buckets[index].distanceKm),
             ],
-            color: AppColors.blueGlow,
+            color: palette.accent,
             barWidth: 3,
             isCurved: true,
             preventCurveOverShooting: true,
@@ -299,8 +296,8 @@ class _VolumeLineChart extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  AppColors.blueGlow.withValues(alpha: 0.24),
-                  AppColors.blueGlow.withValues(alpha: 0.02),
+                  palette.accent.withValues(alpha: 0.24),
+                  palette.accent.withValues(alpha: 0.02),
                 ],
               ),
             ),
@@ -404,7 +401,7 @@ class _CompactSelector<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -418,8 +415,12 @@ class _CompactSelector<T> extends StatelessWidget {
       },
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: isLight ? const Color(0xffd8dee6) : const Color(0x52020812),
-          borderRadius: BorderRadius.circular(8),
+          border: Border(
+            bottom: BorderSide(
+              color: onSurface.withValues(alpha: 0.18),
+              width: 1,
+            ),
+          ),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
@@ -447,10 +448,10 @@ class _CompactSelector<T> extends StatelessWidget {
                   ),
                 ),
               ),
-              const Icon(
+              Icon(
                 Icons.keyboard_arrow_down_rounded,
                 size: 18,
-                color: AppColors.accent,
+                color: palette.accent,
               ),
             ],
           ),

@@ -87,7 +87,7 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final zones = heartRateZoneDurations(
       heartRates: widget.streams['heartrate'],
@@ -106,11 +106,10 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
     return _ShareableTelemetryCard(
       title: 'RunNow heart zones',
       builder: (sharing) => GlassPanel(
+        borderRadius: 0,
         padding: const EdgeInsets.all(16),
         gradient: LinearGradient(
-          colors: isLight
-              ? const [Color(0xffe2e6ed), Color(0xffd4dbe3)]
-              : const [Color(0xe607172b), Color(0xaa2b0713)],
+          colors: [palette.glassStart, palette.glassEnd],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -124,7 +123,11 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Row(
                   children: [
-                    const Icon(Icons.favorite, color: AppColors.red, size: 18),
+                    const Icon(
+                      Icons.favorite,
+                      color: RunNowDataColors.heart,
+                      size: 18,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -140,7 +143,7 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
                     Text(
                       formatDuration(totalSeconds.round()),
                       style: const TextStyle(
-                        color: AppColors.red,
+                        color: RunNowDataColors.heart,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -149,9 +152,9 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
                       AnimatedRotation(
                         turns: _expanded ? 0.5 : 0,
                         duration: const Duration(milliseconds: 180),
-                        child: const Icon(
+                        child: Icon(
                           Icons.keyboard_arrow_down,
-                          color: AppColors.blueGlow,
+                          color: palette.secondary,
                         ),
                       ),
                     ],
@@ -247,6 +250,7 @@ class _HeartRateZoneRow extends StatelessWidget {
     final percent = totalSeconds <= 0 ? 0 : zone.seconds / totalSeconds;
     final widthFactor = maxSeconds <= 0 ? 0 : zone.seconds / maxSeconds;
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final palette = context.runNowPalette;
     return Row(
       children: [
         SizedBox(
@@ -280,7 +284,7 @@ class _HeartRateZoneRow extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  ColoredBox(color: AppColors.blueGlow.withValues(alpha: 0.14)),
+                  ColoredBox(color: palette.secondary.withValues(alpha: 0.14)),
                   FractionallySizedBox(
                     alignment: Alignment.centerLeft,
                     widthFactor: widthFactor.clamp(0, 1).toDouble(),
@@ -342,7 +346,7 @@ class _TrainingChartCardState extends State<_TrainingChartCard> {
   @override
   Widget build(BuildContext context) {
     final series = widget.series;
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final points = series.points(_range);
     if (points.isEmpty) {
@@ -360,11 +364,10 @@ class _TrainingChartCardState extends State<_TrainingChartCard> {
     final maxX = math.max(points.last.x, 0.1);
     final xInterval = math.max(maxX / 2, 0.1).toDouble();
     return GlassPanel(
+      borderRadius: 0,
       padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
       gradient: LinearGradient(
-        colors: isLight
-            ? const [Color(0xffe2e6ed), Color(0xffd3dae3)]
-            : const [Color(0xe607172b), Color(0xaa062442)],
+        colors: [palette.glassStart, palette.glassEnd],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -405,9 +408,9 @@ class _TrainingChartCardState extends State<_TrainingChartCard> {
                     AnimatedRotation(
                       turns: _expanded ? 0.5 : 0,
                       duration: const Duration(milliseconds: 180),
-                      child: const Icon(
+                      child: Icon(
                         Icons.keyboard_arrow_down,
-                        color: AppColors.blueGlow,
+                        color: palette.secondary,
                       ),
                     ),
                   ],
@@ -425,11 +428,24 @@ class _TrainingChartCardState extends State<_TrainingChartCard> {
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          _Stat(label: 'TB', value: series.format(average)),
-                          const SizedBox(width: 20),
-                          _Stat(label: 'MIN', value: series.format(min)),
-                          const SizedBox(width: 20),
-                          _Stat(label: 'MAX', value: series.format(max)),
+                          Expanded(
+                            child: _Stat(
+                              label: 'TB',
+                              value: series.format(average),
+                            ),
+                          ),
+                          Expanded(
+                            child: _Stat(
+                              label: 'MIN',
+                              value: series.format(min),
+                            ),
+                          ),
+                          Expanded(
+                            child: _Stat(
+                              label: 'MAX',
+                              value: series.format(max),
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 14),
@@ -446,7 +462,7 @@ class _TrainingChartCardState extends State<_TrainingChartCard> {
                                     setState(() => _mode = mode),
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 20),
                             Expanded(
                               child: _CompactSelector<_DistanceRange>(
                                 label: 'RANGE',
@@ -521,6 +537,7 @@ class _LineTrainingChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     return LineChart(
       LineChartData(
         minX: 0,
@@ -543,13 +560,13 @@ class _LineTrainingChart extends StatelessWidget {
           touchTooltipData: LineTouchTooltipData(
             fitInsideHorizontally: true,
             fitInsideVertically: true,
-            getTooltipColor: (_) => AppColors.black,
+            getTooltipColor: (_) => palette.backgroundDeep,
             getTooltipItems: (spots) => spots
                 .map(
                   (spot) => LineTooltipItem(
                     series.format(spot.y),
-                    const TextStyle(
-                      color: Colors.white,
+                    TextStyle(
+                      color: palette.foreground,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -603,6 +620,7 @@ class _BarTrainingChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     return BarChart(
       BarChartData(
         minY: chartMin,
@@ -623,12 +641,12 @@ class _BarTrainingChart extends StatelessWidget {
         ),
         barTouchData: BarTouchData(
           touchTooltipData: BarTouchTooltipData(
-            getTooltipColor: (_) => AppColors.black,
+            getTooltipColor: (_) => palette.backgroundDeep,
             getTooltipItem: (group, groupIndex, rod, rodIndex) {
               return BarTooltipItem(
                 series.format(rod.toY),
-                const TextStyle(
-                  color: Colors.white,
+                TextStyle(
+                  color: palette.foreground,
                   fontWeight: FontWeight.w700,
                 ),
               );
@@ -681,8 +699,8 @@ class _CompactSelector<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final palette = context.runNowPalette;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () async {
@@ -695,14 +713,15 @@ class _CompactSelector<T> extends StatelessWidget {
       },
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: isLight ? const Color(0xffd8dee6) : const Color(0x52020812),
-          border: Border.all(
-            color: isLight ? const Color(0x2208172b) : AppColors.glassBorder,
+          border: Border(
+            bottom: BorderSide(
+              color: onSurface.withValues(alpha: 0.18),
+              width: 1,
+            ),
           ),
-          borderRadius: BorderRadius.circular(6),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+          padding: const EdgeInsets.fromLTRB(2, 10, 0, 9),
           child: Row(
             children: [
               Text(
@@ -727,10 +746,10 @@ class _CompactSelector<T> extends StatelessWidget {
                   ),
                 ),
               ),
-              const Icon(
+              Icon(
                 Icons.keyboard_arrow_down_rounded,
                 size: 18,
-                color: AppColors.accent,
+                color: palette.accent,
               ),
             ],
           ),
@@ -789,7 +808,7 @@ class _ChartSeries {
       label: 'Pace',
       unit: 'PHÚT / KM',
       icon: Icons.speed_rounded,
-      color: const Color(0xff5bc8ff),
+      color: RunNowDataColors.pace,
       values: speeds,
       distances: distances,
       normalize: (speed) => 1000 / speed,
@@ -805,7 +824,7 @@ class _ChartSeries {
       label: 'Nhịp tim',
       unit: 'BPM',
       icon: Icons.favorite_rounded,
-      color: const Color(0xff2f8dff),
+      color: RunNowDataColors.heart,
       values: values,
       distances: distances,
       normalize: (value) => value,
@@ -820,7 +839,7 @@ class _ChartSeries {
       label: 'Cao độ',
       unit: 'MÉT',
       icon: Icons.terrain_rounded,
-      color: const Color(0xff7c9bef),
+      color: RunNowDataColors.elevation,
       values: values,
       distances: distances,
       normalize: (value) => value,
@@ -835,7 +854,7 @@ class _ChartSeries {
       label: 'Cadence',
       unit: 'RPM',
       icon: Icons.directions_walk_rounded,
-      color: const Color(0xff58b0d8),
+      color: RunNowDataColors.cadence,
       values: values,
       distances: distances,
       normalize: (value) => value,
@@ -850,7 +869,7 @@ class _ChartSeries {
       label: 'Năng lượng',
       unit: 'KJ',
       icon: Icons.bolt_rounded,
-      color: const Color(0xff8f7fe0),
+      color: RunNowDataColors.energy,
       values: values,
       distances: distances,
       normalize: (value) => value,
@@ -1042,11 +1061,11 @@ int _heartRateZoneIndex(double heartRate) {
 }
 
 const _heartRateZones = [
-  _HeartRateZone('Z1', '<130 bpm', Color(0xff00d9ff), 130),
-  _HeartRateZone('Z2', '130-149', Color(0xff19d27f), 150),
-  _HeartRateZone('Z3', '150-169', Color(0xffffd166), 170),
-  _HeartRateZone('Z4', '170-184', Color(0xffff8f00), 185),
-  _HeartRateZone('Z5', '185+', AppColors.red, double.infinity),
+  _HeartRateZone('Z1', '<130 bpm', RunNowDataColors.zone1, 130),
+  _HeartRateZone('Z2', '130-149', RunNowDataColors.zone2, 150),
+  _HeartRateZone('Z3', '150-169', RunNowDataColors.zone3, 170),
+  _HeartRateZone('Z4', '170-184', RunNowDataColors.zone4, 185),
+  _HeartRateZone('Z5', '185+', RunNowDataColors.zone5, double.infinity),
 ];
 
 class _HeartRateZone {

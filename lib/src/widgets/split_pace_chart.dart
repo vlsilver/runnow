@@ -18,12 +18,14 @@ class SplitPaceChart extends StatelessWidget {
     final slowest = items.map((item) => item.pace).reduce(_max);
     final average =
         items.fold<double>(0, (sum, item) => sum + item.pace) / items.length;
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
-        gradient: const LinearGradient(
-          colors: [AppColors.black, Color(0xff062442)],
+        gradient: LinearGradient(
+          colors: [palette.backgroundDeep, palette.glassStart],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -34,10 +36,10 @@ class SplitPaceChart extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'PACE THEO KM',
                 style: TextStyle(
-                  color: Colors.white70,
+                  color: onSurface.withValues(alpha: 0.7),
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.2,
@@ -45,10 +47,7 @@ class SplitPaceChart extends StatelessWidget {
               ),
               Text(
                 'TB ${formatPace(average)}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: TextStyle(color: onSurface, fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -58,20 +57,26 @@ class SplitPaceChart extends StatelessWidget {
             if (item != items.last) const SizedBox(height: 12),
           ],
           const SizedBox(height: 14),
-          const Row(
+          Row(
             children: [
-              _LegendDot(color: AppColors.red),
-              SizedBox(width: 6),
+              _LegendDot(color: palette.accent),
+              const SizedBox(width: 6),
               Text(
                 'Nhanh nhất',
-                style: TextStyle(color: Colors.white70, fontSize: 12),
+                style: TextStyle(
+                  color: onSurface.withValues(alpha: 0.7),
+                  fontSize: 12,
+                ),
               ),
-              SizedBox(width: 16),
-              _LegendDot(color: AppColors.blue),
-              SizedBox(width: 6),
+              const SizedBox(width: 16),
+              _LegendDot(color: palette.secondary),
+              const SizedBox(width: 6),
               Text(
                 'Pace từng km',
-                style: TextStyle(color: Colors.white70, fontSize: 12),
+                style: TextStyle(
+                  color: onSurface.withValues(alpha: 0.7),
+                  fontSize: 12,
+                ),
               ),
             ],
           ),
@@ -101,23 +106,22 @@ class _SplitBar extends StatelessWidget {
     final paceScore = range == 0 ? 1.0 : (slowestPace - item.pace) / range;
     final widthFactor = 0.42 + (paceScore * 0.58);
     final isFastest = item.pace == fastestPace;
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Row(
       children: [
         SizedBox(
           width: 42,
           child: Text(
             'K${item.index}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-            ),
+            style: TextStyle(color: onSurface, fontWeight: FontWeight.w700),
           ),
         ),
         Expanded(
           child: ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: ColoredBox(
-              color: Colors.white12,
+              color: onSurface.withValues(alpha: 0.12),
               child: FractionallySizedBox(
                 widthFactor: widthFactor,
                 alignment: Alignment.centerLeft,
@@ -125,7 +129,7 @@ class _SplitBar extends StatelessWidget {
                   height: 18,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(999),
-                    color: isFastest ? AppColors.red : AppColors.blue,
+                    color: isFastest ? palette.accent : palette.secondary,
                   ),
                 ),
               ),
@@ -139,7 +143,7 @@ class _SplitBar extends StatelessWidget {
             formatPace(item.pace).replaceFirst(' /km', ''),
             textAlign: TextAlign.end,
             style: TextStyle(
-              color: isFastest ? const Color(0xffff8a80) : Colors.white,
+              color: isFastest ? palette.accent : onSurface,
               fontWeight: FontWeight.w700,
             ),
           ),

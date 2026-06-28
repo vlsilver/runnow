@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
-import 'package:myrun/src/widgets/glass.dart';
 
 class ActivityTile extends StatelessWidget {
   const ActivityTile({
@@ -24,8 +23,8 @@ class ActivityTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visual = _ActivityVisual.fromKind(activity.kind);
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final palette = context.runNowPalette;
+    final visual = _ActivityVisual.fromKind(activity.kind, palette);
     final faint = Theme.of(
       context,
     ).colorScheme.onSurface.withValues(alpha: 0.42);
@@ -39,33 +38,22 @@ class ActivityTile extends StatelessWidget {
             _TimelineRail(activity: activity),
             const SizedBox(width: 10),
             Expanded(
-              child: GlassPanel(
-                borderRadius: 22,
-                padding: EdgeInsets.zero,
+              child: Material(
+                color: Colors.transparent,
                 child: InkWell(
                   onTap: () => context.push(
                     ownerUid == null
                         ? '/activity/${activity.id}'
                         : '/club/$ownerUid/activity/${activity.id}',
                   ),
-                  borderRadius: BorderRadius.circular(22),
+                  borderRadius: BorderRadius.circular(8),
                   child: Stack(
                     children: [
                       Positioned.fill(
                         child: DecoratedBox(
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(22),
                             gradient: LinearGradient(
-                              colors: isLight
-                                  ? [
-                                      Colors.white.withValues(alpha: 0.72),
-                                      visual.color.withValues(alpha: 0.08),
-                                    ]
-                                  : [
-                                      const Color(0x2600d9ff),
-                                      visual.color.withValues(alpha: 0.12),
-                                      Colors.transparent,
-                                    ],
+                              colors: [palette.glassStart, palette.glassEnd],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
@@ -120,8 +108,8 @@ class ActivityTile extends StatelessWidget {
                                   children: [
                                     Text(
                                       formatDistance(activity.distanceMeters),
-                                      style: const TextStyle(
-                                        color: AppColors.blueGlow,
+                                      style: TextStyle(
+                                        color: palette.accent,
                                         fontSize: 21,
                                         fontWeight: FontWeight.w900,
                                         height: 1,
@@ -172,10 +160,6 @@ class ActivityTile extends StatelessWidget {
                                     value: activity.averageHeartRate == null
                                         ? _elevationLabel(activity)
                                         : '${activity.averageHeartRate!.round()} bpm',
-                                    valueColor:
-                                        activity.averageHeartRate == null
-                                        ? AppColors.blueGlow
-                                        : AppColors.red,
                                   ),
                                 ),
                               ],
@@ -204,17 +188,18 @@ class _MemberStamp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final palette = context.runNowPalette;
     return Row(
       children: [
         CircleAvatar(
           radius: 13,
-          backgroundColor: AppColors.blueGlow.withValues(alpha: 0.16),
+          backgroundColor: palette.secondary.withValues(alpha: 0.16),
           backgroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl!),
           child: avatarUrl == null
               ? Text(
                   name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(),
-                  style: const TextStyle(
-                    color: AppColors.blueGlow,
+                  style: TextStyle(
+                    color: palette.secondary,
                     fontSize: 12,
                     fontWeight: FontWeight.w900,
                   ),
@@ -248,6 +233,7 @@ class _TimelineRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final palette = context.runNowPalette;
     return SizedBox(
       width: 38,
       child: Column(
@@ -276,11 +262,11 @@ class _TimelineRail extends StatelessWidget {
             width: 12,
             height: 12,
             decoration: BoxDecoration(
-              color: AppColors.amber,
+              color: palette.accent,
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.amber.withValues(alpha: 0.45),
+                  color: palette.accent.withValues(alpha: 0.32),
                   blurRadius: 12,
                 ),
               ],
@@ -291,7 +277,7 @@ class _TimelineRail extends StatelessWidget {
             child: Container(
               width: 2,
               decoration: BoxDecoration(
-                color: AppColors.amber.withValues(alpha: 0.24),
+                color: palette.accent.withValues(alpha: 0.24),
                 borderRadius: BorderRadius.circular(99),
               ),
             ),
@@ -331,27 +317,16 @@ class _KindTag extends StatelessWidget {
 }
 
 class _TileMetric extends StatelessWidget {
-  const _TileMetric({
-    required this.label,
-    required this.value,
-    this.valueColor,
-  });
+  const _TileMetric({required this.label, required this.value});
 
   final String label;
   final String value;
-  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    final resolvedValueColor =
-        valueColor ?? Theme.of(context).colorScheme.onSurface;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
-      decoration: BoxDecoration(
-        color: isLight ? const Color(0xffeef3f8) : const Color(0x3d020812),
-        borderRadius: BorderRadius.circular(12),
-      ),
+    final resolvedValueColor = context.runNowPalette.accent;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -390,31 +365,31 @@ class _ActivityVisual {
     required this.code,
   });
 
-  factory _ActivityVisual.fromKind(ActivityKind kind) {
+  factory _ActivityVisual.fromKind(ActivityKind kind, RunNowPalette palette) {
     return switch (kind) {
-      ActivityKind.walk => const _ActivityVisual(
+      ActivityKind.walk => _ActivityVisual(
         icon: Icons.directions_walk,
-        color: AppColors.blueGlow,
+        color: palette.accent,
         code: 'WALK',
       ),
-      ActivityKind.hike => const _ActivityVisual(
+      ActivityKind.hike => _ActivityVisual(
         icon: Icons.terrain,
-        color: AppColors.blueGlow,
+        color: palette.accent,
         code: 'HIKE',
       ),
-      ActivityKind.trailRun => const _ActivityVisual(
+      ActivityKind.trailRun => _ActivityVisual(
         icon: Icons.terrain,
-        color: AppColors.blueGlow,
+        color: palette.accent,
         code: 'TRAIL',
       ),
-      ActivityKind.virtualRun => const _ActivityVisual(
+      ActivityKind.virtualRun => _ActivityVisual(
         icon: Icons.bolt,
-        color: AppColors.blueGlow,
+        color: palette.accent,
         code: 'VIRTUAL',
       ),
-      ActivityKind.run => const _ActivityVisual(
+      ActivityKind.run => _ActivityVisual(
         icon: Icons.directions_run,
-        color: AppColors.red,
+        color: palette.accent,
         code: 'RUN',
       ),
     };

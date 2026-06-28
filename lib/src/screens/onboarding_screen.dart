@@ -46,6 +46,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
   @override
   Widget build(BuildContext context) {
     final controller = ref.watch(googleAuthProvider);
+    final palette = context.runNowPalette;
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -53,8 +54,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
           child: Center(
             child: GlassPanel(
               padding: const EdgeInsets.all(28),
-              gradient: const LinearGradient(
-                colors: [Color(0xf207172b), Color(0xd4062442)],
+              gradient: LinearGradient(
+                colors: [palette.glassStart, palette.glassEnd],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -76,13 +77,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: AppColors.blueGlow.withValues(
+                                  color: palette.secondary.withValues(
                                     alpha: 0.18 + _controller.value * 0.28,
                                   ),
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppColors.blueGlow.withValues(
+                                    color: palette.secondary.withValues(
                                       alpha: 0.20 + _controller.value * 0.22,
                                     ),
                                     blurRadius: 34,
@@ -94,10 +95,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                             Container(
                               width: 82,
                               height: 82,
-                              decoration: const BoxDecoration(
+                              decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 gradient: LinearGradient(
-                                  colors: [AppColors.red, AppColors.redDeep],
+                                  colors: [palette.accent, palette.accentDeep],
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                 ),
@@ -120,10 +121,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                     style: Theme.of(context).textTheme.displaySmall,
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     'YOUR TRAINING SPACE',
                     style: TextStyle(
-                      color: Colors.white54,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.54),
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 1.4,
@@ -133,8 +136,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                   Text(
                     _quote,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: AppColors.amber,
+                    style: TextStyle(
+                      color: palette.tertiary,
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
                       height: 1.35,

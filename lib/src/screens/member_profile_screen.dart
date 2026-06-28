@@ -6,11 +6,12 @@ import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/training_power.dart';
 import 'package:myrun/src/widgets/activity_records_card.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
-import 'package:myrun/src/widgets/consistency_heatmap.dart';
 import 'package:myrun/src/widgets/discipline_card.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/nav_filter.dart';
 import 'package:myrun/src/widgets/personal_power_card.dart';
 import 'package:myrun/src/widgets/training_volume_chart.dart';
 
@@ -38,27 +39,28 @@ class MemberProfileScreen extends ConsumerWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760),
           child: profile.when(
-        data: (member) {
-          if (member == null) {
-            return const Center(child: Text('Không tìm thấy thành viên.'));
-          }
-          if (!member.isPublic) return _PrivateMember(member: member);
-          return ref
-              .watch(memberActivitiesProvider(uid))
-              .when(
-                data: (activities) => _MemberDashboard(
-                  uid: uid,
-                  member: member,
-                  activities: activities,
-                ),
-                error: (error, stack) =>
-                    Center(child: Text('Không thể tải hoạt động: $error')),
-                loading: () => const Center(child: CircularProgressIndicator()),
-              );
-        },
-        error: (error, stack) =>
-            Center(child: Text('Không thể tải hồ sơ: $error')),
-        loading: () => const Center(child: CircularProgressIndicator()),
+            data: (member) {
+              if (member == null) {
+                return const Center(child: Text('Không tìm thấy thành viên.'));
+              }
+              if (!member.isPublic) return _PrivateMember(member: member);
+              return ref
+                  .watch(memberActivitiesProvider(uid))
+                  .when(
+                    data: (activities) => _MemberDashboard(
+                      uid: uid,
+                      member: member,
+                      activities: activities,
+                    ),
+                    error: (error, stack) =>
+                        Center(child: Text('Không thể tải hoạt động: $error')),
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
+                  );
+            },
+            error: (error, stack) =>
+                Center(child: Text('Không thể tải hồ sơ: $error')),
+            loading: () => const Center(child: CircularProgressIndicator()),
           ),
         ),
       ),
@@ -66,7 +68,9 @@ class MemberProfileScreen extends ConsumerWidget {
   }
 }
 
-class _MemberDashboard extends StatelessWidget {
+enum _MemberFilterSection { power, volume }
+
+class _MemberDashboard extends StatefulWidget {
   const _MemberDashboard({
     required this.uid,
     required this.member,
@@ -78,58 +82,220 @@ class _MemberDashboard extends StatelessWidget {
   final List<ActivitySummary> activities;
 
   @override
+  State<_MemberDashboard> createState() => _MemberDashboardState();
+}
+
+class _MemberDashboardState extends State<_MemberDashboard> {
+  final _scrollKey = GlobalKey();
+  final _powerKey = GlobalKey();
+  final _volumeKey = GlobalKey();
+  var _powerRange = PersonalPowerRange.rollingSevenDays;
+  var _volumePeriod = TrainingVolumePeriod.month;
+  var _volumeMode = TrainingVolumeChartMode.bar;
+  _MemberFilterSection? _activeFilter;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateActiveFilter());
+  }
+
+  void _updateActiveFilter() {
+    if (!mounted) return;
+    final listBox = _scrollKey.currentContext?.findRenderObject() as RenderBox?;
+    if (listBox == null) return;
+    final threshold =
+        listBox.localToGlobal(Offset.zero).dy + listBox.size.height * 0.28;
+    _MemberFilterSection? active;
+    for (final section in <(GlobalKey, _MemberFilterSection)>[
+      (_powerKey, _MemberFilterSection.power),
+      (_volumeKey, _MemberFilterSection.volume),
+    ]) {
+      final box = section.$1.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null) continue;
+      final top = box.localToGlobal(Offset.zero).dy;
+      if (top <= threshold && top + box.size.height > threshold) {
+        active = section.$2;
+        break;
+      }
+    }
+    if (_activeFilter != active) setState(() => _activeFilter = active);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final comparison = rollingSevenDayComparison(activities, now);
-    final dailyDistances = rollingSevenDayDistances(activities, now);
-    final month = currentMonthSummary(activities, now);
-    final discipline = personalDisciplineStats(activities, now);
-    final recent = [...activities]
+    final comparison = rollingSevenDayComparison(widget.activities, now);
+    final dailyDistances = rollingSevenDayDistances(widget.activities, now);
+    final month = currentMonthSummary(widget.activities, now);
+    final discipline = personalDisciplineStats(widget.activities, now);
+    final recent = [...widget.activities]
       ..sort((left, right) => right.startedAt.compareTo(left.startedAt));
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final list = NotificationListener<ScrollNotification>(
+      onNotification: (_) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _updateActiveFilter(),
+        );
+        return false;
+      },
+      child: ListView(
+        key: _scrollKey,
+        padding: EdgeInsets.fromLTRB(0, 8, 0, wide ? 40 : 132),
+        children: [
+          _MemberHeader(member: widget.member),
+          const SizedBox(height: 14),
+          _MemberSummaryCard(
+            comparison: comparison,
+            dailyDistances: dailyDistances,
+            month: month,
+          ),
+          const SizedBox(height: 20),
+          KeyedSubtree(
+            key: _powerKey,
+            child: PersonalPowerCard(
+              activities: widget.activities,
+              range: _powerRange,
+              onRangeChanged: (value) => setState(() => _powerRange = value),
+              showControls: wide,
+            ),
+          ),
+          const SizedBox(height: 20),
+          DisciplineCard(stats: discipline, activities: widget.activities),
+          const SizedBox(height: 20),
+          KeyedSubtree(
+            key: _volumeKey,
+            child: TrainingVolumeChart(
+              activities: widget.activities,
+              period: _volumePeriod,
+              mode: _volumeMode,
+              showControls: wide,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text('Gần đây', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          if (recent.isEmpty)
+            const Text('Thành viên này chưa có hoạt động public.')
+          else ...[
+            ActivityRecordsCard(
+              title: 'BEST BOARD',
+              entries: [
+                for (final activity in widget.activities)
+                  ActivityRecordEntry(activity: activity, ownerUid: widget.uid),
+              ],
+            ),
+            const SizedBox(height: 16),
+            for (var index = 0; index < recent.take(10).length; index++)
+              ActivityTile(
+                activity: recent[index],
+                sequence: index + 1,
+                ownerUid: widget.uid,
+              ),
+          ],
+        ],
+      ),
+    );
+    if (wide) return list;
+    return Stack(
       children: [
-        _MemberHeader(member: member),
-        const SizedBox(height: 14),
-        _MemberSummaryCard(
-          comparison: comparison,
-          dailyDistances: dailyDistances,
-          month: month,
+        Positioned.fill(child: list),
+        Positioned(
+          left: 14,
+          right: 14,
+          bottom: 12,
+          child: SafeArea(
+            top: false,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: _MemberPinnedFilter(
+                key: ValueKey(_activeFilter),
+                section: _activeFilter,
+                powerRange: _powerRange,
+                volumePeriod: _volumePeriod,
+                volumeMode: _volumeMode,
+                onPowerRangeChanged: (value) =>
+                    setState(() => _powerRange = value),
+                onVolumePeriodChanged: (value) =>
+                    setState(() => _volumePeriod = value),
+                onVolumeModeChanged: (value) =>
+                    setState(() => _volumeMode = value),
+              ),
+            ),
+          ),
         ),
-        const SizedBox(height: 20),
-        PersonalPowerCard(activities: activities),
-        const SizedBox(height: 20),
-        DisciplineCard(stats: discipline),
-        const SizedBox(height: 20),
-        ConsistencyHeatmap(activities: activities),
-        const SizedBox(height: 20),
-        TrainingVolumeChart(
-          activities: activities,
-          period: TrainingVolumePeriod.month,
-          showControls: true,
-        ),
-        const SizedBox(height: 20),
-        Text('Gần đây', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
-        if (recent.isEmpty)
-          const Text('Thành viên này chưa có hoạt động public.')
-        else ...[
-          ActivityRecordsCard(
-            title: 'BEST BOARD',
-            entries: [
-              for (final activity in activities)
-                ActivityRecordEntry(activity: activity, ownerUid: uid),
+      ],
+    );
+  }
+}
+
+class _MemberPinnedFilter extends StatelessWidget {
+  const _MemberPinnedFilter({
+    required this.section,
+    required this.powerRange,
+    required this.volumePeriod,
+    required this.volumeMode,
+    required this.onPowerRangeChanged,
+    required this.onVolumePeriodChanged,
+    required this.onVolumeModeChanged,
+    super.key,
+  });
+
+  final _MemberFilterSection? section;
+  final PersonalPowerRange powerRange;
+  final TrainingVolumePeriod volumePeriod;
+  final TrainingVolumeChartMode volumeMode;
+  final ValueChanged<PersonalPowerRange> onPowerRangeChanged;
+  final ValueChanged<TrainingVolumePeriod> onVolumePeriodChanged;
+  final ValueChanged<TrainingVolumeChartMode> onVolumeModeChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    if (section == null) return const SizedBox.shrink();
+    return GlassPanel(
+      borderRadius: 12,
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+      child: NavFilterShell(
+        child: switch (section!) {
+          _MemberFilterSection.power => NavPillToggle<PersonalPowerRange>(
+            value: powerRange,
+            items: const {
+              PersonalPowerRange.currentWeek: 'Tuần',
+              PersonalPowerRange.rollingSevenDays: '7 ngày',
+              PersonalPowerRange.currentMonth: 'Tháng',
+            },
+            onChanged: onPowerRangeChanged,
+          ),
+          _MemberFilterSection.volume => Row(
+            children: [
+              Expanded(
+                child: NavDropdown<TrainingVolumeChartMode>(
+                  icon: Icons.show_chart_rounded,
+                  value: volumeMode,
+                  items: const {
+                    TrainingVolumeChartMode.bar: 'Cột',
+                    TrainingVolumeChartMode.line: 'Line',
+                  },
+                  onChanged: onVolumeModeChanged,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: NavDropdown<TrainingVolumePeriod>(
+                  icon: Icons.date_range_outlined,
+                  value: volumePeriod,
+                  items: const {
+                    TrainingVolumePeriod.month: 'Tháng',
+                    TrainingVolumePeriod.quarter: 'Quý',
+                    TrainingVolumePeriod.year: 'Năm',
+                  },
+                  onChanged: onVolumePeriodChanged,
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 16),
-          for (var index = 0; index < recent.take(10).length; index++)
-            ActivityTile(
-              activity: recent[index],
-              sequence: index + 1,
-              ownerUid: uid,
-            ),
-        ],
-      ],
+        },
+      ),
     );
   }
 }
@@ -142,12 +308,12 @@ class _PrivateMember extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 110),
       children: [
         _MemberHeader(member: member),
         const SizedBox(height: 14),
         const GlassPanel(
-          borderRadius: 22,
+          borderRadius: 0,
           padding: EdgeInsets.all(18),
           child: Text('Thành viên này đang để hồ sơ private.'),
         ),
@@ -164,14 +330,15 @@ class _MemberHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final avatarUrl = member.avatarUrl;
+    final palette = context.runNowPalette;
     return GlassPanel(
-      borderRadius: 28,
+      borderRadius: 0,
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
           CircleAvatar(
             radius: 30,
-            backgroundColor: AppColors.blueGlow.withValues(alpha: 0.18),
+            backgroundColor: palette.secondary.withValues(alpha: 0.18),
             backgroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl),
             child: avatarUrl == null
                 ? Text(
@@ -195,10 +362,10 @@ class _MemberHeader extends StatelessWidget {
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'MEMBER DASHBOARD',
                   style: TextStyle(
-                    color: AppColors.blueGlow,
+                    color: palette.secondary,
                     fontSize: 11,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 1.4,
@@ -227,14 +394,13 @@ class _MemberSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final summary = comparison.current;
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return GlassPanel(
+      borderRadius: 0,
       padding: const EdgeInsets.all(18),
       gradient: LinearGradient(
-        colors: isLight
-            ? const [Color(0xffe2e6ed), Color(0xffd1d8e1), Color(0xffdde3ea)]
-            : const [Color(0xf207172b), Color(0xdb06365c), Color(0xb3151637)],
+        colors: [palette.glassStart, palette.glassEnd],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -245,7 +411,7 @@ class _MemberSummaryCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.bolt, color: AppColors.blueGlow, size: 20),
+                Icon(Icons.bolt, color: palette.secondary, size: 20),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -258,10 +424,10 @@ class _MemberSummaryCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                const Text(
+                Text(
                   '7 NGÀY',
                   style: TextStyle(
-                    color: AppColors.blueGlow,
+                    color: palette.secondary,
                     fontSize: 11,
                     fontWeight: FontWeight.w900,
                   ),
@@ -293,8 +459,8 @@ class _MemberSummaryCard extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               _comparisonLabel(comparison),
-              style: const TextStyle(
-                color: AppColors.blueGlow,
+              style: TextStyle(
+                color: palette.secondary,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
@@ -363,13 +529,14 @@ class _SevenDayMiniBar extends StatelessWidget {
     final active = day.distanceMeters > 0;
     final ratio = maxDistance <= 0 ? 0.04 : day.distanceMeters / maxDistance;
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final palette = context.runNowPalette;
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         Text(
           active ? _compactDistance(day.distanceMeters) : '-',
           style: TextStyle(
-            color: active ? onSurface : onSurface.withValues(alpha: 0.35),
+            color: active ? palette.accent : onSurface.withValues(alpha: 0.35),
             fontSize: 10,
             fontWeight: FontWeight.w800,
           ),
@@ -383,21 +550,14 @@ class _SevenDayMiniBar extends StatelessWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(999),
-                  gradient: LinearGradient(
-                    colors: active
-                        ? const [AppColors.red, AppColors.blueGlow]
-                        : [
-                            onSurface.withValues(alpha: 0.12),
-                            onSurface.withValues(alpha: 0.06),
-                          ],
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                  ),
+                  color: active
+                      ? palette.accent
+                      : onSurface.withValues(alpha: 0.08),
                   boxShadow: active
-                      ? const [
+                      ? [
                           BoxShadow(
-                            color: Color(0x6600d9ff),
-                            blurRadius: 14,
+                            color: palette.accent.withValues(alpha: 0.28),
+                            blurRadius: 12,
                             offset: Offset(0, 6),
                           ),
                         ]
@@ -431,6 +591,7 @@ class _Metric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final palette = context.runNowPalette;
     return SizedBox(
       width: 120,
       child: Column(
@@ -443,7 +604,7 @@ class _Metric extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              color: onSurface,
+              color: palette.accent,
               fontSize: 18,
               fontWeight: FontWeight.w700,
             ),

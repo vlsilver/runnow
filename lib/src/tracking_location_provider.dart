@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:myrun/src/theme_tokens.dart';
 import 'package:myrun/src/tracking_session.dart';
 
 abstract class TrackingLocationProvider {
@@ -83,7 +83,7 @@ class GeolocatorTrackingLocationProvider implements TrackingLocationProvider {
           notificationChannelName: 'RunNow Tracking',
           enableWakeLock: true,
           setOngoing: true,
-          color: Color(0xff2f8dff),
+          color: RunNowThemeTokens.waterMain,
         ),
       );
     }

@@ -61,6 +61,7 @@ class _NavSegment extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final accent = Theme.of(context).colorScheme.primary;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -71,7 +72,7 @@ class _NavSegment extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 5),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? AppColors.accent : Colors.transparent,
+          color: selected ? accent : Colors.transparent,
           borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
@@ -114,7 +115,8 @@ class NavDropdown<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final scheme = Theme.of(context).colorScheme;
+    final onSurface = scheme.onSurface;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _open(context),
@@ -122,7 +124,7 @@ class NavDropdown<T> extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: AppColors.accent),
+            Icon(icon, size: 18, color: scheme.primary),
             const SizedBox(width: 7),
             Expanded(
               child: Text(
@@ -163,12 +165,11 @@ class _MenuRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: selected
-            ? AppColors.accent.withValues(alpha: 0.16)
-            : Colors.transparent,
+        color: selected ? accent.withValues(alpha: 0.16) : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -176,9 +177,7 @@ class _MenuRow extends StatelessWidget {
           Icon(
             icon,
             size: 17,
-            color: selected
-                ? AppColors.accent
-                : onSurface.withValues(alpha: 0.55),
+            color: selected ? accent : onSurface.withValues(alpha: 0.55),
           ),
           const SizedBox(width: 9),
           Expanded(
@@ -187,14 +186,13 @@ class _MenuRow extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: selected ? AppColors.accent : onSurface,
+                color: selected ? accent : onSurface,
                 fontSize: 13.5,
                 fontWeight: FontWeight.w800,
               ),
             ),
           ),
-          if (selected)
-            const Icon(Icons.check_rounded, size: 17, color: AppColors.accent),
+          if (selected) Icon(Icons.check_rounded, size: 17, color: accent),
         ],
       ),
     );
@@ -210,8 +208,9 @@ Future<T?> showNavSelectMenu<T>({
   required T value,
   IconData icon = Icons.tune_rounded,
 }) {
-  final isLight = Theme.of(context).brightness == Brightness.light;
-  final onSurface = Theme.of(context).colorScheme.onSurface;
+  final scheme = Theme.of(context).colorScheme;
+  final palette = context.runNowPalette;
+  final onSurface = scheme.onSurface;
   final button = context.findRenderObject() as RenderBox;
   final overlayBox =
       Overlay.of(context).context.findRenderObject() as RenderBox;
@@ -231,10 +230,10 @@ Future<T?> showNavSelectMenu<T>({
     elevation: 14,
     constraints: const BoxConstraints(minWidth: 168),
     menuPadding: const EdgeInsets.symmetric(vertical: 6),
-    color: isLight ? const Color(0xffe2e6ed) : const Color(0xff112439),
+    color: palette.background,
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(18),
-      side: BorderSide(color: AppColors.accent.withValues(alpha: 0.2)),
+      side: BorderSide(color: scheme.primary.withValues(alpha: 0.2)),
     ),
     items: [
       for (final entry in items.entries)

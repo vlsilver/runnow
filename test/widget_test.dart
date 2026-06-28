@@ -55,17 +55,17 @@ void main() {
     expect(find.text('Mục tiêu tuần'), findsNothing);
     expect(find.text('MỤC TIÊU'), findsNothing);
     await tester.scrollUntilVisible(
+      find.text('KỶ LUẬT & CONSISTENCY'),
+      300,
+      scrollable: dashboardScroll,
+    );
+    expect(find.text('KỶ LUẬT & CONSISTENCY'), findsOneWidget);
+    await tester.scrollUntilVisible(
       find.text('CONSISTENCY'),
       300,
       scrollable: dashboardScroll,
     );
     expect(find.text('CONSISTENCY'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('KỶ LUẬT CÁ NHÂN'),
-      300,
-      scrollable: dashboardScroll,
-    );
-    expect(find.text('KỶ LUẬT CÁ NHÂN'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('GẦN ĐÂY'),
       300,

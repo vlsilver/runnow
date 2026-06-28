@@ -159,6 +159,7 @@ class _ClubBottomTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
       child: DecoratedBox(
@@ -173,7 +174,7 @@ class _ClubBottomTabBar extends StatelessWidget {
             dividerColor: Colors.transparent,
             indicatorSize: TabBarIndicatorSize.tab,
             indicator: BoxDecoration(
-              color: AppColors.accent.withValues(alpha: 0.2),
+              color: accent.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(16),
             ),
             tabs: [
@@ -241,6 +242,7 @@ class _ClubSideRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final accent = Theme.of(context).colorScheme.primary;
     return Container(
       width: 72,
       margin: const EdgeInsets.fromLTRB(12, 8, 8, 12),
@@ -257,11 +259,8 @@ class _ClubSideRail extends StatelessWidget {
         labelType: NavigationRailLabelType.none,
         backgroundColor: Colors.transparent,
         useIndicator: true,
-        indicatorColor: AppColors.accent.withValues(alpha: 0.2),
-        selectedIconTheme: const IconThemeData(
-          color: AppColors.accent,
-          size: 25,
-        ),
+        indicatorColor: accent.withValues(alpha: 0.2),
+        selectedIconTheme: IconThemeData(color: accent, size: 25),
         unselectedIconTheme: IconThemeData(
           color: onSurface.withValues(alpha: 0.58),
           size: 23,
@@ -293,7 +292,7 @@ class _MembersTab extends StatelessWidget {
       children: publicMembers.isEmpty
           ? const [
               GlassPanel(
-                borderRadius: 22,
+                borderRadius: 0,
                 padding: EdgeInsets.all(18),
                 child: Text('Chưa có thành viên public.'),
               ),
@@ -344,7 +343,7 @@ class _ClubLiveTabState extends ConsumerState<_ClubLiveTab> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
             children: const [
               GlassPanel(
-                borderRadius: 22,
+                borderRadius: 0,
                 padding: EdgeInsets.all(18),
                 child: Text('Chưa có thành viên nào đang chạy live.'),
               ),
@@ -419,8 +418,8 @@ class _ClubLiveTabState extends ConsumerState<_ClubLiveTab> {
                         ),
                         Text(
                           _liveFreshnessLabel(session, now),
-                          style: const TextStyle(
-                            color: AppColors.blueGlow,
+                          style: TextStyle(
+                            color: context.runNowPalette.secondary,
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
                           ),
@@ -488,14 +487,15 @@ class _LiveSessionCard extends StatelessWidget {
     final now = DateTime.now();
     final stale = session.isStale(now);
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final palette = context.runNowPalette;
     return InkWell(
       borderRadius: BorderRadius.circular(24),
       onTap: onTap,
       child: GlassPanel(
         borderRadius: 24,
         padding: const EdgeInsets.all(16),
-        gradient: const LinearGradient(
-          colors: [Color(0xe607172b), Color(0xc9062442), Color(0xb3151637)],
+        gradient: LinearGradient(
+          colors: [palette.glassStart, palette.glassEnd],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -523,7 +523,7 @@ class _LiveSessionCard extends StatelessWidget {
                       Text(
                         _liveFreshnessLabel(session, now),
                         style: TextStyle(
-                          color: stale ? AppColors.amber : AppColors.blueGlow,
+                          color: stale ? palette.tertiary : palette.secondary,
                           fontSize: 12,
                           fontWeight: FontWeight.w800,
                         ),
@@ -535,7 +535,7 @@ class _LiveSessionCard extends StatelessWidget {
                   session.status == LiveTrackingStatus.paused
                       ? Icons.pause_circle_filled_rounded
                       : Icons.sensors_rounded,
-                  color: stale ? AppColors.amber : AppColors.blueGlow,
+                  color: stale ? palette.tertiary : palette.secondary,
                 ),
               ],
             ),
@@ -578,21 +578,22 @@ class _LiveAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final avatarUrl = session.ownerAvatarUrl;
+    final palette = context.runNowPalette;
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: AppColors.blueGlow, width: 2),
+        border: Border.all(color: palette.secondary, width: 2),
         boxShadow: [
           BoxShadow(
-            color: AppColors.blueGlow.withValues(alpha: 0.28),
+            color: palette.secondary.withValues(alpha: 0.28),
             blurRadius: 14,
           ),
         ],
       ),
       child: CircleAvatar(
-        backgroundColor: AppColors.accentDeep,
+        backgroundColor: palette.accentDeep,
         backgroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl),
         child: avatarUrl == null
             ? Text(
@@ -615,9 +616,11 @@ class _LiveMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.18),
+        color: palette.glassEnd,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Padding(
@@ -627,8 +630,8 @@ class _LiveMetric extends StatelessWidget {
           children: [
             Text(
               label,
-              style: const TextStyle(
-                color: Colors.white54,
+              style: TextStyle(
+                color: onSurface.withValues(alpha: 0.54),
                 fontSize: 10,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 1.2,
@@ -639,8 +642,8 @@ class _LiveMetric extends StatelessWidget {
               value,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: onSurface,
                 fontSize: 16,
                 fontWeight: FontWeight.w900,
               ),
@@ -676,7 +679,7 @@ class _ClubJournalTab extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
             children: [
               GlassPanel(
-                borderRadius: 22,
+                borderRadius: 0,
                 padding: EdgeInsets.all(18),
                 child: Text('Chưa có hoạt động public trong club.'),
               ),
@@ -813,7 +816,7 @@ class _ClubRecapTab extends ConsumerWidget {
           );
         }
         return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          padding: const EdgeInsets.fromLTRB(0, 8, 0, 16),
           children: [
             summaryCard,
             const SizedBox(height: 14),
@@ -949,7 +952,7 @@ class _RankingTab extends ConsumerWidget {
                 );
               });
         return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          padding: const EdgeInsets.fromLTRB(0, 8, 0, 16),
           children: [
             if (entries.isEmpty)
               const _EmptyRanking()
@@ -1125,8 +1128,9 @@ class _RankingBoardCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     return GlassPanel(
-      borderRadius: 22,
+      borderRadius: 0,
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1136,7 +1140,7 @@ class _RankingBoardCard extends StatelessWidget {
             title: 'BẢNG XẾP HẠNG',
             trailing:
                 '${_rankingMetricLabel(metric)} · ${_rankingRangeLabel(range)}',
-            color: AppColors.amber,
+            color: palette.tertiary,
           ),
           const SizedBox(height: 12),
           for (var index = 0; index < entries.length; index++)
@@ -1171,15 +1175,13 @@ class _ClubSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return GlassPanel(
-      borderRadius: 24,
+      borderRadius: 0,
       padding: const EdgeInsets.all(18),
       gradient: LinearGradient(
-        colors: isLight
-            ? const [Color(0xffe2e6ed), Color(0xffd2d9e2)]
-            : const [Color(0xe607172b), Color(0xaa071426)],
+        colors: [palette.glassStart, palette.glassEnd],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -1188,7 +1190,7 @@ class _ClubSummaryCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.groups_2, color: AppColors.blueGlow, size: 20),
+              Icon(Icons.groups_2, color: palette.accent, size: 20),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -1203,8 +1205,8 @@ class _ClubSummaryCard extends StatelessWidget {
               ),
               Text(
                 '$activeMembers/$memberCount active',
-                style: const TextStyle(
-                  color: AppColors.blueGlow,
+                style: TextStyle(
+                  color: palette.secondary,
                   fontSize: 12,
                   fontWeight: FontWeight.w900,
                 ),
@@ -1212,31 +1214,19 @@ class _ClubSummaryCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.blueGlow.withValues(alpha: 0.18),
-                  blurRadius: 26,
-                  spreadRadius: -8,
+          Text(
+            formatDistance(totalDistanceMeters),
+            style: TextStyle(
+              color: palette.accent,
+              fontSize: 42,
+              fontWeight: FontWeight.w900,
+              height: 0.95,
+              shadows: [
+                Shadow(
+                  color: palette.secondary.withValues(alpha: 0.38),
+                  blurRadius: 18,
                 ),
               ],
-            ),
-            child: Text(
-              formatDistance(totalDistanceMeters),
-              style: TextStyle(
-                color: onSurface,
-                fontSize: 42,
-                fontWeight: FontWeight.w900,
-                height: 0.95,
-                shadows: [
-                  Shadow(
-                    color: AppColors.blueGlow.withValues(alpha: 0.38),
-                    blurRadius: 18,
-                  ),
-                ],
-              ),
             ),
           ),
           const SizedBox(height: 14),
@@ -1246,7 +1236,7 @@ class _ClubSummaryCard extends StatelessWidget {
                 child: _RecapStat(
                   label: 'THỜI GIAN',
                   value: formatDuration(totalMovingTimeSeconds),
-                  color: _clubChartColor(1),
+                  color: palette.accent,
                 ),
               ),
               const SizedBox(width: 12),
@@ -1254,7 +1244,7 @@ class _ClubSummaryCard extends StatelessWidget {
                 child: _RecapStat(
                   label: 'SỐ BUỔI',
                   value: '$totalActivities',
-                  color: _clubChartColor(0.9),
+                  color: palette.accent,
                 ),
               ),
             ],
@@ -1278,58 +1268,42 @@ class _RecapStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: isLight ? const Color(0xffd8dee6) : const Color(0x36020812),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withValues(alpha: 0.16)),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.14),
-              blurRadius: 18,
-              spreadRadius: -10,
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
+      decoration: BoxDecoration(
+        border: Border(
+          left: BorderSide(color: color.withValues(alpha: 0.72), width: 2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: onSurface.withValues(alpha: 0.52),
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1,
             ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  color: onSurface.withValues(alpha: 0.52),
-                  fontSize: 9,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
-                  shadows: [
-                    Shadow(
-                      color: color.withValues(alpha: 0.36),
-                      blurRadius: 12,
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ),
-        ),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              height: 1,
+              shadows: [
+                Shadow(color: color.withValues(alpha: 0.28), blurRadius: 10),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1344,8 +1318,9 @@ class _InactiveMembersCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final palette = context.runNowPalette;
     return GlassPanel(
-      borderRadius: 22,
+      borderRadius: 0,
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1354,7 +1329,7 @@ class _InactiveMembersCard extends StatelessWidget {
             icon: Icons.person_off_outlined,
             title: 'CHƯA ACTIVE',
             trailing: '${entries.length} member',
-            color: AppColors.amber,
+            color: palette.tertiary,
           ),
           const SizedBox(height: 12),
           if (entries.isEmpty)
@@ -1422,20 +1397,21 @@ class _ClubSectionHeader extends StatelessWidget {
     required this.icon,
     required this.title,
     this.trailing,
-    this.color = AppColors.blueGlow,
+    this.color,
   });
 
   final IconData icon;
   final String title;
   final String? trailing;
-  final Color color;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final resolvedColor = color ?? context.runNowPalette.secondary;
     return Row(
       children: [
-        Icon(icon, color: color, size: 18),
+        Icon(icon, color: resolvedColor, size: 18),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
@@ -1484,13 +1460,11 @@ List<PowerRadarMetric> _clubPowerMetrics({
       label: 'VOLUME',
       value: formatDistance(totalDistanceMeters),
       score: powerScoreRatio(totalDistanceMeters / 1000, volumeTargetKm),
-      color: AppColors.blueGlow,
     ),
     PowerRadarMetric(
       label: 'ACTIVE',
       value: '${(activeRate * 100).round()}%',
       score: activeRate.clamp(0.0, 1.0).toDouble(),
-      color: AppColors.amber,
     ),
     PowerRadarMetric(
       label: 'LOAD',
@@ -1499,19 +1473,16 @@ List<PowerRadarMetric> _clubPowerMetrics({
         totalMovingTimeSeconds.toDouble(),
         loadTargetSeconds.toDouble(),
       ),
-      color: AppColors.red,
     ),
     PowerRadarMetric(
       label: 'AVG',
       value: formatDistance(averageDistanceMeters),
       score: powerScoreRatio(averageDistanceMeters / 1000, 5),
-      color: const Color(0xff8b5cf6),
     ),
     PowerRadarMetric(
       label: 'TỐC',
       value: formatPace(fastestPaceSecondsPerKm),
       score: powerSpeedScore(fastestPaceSecondsPerKm),
-      color: const Color(0xff22c55e),
     ),
   ];
 }
@@ -1639,10 +1610,11 @@ class _RankBadge extends StatelessWidget {
     final muted = Theme.of(
       context,
     ).colorScheme.onSurface.withValues(alpha: 0.42);
+    final palette = context.runNowPalette;
     final color = switch (rank) {
-      1 => AppColors.amber,
-      2 => AppColors.blueGlow,
-      3 => AppColors.red,
+      1 => palette.tertiary,
+      2 => palette.secondary,
+      3 => palette.accent,
       _ => muted,
     };
     final icon = switch (rank) {
@@ -1716,6 +1688,7 @@ class _MemberCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMe = currentUid == member.uid;
+    final palette = context.runNowPalette;
     return GlassPanel(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
@@ -1751,10 +1724,7 @@ class _MemberCard extends StatelessWidget {
                       ),
                       if (isMe) ...[
                         const SizedBox(width: 8),
-                        const _MiniChip(
-                          label: 'Bạn',
-                          color: AppColors.blueGlow,
-                        ),
+                        _MiniChip(label: 'Bạn', color: palette.secondary),
                       ],
                     ],
                   ),
@@ -1783,7 +1753,7 @@ class _EmptyRanking extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const GlassPanel(
-      borderRadius: 22,
+      borderRadius: 0,
       padding: EdgeInsets.all(18),
       child: Text('Chưa có thành viên public để xếp hạng.'),
     );
@@ -1834,19 +1804,20 @@ class _LeaderboardAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final avatarUrl = entry.avatarUrl;
+    final palette = context.runNowPalette;
     return Container(
       height: size,
       width: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: const LinearGradient(
-          colors: [AppColors.blueGlow, AppColors.red],
+        gradient: LinearGradient(
+          colors: [palette.secondary, palette.accent],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x1f000000),
+            color: Colors.black12,
             blurRadius: 10,
             offset: Offset(0, 3),
           ),
@@ -1876,19 +1847,20 @@ class _MemberAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final avatarUrl = member.avatarUrl;
+    final palette = context.runNowPalette;
     return Container(
       height: size,
       width: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: const LinearGradient(
-          colors: [AppColors.blueGlow, AppColors.red],
+        gradient: LinearGradient(
+          colors: [palette.secondary, palette.accent],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x1f000000),
+            color: Colors.black12,
             blurRadius: 10,
             offset: Offset(0, 3),
           ),
@@ -1946,7 +1918,7 @@ class _VisibilityPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = isPublic
-        ? AppColors.blueGlow
+        ? context.runNowPalette.secondary
         : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.36);
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -1968,8 +1940,4 @@ class _VisibilityPill extends StatelessWidget {
       ],
     );
   }
-}
-
-Color _clubChartColor(double opacity) {
-  return AppColors.blueGlow.withValues(alpha: opacity);
 }

@@ -68,10 +68,10 @@ class _PersonalPowerRangeControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final palette = context.runNowPalette;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: isLight ? const Color(0xffd8dee6) : const Color(0x36020812),
+        color: palette.glassStart,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Padding(
@@ -84,7 +84,7 @@ class _PersonalPowerRangeControl extends StatelessWidget {
               const TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
             ),
             backgroundColor: WidgetStateProperty.resolveWith((states) {
-              if (states.contains(WidgetState.selected)) return AppColors.red;
+              if (states.contains(WidgetState.selected)) return palette.accent;
               return Colors.transparent;
             }),
             foregroundColor: WidgetStateProperty.resolveWith((states) {

@@ -1,8 +1,6 @@
-import 'package:flutter/material.dart';
 import 'package:myrun/src/dashboard_analytics.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
-import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/power_radar_card.dart';
 
 enum PersonalPowerRange { currentWeek, rollingSevenDays, currentMonth }
@@ -33,13 +31,11 @@ List<PowerRadarMetric> personalPowerMetricsForRange(
       label: 'VOLUME',
       value: formatDistance(stats.totalDistanceMeters),
       score: powerScoreRatio(stats.totalDistanceMeters / 1000, volumeTargetKm),
-      color: AppColors.blueGlow,
     ),
     PowerRadarMetric(
       label: 'ACTIVE',
       value: '${(stats.activeRatio * 100).round()}%',
       score: stats.activeRatio.clamp(0.0, 1.0).toDouble(),
-      color: AppColors.amber,
     ),
     PowerRadarMetric(
       label: 'LOAD',
@@ -48,19 +44,16 @@ List<PowerRadarMetric> personalPowerMetricsForRange(
         stats.movingTimeSeconds.toDouble(),
         loadTargetSeconds.toDouble(),
       ),
-      color: AppColors.red,
     ),
     PowerRadarMetric(
       label: 'AVG',
       value: formatDistance(avgDistanceMeters),
       score: powerScoreRatio(avgDistanceMeters / 1000, 5),
-      color: const Color(0xff8b5cf6),
     ),
     PowerRadarMetric(
       label: 'TỐC',
       value: formatPace(stats.fastestPaceSecondsPerKm),
       score: powerSpeedScore(stats.fastestPaceSecondsPerKm),
-      color: const Color(0xff22c55e),
     ),
   ];
 }

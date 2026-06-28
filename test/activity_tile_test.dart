@@ -4,7 +4,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 
 void main() {
-  testWidgets('renders a highlighted cached activity card', (tester) async {
+  testWidgets('renders an open activity timeline row', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -29,9 +29,9 @@ void main() {
     expect(find.text('5.10 km'), findsOneWidget);
     expect(find.text('8:39 /km'), findsOneWidget);
     expect(find.text('44:06'), findsOneWidget);
-    expect(find.text('LOG // 03'), findsOneWidget);
-    expect(find.text('CACHED'), findsOneWidget);
-    expect(find.text('DETAIL READY'), findsOneWidget);
-    expect(find.text("P'RC"), findsOneWidget);
+    expect(find.text('#03'), findsOneWidget);
+    expect(find.text('RUN'), findsOneWidget);
+    expect(find.text('01'), findsOneWidget);
+    expect(find.text('JUN'), findsOneWidget);
   });
 }
