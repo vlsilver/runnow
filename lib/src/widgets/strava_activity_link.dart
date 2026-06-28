@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:myrun/src/theme_tokens.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class StravaActivityLink extends StatelessWidget {
@@ -15,7 +16,7 @@ class StravaActivityLink extends StatelessWidget {
       child: const Text(
         'View on Strava',
         style: TextStyle(
-          color: Color(0xfffc5200),
+          color: RunNowBrandColors.strava,
           decoration: TextDecoration.underline,
         ),
       ),

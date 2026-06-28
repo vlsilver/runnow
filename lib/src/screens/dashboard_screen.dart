@@ -12,7 +12,6 @@ import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/training_power.dart';
 import 'package:myrun/src/widgets/activity_records_card.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
-import 'package:myrun/src/widgets/consistency_heatmap.dart';
 import 'package:myrun/src/widgets/discipline_card.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/nav_filter.dart';
@@ -288,8 +287,11 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
                     builder: (_) => summaryCard(showControls: true),
                   ),
                   _ShareableDashboardCard(
-                    title: 'RunNow kỷ luật cá nhân',
-                    builder: (_) => DisciplineCard(stats: discipline),
+                    title: 'RunNow kỷ luật & consistency',
+                    builder: (_) => DisciplineCard(
+                      stats: discipline,
+                      activities: widget.activities,
+                    ),
                   ),
                 ],
               ),
@@ -298,11 +300,6 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
                   _ShareableDashboardCard(
                     title: 'RunNow personal power',
                     builder: (_) => powerCard(showControls: true),
-                  ),
-                  _ShareableDashboardCard(
-                    title: 'RunNow consistency 8 tuần',
-                    builder: (_) =>
-                        ConsistencyHeatmap(activities: widget.activities),
                   ),
                 ],
               ),
@@ -338,18 +335,16 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
                     builder: (_) => powerCard(showControls: true),
                   ),
                   _ShareableDashboardCard(
-                    title: 'RunNow kỷ luật cá nhân',
-                    builder: (_) => DisciplineCard(stats: discipline),
+                    title: 'RunNow kỷ luật & consistency',
+                    builder: (_) => DisciplineCard(
+                      stats: discipline,
+                      activities: widget.activities,
+                    ),
                   ),
                 ],
               ),
               _DashboardWebColumn(
                 children: [
-                  _ShareableDashboardCard(
-                    title: 'RunNow consistency 8 tuần',
-                    builder: (_) =>
-                        ConsistencyHeatmap(activities: widget.activities),
-                  ),
                   _ShareableDashboardCard(
                     title: 'RunNow km theo thời gian',
                     builder: (_) => volumeCard(showControls: true),
@@ -380,9 +375,12 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
       },
       child: ListView(
         key: _scrollKey,
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(vertical: 16),
         children: [
-          header,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: header,
+          ),
           const SizedBox(height: 12),
           KeyedSubtree(
             key: _weekKey,
@@ -401,13 +399,11 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
           ),
           const SizedBox(height: 20),
           _ShareableDashboardCard(
-            title: 'RunNow consistency 8 tuần',
-            builder: (_) => ConsistencyHeatmap(activities: widget.activities),
-          ),
-          const SizedBox(height: 20),
-          _ShareableDashboardCard(
-            title: 'RunNow kỷ luật cá nhân',
-            builder: (_) => DisciplineCard(stats: discipline),
+            title: 'RunNow kỷ luật & consistency',
+            builder: (_) => DisciplineCard(
+              stats: discipline,
+              activities: widget.activities,
+            ),
           ),
           const SizedBox(height: 20),
           _ShareableDashboardCard(
@@ -485,7 +481,7 @@ class _RecentActivitiesCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return GlassPanel(
-      borderRadius: 22,
+      borderRadius: 0,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -680,7 +676,7 @@ class _TrainingGoalsSheetState extends State<_TrainingGoalsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return Padding(
       padding: EdgeInsets.only(
@@ -692,9 +688,7 @@ class _TrainingGoalsSheetState extends State<_TrainingGoalsSheet> {
         borderRadius: 22,
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
         gradient: LinearGradient(
-          colors: isLight
-              ? const [Color(0xffe2e6ed), Color(0xffd2d9e2)]
-              : const [Color(0xf207172b), Color(0xe0062442), Color(0xcc151637)],
+          colors: [palette.glassStart, palette.glassEnd],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -715,7 +709,7 @@ class _TrainingGoalsSheetState extends State<_TrainingGoalsSheet> {
             const SizedBox(height: 14),
             Row(
               children: [
-                const Icon(Icons.flag, color: AppColors.red),
+                Icon(Icons.flag, color: palette.accent),
                 const SizedBox(width: 8),
                 Text(
                   'Mục tiêu luyện tập',
@@ -783,7 +777,7 @@ class _GoalInputField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return TextField(
       controller: controller,
@@ -795,17 +789,17 @@ class _GoalInputField extends StatelessWidget {
         hintText: hint,
         suffixText: 'km',
         filled: true,
-        fillColor: isLight ? const Color(0xffd8dee6) : const Color(0x52020812),
+        fillColor: palette.glassStart,
         labelStyle: TextStyle(color: onSurface.withValues(alpha: 0.64)),
         hintStyle: TextStyle(color: onSurface.withValues(alpha: 0.34)),
-        suffixStyle: const TextStyle(color: AppColors.blueGlow),
+        suffixStyle: TextStyle(color: palette.secondary),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0x3300d9ff)),
+          borderSide: BorderSide(color: palette.gridMajor),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.blueGlow),
+          borderSide: BorderSide(color: palette.secondary),
         ),
       ),
     );
@@ -934,14 +928,13 @@ class _ConnectStravaCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return GlassPanel(
+      borderRadius: 0,
       padding: const EdgeInsets.all(18),
       gradient: LinearGradient(
-        colors: isLight
-            ? const [Color(0xffe2e6ed), Color(0xffd3dae3)]
-            : const [Color(0xf207172b), Color(0xd4062442), Color(0xb3151637)],
+        colors: [palette.glassStart, palette.glassEnd],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -950,7 +943,7 @@ class _ConnectStravaCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.link, color: AppColors.blueGlow),
+              Icon(Icons.link, color: palette.secondary),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -972,7 +965,10 @@ class _ConnectStravaCard extends StatelessWidget {
           ),
           if (errorMessage != null) ...[
             const SizedBox(height: 10),
-            Text(errorMessage!, style: const TextStyle(color: AppColors.red)),
+            Text(
+              errorMessage!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           ],
           const SizedBox(height: 14),
           SizedBox(
@@ -1049,7 +1045,7 @@ class _GoalProgressRow extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                ColoredBox(color: AppColors.blueGlow.withValues(alpha: 0.14)),
+                ColoredBox(color: onSurface.withValues(alpha: 0.12)),
                 FractionallySizedBox(
                   alignment: Alignment.centerLeft,
                   widthFactor: progress.toDouble(),
@@ -1103,14 +1099,13 @@ class _SummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final summary = comparison.current;
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return GlassPanel(
-      padding: const EdgeInsets.all(18),
+      borderRadius: 0,
+      padding: const EdgeInsets.fromLTRB(8, 12, 8, 16),
       gradient: LinearGradient(
-        colors: isLight
-            ? const [Color(0xffe2e6ed), Color(0xffd1d8e1), Color(0xffdde3ea)]
-            : const [Color(0xf207172b), Color(0xdb06365c), Color(0xb3151637)],
+        colors: [palette.glassStart, palette.glassEnd],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -1121,7 +1116,7 @@ class _SummaryCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.bolt, color: AppColors.blueGlow, size: 20),
+                Icon(Icons.bolt, color: palette.secondary, size: 20),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -1139,7 +1134,7 @@ class _SummaryCard extends StatelessWidget {
                     onPressed: onEditGoals,
                     tooltip: 'Sửa mục tiêu',
                     icon: const Icon(Icons.tune, size: 18),
-                    color: AppColors.blueGlow,
+                    color: palette.secondary,
                     visualDensity: VisualDensity.compact,
                   ),
               ],
@@ -1151,8 +1146,8 @@ class _SummaryCard extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 _weekModeLabel(mode),
-                style: const TextStyle(
-                  color: AppColors.blueGlow,
+                style: TextStyle(
+                  color: palette.secondary,
                   fontSize: 13,
                   fontWeight: FontWeight.w900,
                 ),
@@ -1165,37 +1160,37 @@ class _SummaryCard extends StatelessWidget {
               crossAxisCount: 2,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 2.2,
+              crossAxisSpacing: 20,
+              mainAxisSpacing: 10,
+              childAspectRatio: 2.6,
               children: [
                 _Metric(
                   label: 'Quãng đường',
                   value: formatDistance(summary.distanceMeters),
-                  color: AppColors.blueGlow,
+                  color: palette.accent,
                 ),
                 _Metric(
                   label: 'Thời gian',
                   value: formatDuration(summary.movingTimeSeconds),
-                  color: Colors.white,
+                  color: palette.accent,
                 ),
                 _Metric(
                   label: 'Số buổi',
                   value: '${summary.activityCount}',
-                  color: AppColors.amber,
+                  color: palette.accent,
                 ),
                 _Metric(
                   label: 'Pace TB',
                   value: formatPace(summary.paceSecondsPerKm),
-                  color: AppColors.red,
+                  color: palette.accent,
                 ),
               ],
             ),
             const SizedBox(height: 16),
             Text(
               _comparisonLabel(comparison, mode),
-              style: const TextStyle(
-                color: AppColors.blueGlow,
+              style: TextStyle(
+                color: palette.secondary,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
@@ -1205,14 +1200,14 @@ class _SummaryCard extends StatelessWidget {
               label: _weekGoalLabel(mode),
               currentMeters: summary.distanceMeters,
               goalMeters: goals.weeklyDistanceMeters,
-              color: AppColors.red,
+              color: palette.accent,
             ),
             const SizedBox(height: 14),
             _GoalProgressRow(
               label: 'Tháng này',
               currentMeters: monthDistanceMeters,
               goalMeters: goals.monthlyDistanceMeters,
-              color: AppColors.blueGlow,
+              color: palette.accent,
             ),
           ],
         ),
@@ -1229,29 +1224,19 @@ class _WeekViewToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: isLight ? const Color(0x1408172b) : const Color(0x52020812),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(3),
-        child: Row(
-          children: [
-            _WeekViewOption(
-              label: '7 ngày gần nhất',
-              selected: value == _WeekViewMode.rollingSevenDays,
-              onTap: () => onChanged(_WeekViewMode.rollingSevenDays),
-            ),
-            _WeekViewOption(
-              label: 'Tuần này',
-              selected: value == _WeekViewMode.currentWeek,
-              onTap: () => onChanged(_WeekViewMode.currentWeek),
-            ),
-          ],
+    return Row(
+      children: [
+        _WeekViewOption(
+          label: '7 ngày gần nhất',
+          selected: value == _WeekViewMode.rollingSevenDays,
+          onTap: () => onChanged(_WeekViewMode.rollingSevenDays),
         ),
-      ),
+        _WeekViewOption(
+          label: 'Tuần này',
+          selected: value == _WeekViewMode.currentWeek,
+          onTap: () => onChanged(_WeekViewMode.currentWeek),
+        ),
+      ],
     );
   }
 }
@@ -1270,22 +1255,27 @@ class _WeekViewOption extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final accent = Theme.of(context).colorScheme.primary;
     return Expanded(
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.symmetric(vertical: 9),
+          padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? AppColors.red : Colors.transparent,
-            borderRadius: BorderRadius.circular(999),
+            border: Border(
+              bottom: BorderSide(
+                color: selected ? accent : Colors.transparent,
+                width: 2,
+              ),
+            ),
           ),
           child: Text(
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: selected ? Colors.white : onSurface.withValues(alpha: 0.6),
+              color: selected ? accent : onSurface.withValues(alpha: 0.52),
               fontSize: 12,
               fontWeight: FontWeight.w800,
             ),
@@ -1345,13 +1335,14 @@ class _SevenDayBar extends StatelessWidget {
     final ratio = maxDistance <= 0 ? 0.04 : day.distanceMeters / maxDistance;
     final label = _weekdayLabel(day.date);
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final palette = context.runNowPalette;
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         Text(
           day.distanceMeters > 0 ? _compactDistance(day.distanceMeters) : '-',
           style: TextStyle(
-            color: active ? onSurface : onSurface.withValues(alpha: 0.35),
+            color: active ? palette.accent : onSurface.withValues(alpha: 0.35),
             fontSize: 10,
             fontWeight: FontWeight.w800,
           ),
@@ -1365,21 +1356,14 @@ class _SevenDayBar extends StatelessWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(999),
-                  gradient: LinearGradient(
-                    colors: active
-                        ? const [AppColors.red, AppColors.blueGlow]
-                        : [
-                            onSurface.withValues(alpha: 0.12),
-                            onSurface.withValues(alpha: 0.06),
-                          ],
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                  ),
+                  color: active
+                      ? palette.accent
+                      : onSurface.withValues(alpha: 0.08),
                   boxShadow: active
-                      ? const [
+                      ? [
                           BoxShadow(
-                            color: Color(0x6600d9ff),
-                            blurRadius: 14,
+                            color: palette.accent.withValues(alpha: 0.28),
+                            blurRadius: 12,
                             offset: Offset(0, 6),
                           ),
                         ]
@@ -1416,55 +1400,45 @@ class _Metric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: isLight
-            ? Colors.white.withValues(alpha: 0.58)
-            : Colors.black.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isLight ? 0.06 : 0.12),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      child: Row(
+        children: [
+          Container(width: 2, height: 34, color: color.withValues(alpha: 0.72)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.5),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 21,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurface.withValues(alpha: 0.5),
-                fontSize: 10,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: isLight
-                    ? Theme.of(context).colorScheme.onSurface
-                    : color,
-                fontSize: 21,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

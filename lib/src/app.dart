@@ -98,13 +98,20 @@ class RunNowApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeMode = ref.watch(themeControllerProvider).mode;
+    final themeController = ref.watch(themeControllerProvider);
+    final selectedTheme = buildRunNowTheme(
+      themeController.element,
+      appearance: themeController.appearance,
+      darkTone: themeController.darkTone,
+    );
     return MaterialApp.router(
       title: 'RunNow',
       debugShowCheckedModeBanner: false,
-      theme: buildRunNowLightTheme(),
-      darkTheme: buildRunNowDarkTheme(),
-      themeMode: themeMode,
+      theme: selectedTheme,
+      darkTheme: selectedTheme,
+      themeMode: themeController.appearance == RunNowAppearance.light
+          ? ThemeMode.light
+          : ThemeMode.dark,
       routerConfig: _router,
       builder: (context, child) {
         final content = requireAuthentication
@@ -289,15 +296,14 @@ class _DesktopCommandBar extends ConsumerWidget {
       _ => 'Your training space',
     };
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final palette = context.runNowPalette;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18),
       child: GlassPanel(
         borderRadius: 26,
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
         gradient: LinearGradient(
-          colors: Theme.of(context).brightness == Brightness.light
-              ? const [Color(0xece8edf5), Color(0xded9e0ea)]
-              : const [Color(0xd10a1c30), Color(0xa5081324)],
+          colors: [palette.glassStart, palette.glassEnd],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -308,14 +314,14 @@ class _DesktopCommandBar extends ConsumerWidget {
               height: 44,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
-                gradient: const LinearGradient(
-                  colors: [AppColors.accent, AppColors.accentDeep],
+                gradient: LinearGradient(
+                  colors: [palette.accent, palette.accentDeep],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.accent.withValues(alpha: 0.22),
+                    color: palette.accent.withValues(alpha: 0.22),
                     blurRadius: 18,
                   ),
                 ],
@@ -381,14 +387,15 @@ class _DesktopStatusStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final scheme = Theme.of(context).colorScheme;
+    final onSurface = scheme.onSurface;
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         Icon(
           Icons.bolt_rounded,
           size: 18,
-          color: AppColors.accent.withValues(alpha: 0.9),
+          color: scheme.primary.withValues(alpha: 0.9),
         ),
         const SizedBox(width: 8),
         Text(
@@ -414,7 +421,8 @@ class _DesktopNavRail extends StatelessWidget {
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final extended = width >= 1100;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final scheme = Theme.of(context).colorScheme;
+    final onSurface = scheme.onSurface;
     final branches = <int>[0, 1, if (!kIsWeb) 3, 2, 4];
     final destinations = <NavigationRailDestination>[
       const NavigationRailDestination(
@@ -466,17 +474,17 @@ class _DesktopNavRail extends StatelessWidget {
                 selectedIndex: selected,
                 onDestinationSelected: (index) =>
                     shell.goBranch(branches[index]),
-                indicatorColor: AppColors.accent.withValues(alpha: 0.18),
+                indicatorColor: scheme.primary.withValues(alpha: 0.18),
                 leading: const Padding(
                   padding: EdgeInsets.only(top: 10, bottom: 16),
                   child: _RailBrand(),
                 ),
-                selectedIconTheme: const IconThemeData(color: AppColors.accent),
+                selectedIconTheme: IconThemeData(color: scheme.primary),
                 unselectedIconTheme: IconThemeData(
                   color: onSurface.withValues(alpha: 0.7),
                 ),
-                selectedLabelTextStyle: const TextStyle(
-                  color: AppColors.accent,
+                selectedLabelTextStyle: TextStyle(
+                  color: scheme.primary,
                   fontWeight: FontWeight.w900,
                   fontSize: 12,
                 ),
@@ -500,16 +508,17 @@ class _RailBrand extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           width: 44,
           height: 44,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: LinearGradient(
-              colors: [AppColors.accent, AppColors.accentDeep],
+              colors: [palette.accent, palette.accentDeep],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -589,6 +598,7 @@ class _RunNavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     return InkWell(
       borderRadius: BorderRadius.circular(22),
       onTap: onTap,
@@ -602,20 +612,16 @@ class _RunNavItem extends StatelessWidget {
               shape: BoxShape.circle,
               gradient: RadialGradient(
                 colors: selected
-                    ? const [
-                        Color(0xff19f58a),
-                        AppColors.blueGlow,
-                        AppColors.red,
-                      ]
-                    : const [
-                        AppColors.accent,
-                        Color(0xff123f7e),
-                        Color(0xff0a1622),
+                    ? [palette.tertiary, palette.secondary, palette.accent]
+                    : [
+                        palette.accent,
+                        palette.accentDeep,
+                        palette.backgroundDeep,
                       ],
               ),
               boxShadow: [
                 BoxShadow(
-                  color: (selected ? AppColors.blueGlow : AppColors.red)
+                  color: (selected ? palette.secondary : palette.accent)
                       .withValues(alpha: 0.26),
                   blurRadius: 16,
                 ),
@@ -635,7 +641,7 @@ class _RunNavItem extends StatelessWidget {
             'Chạy',
             style: TextStyle(
               color: selected
-                  ? AppColors.blueGlow
+                  ? palette.secondary
                   : Theme.of(
                       context,
                     ).colorScheme.onSurface.withValues(alpha: 0.76),

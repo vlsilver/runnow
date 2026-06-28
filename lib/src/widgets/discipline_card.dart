@@ -1,24 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:myrun/src/dashboard_analytics.dart';
 import 'package:myrun/src/formatters.dart';
+import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/consistency_heatmap.dart';
 import 'package:myrun/src/widgets/glass.dart';
 
 class DisciplineCard extends StatelessWidget {
-  const DisciplineCard({required this.stats, super.key});
+  const DisciplineCard({
+    required this.stats,
+    required this.activities,
+    super.key,
+  });
 
   final DisciplineStats stats;
+  final List<ActivitySummary> activities;
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return GlassPanel(
+      borderRadius: 0,
       padding: const EdgeInsets.all(18),
       gradient: LinearGradient(
-        colors: isLight
-            ? const [Color(0xffe2e6ed), Color(0xffd2d9e2)]
-            : const [Color(0xe607172b), Color(0xaa071426)],
+        colors: [palette.glassStart, palette.glassEnd],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -27,15 +33,15 @@ class DisciplineCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.local_fire_department,
-                color: AppColors.red,
+                color: palette.accent,
                 size: 20,
               ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'KỶ LUẬT CÁ NHÂN',
+                  'KỶ LUẬT & CONSISTENCY',
                   style: TextStyle(
                     color: onSurface.withValues(alpha: 0.66),
                     fontSize: 11,
@@ -46,8 +52,8 @@ class DisciplineCard extends StatelessWidget {
               ),
               Text(
                 _disciplineGrade(stats.activeRatio),
-                style: const TextStyle(
-                  color: AppColors.blueGlow,
+                style: TextStyle(
+                  color: palette.secondary,
                   fontSize: 12,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 1.1,
@@ -86,6 +92,10 @@ class DisciplineCard extends StatelessWidget {
           _DisciplineTimeline(days: stats.days),
           const SizedBox(height: 16),
           _DisciplineMetricGrid(stats: stats),
+          const SizedBox(height: 22),
+          Divider(color: onSurface.withValues(alpha: 0.1), height: 1),
+          const SizedBox(height: 18),
+          ConsistencyHeatmap(activities: activities, embedded: true),
         ],
       ),
     );
@@ -99,39 +109,40 @@ class _DisciplineMetricGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     final items = [
       _DisciplineMetricData(
         label: 'CHUỖI NGÀY',
         value: '${stats.currentDayStreak}',
         suffix: 'ngày',
-        color: AppColors.red,
+        color: palette.accent,
       ),
       _DisciplineMetricData(
         label: 'CHUỖI TUẦN',
         value: '${stats.weeklyStreak}',
         suffix: 'tuần',
-        color: AppColors.blueGlow,
+        color: palette.accent,
       ),
       _DisciplineMetricData(
         label: 'PACE NHANH',
         value: formatPace(stats.fastestPaceSecondsPerKm),
-        color: AppColors.amber,
+        color: palette.accent,
       ),
       _DisciplineMetricData(
         label: 'DÀI NHẤT',
         value: formatDistance(stats.longestDistanceMeters),
-        color: AppColors.blue,
+        color: palette.accent,
       ),
       _DisciplineMetricData(
         label: 'NHỊP / TUẦN',
         value: stats.averageActivitiesPerWeek.toStringAsFixed(1),
         suffix: 'buổi',
-        color: const Color(0xff9c6cff),
+        color: palette.accent,
       ),
       _DisciplineMetricData(
         label: 'TỔNG 30 NGÀY',
         value: formatDistance(stats.totalDistanceMeters),
-        color: AppColors.blueGlow,
+        color: palette.accent,
       ),
     ];
     return GridView.builder(
@@ -183,9 +194,10 @@ class _DisciplineCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final palette = context.runNowPalette;
     final strength = maxDistance <= 0 ? 0.0 : day.distanceMeters / maxDistance;
     final color = day.active
-        ? Color.lerp(AppColors.red, AppColors.blueGlow, strength)!
+        ? Color.lerp(palette.accentDeep, palette.secondary, strength)!
         : onSurface.withValues(alpha: 0.1);
     return Tooltip(
       message:
@@ -233,12 +245,11 @@ class _DisciplineMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
-        color: isLight ? const Color(0xffd8dee6) : const Color(0x36020812),
+        color: Colors.black.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(

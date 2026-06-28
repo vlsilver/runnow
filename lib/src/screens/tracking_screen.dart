@@ -110,16 +110,17 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   @override
   Widget build(BuildContext context) {
     final snapshot = _snapshot;
+    final palette = context.runNowPalette;
     return Scaffold(
       appBar: AppBar(
-        title: const Column(
+        title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Chạy thử'),
             Text(
               'TRACKING LAB',
               style: TextStyle(
-                color: AppColors.blueGlow,
+                color: palette.secondary,
                 fontSize: 10,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1.6,
@@ -134,8 +135,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
           GlassPanel(
             borderRadius: 28,
             padding: const EdgeInsets.all(22),
-            gradient: const LinearGradient(
-              colors: [Color(0xff06172b), Color(0xff03101d)],
+            gradient: LinearGradient(
+              colors: [palette.glassStart, palette.glassEnd],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -405,12 +406,15 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             children: [
               Row(
                 children: [
-                  const Icon(Icons.map_outlined, color: AppColors.blueGlow),
+                  Icon(
+                    Icons.map_outlined,
+                    color: context.runNowPalette.secondary,
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     'LIVE ROUTE',
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: AppColors.blueGlow,
+                      color: context.runNowPalette.secondary,
                       letterSpacing: 1.4,
                     ),
                   ),
@@ -862,7 +866,9 @@ class _Controls extends StatelessWidget {
         (false, true) => Icons.play_arrow_rounded,
         (false, false) => Icons.gps_not_fixed_rounded,
       };
-      final enabledColor = gpsReady ? const Color(0xff19f58a) : AppColors.red;
+      final enabledColor = gpsReady
+          ? RunNowSemanticColors.gpsGood
+          : RunNowSemanticColors.gpsWeak;
       return DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
@@ -881,7 +887,7 @@ class _Controls extends StatelessWidget {
             onPressed: busy ? null : (gpsReady ? onStart : onLockGps),
             style: FilledButton.styleFrom(
               backgroundColor: enabledColor,
-              foregroundColor: gpsReady ? AppColors.black : Colors.white,
+              foregroundColor: gpsReady ? Colors.black : Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(22),
               ),
@@ -891,7 +897,7 @@ class _Controls extends StatelessWidget {
                     dimension: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: gpsReady ? AppColors.black : Colors.white,
+                      color: gpsReady ? Colors.black : Colors.white,
                     ),
                   )
                 : Icon(icon, size: 30),
@@ -1016,7 +1022,7 @@ class _TrackingCockpit extends StatelessWidget {
                   distance,
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 56,
                     fontWeight: FontWeight.w900,
                   ),
@@ -1027,7 +1033,9 @@ class _TrackingCockpit extends StatelessWidget {
                     subtitle,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.56),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.56),
                       fontSize: 12,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 1.1,
@@ -1056,11 +1064,13 @@ class _CornerMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.2),
+        color: palette.glassEnd,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        border: Border.all(color: palette.border),
       ),
       child: SizedBox(
         width: 126,
@@ -1074,8 +1084,8 @@ class _CornerMetric extends StatelessWidget {
               Text(
                 label,
                 textAlign: alignEnd ? TextAlign.end : TextAlign.start,
-                style: const TextStyle(
-                  color: Colors.white54,
+                style: TextStyle(
+                  color: onSurface.withValues(alpha: 0.54),
                   fontSize: 10,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 1.5,
@@ -1087,8 +1097,8 @@ class _CornerMetric extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: alignEnd ? TextAlign.end : TextAlign.start,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: onSurface,
                   fontSize: 21,
                   fontWeight: FontWeight.w900,
                 ),
@@ -1114,13 +1124,16 @@ class _CornerMapMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = enabled ? AppColors.blueGlow : Colors.white30;
+    final palette = context.runNowPalette;
+    final color = enabled
+        ? palette.secondary
+        : palette.foreground.withValues(alpha: 0.3);
     return InkWell(
       borderRadius: BorderRadius.circular(18),
       onTap: enabled ? onTap : null,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.2),
+          color: palette.glassEnd,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: color.withValues(alpha: 0.4)),
         ),
@@ -1172,19 +1185,16 @@ class _StatusDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final color = active ? palette.accent : palette.tertiary;
     return Container(
       width: 12,
       height: 12,
       decoration: BoxDecoration(
-        color: active ? AppColors.red : AppColors.amber,
+        color: color,
         shape: BoxShape.circle,
         boxShadow: [
-          BoxShadow(
-            color: (active ? AppColors.red : AppColors.amber).withValues(
-              alpha: 0.45,
-            ),
-            blurRadius: 16,
-          ),
+          BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: 16),
         ],
       ),
     );
@@ -1193,11 +1203,11 @@ class _StatusDot extends StatelessWidget {
 
 Color _gpsSignalColor(_GpsSignal signal) {
   return switch (signal) {
-    _GpsSignal.ready => const Color(0xff19f58a),
-    _GpsSignal.fair => AppColors.amber,
-    _GpsSignal.weak => AppColors.red,
-    _GpsSignal.locking => AppColors.blueGlow,
-    _GpsSignal.idle => Colors.white38,
+    _GpsSignal.ready => RunNowSemanticColors.gpsGood,
+    _GpsSignal.fair => RunNowSemanticColors.gpsFair,
+    _GpsSignal.weak => RunNowSemanticColors.gpsWeak,
+    _GpsSignal.locking => RunNowSemanticColors.gpsLocking,
+    _GpsSignal.idle => RunNowSemanticColors.inactive,
   };
 }
 
@@ -1232,8 +1242,10 @@ class _RunConsoleHeader extends StatelessWidget {
         Expanded(
           child: Text(
             status,
-            style: const TextStyle(
-              color: Colors.white70,
+            style: TextStyle(
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.7),
               fontSize: 13,
               fontWeight: FontWeight.w900,
               letterSpacing: 1.4,
@@ -1318,7 +1330,13 @@ class _GpsRadar extends StatelessWidget {
         children: [
           CustomPaint(
             size: const Size.square(238),
-            painter: _GpsRadarPainter(color: color, progress: progress),
+            painter: _GpsRadarPainter(
+              color: color,
+              gridColor: context.runNowPalette.foreground.withValues(
+                alpha: 0.09,
+              ),
+              progress: progress,
+            ),
           ),
           DecoratedBox(
             decoration: BoxDecoration(
@@ -1347,9 +1365,14 @@ class _GpsRadar extends StatelessWidget {
 }
 
 class _GpsRadarPainter extends CustomPainter {
-  const _GpsRadarPainter({required this.color, required this.progress});
+  const _GpsRadarPainter({
+    required this.color,
+    required this.gridColor,
+    required this.progress,
+  });
 
   final Color color;
+  final Color gridColor;
   final double progress;
 
   @override
@@ -1359,7 +1382,7 @@ class _GpsRadarPainter extends CustomPainter {
     final gridPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1
-      ..color = Colors.white.withValues(alpha: 0.09);
+      ..color = gridColor;
     final glowPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 8
@@ -1411,7 +1434,9 @@ class _GpsRadarPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _GpsRadarPainter oldDelegate) {
-    return oldDelegate.color != color || oldDelegate.progress != progress;
+    return oldDelegate.color != color ||
+        oldDelegate.gridColor != gridColor ||
+        oldDelegate.progress != progress;
   }
 }
 
@@ -1522,6 +1547,7 @@ class _TrialSessionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: () => context.push('/tracking/session/${activity.id}'),
@@ -1533,10 +1559,10 @@ class _TrialSessionRow extends StatelessWidget {
               width: 42,
               height: 42,
               decoration: BoxDecoration(
-                color: AppColors.red.withValues(alpha: 0.15),
+                color: palette.accent.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: const Icon(Icons.science_outlined, color: AppColors.red),
+              child: Icon(Icons.science_outlined, color: palette.accent),
             ),
             const SizedBox(width: 12),
             Expanded(

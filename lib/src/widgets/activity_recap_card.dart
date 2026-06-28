@@ -26,6 +26,7 @@ class ActivityRecapCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     final route = activity.polyline == null
         ? const <LatLng>[]
         : decodePolyline(activity.polyline!);
@@ -40,15 +41,23 @@ class ActivityRecapCard extends StatelessWidget {
         aspectRatio: 0.62,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            border: Border.all(color: AppColors.blueGlow, width: 1.2),
-            gradient: const LinearGradient(
-              colors: [Color(0xff020812), Color(0xff06365c), Color(0xff0a2444)],
+            border: Border.all(color: palette.secondary, width: 1.2),
+            gradient: LinearGradient(
+              colors: [
+                palette.backgroundDeep,
+                palette.glassStart,
+                palette.backgroundMid,
+              ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
           ),
           child: CustomPaint(
-            painter: _RecapPosterPainter(route: route),
+            painter: _RecapPosterPainter(
+              route: route,
+              accent: palette.secondary,
+              gridColor: palette.gridMajor,
+            ),
             child: Padding(
               padding: const EdgeInsets.all(22),
               child: DefaultTextStyle(
@@ -72,10 +81,10 @@ class ActivityRecapCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    const Text(
+                    Text(
                       'PERFORMANCE // ACTIVITY REPORT',
                       style: TextStyle(
-                        color: AppColors.blueGlow,
+                        color: palette.secondary,
                         fontSize: 9,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 1.6,
@@ -136,10 +145,10 @@ class ActivityRecapCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 18),
-                    const Row(
+                    Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Expanded(
+                        const Expanded(
                           child: Text(
                             "P'RC",
                             maxLines: 1,
@@ -152,11 +161,11 @@ class ActivityRecapCard extends StatelessWidget {
                             ),
                           ),
                         ),
-                        SizedBox(width: 8),
+                        const SizedBox(width: 8),
                         Text(
                           'SYNC // COMPLETE',
                           style: TextStyle(
-                            color: AppColors.blueGlow,
+                            color: palette.secondary,
                             fontSize: 9,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 1.2,
@@ -187,22 +196,23 @@ class _PosterPaceChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (samples.length < 2) return const SizedBox.shrink();
+    final palette = context.runNowPalette;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Row(
+        Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
               'PACE // TELEMETRY',
               style: TextStyle(
-                color: AppColors.blueGlow,
+                color: palette.secondary,
                 fontSize: 9,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 1.2,
               ),
             ),
-            Text(
+            const Text(
               'DISTANCE',
               style: TextStyle(
                 color: Colors.white54,
@@ -220,6 +230,8 @@ class _PosterPaceChart extends StatelessWidget {
             painter: _PaceChartPainter(
               samples: samples,
               activityDistanceMeters: activityDistanceMeters,
+              accent: palette.secondary,
+              gridColor: palette.gridMajor,
             ),
             child: const SizedBox.expand(),
           ),
@@ -233,10 +245,14 @@ class _PaceChartPainter extends CustomPainter {
   const _PaceChartPainter({
     required this.samples,
     required this.activityDistanceMeters,
+    required this.accent,
+    required this.gridColor,
   });
 
   final List<PaceSample> samples;
   final double activityDistanceMeters;
+  final Color accent;
+  final Color gridColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -249,7 +265,7 @@ class _PaceChartPainter extends CustomPainter {
     final chartHeight = math.max(size.height - (verticalPadding * 2), 1);
 
     final gridPaint = Paint()
-      ..color = const Color(0x3300d9ff)
+      ..color = gridColor
       ..strokeWidth = 0.8;
     for (var index = 0; index <= 3; index++) {
       final y = size.height / 3 * index;
@@ -269,7 +285,7 @@ class _PaceChartPainter extends CustomPainter {
     canvas.drawPath(
       path,
       Paint()
-        ..color = const Color(0x9900d9ff)
+        ..color = accent.withValues(alpha: 0.5)
         ..strokeWidth = 8
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
@@ -279,7 +295,7 @@ class _PaceChartPainter extends CustomPainter {
     canvas.drawPath(
       path,
       Paint()
-        ..color = AppColors.blueGlow
+        ..color = accent
         ..strokeWidth = 2.4
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
@@ -290,7 +306,9 @@ class _PaceChartPainter extends CustomPainter {
   @override
   bool shouldRepaint(_PaceChartPainter oldDelegate) =>
       oldDelegate.samples != samples ||
-      oldDelegate.activityDistanceMeters != activityDistanceMeters;
+      oldDelegate.activityDistanceMeters != activityDistanceMeters ||
+      oldDelegate.accent != accent ||
+      oldDelegate.gridColor != gridColor;
 }
 
 @visibleForTesting
@@ -330,9 +348,10 @@ class _StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.red.withValues(alpha: 0.9),
+        color: palette.accent.withValues(alpha: 0.9),
         border: Border.all(color: Colors.white54),
         borderRadius: BorderRadius.circular(4),
       ),
@@ -360,11 +379,12 @@ class _RecapMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     return SizedBox(
       width: 124,
       child: DecoratedBox(
-        decoration: const BoxDecoration(
-          border: Border(left: BorderSide(color: AppColors.blueGlow, width: 2)),
+        decoration: BoxDecoration(
+          border: Border(left: BorderSide(color: palette.secondary, width: 2)),
         ),
         child: Padding(
           padding: const EdgeInsets.only(left: 8),
@@ -397,9 +417,15 @@ class _RecapMetric extends StatelessWidget {
 }
 
 class _RecapPosterPainter extends CustomPainter {
-  const _RecapPosterPainter({required this.route});
+  const _RecapPosterPainter({
+    required this.route,
+    required this.accent,
+    required this.gridColor,
+  });
 
   final List<LatLng> route;
+  final Color accent;
+  final Color gridColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -411,7 +437,7 @@ class _RecapPosterPainter extends CustomPainter {
   void _drawGrid(Canvas canvas, Size size) {
     const spacing = 24.0;
     final paint = Paint()
-      ..color = const Color(0x1f00d9ff)
+      ..color = gridColor
       ..strokeWidth = 0.6;
     for (var x = 0.0; x <= size.width; x += spacing) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
@@ -425,7 +451,7 @@ class _RecapPosterPainter extends CustomPainter {
     const length = 18.0;
     const inset = 8.0;
     final paint = Paint()
-      ..color = AppColors.blueGlow
+      ..color = accent
       ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
     final path = Path()
@@ -480,7 +506,7 @@ class _RecapPosterPainter extends CustomPainter {
     canvas.drawPath(
       path,
       Paint()
-        ..color = const Color(0x9900d9ff)
+        ..color = accent.withValues(alpha: 0.5)
         ..strokeWidth = 12
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
@@ -490,7 +516,7 @@ class _RecapPosterPainter extends CustomPainter {
     canvas.drawPath(
       path,
       Paint()
-        ..color = AppColors.blueGlow
+        ..color = accent
         ..strokeWidth = 4
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
@@ -500,5 +526,7 @@ class _RecapPosterPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_RecapPosterPainter oldDelegate) =>
-      oldDelegate.route != route;
+      oldDelegate.route != route ||
+      oldDelegate.accent != accent ||
+      oldDelegate.gridColor != gridColor;
 }

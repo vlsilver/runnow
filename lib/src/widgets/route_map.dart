@@ -7,8 +7,6 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
 
-const _lightTileTemplate =
-    'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 const _darkTileTemplate =
     'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const _tileAttribution = '© OpenStreetMap contributors · CARTO';
@@ -35,17 +33,17 @@ class RouteMap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final points = _mapPoints();
+    final palette = context.runNowPalette;
     if (points.isEmpty) {
       return const GlassPanel(
-        borderRadius: 20,
+        borderRadius: 0,
         child: SizedBox(
           height: 180,
           child: Center(child: Text('Không có dữ liệu route.')),
         ),
       );
     }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
+    return ClipRect(
       child: SizedBox(
         height: height,
         child: Stack(
@@ -58,9 +56,9 @@ class RouteMap extends StatelessWidget {
               bottom: 10,
               child: Row(
                 children: [
-                  const _RoutePill(label: 'START', color: AppColors.blueGlow),
+                  _RoutePill(label: 'START', color: palette.secondary),
                   const SizedBox(width: 6),
-                  const _RoutePill(label: 'FINISH', color: AppColors.red),
+                  _RoutePill(label: 'FINISH', color: palette.accent),
                   const Spacer(),
                   DecoratedBox(
                     decoration: BoxDecoration(
@@ -104,7 +102,7 @@ class _FlutterRouteMap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final palette = context.runNowPalette;
     return FlutterMap(
       options: MapOptions(
         initialCameraFit: CameraFit.bounds(
@@ -114,7 +112,7 @@ class _FlutterRouteMap extends StatelessWidget {
         ),
         minZoom: 3,
         maxZoom: 18,
-        backgroundColor: isLight ? const Color(0xffdfe9f4) : AppColors.black,
+        backgroundColor: palette.backgroundDeep,
         interactionOptions: const InteractionOptions(
           flags:
               InteractiveFlag.drag |
@@ -126,7 +124,7 @@ class _FlutterRouteMap extends StatelessWidget {
       ),
       children: [
         TileLayer(
-          urlTemplate: isLight ? _lightTileTemplate : _darkTileTemplate,
+          urlTemplate: _darkTileTemplate,
           userAgentPackageName: 'com.threeaeidiot.runnow',
           retinaMode: RetinaMode.isHighDensity(context),
         ),
@@ -134,23 +132,23 @@ class _FlutterRouteMap extends StatelessWidget {
           polylines: [
             Polyline(
               points: points,
-              color: Colors.black.withValues(alpha: isLight ? 0.16 : 0.5),
+              color: Colors.black.withValues(alpha: 0.5),
               strokeWidth: 6.5,
               borderStrokeWidth: 0,
             ),
             Polyline(
               points: points,
-              color: isLight ? AppColors.red : AppColors.blueGlow,
+              color: palette.secondary,
               strokeWidth: 3.5,
-              borderColor: isLight ? Colors.white : const Color(0xff02111e),
+              borderColor: palette.backgroundDeep,
               borderStrokeWidth: 1.5,
             ),
           ],
         ),
         MarkerLayer(
           markers: [
-            _routeMarker(points.first, AppColors.blueGlow),
-            _routeMarker(points.last, AppColors.red),
+            _routeMarker(points.first, palette.secondary),
+            _routeMarker(points.last, palette.accent),
           ],
         ),
       ],
@@ -220,7 +218,7 @@ class _MapVignette extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final palette = context.runNowPalette;
     return IgnorePointer(
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -229,9 +227,7 @@ class _MapVignette extends StatelessWidget {
             end: Alignment.bottomCenter,
             colors: [
               Colors.transparent,
-              (isLight ? Colors.white : AppColors.black).withValues(
-                alpha: isLight ? 0.06 : 0.22,
-              ),
+              palette.backgroundDeep.withValues(alpha: 0.22),
             ],
           ),
           borderRadius: BorderRadius.circular(22),

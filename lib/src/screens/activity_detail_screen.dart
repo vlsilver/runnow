@@ -51,41 +51,38 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760),
           child: detail.when(
-        data: (item) => ListView(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          children: [
-            RouteMap(
-              encodedPolyline: item.summary.polyline,
-              routePoints: item.summary.routePoints,
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (item.streams.isEmpty) ...[
+            data: (item) => ListView(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              children: [
+                RouteMap(
+                  encodedPolyline: item.summary.polyline,
+                  routePoints: item.summary.routePoints,
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (item.streams.isEmpty) ...[
+                      const SizedBox(height: 16),
+                      _CachedSummaryFallback(
+                        detail: item,
+                        isMemberView: widget.ownerUid != null,
+                      ),
+                    ],
                     const SizedBox(height: 16),
-                    _CachedSummaryFallback(
-                      detail: item,
-                      isMemberView: widget.ownerUid != null,
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  if (item.streams.isNotEmpty) ...[
-                    StreamChart(streams: item.streams),
-                    if (item.streams['heartrate']?.isNotEmpty == true) ...[
-                      const SizedBox(height: 12),
-                      HeartRateZoneChart(streams: item.streams),
+                    if (item.streams.isNotEmpty) ...[
+                      StreamChart(streams: item.streams),
+                      if (item.streams['heartrate']?.isNotEmpty == true) ...[
+                        const SizedBox(height: 12),
+                        HeartRateZoneChart(streams: item.streams),
+                      ],
                     ],
                   ],
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
-        error: (error, stack) =>
-            Center(child: Text('Không thể tải chi tiết: $error')),
-        loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, stack) =>
+                Center(child: Text('Không thể tải chi tiết: $error')),
+            loading: () => const Center(child: CircularProgressIndicator()),
           ),
         ),
       ),
@@ -116,19 +113,16 @@ class _CachedSummaryFallback extends StatelessWidget {
   Widget build(BuildContext context) {
     final summary = detail.summary;
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final palette = context.runNowPalette;
     return GlassPanel(
-      borderRadius: 22,
+      borderRadius: 0,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.insights_rounded,
-                color: AppColors.accent,
-                size: 18,
-              ),
+              Icon(Icons.insights_rounded, color: palette.accent, size: 18),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -203,40 +197,43 @@ class _FallbackMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final palette = context.runNowPalette;
     return SizedBox(
       width: 96,
-      child: DecoratedBox(
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
         decoration: BoxDecoration(
-          color: onSurface.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  color: onSurface.withValues(alpha: 0.48),
-                  fontSize: 9,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.blueGlow,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
+          border: Border(
+            left: BorderSide(
+              color: palette.secondary.withValues(alpha: 0.7),
+              width: 2,
+            ),
           ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: onSurface.withValues(alpha: 0.48),
+                fontSize: 9,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: palette.secondary,
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -258,6 +255,7 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.92,
@@ -265,10 +263,14 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
       maxChildSize: 0.96,
       builder: (context, scrollController) => GlassPanel(
         borderRadius: 18,
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF041221), Color(0xFF06263E), Color(0xFF0A2238)],
+          colors: [
+            palette.backgroundDeep,
+            palette.glassStart,
+            palette.backgroundMid,
+          ],
         ),
         child: ListView(
           controller: scrollController,
@@ -279,7 +281,9 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
                 width: 48,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white38,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.38),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -288,15 +292,19 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
             Text(
               'SHARE // ACTIVITY',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: AppColors.blueGlow,
+                color: palette.secondary,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 1.4,
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Tạo poster thành tích để chia sẻ.',
-              style: TextStyle(color: Colors.white60),
+              style: TextStyle(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
             ),
             const SizedBox(height: 16),
             ActivityRecapCard(

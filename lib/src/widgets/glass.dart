@@ -1,4 +1,4 @@
-import 'dart:ui';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:myrun/src/theme.dart';
 
@@ -9,47 +9,13 @@ class RunNowBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final palette = context.runNowPalette;
     return ColoredBox(
-      color: isLight ? AppColors.lightBackground : AppColors.background,
+      color: palette.background,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: isLight
-                    ? const [
-                        Color(0xffd7dce3),
-                        Color(0xffdde2e9),
-                        Color(0xffd2d8e0),
-                      ]
-                    : const [
-                        Color(0xff0d1a2a),
-                        Color(0xff0a1421),
-                        Color(0xff080f19),
-                      ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-          ),
-          IgnorePointer(child: CustomPaint(painter: _TechGridPainter(isLight))),
-          _Glow(
-            alignment: Alignment.topRight,
-            color: isLight ? const Color(0x00000000) : const Color(0x2238b0ff),
-            size: isLight ? 220 : 190,
-          ),
-          _Glow(
-            alignment: Alignment.centerLeft,
-            color: isLight ? const Color(0x00000000) : const Color(0x16215f9e),
-            size: isLight ? 210 : 170,
-          ),
-          _Glow(
-            alignment: Alignment.bottomRight,
-            color: isLight ? const Color(0x00000000) : const Color(0x1c3a9bff),
-            size: isLight ? 190 : 150,
-          ),
+          IgnorePointer(child: CustomPaint(painter: _TechGridPainter(palette))),
           child,
         ],
       ),
@@ -75,48 +41,27 @@ class GlassPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final palette = context.runNowPalette;
+    final effectiveRadius = borderRadius >= 900
+        ? borderRadius
+        : math.min(borderRadius, 12).toDouble();
     return Container(
       margin: margin,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(borderRadius),
-        boxShadow: [
-          BoxShadow(
-            color: isLight ? const Color(0x3308172b) : const Color(0x8a000000),
-            blurRadius: isLight ? 22 : 24,
-            offset: Offset(0, isLight ? 10 : 12),
-          ),
-          BoxShadow(
-            color: isLight ? const Color(0x0a141d2b) : const Color(0x1600d9ff),
-            blurRadius: 18,
-          ),
-        ],
-      ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(borderRadius),
+        borderRadius: BorderRadius.circular(effectiveRadius),
         clipBehavior: Clip.antiAlias,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient:
-                  gradient ??
-                  LinearGradient(
-                    colors: isLight
-                        ? const [Color(0xffe2e6ed), Color(0xffd2d8e2)]
-                        : const [Color(0xb307172b), Color(0x8a06101e)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-              borderRadius: BorderRadius.circular(borderRadius),
-              border: Border.all(
-                color: isLight
-                    ? const Color(0x2408172b)
-                    : const Color(0x2600d9ff),
-              ),
-            ),
-            child: Padding(padding: padding ?? EdgeInsets.zero, child: child),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient:
+                gradient ??
+                LinearGradient(
+                  colors: [palette.glassStart, palette.glassEnd],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+            borderRadius: BorderRadius.circular(effectiveRadius),
           ),
+          child: Padding(padding: padding ?? EdgeInsets.zero, child: child),
         ),
       ),
     );
@@ -137,32 +82,31 @@ class GlassIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
     return GlassPanel(
       borderRadius: 999,
       child: IconButton(
         tooltip: tooltip,
         onPressed: onPressed,
         icon: icon,
-        color: isLight ? AppColors.lightText : Colors.white,
+        color: Theme.of(context).colorScheme.onSurface,
       ),
     );
   }
 }
 
 class _TechGridPainter extends CustomPainter {
-  const _TechGridPainter(this.isLight);
+  const _TechGridPainter(this.palette);
 
-  final bool isLight;
+  final RunNowPalette palette;
 
   @override
   void paint(Canvas canvas, Size size) {
     const spacing = 32.0;
     final minor = Paint()
-      ..color = isLight ? const Color(0x0a203044) : const Color(0x1200d9ff)
+      ..color = palette.gridMinor
       ..strokeWidth = 0.6;
     final major = Paint()
-      ..color = isLight ? const Color(0x12203044) : const Color(0x1f00d9ff)
+      ..color = palette.gridMajor
       ..strokeWidth = 0.8;
     for (var x = 0.0; x <= size.width; x += spacing) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), minor);
@@ -177,31 +121,5 @@ class _TechGridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_TechGridPainter oldDelegate) =>
-      oldDelegate.isLight != isLight;
-}
-
-class _Glow extends StatelessWidget {
-  const _Glow({
-    required this.alignment,
-    required this.color,
-    required this.size,
-  });
-
-  final Alignment alignment;
-  final Color color;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: alignment,
-      child: ImageFiltered(
-        imageFilter: ImageFilter.blur(sigmaX: 54, sigmaY: 54),
-        child: DecoratedBox(
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          child: SizedBox.square(dimension: size),
-        ),
-      ),
-    );
-  }
+      oldDelegate.palette != palette;
 }

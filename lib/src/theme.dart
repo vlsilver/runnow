@@ -1,55 +1,291 @@
 import 'package:flutter/material.dart';
+import 'package:myrun/src/theme_tokens.dart';
 
-abstract final class AppColors {
-  /// Accent chính của app: xanh điện (FitPulse-style). Để giữ tương thích với
-  /// ~80 chỗ đang gọi [red]/[amber], các tên cũ được trỏ về bảng màu xanh đơn
-  /// sắc thay vì đỏ/vàng — toàn app dịu lại mà không phải sửa từng widget.
-  static const accent = Color(0xff2f8dff);
-  static const accentDeep = Color(0xff123f7e);
-  static const red = accent;
-  static const redDeep = accentDeep;
-  static const black = Color(0xff071019);
-  static const blue = Color(0xff2f8dff);
-  static const blueGlow = Color(0xff4f9bd6);
-  static const amber = Color(0xff86b9ec);
+export 'package:myrun/src/theme_tokens.dart';
 
-  /// Chỉ dùng cho trạng thái lỗi/cảnh báo thật sự.
-  static const alert = Color(0xffff5a6a);
+enum RunNowElement { metal, wood, water, fire, earth }
 
-  static const background = Color(0xff0b1623);
-  static const lightBackground = Color(0xffd6dbe2);
-  static const lightSurface = Color(0xffe4e8ee);
-  static const lightSurfaceAlt = Color(0xffd8dee6);
-  static const lightText = Color(0xff18222f);
-  static const lightMuted = Color(0xff5c6878);
-  static const glass = Color(0x4d0e2138);
-  static const glassStrong = Color(0x99102a45);
-  static const glassBorder = Color(0x3a5bc8ff);
+enum RunNowAppearance { light, dark }
+
+enum RunNowDarkTone { elemental, slate, dim, cloud, warm, cool }
+
+extension RunNowAppearanceLabel on RunNowAppearance {
+  String get label => this == RunNowAppearance.light ? 'Sáng' : 'Tối';
+
+  Brightness get brightness =>
+      this == RunNowAppearance.light ? Brightness.light : Brightness.dark;
 }
 
-ThemeData buildRunNowDarkTheme() {
-  const colorScheme = ColorScheme.dark(
-    primary: AppColors.red,
-    onPrimary: Colors.white,
-    secondary: AppColors.blueGlow,
-    onSecondary: Colors.white,
-    tertiary: AppColors.amber,
-    error: AppColors.alert,
-    onError: Colors.white,
-    surface: AppColors.glass,
-    onSurface: Colors.white,
+extension RunNowDarkToneLabel on RunNowDarkTone {
+  String get label => switch (this) {
+    RunNowDarkTone.elemental => 'Theo hành',
+    RunNowDarkTone.slate => 'Slate',
+    RunNowDarkTone.dim => 'Dim',
+    RunNowDarkTone.cloud => 'Mây',
+    RunNowDarkTone.warm => 'Ấm',
+    RunNowDarkTone.cool => 'Lạnh',
+  };
+
+  List<Color> materialFor(RunNowElement element) => switch (this) {
+    RunNowDarkTone.elemental => element.darkMaterial,
+    RunNowDarkTone.slate => RunNowThemeTokens.darkSlate,
+    RunNowDarkTone.dim => RunNowThemeTokens.darkDim,
+    RunNowDarkTone.cloud => RunNowThemeTokens.darkCloud,
+    RunNowDarkTone.warm => RunNowThemeTokens.darkWarm,
+    RunNowDarkTone.cool => RunNowThemeTokens.darkCool,
+  };
+}
+
+extension RunNowElementLabel on RunNowElement {
+  String get label => switch (this) {
+    RunNowElement.metal => 'Kim',
+    RunNowElement.water => 'Thủy',
+    RunNowElement.wood => 'Mộc',
+    RunNowElement.fire => 'Hỏa',
+    RunNowElement.earth => 'Thổ',
+  };
+
+  String get description => switch (this) {
+    RunNowElement.metal => 'Thổ sinh Kim · Metal',
+    RunNowElement.water => 'Kim sinh Thủy · Water',
+    RunNowElement.wood => 'Thủy sinh Mộc · Wood',
+    RunNowElement.fire => 'Mộc sinh Hỏa · Fire',
+    RunNowElement.earth => 'Hỏa sinh Thổ · Earth',
+  };
+
+  RunNowElement get supporting => switch (this) {
+    RunNowElement.metal => RunNowElement.earth,
+    RunNowElement.water => RunNowElement.metal,
+    RunNowElement.wood => RunNowElement.water,
+    RunNowElement.fire => RunNowElement.wood,
+    RunNowElement.earth => RunNowElement.fire,
+  };
+
+  List<Color> get ramp => switch (this) {
+    RunNowElement.metal => RunNowThemeTokens.metalRamp,
+    RunNowElement.water => RunNowThemeTokens.waterRamp,
+    RunNowElement.wood => RunNowThemeTokens.woodRamp,
+    RunNowElement.fire => RunNowThemeTokens.fireRamp,
+    RunNowElement.earth => RunNowThemeTokens.earthRamp,
+  };
+
+  List<Color> get lightMaterial => switch (this) {
+    RunNowElement.metal => RunNowThemeTokens.metalLight,
+    RunNowElement.water => RunNowThemeTokens.waterLight,
+    RunNowElement.wood => RunNowThemeTokens.woodLight,
+    RunNowElement.fire => RunNowThemeTokens.fireLight,
+    RunNowElement.earth => RunNowThemeTokens.earthLight,
+  };
+
+  List<Color> get darkMaterial => switch (this) {
+    RunNowElement.metal => RunNowThemeTokens.metalDark,
+    RunNowElement.water => RunNowThemeTokens.waterDark,
+    RunNowElement.wood => RunNowThemeTokens.woodDark,
+    RunNowElement.fire => RunNowThemeTokens.fireDark,
+    RunNowElement.earth => RunNowThemeTokens.earthDark,
+  };
+}
+
+@immutable
+class RunNowPalette extends ThemeExtension<RunNowPalette> {
+  const RunNowPalette({
+    required this.element,
+    required this.appearance,
+    required this.accent,
+    required this.accentDeep,
+    required this.secondary,
+    required this.tertiary,
+    required this.background,
+    required this.backgroundMid,
+    required this.backgroundDeep,
+    required this.glassStart,
+    required this.glassEnd,
+    required this.gridMinor,
+    required this.gridMajor,
+    required this.glowStrong,
+    required this.glowSoft,
+    required this.border,
+    required this.foreground,
+  });
+
+  final RunNowElement element;
+  final RunNowAppearance appearance;
+  final Color accent;
+  final Color accentDeep;
+  final Color secondary;
+  final Color tertiary;
+  final Color background;
+  final Color backgroundMid;
+  final Color backgroundDeep;
+  final Color glassStart;
+  final Color glassEnd;
+  final Color gridMinor;
+  final Color gridMajor;
+  final Color glowStrong;
+  final Color glowSoft;
+  final Color border;
+  final Color foreground;
+
+  static RunNowPalette get metal => forSelection(RunNowElement.metal);
+  static RunNowPalette get water => forSelection(RunNowElement.water);
+  static RunNowPalette get fire => forSelection(RunNowElement.fire);
+  static RunNowPalette get wood => forSelection(RunNowElement.wood);
+  static RunNowPalette get earth => forSelection(RunNowElement.earth);
+
+  static RunNowPalette forElement(RunNowElement element) =>
+      forSelection(element);
+
+  static RunNowPalette forSelection(
+    RunNowElement element, {
+    RunNowAppearance appearance = RunNowAppearance.dark,
+    RunNowDarkTone darkTone = RunNowDarkTone.elemental,
+  }) {
+    final primary = element.ramp;
+    final support = element.supporting.ramp;
+    final material = appearance == RunNowAppearance.light
+        ? element.lightMaterial
+        : darkTone.materialFor(element);
+    final background = material[0];
+    final surface = material[1];
+    final border = material[2];
+    final foreground = material[3];
+    return RunNowPalette(
+      element: element,
+      appearance: appearance,
+      accent: primary[2],
+      accentDeep: primary[3],
+      secondary: support[2],
+      tertiary: support[1],
+      background: background,
+      backgroundMid: background,
+      backgroundDeep: background,
+      glassStart: surface,
+      glassEnd: surface,
+      gridMinor: border.withValues(alpha: 0.34),
+      gridMajor: border.withValues(alpha: 0.68),
+      glowStrong: primary[2].withValues(alpha: 0.10),
+      glowSoft: support[2].withValues(alpha: 0.07),
+      border: border,
+      foreground: foreground,
+    );
+  }
+
+  @override
+  RunNowPalette copyWith({
+    RunNowElement? element,
+    RunNowAppearance? appearance,
+    Color? accent,
+    Color? accentDeep,
+    Color? secondary,
+    Color? tertiary,
+    Color? background,
+    Color? backgroundMid,
+    Color? backgroundDeep,
+    Color? glassStart,
+    Color? glassEnd,
+    Color? gridMinor,
+    Color? gridMajor,
+    Color? glowStrong,
+    Color? glowSoft,
+    Color? border,
+    Color? foreground,
+  }) {
+    return RunNowPalette(
+      element: element ?? this.element,
+      appearance: appearance ?? this.appearance,
+      accent: accent ?? this.accent,
+      accentDeep: accentDeep ?? this.accentDeep,
+      secondary: secondary ?? this.secondary,
+      tertiary: tertiary ?? this.tertiary,
+      background: background ?? this.background,
+      backgroundMid: backgroundMid ?? this.backgroundMid,
+      backgroundDeep: backgroundDeep ?? this.backgroundDeep,
+      glassStart: glassStart ?? this.glassStart,
+      glassEnd: glassEnd ?? this.glassEnd,
+      gridMinor: gridMinor ?? this.gridMinor,
+      gridMajor: gridMajor ?? this.gridMajor,
+      glowStrong: glowStrong ?? this.glowStrong,
+      glowSoft: glowSoft ?? this.glowSoft,
+      border: border ?? this.border,
+      foreground: foreground ?? this.foreground,
+    );
+  }
+
+  @override
+  RunNowPalette lerp(covariant RunNowPalette? other, double t) {
+    if (other == null) return this;
+    return RunNowPalette(
+      element: t < 0.5 ? element : other.element,
+      appearance: t < 0.5 ? appearance : other.appearance,
+      accent: Color.lerp(accent, other.accent, t)!,
+      accentDeep: Color.lerp(accentDeep, other.accentDeep, t)!,
+      secondary: Color.lerp(secondary, other.secondary, t)!,
+      tertiary: Color.lerp(tertiary, other.tertiary, t)!,
+      background: Color.lerp(background, other.background, t)!,
+      backgroundMid: Color.lerp(backgroundMid, other.backgroundMid, t)!,
+      backgroundDeep: Color.lerp(backgroundDeep, other.backgroundDeep, t)!,
+      glassStart: Color.lerp(glassStart, other.glassStart, t)!,
+      glassEnd: Color.lerp(glassEnd, other.glassEnd, t)!,
+      gridMinor: Color.lerp(gridMinor, other.gridMinor, t)!,
+      gridMajor: Color.lerp(gridMajor, other.gridMajor, t)!,
+      glowStrong: Color.lerp(glowStrong, other.glowStrong, t)!,
+      glowSoft: Color.lerp(glowSoft, other.glowSoft, t)!,
+      border: Color.lerp(border, other.border, t)!,
+      foreground: Color.lerp(foreground, other.foreground, t)!,
+    );
+  }
+}
+
+extension RunNowThemeContext on BuildContext {
+  RunNowPalette get runNowPalette =>
+      Theme.of(this).extension<RunNowPalette>() ?? RunNowPalette.water;
+}
+
+ThemeData buildRunNowTheme(
+  RunNowElement element, {
+  RunNowAppearance appearance = RunNowAppearance.dark,
+  RunNowDarkTone darkTone = RunNowDarkTone.elemental,
+}) {
+  final palette = RunNowPalette.forSelection(
+    element,
+    appearance: appearance,
+    darkTone: darkTone,
   );
+  final colorScheme = appearance == RunNowAppearance.light
+      ? ColorScheme.light(
+          primary: palette.accent,
+          onPrimary: Colors.white,
+          secondary: palette.secondary,
+          onSecondary: Colors.white,
+          tertiary: palette.tertiary,
+          error: RunNowSemanticColors.danger,
+          surface: palette.glassStart,
+          onSurface: palette.foreground,
+          outline: palette.border,
+        )
+      : ColorScheme.dark(
+          primary: palette.accent,
+          onPrimary: Colors.white,
+          secondary: palette.secondary,
+          onSecondary: Colors.white,
+          tertiary: palette.tertiary,
+          error: RunNowSemanticColors.danger,
+          surface: palette.glassStart,
+          onSurface: palette.foreground,
+          outline: palette.border,
+        );
   return _baseRunNowTheme(colorScheme).copyWith(
-    brightness: Brightness.dark,
+    extensions: [palette],
+    brightness: appearance.brightness,
     scaffoldBackgroundColor: Colors.transparent,
-    appBarTheme: const AppBarTheme(
+    appBarTheme: AppBarTheme(
       backgroundColor: Colors.transparent,
-      foregroundColor: Colors.white,
+      foregroundColor: palette.foreground,
       surfaceTintColor: Colors.transparent,
       centerTitle: false,
       elevation: 0,
       titleTextStyle: TextStyle(
-        color: Colors.white,
+        color: palette.foreground,
         fontFamily: 'Exo 2',
         fontSize: 28,
         fontWeight: FontWeight.w700,
@@ -57,130 +293,45 @@ ThemeData buildRunNowDarkTheme() {
       ),
     ),
     cardTheme: CardThemeData(
-      color: AppColors.glass,
+      color: palette.glassStart,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: AppColors.glassBorder),
+        side: BorderSide(color: palette.border),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: AppColors.red,
-        foregroundColor: Colors.white,
+        backgroundColor: palette.accent,
+        foregroundColor: colorScheme.onPrimary,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.white,
-        side: const BorderSide(color: AppColors.glassBorder),
+        foregroundColor: palette.accentDeep,
+        side: BorderSide(color: palette.accent),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: AppColors.red),
+      style: TextButton.styleFrom(foregroundColor: palette.accent),
     ),
-    listTileTheme: const ListTileThemeData(
-      iconColor: AppColors.blueGlow,
-      textColor: Colors.white,
-      contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+    listTileTheme: ListTileThemeData(
+      iconColor: palette.secondary,
+      textColor: palette.foreground,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
     ),
-    dividerColor: Colors.white12,
-    progressIndicatorTheme: const ProgressIndicatorThemeData(
-      color: AppColors.red,
-    ),
+    dividerColor: palette.border,
+    progressIndicatorTheme: ProgressIndicatorThemeData(color: palette.accent),
   );
 }
 
-ThemeData buildRunNowLightTheme() {
-  const colorScheme = ColorScheme.light(
-    primary: AppColors.red,
-    onPrimary: Colors.white,
-    secondary: Color(0xff005ed6),
-    onSecondary: Colors.white,
-    tertiary: AppColors.amber,
-    error: AppColors.alert,
-    onError: Colors.white,
-    surface: AppColors.lightSurface,
-    onSurface: AppColors.lightText,
-    outline: Color(0x330b1d33),
-  );
-  return _baseRunNowTheme(colorScheme).copyWith(
-    brightness: Brightness.light,
-    scaffoldBackgroundColor: Colors.transparent,
-    appBarTheme: const AppBarTheme(
-      backgroundColor: Colors.transparent,
-      foregroundColor: AppColors.lightText,
-      surfaceTintColor: Colors.transparent,
-      centerTitle: false,
-      elevation: 0,
-      titleTextStyle: TextStyle(
-        color: AppColors.lightText,
-        fontFamily: 'Exo 2',
-        fontSize: 28,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0.5,
-      ),
-    ),
-    cardTheme: CardThemeData(
-      color: AppColors.lightSurface,
-      surfaceTintColor: Colors.transparent,
-      elevation: 4,
-      shadowColor: const Color(0x2608172b),
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-    ),
-    filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        backgroundColor: AppColors.red,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    ),
-    outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        foregroundColor: AppColors.lightText,
-        side: const BorderSide(color: Color(0x330b1d33)),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    ),
-    textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: AppColors.red),
-    ),
-    listTileTheme: const ListTileThemeData(
-      iconColor: Color(0xff005ed6),
-      textColor: AppColors.lightText,
-      contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-    ),
-    dividerColor: const Color(0x1f071426),
-    iconTheme: const IconThemeData(color: AppColors.lightText),
-    navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: Colors.transparent,
-      indicatorColor: AppColors.red,
-      iconTheme: WidgetStateProperty.resolveWith((states) {
-        final selected = states.contains(WidgetState.selected);
-        return IconThemeData(
-          color: selected ? Colors.white : AppColors.lightText,
-        );
-      }),
-      labelTextStyle: WidgetStateProperty.resolveWith((states) {
-        final selected = states.contains(WidgetState.selected);
-        return TextStyle(
-          color: selected ? AppColors.lightText : AppColors.lightMuted,
-          fontSize: 13,
-          fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
-        );
-      }),
-    ),
-  );
-}
+ThemeData buildRunNowDarkTheme() => buildRunNowTheme(RunNowElement.water);
 
 ThemeData _baseRunNowTheme(ColorScheme colorScheme) {
   return ThemeData(
@@ -224,17 +375,17 @@ ThemeData _baseRunNowTheme(ColorScheme colorScheme) {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: AppColors.red,
-        foregroundColor: Colors.white,
+        backgroundColor: colorScheme.primary,
+        foregroundColor: colorScheme.onPrimary,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: AppColors.red),
+      style: TextButton.styleFrom(foregroundColor: colorScheme.primary),
     ),
-    progressIndicatorTheme: const ProgressIndicatorThemeData(
-      color: AppColors.red,
+    progressIndicatorTheme: ProgressIndicatorThemeData(
+      color: colorScheme.primary,
     ),
   );
 }

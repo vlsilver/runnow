@@ -20,7 +20,7 @@ class JournalScreen extends ConsumerWidget {
       return Scaffold(
         appBar: AppBar(title: const Text('Nhật ký')),
         body: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(vertical: 16),
           children: [
             _JournalConnectStravaCard(
               loading: strava.loading,
@@ -40,7 +40,7 @@ class JournalScreen extends ConsumerWidget {
         },
         child: activities.when(
           data: (items) => ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(vertical: 16),
             physics: const AlwaysScrollableScrollPhysics(),
             children: items.isEmpty
                 ? const [
@@ -83,25 +83,27 @@ class _JournalConnectStravaCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     return GlassPanel(
+      borderRadius: 0,
       padding: const EdgeInsets.all(18),
-      gradient: const LinearGradient(
-        colors: [Color(0xf207172b), Color(0xd4062442), Color(0xb3151637)],
+      gradient: LinearGradient(
+        colors: [palette.glassStart, palette.glassEnd],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.directions_run, color: AppColors.blueGlow),
-              SizedBox(width: 8),
+              Icon(Icons.directions_run, color: palette.secondary),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'NHẬT KÝ STRAVA',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 13,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 1.1,
@@ -111,13 +113,20 @@ class _JournalConnectStravaCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             'Kết nối Strava để tải nhật ký chạy và đi bộ vào RunNow.',
-            style: TextStyle(color: Colors.white70),
+            style: TextStyle(
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.7),
+            ),
           ),
           if (errorMessage != null) ...[
             const SizedBox(height: 10),
-            Text(errorMessage!, style: const TextStyle(color: AppColors.red)),
+            Text(
+              errorMessage!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           ],
           const SizedBox(height: 14),
           SizedBox(

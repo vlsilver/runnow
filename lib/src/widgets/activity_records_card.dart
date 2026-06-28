@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
-import 'package:myrun/src/widgets/glass.dart';
 
 class ActivityRecordEntry {
   const ActivityRecordEntry({
@@ -42,53 +41,54 @@ class ActivityRecordsCard extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    return GlassPanel(
-      borderRadius: 28,
-      padding: const EdgeInsets.all(18),
-      gradient: LinearGradient(
-        colors: isLight
-            ? const [Color(0xffe2e6ed), Color(0xffd4dbe4), Color(0xffd8dee6)]
-            : const [Color(0xf207172b), Color(0xe005243f), Color(0xb3121027)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
+    final palette = context.runNowPalette;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [palette.glassStart, palette.glassEnd],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.workspace_premium, color: AppColors.amber),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: onSurface.withValues(alpha: 0.72),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.6,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.workspace_premium, color: palette.accent),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      color: onSurface.withValues(alpha: 0.72),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.6,
+                    ),
                   ),
                 ),
-              ),
-              Text(
-                '${entries.length} logs',
-                style: const TextStyle(
-                  color: AppColors.blueGlow,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
+                Text(
+                  '${entries.length} logs',
+                  style: TextStyle(
+                    color: palette.accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (records.hasAnyRecord) ...[
-            _StandardDistanceGrid(records: records, showOwner: showOwner),
-            const SizedBox(height: 12),
-            _HighlightGrid(records: records, showOwner: showOwner),
-          ] else
-            _EmptyRecordsState(message: emptyMessage),
-        ],
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (records.hasAnyRecord) ...[
+              _StandardDistanceGrid(records: records, showOwner: showOwner),
+              Divider(height: 28, color: onSurface.withValues(alpha: 0.1)),
+              _HighlightGrid(records: records, showOwner: showOwner),
+            ] else
+              _EmptyRecordsState(message: emptyMessage),
+          ],
+        ),
       ),
     );
   }
@@ -102,6 +102,7 @@ class _EmptyRecordsState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final palette = context.runNowPalette;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
@@ -111,7 +112,7 @@ class _EmptyRecordsState extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.flag_outlined, color: AppColors.amber, size: 20),
+          Icon(Icons.flag_outlined, color: palette.accent, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -137,26 +138,31 @@ class _StandardDistanceGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     final cards = [
       _RecordCardData.distance(
         label: '5K',
         targetMeters: 5000,
         record: records.k5,
+        color: palette.accent,
       ),
       _RecordCardData.distance(
         label: '10K',
         targetMeters: 10000,
         record: records.k10,
+        color: palette.accent,
       ),
       _RecordCardData.distance(
         label: '21K',
         targetMeters: 21097.5,
         record: records.half,
+        color: palette.accent,
       ),
       _RecordCardData.distance(
         label: '42K',
         targetMeters: 42195,
         record: records.full,
+        color: palette.accent,
       ),
     ];
     return GridView.builder(
@@ -165,12 +171,14 @@ class _StandardDistanceGrid extends StatelessWidget {
       itemCount: cards.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        mainAxisExtent: 98,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
+        mainAxisExtent: 106,
       ),
-      itemBuilder: (context, index) =>
-          _RecordTile(data: cards[index], showOwner: showOwner),
+      itemBuilder: (context, index) => _RecordTile(
+        data: cards[index],
+        showOwner: showOwner,
+        showRightDivider: index.isEven,
+        showBottomDivider: index < 2,
+      ),
     );
   }
 }
@@ -183,6 +191,7 @@ class _HighlightGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     final cards = [
       _RecordCardData(
         label: 'LONG RUN',
@@ -193,7 +202,7 @@ class _HighlightGrid extends StatelessWidget {
             ? 'Chưa có'
             : formatDuration(records.longest!.activity.movingTimeSeconds),
         record: records.longest,
-        color: AppColors.blue,
+        color: palette.accent,
         icon: Icons.straighten,
       ),
       _RecordCardData(
@@ -203,7 +212,7 @@ class _HighlightGrid extends StatelessWidget {
             ? 'Chưa có'
             : formatDistance(records.fastestPace!.activity.distanceMeters),
         record: records.fastestPace,
-        color: const Color(0xff19f58a),
+        color: palette.accent,
         icon: Icons.speed,
       ),
       _RecordCardData(
@@ -215,7 +224,7 @@ class _HighlightGrid extends StatelessWidget {
             ? 'Chưa có'
             : formatDistance(records.lowestHeartRate!.activity.distanceMeters),
         record: records.lowestHeartRate,
-        color: AppColors.red,
+        color: palette.accent,
         icon: Icons.favorite,
       ),
       _RecordCardData(
@@ -227,7 +236,7 @@ class _HighlightGrid extends StatelessWidget {
             ? 'Chưa có'
             : formatDistance(records.longestTime!.activity.distanceMeters),
         record: records.longestTime,
-        color: AppColors.amber,
+        color: palette.accent,
         icon: Icons.timer,
       ),
     ];
@@ -237,21 +246,30 @@ class _HighlightGrid extends StatelessWidget {
       itemCount: cards.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        mainAxisExtent: 104,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
+        mainAxisExtent: 112,
       ),
-      itemBuilder: (context, index) =>
-          _RecordTile(data: cards[index], showOwner: showOwner),
+      itemBuilder: (context, index) => _RecordTile(
+        data: cards[index],
+        showOwner: showOwner,
+        showRightDivider: index.isEven,
+        showBottomDivider: index < 2,
+      ),
     );
   }
 }
 
 class _RecordTile extends StatelessWidget {
-  const _RecordTile({required this.data, required this.showOwner});
+  const _RecordTile({
+    required this.data,
+    required this.showOwner,
+    required this.showRightDivider,
+    required this.showBottomDivider,
+  });
 
   final _RecordCardData data;
   final bool showOwner;
+  final bool showRightDivider;
+  final bool showBottomDivider;
 
   @override
   Widget build(BuildContext context) {
@@ -262,21 +280,19 @@ class _RecordTile extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: record == null ? null : () => _openRecord(context, record),
-        borderRadius: BorderRadius.circular(20),
         child: Ink(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: LinearGradient(
-              colors: [
-                data.color.withValues(alpha: 0.18),
-                Colors.black.withValues(alpha: 0.08),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+            border: Border(
+              right: showRightDivider
+                  ? BorderSide(color: onSurface.withValues(alpha: 0.1))
+                  : BorderSide.none,
+              bottom: showBottomDivider
+                  ? BorderSide(color: onSurface.withValues(alpha: 0.1))
+                  : BorderSide.none,
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(13),
+            padding: const EdgeInsets.fromLTRB(14, 13, 12, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -354,17 +370,18 @@ class _OwnerLine extends StatelessWidget {
     final name = record.ownerName ?? 'RunNow member';
     final avatarUrl = record.ownerAvatarUrl;
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final palette = context.runNowPalette;
     return Row(
       children: [
         CircleAvatar(
           radius: 8,
-          backgroundColor: AppColors.blueGlow.withValues(alpha: 0.18),
+          backgroundColor: palette.secondary.withValues(alpha: 0.18),
           backgroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl),
           child: avatarUrl == null
               ? Text(
                   name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(),
-                  style: const TextStyle(
-                    color: AppColors.blueGlow,
+                  style: TextStyle(
+                    color: palette.secondary,
                     fontSize: 8,
                     fontWeight: FontWeight.w900,
                   ),
@@ -403,6 +420,7 @@ class _RecordCardData {
     required String label,
     required double targetMeters,
     required ActivityRecordEntry? record,
+    required Color color,
   }) {
     final seconds = _estimatedTargetSeconds(record?.activity, targetMeters);
     return _RecordCardData(
@@ -412,7 +430,7 @@ class _RecordCardData {
           ? 'Chưa có'
           : formatPace(record.activity.paceSecondsPerKm),
       record: record,
-      color: AppColors.blueGlow,
+      color: color,
       icon: Icons.flag,
     );
   }
