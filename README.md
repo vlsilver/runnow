@@ -14,11 +14,13 @@ qua Club và đang thử nghiệm khả năng tự ghi lại buổi chạy bằn
 
 RunNow tập trung vào ba câu hỏi của một runner:
 
-1. **Tôi đang tiến bộ thế nào?** Tổng hợp tiến độ, consistency, personal power,
+1. **Tôi đã hứa sẽ chạy gì?** Kèo Chạy biến mục tiêu thành cam kết có deadline,
+   tiến độ, kết quả và tái kèo.
+2. **Tôi đang tiến bộ thế nào?** Tổng hợp tiến độ, consistency, personal power,
    kỷ luật, kỷ lục và khối lượng chạy từ dữ liệu thật.
-2. **Nhóm của tôi đang hoạt động ra sao?** Club có bảng xếp hạng, tổng kết,
+3. **Nhóm của tôi đang hoạt động ra sao?** Club có bảng xếp hạng, tổng kết,
    nhật ký chung, hồ sơ thành viên và live tracking.
-3. **Buổi chạy này diễn ra thế nào?** Activity detail có route và các biểu đồ
+4. **Buổi chạy này diễn ra thế nào?** Activity detail có route và các biểu đồ
    pace, nhịp tim, cao độ, cadence, năng lượng khi nguồn dữ liệu cung cấp.
 
 ### Đối tượng sử dụng
@@ -29,6 +31,19 @@ RunNow tập trung vào ba câu hỏi của một runner:
   khi đưa dữ liệu RunNow vào thành tích chính thức.
 
 ## Tính Năng Hiện Có
+
+### Kèo Chạy
+
+- Kèo là tab chính: 10km tuần, 3 buổi tuần, 2km hôm nay hoặc mục tiêu tùy chỉnh.
+- Tiến độ chỉ tính Strava Run hợp lệ; loại manual, RunNow trial và activity ngoài kỳ.
+- Mỗi user có tối đa một kèo active do mình tạo; user vẫn có thể tham gia nhiều
+  kèo Club khác.
+- Tab Kèo là feed chung của mọi kèo Club đang active; kèo của user dùng màu nhấn
+  riêng và kèo private chỉ xuất hiện với chính chủ.
+- Card hiển thị số người tham gia và tổng phần trăm hoàn thành; detail hiển thị
+  tiến trình riêng của từng thành viên.
+- Có sync-grace sau deadline, forced Strava sync trước finalize, recap và tái kèo.
+- Tổng quan cá nhân chuyển vào `Cài đặt > Hồ sơ & thành tích`.
 
 ### Tài khoản và dữ liệu
 
@@ -214,6 +229,8 @@ Data ownership chính:
 users/{uid}
 users/{uid}/activities/{activityId}
 users/{uid}/trainingGoalHistory/{historyId}
+users/{uid}/runContractState/current
+runContracts/{contractId}
 publicProfiles/{uid}
 leaderboardEntries/{uid}
 liveSessions/{sessionId}
@@ -247,7 +264,7 @@ deploy rules:
 
 ```sh
 firebase login
-firebase deploy --only firestore:rules
+firebase deploy --only firestore:rules,firestore:indexes
 ```
 
 ### Chạy và kiểm tra
@@ -256,6 +273,7 @@ firebase deploy --only firestore:rules
 flutter pub get
 flutter analyze
 flutter test
+npx firebase-tools emulators:exec --only firestore "npm --prefix firebase-tests test" --project demo-runnow
 flutter run
 ```
 
@@ -269,7 +287,7 @@ Build và deploy web:
 
 ```sh
 flutter build web --release
-firebase deploy --only firestore:rules,hosting
+firebase deploy --only firestore:rules,firestore:indexes,hosting
 ```
 
 Kiểm tra iOS trước acceptance test:
@@ -281,6 +299,8 @@ scripts/check_ios_readiness.sh
 ## Tài Liệu
 
 - [Tracking MVP và thuật toán GPS](docs/tracking_running_mvp.md)
+- [Kèo Chạy v4 Product Plan](features/runnow_keo_chay_v4_final_implementation_plan.md)
+- [Kèo Chạy v4 Technical Plan](features/runnow_keo_chay_v4_technical_plan.md)
 - [Strava Authentication](https://developers.strava.com/docs/authentication/)
 - [Strava Beacon](https://support.strava.com/hc/en-us/articles/224357527-Strava-Beacon)
 - [Strava Challenges](https://support.strava.com/en-us/articles/15401916-strava-challenges)

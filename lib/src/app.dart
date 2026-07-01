@@ -9,22 +9,27 @@ import 'package:myrun/src/screens/dashboard_screen.dart';
 import 'package:myrun/src/screens/journal_screen.dart';
 import 'package:myrun/src/screens/member_profile_screen.dart';
 import 'package:myrun/src/screens/onboarding_screen.dart';
+import 'package:myrun/src/screens/run_contract_create_screen.dart';
+import 'package:myrun/src/screens/run_contract_detail_screen.dart';
+import 'package:myrun/src/screens/run_contract_home_screen.dart';
 import 'package:myrun/src/screens/settings_screen.dart';
 import 'package:myrun/src/screens/tracking_screen.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/run_contracts/run_contract_models.dart';
 
 final _router = GoRouter(
   initialLocation: '/',
   routes: [
     StatefulShellRoute.indexedStack(
-      builder: (context, state, shell) => _Scaffold(shell: shell),
+      builder: (context, state, shell) =>
+          _Scaffold(shell: shell, location: state.uri.path),
       branches: [
         StatefulShellBranch(
           routes: [
             GoRoute(
               path: '/',
-              builder: (context, state) => const DashboardScreen(),
+              builder: (context, state) => const RunContractHomeScreen(),
             ),
           ],
         ),
@@ -57,6 +62,12 @@ final _router = GoRouter(
             GoRoute(
               path: '/settings',
               builder: (context, state) => const SettingsScreen(),
+              routes: [
+                GoRoute(
+                  path: 'profile',
+                  builder: (context, state) => const DashboardScreen(),
+                ),
+              ],
             ),
           ],
         ),
@@ -86,7 +97,20 @@ final _router = GoRouter(
     ),
     GoRoute(
       path: '/oauth',
-      builder: (context, state) => const DashboardScreen(),
+      builder: (context, state) => const RunContractHomeScreen(),
+    ),
+    GoRoute(
+      path: '/contracts/new',
+      builder: (context, state) => RunContractCreateScreen(
+        initialDraft: state.extra is RunContractDraft
+            ? state.extra! as RunContractDraft
+            : null,
+      ),
+    ),
+    GoRoute(
+      path: '/contracts/:id',
+      builder: (context, state) =>
+          RunContractDetailScreen(contractId: state.pathParameters['id']!),
     ),
   ],
 );
@@ -134,7 +158,9 @@ class _AuthGate extends ConsumerWidget {
     return ref
         .watch(firebaseUserProvider)
         .when(
-          data: (user) => user == null ? const OnboardingScreen() : child,
+          data: (user) => user == null
+              ? const OnboardingScreen()
+              : _AuthenticatedSession(child: child),
           error: (error, stack) =>
               Center(child: Text('Không thể kiểm tra đăng nhập: $error')),
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -142,9 +168,47 @@ class _AuthGate extends ConsumerWidget {
   }
 }
 
+class _AuthenticatedSession extends ConsumerStatefulWidget {
+  const _AuthenticatedSession({required this.child});
+  final Widget child;
+
+  @override
+  ConsumerState<_AuthenticatedSession> createState() =>
+      _AuthenticatedSessionState();
+}
+
+class _AuthenticatedSessionState extends ConsumerState<_AuthenticatedSession> {
+  bool _started = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final connected = ref.watch(stravaConnectionProvider);
+    if (connected && !_started) {
+      _started = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        final result = await ref.read(syncControllerProvider).sync();
+        if (!mounted || !result.succeeded) return;
+        final uid = ref.read(firebaseUserProvider).value?.uid;
+        final controller = ref.read(runContractControllerProvider);
+        final mine = ref.read(myActiveContractsProvider).value ?? const [];
+        for (final contract in mine) {
+          if (contract.creatorUid == uid) {
+            await controller.recalculate(contract);
+          } else {
+            await controller.recalculateParticipant(contract);
+          }
+        }
+      });
+    }
+    return widget.child;
+  }
+}
+
 class _Scaffold extends StatelessWidget {
-  const _Scaffold({required this.shell});
+  const _Scaffold({required this.shell, required this.location});
   final StatefulNavigationShell shell;
+  final String location;
 
   @override
   Widget build(BuildContext context) {
@@ -163,7 +227,11 @@ class _Scaffold extends StatelessWidget {
             children: [
               _DesktopNavRail(shell: shell),
               Expanded(
-                child: _DesktopContent(shell: shell, maxWidth: contentMaxWidth),
+                child: _DesktopContent(
+                  shell: shell,
+                  maxWidth: contentMaxWidth,
+                  location: location,
+                ),
               ),
             ],
           ),
@@ -185,16 +253,16 @@ class _Scaffold extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              DashboardNavFilter(branchActive: shell.currentIndex == 0),
+              DashboardNavFilter(branchActive: location == '/settings/profile'),
               ClubNavFilter(branchActive: shell.currentIndex == 2),
               Row(
                 children: [
                   Expanded(
                     child: _NavItem(
                       selected: shell.currentIndex == 0,
-                      icon: Icons.insights_outlined,
-                      selectedIcon: Icons.insights,
-                      label: 'Tổng quan',
+                      icon: Icons.flag_outlined,
+                      selectedIcon: Icons.flag_rounded,
+                      label: 'Kèo',
                       onTap: () => shell.goBranch(0),
                     ),
                   ),
@@ -243,10 +311,15 @@ class _Scaffold extends StatelessWidget {
 }
 
 class _DesktopContent extends StatelessWidget {
-  const _DesktopContent({required this.shell, required this.maxWidth});
+  const _DesktopContent({
+    required this.shell,
+    required this.maxWidth,
+    required this.location,
+  });
 
   final StatefulNavigationShell shell;
   final double maxWidth;
+  final String location;
 
   @override
   Widget build(BuildContext context) {
@@ -257,7 +330,7 @@ class _DesktopContent extends StatelessWidget {
         child: Column(
           children: [
             const SizedBox(height: 14),
-            _DesktopCommandBar(shell: shell),
+            _DesktopCommandBar(shell: shell, location: location),
             const SizedBox(height: 8),
             Expanded(child: shell),
           ],
@@ -268,30 +341,37 @@ class _DesktopContent extends StatelessWidget {
 }
 
 class _DesktopCommandBar extends ConsumerWidget {
-  const _DesktopCommandBar({required this.shell});
+  const _DesktopCommandBar({required this.shell, required this.location});
 
   final StatefulNavigationShell shell;
+  final String location;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final filter = switch (shell.currentIndex) {
-      0 => const DashboardNavFilter(branchActive: true, showFallback: true),
+      0 => null,
       2 => const ClubNavFilter(branchActive: true),
+      4 when location == '/settings/profile' => const DashboardNavFilter(
+        branchActive: true,
+        showFallback: true,
+      ),
       _ => null,
     };
     final title = switch (shell.currentIndex) {
-      0 => 'Tổng quan',
+      0 => 'Kèo',
       1 => 'Nhật ký',
       2 => 'Câu lạc bộ',
       3 => 'Chạy thử',
+      4 when location == '/settings/profile' => 'Hồ sơ',
       4 => 'Cài đặt',
       _ => 'RunNow',
     };
     final subtitle = switch (shell.currentIndex) {
-      0 => 'Training cockpit',
+      0 => 'Run contract',
       1 => 'Activity log',
       2 => 'Club command center',
       3 => 'Tracking lab',
+      4 when location == '/settings/profile' => 'Personal performance',
       4 => 'Preferences',
       _ => 'Your training space',
     };
@@ -326,9 +406,9 @@ class _DesktopCommandBar extends ConsumerWidget {
                   ),
                 ],
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.directions_run_rounded,
-                color: Colors.white,
+                color: palette.glassStart,
               ),
             ),
             const SizedBox(width: 14),
@@ -426,9 +506,9 @@ class _DesktopNavRail extends StatelessWidget {
     final branches = <int>[0, 1, if (!kIsWeb) 3, 2, 4];
     final destinations = <NavigationRailDestination>[
       const NavigationRailDestination(
-        icon: Icon(Icons.insights_outlined),
-        selectedIcon: Icon(Icons.insights),
-        label: Text('Tổng quan'),
+        icon: Icon(Icons.flag_outlined),
+        selectedIcon: Icon(Icons.flag_rounded),
+        label: Text('Kèo'),
       ),
       const NavigationRailDestination(
         icon: Icon(Icons.directions_run_outlined),
@@ -627,12 +707,14 @@ class _RunNavItem extends StatelessWidget {
                 ),
               ],
               border: Border.all(
-                color: Colors.white.withValues(alpha: selected ? 0.65 : 0.28),
+                color: palette.glassStart.withValues(
+                  alpha: selected ? 0.65 : 0.28,
+                ),
               ),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.directions_run_rounded,
-              color: Colors.white,
+              color: palette.glassStart,
               size: 30,
             ),
           ),

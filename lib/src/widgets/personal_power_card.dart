@@ -88,7 +88,9 @@ class _PersonalPowerRangeControl extends StatelessWidget {
               return Colors.transparent;
             }),
             foregroundColor: WidgetStateProperty.resolveWith((states) {
-              if (states.contains(WidgetState.selected)) return Colors.white;
+              if (states.contains(WidgetState.selected)) {
+                return palette.glassStart;
+              }
               return Theme.of(context).colorScheme.onSurface;
             }),
             side: WidgetStateProperty.all(BorderSide.none),

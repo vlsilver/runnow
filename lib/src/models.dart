@@ -408,6 +408,7 @@ class ActivitySummary {
     required this.elapsedTimeSeconds,
     this.source = ActivitySource.strava,
     this.sourceActivityId,
+    this.manual,
     this.recordingDevice,
     this.averageHeartRate,
     this.averageCadence,
@@ -430,6 +431,7 @@ class ActivitySummary {
       elapsedTimeSeconds: (map['elapsedTimeSeconds'] as num?)?.toInt() ?? 0,
       source: ActivitySource.fromValue(map['source'] as String?),
       sourceActivityId: map['sourceActivityId'] as String?,
+      manual: map['manual'] as bool?,
       recordingDevice: map['recordingDevice'] as String?,
       averageHeartRate: (map['averageHeartRate'] as num?)?.toDouble(),
       averageCadence: (map['averageCadence'] as num?)?.toDouble(),
@@ -453,6 +455,7 @@ class ActivitySummary {
   final int elapsedTimeSeconds;
   final ActivitySource source;
   final String? sourceActivityId;
+  final bool? manual;
   final String? recordingDevice;
   final double? averageHeartRate;
   final double? averageCadence;

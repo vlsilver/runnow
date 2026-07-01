@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
@@ -27,7 +28,7 @@ class SettingsScreen extends ConsumerWidget {
               profile: user,
               onEdit: user == null
                   ? null
-                  : () => _editClubProfile(context, ref, user),
+                  : () => context.push('/settings/profile'),
             ),
             loading: () => const _AccountHeader.loading(),
             error: (error, stack) => _SettingsSection(
@@ -110,8 +111,7 @@ class SettingsScreen extends ConsumerWidget {
                 title: 'Ngũ hành',
                 subtitle:
                     '${themeController.element.description} · '
-                    '${themeController.appearance.label}'
-                    '${themeController.appearance == RunNowAppearance.dark ? ' · ${themeController.darkTone.label}' : ''}',
+                    '${themeController.appearance.label}',
                 value: themeController.element.label,
                 onTap: () => _editElement(context, ref, themeController),
               ),
@@ -144,7 +144,6 @@ Future<void> _editElement(
 ) async {
   var selectedElement = controller.element;
   var selectedAppearance = controller.appearance;
-  var selectedDarkTone = controller.darkTone;
   final result = await showModalBottomSheet<_ThemeSelection>(
     context: context,
     useSafeArea: true,
@@ -205,21 +204,12 @@ Future<void> _editElement(
                       ),
                     ),
                   ),
-                  if (selectedAppearance == RunNowAppearance.dark) ...[
-                    const SizedBox(height: 14),
-                    _DarkTonePicker(
-                      element: selectedElement,
-                      value: selectedDarkTone,
-                      onChanged: (value) =>
-                          setModalState(() => selectedDarkTone = value),
-                    ),
-                  ],
                   const SizedBox(height: 10),
                   for (final element in RunNowElement.values) ...[
                     _ThemeChoice(
                       element: element,
                       appearance: selectedAppearance,
-                      darkTone: selectedDarkTone,
+                      darkTone: RunNowDarkTone.elemental,
                       icon: _elementIcon(element),
                       selected: selectedElement == element,
                       onTap: () =>
@@ -237,7 +227,7 @@ Future<void> _editElement(
                           _ThemeSelection(
                             element: selectedElement,
                             appearance: selectedAppearance,
-                            darkTone: selectedDarkTone,
+                            darkTone: RunNowDarkTone.elemental,
                           ),
                         ),
                         child: const Text('Áp dụng'),
@@ -501,7 +491,7 @@ class _AccountHeader extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: 'Sửa hồ sơ Club',
+            tooltip: 'Hồ sơ & thành tích',
             onPressed: onEdit,
             icon: const Icon(Icons.chevron_right),
           ),
@@ -709,84 +699,6 @@ class _ThemeSelection {
   final RunNowElement element;
   final RunNowAppearance appearance;
   final RunNowDarkTone darkTone;
-}
-
-class _DarkTonePicker extends StatelessWidget {
-  const _DarkTonePicker({
-    required this.element,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final RunNowElement element;
-  final RunNowDarkTone value;
-  final ValueChanged<RunNowDarkTone> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'TÔNG NỀN TỐI',
-            style: TextStyle(
-              color: onSurface.withValues(alpha: 0.58),
-              fontSize: 10,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.2,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              for (final tone in RunNowDarkTone.values)
-                Expanded(
-                  child: InkWell(
-                    onTap: () => onChanged(tone),
-                    borderRadius: BorderRadius.circular(9),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      child: Column(
-                        children: [
-                          Container(
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: tone.materialFor(element)[0],
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: tone == value
-                                    ? Theme.of(context).colorScheme.primary
-                                    : Colors.transparent,
-                                width: 2,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            tone.label,
-                            maxLines: 1,
-                            style: TextStyle(
-                              color: onSurface.withValues(
-                                alpha: tone == value ? 0.9 : 0.5,
-                              ),
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 IconData _elementIcon(RunNowElement element) => switch (element) {

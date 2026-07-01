@@ -2,12 +2,17 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:myrun/src/auth.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/repository.dart';
+import 'package:myrun/src/run_contracts/run_contract_controller.dart';
+import 'package:myrun/src/run_contracts/run_contract_analytics.dart';
+import 'package:myrun/src/run_contracts/run_contract_models.dart';
+import 'package:myrun/src/run_contracts/run_contract_repository.dart';
 import 'package:myrun/src/strava_client.dart';
 import 'package:myrun/src/sync.dart';
 import 'package:myrun/src/tracking_draft_store.dart';
@@ -49,6 +54,17 @@ final liveTrackingRepositoryProvider = Provider<LiveTrackingRepository>((ref) {
   );
 });
 
+final runContractRepositoryProvider = Provider<RunContractRepository>((ref) {
+  return FirestoreRunContractRepository(
+    FirebaseAuth.instance,
+    FirebaseFirestore.instance,
+  );
+});
+
+final runContractAnalyticsProvider = Provider<RunContractAnalytics>((ref) {
+  return RunContractAnalytics(FirebaseAnalytics.instance);
+});
+
 enum ClubRecapRange { currentWeek, currentMonth }
 
 enum ClubRankingMetric {
@@ -76,7 +92,7 @@ final clubRankingRangeProvider = StateProvider<ClubRankingRange>(
   (ref) => ClubRankingRange.currentWeek,
 );
 
-/// Index tab con của club đang được chọn (0 = Xếp hạng, 1 = Tổng kết...),
+/// Index tab con của club (0 = Xếp hạng, 1 = Tổng kết...),
 /// hoặc -1 khi không ở màn hình club. Nav bar dựa vào đây để hiện đúng filter.
 final clubActiveSubTabProvider = StateProvider<int>((ref) => -1);
 
@@ -142,13 +158,19 @@ final themeControllerProvider = ChangeNotifierProvider<ThemeController>(
   (ref) => ThemeController(),
 );
 
-final activitiesProvider = StreamProvider<List<ActivitySummary>>(
-  (ref) => ref.watch(activityRepositoryProvider).watchActivities(),
-);
+final activitiesProvider = StreamProvider<List<ActivitySummary>>((ref) {
+  final uid = ref.watch(firebaseUserProvider).value?.uid;
+  if (uid == null) return Stream.value(const []);
+  return ref.watch(activityRepositoryProvider).watchActivities();
+});
 
-final trackedTrialActivitiesProvider = StreamProvider<List<ActivitySummary>>(
-  (ref) => ref.watch(activityRepositoryProvider).watchTrackedTrialActivities(),
-);
+final trackedTrialActivitiesProvider = StreamProvider<List<ActivitySummary>>((
+  ref,
+) {
+  final uid = ref.watch(firebaseUserProvider).value?.uid;
+  if (uid == null) return Stream.value(const []);
+  return ref.watch(activityRepositoryProvider).watchTrackedTrialActivities();
+});
 
 final activityDetailProvider = FutureProvider.family<ActivityDetail, String>((
   ref,
@@ -160,6 +182,37 @@ final activityDetailProvider = FutureProvider.family<ActivityDetail, String>((
 final syncControllerProvider = ChangeNotifierProvider<SyncController>(
   (ref) => SyncController(ref.watch(activityRepositoryProvider)),
 );
+
+final runContractControllerProvider = Provider<RunContractController>((ref) {
+  return RunContractController(
+    ref.watch(runContractRepositoryProvider),
+    ref.watch(activityRepositoryProvider),
+    ref.watch(syncControllerProvider),
+  );
+});
+
+/// Các kèo đang chạy mà user tham gia (tạo hoặc join), tối đa
+/// [maxActiveRunContracts].
+final myActiveContractsProvider = StreamProvider<List<RunContract>>((ref) {
+  final uid = ref.watch(firebaseUserProvider).value?.uid;
+  if (uid == null) return Stream.value(const []);
+  return ref.watch(runContractRepositoryProvider).watchMyActiveContracts();
+});
+
+final clubRunContractsProvider = StreamProvider<List<RunContract>>((ref) {
+  final uid = ref.watch(firebaseUserProvider).value?.uid;
+  if (uid == null) return Stream.value(const []);
+  return ref.watch(runContractRepositoryProvider).watchClubContracts();
+});
+
+final runContractProvider = StreamProvider.family<RunContract?, String>((
+  ref,
+  contractId,
+) {
+  final uid = ref.watch(firebaseUserProvider).value?.uid;
+  if (uid == null) return Stream.value(null);
+  return ref.watch(runContractRepositoryProvider).watchContract(contractId);
+});
 
 final feedPostsProvider = StreamProvider<List<FeedPost>>(
   (ref) => ref.watch(feedRepositoryProvider).watchPosts(),

@@ -35,6 +35,102 @@ service cloud.firestore {
       }
     }
 
+    match /runContracts/{contractId} {
+      allow read: if signedIn()
+        && (
+          resource.data.visibility == 'club'
+          || resource.data.creatorUid == request.auth.uid
+          || (
+            'participantUids' in resource.data
+            && request.auth.uid in resource.data.participantUids
+          )
+        );
+
+      allow create: if signedIn()
+        && request.resource.data.creatorUid == request.auth.uid
+        && request.resource.data.id == contractId
+        && request.resource.data.type == 'group'
+        && request.resource.data.status == 'active'
+        && request.resource.data.sourcePolicy == 'strava_only'
+        && request.resource.data.targetValue is number
+        && request.resource.data.targetValue > 0
+        && request.resource.data.progressValue is number
+        && request.resource.data.progressValue >= 0
+        && request.resource.data.participants is map
+        && request.resource.data.participants.keys().hasOnly([request.auth.uid])
+        && request.resource.data.participants[request.auth.uid].uid == request.auth.uid
+        && request.resource.data.participants[request.auth.uid].progressValue == request.resource.data.progressValue
+        && request.resource.data.participants[request.auth.uid].joinedAt == request.time
+        && request.resource.data.participants[request.auth.uid].updatedAt == request.time
+        && request.resource.data.participantUids == [request.auth.uid]
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if signedIn() && (
+        (
+          resource.data.creatorUid == request.auth.uid
+          && request.resource.data.creatorUid == resource.data.creatorUid
+          && request.resource.data.id == resource.data.id
+          && request.resource.data.type == resource.data.type
+          && request.resource.data.templateId == resource.data.templateId
+          && request.resource.data.metric == resource.data.metric
+          && request.resource.data.targetValue == resource.data.targetValue
+          && request.resource.data.periodType == resource.data.periodType
+          && request.resource.data.startAt == resource.data.startAt
+          && request.resource.data.endAtExclusive == resource.data.endAtExclusive
+          && request.resource.data.finalizeAt == resource.data.finalizeAt
+          && request.resource.data.visibility == resource.data.visibility
+          && request.resource.data.sourcePolicy == resource.data.sourcePolicy
+          && request.resource.data.progressValue is number
+          && request.resource.data.progressValue >= 0
+          && request.resource.data.updatedAt == request.time
+          && resource.data.status == 'active'
+          && request.resource.data.status in ['active', 'completed', 'failed']
+        )
+        || (
+          resource.data.visibility == 'club'
+          && resource.data.status == 'active'
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participants', 'participantUids', 'updatedAt'])
+          && request.resource.data.updatedAt == request.time
+          && (
+            !('participantUids' in request.resource.data)
+            || request.auth.uid in request.resource.data.participantUids
+          )
+          && request.resource.data.participants is map
+          && request.resource.data.participants[request.auth.uid].uid == request.auth.uid
+          && request.resource.data.participants[request.auth.uid].progressValue is number
+          && request.resource.data.participants[request.auth.uid].progressValue >= 0
+          && request.resource.data.participants[request.auth.uid].updatedAt == request.time
+          && (
+            (
+              resource.data.participants is map
+              && request.resource.data.participants.diff(resource.data.participants).affectedKeys().hasOnly([request.auth.uid])
+              && (
+                (
+                  !(request.auth.uid in resource.data.participants)
+                  && request.resource.data.participants[request.auth.uid].joinedAt == request.time
+                )
+                || (
+                  request.auth.uid in resource.data.participants
+                  && request.resource.data.participants[request.auth.uid].joinedAt == resource.data.participants[request.auth.uid].joinedAt
+                )
+              )
+            )
+            || (
+              !('participants' in resource.data)
+              && request.resource.data.participants.keys().hasOnly([resource.data.creatorUid, request.auth.uid])
+              && request.resource.data.participants.keys().hasAll([resource.data.creatorUid, request.auth.uid])
+              && request.resource.data.participants[resource.data.creatorUid].progressValue == resource.data.progressValue
+              && request.resource.data.participants[request.auth.uid].joinedAt == request.time
+            )
+          )
+        )
+      );
+
+      allow delete: if false;
+    }
+
     match /feedPosts/{postId} {
       allow read: if signedIn();
       allow create, update: if signedIn()

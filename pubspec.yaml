@@ -27,11 +27,26 @@ dependencies:
   geolocator: ^14.0.2
   path_provider: ^2.1.5
   wakelock_plus: ^1.2.8
+  firebase_analytics: ^12.4.3
 
 dev_dependencies:
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
   flutter_test:
     sdk: flutter
+
+flutter_launcher_icons:
+  image_path: "features/improve_logo/png/icon-ios-1024.png"
+  android: true
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "features/improve_logo/png/icon-ios-1024.png"
+  ios: true
+  remove_alpha_ios: true
+  web:
+    generate: true
+    image_path: "features/improve_logo/png/icon-ios-1024.png"
+    background_color: "#ffffff"
+    theme_color: "#16160f"
 
 flutter:
   config:

@@ -11,6 +11,10 @@ import 'package:myrun/src/tracking_session.dart';
 abstract interface class ActivityRepository {
   Stream<List<ActivitySummary>> watchActivities();
   Stream<List<ActivitySummary>> watchTrackedTrialActivities();
+  Future<List<ActivitySummary>> listStravaActivities({
+    required DateTime start,
+    required DateTime endExclusive,
+  });
   Future<ActivityDetail> getDetail(String activityId);
   Future<int> sync();
   Future<void> saveTrackedActivity(
@@ -96,6 +100,24 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
           .where((activity) => activity.source == ActivitySource.runnow)
           .toList();
     });
+  }
+
+  @override
+  Future<List<ActivitySummary>> listStravaActivities({
+    required DateTime start,
+    required DateTime endExclusive,
+  }) async {
+    final snapshot = await _activities
+        .where(
+          'startedAt',
+          isGreaterThanOrEqualTo: start.toUtc().toIso8601String(),
+        )
+        .where('startedAt', isLessThan: endExclusive.toUtc().toIso8601String())
+        .get();
+    return snapshot.docs
+        .map((document) => ActivitySummary.fromMap(document.data()))
+        .where((activity) => activity.source == ActivitySource.strava)
+        .toList();
   }
 
   @override
@@ -382,6 +404,19 @@ class DemoActivityRepository implements ActivityRepository {
           .toList(),
     );
   }
+
+  @override
+  Future<List<ActivitySummary>> listStravaActivities({
+    required DateTime start,
+    required DateTime endExclusive,
+  }) async => _activities
+      .where(
+        (activity) =>
+            activity.source == ActivitySource.strava &&
+            !activity.startedAt.isBefore(start) &&
+            activity.startedAt.isBefore(endExclusive),
+      )
+      .toList();
 
   @override
   Future<ActivityDetail> getDetail(String activityId) async {
@@ -955,6 +990,7 @@ ActivitySummary _summaryFromRaw(
     elapsedTimeSeconds: (raw['elapsed_time'] as num?)?.toInt() ?? 0,
     source: ActivitySource.strava,
     sourceActivityId: '${raw['id']}',
+    manual: raw['manual'] as bool?,
     recordingDevice: raw['device_name'] as String?,
     averageHeartRate:
         (raw['average_heartrate'] as num?)?.toDouble() ??
@@ -1076,6 +1112,7 @@ Map<String, dynamic> _summaryToMap(
     'name': summary.name,
     'source': summary.source.value,
     'sourceActivityId': summary.sourceActivityId,
+    'manual': summary.manual,
     'recordingDevice': summary.recordingDevice,
     'sportType': _sportType(summary.kind),
     'startedAt': summary.startedAt.toUtc().toIso8601String(),

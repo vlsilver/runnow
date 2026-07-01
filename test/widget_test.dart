@@ -8,7 +8,7 @@ import 'package:myrun/src/repository.dart';
 import 'package:myrun/src/theme_controller.dart';
 
 void main() {
-  testWidgets('renders dashboard in demo mode', (tester) async {
+  testWidgets('renders contract home in demo mode', (tester) async {
     // Ép kích thước điện thoại để dùng bottom nav (layout web rộng có rail
     // riêng làm thay đổi cây widget/scroll).
     tester.view.physicalSize = const Size(420, 1400);
@@ -33,6 +33,13 @@ void main() {
             (ref) => Stream.value(UserProfile.demo),
           ),
           stravaConnectionProvider.overrideWithValue(true),
+          myActiveContractsProvider.overrideWith(
+            (ref) => Stream.value(const []),
+          ),
+          clubRunContractsProvider.overrideWith(
+            (ref) => Stream.value(const []),
+          ),
+          membersProvider.overrideWith((ref) => Stream.value(const [])),
           themeControllerProvider.overrideWith(
             (ref) => ThemeController(loadFromStorage: false),
           ),
@@ -41,37 +48,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Tổng quan'), findsNWidgets(2));
-    expect(find.text('Nhịp luyện tập từ dữ liệu đã đồng bộ'), findsNothing);
-    expect(find.textContaining('Đồng bộ Strava hoàn tất'), findsNothing);
-    final dashboardScroll = find.byType(Scrollable).first;
-    expect(find.text('TIẾN ĐỘ TUẦN'), findsOneWidget);
-    // Filter Tuần/7 ngày của card "tiến độ tuần" giờ nằm trong navigation bar.
-    expect(find.text('7 ngày'), findsWidgets);
-    expect(find.text('Tuần này'), findsWidgets);
-    expect(find.text('Quãng đường'), findsOneWidget);
-    // Default tổng quan giờ là "Tuần này" nên nhãn mục tiêu hiển thị theo tuần
-    // hiện tại thay vì "Mục tiêu tuần" (chế độ 7 ngày gần nhất).
-    expect(find.text('Mục tiêu tuần'), findsNothing);
-    expect(find.text('MỤC TIÊU'), findsNothing);
-    await tester.scrollUntilVisible(
-      find.text('KỶ LUẬT & CONSISTENCY'),
-      300,
-      scrollable: dashboardScroll,
-    );
-    expect(find.text('KỶ LUẬT & CONSISTENCY'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('CONSISTENCY'),
-      300,
-      scrollable: dashboardScroll,
-    );
-    expect(find.text('CONSISTENCY'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('GẦN ĐÂY'),
-      300,
-      scrollable: dashboardScroll,
-    );
-    expect(find.text('GẦN ĐÂY'), findsOneWidget);
-    expect(find.text('Feed'), findsNothing);
+    expect(find.text('Kèo'), findsNWidgets(2));
+    expect(find.text('Tạo kèo'), findsOneWidget);
+    expect(find.text('Chưa có kèo đang diễn ra'), findsOneWidget);
+    expect(find.text('Tổng quan'), findsNothing);
   });
 }

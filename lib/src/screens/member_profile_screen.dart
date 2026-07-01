@@ -27,7 +27,7 @@ class MemberProfileScreen extends ConsumerWidget {
         .maybeWhen(data: (user) => user?.uid, orElse: () => null);
     if (currentUid == uid) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) context.go('/');
+        if (context.mounted) context.go('/settings/profile');
       });
       return const Scaffold(body: SizedBox.shrink());
     }

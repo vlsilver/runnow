@@ -7,7 +7,6 @@ import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/share.dart';
-import 'package:myrun/src/strava_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/training_power.dart';
 import 'package:myrun/src/widgets/activity_records_card.dart';
@@ -27,16 +26,6 @@ class DashboardScreen extends ConsumerStatefulWidget {
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (!StravaClient.instance.isSignedIn) return;
-      ref.read(syncControllerProvider).startBackgroundSync();
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     final sync = ref.watch(syncControllerProvider);
     final profileState = ref.watch(userProfileProvider);
@@ -47,23 +36,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final stravaConnected = ref.watch(stravaConnectionProvider);
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('RunNow'),
-            Text(
-              'YOUR TRAINING SPACE',
-              style: TextStyle(
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurface.withValues(alpha: 0.52),
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.4,
-              ),
-            ),
-          ],
-        ),
+        title: const Text('Hồ sơ & thành tích'),
         actions: [
           if (stravaConnected)
             Padding(

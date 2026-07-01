@@ -6,7 +6,7 @@ class ThemeController extends ChangeNotifier {
   ThemeController({
     FlutterSecureStorage? storage,
     RunNowElement initialElement = RunNowElement.water,
-    RunNowAppearance initialAppearance = RunNowAppearance.dark,
+    RunNowAppearance initialAppearance = RunNowAppearance.light,
     RunNowDarkTone initialDarkTone = RunNowDarkTone.elemental,
     bool loadFromStorage = true,
   }) : _storage = storage ?? const FlutterSecureStorage() {
@@ -20,7 +20,7 @@ class ThemeController extends ChangeNotifier {
   static const _appearanceKey = 'runnow_theme_appearance';
   static const _darkToneKey = 'runnow_theme_dark_tone';
   static const _paletteVersionKey = 'runnow_theme_palette_version';
-  static const _paletteVersion = '2';
+  static const _paletteVersion = '3';
 
   final FlutterSecureStorage _storage;
   late RunNowElement _element;
@@ -91,19 +91,12 @@ class ThemeController extends ChangeNotifier {
       'earth' => RunNowElement.earth,
       _ => RunNowElement.water,
     };
-    final loadedAppearance = values[1] == 'light'
-        ? RunNowAppearance.light
-        : RunNowAppearance.dark;
-    final loadedDarkTone = values[3] != _paletteVersion
-        ? RunNowDarkTone.elemental
-        : switch (values[2]) {
-            'slate' => RunNowDarkTone.slate,
-            'dim' => RunNowDarkTone.dim,
-            'cloud' => RunNowDarkTone.cloud,
-            'warm' => RunNowDarkTone.warm,
-            'cool' => RunNowDarkTone.cool,
-            _ => RunNowDarkTone.elemental,
-          };
+    // Mặc định Sáng (theo mockup): chỉ giữ Tối khi người dùng đã chọn rõ ràng.
+    final loadedAppearance = values[1] == 'dark'
+        ? RunNowAppearance.dark
+        : RunNowAppearance.light;
+    // Palette v3 follows the design source exactly: dark surfaces are neutral.
+    final loadedDarkTone = RunNowDarkTone.elemental;
     if (_element == loadedElement &&
         _appearance == loadedAppearance &&
         _darkTone == loadedDarkTone) {

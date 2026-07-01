@@ -21,9 +21,7 @@ const _webFirebaseOptions = FirebaseOptions(
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: kIsWeb ? _webFirebaseOptions : null,
-  );
+  await Firebase.initializeApp(options: kIsWeb ? _webFirebaseOptions : null);
   // Best-effort: trên web các init này có thể chưa cấu hình (web client id),
   // nhưng không nên làm trắng màn cả app — login sẽ báo lỗi khi bấm thay vì crash.
   try {

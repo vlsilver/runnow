@@ -17,10 +17,10 @@ void main() {
     expect(theme.brightness, Brightness.dark);
     expect(palette.element, RunNowElement.fire);
     expect(palette.accent, RunNowThemeTokens.fireRamp[2]);
-    expect(palette.background, RunNowThemeTokens.darkSlate[0]);
-    expect(palette.glassStart, RunNowThemeTokens.darkSlate[1]);
-    expect(palette.border, RunNowThemeTokens.darkSlate[2]);
-    expect(palette.foreground, RunNowThemeTokens.darkSlate[3]);
+    expect(palette.background, RunNowThemeTokens.darkNeutral[0]);
+    expect(palette.glassStart, RunNowThemeTokens.darkNeutral[1]);
+    expect(palette.border, RunNowThemeTokens.darkNeutral[2]);
+    expect(palette.foreground, RunNowThemeTokens.darkNeutral[3]);
   });
 
   test('light theme uses the selected element material from the design', () {
@@ -52,23 +52,51 @@ void main() {
     }
   });
 
-  test('main colors match Ngu Hanh Palette.html', () {
-    expect(RunNowElement.wood.ramp[2], const Color(0xff2e8c45));
-    expect(RunNowElement.fire.ramp[2], const Color(0xffb83a24));
-    expect(RunNowElement.earth.ramp[2], const Color(0xffb5811f));
-    expect(RunNowElement.metal.ramp[2], const Color(0xffa6883f));
-    expect(RunNowElement.water.ramp[2], const Color(0xff2c7c95));
+  test('brand colors match Quy tac mau · Runow', () {
+    expect(RunNowElement.wood.ramp[2], const Color(0xff8fd400));
+    expect(RunNowElement.fire.ramp[2], const Color(0xffff5230));
+    expect(RunNowElement.earth.ramp[2], const Color(0xffce7b2c));
+    expect(RunNowElement.metal.ramp[2], const Color(0xffc9a53a));
+    expect(RunNowElement.water.ramp[2], const Color(0xff0e96a8));
+    // brand-strong (ramp[3]) — chữ/viền/icon trên nền sáng.
+    expect(RunNowElement.fire.ramp[3], const Color(0xffe23b27));
   });
 
-  test('secondary color is the element that generates the primary element', () {
+  test('a palette never mixes brand colors from another element', () {
     for (final element in RunNowElement.values) {
       final palette = RunNowPalette.forSelection(element);
-      expect(palette.secondary, element.supporting.ramp[2]);
-      expect(palette.tertiary, element.supporting.ramp[1]);
+      expect(palette.secondary, element.ramp[3]);
+      expect(palette.tertiary, element.ramp[1]);
     }
   });
 
-  test('all selectable dark tones map to their design material', () {
+  test('light themes share the neutral 60 percent background', () {
+    final backgrounds = {
+      for (final element in RunNowElement.values)
+        RunNowPalette.forSelection(
+          element,
+          appearance: RunNowAppearance.light,
+        ).background,
+    };
+
+    expect(backgrounds, {RunNowThemeTokens.lightNeutral[0]});
+  });
+
+  test('component colors follow the 60 30 10 hierarchy', () {
+    final theme = buildRunNowTheme(
+      RunNowElement.fire,
+      appearance: RunNowAppearance.light,
+    );
+    final palette = theme.extension<RunNowPalette>()!;
+    final filledStyle = theme.filledButtonTheme.style!;
+
+    expect(filledStyle.backgroundColor!.resolve({}), palette.ink);
+    expect(filledStyle.foregroundColor!.resolve({}), palette.accent);
+    expect(theme.floatingActionButtonTheme.backgroundColor, palette.accent);
+    expect(theme.cardTheme.color, palette.glassStart);
+  });
+
+  test('all legacy dark tones resolve to the design neutral material', () {
     final backgrounds = <Color>{};
     for (final tone in RunNowDarkTone.values) {
       final palette = RunNowPalette.forSelection(
@@ -82,7 +110,7 @@ void main() {
       expect(palette.border, material[2]);
       expect(palette.foreground, material[3]);
     }
-    expect(backgrounds, hasLength(RunNowDarkTone.values.length));
+    expect(backgrounds, hasLength(1));
   });
 
   test('light and dark ThemeData expose matching brightness', () {
@@ -139,7 +167,7 @@ void main() {
         'runnow_theme_element': 'wood',
         'runnow_theme_appearance': 'light',
         'runnow_theme_dark_tone': 'cool',
-        'runnow_theme_palette_version': '2',
+        'runnow_theme_palette_version': '3',
       });
       final controller = ThemeController();
 
@@ -147,7 +175,7 @@ void main() {
 
       expect(controller.element, RunNowElement.wood);
       expect(controller.appearance, RunNowAppearance.light);
-      expect(controller.darkTone, RunNowDarkTone.cool);
+      expect(controller.darkTone, RunNowDarkTone.elemental);
     },
   );
 

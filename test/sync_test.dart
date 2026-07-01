@@ -63,6 +63,12 @@ class _StubRepository implements ActivityRepository {
       throw UnimplementedError();
 
   @override
+  Future<List<ActivitySummary>> listStravaActivities({
+    required DateTime start,
+    required DateTime endExclusive,
+  }) async => const [];
+
+  @override
   Stream<List<ActivitySummary>> watchTrackedTrialActivities() =>
       const Stream.empty();
 

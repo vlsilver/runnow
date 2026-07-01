@@ -1,156 +1,135 @@
 import 'package:flutter/material.dart';
 
-/// Single source of truth for elemental palettes.
+/// Single source of truth for elemental palettes — follows "Quy tắc màu · Runow"
+/// (60/30/10 + semantic tokens).
 ///
-/// Keep values grouped by role so a palette can be reviewed as a complete
-/// system instead of tuning isolated colors inside widgets.
+/// Mỗi hành chỉ cung cấp brand 30%, biến đậm và tint.
+/// Nền/surface là neutral cố định để giao diện sạch và không bị nhuộm màu.
 abstract final class RunNowThemeTokens {
-  static const waterMain = Color(0xff2c7c95);
+  static const waterMain = Color(0xff0e96a8);
 
-  // Element ramps from Ngu Hanh Palette.html: light -> dark, main at index 2.
+  // ── Sắc hành (ramp): index 2 = brand (30%), index 3 = brand-strong ────────
   static const woodRamp = <Color>[
-    Color(0xff9fc59c),
-    Color(0xff5fa068),
-    Color(0xff2e8c45),
-    Color(0xff1e6b32),
-    Color(0xff114a21),
+    Color(0xffc9f06a),
+    Color(0xffa8e22e),
+    Color(0xff8fd400), // brand
+    Color(0xff4c9a00), // brand-strong
+    Color(0xff2f6300),
   ];
   static const fireRamp = <Color>[
-    Color(0xffe8a18c),
-    Color(0xffd26a4f),
-    Color(0xffb83a24),
-    Color(0xff902914),
-    Color(0xff621809),
+    Color(0xffffb3a3),
+    Color(0xffff7a5e),
+    Color(0xffff5230), // brand
+    Color(0xffe23b27), // brand-strong
+    Color(0xff9c2418),
   ];
   static const earthRamp = <Color>[
-    Color(0xffe4c57e),
-    Color(0xffcfa13e),
-    Color(0xffb5811f),
-    Color(0xff8c6014),
-    Color(0xff5c3d0b),
+    Color(0xffe8b884),
+    Color(0xffda9a52),
+    Color(0xffce7b2c), // brand
+    Color(0xffb5681f), // brand-strong
+    Color(0xff7e470f),
   ];
   static const metalRamp = <Color>[
-    Color(0xffddcda6),
-    Color(0xffc3a96f),
-    Color(0xffa6883f),
-    Color(0xff7e662a),
-    Color(0xff54421a),
+    Color(0xffe6d08a),
+    Color(0xffd8bc5c),
+    Color(0xffc9a53a), // brand
+    Color(0xff9a7a1e), // brand-strong
+    Color(0xff6b5413),
   ];
   static const waterRamp = <Color>[
-    Color(0xff94becc),
-    Color(0xff549bb0),
-    waterMain,
-    Color(0xff1c586c),
-    Color(0xff0e3543),
+    Color(0xff7fc9d4),
+    Color(0xff36aebe),
+    waterMain, // brand
+    Color(0xff0e7c8c), // brand-strong
+    Color(0xff0a5663),
   ];
 
-  // Light materials belong to the selected element.
-  static const woodLight = <Color>[
-    Color(0xffe7f0e6),
-    Color(0xfff6fbf5),
-    Color(0xffcfe2cc),
-    Color(0xff163a22),
+  // ── Tint nhạt theo hành (chip / nút phụ trên nền sáng) ────────────────────
+  static const woodTint = Color(0xffeef2e6);
+  static const fireTint = Color(0xfffbeee8);
+  static const earthTint = Color(0xfff4ecdb);
+  static const metalTint = Color(0xfff4f1e6);
+  static const waterTint = Color(0xffe9f0f2);
+
+  // Material neutral theo design: [background 60, surface, border, text].
+  static const lightNeutral = <Color>[
+    Color(0xfff4f2ec),
+    Color(0xffffffff),
+    Color(0xffe6e1d6),
+    Color(0xff1f1d1a),
   ];
-  static const fireLight = <Color>[
-    Color(0xfff7e9e4),
-    Color(0xfffdf6f3),
-    Color(0xffebd0c6),
-    Color(0xff3e2018),
-  ];
-  static const earthLight = <Color>[
-    Color(0xfff6eedb),
-    Color(0xfffdf9ef),
-    Color(0xffe8d7b5),
-    Color(0xff3a2c12),
-  ];
-  static const metalLight = <Color>[
-    Color(0xfff3eedf),
-    Color(0xfffcf9f0),
-    Color(0xffe2d6bb),
-    Color(0xff332916),
-  ];
-  static const waterLight = <Color>[
-    Color(0xffe2eef1),
-    Color(0xfff2f9fb),
-    Color(0xffc9e0e6),
-    Color(0xff13313c),
+  static const darkNeutral = <Color>[
+    Color(0xff121116), // bg
+    Color(0xff1c1b22), // surface
+    Color(0xff2c2b33), // border
+    Color(0xffeceae3), // text
   ];
 
-  // Elemental dark materials from the same design source.
-  static const woodDark = <Color>[
-    Color(0xff0e2e18),
-    Color(0xff143a20),
-    Color(0xff26543a),
-    Color(0xffcfe7d6),
-  ];
-  static const fireDark = <Color>[
-    Color(0xff2c0f08),
-    Color(0xff3c160d),
-    Color(0xff5a2618),
-    Color(0xfff4d9ce),
-  ];
-  static const earthDark = <Color>[
-    Color(0xff281c07),
-    Color(0xff37280b),
-    Color(0xff503a1a),
-    Color(0xfff0e3c7),
-  ];
-  static const metalDark = <Color>[
-    Color(0xff201c0e),
-    Color(0xff2e2914),
-    Color(0xff473f26),
-    Color(0xffece3c9),
-  ];
-  static const waterDark = <Color>[
-    Color(0xff0c1418),
-    Color(0xff121e23),
-    Color(0xff233239),
-    Color(0xffd6e6ec),
-  ];
+  static const lightInk = Color(0xff16160f); // mực (10) — nút chính/tiêu đề
+  static const darkInk = Color(0xfff4f2ec);
+  static const lightMuted = Color(0xff6f6a61);
+  static const darkMuted = Color(0xff9a958b);
 
-  // Selectable neutral dark materials: background, surface, border, text.
+  // Các tông nền tối có thể chọn riêng: [bg, surface, border, text].
   static const darkSlate = <Color>[
-    Color(0xff383a44),
-    Color(0xff44464f),
-    Color(0xff585b66),
+    Color(0xff15161b),
+    Color(0xff20222a),
+    Color(0xff32343d),
     Color(0xfff1f2f5),
   ];
   static const darkDim = <Color>[
-    Color(0xff474a54),
-    Color(0xff52555f),
-    Color(0xff666975),
+    Color(0xff17181d),
+    Color(0xff23252d),
+    Color(0xff363842),
     Color(0xfff4f5f7),
   ];
   static const darkCloud = <Color>[
-    Color(0xff565963),
-    Color(0xff62656f),
-    Color(0xff777a85),
+    Color(0xff1b1c22),
+    Color(0xff282a32),
+    Color(0xff3c3e48),
     Color(0xfff7f7f9),
   ];
   static const darkWarm = <Color>[
-    Color(0xff454039),
-    Color(0xff514b43),
-    Color(0xff666057),
+    Color(0xff19160f),
+    Color(0xff241f17),
+    Color(0xff39322a),
     Color(0xfff4f0ea),
   ];
   static const darkCool = <Color>[
-    Color(0xff3a4450),
-    Color(0xff45505d),
-    Color(0xff5a6675),
+    Color(0xff10141a),
+    Color(0xff1a1f27),
+    Color(0xff2c333d),
     Color(0xffeff3f7),
   ];
+
+  // Bộ vật liệu sáng/tối theo hành đều trỏ về trung tính chung (xem doc).
+  static const woodLight = lightNeutral;
+  static const fireLight = lightNeutral;
+  static const earthLight = lightNeutral;
+  static const metalLight = lightNeutral;
+  static const waterLight = lightNeutral;
+
+  // Dark mode theo tài liệu cũng dùng bộ trung tính chung.
+  static const woodDark = darkNeutral;
+  static const fireDark = darkNeutral;
+  static const earthDark = darkNeutral;
+  static const metalDark = darkNeutral;
+  static const waterDark = darkNeutral;
 }
 
 /// Colors whose meaning must not change when the elemental palette changes.
+/// Khoá theo ngũ hành: thành công=Mộc, cảnh báo=Kim, lỗi=Hỏa, thông tin=Thủy.
 abstract final class RunNowSemanticColors {
-  static const danger = Color(0xffff5a6a);
-  static const success = Color(0xff34d399);
-  static const warning = Color(0xffffd166);
+  static const danger = Color(0xffe23b27); // Hỏa
+  static const success = Color(0xff3e8e00); // Mộc
+  static const warning = Color(0xffc9a53a); // Kim
+  static const info = Color(0xff0e96a8); // Thủy
   static const inactive = Color(0xff667085);
   static const gpsGood = success;
   static const gpsFair = warning;
   static const gpsWeak = danger;
-  static const gpsLocking = Color(0xff38a3ff);
+  static const gpsLocking = info;
 }
 
 /// Stable series colors used to distinguish physiological/training datasets.

@@ -26,14 +26,7 @@ extension RunNowDarkToneLabel on RunNowDarkTone {
     RunNowDarkTone.cool => 'Lạnh',
   };
 
-  List<Color> materialFor(RunNowElement element) => switch (this) {
-    RunNowDarkTone.elemental => element.darkMaterial,
-    RunNowDarkTone.slate => RunNowThemeTokens.darkSlate,
-    RunNowDarkTone.dim => RunNowThemeTokens.darkDim,
-    RunNowDarkTone.cloud => RunNowThemeTokens.darkCloud,
-    RunNowDarkTone.warm => RunNowThemeTokens.darkWarm,
-    RunNowDarkTone.cool => RunNowThemeTokens.darkCool,
-  };
+  List<Color> materialFor(RunNowElement element) => element.darkMaterial;
 }
 
 extension RunNowElementLabel on RunNowElement {
@@ -84,6 +77,15 @@ extension RunNowElementLabel on RunNowElement {
     RunNowElement.fire => RunNowThemeTokens.fireDark,
     RunNowElement.earth => RunNowThemeTokens.earthDark,
   };
+
+  /// Tint nhạt của hành — dùng cho chip/nút phụ trên nền sáng.
+  Color get tint => switch (this) {
+    RunNowElement.metal => RunNowThemeTokens.metalTint,
+    RunNowElement.water => RunNowThemeTokens.waterTint,
+    RunNowElement.wood => RunNowThemeTokens.woodTint,
+    RunNowElement.fire => RunNowThemeTokens.fireTint,
+    RunNowElement.earth => RunNowThemeTokens.earthTint,
+  };
 }
 
 @immutable
@@ -95,6 +97,9 @@ class RunNowPalette extends ThemeExtension<RunNowPalette> {
     required this.accentDeep,
     required this.secondary,
     required this.tertiary,
+    required this.ink,
+    required this.tint,
+    required this.textMuted,
     required this.background,
     required this.backgroundMid,
     required this.backgroundDeep,
@@ -110,10 +115,23 @@ class RunNowPalette extends ThemeExtension<RunNowPalette> {
 
   final RunNowElement element;
   final RunNowAppearance appearance;
+
+  /// Sắc hành (brand 30%) — app bar, hero, biểu đồ, vùng định hình.
   final Color accent;
+
+  /// Brand-strong — chữ/viền/icon nhỏ trên nền sáng.
   final Color accentDeep;
   final Color secondary;
   final Color tertiary;
+
+  /// Mực (10%) — nút chính, tiêu đề, icon nhấn. Tách khỏi sắc hành.
+  final Color ink;
+
+  /// Tint nhạt của hành — chip, nút phụ.
+  final Color tint;
+
+  /// Chữ phụ.
+  final Color textMuted;
   final Color background;
   final Color backgroundMid;
   final Color backgroundDeep;
@@ -141,8 +159,8 @@ class RunNowPalette extends ThemeExtension<RunNowPalette> {
     RunNowDarkTone darkTone = RunNowDarkTone.elemental,
   }) {
     final primary = element.ramp;
-    final support = element.supporting.ramp;
-    final material = appearance == RunNowAppearance.light
+    final isLight = appearance == RunNowAppearance.light;
+    final material = isLight
         ? element.lightMaterial
         : darkTone.materialFor(element);
     final background = material[0];
@@ -154,8 +172,19 @@ class RunNowPalette extends ThemeExtension<RunNowPalette> {
       appearance: appearance,
       accent: primary[2],
       accentDeep: primary[3],
-      secondary: support[2],
-      tertiary: support[1],
+      // Keep one elemental brand per screen. These legacy fields are shades
+      // of that same brand, not colors from the supporting element.
+      secondary: primary[3],
+      tertiary: primary[1],
+      ink: isLight ? RunNowThemeTokens.lightInk : RunNowThemeTokens.darkInk,
+      // Tint phải ĐẶC (không alpha) để dùng làm nền card mà không bị trong suốt.
+      // Dark: trộn sắc hành vào surface để ra một nền tối hơi nhuốm màu.
+      tint: isLight
+          ? element.tint
+          : Color.alphaBlend(primary[2].withValues(alpha: 0.16), surface),
+      textMuted: isLight
+          ? RunNowThemeTokens.lightMuted
+          : RunNowThemeTokens.darkMuted,
       background: background,
       backgroundMid: background,
       backgroundDeep: background,
@@ -164,7 +193,7 @@ class RunNowPalette extends ThemeExtension<RunNowPalette> {
       gridMinor: border.withValues(alpha: 0.34),
       gridMajor: border.withValues(alpha: 0.68),
       glowStrong: primary[2].withValues(alpha: 0.10),
-      glowSoft: support[2].withValues(alpha: 0.07),
+      glowSoft: primary[2].withValues(alpha: 0.05),
       border: border,
       foreground: foreground,
     );
@@ -178,6 +207,9 @@ class RunNowPalette extends ThemeExtension<RunNowPalette> {
     Color? accentDeep,
     Color? secondary,
     Color? tertiary,
+    Color? ink,
+    Color? tint,
+    Color? textMuted,
     Color? background,
     Color? backgroundMid,
     Color? backgroundDeep,
@@ -197,6 +229,9 @@ class RunNowPalette extends ThemeExtension<RunNowPalette> {
       accentDeep: accentDeep ?? this.accentDeep,
       secondary: secondary ?? this.secondary,
       tertiary: tertiary ?? this.tertiary,
+      ink: ink ?? this.ink,
+      tint: tint ?? this.tint,
+      textMuted: textMuted ?? this.textMuted,
       background: background ?? this.background,
       backgroundMid: backgroundMid ?? this.backgroundMid,
       backgroundDeep: backgroundDeep ?? this.backgroundDeep,
@@ -221,6 +256,9 @@ class RunNowPalette extends ThemeExtension<RunNowPalette> {
       accentDeep: Color.lerp(accentDeep, other.accentDeep, t)!,
       secondary: Color.lerp(secondary, other.secondary, t)!,
       tertiary: Color.lerp(tertiary, other.tertiary, t)!,
+      ink: Color.lerp(ink, other.ink, t)!,
+      tint: Color.lerp(tint, other.tint, t)!,
+      textMuted: Color.lerp(textMuted, other.textMuted, t)!,
       background: Color.lerp(background, other.background, t)!,
       backgroundMid: Color.lerp(backgroundMid, other.backgroundMid, t)!,
       backgroundDeep: Color.lerp(backgroundDeep, other.backgroundDeep, t)!,
@@ -254,9 +292,9 @@ ThemeData buildRunNowTheme(
   final colorScheme = appearance == RunNowAppearance.light
       ? ColorScheme.light(
           primary: palette.accent,
-          onPrimary: Colors.white,
+          onPrimary: palette.glassStart,
           secondary: palette.secondary,
-          onSecondary: Colors.white,
+          onSecondary: palette.glassStart,
           tertiary: palette.tertiary,
           error: RunNowSemanticColors.danger,
           surface: palette.glassStart,
@@ -265,9 +303,9 @@ ThemeData buildRunNowTheme(
         )
       : ColorScheme.dark(
           primary: palette.accent,
-          onPrimary: Colors.white,
+          onPrimary: palette.glassStart,
           secondary: palette.secondary,
-          onSecondary: Colors.white,
+          onSecondary: palette.glassStart,
           tertiary: palette.tertiary,
           error: RunNowSemanticColors.danger,
           surface: palette.glassStart,
@@ -303,17 +341,19 @@ ThemeData buildRunNowTheme(
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
+      // Nút chính (CTA) = mực (10%) làm nền, chữ là sắc hành — tách khỏi mảng
+      // brand 30% để dẫn mắt tới hành động quan trọng nhất.
       style: FilledButton.styleFrom(
-        backgroundColor: palette.accent,
-        foregroundColor: colorScheme.onPrimary,
+        backgroundColor: palette.ink,
+        foregroundColor: palette.accent,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        foregroundColor: palette.accentDeep,
-        side: BorderSide(color: palette.accent),
+        foregroundColor: palette.ink,
+        side: BorderSide(color: palette.border),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
@@ -321,8 +361,63 @@ ThemeData buildRunNowTheme(
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(foregroundColor: palette.accent),
     ),
+    floatingActionButtonTheme: FloatingActionButtonThemeData(
+      backgroundColor: palette.accent,
+      foregroundColor: palette.glassStart,
+      elevation: 2,
+      focusElevation: 2,
+      hoverElevation: 3,
+    ),
+    chipTheme: ChipThemeData(
+      backgroundColor: palette.tint,
+      selectedColor: palette.accent,
+      disabledColor: palette.border,
+      labelStyle: TextStyle(color: palette.accentDeep),
+      secondaryLabelStyle: TextStyle(color: palette.glassStart),
+      side: BorderSide.none,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    ),
+    tabBarTheme: TabBarThemeData(
+      labelColor: palette.ink,
+      unselectedLabelColor: palette.textMuted,
+      indicatorColor: palette.accent,
+      dividerColor: palette.border,
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: palette.glassStart,
+      indicatorColor: palette.tint,
+      iconTheme: WidgetStateProperty.resolveWith((states) {
+        return IconThemeData(
+          color: states.contains(WidgetState.selected)
+              ? palette.accentDeep
+              : palette.textMuted,
+        );
+      }),
+      labelTextStyle: WidgetStateProperty.resolveWith((states) {
+        return TextStyle(
+          color: states.contains(WidgetState.selected)
+              ? palette.ink
+              : palette.textMuted,
+          fontWeight: FontWeight.w700,
+        );
+      }),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: palette.glassStart,
+      labelStyle: TextStyle(color: palette.textMuted),
+      hintStyle: TextStyle(color: palette.textMuted),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: palette.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: palette.accent, width: 1.5),
+      ),
+    ),
     listTileTheme: ListTileThemeData(
-      iconColor: palette.secondary,
+      iconColor: palette.accentDeep,
       textColor: palette.foreground,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
     ),

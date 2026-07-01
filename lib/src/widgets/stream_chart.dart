@@ -38,6 +38,7 @@ class StreamChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final chartColor = context.runNowPalette.accent;
     final distances = streams['distance'];
     final energyKilojoules = cumulativeEnergyKilojoules(
       watts: streams['watts'],
@@ -45,15 +46,15 @@ class StreamChart extends StatelessWidget {
     );
     final series = <_ChartSeries>[
       if (streams['velocity_smooth']?.isNotEmpty == true)
-        _ChartSeries.pace(streams['velocity_smooth']!, distances),
+        _ChartSeries.pace(streams['velocity_smooth']!, distances, chartColor),
       if (streams['heartrate']?.isNotEmpty == true)
-        _ChartSeries.heartRate(streams['heartrate']!, distances),
+        _ChartSeries.heartRate(streams['heartrate']!, distances, chartColor),
       if (streams['altitude']?.isNotEmpty == true)
-        _ChartSeries.altitude(streams['altitude']!, distances),
+        _ChartSeries.altitude(streams['altitude']!, distances, chartColor),
       if (streams['cadence']?.isNotEmpty == true)
-        _ChartSeries.cadence(streams['cadence']!, distances),
+        _ChartSeries.cadence(streams['cadence']!, distances, chartColor),
       if (energyKilojoules.length > 1)
-        _ChartSeries.energy(energyKilojoules, distances),
+        _ChartSeries.energy(energyKilojoules, distances, chartColor),
     ];
     if (series.isEmpty) {
       return const Text('Không có dữ liệu biểu đồ cho hoạt động này.');
@@ -123,11 +124,7 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Row(
                   children: [
-                    const Icon(
-                      Icons.favorite,
-                      color: RunNowDataColors.heart,
-                      size: 18,
-                    ),
+                    Icon(Icons.favorite, color: palette.accent, size: 18),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -142,8 +139,8 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
                     ),
                     Text(
                       formatDuration(totalSeconds.round()),
-                      style: const TextStyle(
-                        color: RunNowDataColors.heart,
+                      style: TextStyle(
+                        color: palette.accent,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -803,12 +800,16 @@ class _ChartSeries {
     this.defaultExpanded = false,
   });
 
-  factory _ChartSeries.pace(List<double> speeds, List<double>? distances) {
+  factory _ChartSeries.pace(
+    List<double> speeds,
+    List<double>? distances,
+    Color color,
+  ) {
     return _ChartSeries(
       label: 'Pace',
       unit: 'PHÚT / KM',
       icon: Icons.speed_rounded,
-      color: RunNowDataColors.pace,
+      color: color,
       values: speeds,
       distances: distances,
       normalize: (speed) => 1000 / speed,
@@ -819,12 +820,16 @@ class _ChartSeries {
     );
   }
 
-  factory _ChartSeries.heartRate(List<double> values, List<double>? distances) {
+  factory _ChartSeries.heartRate(
+    List<double> values,
+    List<double>? distances,
+    Color color,
+  ) {
     return _ChartSeries(
       label: 'Nhịp tim',
       unit: 'BPM',
       icon: Icons.favorite_rounded,
-      color: RunNowDataColors.heart,
+      color: color,
       values: values,
       distances: distances,
       normalize: (value) => value,
@@ -834,12 +839,16 @@ class _ChartSeries {
     );
   }
 
-  factory _ChartSeries.altitude(List<double> values, List<double>? distances) {
+  factory _ChartSeries.altitude(
+    List<double> values,
+    List<double>? distances,
+    Color color,
+  ) {
     return _ChartSeries(
       label: 'Cao độ',
       unit: 'MÉT',
       icon: Icons.terrain_rounded,
-      color: RunNowDataColors.elevation,
+      color: color,
       values: values,
       distances: distances,
       normalize: (value) => value,
@@ -849,12 +858,16 @@ class _ChartSeries {
     );
   }
 
-  factory _ChartSeries.cadence(List<double> values, List<double>? distances) {
+  factory _ChartSeries.cadence(
+    List<double> values,
+    List<double>? distances,
+    Color color,
+  ) {
     return _ChartSeries(
       label: 'Cadence',
       unit: 'RPM',
       icon: Icons.directions_walk_rounded,
-      color: RunNowDataColors.cadence,
+      color: color,
       values: values,
       distances: distances,
       normalize: (value) => value,
@@ -864,12 +877,16 @@ class _ChartSeries {
     );
   }
 
-  factory _ChartSeries.energy(List<double> values, List<double>? distances) {
+  factory _ChartSeries.energy(
+    List<double> values,
+    List<double>? distances,
+    Color color,
+  ) {
     return _ChartSeries(
       label: 'Năng lượng',
       unit: 'KJ',
       icon: Icons.bolt_rounded,
-      color: RunNowDataColors.energy,
+      color: color,
       values: values,
       distances: distances,
       normalize: (value) => value,
