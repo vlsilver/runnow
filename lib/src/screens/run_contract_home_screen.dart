@@ -18,13 +18,14 @@ class RunContractHomeScreen extends ConsumerStatefulWidget {
 }
 
 class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
-  final _recalculatedKeys = <String>{};
+  final _recalculatedBatchKeys = <String>{};
   final _joining = <String>{};
 
   @override
   Widget build(BuildContext context) {
     final connected = ref.watch(stravaConnectionProvider);
-    final syncRevision = ref.watch(syncControllerProvider).completedRevision;
+    final sync = ref.watch(syncControllerProvider);
+    final syncRevision = sync.completedRevision;
     final profile = ref.watch(userProfileProvider).value;
     final members = ref.watch(membersProvider).value ?? const <MemberProfile>[];
     final currentUid = ref.watch(firebaseUserProvider).value?.uid;
@@ -35,38 +36,33 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
       appBar: AppBar(
         title: const Text('Kèo'),
         actions: [
-          IconButton(
-            tooltip: 'Hồ sơ & thành tích',
-            onPressed: () => context.push('/settings/profile'),
-            icon: CircleAvatar(
-              radius: 17,
-              backgroundImage: profile?.avatarUrl == null
-                  ? null
-                  : NetworkImage(profile!.avatarUrl!),
-              child: profile?.avatarUrl == null
-                  ? const Icon(Icons.person_outline, size: 19)
-                  : null,
+          if (connected)
+            Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: _ContractSyncAction(
+                syncing: sync.syncing,
+                synced: sync.lastSyncSucceeded,
+                onPressed: () => ref
+                    .read(syncControllerProvider)
+                    .startBackgroundSync(force: true),
+              ),
             ),
-          ),
-          const SizedBox(width: 10),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () =>
-            _createContract(myActive.value ?? const [], connected),
+            _createContract(myActive.value ?? const [], connected, currentUid),
         icon: Icon(connected ? Icons.add_rounded : Icons.link_rounded),
         label: Text(connected ? 'Tạo kèo' : 'Kết nối'),
       ),
       body: myActive.when(
         data: (mine) {
-          for (final contract in mine) {
-            _scheduleRecalculation(
-              connected: connected,
-              contract: contract,
-              syncRevision: syncRevision,
-              asCreator: contract.creatorUid == currentUid,
-            );
-          }
+          _scheduleRecalculations(
+            connected: connected,
+            contracts: mine,
+            syncRevision: syncRevision,
+            currentUid: currentUid,
+          );
           return _ContractFeed(
             contracts: clubContracts,
             myContracts: mine,
@@ -84,23 +80,32 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
     );
   }
 
-  void _scheduleRecalculation({
+  void _scheduleRecalculations({
     required bool connected,
-    required RunContract? contract,
+    required List<RunContract> contracts,
     required int syncRevision,
-    required bool asCreator,
+    required String? currentUid,
   }) {
-    if (!connected || contract == null) return;
-    final key =
-        '${asCreator ? 'creator' : 'participant'}:${contract.id}:$syncRevision';
-    if (!_recalculatedKeys.add(key)) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        final controller = ref.read(runContractControllerProvider);
-        if (asCreator) {
-          controller.recalculate(contract).ignore();
+    if (!connected || currentUid == null) return;
+    final pending =
+        contracts
+            .where((contract) => !contract.completedBy(currentUid))
+            .toList()
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    if (pending.isEmpty) return;
+    final key = '$syncRevision:${pending.map((item) => item.id).join(',')}';
+    if (!_recalculatedBatchKeys.add(key)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final controller = ref.read(runContractControllerProvider);
+      // Một activity chỉ thuộc một kèo. Chạy tuần tự để kèo trước lưu claim
+      // trước khi kèo sau đọc danh sách activity đã được sử dụng.
+      for (final contract in pending) {
+        if (!mounted) return;
+        if (contract.creatorUid == currentUid) {
+          await controller.recalculate(contract);
         } else {
-          controller.recalculateParticipant(contract).ignore();
+          await controller.recalculateParticipant(contract);
         }
       }
     });
@@ -109,16 +114,20 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
   Future<void> _createContract(
     List<RunContract> myActive,
     bool connected,
+    String? currentUid,
   ) async {
     if (!connected) {
       ref.read(stravaAuthProvider).connect();
       return;
     }
-    if (myActive.length >= maxActiveRunContracts) {
+    final unfinished = myActive
+        .where((contract) => !contract.completedBy(currentUid))
+        .toList();
+    if (unfinished.length >= maxActiveRunContracts) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Bạn đang tham gia ${myActive.length} kèo chưa hoàn thành. '
+            'Bạn đang tham gia ${unfinished.length} kèo chưa hoàn thành. '
             'Hãy chốt một kèo để tạo kèo mới.',
           ),
         ),
@@ -143,6 +152,69 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
       _joining.remove(contract.id);
       if (mounted) setState(() {});
     }
+  }
+}
+
+class _ContractSyncAction extends StatefulWidget {
+  const _ContractSyncAction({
+    required this.syncing,
+    required this.synced,
+    required this.onPressed,
+  });
+
+  final bool syncing;
+  final bool synced;
+  final VoidCallback onPressed;
+
+  @override
+  State<_ContractSyncAction> createState() => _ContractSyncActionState();
+}
+
+class _ContractSyncActionState extends State<_ContractSyncAction>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 850),
+    );
+    _syncAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ContractSyncAction oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.syncing != widget.syncing) _syncAnimation();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _syncAnimation() {
+    if (widget.syncing) {
+      _controller.repeat();
+    } else {
+      _controller.stop();
+      _controller.reset();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = widget.syncing
+        ? RotationTransition(turns: _controller, child: const Icon(Icons.sync))
+        : Icon(widget.synced ? Icons.check_rounded : Icons.sync_rounded);
+    return GlassIconButton(
+      tooltip: 'Đồng bộ Strava',
+      onPressed: widget.syncing ? null : widget.onPressed,
+      icon: icon,
+    );
   }
 }
 

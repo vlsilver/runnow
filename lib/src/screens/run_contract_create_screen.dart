@@ -131,7 +131,7 @@ class _RunContractCreateScreenState
       _TemplateTile(
         icon: Icons.repeat_rounded,
         title: '3 buổi tuần này',
-        subtitle: 'Mỗi Strava Run hợp lệ tính là một buổi',
+        subtitle: 'Mỗi Strava Run trên 1 km tính là một buổi',
         onTap: () => _select(
           RunContractDraft.weekly10k().copyWith(
             template: RunContractTemplate.weekly3Runs,
@@ -171,10 +171,7 @@ class _RunContractCreateScreenState
     key: const ValueKey('visibility'),
     padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
     children: [
-      Text(
-        'Đặt tên kèo',
-        style: Theme.of(context).textTheme.headlineSmall,
-      ),
+      Text('Đặt tên kèo', style: Theme.of(context).textTheme.headlineSmall),
       const SizedBox(height: 12),
       TextField(
         controller: _titleController,
@@ -272,13 +269,13 @@ class _RunContractCreateScreenState
                     ? 'Public trong Club'
                     : 'Chỉ mình tôi',
               ),
-              _ConfirmRow('Nguồn', 'Strava Run · không tính manual'),
-              if ((_preview?.progress.value ?? 0) > 0)
-                _ConfirmRow(
-                  'Đã được tính',
-                  _previewLabel(_preview!.progress.value),
-                  highlight: true,
-                ),
+              _ConfirmRow(
+                'Nguồn',
+                _draft.metric == RunContractMetric.activityCount ||
+                        _draft.metric == RunContractMetric.activeDays
+                    ? 'Strava Run > 1 km · không tính manual'
+                    : 'Strava Run · không tính manual',
+              ),
               if (_preview?.hardTarget == true)
                 const _ConfirmRow(
                   'Lưu ý',
@@ -660,8 +657,8 @@ class _RunContractCreateScreenState
   String _targetLabel() => _previewLabel(_draft.targetValue);
 
   String _previewLabel(double value) => switch (_draft.metric) {
-    RunContractMetric.distance || RunContractMetric.longestRun =>
-      '${value.toStringAsFixed(1)} km',
+    RunContractMetric.distance ||
+    RunContractMetric.longestRun => '${value.toStringAsFixed(1)} km',
     RunContractMetric.activityCount => '${value.toInt()} buổi',
     RunContractMetric.activeDays => '${value.toInt()} ngày',
   };
@@ -824,7 +821,9 @@ class _DateTimeTile extends StatelessWidget {
               ),
               const Spacer(),
               Text(
-                value == null ? 'Chọn' : DateFormat('EEE, dd/MM').format(value!),
+                value == null
+                    ? 'Chọn'
+                    : DateFormat('EEE, dd/MM').format(value!),
                 style: TextStyle(fontWeight: FontWeight.w800, color: onSurface),
               ),
               const SizedBox(width: 4),
@@ -898,10 +897,7 @@ class _GoalStepper extends StatelessWidget {
               ],
             ),
           ),
-          _StepBtn(
-            icon: Icons.add_rounded,
-            onTap: () => onChanged(value + 1),
-          ),
+          _StepBtn(icon: Icons.add_rounded, onTap: () => onChanged(value + 1)),
         ],
       ),
     );
@@ -992,9 +988,7 @@ class _QuickTargetChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected ? palette.accent : palette.glassStart,
           borderRadius: BorderRadius.circular(11),
-          border: Border.all(
-            color: selected ? palette.accent : palette.border,
-          ),
+          border: Border.all(color: selected ? palette.accent : palette.border),
         ),
         child: Text(
           label,

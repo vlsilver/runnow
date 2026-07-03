@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/run_contracts/run_contract_controller.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 import 'package:myrun/src/theme.dart';
@@ -43,7 +44,10 @@ class _RunContractDetailScreenState
   Widget _loggedContent(RunContract contract) {
     final currentUid = ref.read(firebaseUserProvider).value?.uid;
     final participant = contract.participantFor(currentUid);
-    if (!_recalculated && contract.isActive && participant != null) {
+    if (!_recalculated &&
+        contract.isActive &&
+        participant != null &&
+        !contract.completedBy(currentUid)) {
       _recalculated = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -113,6 +117,21 @@ class _RunContractDetailScreenState
         if (participant != null) ...[
           const SizedBox(height: 12),
           _MyProgressCard(contract: contract, participant: participant),
+          if (contract.isActive && !completed) ...[
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: OutlinedButton.icon(
+                onPressed: () => _selectActivities(contract, participant),
+                icon: const Icon(Icons.playlist_add_check_rounded),
+                label: Text(
+                  participant.countedActivityIds.isEmpty
+                      ? 'Chọn buổi chạy áp dụng'
+                      : 'Đổi buổi chạy áp dụng',
+                ),
+              ),
+            ),
+          ],
         ],
         const SizedBox(height: 12),
         _ParticipantProgressList(
@@ -240,11 +259,300 @@ class _RunContractDetailScreenState
     }
   }
 
+  Future<void> _selectActivities(
+    RunContract contract,
+    RunContractParticipant participant,
+  ) async {
+    final palette = context.runNowPalette;
+    final contractTitles = <String, String>{};
+    for (final item in [
+      ...ref.read(clubRunContractsProvider).value ?? const <RunContract>[],
+      ...ref.read(myActiveContractsProvider).value ?? const <RunContract>[],
+    ]) {
+      contractTitles[item.id] = item.title;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: palette.glassStart,
+      barrierColor: Colors.black.withValues(alpha: 0.72),
+      clipBehavior: Clip.antiAlias,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => _ActivityAssignmentSheet(
+        contract: contract,
+        initialActivityIds: participant.countedActivityIds.toSet(),
+        contractTitles: contractTitles,
+        controller: ref.read(runContractControllerProvider),
+      ),
+    );
+  }
+
   void _showError(Object error) {
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('$error')));
+  }
+}
+
+class _ActivityAssignmentSheet extends StatefulWidget {
+  const _ActivityAssignmentSheet({
+    required this.contract,
+    required this.initialActivityIds,
+    required this.contractTitles,
+    required this.controller,
+  });
+
+  final RunContract contract;
+  final Set<String> initialActivityIds;
+  final Map<String, String> contractTitles;
+  final RunContractController controller;
+
+  @override
+  State<_ActivityAssignmentSheet> createState() =>
+      _ActivityAssignmentSheetState();
+}
+
+class _ActivityAssignmentSheetState extends State<_ActivityAssignmentSheet> {
+  late final Future<List<RunContractActivityOption>> _options;
+  late final Set<String> _selectedIds;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIds = {...widget.initialActivityIds};
+    _options = widget.controller.activityOptions(widget.contract);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return Material(
+      color: palette.glassStart,
+      child: FractionallySizedBox(
+        heightFactor: 0.84,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).dividerColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'Chọn buổi chạy',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Chỉ session bạn xác nhận mới được cộng vào kèo này.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: FutureBuilder<List<RunContractActivityOption>>(
+                  future: _options,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(child: Text('${snapshot.error}'));
+                    }
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final options = snapshot.data!;
+                    if (options.isEmpty) {
+                      return const Center(
+                        child: Text(
+                          'Chưa có buổi chạy Strava hợp lệ trong kỳ kèo.',
+                        ),
+                      );
+                    }
+                    return ListView.separated(
+                      itemCount: options.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final option = options[index];
+                        final activity = option.activity;
+                        final assignedElsewhere =
+                            option.assignedContractId != null &&
+                            option.assignedContractId != widget.contract.id;
+                        if (assignedElsewhere) {
+                          final assignedTitle =
+                              widget.contractTitles[option
+                                  .assignedContractId] ??
+                              'kèo khác';
+                          return _AssignedActivityTile(
+                            activity: activity,
+                            assignedTitle: assignedTitle,
+                          );
+                        }
+                        return CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          value: _selectedIds.contains(activity.id),
+                          onChanged: (selected) {
+                            setState(() {
+                              if (selected ?? false) {
+                                _selectedIds.add(activity.id);
+                              } else {
+                                _selectedIds.remove(activity.id);
+                              }
+                            });
+                          },
+                          title: Text(
+                            activity.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            '${DateFormat('dd/MM/yyyy, HH:mm').format(activity.startedAt)}'
+                            ' · ${(activity.distanceMeters / 1000).toStringAsFixed(2)} km',
+                          ),
+                          secondary: const Icon(Icons.directions_run_rounded),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _saving ? null : _save,
+                  child: _saving
+                      ? const SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text('Áp dụng ${_selectedIds.length} buổi chạy'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.controller.replaceActivityAssignments(
+        widget.contract,
+        _selectedIds,
+      );
+      if (mounted) Navigator.of(context).pop();
+    } catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+}
+
+class _AssignedActivityTile extends StatelessWidget {
+  const _AssignedActivityTile({
+    required this.activity,
+    required this.assignedTitle,
+  });
+
+  final ActivitySummary activity;
+  final String assignedTitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final muted = Theme.of(
+      context,
+    ).colorScheme.onSurface.withValues(alpha: 0.62);
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(
+          palette.accent.withValues(alpha: 0.07),
+          palette.glassStart,
+        ),
+        border: Border.all(color: palette.border),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.lock_rounded, color: muted),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  activity.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: muted, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${DateFormat('dd/MM/yyyy, HH:mm').format(activity.startedAt)}'
+                  ' · ${(activity.distanceMeters / 1000).toStringAsFixed(2)} km',
+                  style: TextStyle(color: muted),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Đã áp dụng cho: $assignedTitle',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: palette.accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: palette.accent,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              'ĐÃ GÁN',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onPrimary,
+                fontSize: 9,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.6,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -284,76 +592,80 @@ class _ContractDetailHeader extends StatelessWidget {
                   children: [
                     CircleAvatar(
                       radius: 22,
-                backgroundImage:
-                    ownerAvatarUrl == null || ownerAvatarUrl!.isEmpty
-                    ? null
-                    : NetworkImage(ownerAvatarUrl!),
-                child: ownerAvatarUrl == null || ownerAvatarUrl!.isEmpty
-                    ? Text(ownerName.isEmpty ? '?' : ownerName[0].toUpperCase())
-                    : null,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      ownerName,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
+                      backgroundImage:
+                          ownerAvatarUrl == null || ownerAvatarUrl!.isEmpty
+                          ? null
+                          : NetworkImage(ownerAvatarUrl!),
+                      child: ownerAvatarUrl == null || ownerAvatarUrl!.isEmpty
+                          ? Text(
+                              ownerName.isEmpty
+                                  ? '?'
+                                  : ownerName[0].toUpperCase(),
+                            )
+                          : null,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            ownerName,
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          Text(
+                            'KÈO NHÓM',
+                            style: TextStyle(
+                              color: palette.accent,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    Text(
-                      'KÈO NHÓM',
-                      style: TextStyle(
-                        color: palette.accent,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.2,
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: palette.accent.withValues(alpha: 0.13),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 7,
+                        ),
+                        child: Text(
+                          completed ? 'ĐÃ CỨU' : 'ĐANG CHẠY',
+                          style: TextStyle(
+                            color: palette.accent,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: palette.accent.withValues(alpha: 0.13),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 7,
-                  ),
-                  child: Text(
-                    completed ? 'ĐÃ CỨU' : 'ĐANG CHẠY',
-                    style: TextStyle(
-                      color: palette.accent,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                    ),
+                const SizedBox(height: 20),
+                Text(
+                  contract.title,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Text(
-            contract.title,
-            style: Theme.of(
-              context,
-            ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 7),
-          Text(
-            'Cùng hoàn thành ${_contractValue(contract.metric, contract.targetValue)} '
-            'trong kỳ này. Tiến trình cập nhật từ Strava.',
-            style: TextStyle(
-              color: onSurface.withValues(alpha: 0.58),
-              height: 1.35,
-            ),
-          ),
+                const SizedBox(height: 7),
+                Text(
+                  'Cùng hoàn thành ${_contractValue(contract.metric, contract.targetValue)} '
+                  'trong kỳ này. Tiến trình cập nhật từ Strava.',
+                  style: TextStyle(
+                    color: onSurface.withValues(alpha: 0.58),
+                    height: 1.35,
+                  ),
+                ),
               ],
             ),
           ),
@@ -384,9 +696,7 @@ class _MyProgressCard extends StatelessWidget {
       borderRadius: 18,
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-      gradient: LinearGradient(
-        colors: [palette.tint, palette.glassEnd],
-      ),
+      gradient: LinearGradient(colors: [palette.tint, palette.glassEnd]),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -453,6 +763,7 @@ class _MyProgressCard extends StatelessWidget {
             value: rawRatio.clamp(0.0, 1.0),
             minHeight: 9,
             borderRadius: BorderRadius.circular(2),
+            backgroundColor: palette.border,
             color: palette.accent,
           ),
           const SizedBox(height: 10),
@@ -636,6 +947,7 @@ class _ParticipantRow extends StatelessWidget {
                 value: ratio,
                 minHeight: 5,
                 borderRadius: BorderRadius.circular(2),
+                backgroundColor: palette.border,
                 color: palette.accent,
               ),
             ],

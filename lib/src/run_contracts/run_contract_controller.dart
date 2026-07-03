@@ -1,3 +1,4 @@
+import 'package:myrun/src/models.dart';
 import 'package:myrun/src/repository.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_period.dart';
@@ -10,6 +11,16 @@ class RunContractPreview {
 
   final RunContractProgress progress;
   final bool hardTarget;
+}
+
+class RunContractActivityOption {
+  const RunContractActivityOption({
+    required this.activity,
+    required this.assignedContractId,
+  });
+
+  final ActivitySummary activity;
+  final String? assignedContractId;
 }
 
 class RunContractController {
@@ -26,12 +37,6 @@ class RunContractController {
     final validation = draft.validate();
     if (validation != null) throw StateError(validation);
     final period = contractPeriodForDraft(draft, now ?? DateTime.now());
-    final contract = _previewContract(draft, period);
-    final activities = await _activities.listStravaActivities(
-      start: period.startAt,
-      endExclusive: period.endAtExclusive,
-    );
-    final progress = calculateRunContractProgress(contract, activities);
     var hardTarget = false;
     if (draft.metric == RunContractMetric.distance &&
         draft.period == RunContractPeriodType.weekly) {
@@ -61,30 +66,34 @@ class RunContractController {
           calculateRunContractProgress(historyContract, history).value / 4;
       hardTarget = average > 0 && draft.targetValue > average * 1.5;
     }
-    return RunContractPreview(progress: progress, hardTarget: hardTarget);
+    return RunContractPreview(
+      progress: const RunContractProgress(value: 0, eligibleActivities: []),
+      hardTarget: hardTarget,
+    );
   }
 
   Future<String> create(RunContractDraft draft, {DateTime? now}) async {
     final instant = now ?? DateTime.now();
     final period = contractPeriodForDraft(draft, instant);
-    final progress = await preview(draft, now: instant);
-    return _contracts.create(
-      draft: draft,
-      period: period,
-      initialProgress: progress.progress.value,
-    );
+    await preview(draft, now: instant);
+    return _contracts.create(draft: draft, period: period, initialProgress: 0);
   }
 
   Future<RunContractProgress> recalculate(RunContract contract) async {
     final progress = await _calculateProgress(contract);
-    await _contracts.updateProgress(contract.id, progress.value);
+    await _contracts.updateProgress(
+      contract.id,
+      progress.value,
+      countedActivityIds: progress.eligibleActivities
+          .map((activity) => activity.id)
+          .toList(),
+    );
     return progress;
   }
 
   Future<RunContractProgress> join(RunContract contract) async {
-    final progress = await _calculateProgress(contract);
-    await _contracts.join(contract.id, progress.value);
-    return progress;
+    await _contracts.join(contract.id, 0);
+    return const RunContractProgress(value: 0, eligibleActivities: []);
   }
 
   Future<RunContractProgress> recalculateParticipant(
@@ -106,15 +115,71 @@ class RunContractController {
       start: contract.startAt,
       endExclusive: contract.endAtExclusive,
     );
-    // Loại các activity đã được kèo khác của user ghi nhận (first-counted wins).
-    final excludeIds = await _contracts.claimedActivityIds(
-      excludeContractId: contract.id,
-    );
+    final assignments = await _contracts.activityAssignments();
+    final assignedIds = {
+      for (final entry in assignments.entries)
+        if (entry.value == contract.id) entry.key,
+    };
     return calculateRunContractProgress(
       contract,
       activities,
-      excludeIds: excludeIds,
+      includeIds: assignedIds,
     );
+  }
+
+  Future<List<RunContractActivityOption>> activityOptions(
+    RunContract contract,
+  ) async {
+    final activities = await _activities.listStravaActivities(
+      start: contract.startAt,
+      endExclusive: contract.endAtExclusive,
+    );
+    final assignments = await _contracts.activityAssignments();
+    final options = activities
+        .where((activity) => isEligibleForContract(activity, contract))
+        .map(
+          (activity) => RunContractActivityOption(
+            activity: activity,
+            assignedContractId: assignments[activity.id],
+          ),
+        )
+        .toList();
+    options.sort(
+      (a, b) => b.activity.startedAt.compareTo(a.activity.startedAt),
+    );
+    return options;
+  }
+
+  Future<RunContractProgress> replaceActivityAssignments(
+    RunContract contract,
+    Set<String> selectedActivityIds,
+  ) async {
+    final options = await activityOptions(contract);
+    final available = {
+      for (final option in options)
+        if (option.assignedContractId == null ||
+            option.assignedContractId == contract.id)
+          option.activity.id: option.activity,
+    };
+    if (!selectedActivityIds.every(available.containsKey)) {
+      throw StateError('Có buổi chạy không hợp lệ hoặc đã thuộc kèo khác.');
+    }
+    final selectedActivities = [
+      for (final id in selectedActivityIds) available[id]!,
+    ];
+    final progress = calculateRunContractProgress(
+      contract,
+      selectedActivities,
+      includeIds: selectedActivityIds,
+    );
+    await _contracts.replaceActivityAssignments(
+      contract.id,
+      activityIds: progress.eligibleActivities
+          .map((activity) => activity.id)
+          .toList(),
+      progressValue: progress.value,
+    );
+    return progress;
   }
 
   Future<RunContractStatus> finalize(
@@ -130,18 +195,7 @@ class RunContractController {
     if (!syncResult.succeeded) {
       throw StateError('Không thể đồng bộ Strava. Hãy thử chốt lại sau.');
     }
-    final activities = await _activities.listStravaActivities(
-      start: contract.startAt,
-      endExclusive: contract.endAtExclusive,
-    );
-    final excludeIds = await _contracts.claimedActivityIds(
-      excludeContractId: contract.id,
-    );
-    final progress = calculateRunContractProgress(
-      contract,
-      activities,
-      excludeIds: excludeIds,
-    );
+    final progress = await _calculateProgress(contract);
     return _contracts.finalize(
       contract.id,
       finalProgress: progress.value,
@@ -161,26 +215,5 @@ class RunContractController {
         : RunContractPeriodType.tomorrow,
     visibility: contract.visibility,
     title: contract.title,
-  );
-
-  RunContract _previewContract(
-    RunContractDraft draft,
-    RunContractPeriod period,
-  ) => RunContract(
-    id: 'preview',
-    creatorUid: 'preview',
-    title: 'Kèo chạy',
-    template: draft.template,
-    metric: draft.metric,
-    targetValue: draft.targetValue,
-    periodType: period.type,
-    startAt: period.startAt,
-    endAtExclusive: period.endAtExclusive,
-    finalizeAt: period.finalizeAt,
-    status: RunContractStatus.active,
-    visibility: draft.visibility,
-    progressValue: 0,
-    createdAt: DateTime.now(),
-    updatedAt: DateTime.now(),
   );
 }

@@ -98,12 +98,52 @@ void main() {
         finalizeAt: contract.finalizeAt,
       );
       final progress = calculateRunContractProgress(activeDaysContract, [
-        _activity('a', DateTime(2026, 6, 22, 8), 1000),
-        _activity('b', DateTime(2026, 6, 22, 20), 1000),
-        _activity('c', DateTime(2026, 6, 23, 7), 1000),
+        _activity('a', DateTime(2026, 6, 22, 8), 1001),
+        _activity('b', DateTime(2026, 6, 22, 20), 1001),
+        _activity('c', DateTime(2026, 6, 23, 7), 1001),
       ]);
 
       expect(progress.value, 2);
+    });
+
+    test('count and active-day metrics require each run to exceed 1 km', () {
+      final activities = [
+        _activity('under', DateTime.utc(2026, 6, 22, 1), 999),
+        _activity('exact', DateTime.utc(2026, 6, 22, 2), 1000),
+        _activity('over-a', DateTime.utc(2026, 6, 22, 3), 1001),
+        _activity('over-b', DateTime.utc(2026, 6, 23, 3), 1500),
+      ];
+      final countContract = _contract(
+        metric: RunContractMetric.activityCount,
+        targetValue: 2,
+        startAt: contract.startAt,
+        endAtExclusive: contract.endAtExclusive,
+        finalizeAt: contract.finalizeAt,
+      );
+      final activeDaysContract = _contract(
+        metric: RunContractMetric.activeDays,
+        targetValue: 2,
+        startAt: contract.startAt,
+        endAtExclusive: contract.endAtExclusive,
+        finalizeAt: contract.finalizeAt,
+      );
+
+      final count = calculateRunContractProgress(countContract, activities);
+      final activeDays = calculateRunContractProgress(
+        activeDaysContract,
+        activities,
+      );
+
+      expect(count.value, 2);
+      expect(count.eligibleActivities.map((item) => item.id), [
+        'over-a',
+        'over-b',
+      ]);
+      expect(activeDays.value, 2);
+      expect(activeDays.eligibleActivities.map((item) => item.id), [
+        'over-a',
+        'over-b',
+      ]);
     });
 
     test('longest run takes the single farthest eligible run', () {
@@ -225,10 +265,70 @@ void main() {
     });
   });
 
-  group('controller finalize', () {
+  group('controller assignment and finalize', () {
+    test(
+      'recalculate persists only activities assigned to this contract',
+      () async {
+        final activities = _FakeActivityRepository(
+          activities: [
+            _activity('claimed', DateTime.utc(2026, 6, 22), 4000),
+            _activity('available', DateTime.utc(2026, 6, 23), 3000),
+          ],
+        );
+        final contracts = _FakeContractRepository(
+          assignments: {'claimed': 'another-contract', 'available': 'contract'},
+        );
+        final controller = RunContractController(
+          contracts,
+          activities,
+          SyncController(activities),
+        );
+        final contract = _contract(
+          startAt: DateTime.utc(2026, 6, 21, 17),
+          endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+          finalizeAt: DateTime.utc(2026, 6, 28, 23),
+        );
+
+        final progress = await controller.recalculate(contract);
+
+        expect(progress.value, 3);
+        expect(contracts.updatedProgress, 3);
+        expect(contracts.updatedActivityIds, ['available']);
+      },
+    );
+
+    test(
+      'manual assignment rejects a session owned by another contract',
+      () async {
+        final activities = _FakeActivityRepository(
+          activities: [_activity('taken', DateTime.utc(2026, 6, 22), 5000)],
+        );
+        final contracts = _FakeContractRepository(
+          assignments: {'taken': 'another-contract'},
+        );
+        final controller = RunContractController(
+          contracts,
+          activities,
+          SyncController(activities),
+        );
+        final contract = _contract(
+          startAt: DateTime.utc(2026, 6, 21, 17),
+          endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+          finalizeAt: DateTime.utc(2026, 6, 28, 23),
+        );
+
+        await expectLater(
+          controller.replaceActivityAssignments(contract, {'taken'}),
+          throwsStateError,
+        );
+      },
+    );
+
     test('does not finalize when forced Strava sync fails', () async {
       final activities = _FakeActivityRepository(error: Exception('offline'));
-      final contracts = _FakeContractRepository();
+      final contracts = _FakeContractRepository(
+        assignments: {'finish': 'contract'},
+      );
       final controller = RunContractController(
         contracts,
         activities,
@@ -251,7 +351,9 @@ void main() {
       final activities = _FakeActivityRepository(
         activities: [_activity('finish', DateTime.utc(2026, 6, 22), 10000)],
       );
-      final contracts = _FakeContractRepository();
+      final contracts = _FakeContractRepository(
+        assignments: {'finish': 'contract'},
+      );
       final controller = RunContractController(
         contracts,
         activities,
@@ -353,8 +455,13 @@ class _FakeActivityRepository implements ActivityRepository {
 }
 
 class _FakeContractRepository implements RunContractRepository {
+  _FakeContractRepository({this.assignments = const {}});
+
   int finalizeCalls = 0;
   double? finalProgress;
+  double? updatedProgress;
+  List<String> updatedActivityIds = const [];
+  final Map<String, String> assignments;
 
   @override
   Future<RunContractStatus> finalize(
@@ -369,22 +476,42 @@ class _FakeContractRepository implements RunContractRepository {
   }
 
   @override
-  Future<Set<String>> claimedActivityIds({
-    required String excludeContractId,
-  }) async => const {};
+  Future<Map<String, String>> activityAssignments() async => assignments;
+
+  @override
+  Future<void> replaceActivityAssignments(
+    String contractId, {
+    required List<String> activityIds,
+    required double progressValue,
+  }) async {
+    updatedProgress = progressValue;
+    updatedActivityIds = activityIds;
+  }
 
   @override
   Future<String> create({
     required RunContractDraft draft,
     required RunContractPeriod period,
     required double initialProgress,
+    List<String> countedActivityIds = const [],
   }) async => 'created';
 
   @override
-  Future<void> updateProgress(String contractId, double progressValue) async {}
+  Future<void> updateProgress(
+    String contractId,
+    double progressValue, {
+    List<String> countedActivityIds = const [],
+  }) async {
+    updatedProgress = progressValue;
+    updatedActivityIds = countedActivityIds;
+  }
 
   @override
-  Future<void> join(String contractId, double initialProgress) async {}
+  Future<void> join(
+    String contractId,
+    double initialProgress, {
+    List<String> countedActivityIds = const [],
+  }) async {}
 
   @override
   Future<void> updateParticipantProgress(

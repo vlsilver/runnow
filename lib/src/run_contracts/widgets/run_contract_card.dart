@@ -36,28 +36,32 @@ class RunContractCard extends StatelessWidget {
     final completedCount = contract.participants.values
         .where((item) => item.progressValue >= contract.targetValue)
         .length;
-    // Nền đặc + viền + bóng nhẹ để card nổi rõ trên nền giấy, không còn trong
-    // suốt và không bị "đè" khi cuộn/nhấn (ripple gói gọn trong bo góc).
-    final surface = isMine ? palette.tint : palette.glassStart;
+    // Card kèo luôn dùng neutral surface đặc. Màu hệ chỉ dành cho viền, trạng
+    // thái và progress để nội dung không bị chìm trong một mảng màu lớn.
+    final surface = palette.glassStart;
     const radius = 18.0;
-    return Container(
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: surface,
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(
-          color: isMine ? palette.accent.withValues(alpha: 0.45) : palette.border,
-        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
+            color: Colors.black.withValues(alpha: 0.14),
             blurRadius: 14,
             offset: const Offset(0, 6),
           ),
         ],
       ),
-      clipBehavior: Clip.antiAlias,
       child: Material(
-        type: MaterialType.transparency,
+        color: surface,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radius),
+          side: BorderSide(
+            color: isMine
+                ? palette.accent.withValues(alpha: 0.68)
+                : palette.border,
+          ),
+        ),
         child: InkWell(
           onTap: onTap,
           child: IntrinsicHeight(
@@ -321,7 +325,10 @@ class _ProgressLine extends StatelessWidget {
                   progressValue,
                   contract.targetValue,
                 ),
-                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(width: 8),
             ],
@@ -364,9 +371,12 @@ class _AvatarStack extends StatelessWidget {
       );
     }
     return SizedBox(
-      width: 24.0 + (shown.length - 1) * 17,
+      // CircleAvatar đường kính 28; cộng đúng offset overlap cho từng avatar.
+      // Trước đây dùng 24 khiến avatar cuối bị clip mất 4 px.
+      width: 28.0 + (shown.length - 1) * 17,
       height: 28,
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
           for (var index = 0; index < shown.length; index++)
             Positioned(
@@ -405,8 +415,8 @@ String _value(RunContractMetric metric, double value) => switch (metric) {
 String _valueOverTarget(RunContractMetric metric, double value, double target) {
   String n(double v) => v.toStringAsFixed(v % 1 == 0 ? 0 : 1);
   return switch (metric) {
-    RunContractMetric.distance || RunContractMetric.longestRun =>
-      '${n(value)} / ${n(target)} km',
+    RunContractMetric.distance ||
+    RunContractMetric.longestRun => '${n(value)} / ${n(target)} km',
     RunContractMetric.activityCount =>
       '${value.toInt()} / ${target.toInt()} buổi',
     RunContractMetric.activeDays => '${value.toInt()} / ${target.toInt()} ngày',

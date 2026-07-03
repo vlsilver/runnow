@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:go_router/go_router.dart';
 import 'package:myrun/src/dashboard_analytics.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
@@ -27,7 +28,6 @@ class DashboardScreen extends ConsumerStatefulWidget {
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
-    final sync = ref.watch(syncControllerProvider);
     final profileState = ref.watch(userProfileProvider);
     final profileLoading = profileState.maybeWhen(
       loading: () => true,
@@ -36,19 +36,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final stravaConnected = ref.watch(stravaConnectionProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Hồ sơ & thành tích'),
+        title: const Text('Cá nhân'),
         actions: [
-          if (stravaConnected)
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: _SyncAction(
-                syncing: sync.syncing,
-                synced: sync.lastSyncSucceeded,
-                onPressed: () => ref
-                    .read(syncControllerProvider)
-                    .startBackgroundSync(force: true),
-              ),
-            ),
+          IconButton(
+            tooltip: 'Mở nhật ký chạy',
+            onPressed: () => context.push('/profile/journal'),
+            icon: const Icon(Icons.list_alt_rounded),
+          ),
+          const SizedBox(width: 8),
         ],
       ),
       body: profileLoading
@@ -459,14 +454,24 @@ class _RecentActivitiesCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'GẦN ĐÂY',
-            style: TextStyle(
-              color: onSurface.withValues(alpha: 0.62),
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.4,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'GẦN ĐÂY',
+                  style: TextStyle(
+                    color: onSurface.withValues(alpha: 0.62),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.4,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => context.push('/profile/journal'),
+                child: const Text('Xem nhật ký'),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
           if (recent.isEmpty)
@@ -775,69 +780,6 @@ class _GoalInputField extends StatelessWidget {
           borderSide: BorderSide(color: palette.secondary),
         ),
       ),
-    );
-  }
-}
-
-class _SyncAction extends StatefulWidget {
-  const _SyncAction({
-    required this.syncing,
-    required this.synced,
-    required this.onPressed,
-  });
-
-  final bool syncing;
-  final bool synced;
-  final VoidCallback onPressed;
-
-  @override
-  State<_SyncAction> createState() => _SyncActionState();
-}
-
-class _SyncActionState extends State<_SyncAction>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 850),
-    );
-    _syncAnimation();
-  }
-
-  @override
-  void didUpdateWidget(covariant _SyncAction oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.syncing != widget.syncing) _syncAnimation();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _syncAnimation() {
-    if (widget.syncing) {
-      _controller.repeat();
-    } else {
-      _controller.stop();
-      _controller.reset();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final icon = widget.syncing
-        ? RotationTransition(turns: _controller, child: const Icon(Icons.sync))
-        : Icon(widget.synced ? Icons.check : Icons.sync);
-    return GlassIconButton(
-      tooltip: 'Đồng bộ Strava',
-      onPressed: widget.syncing ? null : widget.onPressed,
-      icon: icon,
     );
   }
 }

@@ -715,14 +715,17 @@ class FirestoreMemberRepository implements MemberRepository {
     return _firestore.collection('leaderboardEntries').snapshots().map((
       snapshot,
     ) {
+      final now = DateTime.now();
       return snapshot.docs.map((document) {
         final data = document.data();
         final updatedAt = data['updatedAt'];
-        return LeaderboardEntry.fromMap({
-          ...data,
-          'uid': document.id,
-          if (updatedAt is Timestamp) 'updatedAt': updatedAt.toDate(),
-        });
+        return LeaderboardEntry.fromMap(
+          normalizeLeaderboardEntryPeriods({
+            ...data,
+            'uid': document.id,
+            if (updatedAt is Timestamp) 'updatedAt': updatedAt.toDate(),
+          }, now),
+        );
       }).toList();
     });
   }
@@ -754,6 +757,12 @@ class FirestoreMemberRepository implements MemberRepository {
 
   @visibleForTesting
   bool shouldRefreshLeaderboardEntry(Map<String, dynamic> data, DateTime now) {
+    if (data['currentWeekStart'] !=
+            _leaderboardPeriodKey(startOfCurrentWeek(now)) ||
+        data['currentMonthStart'] !=
+            _leaderboardPeriodKey(DateTime(now.year, now.month))) {
+      return true;
+    }
     final updatedAt = data['updatedAt'];
     DateTime? lastRefresh;
     if (updatedAt is Timestamp) {
@@ -1259,8 +1268,62 @@ Map<String, dynamic> leaderboardEntryToMap({
       start: monthStart,
       end: DateTime(currentTime.year, currentTime.month + 1),
     ),
+    'currentWeekStart': _leaderboardPeriodKey(weekStart),
+    'currentMonthStart': _leaderboardPeriodKey(monthStart),
     'updatedAt': FieldValue.serverTimestamp(),
   };
+}
+
+/// Prevents an aggregate from a previous week/month being presented under the
+/// current period label. Period keys are authoritative for new documents;
+/// `updatedAt` keeps legacy documents safe until their owner refreshes them.
+@visibleForTesting
+Map<String, dynamic> normalizeLeaderboardEntryPeriods(
+  Map<String, dynamic> data,
+  DateTime now,
+) {
+  final normalized = Map<String, dynamic>.from(data);
+  final updatedAt = switch (data['updatedAt']) {
+    Timestamp value => value.toDate(),
+    DateTime value => value,
+    _ => null,
+  };
+  final weekStart = startOfCurrentWeek(now);
+  final monthStart = DateTime(now.year, now.month);
+
+  if (!_leaderboardPeriodIsCurrent(
+    storedKey: data['currentWeekStart'],
+    expectedKey: _leaderboardPeriodKey(weekStart),
+    legacyUpdatedAt: updatedAt,
+    periodStart: weekStart,
+  )) {
+    normalized['currentWeek'] = const <String, dynamic>{};
+  }
+  if (!_leaderboardPeriodIsCurrent(
+    storedKey: data['currentMonthStart'],
+    expectedKey: _leaderboardPeriodKey(monthStart),
+    legacyUpdatedAt: updatedAt,
+    periodStart: monthStart,
+  )) {
+    normalized['currentMonth'] = const <String, dynamic>{};
+  }
+  return normalized;
+}
+
+bool _leaderboardPeriodIsCurrent({
+  required Object? storedKey,
+  required String expectedKey,
+  required DateTime? legacyUpdatedAt,
+  required DateTime periodStart,
+}) {
+  if (storedKey is String) return storedKey == expectedKey;
+  return legacyUpdatedAt != null && !legacyUpdatedAt.isBefore(periodStart);
+}
+
+String _leaderboardPeriodKey(DateTime date) {
+  final month = date.month.toString().padLeft(2, '0');
+  final day = date.day.toString().padLeft(2, '0');
+  return '${date.year}-$month-$day';
 }
 
 @visibleForTesting

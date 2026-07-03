@@ -36,14 +36,6 @@ final _router = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: '/journal',
-              builder: (context, state) => const JournalScreen(),
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
               path: '/club',
               builder: (context, state) => const ClubScreen(),
             ),
@@ -60,12 +52,26 @@ final _router = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
+              path: '/profile',
+              builder: (context, state) => const DashboardScreen(),
+              routes: [
+                GoRoute(
+                  path: 'journal',
+                  builder: (context, state) => const JournalScreen(),
+                ),
+              ],
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
               path: '/settings',
               builder: (context, state) => const SettingsScreen(),
               routes: [
                 GoRoute(
                   path: 'profile',
-                  builder: (context, state) => const DashboardScreen(),
+                  redirect: (context, state) => '/profile',
                 ),
               ],
             ),
@@ -73,6 +79,7 @@ final _router = GoRouter(
         ),
       ],
     ),
+    GoRoute(path: '/journal', redirect: (context, state) => '/profile/journal'),
     GoRoute(
       path: '/activity/:id',
       builder: (context, state) =>
@@ -191,7 +198,13 @@ class _AuthenticatedSessionState extends ConsumerState<_AuthenticatedSession> {
         if (!mounted || !result.succeeded) return;
         final uid = ref.read(firebaseUserProvider).value?.uid;
         final controller = ref.read(runContractControllerProvider);
-        final mine = ref.read(myActiveContractsProvider).value ?? const [];
+        final mine =
+            [
+                ...ref.read(myActiveContractsProvider).value ??
+                    const <RunContract>[],
+              ]
+              ..removeWhere((contract) => contract.completedBy(uid))
+              ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
         for (final contract in mine) {
           if (contract.creatorUid == uid) {
             await controller.recalculate(contract);
@@ -253,8 +266,8 @@ class _Scaffold extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              DashboardNavFilter(branchActive: location == '/settings/profile'),
-              ClubNavFilter(branchActive: shell.currentIndex == 2),
+              DashboardNavFilter(branchActive: location == '/profile'),
+              ClubNavFilter(branchActive: shell.currentIndex == 1),
               Row(
                 children: [
                   Expanded(
@@ -269,26 +282,26 @@ class _Scaffold extends StatelessWidget {
                   Expanded(
                     child: _NavItem(
                       selected: shell.currentIndex == 1,
-                      icon: Icons.directions_run_outlined,
-                      selectedIcon: Icons.directions_run,
-                      label: 'Nhật ký',
+                      icon: Icons.groups_2_outlined,
+                      selectedIcon: Icons.groups_2,
+                      label: 'Club',
                       onTap: () => shell.goBranch(1),
                     ),
                   ),
                   if (!kIsWeb)
                     Expanded(
                       child: _RunNavItem(
-                        selected: shell.currentIndex == 3,
-                        onTap: () => shell.goBranch(3),
+                        selected: shell.currentIndex == 2,
+                        onTap: () => shell.goBranch(2),
                       ),
                     ),
                   Expanded(
                     child: _NavItem(
-                      selected: shell.currentIndex == 2,
-                      icon: Icons.groups_2_outlined,
-                      selectedIcon: Icons.groups_2,
-                      label: 'Club',
-                      onTap: () => shell.goBranch(2),
+                      selected: shell.currentIndex == 3,
+                      icon: Icons.person_outline_rounded,
+                      selectedIcon: Icons.person_rounded,
+                      label: 'Cá nhân',
+                      onTap: () => shell.goBranch(3),
                     ),
                   ),
                   Expanded(
@@ -350,8 +363,8 @@ class _DesktopCommandBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final filter = switch (shell.currentIndex) {
       0 => null,
-      2 => const ClubNavFilter(branchActive: true),
-      4 when location == '/settings/profile' => const DashboardNavFilter(
+      1 => const ClubNavFilter(branchActive: true),
+      3 when location == '/profile' => const DashboardNavFilter(
         branchActive: true,
         showFallback: true,
       ),
@@ -359,19 +372,19 @@ class _DesktopCommandBar extends ConsumerWidget {
     };
     final title = switch (shell.currentIndex) {
       0 => 'Kèo',
-      1 => 'Nhật ký',
-      2 => 'Câu lạc bộ',
-      3 => 'Chạy thử',
-      4 when location == '/settings/profile' => 'Hồ sơ',
+      1 => 'Câu lạc bộ',
+      2 => 'Chạy thử',
+      3 when location == '/profile/journal' => 'Nhật ký',
+      3 => 'Cá nhân',
       4 => 'Cài đặt',
       _ => 'RunNow',
     };
     final subtitle = switch (shell.currentIndex) {
       0 => 'Run contract',
-      1 => 'Activity log',
-      2 => 'Club command center',
-      3 => 'Tracking lab',
-      4 when location == '/settings/profile' => 'Personal performance',
+      1 => 'Club command center',
+      2 => 'Tracking lab',
+      3 when location == '/profile/journal' => 'Activity log',
+      3 => 'Personal performance',
       4 => 'Preferences',
       _ => 'Your training space',
     };
@@ -503,7 +516,7 @@ class _DesktopNavRail extends StatelessWidget {
     final extended = width >= 1100;
     final scheme = Theme.of(context).colorScheme;
     final onSurface = scheme.onSurface;
-    final branches = <int>[0, 1, if (!kIsWeb) 3, 2, 4];
+    final branches = <int>[0, 1, if (!kIsWeb) 2, 3, 4];
     final destinations = <NavigationRailDestination>[
       const NavigationRailDestination(
         icon: Icon(Icons.flag_outlined),
@@ -511,9 +524,9 @@ class _DesktopNavRail extends StatelessWidget {
         label: Text('Kèo'),
       ),
       const NavigationRailDestination(
-        icon: Icon(Icons.directions_run_outlined),
-        selectedIcon: Icon(Icons.directions_run),
-        label: Text('Nhật ký'),
+        icon: Icon(Icons.groups_2_outlined),
+        selectedIcon: Icon(Icons.groups_2),
+        label: Text('Club'),
       ),
       if (!kIsWeb)
         const NavigationRailDestination(
@@ -522,9 +535,9 @@ class _DesktopNavRail extends StatelessWidget {
           label: Text('Chạy'),
         ),
       const NavigationRailDestination(
-        icon: Icon(Icons.groups_2_outlined),
-        selectedIcon: Icon(Icons.groups_2),
-        label: Text('Club'),
+        icon: Icon(Icons.person_outline_rounded),
+        selectedIcon: Icon(Icons.person_rounded),
+        label: Text('Cá nhân'),
       ),
       const NavigationRailDestination(
         icon: Icon(Icons.settings_outlined),

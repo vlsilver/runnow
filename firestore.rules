@@ -33,6 +33,15 @@ service cloud.firestore {
       match /trainingGoalHistory/{historyId} {
         allow read, write: if owns(userId);
       }
+
+      match /runContractActivityClaims/{activityId} {
+        allow read: if owns(userId);
+        allow create, update: if owns(userId)
+          && request.resource.data.uid == userId
+          && request.resource.data.activityId == activityId
+          && request.resource.data.contractId is string;
+        allow delete: if owns(userId);
+      }
     }
 
     match /runContracts/{contractId} {

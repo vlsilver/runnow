@@ -26,9 +26,7 @@ class SettingsScreen extends ConsumerWidget {
           profile.when(
             data: (user) => _AccountHeader(
               profile: user,
-              onEdit: user == null
-                  ? null
-                  : () => context.push('/settings/profile'),
+              onEdit: user == null ? null : () => context.push('/profile'),
             ),
             loading: () => const _AccountHeader.loading(),
             error: (error, stack) => _SettingsSection(

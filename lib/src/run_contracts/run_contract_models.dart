@@ -151,9 +151,10 @@ class RunContractDraft {
     RunContractPeriodType.weekly => 7,
     RunContractPeriodType.custom =>
       (customStart != null && customEnd != null)
-          ? (customEnd!.difference(customStart!).inMinutes / 1440)
-                .ceil()
-                .clamp(1, 31)
+          ? (customEnd!.difference(customStart!).inMinutes / 1440).ceil().clamp(
+              1,
+              31,
+            )
           : 7,
     _ => 1,
   };
@@ -219,8 +220,8 @@ class RunContractParticipant {
   final DateTime joinedAt;
   final DateTime updatedAt;
 
-  /// ID các activity Strava đã được tính cho người này trong kèo. Dùng để chặn
-  /// một session bị ghi nhận lại ở kèo khác của cùng người tạo.
+  /// Cache các activity Strava user đã chủ động gán vào kèo này. Claim document
+  /// dưới user mới là nguồn sự thật chống một session thuộc nhiều kèo.
   final List<String> countedActivityIds;
 }
 

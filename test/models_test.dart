@@ -162,6 +162,38 @@ void main() {
       360,
     );
     expect((entry['currentMonth'] as Map<String, dynamic>)['activeDays'], 1);
+    expect(entry['currentWeekStart'], '2026-06-01');
+    expect(entry['currentMonthStart'], '2026-06-01');
+  });
+
+  test('hides leaderboard stats that belong to an expired period', () {
+    final normalized = normalizeLeaderboardEntryPeriods({
+      'updatedAt': DateTime(2026, 6, 24),
+      'currentWeek': {'distanceMeters': 4000},
+      'currentMonth': {'distanceMeters': 12000},
+    }, DateTime(2026, 7, 3));
+
+    expect(normalized['currentWeek'], isEmpty);
+    expect(normalized['currentMonth'], isEmpty);
+  });
+
+  test('keeps leaderboard stats tagged for the current period', () {
+    final normalized = normalizeLeaderboardEntryPeriods({
+      'updatedAt': DateTime(2026, 6, 24),
+      'currentWeekStart': '2026-06-29',
+      'currentMonthStart': '2026-07-01',
+      'currentWeek': {'distanceMeters': 5000},
+      'currentMonth': {'distanceMeters': 5000},
+    }, DateTime(2026, 7, 3));
+
+    expect(
+      (normalized['currentWeek'] as Map<String, dynamic>)['distanceMeters'],
+      5000,
+    );
+    expect(
+      (normalized['currentMonth'] as Map<String, dynamic>)['distanceMeters'],
+      5000,
+    );
   });
 
   test('LeaderboardStats computes average pace correctly', () {

@@ -24,3 +24,6 @@ GoogleService-Info.plist
 .idea/
 *.iml
 features/
+android/key.properties
+*.jks
+*.keystore

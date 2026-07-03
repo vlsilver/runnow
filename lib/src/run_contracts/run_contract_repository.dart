@@ -26,24 +26,36 @@ abstract interface class RunContractRepository {
     required RunContractDraft draft,
     required RunContractPeriod period,
     required double initialProgress,
+    List<String> countedActivityIds = const [],
   });
-  Future<void> updateProgress(String contractId, double progressValue);
-  Future<void> join(String contractId, double initialProgress);
+  Future<void> updateProgress(
+    String contractId,
+    double progressValue, {
+    List<String> countedActivityIds = const [],
+  });
+  Future<void> join(
+    String contractId,
+    double initialProgress, {
+    List<String> countedActivityIds = const [],
+  });
   Future<void> updateParticipantProgress(
     String contractId,
     double progressValue, {
-    List<String> countedActivityIds,
+    List<String> countedActivityIds = const [],
   });
 
-  /// ID các activity đã được các kèo KHÁC mà user tham gia (không tính kèo
-  /// [excludeContractId] và kèo đã huỷ) ghi nhận — để loại trừ, một session chỉ
-  /// tính cho đúng một kèo.
-  Future<Set<String>> claimedActivityIds({required String excludeContractId});
+  /// Assignment hiện tại của user: activity ID -> contract ID.
+  Future<Map<String, String>> activityAssignments();
+  Future<void> replaceActivityAssignments(
+    String contractId, {
+    required List<String> activityIds,
+    required double progressValue,
+  });
   Future<RunContractStatus> finalize(
     String contractId, {
     required double finalProgress,
     required bool targetMet,
-    List<String> countedActivityIds,
+    List<String> countedActivityIds = const [],
   });
 }
 
@@ -61,6 +73,11 @@ class FirestoreRunContractRepository implements RunContractRepository {
 
   CollectionReference<Map<String, dynamic>> get _contracts =>
       _firestore.collection('runContracts');
+
+  CollectionReference<Map<String, dynamic>> get _activityClaims => _firestore
+      .collection('users')
+      .doc(_uid)
+      .collection('runContractActivityClaims');
 
   @override
   Stream<List<RunContract>> watchMyActiveContracts() => _contracts
@@ -96,6 +113,7 @@ class FirestoreRunContractRepository implements RunContractRepository {
     required RunContractDraft draft,
     required RunContractPeriod period,
     required double initialProgress,
+    List<String> countedActivityIds = const [],
   }) async {
     final validation = draft.validate();
     if (validation != null) throw StateError(validation);
@@ -125,6 +143,7 @@ class FirestoreRunContractRepository implements RunContractRepository {
         _uid: {
           'uid': _uid,
           'progressValue': initialProgress,
+          'countedActivityIds': countedActivityIds,
           'joinedAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         },
@@ -148,11 +167,26 @@ class FirestoreRunContractRepository implements RunContractRepository {
         .where('participantUids', arrayContains: _uid)
         .where('status', isEqualTo: RunContractStatus.active.value)
         .get();
-    return snapshot.docs.length;
+    return snapshot.docs.where((document) {
+      final data = document.data();
+      final participants = data['participants'] as Map<String, dynamic>?;
+      final mine = participants?[_uid] as Map<String, dynamic>?;
+      final progress =
+          (mine?['progressValue'] as num?)?.toDouble() ??
+          (data['creatorUid'] == _uid
+              ? (data['progressValue'] as num?)?.toDouble() ?? 0
+              : 0);
+      final target = (data['targetValue'] as num?)?.toDouble() ?? 0;
+      return target <= 0 || progress < target;
+    }).length;
   }
 
   @override
-  Future<void> updateProgress(String contractId, double progressValue) async {
+  Future<void> updateProgress(
+    String contractId,
+    double progressValue, {
+    List<String> countedActivityIds = const [],
+  }) async {
     if (!progressValue.isFinite || progressValue < 0) {
       throw StateError('Tiến độ không hợp lệ.');
     }
@@ -166,11 +200,19 @@ class FirestoreRunContractRepository implements RunContractRepository {
         return;
       }
       final existing = (data['progressValue'] as num?)?.toDouble() ?? 0;
-      if ((existing - progressValue).abs() < 0.000001) return;
       final participants = data['participants'];
       final creatorParticipant = participants is Map
           ? participants[_uid] as Map<String, dynamic>?
           : null;
+      final existingIds =
+          (creatorParticipant?['countedActivityIds'] as List?)
+              ?.whereType<String>()
+              .toSet() ??
+          const <String>{};
+      final idsUnchanged =
+          existingIds.length == countedActivityIds.length &&
+          existingIds.containsAll(countedActivityIds);
+      if ((existing - progressValue).abs() < 0.000001 && idsUnchanged) return;
       final joinedAt =
           creatorParticipant?['joinedAt'] ?? FieldValue.serverTimestamp();
       transaction.update(ref, {
@@ -178,6 +220,7 @@ class FirestoreRunContractRepository implements RunContractRepository {
         'participants.$_uid': {
           'uid': _uid,
           'progressValue': progressValue,
+          'countedActivityIds': countedActivityIds,
           'joinedAt': joinedAt,
           'updatedAt': FieldValue.serverTimestamp(),
         },
@@ -188,13 +231,18 @@ class FirestoreRunContractRepository implements RunContractRepository {
   }
 
   @override
-  Future<void> join(String contractId, double initialProgress) async {
+  Future<void> join(
+    String contractId,
+    double initialProgress, {
+    List<String> countedActivityIds = const [],
+  }) async {
     _validateProgress(initialProgress);
     final ref = _contracts.doc(contractId);
     // Chặn vượt giới hạn nếu đây là kèo mới (chưa tham gia). Đọc trước transaction
     // vì transaction không chạy được query đếm.
     final pre = await ref.get();
-    final preParticipants = pre.data()?['participants'] as Map<String, dynamic>?;
+    final preParticipants =
+        pre.data()?['participants'] as Map<String, dynamic>?;
     if (preParticipants?.containsKey(_uid) != true) {
       await _ensureUnderLimit();
     }
@@ -225,6 +273,7 @@ class FirestoreRunContractRepository implements RunContractRepository {
             _uid: {
               'uid': _uid,
               'progressValue': initialProgress,
+              'countedActivityIds': countedActivityIds,
               'joinedAt': FieldValue.serverTimestamp(),
               'updatedAt': FieldValue.serverTimestamp(),
             },
@@ -238,6 +287,7 @@ class FirestoreRunContractRepository implements RunContractRepository {
         'participants.$_uid': {
           'uid': _uid,
           'progressValue': initialProgress,
+          'countedActivityIds': countedActivityIds,
           'joinedAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         },
@@ -268,7 +318,9 @@ class FirestoreRunContractRepository implements RunContractRepository {
       if (current == null) throw StateError('Bạn chưa tham gia kèo này.');
       final existing = (current['progressValue'] as num?)?.toDouble() ?? 0;
       final existingIds =
-          (current['countedActivityIds'] as List?)?.whereType<String>().toSet() ??
+          (current['countedActivityIds'] as List?)
+              ?.whereType<String>()
+              .toSet() ??
           const <String>{};
       final unchanged =
           (existing - progressValue).abs() < 0.000001 &&
@@ -289,27 +341,96 @@ class FirestoreRunContractRepository implements RunContractRepository {
   }
 
   @override
-  Future<Set<String>> claimedActivityIds({
-    required String excludeContractId,
+  Future<Map<String, String>> activityAssignments() async {
+    final snapshot = await _activityClaims.get();
+    return {
+      for (final document in snapshot.docs)
+        if (document.data()['contractId'] is String)
+          document.id: document.data()['contractId'] as String,
+    };
+  }
+
+  @override
+  Future<void> replaceActivityAssignments(
+    String contractId, {
+    required List<String> activityIds,
+    required double progressValue,
   }) async {
-    final query = await _contracts
-        .where('participantUids', arrayContains: _uid)
-        .get();
-    final ids = <String>{};
-    for (final doc in query.docs) {
-      if (doc.id == excludeContractId) continue;
-      final data = doc.data();
-      if (RunContractStatus.fromValue(data['status'] as String?) ==
-          RunContractStatus.cancelled) {
-        continue;
+    _validateProgress(progressValue);
+    final selectedIds = activityIds.toSet();
+    if (selectedIds.length > 200) {
+      throw StateError('Một kèo không thể gán quá 200 buổi chạy.');
+    }
+    final contractRef = _contracts.doc(contractId);
+    await _firestore.runTransaction((transaction) async {
+      final contractSnapshot = await transaction.get(contractRef);
+      final data = contractSnapshot.data();
+      if (data == null) throw StateError('Không tìm thấy kèo chạy.');
+      if (RunContractStatus.fromValue(data['status'] as String?) !=
+          RunContractStatus.active) {
+        throw StateError('Kèo này đã kết thúc.');
       }
       final participants = data['participants'] as Map<String, dynamic>?;
-      final mine = participants?[_uid] as Map<String, dynamic>?;
-      final counted = (mine?['countedActivityIds'] as List?)
-          ?.whereType<String>();
-      if (counted != null) ids.addAll(counted);
-    }
-    return ids;
+      final current = participants?[_uid] as Map<String, dynamic>?;
+      if (current == null) throw StateError('Bạn chưa tham gia kèo này.');
+      final target = (data['targetValue'] as num?)?.toDouble() ?? 0;
+      final currentProgress =
+          (current['progressValue'] as num?)?.toDouble() ?? 0;
+      if (target > 0 && currentProgress >= target) {
+        throw StateError('Kèo đã hoàn thành nên không thể đổi buổi chạy.');
+      }
+
+      final previousIds =
+          (current['countedActivityIds'] as List?)
+              ?.whereType<String>()
+              .toSet() ??
+          const <String>{};
+      final affectedIds = {...previousIds, ...selectedIds};
+      final claimSnapshots = <String, DocumentSnapshot<Map<String, dynamic>>>{};
+      for (final activityId in affectedIds) {
+        claimSnapshots[activityId] = await transaction.get(
+          _activityClaims.doc(activityId),
+        );
+      }
+
+      for (final activityId in selectedIds) {
+        final existingContractId =
+            claimSnapshots[activityId]?.data()?['contractId'] as String?;
+        if (existingContractId != null && existingContractId != contractId) {
+          throw StateError('Buổi chạy này đã được gán cho một kèo khác.');
+        }
+      }
+      for (final activityId in previousIds.difference(selectedIds)) {
+        final claim = claimSnapshots[activityId];
+        if (claim?.data()?['contractId'] == contractId) {
+          transaction.delete(_activityClaims.doc(activityId));
+        }
+      }
+      for (final activityId in selectedIds.difference(previousIds)) {
+        transaction.set(_activityClaims.doc(activityId), {
+          'activityId': activityId,
+          'contractId': contractId,
+          'uid': _uid,
+          'assignedAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      final participant = {
+        'uid': _uid,
+        'progressValue': progressValue,
+        'countedActivityIds': selectedIds.toList()..sort(),
+        'joinedAt': current['joinedAt'],
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      transaction.update(contractRef, {
+        if (data['creatorUid'] == _uid) ...{
+          'progressValue': progressValue,
+          'lastCalculatedAt': FieldValue.serverTimestamp(),
+        },
+        'participants.$_uid': participant,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
   }
 
   void _validateProgress(double progressValue) {

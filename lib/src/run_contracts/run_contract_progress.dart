@@ -39,24 +39,40 @@ bool isEligibleForContract(
   ActivitySummary activity,
   RunContract contract, {
   Set<String> excludeIds = const {},
+  Set<String>? includeIds,
 }) =>
     activity.source == ActivitySource.strava &&
     activity.kind == ActivityKind.run &&
     activity.manual != true &&
-    activity.distanceMeters > 0 &&
+    _meetsMetricDistanceThreshold(activity, contract.metric) &&
+    (includeIds == null || includeIds.contains(activity.id)) &&
     !excludeIds.contains(activity.id) &&
     !activity.startedAt.toUtc().isBefore(contract.startAt.toUtc()) &&
     activity.startedAt.toUtc().isBefore(contract.endAtExclusive.toUtc());
+
+bool _meetsMetricDistanceThreshold(
+  ActivitySummary activity,
+  RunContractMetric metric,
+) => switch (metric) {
+  RunContractMetric.activityCount ||
+  RunContractMetric.activeDays => activity.distanceMeters > 1000,
+  _ => activity.distanceMeters > 0,
+};
 
 RunContractProgress calculateRunContractProgress(
   RunContract contract,
   Iterable<ActivitySummary> activities, {
   Set<String> excludeIds = const {},
+  Set<String>? includeIds,
 }) {
   final eligible = activities
       .where(
-        (activity) =>
-            isEligibleForContract(activity, contract, excludeIds: excludeIds),
+        (activity) => isEligibleForContract(
+          activity,
+          contract,
+          excludeIds: excludeIds,
+          includeIds: includeIds,
+        ),
       )
       .toList();
   switch (contract.metric) {
