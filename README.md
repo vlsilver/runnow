@@ -1,18 +1,18 @@
-# RunNow
+# 3i
 
-RunNow là không gian luyện tập và cộng đồng chạy bộ đa nền tảng. Sản phẩm kết
+3i là không gian luyện tập và cộng đồng chạy bộ đa nền tảng. Sản phẩm kết
 nối dữ liệu Strava, biến lịch sử chạy thành các chỉ số dễ hiểu, tạo động lực
 qua Club và đang thử nghiệm khả năng tự ghi lại buổi chạy bằng điện thoại.
 
-> Trạng thái hiện tại: **internal beta**. Dữ liệu thành tích chính thức vẫn lấy
-> từ Strava. Tracking do RunNow ghi lại được lưu để kiểm thử thuật toán nhưng
-> chưa cộng vào dashboard, kỷ lục, Club hay bảng xếp hạng.
+> Trạng thái hiện tại: **internal beta**. Thành tích nhận activity Strava và
+> 3i từ 500 m. 3i session trùng trên 30% thời lượng với Strava bị loại
+> khỏi phép tính để không nhân đôi thành tích.
 
 ## Product Snapshot
 
 ### Giá trị cốt lõi
 
-RunNow tập trung vào ba câu hỏi của một runner:
+3i tập trung vào ba câu hỏi của một runner:
 
 1. **Tôi đã hứa sẽ chạy gì?** Kèo Chạy biến mục tiêu thành cam kết có deadline,
    tiến độ, kết quả và tái kèo.
@@ -28,14 +28,15 @@ RunNow tập trung vào ba câu hỏi của một runner:
 - Runner cá nhân muốn theo dõi tiến độ rõ hơn giao diện nhật ký thông thường.
 - Nhóm chạy nhỏ muốn tạo động lực bằng số liệu minh bạch và hoạt động chung.
 - Nhóm thử nghiệm thuật toán GPS, background tracking và live location trước
-  khi đưa dữ liệu RunNow vào thành tích chính thức.
+  khi đưa dữ liệu 3i vào thành tích chính thức.
 
 ## Tính Năng Hiện Có
 
 ### Kèo Chạy
 
 - Kèo là tab chính: 10km tuần, 3 buổi tuần, 2km hôm nay hoặc mục tiêu tùy chỉnh.
-- Tiến độ chỉ tính Strava Run hợp lệ; loại manual, RunNow trial và activity ngoài kỳ.
+- Tiến độ tính Strava Run và 3i Run hợp lệ; loại manual, session 3i
+  dưới 500 m, activity ngoài kỳ và bản 3i trùng trên 30% thời gian với Strava.
 - Mỗi user có tối đa một kèo active do mình tạo; user vẫn có thể tham gia nhiều
   kèo Club khác.
 - Tab Kèo là feed chung của mọi kèo Club đang active; kèo của user dùng màu nhấn
@@ -48,7 +49,7 @@ RunNow tập trung vào ba câu hỏi của một runner:
 ### Tài khoản và dữ liệu
 
 - Đăng nhập bằng Google qua Firebase Authentication.
-- Kết nối một tài khoản Strava với một tài khoản RunNow.
+- Kết nối một tài khoản Strava với một tài khoản 3i.
 - Đồng bộ activity Strava phân trang và cache trong Firestore.
 - Làm mới access token Strava và lưu token trong secure storage trên thiết bị.
 - Xem dữ liệu đã đồng bộ từ Firestore khi offline; sync và hydrate detail cần
@@ -101,9 +102,9 @@ RunNow tập trung vào ba câu hỏi của một runner:
   bản đồ route gần realtime.
 - Session không cập nhật quá 30 giây được đánh dấu stale; quá 3 phút bị ẩn.
 
-Tracking RunNow dùng `source=runnow` và được tách khỏi stream `source=strava`.
-Vì vậy activity thử nghiệm **không cộng** vào thành tích cá nhân, goal, power,
-consistency, Club summary hoặc leaderboard.
+Tracking 3i dùng `source=runnow`. Session từ 500 m được tính vào thành tích;
+session ngắn hơn vẫn được lưu để xem route/debug nhưng không cộng. Khi một 3i
+session overlap trên 30% thời lượng với Strava Run, Strava là bản chính thức.
 
 ### Nền tảng
 
@@ -117,7 +118,7 @@ consistency, Club summary hoặc leaderboard.
 | --- | --- | --- |
 | Google login và hồ sơ | Beta ổn định | Cần theo dõi lỗi OAuth trên từng platform |
 | Strava sync và activity detail | Beta ổn định | Direct client integration, chưa phù hợp public production |
-| Dashboard và nhật ký | Beta ổn định | Thành tích chỉ lấy từ Strava |
+| Dashboard và nhật ký | Beta ổn định | Strava ưu tiên khi trùng 3i |
 | Club và leaderboard | Beta | Một Club chung; aggregate do client cập nhật |
 | Tracking bằng điện thoại | Trial | Cần thêm dữ liệu chạy thật và so sánh Garmin/Strava |
 | Background tracking | Trial | Cần acceptance test nhiều thiết bị và trạng thái pin/mạng |
@@ -149,7 +150,7 @@ consistency, Club summary hoặc leaderboard.
 - Test matrix iOS/Android: foreground, lock screen, chuyển app, mất mạng, reconnect,
   low-power mode, permission While Using/Always và app restart.
 - Báo chất lượng GPS, last update và trạng thái mạng rõ ràng cho runner/viewer.
-- Dashboard nội bộ cho sai số RunNow so với Garmin/Strava và reject reasons.
+- Dashboard nội bộ cho sai số 3i so với Garmin/Strava và reject reasons.
 - Quy tắc retention/xóa `liveSessions` và dữ liệu debug cũ.
 
 ### P1 - Club Challenge
@@ -157,9 +158,9 @@ consistency, Club summary hoặc leaderboard.
 - Challenge tuần/tháng theo tổng km, số ngày active, elevation hoặc số buổi.
 - Mục tiêu cá nhân và mục tiêu cộng dồn toàn Club.
 - Progress chart, contribution chart, badge hoàn thành và recap để share.
-- Eligibility rõ ràng: trước mắt chỉ activity Strava hợp lệ mới được tính.
+- Eligibility dùng chung cho activity Strava và 3i hợp lệ.
 
-Đây là bước tiếp theo có giá trị cao nhất: RunNow đã có members, aggregate,
+Đây là bước tiếp theo có giá trị cao nhất: 3i đã có members, aggregate,
 leaderboard và share card nên chi phí bổ sung vừa phải nhưng tạo lý do quay lại
 hàng tuần. Strava cũng dùng challenge theo distance, time, elevation và active
 days để tạo động lực cộng đồng.
@@ -172,12 +173,12 @@ days để tạo động lực cộng đồng.
 - Pacer trong lúc tracking: ahead/behind target pace, không cần AI.
 
 Nike Run Club tập trung vào plan 5K/10K/Half/Marathon và guided runs; Apple
-Workout dùng Pacer và custom intervals. RunNow nên bắt đầu bằng rule/template
+Workout dùng Pacer và custom intervals. 3i nên bắt đầu bằng rule/template
 đơn giản thay vì AI coaching.
 
 ### P3 - Safety Link cho live tracking
 
-- Tạo URL có token hết hạn để người thân xem mà không cần tài khoản RunNow.
+- Tạo URL có token hết hạn để người thân xem mà không cần tài khoản 3i.
 - Hiển thị current/last location, start point, last updated, trạng thái và pin.
 - Runner chủ động gửi link mỗi session; Finish thu hồi quyền xem vị trí hiện tại.
 - Không công khai link trong profile hoặc Club.
@@ -192,7 +193,7 @@ Strava Beacon cập nhật vị trí khoảng 15 giây và cho người nhận x
 - Hiển thị ahead/behind theo distance và ghost progress trên map.
 
 Apple hỗ trợ Race Route sau khi người dùng lặp lại cùng route; tính năng này hợp
-với dữ liệu route RunNow đã có và tạo giá trị cá nhân rõ hơn segment công khai.
+với dữ liệu route 3i đã có và tạo giá trị cá nhân rõ hơn segment công khai.
 
 ### P5 - Coaching có kiểm soát
 
@@ -200,7 +201,7 @@ với dữ liệu route RunNow đã có và tạo giá trị cá nhân rõ hơn 
   pace trend và cảnh báo tăng tải quá nhanh.
 - Chỉ thêm AI để giải thích insight hoặc tạo nội dung sau khi có backend, consent,
   budget và cách đánh giá chất lượng.
-- Chưa xây daily suggested workout kiểu Garmin vì RunNow chưa có sleep, recovery,
+- Chưa xây daily suggested workout kiểu Garmin vì 3i chưa có sleep, recovery,
   stress, VO2 max và sensor history cần thiết để đưa khuyến nghị an toàn.
 
 ## Product Metrics

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,7 @@ import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/training_power.dart';
+import 'package:myrun/src/web_layout.dart';
 import 'package:myrun/src/widgets/activity_records_card.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/discipline_card.dart';
@@ -154,7 +156,9 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.sizeOf(context).width;
-    final wide = screenWidth >= 900;
+    final wide = kIsWeb
+        ? RunNowWebLayout.isDesktop(context)
+        : screenWidth >= 900;
     final now = DateTime.now();
     final weekMode = ref.watch(dashboardWeekModeProvider);
     final comparison = switch (weekMode) {
@@ -251,11 +255,11 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
               _DashboardWebColumn(
                 children: [
                   _ShareableDashboardCard(
-                    title: 'RunNow tiến độ tuần',
+                    title: '3i tiến độ tuần',
                     builder: (_) => summaryCard(showControls: true),
                   ),
                   _ShareableDashboardCard(
-                    title: 'RunNow kỷ luật & consistency',
+                    title: '3i kỷ luật & consistency',
                     builder: (_) => DisciplineCard(
                       stats: discipline,
                       activities: widget.activities,
@@ -266,7 +270,7 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
               _DashboardWebColumn(
                 children: [
                   _ShareableDashboardCard(
-                    title: 'RunNow personal power',
+                    title: '3i personal power',
                     builder: (_) => powerCard(showControls: true),
                   ),
                 ],
@@ -274,11 +278,11 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
               _DashboardWebColumn(
                 children: [
                   _ShareableDashboardCard(
-                    title: 'RunNow km theo thời gian',
+                    title: '3i km theo thời gian',
                     builder: (_) => volumeCard(showControls: true),
                   ),
                   _ShareableDashboardCard(
-                    title: 'RunNow kỷ lục cá nhân',
+                    title: '3i kỷ lục cá nhân',
                     builder: (_) => ActivityRecordsCard(
                       title: 'KỶ LỤC CÁ NHÂN',
                       entries: [
@@ -295,15 +299,15 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
               _DashboardWebColumn(
                 children: [
                   _ShareableDashboardCard(
-                    title: 'RunNow tiến độ tuần',
+                    title: '3i tiến độ tuần',
                     builder: (_) => summaryCard(showControls: true),
                   ),
                   _ShareableDashboardCard(
-                    title: 'RunNow personal power',
+                    title: '3i personal power',
                     builder: (_) => powerCard(showControls: true),
                   ),
                   _ShareableDashboardCard(
-                    title: 'RunNow kỷ luật & consistency',
+                    title: '3i kỷ luật & consistency',
                     builder: (_) => DisciplineCard(
                       stats: discipline,
                       activities: widget.activities,
@@ -314,11 +318,11 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
               _DashboardWebColumn(
                 children: [
                   _ShareableDashboardCard(
-                    title: 'RunNow km theo thời gian',
+                    title: '3i km theo thời gian',
                     builder: (_) => volumeCard(showControls: true),
                   ),
                   _ShareableDashboardCard(
-                    title: 'RunNow kỷ lục cá nhân',
+                    title: '3i kỷ lục cá nhân',
                     builder: (_) => ActivityRecordsCard(
                       title: 'KỶ LỤC CÁ NHÂN',
                       entries: [
@@ -353,7 +357,7 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
           KeyedSubtree(
             key: _weekKey,
             child: _ShareableDashboardCard(
-              title: 'RunNow tiến độ tuần',
+              title: '3i tiến độ tuần',
               builder: (sharing) => summaryCard(showControls: false),
             ),
           ),
@@ -361,13 +365,13 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
           KeyedSubtree(
             key: _powerKey,
             child: _ShareableDashboardCard(
-              title: 'RunNow personal power',
+              title: '3i personal power',
               builder: (sharing) => powerCard(showControls: false),
             ),
           ),
           const SizedBox(height: 20),
           _ShareableDashboardCard(
-            title: 'RunNow kỷ luật & consistency',
+            title: '3i kỷ luật & consistency',
             builder: (_) => DisciplineCard(
               stats: discipline,
               activities: widget.activities,
@@ -375,7 +379,7 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
           ),
           const SizedBox(height: 20),
           _ShareableDashboardCard(
-            title: 'RunNow kỷ lục cá nhân',
+            title: '3i kỷ lục cá nhân',
             builder: (_) => ActivityRecordsCard(
               title: 'KỶ LỤC CÁ NHÂN',
               entries: [
@@ -388,7 +392,7 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
           KeyedSubtree(
             key: _volumeKey,
             child: _ShareableDashboardCard(
-              title: 'RunNow km theo thời gian',
+              title: '3i km theo thời gian',
               builder: (sharing) => volumeCard(showControls: false),
             ),
           ),

@@ -92,21 +92,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                                 ],
                               ),
                             ),
-                            Container(
-                              width: 82,
-                              height: 82,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: LinearGradient(
-                                  colors: [palette.accent, palette.accentDeep],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                              ),
-                              child: const Icon(
-                                Icons.directions_run,
-                                size: 46,
-                                color: Colors.white,
+                            ClipOval(
+                              child: Image.asset(
+                                'assets/brand/3i-mark.png',
+                                width: 82,
+                                height: 82,
+                                fit: BoxFit.cover,
                               ),
                             ),
                           ],
@@ -116,13 +107,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                   ),
                   const SizedBox(height: 18),
                   Text(
-                    'RunNow',
+                    '3i',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.displaySmall,
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'YOUR TRAINING SPACE',
+                    'INTENT · IMPROVE · INVOLVE',
                     style: TextStyle(
                       color: Theme.of(
                         context,

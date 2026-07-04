@@ -367,7 +367,7 @@ class _OwnerLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = record.ownerName ?? 'RunNow member';
+    final name = record.ownerName ?? '3i member';
     final avatarUrl = record.ownerAvatarUrl;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final palette = context.runNowPalette;

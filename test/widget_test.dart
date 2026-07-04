@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/app.dart';
@@ -49,7 +49,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Kèo'), findsNWidgets(2));
-    expect(find.text('Tạo kèo'), findsOneWidget);
+    expect(find.byIcon(Icons.add_rounded), findsOneWidget);
     expect(find.text('Chưa có kèo đang diễn ra'), findsOneWidget);
     expect(find.text('Tổng quan'), findsNothing);
   });

@@ -11,7 +11,7 @@ String buildShareCaption(ActivitySummary activity) {
   return [
     activity.name,
     '${formatDistance(activity.distanceMeters)} • ${formatDuration(activity.movingTimeSeconds)} • ${formatPace(activity.paceSecondsPerKm)}',
-    'Chia sẻ từ RunNow',
+    'Chia sẻ từ 3i',
   ].join('\n');
 }
 
@@ -31,7 +31,7 @@ Future<ShareResult> shareActivityRecap({
     ShareParams(
       text: buildShareCaption(activity),
       files: [XFile.fromData(png, mimeType: 'image/png')],
-      fileNameOverrides: ['runnow-${activity.id}.png'],
+      fileNameOverrides: ['3i-${activity.id}.png'],
       sharePositionOrigin: sharePositionOrigin,
     ),
   );
@@ -51,9 +51,9 @@ Future<ShareResult> shareDashboardCard({
   final png = await captureRecapPng(boundary);
   return SharePlus.instance.share(
     ShareParams(
-      text: '$title\nChia sẻ từ RunNow',
+      text: '$title\nChia sẻ từ 3i',
       files: [XFile.fromData(png, mimeType: 'image/png')],
-      fileNameOverrides: ['runnow-${_shareFileName(title)}.png'],
+      fileNameOverrides: ['3i-${_shareFileName(title)}.png'],
       sharePositionOrigin: sharePositionOrigin,
     ),
   );

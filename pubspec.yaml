@@ -1,5 +1,5 @@
 name: myrun
-description: RunNow iOS-first running journal synced from Strava.
+description: 3I iOS-first running journal synced from Strava.
 publish_to: none
 version: 0.1.0+1
 
@@ -34,24 +34,28 @@ dev_dependencies:
   flutter_launcher_icons: ^0.14.4
   flutter_test:
     sdk: flutter
+  fake_cloud_firestore: ^4.1.1
+  firebase_auth_mocks: ^0.15.2
 
 flutter_launcher_icons:
-  image_path: "features/improve_logo/png/icon-ios-1024.png"
+  image_path: "features/Icon 3I Export/runow-3i-1024.png"
   android: true
-  adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "features/improve_logo/png/icon-ios-1024.png"
+  adaptive_icon_background: "#0e96a8"
+  adaptive_icon_foreground: "features/Icon 3I Export/runow-3i-1024.png"
   ios: true
   remove_alpha_ios: true
   web:
     generate: true
-    image_path: "features/improve_logo/png/icon-ios-1024.png"
-    background_color: "#ffffff"
+    image_path: "features/Icon 3I Export/runow-3i-1024.png"
+    background_color: "#0e96a8"
     theme_color: "#16160f"
 
 flutter:
   config:
     enable-swift-package-manager: false
   uses-material-design: true
+  assets:
+    - assets/brand/3i-mark.png
   fonts:
     - family: Exo 2
       fonts:

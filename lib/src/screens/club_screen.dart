@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +12,7 @@ import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/training_power.dart';
+import 'package:myrun/src/web_layout.dart';
 import 'package:myrun/src/widgets/activity_records_card.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/glass.dart';
@@ -78,8 +79,11 @@ class _ClubScreenState extends ConsumerState<ClubScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this)
-      ..addListener(_syncActiveSubTab);
+    _tabController = TabController(
+      length: 5,
+      vsync: this,
+      animationDuration: Duration.zero,
+    )..addListener(_syncActiveSubTab);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _syncActiveSubTab();
@@ -118,29 +122,48 @@ class _ClubScreenState extends ConsumerState<ClubScreen>
   @override
   Widget build(BuildContext context) {
     final members = ref.watch(membersProvider);
+    final desktopWeb = RunNowWebLayout.isDesktop(context);
     final showSideRail =
-        MediaQuery.sizeOf(context).width >= _clubRailBreakpoint;
+        desktopWeb ||
+        (!kIsWeb && MediaQuery.sizeOf(context).width >= _clubRailBreakpoint);
     return Scaffold(
       appBar: AppBar(title: const Text('Câu lạc bộ')),
-      body: members.when(
-        data: (items) => items.isEmpty
-            ? const _EmptyClub()
-            : _ClubSectionLayout(
-                showSideRail: showSideRail,
-                selectedIndex: _activeTabIndex,
-                controller: _tabController,
-                onSelect: _tabController.animateTo,
-                children: [
-                  _RankingTab(currentUid: _currentUid(ref)),
-                  const _ClubRecapTab(),
-                  const _ClubLiveTab(),
-                  const _ClubJournalTab(),
-                  _MembersTab(members: items, currentUid: _currentUid(ref)),
-                ],
+      body: Column(
+        children: [
+          if (desktopWeb)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: SizedBox(
+                height: 42,
+                child: ClubNavFilter(branchActive: true),
               ),
-        error: (error, stack) =>
-            Center(child: Text('Không thể tải thành viên: $error')),
-        loading: () => const Center(child: CircularProgressIndicator()),
+            ),
+          Expanded(
+            child: members.when(
+              data: (items) => items.isEmpty
+                  ? const _EmptyClub()
+                  : _ClubSectionLayout(
+                      showSideRail: showSideRail,
+                      selectedIndex: _activeTabIndex,
+                      controller: _tabController,
+                      onSelect: (index) => _tabController.index = index,
+                      children: [
+                        _RankingTab(currentUid: _currentUid(ref)),
+                        const _ClubRecapTab(),
+                        const _ClubLiveTab(),
+                        const _ClubJournalTab(),
+                        _MembersTab(
+                          members: items,
+                          currentUid: _currentUid(ref),
+                        ),
+                      ],
+                    ),
+              error: (error, stack) =>
+                  Center(child: Text('Không thể tải thành viên: $error')),
+              loading: () => const Center(child: CircularProgressIndicator()),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -215,7 +238,10 @@ class _ClubSectionLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final content = TabBarView(controller: controller, children: children);
+    final content = _LazyClubStack(
+      selectedIndex: selectedIndex,
+      children: children,
+    );
     if (!showSideRail) {
       return Column(
         children: [
@@ -228,6 +254,48 @@ class _ClubSectionLayout extends StatelessWidget {
       children: [
         _ClubSideRail(selectedIndex: selectedIndex, onSelect: onSelect),
         Expanded(child: content),
+      ],
+    );
+  }
+}
+
+class _LazyClubStack extends StatefulWidget {
+  const _LazyClubStack({required this.selectedIndex, required this.children});
+
+  final int selectedIndex;
+  final List<Widget> children;
+
+  @override
+  State<_LazyClubStack> createState() => _LazyClubStackState();
+}
+
+class _LazyClubStackState extends State<_LazyClubStack> {
+  final _visited = <int>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _visited.add(widget.selectedIndex);
+  }
+
+  @override
+  void didUpdateWidget(covariant _LazyClubStack oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _visited.add(widget.selectedIndex);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IndexedStack(
+      index: widget.selectedIndex,
+      children: [
+        for (var index = 0; index < widget.children.length; index++)
+          TickerMode(
+            enabled: index == widget.selectedIndex,
+            child: _visited.contains(index)
+                ? RepaintBoundary(child: widget.children[index])
+                : const SizedBox.shrink(),
+          ),
       ],
     );
   }
@@ -959,7 +1027,7 @@ class _RankingTab extends ConsumerWidget {
             else
               _ShareableClubCard(
                 title:
-                    'RunNow bảng xếp hạng ${_rankingMetricLabel(metric)} ${_rankingRangeLabel(range)}',
+                    '3i bảng xếp hạng ${_rankingMetricLabel(metric)} ${_rankingRangeLabel(range)}',
                 child: _RankingBoardCard(
                   entries: entries,
                   metric: metric,
@@ -987,23 +1055,32 @@ class ClubNavFilter extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tab = branchActive ? ref.watch(clubActiveSubTabProvider) : -1;
+    if (!branchActive) return const SizedBox.shrink();
+    final tab = ref.watch(clubActiveSubTabProvider);
     final Widget child = switch (tab) {
-      _rankingTabIndex => const _RankingNavControls(),
-      _recapTabIndex => const _RecapToggle(),
-      _ => const SizedBox(width: double.infinity),
+      _rankingTabIndex => const _RankingNavControls(
+        key: ValueKey('ranking-filter'),
+      ),
+      _recapTabIndex => const _RecapToggle(key: ValueKey('recap-filter')),
+      _ => const SizedBox(
+        key: ValueKey('empty-filter'),
+        width: double.infinity,
+      ),
     };
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      alignment: Alignment.topCenter,
-      child: child,
+    return SizedBox(
+      height: 42,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 100),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: child,
+      ),
     );
   }
 }
 
 class _RankingNavControls extends ConsumerWidget {
-  const _RankingNavControls();
+  const _RankingNavControls({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1049,7 +1126,7 @@ class _RankingNavControls extends ConsumerWidget {
 }
 
 class _RecapToggle extends ConsumerWidget {
-  const _RecapToggle();
+  const _RecapToggle({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

@@ -6,7 +6,7 @@ class AppConfig {
   static const stravaClientSecret = 'fc1c5c4b4e68c421038476c62fd7485f979cd76a';
   static const stravaRedirectScheme = 'com.runnow.3aeidiot';
   // Strava explicitly whitelists localhost callback hosts. Keep the custom
-  // scheme so iOS returns to RunNow after the browser authorization flow.
+  // scheme so iOS returns to 3i after the browser authorization flow.
   static const stravaRedirectHost = 'localhost';
   static const stravaRedirectPath = '/oauth';
   static const stravaRedirectUri =

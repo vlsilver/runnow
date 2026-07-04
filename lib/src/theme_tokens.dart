@@ -147,7 +147,7 @@ abstract final class RunNowDataColors {
   static const zone5 = heart;
 }
 
-/// Third-party brand colors are fixed by the provider, not by RunNow themes.
+/// Third-party brand colors are fixed by the provider, not by 3i themes.
 abstract final class RunNowBrandColors {
   static const strava = Color(0xfffc5200);
 }

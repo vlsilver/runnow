@@ -19,15 +19,21 @@ class JournalScreen extends ConsumerWidget {
       final strava = ref.watch(stravaAuthProvider);
       return Scaffold(
         appBar: AppBar(title: const Text('Nhật ký')),
-        body: ListView(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          children: [
-            _JournalConnectStravaCard(
-              loading: strava.loading,
-              errorMessage: strava.errorMessage,
-              onConnect: ref.read(stravaAuthProvider).connect,
+        body: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              children: [
+                _JournalConnectStravaCard(
+                  loading: strava.loading,
+                  errorMessage: strava.errorMessage,
+                  onConnect: ref.read(stravaAuthProvider).connect,
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       );
     }
@@ -39,20 +45,42 @@ class JournalScreen extends ConsumerWidget {
           ref.read(syncControllerProvider).startBackgroundSync(force: true);
         },
         child: activities.when(
-          data: (items) => ListView(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            physics: const AlwaysScrollableScrollPhysics(),
-            children: items.isEmpty
-                ? const [
+          data: (items) => LayoutBuilder(
+            builder: (context, constraints) {
+              if (items.isEmpty) {
+                return ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: const [
                     Padding(
                       padding: EdgeInsets.all(32),
                       child: Center(child: Text('Chưa có hoạt động.')),
                     ),
-                  ]
-                : [
-                    for (var index = 0; index < items.length; index++)
-                      ActivityTile(activity: items[index], sequence: index + 1),
                   ],
+                );
+              }
+              if (constraints.maxWidth >= 920) {
+                return GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 620,
+                    mainAxisExtent: 180,
+                    crossAxisSpacing: 18,
+                    mainAxisSpacing: 4,
+                  ),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) =>
+                      ActivityTile(activity: items[index], sequence: index + 1),
+                );
+              }
+              return ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                physics: const AlwaysScrollableScrollPhysics(),
+                itemCount: items.length,
+                itemBuilder: (context, index) =>
+                    ActivityTile(activity: items[index], sequence: index + 1),
+              );
+            },
           ),
           error: (error, stack) => ListView(
             children: [
@@ -114,7 +142,7 @@ class _JournalConnectStravaCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Kết nối Strava để tải nhật ký chạy và đi bộ vào RunNow.',
+            'Kết nối Strava để tải nhật ký chạy và đi bộ vào 3i.',
             style: TextStyle(
               color: Theme.of(
                 context,

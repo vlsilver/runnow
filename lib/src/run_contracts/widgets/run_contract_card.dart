@@ -33,54 +33,45 @@ class RunContractCard extends StatelessWidget {
     final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final participant = contract.participantFor(currentUid);
+    final state = contractUiState(contract, DateTime.now());
+    final stateColor = _stateColor(context, state);
     final completedCount = contract.participants.values
         .where((item) => item.progressValue >= contract.targetValue)
         .length;
-    // Card kèo luôn dùng neutral surface đặc. Màu hệ chỉ dành cho viền, trạng
-    // thái và progress để nội dung không bị chìm trong một mảng màu lớn.
+    final progressValue =
+        participant?.progressValue ??
+        contract.overallProgressRatio * contract.targetValue;
+    final ratio = contract.targetValue <= 0
+        ? 0.0
+        : progressValue / contract.targetValue;
+    final percent = (ratio * 100).toStringAsFixed(0);
     final surface = palette.glassStart;
-    const radius = 18.0;
-    return DecoratedBox(
-      decoration: BoxDecoration(
+    const radius = 16.0;
+    return Material(
+      color: surface,
+      clipBehavior: Clip.antiAlias,
+      borderRadius: BorderRadius.circular(radius),
+      child: InkWell(
         borderRadius: BorderRadius.circular(radius),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.14),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Material(
-        color: surface,
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(radius),
-          side: BorderSide(
-            color: isMine
-                ? palette.accent.withValues(alpha: 0.68)
-                : palette.border,
-          ),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(width: 4, child: ColoredBox(color: palette.accent)),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _Header(
+                contract: contract,
+                ownerName: ownerName,
+                ownerAvatarUrl: ownerAvatarUrl,
+              ),
+              const SizedBox(height: 12),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _Header(
-                          contract: contract,
-                          ownerName: ownerName,
-                          ownerAvatarUrl: ownerAvatarUrl,
-                        ),
-                        const SizedBox(height: 11),
                         Text(
                           contract.title,
                           maxLines: 1,
@@ -92,84 +83,105 @@ class RunContractCard extends StatelessWidget {
                             letterSpacing: -0.3,
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        if (participant != null) ...[
-                          _ProgressLine(
-                            label: 'CỦA BẠN',
-                            progressValue: participant.progressValue,
-                            contract: contract,
-                            emphasize: true,
+                        const SizedBox(height: 4),
+                        Text(
+                          participant == null
+                              ? '${contract.participantCount} người · TB ${contract.overallProgressPercent.toStringAsFixed(0)}%'
+                              : _valueOverTarget(
+                                  contract.metric,
+                                  progressValue,
+                                  contract.targetValue,
+                                ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: onSurface.withValues(alpha: 0.52),
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
                           ),
-                          const SizedBox(height: 10),
-                        ],
-                        _ProgressLine(
-                          label: 'CẢ NHÓM',
-                          progressValue:
-                              contract.overallProgressRatio *
-                              contract.targetValue,
-                          contract: contract,
-                          trailingPrefix:
-                              '${contract.participantCount} người · TB',
-                          showValue: false,
-                          dim: true,
-                        ),
-                        const SizedBox(height: 12),
-                        Divider(
-                          height: 1,
-                          color: onSurface.withValues(alpha: 0.08),
-                        ),
-                        const SizedBox(height: 11),
-                        Row(
-                          children: [
-                            _AvatarStack(urls: participantAvatarUrls),
-                            const SizedBox(width: 9),
-                            Expanded(
-                              child: Text(
-                                '$completedCount/${contract.participantCount} đã hoàn thành',
-                                style: TextStyle(
-                                  color: onSurface.withValues(alpha: 0.62),
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            if (participant == null &&
-                                contract.isActive &&
-                                onJoin != null)
-                              FilledButton(
-                                onPressed: onJoin,
-                                style: FilledButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 18,
-                                    vertical: 9,
-                                  ),
-                                  minimumSize: Size.zero,
-                                  tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                child: const Text('Tham gia'),
-                              )
-                            else
-                              Text(
-                                DateFormat('dd/MM · HH:mm').format(
-                                  contract.endAtExclusive.subtract(
-                                    const Duration(seconds: 1),
-                                  ),
-                                ),
-                                style: TextStyle(
-                                  color: onSurface.withValues(alpha: 0.46),
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                          ],
                         ),
                       ],
                     ),
                   ),
-                ),
-              ],
-            ),
+                  const SizedBox(width: 12),
+                  Text(
+                    percent,
+                    style: TextStyle(
+                      color: stateColor,
+                      fontSize: 31,
+                      height: 0.9,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -1,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 1),
+                    child: Text(
+                      '%',
+                      style: TextStyle(
+                        color: onSurface.withValues(alpha: 0.38),
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 9),
+              LinearProgressIndicator(
+                value: ratio.clamp(0.0, 1.0),
+                minHeight: 7,
+                borderRadius: BorderRadius.circular(999),
+                backgroundColor: onSurface.withValues(alpha: 0.09),
+                color: stateColor,
+              ),
+              const SizedBox(height: 11),
+              Row(
+                children: [
+                  _AvatarStack(urls: participantAvatarUrls),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      '$completedCount/${contract.participantCount} hoàn thành · TB ${contract.overallProgressPercent.toStringAsFixed(0)}%',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: onSurface.withValues(alpha: 0.58),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  if (participant == null &&
+                      contract.isActive &&
+                      onJoin != null)
+                    FilledButton(
+                      onPressed: onJoin,
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text('Tham gia'),
+                    )
+                  else
+                    Text(
+                      DateFormat('dd/MM · HH:mm').format(
+                        contract.endAtExclusive.subtract(
+                          const Duration(seconds: 1),
+                        ),
+                      ),
+                      style: TextStyle(
+                        color: onSurface.withValues(alpha: 0.42),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
@@ -192,7 +204,7 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = contractUiState(contract, DateTime.now());
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    final name = ownerName ?? 'RunNow member';
+    final name = ownerName ?? '3i member';
     return Row(
       children: [
         CircleAvatar(
@@ -257,98 +269,6 @@ class _Header extends StatelessWidget {
               ],
             ),
           ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ProgressLine extends StatelessWidget {
-  const _ProgressLine({
-    required this.label,
-    required this.progressValue,
-    required this.contract,
-    this.trailingPrefix,
-    this.emphasize = false,
-    this.showValue = true,
-    this.dim = false,
-  });
-
-  final String label;
-  final double progressValue;
-  final RunContract contract;
-  final String? trailingPrefix;
-  final bool emphasize;
-  final bool showValue;
-
-  /// Hàng phụ (cả nhóm) — thanh mảnh, màu nhạt để nhường mắt cho "của bạn".
-  final bool dim;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    final rawRatio = contract.targetValue <= 0
-        ? 0.0
-        : progressValue / contract.targetValue;
-    return Column(
-      children: [
-        Row(
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: emphasize
-                    ? palette.accentDeep
-                    : onSurface.withValues(alpha: 0.5),
-                fontSize: 9.5,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.8,
-              ),
-            ),
-            const Spacer(),
-            if (trailingPrefix != null) ...[
-              Text(
-                trailingPrefix!,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: onSurface.withValues(alpha: 0.78),
-                ),
-              ),
-              const SizedBox(width: 6),
-            ],
-            if (showValue) ...[
-              Text(
-                _valueOverTarget(
-                  contract.metric,
-                  progressValue,
-                  contract.targetValue,
-                ),
-                style: const TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(width: 8),
-            ],
-            Text(
-              '${(rawRatio * 100).toStringAsFixed(0)}%',
-              style: TextStyle(
-                color: emphasize ? palette.accentDeep : null,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        LinearProgressIndicator(
-          value: rawRatio.clamp(0.0, 1.0),
-          minHeight: dim ? 5 : 7,
-          borderRadius: BorderRadius.circular(999),
-          backgroundColor: onSurface.withValues(alpha: 0.09),
-          color: dim ? palette.accent.withValues(alpha: 0.5) : palette.accent,
         ),
       ],
     );

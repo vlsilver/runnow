@@ -178,30 +178,53 @@ void main() {
     );
   });
 
-  test(
-    'demo repository keeps tracked trials out of primary activity stream',
-    () async {
-      final repository = DemoActivityRepository();
-      final detail = ActivityDetail(
-        summary: ActivitySummary(
-          id: 'trial-demo',
-          name: 'RunNow Trial',
-          kind: ActivityKind.run,
-          startedAt: DateTime.utc(2026, 6, 1, 6),
-          distanceMeters: 1000,
-          movingTimeSeconds: 360,
-          elapsedTimeSeconds: 370,
-          source: ActivitySource.runnow,
-          hydrated: true,
-        ),
-      );
+  test('demo repository counts eligible RunNow sessions as official', () async {
+    final repository = DemoActivityRepository();
+    final detail = ActivityDetail(
+      summary: ActivitySummary(
+        id: 'trial-demo',
+        name: 'RunNow Trial',
+        kind: ActivityKind.run,
+        startedAt: DateTime.utc(2026, 6, 1, 6),
+        distanceMeters: 1000,
+        movingTimeSeconds: 360,
+        elapsedTimeSeconds: 370,
+        source: ActivitySource.runnow,
+        hydrated: true,
+      ),
+    );
 
-      await repository.saveTrackedActivity(detail);
+    final result = await repository.saveTrackedActivity(detail);
 
-      final primary = await repository.watchActivities().first;
-      final trials = await repository.watchTrackedTrialActivities().first;
-      expect(primary.any((activity) => activity.id == 'trial-demo'), isFalse);
-      expect(trials.single.id, 'trial-demo');
-    },
-  );
+    final primary = await repository.watchActivities().first;
+    final trials = await repository.watchTrackedTrialActivities().first;
+    expect(result.countsTowardStats, isTrue);
+    expect(primary.any((activity) => activity.id == 'trial-demo'), isTrue);
+    expect(trials.single.id, 'trial-demo');
+  });
+
+  test('demo repository keeps sub-500m RunNow sessions debug-only', () async {
+    final repository = DemoActivityRepository();
+    final detail = ActivityDetail(
+      summary: ActivitySummary(
+        id: 'short-demo',
+        name: 'Short RunNow Run',
+        kind: ActivityKind.run,
+        startedAt: DateTime.utc(2026, 6, 1, 6),
+        distanceMeters: 499,
+        movingTimeSeconds: 180,
+        elapsedTimeSeconds: 190,
+        source: ActivitySource.runnow,
+        hydrated: true,
+      ),
+    );
+
+    final result = await repository.saveTrackedActivity(detail);
+
+    final primary = await repository.watchActivities().first;
+    final trials = await repository.watchTrackedTrialActivities().first;
+    expect(result.status, TrackedActivitySaveStatus.belowMinimumDistance);
+    expect(primary.any((activity) => activity.id == 'short-demo'), isFalse);
+    expect(trials.single.id, 'short-demo');
+  });
 }

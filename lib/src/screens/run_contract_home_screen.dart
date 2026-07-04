@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +8,7 @@ import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_repository.dart';
 import 'package:myrun/src/run_contracts/widgets/run_contract_card.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/web_layout.dart';
 import 'package:myrun/src/widgets/glass.dart';
 
 class RunContractHomeScreen extends ConsumerStatefulWidget {
@@ -20,6 +22,7 @@ class RunContractHomeScreen extends ConsumerStatefulWidget {
 class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
   final _recalculatedBatchKeys = <String>{};
   final _joining = <String>{};
+  _ContractFilter _filter = _ContractFilter.active;
 
   @override
   Widget build(BuildContext context) {
@@ -49,11 +52,11 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
             ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton.small(
+        tooltip: connected ? 'Tạo kèo' : 'Kết nối Strava',
         onPressed: () =>
             _createContract(myActive.value ?? const [], connected, currentUid),
-        icon: Icon(connected ? Icons.add_rounded : Icons.link_rounded),
-        label: Text(connected ? 'Tạo kèo' : 'Kết nối'),
+        child: Icon(connected ? Icons.add_rounded : Icons.link_rounded),
       ),
       body: myActive.when(
         data: (mine) {
@@ -70,6 +73,8 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
             currentProfile: profile,
             members: members,
             joining: _joining,
+            filter: _filter,
+            onFilterChanged: (filter) => setState(() => _filter = filter),
             onJoin: _joinContract,
           );
         },
@@ -155,6 +160,8 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
   }
 }
 
+enum _ContractFilter { mine, active, public }
+
 class _ContractSyncAction extends StatefulWidget {
   const _ContractSyncAction({
     required this.syncing,
@@ -226,6 +233,8 @@ class _ContractFeed extends StatelessWidget {
     required this.currentProfile,
     required this.members,
     required this.joining,
+    required this.filter,
+    required this.onFilterChanged,
     required this.onJoin,
   });
 
@@ -235,20 +244,34 @@ class _ContractFeed extends StatelessWidget {
   final UserProfile? currentProfile;
   final List<MemberProfile> members;
   final Set<String> joining;
+  final _ContractFilter filter;
+  final ValueChanged<_ContractFilter> onFilterChanged;
   final ValueChanged<RunContract> onJoin;
 
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final wide = kIsWeb
+        ? RunNowWebLayout.isDesktop(context)
+        : MediaQuery.sizeOf(context).width >= 900;
     return contracts.when(
       data: (clubContracts) {
-        final visible = _mergeContracts(clubContracts, myContracts);
+        final allContracts = _mergeContracts(clubContracts, myContracts);
+        final visible = allContracts.where((contract) {
+          return switch (filter) {
+            _ContractFilter.mine => contract.participantFor(currentUid) != null,
+            _ContractFilter.active => contract.isActive,
+            _ContractFilter.public =>
+              contract.visibility == RunContractVisibility.club,
+          };
+        }).toList();
         final profiles = {for (final member in members) member.uid: member};
         return ListView(
           padding: EdgeInsets.fromLTRB(wide ? 20 : 16, 18, wide ? 20 : 16, 130),
           children: [
+            _ContractFilterBar(value: filter, onChanged: onFilterChanged),
+            const SizedBox(height: 18),
             if (visible.isEmpty)
-              const _EmptyContracts()
+              _EmptyContracts(filtered: allContracts.isNotEmpty)
             else if (wide)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -293,7 +316,7 @@ class _ContractFeed extends StatelessWidget {
       contract: contract,
       ownerName: isMine
           ? currentProfile?.displayName ?? 'Bạn'
-          : member?.displayName ?? 'RunNow member',
+          : member?.displayName ?? '3i member',
       ownerAvatarUrl: isMine ? currentProfile?.avatarUrl : member?.avatarUrl,
       currentUid: currentUid,
       participantAvatarUrls: [
@@ -329,7 +352,9 @@ List<RunContract> _mergeContracts(
 }
 
 class _EmptyContracts extends StatelessWidget {
-  const _EmptyContracts();
+  const _EmptyContracts({this.filtered = false});
+
+  final bool filtered;
 
   @override
   Widget build(BuildContext context) => GlassPanel(
@@ -344,12 +369,62 @@ class _EmptyContracts extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Text(
-          'Chưa có kèo đang diễn ra',
+          filtered ? 'Không có kèo phù hợp' : 'Chưa có kèo đang diễn ra',
           style: Theme.of(context).textTheme.titleLarge,
         ),
         const SizedBox(height: 6),
-        const Text('Hãy là người cắm lá cờ đầu tiên.'),
+        Text(
+          filtered
+              ? 'Hãy thử một bộ lọc khác.'
+              : 'Hãy là người cắm lá cờ đầu tiên.',
+        ),
       ],
     ),
   );
+}
+
+class _ContractFilterBar extends StatelessWidget {
+  const _ContractFilterBar({required this.value, required this.onChanged});
+
+  final _ContractFilter value;
+  final ValueChanged<_ContractFilter> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    const labels = {
+      _ContractFilter.mine: 'Của tôi',
+      _ContractFilter.active: 'Đang chạy',
+      _ContractFilter.public: 'Công khai',
+    };
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final filter in _ContractFilter.values) ...[
+            ChoiceChip(
+              label: Text(labels[filter]!),
+              selected: value == filter,
+              showCheckmark: false,
+              onSelected: (_) => onChanged(filter),
+              labelStyle: TextStyle(
+                color: value == filter
+                    ? Colors.white
+                    : Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.w900,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              shape: const StadiumBorder(),
+              side: BorderSide(
+                color: value == filter
+                    ? Colors.transparent
+                    : context.runNowPalette.border,
+              ),
+            ),
+            if (filter != _ContractFilter.values.last)
+              const SizedBox(width: 10),
+          ],
+        ],
+      ),
+    );
+  }
 }

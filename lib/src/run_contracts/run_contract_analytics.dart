@@ -21,7 +21,7 @@ class RunContractAnalytics {
         'ui_state': contractUiState(contract, DateTime.now()).name,
         'progress_bucket': _progressBucket(contract.progressPercent),
         'target_bucket': _targetBucket(contract.metric, contract.targetValue),
-        'source_policy': 'strava_only',
+        'source_policy': 'official_activity',
       },
       if (draft != null) ...{
         'template_id': draft.template.value,
@@ -29,7 +29,7 @@ class RunContractAnalytics {
         'period_type': draft.period.value,
         'visibility': draft.visibility.value,
         'target_bucket': _targetBucket(draft.metric, draft.targetValue),
-        'source_policy': 'strava_only',
+        'source_policy': 'official_activity',
       },
       ...?extra,
     };

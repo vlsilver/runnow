@@ -6,10 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:go_router/go_router.dart';
+import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/repository.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/tracking_draft_store.dart';
 import 'package:myrun/src/tracking_session.dart';
@@ -68,10 +69,17 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   bool get _hasSession => _snapshot != null;
   bool get _gpsReady => _gpsReadyAnchor != null;
   String get _distanceSubtitle {
-    if (_running) return 'TRACKING ACTIVE';
-    if (_gpsReady) return 'GPS LOCKED · READY TO START';
-    if (_checkingPermission) return 'SCANNING GPS SIGNAL';
-    return '';
+    if (_running) return 'ĐANG GHI HÀNH TRÌNH';
+    if (_paused) return 'ĐÃ TẠM DỪNG';
+    if (_gpsReady) return 'SẴN SÀNG · CHẠM START ĐỂ BẮT ĐẦU';
+    if (_checkingPermission) return 'ĐANG DÒ TÍN HIỆU GPS';
+    return 'ĐANG CHỜ GPS';
+  }
+
+  String get _screenTitle {
+    if (_running) return 'Đang chạy';
+    if (_paused) return 'Đã tạm dừng';
+    return 'Chạy';
   }
 
   @override
@@ -110,74 +118,67 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   @override
   Widget build(BuildContext context) {
     final snapshot = _snapshot;
-    final palette = context.runNowPalette;
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: 72,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Chạy thử'),
-            Text(
-              'TRACKING LAB',
-              style: TextStyle(
-                color: palette.secondary,
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.6,
-              ),
+            Text(_screenTitle),
+            const SizedBox(height: 2),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_hasSession && !_finished) ...[
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      color: RunNowSemanticColors.info,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                Text(
+                  'GHI HÀNH TRÌNH',
+                  style: const TextStyle(
+                    color: RunNowSemanticColors.info,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.6,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
         children: [
-          GlassPanel(
-            borderRadius: 28,
-            padding: const EdgeInsets.all(22),
-            gradient: LinearGradient(
-              colors: [palette.glassStart, palette.glassEnd],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _RunConsoleHeader(
-                  status: _statusLabel(snapshot),
-                  active: _running,
-                  signal: _gpsSignal,
-                ),
-                const SizedBox(height: 18),
-                _TrackingCockpit(
-                  snapshot: snapshot,
-                  signal: _gpsSignal,
-                  elapsedSeconds: _gpsElapsedSeconds,
-                  stableSamples: _gpsStableSamples,
-                  minSeconds: 0,
-                  minSamples: _gpsWarmupMinGoodSamples,
-                  subtitle: _distanceSubtitle,
-                  onMap: snapshot == null || snapshot.routePoints.length < 2
-                      ? null
-                      : () => _openLiveMap(snapshot),
-                ),
-                const SizedBox(height: 24),
-                _Controls(
-                  running: _running,
-                  paused: _paused,
-                  finished: _finished,
-                  hasSession: _hasSession,
-                  gpsReady: _gpsReady,
-                  busy: _checkingPermission || _saving,
-                  onLockGps: _lockGps,
-                  onStart: _startFromLockedGps,
-                  onPause: _pause,
-                  onResume: _resume,
-                  onStop: _stopAndSave,
-                  onDiscard: _discard,
-                ),
-              ],
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _RunConsoleHeader(
+                status: _statusLabel(snapshot),
+                active: _running,
+                signal: _gpsSignal,
+              ),
+              const SizedBox(height: 12),
+              _TrackingCockpit(
+                snapshot: snapshot,
+                signal: _gpsSignal,
+                elapsedSeconds: _gpsElapsedSeconds,
+                stableSamples: _gpsStableSamples,
+                minSeconds: 0,
+                minSamples: _gpsWarmupMinGoodSamples,
+                subtitle: _distanceSubtitle,
+                onMap: snapshot == null || snapshot.routePoints.length < 2
+                    ? null
+                    : () => _openLiveMap(snapshot),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           if (_message != null && !_checkingPermission && !_running)
@@ -195,10 +196,25 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             const SizedBox(height: 20),
           ] else
             const SizedBox(height: 16),
-          _TrialSessionList(
-            activities: ref.watch(trackedTrialActivitiesProvider),
-          ),
         ],
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(20, 8, 20, 14),
+        child: _Controls(
+          running: _running,
+          paused: _paused,
+          finished: _finished,
+          hasSession: _hasSession,
+          gpsReady: _gpsReady,
+          busy: _checkingPermission || _saving,
+          onLockGps: _lockGps,
+          onStart: _startFromLockedGps,
+          onPause: _pause,
+          onResume: _resume,
+          onStop: _stopAndSave,
+          onDiscard: _discard,
+        ),
       ),
     );
   }
@@ -337,6 +353,30 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   Future<void> _stopAndSave() async {
     final session = _session;
     if (session == null || _saving) return;
+    final current = _snapshot ?? session.snapshot();
+    if (current.distanceMeters < minimumOfficialRunNowDistanceMeters) {
+      final shouldStop = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Buổi chạy chưa đủ 500 m'),
+          content: Text(
+            'Bạn mới chạy ${formatDistance(current.distanceMeters)}. '
+            'Session vẫn được lưu để xem lại nhưng sẽ không tính vào thành tích.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Tiếp tục chạy'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Dừng và lưu'),
+            ),
+          ],
+        ),
+      );
+      if (shouldStop != true || !mounted) return;
+    }
     setState(() => _saving = true);
     try {
       await _positionSubscription?.cancel();
@@ -350,27 +390,33 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         status: LiveTrackingStatus.finished,
       );
       final detail = snapshot.toActivityDetail(
-        name: 'RunNow Trial',
-        recordingDevice: 'RunNow app',
+        name: '3I Run',
+        recordingDevice: '3I app',
       );
       final debug = {
         ...snapshot.toDebugMap(),
         if (_lastWarmupDebug != null) 'gpsWarmup': _lastWarmupDebug,
       };
-      await ref
+      final result = await ref
           .read(activityRepositoryProvider)
           .saveTrackedActivity(detail, trackingDebug: debug);
       await ref.read(trackingDraftStoreProvider).clear();
       if (!mounted) return;
       setState(() {
         _snapshot = snapshot;
-        _message =
-            'Đã lưu buổi chạy thử. Activity này chưa cộng vào stats/leaderboard.';
+        _message = switch (result.status) {
+          TrackedActivitySaveStatus.counted =>
+            'Đã lưu và tính buổi chạy vào thành tích.',
+          TrackedActivitySaveStatus.belowMinimumDistance =>
+            'Đã lưu để xem lại nhưng không tính vì chưa đủ 500 m.',
+          TrackedActivitySaveStatus.duplicateOfStrava =>
+            'Đã lưu route 3I nhưng thành tích ưu tiên buổi Strava trùng thời gian.',
+        };
       });
       HapticFeedback.heavyImpact();
     } catch (error) {
       if (!mounted) return;
-      setState(() => _message = 'Không lưu được tracking trial: $error');
+      setState(() => _message = 'Không lưu được buổi chạy: $error');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -386,7 +432,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       );
     }
     await ref.read(trackingDraftStoreProvider).clear();
-    await _resetSession(message: 'Đã bỏ phiên tracking thử.');
+    await _resetSession(message: 'Đã bỏ phiên tracking.');
   }
 
   Future<void> _openLiveMap(TrackingSessionSnapshot snapshot) {
@@ -778,7 +824,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     final serviceEnabled = await locationProvider.isLocationServiceEnabled();
     if (!serviceEnabled) {
       setState(
-        () => _message = 'Location Service đang tắt. Hãy bật GPS để chạy thử.',
+        () => _message =
+            'Location Service đang tắt. Hãy bật GPS để bắt đầu ghi buổi chạy.',
       );
       await locationProvider.openLocationSettings();
       return false;
@@ -791,7 +838,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
 
     if (permission == LocationPermission.denied) {
       setState(
-        () => _message = 'RunNow cần quyền vị trí để tracking route và pace.',
+        () => _message = '3I cần quyền vị trí để tracking route và pace.',
       );
       return false;
     }
@@ -816,10 +863,11 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
 
   String _statusLabel(TrackingSessionSnapshot? snapshot) {
     return switch (snapshot?.status) {
-      TrackingSessionStatus.running => 'RECORDING',
-      TrackingSessionStatus.paused => 'PAUSED',
-      TrackingSessionStatus.finished => 'SAVED TRIAL',
-      TrackingSessionStatus.idle || null => _gpsReady ? 'GPS LOCKED' : 'READY',
+      TrackingSessionStatus.running => 'Đang bám vị trí',
+      TrackingSessionStatus.paused => 'Tạm dừng ghi',
+      TrackingSessionStatus.finished => 'Đã lưu buổi chạy',
+      TrackingSessionStatus.idle ||
+      null => _gpsReady ? 'Đã khóa vị trí' : 'Sẵn sàng',
     };
   }
 }
@@ -855,41 +903,39 @@ class _Controls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     if (!hasSession || finished) {
       final label = switch ((finished, gpsReady)) {
-        (true, _) => 'SCAN GPS AGAIN',
-        (false, true) => 'START RUN',
-        (false, false) => 'SCAN GPS',
+        (true, _) => 'QUÉT GPS LẠI',
+        (false, true) => 'BẮT ĐẦU CHẠY',
+        (false, false) => 'QUÉT GPS',
       };
       final icon = switch ((finished, gpsReady)) {
         (true, _) => Icons.gps_fixed_rounded,
         (false, true) => Icons.play_arrow_rounded,
         (false, false) => Icons.gps_not_fixed_rounded,
       };
-      final enabledColor = gpsReady
-          ? RunNowSemanticColors.gpsGood
-          : RunNowSemanticColors.gpsWeak;
+      final enabledColor = gpsReady ? palette.accent : palette.accentDeep;
       return DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
-              color: enabledColor.withValues(alpha: 0.34),
-              blurRadius: 30,
-              spreadRadius: 1,
+              color: enabledColor.withValues(alpha: 0.25),
+              blurRadius: 24,
             ),
           ],
         ),
         child: SizedBox(
           width: double.infinity,
-          height: 68,
+          height: 66,
           child: FilledButton.icon(
             onPressed: busy ? null : (gpsReady ? onStart : onLockGps),
             style: FilledButton.styleFrom(
               backgroundColor: enabledColor,
               foregroundColor: gpsReady ? Colors.black : Colors.white,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(18),
               ),
             ),
             icon: busy
@@ -913,25 +959,59 @@ class _Controls extends StatelessWidget {
         ),
       );
     }
+    if (running) {
+      return SizedBox(
+        width: double.infinity,
+        height: 66,
+        child: FilledButton.icon(
+          onPressed: busy ? null : onPause,
+          style: FilledButton.styleFrom(
+            backgroundColor: RunNowSemanticColors.danger,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+          ),
+          icon: const Icon(Icons.pause_rounded, size: 28),
+          label: const Text(
+            'TẠM DỪNG',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.1,
+            ),
+          ),
+        ),
+      );
+    }
+
     return Column(
       children: [
         Row(
           children: [
             Expanded(
-              child: OutlinedButton.icon(
+              child: FilledButton.icon(
                 onPressed: busy ? null : (running ? onPause : onResume),
-                icon: Icon(
-                  running ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                style: FilledButton.styleFrom(
+                  backgroundColor: palette.accent,
+                  foregroundColor: palette.ink,
+                  minimumSize: const Size.fromHeight(58),
                 ),
-                label: Text(running ? 'PAUSE' : 'RESUME'),
+                icon: const Icon(Icons.play_arrow_rounded),
+                label: const Text('TIẾP TỤC'),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: FilledButton.icon(
+              child: OutlinedButton.icon(
                 onPressed: busy ? null : onStop,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: RunNowSemanticColors.danger,
+                  minimumSize: const Size.fromHeight(58),
+                  side: const BorderSide(color: RunNowSemanticColors.danger),
+                ),
                 icon: const Icon(Icons.stop_rounded),
-                label: const Text('STOP & SAVE'),
+                label: const Text('KẾT THÚC'),
               ),
             ),
           ],
@@ -940,7 +1020,7 @@ class _Controls extends StatelessWidget {
           const SizedBox(height: 8),
           TextButton(
             onPressed: busy ? null : onDiscard,
-            child: const Text('Bỏ phiên thử'),
+            child: const Text('Bỏ phiên'),
           ),
         ],
       ],
@@ -975,92 +1055,100 @@ class _TrackingCockpit extends StatelessWidget {
     final time = formatDuration(snapshot?.movingTimeSeconds ?? 0);
     final pace = formatPace(snapshot?.averagePaceSecondsPerKm);
     final livePace = formatPace(snapshot?.currentPaceSecondsPerKm);
-    return SizedBox(
-      height: 405,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Positioned(
-            top: 0,
-            left: 0,
-            child: _CornerMetric(label: 'TIME', value: time),
-          ),
-          Positioned(
-            top: 0,
-            right: 0,
-            child: _CornerMetric(label: 'PACE TB', value: pace, alignEnd: true),
-          ),
-          Positioned(
-            bottom: 10,
-            left: 0,
-            child: _CornerMetric(label: 'PACE LIVE', value: livePace),
-          ),
-          Positioned(
-            bottom: 10,
-            right: 0,
-            child: _CornerMapMetric(
-              enabled: onMap != null,
-              pointCount: snapshot?.routePoints.length ?? 0,
-              onTap: onMap,
-            ),
-          ),
-          Positioned(
-            top: 62,
-            child: _GpsRadar(
-              signal: signal,
-              elapsedSeconds: elapsedSeconds,
-              stableSamples: stableSamples,
-              minSeconds: minSeconds,
-              minSamples: minSamples,
-            ),
-          ),
-          Positioned(
-            bottom: 96,
-            child: Column(
-              children: [
-                Text(
-                  distance,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontSize: 56,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                if (subtitle.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.onSurface.withValues(alpha: 0.56),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.1,
+    final routePoints = snapshot?.routePoints ?? const <RoutePoint>[];
+    return Column(
+      children: [
+        SizedBox(
+          height: 330,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Positioned(
+                top: 4,
+                child: Semantics(
+                  button: onMap != null,
+                  enabled: onMap != null,
+                  label: 'Xem bản đồ hành trình',
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkResponse(
+                      onTap: onMap,
+                      customBorder: const CircleBorder(),
+                      radius: 119,
+                      child: _RoutePreview(
+                        signal: signal,
+                        elapsedSeconds: elapsedSeconds,
+                        stableSamples: stableSamples,
+                        minSeconds: minSeconds,
+                        minSamples: minSamples,
+                        routePoints: routePoints,
+                      ),
                     ),
                   ),
-                ],
-              ],
-            ),
+                ),
+              ),
+              Positioned(
+                bottom: 20,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _DistanceReadout(distance: distance),
+                    if (subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.56),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 86,
+                child: _MetricCard(label: 'THỜI GIAN', value: time),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: SizedBox(
+                height: 86,
+                child: _MetricCard(label: 'PACE TB', value: pace),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: SizedBox(
+                height: 86,
+                child: _MetricCard(label: 'PACE TỨC THỜI', value: livePace),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
 
-class _CornerMetric extends StatelessWidget {
-  const _CornerMetric({
-    required this.label,
-    required this.value,
-    this.alignEnd = false,
-  });
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({required this.label, required this.value});
 
   final String label;
   final String value;
-  final bool alignEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -1068,133 +1156,104 @@ class _CornerMetric extends StatelessWidget {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: palette.glassEnd,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: palette.border),
+        color: palette.glassStart,
+        borderRadius: BorderRadius.circular(14),
       ),
-      child: SizedBox(
-        width: 126,
-        child: Padding(
-          padding: const EdgeInsets.all(13),
-          child: Column(
-            crossAxisAlignment: alignEnd
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                textAlign: alignEnd ? TextAlign.end : TextAlign.start,
-                style: TextStyle(
-                  color: onSurface.withValues(alpha: 0.54),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.5,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: 24,
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: Text(
+                  label,
+                  maxLines: 2,
+                  style: TextStyle(
+                    color: onSurface.withValues(alpha: 0.54),
+                    fontSize: 9,
+                    height: 1.15,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.3,
+                  ),
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: alignEnd ? TextAlign.end : TextAlign.start,
-                style: TextStyle(
-                  color: onSurface,
-                  fontSize: 21,
-                  fontWeight: FontWeight.w900,
-                ),
+            ),
+            const Spacer(),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: onSurface,
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _CornerMapMetric extends StatelessWidget {
-  const _CornerMapMetric({
-    required this.enabled,
-    required this.pointCount,
-    required this.onTap,
-  });
+class _DistanceReadout extends StatelessWidget {
+  const _DistanceReadout({required this.distance});
 
-  final bool enabled;
-  final int pointCount;
-  final VoidCallback? onTap;
+  final String distance;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    final color = enabled
-        ? palette.secondary
-        : palette.foreground.withValues(alpha: 0.3);
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: enabled ? onTap : null,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: palette.glassEnd,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: color.withValues(alpha: 0.4)),
-        ),
-        child: SizedBox(
-          width: 126,
-          child: Padding(
-            padding: const EdgeInsets.all(13),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  'MAP',
-                  style: TextStyle(
-                    color: color.withValues(alpha: enabled ? 0.85 : 0.7),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      enabled ? '$pointCount pts' : 'WAIT',
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Icon(Icons.map_outlined, color: color, size: 22),
-                  ],
-                ),
-              ],
+    final split = distance.lastIndexOf(' ');
+    final value = split < 0 ? distance : distance.substring(0, split);
+    final unit = split < 0 ? '' : distance.substring(split + 1);
+    final textColor = Theme.of(context).colorScheme.onSurface;
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: value,
+            style: TextStyle(
+              color: textColor,
+              fontSize: 64,
+              height: 1,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -2,
             ),
           ),
-        ),
+          if (unit.isNotEmpty)
+            TextSpan(
+              text: ' $unit',
+              style: TextStyle(
+                color: context.runNowPalette.accent,
+                fontSize: 25,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+        ],
       ),
+      textAlign: TextAlign.center,
     );
   }
 }
 
 class _StatusDot extends StatelessWidget {
-  const _StatusDot({required this.active});
+  const _StatusDot({required this.color});
 
-  final bool active;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    final color = active ? palette.accent : palette.tertiary;
     return Container(
-      width: 12,
-      height: 12,
+      width: 8,
+      height: 8,
       decoration: BoxDecoration(
         color: color,
         shape: BoxShape.circle,
         boxShadow: [
-          BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: 16),
+          BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: 10),
         ],
       ),
     );
@@ -1203,7 +1262,9 @@ class _StatusDot extends StatelessWidget {
 
 Color _gpsSignalColor(_GpsSignal signal) {
   return switch (signal) {
-    _GpsSignal.ready => RunNowSemanticColors.gpsGood,
+    // Thủy teal for a resolved lock — keeps the console on-brand instead of
+    // clashing with the Mộc "success" green used elsewhere in the app.
+    _GpsSignal.ready => RunNowSemanticColors.info,
     _GpsSignal.fair => RunNowSemanticColors.gpsFair,
     _GpsSignal.weak => RunNowSemanticColors.gpsWeak,
     _GpsSignal.locking => RunNowSemanticColors.gpsLocking,
@@ -1211,13 +1272,13 @@ Color _gpsSignalColor(_GpsSignal signal) {
   };
 }
 
-String _gpsSignalLabel(_GpsSignal signal) {
+String _gpsSignalWord(_GpsSignal signal) {
   return switch (signal) {
-    _GpsSignal.ready => 'GPS GOOD',
-    _GpsSignal.fair => 'GPS FAIR',
-    _GpsSignal.weak => 'GPS WEAK',
-    _GpsSignal.locking => 'SCANNING',
-    _GpsSignal.idle => 'STANDBY',
+    _GpsSignal.ready => 'tốt',
+    _GpsSignal.fair => 'khá',
+    _GpsSignal.weak => 'yếu',
+    _GpsSignal.locking => 'đang dò',
+    _GpsSignal.idle => 'chờ',
   };
 }
 
@@ -1235,73 +1296,85 @@ class _RunConsoleHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final signalColor = _gpsSignalColor(signal);
+    final statusColor = active ? RunNowSemanticColors.info : signalColor;
     return Row(
       children: [
-        _StatusDot(active: active),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            status,
-            style: TextStyle(
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurface.withValues(alpha: 0.7),
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.4,
+        Flexible(
+          fit: FlexFit.loose,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: statusColor.withValues(alpha: 0.5)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _StatusDot(color: statusColor),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      status,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: statusColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: signalColor.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: signalColor.withValues(alpha: 0.5)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: signalColor,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: signalColor.withValues(alpha: 0.5),
-                        blurRadius: 14,
-                      ),
-                    ],
-                  ),
-                  child: const SizedBox.square(dimension: 8),
-                ),
-                const SizedBox(width: 7),
-                Text(
-                  _gpsSignalLabel(signal),
-                  style: TextStyle(
-                    color: signalColor,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.1,
-                  ),
-                ),
-              ],
+        const Spacer(),
+        const SizedBox(width: 12),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.signal_cellular_alt_rounded,
+              color: signalColor,
+              size: 17,
             ),
-          ),
+            const SizedBox(width: 5),
+            Text(
+              'GPS ',
+              style: TextStyle(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.56),
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            Text(
+              _gpsSignalWord(signal),
+              style: TextStyle(
+                color: signalColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 }
 
-class _GpsRadar extends StatelessWidget {
-  const _GpsRadar({
+class _RoutePreview extends StatelessWidget {
+  const _RoutePreview({
     required this.signal,
     required this.elapsedSeconds,
     required this.stableSamples,
     required this.minSeconds,
     required this.minSamples,
+    required this.routePoints,
   });
 
   final _GpsSignal signal;
@@ -1309,10 +1382,12 @@ class _GpsRadar extends StatelessWidget {
   final int stableSamples;
   final int minSeconds;
   final int minSamples;
+  final List<RoutePoint> routePoints;
 
   @override
   Widget build(BuildContext context) {
     final color = _gpsSignalColor(signal);
+    final locking = signal == _GpsSignal.locking;
     final sampleProgress = minSamples <= 0
         ? 0.0
         : (stableSamples / minSamples).clamp(0.0, 1.0);
@@ -1322,6 +1397,7 @@ class _GpsRadar extends StatelessWidget {
     final progress = timeProgress == null
         ? sampleProgress
         : (timeProgress + sampleProgress) / 2;
+    final hasRoute = routePoints.length >= 2;
     return SizedBox(
       width: 238,
       height: 238,
@@ -1330,114 +1406,241 @@ class _GpsRadar extends StatelessWidget {
         children: [
           CustomPaint(
             size: const Size.square(238),
-            painter: _GpsRadarPainter(
+            painter: _RoutePreviewPainter(
               color: color,
-              gridColor: context.runNowPalette.foreground.withValues(
-                alpha: 0.09,
+              backgroundColor: context.runNowPalette.glassStart,
+              roadColor: context.runNowPalette.foreground.withValues(
+                alpha: 0.13,
               ),
-              progress: progress,
+              progress: locking ? progress : null,
+              routePoints: routePoints,
             ),
           ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-              border: Border.all(color: color.withValues(alpha: 0.58)),
-              boxShadow: [
-                BoxShadow(color: color.withValues(alpha: 0.25), blurRadius: 22),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Icon(
-                signal == _GpsSignal.ready
-                    ? Icons.gps_fixed_rounded
-                    : Icons.gps_not_fixed_rounded,
+          if (!hasRoute)
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
                 color: color,
-                size: 34,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: context.runNowPalette.background,
+                  width: 4,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.42),
+                    blurRadius: 18,
+                    spreadRadius: 7,
+                  ),
+                ],
               ),
             ),
-          ),
         ],
       ),
     );
   }
 }
 
-class _GpsRadarPainter extends CustomPainter {
-  const _GpsRadarPainter({
+class _RoutePreviewPainter extends CustomPainter {
+  const _RoutePreviewPainter({
     required this.color,
-    required this.gridColor,
+    required this.backgroundColor,
+    required this.roadColor,
     required this.progress,
+    required this.routePoints,
   });
 
   final Color color;
-  final Color gridColor;
-  final double progress;
+  final Color backgroundColor;
+  final Color roadColor;
+
+  /// Warmup-lock progress (0..1). Null once the signal has resolved — the
+  /// arc is only meaningful while actively scanning for a fix.
+  final double? progress;
+  final List<RoutePoint> routePoints;
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
     final radius = size.shortestSide / 2;
-    final gridPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = gridColor;
-    final glowPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 8
-      ..strokeCap = StrokeCap.round
-      ..color = color.withValues(alpha: 0.18);
-    final activePaint = Paint()
+    final circle = Path()
+      ..addOval(Rect.fromCircle(center: center, radius: radius));
+    canvas.save();
+    canvas.clipPath(circle);
+    canvas.drawCircle(center, radius, Paint()..color = backgroundColor);
+
+    final areaPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = color.withValues(alpha: 0.055);
+    final area = Path()
+      ..moveTo(-20, size.height * 0.58)
+      ..cubicTo(
+        size.width * 0.22,
+        size.height * 0.44,
+        size.width * 0.44,
+        size.height * 0.72,
+        size.width * 0.7,
+        size.height * 0.55,
+      )
+      ..cubicTo(
+        size.width * 0.86,
+        size.height * 0.45,
+        size.width * 1.05,
+        size.height * 0.5,
+        size.width + 20,
+        size.height * 0.5,
+      )
+      ..lineTo(size.width + 20, size.height + 20)
+      ..lineTo(-20, size.height + 20)
+      ..close();
+    canvas.drawPath(area, areaPaint);
+
+    final roadPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 5
       ..strokeCap = StrokeCap.round
-      ..color = color;
+      ..color = roadColor;
+    final minorRoadPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..color = roadColor.withValues(alpha: 0.65);
 
-    for (final scale in [0.34, 0.56, 0.78, 1.0]) {
-      canvas.drawCircle(center, radius * scale, gridPaint);
+    final verticalRoads = [0.23, 0.5, 0.77];
+    for (final x in verticalRoads) {
+      final path = Path()
+        ..moveTo(size.width * x, -12)
+        ..cubicTo(
+          size.width * (x - 0.04),
+          size.height * 0.3,
+          size.width * (x + 0.05),
+          size.height * 0.68,
+          size.width * (x - 0.02),
+          size.height + 12,
+        );
+      canvas.drawPath(path, x == 0.5 ? roadPaint : minorRoadPaint);
     }
-    for (var i = 0; i < 8; i++) {
-      final angle = math.pi * 2 * i / 8;
-      final start = Offset(
-        center.dx + math.cos(angle) * radius * 0.34,
-        center.dy + math.sin(angle) * radius * 0.34,
-      );
-      final end = Offset(
-        center.dx + math.cos(angle) * radius,
-        center.dy + math.sin(angle) * radius,
-      );
-      canvas.drawLine(start, end, gridPaint);
+    final horizontalRoads = [0.26, 0.52, 0.78];
+    for (final y in horizontalRoads) {
+      final path = Path()
+        ..moveTo(-12, size.height * y)
+        ..cubicTo(
+          size.width * 0.3,
+          size.height * (y + 0.05),
+          size.width * 0.68,
+          size.height * (y - 0.04),
+          size.width + 12,
+          size.height * (y + 0.02),
+        );
+      canvas.drawPath(path, y == 0.52 ? roadPaint : minorRoadPaint);
     }
-    final rect = Rect.fromCircle(center: center, radius: radius * 0.92);
-    canvas.drawArc(
-      rect,
-      -math.pi / 2,
-      math.pi * 2 * progress,
-      false,
-      glowPaint,
+
+    final progress = this.progress;
+    if (progress != null) {
+      final glowPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 8
+        ..strokeCap = StrokeCap.round
+        ..color = color.withValues(alpha: 0.18);
+      final activePaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5
+        ..strokeCap = StrokeCap.round
+        ..color = color;
+      final rect = Rect.fromCircle(center: center, radius: radius * 0.92);
+      canvas.drawArc(
+        rect,
+        -math.pi / 2,
+        math.pi * 2 * progress,
+        false,
+        glowPaint,
+      );
+      canvas.drawArc(
+        rect,
+        -math.pi / 2,
+        math.pi * 2 * progress,
+        false,
+        activePaint,
+      );
+      final dotAngle = -math.pi / 2 + math.pi * 2 * progress;
+      final dot = Offset(
+        center.dx + math.cos(dotAngle) * radius * 0.92,
+        center.dy + math.sin(dotAngle) * radius * 0.92,
+      );
+      canvas.drawCircle(dot, 7, Paint()..color = color);
+    }
+
+    if (routePoints.length >= 2) {
+      final points = _fitRoutePoints(routePoints, radius * 0.78, center);
+      final path = Path()..moveTo(points.first.dx, points.first.dy);
+      for (final point in points.skip(1)) {
+        path.lineTo(point.dx, point.dy);
+      }
+      final routePaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..color = color;
+      canvas.drawPath(path, routePaint);
+      canvas.drawCircle(
+        points.last,
+        9,
+        Paint()..color = color.withValues(alpha: 0.25),
+      );
+      canvas.drawCircle(points.last, 5, Paint()..color = color);
+    }
+    canvas.restore();
+    canvas.drawCircle(
+      center,
+      radius - 1,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..color = roadColor,
     );
-    canvas.drawArc(
-      rect,
-      -math.pi / 2,
-      math.pi * 2 * progress,
-      false,
-      activePaint,
-    );
-    final dotAngle = -math.pi / 2 + math.pi * 2 * progress;
-    final dot = Offset(
-      center.dx + math.cos(dotAngle) * radius * 0.92,
-      center.dy + math.sin(dotAngle) * radius * 0.92,
-    );
-    canvas.drawCircle(dot, 7, Paint()..color = color);
   }
 
   @override
-  bool shouldRepaint(covariant _GpsRadarPainter oldDelegate) {
+  bool shouldRepaint(covariant _RoutePreviewPainter oldDelegate) {
     return oldDelegate.color != color ||
-        oldDelegate.gridColor != gridColor ||
-        oldDelegate.progress != progress;
+        oldDelegate.backgroundColor != backgroundColor ||
+        oldDelegate.roadColor != roadColor ||
+        oldDelegate.progress != progress ||
+        oldDelegate.routePoints != routePoints;
   }
+}
+
+/// Projects [points] onto a square inscribed in the radar circle, centered
+/// on their own bounding box — a lightweight preview, not a real map.
+List<Offset> _fitRoutePoints(
+  List<RoutePoint> points,
+  double maxRadius,
+  Offset center,
+) {
+  var minLat = points.first.latitude;
+  var maxLat = points.first.latitude;
+  var minLng = points.first.longitude;
+  var maxLng = points.first.longitude;
+  for (final point in points) {
+    minLat = math.min(minLat, point.latitude);
+    maxLat = math.max(maxLat, point.latitude);
+    minLng = math.min(minLng, point.longitude);
+    maxLng = math.max(maxLng, point.longitude);
+  }
+  final span = math.max(maxLat - minLat, maxLng - minLng);
+  if (span <= 0) {
+    return points.map((_) => center).toList();
+  }
+  final midLat = (minLat + maxLat) / 2;
+  final midLng = (minLng + maxLng) / 2;
+  return points.map((point) {
+    final dx = (point.longitude - midLng) / span * maxRadius * 2;
+    // Latitude increases northward but screen y increases downward.
+    final dy = -(point.latitude - midLat) / span * maxRadius * 2;
+    return Offset(center.dx + dx, center.dy + dy);
+  }).toList();
 }
 
 class _TrialNoteCard extends StatelessWidget {
@@ -1458,7 +1661,7 @@ class _TrialNoteCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'TRIAL MODE',
+            '3I TRACKING',
             style: Theme.of(context).textTheme.labelLarge?.copyWith(
               color: Theme.of(context).colorScheme.secondary,
               letterSpacing: 1.4,
@@ -1466,7 +1669,7 @@ class _TrialNoteCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Buổi chạy thử được lưu để tuning thuật toán. Chưa cộng vào Tổng quan, Club hoặc Leaderboard.',
+            'Session từ 500 m được tính vào thành tích. Nếu trùng trên 30% thời gian, dữ liệu Strava được ưu tiên.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 14),
@@ -1485,129 +1688,6 @@ class _TrialNoteCard extends StatelessWidget {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _TrialSessionList extends StatelessWidget {
-  const _TrialSessionList({required this.activities});
-
-  final AsyncValue<List<ActivitySummary>> activities;
-
-  @override
-  Widget build(BuildContext context) {
-    return activities.when(
-      data: (items) => GlassPanel(
-        borderRadius: 22,
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'SESSION ĐÃ TEST',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: Theme.of(context).colorScheme.secondary,
-                letterSpacing: 1.3,
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (items.isEmpty)
-              Text(
-                'Chưa có session thử nào được lưu.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              )
-            else
-              for (final activity in items.take(8)) ...[
-                _TrialSessionRow(activity: activity),
-                if (activity != items.take(8).last)
-                  Divider(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.onSurface.withValues(alpha: 0.08),
-                  ),
-              ],
-          ],
-        ),
-      ),
-      error: (error, stack) => GlassPanel(
-        borderRadius: 18,
-        padding: const EdgeInsets.all(16),
-        child: Text('Không tải được session test: $error'),
-      ),
-      loading: () => const Center(child: CircularProgressIndicator()),
-    );
-  }
-}
-
-class _TrialSessionRow extends StatelessWidget {
-  const _TrialSessionRow({required this.activity});
-
-  final ActivitySummary activity;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () => context.push('/tracking/session/${activity.id}'),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: palette.accent.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(Icons.science_outlined, color: palette.accent),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    activity.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  Text(
-                    formatDate(activity.startedAt),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  formatDistance(activity.distanceMeters),
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.secondary,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                Text(
-                  formatPace(activity.paceSecondsPerKm),
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ),
-            const SizedBox(width: 8),
-            Icon(
-              Icons.map_outlined,
-              size: 18,
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurface.withValues(alpha: 0.5),
-            ),
-          ],
-        ),
       ),
     );
   }

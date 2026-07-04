@@ -41,7 +41,7 @@ class RunContractController {
     if (draft.metric == RunContractMetric.distance &&
         draft.period == RunContractPeriodType.weekly) {
       final historyStart = period.startAt.subtract(const Duration(days: 28));
-      final history = await _activities.listStravaActivities(
+      final history = await _activities.listOfficialActivities(
         start: historyStart,
         endExclusive: period.startAt,
       );
@@ -111,7 +111,7 @@ class RunContractController {
   }
 
   Future<RunContractProgress> _calculateProgress(RunContract contract) async {
-    final activities = await _activities.listStravaActivities(
+    final activities = await _activities.listOfficialActivities(
       start: contract.startAt,
       endExclusive: contract.endAtExclusive,
     );
@@ -130,7 +130,7 @@ class RunContractController {
   Future<List<RunContractActivityOption>> activityOptions(
     RunContract contract,
   ) async {
-    final activities = await _activities.listStravaActivities(
+    final activities = await _activities.listOfficialActivities(
       start: contract.startAt,
       endExclusive: contract.endAtExclusive,
     );

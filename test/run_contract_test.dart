@@ -66,9 +66,15 @@ void main() {
       finalizeAt: DateTime.utc(2026, 6, 28, 23),
     );
 
-    test('counts only non-manual Strava Run inside half-open window', () {
+    test('counts official Strava and RunNow runs inside half-open window', () {
       final activities = [
         _activity('run', DateTime.utc(2026, 6, 22), 5000),
+        _activity(
+          'runnow',
+          DateTime.utc(2026, 6, 22, 12),
+          500,
+          source: ActivitySource.runnow,
+        ),
         _activity('manual', DateTime.utc(2026, 6, 23), 3000, manual: true),
         _activity(
           'trail',
@@ -82,9 +88,10 @@ void main() {
 
       final progress = calculateRunContractProgress(contract, activities);
 
-      expect(progress.value, 6);
+      expect(progress.value, 6.5);
       expect(progress.eligibleActivities.map((item) => item.id), [
         'run',
+        'runnow',
         'legacy',
       ]);
     });
@@ -406,6 +413,7 @@ ActivitySummary _activity(
   DateTime startedAt,
   double distanceMeters, {
   ActivityKind kind = ActivityKind.run,
+  ActivitySource source = ActivitySource.strava,
   bool? manual,
 }) => ActivitySummary(
   id: id,
@@ -415,6 +423,7 @@ ActivitySummary _activity(
   distanceMeters: distanceMeters,
   movingTimeSeconds: 600,
   elapsedTimeSeconds: 600,
+  source: source,
   manual: manual,
 );
 
@@ -431,7 +440,7 @@ class _FakeActivityRepository implements ActivityRepository {
   }
 
   @override
-  Future<List<ActivitySummary>> listStravaActivities({
+  Future<List<ActivitySummary>> listOfficialActivities({
     required DateTime start,
     required DateTime endExclusive,
   }) async => activities;
@@ -441,10 +450,12 @@ class _FakeActivityRepository implements ActivityRepository {
       throw UnimplementedError();
 
   @override
-  Future<void> saveTrackedActivity(
+  Future<TrackedActivitySaveResult> saveTrackedActivity(
     ActivityDetail detail, {
     Map<String, dynamic>? trackingDebug,
-  }) async {}
+  }) async => const TrackedActivitySaveResult(
+    status: TrackedActivitySaveStatus.counted,
+  );
 
   @override
   Stream<List<ActivitySummary>> watchActivities() => Stream.value(activities);

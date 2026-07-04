@@ -1,12 +1,11 @@
 {
-    "name": "RunNow",
-    "short_name": "RunNow",
+    "name": "3i",
+    "short_name": "3i",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#ffffff",
+    "background_color": "#0e96a8",
     "theme_color": "#16160f",
-    "description": "RunNow — không gian tập luyện & cộng đồng chạy bộ.",
-    "orientation": "portrait-primary",
+    "description": "3i — không gian tập luyện & cộng đồng chạy bộ.",
     "prefer_related_applications": false,
     "icons": [
         {

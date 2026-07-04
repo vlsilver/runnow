@@ -1,4 +1,5 @@
 import 'package:myrun/src/models.dart';
+import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_period.dart';
 
@@ -41,7 +42,8 @@ bool isEligibleForContract(
   Set<String> excludeIds = const {},
   Set<String>? includeIds,
 }) =>
-    activity.source == ActivitySource.strava &&
+    (activity.source == ActivitySource.strava ||
+        isRunNowActivityDistanceEligible(activity)) &&
     activity.kind == ActivityKind.run &&
     activity.manual != true &&
     _meetsMetricDistanceThreshold(activity, contract.metric) &&

@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
-        android:label="RunNow"
+        android:label="3i"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

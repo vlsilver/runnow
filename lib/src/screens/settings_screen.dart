@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +8,7 @@ import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/theme_controller.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -20,119 +22,150 @@ class SettingsScreen extends ConsumerWidget {
     final googleAuth = ref.watch(googleAuthProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Cài đặt')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
-        children: [
-          profile.when(
-            data: (user) => _AccountHeader(
-              profile: user,
-              onEdit: user == null ? null : () => context.push('/profile'),
-            ),
-            loading: () => const _AccountHeader.loading(),
-            error: (error, stack) => _SettingsSection(
-              children: [
-                _SettingsRow(
-                  icon: Icons.error_outline,
-                  title: 'Không thể tải tài khoản',
-                  subtitle: '$error',
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          _SettingsSection(
-            title: 'Tài khoản',
+      body: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 860),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
             children: [
-              profile.maybeWhen(
-                data: (user) => _SettingsRow(
-                  icon: Icons.badge_outlined,
-                  title: 'Hồ sơ Club',
-                  value: user?.visibility == ProfileVisibility.public
-                      ? 'Public'
-                      : 'Private',
-                  onTap: user == null
-                      ? null
-                      : () => _editClubProfile(context, ref, user),
+              profile.when(
+                data: (user) => _AccountHeader(
+                  profile: user,
+                  onEdit: user == null ? null : () => context.push('/profile'),
                 ),
-                orElse: () => const _SettingsRow(
-                  icon: Icons.badge_outlined,
-                  title: 'Hồ sơ Club',
-                  value: 'Đang tải',
+                loading: () => const _AccountHeader.loading(),
+                error: (error, stack) => _SettingsSection(
+                  children: [
+                    _SettingsRow(
+                      icon: Icons.error_outline,
+                      title: 'Không thể tải tài khoản',
+                      subtitle: '$error',
+                    ),
+                  ],
                 ),
+              ),
+              const SizedBox(height: 18),
+              _SettingsSection(
+                title: 'Tài khoản',
+                children: [
+                  profile.maybeWhen(
+                    data: (user) => _SettingsRow(
+                      icon: Icons.badge_outlined,
+                      title: 'Hồ sơ Club',
+                      value: user?.visibility == ProfileVisibility.public
+                          ? 'Public'
+                          : 'Private',
+                      onTap: user == null
+                          ? null
+                          : () => _editClubProfile(context, ref, user),
+                    ),
+                    orElse: () => const _SettingsRow(
+                      icon: Icons.badge_outlined,
+                      title: 'Hồ sơ Club',
+                      value: 'Đang tải',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              _SettingsSection(
+                title: 'Kết nối',
+                children: [
+                  _SettingsRow(
+                    icon: stravaConnected
+                        ? Icons.link
+                        : Icons.link_off_outlined,
+                    title: 'Strava',
+                    value: strava.loading
+                        ? 'Đang xử lý'
+                        : stravaConnected
+                        ? 'Đã kết nối'
+                        : 'Chưa kết nối',
+                    onTap: strava.loading ? null : strava.connect,
+                  ),
+                  if (stravaConnected)
+                    _SettingsRow(
+                      icon: Icons.sync,
+                      title: 'Đồng bộ Strava',
+                      value: sync.syncing ? 'Đang chạy' : null,
+                      onTap: sync.syncing
+                          ? null
+                          : () => ref
+                                .read(syncControllerProvider)
+                                .startBackgroundSync(force: true),
+                    ),
+                  if (stravaConnected)
+                    _SettingsRow(
+                      icon: Icons.link_off,
+                      title: 'Ngắt kết nối Strava',
+                      destructive: true,
+                      onTap: strava.loading ? null : strava.disconnect,
+                    ),
+                  if (strava.errorMessage != null)
+                    _SettingsMessage(message: strava.errorMessage!),
+                  if (sync.message != null)
+                    _SettingsMessage(message: sync.message!),
+                ],
+              ),
+              const SizedBox(height: 18),
+              _SettingsSection(
+                title: 'Hiển thị',
+                children: [
+                  _SettingsRow(
+                    icon: Icons.auto_awesome_outlined,
+                    title: 'Ngũ hành',
+                    subtitle:
+                        '${themeController.element.description} · '
+                        '${themeController.appearance.label}',
+                    value: themeController.element.label,
+                    onTap: () => _editElement(context, ref, themeController),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              _SettingsSection(
+                title: '3i',
+                children: [
+                  _SettingsRow(
+                    icon: Icons.help_outline_rounded,
+                    title: 'Hỗ trợ',
+                    onTap: () => _openWebDocument('support.html'),
+                  ),
+                  _SettingsRow(
+                    icon: Icons.privacy_tip_outlined,
+                    title: 'Chính sách quyền riêng tư',
+                    onTap: () => _openWebDocument('privacy.html'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              _SettingsSection(
+                children: [
+                  _SettingsRow(
+                    icon: Icons.logout,
+                    title: 'Đăng xuất Google',
+                    value: googleAuth.loading ? 'Đang xử lý' : null,
+                    destructive: true,
+                    onTap: googleAuth.loading ? null : googleAuth.signOut,
+                  ),
+                  if (googleAuth.errorMessage != null)
+                    _SettingsMessage(message: googleAuth.errorMessage!),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 18),
-          _SettingsSection(
-            title: 'Kết nối',
-            children: [
-              _SettingsRow(
-                icon: stravaConnected ? Icons.link : Icons.link_off_outlined,
-                title: 'Strava',
-                value: strava.loading
-                    ? 'Đang xử lý'
-                    : stravaConnected
-                    ? 'Đã kết nối'
-                    : 'Chưa kết nối',
-                onTap: strava.loading ? null : strava.connect,
-              ),
-              if (stravaConnected)
-                _SettingsRow(
-                  icon: Icons.sync,
-                  title: 'Đồng bộ Strava',
-                  value: sync.syncing ? 'Đang chạy' : null,
-                  onTap: sync.syncing
-                      ? null
-                      : () => ref
-                            .read(syncControllerProvider)
-                            .startBackgroundSync(force: true),
-                ),
-              if (stravaConnected)
-                _SettingsRow(
-                  icon: Icons.link_off,
-                  title: 'Ngắt kết nối Strava',
-                  destructive: true,
-                  onTap: strava.loading ? null : strava.disconnect,
-                ),
-              if (strava.errorMessage != null)
-                _SettingsMessage(message: strava.errorMessage!),
-              if (sync.message != null)
-                _SettingsMessage(message: sync.message!),
-            ],
-          ),
-          const SizedBox(height: 18),
-          _SettingsSection(
-            title: 'Hiển thị',
-            children: [
-              _SettingsRow(
-                icon: Icons.auto_awesome_outlined,
-                title: 'Ngũ hành',
-                subtitle:
-                    '${themeController.element.description} · '
-                    '${themeController.appearance.label}',
-                value: themeController.element.label,
-                onTap: () => _editElement(context, ref, themeController),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          _SettingsSection(
-            children: [
-              _SettingsRow(
-                icon: Icons.logout,
-                title: 'Đăng xuất Google',
-                value: googleAuth.loading ? 'Đang xử lý' : null,
-                destructive: true,
-                onTap: googleAuth.loading ? null : googleAuth.signOut,
-              ),
-              if (googleAuth.errorMessage != null)
-                _SettingsMessage(message: googleAuth.errorMessage!),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
+}
+
+Future<void> _openWebDocument(String path) async {
+  final uri = kIsWeb
+      ? Uri.base.resolve(path)
+      : Uri.parse('https://run-now-79767.web.app/$path');
+  await launchUrl(uri, mode: LaunchMode.externalApplication);
 }
 
 Future<void> _editElement(

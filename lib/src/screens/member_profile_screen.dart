@@ -7,6 +7,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/training_power.dart';
+import 'package:myrun/src/web_layout.dart';
 import 'package:myrun/src/widgets/activity_records_card.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/discipline_card.dart';
@@ -37,7 +38,7 @@ class MemberProfileScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Tổng quan')),
       body: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
+          constraints: const BoxConstraints(maxWidth: 1180),
           child: profile.when(
             data: (member) {
               if (member == null) {
@@ -131,7 +132,89 @@ class _MemberDashboardState extends State<_MemberDashboard> {
     final discipline = personalDisciplineStats(widget.activities, now);
     final recent = [...widget.activities]
       ..sort((left, right) => right.startedAt.compareTo(left.startedAt));
-    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final wide = RunNowWebLayout.isDesktop(context);
+    if (wide) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(0, 8, 0, 40),
+        children: [
+          _MemberHeader(member: widget.member),
+          const SizedBox(height: 20),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  children: [
+                    _MemberSummaryCard(
+                      comparison: comparison,
+                      dailyDistances: dailyDistances,
+                      month: month,
+                    ),
+                    const SizedBox(height: 20),
+                    PersonalPowerCard(
+                      activities: widget.activities,
+                      range: _powerRange,
+                      onRangeChanged: (value) =>
+                          setState(() => _powerRange = value),
+                      showControls: true,
+                    ),
+                    const SizedBox(height: 20),
+                    DisciplineCard(
+                      stats: discipline,
+                      activities: widget.activities,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 22),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TrainingVolumeChart(
+                      activities: widget.activities,
+                      period: _volumePeriod,
+                      mode: _volumeMode,
+                      showControls: true,
+                    ),
+                    const SizedBox(height: 20),
+                    ActivityRecordsCard(
+                      title: 'BEST BOARD',
+                      entries: [
+                        for (final activity in widget.activities)
+                          ActivityRecordEntry(
+                            activity: activity,
+                            ownerUid: widget.uid,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Gần đây',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 8),
+                    if (recent.isEmpty)
+                      const Text('Thành viên này chưa có hoạt động public.')
+                    else
+                      for (
+                        var index = 0;
+                        index < recent.take(6).length;
+                        index++
+                      )
+                        ActivityTile(
+                          activity: recent[index],
+                          sequence: index + 1,
+                          ownerUid: widget.uid,
+                        ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
     final list = NotificationListener<ScrollNotification>(
       onNotification: (_) {
         WidgetsBinding.instance.addPostFrameCallback(
@@ -141,7 +224,7 @@ class _MemberDashboardState extends State<_MemberDashboard> {
       },
       child: ListView(
         key: _scrollKey,
-        padding: EdgeInsets.fromLTRB(0, 8, 0, wide ? 40 : 132),
+        padding: const EdgeInsets.fromLTRB(0, 8, 0, 132),
         children: [
           _MemberHeader(member: widget.member),
           const SizedBox(height: 14),
@@ -157,7 +240,7 @@ class _MemberDashboardState extends State<_MemberDashboard> {
               activities: widget.activities,
               range: _powerRange,
               onRangeChanged: (value) => setState(() => _powerRange = value),
-              showControls: wide,
+              showControls: false,
             ),
           ),
           const SizedBox(height: 20),
@@ -169,7 +252,7 @@ class _MemberDashboardState extends State<_MemberDashboard> {
               activities: widget.activities,
               period: _volumePeriod,
               mode: _volumeMode,
-              showControls: wide,
+              showControls: false,
             ),
           ),
           const SizedBox(height: 20),
@@ -196,7 +279,6 @@ class _MemberDashboardState extends State<_MemberDashboard> {
         ],
       ),
     );
-    if (wide) return list;
     return Stack(
       children: [
         Positioned.fill(child: list),

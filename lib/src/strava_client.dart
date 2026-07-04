@@ -85,7 +85,7 @@ class StravaClient {
   Future<void> exchangeCode(String code) async {
     // Dev-only web note: on Flutter web this exposes the client secret in the
     // compiled app and depends on Strava allowing browser requests. This is
-    // accepted only for the current internal RunNow demo.
+    // accepted only for the current internal 3i demo.
     final body = {
       'client_id': clientId,
       'client_secret': clientSecret,

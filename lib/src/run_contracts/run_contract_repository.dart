@@ -136,7 +136,7 @@ class FirestoreRunContractRepository implements RunContractRepository {
       'finalizeAt': Timestamp.fromDate(period.finalizeAt),
       'status': RunContractStatus.active.value,
       'visibility': draft.visibility.value,
-      'sourcePolicy': 'strava_only',
+      'sourcePolicy': 'official_activity',
       'progressValue': initialProgress,
       'participantUids': [_uid],
       'participants': {
@@ -148,7 +148,7 @@ class FirestoreRunContractRepository implements RunContractRepository {
           'updatedAt': FieldValue.serverTimestamp(),
         },
       },
-      'eligibilityVersion': 1,
+      'eligibilityVersion': 2,
       'lastCalculatedAt': FieldValue.serverTimestamp(),
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),

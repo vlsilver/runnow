@@ -29,15 +29,20 @@ class _RunContractDetailScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Chi tiết kèo')),
-      body: ref
-          .watch(runContractProvider(widget.contractId))
-          .when(
-            data: (contract) => contract == null
-                ? const Center(child: Text('Không tìm thấy kèo chạy.'))
-                : _loggedContent(contract),
-            error: (error, stack) => Center(child: Text('$error')),
-            loading: () => const Center(child: CircularProgressIndicator()),
-          ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 820),
+          child: ref
+              .watch(runContractProvider(widget.contractId))
+              .when(
+                data: (contract) => contract == null
+                    ? const Center(child: Text('Không tìm thấy kèo chạy.'))
+                    : _loggedContent(contract),
+                error: (error, stack) => Center(child: Text('$error')),
+                loading: () => const Center(child: CircularProgressIndicator()),
+              ),
+        ),
+      ),
     );
   }
 
@@ -83,7 +88,7 @@ class _RunContractDetailScreenState
   Widget _content(RunContract contract) {
     final uid = ref.watch(firebaseUserProvider).value?.uid;
     final owner = uid == contract.creatorUid;
-    var ownerName = 'RunNow member';
+    var ownerName = '3i member';
     String? ownerAvatarUrl;
     if (owner) {
       final profile = ref.watch(userProfileProvider).value;
@@ -575,98 +580,87 @@ class _ContractDetailHeader extends StatelessWidget {
     return GlassPanel(
       borderRadius: 18,
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: EdgeInsets.zero,
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+      gradient: LinearGradient(
+        colors: [palette.tint, palette.glassStart],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ColoredBox(
-            color: palette.accent,
-            child: const SizedBox(height: 5, width: double.infinity),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundImage:
+                    ownerAvatarUrl == null || ownerAvatarUrl!.isEmpty
+                    ? null
+                    : NetworkImage(ownerAvatarUrl!),
+                child: ownerAvatarUrl == null || ownerAvatarUrl!.isEmpty
+                    ? Text(ownerName.isEmpty ? '?' : ownerName[0].toUpperCase())
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CircleAvatar(
-                      radius: 22,
-                      backgroundImage:
-                          ownerAvatarUrl == null || ownerAvatarUrl!.isEmpty
-                          ? null
-                          : NetworkImage(ownerAvatarUrl!),
-                      child: ownerAvatarUrl == null || ownerAvatarUrl!.isEmpty
-                          ? Text(
-                              ownerName.isEmpty
-                                  ? '?'
-                                  : ownerName[0].toUpperCase(),
-                            )
-                          : null,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            ownerName,
-                            style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          Text(
-                            'KÈO NHÓM',
-                            style: TextStyle(
-                              color: palette.accent,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                        ],
+                    Text(
+                      ownerName,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: palette.accent.withValues(alpha: 0.13),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 7,
-                        ),
-                        child: Text(
-                          completed ? 'ĐÃ CỨU' : 'ĐANG CHẠY',
-                          style: TextStyle(
-                            color: palette.accent,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
+                    Text(
+                      'KÈO NHÓM',
+                      style: TextStyle(
+                        color: palette.accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.2,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 20),
-                Text(
-                  contract.title,
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
+              ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: palette.accent.withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 7,
+                  ),
+                  child: Text(
+                    completed ? 'ĐÃ CỨU' : 'ĐANG CHẠY',
+                    style: TextStyle(
+                      color: palette.accent,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 7),
-                Text(
-                  'Cùng hoàn thành ${_contractValue(contract.metric, contract.targetValue)} '
-                  'trong kỳ này. Tiến trình cập nhật từ Strava.',
-                  style: TextStyle(
-                    color: onSurface.withValues(alpha: 0.58),
-                    height: 1.35,
-                  ),
-                ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Text(
+            contract.title,
+            style: Theme.of(
+              context,
+            ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            'Cùng hoàn thành ${_contractValue(contract.metric, contract.targetValue)} '
+            'trong kỳ này. Tiến trình cập nhật từ Strava.',
+            style: TextStyle(
+              color: onSurface.withValues(alpha: 0.58),
+              height: 1.35,
             ),
           ),
         ],
@@ -684,7 +678,6 @@ class _MyProgressCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
     final rawRatio = contract.targetValue <= 0
         ? 0.0
         : participant.progressValue / contract.targetValue;
@@ -692,11 +685,19 @@ class _MyProgressCard extends StatelessWidget {
       0.0,
       contract.targetValue,
     );
+    final foreground =
+        ThemeData.estimateBrightnessForColor(palette.accent) == Brightness.dark
+        ? Colors.white
+        : Colors.black;
     return GlassPanel(
       borderRadius: 18,
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-      gradient: LinearGradient(colors: [palette.tint, palette.glassEnd]),
+      gradient: LinearGradient(
+        colors: [palette.accent, palette.accentDeep],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -705,7 +706,7 @@ class _MyProgressCard extends StatelessWidget {
               Text(
                 'CỦA BẠN',
                 style: TextStyle(
-                  color: palette.accent,
+                  color: foreground.withValues(alpha: 0.78),
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 1.2,
@@ -715,9 +716,7 @@ class _MyProgressCard extends StatelessWidget {
               Text(
                 rawRatio >= 1 ? 'Đã hoàn thành' : 'Chưa hoàn thành',
                 style: TextStyle(
-                  color: rawRatio >= 1
-                      ? palette.accent
-                      : onSurface.withValues(alpha: 0.58),
+                  color: foreground.withValues(alpha: 0.78),
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -730,7 +729,7 @@ class _MyProgressCard extends StatelessWidget {
               Text(
                 _contractValue(contract.metric, participant.progressValue),
                 style: TextStyle(
-                  color: palette.accent,
+                  color: foreground,
                   fontSize: 36,
                   height: 1,
                   fontWeight: FontWeight.w900,
@@ -742,7 +741,7 @@ class _MyProgressCard extends StatelessWidget {
                 child: Text(
                   '/ ${_contractValue(contract.metric, contract.targetValue)}',
                   style: TextStyle(
-                    color: onSurface.withValues(alpha: 0.48),
+                    color: foreground.withValues(alpha: 0.62),
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -751,7 +750,7 @@ class _MyProgressCard extends StatelessWidget {
               Text(
                 '${(rawRatio * 100).toStringAsFixed(0)}%',
                 style: TextStyle(
-                  color: palette.accent,
+                  color: foreground,
                   fontSize: 28,
                   fontWeight: FontWeight.w900,
                 ),
@@ -763,8 +762,8 @@ class _MyProgressCard extends StatelessWidget {
             value: rawRatio.clamp(0.0, 1.0),
             minHeight: 9,
             borderRadius: BorderRadius.circular(2),
-            backgroundColor: palette.border,
-            color: palette.accent,
+            backgroundColor: foreground.withValues(alpha: 0.2),
+            color: foreground,
           ),
           const SizedBox(height: 10),
           Text(
@@ -772,7 +771,7 @@ class _MyProgressCard extends StatelessWidget {
                 ? 'Bạn đã hoàn thành mục tiêu.'
                 : 'Còn ${_contractValue(contract.metric, remaining)} để hoàn thành',
             style: TextStyle(
-              color: palette.accent,
+              color: foreground.withValues(alpha: 0.82),
               fontSize: 12,
               fontWeight: FontWeight.w800,
             ),
@@ -849,17 +848,15 @@ class _ParticipantProgressList extends StatelessWidget {
               name: participants[index].uid == currentUid
                   ? currentProfile?.displayName ?? 'Bạn'
                   : profiles[participants[index].uid]?.displayName ??
-                        'RunNow member',
+                        '3i member',
               avatarUrl: participants[index].uid == currentUid
                   ? currentProfile?.avatarUrl
                   : profiles[participants[index].uid]?.avatarUrl,
               isCurrentUser: participants[index].uid == currentUid,
             ),
-            if (index != participants.length - 1) const Divider(height: 24),
+            if (index != participants.length - 1) const SizedBox(height: 20),
           ],
-          const SizedBox(height: 18),
-          Divider(color: onSurface.withValues(alpha: 0.1)),
-          const SizedBox(height: 10),
+          const SizedBox(height: 22),
           Row(
             children: [
               Expanded(

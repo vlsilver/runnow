@@ -60,7 +60,7 @@ class GoogleAuthController extends ChangeNotifier {
     String? avatarUrl,
     String? email,
   }) async {
-    final effectiveName = displayName ?? 'RunNow member';
+    final effectiveName = displayName ?? '3i member';
     await _firestore.runTransaction((transaction) async {
       final userRef = _firestore.collection('users').doc(user.uid);
       final publicRef = _firestore.collection('publicProfiles').doc(user.uid);
@@ -249,7 +249,7 @@ class StravaAuthController extends ChangeNotifier {
     if (code != null) {
       await _run(() async {
         // Dev-only web flow: this exchanges Strava OAuth code directly from
-        // the browser because RunNow is currently an internal demo.
+        // the browser because 3i is currently an internal demo.
         // Production must move this exchange to a backend service.
         await StravaClient.instance.exchangeCode(code);
         try {
@@ -353,7 +353,7 @@ class StravaAuthController extends ChangeNotifier {
     } catch (error) {
       if (kIsWeb) {
         errorMessage =
-            'Strava đã redirect về RunNow, nhưng browser không đổi được code '
+            'Strava đã redirect về 3i, nhưng browser không đổi được code '
             'sang token trực tiếp. Lưu client secret trong app hoặc Firestore '
             'không xử lý được lỗi này nếu Strava chặn CORS. Cần backend/proxy '
             'token exchange để web connect Strava ổn định. Chi tiết: $error';

@@ -15,6 +15,7 @@ import 'package:myrun/src/screens/run_contract_home_screen.dart';
 import 'package:myrun/src/screens/settings_screen.dart';
 import 'package:myrun/src/screens/tracking_screen.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/web_layout.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 
@@ -136,7 +137,7 @@ class RunNowApp extends ConsumerWidget {
       darkTone: themeController.darkTone,
     );
     return MaterialApp.router(
-      title: 'RunNow',
+      title: '3i',
       debugShowCheckedModeBanner: false,
       theme: selectedTheme,
       darkTheme: selectedTheme,
@@ -226,13 +227,8 @@ class _Scaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    final wide = width >= 760;
+    final wide = kIsWeb ? RunNowWebLayout.isDesktop(context) : width >= 760;
     if (wide) {
-      final contentMaxWidth = width >= 1500
-          ? 1360.0
-          : width >= 1180
-          ? 1180.0
-          : 900.0;
       return Scaffold(
         body: SafeArea(
           child: Row(
@@ -240,10 +236,22 @@ class _Scaffold extends StatelessWidget {
             children: [
               _DesktopNavRail(shell: shell),
               Expanded(
-                child: _DesktopContent(
-                  shell: shell,
-                  maxWidth: contentMaxWidth,
-                  location: location,
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: RunNowWebLayout.maxContentWidth,
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        width >= RunNowWebLayout.wideBreakpoint ? 32 : 20,
+                        8,
+                        width >= RunNowWebLayout.wideBreakpoint ? 32 : 20,
+                        0,
+                      ),
+                      child: shell,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -323,188 +331,6 @@ class _Scaffold extends StatelessWidget {
   }
 }
 
-class _DesktopContent extends StatelessWidget {
-  const _DesktopContent({
-    required this.shell,
-    required this.maxWidth,
-    required this.location,
-  });
-
-  final StatefulNavigationShell shell;
-  final double maxWidth;
-  final String location;
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth),
-        child: Column(
-          children: [
-            const SizedBox(height: 14),
-            _DesktopCommandBar(shell: shell, location: location),
-            const SizedBox(height: 8),
-            Expanded(child: shell),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DesktopCommandBar extends ConsumerWidget {
-  const _DesktopCommandBar({required this.shell, required this.location});
-
-  final StatefulNavigationShell shell;
-  final String location;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final filter = switch (shell.currentIndex) {
-      0 => null,
-      1 => const ClubNavFilter(branchActive: true),
-      3 when location == '/profile' => const DashboardNavFilter(
-        branchActive: true,
-        showFallback: true,
-      ),
-      _ => null,
-    };
-    final title = switch (shell.currentIndex) {
-      0 => 'Kèo',
-      1 => 'Câu lạc bộ',
-      2 => 'Chạy thử',
-      3 when location == '/profile/journal' => 'Nhật ký',
-      3 => 'Cá nhân',
-      4 => 'Cài đặt',
-      _ => 'RunNow',
-    };
-    final subtitle = switch (shell.currentIndex) {
-      0 => 'Run contract',
-      1 => 'Club command center',
-      2 => 'Tracking lab',
-      3 when location == '/profile/journal' => 'Activity log',
-      3 => 'Personal performance',
-      4 => 'Preferences',
-      _ => 'Your training space',
-    };
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    final palette = context.runNowPalette;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      child: GlassPanel(
-        borderRadius: 26,
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
-        gradient: LinearGradient(
-          colors: [palette.glassStart, palette.glassEnd],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                gradient: LinearGradient(
-                  colors: [palette.accent, palette.accentDeep],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: palette.accent.withValues(alpha: 0.22),
-                    blurRadius: 18,
-                  ),
-                ],
-              ),
-              child: Icon(
-                Icons.directions_run_rounded,
-                color: palette.glassStart,
-              ),
-            ),
-            const SizedBox(width: 14),
-            SizedBox(
-              width: 210,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: onSurface,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle.toUpperCase(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: onSurface.withValues(alpha: 0.52),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 18),
-            Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeOutCubic,
-                child:
-                    filter ??
-                    _DesktopStatusStrip(key: ValueKey(shell.currentIndex)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DesktopStatusStrip extends StatelessWidget {
-  const _DesktopStatusStrip({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final onSurface = scheme.onSurface;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Icon(
-          Icons.bolt_rounded,
-          size: 18,
-          color: scheme.primary.withValues(alpha: 0.9),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          'RUNNOW WEB',
-          style: TextStyle(
-            color: onSurface.withValues(alpha: 0.58),
-            fontSize: 12,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.6,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _DesktopNavRail extends StatelessWidget {
   const _DesktopNavRail({required this.shell});
 
@@ -513,7 +339,7 @@ class _DesktopNavRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    final extended = width >= 1100;
+    final extended = width >= 1240;
     final scheme = Theme.of(context).colorScheme;
     final onSurface = scheme.onSurface;
     final branches = <int>[0, 1, if (!kIsWeb) 2, 3, 4];
@@ -547,47 +373,51 @@ class _DesktopNavRail extends StatelessWidget {
     ];
     var selected = branches.indexOf(shell.currentIndex);
     if (selected < 0) selected = 0;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 10, 4, 10),
-      child: GlassPanel(
-        borderRadius: 26,
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: MediaQuery.sizeOf(context).height - 40,
-            ),
-            child: IntrinsicHeight(
-              child: NavigationRail(
-                extended: extended,
-                minExtendedWidth: 188,
-                backgroundColor: Colors.transparent,
-                labelType: NavigationRailLabelType.all,
-                groupAlignment: -0.85,
-                selectedIndex: selected,
-                onDestinationSelected: (index) =>
-                    shell.goBranch(branches[index]),
-                indicatorColor: scheme.primary.withValues(alpha: 0.18),
-                leading: const Padding(
-                  padding: EdgeInsets.only(top: 10, bottom: 16),
-                  child: _RailBrand(),
-                ),
-                selectedIconTheme: IconThemeData(color: scheme.primary),
-                unselectedIconTheme: IconThemeData(
-                  color: onSurface.withValues(alpha: 0.7),
-                ),
-                selectedLabelTextStyle: TextStyle(
-                  color: scheme.primary,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 12,
-                ),
-                unselectedLabelTextStyle: TextStyle(
-                  color: onSurface.withValues(alpha: 0.7),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
-                ),
-                destinations: destinations,
+    final palette = context.runNowPalette;
+    return Container(
+      width: extended ? 216 : 84,
+      decoration: BoxDecoration(
+        color: palette.glassStart,
+        border: Border(right: BorderSide(color: palette.border)),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: MediaQuery.sizeOf(context).height - 16,
+          ),
+          child: IntrinsicHeight(
+            child: NavigationRail(
+              extended: extended,
+              minWidth: 76,
+              minExtendedWidth: 216,
+              backgroundColor: Colors.transparent,
+              labelType: extended
+                  ? NavigationRailLabelType.none
+                  : NavigationRailLabelType.all,
+              groupAlignment: -0.85,
+              selectedIndex: selected,
+              onDestinationSelected: (index) => shell.goBranch(branches[index]),
+              indicatorColor: scheme.primary.withValues(alpha: 0.16),
+              leading: const Padding(
+                padding: EdgeInsets.only(top: 10, bottom: 20),
+                child: _RailBrand(),
               ),
+              selectedIconTheme: IconThemeData(color: scheme.primary),
+              unselectedIconTheme: IconThemeData(
+                color: onSurface.withValues(alpha: 0.62),
+              ),
+              selectedLabelTextStyle: TextStyle(
+                color: scheme.primary,
+                fontWeight: FontWeight.w900,
+                fontSize: 12,
+              ),
+              unselectedLabelTextStyle: TextStyle(
+                color: onSurface.withValues(alpha: 0.62),
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+              destinations: destinations,
             ),
           ),
         ),
@@ -624,7 +454,7 @@ class _RailBrand extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'RunNow',
+          '3i',
           style: TextStyle(
             color: Theme.of(context).colorScheme.onSurface,
             fontWeight: FontWeight.w900,

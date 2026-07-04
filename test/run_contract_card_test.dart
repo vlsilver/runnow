@@ -55,7 +55,7 @@ void main() {
     );
 
     expect(find.textContaining('75%'), findsOneWidget);
-    expect(find.textContaining('120%'), findsOneWidget);
-    expect(find.text('2 người · TB'), findsOneWidget);
+    expect(find.textContaining('120'), findsOneWidget);
+    expect(find.textContaining('1/2 hoàn thành'), findsOneWidget);
   });
 }

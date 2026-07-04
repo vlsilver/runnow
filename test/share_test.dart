@@ -15,7 +15,7 @@ void main() {
     );
     expect(
       buildShareCaption(activity),
-      'Chạy buổi sáng\n5.00 km • 25:00 • 5:00 /km\nChia sẻ từ RunNow',
+      'Chạy buổi sáng\n5.00 km • 25:00 • 5:00 /km\nChia sẻ từ 3i',
     );
   });
 }

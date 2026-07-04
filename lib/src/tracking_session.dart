@@ -207,7 +207,7 @@ class TrackingSessionSnapshot {
       distanceMeters <= 0 ? null : movingTimeSeconds / (distanceMeters / 1000);
 
   ActivitySummary toActivitySummary({
-    String name = 'RunNow Run',
+    String name = '3i Run',
     ActivityKind kind = ActivityKind.run,
     String? recordingDevice,
   }) {
@@ -228,7 +228,7 @@ class TrackingSessionSnapshot {
   }
 
   ActivityDetail toActivityDetail({
-    String name = 'RunNow Run',
+    String name = '3i Run',
     ActivityKind kind = ActivityKind.run,
     String? recordingDevice,
   }) {

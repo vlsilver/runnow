@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/dashboard_analytics.dart';
 import 'package:myrun/src/strava_client.dart';
 import 'package:myrun/src/models.dart';
@@ -11,16 +12,34 @@ import 'package:myrun/src/tracking_session.dart';
 abstract interface class ActivityRepository {
   Stream<List<ActivitySummary>> watchActivities();
   Stream<List<ActivitySummary>> watchTrackedTrialActivities();
-  Future<List<ActivitySummary>> listStravaActivities({
+  Future<List<ActivitySummary>> listOfficialActivities({
     required DateTime start,
     required DateTime endExclusive,
   });
   Future<ActivityDetail> getDetail(String activityId);
   Future<int> sync();
-  Future<void> saveTrackedActivity(
+  Future<TrackedActivitySaveResult> saveTrackedActivity(
     ActivityDetail detail, {
     Map<String, dynamic>? trackingDebug,
   });
+}
+
+enum TrackedActivitySaveStatus {
+  counted,
+  belowMinimumDistance,
+  duplicateOfStrava,
+}
+
+class TrackedActivitySaveResult {
+  const TrackedActivitySaveResult({
+    required this.status,
+    this.stravaActivityId,
+  });
+
+  final TrackedActivitySaveStatus status;
+  final String? stravaActivityId;
+
+  bool get countsTowardStats => status == TrackedActivitySaveStatus.counted;
 }
 
 abstract interface class FeedRepository {
@@ -83,10 +102,11 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
       snapshot,
     ) {
       _debugLog('Firestore snapshot: ${snapshot.docs.length} activities.');
-      return snapshot.docs
-          .map((document) => ActivitySummary.fromMap(document.data()))
-          .where((activity) => activity.source == ActivitySource.strava)
-          .toList();
+      return selectOfficialActivities(
+        snapshot.docs
+            .map((document) => ActivitySummary.fromMap(document.data()))
+            .toList(),
+      );
     });
   }
 
@@ -103,20 +123,28 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
   }
 
   @override
-  Future<List<ActivitySummary>> listStravaActivities({
+  Future<List<ActivitySummary>> listOfficialActivities({
     required DateTime start,
     required DateTime endExclusive,
   }) async {
+    final queryStart = start.subtract(const Duration(hours: 24));
     final snapshot = await _activities
         .where(
           'startedAt',
-          isGreaterThanOrEqualTo: start.toUtc().toIso8601String(),
+          isGreaterThanOrEqualTo: queryStart.toUtc().toIso8601String(),
         )
         .where('startedAt', isLessThan: endExclusive.toUtc().toIso8601String())
         .get();
-    return snapshot.docs
-        .map((document) => ActivitySummary.fromMap(document.data()))
-        .where((activity) => activity.source == ActivitySource.strava)
+    return selectOfficialActivities(
+          snapshot.docs
+              .map((document) => ActivitySummary.fromMap(document.data()))
+              .toList(),
+        )
+        .where(
+          (activity) =>
+              !activity.startedAt.isBefore(start) &&
+              activity.startedAt.isBefore(endExclusive),
+        )
         .toList();
   }
 
@@ -251,6 +279,7 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
   Future<int> sync() async {
     int page = 1;
     int changed = 0;
+    final changedStravaActivities = <ActivitySummary>[];
     _debugLog('Starting full Strava sync.');
     while (true) {
       final activities = await StravaClient.instance.listActivities(page: page);
@@ -282,6 +311,7 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
           continue;
         }
         batch.set(document, nextData, SetOptions(merge: true));
+        changedStravaActivities.add(summary);
         changed += 1;
         pageHasChanges = true;
       }
@@ -300,6 +330,7 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
         'athleteId': StravaClient.instance.athleteId,
         'lastSyncedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+      await migrateDuplicateContractClaims(changedStravaActivities);
     }
     await _refreshCurrentLeaderboardEntry();
     _debugLog('Sync completed: changed $changed activities.');
@@ -307,7 +338,7 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
   }
 
   @override
-  Future<void> saveTrackedActivity(
+  Future<TrackedActivitySaveResult> saveTrackedActivity(
     ActivityDetail detail, {
     Map<String, dynamic>? trackingDebug,
   }) async {
@@ -324,6 +355,122 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
       SetOptions(merge: true),
     );
     _debugLog('Saved tracked trial activity ${detail.summary.id}.');
+    if (!isRunNowActivityDistanceEligible(detail.summary)) {
+      return const TrackedActivitySaveResult(
+        status: TrackedActivitySaveStatus.belowMinimumDistance,
+      );
+    }
+    final duplicate = await _findPreferredStravaDuplicate(detail.summary);
+    if (duplicate != null) {
+      return TrackedActivitySaveResult(
+        status: TrackedActivitySaveStatus.duplicateOfStrava,
+        stravaActivityId: duplicate.id,
+      );
+    }
+    await _refreshCurrentLeaderboardEntry();
+    return const TrackedActivitySaveResult(
+      status: TrackedActivitySaveStatus.counted,
+    );
+  }
+
+  Future<ActivitySummary?> _findPreferredStravaDuplicate(
+    ActivitySummary activity,
+  ) async {
+    final start = activity.startedAt.subtract(const Duration(hours: 24));
+    final end = activity.startedAt.add(
+      Duration(seconds: activity.elapsedTimeSeconds + 1),
+    );
+    final snapshot = await _activities
+        .where(
+          'startedAt',
+          isGreaterThanOrEqualTo: start.toUtc().toIso8601String(),
+        )
+        .where('startedAt', isLessThan: end.toUtc().toIso8601String())
+        .get();
+    return preferredStravaDuplicate(
+      activity,
+      snapshot.docs.map((document) => ActivitySummary.fromMap(document.data())),
+    );
+  }
+
+  /// Migrates any Kèo Chạy claim held by a 3i-tracked activity over to its
+  /// newly-synced Strava duplicate, once Strava becomes the official record.
+  ///
+  /// Public (not `sync()`-private) only so tests can drive it directly
+  /// against a fake Firestore without needing a real Strava sync round-trip.
+  @visibleForTesting
+  Future<void> migrateDuplicateContractClaims(
+    List<ActivitySummary> changedStravaActivities,
+  ) async {
+    if (changedStravaActivities.isEmpty) return;
+    final runNowSnapshot = await _activities
+        .where('source', isEqualTo: ActivitySource.runnow.value)
+        .get();
+    final runNowActivities = runNowSnapshot.docs
+        .map((document) => ActivitySummary.fromMap(document.data()))
+        .where(isRunNowActivityDistanceEligible);
+    for (final runNow in runNowActivities) {
+      final strava = preferredStravaDuplicate(runNow, changedStravaActivities);
+      if (strava == null) continue;
+      await _migrateContractClaim(runNow.id, strava.id);
+    }
+  }
+
+  Future<void> _migrateContractClaim(
+    String runNowActivityId,
+    String stravaActivityId,
+  ) async {
+    final claims = _firestore
+        .collection('users')
+        .doc(_uid)
+        .collection('runContractActivityClaims');
+    final oldClaimRef = claims.doc(runNowActivityId);
+    if (!(await oldClaimRef.get()).exists) return;
+    final newClaimRef = claims.doc(stravaActivityId);
+    await _firestore.runTransaction((transaction) async {
+      final oldClaim = await transaction.get(oldClaimRef);
+      final oldData = oldClaim.data();
+      final contractId = oldData?['contractId'] as String?;
+      if (contractId == null) return;
+      final newClaim = await transaction.get(newClaimRef);
+      final contractRef = _firestore.collection('runContracts').doc(contractId);
+      final contract = await transaction.get(contractRef);
+      final contractData = contract.data();
+      if (contractData == null || contractData['status'] != 'active') return;
+      final participants =
+          contractData['participants'] as Map<String, dynamic>?;
+      final participant = participants?[_uid] as Map<String, dynamic>?;
+      if (participant == null) return;
+
+      final ids =
+          (participant['countedActivityIds'] as List?)
+              ?.whereType<String>()
+              .toSet() ??
+          <String>{};
+      ids.remove(runNowActivityId);
+      final conflictingContractId = newClaim.data()?['contractId'] as String?;
+      if (conflictingContractId == null ||
+          conflictingContractId == contractId) {
+        ids.add(stravaActivityId);
+        transaction.set(newClaimRef, {
+          ...oldData!,
+          'activityId': stravaActivityId,
+          'migratedFromActivityId': runNowActivityId,
+          'assignedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      transaction.delete(oldClaimRef);
+      transaction.update(contractRef, {
+        'participants.$_uid': {
+          'uid': _uid,
+          'progressValue': participant['progressValue'] ?? 0,
+          'countedActivityIds': ids.toList()..sort(),
+          'joinedAt': participant['joinedAt'],
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
   }
 
   void _debugLog(String message) {
@@ -389,11 +536,7 @@ class DemoActivityRepository implements ActivityRepository {
 
   @override
   Stream<List<ActivitySummary>> watchActivities() {
-    return Stream.value(
-      _activities
-          .where((activity) => activity.source == ActivitySource.strava)
-          .toList(),
-    );
+    return Stream.value(selectOfficialActivities(_activities));
   }
 
   @override
@@ -406,13 +549,12 @@ class DemoActivityRepository implements ActivityRepository {
   }
 
   @override
-  Future<List<ActivitySummary>> listStravaActivities({
+  Future<List<ActivitySummary>> listOfficialActivities({
     required DateTime start,
     required DateTime endExclusive,
-  }) async => _activities
+  }) async => selectOfficialActivities(_activities)
       .where(
         (activity) =>
-            activity.source == ActivitySource.strava &&
             !activity.startedAt.isBefore(start) &&
             activity.startedAt.isBefore(endExclusive),
       )
@@ -434,12 +576,24 @@ class DemoActivityRepository implements ActivityRepository {
   Future<int> sync() async => _activities.length;
 
   @override
-  Future<void> saveTrackedActivity(
+  Future<TrackedActivitySaveResult> saveTrackedActivity(
     ActivityDetail detail, {
     Map<String, dynamic>? trackingDebug,
   }) async {
     _activities.removeWhere((activity) => activity.id == detail.summary.id);
     _activities.insert(0, detail.summary);
+    if (!isRunNowActivityDistanceEligible(detail.summary)) {
+      return const TrackedActivitySaveResult(
+        status: TrackedActivitySaveStatus.belowMinimumDistance,
+      );
+    }
+    final duplicate = preferredStravaDuplicate(detail.summary, _activities);
+    return TrackedActivitySaveResult(
+      status: duplicate == null
+          ? TrackedActivitySaveStatus.counted
+          : TrackedActivitySaveStatus.duplicateOfStrava,
+      stravaActivityId: duplicate?.id,
+    );
   }
 }
 
@@ -684,10 +838,11 @@ class FirestoreMemberRepository implements MemberRepository {
         .orderBy('startedAt', descending: true)
         .snapshots()
         .map(
-          (snapshot) => snapshot.docs
-              .map((document) => ActivitySummary.fromMap(document.data()))
-              .where((activity) => activity.source == ActivitySource.strava)
-              .toList(),
+          (snapshot) => selectOfficialActivities(
+            snapshot.docs
+                .map((document) => ActivitySummary.fromMap(document.data()))
+                .toList(),
+          ),
         );
   }
 
@@ -913,7 +1068,7 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
     final data = <String, dynamic>{
       'id': snapshot.id,
       'ownerUid': _uid,
-      'ownerName': owner['displayName'] as String? ?? 'RunNow member',
+      'ownerName': owner['displayName'] as String? ?? '3i member',
       'visibility': liveVisibility.value,
       'status': status.value,
       'startedAt': Timestamp.fromDate(snapshot.startedAt.toUtc()),
@@ -1198,10 +1353,11 @@ Future<void> refreshLeaderboardEntryForUser({
       .orderBy('startedAt', descending: true)
       .get()
       .then(
-        (snapshot) => snapshot.docs
-            .map((document) => ActivitySummary.fromMap(document.data()))
-            .where((activity) => activity.source == ActivitySource.strava)
-            .toList(),
+        (snapshot) => selectOfficialActivities(
+          snapshot.docs
+              .map((document) => ActivitySummary.fromMap(document.data()))
+              .toList(),
+        ),
       );
   final user = await firestore.collection('users').doc(uid).get();
   final userData = user.data() ?? const <String, dynamic>{};
@@ -1243,7 +1399,7 @@ Map<String, dynamic> leaderboardEntryToMap({
       ? (profile['nickname'] as String).trim()
       : (profile['displayName'] as String?)?.trim().isNotEmpty == true
       ? (profile['displayName'] as String).trim()
-      : 'RunNow member';
+      : '3i member';
   return {
     'uid': uid,
     'displayName': displayName,

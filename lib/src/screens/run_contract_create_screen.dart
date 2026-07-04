@@ -102,13 +102,18 @@ class _RunContractCreateScreenState
           ),
         ),
       ),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 180),
-        child: switch (_step) {
-          0 => _templates(),
-          1 => _visibility(),
-          _ => _confirmation(),
-        },
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: switch (_step) {
+              0 => _templates(),
+              1 => _visibility(),
+              _ => _confirmation(),
+            },
+          ),
+        ),
       ),
     );
   }
@@ -131,7 +136,7 @@ class _RunContractCreateScreenState
       _TemplateTile(
         icon: Icons.repeat_rounded,
         title: '3 buổi tuần này',
-        subtitle: 'Mỗi Strava Run trên 1 km tính là một buổi',
+        subtitle: 'Mỗi buổi Run hợp lệ trên 1 km tính là một buổi',
         onTap: () => _select(
           RunContractDraft.weekly10k().copyWith(
             template: RunContractTemplate.weekly3Runs,
@@ -273,8 +278,8 @@ class _RunContractCreateScreenState
                 'Nguồn',
                 _draft.metric == RunContractMetric.activityCount ||
                         _draft.metric == RunContractMetric.activeDays
-                    ? 'Strava Run > 1 km · không tính manual'
-                    : 'Strava Run · không tính manual',
+                    ? 'Strava/3i Run > 1 km · không tính manual'
+                    : 'Strava/3i Run · không tính manual',
               ),
               if (_preview?.hardTarget == true)
                 const _ConfirmRow(

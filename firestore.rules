@@ -60,7 +60,7 @@ service cloud.firestore {
         && request.resource.data.id == contractId
         && request.resource.data.type == 'group'
         && request.resource.data.status == 'active'
-        && request.resource.data.sourcePolicy == 'strava_only'
+        && request.resource.data.sourcePolicy in ['strava_only', 'official_activity']
         && request.resource.data.targetValue is number
         && request.resource.data.targetValue > 0
         && request.resource.data.progressValue is number

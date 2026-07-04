@@ -63,7 +63,7 @@ class StreamChart extends StatelessWidget {
       children: [
         for (final item in series) ...[
           _ShareableTelemetryCard(
-            title: 'RunNow ${item.label}',
+            title: '3i ${item.label}',
             builder: (sharing) =>
                 _TrainingChartCard(series: item, shareMode: sharing),
           ),
@@ -105,7 +105,7 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
       (max, item) => item.seconds > max ? item.seconds : max,
     );
     return _ShareableTelemetryCard(
-      title: 'RunNow heart zones',
+      title: '3i heart zones',
       builder: (sharing) => GlassPanel(
         borderRadius: 0,
         padding: const EdgeInsets.all(16),

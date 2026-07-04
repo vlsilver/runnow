@@ -18,21 +18,59 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="RunNow — không gian tập luyện & cộng đồng chạy bộ.">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="3i — không gian tập luyện & cộng đồng chạy bộ.">
+  <meta name="theme-color" content="#121116">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="RunNow">
+  <meta name="apple-mobile-web-app-title" content="3i">
   <link rel="apple-touch-icon" href="icons/Icon-192.png?v=3">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png?v=3"/>
 
-  <title>RunNow</title>
+  <title>3i</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; background: #121116; }
+    body { overflow: hidden; }
+    #boot {
+      position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center;
+      color: #eceae3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        linear-gradient(rgba(14,150,168,.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(14,150,168,.07) 1px, transparent 1px),
+        radial-gradient(circle at 50% 45%, rgba(14,150,168,.13), transparent 36%),
+        #121116;
+      background-size: 48px 48px, 48px 48px, auto, auto;
+      transition: opacity .24s ease, visibility .24s ease;
+    }
+    #boot.done { opacity: 0; visibility: hidden; }
+    .boot-mark { text-align: center; }
+    .boot-icon {
+      width: 64px; height: 64px; margin: 0 auto 18px; display: block;
+      border-radius: 18px; overflow: hidden;
+      animation: boot-pulse 1.5s ease-in-out infinite;
+    }
+    .boot-icon img { width: 100%; height: 100%; display: block; }
+    .boot-title { margin: 0; font-size: 30px; font-weight: 850; letter-spacing: .5px; }
+    .boot-copy { margin-top: 7px; color: #9a958b; font-size: 11px; font-weight: 750; letter-spacing: 2px; }
+    @keyframes boot-pulse { 50% { transform: translateY(-3px); box-shadow: 0 0 32px rgba(14,150,168,.22); } }
+    @media (prefers-reduced-motion: reduce) { .boot-icon { animation: none; } }
+  </style>
 </head>
 <body>
+  <div id="boot" role="status" aria-label="Đang mở 3i">
+    <div class="boot-mark">
+      <div class="boot-icon" aria-hidden="true">
+        <img src="icons/Icon-192.png" alt="" />
+      </div>
+      <h1 class="boot-title">3i</h1>
+      <div class="boot-copy">INTENT · IMPROVE · INVOLVE</div>
+    </div>
+  </div>
   <script>
     // Demo web build: always prefer the latest deployed bundle over stale
     // Flutter service-worker cache. Re-enable PWA caching only after web is
@@ -63,5 +101,11 @@
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
   <script src="flutter_bootstrap.js" async></script>
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      var boot = document.getElementById('boot');
+      if (boot) boot.classList.add('done');
+    });
+  </script>
 </body>
 </html>

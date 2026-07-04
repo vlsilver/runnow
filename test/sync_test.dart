@@ -63,7 +63,7 @@ class _StubRepository implements ActivityRepository {
       throw UnimplementedError();
 
   @override
-  Future<List<ActivitySummary>> listStravaActivities({
+  Future<List<ActivitySummary>> listOfficialActivities({
     required DateTime start,
     required DateTime endExclusive,
   }) async => const [];
@@ -80,10 +80,12 @@ class _StubRepository implements ActivityRepository {
   }
 
   @override
-  Future<void> saveTrackedActivity(
+  Future<TrackedActivitySaveResult> saveTrackedActivity(
     ActivityDetail detail, {
     Map<String, dynamic>? trackingDebug,
-  }) async {}
+  }) async => const TrackedActivitySaveResult(
+    status: TrackedActivitySaveStatus.counted,
+  );
 
   @override
   Stream<List<ActivitySummary>> watchActivities() => const Stream.empty();

@@ -114,7 +114,7 @@ class UserProfile {
           : displayName?.trim().isNotEmpty == true
           ? displayName!.trim()
           : athleteName.isEmpty
-          ? 'RunNow member'
+          ? '3i member'
           : athleteName,
       email: map['email'] as String?,
       avatarUrl: map['avatarUrl'] as String?,
@@ -163,7 +163,7 @@ class MemberProfile {
           ? nickname!.trim()
           : displayName?.trim().isNotEmpty == true
           ? displayName!.trim()
-          : 'RunNow member',
+          : '3i member',
       avatarUrl: map['avatarUrl'] as String?,
       visibility: ProfileVisibility.fromValue(
         map['profileVisibility'] as String?,
@@ -252,7 +252,7 @@ class LeaderboardEntry {
           ? nickname!.trim()
           : displayName?.trim().isNotEmpty == true
           ? displayName!.trim()
-          : 'RunNow member',
+          : '3i member',
       avatarUrl: map['avatarUrl'] as String?,
       visibility: ProfileVisibility.fromValue(
         map['profileVisibility'] as String?,
@@ -345,7 +345,7 @@ class LiveTrackingSession {
     return LiveTrackingSession(
       id: '${map['id'] ?? ''}',
       ownerUid: map['ownerUid'] as String? ?? '',
-      ownerName: map['ownerName'] as String? ?? 'RunNow member',
+      ownerName: map['ownerName'] as String? ?? '3i member',
       ownerAvatarUrl: map['ownerAvatarUrl'] as String?,
       visibility: LiveTrackingVisibility.fromValue(
         map['visibility'] as String?,
