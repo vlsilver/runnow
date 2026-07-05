@@ -71,6 +71,11 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   String get _distanceSubtitle {
     if (_running) return 'ĐANG GHI HÀNH TRÌNH';
     if (_paused) return 'ĐÃ TẠM DỪNG';
+    if (_finished) {
+      if (_checkingPermission) return 'ĐANG DÒ GPS CHO BUỔI MỚI';
+      if (_gpsReady) return 'SẴN SÀNG CHO BUỔI MỚI';
+      return 'ĐÃ LƯU BUỔI CHẠY';
+    }
     if (_gpsReady) return 'SẴN SÀNG · CHẠM START ĐỂ BẮT ĐẦU';
     if (_checkingPermission) return 'ĐANG DÒ TÍN HIỆU GPS';
     return 'ĐANG CHỜ GPS';
@@ -190,7 +195,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             ),
-          if (!_checkingPermission && !_running && _hasSession) ...[
+          if (kDebugMode &&
+              !_checkingPermission &&
+              !_running &&
+              _hasSession) ...[
             const SizedBox(height: 16),
             _TrialNoteCard(snapshot: snapshot),
             const SizedBox(height: 20),
@@ -865,7 +873,12 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     return switch (snapshot?.status) {
       TrackingSessionStatus.running => 'Đang bám vị trí',
       TrackingSessionStatus.paused => 'Tạm dừng ghi',
-      TrackingSessionStatus.finished => 'Đã lưu buổi chạy',
+      TrackingSessionStatus.finished =>
+        _checkingPermission
+            ? 'Đang chuẩn bị buổi mới'
+            : _gpsReady
+            ? 'Sẵn sàng buổi mới'
+            : 'Đã lưu buổi chạy',
       TrackingSessionStatus.idle ||
       null => _gpsReady ? 'Đã khóa vị trí' : 'Sẵn sàng',
     };
@@ -906,12 +919,14 @@ class _Controls extends StatelessWidget {
     final palette = context.runNowPalette;
     if (!hasSession || finished) {
       final label = switch ((finished, gpsReady)) {
-        (true, _) => 'QUÉT GPS LẠI',
+        (true, true) => 'BẮT ĐẦU BUỔI MỚI',
+        (true, false) => 'QUÉT GPS CHO BUỔI MỚI',
         (false, true) => 'BẮT ĐẦU CHẠY',
         (false, false) => 'QUÉT GPS',
       };
       final icon = switch ((finished, gpsReady)) {
-        (true, _) => Icons.gps_fixed_rounded,
+        (true, true) => Icons.play_arrow_rounded,
+        (true, false) => Icons.gps_fixed_rounded,
         (false, true) => Icons.play_arrow_rounded,
         (false, false) => Icons.gps_not_fixed_rounded,
       };
@@ -985,45 +1000,49 @@ class _Controls extends StatelessWidget {
       );
     }
 
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: busy ? null : (running ? onPause : onResume),
-                style: FilledButton.styleFrom(
-                  backgroundColor: palette.accent,
-                  foregroundColor: palette.ink,
-                  minimumSize: const Size.fromHeight(58),
-                ),
-                icon: const Icon(Icons.play_arrow_rounded),
-                label: const Text('TIẾP TỤC'),
+    return SizedBox(
+      height: 66,
+      child: Row(
+        children: [
+          Expanded(
+            child: FilledButton(
+              onPressed: busy ? null : onResume,
+              style: FilledButton.styleFrom(
+                backgroundColor: palette.accent,
+                foregroundColor: palette.ink,
+                minimumSize: const Size.fromHeight(58),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
               ),
+              child: const Text('TIẾP TỤC'),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: busy ? null : onStop,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: RunNowSemanticColors.danger,
-                  minimumSize: const Size.fromHeight(58),
-                  side: const BorderSide(color: RunNowSemanticColors.danger),
-                ),
-                icon: const Icon(Icons.stop_rounded),
-                label: const Text('KẾT THÚC'),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton(
+              onPressed: busy ? null : onStop,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: RunNowSemanticColors.danger,
+                minimumSize: const Size.fromHeight(58),
+                side: const BorderSide(color: RunNowSemanticColors.danger),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
               ),
+              child: const Text('KẾT THÚC'),
             ),
-          ],
-        ),
-        if (!running) ...[
-          const SizedBox(height: 8),
-          TextButton(
+          ),
+          const SizedBox(width: 6),
+          IconButton.outlined(
+            tooltip: 'Bỏ phiên',
             onPressed: busy ? null : onDiscard,
-            child: const Text('Bỏ phiên'),
+            style: IconButton.styleFrom(
+              foregroundColor: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.62),
+              minimumSize: const Size.square(48),
+            ),
+            icon: const Icon(Icons.delete_outline_rounded),
           ),
         ],
-      ],
+      ),
     );
   }
 }
@@ -1119,21 +1138,21 @@ class _TrackingCockpit extends StatelessWidget {
           children: [
             Expanded(
               child: SizedBox(
-                height: 86,
+                height: 72,
                 child: _MetricCard(label: 'THỜI GIAN', value: time),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: SizedBox(
-                height: 86,
+                height: 72,
                 child: _MetricCard(label: 'PACE TB', value: pace),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: SizedBox(
-                height: 86,
+                height: 72,
                 child: _MetricCard(label: 'PACE TỨC THỜI', value: livePace),
               ),
             ),
@@ -1157,15 +1176,15 @@ class _MetricCard extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: palette.glassStart,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              height: 24,
+              height: 22,
               child: Align(
                 alignment: Alignment.topLeft,
                 child: Text(
@@ -1176,19 +1195,19 @@ class _MetricCard extends StatelessWidget {
                     fontSize: 9,
                     height: 1.15,
                     fontWeight: FontWeight.w900,
-                    letterSpacing: 1.3,
+                    letterSpacing: 1.1,
                   ),
                 ),
               ),
             ),
-            const Spacer(),
+            const SizedBox(height: 4),
             Text(
               value,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: onSurface,
-                fontSize: 17,
+                fontSize: 16,
                 fontWeight: FontWeight.w900,
               ),
             ),

@@ -379,9 +379,17 @@ class _ActivityAssignmentSheetState extends State<_ActivityAssignmentSheet> {
                     }
                     final options = snapshot.data!;
                     if (options.isEmpty) {
-                      return const Center(
-                        child: Text(
-                          'Chưa có buổi chạy Strava hợp lệ trong kỳ kèo.',
+                      final threshold = switch (widget.contract.metric) {
+                        RunContractMetric.activityCount ||
+                        RunContractMetric.activeDays =>
+                          'Kèo theo buổi/ngày chỉ nhận session chạy trên 1 km.',
+                        _ =>
+                          'Session 3I cần đạt ít nhất 500 m và nằm trong kỳ kèo.',
+                      };
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Text(threshold, textAlign: TextAlign.center),
                         ),
                       );
                     }
