@@ -461,6 +461,10 @@ class _FakeActivityRepository implements ActivityRepository {
   Stream<List<ActivitySummary>> watchActivities() => Stream.value(activities);
 
   @override
+  Stream<List<JournalActivityEntry>> watchJournalActivities() =>
+      Stream.value(buildJournalActivityEntries(activities));
+
+  @override
   Stream<List<ActivitySummary>> watchTrackedTrialActivities() =>
       const Stream.empty();
 }

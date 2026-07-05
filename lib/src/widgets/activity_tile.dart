@@ -12,6 +12,7 @@ class ActivityTile extends StatelessWidget {
     this.ownerUid,
     this.memberName,
     this.memberAvatarUrl,
+    this.preferredStravaActivityId,
     super.key,
   });
 
@@ -20,6 +21,7 @@ class ActivityTile extends StatelessWidget {
   final String? ownerUid;
   final String? memberName;
   final String? memberAvatarUrl;
+  final String? preferredStravaActivityId;
 
   @override
   Widget build(BuildContext context) {
@@ -132,6 +134,12 @@ class ActivityTile extends StatelessWidget {
                               ],
                             ),
                             const SizedBox(height: 13),
+                            if (preferredStravaActivityId != null) ...[
+                              _StravaOverlapFlag(
+                                activityId: preferredStravaActivityId!,
+                              ),
+                              const SizedBox(height: 10),
+                            ],
                             Row(
                               children: [
                                 Expanded(
@@ -173,6 +181,46 @@ class ActivityTile extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StravaOverlapFlag extends StatelessWidget {
+  const _StravaOverlapFlag({required this.activityId});
+
+  final String activityId;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: () => context.push('/activity/$activityId'),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: palette.tint,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.link_rounded, size: 14, color: palette.accentDeep),
+              const SizedBox(width: 6),
+              Text(
+                'TRÙNG · ƯU TIÊN STRAVA',
+                style: TextStyle(
+                  color: palette.accentDeep,
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.7,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

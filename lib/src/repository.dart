@@ -11,6 +11,7 @@ import 'package:myrun/src/tracking_session.dart';
 
 abstract interface class ActivityRepository {
   Stream<List<ActivitySummary>> watchActivities();
+  Stream<List<JournalActivityEntry>> watchJournalActivities();
   Stream<List<ActivitySummary>> watchTrackedTrialActivities();
   Future<List<ActivitySummary>> listOfficialActivities({
     required DateTime start,
@@ -22,6 +23,41 @@ abstract interface class ActivityRepository {
     ActivityDetail detail, {
     Map<String, dynamic>? trackingDebug,
   });
+}
+
+class JournalActivityEntry {
+  const JournalActivityEntry({
+    required this.activity,
+    this.preferredStravaActivityId,
+  });
+
+  final ActivitySummary activity;
+  final String? preferredStravaActivityId;
+
+  bool get isSupersededByStrava => preferredStravaActivityId != null;
+}
+
+@visibleForTesting
+List<JournalActivityEntry> buildJournalActivityEntries(
+  Iterable<ActivitySummary> activities,
+) {
+  final all = activities.toList();
+  final entries = <JournalActivityEntry>[
+    for (final activity in all)
+      if (activity.source == ActivitySource.strava ||
+          isRunNowActivityDistanceEligible(activity))
+        JournalActivityEntry(
+          activity: activity,
+          preferredStravaActivityId: activity.source == ActivitySource.runnow
+              ? preferredStravaDuplicate(activity, all)?.id
+              : null,
+        ),
+  ];
+  entries.sort(
+    (left, right) =>
+        right.activity.startedAt.compareTo(left.activity.startedAt),
+  );
+  return entries;
 }
 
 enum TrackedActivitySaveStatus {
@@ -103,6 +139,19 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
     ) {
       _debugLog('Firestore snapshot: ${snapshot.docs.length} activities.');
       return selectOfficialActivities(
+        snapshot.docs
+            .map((document) => ActivitySummary.fromMap(document.data()))
+            .toList(),
+      );
+    });
+  }
+
+  @override
+  Stream<List<JournalActivityEntry>> watchJournalActivities() {
+    return _activities.orderBy('startedAt', descending: true).snapshots().map((
+      snapshot,
+    ) {
+      return buildJournalActivityEntries(
         snapshot.docs
             .map((document) => ActivitySummary.fromMap(document.data()))
             .toList(),
@@ -537,6 +586,11 @@ class DemoActivityRepository implements ActivityRepository {
   @override
   Stream<List<ActivitySummary>> watchActivities() {
     return Stream.value(selectOfficialActivities(_activities));
+  }
+
+  @override
+  Stream<List<JournalActivityEntry>> watchJournalActivities() {
+    return Stream.value(buildJournalActivityEntries(_activities));
   }
 
   @override

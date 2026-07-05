@@ -1,12 +1,45 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/models.dart';
+import 'package:myrun/src/repository.dart';
 
 void main() {
   test('counts RunNow sessions from exactly 500 meters', () {
     expect(isRunNowActivityDistanceEligible(_runNow('ok', 500)), isTrue);
     expect(isRunNowActivityDistanceEligible(_runNow('short', 499.9)), isFalse);
   });
+
+  test(
+    'journal keeps overlapping RunNow session and links preferred Strava',
+    () {
+      final startedAt = DateTime.utc(2026, 7, 5, 1);
+      final runNow = _runNow(
+        'runnow',
+        5000,
+        startedAt: startedAt,
+        elapsedSeconds: 1800,
+      );
+      final strava = ActivitySummary(
+        id: 'strava',
+        name: 'Strava Run',
+        kind: ActivityKind.run,
+        startedAt: startedAt.add(const Duration(minutes: 2)),
+        distanceMeters: 5100,
+        movingTimeSeconds: 1700,
+        elapsedTimeSeconds: 1800,
+      );
+
+      final entries = buildJournalActivityEntries([runNow, strava]);
+
+      expect(entries, hasLength(2));
+      expect(
+        entries
+            .singleWhere((entry) => entry.activity.id == 'runnow')
+            .preferredStravaActivityId,
+        'strava',
+      );
+    },
+  );
 
   test('prefers Strava when overlap exceeds 30 percent of RunNow time', () {
     final runNow = _runNow('runnow', 5000, elapsedSeconds: 1800);
@@ -57,11 +90,12 @@ ActivitySummary _runNow(
   String id,
   double distanceMeters, {
   int elapsedSeconds = 1800,
+  DateTime? startedAt,
 }) => ActivitySummary(
   id: id,
   name: id,
   kind: ActivityKind.run,
-  startedAt: DateTime.utc(2026, 7, 4, 6),
+  startedAt: startedAt ?? DateTime.utc(2026, 7, 4, 6),
   distanceMeters: distanceMeters,
   movingTimeSeconds: elapsedSeconds,
   elapsedTimeSeconds: elapsedSeconds,

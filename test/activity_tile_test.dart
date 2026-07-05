@@ -34,4 +34,31 @@ void main() {
     expect(find.text('01'), findsOneWidget);
     expect(find.text('JUN'), findsOneWidget);
   });
+
+  testWidgets('marks a RunNow recording superseded by Strava', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ActivityTile(
+            preferredStravaActivityId: 'strava-42',
+            activity: ActivitySummary(
+              id: 'runnow-42',
+              name: '3I Run',
+              kind: ActivityKind.run,
+              source: ActivitySource.runnow,
+              startedAt: DateTime(2026, 7, 5, 6),
+              distanceMeters: 5000,
+              movingTimeSeconds: 1800,
+              elapsedTimeSeconds: 1900,
+              hydrated: true,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('3I Run'), findsOneWidget);
+    expect(find.text('TRÙNG · ƯU TIÊN STRAVA'), findsOneWidget);
+    expect(find.byIcon(Icons.link_rounded), findsOneWidget);
+  });
 }

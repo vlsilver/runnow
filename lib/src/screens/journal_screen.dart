@@ -37,7 +37,7 @@ class JournalScreen extends ConsumerWidget {
         ),
       );
     }
-    final activities = ref.watch(activitiesProvider);
+    final activities = ref.watch(journalActivitiesProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Nhật ký')),
       body: RefreshIndicator(
@@ -64,21 +64,29 @@ class JournalScreen extends ConsumerWidget {
                   physics: const AlwaysScrollableScrollPhysics(),
                   gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                     maxCrossAxisExtent: 620,
-                    mainAxisExtent: 180,
+                    mainAxisExtent: 210,
                     crossAxisSpacing: 18,
                     mainAxisSpacing: 4,
                   ),
                   itemCount: items.length,
-                  itemBuilder: (context, index) =>
-                      ActivityTile(activity: items[index], sequence: index + 1),
+                  itemBuilder: (context, index) => ActivityTile(
+                    activity: items[index].activity,
+                    sequence: index + 1,
+                    preferredStravaActivityId:
+                        items[index].preferredStravaActivityId,
+                  ),
                 );
               }
               return ListView.builder(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 physics: const AlwaysScrollableScrollPhysics(),
                 itemCount: items.length,
-                itemBuilder: (context, index) =>
-                    ActivityTile(activity: items[index], sequence: index + 1),
+                itemBuilder: (context, index) => ActivityTile(
+                  activity: items[index].activity,
+                  sequence: index + 1,
+                  preferredStravaActivityId:
+                      items[index].preferredStravaActivityId,
+                ),
               );
             },
           ),

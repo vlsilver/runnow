@@ -164,6 +164,14 @@ final activitiesProvider = StreamProvider<List<ActivitySummary>>((ref) {
   return ref.watch(activityRepositoryProvider).watchActivities();
 });
 
+final journalActivitiesProvider = StreamProvider<List<JournalActivityEntry>>((
+  ref,
+) {
+  final uid = ref.watch(firebaseUserProvider).value?.uid;
+  if (uid == null) return Stream.value(const []);
+  return ref.watch(activityRepositoryProvider).watchJournalActivities();
+});
+
 final trackedTrialActivitiesProvider = StreamProvider<List<ActivitySummary>>((
   ref,
 ) {

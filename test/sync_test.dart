@@ -73,6 +73,10 @@ class _StubRepository implements ActivityRepository {
       const Stream.empty();
 
   @override
+  Stream<List<JournalActivityEntry>> watchJournalActivities() =>
+      const Stream.empty();
+
+  @override
   Future<int> sync() async {
     syncCalls += 1;
     if (error != null) throw error!;
