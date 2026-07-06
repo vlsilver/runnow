@@ -470,6 +470,46 @@ class ActivitySummary {
       distanceMeters <= 0 ? null : movingTimeSeconds / distanceKm;
 }
 
+class ActivityPhoto {
+  const ActivityPhoto({
+    required this.id,
+    required this.capturedAt,
+    required this.latitude,
+    required this.longitude,
+    required this.distanceMeters,
+    required this.storagePath,
+  });
+
+  factory ActivityPhoto.fromMap(Map<String, dynamic> map) {
+    return ActivityPhoto(
+      id: map['id'] as String,
+      capturedAt: DateTime.parse(map['capturedAt'] as String).toLocal(),
+      latitude: (map['latitude'] as num).toDouble(),
+      longitude: (map['longitude'] as num).toDouble(),
+      distanceMeters: (map['distanceMeters'] as num?)?.toDouble() ?? 0,
+      storagePath: map['storagePath'] as String,
+    );
+  }
+
+  final String id;
+  final DateTime capturedAt;
+  final double latitude;
+  final double longitude;
+  final double distanceMeters;
+  final String storagePath;
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'capturedAt': capturedAt.toUtc().toIso8601String(),
+      'latitude': latitude,
+      'longitude': longitude,
+      'distanceMeters': distanceMeters,
+      'storagePath': storagePath,
+    };
+  }
+}
+
 class ActivityDetail {
   const ActivityDetail({
     required this.summary,
@@ -478,6 +518,7 @@ class ActivityDetail {
     this.splits = const [],
     this.laps = const [],
     this.streams = const {},
+    this.photos = const [],
   });
 
   factory ActivityDetail.fromMap(Map<String, dynamic> map) {
@@ -498,6 +539,10 @@ class ActivityDetail {
               .toList(),
         ),
       ),
+      photos: (map['photos'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(ActivityPhoto.fromMap)
+          .toList(),
     );
   }
 
@@ -507,6 +552,7 @@ class ActivityDetail {
   final List<Map<String, dynamic>> splits;
   final List<Map<String, dynamic>> laps;
   final Map<String, List<double>> streams;
+  final List<ActivityPhoto> photos;
 }
 
 class TrainingGoals {

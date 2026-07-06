@@ -1647,6 +1647,8 @@ Map<String, dynamic> _detailToMap(
     'splits': detail.splits,
     'laps': detail.laps,
     if (includeStreams) 'streams': detail.streams,
+    if (detail.photos.isNotEmpty)
+      'photos': detail.photos.map((photo) => photo.toMap()).toList(),
   }..removeWhere((key, value) => value == null);
 }
 

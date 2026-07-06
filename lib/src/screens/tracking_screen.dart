@@ -50,6 +50,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   Timer? _ticker;
   var _checkingPermission = false;
   var _saving = false;
+  var _capturingPhoto = false;
   String? _message;
   Map<String, dynamic>? _lastWarmupDebug;
   var _gpsSignal = _GpsSignal.idle;
@@ -216,12 +217,17 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
           hasSession: _hasSession,
           gpsReady: _gpsReady,
           busy: _checkingPermission || _saving,
+          capturingPhoto: _capturingPhoto,
+          canTakePhoto:
+              (_running || _paused) &&
+              (snapshot?.routePoints.isNotEmpty ?? false),
           onLockGps: _lockGps,
           onStart: _startFromLockedGps,
           onPause: _pause,
           onResume: _resume,
           onStop: _stopAndSave,
           onDiscard: _discard,
+          onPhoto: _capturePhoto,
         ),
       ),
     );
@@ -240,10 +246,15 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         _snapshot = snapshot;
         _lastWarmupDebug = draft.gpsWarmup;
         _gpsSignal = _GpsSignal.idle;
-        _message =
-            'Đã khôi phục phiên chạy bị gián đoạn. Bấm RESUME để tiếp tục từ GPS point mới.';
+        _message = snapshot.status == TrackingSessionStatus.finished
+            ? 'Đang hoàn tất upload ảnh của buổi chạy.'
+            : 'Đã khôi phục phiên chạy bị gián đoạn. Bấm RESUME để tiếp tục từ GPS point mới.';
       });
       await _persistDraft();
+      if (snapshot.status == TrackingSessionStatus.finished) {
+        final uploaded = await _uploadPendingPhotos();
+        if (uploaded) await ref.read(trackingDraftStoreProvider).clear();
+      }
       return;
     }
     if (widget.autoLock) {
@@ -254,6 +265,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   Future<void> _lockGps() async {
     if (_running || _checkingPermission || _saving) return;
     if (_finished) {
+      if (!await _uploadPendingPhotos()) return;
+      await ref.read(trackingDraftStoreProvider).clear();
       await _resetSession(message: null);
     }
     setState(() {
@@ -358,6 +371,84 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     unawaited(_publishLiveSnapshot(force: true));
   }
 
+  Future<void> _capturePhoto() async {
+    final session = _session;
+    final snapshot = _snapshot;
+    if (session == null ||
+        snapshot == null ||
+        _capturingPhoto ||
+        (!_running && !_paused)) {
+      return;
+    }
+    if (snapshot.routePoints.isEmpty) {
+      setState(() => _message = 'Chờ GPS ghi được vị trí trước khi chụp ảnh.');
+      return;
+    }
+    final anchor = snapshot.routePoints.last;
+    final capturedAt = DateTime.now();
+    final photoId = 'photo-${capturedAt.toUtc().millisecondsSinceEpoch}';
+    setState(() => _capturingPhoto = true);
+    try {
+      final path = await ref
+          .read(trackingPhotoCaptureProvider)
+          .capture(sessionId: session.id, photoId: photoId);
+      if (path == null || !mounted) return;
+      final next = session.addPhoto(
+        TrackingPhotoDraft(
+          id: photoId,
+          capturedAt: capturedAt,
+          latitude: anchor.latitude,
+          longitude: anchor.longitude,
+          distanceMeters: snapshot.distanceMeters,
+          localPath: path,
+        ),
+      );
+      setState(() {
+        _snapshot = next;
+        _message = 'Đã neo ảnh tại ${formatDistance(snapshot.distanceMeters)}.';
+      });
+      await _persistDraft();
+      HapticFeedback.selectionClick();
+    } catch (error) {
+      if (mounted) setState(() => _message = 'Không chụp được ảnh: $error');
+    } finally {
+      if (mounted) setState(() => _capturingPhoto = false);
+    }
+  }
+
+  Future<bool> _uploadPendingPhotos() async {
+    final session = _session;
+    if (session == null) return true;
+    final pending = session
+        .snapshot()
+        .photos
+        .where((photo) => !photo.isUploaded)
+        .toList();
+    if (pending.isEmpty) return true;
+    for (final photo in pending) {
+      try {
+        final uploaded = await ref
+            .read(trackingPhotoRepositoryProvider)
+            .upload(activityId: session.id, draft: photo);
+        final next = session.markPhotoUploaded(photo.id, uploaded.storagePath);
+        if (mounted) setState(() => _snapshot = next);
+        await _persistDraft();
+        await ref
+            .read(trackingPhotoCaptureProvider)
+            .deleteLocal(photo.localPath);
+      } catch (error) {
+        if (mounted) {
+          setState(() {
+            _message =
+                'Buổi chạy đã lưu nhưng còn ảnh chưa upload. Mở lại màn Chạy để thử lại: $error';
+          });
+        }
+        return false;
+      }
+    }
+    return true;
+  }
+
   Future<void> _stopAndSave() async {
     final session = _session;
     if (session == null || _saving) return;
@@ -408,18 +499,21 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       final result = await ref
           .read(activityRepositoryProvider)
           .saveTrackedActivity(detail, trackingDebug: debug);
-      await ref.read(trackingDraftStoreProvider).clear();
+      final photosUploaded = await _uploadPendingPhotos();
+      if (photosUploaded) await ref.read(trackingDraftStoreProvider).clear();
       if (!mounted) return;
       setState(() {
-        _snapshot = snapshot;
-        _message = switch (result.status) {
-          TrackedActivitySaveStatus.counted =>
-            'Đã lưu và tính buổi chạy vào thành tích.',
-          TrackedActivitySaveStatus.belowMinimumDistance =>
-            'Đã lưu để xem lại nhưng không tính vì chưa đủ 500 m.',
-          TrackedActivitySaveStatus.duplicateOfStrava =>
-            'Đã lưu route 3I nhưng thành tích ưu tiên buổi Strava trùng thời gian.',
-        };
+        _snapshot = session.snapshot();
+        _message = !photosUploaded
+            ? _message
+            : switch (result.status) {
+                TrackedActivitySaveStatus.counted =>
+                  'Đã lưu và tính buổi chạy vào thành tích.',
+                TrackedActivitySaveStatus.belowMinimumDistance =>
+                  'Đã lưu để xem lại nhưng không tính vì chưa đủ 500 m.',
+                TrackedActivitySaveStatus.duplicateOfStrava =>
+                  'Đã lưu route 3I nhưng thành tích ưu tiên buổi Strava trùng thời gian.',
+              };
       });
       HapticFeedback.heavyImpact();
     } catch (error) {
@@ -432,6 +526,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
 
   Future<void> _discard() async {
     final sessionId = _session?.id;
+    final localPhotos = _session?.snapshot().photos ?? const [];
     if (sessionId != null) {
       unawaited(
         ref
@@ -440,6 +535,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       );
     }
     await ref.read(trackingDraftStoreProvider).clear();
+    for (final photo in localPhotos) {
+      await ref.read(trackingPhotoCaptureProvider).deleteLocal(photo.localPath);
+    }
     await _resetSession(message: 'Đã bỏ phiên tracking.');
   }
 
@@ -893,12 +991,15 @@ class _Controls extends StatelessWidget {
     required this.hasSession,
     required this.gpsReady,
     required this.busy,
+    required this.capturingPhoto,
+    required this.canTakePhoto,
     required this.onLockGps,
     required this.onStart,
     required this.onPause,
     required this.onResume,
     required this.onStop,
     required this.onDiscard,
+    required this.onPhoto,
   });
 
   final bool running;
@@ -907,12 +1008,15 @@ class _Controls extends StatelessWidget {
   final bool hasSession;
   final bool gpsReady;
   final bool busy;
+  final bool capturingPhoto;
+  final bool canTakePhoto;
   final VoidCallback onLockGps;
   final VoidCallback onStart;
   final VoidCallback onPause;
   final VoidCallback onResume;
   final VoidCallback onStop;
   final VoidCallback onDiscard;
+  final VoidCallback onPhoto;
 
   @override
   Widget build(BuildContext context) {
@@ -976,26 +1080,37 @@ class _Controls extends StatelessWidget {
     }
     if (running) {
       return SizedBox(
-        width: double.infinity,
         height: 66,
-        child: FilledButton.icon(
-          onPressed: busy ? null : onPause,
-          style: FilledButton.styleFrom(
-            backgroundColor: RunNowSemanticColors.danger,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
+        child: Row(
+          children: [
+            _PhotoButton(
+              enabled: canTakePhoto && !busy,
+              loading: capturingPhoto,
+              onPressed: onPhoto,
             ),
-          ),
-          icon: const Icon(Icons.pause_rounded, size: 28),
-          label: const Text(
-            'TẠM DỪNG',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.1,
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: busy ? null : onPause,
+                style: FilledButton.styleFrom(
+                  backgroundColor: RunNowSemanticColors.danger,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+                icon: const Icon(Icons.pause_rounded, size: 28),
+                label: const Text(
+                  'TẠM DỪNG',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       );
     }
@@ -1004,6 +1119,12 @@ class _Controls extends StatelessWidget {
       height: 66,
       child: Row(
         children: [
+          _PhotoButton(
+            enabled: canTakePhoto && !busy,
+            loading: capturingPhoto,
+            onPressed: onPhoto,
+          ),
+          const SizedBox(width: 8),
           Expanded(
             child: FilledButton(
               onPressed: busy ? null : onResume,
@@ -1043,6 +1164,33 @@ class _Controls extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _PhotoButton extends StatelessWidget {
+  const _PhotoButton({
+    required this.enabled,
+    required this.loading,
+    required this.onPressed,
+  });
+
+  final bool enabled;
+  final bool loading;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton.filledTonal(
+      tooltip: 'Chụp ảnh và neo lên route',
+      onPressed: enabled && !loading ? onPressed : null,
+      style: IconButton.styleFrom(minimumSize: const Size.square(58)),
+      icon: loading
+          ? const SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.add_a_photo_outlined, size: 25),
     );
   }
 }

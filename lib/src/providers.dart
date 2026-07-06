@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -17,6 +18,8 @@ import 'package:myrun/src/strava_client.dart';
 import 'package:myrun/src/sync.dart';
 import 'package:myrun/src/tracking_draft_store.dart';
 import 'package:myrun/src/tracking_location_provider.dart';
+import 'package:myrun/src/tracking_photo_capture.dart';
+import 'package:myrun/src/tracking_photo_repository.dart';
 import 'package:myrun/src/theme_controller.dart';
 
 final activityRepositoryProvider = Provider<ActivityRepository>((ref) {
@@ -102,6 +105,18 @@ final trackingDraftStoreProvider = Provider<TrackingDraftStore>(
 
 final trackingLocationProvider = Provider<TrackingLocationProvider>(
   (ref) => const GeolocatorTrackingLocationProvider(),
+);
+
+final trackingPhotoCaptureProvider = Provider<TrackingPhotoCapture>(
+  (ref) => const TrackingPhotoCapture(),
+);
+
+final trackingPhotoRepositoryProvider = Provider<TrackingPhotoRepository>(
+  (ref) => TrackingPhotoRepository(
+    FirebaseAuth.instance,
+    FirebaseFirestore.instance,
+    FirebaseStorage.instance,
+  ),
 );
 
 final firebaseUserProvider = StreamProvider<User?>(

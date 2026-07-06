@@ -68,7 +68,10 @@ qua Club và đang thử nghiệm khả năng tự ghi lại buổi chạy bằn
 ### Nhật ký và activity detail
 
 - Nhật ký dạng timeline, tối ưu riêng cho mobile.
-- Route trên `flutter_map` với CARTO/OpenStreetMap, không cần Google Maps key.
+- Route dùng `flutter_map` với tile sáng CARTO/OpenStreetMap trên mọi nền tảng,
+  không cần Google Maps API key.
+- Session 3I có thể chụp ảnh khi chạy, neo ảnh theo GPS point hợp lệ gần nhất
+  và hiển thị marker/gallery trong chi tiết hoạt động.
 - Detail được đọc từ Firestore trước; chỉ gọi Strava khi cache chưa đủ.
 - Chart pace, heart rate, heart-rate zones, elevation, cadence và energy khi có
   stream tương ứng.
@@ -245,7 +248,7 @@ liveSessions/{sessionId}
 - Xcode và CocoaPods cho iOS.
 - Android SDK/NDK cho Android.
 - Firebase CLI cho rules và web hosting.
-- Firebase project có Google Authentication và Firestore.
+- Firebase project có Google Authentication, Firestore và Cloud Storage.
 - Strava API application.
 
 Bundle/application IDs hiện tại:
@@ -265,7 +268,7 @@ deploy rules:
 
 ```sh
 firebase login
-firebase deploy --only firestore:rules,firestore:indexes
+firebase deploy --only firestore:rules,firestore:indexes,storage
 ```
 
 ### Chạy và kiểm tra
@@ -288,7 +291,7 @@ Build và deploy web:
 
 ```sh
 flutter build web --release
-firebase deploy --only firestore:rules,firestore:indexes,hosting
+firebase deploy --only firestore:rules,firestore:indexes,storage,hosting
 ```
 
 Kiểm tra iOS trước acceptance test:

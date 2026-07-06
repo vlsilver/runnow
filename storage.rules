@@ -1,0 +1,28 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function owns(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function isPublicProfile(userId) {
+      return signedIn()
+        && firestore.get(
+          /databases/(default)/documents/publicProfiles/$(userId)
+        ).data.profileVisibility == 'public';
+    }
+
+    match /users/{userId}/activities/{activityId}/photos/{fileName} {
+      allow read: if owns(userId) || isPublicProfile(userId);
+      allow create, update: if owns(userId)
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/jpeg');
+      allow delete: if owns(userId);
+    }
+  }
+}

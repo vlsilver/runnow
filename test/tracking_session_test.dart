@@ -197,6 +197,34 @@ void main() {
     final later = restored.tick(DateTime.utc(2026, 6, 1, 7));
     expect(later.movingTimeSeconds, 120);
   });
+
+  test('persists a geotagged photo and exposes it after upload', () {
+    final session = TrackingSession(id: 'trial-photo')
+      ..start(DateTime.utc(2026, 6, 1, 6));
+    session.addLocation(_sample(0, latitude: 10, longitude: 106));
+    session.addPhoto(
+      TrackingPhotoDraft(
+        id: 'photo-1',
+        capturedAt: DateTime.utc(2026, 6, 1, 6, 5),
+        latitude: 10,
+        longitude: 106,
+        distanceMeters: 900,
+        localPath: '/tmp/photo-1.jpg',
+      ),
+    );
+
+    final restored = TrackingSession.fromDraftMap(session.toDraftMap());
+    expect(restored.snapshot().photos.single.localPath, '/tmp/photo-1.jpg');
+    restored.markPhotoUploaded(
+      'photo-1',
+      'users/u/activities/trial-photo/photos/photo-1.jpg',
+    );
+    final detail = restored.snapshot().toActivityDetail();
+
+    expect(detail.photos, hasLength(1));
+    expect(detail.photos.single.distanceMeters, 900);
+    expect(detail.photos.single.storagePath, contains('photo-1.jpg'));
+  });
 }
 
 TrackingLocationSample _sample(

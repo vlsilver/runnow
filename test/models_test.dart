@@ -79,9 +79,21 @@ void main() {
       'streams': {
         'heartrate': [140, 145],
       },
+      'photos': [
+        {
+          'id': 'photo-1',
+          'capturedAt': '2026-05-30T00:10:00Z',
+          'latitude': 10.1,
+          'longitude': 106.2,
+          'distanceMeters': 1800,
+          'storagePath': 'users/u/activities/42/photos/photo-1.jpg',
+        },
+      ],
     });
     expect(detail.laps, hasLength(1));
     expect(detail.streams['heartrate'], [140.0, 145.0]);
+    expect(detail.photos.single.distanceMeters, 1800);
+    expect(detail.photos.single.latitude, 10.1);
   });
 
   test(

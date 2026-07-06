@@ -176,6 +176,64 @@ class TrackingSplit {
   }
 }
 
+class TrackingPhotoDraft {
+  const TrackingPhotoDraft({
+    required this.id,
+    required this.capturedAt,
+    required this.latitude,
+    required this.longitude,
+    required this.distanceMeters,
+    required this.localPath,
+    this.storagePath,
+  });
+
+  factory TrackingPhotoDraft.fromMap(Map<String, dynamic> map) {
+    return TrackingPhotoDraft(
+      id: map['id'] as String,
+      capturedAt: DateTime.parse(map['capturedAt'] as String).toLocal(),
+      latitude: (map['latitude'] as num).toDouble(),
+      longitude: (map['longitude'] as num).toDouble(),
+      distanceMeters: (map['distanceMeters'] as num?)?.toDouble() ?? 0,
+      localPath: map['localPath'] as String,
+      storagePath: map['storagePath'] as String?,
+    );
+  }
+
+  final String id;
+  final DateTime capturedAt;
+  final double latitude;
+  final double longitude;
+  final double distanceMeters;
+  final String localPath;
+  final String? storagePath;
+
+  bool get isUploaded => storagePath != null;
+
+  TrackingPhotoDraft uploaded(String path) {
+    return TrackingPhotoDraft(
+      id: id,
+      capturedAt: capturedAt,
+      latitude: latitude,
+      longitude: longitude,
+      distanceMeters: distanceMeters,
+      localPath: localPath,
+      storagePath: path,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'capturedAt': capturedAt.toUtc().toIso8601String(),
+      'latitude': latitude,
+      'longitude': longitude,
+      'distanceMeters': distanceMeters,
+      'localPath': localPath,
+      'storagePath': storagePath,
+    }..removeWhere((key, value) => value == null);
+  }
+}
+
 class TrackingSessionSnapshot {
   const TrackingSessionSnapshot({
     required this.id,
@@ -188,6 +246,7 @@ class TrackingSessionSnapshot {
     required this.routePoints,
     required this.pointLogs,
     required this.splits,
+    this.photos = const [],
     this.currentPaceSecondsPerKm,
   });
 
@@ -201,6 +260,7 @@ class TrackingSessionSnapshot {
   final List<RoutePoint> routePoints;
   final List<TrackingPointLog> pointLogs;
   final List<TrackingSplit> splits;
+  final List<TrackingPhotoDraft> photos;
   final double? currentPaceSecondsPerKm;
 
   double? get averagePaceSecondsPerKm =>
@@ -240,6 +300,19 @@ class TrackingSessionSnapshot {
       ),
       splits: splits.map((split) => split.toMap()).toList(),
       streams: _streamsFromPointLogs(),
+      photos: photos
+          .where((photo) => photo.storagePath != null)
+          .map(
+            (photo) => ActivityPhoto(
+              id: photo.id,
+              capturedAt: photo.capturedAt,
+              latitude: photo.latitude,
+              longitude: photo.longitude,
+              distanceMeters: photo.distanceMeters,
+              storagePath: photo.storagePath!,
+            ),
+          )
+          .toList(),
     );
   }
 
@@ -257,6 +330,7 @@ class TrackingSessionSnapshot {
       'routePoints': routePoints.map((point) => point.toMap()).toList(),
       'splits': splits.map((split) => split.toMap()).toList(),
       'pointLogs': pointLogs.map((log) => log.toMap()).toList(),
+      'photos': photos.map((photo) => photo.toMap()).toList(),
     }..removeWhere((key, value) => value == null);
   }
 
@@ -342,6 +416,11 @@ class TrackingSession {
           .whereType<Map<String, dynamic>>()
           .map(TrackingSplit.fromMap),
     );
+    session._photos.addAll(
+      (map['photos'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(TrackingPhotoDraft.fromMap),
+    );
     return session;
   }
 
@@ -361,8 +440,25 @@ class TrackingSession {
   final List<TrackingPointLog> _pointLogs = [];
   final List<_AcceptedSegment> _segments = [];
   final List<TrackingSplit> _splits = [];
+  final List<TrackingPhotoDraft> _photos = [];
 
   TrackingSessionStatus get status => _status;
+
+  TrackingSessionSnapshot addPhoto(TrackingPhotoDraft photo) {
+    if (_status != TrackingSessionStatus.running &&
+        _status != TrackingSessionStatus.paused) {
+      throw StateError('Chỉ chụp ảnh trong một buổi chạy đang hoạt động.');
+    }
+    _photos.add(photo);
+    _updatedAt = photo.capturedAt;
+    return snapshot();
+  }
+
+  TrackingSessionSnapshot markPhotoUploaded(String photoId, String path) {
+    final index = _photos.indexWhere((photo) => photo.id == photoId);
+    if (index >= 0) _photos[index] = _photos[index].uploaded(path);
+    return snapshot();
+  }
 
   TrackingSessionSnapshot start(DateTime startedAt) {
     if (_status != TrackingSessionStatus.idle) {
@@ -501,6 +597,7 @@ class TrackingSession {
       routePoints: List.unmodifiable(_routePoints),
       pointLogs: List.unmodifiable(_pointLogs),
       splits: List.unmodifiable(_splits),
+      photos: List.unmodifiable(_photos),
       currentPaceSecondsPerKm: _currentPaceSecondsPerKm(updatedAt),
     );
   }
@@ -522,6 +619,7 @@ class TrackingSession {
       'pointLogs': _pointLogs.map((log) => log.toMap()).toList(),
       'segments': _segments.map((segment) => segment.toMap()).toList(),
       'splits': _splits.map((split) => split.toMap()).toList(),
+      'photos': _photos.map((photo) => photo.toMap()).toList(),
     }..removeWhere((key, value) => value == null);
   }
 

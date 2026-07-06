@@ -49,6 +49,8 @@
 	<string>RunNow cần quyền vị trí nền khi bạn khóa màn hình hoặc dùng app khác trong lúc đang chạy.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>RunNow cần quyền vị trí nền khi bạn khóa màn hình hoặc dùng app khác trong lúc đang chạy.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>3i cần camera để chụp ảnh và neo ảnh vào hành trình chạy của bạn.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

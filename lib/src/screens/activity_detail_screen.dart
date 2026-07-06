@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
@@ -25,6 +27,14 @@ class ActivityDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
+  final ValueNotifier<double?> _selectedDistanceMeters = ValueNotifier(null);
+
+  @override
+  void dispose() {
+    _selectedDistanceMeters.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final detail = widget.ownerUid == null
@@ -51,32 +61,49 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760),
           child: detail.when(
-            data: (item) => ListView(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              children: [
-                RouteMap(
-                  encodedPolyline: item.summary.polyline,
-                  routePoints: item.summary.routePoints,
+            data: (item) => CustomScrollView(
+              slivers: [
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _ActivityRouteHeaderDelegate(
+                    detail: item,
+                    selectedDistanceMeters: _selectedDistanceMeters,
+                    onPhotoTap: _openPhoto,
+                  ),
                 ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (item.streams.isEmpty) ...[
-                      const SizedBox(height: 16),
-                      _CachedSummaryFallback(
-                        detail: item,
-                        isMemberView: widget.ownerUid != null,
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    if (item.streams.isNotEmpty) ...[
-                      StreamChart(streams: item.streams),
-                      if (item.streams['heartrate']?.isNotEmpty == true) ...[
-                        const SizedBox(height: 12),
-                        HeartRateZoneChart(streams: item.streams),
+                SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (item.streams.isEmpty) ...[
+                        const SizedBox(height: 16),
+                        _CachedSummaryFallback(
+                          detail: item,
+                          isMemberView: widget.ownerUid != null,
+                        ),
                       ],
+                      const SizedBox(height: 16),
+                      if (item.photos.isNotEmpty) ...[
+                        _ActivityPhotoGallery(
+                          photos: item.photos,
+                          onPhotoTap: _openPhoto,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                      if (item.streams.isNotEmpty) ...[
+                        StreamChart(
+                          streams: item.streams,
+                          onDistanceSelected: (distance) =>
+                              _selectedDistanceMeters.value = distance,
+                        ),
+                        if (item.streams['heartrate']?.isNotEmpty == true) ...[
+                          const SizedBox(height: 12),
+                          HeartRateZoneChart(streams: item.streams),
+                        ],
+                      ],
+                      const SizedBox(height: 24),
                     ],
-                  ],
+                  ),
                 ),
               ],
             ),
@@ -96,6 +123,229 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (context) => _ShareComposer(detail: detail),
+    );
+  }
+
+  Future<void> _openPhoto(ActivityPhoto photo) {
+    return showDialog<void>(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (context) => Dialog.fullscreen(
+        backgroundColor: Colors.black,
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: _StoragePhoto(
+                  path: photo.storagePath,
+                  fit: BoxFit.contain,
+                  interactive: true,
+                ),
+              ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: IconButton.filledTonal(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ),
+              Positioned(
+                left: 20,
+                bottom: 20,
+                child: Text(
+                  '${formatDistance(photo.distanceMeters)} · '
+                  '${photo.capturedAt.day.toString().padLeft(2, '0')}/'
+                  '${photo.capturedAt.month.toString().padLeft(2, '0')} '
+                  '${photo.capturedAt.hour.toString().padLeft(2, '0')}:'
+                  '${photo.capturedAt.minute.toString().padLeft(2, '0')}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivityRouteHeaderDelegate extends SliverPersistentHeaderDelegate {
+  const _ActivityRouteHeaderDelegate({
+    required this.detail,
+    required this.selectedDistanceMeters,
+    required this.onPhotoTap,
+  });
+
+  final ActivityDetail detail;
+  final ValueListenable<double?> selectedDistanceMeters;
+  final ValueChanged<ActivityPhoto> onPhotoTap;
+
+  @override
+  double get minExtent => 176;
+
+  @override
+  double get maxExtent => 330;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    final height = (maxExtent - shrinkOffset).clamp(minExtent, maxExtent);
+    return ColoredBox(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: ValueListenableBuilder<double?>(
+        valueListenable: selectedDistanceMeters,
+        builder: (context, selectedDistance, _) => RouteMap(
+          encodedPolyline: detail.summary.polyline,
+          routePoints: detail.summary.routePoints,
+          photos: detail.photos,
+          onPhotoTap: onPhotoTap,
+          highlightedDistanceMeters: selectedDistance,
+          totalDistanceMeters: detail.summary.distanceMeters,
+          height: height,
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _ActivityRouteHeaderDelegate oldDelegate) {
+    return oldDelegate.detail != detail ||
+        oldDelegate.selectedDistanceMeters != selectedDistanceMeters;
+  }
+}
+
+class _ActivityPhotoGallery extends StatelessWidget {
+  const _ActivityPhotoGallery({required this.photos, required this.onPhotoTap});
+
+  final List<ActivityPhoto> photos;
+  final ValueChanged<ActivityPhoto> onPhotoTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 112,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        scrollDirection: Axis.horizontal,
+        itemCount: photos.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          final photo = photos[index];
+          return Semantics(
+            button: true,
+            label: 'Mở ảnh tại ${formatDistance(photo.distanceMeters)}',
+            child: GestureDetector(
+              onTap: () => onPhotoTap(photo),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  width: 148,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _StoragePhoto(path: photo.storagePath),
+                      Positioned(
+                        left: 8,
+                        bottom: 7,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.62),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            child: Text(
+                              formatDistance(photo.distanceMeters),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _StoragePhoto extends StatefulWidget {
+  const _StoragePhoto({
+    required this.path,
+    this.fit = BoxFit.cover,
+    this.interactive = false,
+  });
+
+  final String path;
+  final BoxFit fit;
+  final bool interactive;
+
+  @override
+  State<_StoragePhoto> createState() => _StoragePhotoState();
+}
+
+class _StoragePhotoState extends State<_StoragePhoto> {
+  static const _maxPhotoBytes = 8 * 1024 * 1024;
+  late Future<Uint8List?> _bytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _bytes = _loadBytes();
+  }
+
+  @override
+  void didUpdateWidget(covariant _StoragePhoto oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.path != widget.path) _bytes = _loadBytes();
+  }
+
+  Future<Uint8List?> _loadBytes() =>
+      FirebaseStorage.instance.ref(widget.path).getData(_maxPhotoBytes);
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Uint8List?>(
+      future: _bytes,
+      builder: (context, snapshot) {
+        final bytes = snapshot.data;
+        if (bytes == null) {
+          return ColoredBox(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: Center(
+              child: snapshot.hasError
+                  ? const Icon(Icons.broken_image_outlined)
+                  : const CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        }
+        final image = Image.memory(
+          bytes,
+          fit: widget.fit,
+          width: double.infinity,
+          height: double.infinity,
+        );
+        if (!widget.interactive) return image;
+        return InteractiveViewer(minScale: 1, maxScale: 4, child: image);
+      },
     );
   }
 }

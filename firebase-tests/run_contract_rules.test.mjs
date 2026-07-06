@@ -14,6 +14,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
 } from 'firebase/firestore';
@@ -51,17 +52,19 @@ function contractData(uid, id, visibility = 'private') {
     finalizeAt: new Date('2026-06-28T23:00:00Z'),
     status: 'active',
     visibility,
-    sourcePolicy: 'strava_only',
+    sourcePolicy: 'official_activity',
     progressValue: 0,
+    participantUids: [uid],
     participants: {
       [uid]: {
         uid,
         progressValue: 0,
+        countedActivityIds: [],
         joinedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       },
     },
-    eligibilityVersion: 1,
+    eligibilityVersion: 2,
     lastCalculatedAt: serverTimestamp(),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -70,25 +73,17 @@ function contractData(uid, id, visibility = 'private') {
 
 async function createContract(db, uid, id, visibility = 'private') {
   const contractRef = doc(db, 'runContracts', id);
-  const lockRef = doc(db, 'users', uid, 'runContractState', 'current');
-  await runTransaction(db, async (transaction) => {
-    transaction.set(contractRef, contractData(uid, id, visibility));
-    transaction.set(lockRef, {
-      activeContractId: id,
-      updatedAt: serverTimestamp(),
-    });
-  });
+  await setDoc(contractRef, contractData(uid, id, visibility));
 }
 
-test('creates contract and active lock atomically', async () => {
+test('creates a contract with the creator as first participant', async () => {
   const db = environment.authenticatedContext('owner').firestore();
   await assertSucceeds(createContract(db, 'owner', 'contract-a'));
 });
 
-test('rejects replacing a non-null active lock with another contract', async () => {
-  const db = environment.authenticatedContext('owner').firestore();
-  await createContract(db, 'owner', 'contract-a');
-  await assertFails(createContract(db, 'owner', 'contract-b'));
+test('rejects creating a contract on behalf of another user', async () => {
+  const db = environment.authenticatedContext('attacker').firestore();
+  await assertFails(createContract(db, 'owner', 'contract-a'));
 });
 
 test('private contract is owner-only while club contract is authenticated-readable', async () => {
@@ -140,9 +135,11 @@ test('participant can join and update only their own progress', async () => {
       'participants.member': {
         uid: 'member',
         progressValue: 2,
+        countedActivityIds: [],
         joinedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       },
+      participantUids: ['owner', 'member'],
       updatedAt: serverTimestamp(),
     }),
   );
@@ -154,6 +151,7 @@ test('participant can join and update only their own progress', async () => {
       'participants.member': {
         uid: 'member',
         progressValue: 6,
+        countedActivityIds: [],
         joinedAt,
         updatedAt: serverTimestamp(),
       },
@@ -166,6 +164,7 @@ test('participant can join and update only their own progress', async () => {
       'participants.member': {
         uid: 'member',
         progressValue: 10,
+        countedActivityIds: [],
         joinedAt,
         updatedAt: serverTimestamp(),
       },
@@ -174,18 +173,10 @@ test('participant can join and update only their own progress', async () => {
   );
 });
 
-test('creator can release the active slot only after personal completion', async () => {
+test('creator can update personal progress without changing contract shape', async () => {
   const db = environment.authenticatedContext('owner').firestore();
   await createContract(db, 'owner', 'completed-slot', 'club');
   const contractRef = doc(db, 'runContracts', 'completed-slot');
-  const lockRef = doc(db, 'users', 'owner', 'runContractState', 'current');
-
-  await assertFails(
-    updateDoc(lockRef, {
-      activeContractId: null,
-      updatedAt: serverTimestamp(),
-    }),
-  );
 
   const before = await getDoc(contractRef);
   const joinedAt = before.data().participants.owner.joinedAt;
@@ -195,6 +186,7 @@ test('creator can release the active slot only after personal completion', async
       'participants.owner': {
         uid: 'owner',
         progressValue: 10,
+        countedActivityIds: [],
         joinedAt,
         updatedAt: serverTimestamp(),
       },
@@ -202,47 +194,34 @@ test('creator can release the active slot only after personal completion', async
       updatedAt: serverTimestamp(),
     }),
   );
-  await assertSucceeds(
-    updateDoc(lockRef, {
-      activeContractId: null,
+  const after = await getDoc(contractRef);
+  assert.equal(after.data().participants.owner.progressValue, 10);
+});
+
+test('only the creator can finalize a contract', async () => {
+  const ownerDb = environment.authenticatedContext('owner').firestore();
+  const memberDb = environment.authenticatedContext('member').firestore();
+  await createContract(ownerDb, 'owner', 'contract-a', 'club');
+  const ownerRef = doc(ownerDb, 'runContracts', 'contract-a');
+  const memberRef = doc(memberDb, 'runContracts', 'contract-a');
+
+  await assertFails(
+    updateDoc(memberRef, {
+      status: 'completed',
+      progressValue: 10,
+      completedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }),
   );
-  await assertSucceeds(createContract(db, 'owner', 'next-contract', 'club'));
-});
-
-test('finalize succeeds only when the same transaction clears active lock', async () => {
-  const db = environment.authenticatedContext('owner').firestore();
-  await createContract(db, 'owner', 'contract-a');
-  const contractRef = doc(db, 'runContracts', 'contract-a');
-  const lockRef = doc(db, 'users', 'owner', 'runContractState', 'current');
-
-  await assertFails(
-    runTransaction(db, async (transaction) => {
-      transaction.update(contractRef, {
-        status: 'completed',
-        progressValue: 10,
-        completedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    }),
-  );
-
   await assertSucceeds(
-    runTransaction(db, async (transaction) => {
-      transaction.update(contractRef, {
-        status: 'completed',
-        progressValue: 10,
-        completedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      transaction.set(lockRef, {
-        activeContractId: null,
-        updatedAt: serverTimestamp(),
-      });
+    updateDoc(ownerRef, {
+      status: 'completed',
+      progressValue: 10,
+      completedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     }),
   );
 
-  const snapshot = await getDoc(contractRef);
+  const snapshot = await getDoc(ownerRef);
   assert.equal(snapshot.data().status, 'completed');
 });
