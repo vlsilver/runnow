@@ -34,6 +34,7 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
     final currentUid = ref.watch(firebaseUserProvider).value?.uid;
     final myActive = ref.watch(myActiveContractsProvider);
     final clubContracts = ref.watch(clubRunContractsProvider);
+    final myHistory = ref.watch(myContractHistoryProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -68,6 +69,7 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
           );
           return _ContractFeed(
             contracts: clubContracts,
+            history: myHistory,
             myContracts: mine,
             currentUid: currentUid,
             currentProfile: profile,
@@ -160,7 +162,7 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
   }
 }
 
-enum _ContractFilter { mine, active, public }
+enum _ContractFilter { active, completed, failed }
 
 class _ContractSyncAction extends StatefulWidget {
   const _ContractSyncAction({
@@ -214,13 +216,46 @@ class _ContractSyncActionState extends State<_ContractSyncAction>
 
   @override
   Widget build(BuildContext context) {
-    final icon = widget.syncing
-        ? RotationTransition(turns: _controller, child: const Icon(Icons.sync))
-        : Icon(widget.synced ? Icons.check_rounded : Icons.sync_rounded);
-    return GlassIconButton(
-      tooltip: 'Đồng bộ Strava',
-      onPressed: widget.syncing ? null : widget.onPressed,
-      icon: icon,
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return GlassPanel(
+      borderRadius: 999,
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: widget.syncing ? null : widget.onPressed,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              RotationTransition(
+                turns: _controller,
+                child: Icon(
+                  Icons.sync_rounded,
+                  size: 18,
+                  color: palette.accent,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Đồng bộ',
+                style: TextStyle(fontWeight: FontWeight.w700, color: onSurface),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: widget.synced
+                      ? RunNowSemanticColors.success
+                      : onSurface.withValues(alpha: 0.24),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -228,6 +263,7 @@ class _ContractSyncActionState extends State<_ContractSyncAction>
 class _ContractFeed extends StatelessWidget {
   const _ContractFeed({
     required this.contracts,
+    required this.history,
     required this.myContracts,
     required this.currentUid,
     required this.currentProfile,
@@ -239,6 +275,7 @@ class _ContractFeed extends StatelessWidget {
   });
 
   final AsyncValue<List<RunContract>> contracts;
+  final AsyncValue<List<RunContract>> history;
   final List<RunContract> myContracts;
   final String? currentUid;
   final UserProfile? currentProfile;
@@ -253,55 +290,76 @@ class _ContractFeed extends StatelessWidget {
     final wide = kIsWeb
         ? RunNowWebLayout.isDesktop(context)
         : MediaQuery.sizeOf(context).width >= 900;
-    return contracts.when(
-      data: (clubContracts) {
-        final allContracts = _mergeContracts(clubContracts, myContracts);
-        final visible = allContracts.where((contract) {
-          return switch (filter) {
-            _ContractFilter.mine => contract.participantFor(currentUid) != null,
-            _ContractFilter.active => contract.isActive,
-            _ContractFilter.public =>
-              contract.visibility == RunContractVisibility.club,
-          };
-        }).toList();
-        final profiles = {for (final member in members) member.uid: member};
-        return ListView(
-          padding: EdgeInsets.fromLTRB(wide ? 20 : 16, 18, wide ? 20 : 16, 130),
-          children: [
-            _ContractFilterBar(value: filter, onChanged: onFilterChanged),
-            const SizedBox(height: 18),
-            if (visible.isEmpty)
-              _EmptyContracts(filtered: allContracts.isNotEmpty)
-            else if (wide)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Wrap(
-                  spacing: 18,
-                  runSpacing: 18,
-                  children: [
-                    for (final contract in visible)
-                      SizedBox(
-                        width: 440,
-                        child: _contractCard(context, contract, profiles),
-                      ),
-                  ],
-                ),
-              )
-            else
-              for (var index = 0; index < visible.length; index++) ...[
-                _contractCard(context, visible[index], profiles),
-                if (index != visible.length - 1) const SizedBox(height: 14),
-              ],
-          ],
-        );
-      },
-      error: (error, stack) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text('Không thể tải danh sách kèo: $error'),
+    final source = filter == _ContractFilter.active ? contracts : history;
+    return Column(
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(wide ? 20 : 16, 14, wide ? 20 : 16, 10),
+          child: _ContractFilterBar(value: filter, onChanged: onFilterChanged),
         ),
-      ),
-      loading: () => const Center(child: CircularProgressIndicator()),
+        Expanded(
+          child: source.when(
+            data: (list) {
+              final visible = switch (filter) {
+                _ContractFilter.active => _mergeContracts(list, myContracts),
+                _ContractFilter.completed => _mergeCompleted(
+                  list,
+                  myContracts,
+                  currentUid,
+                ),
+                _ContractFilter.failed => list
+                    .where(
+                      (contract) => contract.status == RunContractStatus.failed,
+                    )
+                    .toList(),
+              };
+              final profiles = {
+                for (final member in members) member.uid: member,
+              };
+              return ListView(
+                padding: EdgeInsets.fromLTRB(
+                  wide ? 20 : 16,
+                  0,
+                  wide ? 20 : 16,
+                  130,
+                ),
+                children: [
+                  if (visible.isEmpty)
+                    _EmptyContracts(filter: filter)
+                  else if (wide)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Wrap(
+                        spacing: 18,
+                        runSpacing: 18,
+                        children: [
+                          for (final contract in visible)
+                            SizedBox(
+                              width: 440,
+                              child: _contractCard(context, contract, profiles),
+                            ),
+                        ],
+                      ),
+                    )
+                  else
+                    for (var index = 0; index < visible.length; index++) ...[
+                      _contractCard(context, visible[index], profiles),
+                      if (index != visible.length - 1)
+                        const SizedBox(height: 14),
+                    ],
+                ],
+              );
+            },
+            error: (error, stack) => Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text('Không thể tải danh sách kèo: $error'),
+              ),
+            ),
+            loading: () => const Center(child: CircularProgressIndicator()),
+          ),
+        ),
+      ],
     );
   }
 
@@ -351,36 +409,67 @@ List<RunContract> _mergeContracts(
   return result;
 }
 
-class _EmptyContracts extends StatelessWidget {
-  const _EmptyContracts({this.filtered = false});
+/// Kèo tôi đã hoàn thành: gồm kèo đã chốt kết quả (`status: completed`) và
+/// kèo tôi đã đạt mục tiêu nhưng chưa tới hạn chốt (`status: active` vẫn
+/// chạy tới deadline/finalize) — cùng một trải nghiệm "đã cứu" trên card.
+List<RunContract> _mergeCompleted(
+  List<RunContract> history,
+  List<RunContract> myActive,
+  String? currentUid,
+) {
+  final byId = {
+    for (final contract in history)
+      if (contract.status == RunContractStatus.completed) contract.id: contract,
+  };
+  for (final contract in myActive) {
+    if (contract.isActive && contract.completedBy(currentUid)) {
+      byId[contract.id] = contract;
+    }
+  }
+  final result = byId.values.toList();
+  result.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  return result;
+}
 
-  final bool filtered;
+class _EmptyContracts extends StatelessWidget {
+  const _EmptyContracts({required this.filter});
+
+  final _ContractFilter filter;
 
   @override
-  Widget build(BuildContext context) => GlassPanel(
-    borderRadius: 0,
-    padding: const EdgeInsets.all(24),
-    child: Column(
-      children: [
-        Icon(
-          Icons.flag_outlined,
-          size: 44,
-          color: context.runNowPalette.accent,
-        ),
-        const SizedBox(height: 12),
-        Text(
-          filtered ? 'Không có kèo phù hợp' : 'Chưa có kèo đang diễn ra',
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
-        const SizedBox(height: 6),
-        Text(
-          filtered
-              ? 'Hãy thử một bộ lọc khác.'
-              : 'Hãy là người cắm lá cờ đầu tiên.',
-        ),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    final (title, subtitle) = switch (filter) {
+      _ContractFilter.active => (
+        'Chưa có kèo đang diễn ra',
+        'Hãy là người cắm lá cờ đầu tiên.',
+      ),
+      _ContractFilter.completed => (
+        'Chưa có kèo nào hoàn thành',
+        'Hoàn thành một kèo để thấy nó ở đây.',
+      ),
+      _ContractFilter.failed => (
+        'Chưa có kèo nào thất bại',
+        'Cứ giữ phong độ này nhé.',
+      ),
+    };
+    return GlassPanel(
+      borderRadius: 0,
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          Icon(
+            Icons.flag_outlined,
+            size: 44,
+            color: context.runNowPalette.accent,
+          ),
+          const SizedBox(height: 12),
+          Text(title, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 6),
+          Text(subtitle),
+        ],
+      ),
+    );
+  }
 }
 
 class _ContractFilterBar extends StatelessWidget {
@@ -392,9 +481,9 @@ class _ContractFilterBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const labels = {
-      _ContractFilter.mine: 'Của tôi',
       _ContractFilter.active: 'Đang chạy',
-      _ContractFilter.public: 'Công khai',
+      _ContractFilter.completed: 'Hoàn thành',
+      _ContractFilter.failed: 'Thất bại',
     };
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,

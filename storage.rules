@@ -24,5 +24,13 @@ service firebase.storage {
         && request.resource.contentType.matches('image/jpeg');
       allow delete: if owns(userId);
     }
+
+    match /users/{userId}/avatar/{fileName} {
+      allow read: if owns(userId) || isPublicProfile(userId);
+      allow create, update: if owns(userId)
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/jpeg');
+      allow delete: if owns(userId);
+    }
   }
 }

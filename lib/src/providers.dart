@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:myrun/src/auth.dart';
+import 'package:myrun/src/avatar_repository.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/repository.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
@@ -119,6 +120,10 @@ final trackingPhotoRepositoryProvider = Provider<TrackingPhotoRepository>(
   ),
 );
 
+final avatarRepositoryProvider = Provider<AvatarRepository>(
+  (ref) => AvatarRepository(FirebaseAuth.instance, FirebaseStorage.instance),
+);
+
 final firebaseUserProvider = StreamProvider<User?>(
   (ref) => FirebaseAuth.instance.authStateChanges(),
 );
@@ -226,6 +231,13 @@ final clubRunContractsProvider = StreamProvider<List<RunContract>>((ref) {
   final uid = ref.watch(firebaseUserProvider).value?.uid;
   if (uid == null) return Stream.value(const []);
   return ref.watch(runContractRepositoryProvider).watchClubContracts();
+});
+
+/// Các kèo (tạo hoặc join) đã kết thúc — hoàn thành, thất bại hoặc bị huỷ.
+final myContractHistoryProvider = StreamProvider<List<RunContract>>((ref) {
+  final uid = ref.watch(firebaseUserProvider).value?.uid;
+  if (uid == null) return Stream.value(const []);
+  return ref.watch(runContractRepositoryProvider).watchMyContractHistory();
 });
 
 final runContractProvider = StreamProvider.family<RunContract?, String>((

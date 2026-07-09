@@ -382,16 +382,271 @@ void main() {
       expect(contracts.finalProgress, 10);
     });
   });
+
+  group('autoAssignSoleActiveContract', () {
+    test('assigns a new eligible activity when exactly 1 kèo is active', () async {
+      final newActivity = _activity('new-run', DateTime.utc(2026, 6, 22), 4000);
+      final activities = _FakeActivityRepository(activities: [newActivity]);
+      final contracts = _FakeContractRepository();
+      final controller = RunContractController(
+        contracts,
+        activities,
+        SyncController(activities),
+      );
+      final contract = _contract(
+        startAt: DateTime.utc(2026, 6, 21, 17),
+        endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+        finalizeAt: DateTime.utc(2026, 6, 28, 23),
+      );
+
+      await controller.autoAssignSoleActiveContract([contract], [newActivity]);
+
+      expect(contracts.updatedActivityIds, ['new-run']);
+      expect(contracts.updatedProgress, 4);
+    });
+
+    test('does nothing when the user has more than 1 active kèo', () async {
+      final newActivity = _activity('new-run', DateTime.utc(2026, 6, 22), 4000);
+      final activities = _FakeActivityRepository(activities: [newActivity]);
+      final contracts = _FakeContractRepository();
+      final controller = RunContractController(
+        contracts,
+        activities,
+        SyncController(activities),
+      );
+      final contractA = _contract(
+        id: 'contract-a',
+        startAt: DateTime.utc(2026, 6, 21, 17),
+        endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+        finalizeAt: DateTime.utc(2026, 6, 28, 23),
+      );
+      final contractB = _contract(
+        id: 'contract-b',
+        startAt: DateTime.utc(2026, 6, 21, 17),
+        endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+        finalizeAt: DateTime.utc(2026, 6, 28, 23),
+      );
+
+      await controller.autoAssignSoleActiveContract(
+        [contractA, contractB],
+        [newActivity],
+      );
+
+      expect(contracts.updatedActivityIds, isEmpty);
+    });
+
+    test('does not steal an activity already claimed by another kèo', () async {
+      final newActivity = _activity('taken', DateTime.utc(2026, 6, 22), 4000);
+      final activities = _FakeActivityRepository(activities: [newActivity]);
+      final contracts = _FakeContractRepository(
+        assignments: {'taken': 'another-contract'},
+      );
+      final controller = RunContractController(
+        contracts,
+        activities,
+        SyncController(activities),
+      );
+      final contract = _contract(
+        startAt: DateTime.utc(2026, 6, 21, 17),
+        endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+        finalizeAt: DateTime.utc(2026, 6, 28, 23),
+      );
+
+      await controller.autoAssignSoleActiveContract([contract], [newActivity]);
+
+      expect(contracts.updatedActivityIds, isEmpty);
+    });
+  });
+
+  group('applyOptionsFor', () {
+    test('computes current and preview progress for an eligible kèo', () async {
+      final existing = _activity('existing', DateTime.utc(2026, 6, 22), 4000);
+      final candidate = _activity('candidate', DateTime.utc(2026, 6, 23), 5000);
+      final activities = _FakeActivityRepository(
+        activities: [existing, candidate],
+      );
+      final contracts = _FakeContractRepository(
+        assignments: {'existing': 'contract'},
+      );
+      final controller = RunContractController(
+        contracts,
+        activities,
+        SyncController(activities),
+      );
+      final contract = _contract(
+        targetValue: 10,
+        startAt: DateTime.utc(2026, 6, 21, 17),
+        endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+        finalizeAt: DateTime.utc(2026, 6, 28, 23),
+      );
+
+      final options = await controller.applyOptionsFor(candidate, [contract]);
+
+      expect(options, hasLength(1));
+      final option = options.single;
+      expect(option.eligible, isTrue);
+      expect(option.ineligibleReason, isNull);
+      expect(option.currentValue, 4);
+      expect(option.previewValue, 9);
+    });
+
+    test('marks a kèo ineligible when the activity is outside its window', () async {
+      final candidate = _activity(
+        'candidate',
+        DateTime.utc(2026, 7, 10),
+        5000,
+      );
+      final activities = _FakeActivityRepository(activities: [candidate]);
+      final contracts = _FakeContractRepository();
+      final controller = RunContractController(
+        contracts,
+        activities,
+        SyncController(activities),
+      );
+      final contract = _contract(
+        startAt: DateTime.utc(2026, 6, 21, 17),
+        endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+        finalizeAt: DateTime.utc(2026, 6, 28, 23),
+      );
+
+      final options = await controller.applyOptionsFor(candidate, [contract]);
+
+      expect(options.single.eligible, isFalse);
+      expect(options.single.ineligibleReason, 'Ngoài khoảng thời gian kèo');
+      expect(options.single.previewValue, isNull);
+    });
+
+    test(
+      'marks a kèo ineligible when below the per-session distance threshold',
+      () async {
+        final candidate = _activity(
+          'candidate',
+          DateTime.utc(2026, 6, 22),
+          800,
+        );
+        final activities = _FakeActivityRepository(activities: [candidate]);
+        final contracts = _FakeContractRepository();
+        final controller = RunContractController(
+          contracts,
+          activities,
+          SyncController(activities),
+        );
+        final contract = _contract(
+          metric: RunContractMetric.activityCount,
+          startAt: DateTime.utc(2026, 6, 21, 17),
+          endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+          finalizeAt: DateTime.utc(2026, 6, 28, 23),
+        );
+
+        final options = await controller.applyOptionsFor(candidate, [
+          contract,
+        ]);
+
+        expect(options.single.eligible, isFalse);
+        expect(
+          options.single.ineligibleReason,
+          'Chưa đạt ngưỡng tối thiểu 1km/buổi',
+        );
+      },
+    );
+  });
+
+  group('applyActivityToContract / removeActivityFromContract', () {
+    test('applies an activity while keeping previously assigned ones', () async {
+      final existing = _activity('existing', DateTime.utc(2026, 6, 22), 4000);
+      final candidate = _activity('candidate', DateTime.utc(2026, 6, 23), 5000);
+      final activities = _FakeActivityRepository(
+        activities: [existing, candidate],
+      );
+      final contracts = _FakeContractRepository(
+        assignments: {'existing': 'contract'},
+      );
+      final controller = RunContractController(
+        contracts,
+        activities,
+        SyncController(activities),
+      );
+      final contract = _contract(
+        startAt: DateTime.utc(2026, 6, 21, 17),
+        endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+        finalizeAt: DateTime.utc(2026, 6, 28, 23),
+      );
+
+      await controller.applyActivityToContract(contract, candidate);
+
+      expect(
+        contracts.updatedActivityIds,
+        containsAll(['existing', 'candidate']),
+      );
+    });
+
+    test(
+      'throws when the activity was just claimed by another kèo (race lost)',
+      () async {
+        final candidate = _activity(
+          'candidate',
+          DateTime.utc(2026, 6, 23),
+          5000,
+        );
+        final activities = _FakeActivityRepository(activities: [candidate]);
+        final contracts = _FakeContractRepository(
+          assignments: {'candidate': 'another-contract'},
+        );
+        final controller = RunContractController(
+          contracts,
+          activities,
+          SyncController(activities),
+        );
+        final contract = _contract(
+          id: 'contract',
+          startAt: DateTime.utc(2026, 6, 21, 17),
+          endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+          finalizeAt: DateTime.utc(2026, 6, 28, 23),
+        );
+
+        await expectLater(
+          controller.applyActivityToContract(contract, candidate),
+          throwsStateError,
+        );
+      },
+    );
+
+    test('removes an activity while keeping the others assigned', () async {
+      final keep = _activity('keep', DateTime.utc(2026, 6, 22), 4000);
+      final toRemove = _activity('to-remove', DateTime.utc(2026, 6, 23), 5000);
+      final activities = _FakeActivityRepository(
+        activities: [keep, toRemove],
+      );
+      final contracts = _FakeContractRepository(
+        assignments: {'keep': 'contract', 'to-remove': 'contract'},
+      );
+      final controller = RunContractController(
+        contracts,
+        activities,
+        SyncController(activities),
+      );
+      final contract = _contract(
+        startAt: DateTime.utc(2026, 6, 21, 17),
+        endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+        finalizeAt: DateTime.utc(2026, 6, 28, 23),
+      );
+
+      await controller.removeActivityFromContract(contract, toRemove);
+
+      expect(contracts.updatedActivityIds, ['keep']);
+    });
+  });
 }
 
 RunContract _contract({
+  String id = 'contract',
   RunContractMetric metric = RunContractMetric.distance,
   double targetValue = 10,
   required DateTime startAt,
   required DateTime endAtExclusive,
   required DateTime finalizeAt,
 }) => RunContract(
-  id: 'contract',
+  id: id,
   creatorUid: 'user',
   title: 'Kèo 10km',
   template: RunContractTemplate.weekly10k,
@@ -434,9 +689,9 @@ class _FakeActivityRepository implements ActivityRepository {
   final Object? error;
 
   @override
-  Future<int> sync() async {
+  Future<ActivitySyncOutcome> sync({bool fullResync = false}) async {
     if (error != null) throw error!;
-    return 0;
+    return const ActivitySyncOutcome(changedCount: 0);
   }
 
   @override
@@ -543,4 +798,10 @@ class _FakeContractRepository implements RunContractRepository {
 
   @override
   Stream<RunContract?> watchContract(String contractId) => Stream.value(null);
+
+  @override
+  Future<void> delete(String contractId) async {}
+
+  @override
+  Stream<List<RunContract>> watchMyContractHistory() => Stream.value(const []);
 }

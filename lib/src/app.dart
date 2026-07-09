@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/formatters.dart';
+import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/screens/activity_detail_screen.dart';
 import 'package:myrun/src/screens/club_screen.dart';
@@ -14,12 +18,16 @@ import 'package:myrun/src/screens/run_contract_detail_screen.dart';
 import 'package:myrun/src/screens/run_contract_home_screen.dart';
 import 'package:myrun/src/screens/settings_screen.dart';
 import 'package:myrun/src/screens/tracking_screen.dart';
+import 'package:myrun/src/sync.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/web_layout.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 
+final _rootNavigatorKey = GlobalKey<NavigatorState>();
+
 final _router = GoRouter(
+  navigatorKey: _rootNavigatorKey,
   initialLocation: '/',
   routes: [
     StatefulShellRoute.indexedStack(
@@ -191,6 +199,36 @@ class _AuthenticatedSessionState extends ConsumerState<_AuthenticatedSession> {
   @override
   Widget build(BuildContext context) {
     final connected = ref.watch(stravaConnectionProvider);
+    ref.listen<SyncController>(syncControllerProvider, (previous, next) {
+      if (next.syncing || !next.lastSyncSucceeded) return;
+      if (next.lastChangedActivities.isEmpty) return;
+      final activeContracts =
+          ref.read(myActiveContractsProvider).value ?? const [];
+      unawaited(
+        ref
+            .read(runContractControllerProvider)
+            .autoAssignSoleActiveContract(
+              activeContracts,
+              next.lastChangedActivities,
+            ),
+      );
+      final activities = next.lastChangedActivities;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        // `context` của State này nằm ngoài Navigator thật (bị `_AuthGate`
+        // bọc quanh child trong `MaterialApp.router`'s builder), nên phải
+        // dùng navigatorKey riêng của GoRouter để lấy context có Navigator.
+        final navigatorContext = _rootNavigatorKey.currentContext;
+        if (navigatorContext == null) return;
+        showModalBottomSheet<void>(
+          context: navigatorContext,
+          isScrollControlled: true,
+          useSafeArea: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => _SyncedActivitiesSheet(activities: activities),
+        );
+      });
+    });
     if (connected && !_started) {
       _started = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -217,6 +255,346 @@ class _AuthenticatedSessionState extends ConsumerState<_AuthenticatedSession> {
     }
     return widget.child;
   }
+}
+
+class _SyncedActivitiesSheet extends StatefulWidget {
+  const _SyncedActivitiesSheet({required this.activities});
+
+  final List<ActivitySummary> activities;
+
+  @override
+  State<_SyncedActivitiesSheet> createState() =>
+      _SyncedActivitiesSheetState();
+}
+
+class _SyncedActivitiesSheetState extends State<_SyncedActivitiesSheet> {
+  static const _collapsedLimit = 4;
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final now = DateTime.now();
+    final sorted = [...widget.activities]
+      ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+    final visible = _expanded || sorted.length <= _collapsedLimit
+        ? sorted
+        : sorted.take(_collapsedLimit).toList();
+    final remaining = sorted.length - visible.length;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 14,
+        right: 14,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 12,
+      ),
+      child: GlassPanel(
+        borderRadius: 22,
+        padding: const EdgeInsets.fromLTRB(18, 10, 14, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(
+                  color: onSurface.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _SyncHeaderIcon(color: palette.accent),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      RichText(
+                        text: TextSpan(
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: onSurface,
+                              ),
+                          children: [
+                            const TextSpan(text: 'Đã đồng bộ '),
+                            TextSpan(
+                              text: '${sorted.length}',
+                              style: TextStyle(color: palette.accent),
+                            ),
+                            const TextSpan(text: ' hoạt động'),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        sorted.length > 5
+                            ? 'Lâu ngày quay lại · từ Strava'
+                            : 'Vừa xong · từ Strava',
+                        style: TextStyle(
+                          color: palette.textMuted,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  style: IconButton.styleFrom(
+                    backgroundColor: onSurface.withValues(alpha: 0.08),
+                    foregroundColor: onSurface,
+                    shape: const CircleBorder(),
+                    minimumSize: const Size(36, 36),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * 0.5,
+              ),
+              child: SingleChildScrollView(
+                child: _groupedActivityList(context, visible, now, palette),
+              ),
+            ),
+            if (remaining > 0) ...[
+              const SizedBox(height: 2),
+              Center(
+                child: TextButton(
+                  onPressed: () => setState(() => _expanded = true),
+                  child: Text('Xem thêm $remaining hoạt động'),
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      context.push('/profile/journal');
+                    },
+                    child: const Text('Xem Nhật ký'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Đóng'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _groupedActivityList(
+    BuildContext context,
+    List<ActivitySummary> items,
+    DateTime now,
+    RunNowPalette palette,
+  ) {
+    final children = <Widget>[];
+    String? lastLabel;
+    for (var i = 0; i < items.length; i++) {
+      final activity = items[i];
+      final label = _dateGroupLabel(activity.startedAt, now);
+      if (label != lastLabel) {
+        if (lastLabel != null) children.add(const SizedBox(height: 14));
+        children.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              label.toUpperCase(),
+              style: TextStyle(
+                color: palette.textMuted,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.6,
+              ),
+            ),
+          ),
+        );
+        lastLabel = label;
+      } else {
+        children.add(const Divider(height: 16));
+      }
+      children.add(_SyncedActivityRow(activity: activity, palette: palette));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: children);
+  }
+}
+
+String _dateGroupLabel(DateTime date, DateTime now) {
+  final day = DateTime(date.year, date.month, date.day);
+  final today = DateTime(now.year, now.month, now.day);
+  final yesterday = today.subtract(const Duration(days: 1));
+  if (day == today) return 'Hôm nay';
+  if (day == yesterday) return 'Hôm qua';
+  const weekdayNames = [
+    'Thứ Hai',
+    'Thứ Ba',
+    'Thứ Tư',
+    'Thứ Năm',
+    'Thứ Sáu',
+    'Thứ Bảy',
+    'Chủ Nhật',
+  ];
+  final weekday = weekdayNames[date.weekday - 1];
+  final dd = date.day.toString().padLeft(2, '0');
+  final mm = date.month.toString().padLeft(2, '0');
+  return '$weekday, $dd/$mm';
+}
+
+class _SyncHeaderIcon extends StatelessWidget {
+  const _SyncHeaderIcon({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: const Icon(Icons.sync_rounded, color: Colors.white, size: 22),
+    );
+  }
+}
+
+class _SyncedActivityRow extends StatelessWidget {
+  const _SyncedActivityRow({required this.activity, required this.palette});
+
+  final ActivitySummary activity;
+  final RunNowPalette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final isStrava = activity.source == ActivitySource.strava;
+    final sourceColor = isStrava
+        ? RunNowBrandColors.strava
+        : palette.accent;
+    final sourceLabel = isStrava ? 'Strava' : 'Tự track';
+    final time = TimeOfDay.fromDateTime(activity.startedAt).format(context);
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () {
+        Navigator.of(context).pop();
+        context.push('/activity/${activity.id}');
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: palette.accent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Icon(
+                _iconForKind(activity.kind),
+                size: 19,
+                color: palette.accent,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: sourceColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        '$sourceLabel · $time',
+                        style: TextStyle(
+                          color: palette.textMuted,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    activity.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: onSurface,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  formatDistance(activity.distanceMeters),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: onSurface,
+                  ),
+                ),
+                if (activity.paceSecondsPerKm != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    formatPace(activity.paceSecondsPerKm),
+                    style: TextStyle(color: palette.textMuted, fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(width: 2),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: palette.textMuted,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _iconForKind(ActivityKind kind) => switch (kind) {
+    ActivityKind.run => Icons.directions_run_rounded,
+    ActivityKind.trailRun => Icons.trending_up_rounded,
+    ActivityKind.virtualRun => Icons.directions_run_rounded,
+    ActivityKind.walk => Icons.directions_walk_rounded,
+    ActivityKind.hike => Icons.terrain_rounded,
+  };
 }
 
 class _Scaffold extends StatelessWidget {

@@ -1,15 +1,18 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/run_contracts/run_contract_controller.dart';
+import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_recap_card.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/route_map.dart';
+import 'package:myrun/src/widgets/storage_image.dart';
 import 'package:myrun/src/widgets/stream_chart.dart';
 
 class ActivityDetailScreen extends ConsumerStatefulWidget {
@@ -80,6 +83,13 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                         _CachedSummaryFallback(
                           detail: item,
                           isMemberView: widget.ownerUid != null,
+                        ),
+                      ],
+                      if (widget.ownerUid == null) ...[
+                        const SizedBox(height: 16),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _ApplyToContractCard(activity: item.summary),
                         ),
                       ],
                       const SizedBox(height: 16),
@@ -287,7 +297,7 @@ class _ActivityPhotoGallery extends StatelessWidget {
   }
 }
 
-class _StoragePhoto extends StatefulWidget {
+class _StoragePhoto extends StatelessWidget {
   const _StoragePhoto({
     required this.path,
     this.fit = BoxFit.cover,
@@ -299,56 +309,755 @@ class _StoragePhoto extends StatefulWidget {
   final bool interactive;
 
   @override
-  State<_StoragePhoto> createState() => _StoragePhotoState();
+  Widget build(BuildContext context) {
+    final image = StorageImage(path: path, fit: fit);
+    if (!interactive) return image;
+    return InteractiveViewer(minScale: 1, maxScale: 4, child: image);
+  }
 }
 
-class _StoragePhotoState extends State<_StoragePhoto> {
-  static const _maxPhotoBytes = 8 * 1024 * 1024;
-  late Future<Uint8List?> _bytes;
+/// Card "Áp dụng vào kèo" — cho phép gán buổi chạy này vào 1 kèo đang active
+/// ngay từ màn chi tiết, thay vì chỉ có chiều ngược lại (từ màn kèo chọn
+/// hoạt động). Chỉ hiện cho hoạt động của chính mình.
+class _ApplyToContractCard extends ConsumerStatefulWidget {
+  const _ApplyToContractCard({required this.activity});
+
+  final ActivitySummary activity;
+
+  @override
+  ConsumerState<_ApplyToContractCard> createState() =>
+      _ApplyToContractCardState();
+}
+
+typedef _ApplyCardData = ({
+  List<ContractApplyOption> options,
+  String? assignedContractId,
+});
+
+class _ApplyToContractCardState extends ConsumerState<_ApplyToContractCard> {
+  Future<_ApplyCardData>? _future;
+  List<RunContract>? _loadedFor;
+  bool _saving = false;
+  String? _error;
+
+  bool _sameContracts(List<RunContract> a, List<RunContract> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id) return false;
+    }
+    return true;
+  }
+
+  void _ensureLoaded(List<RunContract> contracts) {
+    if (_loadedFor != null && _sameContracts(_loadedFor!, contracts)) return;
+    _loadedFor = contracts;
+    _future = _load(contracts);
+  }
+
+  Future<_ApplyCardData> _load(List<RunContract> contracts) async {
+    final controller = ref.read(runContractControllerProvider);
+    final optionsFuture = controller.applyOptionsFor(
+      widget.activity,
+      contracts,
+    );
+    final assignedFuture = controller.currentContractIdFor(
+      widget.activity.id,
+    );
+    return (options: await optionsFuture, assignedContractId: await assignedFuture);
+  }
+
+  void _reload() {
+    if (_loadedFor != null) _future = _load(_loadedFor!);
+  }
+
+  Future<void> _apply(RunContract contract) async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(runContractControllerProvider)
+          .applyActivityToContract(contract, widget.activity);
+      if (mounted) setState(_reload);
+    } catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _remove(RunContract contract) async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(runContractControllerProvider)
+          .removeActivityFromContract(contract, widget.activity);
+      if (mounted) setState(_reload);
+    } catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _openPicker(
+    List<ContractApplyOption> options,
+    RunContract? current,
+  ) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _ApplyToContractPickerSheet(
+        activity: widget.activity,
+        options: options,
+        currentContract: current,
+        onApply: _apply,
+        onRemove: current == null ? null : _remove,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final activity = widget.activity;
+    final basicEligible =
+        activity.kind == ActivityKind.run &&
+        activity.manual != true &&
+        (activity.source == ActivitySource.strava ||
+            isRunNowActivityDistanceEligible(activity));
+    if (!basicEligible) return const SizedBox.shrink();
+
+    final contractsState = ref.watch(myActiveContractsProvider);
+    return contractsState.when(
+      data: (contracts) {
+        if (contracts.isEmpty) return const _ApplyToContractEmptyCard();
+        _ensureLoaded(contracts);
+        return FutureBuilder<_ApplyCardData>(
+          future: _future,
+          builder: (context, snapshot) {
+            if (_saving || !snapshot.hasData) {
+              return _ApplyToContractStatusCard(
+                message: _saving ? 'Đang áp dụng...' : 'Đang tải kèo...',
+              );
+            }
+            final data = snapshot.data!;
+            RunContract? appliedContract;
+            for (final contract in contracts) {
+              if (contract.id == data.assignedContractId) {
+                appliedContract = contract;
+                break;
+              }
+            }
+            if (appliedContract != null) {
+              return _ApplyToContractAppliedChip(
+                contractTitle: appliedContract.title,
+                error: _error,
+                onTap: () => _openPicker(data.options, appliedContract),
+              );
+            }
+            final eligibleOptions = data.options
+                .where((option) => option.eligible)
+                .toList();
+            final singleDirectContract =
+                contracts.length == 1 && eligibleOptions.length == 1
+                ? eligibleOptions.single.contract
+                : null;
+            return _ApplyToContractPromptCard(
+              contractTitle: singleDirectContract?.title,
+              error: _error,
+              onPressed: singleDirectContract != null
+                  ? () => _apply(singleDirectContract)
+                  : () => _openPicker(data.options, null),
+            );
+          },
+        );
+      },
+      error: (error, stack) => const SizedBox.shrink(),
+      loading: () => const SizedBox.shrink(),
+    );
+  }
+}
+
+class _ApplyToContractEmptyCard extends StatelessWidget {
+  const _ApplyToContractEmptyCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return GlassPanel(
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        children: [
+          Icon(Icons.flag_outlined, color: palette.textMuted),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Chưa có kèo đang chạy. Tạo hoặc tham gia kèo để áp dụng '
+              'buổi chạy này.',
+              style: TextStyle(color: palette.textMuted),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ApplyToContractStatusCard extends StatelessWidget {
+  const _ApplyToContractStatusCard({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassPanel(
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            message,
+            style: TextStyle(color: context.runNowPalette.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ApplyToContractPromptCard extends StatelessWidget {
+  const _ApplyToContractPromptCard({
+    required this.contractTitle,
+    required this.error,
+    required this.onPressed,
+  });
+
+  final String? contractTitle;
+  final String? error;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return GlassPanel(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: palette.accent.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(
+                  Icons.flag_rounded,
+                  size: 19,
+                  color: palette.accent,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Áp dụng vào kèo',
+                      style: TextStyle(
+                        color: palette.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      contractTitle ?? 'Chọn kèo',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              FilledButton(
+                onPressed: onPressed,
+                child: Text(error != null ? 'Thử lại' : 'Áp dụng'),
+              ),
+            ],
+          ),
+          if (error != null) ...[
+            const SizedBox(height: 10),
+            _ApplyErrorBanner(message: error!),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ApplyToContractAppliedChip extends StatelessWidget {
+  const _ApplyToContractAppliedChip({
+    required this.contractTitle,
+    required this.error,
+    required this.onTap,
+  });
+
+  final String contractTitle;
+  final String? error;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GlassPanel(
+          borderRadius: 999,
+          child: InkWell(
+            customBorder: const StadiumBorder(),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 10,
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: RunNowSemanticColors.success,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          const TextSpan(text: 'Đang áp dụng cho '),
+                          TextSpan(
+                            text: contractTitle,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: palette.textMuted,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (error != null) ...[
+          const SizedBox(height: 10),
+          _ApplyErrorBanner(message: error!),
+        ],
+      ],
+    );
+  }
+}
+
+class _ApplyErrorBanner extends StatelessWidget {
+  const _ApplyErrorBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.error.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              size: 18,
+              color: colorScheme.error,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                message,
+                style: TextStyle(color: colorScheme.error, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ApplyToContractPickerSheet extends StatefulWidget {
+  const _ApplyToContractPickerSheet({
+    required this.activity,
+    required this.options,
+    required this.currentContract,
+    required this.onApply,
+    required this.onRemove,
+  });
+
+  final ActivitySummary activity;
+  final List<ContractApplyOption> options;
+  final RunContract? currentContract;
+  final Future<void> Function(RunContract contract) onApply;
+  final Future<void> Function(RunContract contract)? onRemove;
+
+  @override
+  State<_ApplyToContractPickerSheet> createState() =>
+      _ApplyToContractPickerSheetState();
+}
+
+class _ApplyToContractPickerSheetState
+    extends State<_ApplyToContractPickerSheet> {
+  late String? _selectedContractId;
+  bool _saving = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _bytes = _loadBytes();
+    final preferred = widget.options.where((option) => option.eligible);
+    _selectedContractId =
+        widget.currentContract?.id ??
+        (preferred.isNotEmpty
+            ? preferred.first.contract.id
+            : widget.options.isNotEmpty
+            ? widget.options.first.contract.id
+            : null);
   }
 
-  @override
-  void didUpdateWidget(covariant _StoragePhoto oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.path != widget.path) _bytes = _loadBytes();
+  ContractApplyOption? get _selectedOption {
+    final id = _selectedContractId;
+    if (id == null) return null;
+    for (final option in widget.options) {
+      if (option.contract.id == id) return option;
+    }
+    return null;
   }
 
-  Future<Uint8List?> _loadBytes() =>
-      FirebaseStorage.instance.ref(widget.path).getData(_maxPhotoBytes);
+  Future<void> _submit() async {
+    final selected = _selectedOption?.contract;
+    if (selected == null) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.onApply(selected);
+      if (mounted) Navigator.of(context).pop();
+    } catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _removeCurrent() async {
+    final current = widget.currentContract;
+    if (current == null) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.onRemove!(current);
+      if (mounted) Navigator.of(context).pop();
+    } catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Uint8List?>(
-      future: _bytes,
-      builder: (context, snapshot) {
-        final bytes = snapshot.data;
-        if (bytes == null) {
-          return ColoredBox(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: Center(
-              child: snapshot.hasError
-                  ? const Icon(Icons.broken_image_outlined)
-                  : const CircularProgressIndicator(strokeWidth: 2),
+    final palette = context.runNowPalette;
+    final selectedTitle = _selectedOption?.contract.title ?? 'kèo';
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 14,
+        right: 14,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 12,
+      ),
+      child: GlassPanel(
+        borderRadius: 22,
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
             ),
-          );
-        }
-        final image = Image.memory(
-          bytes,
-          fit: widget.fit,
-          width: double.infinity,
-          height: double.infinity,
-        );
-        if (!widget.interactive) return image;
-        return InteractiveViewer(minScale: 1, maxScale: 4, child: image);
-      },
+            Text(
+              'Áp dụng vào kèo nào?',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '${formatDistance(widget.activity.distanceMeters)} · '
+              '${_formatShortDate(widget.activity.startedAt)}',
+              style: TextStyle(color: palette.textMuted),
+            ),
+            const SizedBox(height: 12),
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * 0.45,
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: widget.options.length,
+                separatorBuilder: (context, index) =>
+                    const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final option = widget.options[index];
+                  return _ContractApplyOptionTile(
+                    option: option,
+                    selected: option.contract.id == _selectedContractId,
+                    onSelected: option.eligible
+                        ? () => setState(
+                            () => _selectedContractId = option.contract.id,
+                          )
+                        : null,
+                  );
+                },
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              _ApplyErrorBanner(message: _error!),
+            ],
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                if (widget.onRemove != null) ...[
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _saving ? null : _removeCurrent,
+                      child: const Text('Gỡ khỏi kèo'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  flex: 2,
+                  child: FilledButton(
+                    onPressed: _saving || _selectedOption == null
+                        ? null
+                        : _submit,
+                    child: _saving
+                        ? const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(
+                            'Áp dụng vào $selectedTitle',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
+
+class _ContractApplyOptionTile extends StatelessWidget {
+  const _ContractApplyOptionTile({
+    required this.option,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final ContractApplyOption option;
+  final bool selected;
+  final VoidCallback? onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final eligible = option.eligible;
+    final muted = onSurface.withValues(alpha: 0.5);
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onSelected,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: eligible && selected
+              ? palette.accent.withValues(alpha: 0.12)
+              : eligible
+              ? Colors.transparent
+              : Color.alphaBlend(
+                  palette.accent.withValues(alpha: 0.05),
+                  palette.glassStart,
+                ),
+          border: Border.all(
+            color: eligible && selected ? palette.accent : palette.border,
+          ),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: eligible && selected
+                      ? palette.accent
+                      : eligible
+                      ? palette.border
+                      : muted,
+                  width: 2,
+                ),
+              ),
+              child: eligible && selected
+                  ? Center(
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: palette.accent,
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    option.contract.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: eligible ? onSurface : muted,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    eligible
+                        ? 'Đã ${_contractValueLabel(option.contract.metric, option.currentValue)}'
+                              ' / ${_contractValueLabel(option.contract.metric, option.contract.targetValue)}'
+                        : option.ineligibleReason!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: eligible ? palette.textMuted : muted,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (eligible)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${_ratioPercent(option.currentValue, option.contract.targetValue)}%',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: onSurface,
+                    ),
+                  ),
+                  if (option.previewValue != null)
+                    Text(
+                      '+${_contractValueLabel(option.contract.metric, option.previewValue! - option.currentValue)}'
+                      '→${_ratioPercent(option.previewValue!, option.contract.targetValue)}%',
+                      style: TextStyle(
+                        color: palette.accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                ],
+              )
+            else
+              Text(
+                '–',
+                style: TextStyle(color: muted, fontWeight: FontWeight.w800),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _contractValueLabel(RunContractMetric metric, double value) =>
+    switch (metric) {
+      RunContractMetric.distance || RunContractMetric.longestRun =>
+        '${value.toStringAsFixed(value % 1 == 0 ? 0 : 1)} km',
+      RunContractMetric.activityCount => '${value.toInt()} buổi',
+      RunContractMetric.activeDays => '${value.toInt()} ngày',
+    };
+
+int _ratioPercent(double value, double target) =>
+    target <= 0 ? 0 : ((value / target) * 100).clamp(0, 999).round();
+
+String _formatShortDate(DateTime date) =>
+    '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}';
 
 class _CachedSummaryFallback extends StatelessWidget {
   const _CachedSummaryFallback({

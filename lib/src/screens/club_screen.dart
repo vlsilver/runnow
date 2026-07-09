@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/dashboard_analytics.dart';
 import 'package:myrun/src/formatters.dart';
@@ -1206,6 +1208,9 @@ class _RankingBoardCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
+    final podium = entries.take(3).toList();
+    final rest = entries.skip(3).toList();
+    final topScore = entries.isEmpty ? 0.0 : entries.first.score;
     return GlassPanel(
       borderRadius: 0,
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 6),
@@ -1220,17 +1225,567 @@ class _RankingBoardCard extends StatelessWidget {
             color: palette.tertiary,
           ),
           const SizedBox(height: 12),
-          for (var index = 0; index < entries.length; index++)
+          if (podium.isNotEmpty)
+            _RankingPodium(
+              entries: podium,
+              metric: metric,
+              range: range,
+              currentUid: currentUid,
+            ),
+          for (var index = 0; index < rest.length; index++)
             _RankingCard(
-              rank: index + 1,
-              entry: entries[index],
+              rank: index + 4,
+              entry: rest[index],
               metric: metric,
               currentUid: currentUid,
+              topScore: topScore,
             ),
         ],
       ),
     );
   }
+}
+
+/// Bục top 3: hạng nhì bên trái, hạng nhất giữa (avatar to nhất), hạng ba bên
+/// phải — thay cho danh sách phẳng cũ để làm nổi bật 3 vị trí đầu. Bấm vào
+/// một slot mở popup chúc mừng riêng cho thành viên đó.
+class _RankingPodium extends StatelessWidget {
+  const _RankingPodium({
+    required this.entries,
+    required this.metric,
+    required this.range,
+    required this.currentUid,
+  });
+
+  final List<_RankingEntry> entries;
+  final ClubRankingMetric metric;
+  final ClubRankingRange range;
+  final String? currentUid;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final first = entries.isNotEmpty ? entries[0] : null;
+    final second = entries.length > 1 ? entries[1] : null;
+    final third = entries.length > 2 ? entries[2] : null;
+    void onTap(int rank, _RankingEntry entry) => _showRankCelebration(
+      context,
+      entry: entry,
+      rank: rank,
+      metric: metric,
+      range: range,
+    );
+    // Mỗi cột bọc trong SizedBox cùng chiều cao cố định + Align bottomCenter —
+    // ép tên/điểm số (hàng trên) và đáy bệ (hàng dưới) luôn thẳng hàng tuyệt
+    // đối giữa 3 cột, không phụ thuộc vào cách Row tự tính cross-axis khi 3
+    // cột có nội dung cao thấp khác nhau (nguồn gốc lỗi lệch trước đó).
+    const figureZoneHeight = 182.0;
+    const standZoneHeight = 66.0;
+    Widget zone(double height, Widget? child) => SizedBox(
+      height: height,
+      child: child == null
+          ? null
+          : Align(alignment: Alignment.bottomCenter, child: child),
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 20),
+      child: Column(
+        children: [
+          // Hình đại diện/tên/điểm số căn theo cỡ avatar (chỉ hạng 1 to hơn) —
+          // tách riêng khỏi bệ phía dưới để tên/điểm số luôn ngang hàng nhau,
+          // không bị lệch theo chiều cao bệ (vốn khác nhau giữa các hạng).
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: zone(
+                  figureZoneHeight,
+                  second == null
+                      ? null
+                      : _PodiumFigure(
+                          rank: 2,
+                          entry: second,
+                          metric: metric,
+                          avatarSize: 66,
+                          onTap: () => onTap(2, second),
+                        ),
+                ),
+              ),
+              Expanded(
+                child: zone(
+                  figureZoneHeight,
+                  first == null
+                      ? null
+                      : _PodiumFigure(
+                          rank: 1,
+                          entry: first,
+                          metric: metric,
+                          avatarSize: 88,
+                          onTap: () => onTap(1, first),
+                        ),
+                ),
+              ),
+              Expanded(
+                child: zone(
+                  figureZoneHeight,
+                  third == null
+                      ? null
+                      : _PodiumFigure(
+                          rank: 3,
+                          entry: third,
+                          metric: metric,
+                          avatarSize: 66,
+                          onTap: () => onTap(3, third),
+                        ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: zone(
+                  standZoneHeight,
+                  second == null
+                      ? null
+                      : _PodiumStand(
+                          rank: 2,
+                          rankColor: palette.secondary,
+                          onTap: () => onTap(2, second),
+                        ),
+                ),
+              ),
+              Expanded(
+                child: zone(
+                  standZoneHeight,
+                  first == null
+                      ? null
+                      : _PodiumStand(
+                          rank: 1,
+                          rankColor: palette.tertiary,
+                          onTap: () => onTap(1, first),
+                        ),
+                ),
+              ),
+              Expanded(
+                child: zone(
+                  standZoneHeight,
+                  third == null
+                      ? null
+                      : _PodiumStand(
+                          rank: 3,
+                          rankColor: palette.accent,
+                          onTap: () => onTap(3, third),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PodiumFigure extends StatelessWidget {
+  const _PodiumFigure({
+    required this.rank,
+    required this.entry,
+    required this.metric,
+    required this.avatarSize,
+    required this.onTap,
+  });
+
+  final int rank;
+  final _RankingEntry entry;
+  final ClubRankingMetric metric;
+  final double avatarSize;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final rankColor = switch (rank) {
+      1 => palette.tertiary,
+      2 => palette.secondary,
+      _ => palette.accent,
+    };
+    final member = entry.entry;
+    final (value, unit) = _splitScoreLabel(_scoreLabel(entry, metric));
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (rank == 1)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 2),
+              child: Text('👑', style: TextStyle(fontSize: 20)),
+            ),
+          Container(
+            width: avatarSize,
+            height: avatarSize,
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: rankColor),
+            child: _LeaderboardAvatar(entry: member, size: avatarSize - 6),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            member.displayName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+          ),
+          const SizedBox(height: 2),
+          Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: value,
+                  style: TextStyle(
+                    color: rank == 1 ? rankColor : onSurface,
+                    fontWeight: FontWeight.w900,
+                    fontSize: rank == 1 ? 18 : 15,
+                  ),
+                ),
+                if (unit.isNotEmpty)
+                  TextSpan(
+                    text: ' $unit',
+                    style: TextStyle(
+                      color: onSurface.withValues(alpha: 0.5),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bệ podium bên dưới mỗi slot — cao thấp theo hạng (nhất cao nhất) để tạo
+/// đúng hiệu ứng bục 3 bậc, huy hiệu hạng (dạng huy chương + ru-băng) nằm
+/// ngay trong bệ. Bấm vào cũng mở popup chúc mừng như bấm vào hình đại diện.
+class _PodiumStand extends StatelessWidget {
+  const _PodiumStand({
+    required this.rank,
+    required this.rankColor,
+    required this.onTap,
+  });
+
+  final int rank;
+  final Color rankColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final standHeight = switch (rank) {
+      1 => 66.0,
+      2 => 48.0,
+      _ => 38.0,
+    };
+    // Chiều rộng huy chương phải chừa đủ margin so với chiều cao bệ (huy
+    // chương có tỉ lệ cố định 220:300 theo file SVG gốc) — hạng càng thấp bệ
+    // càng ngắn nên huy chương phải nhỏ dần theo, tránh tràn khung như bản
+    // vẽ tay (CustomPainter) trước đây.
+    final medalWidth = switch (rank) {
+      1 => 38.0,
+      2 => 26.0,
+      _ => 19.0,
+    };
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        height: standHeight,
+        alignment: Alignment.topCenter,
+        clipBehavior: Clip.antiAlias,
+        padding: const EdgeInsets.only(top: 6),
+        decoration: BoxDecoration(
+          color: Color.alphaBlend(
+            rankColor.withValues(alpha: 0.16),
+            palette.glassStart,
+          ),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          border: Border(
+            top: BorderSide(color: rankColor.withValues(alpha: 0.5), width: 2),
+          ),
+        ),
+        child: _Medal(rank: rank, width: medalWidth),
+      ),
+    );
+  }
+}
+
+/// Huy chương thật (vàng/bạc/đồng) từ `assets/medals/` — thay hoàn toàn cho
+/// bản vẽ tay bằng CustomPainter trước đó.
+class _Medal extends StatelessWidget {
+  const _Medal({required this.rank, required this.width});
+
+  final int rank;
+  final double width;
+
+  static const _assetByRank = {
+    1: 'assets/medals/medal-gold.svg',
+    2: 'assets/medals/medal-silver.svg',
+    3: 'assets/medals/medal-bronze.svg',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    // Tỉ lệ gốc của file SVG là 220:300 (rộng:cao).
+    return SvgPicture.asset(
+      _assetByRank[rank] ?? _assetByRank[3]!,
+      width: width,
+      height: width * 300 / 220,
+    );
+  }
+}
+
+void _showRankCelebration(
+  BuildContext context, {
+  required _RankingEntry entry,
+  required int rank,
+  required ClubRankingMetric metric,
+  required ClubRankingRange range,
+}) {
+  showDialog<void>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.72),
+    builder: (context) =>
+        _RankCelebrationDialog(entry: entry, rank: rank, metric: metric, range: range),
+  );
+}
+
+/// Popup chúc mừng — bấm vào một slot trên podium (hạng 1-3) sẽ mở popup này,
+/// chúc mừng đúng thành viên vừa bấm (không chỉ riêng "bạn").
+class _RankCelebrationDialog extends StatefulWidget {
+  const _RankCelebrationDialog({
+    required this.entry,
+    required this.rank,
+    required this.metric,
+    required this.range,
+  });
+
+  final _RankingEntry entry;
+  final int rank;
+  final ClubRankingMetric metric;
+  final ClubRankingRange range;
+
+  @override
+  State<_RankCelebrationDialog> createState() =>
+      _RankCelebrationDialogState();
+}
+
+class _RankCelebrationDialogState extends State<_RankCelebrationDialog>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final rankColor = switch (widget.rank) {
+      1 => palette.tertiary,
+      2 => palette.secondary,
+      _ => palette.accent,
+    };
+    final member = widget.entry.entry;
+    final scoreLabel = _scoreLabel(widget.entry, widget.metric);
+    final rangeLabel = _rankingRangeLabel(widget.range);
+    final callName = _callName(member.displayName);
+    final (greeting, rankLabel) = switch (widget.rank) {
+      1 => ('Xuất sắc, $callName!', 'HẠNG NHẤT'),
+      2 => ('Rất tốt, $callName!', 'HẠNG NHÌ'),
+      _ => ('Giữ vững, $callName!', 'HẠNG BA'),
+    };
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Stack(
+        alignment: Alignment.topCenter,
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            top: -40,
+            child: IgnorePointer(
+              child: AnimatedBuilder(
+                animation: _controller,
+                builder: (context, _) =>
+                    _CelebrationBurst(progress: _controller.value, color: rankColor),
+              ),
+            ),
+          ),
+          Container(
+            margin: const EdgeInsets.only(top: 30),
+            padding: const EdgeInsets.fromLTRB(26, 34, 26, 24),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [palette.glassStart, palette.glassEnd],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(color: palette.border),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _Medal(rank: widget.rank, width: 100),
+                const SizedBox(height: 6),
+                Text(
+                  '$rankLabel · $rangeLabel',
+                  style: TextStyle(
+                    color: rankColor,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  greeting,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 22,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: widget.rank == 1
+                            ? 'Đang dẫn đầu Câu lạc bộ với '
+                            : 'Đang đứng thứ ${widget.rank} với ',
+                      ),
+                      TextSpan(
+                        text: scoreLabel,
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      const TextSpan(text: '.'),
+                    ],
+                  ),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: onSurface.withValues(alpha: 0.68)),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: rankColor,
+                      foregroundColor: Colors.black,
+                    ),
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text(
+                      'Đã xem',
+                      style: TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 0,
+            right: 0,
+            child: GlassIconButton(
+              icon: const Icon(Icons.close_rounded, size: 18),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Hiệu ứng pháo hoa nhẹ (không confetti sặc sỡ) phía sau huy chương — vài
+/// chấm nhỏ toả ra rồi mờ dần, lặp lại liên tục khi popup còn mở.
+class _CelebrationBurst extends StatelessWidget {
+  const _CelebrationBurst({required this.progress, required this.color});
+
+  final double progress;
+  final Color color;
+
+  static const _particles = [
+    (angle: -2.0, distance: 46.0, delay: 0.0),
+    (angle: -1.2, distance: 58.0, delay: 0.15),
+    (angle: -0.5, distance: 50.0, delay: 0.3),
+    (angle: 0.3, distance: 60.0, delay: 0.05),
+    (angle: 1.0, distance: 52.0, delay: 0.4),
+    (angle: 1.7, distance: 44.0, delay: 0.2),
+    (angle: 2.6, distance: 56.0, delay: 0.35),
+    (angle: 3.4, distance: 48.0, delay: 0.1),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 200,
+      height: 140,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          for (final particle in _particles)
+            _dot(particle.angle, particle.distance, particle.delay),
+        ],
+      ),
+    );
+  }
+
+  Widget _dot(double angle, double distance, double delay) {
+    final t = ((progress - delay) % 1.0 + 1.0) % 1.0;
+    final eased = Curves.easeOut.transform(t);
+    final dx = math.cos(angle) * distance * eased;
+    final dy = math.sin(angle) * distance * eased;
+    final opacity = (1 - eased).clamp(0.0, 1.0) * 0.75;
+    return Transform.translate(
+      offset: Offset(dx, dy),
+      child: Opacity(
+        opacity: opacity,
+        child: Container(
+          width: 5,
+          height: 5,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+        ),
+      ),
+    );
+  }
+}
+
+/// Tên gọi thân mật để chúc mừng — lấy từ CUỐI cụm tên (theo cách người Việt
+/// thường gọi nhau, vd "Trần Hữu Dần" → "Dần"); tên 1 từ (nickname) giữ nguyên.
+String _callName(String displayName) {
+  final parts = displayName.trim().split(RegExp(r'\s+'));
+  return parts.isEmpty ? displayName : parts.last;
 }
 
 class _ClubSummaryCard extends StatelessWidget {
@@ -1614,62 +2169,136 @@ class _RankingCard extends StatelessWidget {
     required this.entry,
     required this.metric,
     required this.currentUid,
+    required this.topScore,
   });
 
   final int rank;
   final _RankingEntry entry;
   final ClubRankingMetric metric;
   final String? currentUid;
+  final double topScore;
 
   @override
   Widget build(BuildContext context) {
     final member = entry.entry;
+    final isMe = member.uid == currentUid;
+    final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    return GlassPanel(
+    final ratio = _relativeRatio(entry.score, topScore, metric);
+    final (value, unit) = _splitScoreLabel(_scoreLabel(entry, metric));
+    final barColor = isMe ? palette.accent : _flatMemberColor(member.uid);
+    return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      borderRadius: 18,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: () {
-          if (member.uid == currentUid) {
-            context.go('/');
-            return;
-          }
-          context.push('/club/${member.uid}');
-        },
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
-          child: Row(
-            children: [
-              _RankBadge(rank: rank),
-              const SizedBox(width: 9),
-              _LeaderboardAvatar(entry: member, size: 40),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      member.displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+      decoration: isMe
+          ? BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: palette.accent.withValues(alpha: 0.45)),
+            )
+          : null,
+      child: GlassPanel(
+        borderRadius: 16,
+        gradient: isMe
+            ? LinearGradient(
+                colors: [
+                  Color.alphaBlend(
+                    palette.accent.withValues(alpha: 0.14),
+                    palette.glassStart,
+                  ),
+                  Color.alphaBlend(
+                    palette.accent.withValues(alpha: 0.14),
+                    palette.glassEnd,
+                  ),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : null,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            if (isMe) {
+              context.go('/');
+              return;
+            }
+            context.push('/club/${member.uid}');
+          },
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 10, 12, 10),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 22,
+                  child: Text(
+                    '$rank',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: onSurface.withValues(alpha: 0.5),
+                      fontWeight: FontWeight.w800,
                     ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                _scoreLabel(entry, metric),
-                style: TextStyle(
-                  color: onSurface,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
+                const SizedBox(width: 10),
+                _FlatMemberAvatar(member: member, size: 36),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              member.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                          if (isMe) ...[
+                            const SizedBox(width: 6),
+                            _MiniChip(label: 'Bạn', color: palette.secondary),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: LinearProgressIndicator(
+                          value: ratio,
+                          minHeight: 4,
+                          backgroundColor: onSurface.withValues(alpha: 0.09),
+                          color: barColor,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(width: 10),
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: value,
+                        style: TextStyle(
+                          color: onSurface,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      if (unit.isNotEmpty)
+                        TextSpan(
+                          text: ' $unit',
+                          style: TextStyle(
+                            color: onSurface.withValues(alpha: 0.5),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1677,50 +2306,66 @@ class _RankingCard extends StatelessWidget {
   }
 }
 
-class _RankBadge extends StatelessWidget {
-  const _RankBadge({required this.rank});
+class _FlatMemberAvatar extends StatelessWidget {
+  const _FlatMemberAvatar({required this.member, required this.size});
 
-  final int rank;
+  final LeaderboardEntry member;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
-    final muted = Theme.of(
-      context,
-    ).colorScheme.onSurface.withValues(alpha: 0.42);
-    final palette = context.runNowPalette;
-    final color = switch (rank) {
-      1 => palette.tertiary,
-      2 => palette.secondary,
-      3 => palette.accent,
-      _ => muted,
-    };
-    final icon = switch (rank) {
-      1 => Icons.emoji_events,
-      2 => Icons.military_tech,
-      3 => Icons.workspace_premium,
-      _ => null,
-    };
-    return Container(
-      width: 30,
-      height: 30,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(11),
-      ),
-      child: icon == null
-          ? Center(
-              child: Text(
-                '$rank',
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 14,
-                ),
+    final avatarUrl = member.avatarUrl;
+    final color = _flatMemberColor(member.uid);
+    return CircleAvatar(
+      radius: size / 2,
+      backgroundColor: color,
+      backgroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl),
+      child: avatarUrl == null
+          ? Text(
+              member.displayName.characters.first.toUpperCase(),
+              style: const TextStyle(
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
               ),
             )
-          : Icon(icon, color: color, size: 18),
+          : null,
     );
   }
+}
+
+/// Màu phẳng ổn định theo uid — dùng chung cho avatar và thanh progress của
+/// cùng 1 thành viên trong danh sách xếp hạng (hạng 4+).
+const _flatMemberPalette = [
+  RunNowDataColors.cadence,
+  RunNowDataColors.energy,
+  RunNowDataColors.pace,
+  RunNowDataColors.elevation,
+  RunNowDataColors.zone3,
+  RunNowDataColors.zone4,
+  RunNowDataColors.heart,
+];
+
+Color _flatMemberColor(String uid) =>
+    _flatMemberPalette[uid.hashCode.abs() % _flatMemberPalette.length];
+
+/// Tách "giá trị" và "đơn vị" từ chuỗi đã format sẵn (vd "19.41 km" ->
+/// ("19.41", "km")) để hiện đậm/nhạt khác nhau như trên bục xếp hạng.
+(String, String) _splitScoreLabel(String label) {
+  final index = label.lastIndexOf(' ');
+  if (index <= 0) return (label, '');
+  return (label.substring(0, index), label.substring(index + 1));
+}
+
+/// Tỉ lệ so với người dẫn đầu, dùng cho thanh progress trong danh sách xếp
+/// hạng. Với pace (thấp hơn là tốt hơn) tỉ lệ được đảo ngược so với các
+/// metric còn lại (cao hơn là tốt hơn).
+double _relativeRatio(double score, double topScore, ClubRankingMetric metric) {
+  if (metric == ClubRankingMetric.pace) {
+    if (score <= 0 || !score.isFinite || topScore <= 0) return 0;
+    return (topScore / score).clamp(0.0, 1.0);
+  }
+  if (topScore <= 0 || !topScore.isFinite) return 0;
+  return (score / topScore).clamp(0.0, 1.0);
 }
 
 class _EmptyClub extends StatelessWidget {

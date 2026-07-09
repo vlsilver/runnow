@@ -15,28 +15,10 @@ class JournalScreen extends ConsumerWidget {
       orElse: () => false,
     );
     final stravaConnected = ref.watch(stravaConnectionProvider);
-    if (!profileLoading && !stravaConnected) {
-      final strava = ref.watch(stravaAuthProvider);
-      return Scaffold(
-        appBar: AppBar(title: const Text('Nhật ký')),
-        body: Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
-            child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              children: [
-                _JournalConnectStravaCard(
-                  loading: strava.loading,
-                  errorMessage: strava.errorMessage,
-                  onConnect: ref.read(stravaAuthProvider).connect,
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
+    final strava = ref.watch(stravaAuthProvider);
+    // Chỉ nhắc kết nối Strava, không chặn danh sách — session tự chạy bằng
+    // 3i (source: runnow) không phụ thuộc Strava nên vẫn phải hiện được.
+    final showConnectCard = !profileLoading && !stravaConnected;
     final activities = ref.watch(journalActivitiesProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Nhật ký')),
@@ -45,50 +27,72 @@ class JournalScreen extends ConsumerWidget {
           ref.read(syncControllerProvider).startBackgroundSync(force: true);
         },
         child: activities.when(
-          data: (items) => LayoutBuilder(
-            builder: (context, constraints) {
-              if (items.isEmpty) {
-                return ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: const [
-                    Padding(
-                      padding: EdgeInsets.all(32),
-                      child: Center(child: Text('Chưa có hoạt động.')),
+          data: (items) => Column(
+            children: [
+              if (showConnectCard)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 16, 0, 0),
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 760),
+                      child: _JournalConnectStravaCard(
+                        loading: strava.loading,
+                        errorMessage: strava.errorMessage,
+                        onConnect: ref.read(stravaAuthProvider).connect,
+                      ),
                     ),
-                  ],
-                );
-              }
-              if (constraints.maxWidth >= 920) {
-                return GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 620,
-                    mainAxisExtent: 210,
-                    crossAxisSpacing: 18,
-                    mainAxisSpacing: 4,
                   ),
-                  itemCount: items.length,
-                  itemBuilder: (context, index) => ActivityTile(
-                    activity: items[index].activity,
-                    sequence: index + 1,
-                    preferredStravaActivityId:
-                        items[index].preferredStravaActivityId,
-                  ),
-                );
-              }
-              return ListView.builder(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                physics: const AlwaysScrollableScrollPhysics(),
-                itemCount: items.length,
-                itemBuilder: (context, index) => ActivityTile(
-                  activity: items[index].activity,
-                  sequence: index + 1,
-                  preferredStravaActivityId:
-                      items[index].preferredStravaActivityId,
                 ),
-              );
-            },
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (items.isEmpty) {
+                      return ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: const [
+                          Padding(
+                            padding: EdgeInsets.all(32),
+                            child: Center(child: Text('Chưa có hoạt động.')),
+                          ),
+                        ],
+                      );
+                    }
+                    if (constraints.maxWidth >= 920) {
+                      return GridView.builder(
+                        padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        gridDelegate:
+                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 620,
+                              mainAxisExtent: 210,
+                              crossAxisSpacing: 18,
+                              mainAxisSpacing: 4,
+                            ),
+                        itemCount: items.length,
+                        itemBuilder: (context, index) => ActivityTile(
+                          activity: items[index].activity,
+                          sequence: index + 1,
+                          preferredStravaActivityId:
+                              items[index].preferredStravaActivityId,
+                        ),
+                      );
+                    }
+                    return ListView.builder(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      itemCount: items.length,
+                      itemBuilder: (context, index) => ActivityTile(
+                        activity: items[index].activity,
+                        sequence: index + 1,
+                        preferredStravaActivityId:
+                            items[index].preferredStravaActivityId,
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
           error: (error, stack) => ListView(
             children: [

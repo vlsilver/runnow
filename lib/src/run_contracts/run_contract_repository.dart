@@ -22,6 +22,9 @@ abstract interface class RunContractRepository {
   Stream<List<RunContract>> watchMyActiveContracts();
   Stream<RunContract?> watchContract(String contractId);
   Stream<List<RunContract>> watchClubContracts();
+
+  /// Các kèo (tạo hoặc join) đã kết thúc — hoàn thành, thất bại hoặc bị huỷ.
+  Stream<List<RunContract>> watchMyContractHistory();
   Future<String> create({
     required RunContractDraft draft,
     required RunContractPeriod period,
@@ -57,6 +60,10 @@ abstract interface class RunContractRepository {
     required bool targetMet,
     List<String> countedActivityIds = const [],
   });
+
+  /// Xóa hẳn kèo — chỉ người tạo mới gọi được, và chỉ khi chưa ai khác tham
+  /// gia. Ném `StateError` nếu không đúng người tạo hoặc đã có người khác.
+  Future<void> delete(String contractId);
 }
 
 class FirestoreRunContractRepository implements RunContractRepository {
@@ -94,6 +101,20 @@ class FirestoreRunContractRepository implements RunContractRepository {
   Stream<List<RunContract>> watchClubContracts() => _contracts
       .where('visibility', isEqualTo: RunContractVisibility.club.value)
       .where('status', isEqualTo: RunContractStatus.active.value)
+      .snapshots()
+      .map(_sortedContracts);
+
+  @override
+  Stream<List<RunContract>> watchMyContractHistory() => _contracts
+      .where('participantUids', arrayContains: _uid)
+      .where(
+        'status',
+        whereIn: [
+          RunContractStatus.completed.value,
+          RunContractStatus.failed.value,
+          RunContractStatus.cancelled.value,
+        ],
+      )
       .snapshots()
       .map(_sortedContracts);
 
@@ -477,6 +498,30 @@ class FirestoreRunContractRepository implements RunContractRepository {
         'updatedAt': FieldValue.serverTimestamp(),
       });
       return next;
+    });
+  }
+
+  @override
+  Future<void> delete(String contractId) async {
+    final ref = _contracts.doc(contractId);
+    final claimsSnapshot = await _activityClaims
+        .where('contractId', isEqualTo: contractId)
+        .get();
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(ref);
+      final data = snapshot.data();
+      if (data == null) return;
+      if (data['creatorUid'] != _uid) {
+        throw StateError('Chỉ người tạo kèo mới có thể xóa.');
+      }
+      final participants = data['participants'] as Map<String, dynamic>?;
+      if ((participants?.length ?? 1) > 1) {
+        throw StateError('Kèo đã có người khác tham gia nên không thể xóa.');
+      }
+      for (final claim in claimsSnapshot.docs) {
+        transaction.delete(claim.reference);
+      }
+      transaction.delete(ref);
     });
   }
 

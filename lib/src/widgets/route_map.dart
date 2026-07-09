@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/storage_image.dart';
 
 const _lightTileTemplate =
     'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
@@ -213,6 +214,7 @@ class _FlutterRouteMap extends StatelessWidget {
                 width: 38,
                 height: 38,
                 child: _PhotoMapMarker(
+                  storagePath: photo.storagePath,
                   onTap: onPhotoTap == null ? null : () => onPhotoTap!(photo),
                 ),
               ),
@@ -265,8 +267,9 @@ class _TelemetryMapMarker extends StatelessWidget {
 }
 
 class _PhotoMapMarker extends StatelessWidget {
-  const _PhotoMapMarker({this.onTap});
+  const _PhotoMapMarker({required this.storagePath, this.onTap});
 
+  final String storagePath;
   final VoidCallback? onTap;
 
   @override
@@ -275,12 +278,13 @@ class _PhotoMapMarker extends StatelessWidget {
       onTap: onTap,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: context.runNowPalette.accent,
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white, width: 2),
           boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 8)],
         ),
-        child: const Icon(Icons.photo_camera_rounded, size: 19),
+        child: ClipOval(
+          child: StorageImage(path: storagePath, fit: BoxFit.cover),
+        ),
       ),
     );
   }

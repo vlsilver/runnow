@@ -18,11 +18,21 @@ abstract interface class ActivityRepository {
     required DateTime endExclusive,
   });
   Future<ActivityDetail> getDetail(String activityId);
-  Future<int> sync();
+  Future<ActivitySyncOutcome> sync({bool fullResync = false});
   Future<TrackedActivitySaveResult> saveTrackedActivity(
     ActivityDetail detail, {
     Map<String, dynamic>? trackingDebug,
   });
+}
+
+class ActivitySyncOutcome {
+  const ActivitySyncOutcome({
+    required this.changedCount,
+    this.changedActivities = const [],
+  });
+
+  final int changedCount;
+  final List<ActivitySummary> changedActivities;
 }
 
 class JournalActivityEntry {
@@ -138,12 +148,44 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
       snapshot,
     ) {
       _debugLog('Firestore snapshot: ${snapshot.docs.length} activities.');
-      return selectOfficialActivities(
-        snapshot.docs
-            .map((document) => ActivitySummary.fromMap(document.data()))
-            .toList(),
-      );
+      final all = snapshot.docs
+          .map((document) => ActivitySummary.fromMap(document.data()))
+          .toList();
+      _logRunNowFiltering(all);
+      return selectOfficialActivities(all);
     });
+  }
+
+  void _logRunNowFiltering(List<ActivitySummary> all) {
+    if (!kDebugMode) return;
+    final runNowActivities = all.where(
+      (activity) => activity.source == ActivitySource.runnow,
+    );
+    for (final activity in runNowActivities) {
+      final buffer = StringBuffer(
+        'RunNow ${activity.id} (${activity.name}, '
+        'kind=${activity.kind}, distance=${activity.distanceMeters}m, '
+        'startedAt=${activity.startedAt}): ',
+      );
+      if (!isRunNowActivityDistanceEligible(activity)) {
+        buffer.write(
+          'BỊ LOẠI — không đạt điều kiện (kind phải là run và '
+          '>= ${minimumOfficialRunNowDistanceMeters}m).',
+        );
+      } else {
+        final duplicate = preferredStravaDuplicate(activity, all);
+        if (duplicate != null) {
+          buffer.write(
+            'BỊ LOẠI — coi là trùng với Strava activity ${duplicate.id} '
+            '(${duplicate.name}, startedAt=${duplicate.startedAt}), '
+            'overlap=${activityOverlapRatio(activity, duplicate).toStringAsFixed(2)}.',
+          );
+        } else {
+          buffer.write('GIỮ LẠI — không trùng activity Strava nào.');
+        }
+      }
+      _debugLog(buffer.toString());
+    }
   }
 
   @override
@@ -324,14 +366,28 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
     return detail;
   }
 
+  /// Giới hạn tối đa số ngày quét lại cho sync nhanh, để tránh vô tình quét
+  /// sâu như full resync khi user lâu ngày không mở app.
+  static const _incrementalSyncLookbackCap = Duration(days: 10);
+
   @override
-  Future<int> sync() async {
+  Future<ActivitySyncOutcome> sync({bool fullResync = false}) async {
     int page = 1;
     int changed = 0;
     final changedStravaActivities = <ActivitySummary>[];
-    _debugLog('Starting full Strava sync.');
+    final afterEpochSeconds = fullResync
+        ? null
+        : await _incrementalSyncAfterEpochSeconds();
+    _debugLog(
+      fullResync
+          ? 'Starting full Strava sync.'
+          : 'Starting incremental Strava sync (after=$afterEpochSeconds).',
+    );
     while (true) {
-      final activities = await StravaClient.instance.listActivities(page: page);
+      final activities = await StravaClient.instance.listActivities(
+        after: afterEpochSeconds,
+        page: page,
+      );
       final batch = _firestore.batch();
       var pageHasChanges = false;
       final supported = activities.whereType<Map<String, dynamic>>().where((
@@ -351,12 +407,15 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
         'Page $page: received ${activities.length}, '
         'accepted ${supported.length}.',
       );
-      for (final activity in supported) {
-        final summary = _summaryFromRaw(activity);
+      final summaries = supported.map(_summaryFromRaw).toList();
+      final existingDocs = await Future.wait(
+        summaries.map((summary) => _activities.doc(summary.id).get()),
+      );
+      for (var i = 0; i < summaries.length; i++) {
+        final summary = summaries[i];
         final document = _activities.doc(summary.id);
         final nextData = activitySummaryToSyncMap(summary);
-        final existing = await document.get();
-        if (!activitySummaryHasChanges(existing.data(), nextData)) {
+        if (!activitySummaryHasChanges(existingDocs[i].data(), nextData)) {
           continue;
         }
         batch.set(document, nextData, SetOptions(merge: true));
@@ -383,7 +442,31 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
     }
     await _refreshCurrentLeaderboardEntry();
     _debugLog('Sync completed: changed $changed activities.');
-    return changed;
+    return ActivitySyncOutcome(
+      changedCount: changed,
+      changedActivities: changedStravaActivities,
+    );
+  }
+
+  /// Mốc `after` cho sync nhanh: không quét lại xa hơn buổi chạy gần nhất đã
+  /// biết, và không quét lại xa hơn [_incrementalSyncLookbackCap] — dùng mốc
+  /// nào gần hơn (phạm vi cần quét nhỏ hơn). Nếu chưa có activity nào (lần
+  /// đầu sync) thì trả `null` để quét toàn bộ như cũ.
+  Future<int?> _incrementalSyncAfterEpochSeconds() async {
+    final now = DateTime.now();
+    final lookbackCutoff = now.subtract(_incrementalSyncLookbackCap);
+    final latestSnapshot = await _activities
+        .orderBy('startedAt', descending: true)
+        .limit(1)
+        .get();
+    if (latestSnapshot.docs.isEmpty) return null;
+    final startedAtRaw = latestSnapshot.docs.first.data()['startedAt'];
+    if (startedAtRaw is! String) return null;
+    final lastActiveDay = DateTime.parse(startedAtRaw);
+    final cutoff = lastActiveDay.isAfter(lookbackCutoff)
+        ? lastActiveDay
+        : lookbackCutoff;
+    return cutoff.toUtc().millisecondsSinceEpoch ~/ 1000;
   }
 
   @override
@@ -627,7 +710,8 @@ class DemoActivityRepository implements ActivityRepository {
   }
 
   @override
-  Future<int> sync() async => _activities.length;
+  Future<ActivitySyncOutcome> sync({bool fullResync = false}) async =>
+      ActivitySyncOutcome(changedCount: _activities.length);
 
   @override
   Future<TrackedActivitySaveResult> saveTrackedActivity(

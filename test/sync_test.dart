@@ -77,10 +77,10 @@ class _StubRepository implements ActivityRepository {
       const Stream.empty();
 
   @override
-  Future<int> sync() async {
+  Future<ActivitySyncOutcome> sync({bool fullResync = false}) async {
     syncCalls += 1;
     if (error != null) throw error!;
-    return imported;
+    return ActivitySyncOutcome(changedCount: imported);
   }
 
   @override

@@ -46,13 +46,13 @@ bool isEligibleForContract(
         isRunNowActivityDistanceEligible(activity)) &&
     activity.kind == ActivityKind.run &&
     activity.manual != true &&
-    _meetsMetricDistanceThreshold(activity, contract.metric) &&
+    meetsMetricDistanceThreshold(activity, contract.metric) &&
     (includeIds == null || includeIds.contains(activity.id)) &&
     !excludeIds.contains(activity.id) &&
     !activity.startedAt.toUtc().isBefore(contract.startAt.toUtc()) &&
     activity.startedAt.toUtc().isBefore(contract.endAtExclusive.toUtc());
 
-bool _meetsMetricDistanceThreshold(
+bool meetsMetricDistanceThreshold(
   ActivitySummary activity,
   RunContractMetric metric,
 ) => switch (metric) {

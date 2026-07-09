@@ -52,17 +52,17 @@ class SettingsScreen extends ConsumerWidget {
                   profile.maybeWhen(
                     data: (user) => _SettingsRow(
                       icon: Icons.badge_outlined,
-                      title: 'Hồ sơ Club',
-                      value: user?.visibility == ProfileVisibility.public
-                          ? 'Public'
-                          : 'Private',
+                      title: 'Tên hiển thị',
+                      value: user?.nickname?.trim().isNotEmpty == true
+                          ? user!.nickname!.trim()
+                          : user?.displayName,
                       onTap: user == null
                           ? null
-                          : () => _editClubProfile(context, ref, user),
+                          : () => _editNickname(context, ref, user),
                     ),
                     orElse: () => const _SettingsRow(
                       icon: Icons.badge_outlined,
-                      title: 'Hồ sơ Club',
+                      title: 'Tên hiển thị',
                       value: 'Đang tải',
                     ),
                   ),
@@ -94,6 +94,20 @@ class SettingsScreen extends ConsumerWidget {
                           : () => ref
                                 .read(syncControllerProvider)
                                 .startBackgroundSync(force: true),
+                    ),
+                  if (stravaConnected)
+                    _SettingsRow(
+                      icon: Icons.history,
+                      title: 'Đồng bộ toàn bộ lịch sử',
+                      value: sync.syncing ? 'Đang chạy' : null,
+                      onTap: sync.syncing
+                          ? null
+                          : () => ref
+                                .read(syncControllerProvider)
+                                .startBackgroundSync(
+                                  force: true,
+                                  fullResync: true,
+                                ),
                     ),
                   if (stravaConnected)
                     _SettingsRow(
@@ -283,60 +297,52 @@ Future<void> _editElement(
       );
 }
 
-Future<void> _editClubProfile(
+Future<void> _editNickname(
   BuildContext context,
   WidgetRef ref,
   UserProfile profile,
 ) async {
-  final result = await showModalBottomSheet<_ProfileEditResult>(
+  final initialNickname = profile.nickname?.trim().isNotEmpty == true
+      ? profile.nickname!.trim()
+      : profile.displayName;
+  final result = await showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
-    builder: (context) => _ClubProfileEditorSheet(profile: profile),
+    builder: (context) => _NicknameEditorSheet(initialNickname: initialNickname),
   );
   if (result == null) return;
   await ref
       .read(memberRepositoryProvider)
       .updateCurrentProfile(
-        nickname: result.nickname,
-        avatarUrl: result.avatarUrl,
-        visibility: result.visibility,
+        nickname: result,
+        avatarUrl: profile.avatarUrl,
+        visibility: profile.visibility,
       );
 }
 
-class _ClubProfileEditorSheet extends StatefulWidget {
-  const _ClubProfileEditorSheet({required this.profile});
+class _NicknameEditorSheet extends StatefulWidget {
+  const _NicknameEditorSheet({required this.initialNickname});
 
-  final UserProfile profile;
+  final String initialNickname;
 
   @override
-  State<_ClubProfileEditorSheet> createState() =>
-      _ClubProfileEditorSheetState();
+  State<_NicknameEditorSheet> createState() => _NicknameEditorSheetState();
 }
 
-class _ClubProfileEditorSheetState extends State<_ClubProfileEditorSheet> {
+class _NicknameEditorSheetState extends State<_NicknameEditorSheet> {
   late final TextEditingController _nicknameController;
-  late final TextEditingController _avatarController;
-  late ProfileVisibility _visibility;
 
   @override
   void initState() {
     super.initState();
-    final profile = widget.profile;
-    _nicknameController = TextEditingController(
-      text: profile.nickname?.trim().isNotEmpty == true
-          ? profile.nickname!.trim()
-          : profile.displayName,
-    );
-    _avatarController = TextEditingController(text: profile.avatarUrl ?? '');
-    _visibility = profile.visibility;
+    _nicknameController = TextEditingController(text: widget.initialNickname);
   }
 
   @override
   void dispose() {
     _nicknameController.dispose();
-    _avatarController.dispose();
     super.dispose();
   }
 
@@ -355,76 +361,21 @@ class _ClubProfileEditorSheetState extends State<_ClubProfileEditorSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Hồ sơ Club', style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              'Tên hiển thị',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: _nicknameController,
-              textInputAction: TextInputAction.next,
+              textInputAction: TextInputAction.done,
               decoration: const InputDecoration(
                 labelText: 'Nickname',
                 hintText: 'Tên hiển thị trong Club',
               ),
+              onSubmitted: (_) =>
+                  Navigator.of(context).pop(_nicknameController.text),
             ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _avatarController,
-              keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
-                labelText: 'Avatar URL',
-                hintText: 'https://...',
-              ),
-            ),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: SegmentedButton<ProfileVisibility>(
-                segments: const [
-                  ButtonSegment(
-                    value: ProfileVisibility.private,
-                    icon: Icon(Icons.lock_outline),
-                    label: Text('Private'),
-                  ),
-                  ButtonSegment(
-                    value: ProfileVisibility.public,
-                    icon: Icon(Icons.public),
-                    label: Text('Public'),
-                  ),
-                ],
-                selected: {_visibility},
-                onSelectionChanged: (selection) {
-                  setState(() => _visibility = selection.single);
-                },
-              ),
-            ),
-            if (_visibility == ProfileVisibility.public) ...[
-              const SizedBox(height: 12),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.error.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.warning_amber_rounded,
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                      const SizedBox(width: 10),
-                      const Expanded(
-                        child: Text(
-                          'Public nghĩa là thành viên khác có thể xem dữ liệu luyện tập của bạn khi tính năng hồ sơ public được mở rộng.',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
             const SizedBox(height: 16),
             Row(
               children: [
@@ -437,13 +388,8 @@ class _ClubProfileEditorSheetState extends State<_ClubProfileEditorSheet> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: FilledButton(
-                    onPressed: () => Navigator.of(context).pop(
-                      _ProfileEditResult(
-                        nickname: _nicknameController.text,
-                        avatarUrl: _avatarController.text,
-                        visibility: _visibility,
-                      ),
-                    ),
+                    onPressed: () =>
+                        Navigator.of(context).pop(_nicknameController.text),
                     child: const Text('Lưu'),
                   ),
                 ),
@@ -456,19 +402,7 @@ class _ClubProfileEditorSheetState extends State<_ClubProfileEditorSheet> {
   }
 }
 
-class _ProfileEditResult {
-  const _ProfileEditResult({
-    required this.nickname,
-    required this.avatarUrl,
-    required this.visibility,
-  });
-
-  final String nickname;
-  final String avatarUrl;
-  final ProfileVisibility visibility;
-}
-
-class _AccountHeader extends StatelessWidget {
+class _AccountHeader extends ConsumerStatefulWidget {
   const _AccountHeader({required this.profile, required this.onEdit});
   const _AccountHeader.loading() : profile = null, onEdit = null;
 
@@ -476,56 +410,196 @@ class _AccountHeader extends StatelessWidget {
   final VoidCallback? onEdit;
 
   @override
+  ConsumerState<_AccountHeader> createState() => _AccountHeaderState();
+}
+
+class _AccountHeaderState extends ConsumerState<_AccountHeader> {
+  bool _uploadingAvatar = false;
+  bool _updatingVisibility = false;
+
+  Future<void> _pickAvatar() async {
+    final profile = widget.profile;
+    if (profile == null) return;
+    setState(() => _uploadingAvatar = true);
+    try {
+      final url = await ref.read(avatarRepositoryProvider).pickAndUpload();
+      if (url == null) return;
+      await ref
+          .read(memberRepositoryProvider)
+          .updateCurrentProfile(
+            nickname: profile.nickname?.trim().isNotEmpty == true
+                ? profile.nickname!.trim()
+                : profile.displayName,
+            avatarUrl: url,
+            visibility: profile.visibility,
+          );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Không thể đổi avatar: $error')));
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingAvatar = false);
+    }
+  }
+
+  Future<void> _toggleVisibility(ProfileVisibility visibility) async {
+    final profile = widget.profile;
+    if (profile == null || visibility == profile.visibility) return;
+    setState(() => _updatingVisibility = true);
+    try {
+      await ref
+          .read(memberRepositoryProvider)
+          .updateCurrentProfile(
+            nickname: profile.nickname?.trim().isNotEmpty == true
+                ? profile.nickname!.trim()
+                : profile.displayName,
+            avatarUrl: profile.avatarUrl,
+            visibility: visibility,
+          );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Không thể đổi chế độ hiển thị: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _updatingVisibility = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final user = profile;
+    final user = widget.profile;
     final avatarUrl = user?.avatarUrl;
     final palette = context.runNowPalette;
     return GlassPanel(
       borderRadius: 28,
       padding: const EdgeInsets.all(16),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 31,
-            backgroundColor: palette.secondary.withValues(alpha: 0.18),
-            backgroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl),
-            child: avatarUrl == null
-                ? Icon(
-                    user == null ? Icons.person_outline : Icons.person,
-                    color: palette.secondary,
-                  )
-                : null,
+          Row(
+            children: [
+              GestureDetector(
+                onTap: user == null || _uploadingAvatar ? null : _pickAvatar,
+                child: Stack(
+                  alignment: Alignment.bottomRight,
+                  children: [
+                    CircleAvatar(
+                      radius: 31,
+                      backgroundColor: palette.secondary.withValues(
+                        alpha: 0.18,
+                      ),
+                      backgroundImage: avatarUrl == null
+                          ? null
+                          : NetworkImage(avatarUrl),
+                      child: _uploadingAvatar
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : avatarUrl == null
+                          ? Icon(
+                              user == null
+                                  ? Icons.person_outline
+                                  : Icons.person,
+                              color: palette.secondary,
+                            )
+                          : null,
+                    ),
+                    if (user != null && !_uploadingAvatar)
+                      CircleAvatar(
+                        radius: 10,
+                        backgroundColor: palette.accent,
+                        child: const Icon(
+                          Icons.edit,
+                          size: 10,
+                          color: Colors.white,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      user?.displayName ?? 'Đang tải tài khoản',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      _accountSubtitle(user),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.62),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Hồ sơ & thành tích',
+                onPressed: widget.onEdit,
+                icon: const Icon(Icons.chevron_right),
+              ),
+            ],
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          if (user != null) ...[
+            const SizedBox(height: 12),
+            Row(
               children: [
                 Text(
-                  user?.displayName ?? 'Đang tải tài khoản',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  _accountSubtitle(user),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                  'Hiển thị Club',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(
                       context,
                     ).colorScheme.onSurface.withValues(alpha: 0.62),
                   ),
                 ),
+                const Spacer(),
+                if (_updatingVisibility)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  SegmentedButton<ProfileVisibility>(
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    segments: const [
+                      ButtonSegment(
+                        value: ProfileVisibility.private,
+                        icon: Icon(Icons.lock_outline, size: 16),
+                        label: Text('Private'),
+                      ),
+                      ButtonSegment(
+                        value: ProfileVisibility.public,
+                        icon: Icon(Icons.public, size: 16),
+                        label: Text('Public'),
+                      ),
+                    ],
+                    selected: {user.visibility},
+                    onSelectionChanged: (selection) =>
+                        _toggleVisibility(selection.single),
+                  ),
               ],
             ),
-          ),
-          IconButton(
-            tooltip: 'Hồ sơ & thành tích',
-            onPressed: onEdit,
-            icon: const Icon(Icons.chevron_right),
-          ),
+          ],
         ],
       ),
     );
@@ -535,7 +609,6 @@ class _AccountHeader extends StatelessWidget {
     if (user == null) return 'Google account';
     final parts = [
       if (user.email != null) user.email!,
-      user.visibility == ProfileVisibility.public ? 'Public' : 'Private',
       if (user.lastSyncedAt != null) 'Sync ${formatDate(user.lastSyncedAt!)}',
     ];
     return parts.join('  •  ');

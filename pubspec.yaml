@@ -30,6 +30,7 @@ dependencies:
   firebase_analytics: ^12.4.3
   firebase_storage: ^13.4.3
   image_picker: ^1.2.3
+  flutter_svg: ^2.2.1
 dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
@@ -57,6 +58,9 @@ flutter:
   uses-material-design: true
   assets:
     - assets/brand/3i-mark.png
+    - assets/medals/medal-gold.svg
+    - assets/medals/medal-silver.svg
+    - assets/medals/medal-bronze.svg
   fonts:
     - family: Exo 2
       fonts:

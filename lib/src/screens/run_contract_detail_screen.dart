@@ -27,21 +27,80 @@ class _RunContractDetailScreenState
 
   @override
   Widget build(BuildContext context) {
+    final contractState = ref.watch(runContractProvider(widget.contractId));
+    final contract = contractState.value;
+    final lifecycle = contract == null
+        ? null
+        : contractLifecycle(contract, DateTime.now());
+    final syncing = ref.watch(syncControllerProvider).syncing;
+    final uid = ref.watch(firebaseUserProvider).value?.uid;
+    final participant = contract?.participantFor(uid);
+    final canDelete =
+        contract != null &&
+        uid != null &&
+        uid == contract.creatorUid &&
+        contract.participantCount == 1;
     return Scaffold(
-      appBar: AppBar(title: const Text('Chi tiết kèo')),
+      appBar: AppBar(
+        title: const Text('Chi tiết kèo'),
+        actions: [
+          if (canDelete)
+            IconButton(
+              onPressed: _working ? null : () => _confirmDelete(contract),
+              icon: const Icon(Icons.delete_outline_rounded),
+              tooltip: 'Xóa kèo',
+            ),
+        ],
+      ),
+      floatingActionButton: _floatingAction(
+        contract: contract,
+        lifecycle: lifecycle,
+        participant: participant,
+        uid: uid,
+        syncing: syncing,
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 820),
-          child: ref
-              .watch(runContractProvider(widget.contractId))
-              .when(
-                data: (contract) => contract == null
-                    ? const Center(child: Text('Không tìm thấy kèo chạy.'))
-                    : _loggedContent(contract),
-                error: (error, stack) => Center(child: Text('$error')),
-                loading: () => const Center(child: CircularProgressIndicator()),
-              ),
+          child: contractState.when(
+            data: (contract) => contract == null
+                ? const Center(child: Text('Không tìm thấy kèo chạy.'))
+                : _loggedContent(contract),
+            error: (error, stack) => Center(child: Text('$error')),
+            loading: () => const Center(child: CircularProgressIndicator()),
+          ),
         ),
+      ),
+    );
+  }
+
+  /// Hành động nổi bật kiểu "pin" ở đáy màn hình — ưu tiên nhắc sync khi kèo
+  /// đang chờ đồng bộ cuối; ngoài ra, nếu kèo đang active và user chưa hoàn
+  /// thành, ưu tiên tiếp theo là chọn/đổi buổi chạy áp dụng (trước đây chỉ là
+  /// 1 nút viền mảnh nằm giữa nội dung cuộn, dễ bị bỏ qua).
+  Widget? _floatingAction({
+    required RunContract? contract,
+    required RunContractLifecycle? lifecycle,
+    required RunContractParticipant? participant,
+    required String? uid,
+    required bool syncing,
+  }) {
+    if (lifecycle == RunContractLifecycle.syncGrace) {
+      return _PinnedSyncButton(
+        syncing: syncing,
+        onPressed: () =>
+            ref.read(syncControllerProvider).startBackgroundSync(force: true),
+      );
+    }
+    if (contract == null || participant == null) return null;
+    if (!contract.isActive || contract.completedBy(uid)) return null;
+    return FloatingActionButton.extended(
+      onPressed: () => _selectActivities(contract, participant),
+      icon: const Icon(Icons.playlist_add_check_rounded),
+      label: Text(
+        participant.countedActivityIds.isEmpty
+            ? 'Chọn buổi chạy áp dụng'
+            : 'Đổi buổi chạy áp dụng',
       ),
     );
   }
@@ -105,7 +164,6 @@ class _RunContractDetailScreenState
     }
     final lifecycle = contractLifecycle(contract, DateTime.now());
     final participant = contract.participantFor(uid);
-    final completed = contract.completedBy(uid);
     final profiles = {
       for (final member
           in ref.watch(membersProvider).value ?? const <MemberProfile>[])
@@ -122,21 +180,6 @@ class _RunContractDetailScreenState
         if (participant != null) ...[
           const SizedBox(height: 12),
           _MyProgressCard(contract: contract, participant: participant),
-          if (contract.isActive && !completed) ...[
-            const SizedBox(height: 10),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: OutlinedButton.icon(
-                onPressed: () => _selectActivities(contract, participant),
-                icon: const Icon(Icons.playlist_add_check_rounded),
-                label: Text(
-                  participant.countedActivityIds.isEmpty
-                      ? 'Chọn buổi chạy áp dụng'
-                      : 'Đổi buổi chạy áp dụng',
-                ),
-              ),
-            ),
-          ],
         ],
         const SizedBox(height: 12),
         _ParticipantProgressList(
@@ -153,12 +196,10 @@ class _RunContractDetailScreenState
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: _primaryAction(contract, lifecycle),
           )
-        else if (owner && contract.isActive && completed)
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: _CompletedParticipant(),
-          )
-        else if (owner && contract.isActive)
+        else if (owner &&
+            contract.isActive &&
+            (lifecycle == RunContractLifecycle.syncGrace ||
+                lifecycle == RunContractLifecycle.scheduled))
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: _primaryAction(contract, lifecycle),
@@ -181,22 +222,14 @@ class _RunContractDetailScreenState
               ),
             ),
           ),
-        if (!owner && contract.isActive)
+        if (!owner && contract.isActive && participant == null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: participant == null
-                ? FilledButton.icon(
-                    onPressed: _working ? null : () => _join(contract),
-                    icon: const Icon(Icons.group_add_outlined),
-                    label: const Text('Tham gia kèo'),
-                  )
-                : completed
-                ? const _CompletedParticipant()
-                : FilledButton.icon(
-                    onPressed: () => context.go('/tracking'),
-                    icon: const Icon(Icons.directions_run_rounded),
-                    label: const Text('Chạy để cứu kèo'),
-                  ),
+            child: FilledButton.icon(
+              onPressed: _working ? null : () => _join(contract),
+              icon: const Icon(Icons.group_add_outlined),
+              label: const Text('Tham gia kèo'),
+            ),
           ),
       ],
     );
@@ -223,11 +256,7 @@ class _RunContractDetailScreenState
             child: Text('Kèo đã chốt và sẽ tự bắt đầu đúng giờ.'),
           ),
         ),
-        _ => FilledButton.icon(
-          onPressed: () => context.go('/tracking'),
-          icon: const Icon(Icons.directions_run_rounded),
-          label: const Text('Chạy để cứu kèo'),
-        ),
+        _ => const SizedBox.shrink(),
       };
 
   Future<void> _finalize(RunContract contract) async {
@@ -295,11 +324,107 @@ class _RunContractDetailScreenState
     );
   }
 
+  Future<void> _confirmDelete(RunContract contract) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xóa kèo này?'),
+        content: Text(
+          'Kèo "${contract.title}" sẽ bị xóa vĩnh viễn và không thể khôi phục.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Xóa kèo'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await _deleteContract(contract);
+  }
+
+  Future<void> _deleteContract(RunContract contract) async {
+    setState(() => _working = true);
+    try {
+      await ref.read(runContractControllerProvider).deleteContract(contract);
+      if (mounted) Navigator.of(context).pop();
+    } catch (error) {
+      _showError(error);
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
   void _showError(Object error) {
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('$error')));
+  }
+}
+
+/// Nút sync nổi bật kiểu "neo" (FAB) — hiện khi kèo đang chờ đồng bộ cuối
+/// (`RunContractLifecycle.syncGrace`), lúc người dùng cần chủ động sync nhất
+/// nhưng trước đây chỉ có dòng chữ tĩnh, không có cách nào bấm ngay tại đây.
+class _PinnedSyncButton extends StatefulWidget {
+  const _PinnedSyncButton({required this.syncing, required this.onPressed});
+
+  final bool syncing;
+  final VoidCallback onPressed;
+
+  @override
+  State<_PinnedSyncButton> createState() => _PinnedSyncButtonState();
+}
+
+class _PinnedSyncButtonState extends State<_PinnedSyncButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 850),
+    );
+    _syncAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PinnedSyncButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.syncing != widget.syncing) _syncAnimation();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _syncAnimation() {
+    if (widget.syncing) {
+      _controller.repeat();
+    } else {
+      _controller.stop();
+      _controller.reset();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = widget.syncing
+        ? RotationTransition(turns: _controller, child: const Icon(Icons.sync))
+        : const Icon(Icons.sync_rounded);
+    return FloatingActionButton.extended(
+      onPressed: widget.syncing ? null : widget.onPressed,
+      icon: icon,
+      label: Text(widget.syncing ? 'Đang đồng bộ...' : 'Đồng bộ ngay'),
+    );
   }
 }
 
@@ -987,23 +1112,6 @@ class _ParticipantRow extends StatelessWidget {
       ],
     );
   }
-}
-
-class _CompletedParticipant extends StatelessWidget {
-  const _CompletedParticipant();
-
-  @override
-  Widget build(BuildContext context) => Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      Icon(Icons.verified_rounded, color: context.runNowPalette.accent),
-      const SizedBox(width: 8),
-      const Text(
-        'Bạn đã hoàn thành kèo',
-        style: TextStyle(fontWeight: FontWeight.w900),
-      ),
-    ],
-  );
 }
 
 String _contractValue(RunContractMetric metric, double value) =>

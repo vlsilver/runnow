@@ -23,6 +23,31 @@ class RunContractActivityOption {
   final String? assignedContractId;
 }
 
+/// 1 kèo active dưới góc nhìn "áp dụng buổi chạy X vào kèo nào" — dùng cho
+/// màn chi tiết hoạt động (chiều ngược lại với [RunContractActivityOption]).
+class ContractApplyOption {
+  const ContractApplyOption({
+    required this.contract,
+    required this.eligible,
+    this.ineligibleReason,
+    required this.currentValue,
+    this.previewValue,
+  });
+
+  final RunContract contract;
+  final bool eligible;
+
+  /// Lý do không thể áp dụng — `null` khi [eligible] là `true`.
+  final String? ineligibleReason;
+
+  /// Tiến độ hiện tại của kèo (đơn vị theo `contract.metric`).
+  final double currentValue;
+
+  /// Tiến độ nếu áp dụng buổi chạy này vào kèo — `null` khi [eligible] là
+  /// `false` (không tính preview cho kèo không hợp lệ).
+  final double? previewValue;
+}
+
 class RunContractController {
   RunContractController(this._contracts, this._activities, this._sync);
 
@@ -182,6 +207,144 @@ class RunContractController {
     return progress;
   }
 
+  /// Tự động gán activity vừa sync về vào kèo active duy nhất của user, nếu
+  /// có. Không đụng tới activity/kèo nào khác — chỉ bổ sung thêm activity
+  /// hợp lệ, chưa thuộc kèo nào, vào kèo hiện có (giữ nguyên các activity đã
+  /// gán từ trước qua [replaceActivityAssignments]).
+  Future<void> autoAssignSoleActiveContract(
+    List<RunContract> activeContracts,
+    List<ActivitySummary> newlySyncedActivities,
+  ) async {
+    if (newlySyncedActivities.isEmpty || activeContracts.length != 1) return;
+    final contract = activeContracts.single;
+    final options = await activityOptions(contract);
+    final alreadyAssignedIds = {
+      for (final option in options)
+        if (option.assignedContractId == contract.id) option.activity.id,
+    };
+    final newlySyncedIds = newlySyncedActivities
+        .map((activity) => activity.id)
+        .toSet();
+    final newEligibleIds = {
+      for (final option in options)
+        if (option.assignedContractId == null &&
+            newlySyncedIds.contains(option.activity.id))
+          option.activity.id,
+    };
+    if (newEligibleIds.isEmpty) return;
+    await replaceActivityAssignments(contract, {
+      ...alreadyAssignedIds,
+      ...newEligibleIds,
+    });
+  }
+
+  /// Tính, với mỗi kèo trong [activeContracts], buổi chạy [activity] có áp
+  /// dụng được không (và lý do nếu không), cùng tiến độ hiện tại/sau khi áp
+  /// dụng — dùng cho picker "Áp dụng vào kèo nào?" ở màn chi tiết hoạt động.
+  Future<List<ContractApplyOption>> applyOptionsFor(
+    ActivitySummary activity,
+    List<RunContract> activeContracts,
+  ) async {
+    final assignments = await _contracts.activityAssignments();
+    final options = <ContractApplyOption>[];
+    for (final contract in activeContracts) {
+      final withinWindow =
+          !activity.startedAt.toUtc().isBefore(contract.startAt.toUtc()) &&
+          activity.startedAt.toUtc().isBefore(
+            contract.endAtExclusive.toUtc(),
+          );
+      final meetsThreshold = meetsMetricDistanceThreshold(
+        activity,
+        contract.metric,
+      );
+      final assignedIds = {
+        for (final entry in assignments.entries)
+          if (entry.value == contract.id) entry.key,
+      };
+      final activities = await _activities.listOfficialActivities(
+        start: contract.startAt,
+        endExclusive: contract.endAtExclusive,
+      );
+      final currentProgress = calculateRunContractProgress(
+        contract,
+        activities,
+        includeIds: assignedIds,
+      );
+      if (!withinWindow || !meetsThreshold) {
+        options.add(
+          ContractApplyOption(
+            contract: contract,
+            eligible: false,
+            ineligibleReason: !withinWindow
+                ? 'Ngoài khoảng thời gian kèo'
+                : 'Chưa đạt ngưỡng tối thiểu 1km/buổi',
+            currentValue: currentProgress.value,
+          ),
+        );
+        continue;
+      }
+      final activitiesWithCandidate = activities.any(
+        (existing) => existing.id == activity.id,
+      )
+          ? activities
+          : [...activities, activity];
+      final previewProgress = calculateRunContractProgress(
+        contract,
+        activitiesWithCandidate,
+        includeIds: {...assignedIds, activity.id},
+      );
+      options.add(
+        ContractApplyOption(
+          contract: contract,
+          eligible: true,
+          currentValue: currentProgress.value,
+          previewValue: previewProgress.value,
+        ),
+      );
+    }
+    return options;
+  }
+
+  /// Kèo mà [activityId] hiện đang được áp dụng vào (nếu có) — dùng để hiện
+  /// chip "Đang áp dụng cho..." ở màn chi tiết hoạt động.
+  Future<String?> currentContractIdFor(String activityId) async {
+    final assignments = await _contracts.activityAssignments();
+    return assignments[activityId];
+  }
+
+  /// Áp dụng [activity] vào [contract], giữ nguyên các activity đã gán từ
+  /// trước. Ném `StateError` (từ [replaceActivityAssignments]) nếu activity
+  /// vừa bị kèo khác giành mất suất (race condition).
+  Future<void> applyActivityToContract(
+    RunContract contract,
+    ActivitySummary activity,
+  ) async {
+    final options = await activityOptions(contract);
+    final alreadyAssignedIds = {
+      for (final option in options)
+        if (option.assignedContractId == contract.id) option.activity.id,
+    };
+    await replaceActivityAssignments(contract, {
+      ...alreadyAssignedIds,
+      activity.id,
+    });
+  }
+
+  /// Gỡ [activity] khỏi [contract], giữ nguyên các activity khác đã gán.
+  Future<void> removeActivityFromContract(
+    RunContract contract,
+    ActivitySummary activity,
+  ) async {
+    final options = await activityOptions(contract);
+    final remainingIds = {
+      for (final option in options)
+        if (option.assignedContractId == contract.id &&
+            option.activity.id != activity.id)
+          option.activity.id,
+    };
+    await replaceActivityAssignments(contract, remainingIds);
+  }
+
   Future<RunContractStatus> finalize(
     RunContract contract, {
     DateTime? now,
@@ -205,6 +368,12 @@ class RunContractController {
           .toList(),
     );
   }
+
+  /// Xóa hẳn kèo do user tạo, chỉ khi chưa ai khác tham gia. Ném `StateError`
+  /// (từ [RunContractRepository.delete]) nếu không phải người tạo hoặc kèo
+  /// vừa có người khác tham gia (race condition).
+  Future<void> deleteContract(RunContract contract) =>
+      _contracts.delete(contract.id);
 
   RunContractDraft recontractDraft(RunContract contract) => RunContractDraft(
     template: contract.template,
