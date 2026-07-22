@@ -4,7 +4,6 @@ import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_period.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 import 'package:myrun/src/run_contracts/run_contract_repository.dart';
-import 'package:myrun/src/sync.dart';
 
 class RunContractPreview {
   const RunContractPreview({required this.progress, required this.hardTarget});
@@ -49,11 +48,10 @@ class ContractApplyOption {
 }
 
 class RunContractController {
-  RunContractController(this._contracts, this._activities, this._sync);
+  RunContractController(this._contracts, this._activities, [Object? _]);
 
   final RunContractRepository _contracts;
   final ActivityRepository _activities;
-  final SyncController _sync;
 
   Future<RunContractPreview> preview(
     RunContractDraft draft, {
@@ -135,12 +133,34 @@ class RunContractController {
     return progress;
   }
 
-  Future<RunContractProgress> _calculateProgress(RunContract contract) async {
-    final activities = await _activities.listOfficialActivities(
+  /// Activity "chính thức" trong khoảng của [contract] (đã khử trùng
+  /// Strava/3i), CỘNG với những activity đã claim vào đúng kèo này nhưng vừa
+  /// "thua" bước khử trùng đó (vd 1 activity 3i đã áp vào kèo, sau đó Strava
+  /// sync về đúng buổi chạy đó) — activity cũ vẫn tiếp tục được tính bình
+  /// thường cho tới khi user tự gỡ, không tự động thay bằng bản Strava mới.
+  Future<(List<ActivitySummary>, Map<String, String>)> _officialActivitiesFor(
+    RunContract contract, {
+    int? limit,
+  }) async {
+    final official = await _activities.listOfficialActivities(
       start: contract.startAt,
       endExclusive: contract.endAtExclusive,
+      limit: limit,
     );
     final assignments = await _contracts.activityAssignments();
+    final officialIds = official.map((activity) => activity.id).toSet();
+    final assignedHereIds = {
+      for (final entry in assignments.entries)
+        if (entry.value == contract.id) entry.key,
+    };
+    final orphanedIds = assignedHereIds.difference(officialIds);
+    if (orphanedIds.isEmpty) return (official, assignments);
+    final orphaned = await _activities.getActivitiesByIds(orphanedIds);
+    return ([...official, ...orphaned.values], assignments);
+  }
+
+  Future<RunContractProgress> _calculateProgress(RunContract contract) async {
+    final (activities, assignments) = await _officialActivitiesFor(contract);
     final assignedIds = {
       for (final entry in assignments.entries)
         if (entry.value == contract.id) entry.key,
@@ -153,13 +173,13 @@ class RunContractController {
   }
 
   Future<List<RunContractActivityOption>> activityOptions(
-    RunContract contract,
-  ) async {
-    final activities = await _activities.listOfficialActivities(
-      start: contract.startAt,
-      endExclusive: contract.endAtExclusive,
+    RunContract contract, {
+    int? limit,
+  }) async {
+    final (activities, assignments) = await _officialActivitiesFor(
+      contract,
+      limit: limit,
     );
-    final assignments = await _contracts.activityAssignments();
     final options = activities
         .where((activity) => isEligibleForContract(activity, contract))
         .map(
@@ -175,6 +195,43 @@ class RunContractController {
     return options;
   }
 
+  /// Whether [activity] trùng (Strava/3i cùng 1 buổi chạy thật) với 1
+  /// activity khác đang được claim ở bất kỳ kèo nào (trong [assignments]) —
+  /// đọc thẳng field `duplicateOfActivityId` (backend ghi sẵn lúc save/sync),
+  /// không tự tính lại overlap ratio ở client.
+  Future<bool> _duplicateOfClaimed(
+    ActivitySummary activity,
+    Map<String, String> assignments,
+  ) async {
+    final otherClaimedIds = assignments.keys
+        .where((id) => id != activity.id)
+        .toSet();
+    if (otherClaimedIds.isEmpty) return false;
+    // Chiều 1: activity là bản 3i, bản Strava trùng của nó đang bị claim.
+    if (otherClaimedIds.contains(activity.duplicateOfActivityId)) return true;
+    // Chiều 2: activity là bản Strava, có 1 activity 3i đang bị claim trỏ
+    // `duplicateOfActivityId` về đúng activity này.
+    final claimed = await _activities.getActivitiesByIds(otherClaimedIds);
+    return claimed.values.any(
+      (other) => other.duplicateOfActivityId == activity.id,
+    );
+  }
+
+  /// Ném lỗi nếu [activity] trùng (Strava/3i cùng 1 buổi chạy thật) với 1
+  /// activity khác đang được claim ở bất kỳ kèo nào — thiết kế là chặn hẳn,
+  /// không tự động thay thế claim cũ; user phải tự gỡ claim cũ trước khi áp
+  /// bản mới.
+  Future<void> _ensureNoDuplicateClaim(
+    ActivitySummary activity,
+    Map<String, String> assignments,
+  ) async {
+    if (!await _duplicateOfClaimed(activity, assignments)) return;
+    throw StateError(
+      'Buổi chạy này trùng với 1 buổi chạy khác đã áp vào kèo. '
+      'Hãy gỡ buổi chạy cũ khỏi kèo đó trước khi áp buổi chạy này.',
+    );
+  }
+
   Future<RunContractProgress> replaceActivityAssignments(
     RunContract contract,
     Set<String> selectedActivityIds,
@@ -188,6 +245,19 @@ class RunContractController {
     };
     if (!selectedActivityIds.every(available.containsKey)) {
       throw StateError('Có buổi chạy không hợp lệ hoặc đã thuộc kèo khác.');
+    }
+    final previouslyAssignedHereIds = {
+      for (final option in options)
+        if (option.assignedContractId == contract.id) option.activity.id,
+    };
+    final newlyAddedIds = selectedActivityIds.difference(
+      previouslyAssignedHereIds,
+    );
+    if (newlyAddedIds.isNotEmpty) {
+      final assignments = await _contracts.activityAssignments();
+      for (final id in newlyAddedIds) {
+        await _ensureNoDuplicateClaim(available[id]!, assignments);
+      }
     }
     final selectedActivities = [
       for (final id in selectedActivityIds) available[id]!,
@@ -207,35 +277,29 @@ class RunContractController {
     return progress;
   }
 
-  /// Tự động gán activity vừa sync về vào kèo active duy nhất của user, nếu
-  /// có. Không đụng tới activity/kèo nào khác — chỉ bổ sung thêm activity
-  /// hợp lệ, chưa thuộc kèo nào, vào kèo hiện có (giữ nguyên các activity đã
-  /// gán từ trước qua [replaceActivityAssignments]).
-  Future<void> autoAssignSoleActiveContract(
-    List<RunContract> activeContracts,
-    List<ActivitySummary> newlySyncedActivities,
-  ) async {
-    if (newlySyncedActivities.isEmpty || activeContracts.length != 1) return;
-    final contract = activeContracts.single;
-    final options = await activityOptions(contract);
-    final alreadyAssignedIds = {
-      for (final option in options)
-        if (option.assignedContractId == contract.id) option.activity.id,
-    };
-    final newlySyncedIds = newlySyncedActivities
-        .map((activity) => activity.id)
-        .toSet();
-    final newEligibleIds = {
-      for (final option in options)
-        if (option.assignedContractId == null &&
-            newlySyncedIds.contains(option.activity.id))
-          option.activity.id,
-    };
-    if (newEligibleIds.isEmpty) return;
-    await replaceActivityAssignments(contract, {
-      ...alreadyAssignedIds,
-      ...newEligibleIds,
-    });
+  /// Handles only contracts whose user-assigned activity changed in this sync.
+  /// Sync never auto-assigns a new activity to a contract.
+  Future<void> processChangedActivities({
+    required List<RunContract> activeContracts,
+    required List<ActivitySummary> changedActivities,
+    required String currentUid,
+  }) async {
+    if (activeContracts.isEmpty || changedActivities.isEmpty) return;
+    final changedIds = changedActivities.map((activity) => activity.id).toSet();
+    for (final contract in activeContracts) {
+      final countedIds =
+          contract.participantFor(currentUid)?.countedActivityIds ?? const [];
+      if (!countedIds.any(changedIds.contains)) continue;
+      try {
+        if (contract.creatorUid == currentUid) {
+          await recalculate(contract);
+        } else {
+          await recalculateParticipant(contract);
+        }
+      } catch (_) {
+        // Bỏ qua — lần snapshot activity thay đổi tiếp theo sẽ tự tính lại.
+      }
+    }
   }
 
   /// Tính, với mỗi kèo trong [activeContracts], buổi chạy [activity] có áp
@@ -245,47 +309,49 @@ class RunContractController {
     ActivitySummary activity,
     List<RunContract> activeContracts,
   ) async {
-    final assignments = await _contracts.activityAssignments();
+    final globalAssignments = await _contracts.activityAssignments();
+    final duplicateClaimed = await _duplicateOfClaimed(
+      activity,
+      globalAssignments,
+    );
     final options = <ContractApplyOption>[];
     for (final contract in activeContracts) {
       final withinWindow =
           !activity.startedAt.toUtc().isBefore(contract.startAt.toUtc()) &&
-          activity.startedAt.toUtc().isBefore(
-            contract.endAtExclusive.toUtc(),
-          );
+          activity.startedAt.toUtc().isBefore(contract.endAtExclusive.toUtc());
       final meetsThreshold = meetsMetricDistanceThreshold(
         activity,
         contract.metric,
+      );
+      final (activities, assignments) = await _officialActivitiesFor(
+        contract,
       );
       final assignedIds = {
         for (final entry in assignments.entries)
           if (entry.value == contract.id) entry.key,
       };
-      final activities = await _activities.listOfficialActivities(
-        start: contract.startAt,
-        endExclusive: contract.endAtExclusive,
-      );
       final currentProgress = calculateRunContractProgress(
         contract,
         activities,
         includeIds: assignedIds,
       );
-      if (!withinWindow || !meetsThreshold) {
+      if (!withinWindow || !meetsThreshold || duplicateClaimed) {
         options.add(
           ContractApplyOption(
             contract: contract,
             eligible: false,
             ineligibleReason: !withinWindow
                 ? 'Ngoài khoảng thời gian kèo'
-                : 'Chưa đạt ngưỡng tối thiểu 1km/buổi',
+                : !meetsThreshold
+                ? 'Chưa đạt ngưỡng tối thiểu 1km/buổi'
+                : 'Trùng với 1 buổi chạy khác đã áp vào kèo — hãy gỡ buổi cũ trước',
             currentValue: currentProgress.value,
           ),
         );
         continue;
       }
-      final activitiesWithCandidate = activities.any(
-        (existing) => existing.id == activity.id,
-      )
+      final activitiesWithCandidate =
+          activities.any((existing) => existing.id == activity.id)
           ? activities
           : [...activities, activity];
       final previewProgress = calculateRunContractProgress(
@@ -353,10 +419,6 @@ class RunContractController {
     if (contractLifecycle(contract, instant) !=
         RunContractLifecycle.awaitingFinalize) {
       throw StateError('Kèo chưa đến thời điểm chốt kết quả.');
-    }
-    final syncResult = await _sync.sync();
-    if (!syncResult.succeeded) {
-      throw StateError('Không thể đồng bộ Strava. Hãy thử chốt lại sau.');
     }
     final progress = await _calculateProgress(contract);
     return _contracts.finalize(

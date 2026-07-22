@@ -23,6 +23,17 @@ void main() {
     expect(controller.message, contains('offline'));
   });
 
+  test('reports that backend repair was queued', () async {
+    final controller = SyncController(_StubRepository(queued: true));
+
+    await controller.sync();
+
+    expect(
+      controller.message,
+      'Backend đã nhận yêu cầu đồng bộ. Dữ liệu sẽ tự cập nhật.',
+    );
+  });
+
   test('starts sync in the background without awaiting completion', () async {
     final repository = _StubRepository(imported: 3);
     final controller = SyncController(repository);
@@ -53,9 +64,10 @@ void main() {
 }
 
 class _StubRepository implements ActivityRepository {
-  _StubRepository({this.imported = 0, this.error});
+  _StubRepository({this.imported = 0, this.error, this.queued = false});
   final int imported;
   final Object? error;
+  final bool queued;
   int syncCalls = 0;
 
   @override
@@ -66,21 +78,29 @@ class _StubRepository implements ActivityRepository {
   Future<List<ActivitySummary>> listOfficialActivities({
     required DateTime start,
     required DateTime endExclusive,
+    int? limit,
   }) async => const [];
+
+  @override
+  Future<Map<String, ActivitySummary>> getActivitiesByIds(
+    Set<String> ids,
+  ) async => const {};
 
   @override
   Stream<List<ActivitySummary>> watchTrackedTrialActivities() =>
       const Stream.empty();
 
   @override
-  Stream<List<JournalActivityEntry>> watchJournalActivities() =>
-      const Stream.empty();
+  Future<JournalActivityPage> fetchJournalActivitiesPage({
+    int limit = 30,
+    Object? cursor,
+  }) async => const JournalActivityPage(entries: [], hasMore: false);
 
   @override
   Future<ActivitySyncOutcome> sync({bool fullResync = false}) async {
     syncCalls += 1;
     if (error != null) throw error!;
-    return ActivitySyncOutcome(changedCount: imported);
+    return ActivitySyncOutcome(changedCount: imported, queued: queued);
   }
 
   @override
@@ -92,5 +112,6 @@ class _StubRepository implements ActivityRepository {
   );
 
   @override
-  Stream<List<ActivitySummary>> watchActivities() => const Stream.empty();
+  Stream<List<ActivitySummary>> watchActivities({int? limit}) =>
+      const Stream.empty();
 }

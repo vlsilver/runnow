@@ -566,6 +566,17 @@ class TrackingSession {
     return snapshot();
   }
 
+  TrackingSessionSnapshot continueAfterRestore(DateTime restoredAt) {
+    _ensureStarted();
+    if (_status != TrackingSessionStatus.running) return snapshot();
+    final updatedAt = _updatedAt!;
+    _accumulatedMovingTimeSeconds = _currentMovingTimeSeconds(updatedAt);
+    _movingStartedAt = restoredAt;
+    _updatedAt = restoredAt;
+    _needsAnchorAfterPause = true;
+    return snapshot();
+  }
+
   TrackingSessionSnapshot finish(DateTime finishedAt) {
     _ensureStarted();
     if (_status == TrackingSessionStatus.running) {

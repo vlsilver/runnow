@@ -198,6 +198,33 @@ void main() {
     expect(later.movingTimeSeconds, 120);
   });
 
+  test('restores an active run as running without counting dead app time', () {
+    final original = TrackingSession(
+      id: 'trial-restore-running',
+      config: const TrackingConfig(minSegmentDistanceMeters: 0.5),
+    )..start(DateTime.utc(2026, 6, 1, 6));
+
+    original.addLocation(_sample(0, latitude: 10, longitude: 106));
+    original.addLocation(_sample(120, latitude: 10, longitude: 106.0055));
+
+    final restored = TrackingSession.fromDraftMap(original.toDraftMap());
+    final restoredSnapshot = restored.continueAfterRestore(
+      DateTime.utc(2026, 6, 1, 6, 30),
+    );
+
+    expect(restoredSnapshot.status, TrackingSessionStatus.running);
+    expect(restoredSnapshot.movingTimeSeconds, 120);
+
+    restored.addLocation(_sample(1800, latitude: 10, longitude: 106.02));
+    final snapshot = restored.addLocation(
+      _sample(1920, latitude: 10, longitude: 106.0255),
+    );
+
+    expect(snapshot.status, TrackingSessionStatus.running);
+    expect(snapshot.movingTimeSeconds, 240);
+    expect(snapshot.distanceMeters, closeTo(1200, 80));
+  });
+
   test('persists a geotagged photo and exposes it after upload', () {
     final session = TrackingSession(id: 'trial-photo')
       ..start(DateTime.utc(2026, 6, 1, 6));

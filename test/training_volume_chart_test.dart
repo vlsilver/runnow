@@ -1,23 +1,43 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:myrun/src/models.dart';
+import 'package:myrun/src/period_keys.dart';
+import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/repository.dart';
 import 'package:myrun/src/widgets/training_volume_chart.dart';
 
 void main() {
-  testWidgets('renders weekly training distance by day', (tester) async {
+  Future<void> pumpChart(
+    WidgetTester tester, {
+    required List<PeriodStat> stats,
+    required Widget chart,
+  }) async {
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: TrainingVolumeChart(
-            now: DateTime(2026, 6, 2),
-            period: TrainingVolumePeriod.week,
-            activities: [
-              _activity(DateTime(2026, 6, 1), 5000),
-              _activity(DateTime(2026, 6, 2), 3200),
-            ],
+      ProviderScope(
+        overrides: [
+          memberRepositoryProvider.overrideWithValue(
+            _FakeMemberRepository(stats),
           ),
-        ),
+        ],
+        child: MaterialApp(home: Scaffold(body: chart)),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('renders weekly training distance by day', (tester) async {
+    await pumpChart(
+      tester,
+      stats: [
+        _dayStat('2026-06-01', 5000),
+        _dayStat('2026-06-02', 3200),
+      ],
+      chart: TrainingVolumeChart(
+        uid: 'member',
+        now: DateTime(2026, 6, 2),
+        period: TrainingVolumePeriod.week,
       ),
     );
 
@@ -31,18 +51,13 @@ void main() {
   testWidgets('renders monthly training distance by month labels', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: TrainingVolumeChart(
-            now: DateTime(2026, 6, 15),
-            period: TrainingVolumePeriod.month,
-            activities: [
-              _activity(DateTime(2026, 6, 2), 5000),
-              _activity(DateTime(2026, 6, 14), 7000),
-            ],
-          ),
-        ),
+    await pumpChart(
+      tester,
+      stats: [_monthStat('2026-06', 12000, activityCount: 2)],
+      chart: TrainingVolumeChart(
+        uid: 'member',
+        now: DateTime(2026, 6, 15),
+        period: TrainingVolumePeriod.month,
       ),
     );
 
@@ -53,18 +68,16 @@ void main() {
   });
 
   testWidgets('renders eight week training distance trend', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: TrainingVolumeChart(
-            now: DateTime(2026, 6, 3),
-            period: TrainingVolumePeriod.eightWeeks,
-            activities: [
-              _activity(DateTime(2026, 4, 14), 5000),
-              _activity(DateTime(2026, 6, 2), 7000),
-            ],
-          ),
-        ),
+    await pumpChart(
+      tester,
+      stats: [
+        _weekStat(weekKey(DateTime(2026, 4, 14)), 5000),
+        _weekStat(weekKey(DateTime(2026, 6, 2)), 7000),
+      ],
+      chart: TrainingVolumeChart(
+        uid: 'member',
+        now: DateTime(2026, 6, 3),
+        period: TrainingVolumePeriod.eightWeeks,
       ),
     );
 
@@ -77,19 +90,17 @@ void main() {
   testWidgets('switches between bar and line chart across time ranges', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: TrainingVolumeChart(
-            now: DateTime(2026, 6, 3),
-            period: TrainingVolumePeriod.month,
-            showControls: true,
-            activities: [
-              _activity(DateTime(2025, 8, 10), 6000),
-              _activity(DateTime(2026, 6, 2), 7000),
-            ],
-          ),
-        ),
+    await pumpChart(
+      tester,
+      stats: [
+        _monthStat('2025-08', 6000),
+        _monthStat('2026-06', 7000),
+      ],
+      chart: TrainingVolumeChart(
+        uid: 'member',
+        now: DateTime(2026, 6, 3),
+        period: TrainingVolumePeriod.month,
+        showControls: true,
       ),
     );
 
@@ -119,14 +130,59 @@ void main() {
   });
 }
 
-ActivitySummary _activity(DateTime startedAt, double distanceMeters) {
-  return ActivitySummary(
-    id: startedAt.toIso8601String(),
-    name: 'Run',
-    kind: ActivityKind.run,
-    startedAt: startedAt,
-    distanceMeters: distanceMeters,
-    movingTimeSeconds: 1800,
-    elapsedTimeSeconds: 1900,
+PeriodStat _dayStat(String key, double distanceMeters) =>
+    _stat('day', key, distanceMeters, 1);
+
+PeriodStat _weekStat(String key, double distanceMeters) =>
+    _stat('week', key, distanceMeters, 1);
+
+PeriodStat _monthStat(
+  String key,
+  double distanceMeters, {
+  int activityCount = 1,
+}) => _stat('month', key, distanceMeters, activityCount);
+
+PeriodStat _stat(
+  String periodType,
+  String periodKey,
+  double distanceMeters,
+  int activityCount,
+) {
+  return PeriodStat(
+    periodType: periodType,
+    periodKey: periodKey,
+    stats: LeaderboardStats(
+      distanceMeters: distanceMeters,
+      movingTimeSeconds: 1800,
+      activityCount: activityCount,
+      activeDays: 1,
+      longestDistanceMeters: distanceMeters,
+      fastestPaceSecondsPerKm: null,
+    ),
   );
+}
+
+class _FakeMemberRepository implements MemberRepository {
+  _FakeMemberRepository(this.stats);
+
+  final List<PeriodStat> stats;
+
+  @override
+  Future<List<PeriodStat>> listMemberPeriodStats(
+    String uid, {
+    required String periodType,
+    required String fromKey,
+    required String toKeyInclusive,
+  }) async {
+    return [
+      for (final stat in stats)
+        if (stat.periodType == periodType &&
+            stat.periodKey.compareTo(fromKey) >= 0 &&
+            stat.periodKey.compareTo(toKeyInclusive) <= 0)
+          stat,
+    ];
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

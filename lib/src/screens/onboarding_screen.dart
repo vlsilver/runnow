@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:myrun/src/auth.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
@@ -45,7 +46,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
 
   @override
   Widget build(BuildContext context) {
-    final controller = ref.watch(googleAuthProvider);
+    final controller = ref.watch(authControllerProvider);
     final palette = context.runNowPalette;
     return Scaffold(
       body: SafeArea(
@@ -158,6 +159,19 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                       ),
                     ),
                   ),
+                  if (AuthController.appleSignInAvailable) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: controller.loading
+                            ? null
+                            : controller.signInWithApple,
+                        icon: const Icon(Icons.apple, size: 22),
+                        label: const Text('Đăng nhập với Apple'),
+                      ),
+                    ),
+                  ],
                   if (controller.errorMessage != null) ...[
                     const SizedBox(height: 16),
                     Text(controller.errorMessage!, textAlign: TextAlign.center),

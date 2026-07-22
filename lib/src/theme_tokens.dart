@@ -151,3 +151,7 @@ abstract final class RunNowDataColors {
 abstract final class RunNowBrandColors {
   static const strava = Color(0xfffc5200);
 }
+
+// Màn "Hành Trình" dùng thẳng theme sáng/tối + 5 hành chung của app
+// (`context.runNowPalette`, xem `journey_hub_screen.dart`) nên không còn
+// bảng màu riêng ở đây nữa.

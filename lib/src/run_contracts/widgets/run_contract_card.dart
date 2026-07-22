@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/cached_avatar.dart';
 
 class RunContractCard extends StatelessWidget {
   const RunContractCard({
@@ -211,7 +212,7 @@ class _Header extends StatelessWidget {
           radius: 19,
           backgroundImage: ownerAvatarUrl == null || ownerAvatarUrl!.isEmpty
               ? null
-              : NetworkImage(ownerAvatarUrl!),
+              : cachedAvatarImage(context, ownerAvatarUrl!, 38),
           child: ownerAvatarUrl == null || ownerAvatarUrl!.isEmpty
               ? Text(name.isEmpty ? '?' : name[0].toUpperCase())
               : null,
@@ -238,6 +239,10 @@ class _Header extends StatelessWidget {
             ],
           ),
         ),
+        if (contract.route != null) ...[
+          const _LiveTag(),
+          const SizedBox(width: 6),
+        ],
         DecoratedBox(
           decoration: BoxDecoration(
             color: _stateColor(context, state).withValues(alpha: 0.13),
@@ -275,6 +280,50 @@ class _Header extends StatelessWidget {
   }
 }
 
+/// Tag đánh dấu kèo theo tuyến có tính năng chạy LIVE (vị trí + ảnh
+/// realtime cho người tham gia khác xem) — tĩnh (không pulse) vì hiện lặp
+/// lại trên nhiều card trong 1 danh sách cuộn, khác với [_GoLiveButton] ở
+/// màn chi tiết kèo (chỉ 1 instance, có thể animate thoải mái).
+class _LiveTag extends StatelessWidget {
+  const _LiveTag();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: RunNowSemanticColors.danger.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: const BoxDecoration(
+                color: RunNowSemanticColors.danger,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              'LIVE',
+              style: TextStyle(
+                color: RunNowSemanticColors.danger,
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.7,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _AvatarStack extends StatelessWidget {
   const _AvatarStack({required this.urls});
 
@@ -306,7 +355,7 @@ class _AvatarStack extends StatelessWidget {
                 backgroundColor: context.runNowPalette.accent,
                 backgroundImage: shown[index] == null || shown[index]!.isEmpty
                     ? null
-                    : NetworkImage(shown[index]!),
+                    : cachedAvatarImage(context, shown[index]!, 28),
                 child: shown[index] == null || shown[index]!.isEmpty
                     ? const Icon(Icons.person, size: 14)
                     : null,
@@ -323,6 +372,7 @@ String runContractMetricLabel(RunContractMetric metric) => switch (metric) {
   RunContractMetric.activityCount => 'Số buổi',
   RunContractMetric.activeDays => 'Ngày active',
   RunContractMetric.longestRun => 'Chạy dài nhất',
+  RunContractMetric.routeCompletion => 'Theo tuyến',
 };
 
 String _value(RunContractMetric metric, double value) => switch (metric) {
@@ -330,6 +380,7 @@ String _value(RunContractMetric metric, double value) => switch (metric) {
     '${value.toStringAsFixed(value % 1 == 0 ? 0 : 1)} km',
   RunContractMetric.activityCount => '${value.toInt()} buổi',
   RunContractMetric.activeDays => '${value.toInt()} ngày',
+  RunContractMetric.routeCompletion => '${value.toInt()} lần',
 };
 
 String _valueOverTarget(RunContractMetric metric, double value, double target) {
@@ -340,6 +391,8 @@ String _valueOverTarget(RunContractMetric metric, double value, double target) {
     RunContractMetric.activityCount =>
       '${value.toInt()} / ${target.toInt()} buổi',
     RunContractMetric.activeDays => '${value.toInt()} / ${target.toInt()} ngày',
+    RunContractMetric.routeCompletion =>
+      '${value.toInt()} / ${target.toInt()} lần',
   };
 }
 

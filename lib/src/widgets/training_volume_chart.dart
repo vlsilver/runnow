@@ -1,7 +1,10 @@
 import 'dart:math' as math;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/models.dart';
+import 'package:myrun/src/period_keys.dart';
+import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/nav_filter.dart';
@@ -27,9 +30,9 @@ extension on TrainingVolumePeriod {
   };
 }
 
-class TrainingVolumeChart extends StatefulWidget {
+class TrainingVolumeChart extends ConsumerStatefulWidget {
   const TrainingVolumeChart({
-    required this.activities,
+    required this.uid,
     required this.period,
     this.mode = TrainingVolumeChartMode.bar,
     this.showControls = false,
@@ -37,36 +40,71 @@ class TrainingVolumeChart extends StatefulWidget {
     super.key,
   });
 
-  final List<ActivitySummary> activities;
+  /// Chủ của số liệu — biểu đồ đọc `users/{uid}/periodStats` (backend tính
+  /// sẵn theo ngày/tuần/tháng) thay vì tải toàn bộ activity thô.
+  final String uid;
   final TrainingVolumePeriod period;
   final TrainingVolumeChartMode mode;
   final bool showControls;
   final DateTime? now;
 
   @override
-  State<TrainingVolumeChart> createState() => _TrainingVolumeChartState();
+  ConsumerState<TrainingVolumeChart> createState() =>
+      _TrainingVolumeChartState();
 }
 
-class _TrainingVolumeChartState extends State<TrainingVolumeChart> {
+class _TrainingVolumeChartState extends ConsumerState<TrainingVolumeChart> {
   late TrainingVolumePeriod _period = widget.period;
   late TrainingVolumeChartMode _mode = widget.mode;
+  List<PeriodStat> _stats = const [];
+  var _fetchSequence = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchStats();
+  }
 
   @override
   void didUpdateWidget(covariant TrainingVolumeChart oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.period != widget.period) _period = widget.period;
     if (oldWidget.mode != widget.mode) _mode = widget.mode;
+    if (oldWidget.uid != widget.uid ||
+        oldWidget.period != widget.period ||
+        oldWidget.now != widget.now) {
+      _fetchStats();
+    }
+  }
+
+  void _fetchStats() {
+    if (widget.uid.isEmpty) return;
+    final now = widget.now ?? DateTime.now();
+    final range = _statsRange(now, _period);
+    final sequence = ++_fetchSequence;
+    ref
+        .read(memberRepositoryProvider)
+        .listMemberPeriodStats(
+          widget.uid,
+          periodType: range.type,
+          fromKey: range.fromKey,
+          toKeyInclusive: range.toKeyInclusive,
+        )
+        .then((stats) {
+          if (!mounted || sequence != _fetchSequence) return;
+          setState(() => _stats = stats);
+        })
+        .catchError((Object _) {
+          // Giữ nguyên số liệu đang hiện (hoặc chart rỗng) khi query lỗi.
+        });
   }
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    final buckets = _buildBuckets(
-      widget.now ?? DateTime.now(),
-      widget.activities,
-      _period,
-    );
+    final now = widget.now ?? DateTime.now();
+    final buckets = _buildBuckets(now, _stats, _period);
     final maxDistance = buckets.fold<double>(
       0,
       (maximum, bucket) => math.max(maximum, bucket.distanceKm),
@@ -143,7 +181,10 @@ class _TrainingVolumeChartState extends State<TrainingVolumeChart> {
                       TrainingVolumePeriod.year,
                     ],
                     itemLabel: (period) => period.label,
-                    onChanged: (period) => setState(() => _period = period),
+                    onChanged: (period) {
+                      setState(() => _period = period);
+                      _fetchStats();
+                    },
                   ),
                 ),
               ],
@@ -494,23 +535,64 @@ class _ChartStat extends StatelessWidget {
   }
 }
 
-List<_TrainingBucket> _buildBuckets(
+/// Khoảng periodStats cần tải cho từng tab: tab tuần đọc doc theo ngày, tab
+/// 8 tuần đọc theo tuần, các tab còn lại đều đọc theo tháng (quý/năm không
+/// lưu riêng — tự cộng từ tháng khi dựng bucket).
+({String type, String fromKey, String toKeyInclusive}) _statsRange(
   DateTime now,
-  List<ActivitySummary> activities,
   TrainingVolumePeriod period,
 ) {
+  final today = DateTime(now.year, now.month, now.day);
+  final weekStart = today.subtract(Duration(days: today.weekday - 1));
   return switch (period) {
-    TrainingVolumePeriod.week => _weekBuckets(now, activities),
-    TrainingVolumePeriod.month => _monthBuckets(now, activities),
-    TrainingVolumePeriod.quarter => _quarterBuckets(now, activities),
-    TrainingVolumePeriod.year => _yearBuckets(now, activities),
-    TrainingVolumePeriod.eightWeeks => _eightWeekBuckets(now, activities),
+    TrainingVolumePeriod.week => (
+      type: 'day',
+      fromKey: dayKey(weekStart),
+      toKeyInclusive: dayKey(weekStart.add(const Duration(days: 6))),
+    ),
+    TrainingVolumePeriod.eightWeeks => (
+      type: 'week',
+      fromKey: weekKey(weekStart.subtract(const Duration(days: 49))),
+      toKeyInclusive: weekKey(today),
+    ),
+    TrainingVolumePeriod.month => (
+      type: 'month',
+      fromKey: monthKey(today.addMonth(-11)),
+      toKeyInclusive: monthKey(today),
+    ),
+    TrainingVolumePeriod.quarter => (
+      type: 'month',
+      fromKey: monthKey(_quarterStart(today).addMonth(-21)),
+      toKeyInclusive: monthKey(today),
+    ),
+    // Năm cần toàn bộ lịch sử — chặn dưới bằng key nhỏ tuỳ ý trước khi app
+    // tồn tại; số document tháng tối đa chỉ 12/năm nên vẫn rất nhỏ.
+    TrainingVolumePeriod.year => (
+      type: 'month',
+      fromKey: '2000-01',
+      toKeyInclusive: monthKey(today),
+    ),
+  };
+}
+
+List<_TrainingBucket> _buildBuckets(
+  DateTime now,
+  List<PeriodStat> stats,
+  TrainingVolumePeriod period,
+) {
+  final byKey = {for (final stat in stats) stat.periodKey: stat};
+  return switch (period) {
+    TrainingVolumePeriod.week => _weekBuckets(now, byKey),
+    TrainingVolumePeriod.month => _monthBuckets(now, byKey),
+    TrainingVolumePeriod.quarter => _quarterBuckets(now, byKey),
+    TrainingVolumePeriod.year => _yearBuckets(now, byKey),
+    TrainingVolumePeriod.eightWeeks => _eightWeekBuckets(now, byKey),
   };
 }
 
 List<_TrainingBucket> _eightWeekBuckets(
   DateTime now,
-  List<ActivitySummary> activities,
+  Map<String, PeriodStat> byKey,
 ) {
   final today = DateTime(now.year, now.month, now.day);
   final currentWeekStart = today.subtract(Duration(days: today.weekday - 1));
@@ -519,57 +601,60 @@ List<_TrainingBucket> _eightWeekBuckets(
     for (var index = 0; index < 8; index++)
       _bucket(
         label: index == 7 ? 'NAY' : 'T-${7 - index}',
-        start: firstWeekStart.add(Duration(days: index * 7)),
-        end: firstWeekStart.add(Duration(days: (index + 1) * 7)),
-        today: today,
-        activities: activities,
+        stat: byKey[weekKey(firstWeekStart.add(Duration(days: index * 7)))],
+        isCurrent: index == 7,
       ),
   ];
 }
 
 List<_TrainingBucket> _quarterBuckets(
   DateTime now,
-  List<ActivitySummary> activities,
+  Map<String, PeriodStat> byKey,
 ) {
   final today = DateTime(now.year, now.month, now.day);
   final currentQuarterStart = _quarterStart(today);
   final firstQuarterStart = currentQuarterStart.addMonth(-21);
   return [
     for (var index = 0; index < 8; index++)
-      _bucket(
+      _summedBucket(
         label: _formatQuarter(firstQuarterStart.addMonth(index * 3)),
-        start: firstQuarterStart.addMonth(index * 3),
-        end: firstQuarterStart.addMonth((index + 1) * 3),
-        today: today,
-        activities: activities,
+        stats: [
+          for (var month = 0; month < 3; month++)
+            byKey[monthKey(firstQuarterStart.addMonth(index * 3 + month))],
+        ],
+        isCurrent: index == 7,
       ),
   ];
 }
 
 List<_TrainingBucket> _yearBuckets(
   DateTime now,
-  List<ActivitySummary> activities,
+  Map<String, PeriodStat> byKey,
 ) {
-  final today = DateTime(now.year, now.month, now.day);
-  final firstYear = activities.isEmpty
+  // Năm đầu tiên suy từ key tháng nhỏ nhất có dữ liệu (key dạng `yyyy-MM`
+  // nên 4 ký tự đầu là năm).
+  final firstYear = byKey.isEmpty
       ? now.year
-      : activities.map((activity) => activity.startedAt.year).reduce(math.min);
+      : byKey.keys
+            .map((key) => int.tryParse(key.substring(0, 4)) ?? now.year)
+            .reduce(math.min);
   final bucketCount = math.max(now.year - firstYear + 1, 1);
   return [
     for (var index = 0; index < bucketCount; index++)
-      _bucket(
+      _summedBucket(
         label: '${firstYear + index}',
-        start: DateTime(firstYear + index),
-        end: DateTime(firstYear + index + 1),
-        today: today,
-        activities: activities,
+        stats: [
+          for (var month = 1; month <= 12; month++)
+            byKey[monthKey(DateTime(firstYear + index, month))],
+        ],
+        isCurrent: firstYear + index == now.year,
       ),
   ];
 }
 
 List<_TrainingBucket> _weekBuckets(
   DateTime now,
-  List<ActivitySummary> activities,
+  Map<String, PeriodStat> byKey,
 ) {
   final today = DateTime(now.year, now.month, now.day);
   final start = today.subtract(Duration(days: today.weekday - 1));
@@ -578,10 +663,8 @@ List<_TrainingBucket> _weekBuckets(
     for (var index = 0; index < 7; index++)
       _bucket(
         label: labels[index],
-        start: start.add(Duration(days: index)),
-        end: start.add(Duration(days: index + 1)),
-        today: today,
-        activities: activities,
+        stat: byKey[dayKey(start.add(Duration(days: index)))],
+        isCurrent: start.add(Duration(days: index)) == today,
       ),
   ];
 }
@@ -602,39 +685,50 @@ extension on DateTime {
 
 List<_TrainingBucket> _monthBuckets(
   DateTime now,
-  List<ActivitySummary> activities,
+  Map<String, PeriodStat> byKey,
 ) {
-  final today = DateTime(now.year, now.month, now.day);
   final firstMonth = DateTime(now.year, now.month - 11);
   return [
     for (var index = 0; index < 12; index++)
       _bucket(
         label: _formatMonth(firstMonth.addMonth(index)),
-        start: firstMonth.addMonth(index),
-        end: firstMonth.addMonth(index + 1),
-        today: today,
-        activities: activities,
+        stat: byKey[monthKey(firstMonth.addMonth(index))],
+        isCurrent: index == 11,
       ),
   ];
 }
 
 _TrainingBucket _bucket({
   required String label,
-  required DateTime start,
-  required DateTime end,
-  required DateTime today,
-  required List<ActivitySummary> activities,
+  required PeriodStat? stat,
+  required bool isCurrent,
 }) {
-  final items = activities.where(
-    (activity) =>
-        !activity.startedAt.isBefore(start) && activity.startedAt.isBefore(end),
-  );
   return _TrainingBucket(
     label: label,
-    distanceKm:
-        items.fold<double>(0, (sum, item) => sum + item.distanceMeters) / 1000,
-    activityCount: items.length,
-    isCurrent: !today.isBefore(start) && today.isBefore(end),
+    distanceKm: (stat?.stats.distanceMeters ?? 0) / 1000,
+    activityCount: stat?.stats.activityCount ?? 0,
+    isCurrent: isCurrent,
+  );
+}
+
+/// Bucket gộp nhiều kỳ tháng (quý = 3 tháng, năm = 12 tháng) — quãng đường
+/// và số buổi cộng dồn được vì các tháng không chồng lấn nhau.
+_TrainingBucket _summedBucket({
+  required String label,
+  required List<PeriodStat?> stats,
+  required bool isCurrent,
+}) {
+  var distanceMeters = 0.0;
+  var activityCount = 0;
+  for (final stat in stats) {
+    distanceMeters += stat?.stats.distanceMeters ?? 0;
+    activityCount += stat?.stats.activityCount ?? 0;
+  }
+  return _TrainingBucket(
+    label: label,
+    distanceKm: distanceMeters / 1000,
+    activityCount: activityCount,
+    isCurrent: isCurrent,
   );
 }
 

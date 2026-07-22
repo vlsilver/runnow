@@ -5,7 +5,19 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 
 /// Số kèo CHƯA HOÀN THÀNH tối đa mỗi người được tham gia (tạo + join) cùng lúc.
-const int maxActiveRunContracts = 2;
+const int maxActiveRunContracts = 5;
+
+class RunContractPage {
+  const RunContractPage({
+    required this.contracts,
+    required this.hasMore,
+    this.nextCursor,
+  });
+
+  final List<RunContract> contracts;
+  final Object? nextCursor;
+  final bool hasMore;
+}
 
 class RunContractLimitReached implements Exception {
   const RunContractLimitReached();
@@ -21,10 +33,17 @@ abstract interface class RunContractRepository {
   /// [maxActiveRunContracts].
   Stream<List<RunContract>> watchMyActiveContracts();
   Stream<RunContract?> watchContract(String contractId);
-  Stream<List<RunContract>> watchClubContracts();
+  Future<RunContractPage> fetchClubContractsPage({
+    int limit = 20,
+    Object? cursor,
+  });
 
   /// Các kèo (tạo hoặc join) đã kết thúc — hoàn thành, thất bại hoặc bị huỷ.
-  Stream<List<RunContract>> watchMyContractHistory();
+  Future<RunContractPage> fetchMyContractHistoryPage({
+    required RunContractStatus status,
+    int limit = 20,
+    Object? cursor,
+  });
   Future<String> create({
     required RunContractDraft draft,
     required RunContractPeriod period,
@@ -98,30 +117,56 @@ class FirestoreRunContractRepository implements RunContractRepository {
       _contracts.doc(contractId).snapshots().map(_contractFromDocument);
 
   @override
-  Stream<List<RunContract>> watchClubContracts() => _contracts
-      .where('visibility', isEqualTo: RunContractVisibility.club.value)
-      .where('status', isEqualTo: RunContractStatus.active.value)
-      .snapshots()
-      .map(_sortedContracts);
+  Future<RunContractPage> fetchClubContractsPage({
+    int limit = 20,
+    Object? cursor,
+  }) async {
+    Query<Map<String, dynamic>> query = _contracts
+        .where('visibility', isEqualTo: RunContractVisibility.club.value)
+        .where('status', isEqualTo: RunContractStatus.active.value)
+        .orderBy('updatedAt', descending: true);
+    if (cursor is DocumentSnapshot<Map<String, dynamic>>) {
+      query = query.startAfterDocument(cursor);
+    }
+    return _fetchPage(query, limit);
+  }
 
   @override
-  Stream<List<RunContract>> watchMyContractHistory() => _contracts
-      .where('participantUids', arrayContains: _uid)
-      .where(
-        'status',
-        whereIn: [
-          RunContractStatus.completed.value,
-          RunContractStatus.failed.value,
-          RunContractStatus.cancelled.value,
-        ],
-      )
-      .snapshots()
-      .map(_sortedContracts);
+  Future<RunContractPage> fetchMyContractHistoryPage({
+    required RunContractStatus status,
+    int limit = 20,
+    Object? cursor,
+  }) async {
+    Query<Map<String, dynamic>> query = _contracts
+        .where('participantUids', arrayContains: _uid)
+        .where('status', isEqualTo: status.value)
+        .orderBy('updatedAt', descending: true);
+    if (cursor is DocumentSnapshot<Map<String, dynamic>>) {
+      query = query.startAfterDocument(cursor);
+    }
+    return _fetchPage(query, limit);
+  }
+
+  Future<RunContractPage> _fetchPage(
+    Query<Map<String, dynamic>> query,
+    int limit,
+  ) async {
+    final snapshot = await query.limit(limit).get();
+    return RunContractPage(
+      contracts: _contractsFromDocuments(snapshot.docs),
+      nextCursor: snapshot.docs.isEmpty ? null : snapshot.docs.last,
+      hasMore: snapshot.docs.length == limit,
+    );
+  }
 
   List<RunContract> _sortedContracts(
     QuerySnapshot<Map<String, dynamic>> snapshot,
+  ) => _contractsFromDocuments(snapshot.docs);
+
+  List<RunContract> _contractsFromDocuments(
+    Iterable<DocumentSnapshot<Map<String, dynamic>>> documents,
   ) {
-    final contracts = snapshot.docs
+    final contracts = documents
         .map(_contractFromDocument)
         .whereType<RunContract>()
         .toList();
@@ -173,6 +218,8 @@ class FirestoreRunContractRepository implements RunContractRepository {
       'lastCalculatedAt': FieldValue.serverTimestamp(),
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
+      if (draft.route != null) 'route': draft.route!.toMap(),
+      'unlimitedRepeat': draft.unlimitedRepeat,
     });
     return contractRef.id;
   }
@@ -581,5 +628,7 @@ String _titleFor(RunContractDraft draft) {
       'Kèo ${draft.targetValue.toInt()} buổi chạy',
     RunContractMetric.activeDays =>
       'Kèo ${draft.targetValue.toInt()} ngày active',
+    RunContractMetric.routeCompletion =>
+      'Kèo theo tuyến ${((draft.route?.distanceMeters ?? 0) / 1000).toStringAsFixed(1)}km',
   };
 }

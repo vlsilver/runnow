@@ -6,11 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:intl/intl.dart';
 import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/repository.dart';
+import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/tracking_draft_store.dart';
 import 'package:myrun/src/tracking_session.dart';
@@ -19,9 +21,10 @@ import 'package:myrun/src/widgets/route_map.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 class TrackingScreen extends ConsumerStatefulWidget {
-  const TrackingScreen({super.key, this.autoLock = true});
+  const TrackingScreen({super.key, this.autoLock = true, this.contractId});
 
   final bool autoLock;
+  final String? contractId;
 
   @override
   ConsumerState<TrackingScreen> createState() => _TrackingScreenState();
@@ -38,9 +41,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   static const _gpsWarmupFairAccuracyMeters = 40.0;
   static const _gpsWarmupMaxWindowDriftMeters = 45.0;
   static const _gpsWarmupMaxReportedSpeedMetersPerSecond = 3.0;
-  static const _livePublishMinInterval = Duration(seconds: 10);
+  static const _livePublishMinInterval = Duration(seconds: 5);
   static const _liveHeartbeatInterval = Duration(seconds: 30);
-  static const _livePublishMinDistanceMeters = 50.0;
+  static const _livePublishMinDistanceMeters = 20.0;
   static const _liveRoutePreviewStepMeters = 100.0;
 
   TrackingSession? _session;
@@ -59,7 +62,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   var _autoLockStarted = false;
   var _persistingDraft = false;
   var _backgroundLocationGranted = false;
+  String? _contractId;
   Future<void> _livePublishQueue = Future<void>.value();
+  Future<void> _photoUploadQueue = Future<void>.value();
   DateTime? _lastDraftSavedAt;
   DateTime? _lastLivePublishedAt;
   double _lastLivePublishedDistanceMeters = 0;
@@ -91,6 +96,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   @override
   void initState() {
     super.initState();
+    _contractId = widget.contractId;
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _autoLockStarted) return;
@@ -118,6 +124,13 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       unawaited(_persistDraft());
+      return;
+    }
+    if (state == AppLifecycleState.resumed && _running) {
+      unawaited(_startRunningLocationStream());
+      _startTicker();
+      _setWakelock(true);
+      unawaited(_publishLiveSnapshot(force: true));
     }
   }
 
@@ -238,19 +251,29 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     if (!mounted) return;
     if (draft != null) {
       final session = draft.session;
-      final snapshot = session.status == TrackingSessionStatus.running
-          ? session.interruptForRestore()
+      final wasRunning = session.status == TrackingSessionStatus.running;
+      final snapshot = wasRunning
+          ? session.continueAfterRestore(DateTime.now())
           : session.snapshot();
       setState(() {
         _session = session;
         _snapshot = snapshot;
         _lastWarmupDebug = draft.gpsWarmup;
-        _gpsSignal = _GpsSignal.idle;
+        _contractId = draft.contractId ?? widget.contractId;
+        _gpsSignal = wasRunning ? _GpsSignal.fair : _GpsSignal.idle;
         _message = snapshot.status == TrackingSessionStatus.finished
             ? 'Đang hoàn tất upload ảnh của buổi chạy.'
-            : 'Đã khôi phục phiên chạy bị gián đoạn. Bấm RESUME để tiếp tục từ GPS point mới.';
+            : wasRunning
+            ? 'Đã khôi phục phiên chạy và tiếp tục ghi. GPS point tiếp theo sẽ làm anchor mới.'
+            : 'Đã khôi phục phiên chạy bị tạm dừng. Bấm TIẾP TỤC để chạy tiếp.';
       });
       await _persistDraft();
+      if (wasRunning) {
+        await _startRunningLocationStream();
+        _startTicker();
+        _setWakelock(true);
+        unawaited(_publishLiveSnapshot(force: true));
+      }
       if (snapshot.status == TrackingSessionStatus.finished) {
         final uploaded = await _uploadPendingPhotos();
         if (uploaded) await ref.read(trackingDraftStoreProvider).clear();
@@ -269,6 +292,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       await ref.read(trackingDraftStoreProvider).clear();
       await _resetSession(message: null);
     }
+    if (!await _ensureContractWindowAllowsRun()) return;
     setState(() {
       _checkingPermission = true;
       _gpsReadyAnchor = null;
@@ -307,6 +331,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
 
   Future<void> _startFromLockedGps() async {
     if (_running || _checkingPermission || _saving) return;
+    if (!await _ensureContractWindowAllowsRun()) return;
     final anchor = _gpsReadyAnchor;
     if (anchor == null) {
       await _lockGps();
@@ -393,22 +418,22 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
           .read(trackingPhotoCaptureProvider)
           .capture(sessionId: session.id, photoId: photoId);
       if (path == null || !mounted) return;
-      final next = session.addPhoto(
-        TrackingPhotoDraft(
-          id: photoId,
-          capturedAt: capturedAt,
-          latitude: anchor.latitude,
-          longitude: anchor.longitude,
-          distanceMeters: snapshot.distanceMeters,
-          localPath: path,
-        ),
+      final draft = TrackingPhotoDraft(
+        id: photoId,
+        capturedAt: capturedAt,
+        latitude: anchor.latitude,
+        longitude: anchor.longitude,
+        distanceMeters: snapshot.distanceMeters,
+        localPath: path,
       );
+      final next = session.addPhoto(draft);
       setState(() {
         _snapshot = next;
         _message = 'Đã neo ảnh tại ${formatDistance(snapshot.distanceMeters)}.';
       });
       await _persistDraft();
       HapticFeedback.selectionClick();
+      unawaited(_uploadPhotoLive(draft));
     } catch (error) {
       if (mounted) setState(() => _message = 'Không chụp được ảnh: $error');
     } finally {
@@ -449,6 +474,35 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     return true;
   }
 
+  Future<void> _uploadPhotoLive(TrackingPhotoDraft draft) {
+    final operation = _photoUploadQueue.then((_) => _uploadPhotoLiveNow(draft));
+    _photoUploadQueue = operation.catchError((Object _) {});
+    return operation;
+  }
+
+  Future<void> _uploadPhotoLiveNow(TrackingPhotoDraft draft) async {
+    final session = _session;
+    if (session == null) return;
+    try {
+      final uploaded = await ref
+          .read(trackingPhotoRepositoryProvider)
+          .upload(activityId: session.id, draft: draft);
+      final next = session.markPhotoUploaded(draft.id, uploaded.storagePath);
+      if (mounted) setState(() => _snapshot = next);
+      await _persistDraft();
+      await ref.read(trackingPhotoCaptureProvider).deleteLocal(draft.localPath);
+      final contractId = _contractId;
+      if (contractId != null) {
+        await ref
+            .read(liveTrackingRepositoryProvider)
+            .publishPhoto(sessionId: session.id, photo: uploaded);
+      }
+    } catch (_) {
+      // Bỏ qua — `_uploadPendingPhotos()` lúc dừng buổi chạy sẽ tự thử lại
+      // (photo vẫn `!isUploaded` nên không mất dữ liệu, chỉ mất tính "live").
+    }
+  }
+
   Future<void> _stopAndSave() async {
     final session = _session;
     if (session == null || _saving) return;
@@ -484,26 +538,28 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _setWakelock(false);
       final snapshot = session.finish(DateTime.now());
       setState(() => _snapshot = snapshot);
+      await _persistDraft();
       await _publishLiveSnapshot(
         force: true,
         status: LiveTrackingStatus.finished,
       );
-      final detail = snapshot.toActivityDetail(
+      final photosUploaded = await _uploadPendingPhotos();
+      final finalSnapshot = session.snapshot();
+      final detail = finalSnapshot.toActivityDetail(
         name: '3I Run',
         recordingDevice: '3I app',
       );
       final debug = {
-        ...snapshot.toDebugMap(),
+        ...finalSnapshot.toDebugMap(),
         if (_lastWarmupDebug != null) 'gpsWarmup': _lastWarmupDebug,
       };
       final result = await ref
           .read(activityRepositoryProvider)
           .saveTrackedActivity(detail, trackingDebug: debug);
-      final photosUploaded = await _uploadPendingPhotos();
       if (photosUploaded) await ref.read(trackingDraftStoreProvider).clear();
       if (!mounted) return;
       setState(() {
-        _snapshot = session.snapshot();
+        _snapshot = finalSnapshot;
         _message = !photosUploaded
             ? _message
             : switch (result.status) {
@@ -605,6 +661,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _gpsElapsedSeconds = 0;
       _lastLivePublishedAt = null;
       _lastLivePublishedDistanceMeters = 0;
+      _contractId = widget.contractId;
       _message = message;
     });
   }
@@ -619,15 +676,53 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
 
   Future<void> _persistDraft() async {
     final session = _session;
-    if (session == null || _finished || _persistingDraft) return;
+    if (session == null || _persistingDraft) return;
     _persistingDraft = true;
     try {
       await ref
           .read(trackingDraftStoreProvider)
-          .save(TrackingDraft(session: session, gpsWarmup: _lastWarmupDebug));
+          .save(
+            TrackingDraft(
+              session: session,
+              gpsWarmup: _lastWarmupDebug,
+              contractId: _contractId,
+            ),
+          );
       _lastDraftSavedAt = DateTime.now();
     } finally {
       _persistingDraft = false;
+    }
+  }
+
+  Future<bool> _ensureContractWindowAllowsRun() async {
+    final contractId = _contractId;
+    if (contractId == null) return true;
+    try {
+      final contract = await ref
+          .read(runContractRepositoryProvider)
+          .watchContract(contractId)
+          .first;
+      if (contract == null) {
+        if (mounted) setState(() => _message = 'Không tìm thấy kèo tuyến.');
+        return false;
+      }
+      final lifecycle = contractLifecycle(contract, DateTime.now());
+      if (lifecycle == RunContractLifecycle.running) return true;
+      final message = switch (lifecycle) {
+        RunContractLifecycle.scheduled =>
+          'Kèo này chưa tới giờ chạy. Chỉ bắt đầu được từ ${DateFormat('dd/MM · HH:mm').format(contract.startAt)}.',
+        RunContractLifecycle.syncGrace ||
+        RunContractLifecycle.awaitingFinalize ||
+        RunContractLifecycle.completed ||
+        RunContractLifecycle.failed => 'Kèo này đã hết thời gian chạy.',
+        RunContractLifecycle.cancelled => 'Kèo này đã bị hủy.',
+        RunContractLifecycle.running => '',
+      };
+      if (mounted) setState(() => _message = message);
+      return false;
+    } catch (error) {
+      if (mounted) setState(() => _message = 'Không kiểm tra được kèo: $error');
+      return false;
     }
   }
 
@@ -690,13 +785,12 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             snapshot: snapshot,
             status: status ?? _liveStatusForSnapshot(snapshot),
             routePreview: _downsampleLiveRoute(snapshot.routePoints),
+            contractId: _contractId,
           );
       _lastLivePublishedAt = now;
       _lastLivePublishedDistanceMeters = snapshot.distanceMeters;
-    } catch (error) {
-      if (kDebugMode) {
-        debugPrint('[LiveTracking] publish failed: $error');
-      }
+    } catch (_) {
+      // Bỏ qua — lần publish tiếp theo (throttle ~10s/50m) sẽ tự thử lại.
     }
   }
 
@@ -1771,11 +1865,17 @@ class _RoutePreviewPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _RoutePreviewPainter oldDelegate) {
+    // `routePoints` được bọc lại bằng `List.unmodifiable(...)` mỗi lần lấy
+    // snapshot (kể cả khi tick mỗi giây, không có điểm GPS mới), nên so theo
+    // tham chiếu (`!=`) sẽ luôn coi là "đổi" và vẽ lại toàn bộ route dù không
+    // cần thiết. Route chỉ được append, không bao giờ sửa nội dung mà giữ
+    // nguyên độ dài, nên so độ dài là đủ và rẻ hơn nhiều so với việc project
+    // lại toàn bộ điểm mỗi giây.
     return oldDelegate.color != color ||
         oldDelegate.backgroundColor != backgroundColor ||
         oldDelegate.roadColor != roadColor ||
         oldDelegate.progress != progress ||
-        oldDelegate.routePoints != routePoints;
+        oldDelegate.routePoints.length != routePoints.length;
   }
 }
 

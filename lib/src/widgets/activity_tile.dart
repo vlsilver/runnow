@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/cached_avatar.dart';
 
 class ActivityTile extends StatelessWidget {
   const ActivityTile({
@@ -30,158 +30,155 @@ class ActivityTile extends StatelessWidget {
     final faint = Theme.of(
       context,
     ).colorScheme.onSurface.withValues(alpha: 0.42);
+    final timelineHeight =
+        memberName != null || preferredStravaActivityId != null ? 142.0 : 118.0;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _TimelineRail(activity: activity),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => context.push(
-                    ownerUid == null
-                        ? '/activity/${activity.id}'
-                        : '/club/$ownerUid/activity/${activity.id}',
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [palette.glassStart, palette.glassEnd],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _TimelineRail(activity: activity, height: timelineHeight),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => context.push(
+                  ownerUid == null
+                      ? '/activity/${activity.id}'
+                      : '/club/$ownerUid/activity/${activity.id}',
+                ),
+                borderRadius: BorderRadius.circular(8),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [palette.glassStart, palette.glassEnd],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (memberName != null) ...[
-                              _MemberStamp(
-                                name: memberName!,
-                                avatarUrl: memberAvatarUrl,
-                              ),
-                              const SizedBox(height: 10),
-                            ],
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          _KindTag(visual: visual),
-                                          const SizedBox(width: 7),
-                                          Expanded(
-                                            child: Text(
-                                              activity.name,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .titleMedium
-                                                  ?.copyWith(
-                                                    fontWeight: FontWeight.w900,
-                                                  ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (memberName != null) ...[
+                            _MemberStamp(
+                              name: memberName!,
+                              avatarUrl: memberAvatarUrl,
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      formatDistance(activity.distanceMeters),
-                                      style: TextStyle(
-                                        color: palette.accent,
-                                        fontSize: 21,
-                                        fontWeight: FontWeight.w900,
-                                        height: 1,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 5),
-                                    Text(
-                                      sequence == null
-                                          ? 'LOG'
-                                          : '#${sequence!.toString().padLeft(2, '0')}',
-                                      style: TextStyle(
-                                        color: faint,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 1.2,
-                                      ),
+                                    Row(
+                                      children: [
+                                        _KindTag(visual: visual),
+                                        const SizedBox(width: 7),
+                                        Expanded(
+                                          child: Text(
+                                            activity.name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleMedium
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w900,
+                                                ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
-                              ],
-                            ),
-                            const SizedBox(height: 13),
-                            if (preferredStravaActivityId != null) ...[
-                              _StravaOverlapFlag(
-                                activityId: preferredStravaActivityId!,
                               ),
-                              const SizedBox(height: 10),
+                              const SizedBox(width: 8),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    formatDistance(activity.distanceMeters),
+                                    style: TextStyle(
+                                      color: palette.accent,
+                                      fontSize: 21,
+                                      fontWeight: FontWeight.w900,
+                                      height: 1,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    sequence == null
+                                        ? 'LOG'
+                                        : '#${sequence!.toString().padLeft(2, '0')}',
+                                    style: TextStyle(
+                                      color: faint,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _TileMetric(
-                                    label: 'PACE',
-                                    value: formatPace(
-                                      activity.paceSecondsPerKm,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: _TileMetric(
-                                    label: 'TIME',
-                                    value: formatDuration(
-                                      activity.movingTimeSeconds,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: _TileMetric(
-                                    label: activity.averageHeartRate == null
-                                        ? 'ELEV'
-                                        : 'HR',
-                                    value: activity.averageHeartRate == null
-                                        ? _elevationLabel(activity)
-                                        : '${activity.averageHeartRate!.round()} bpm',
-                                  ),
-                                ),
-                              ],
+                          ),
+                          const SizedBox(height: 13),
+                          if (preferredStravaActivityId != null) ...[
+                            _StravaOverlapFlag(
+                              activityId: preferredStravaActivityId!,
                             ),
+                            const SizedBox(height: 10),
                           ],
-                        ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _TileMetric(
+                                  label: 'PACE',
+                                  value: formatPace(activity.paceSecondsPerKm),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _TileMetric(
+                                  label: 'TIME',
+                                  value: formatDuration(
+                                    activity.movingTimeSeconds,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _TileMetric(
+                                  label: activity.averageHeartRate == null
+                                      ? 'ELEV'
+                                      : 'HR',
+                                  value: activity.averageHeartRate == null
+                                      ? _elevationLabel(activity)
+                                      : '${activity.averageHeartRate!.round()} bpm',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -242,7 +239,9 @@ class _MemberStamp extends StatelessWidget {
         CircleAvatar(
           radius: 13,
           backgroundColor: palette.secondary.withValues(alpha: 0.16),
-          backgroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl!),
+          backgroundImage: avatarUrl == null
+              ? null
+              : cachedAvatarImage(context, avatarUrl!, 26),
           child: avatarUrl == null
               ? Text(
                   name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(),
@@ -274,9 +273,10 @@ class _MemberStamp extends StatelessWidget {
 }
 
 class _TimelineRail extends StatelessWidget {
-  const _TimelineRail({required this.activity});
+  const _TimelineRail({required this.activity, required this.height});
 
   final ActivitySummary activity;
+  final double height;
 
   @override
   Widget build(BuildContext context) {
@@ -284,10 +284,11 @@ class _TimelineRail extends StatelessWidget {
     final palette = context.runNowPalette;
     return SizedBox(
       width: 38,
+      height: height,
       child: Column(
         children: [
           Text(
-            DateFormat('dd').format(activity.startedAt),
+            _dayLabel(activity.startedAt),
             style: TextStyle(
               color: onSurface,
               fontSize: 18,
@@ -297,7 +298,7 @@ class _TimelineRail extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            DateFormat('MMM').format(activity.startedAt).toUpperCase(),
+            _monthLabel(activity.startedAt),
             style: TextStyle(
               color: onSurface.withValues(alpha: 0.48),
               fontSize: 9,
@@ -453,3 +454,20 @@ String _elevationLabel(ActivitySummary activity) {
   if (elevation == null) return '--';
   return '${elevation.round()} m';
 }
+
+String _dayLabel(DateTime date) => date.day.toString().padLeft(2, '0');
+
+String _monthLabel(DateTime date) => switch (date.month) {
+  1 => 'JAN',
+  2 => 'FEB',
+  3 => 'MAR',
+  4 => 'APR',
+  5 => 'MAY',
+  6 => 'JUN',
+  7 => 'JUL',
+  8 => 'AUG',
+  9 => 'SEP',
+  10 => 'OCT',
+  11 => 'NOV',
+  _ => 'DEC',
+};

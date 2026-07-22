@@ -4,29 +4,39 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:myrun/src/auth.dart';
 import 'package:myrun/src/avatar_repository.dart';
+import 'package:myrun/src/journal_controller.dart';
+import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
+import 'package:myrun/src/period_keys.dart';
 import 'package:myrun/src/repository.dart';
+import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
 import 'package:myrun/src/run_contracts/run_contract_analytics.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_repository.dart';
-import 'package:myrun/src/strava_client.dart';
 import 'package:myrun/src/sync.dart';
 import 'package:myrun/src/tracking_draft_store.dart';
 import 'package:myrun/src/tracking_location_provider.dart';
 import 'package:myrun/src/tracking_photo_capture.dart';
 import 'package:myrun/src/tracking_photo_repository.dart';
 import 'package:myrun/src/theme_controller.dart';
+import 'package:myrun/src/training_power.dart';
+
+final runNowApiClientProvider = Provider<RunNowApiClient>((ref) {
+  final client = RunNowApiClient.firebase(FirebaseAuth.instance);
+  ref.onDispose(client.close);
+  return client;
+});
 
 final activityRepositoryProvider = Provider<ActivityRepository>((ref) {
   return FirestoreStravaActivityRepository(
     FirebaseAuth.instance,
     FirebaseFirestore.instance,
+    ref.watch(runNowApiClientProvider),
   );
 });
 
@@ -41,6 +51,7 @@ final memberRepositoryProvider = Provider<MemberRepository>((ref) {
   return FirestoreMemberRepository(
     FirebaseAuth.instance,
     FirebaseFirestore.instance,
+    ref.watch(runNowApiClientProvider),
   );
 });
 
@@ -69,8 +80,6 @@ final runContractAnalyticsProvider = Provider<RunContractAnalytics>((ref) {
   return RunContractAnalytics(FirebaseAnalytics.instance);
 });
 
-enum ClubRecapRange { currentWeek, currentMonth }
-
 enum ClubRankingMetric {
   distance,
   time,
@@ -80,25 +89,16 @@ enum ClubRankingMetric {
   activityCount,
 }
 
-enum ClubRankingRange { rollingSevenDays, currentWeek, currentMonth }
+enum ClubRankingRange { currentWeek, currentMonth }
 
-/// Khoảng thời gian của tab "Tổng kết" club. Được hoist ra provider để filter
-/// có thể render gộp chung trong navigation bar (xem [app.dart]).
-final clubRecapRangeProvider = StateProvider<ClubRecapRange>(
-  (ref) => ClubRecapRange.currentWeek,
-);
-
-/// Bộ lọc của tab "Xếp hạng" club, cũng hoist ra để gộp vào navigation bar.
+/// Bộ lọc của màn "Câu lạc bộ" (chỉ còn đúng bảng xếp hạng), hoist ra để gộp
+/// vào navigation bar (xem [app.dart]).
 final clubRankingMetricProvider = StateProvider<ClubRankingMetric>(
   (ref) => ClubRankingMetric.distance,
 );
 final clubRankingRangeProvider = StateProvider<ClubRankingRange>(
   (ref) => ClubRankingRange.currentWeek,
 );
-
-/// Index tab con của club (0 = Xếp hạng, 1 = Tổng kết...),
-/// hoặc -1 khi không ở màn hình club. Nav bar dựa vào đây để hiện đúng filter.
-final clubActiveSubTabProvider = StateProvider<int>((ref) => -1);
 
 final trackingDraftStoreProvider = Provider<TrackingDraftStore>(
   (ref) => const TrackingDraftStore(),
@@ -113,11 +113,8 @@ final trackingPhotoCaptureProvider = Provider<TrackingPhotoCapture>(
 );
 
 final trackingPhotoRepositoryProvider = Provider<TrackingPhotoRepository>(
-  (ref) => TrackingPhotoRepository(
-    FirebaseAuth.instance,
-    FirebaseFirestore.instance,
-    FirebaseStorage.instance,
-  ),
+  (ref) =>
+      TrackingPhotoRepository(FirebaseAuth.instance, FirebaseStorage.instance),
 );
 
 final avatarRepositoryProvider = Provider<AvatarRepository>(
@@ -148,56 +145,39 @@ final userProfileProvider = StreamProvider<UserProfile?>((ref) {
 });
 
 final stravaAuthProvider = ChangeNotifierProvider<StravaAuthController>(
-  (ref) =>
-      StravaAuthController(FirebaseAuth.instance, FirebaseFirestore.instance),
+  (ref) => StravaAuthController(
+    FirebaseAuth.instance,
+    ref.watch(runNowApiClientProvider),
+  ),
 );
 
 final stravaConnectionProvider = Provider<bool>((ref) {
-  ref.watch(stravaAuthProvider);
-  ref.watch(firebaseUserProvider);
-  if (StravaClient.instance.isSignedIn) return true;
-  // Web có thể vừa reload sau OAuth callback nên local token chưa kịp restore;
-  // Firestore profile là trạng thái kết nối bền hơn cho UI.
-  if (kIsWeb) {
-    return ref
-        .watch(userProfileProvider)
-        .maybeWhen(
-          data: (profile) => profile?.stravaConnected ?? false,
-          orElse: () => false,
-        );
-  }
-  return false;
+  return ref.watch(stravaAuthProvider).connected;
 });
 
-final googleAuthProvider = ChangeNotifierProvider<GoogleAuthController>(
+final stravaConnectionLoadingProvider = Provider<bool>((ref) {
+  return ref.watch(stravaAuthProvider).statusLoading;
+});
+
+final authControllerProvider = ChangeNotifierProvider<AuthController>(
   (ref) =>
-      GoogleAuthController(FirebaseAuth.instance, FirebaseFirestore.instance),
+      AuthController(FirebaseAuth.instance, FirebaseFirestore.instance),
 );
 
 final themeControllerProvider = ChangeNotifierProvider<ThemeController>(
   (ref) => ThemeController(),
 );
 
+/// Dashboard cần đủ dữ liệu gần đây để tính tuần/tháng/kỷ luật/kỷ lục nhanh,
+/// nhưng không nên stream toàn bộ lịch sử Strava vô hạn mỗi lần Firestore đổi.
+const _dashboardActivityLimit = 500;
+
 final activitiesProvider = StreamProvider<List<ActivitySummary>>((ref) {
   final uid = ref.watch(firebaseUserProvider).value?.uid;
   if (uid == null) return Stream.value(const []);
-  return ref.watch(activityRepositoryProvider).watchActivities();
-});
-
-final journalActivitiesProvider = StreamProvider<List<JournalActivityEntry>>((
-  ref,
-) {
-  final uid = ref.watch(firebaseUserProvider).value?.uid;
-  if (uid == null) return Stream.value(const []);
-  return ref.watch(activityRepositoryProvider).watchJournalActivities();
-});
-
-final trackedTrialActivitiesProvider = StreamProvider<List<ActivitySummary>>((
-  ref,
-) {
-  final uid = ref.watch(firebaseUserProvider).value?.uid;
-  if (uid == null) return Stream.value(const []);
-  return ref.watch(activityRepositoryProvider).watchTrackedTrialActivities();
+  return ref
+      .watch(activityRepositoryProvider)
+      .watchActivities(limit: _dashboardActivityLimit);
 });
 
 final activityDetailProvider = FutureProvider.family<ActivityDetail, String>((
@@ -211,11 +191,17 @@ final syncControllerProvider = ChangeNotifierProvider<SyncController>(
   (ref) => SyncController(ref.watch(activityRepositoryProvider)),
 );
 
+/// Không autoDispose — cache trang Nhật ký sống suốt phiên app, xem
+/// `JournalController` để biết lý do (tránh phải load lại ~2s mỗi lần quay
+/// lại màn Nhật ký).
+final journalControllerProvider = ChangeNotifierProvider<JournalController>(
+  (ref) => JournalController(ref.watch(activityRepositoryProvider)),
+);
+
 final runContractControllerProvider = Provider<RunContractController>((ref) {
   return RunContractController(
     ref.watch(runContractRepositoryProvider),
     ref.watch(activityRepositoryProvider),
-    ref.watch(syncControllerProvider),
   );
 });
 
@@ -225,19 +211,6 @@ final myActiveContractsProvider = StreamProvider<List<RunContract>>((ref) {
   final uid = ref.watch(firebaseUserProvider).value?.uid;
   if (uid == null) return Stream.value(const []);
   return ref.watch(runContractRepositoryProvider).watchMyActiveContracts();
-});
-
-final clubRunContractsProvider = StreamProvider<List<RunContract>>((ref) {
-  final uid = ref.watch(firebaseUserProvider).value?.uid;
-  if (uid == null) return Stream.value(const []);
-  return ref.watch(runContractRepositoryProvider).watchClubContracts();
-});
-
-/// Các kèo (tạo hoặc join) đã kết thúc — hoàn thành, thất bại hoặc bị huỷ.
-final myContractHistoryProvider = StreamProvider<List<RunContract>>((ref) {
-  final uid = ref.watch(firebaseUserProvider).value?.uid;
-  if (uid == null) return Stream.value(const []);
-  return ref.watch(runContractRepositoryProvider).watchMyContractHistory();
 });
 
 final runContractProvider = StreamProvider.family<RunContract?, String>((
@@ -261,85 +234,89 @@ final leaderboardEntriesProvider = StreamProvider<List<LeaderboardEntry>>(
   (ref) => ref.watch(memberRepositoryProvider).watchLeaderboardEntries(),
 );
 
-final clubLiveSessionsProvider = StreamProvider<List<LiveTrackingSession>>(
-  (ref) => ref.watch(liveTrackingRepositoryProvider).watchClubLiveSessions(),
-);
+final clubLiveSessionsProvider =
+    StreamProvider.autoDispose<List<LiveTrackingSession>>(
+      (ref) =>
+          ref.watch(liveTrackingRepositoryProvider).watchClubLiveSessions(),
+    );
 
-final memberProfileProvider = StreamProvider.family<MemberProfile?, String>((
-  ref,
-  uid,
-) {
-  return ref.watch(memberRepositoryProvider).watchMember(uid);
-});
+/// Vị trí/ảnh live của các buổi chạy đang gắn với 1 kèo theo tuyến cụ thể —
+/// dùng cho bản đồ route ở màn chi tiết kèo.
+final contractLiveSessionsProvider = StreamProvider.autoDispose
+    .family<List<LiveTrackingSession>, String>(
+      (ref, contractId) => ref
+          .watch(liveTrackingRepositoryProvider)
+          .watchContractLiveSessions(contractId),
+    );
 
-final memberActivitiesProvider =
-    StreamProvider.family<List<ActivitySummary>, String>((ref, uid) {
-      return ref.watch(memberRepositoryProvider).watchMemberActivities(uid);
+final memberProfileProvider = StreamProvider.autoDispose
+    .family<MemberProfile?, String>((ref, uid) {
+      return ref.watch(memberRepositoryProvider).watchMember(uid);
     });
 
-final memberActivityDetailProvider =
-    FutureProvider.family<ActivityDetail, ({String uid, String activityId})>((
-      ref,
-      request,
-    ) {
+const _clubActivityLogPerMemberLimit = 20;
+const _clubActivityLogConcurrency = 4;
+const _memberDashboardActivityLimit = 30;
+
+final memberActivitiesProvider = StreamProvider.autoDispose
+    .family<List<ActivitySummary>, String>((ref, uid) {
+      return ref
+          .watch(memberRepositoryProvider)
+          .watchMemberActivities(uid, limit: _memberDashboardActivityLimit);
+    });
+
+final memberActivityDetailProvider = FutureProvider.autoDispose
+    .family<ActivityDetail, ({String uid, String activityId})>((ref, request) {
       return ref
           .watch(memberRepositoryProvider)
           .getMemberActivityDetail(request.uid, request.activityId);
     });
 
-final clubActivityLogProvider = StreamProvider<List<ClubActivityLogItem>>((
-  ref,
-) {
-  final repository = ref.watch(memberRepositoryProvider);
-  final membersState = ref.watch(membersProvider);
-  return membersState.when(
-    data: (members) {
+final clubActivityLogProvider =
+    FutureProvider.autoDispose<List<ClubActivityLogItem>>((ref) async {
+      final cacheLink = ref.keepAlive();
+      final cacheTimer = Timer(const Duration(minutes: 2), cacheLink.close);
+      ref.onDispose(cacheTimer.cancel);
+      final repository = ref.watch(memberRepositoryProvider);
+      final members = await ref.watch(membersProvider.future);
       final publicMembers = members.where((member) => member.isPublic).toList();
-      if (publicMembers.isEmpty) {
-        return Stream.value(const <ClubActivityLogItem>[]);
-      }
-      final controller = StreamController<List<ClubActivityLogItem>>();
-      final latestByUid = <String, List<ActivitySummary>>{};
-      final subscriptions = <StreamSubscription<List<ActivitySummary>>>[];
-
-      void emit() {
-        final items = <ClubActivityLogItem>[];
-        for (final member in publicMembers) {
-          final activities =
-              latestByUid[member.uid] ?? const <ActivitySummary>[];
-          for (final activity in activities) {
-            items.add(ClubActivityLogItem(member: member, activity: activity));
-          }
+      if (publicMembers.isEmpty) return const <ClubActivityLogItem>[];
+      final activitiesByMember = <String, List<ActivitySummary>>{};
+      for (
+        var offset = 0;
+        offset < publicMembers.length;
+        offset += _clubActivityLogConcurrency
+      ) {
+        final batch = publicMembers
+            .skip(offset)
+            .take(_clubActivityLogConcurrency);
+        final results = await Future.wait([
+          for (final member in batch)
+            repository
+                .listMemberActivities(
+                  member.uid,
+                  limit: _clubActivityLogPerMemberLimit,
+                )
+                .then((activities) => (member.uid, activities))
+                .catchError((_) => (member.uid, const <ActivitySummary>[])),
+        ]);
+        for (final result in results) {
+          activitiesByMember[result.$1] = result.$2;
         }
-        items.sort(
-          (left, right) =>
-              right.activity.startedAt.compareTo(left.activity.startedAt),
-        );
-        if (!controller.isClosed) {
-          controller.add(items);
-        }
       }
-
+      final items = <ClubActivityLogItem>[];
       for (final member in publicMembers) {
-        subscriptions.add(
-          repository.watchMemberActivities(member.uid).listen((activities) {
-            latestByUid[member.uid] = activities;
-            emit();
-          }, onError: controller.addError),
-        );
-      }
-
-      controller.onCancel = () async {
-        for (final subscription in subscriptions) {
-          await subscription.cancel();
+        for (final activity
+            in activitiesByMember[member.uid] ?? const <ActivitySummary>[]) {
+          items.add(ClubActivityLogItem(member: member, activity: activity));
         }
-      };
-      return controller.stream;
-    },
-    loading: () => Stream.value(const <ClubActivityLogItem>[]),
-    error: (error, stack) => Stream.error(error, stack),
-  );
-});
+      }
+      items.sort(
+        (left, right) =>
+            right.activity.startedAt.compareTo(left.activity.startedAt),
+      );
+      return items;
+    });
 
 final trainingGoalsProvider = StreamProvider<TrainingGoals>(
   (ref) => ref.watch(trainingGoalRepositoryProvider).watchGoals(),
@@ -351,3 +328,235 @@ class ClubActivityLogItem {
   final MemberProfile member;
   final ActivitySummary activity;
 }
+
+/// Các buổi chạy đã được ghi nhận (đếm vào tiến độ) của MỌI người tham gia
+/// 1 kèo — không chỉ của riêng user hiện tại. Chỉ đọc được hoạt động của
+/// participant khác nếu hồ sơ họ để Public (khớp `firestore.rules`:
+/// `allow read: if owns(userId) || isPublicProfile(userId)`); participant có
+/// hồ sơ Private bị bỏ qua trong feed này (không có cách nào đọc được).
+final runContractActivityFeedProvider = StreamProvider.autoDispose
+    .family<List<ContractActivityFeedItem>, String>((ref, contractId) {
+      final currentUid = ref.watch(firebaseUserProvider).value?.uid;
+      if (currentUid == null) return Stream.value(const []);
+      final contract = ref.watch(runContractProvider(contractId)).value;
+      if (contract == null) return Stream.value(const []);
+      final members =
+          ref.watch(membersProvider).value ?? const <MemberProfile>[];
+      final publicByUid = {
+        for (final member in members) member.uid: member.isPublic,
+      };
+      final repository = ref.watch(memberRepositoryProvider);
+
+      final readableUids = contract.participants.keys
+          .where((uid) => uid == currentUid || (publicByUid[uid] ?? false))
+          .toList();
+      if (readableUids.isEmpty) return Stream.value(const []);
+
+      final controller = StreamController<List<ContractActivityFeedItem>>();
+      final latestByUid = <String, List<ActivitySummary>>{};
+      final subscriptions = <StreamSubscription<List<ActivitySummary>>>[];
+
+      void emit() {
+        final items = <ContractActivityFeedItem>[];
+        for (final uid in readableUids) {
+          final countedIds =
+              contract.participants[uid]?.countedActivityIds.toSet() ??
+              const <String>{};
+          if (countedIds.isEmpty) continue;
+          for (final activity
+              in latestByUid[uid] ?? const <ActivitySummary>[]) {
+            if (countedIds.contains(activity.id)) {
+              items.add(ContractActivityFeedItem(uid: uid, activity: activity));
+            }
+          }
+        }
+        items.sort(
+          (left, right) =>
+              right.activity.startedAt.compareTo(left.activity.startedAt),
+        );
+        if (!controller.isClosed) controller.add(items);
+      }
+
+      for (final uid in readableUids) {
+        final countedIds =
+            contract.participants[uid]?.countedActivityIds.toSet() ??
+            const <String>{};
+        if (countedIds.isEmpty) continue;
+        subscriptions.add(
+          repository.watchMemberActivitiesByIds(uid, countedIds).listen((
+            activities,
+          ) {
+            latestByUid[uid] = activities;
+            emit();
+          }, onError: controller.addError),
+        );
+      }
+
+      controller.onCancel = () async {
+        for (final subscription in subscriptions) {
+          await subscription.cancel();
+        }
+      };
+      return controller.stream;
+    });
+
+class ContractActivityFeedItem {
+  const ContractActivityFeedItem({required this.uid, required this.activity});
+
+  final String uid;
+  final ActivitySummary activity;
+}
+
+/// Bản tóm tắt 1 route "Hành Trình" (tên/tagline/tổng km, KHÔNG có
+/// polyline/mốc — xem `JourneyRouteSummary`) — đọc từ Firestore
+/// (`journeyRoutes/{routeId}`), cache lại (autoDispose: false) vì nội dung
+/// tĩnh dùng chung mọi user. Dùng cho danh sách level ở Journey Hub và tính
+/// offset mở khoá — cả hai chỉ cần `totalLengthMeters`, không cần kéo theo
+/// polyline nặng của route (xem [journeyRouteDetailProvider] cho việc đó).
+final journeyRouteSummaryProvider =
+    FutureProvider.family<JourneyRouteSummary, JourneyRouteId>(
+      (ref, routeId) => ref
+          .watch(memberRepositoryProvider)
+          .getJourneyRouteSummary(routeId.value),
+    );
+
+/// Toàn bộ dữ liệu 1 route (polyline + mốc) — chỉ dùng khi mở màn chi tiết
+/// xem bản đồ (`journey_screen.dart`), đọc thêm subcollection `detail` nặng
+/// hơn nhiều so với [journeyRouteSummaryProvider] nên không watch ở Hub.
+final journeyRouteDetailProvider =
+    FutureProvider.family<JourneyRoute, JourneyRouteId>(
+      (ref, routeId) => ref
+          .watch(memberRepositoryProvider)
+          .getJourneyRouteDetail(routeId.value),
+    );
+
+/// Số km cần tích luỹ trước khi 1 chiến dịch Hành Trình bắt đầu tính tiến
+/// độ — tổng chiều dài (các) chiến dịch đứng trước nó, tính động từ chính
+/// dữ liệu route thật (không hard-code số) nên luôn khớp Firestore. Chiến
+/// dịch đầu tiên (`marathon`) có offset 0.
+final journeyCampaignOffsetProvider =
+    FutureProvider.family<double, JourneyCampaignId>((ref, campaignId) async {
+      var offset = 0.0;
+      for (final prior in campaignId.priorCampaigns) {
+        final summary = await ref.watch(
+          journeyRouteSummaryProvider(prior.routeChoices.first).future,
+        );
+        offset += summary.totalLengthMeters;
+      }
+      return offset;
+    });
+
+/// Tổng km trọn đời của user hiện tại — cộng toàn bộ doc `month` từ
+/// `periodStats`, cùng cách "năm" đang cộng cho biểu đồ khối lượng
+/// (`training_volume_chart.dart`, range `2000-01`..hiện tại).
+final journeyLifetimeDistanceProvider = FutureProvider.autoDispose<double>((
+  ref,
+) async {
+  final uid = ref.watch(firebaseUserProvider).value?.uid;
+  if (uid == null) return 0;
+  final stats = await ref
+      .watch(memberRepositoryProvider)
+      .listMemberPeriodStats(
+        uid,
+        periodType: 'month',
+        fromKey: '2000-01',
+        toKeyInclusive: monthKey(DateTime.now()),
+      );
+  return stats.fold<double>(
+    0,
+    (total, stat) => total + stat.stats.distanceMeters,
+  );
+});
+
+final memberJourneyLifetimeDistanceProvider = FutureProvider.autoDispose
+    .family<double, String>((ref, uid) async {
+      final stats = await ref
+          .watch(memberRepositoryProvider)
+          .listMemberPeriodStats(
+            uid,
+            periodType: 'month',
+            fromKey: '2000-01',
+            toKeyInclusive: monthKey(DateTime.now()),
+          );
+      return stats.fold<double>(
+        0,
+        (total, stat) => total + stat.stats.distanceMeters,
+      );
+    });
+
+/// Số liệu gộp cho 1 trong 4 mốc Tuần/Tháng/Năm/Total của card hero Hành
+/// Trình. Tuần/Tháng đọc thẳng 1 doc `periodStats`; Năm/Total cộng nhiều
+/// doc `month` theo đúng cách [journeyLifetimeDistanceProvider] đã làm,
+/// tái dùng [listMemberPeriodStats] — không thêm collection/API mới.
+class JourneyPowerSnapshot {
+  const JourneyPowerSnapshot({required this.stats, required this.activeMonths});
+
+  static const empty = JourneyPowerSnapshot(
+    stats: LeaderboardStats(
+      distanceMeters: 0,
+      movingTimeSeconds: 0,
+      activityCount: 0,
+      activeDays: 0,
+      longestDistanceMeters: 0,
+      fastestPaceSecondsPerKm: null,
+    ),
+    activeMonths: 1,
+  );
+
+  final LeaderboardStats stats;
+
+  /// Số tháng thực có dữ liệu trong khoảng — dùng làm mẫu số khi
+  /// [journeyPowerScore] quy Năm/Total về "trung bình mỗi tháng".
+  final int activeMonths;
+}
+
+typedef JourneyPowerQuery = ({String uid, JourneyPowerScope scope});
+
+/// Mốc thời gian đang chọn ở toggle Tuần/Tháng/Năm/Total của hero Hành
+/// Trình — chỉ là lựa chọn UI, autoDispose để reset lúc rời màn hình.
+final journeyPowerScopeProvider = StateProvider.autoDispose<JourneyPowerScope>(
+  (ref) => JourneyPowerScope.week,
+);
+
+final journeyPowerSnapshotProvider = FutureProvider.autoDispose
+    .family<JourneyPowerSnapshot, JourneyPowerQuery>((ref, query) async {
+      final repo = ref.watch(memberRepositoryProvider);
+      final now = DateTime.now();
+      Future<JourneyPowerSnapshot> monthRange(
+        String fromKey,
+        String toKeyInclusive,
+      ) async {
+        final stats = await repo.listMemberPeriodStats(
+          query.uid,
+          periodType: 'month',
+          fromKey: fromKey,
+          toKeyInclusive: toKeyInclusive,
+        );
+        return JourneyPowerSnapshot(
+          stats: combineLeaderboardStats(stats.map((stat) => stat.stats)),
+          activeMonths: stats.isEmpty ? 1 : stats.length,
+        );
+      }
+
+      switch (query.scope) {
+        case JourneyPowerScope.week:
+          final key = weekKey(now);
+          final stats = await repo.listMemberPeriodStats(
+            query.uid,
+            periodType: 'week',
+            fromKey: key,
+            toKeyInclusive: key,
+          );
+          return JourneyPowerSnapshot(
+            stats: combineLeaderboardStats(stats.map((stat) => stat.stats)),
+            activeMonths: 1,
+          );
+        case JourneyPowerScope.month:
+          final key = monthKey(now);
+          return monthRange(key, key);
+        case JourneyPowerScope.year:
+          return monthRange('${now.year}-01', monthKey(now));
+        case JourneyPowerScope.total:
+          return monthRange('2000-01', monthKey(now));
+      }
+    });

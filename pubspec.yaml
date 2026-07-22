@@ -31,6 +31,16 @@ dependencies:
   firebase_storage: ^13.4.3
   image_picker: ^1.2.3
   flutter_svg: ^2.2.1
+  xml: ^6.6.1
+  path_parsing: ^1.1.0
+  # Bản 3.x/8-11.x đều không dùng được: bản cũ (3.0.4) có build.gradle
+  # Android lỗi thời (jcenter()) không build nổi với AGP hiện tại; bản
+  # 8.x-11.x xung đột version win32 với share_plus (chỉ ảnh hưởng code
+  # Windows desktop, app này không build Windows, nhưng Dart vẫn biên dịch
+  # cả file đó nên vẫn lỗi nếu ép version qua dependency_overrides). Bản
+  # 12 beta đã tự cập nhật lên win32 mới, hết xung đột — chấp nhận dùng
+  # bản beta vì bản stable hiện có không build được cho project này.
+  file_picker: ^12.0.0-0
 dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
@@ -58,9 +68,13 @@ flutter:
   uses-material-design: true
   assets:
     - assets/brand/3i-mark.png
+    - assets/brand/3i-mark-transparent.png
+    - "features/Icon 3I Export/runow-3i-1024.png"
     - assets/medals/medal-gold.svg
     - assets/medals/medal-silver.svg
     - assets/medals/medal-bronze.svg
+    - assets/journey/map-xuyen-viet.svg
+    - assets/journey/images/
   fonts:
     - family: Exo 2
       fonts:

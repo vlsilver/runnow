@@ -54,7 +54,9 @@ class SyncController extends ChangeNotifier {
       lastSyncSucceeded = true;
       lastChangedActivities = outcome.changedActivities;
       completedRevision += 1;
-      message = outcome.changedCount == 0
+      message = outcome.queued
+          ? 'Backend đã nhận yêu cầu đồng bộ. Dữ liệu sẽ tự cập nhật.'
+          : outcome.changedCount == 0
           ? 'Đồng bộ Strava hoàn tất. Không có hoạt động mới.'
           : 'Đồng bộ Strava hoàn tất: cập nhật ${outcome.changedCount} hoạt động.';
       return SyncResult(

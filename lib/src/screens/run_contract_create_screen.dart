@@ -66,6 +66,7 @@ class _RunContractCreateScreenState
         'Kèo ${draft.targetValue.toInt()} buổi $period',
       RunContractMetric.activeDays =>
         'Kèo ${draft.targetValue.toInt()} ngày active $period',
+      RunContractMetric.routeCompletion => 'Kèo theo tuyến $period',
     };
   }
 
@@ -168,6 +169,12 @@ class _RunContractCreateScreenState
         title: 'Tự tạo',
         subtitle: 'Km, số buổi, ngày active hoặc chạy dài nhất',
         onTap: _showCustom,
+      ),
+      _TemplateTile(
+        icon: Icons.edit_location_alt_rounded,
+        title: 'Theo tuyến',
+        subtitle: 'Vẽ tuyến tham khảo, chạy đúng tuyến để được cứu',
+        onTap: () => context.push('/contracts/new/route'),
       ),
     ],
   );
@@ -411,8 +418,11 @@ class _RunContractCreateScreenState
                 NavPillToggle<RunContractMetric>(
                   value: metric,
                   items: {
+                    // routeCompletion không thuộc bộ chọn này — kèo theo
+                    // tuyến có luồng tạo riêng (vẽ tuyến trước).
                     for (final value in RunContractMetric.values)
-                      value: runContractMetricLabel(value),
+                      if (value != RunContractMetric.routeCompletion)
+                        value: runContractMetricLabel(value),
                   },
                   onChanged: (value) => setSheetState(() {
                     metric = value;
@@ -651,7 +661,7 @@ class _RunContractCreateScreenState
           .read(runContractAnalyticsProvider)
           .log('contract_created', draft: _draft)
           .ignore();
-      if (mounted) context.go('/contracts/$id');
+      if (mounted) context.pushReplacement('/contracts/$id');
     } catch (error) {
       if (mounted) setState(() => _error = '$error');
     } finally {
@@ -666,6 +676,7 @@ class _RunContractCreateScreenState
     RunContractMetric.longestRun => '${value.toStringAsFixed(1)} km',
     RunContractMetric.activityCount => '${value.toInt()} buổi',
     RunContractMetric.activeDays => '${value.toInt()} ngày',
+    RunContractMetric.routeCompletion => '${value.toInt()} lần',
   };
 }
 
@@ -748,6 +759,7 @@ String _metricUnit(RunContractMetric metric) => switch (metric) {
   RunContractMetric.distance || RunContractMetric.longestRun => 'km',
   RunContractMetric.activityCount => 'buổi',
   RunContractMetric.activeDays => 'ngày',
+  RunContractMetric.routeCompletion => 'lần',
 };
 
 double _defaultTargetFor(RunContractMetric metric) => switch (metric) {
@@ -755,6 +767,7 @@ double _defaultTargetFor(RunContractMetric metric) => switch (metric) {
   RunContractMetric.longestRun => 5,
   RunContractMetric.activityCount => 3,
   RunContractMetric.activeDays => 3,
+  RunContractMetric.routeCompletion => 1,
 };
 
 List<double> _quickTargets(RunContractMetric metric) => switch (metric) {
@@ -762,6 +775,7 @@ List<double> _quickTargets(RunContractMetric metric) => switch (metric) {
   RunContractMetric.longestRun => const [3, 5, 10, 21],
   RunContractMetric.activityCount => const [2, 3, 4, 5],
   RunContractMetric.activeDays => const [2, 3, 4, 5],
+  RunContractMetric.routeCompletion => const [1, 3],
 };
 
 String _quickTargetLabel(RunContractMetric metric, double value) {

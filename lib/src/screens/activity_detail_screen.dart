@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
@@ -11,8 +12,9 @@ import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_recap_card.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/photo_viewer.dart';
 import 'package:myrun/src/widgets/route_map.dart';
-import 'package:myrun/src/widgets/storage_image.dart';
+import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:myrun/src/widgets/stream_chart.dart';
 
 class ActivityDetailScreen extends ConsumerStatefulWidget {
@@ -72,6 +74,7 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                     detail: item,
                     selectedDistanceMeters: _selectedDistanceMeters,
                     onPhotoTap: _openPhoto,
+                    showSyncBadge: widget.ownerUid == null,
                   ),
                 ),
                 SliverToBoxAdapter(
@@ -83,13 +86,6 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                         _CachedSummaryFallback(
                           detail: item,
                           isMemberView: widget.ownerUid != null,
-                        ),
-                      ],
-                      if (widget.ownerUid == null) ...[
-                        const SizedBox(height: 16),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: _ApplyToContractCard(activity: item.summary),
                         ),
                       ],
                       const SizedBox(height: 16),
@@ -119,7 +115,7 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
             ),
             error: (error, stack) =>
                 Center(child: Text('Không thể tải chi tiết: $error')),
-            loading: () => const Center(child: CircularProgressIndicator()),
+            loading: () => const RunNowLoading(label: 'Đang tải hoạt động'),
           ),
         ),
       ),
@@ -136,51 +132,8 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
     );
   }
 
-  Future<void> _openPhoto(ActivityPhoto photo) {
-    return showDialog<void>(
-      context: context,
-      barrierColor: Colors.black87,
-      builder: (context) => Dialog.fullscreen(
-        backgroundColor: Colors.black,
-        child: SafeArea(
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: _StoragePhoto(
-                  path: photo.storagePath,
-                  fit: BoxFit.contain,
-                  interactive: true,
-                ),
-              ),
-              Positioned(
-                top: 8,
-                right: 8,
-                child: IconButton.filledTonal(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close_rounded),
-                ),
-              ),
-              Positioned(
-                left: 20,
-                bottom: 20,
-                child: Text(
-                  '${formatDistance(photo.distanceMeters)} · '
-                  '${photo.capturedAt.day.toString().padLeft(2, '0')}/'
-                  '${photo.capturedAt.month.toString().padLeft(2, '0')} '
-                  '${photo.capturedAt.hour.toString().padLeft(2, '0')}:'
-                  '${photo.capturedAt.minute.toString().padLeft(2, '0')}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Future<void> _openPhoto(ActivityPhoto photo) =>
+      showActivityPhotoViewer(context, photo);
 }
 
 class _ActivityRouteHeaderDelegate extends SliverPersistentHeaderDelegate {
@@ -188,11 +141,13 @@ class _ActivityRouteHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.detail,
     required this.selectedDistanceMeters,
     required this.onPhotoTap,
+    required this.showSyncBadge,
   });
 
   final ActivityDetail detail;
   final ValueListenable<double?> selectedDistanceMeters;
   final ValueChanged<ActivityPhoto> onPhotoTap;
+  final bool showSyncBadge;
 
   @override
   double get minExtent => 176;
@@ -211,14 +166,17 @@ class _ActivityRouteHeaderDelegate extends SliverPersistentHeaderDelegate {
       color: Theme.of(context).scaffoldBackgroundColor,
       child: ValueListenableBuilder<double?>(
         valueListenable: selectedDistanceMeters,
-        builder: (context, selectedDistance, _) => RouteMap(
-          encodedPolyline: detail.summary.polyline,
-          routePoints: detail.summary.routePoints,
-          photos: detail.photos,
-          onPhotoTap: onPhotoTap,
-          highlightedDistanceMeters: selectedDistance,
-          totalDistanceMeters: detail.summary.distanceMeters,
-          height: height,
+        builder: (context, selectedDistance, _) => _ActivityMapArea(
+          map: RouteMap(
+            encodedPolyline: detail.summary.polyline,
+            routePoints: detail.summary.routePoints,
+            photos: detail.photos,
+            onPhotoTap: onPhotoTap,
+            highlightedDistanceMeters: selectedDistance,
+            totalDistanceMeters: detail.summary.distanceMeters,
+            height: height,
+          ),
+          activity: showSyncBadge ? detail.summary : null,
         ),
       ),
     );
@@ -227,7 +185,41 @@ class _ActivityRouteHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(covariant _ActivityRouteHeaderDelegate oldDelegate) {
     return oldDelegate.detail != detail ||
-        oldDelegate.selectedDistanceMeters != selectedDistanceMeters;
+        oldDelegate.selectedDistanceMeters != selectedDistanceMeters ||
+        oldDelegate.showSyncBadge != showSyncBadge;
+  }
+}
+
+/// Bọc [map] và (nếu có [activity]) icon đồng bộ kèo ở góc trên-phải bản đồ,
+/// theo `features/design_handoff_sync_icon/` — thay cho card ở cuối trang
+/// trước đây. Quản lý trạng thái mở/đóng popup + lớp phủ mờ để bấm ra ngoài
+/// bản đồ (không phải ra ngoài toàn màn hình) là đóng popup.
+/// Bọc [map] và (nếu có [activity]) icon đồng bộ kèo ở góc dưới-phải bản đồ.
+/// Popup của icon tự lo phần overlay/dismiss qua [OverlayPortal] (xem
+/// `_MapSyncBadge`) — widget này chỉ còn việc xếp layout, không giữ state
+/// mở/đóng popup nữa (từng đặt ở đây nhưng gây lỗi bấm không ăn: popup dùng
+/// `Positioned`+`Clip.none` bên trong `SliverPersistentHeader` bị viewport
+/// của `CustomScrollView` cắt vùng nhận cảm ứng khi header co lại lúc cuộn).
+class _ActivityMapArea extends StatelessWidget {
+  const _ActivityMapArea({required this.map, required this.activity});
+
+  final Widget map;
+  final ActivitySummary? activity;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned.fill(child: map),
+        if (activity != null)
+          Positioned(
+            bottom: 14,
+            right: 14,
+            child: _MapSyncBadge(activity: activity!),
+          ),
+      ],
+    );
   }
 }
 
@@ -260,7 +252,11 @@ class _ActivityPhotoGallery extends StatelessWidget {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      _StoragePhoto(path: photo.storagePath),
+                      StoragePhoto(
+                        path: photo.storagePath,
+                        cacheWidth: 296,
+                        cacheHeight: 224,
+                      ),
                       Positioned(
                         left: 8,
                         bottom: 7,
@@ -297,48 +293,45 @@ class _ActivityPhotoGallery extends StatelessWidget {
   }
 }
 
-class _StoragePhoto extends StatelessWidget {
-  const _StoragePhoto({
-    required this.path,
-    this.fit = BoxFit.cover,
-    this.interactive = false,
-  });
-
-  final String path;
-  final BoxFit fit;
-  final bool interactive;
-
-  @override
-  Widget build(BuildContext context) {
-    final image = StorageImage(path: path, fit: fit);
-    if (!interactive) return image;
-    return InteractiveViewer(minScale: 1, maxScale: 4, child: image);
-  }
-}
-
 /// Card "Áp dụng vào kèo" — cho phép gán buổi chạy này vào 1 kèo đang active
 /// ngay từ màn chi tiết, thay vì chỉ có chiều ngược lại (từ màn kèo chọn
 /// hoạt động). Chỉ hiện cho hoạt động của chính mình.
-class _ApplyToContractCard extends ConsumerStatefulWidget {
-  const _ApplyToContractCard({required this.activity});
-
-  final ActivitySummary activity;
-
-  @override
-  ConsumerState<_ApplyToContractCard> createState() =>
-      _ApplyToContractCardState();
-}
-
 typedef _ApplyCardData = ({
   List<ContractApplyOption> options,
   String? assignedContractId,
 });
 
-class _ApplyToContractCardState extends ConsumerState<_ApplyToContractCard> {
+/// Icon đồng bộ kèo cố định ở góc bản đồ — thay cho card cuối trang trước
+/// đây. `open`/`onToggle`/`onRequestClose` do [_ActivityMapArea] điều khiển
+/// để lớp phủ mờ (dim) trên toàn bản đồ và icon dùng chung 1 trạng thái.
+class _MapSyncBadge extends ConsumerStatefulWidget {
+  const _MapSyncBadge({required this.activity});
+
+  final ActivitySummary activity;
+
+  @override
+  ConsumerState<_MapSyncBadge> createState() => _MapSyncBadgeState();
+}
+
+class _MapSyncBadgeState extends ConsumerState<_MapSyncBadge> {
+  final _layerLink = LayerLink();
+  final _overlayController = OverlayPortalController();
   Future<_ApplyCardData>? _future;
   List<RunContract>? _loadedFor;
   bool _saving = false;
   String? _error;
+
+  void _togglePopup() {
+    if (_overlayController.isShowing) {
+      _overlayController.hide();
+    } else {
+      _overlayController.show();
+    }
+  }
+
+  void _closePopup() {
+    if (_overlayController.isShowing) _overlayController.hide();
+  }
 
   bool _sameContracts(List<RunContract> a, List<RunContract> b) {
     if (a.length != b.length) return false;
@@ -360,10 +353,11 @@ class _ApplyToContractCardState extends ConsumerState<_ApplyToContractCard> {
       widget.activity,
       contracts,
     );
-    final assignedFuture = controller.currentContractIdFor(
-      widget.activity.id,
+    final assignedFuture = controller.currentContractIdFor(widget.activity.id);
+    return (
+      options: await optionsFuture,
+      assignedContractId: await assignedFuture,
     );
-    return (options: await optionsFuture, assignedContractId: await assignedFuture);
   }
 
   void _reload() {
@@ -382,6 +376,7 @@ class _ApplyToContractCardState extends ConsumerState<_ApplyToContractCard> {
       if (mounted) setState(_reload);
     } catch (error) {
       if (mounted) setState(() => _error = '$error');
+      rethrow;
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -399,6 +394,7 @@ class _ApplyToContractCardState extends ConsumerState<_ApplyToContractCard> {
       if (mounted) setState(_reload);
     } catch (error) {
       if (mounted) setState(() => _error = '$error');
+      rethrow;
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -408,6 +404,7 @@ class _ApplyToContractCardState extends ConsumerState<_ApplyToContractCard> {
     List<ContractApplyOption> options,
     RunContract? current,
   ) {
+    _closePopup();
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -434,253 +431,459 @@ class _ApplyToContractCardState extends ConsumerState<_ApplyToContractCard> {
     if (!basicEligible) return const SizedBox.shrink();
 
     final contractsState = ref.watch(myActiveContractsProvider);
-    return contractsState.when(
-      data: (contracts) {
-        if (contracts.isEmpty) return const _ApplyToContractEmptyCard();
-        _ensureLoaded(contracts);
-        return FutureBuilder<_ApplyCardData>(
-          future: _future,
-          builder: (context, snapshot) {
-            if (_saving || !snapshot.hasData) {
-              return _ApplyToContractStatusCard(
-                message: _saving ? 'Đang áp dụng...' : 'Đang tải kèo...',
-              );
+    final contracts = contractsState.value;
+    if (contracts == null || contracts.isEmpty) return const SizedBox.shrink();
+    _ensureLoaded(contracts);
+
+    return FutureBuilder<_ApplyCardData>(
+      future: _future,
+      builder: (context, snapshot) {
+        RunContract? appliedContract;
+        ContractApplyOption? appliedOption;
+        final options = snapshot.data?.options ?? const <ContractApplyOption>[];
+        if (snapshot.hasData) {
+          for (final contract in contracts) {
+            if (contract.id == snapshot.data!.assignedContractId) {
+              appliedContract = contract;
+              break;
             }
-            final data = snapshot.data!;
-            RunContract? appliedContract;
-            for (final contract in contracts) {
-              if (contract.id == data.assignedContractId) {
-                appliedContract = contract;
+          }
+          if (appliedContract != null) {
+            for (final option in options) {
+              if (option.contract.id == appliedContract.id) {
+                appliedOption = option;
                 break;
               }
             }
-            if (appliedContract != null) {
-              return _ApplyToContractAppliedChip(
-                contractTitle: appliedContract.title,
-                error: _error,
-                onTap: () => _openPicker(data.options, appliedContract),
-              );
-            }
-            final eligibleOptions = data.options
-                .where((option) => option.eligible)
-                .toList();
-            final singleDirectContract =
-                contracts.length == 1 && eligibleOptions.length == 1
-                ? eligibleOptions.single.contract
-                : null;
-            return _ApplyToContractPromptCard(
-              contractTitle: singleDirectContract?.title,
-              error: _error,
-              onPressed: singleDirectContract != null
-                  ? () => _apply(singleDirectContract)
-                  : () => _openPicker(data.options, null),
-            );
-          },
+          }
+        }
+        final loading = !snapshot.hasData || _saving;
+        final synced = appliedContract != null;
+        final resolvedAppliedContract = appliedContract;
+
+        return CompositedTransformTarget(
+          link: _layerLink,
+          child: OverlayPortal(
+            controller: _overlayController,
+            overlayChildBuilder: (context) => Stack(
+              children: [
+                // Bấm ra ngoài (bất kỳ đâu trên toàn màn hình, không chỉ
+                // trong vùng bản đồ) để đóng popup.
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _closePopup,
+                  ),
+                ),
+                CompositedTransformFollower(
+                  link: _layerLink,
+                  targetAnchor: Alignment.topRight,
+                  followerAnchor: Alignment.bottomRight,
+                  offset: const Offset(0, -6),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: _SyncPopup(
+                      loading: loading,
+                      synced: synced,
+                      error: _error,
+                      activityDistanceKm: activity.distanceMeters / 1000,
+                      activityDate: activity.startedAt,
+                      contractTitle: resolvedAppliedContract?.title,
+                      currentValue: appliedOption?.currentValue,
+                      targetValue: resolvedAppliedContract?.targetValue,
+                      metric: resolvedAppliedContract?.metric,
+                      onApplyPressed: () =>
+                          _openPicker(options, resolvedAppliedContract),
+                      onViewContract: resolvedAppliedContract == null
+                          ? null
+                          : () {
+                              _closePopup();
+                              context.push(
+                                '/contracts/${resolvedAppliedContract.id}',
+                              );
+                            },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            child: _SyncIconButton(synced: synced, onTap: _togglePopup),
+          ),
         );
       },
-      error: (error, stack) => const SizedBox.shrink(),
-      loading: () => const SizedBox.shrink(),
     );
   }
 }
 
-class _ApplyToContractEmptyCard extends StatelessWidget {
-  const _ApplyToContractEmptyCard();
+class _SyncIconButton extends StatelessWidget {
+  const _SyncIconButton({required this.synced, required this.onTap});
 
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    return GlassPanel(
-      padding: const EdgeInsets.all(14),
-      child: Row(
-        children: [
-          Icon(Icons.flag_outlined, color: palette.textMuted),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Chưa có kèo đang chạy. Tạo hoặc tham gia kèo để áp dụng '
-              'buổi chạy này.',
-              style: TextStyle(color: palette.textMuted),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ApplyToContractStatusCard extends StatelessWidget {
-  const _ApplyToContractStatusCard({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassPanel(
-      padding: const EdgeInsets.all(14),
-      child: Row(
-        children: [
-          const SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            message,
-            style: TextStyle(color: context.runNowPalette.textMuted),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ApplyToContractPromptCard extends StatelessWidget {
-  const _ApplyToContractPromptCard({
-    required this.contractTitle,
-    required this.error,
-    required this.onPressed,
-  });
-
-  final String? contractTitle;
-  final String? error;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    return GlassPanel(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: palette.accent.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: Icon(
-                  Icons.flag_rounded,
-                  size: 19,
-                  color: palette.accent,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Áp dụng vào kèo',
-                      style: TextStyle(
-                        color: palette.textMuted,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      contractTitle ?? 'Chọn kèo',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: onSurface,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              FilledButton(
-                onPressed: onPressed,
-                child: Text(error != null ? 'Thử lại' : 'Áp dụng'),
-              ),
-            ],
-          ),
-          if (error != null) ...[
-            const SizedBox(height: 10),
-            _ApplyErrorBanner(message: error!),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _ApplyToContractAppliedChip extends StatelessWidget {
-  const _ApplyToContractAppliedChip({
-    required this.contractTitle,
-    required this.error,
-    required this.onTap,
-  });
-
-  final String contractTitle;
-  final String? error;
+  final bool synced;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        GlassPanel(
-          borderRadius: 999,
-          child: InkWell(
-            customBorder: const StadiumBorder(),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 10,
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              // Đã đồng bộ: nền vàng đặc để khác biệt rõ ngay từ xa, không
+              // chỉ trông chờ vào chấm xanh nhỏ ở góc (từng khó nhận ra).
+              color: synced
+                  ? palette.tertiary
+                  : Colors.black.withValues(alpha: 0.75),
+              borderRadius: BorderRadius.circular(14),
+              border: synced
+                  ? null
+                  : Border.all(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      width: 1.5,
+                    ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 16,
+                  offset: Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Icon(
+              Icons.link_rounded,
+              size: 19,
+              color: synced
+                  ? Colors.black
+                  : Colors.white.withValues(alpha: 0.55),
+            ),
+          ),
+          if (synced)
+            Positioned(
+              top: -3,
+              right: -3,
+              child: Container(
+                width: 15,
+                height: 15,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: RunNowSemanticColors.success,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
               ),
-              child: Row(
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Popup nổi cạnh icon (không phải bottom sheet chặn màn hình) — luôn dùng
+/// tông tối cố định vì nổi đè lên bản đồ (giống quy ước `_RoutePill` ở
+/// `route_map.dart`), bất kể theme sáng/tối của app.
+class _SyncPopup extends StatelessWidget {
+  const _SyncPopup({
+    required this.loading,
+    required this.synced,
+    required this.error,
+    required this.activityDistanceKm,
+    required this.activityDate,
+    required this.contractTitle,
+    required this.currentValue,
+    required this.targetValue,
+    required this.metric,
+    required this.onApplyPressed,
+    required this.onViewContract,
+  });
+
+  final bool loading;
+  final bool synced;
+  final String? error;
+  final double activityDistanceKm;
+  final DateTime activityDate;
+  final String? contractTitle;
+  final double? currentValue;
+  final double? targetValue;
+  final RunContractMetric? metric;
+  final VoidCallback onApplyPressed;
+  final VoidCallback? onViewContract;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 264,
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        // Nền tối cố định (không theo theme) vì popup nổi đè lên bản đồ,
+        // giống quy ước Colors.black.withValues(...) đã dùng ở _RoutePill
+        // trong route_map.dart — không dùng Color(0x...) hex thô mới.
+        color: Colors.black.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black45,
+            blurRadius: 34,
+            offset: Offset(0, 16),
+          ),
+        ],
+      ),
+      child: loading
+          ? const _SyncPopupLoading()
+          : synced
+          ? _buildSynced(context)
+          : _buildNotSynced(context),
+    );
+  }
+
+  Widget _buildNotSynced(BuildContext context) {
+    final palette = context.runNowPalette;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: palette.tertiary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.link_rounded,
+                size: 15,
+                color: palette.tertiary,
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: RunNowSemanticColors.success,
-                      shape: BoxShape.circle,
+                  Text(
+                    'Chưa đồng bộ',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
-                          const TextSpan(text: 'Đang áp dụng cho '),
-                          TextSpan(
-                            text: contractTitle,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                  Text(
+                    'Buổi chạy này chưa tính vào kèo nào',
+                    style: TextStyle(
+                      color: Colors.white54,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 10.5,
                     ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: palette.textMuted,
                   ),
                 ],
               ),
             ),
+          ],
+        ),
+        const SizedBox(height: 11),
+        Text(
+          'Áp dụng buổi chạy ${activityDistanceKm.toStringAsFixed(1)}km này vào '
+          'một kèo đang chạy để tính tiến độ.',
+          style: const TextStyle(
+            color: Colors.white70,
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
+            height: 1.4,
           ),
         ),
         if (error != null) ...[
           const SizedBox(height: 10),
           _ApplyErrorBanner(message: error!),
         ],
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: palette.tertiary,
+              foregroundColor: Colors.black,
+            ),
+            onPressed: onApplyPressed,
+            child: Text(error != null ? 'Thử lại' : 'Chọn kèo để đồng bộ'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSynced(BuildContext context) {
+    final palette = context.runNowPalette;
+    final progressLabel =
+        currentValue != null && targetValue != null && metric != null
+        ? 'Đã ${_contractValueLabel(metric!, currentValue!)} / '
+              '${_contractValueLabel(metric!, targetValue!)}'
+        : null;
+    final percent = currentValue != null && targetValue != null
+        ? _ratioPercent(currentValue!, targetValue!)
+        : null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: RunNowSemanticColors.success.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.check_rounded,
+                size: 16,
+                color: RunNowSemanticColors.success,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Đã đồng bộ',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                    ),
+                  ),
+                  Text(
+                    'Buổi chạy ${activityDistanceKm.toStringAsFixed(1)}km · '
+                    '${_formatShortDate(activityDate)}',
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 10.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        if (error != null) ...[
+          const SizedBox(height: 10),
+          _ApplyErrorBanner(message: error!),
+        ],
+        const SizedBox(height: 11),
+        Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: palette.tertiary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.flag_rounded,
+                size: 14,
+                color: palette.tertiary,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    contractTitle ?? 'Kèo chạy',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                  if (progressLabel != null)
+                    Text(
+                      progressLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 10.5,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            if (percent != null)
+              Text(
+                '$percent%',
+                style: TextStyle(
+                  color: palette.tertiary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 10.5,
+                ),
+              ),
+          ],
+        ),
+        if (onViewContract != null) ...[
+          const SizedBox(height: 11),
+          const Divider(height: 1, color: Colors.white12),
+          const SizedBox(height: 11),
+          GestureDetector(
+            onTap: onViewContract,
+            child: Center(
+              child: Text(
+                'Xem chi tiết kèo ›',
+                style: TextStyle(
+                  color: palette.tertiary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SyncPopupLoading extends StatelessWidget {
+  const _SyncPopupLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Colors.white54,
+          ),
+        ),
+        SizedBox(width: 10),
+        Text(
+          'Đang tải kèo...',
+          style: TextStyle(
+            color: Colors.white70,
+            fontWeight: FontWeight.w600,
+            fontSize: 12.5,
+          ),
+        ),
       ],
     );
   }
@@ -855,8 +1058,7 @@ class _ApplyToContractPickerSheetState
               child: ListView.separated(
                 shrinkWrap: true,
                 itemCount: widget.options.length,
-                separatorBuilder: (context, index) =>
-                    const SizedBox(height: 8),
+                separatorBuilder: (context, index) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final option = widget.options[index];
                   return _ContractApplyOptionTile(
@@ -1051,6 +1253,7 @@ String _contractValueLabel(RunContractMetric metric, double value) =>
         '${value.toStringAsFixed(value % 1 == 0 ? 0 : 1)} km',
       RunContractMetric.activityCount => '${value.toInt()} buổi',
       RunContractMetric.activeDays => '${value.toInt()} ngày',
+      RunContractMetric.routeCompletion => '${value.toInt()} lần',
     };
 
 int _ratioPercent(double value, double target) =>

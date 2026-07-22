@@ -125,59 +125,6 @@ void main() {
     },
   );
 
-  test('builds leaderboard aggregate for common ranking windows', () {
-    final now = DateTime(2026, 6, 4, 12);
-    final entry = leaderboardEntryToMap(
-      uid: 'runner-1',
-      profile: {
-        'nickname': 'Linh',
-        'profileVisibility': 'public',
-        'avatarUrl': 'https://example.com/a.png',
-      },
-      activities: [
-        ActivitySummary(
-          id: 'recent',
-          name: 'Recent run',
-          kind: ActivityKind.run,
-          startedAt: DateTime(2026, 6, 3, 6),
-          distanceMeters: 5000,
-          movingTimeSeconds: 1800,
-          elapsedTimeSeconds: 1900,
-        ),
-        ActivitySummary(
-          id: 'old',
-          name: 'Old run',
-          kind: ActivityKind.run,
-          startedAt: DateTime(2026, 5, 1, 6),
-          distanceMeters: 10000,
-          movingTimeSeconds: 3600,
-          elapsedTimeSeconds: 3700,
-        ),
-      ],
-      now: now,
-    );
-    expect(entry['uid'], 'runner-1');
-    expect(entry['displayName'], 'Linh');
-    expect(entry['profileVisibility'], 'public');
-    expect(
-      (entry['rollingSevenDays'] as Map<String, dynamic>)['distanceMeters'],
-      5000,
-    );
-    expect(
-      (entry['rollingSevenDays']
-          as Map<String, dynamic>?)?['longestDistanceMeters'],
-      5000,
-    );
-    expect(
-      (entry['rollingSevenDays']
-          as Map<String, dynamic>?)?['fastestPaceSecondsPerKm'],
-      360,
-    );
-    expect((entry['currentMonth'] as Map<String, dynamic>)['activeDays'], 1);
-    expect(entry['currentWeekStart'], '2026-06-01');
-    expect(entry['currentMonthStart'], '2026-06-01');
-  });
-
   test('hides leaderboard stats that belong to an expired period', () {
     final normalized = normalizeLeaderboardEntryPeriods({
       'updatedAt': DateTime(2026, 6, 24),

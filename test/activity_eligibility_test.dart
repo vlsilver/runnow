@@ -41,6 +41,26 @@ void main() {
     },
   );
 
+  test('journal page uses overlap context outside the visible page', () {
+    final startedAt = DateTime.utc(2026, 7, 5, 1);
+    final runNow = _runNow(
+      'runnow-page-1',
+      5000,
+      startedAt: startedAt,
+      elapsedSeconds: 1800,
+    );
+    final strava = _strava(
+      'strava-page-2',
+      startedAt.add(const Duration(minutes: 2)),
+      elapsedSeconds: 1800,
+    );
+
+    final entries = buildJournalPageEntries([runNow], [runNow, strava]);
+
+    expect(entries, hasLength(1));
+    expect(entries.single.preferredStravaActivityId, strava.id);
+  });
+
   test('prefers Strava when overlap exceeds 30 percent of RunNow time', () {
     final runNow = _runNow('runnow', 5000, elapsedSeconds: 1800);
     final strava = _strava(
@@ -83,6 +103,41 @@ void main() {
     final stravaB = _strava('strava-b', DateTime.utc(2026, 7, 4, 6));
 
     expect(preferredStravaDuplicate(stravaA, [stravaB]), isNull);
+  });
+
+  test('indexed duplicate lookup detects an earlier long Strava interval', () {
+    final runNow = _runNow(
+      'runnow',
+      5000,
+      startedAt: DateTime.utc(2026, 7, 4, 8),
+      elapsedSeconds: 1800,
+    );
+    final longStrava = _strava(
+      'long-strava',
+      DateTime.utc(2026, 7, 4, 6),
+      elapsedSeconds: 3 * 60 * 60,
+    );
+    final unrelated = _strava(
+      'unrelated',
+      DateTime.utc(2026, 7, 4, 7),
+      elapsedSeconds: 60,
+    );
+
+    expect(
+      preferredStravaDuplicates([runNow, unrelated, longStrava])['runnow'],
+      longStrava,
+    );
+  });
+
+  test('indexed duplicate lookup preserves source-list preference', () {
+    final runNow = _runNow('runnow', 5000);
+    final preferred = _strava('preferred', runNow.startedAt);
+    final other = _strava('other', runNow.startedAt);
+
+    expect(
+      preferredStravaDuplicates([runNow, preferred, other])['runnow'],
+      preferred,
+    );
   });
 }
 

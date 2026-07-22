@@ -27,11 +27,21 @@ service cloud.firestore {
 
       match /activities/{activityId} {
         allow read: if owns(userId) || isPublicProfile(userId);
-        allow write: if owns(userId);
+        allow write: if false;
       }
 
       match /trainingGoalHistory/{historyId} {
         allow read, write: if owns(userId);
+      }
+
+      match /stats/{statsId} {
+        allow read: if owns(userId) || isPublicProfile(userId);
+        allow write: if false;
+      }
+
+      match /periodStats/{periodId} {
+        allow read: if owns(userId) || isPublicProfile(userId);
+        allow write: if false;
       }
 
       match /runContractActivityClaims/{activityId} {
@@ -90,6 +100,10 @@ service cloud.firestore {
           && request.resource.data.finalizeAt == resource.data.finalizeAt
           && request.resource.data.visibility == resource.data.visibility
           && request.resource.data.sourcePolicy == resource.data.sourcePolicy
+          && (
+            !('route' in resource.data)
+            || request.resource.data.route == resource.data.route
+          )
           && request.resource.data.progressValue is number
           && request.resource.data.progressValue >= 0
           && request.resource.data.updatedAt == request.time
@@ -154,14 +168,7 @@ service cloud.firestore {
     }
 
     match /stravaLinks/{athleteId} {
-      allow read: if signedIn();
-      allow create: if signedIn()
-        && request.resource.data.uid == request.auth.uid;
-      allow update: if signedIn()
-        && resource.data.uid == request.auth.uid
-        && request.resource.data.uid == request.auth.uid;
-      allow delete: if signedIn()
-        && resource.data.uid == request.auth.uid;
+      allow read, write: if false;
     }
 
     match /publicProfiles/{userId} {
@@ -171,14 +178,31 @@ service cloud.firestore {
 
     match /leaderboardEntries/{userId} {
       allow read: if signedIn();
-      allow create, update: if owns(userId)
-        && request.resource.data.uid == request.auth.uid;
-      allow delete: if owns(userId);
+      allow write: if false;
+    }
+
+    // Dữ liệu tĩnh "Hành Trình" (route/milestone) — nội dung tham khảo
+    // chung, không thuộc user nào, chỉ ghi qua Admin SDK (script migrate).
+    match /journeyRoutes/{routeId} {
+      allow read: if signedIn();
+      allow write: if false;
+
+      match /detail/{document=**} {
+        allow read: if signedIn();
+        allow write: if false;
+      }
     }
 
     match /liveSessions/{sessionId} {
       allow read: if signedIn()
-        && resource.data.visibility == 'club';
+        && (
+          resource.data.visibility == 'club'
+          || (
+            'contractId' in resource.data
+            && request.auth.uid in
+               get(/databases/$(database)/documents/runContracts/$(resource.data.contractId)).data.participantUids
+          )
+        );
       allow create: if signedIn()
         && request.resource.data.ownerUid == request.auth.uid;
       allow update: if signedIn()
@@ -186,6 +210,27 @@ service cloud.firestore {
         && request.resource.data.ownerUid == request.auth.uid;
       allow delete: if signedIn()
         && resource.data.ownerUid == request.auth.uid;
+    }
+
+    // Backend-owned integration state. Firebase Admin bypasses these rules;
+    // Flutter clients must never read tokens, OAuth state, or event payloads.
+    match /stravaConnections/{document=**} {
+      allow read, write: if false;
+    }
+    match /stravaAthleteLinks/{document=**} {
+      allow read, write: if false;
+    }
+    match /oauthStates/{document=**} {
+      allow read, write: if false;
+    }
+    match /integrationEvents/{document=**} {
+      allow read, write: if false;
+    }
+    match /activityTombstones/{document=**} {
+      allow read, write: if false;
+    }
+    match /syncRuns/{document=**} {
+      allow read, write: if false;
     }
   }
 }

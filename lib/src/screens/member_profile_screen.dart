@@ -5,11 +5,14 @@ import 'package:myrun/src/dashboard_analytics.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/screens/journey_hub_screen.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/training_power.dart';
 import 'package:myrun/src/web_layout.dart';
 import 'package:myrun/src/widgets/activity_records_card.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
+import 'package:myrun/src/widgets/cached_avatar.dart';
+import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:myrun/src/widgets/discipline_card.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/nav_filter.dart';
@@ -45,23 +48,75 @@ class MemberProfileScreen extends ConsumerWidget {
                 return const Center(child: Text('Không tìm thấy thành viên.'));
               }
               if (!member.isPublic) return _PrivateMember(member: member);
-              return ref
-                  .watch(memberActivitiesProvider(uid))
-                  .when(
-                    data: (activities) => _MemberDashboard(
-                      uid: uid,
-                      member: member,
-                      activities: activities,
-                    ),
-                    error: (error, stack) =>
-                        Center(child: Text('Không thể tải hoạt động: $error')),
-                    loading: () =>
-                        const Center(child: CircularProgressIndicator()),
-                  );
+              return JourneyHubScreen(memberUid: uid, member: member);
             },
             error: (error, stack) =>
                 Center(child: Text('Không thể tải hồ sơ: $error')),
-            loading: () => const Center(child: CircularProgressIndicator()),
+            loading: () => const RunNowLoading(label: 'Đang tải cá nhân'),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class MemberJournalScreen extends ConsumerWidget {
+  const MemberJournalScreen({required this.uid, super.key});
+
+  final String uid;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentUid = ref
+        .watch(firebaseUserProvider)
+        .maybeWhen(data: (user) => user?.uid, orElse: () => null);
+    if (currentUid == uid) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) context.go('/profile/journal');
+      });
+      return const Scaffold(body: SizedBox.shrink());
+    }
+
+    final profileState = ref.watch(memberProfileProvider(uid));
+    final activitiesState = ref.watch(memberActivitiesProvider(uid));
+    return Scaffold(
+      appBar: AppBar(title: const Text('Nhật ký')),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 860),
+          child: profileState.when(
+            data: (member) {
+              if (member == null) {
+                return const Center(child: Text('Không tìm thấy thành viên.'));
+              }
+              if (!member.isPublic) return _PrivateMember(member: member);
+              return activitiesState.when(
+                data: (activities) {
+                  if (activities.isEmpty) {
+                    return const Center(
+                      child: Text('Thành viên này chưa có hoạt động public.'),
+                    );
+                  }
+                  return ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(0, 12, 0, 110),
+                    itemCount: activities.length,
+                    itemBuilder: (context, index) => RepaintBoundary(
+                      child: ActivityTile(
+                        activity: activities[index],
+                        sequence: index + 1,
+                        ownerUid: uid,
+                      ),
+                    ),
+                  );
+                },
+                error: (error, stack) =>
+                    Center(child: Text('Không thể tải nhật ký: $error')),
+                loading: () => const RunNowLoading(label: 'Đang tải nhật ký'),
+              );
+            },
+            error: (error, stack) =>
+                Center(child: Text('Không thể tải hồ sơ: $error')),
+            loading: () => const RunNowLoading(label: 'Đang tải nhật ký'),
           ),
         ),
       ),
@@ -94,11 +149,43 @@ class _MemberDashboardState extends State<_MemberDashboard> {
   var _volumePeriod = TrainingVolumePeriod.month;
   var _volumeMode = TrainingVolumeChartMode.bar;
   _MemberFilterSection? _activeFilter;
+  late TrainingComparison _comparison;
+  late List<DailyDistance> _dailyDistances;
+  late TrainingSummary _month;
+  late DisciplineStats _discipline;
+  late List<ActivitySummary> _recent;
+  late DateTime _analyticsDay;
 
   @override
   void initState() {
     super.initState();
+    _recomputeAnalytics();
     WidgetsBinding.instance.addPostFrameCallback((_) => _updateActiveFilter());
+  }
+
+  @override
+  void didUpdateWidget(covariant _MemberDashboard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.activities, widget.activities)) {
+      _recomputeAnalytics();
+    }
+  }
+
+  void _recomputeAnalytics() {
+    final now = DateTime.now();
+    _analyticsDay = DateTime(now.year, now.month, now.day);
+    _comparison = rollingSevenDayComparison(widget.activities, now);
+    _dailyDistances = rollingSevenDayDistances(widget.activities, now);
+    _month = currentMonthSummary(widget.activities, now);
+    _discipline = personalDisciplineStats(widget.activities, now);
+    _recent = [...widget.activities]
+      ..sort((left, right) => right.startedAt.compareTo(left.startedAt));
+  }
+
+  void _refreshAnalyticsAfterDateChange() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (today != _analyticsDay) _recomputeAnalytics();
   }
 
   void _updateActiveFilter() {
@@ -125,13 +212,12 @@ class _MemberDashboardState extends State<_MemberDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final comparison = rollingSevenDayComparison(widget.activities, now);
-    final dailyDistances = rollingSevenDayDistances(widget.activities, now);
-    final month = currentMonthSummary(widget.activities, now);
-    final discipline = personalDisciplineStats(widget.activities, now);
-    final recent = [...widget.activities]
-      ..sort((left, right) => right.startedAt.compareTo(left.startedAt));
+    _refreshAnalyticsAfterDateChange();
+    final comparison = _comparison;
+    final dailyDistances = _dailyDistances;
+    final month = _month;
+    final discipline = _discipline;
+    final recent = _recent;
     final wide = RunNowWebLayout.isDesktop(context);
     if (wide) {
       return ListView(
@@ -172,7 +258,7 @@ class _MemberDashboardState extends State<_MemberDashboard> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     TrainingVolumeChart(
-                      activities: widget.activities,
+                      uid: widget.uid,
                       period: _volumePeriod,
                       mode: _volumeMode,
                       showControls: true,
@@ -249,7 +335,7 @@ class _MemberDashboardState extends State<_MemberDashboard> {
           KeyedSubtree(
             key: _volumeKey,
             child: TrainingVolumeChart(
-              activities: widget.activities,
+              uid: widget.uid,
               period: _volumePeriod,
               mode: _volumeMode,
               showControls: false,
@@ -421,7 +507,9 @@ class _MemberHeader extends StatelessWidget {
           CircleAvatar(
             radius: 30,
             backgroundColor: palette.secondary.withValues(alpha: 0.18),
-            backgroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl),
+            backgroundImage: avatarUrl == null
+                ? null
+                : cachedAvatarImage(context, avatarUrl, 60),
             child: avatarUrl == null
                 ? Text(
                     member.displayName.characters.first.toUpperCase(),

@@ -10,15 +10,11 @@ service firebase.storage {
       return signedIn() && request.auth.uid == userId;
     }
 
-    function isPublicProfile(userId) {
-      return signedIn()
-        && firestore.get(
-          /databases/(default)/documents/publicProfiles/$(userId)
-        ).data.profileVisibility == 'public';
-    }
-
     match /users/{userId}/activities/{activityId}/photos/{fileName} {
-      allow read: if owns(userId) || isPublicProfile(userId);
+      // Bất kỳ user đã đăng nhập nào cũng xem được — kèo/live cần chia sẻ
+      // ảnh giữa người tham gia bất kể profile public/private, và quyết
+      // định là mở hẳn cho mọi user thay vì giới hạn theo từng kèo.
+      allow read: if signedIn();
       allow create, update: if owns(userId)
         && request.resource.size < 8 * 1024 * 1024
         && request.resource.contentType.matches('image/jpeg');
@@ -26,11 +22,19 @@ service firebase.storage {
     }
 
     match /users/{userId}/avatar/{fileName} {
-      allow read: if owns(userId) || isPublicProfile(userId);
+      allow read: if signedIn();
       allow create, update: if owns(userId)
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/jpeg');
       allow delete: if owns(userId);
+    }
+
+    // Ảnh minh hoạ mốc "Hành Trình" — nội dung tĩnh do 3i quản lý (upload
+    // qua CLI khi dựng dữ liệu route), không phải nội dung user tạo nên
+    // không có client write nào.
+    match /journey/photos/{fileName} {
+      allow read: if signedIn();
+      allow write: if false;
     }
   }
 }

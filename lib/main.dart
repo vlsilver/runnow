@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -5,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:myrun/src/app.dart';
 import 'package:myrun/src/config.dart';
-import 'package:myrun/src/strava_client.dart';
+import 'package:myrun/src/legacy_strava_credentials.dart';
 
 /// Firebase web app config (run-now-79767). Mobile dùng google-services.json /
 /// GoogleService-Info.plist nên không cần options. apiKey web không phải secret.
@@ -34,11 +36,6 @@ Future<void> main() async {
   } catch (error, stack) {
     debugPrint('GoogleSignIn init failed: $error\n$stack');
   }
-  try {
-    // Initialize Strava client (loads tokens from secure storage)
-    await StravaClient.instance.initialize();
-  } catch (error, stack) {
-    debugPrint('Strava init failed: $error\n$stack');
-  }
   runApp(const ProviderScope(child: RunNowApp()));
+  unawaited(LegacyStravaCredentials.clear());
 }

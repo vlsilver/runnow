@@ -15,7 +15,15 @@ class RunNowBackdrop extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          IgnorePointer(child: CustomPaint(painter: _TechGridPainter(palette))),
+          RepaintBoundary(
+            child: IgnorePointer(
+              child: CustomPaint(
+                isComplex: true,
+                willChange: false,
+                painter: _TechGridPainter(palette),
+              ),
+            ),
+          ),
           child,
         ],
       ),

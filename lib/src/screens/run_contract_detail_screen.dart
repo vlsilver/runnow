@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,7 +9,13 @@ import 'package:myrun/src/run_contracts/run_contract_controller.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/activity_tile.dart';
+import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/live_route_view.dart';
+import 'package:myrun/src/widgets/photo_viewer.dart';
+import 'package:myrun/src/widgets/route_map.dart';
+import 'package:myrun/src/widgets/run_now_loading.dart';
 
 class RunContractDetailScreen extends ConsumerStatefulWidget {
   const RunContractDetailScreen({required this.contractId, super.key});
@@ -24,6 +31,9 @@ class _RunContractDetailScreenState
   bool _working = false;
   bool _viewLogged = false;
   bool _recalculated = false;
+  bool _showRouteMap = false;
+  bool _showActivityFeed = false;
+  bool _showPhotoAlbum = false;
 
   @override
   Widget build(BuildContext context) {
@@ -67,7 +77,7 @@ class _RunContractDetailScreenState
                 ? const Center(child: Text('Không tìm thấy kèo chạy.'))
                 : _loggedContent(contract),
             error: (error, stack) => Center(child: Text('$error')),
-            loading: () => const Center(child: CircularProgressIndicator()),
+            loading: () => const RunNowLoading(label: 'Đang tải kèo'),
           ),
         ),
       ),
@@ -94,6 +104,33 @@ class _RunContractDetailScreenState
     }
     if (contract == null || participant == null) return null;
     if (!contract.isActive || contract.completedBy(uid)) return null;
+    // Kèo theo tuyến: thay hẳn nút "chọn buổi chạy áp dụng" (chọn 1 hoạt
+    // động đã có sẵn) bằng nút LIVE — chạy trực tiếp cho kèo là luồng chính
+    // của loại kèo này, không cần cả 2 nút cùng lúc gây rối. Ẩn hẳn nếu
+    // ngoài kỳ chạy (`running`) hoặc đã hoàn thành mục tiêu (check ở trên).
+    if (contract.route != null) {
+      // Web không có tab "Chạy"/tracking (không GPS liên tục) nên cũng ẩn
+      // luôn nút bắt đầu live ở đây — web chỉ xem live (qua "Xem live" trên
+      // bản đồ), không tự chạy live được.
+      if (kIsWeb) return null;
+      final available = lifecycle == RunContractLifecycle.running;
+      final label = switch (lifecycle) {
+        null => 'CHƯA SẴN SÀNG',
+        RunContractLifecycle.scheduled =>
+          'CHẠY TỪ ${DateFormat('dd/MM · HH:mm').format(contract.startAt)}',
+        RunContractLifecycle.running => 'LIVE NOW',
+        RunContractLifecycle.syncGrace ||
+        RunContractLifecycle.awaitingFinalize ||
+        RunContractLifecycle.completed ||
+        RunContractLifecycle.failed => 'ĐÃ HẾT GIỜ CHẠY',
+        RunContractLifecycle.cancelled => 'KÈO ĐÃ HỦY',
+      };
+      return _GoLiveButton(
+        enabled: available,
+        label: label,
+        onPressed: () => context.push('/tracking/live', extra: contract.id),
+      );
+    }
     return FloatingActionButton.extended(
       onPressed: () => _selectActivities(contract, participant),
       icon: const Icon(Icons.playlist_add_check_rounded),
@@ -109,9 +146,7 @@ class _RunContractDetailScreenState
     final currentUid = ref.read(firebaseUserProvider).value?.uid;
     final participant = contract.participantFor(currentUid);
     if (!_recalculated &&
-        contract.isActive &&
-        participant != null &&
-        !contract.completedBy(currentUid)) {
+        _shouldAutoRecalculate(contract, participant, currentUid)) {
       _recalculated = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -144,15 +179,31 @@ class _RunContractDetailScreenState
     return _content(contract);
   }
 
+  bool _shouldAutoRecalculate(
+    RunContract contract,
+    RunContractParticipant? participant,
+    String? currentUid,
+  ) {
+    if (!contract.isActive ||
+        participant == null ||
+        contract.completedBy(currentUid)) {
+      return false;
+    }
+    final lastCalculatedAt = contract.lastCalculatedAt;
+    if (lastCalculatedAt == null) return true;
+    return DateTime.now().difference(lastCalculatedAt) >
+        const Duration(minutes: 2);
+  }
+
   Widget _content(RunContract contract) {
     final uid = ref.watch(firebaseUserProvider).value?.uid;
     final owner = uid == contract.creatorUid;
     var ownerName = '3i member';
     String? ownerAvatarUrl;
+    final currentProfile = ref.watch(userProfileProvider).value;
     if (owner) {
-      final profile = ref.watch(userProfileProvider).value;
-      ownerName = profile?.displayName ?? 'Bạn';
-      ownerAvatarUrl = profile?.avatarUrl;
+      ownerName = currentProfile?.displayName ?? 'Bạn';
+      ownerAvatarUrl = currentProfile?.avatarUrl;
     } else {
       for (final member in ref.watch(membersProvider).value ?? const []) {
         if (member.uid == contract.creatorUid) {
@@ -177,6 +228,14 @@ class _RunContractDetailScreenState
           ownerName: ownerName,
           ownerAvatarUrl: ownerAvatarUrl,
         ),
+        if (contract.route != null) ...[
+          const SizedBox(height: 16),
+          _LazyRouteMapSection(
+            contract: contract,
+            expanded: _showRouteMap,
+            onToggle: () => setState(() => _showRouteMap = !_showRouteMap),
+          ),
+        ],
         if (participant != null) ...[
           const SizedBox(height: 12),
           _MyProgressCard(contract: contract, participant: participant),
@@ -186,7 +245,26 @@ class _RunContractDetailScreenState
           contract: contract,
           profiles: profiles,
           currentUid: uid,
-          currentProfile: ref.watch(userProfileProvider).value,
+          currentProfile: currentProfile,
+        ),
+        const SizedBox(height: 12),
+        _LazyContractSection(
+          title: 'Ảnh trong kèo',
+          subtitle: 'Album chỉ tải khi bạn mở mục này.',
+          icon: Icons.photo_library_outlined,
+          expanded: _showPhotoAlbum,
+          onToggle: () => setState(() => _showPhotoAlbum = !_showPhotoAlbum),
+          child: _ContractPhotoAlbumLoader(contractId: contract.id),
+        ),
+        const SizedBox(height: 12),
+        _LazyContractSection(
+          title: 'Buổi chạy đã ghi nhận',
+          subtitle: 'Mở khi cần xem các buổi đã áp dụng vào kèo.',
+          icon: Icons.format_list_bulleted_rounded,
+          expanded: _showActivityFeed,
+          onToggle: () =>
+              setState(() => _showActivityFeed = !_showActivityFeed),
+          child: _ContractActivityFeedSection(contractId: contract.id),
         ),
         const SizedBox(height: 18),
         if (owner &&
@@ -299,10 +377,8 @@ class _RunContractDetailScreenState
   ) async {
     final palette = context.runNowPalette;
     final contractTitles = <String, String>{};
-    for (final item in [
-      ...ref.read(clubRunContractsProvider).value ?? const <RunContract>[],
-      ...ref.read(myActiveContractsProvider).value ?? const <RunContract>[],
-    ]) {
+    for (final item
+        in ref.read(myActiveContractsProvider).value ?? const <RunContract>[]) {
       contractTitles[item.id] = item.title;
     }
     await showModalBottomSheet<void>(
@@ -455,13 +531,18 @@ class _ActivityAssignmentSheetState extends State<_ActivityAssignmentSheet> {
   @override
   void initState() {
     super.initState();
-    _selectedIds = {...widget.initialActivityIds};
-    _options = widget.controller.activityOptions(widget.contract);
+    final initialIds = widget.initialActivityIds.toList()..sort();
+    _selectedIds = widget.contract.metric == RunContractMetric.longestRun
+        ? initialIds.take(1).toSet()
+        : initialIds.toSet();
+    _options = widget.controller.activityOptions(widget.contract, limit: 80);
   }
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
+    final singleSessionMode =
+        widget.contract.metric == RunContractMetric.longestRun;
     return Material(
       color: palette.glassStart,
       child: FractionallySizedBox(
@@ -488,7 +569,9 @@ class _ActivityAssignmentSheetState extends State<_ActivityAssignmentSheet> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Chỉ session bạn xác nhận mới được cộng vào kèo này.',
+                singleSessionMode
+                    ? 'Kèo chạy dài chỉ nhận 1 session liên tục. Không cộng dồn nhiều buổi.'
+                    : 'Chỉ session bạn xác nhận mới được cộng vào kèo này.',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 16),
@@ -500,7 +583,7 @@ class _ActivityAssignmentSheetState extends State<_ActivityAssignmentSheet> {
                       return Center(child: Text('${snapshot.error}'));
                     }
                     if (!snapshot.hasData) {
-                      return const Center(child: CircularProgressIndicator());
+                      return const RunNowLoading(label: 'Đang tìm buổi chạy');
                     }
                     final options = snapshot.data!;
                     if (options.isEmpty) {
@@ -543,6 +626,7 @@ class _ActivityAssignmentSheetState extends State<_ActivityAssignmentSheet> {
                           onChanged: (selected) {
                             setState(() {
                               if (selected ?? false) {
+                                if (singleSessionMode) _selectedIds.clear();
                                 _selectedIds.add(activity.id);
                               } else {
                                 _selectedIds.remove(activity.id);
@@ -582,7 +666,13 @@ class _ActivityAssignmentSheetState extends State<_ActivityAssignmentSheet> {
                           dimension: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text('Áp dụng ${_selectedIds.length} buổi chạy'),
+                      : Text(
+                          singleSessionMode
+                              ? (_selectedIds.isEmpty
+                                    ? 'Chọn 1 buổi chạy'
+                                    : 'Áp dụng buổi chạy này')
+                              : 'Áp dụng ${_selectedIds.length} buổi chạy',
+                        ),
                 ),
               ),
             ],
@@ -708,12 +798,11 @@ class _ContractDetailHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
     final completed = contract.overallProgressPercent >= 100;
     return GlassPanel(
       borderRadius: 18,
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
       gradient: LinearGradient(
         colors: [palette.tint, palette.glassStart],
         begin: Alignment.topLeft,
@@ -729,7 +818,7 @@ class _ContractDetailHeader extends StatelessWidget {
                 backgroundImage:
                     ownerAvatarUrl == null || ownerAvatarUrl!.isEmpty
                     ? null
-                    : NetworkImage(ownerAvatarUrl!),
+                    : cachedAvatarImage(context, ownerAvatarUrl!, 44),
                 child: ownerAvatarUrl == null || ownerAvatarUrl!.isEmpty
                     ? Text(ownerName.isEmpty ? '?' : ownerName[0].toUpperCase())
                     : null,
@@ -780,20 +869,24 @@ class _ContractDetailHeader extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
           Text(
             contract.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: Theme.of(
               context,
-            ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900),
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
           ),
-          const SizedBox(height: 7),
+          const SizedBox(height: 6),
           Text(
-            'Cùng hoàn thành ${_contractValue(contract.metric, contract.targetValue)} '
-            'trong kỳ này. Tiến trình cập nhật từ Strava.',
+            'Deadline ${DateFormat('dd/MM · HH:mm').format(contract.endAtExclusive.subtract(const Duration(seconds: 1)))}',
             style: TextStyle(
-              color: onSurface.withValues(alpha: 0.58),
-              height: 1.35,
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.55),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -818,6 +911,7 @@ class _MyProgressCard extends StatelessWidget {
       0.0,
       contract.targetValue,
     );
+    final completed = rawRatio >= 1;
     final foreground =
         ThemeData.estimateBrightnessForColor(palette.accent) == Brightness.dark
         ? Colors.white
@@ -825,7 +919,7 @@ class _MyProgressCard extends StatelessWidget {
     return GlassPanel(
       borderRadius: 18,
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
       gradient: LinearGradient(
         colors: [palette.accent, palette.accentDeep],
         begin: Alignment.topLeft,
@@ -835,6 +929,7 @@ class _MyProgressCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
                 'CỦA BẠN',
@@ -845,52 +940,53 @@ class _MyProgressCard extends StatelessWidget {
                   letterSpacing: 1.2,
                 ),
               ),
-              const Spacer(),
-              Text(
-                rawRatio >= 1 ? 'Đã hoàn thành' : 'Chưa hoàn thành',
-                style: TextStyle(
-                  color: foreground.withValues(alpha: 0.78),
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
+              const SizedBox(width: 8),
               Text(
                 _contractValue(contract.metric, participant.progressValue),
                 style: TextStyle(
                   color: foreground,
-                  fontSize: 36,
+                  fontSize: 22,
                   height: 1,
                   fontWeight: FontWeight.w900,
                 ),
               ),
-              const SizedBox(width: 6),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Text(
-                  '/ ${_contractValue(contract.metric, contract.targetValue)}',
-                  style: TextStyle(
-                    color: foreground.withValues(alpha: 0.62),
-                    fontWeight: FontWeight.w800,
-                  ),
+              Text(
+                '/${_contractValue(contract.metric, contract.targetValue)}',
+                style: TextStyle(
+                  color: foreground.withValues(alpha: 0.62),
+                  fontWeight: FontWeight.w800,
                 ),
               ),
               const Spacer(),
-              Text(
-                '${(rawRatio * 100).toStringAsFixed(0)}%',
-                style: TextStyle(
-                  color: foreground,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
+              if (completed)
+                Row(
+                  children: [
+                    Icon(
+                      Icons.check_circle_rounded,
+                      color: foreground,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Hoàn thành',
+                      style: TextStyle(
+                        color: foreground,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                )
+              else
+                Text(
+                  'Còn ${_contractValue(contract.metric, remaining)}',
+                  style: TextStyle(
+                    color: foreground.withValues(alpha: 0.82),
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           LinearProgressIndicator(
             value: rawRatio.clamp(0.0, 1.0),
             minHeight: 9,
@@ -898,19 +994,443 @@ class _MyProgressCard extends StatelessWidget {
             backgroundColor: foreground.withValues(alpha: 0.2),
             color: foreground,
           ),
-          const SizedBox(height: 10),
-          Text(
-            rawRatio >= 1
-                ? 'Bạn đã hoàn thành mục tiêu.'
-                : 'Còn ${_contractValue(contract.metric, remaining)} để hoàn thành',
-            style: TextStyle(
-              color: foreground.withValues(alpha: 0.82),
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
         ],
       ),
+    );
+  }
+}
+
+class _LazyContractSection extends StatelessWidget {
+  const _LazyContractSection({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.expanded,
+    required this.onToggle,
+    required this.child,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: [
+          Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(18),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onToggle,
+              child: Ink(
+                decoration: BoxDecoration(
+                  color: palette.glassStart,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 13,
+                ),
+                child: Row(
+                  children: [
+                    Icon(icon, color: palette.accent, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: palette.textMuted,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      expanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      color: palette.textMuted,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (expanded) ...[const SizedBox(height: 10), child],
+        ],
+      ),
+    );
+  }
+}
+
+class _LazyRouteMapSection extends ConsumerWidget {
+  const _LazyRouteMapSection({
+    required this.contract,
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  final RunContract contract;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final route = contract.route;
+    if (route == null) return const SizedBox.shrink();
+    final distanceKm = (route.distanceMeters / 1000).toStringAsFixed(1);
+    if (!expanded) {
+      return _LazyContractSection(
+        title: 'Tuyến tham khảo',
+        subtitle: '$distanceKm km · bấm để mở bản đồ/live',
+        icon: Icons.route_rounded,
+        expanded: false,
+        onToggle: onToggle,
+        child: const SizedBox.shrink(),
+      );
+    }
+
+    final feedItems =
+        ref.watch(runContractActivityFeedProvider(contract.id)).value ??
+        const <ContractActivityFeedItem>[];
+    final feedPhotos = feedItems
+        .expand((item) => item.activity.photos)
+        .toList();
+    final currentUid = ref.watch(firebaseUserProvider).value?.uid;
+    final currentProfile = ref.watch(userProfileProvider).value;
+    final members = ref.watch(membersProvider).value ?? const <MemberProfile>[];
+    final profiles = {for (final member in members) member.uid: member};
+
+    (String, String?) resolveMember(String memberUid) {
+      if (memberUid == currentUid) {
+        return (
+          currentProfile?.displayName ?? 'Bạn',
+          currentProfile?.avatarUrl,
+        );
+      }
+      final member = profiles[memberUid];
+      return (member?.displayName ?? '3i member', member?.avatarUrl);
+    }
+
+    final claimedPhotos = [
+      for (final item in feedItems)
+        for (final photo in item.activity.photos)
+          LiveRoutePhoto(
+            photo: photo,
+            ownerUid: item.uid,
+            ownerName: resolveMember(item.uid).$1,
+            ownerAvatarUrl: resolveMember(item.uid).$2,
+          ),
+    ];
+
+    return _LazyContractSection(
+      title: 'Tuyến tham khảo',
+      subtitle: '$distanceKm km · đang hiển thị bản đồ',
+      icon: Icons.route_rounded,
+      expanded: true,
+      onToggle: onToggle,
+      child: RepaintBoundary(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: RouteMap.fromRoutePoints(
+            points: [
+              for (final point in route.points)
+                RoutePoint(
+                  latitude: point.latitude,
+                  longitude: point.longitude,
+                  timestamp: contract.createdAt,
+                ),
+            ],
+            photos: feedPhotos,
+            onPhotoTap: (photo) => showActivityPhotoViewer(context, photo),
+            liveRunnersStream: ref
+                .read(liveTrackingRepositoryProvider)
+                .watchContractLiveSessions(contract.id),
+            liveRoutePhotos: claimedPhotos,
+            height: 220,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Danh sách buổi chạy đã được ghi nhận (đếm vào tiến độ) của TẤT CẢ người
+/// tham gia kèo — không chỉ của user hiện tại — mỗi buổi hiện rõ của ai,
+/// giống style nhật ký Club nhưng chỉ gồm đúng các buổi thuộc kèo này.
+class _ContractActivityFeedSection extends ConsumerWidget {
+  const _ContractActivityFeedSection({required this.contractId});
+
+  final String contractId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final feed = ref.watch(runContractActivityFeedProvider(contractId));
+    return feed.when(
+      data: (items) {
+        if (items.isEmpty) return const SizedBox.shrink();
+        final currentUid = ref.watch(firebaseUserProvider).value?.uid;
+        final currentProfile = ref.watch(userProfileProvider).value;
+        final members =
+            ref.watch(membersProvider).value ?? const <MemberProfile>[];
+        final profiles = {for (final member in members) member.uid: member};
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var index = 0; index < items.length; index++)
+              ActivityTile(
+                activity: items[index].activity,
+                sequence: index + 1,
+                ownerUid: items[index].uid == currentUid
+                    ? null
+                    : items[index].uid,
+                memberName: items[index].uid == currentUid
+                    ? (currentProfile?.displayName ?? 'Bạn')
+                    : (profiles[items[index].uid]?.displayName ?? '3i member'),
+                memberAvatarUrl: items[index].uid == currentUid
+                    ? currentProfile?.avatarUrl
+                    : profiles[items[index].uid]?.avatarUrl,
+              ),
+          ],
+        );
+      },
+      error: (error, stack) => const SizedBox.shrink(),
+      loading: () => const SizedBox.shrink(),
+    );
+  }
+}
+
+class _ContractPhotoAlbumLoader extends ConsumerWidget {
+  const _ContractPhotoAlbumLoader({required this.contractId});
+
+  final String contractId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final feed = ref.watch(runContractActivityFeedProvider(contractId));
+    return feed.when(
+      data: (items) {
+        final photos = {
+          for (final item in items)
+            for (final photo in item.activity.photos) photo.id: photo,
+        }.values.toList();
+        if (photos.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              'Chưa có ảnh nào trong kèo này.',
+              style: TextStyle(color: context.runNowPalette.textMuted),
+            ),
+          );
+        }
+        return _ContractPhotoAlbum(photos: photos);
+      },
+      error: (error, stack) => Text('$error'),
+      loading: () => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: RunNowLoading(
+          label: 'Đang tải ảnh',
+          compact: true,
+          revealDelay: Duration(milliseconds: 140),
+        ),
+      ),
+    );
+  }
+}
+
+/// Nút "phát live" nổi bật, dùng làm `floatingActionButton` cho kèo theo
+/// tuyến (thay hẳn nút "chọn buổi chạy áp dụng" — xem [_floatingAction]) —
+/// nền gradient đỏ ([RunNowSemanticColors.danger], màu LIVE phổ quát của
+/// recording/broadcast) + quầng sáng và chấm nhấp nháy. Cố tình KHÁC màu
+/// với marker vị trí live trên [RouteMap] (dùng info/teal) vì marker đó
+/// nằm chung bản đồ với marker kết thúc (cũng màu danger) — trùng màu ở
+/// đó sẽ gây nhầm lẫn hai điểm.
+class _GoLiveButton extends StatefulWidget {
+  const _GoLiveButton({
+    required this.enabled,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final bool enabled;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  State<_GoLiveButton> createState() => _GoLiveButtonState();
+}
+
+class _GoLiveButtonState extends State<_GoLiveButton>
+    with SingleTickerProviderStateMixin {
+  late final _pulseController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1300),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const danger = RunNowSemanticColors.danger;
+    final palette = context.runNowPalette;
+    final activeColor = widget.enabled ? danger : palette.textMuted;
+    // Bọc RepaintBoundary — pulse chạy vô thời hạn (`repeat(reverse: true)`)
+    // suốt lúc nút này còn hiện, cô lập vùng repaint để không kéo theo phần
+    // còn lại của màn hình vẽ lại mỗi frame.
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _pulseController,
+        builder: (context, child) {
+          final glowAlpha = widget.enabled
+              ? 0.28 + _pulseController.value * 0.32
+              : 0.0;
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: [
+                BoxShadow(
+                  color: activeColor.withValues(alpha: glowAlpha),
+                  blurRadius: 26,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: child,
+          );
+        },
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: widget.enabled ? widget.onPressed : null,
+            child: Ink(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: widget.enabled
+                      ? [danger, Color.lerp(danger, Colors.black, 0.35)!]
+                      : [palette.tint, palette.glassStart],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 22,
+                  vertical: 15,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    FadeTransition(
+                      opacity: Tween<double>(
+                        begin: 0.35,
+                        end: 1,
+                      ).animate(_pulseController),
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: widget.enabled ? Colors.white : activeColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      widget.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: widget.enabled ? Colors.white : activeColor,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 15,
+                        letterSpacing: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Album ảnh chụp trong các buổi chạy đã ghi nhận của kèo — gộp từ mọi
+/// người tham gia (đã lọc quyền xem qua [runContractActivityFeedProvider]).
+class _ContractPhotoAlbum extends StatelessWidget {
+  const _ContractPhotoAlbum({required this.photos});
+
+  final List<ActivityPhoto> photos;
+
+  @override
+  Widget build(BuildContext context) {
+    final sorted = [...photos]
+      ..sort((a, b) => b.capturedAt.compareTo(a.capturedAt));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${sorted.length} ảnh từ buổi chạy',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 10),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: sorted.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+          ),
+          itemBuilder: (context, index) {
+            final photo = sorted[index];
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: GestureDetector(
+                onTap: () => showActivityPhotoViewer(context, photo),
+                child: StoragePhoto(
+                  path: photo.storagePath,
+                  cacheWidth: 240,
+                  cacheHeight: 240,
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }
@@ -937,7 +1457,6 @@ class _ParticipantProgressList extends StatelessWidget {
           (participant) => participant.progressValue >= contract.targetValue,
         )
         .length;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
     return GlassPanel(
       borderRadius: 18,
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -989,29 +1508,6 @@ class _ParticipantProgressList extends StatelessWidget {
             ),
             if (index != participants.length - 1) const SizedBox(height: 20),
           ],
-          const SizedBox(height: 22),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Deadline ${DateFormat('dd/MM · HH:mm').format(contract.endAtExclusive.subtract(const Duration(seconds: 1)))}',
-                  style: TextStyle(
-                    color: onSurface.withValues(alpha: 0.55),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              if (contract.lastCalculatedAt != null)
-                Text(
-                  'Sync ${DateFormat('HH:mm').format(contract.lastCalculatedAt!)}',
-                  style: TextStyle(
-                    color: onSurface.withValues(alpha: 0.45),
-                    fontSize: 12,
-                  ),
-                ),
-            ],
-          ),
         ],
       ),
     );
@@ -1046,7 +1542,7 @@ class _ParticipantRow extends StatelessWidget {
           radius: 20,
           backgroundImage: avatarUrl == null || avatarUrl!.isEmpty
               ? null
-              : NetworkImage(avatarUrl!),
+              : cachedAvatarImage(context, avatarUrl!, 40),
           child: avatarUrl == null || avatarUrl!.isEmpty
               ? Text(name.isEmpty ? '?' : name[0].toUpperCase())
               : null,
@@ -1068,7 +1564,11 @@ class _ParticipantRow extends StatelessWidget {
                   ),
                   if (completed) ...[
                     const SizedBox(width: 6),
-                    Icon(Icons.check_circle, color: palette.accent, size: 17),
+                    const Icon(
+                      Icons.check_circle,
+                      color: RunNowSemanticColors.success,
+                      size: 17,
+                    ),
                   ],
                 ],
               ),
@@ -1078,7 +1578,9 @@ class _ParticipantRow extends StatelessWidget {
                 minHeight: 5,
                 borderRadius: BorderRadius.circular(2),
                 backgroundColor: palette.border,
-                color: palette.accent,
+                color: completed
+                    ? RunNowSemanticColors.success
+                    : palette.accent,
               ),
             ],
           ),
@@ -1090,7 +1592,7 @@ class _ParticipantRow extends StatelessWidget {
             Text(
               _contractValue(contract.metric, participant.progressValue),
               style: TextStyle(
-                color: completed ? palette.accent : null,
+                color: completed ? RunNowSemanticColors.success : null,
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -1099,7 +1601,7 @@ class _ParticipantRow extends StatelessWidget {
               completed ? 'Xong' : '${(ratio * 100).toStringAsFixed(0)}%',
               style: TextStyle(
                 color: completed
-                    ? palette.accent
+                    ? RunNowSemanticColors.success
                     : Theme.of(
                         context,
                       ).colorScheme.onSurface.withValues(alpha: 0.5),
@@ -1120,4 +1622,5 @@ String _contractValue(RunContractMetric metric, double value) =>
         '${value.toStringAsFixed(value % 1 == 0 ? 0 : 1)} km',
       RunContractMetric.activityCount => '${value.toInt()} buổi',
       RunContractMetric.activeDays => '${value.toInt()} ngày',
+      RunContractMetric.routeCompletion => '${value.toInt()} lần',
     };

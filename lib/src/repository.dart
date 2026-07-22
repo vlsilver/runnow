@@ -1,22 +1,34 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/dashboard_analytics.dart';
-import 'package:myrun/src/strava_client.dart';
+import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
+import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/tracking_session.dart';
 
 abstract interface class ActivityRepository {
-  Stream<List<ActivitySummary>> watchActivities();
-  Stream<List<JournalActivityEntry>> watchJournalActivities();
+  Stream<List<ActivitySummary>> watchActivities({int? limit});
   Stream<List<ActivitySummary>> watchTrackedTrialActivities();
+  Future<JournalActivityPage> fetchJournalActivitiesPage({
+    int limit = 30,
+    Object? cursor,
+  });
   Future<List<ActivitySummary>> listOfficialActivities({
     required DateTime start,
     required DateTime endExclusive,
+    int? limit,
   });
+
+  /// Raw lookup by ID, bỏ qua bước khử trùng Strava/3i của
+  /// [listOfficialActivities] — cần để 1 activity đã claim vào kèo vẫn được
+  /// tính dù sau đó có 1 activity khác (Strava) trùng nó đồng bộ về, và để
+  /// kiểm tra trùng lặp trước khi cho claim thêm.
+  Future<Map<String, ActivitySummary>> getActivitiesByIds(Set<String> ids);
   Future<ActivityDetail> getDetail(String activityId);
   Future<ActivitySyncOutcome> sync({bool fullResync = false});
   Future<TrackedActivitySaveResult> saveTrackedActivity(
@@ -29,10 +41,12 @@ class ActivitySyncOutcome {
   const ActivitySyncOutcome({
     required this.changedCount,
     this.changedActivities = const [],
+    this.queued = false,
   });
 
   final int changedCount;
   final List<ActivitySummary> changedActivities;
+  final bool queued;
 }
 
 class JournalActivityEntry {
@@ -47,11 +61,24 @@ class JournalActivityEntry {
   bool get isSupersededByStrava => preferredStravaActivityId != null;
 }
 
+class JournalActivityPage {
+  const JournalActivityPage({
+    required this.entries,
+    required this.hasMore,
+    this.nextCursor,
+  });
+
+  final List<JournalActivityEntry> entries;
+  final Object? nextCursor;
+  final bool hasMore;
+}
+
 @visibleForTesting
 List<JournalActivityEntry> buildJournalActivityEntries(
   Iterable<ActivitySummary> activities,
 ) {
   final all = activities.toList();
+  final duplicates = preferredStravaDuplicates(all);
   final entries = <JournalActivityEntry>[
     for (final activity in all)
       if (activity.source == ActivitySource.strava ||
@@ -59,7 +86,7 @@ List<JournalActivityEntry> buildJournalActivityEntries(
         JournalActivityEntry(
           activity: activity,
           preferredStravaActivityId: activity.source == ActivitySource.runnow
-              ? preferredStravaDuplicate(activity, all)?.id
+              ? duplicates[activity.id]?.id
               : null,
         ),
   ];
@@ -68,6 +95,21 @@ List<JournalActivityEntry> buildJournalActivityEntries(
         right.activity.startedAt.compareTo(left.activity.startedAt),
   );
   return entries;
+}
+
+@visibleForTesting
+List<JournalActivityEntry> buildJournalPageEntries(
+  Iterable<ActivitySummary> pageActivities,
+  Iterable<ActivitySummary> overlapContext,
+) {
+  final entriesById = {
+    for (final entry in buildJournalActivityEntries(overlapContext))
+      entry.activity.id: entry,
+  };
+  return pageActivities
+      .map((activity) => entriesById[activity.id])
+      .whereType<JournalActivityEntry>()
+      .toList();
 }
 
 enum TrackedActivitySaveStatus {
@@ -102,35 +144,82 @@ abstract interface class TrainingGoalRepository {
 abstract interface class MemberRepository {
   Stream<List<MemberProfile>> watchMembers();
   Stream<MemberProfile?> watchMember(String uid);
-  Stream<List<ActivitySummary>> watchMemberActivities(String uid);
+  Stream<List<ActivitySummary>> watchMemberActivities(String uid, {int? limit});
+  Future<List<ActivitySummary>> listMemberActivities(
+    String uid, {
+    int limit = 40,
+  });
+  Stream<List<ActivitySummary>> watchMemberActivitiesByIds(
+    String uid,
+    Set<String> activityIds,
+  );
   Future<ActivityDetail> getMemberActivityDetail(String uid, String activityId);
+
+  /// Số liệu tổng hợp theo kỳ (backend tính sẵn) của 1 thành viên — dùng cho
+  /// biểu đồ khối lượng tập thay vì tải toàn bộ activity thô. [fromKey] và
+  /// [toKeyInclusive] là periodKey cùng loại [periodType] (vd `2025-08` →
+  /// `2026-07`); key sort đúng thứ tự thời gian nên so theo chuỗi là đủ.
+  Future<List<PeriodStat>> listMemberPeriodStats(
+    String uid, {
+    required String periodType,
+    required String fromKey,
+    required String toKeyInclusive,
+  });
   Stream<List<LeaderboardEntry>> watchLeaderboardEntries();
-  Future<void> ensureCurrentLeaderboardEntry();
   Future<void> updateCurrentProfile({
     required String nickname,
     required String? avatarUrl,
     required ProfileVisibility visibility,
   });
+
+  /// Đánh dấu đã hiện popup "chúc mừng lên hạng" cho [key] (mã hoá
+  /// metric+range+kỳ+hạng) — chỉ ghi field riêng lên `users/{uid}`, không
+  /// cần lan sang `publicProfiles`/`leaderboardEntries` như
+  /// [updateCurrentProfile] vì đây là cờ nội bộ, không hiển thị public.
+  Future<void> markRankCelebrated(String key);
+
+  /// Lưu cung đường "Hành Trình" user chọn (`coastal` | `hcm_trail`) — cờ
+  /// nội bộ như [markRankCelebrated], vị trí/mốc đều derive từ tổng km nên
+  /// không cần lưu gì khác ngoài lựa chọn cung.
+  Future<void> setJourneyRoute(String routeId);
+
+  /// Bản tóm tắt 1 route "Hành Trình" (không kèm points/milestones nặng) —
+  /// đủ cho danh sách level ở Journey Hub, chỉ đọc đúng 1 doc nhẹ
+  /// `journeyRoutes/{routeId}`.
+  Future<JourneyRouteSummary> getJourneyRouteSummary(String routeId);
+
+  /// Toàn bộ dữ liệu 1 route, gồm cả polyline + mốc — chỉ cần khi mở màn
+  /// chi tiết xem bản đồ (`journey_screen.dart`), không dùng ở Hub vì nặng
+  /// hơn nhiều (route có thể tới hàng ngàn điểm).
+  Future<JourneyRoute> getJourneyRouteDetail(String routeId);
 }
 
 abstract interface class LiveTrackingRepository {
   Stream<List<LiveTrackingSession>> watchClubLiveSessions();
+  Stream<List<LiveTrackingSession>> watchContractLiveSessions(
+    String contractId,
+  );
   Future<void> publishSnapshot({
     required TrackingSessionSnapshot snapshot,
     required LiveTrackingStatus status,
     required List<RoutePoint> routePreview,
+    String? contractId,
+  });
+  Future<void> publishPhoto({
+    required String sessionId,
+    required ActivityPhoto photo,
   });
   Future<void> finishSession(String sessionId, LiveTrackingStatus status);
 }
 
 class FirestoreStravaActivityRepository implements ActivityRepository {
-  FirestoreStravaActivityRepository(this._auth, this._firestore);
+  FirestoreStravaActivityRepository(this._auth, this._firestore, this._api);
 
   static const _streamsVersion = 4;
-  static const _maxCachedStreamSamples = 300;
 
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
+  final RunNowApiClient _api;
   final Map<String, Future<ActivityDetail>> _detailRequests = {};
 
   String get _uid {
@@ -143,89 +232,103 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
       _firestore.collection('users').doc(_uid).collection('activities');
 
   @override
-  Stream<List<ActivitySummary>> watchActivities() {
-    return _activities.orderBy('startedAt', descending: true).snapshots().map((
-      snapshot,
-    ) {
-      _debugLog('Firestore snapshot: ${snapshot.docs.length} activities.');
+  Stream<List<ActivitySummary>> watchActivities({int? limit}) {
+    Query<Map<String, dynamic>> query = _activities.orderBy(
+      'startedAt',
+      descending: true,
+    );
+    if (limit != null) query = query.limit(limit);
+    return query.snapshots().map((snapshot) {
       final all = snapshot.docs
-          .map((document) => ActivitySummary.fromMap(document.data()))
+          .map(
+            (document) => ActivitySummary.fromMap(
+              document.data(),
+              includeRoutePoints: false,
+              includePhotos: false,
+            ),
+          )
           .toList();
-      _logRunNowFiltering(all);
       return selectOfficialActivities(all);
     });
   }
 
-  void _logRunNowFiltering(List<ActivitySummary> all) {
-    if (!kDebugMode) return;
-    final runNowActivities = all.where(
-      (activity) => activity.source == ActivitySource.runnow,
-    );
-    for (final activity in runNowActivities) {
-      final buffer = StringBuffer(
-        'RunNow ${activity.id} (${activity.name}, '
-        'kind=${activity.kind}, distance=${activity.distanceMeters}m, '
-        'startedAt=${activity.startedAt}): ',
-      );
-      if (!isRunNowActivityDistanceEligible(activity)) {
-        buffer.write(
-          'BỊ LOẠI — không đạt điều kiện (kind phải là run và '
-          '>= ${minimumOfficialRunNowDistanceMeters}m).',
-        );
-      } else {
-        final duplicate = preferredStravaDuplicate(activity, all);
-        if (duplicate != null) {
-          buffer.write(
-            'BỊ LOẠI — coi là trùng với Strava activity ${duplicate.id} '
-            '(${duplicate.name}, startedAt=${duplicate.startedAt}), '
-            'overlap=${activityOverlapRatio(activity, duplicate).toStringAsFixed(2)}.',
-          );
-        } else {
-          buffer.write('GIỮ LẠI — không trùng activity Strava nào.');
-        }
-      }
-      _debugLog(buffer.toString());
-    }
-  }
-
   @override
-  Stream<List<JournalActivityEntry>> watchJournalActivities() {
-    return _activities.orderBy('startedAt', descending: true).snapshots().map((
-      snapshot,
-    ) {
-      return buildJournalActivityEntries(
-        snapshot.docs
-            .map((document) => ActivitySummary.fromMap(document.data()))
-            .toList(),
-      );
-    });
+  Future<JournalActivityPage> fetchJournalActivitiesPage({
+    int limit = 30,
+    Object? cursor,
+  }) async {
+    Query<Map<String, dynamic>> query = _activities.orderBy(
+      'startedAt',
+      descending: true,
+    );
+    final documentCursor = cursor;
+    if (documentCursor is DocumentSnapshot<Map<String, dynamic>>) {
+      query = query.startAfterDocument(documentCursor);
+    }
+    final snapshot = await query.limit(limit).get();
+    final activities = snapshot.docs
+        .map(
+          (document) => ActivitySummary.fromMap(
+            document.data(),
+            includeRoutePoints: false,
+            includePhotos: false,
+          ),
+        )
+        .toList();
+    // Backend đã tự stamp `duplicateOfActivityId` lên doc lúc sync (cả lúc
+    // 3i activity được tạo lẫn lúc Strava activity trùng giờ sync về sau,
+    // xem `markRunNowDuplicates`/`SaveTracked` trong `activity_service.go`)
+    // — đọc thẳng field đó thay vì query lại `startedAt` ±24h quanh từng
+    // activity runnow trên trang để tự tính overlap, tránh N query phụ mỗi
+    // lần tải trang.
+    return JournalActivityPage(
+      entries: [
+        for (final activity in activities)
+          if (activity.source == ActivitySource.strava ||
+              isRunNowActivityDistanceEligible(activity))
+            JournalActivityEntry(
+              activity: activity,
+              preferredStravaActivityId: activity.source == ActivitySource.runnow
+                  ? activity.duplicateOfActivityId
+                  : null,
+            ),
+      ],
+      nextCursor: snapshot.docs.isEmpty ? cursor : snapshot.docs.last,
+      hasMore: snapshot.docs.length == limit,
+    );
   }
 
   @override
   Stream<List<ActivitySummary>> watchTrackedTrialActivities() {
-    return _activities.orderBy('startedAt', descending: true).snapshots().map((
-      snapshot,
-    ) {
-      return snapshot.docs
-          .map((document) => ActivitySummary.fromMap(document.data()))
-          .where((activity) => activity.source == ActivitySource.runnow)
-          .toList();
-    });
+    return _activities
+        .where('source', isEqualTo: ActivitySource.runnow.value)
+        .limit(100)
+        .snapshots()
+        .map((snapshot) {
+          final activities = snapshot.docs
+              .map((document) => ActivitySummary.fromMap(document.data()))
+              .toList();
+          activities.sort((a, b) => b.startedAt.compareTo(a.startedAt));
+          return activities;
+        });
   }
 
   @override
   Future<List<ActivitySummary>> listOfficialActivities({
     required DateTime start,
     required DateTime endExclusive,
+    int? limit,
   }) async {
     final queryStart = start.subtract(const Duration(hours: 24));
-    final snapshot = await _activities
+    Query<Map<String, dynamic>> query = _activities
         .where(
           'startedAt',
           isGreaterThanOrEqualTo: queryStart.toUtc().toIso8601String(),
         )
         .where('startedAt', isLessThan: endExclusive.toUtc().toIso8601String())
-        .get();
+        .orderBy('startedAt', descending: true);
+    if (limit != null) query = query.limit(limit);
+    final snapshot = await query.get();
     return selectOfficialActivities(
           snapshot.docs
               .map((document) => ActivitySummary.fromMap(document.data()))
@@ -240,12 +343,24 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
   }
 
   @override
+  Future<Map<String, ActivitySummary>> getActivitiesByIds(
+    Set<String> ids,
+  ) async {
+    if (ids.isEmpty) return const {};
+    final documents = await Future.wait(
+      ids.map((id) => _activities.doc(id).get()),
+    );
+    return {
+      for (final document in documents)
+        if (document.data() case final data?)
+          document.id: ActivitySummary.fromMap(data),
+    };
+  }
+
+  @override
   Future<ActivityDetail> getDetail(String activityId) async {
     final existing = _detailRequests[activityId];
-    if (existing != null) {
-      _debugLog('Detail request already running for $activityId. Reusing it.');
-      return existing;
-    }
+    if (existing != null) return existing;
     final request = _loadDetail(activityId);
     _detailRequests[activityId] = request;
     try {
@@ -258,215 +373,48 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
   Future<ActivityDetail> _loadDetail(String activityId) async {
     final document = _activities.doc(activityId);
     final cached = await document.get();
-    var cachedData = cached.data();
-    if (hasCachedActivityDetail(cachedData)) {
-      var detailData = cachedData!;
-      _debugLog('Detail cache hit for $activityId.');
-      if (detailData['hydrated'] != true) {
-        await document.set({'hydrated': true}, SetOptions(merge: true));
-      }
-      if (shouldBackfillStravaStreams(
-        detailData,
-        currentStreamsVersion: _streamsVersion,
-      )) {
-        try {
-          final fetchedStreams = await _fetchStreams(
-            activityId,
-            startedAt: DateTime.parse(detailData['startedAt'] as String),
-          );
-          await document.set({
-            'streams': fetchedStreams.streams,
-            if (fetchedStreams.routePoints.isNotEmpty)
-              'routePoints': fetchedStreams.routePoints
-                  .map((point) => point.toMap())
-                  .toList(),
-            'streamsHydrated': true,
-            'streamsVersion': _streamsVersion,
-          }, SetOptions(merge: true));
-          detailData = {
-            ...detailData,
-            'streams': fetchedStreams.streams,
-            if (fetchedStreams.routePoints.isNotEmpty)
-              'routePoints': fetchedStreams.routePoints
-                  .map((point) => point.toMap())
-                  .toList(),
-          };
-          _debugLog(
-            'Backfilled streams version $_streamsVersion for $activityId.',
-          );
-        } catch (error) {
-          _debugLog('Could not backfill streams for $activityId: $error');
-          await document.set({
-            'streamsHydrated': false,
-            'streamsVersion': _streamsVersion,
-          }, SetOptions(merge: true));
-        }
-      }
-      return ActivityDetail.fromMap({...detailData, 'hydrated': true});
+    final cachedData = cached.data();
+    final source = ActivitySource.fromValue(cachedData?['source'] as String?);
+    if (source == ActivitySource.runnow && cachedData != null) {
+      return ActivityDetail.fromMap({...cachedData, 'hydrated': true});
     }
-    _debugLog('Detail cache miss for $activityId. Hydrating from Strava.');
-    final raw = await StravaClient.instance.getActivityDetail(activityId);
-    var streamsHydrated = false;
-    var streams = <String, List<double>>{};
-    var routePoints = <RoutePoint>[];
-    try {
-      final fetchedStreams = await _fetchStreams(
-        activityId,
-        startedAt: DateTime.parse(raw['start_date'] as String),
-      );
-      streams = fetchedStreams.streams;
-      routePoints = fetchedStreams.routePoints;
-      streamsHydrated = true;
-      _debugLog(
-        'Hydrated streams for $activityId: '
-        '${streams.map((key, value) => MapEntry(key, value.length))}.',
-      );
-    } catch (error) {
-      _debugLog('Could not hydrate streams for $activityId: $error');
+    if (hasCachedActivityDetail(cachedData) &&
+        !shouldBackfillStravaStreams(
+          cachedData!,
+          currentStreamsVersion: _streamsVersion,
+        )) {
+      return ActivityDetail.fromMap({...cachedData, 'hydrated': true});
     }
-    final detail = ActivityDetail(
-      summary: _summaryFromRaw(
-        raw,
-        hydrated: true,
-        averageHeartRateFallback: _average(streams['heartrate']),
-        routePoints: routePoints,
-      ),
-      calories: (raw['calories'] as num?)?.toDouble(),
-      gearName: (raw['gear'] as Map<String, dynamic>?)?['name'] as String?,
-      splits: _normalizeIntervals(raw['splits_metric']),
-      laps: _normalizeIntervals(raw['laps']),
-      streams: streams,
-    );
-    await document.set({
-      ..._detailToMap(detail, includeStreams: false),
-      'detailHydratedAt': FieldValue.serverTimestamp(),
-      'streamsHydrated': false,
-    }, SetOptions(merge: true));
-    if (streamsHydrated) {
-      try {
-        await document.set({
-          'streams': streams,
-          'streamsHydrated': true,
-          'streamsVersion': _streamsVersion,
-        }, SetOptions(merge: true));
-      } catch (error) {
-        _debugLog('Could not cache streams for $activityId: $error');
-        try {
-          await document.set({
-            'streamsHydrated': false,
-            'streamsVersion': _streamsVersion,
-          }, SetOptions(merge: true));
-        } catch (markerError) {
-          _debugLog(
-            'Could not mark streams cache failure for $activityId: $markerError',
-          );
-        }
-      }
-    }
-    return detail;
-  }
 
-  /// Giới hạn tối đa số ngày quét lại cho sync nhanh, để tránh vô tình quét
-  /// sâu như full resync khi user lâu ngày không mở app.
-  static const _incrementalSyncLookbackCap = Duration(days: 10);
+    await _api.hydrateActivity(activityId);
+    try {
+      final hydrated = await document
+          .snapshots()
+          .map((snapshot) => snapshot.data())
+          .firstWhere(
+            (data) =>
+                hasCachedActivityDetail(data) &&
+                data?['streamsHydrated'] == true &&
+                data?['streamsVersion'] == _streamsVersion,
+          )
+          .timeout(const Duration(seconds: 35));
+      return ActivityDetail.fromMap({...hydrated!, 'hydrated': true});
+    } on TimeoutException {
+      // Detail summary remains useful while a large Strava stream continues in
+      // Cloud Tasks. Reopening the screen will hit the completed cache later.
+      if (hasCachedActivityDetail(cachedData)) {
+        return ActivityDetail.fromMap({...cachedData!, 'hydrated': true});
+      }
+      throw StateError(
+        'Backend đang tải chi tiết hoạt động. Hãy mở lại sau ít phút.',
+      );
+    }
+  }
 
   @override
   Future<ActivitySyncOutcome> sync({bool fullResync = false}) async {
-    int page = 1;
-    int changed = 0;
-    final changedStravaActivities = <ActivitySummary>[];
-    final afterEpochSeconds = fullResync
-        ? null
-        : await _incrementalSyncAfterEpochSeconds();
-    _debugLog(
-      fullResync
-          ? 'Starting full Strava sync.'
-          : 'Starting incremental Strava sync (after=$afterEpochSeconds).',
-    );
-    while (true) {
-      final activities = await StravaClient.instance.listActivities(
-        after: afterEpochSeconds,
-        page: page,
-      );
-      final batch = _firestore.batch();
-      var pageHasChanges = false;
-      final supported = activities.whereType<Map<String, dynamic>>().where((
-        activity,
-      ) {
-        final sportType =
-            activity['sport_type'] as String? ?? activity['type'] as String?;
-        final accepted = parseActivityKind(sportType) != null;
-        if (!accepted) {
-          _debugLog(
-            'Skipping unsupported activity ${activity['id']}: $sportType.',
-          );
-        }
-        return accepted;
-      }).toList();
-      _debugLog(
-        'Page $page: received ${activities.length}, '
-        'accepted ${supported.length}.',
-      );
-      final summaries = supported.map(_summaryFromRaw).toList();
-      final existingDocs = await Future.wait(
-        summaries.map((summary) => _activities.doc(summary.id).get()),
-      );
-      for (var i = 0; i < summaries.length; i++) {
-        final summary = summaries[i];
-        final document = _activities.doc(summary.id);
-        final nextData = activitySummaryToSyncMap(summary);
-        if (!activitySummaryHasChanges(existingDocs[i].data(), nextData)) {
-          continue;
-        }
-        batch.set(document, nextData, SetOptions(merge: true));
-        changedStravaActivities.add(summary);
-        changed += 1;
-        pageHasChanges = true;
-      }
-      if (pageHasChanges) {
-        await batch.commit();
-        _debugLog('Page $page committed to Firestore.');
-      } else {
-        _debugLog('Page $page has no Firestore changes.');
-        break;
-      }
-      if (activities.length < 100) break;
-      page += 1;
-    }
-    if (changed > 0) {
-      await _firestore.collection('users').doc(_uid).set({
-        'athleteId': StravaClient.instance.athleteId,
-        'lastSyncedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-      await migrateDuplicateContractClaims(changedStravaActivities);
-    }
-    await _refreshCurrentLeaderboardEntry();
-    _debugLog('Sync completed: changed $changed activities.');
-    return ActivitySyncOutcome(
-      changedCount: changed,
-      changedActivities: changedStravaActivities,
-    );
-  }
-
-  /// Mốc `after` cho sync nhanh: không quét lại xa hơn buổi chạy gần nhất đã
-  /// biết, và không quét lại xa hơn [_incrementalSyncLookbackCap] — dùng mốc
-  /// nào gần hơn (phạm vi cần quét nhỏ hơn). Nếu chưa có activity nào (lần
-  /// đầu sync) thì trả `null` để quét toàn bộ như cũ.
-  Future<int?> _incrementalSyncAfterEpochSeconds() async {
-    final now = DateTime.now();
-    final lookbackCutoff = now.subtract(_incrementalSyncLookbackCap);
-    final latestSnapshot = await _activities
-        .orderBy('startedAt', descending: true)
-        .limit(1)
-        .get();
-    if (latestSnapshot.docs.isEmpty) return null;
-    final startedAtRaw = latestSnapshot.docs.first.data()['startedAt'];
-    if (startedAtRaw is! String) return null;
-    final lastActiveDay = DateTime.parse(startedAtRaw);
-    final cutoff = lastActiveDay.isAfter(lookbackCutoff)
-        ? lastActiveDay
-        : lookbackCutoff;
-    return cutoff.toUtc().millisecondsSinceEpoch ~/ 1000;
+    await _api.requestStravaRepair(full: fullResync);
+    return const ActivitySyncOutcome(changedCount: 0, queued: true);
   }
 
   @override
@@ -477,162 +425,17 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
     if (detail.summary.source != ActivitySource.runnow) {
       throw StateError('Chỉ lưu activity tracking nội bộ bằng API này.');
     }
-    final document = _activities.doc(detail.summary.id);
-    await document.set(
-      trackedActivityToFirestoreMap(
-        detail,
-        trackingDebug: trackingDebug,
-        savedAt: FieldValue.serverTimestamp(),
-      ),
-      SetOptions(merge: true),
+    final result = await _api.saveTrackedActivity(
+      trackedActivityToFirestoreMap(detail, trackingDebug: trackingDebug),
     );
-    _debugLog('Saved tracked trial activity ${detail.summary.id}.');
-    if (!isRunNowActivityDistanceEligible(detail.summary)) {
-      return const TrackedActivitySaveResult(
-        status: TrackedActivitySaveStatus.belowMinimumDistance,
-      );
-    }
-    final duplicate = await _findPreferredStravaDuplicate(detail.summary);
-    if (duplicate != null) {
-      return TrackedActivitySaveResult(
-        status: TrackedActivitySaveStatus.duplicateOfStrava,
-        stravaActivityId: duplicate.id,
-      );
-    }
-    await _refreshCurrentLeaderboardEntry();
-    return const TrackedActivitySaveResult(
-      status: TrackedActivitySaveStatus.counted,
-    );
-  }
-
-  Future<ActivitySummary?> _findPreferredStravaDuplicate(
-    ActivitySummary activity,
-  ) async {
-    final start = activity.startedAt.subtract(const Duration(hours: 24));
-    final end = activity.startedAt.add(
-      Duration(seconds: activity.elapsedTimeSeconds + 1),
-    );
-    final snapshot = await _activities
-        .where(
-          'startedAt',
-          isGreaterThanOrEqualTo: start.toUtc().toIso8601String(),
-        )
-        .where('startedAt', isLessThan: end.toUtc().toIso8601String())
-        .get();
-    return preferredStravaDuplicate(
-      activity,
-      snapshot.docs.map((document) => ActivitySummary.fromMap(document.data())),
-    );
-  }
-
-  /// Migrates any Kèo Chạy claim held by a 3i-tracked activity over to its
-  /// newly-synced Strava duplicate, once Strava becomes the official record.
-  ///
-  /// Public (not `sync()`-private) only so tests can drive it directly
-  /// against a fake Firestore without needing a real Strava sync round-trip.
-  @visibleForTesting
-  Future<void> migrateDuplicateContractClaims(
-    List<ActivitySummary> changedStravaActivities,
-  ) async {
-    if (changedStravaActivities.isEmpty) return;
-    final runNowSnapshot = await _activities
-        .where('source', isEqualTo: ActivitySource.runnow.value)
-        .get();
-    final runNowActivities = runNowSnapshot.docs
-        .map((document) => ActivitySummary.fromMap(document.data()))
-        .where(isRunNowActivityDistanceEligible);
-    for (final runNow in runNowActivities) {
-      final strava = preferredStravaDuplicate(runNow, changedStravaActivities);
-      if (strava == null) continue;
-      await _migrateContractClaim(runNow.id, strava.id);
-    }
-  }
-
-  Future<void> _migrateContractClaim(
-    String runNowActivityId,
-    String stravaActivityId,
-  ) async {
-    final claims = _firestore
-        .collection('users')
-        .doc(_uid)
-        .collection('runContractActivityClaims');
-    final oldClaimRef = claims.doc(runNowActivityId);
-    if (!(await oldClaimRef.get()).exists) return;
-    final newClaimRef = claims.doc(stravaActivityId);
-    await _firestore.runTransaction((transaction) async {
-      final oldClaim = await transaction.get(oldClaimRef);
-      final oldData = oldClaim.data();
-      final contractId = oldData?['contractId'] as String?;
-      if (contractId == null) return;
-      final newClaim = await transaction.get(newClaimRef);
-      final contractRef = _firestore.collection('runContracts').doc(contractId);
-      final contract = await transaction.get(contractRef);
-      final contractData = contract.data();
-      if (contractData == null || contractData['status'] != 'active') return;
-      final participants =
-          contractData['participants'] as Map<String, dynamic>?;
-      final participant = participants?[_uid] as Map<String, dynamic>?;
-      if (participant == null) return;
-
-      final ids =
-          (participant['countedActivityIds'] as List?)
-              ?.whereType<String>()
-              .toSet() ??
-          <String>{};
-      ids.remove(runNowActivityId);
-      final conflictingContractId = newClaim.data()?['contractId'] as String?;
-      if (conflictingContractId == null ||
-          conflictingContractId == contractId) {
-        ids.add(stravaActivityId);
-        transaction.set(newClaimRef, {
-          ...oldData!,
-          'activityId': stravaActivityId,
-          'migratedFromActivityId': runNowActivityId,
-          'assignedAt': FieldValue.serverTimestamp(),
-        });
-      }
-      transaction.delete(oldClaimRef);
-      transaction.update(contractRef, {
-        'participants.$_uid': {
-          'uid': _uid,
-          'progressValue': participant['progressValue'] ?? 0,
-          'countedActivityIds': ids.toList()..sort(),
-          'joinedAt': participant['joinedAt'],
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    });
-  }
-
-  void _debugLog(String message) {
-    if (kDebugMode) debugPrint('[ActivityRepository] $message');
-  }
-
-  Future<_FetchedStreams> _fetchStreams(
-    String activityId, {
-    required DateTime startedAt,
-  }) async {
-    final rawStreams = await StravaClient.instance.getActivityStreams(
-      activityId,
-    );
-    return _FetchedStreams(
-      streams: downsampleStreams(
-        _normalizeStreams(rawStreams),
-        maxSamples: _maxCachedStreamSamples,
-      ),
-      routePoints: stravaRoutePointsFromStreams(
-        rawStreams,
-        startedAt: startedAt,
-      ),
-    );
-  }
-
-  Future<void> _refreshCurrentLeaderboardEntry() async {
-    await refreshLeaderboardEntryForUser(
-      uid: _uid,
-      firestore: _firestore,
-      debugLog: _debugLog,
+    return TrackedActivitySaveResult(
+      status: switch (result.status) {
+        'below_minimum_distance' =>
+          TrackedActivitySaveStatus.belowMinimumDistance,
+        'duplicate_of_strava' => TrackedActivitySaveStatus.duplicateOfStrava,
+        _ => TrackedActivitySaveStatus.counted,
+      },
+      stravaActivityId: result.stravaActivityId,
     );
   }
 }
@@ -667,13 +470,25 @@ class DemoActivityRepository implements ActivityRepository {
   ];
 
   @override
-  Stream<List<ActivitySummary>> watchActivities() {
+  Stream<List<ActivitySummary>> watchActivities({int? limit}) {
     return Stream.value(selectOfficialActivities(_activities));
   }
 
   @override
-  Stream<List<JournalActivityEntry>> watchJournalActivities() {
-    return Stream.value(buildJournalActivityEntries(_activities));
+  Future<JournalActivityPage> fetchJournalActivitiesPage({
+    int limit = 30,
+    Object? cursor,
+  }) async {
+    final activities = [..._activities]
+      ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+    final start = cursor is int ? cursor : 0;
+    final end = math.min(start + limit, activities.length);
+    final pageActivities = activities.sublist(start, end);
+    return JournalActivityPage(
+      entries: buildJournalPageEntries(pageActivities, _activities),
+      nextCursor: end,
+      hasMore: end < activities.length,
+    );
   }
 
   @override
@@ -689,13 +504,29 @@ class DemoActivityRepository implements ActivityRepository {
   Future<List<ActivitySummary>> listOfficialActivities({
     required DateTime start,
     required DateTime endExclusive,
-  }) async => selectOfficialActivities(_activities)
-      .where(
-        (activity) =>
-            !activity.startedAt.isBefore(start) &&
-            activity.startedAt.isBefore(endExclusive),
-      )
-      .toList();
+    int? limit,
+  }) async {
+    final activities =
+        selectOfficialActivities(_activities)
+            .where(
+              (activity) =>
+                  !activity.startedAt.isBefore(start) &&
+                  activity.startedAt.isBefore(endExclusive),
+            )
+            .toList()
+          ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+    return limit == null ? activities : activities.take(limit).toList();
+  }
+
+  @override
+  Future<Map<String, ActivitySummary>> getActivitiesByIds(
+    Set<String> ids,
+  ) async {
+    return {
+      for (final activity in _activities)
+        if (ids.contains(activity.id)) activity.id: activity,
+    };
+  }
 
   @override
   Future<ActivityDetail> getDetail(String activityId) async {
@@ -920,11 +751,21 @@ class FirestoreFeedRepository implements FeedRepository {
   }
 }
 
+List<List<String>> _chunkStrings(List<String> values, int size) {
+  final chunks = <List<String>>[];
+  for (var index = 0; index < values.length; index += size) {
+    final end = math.min(index + size, values.length);
+    chunks.add(values.sublist(index, end));
+  }
+  return chunks;
+}
+
 class FirestoreMemberRepository implements MemberRepository {
-  FirestoreMemberRepository(this._auth, this._firestore);
+  FirestoreMemberRepository(this._auth, this._firestore, this._api);
 
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
+  final RunNowApiClient _api;
 
   String get _uid {
     final uid = _auth.currentUser?.uid;
@@ -968,20 +809,124 @@ class FirestoreMemberRepository implements MemberRepository {
   }
 
   @override
-  Stream<List<ActivitySummary>> watchMemberActivities(String uid) {
-    return _firestore
+  Future<List<PeriodStat>> listMemberPeriodStats(
+    String uid, {
+    required String periodType,
+    required String fromKey,
+    required String toKeyInclusive,
+  }) async {
+    // Doc ID có dạng `{periodType}:{periodKey}` và key sort đúng thứ tự thời
+    // gian, nên range theo document ID là đủ — không cần composite index.
+    final snapshot = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('periodStats')
+        .orderBy(FieldPath.documentId)
+        .startAt(['$periodType:$fromKey'])
+        .endAt(['$periodType:$toKeyInclusive'])
+        .get();
+    return [
+      for (final document in snapshot.docs) PeriodStat.fromMap(document.data()),
+    ];
+  }
+
+  @override
+  Stream<List<ActivitySummary>> watchMemberActivities(
+    String uid, {
+    int? limit,
+  }) {
+    Query<Map<String, dynamic>> query = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('activities')
+        .orderBy('startedAt', descending: true);
+    final boundedQuery = limit == null ? query : query.limit(limit);
+    return boundedQuery.snapshots().map(
+      (snapshot) => selectOfficialActivities(
+        snapshot.docs
+            .map(
+              (document) => ActivitySummary.fromMap(
+                document.data(),
+                includeRoutePoints: false,
+                includePhotos: false,
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  @override
+  Future<List<ActivitySummary>> listMemberActivities(
+    String uid, {
+    int limit = 40,
+  }) async {
+    final snapshot = await _firestore
         .collection('users')
         .doc(uid)
         .collection('activities')
         .orderBy('startedAt', descending: true)
-        .snapshots()
-        .map(
-          (snapshot) => selectOfficialActivities(
-            snapshot.docs
+        .limit(limit)
+        .get();
+    return selectOfficialActivities(
+      snapshot.docs
+          .map(
+            (document) => ActivitySummary.fromMap(
+              document.data(),
+              includeRoutePoints: false,
+              includePhotos: false,
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  @override
+  Stream<List<ActivitySummary>> watchMemberActivitiesByIds(
+    String uid,
+    Set<String> activityIds,
+  ) {
+    if (activityIds.isEmpty) return Stream.value(const <ActivitySummary>[]);
+    final chunks = _chunkStrings(activityIds.toList()..sort(), 30);
+    final controller = StreamController<List<ActivitySummary>>();
+    final latestByChunk = <int, List<ActivitySummary>>{};
+    final subscriptions =
+        <StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>[];
+
+    void emit() {
+      final activities = <ActivitySummary>[];
+      for (var index = 0; index < chunks.length; index++) {
+        activities.addAll(latestByChunk[index] ?? const <ActivitySummary>[]);
+      }
+      activities.sort((a, b) => b.startedAt.compareTo(a.startedAt));
+      if (!controller.isClosed) {
+        controller.add(selectOfficialActivities(activities));
+      }
+    }
+
+    for (var index = 0; index < chunks.length; index++) {
+      final ids = chunks[index];
+      final subscription = _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('activities')
+          .where(FieldPath.documentId, whereIn: ids)
+          .snapshots()
+          .listen((snapshot) {
+            latestByChunk[index] = snapshot.docs
                 .map((document) => ActivitySummary.fromMap(document.data()))
-                .toList(),
-          ),
-        );
+                .toList();
+            emit();
+          }, onError: controller.addError);
+      subscriptions.add(subscription);
+    }
+
+    controller.onCancel = () async {
+      for (final subscription in subscriptions) {
+        await subscription.cancel();
+      }
+    };
+    return controller.stream;
   }
 
   @override
@@ -1024,56 +969,6 @@ class FirestoreMemberRepository implements MemberRepository {
   }
 
   @override
-  Future<void> ensureCurrentLeaderboardEntry() async {
-    final now = DateTime.now();
-    final existing = await _firestore
-        .collection('leaderboardEntries')
-        .doc(_uid)
-        .get();
-    final data = existing.data();
-    if (existing.exists &&
-        data != null &&
-        _leaderboardEntryHasModernStats(data) &&
-        !shouldRefreshLeaderboardEntry(data, now)) {
-      return;
-    }
-    await refreshLeaderboardEntryForUser(
-      uid: _uid,
-      firestore: _firestore,
-      debugLog: (message) {
-        if (kDebugMode) {
-          debugPrint('[MemberRepository] $message');
-        }
-      },
-    );
-  }
-
-  @visibleForTesting
-  bool shouldRefreshLeaderboardEntry(Map<String, dynamic> data, DateTime now) {
-    if (data['currentWeekStart'] !=
-            _leaderboardPeriodKey(startOfCurrentWeek(now)) ||
-        data['currentMonthStart'] !=
-            _leaderboardPeriodKey(DateTime(now.year, now.month))) {
-      return true;
-    }
-    final updatedAt = data['updatedAt'];
-    DateTime? lastRefresh;
-    if (updatedAt is Timestamp) {
-      lastRefresh = updatedAt.toDate();
-    } else if (updatedAt is DateTime) {
-      lastRefresh = updatedAt;
-    }
-    if (lastRefresh == null) return true;
-
-    final rollingStart = startOfRollingSevenDays(now);
-    final currentWeekStart = startOfCurrentWeek(now);
-    final currentMonthStart = DateTime(now.year, now.month);
-    return lastRefresh.isBefore(rollingStart) ||
-        lastRefresh.isBefore(currentWeekStart) ||
-        lastRefresh.isBefore(currentMonthStart);
-  }
-
-  @override
   Future<void> updateCurrentProfile({
     required String nickname,
     required String? avatarUrl,
@@ -1084,56 +979,58 @@ class FirestoreMemberRepository implements MemberRepository {
       throw StateError('Nickname không được để trống.');
     }
 
-    final userRef = _firestore.collection('users').doc(_uid);
-    final publicRef = _firestore.collection('publicProfiles').doc(_uid);
-    final snapshot = await userRef.get();
-    final userData = snapshot.data() ?? const <String, dynamic>{};
     final sanitizedAvatar = avatarUrl?.trim();
     final avatarValue = sanitizedAvatar?.isEmpty == true
         ? null
         : sanitizedAvatar;
-    final publicProfile = <String, dynamic>{
-      'uid': _uid,
-      'displayName': trimmedNickname,
-      'nickname': trimmedNickname,
-      'profileVisibility': visibility.value,
-      'stravaConnected': userData['stravaConnected'] as bool? ?? false,
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-    publicProfile['avatarUrl'] = avatarValue ?? FieldValue.delete();
-    final privateProfile = <String, dynamic>{
-      'nickname': trimmedNickname,
-      'displayName': trimmedNickname,
-      'profileVisibility': visibility.value,
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-    privateProfile['avatarUrl'] = avatarValue ?? FieldValue.delete();
+    await _api.updateProfile(
+      nickname: trimmedNickname,
+      avatarUrl: avatarValue,
+      visibility: visibility.value,
+    );
+  }
 
+  @override
+  Future<void> markRankCelebrated(String key) async {
+    await _firestore.collection('users').doc(_uid).set({
+      'lastCelebratedRankKey': key,
+    }, SetOptions(merge: true));
+  }
+
+  @override
+  Future<void> setJourneyRoute(String routeId) async {
     final batch = _firestore.batch();
-    batch.set(userRef, privateProfile, SetOptions(merge: true));
-    batch.set(publicRef, publicProfile, SetOptions(merge: true));
-    batch.set(
-      _firestore.collection('leaderboardEntries').doc(_uid),
-      {
-        'uid': _uid,
-        'displayName': trimmedNickname,
-        'nickname': trimmedNickname,
-        'profileVisibility': visibility.value,
-        'updatedAt': FieldValue.serverTimestamp(),
-        'avatarUrl': avatarValue ?? FieldValue.delete(),
-      },
-      SetOptions(merge: true),
-    );
+    batch.set(_firestore.collection('users').doc(_uid), {
+      'journeyRouteId': routeId,
+    }, SetOptions(merge: true));
+    batch.set(_firestore.collection('publicProfiles').doc(_uid), {
+      'journeyRouteId': routeId,
+    }, SetOptions(merge: true));
     await batch.commit();
-    await refreshLeaderboardEntryForUser(
-      uid: _uid,
-      firestore: _firestore,
-      debugLog: (message) {
-        if (kDebugMode) {
-          debugPrint('[MemberRepository] $message');
-        }
-      },
-    );
+  }
+
+  @override
+  Future<JourneyRouteSummary> getJourneyRouteSummary(String routeId) async {
+    final snapshot = await _firestore
+        .collection('journeyRoutes')
+        .doc(routeId)
+        .get();
+    return JourneyRouteSummary.fromMap(snapshot.data() ?? {});
+  }
+
+  @override
+  Future<JourneyRoute> getJourneyRouteDetail(String routeId) async {
+    final routeRef = _firestore.collection('journeyRoutes').doc(routeId);
+    final results = await Future.wait([
+      routeRef.get(),
+      routeRef.collection('detail').doc('data').get(),
+    ]);
+    final summarySnapshot = results[0];
+    final detailSnapshot = results[1];
+    return JourneyRoute.fromMap({
+      ...?summarySnapshot.data(),
+      ...?detailSnapshot.data(),
+    });
   }
 }
 
@@ -1157,10 +1054,16 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
   CollectionReference<Map<String, dynamic>> get _liveSessions =>
       _firestore.collection('liveSessions');
 
+  static const _visibleLiveSessionLimit = 50;
+  static const _activeStatusValues = ['running', 'paused'];
+
   @override
   Stream<List<LiveTrackingSession>> watchClubLiveSessions() {
     return _liveSessions
         .where('visibility', isEqualTo: LiveTrackingVisibility.club.value)
+        .where('status', whereIn: _activeStatusValues)
+        .orderBy('updatedAt', descending: true)
+        .limit(_visibleLiveSessionLimit)
         .snapshots()
         .map((snapshot) {
           final now = DateTime.now();
@@ -1195,6 +1098,7 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
     required TrackingSessionSnapshot snapshot,
     required LiveTrackingStatus status,
     required List<RoutePoint> routePreview,
+    String? contractId,
   }) async {
     final owner = await _ownerProfile();
     final profileVisibility = ProfileVisibility.fromValue(
@@ -1218,12 +1122,61 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
         'lastLocation': snapshot.routePoints.last.toMap(),
       if (routePreview.isNotEmpty)
         'routePreview': routePreview.map((point) => point.toMap()).toList(),
+      'contractId': contractId,
     }..removeWhere((key, value) => value == null);
     final avatarUrl = owner['avatarUrl'] as String?;
     if (avatarUrl != null && avatarUrl.trim().isNotEmpty) {
       data['ownerAvatarUrl'] = avatarUrl.trim();
     }
     await _liveSessions.doc(snapshot.id).set(data, SetOptions(merge: true));
+  }
+
+  @override
+  Future<void> publishPhoto({
+    required String sessionId,
+    required ActivityPhoto photo,
+  }) async {
+    await _liveSessions.doc(sessionId).set({
+      'livePhotos': FieldValue.arrayUnion([photo.toMap()]),
+    }, SetOptions(merge: true));
+  }
+
+  @override
+  Stream<List<LiveTrackingSession>> watchContractLiveSessions(
+    String contractId,
+  ) {
+    return _liveSessions
+        .where('contractId', isEqualTo: contractId)
+        .where('status', whereIn: _activeStatusValues)
+        .orderBy('updatedAt', descending: true)
+        .limit(_visibleLiveSessionLimit)
+        .snapshots()
+        .map((snapshot) {
+          final now = DateTime.now();
+          final items =
+              snapshot.docs
+                  .map((document) {
+                    final data = document.data();
+                    final startedAt = data['startedAt'];
+                    final updatedAt = data['updatedAt'];
+                    return LiveTrackingSession.fromMap({
+                      ...data,
+                      'id': document.id,
+                      if (startedAt is Timestamp)
+                        'startedAt': startedAt.toDate(),
+                      if (updatedAt is Timestamp)
+                        'updatedAt': updatedAt.toDate(),
+                    });
+                  })
+                  .where(
+                    (session) => session.isActive && !session.isExpired(now),
+                  )
+                  .toList()
+                ..sort(
+                  (left, right) => right.updatedAt.compareTo(left.updatedAt),
+                );
+          return items;
+        });
   }
 
   @override
@@ -1259,85 +1212,6 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
     _cachedOwnerAt = DateTime.now();
     return data;
   }
-}
-
-bool _leaderboardEntryHasModernStats(Map<String, dynamic> data) {
-  for (final key in const ['rollingSevenDays', 'currentWeek', 'currentMonth']) {
-    final stats = data[key];
-    if (stats is! Map<String, dynamic>) return false;
-    if (!stats.containsKey('longestDistanceMeters')) return false;
-    final distance = (stats['distanceMeters'] as num?)?.toDouble() ?? 0;
-    if (distance > 0 && !stats.containsKey('fastestPaceSecondsPerKm')) {
-      return false;
-    }
-  }
-  return true;
-}
-
-ActivitySummary _summaryFromRaw(
-  Map<String, dynamic> raw, {
-  bool hydrated = false,
-  double? averageHeartRateFallback,
-  List<RoutePoint> routePoints = const [],
-}) {
-  final sportType = raw['sport_type'] as String? ?? raw['type'] as String?;
-  final map = raw['map'] as Map<String, dynamic>?;
-  return ActivitySummary(
-    id: '${raw['id']}',
-    name: raw['name'] as String? ?? 'Hoạt động',
-    kind: parseActivityKind(sportType) ?? ActivityKind.run,
-    startedAt: DateTime.parse(raw['start_date'] as String).toLocal(),
-    distanceMeters: (raw['distance'] as num?)?.toDouble() ?? 0,
-    movingTimeSeconds: (raw['moving_time'] as num?)?.toInt() ?? 0,
-    elapsedTimeSeconds: (raw['elapsed_time'] as num?)?.toInt() ?? 0,
-    source: ActivitySource.strava,
-    sourceActivityId: '${raw['id']}',
-    manual: raw['manual'] as bool?,
-    recordingDevice: raw['device_name'] as String?,
-    averageHeartRate:
-        (raw['average_heartrate'] as num?)?.toDouble() ??
-        averageHeartRateFallback,
-    averageCadence: (raw['average_cadence'] as num?)?.toDouble(),
-    elevationGainMeters: (raw['total_elevation_gain'] as num?)?.toDouble(),
-    polyline:
-        map?['polyline'] as String? ?? map?['summary_polyline'] as String?,
-    routePoints: routePoints,
-    hydrated: hydrated,
-  );
-}
-
-double? _average(List<double>? values) {
-  if (values == null || values.isEmpty) return null;
-  return values.reduce((left, right) => left + right) / values.length;
-}
-
-List<Map<String, dynamic>> _normalizeIntervals(dynamic intervals) {
-  if (intervals is! List<dynamic>) return const [];
-  return intervals.whereType<Map<String, dynamic>>().map((interval) {
-    return {
-      'name': interval['name'],
-      'split': interval['split'],
-      'distanceMeters': interval['distance'],
-      'movingTimeSeconds': interval['moving_time'],
-      'elapsedTimeSeconds': interval['elapsed_time'],
-      'averageSpeedMetersPerSecond': interval['average_speed'],
-      'averageHeartRate': interval['average_heartrate'],
-    }..removeWhere((key, value) => value == null);
-  }).toList();
-}
-
-Map<String, List<double>> _normalizeStreams(Map<String, dynamic> streams) {
-  return streams.map((key, value) {
-    final data = value is Map<String, dynamic> ? value['data'] : null;
-    final values = data is List<dynamic>
-        ? data
-              .whereType<num>()
-              .map((item) => item.toDouble())
-              .where((item) => item.isFinite)
-              .toList()
-        : <double>[];
-    return MapEntry(key, values);
-  })..removeWhere((key, value) => value.isEmpty);
 }
 
 @visibleForTesting
@@ -1394,13 +1268,6 @@ List<dynamic> _streamData(dynamic stream) {
   if (stream is! Map<String, dynamic>) return const [];
   final data = stream['data'];
   return data is List<dynamic> ? data : const [];
-}
-
-class _FetchedStreams {
-  const _FetchedStreams({required this.streams, required this.routePoints});
-
-  final Map<String, List<double>> streams;
-  final List<RoutePoint> routePoints;
 }
 
 Map<String, dynamic> _summaryToMap(
@@ -1479,95 +1346,6 @@ bool _firestoreValuesEqual(Object? left, Object? right) {
   return left == right;
 }
 
-Future<void> refreshLeaderboardEntryForUser({
-  required String uid,
-  required FirebaseFirestore firestore,
-  void Function(String message)? debugLog,
-}) async {
-  final activities = await firestore
-      .collection('users')
-      .doc(uid)
-      .collection('activities')
-      .orderBy('startedAt', descending: true)
-      .get()
-      .then(
-        (snapshot) => selectOfficialActivities(
-          snapshot.docs
-              .map((document) => ActivitySummary.fromMap(document.data()))
-              .toList(),
-        ),
-      );
-  final user = await firestore.collection('users').doc(uid).get();
-  final userData = user.data() ?? const <String, dynamic>{};
-  final publicProfile = await firestore
-      .collection('publicProfiles')
-      .doc(uid)
-      .get();
-  final publicData = publicProfile.data() ?? const <String, dynamic>{};
-  final leaderboardRef = firestore.collection('leaderboardEntries').doc(uid);
-  final nextData = leaderboardEntryToMap(
-    uid: uid,
-    profile: {...userData, ...publicData},
-    activities: activities,
-  );
-  final existing = await leaderboardRef.get();
-  if (!leaderboardEntryHasChanges(existing.data(), nextData)) {
-    debugLog?.call('Leaderboard aggregate has no changes.');
-    return;
-  }
-  await leaderboardRef.set(nextData, SetOptions(merge: true));
-  debugLog?.call('Leaderboard aggregate refreshed.');
-}
-
-@visibleForTesting
-Map<String, dynamic> leaderboardEntryToMap({
-  required String uid,
-  required Map<String, dynamic> profile,
-  required List<ActivitySummary> activities,
-  DateTime? now,
-}) {
-  final currentTime = now ?? DateTime.now();
-  final rollingStart = startOfRollingSevenDays(currentTime);
-  final rollingEnd = endOfToday(currentTime);
-  final weekStart = startOfCurrentWeek(currentTime);
-  final monthStart = DateTime(currentTime.year, currentTime.month);
-  final avatarUrl = profile['avatarUrl'] as String?;
-  final displayName =
-      (profile['nickname'] as String?)?.trim().isNotEmpty == true
-      ? (profile['nickname'] as String).trim()
-      : (profile['displayName'] as String?)?.trim().isNotEmpty == true
-      ? (profile['displayName'] as String).trim()
-      : '3i member';
-  return {
-    'uid': uid,
-    'displayName': displayName,
-    'nickname': displayName,
-    'profileVisibility':
-        profile['profileVisibility'] as String? ??
-        ProfileVisibility.private.value,
-    if (avatarUrl != null && avatarUrl.trim().isNotEmpty)
-      'avatarUrl': avatarUrl.trim(),
-    'rollingSevenDays': _leaderboardStatsMap(
-      activities,
-      start: rollingStart,
-      end: rollingEnd,
-    ),
-    'currentWeek': _leaderboardStatsMap(
-      activities,
-      start: weekStart,
-      end: weekStart.add(const Duration(days: 7)),
-    ),
-    'currentMonth': _leaderboardStatsMap(
-      activities,
-      start: monthStart,
-      end: DateTime(currentTime.year, currentTime.month + 1),
-    ),
-    'currentWeekStart': _leaderboardPeriodKey(weekStart),
-    'currentMonthStart': _leaderboardPeriodKey(monthStart),
-    'updatedAt': FieldValue.serverTimestamp(),
-  };
-}
-
 /// Prevents an aggregate from a previous week/month being presented under the
 /// current period label. Period keys are authoritative for new documents;
 /// `updatedAt` keeps legacy documents safe until their owner refreshes them.
@@ -1618,76 +1396,6 @@ String _leaderboardPeriodKey(DateTime date) {
   final month = date.month.toString().padLeft(2, '0');
   final day = date.day.toString().padLeft(2, '0');
   return '${date.year}-$month-$day';
-}
-
-@visibleForTesting
-bool leaderboardEntryHasChanges(
-  Map<String, dynamic>? existingData,
-  Map<String, dynamic> nextData,
-) {
-  if (existingData == null) return true;
-  for (final entry in nextData.entries) {
-    if (entry.value is FieldValue) continue;
-    if (!_firestoreValuesEqual(existingData[entry.key], entry.value)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-Map<String, dynamic> _leaderboardStatsMap(
-  List<ActivitySummary> activities, {
-  required DateTime start,
-  required DateTime end,
-}) {
-  final summary = trainingSummary(activities, start: start, end: end);
-  final selected = activities.where(
-    (activity) =>
-        !activity.startedAt.isBefore(start) && activity.startedAt.isBefore(end),
-  );
-  var longestDistance = 0.0;
-  double? fastestPace;
-  for (final activity in selected) {
-    if (activity.distanceMeters > longestDistance) {
-      longestDistance = activity.distanceMeters;
-    }
-    final pace = activity.paceSecondsPerKm;
-    if (pace != null &&
-        pace > 0 &&
-        (fastestPace == null || pace < fastestPace)) {
-      fastestPace = pace;
-    }
-  }
-  return LeaderboardStats(
-    distanceMeters: summary.distanceMeters,
-    movingTimeSeconds: summary.movingTimeSeconds,
-    activityCount: summary.activityCount,
-    activeDays: _activeDays(activities, start: start, end: end),
-    longestDistanceMeters: longestDistance,
-    fastestPaceSecondsPerKm: fastestPace,
-  ).toMap();
-}
-
-int _activeDays(
-  List<ActivitySummary> activities, {
-  required DateTime start,
-  required DateTime end,
-}) {
-  return activities
-      .where(
-        (activity) =>
-            !activity.startedAt.isBefore(start) &&
-            activity.startedAt.isBefore(end),
-      )
-      .map(
-        (activity) => DateTime(
-          activity.startedAt.year,
-          activity.startedAt.month,
-          activity.startedAt.day,
-        ),
-      )
-      .toSet()
-      .length;
 }
 
 bool _mapsEqual(Map<String, dynamic> left, Map<String, dynamic> right) {

@@ -174,6 +174,105 @@ void main() {
     });
   });
 
+  group('route completion', () {
+    const routeStart = (lat: 10.0, lng: 106.0);
+    const routeEnd = (lat: 10.009, lng: 106.0); // ~1000m về hướng bắc
+    final route = RunContractRoute(
+      points: [
+        RunContractRoutePoint(
+          latitude: routeStart.lat,
+          longitude: routeStart.lng,
+        ),
+        RunContractRoutePoint(latitude: routeEnd.lat, longitude: routeEnd.lng),
+      ],
+      distanceMeters: 1000,
+    );
+    final contract = _contract(
+      metric: RunContractMetric.routeCompletion,
+      targetValue: 2,
+      startAt: DateTime.utc(2026, 6, 21, 17),
+      endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+      finalizeAt: DateTime.utc(2026, 6, 28, 23),
+      route: route,
+    );
+
+    List<RoutePoint> pointsAlongRoute(DateTime startedAt) => [
+      for (var i = 0; i <= 20; i++)
+        RoutePoint(
+          latitude: routeStart.lat + (routeEnd.lat - routeStart.lat) * i / 20,
+          longitude: routeStart.lng,
+          timestamp: startedAt.add(Duration(seconds: i * 10)),
+        ),
+    ];
+
+    test(
+      'chỉ đếm activity chạy đúng tuyến, bỏ qua activity lệch tuyến hoặc chưa có GPS',
+      () {
+        final matchingA = _activity(
+          'matching-a',
+          DateTime.utc(2026, 6, 22, 8),
+          1000,
+          routePoints: pointsAlongRoute(DateTime.utc(2026, 6, 22, 8)),
+        );
+        final matchingB = _activity(
+          'matching-b',
+          DateTime.utc(2026, 6, 23, 8),
+          1000,
+          routePoints: pointsAlongRoute(DateTime.utc(2026, 6, 23, 8)),
+        );
+        final offRoute = _activity(
+          'off-route',
+          DateTime.utc(2026, 6, 24, 8),
+          1000,
+          routePoints: [
+            for (final point in pointsAlongRoute(DateTime.utc(2026, 6, 24, 8)))
+              RoutePoint(
+                latitude: point.latitude,
+                // Lệch ~110m theo kinh độ — vượt xa hành lang mặc định.
+                longitude: point.longitude + 0.001,
+                timestamp: point.timestamp,
+              ),
+          ],
+        );
+        final noGps = _activity('no-gps', DateTime.utc(2026, 6, 25, 8), 1000);
+
+        final progress = calculateRunContractProgress(contract, [
+          matchingA,
+          matchingB,
+          offRoute,
+          noGps,
+        ]);
+
+        expect(progress.value, 2);
+        expect(progress.eligibleActivities.map((item) => item.id).toSet(), {
+          'matching-a',
+          'matching-b',
+        });
+        expect(contractTargetMet(contract, progress.value), isTrue);
+      },
+    );
+
+    test('không có route thì không tính activity nào', () {
+      final contractWithoutRoute = _contract(
+        metric: RunContractMetric.routeCompletion,
+        targetValue: 1,
+        startAt: contract.startAt,
+        endAtExclusive: contract.endAtExclusive,
+        finalizeAt: contract.finalizeAt,
+      );
+      final progress = calculateRunContractProgress(contractWithoutRoute, [
+        _activity(
+          'matching',
+          DateTime.utc(2026, 6, 22, 8),
+          1000,
+          routePoints: pointsAlongRoute(DateTime.utc(2026, 6, 22, 8)),
+        ),
+      ]);
+      expect(progress.value, 0);
+      expect(progress.eligibleActivities, isEmpty);
+    });
+  });
+
   group('lifecycle', () {
     final contract = _contract(
       startAt: DateTime.utc(2026, 6, 21, 17),
@@ -331,7 +430,7 @@ void main() {
       },
     );
 
-    test('does not finalize when forced Strava sync fails', () async {
+    test('finalize does not depend on client-side Strava sync', () async {
       final activities = _FakeActivityRepository(error: Exception('offline'));
       final contracts = _FakeContractRepository(
         assignments: {'finish': 'contract'},
@@ -347,11 +446,13 @@ void main() {
         finalizeAt: DateTime.utc(2026, 6, 28, 23),
       );
 
-      await expectLater(
-        controller.finalize(contract, now: DateTime.utc(2026, 6, 29)),
-        throwsStateError,
+      final result = await controller.finalize(
+        contract,
+        now: DateTime.utc(2026, 6, 29),
       );
-      expect(contracts.finalizeCalls, 0);
+
+      expect(result, RunContractStatus.failed);
+      expect(contracts.finalizeCalls, 1);
     });
 
     test('finalizes once with freshly calculated progress', () async {
@@ -383,79 +484,51 @@ void main() {
     });
   });
 
-  group('autoAssignSoleActiveContract', () {
-    test('assigns a new eligible activity when exactly 1 kèo is active', () async {
-      final newActivity = _activity('new-run', DateTime.utc(2026, 6, 22), 4000);
-      final activities = _FakeActivityRepository(activities: [newActivity]);
-      final contracts = _FakeContractRepository();
-      final controller = RunContractController(
-        contracts,
-        activities,
-        SyncController(activities),
-      );
-      final contract = _contract(
-        startAt: DateTime.utc(2026, 6, 21, 17),
-        endAtExclusive: DateTime.utc(2026, 6, 28, 17),
-        finalizeAt: DateTime.utc(2026, 6, 28, 23),
-      );
+  group('processChangedActivities', () {
+    test(
+      'recalculates only the contract containing a changed activity',
+      () async {
+        final changed = _activity('changed', DateTime.utc(2026, 6, 22), 4000);
+        final unchanged = _activity(
+          'unchanged',
+          DateTime.utc(2026, 6, 23),
+          5000,
+        );
+        final activities = _FakeActivityRepository(
+          activities: [changed, unchanged],
+        );
+        final contracts = _FakeContractRepository(
+          assignments: {'changed': 'contract-a', 'unchanged': 'contract-b'},
+        );
+        final controller = RunContractController(
+          contracts,
+          activities,
+          SyncController(activities),
+        );
+        final contractA = _contract(
+          id: 'contract-a',
+          countedActivityIds: const ['changed'],
+          startAt: DateTime.utc(2026, 6, 21, 17),
+          endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+          finalizeAt: DateTime.utc(2026, 6, 28, 23),
+        );
+        final contractB = _contract(
+          id: 'contract-b',
+          countedActivityIds: const ['unchanged'],
+          startAt: DateTime.utc(2026, 6, 21, 17),
+          endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+          finalizeAt: DateTime.utc(2026, 6, 28, 23),
+        );
 
-      await controller.autoAssignSoleActiveContract([contract], [newActivity]);
+        await controller.processChangedActivities(
+          activeContracts: [contractA, contractB],
+          changedActivities: [changed],
+          currentUid: 'user',
+        );
 
-      expect(contracts.updatedActivityIds, ['new-run']);
-      expect(contracts.updatedProgress, 4);
-    });
-
-    test('does nothing when the user has more than 1 active kèo', () async {
-      final newActivity = _activity('new-run', DateTime.utc(2026, 6, 22), 4000);
-      final activities = _FakeActivityRepository(activities: [newActivity]);
-      final contracts = _FakeContractRepository();
-      final controller = RunContractController(
-        contracts,
-        activities,
-        SyncController(activities),
-      );
-      final contractA = _contract(
-        id: 'contract-a',
-        startAt: DateTime.utc(2026, 6, 21, 17),
-        endAtExclusive: DateTime.utc(2026, 6, 28, 17),
-        finalizeAt: DateTime.utc(2026, 6, 28, 23),
-      );
-      final contractB = _contract(
-        id: 'contract-b',
-        startAt: DateTime.utc(2026, 6, 21, 17),
-        endAtExclusive: DateTime.utc(2026, 6, 28, 17),
-        finalizeAt: DateTime.utc(2026, 6, 28, 23),
-      );
-
-      await controller.autoAssignSoleActiveContract(
-        [contractA, contractB],
-        [newActivity],
-      );
-
-      expect(contracts.updatedActivityIds, isEmpty);
-    });
-
-    test('does not steal an activity already claimed by another kèo', () async {
-      final newActivity = _activity('taken', DateTime.utc(2026, 6, 22), 4000);
-      final activities = _FakeActivityRepository(activities: [newActivity]);
-      final contracts = _FakeContractRepository(
-        assignments: {'taken': 'another-contract'},
-      );
-      final controller = RunContractController(
-        contracts,
-        activities,
-        SyncController(activities),
-      );
-      final contract = _contract(
-        startAt: DateTime.utc(2026, 6, 21, 17),
-        endAtExclusive: DateTime.utc(2026, 6, 28, 17),
-        finalizeAt: DateTime.utc(2026, 6, 28, 23),
-      );
-
-      await controller.autoAssignSoleActiveContract([contract], [newActivity]);
-
-      expect(contracts.updatedActivityIds, isEmpty);
-    });
+        expect(contracts.updatedContractIds, ['contract-a']);
+      },
+    );
   });
 
   group('applyOptionsFor', () {
@@ -490,31 +563,34 @@ void main() {
       expect(option.previewValue, 9);
     });
 
-    test('marks a kèo ineligible when the activity is outside its window', () async {
-      final candidate = _activity(
-        'candidate',
-        DateTime.utc(2026, 7, 10),
-        5000,
-      );
-      final activities = _FakeActivityRepository(activities: [candidate]);
-      final contracts = _FakeContractRepository();
-      final controller = RunContractController(
-        contracts,
-        activities,
-        SyncController(activities),
-      );
-      final contract = _contract(
-        startAt: DateTime.utc(2026, 6, 21, 17),
-        endAtExclusive: DateTime.utc(2026, 6, 28, 17),
-        finalizeAt: DateTime.utc(2026, 6, 28, 23),
-      );
+    test(
+      'marks a kèo ineligible when the activity is outside its window',
+      () async {
+        final candidate = _activity(
+          'candidate',
+          DateTime.utc(2026, 7, 10),
+          5000,
+        );
+        final activities = _FakeActivityRepository(activities: [candidate]);
+        final contracts = _FakeContractRepository();
+        final controller = RunContractController(
+          contracts,
+          activities,
+          SyncController(activities),
+        );
+        final contract = _contract(
+          startAt: DateTime.utc(2026, 6, 21, 17),
+          endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+          finalizeAt: DateTime.utc(2026, 6, 28, 23),
+        );
 
-      final options = await controller.applyOptionsFor(candidate, [contract]);
+        final options = await controller.applyOptionsFor(candidate, [contract]);
 
-      expect(options.single.eligible, isFalse);
-      expect(options.single.ineligibleReason, 'Ngoài khoảng thời gian kèo');
-      expect(options.single.previewValue, isNull);
-    });
+        expect(options.single.eligible, isFalse);
+        expect(options.single.ineligibleReason, 'Ngoài khoảng thời gian kèo');
+        expect(options.single.previewValue, isNull);
+      },
+    );
 
     test(
       'marks a kèo ineligible when below the per-session distance threshold',
@@ -538,9 +614,7 @@ void main() {
           finalizeAt: DateTime.utc(2026, 6, 28, 23),
         );
 
-        final options = await controller.applyOptionsFor(candidate, [
-          contract,
-        ]);
+        final options = await controller.applyOptionsFor(candidate, [contract]);
 
         expect(options.single.eligible, isFalse);
         expect(
@@ -552,33 +626,40 @@ void main() {
   });
 
   group('applyActivityToContract / removeActivityFromContract', () {
-    test('applies an activity while keeping previously assigned ones', () async {
-      final existing = _activity('existing', DateTime.utc(2026, 6, 22), 4000);
-      final candidate = _activity('candidate', DateTime.utc(2026, 6, 23), 5000);
-      final activities = _FakeActivityRepository(
-        activities: [existing, candidate],
-      );
-      final contracts = _FakeContractRepository(
-        assignments: {'existing': 'contract'},
-      );
-      final controller = RunContractController(
-        contracts,
-        activities,
-        SyncController(activities),
-      );
-      final contract = _contract(
-        startAt: DateTime.utc(2026, 6, 21, 17),
-        endAtExclusive: DateTime.utc(2026, 6, 28, 17),
-        finalizeAt: DateTime.utc(2026, 6, 28, 23),
-      );
+    test(
+      'applies an activity while keeping previously assigned ones',
+      () async {
+        final existing = _activity('existing', DateTime.utc(2026, 6, 22), 4000);
+        final candidate = _activity(
+          'candidate',
+          DateTime.utc(2026, 6, 23),
+          5000,
+        );
+        final activities = _FakeActivityRepository(
+          activities: [existing, candidate],
+        );
+        final contracts = _FakeContractRepository(
+          assignments: {'existing': 'contract'},
+        );
+        final controller = RunContractController(
+          contracts,
+          activities,
+          SyncController(activities),
+        );
+        final contract = _contract(
+          startAt: DateTime.utc(2026, 6, 21, 17),
+          endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+          finalizeAt: DateTime.utc(2026, 6, 28, 23),
+        );
 
-      await controller.applyActivityToContract(contract, candidate);
+        await controller.applyActivityToContract(contract, candidate);
 
-      expect(
-        contracts.updatedActivityIds,
-        containsAll(['existing', 'candidate']),
-      );
-    });
+        expect(
+          contracts.updatedActivityIds,
+          containsAll(['existing', 'candidate']),
+        );
+      },
+    );
 
     test(
       'throws when the activity was just claimed by another kèo (race lost)',
@@ -611,12 +692,52 @@ void main() {
       },
     );
 
+    test(
+      'throws when applying a Strava activity duplicating an already-claimed '
+      '3i one (no auto-replace — user must remove the old claim first)',
+      () async {
+        final startedAt = DateTime.utc(2026, 6, 23, 6);
+        final runNowClaimed = _activity(
+          'runnow-claimed',
+          startedAt,
+          5000,
+          source: ActivitySource.runnow,
+          duplicateOfActivityId: 'strava-duplicate',
+        );
+        final stravaDuplicate = _activity(
+          'strava-duplicate',
+          startedAt,
+          5050,
+        );
+        final activities = _FakeActivityRepository(
+          activities: [runNowClaimed, stravaDuplicate],
+        );
+        final contracts = _FakeContractRepository(
+          assignments: {'runnow-claimed': 'other-contract'},
+        );
+        final controller = RunContractController(
+          contracts,
+          activities,
+          SyncController(activities),
+        );
+        final contract = _contract(
+          id: 'contract',
+          startAt: DateTime.utc(2026, 6, 21, 17),
+          endAtExclusive: DateTime.utc(2026, 6, 28, 17),
+          finalizeAt: DateTime.utc(2026, 6, 28, 23),
+        );
+
+        await expectLater(
+          controller.applyActivityToContract(contract, stravaDuplicate),
+          throwsStateError,
+        );
+      },
+    );
+
     test('removes an activity while keeping the others assigned', () async {
       final keep = _activity('keep', DateTime.utc(2026, 6, 22), 4000);
       final toRemove = _activity('to-remove', DateTime.utc(2026, 6, 23), 5000);
-      final activities = _FakeActivityRepository(
-        activities: [keep, toRemove],
-      );
+      final activities = _FakeActivityRepository(activities: [keep, toRemove]);
       final contracts = _FakeContractRepository(
         assignments: {'keep': 'contract', 'to-remove': 'contract'},
       );
@@ -645,6 +766,8 @@ RunContract _contract({
   required DateTime startAt,
   required DateTime endAtExclusive,
   required DateTime finalizeAt,
+  RunContractRoute? route,
+  List<String> countedActivityIds = const [],
 }) => RunContract(
   id: id,
   creatorUid: 'user',
@@ -659,8 +782,18 @@ RunContract _contract({
   status: RunContractStatus.active,
   visibility: RunContractVisibility.club,
   progressValue: 0,
+  participants: {
+    'user': RunContractParticipant(
+      uid: 'user',
+      progressValue: 0,
+      countedActivityIds: countedActivityIds,
+      joinedAt: startAt,
+      updatedAt: startAt,
+    ),
+  },
   createdAt: startAt,
   updatedAt: startAt,
+  route: route,
 );
 
 ActivitySummary _activity(
@@ -670,6 +803,8 @@ ActivitySummary _activity(
   ActivityKind kind = ActivityKind.run,
   ActivitySource source = ActivitySource.strava,
   bool? manual,
+  List<RoutePoint> routePoints = const [],
+  String? duplicateOfActivityId,
 }) => ActivitySummary(
   id: id,
   name: id,
@@ -680,6 +815,8 @@ ActivitySummary _activity(
   elapsedTimeSeconds: 600,
   source: source,
   manual: manual,
+  routePoints: routePoints,
+  duplicateOfActivityId: duplicateOfActivityId,
 );
 
 class _FakeActivityRepository implements ActivityRepository {
@@ -698,7 +835,16 @@ class _FakeActivityRepository implements ActivityRepository {
   Future<List<ActivitySummary>> listOfficialActivities({
     required DateTime start,
     required DateTime endExclusive,
+    int? limit,
   }) async => activities;
+
+  @override
+  Future<Map<String, ActivitySummary>> getActivitiesByIds(
+    Set<String> ids,
+  ) async => {
+    for (final activity in activities)
+      if (ids.contains(activity.id)) activity.id: activity,
+  };
 
   @override
   Future<ActivityDetail> getDetail(String activityId) =>
@@ -713,11 +859,26 @@ class _FakeActivityRepository implements ActivityRepository {
   );
 
   @override
-  Stream<List<ActivitySummary>> watchActivities() => Stream.value(activities);
+  Stream<List<ActivitySummary>> watchActivities({int? limit}) => Stream.value(
+    limit == null ? activities : activities.take(limit).toList(),
+  );
 
   @override
-  Stream<List<JournalActivityEntry>> watchJournalActivities() =>
-      Stream.value(buildJournalActivityEntries(activities));
+  Future<JournalActivityPage> fetchJournalActivitiesPage({
+    int limit = 30,
+    Object? cursor,
+  }) async {
+    final start = cursor is int ? cursor : 0;
+    final end = start + limit > activities.length
+        ? activities.length
+        : start + limit;
+    final pageActivities = activities.sublist(start, end);
+    return JournalActivityPage(
+      entries: buildJournalActivityEntries(pageActivities),
+      nextCursor: end,
+      hasMore: end < activities.length,
+    );
+  }
 
   @override
   Stream<List<ActivitySummary>> watchTrackedTrialActivities() =>
@@ -731,6 +892,7 @@ class _FakeContractRepository implements RunContractRepository {
   double? finalProgress;
   double? updatedProgress;
   List<String> updatedActivityIds = const [];
+  final List<String> updatedContractIds = [];
   final Map<String, String> assignments;
 
   @override
@@ -754,6 +916,7 @@ class _FakeContractRepository implements RunContractRepository {
     required List<String> activityIds,
     required double progressValue,
   }) async {
+    updatedContractIds.add(contractId);
     updatedProgress = progressValue;
     updatedActivityIds = activityIds;
   }
@@ -772,6 +935,7 @@ class _FakeContractRepository implements RunContractRepository {
     double progressValue, {
     List<String> countedActivityIds = const [],
   }) async {
+    updatedContractIds.add(contractId);
     updatedProgress = progressValue;
     updatedActivityIds = countedActivityIds;
   }
@@ -788,13 +952,18 @@ class _FakeContractRepository implements RunContractRepository {
     String contractId,
     double progressValue, {
     List<String> countedActivityIds = const [],
-  }) async {}
+  }) async {
+    updatedContractIds.add(contractId);
+  }
 
   @override
   Stream<List<RunContract>> watchMyActiveContracts() => Stream.value(const []);
 
   @override
-  Stream<List<RunContract>> watchClubContracts() => Stream.value(const []);
+  Future<RunContractPage> fetchClubContractsPage({
+    int limit = 20,
+    Object? cursor,
+  }) async => const RunContractPage(contracts: [], hasMore: false);
 
   @override
   Stream<RunContract?> watchContract(String contractId) => Stream.value(null);
@@ -803,5 +972,9 @@ class _FakeContractRepository implements RunContractRepository {
   Future<void> delete(String contractId) async {}
 
   @override
-  Stream<List<RunContract>> watchMyContractHistory() => Stream.value(const []);
+  Future<RunContractPage> fetchMyContractHistoryPage({
+    required RunContractStatus status,
+    int limit = 20,
+    Object? cursor,
+  }) async => const RunContractPage(contracts: [], hasMore: false);
 }

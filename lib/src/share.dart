@@ -59,6 +59,31 @@ Future<ShareResult> shareDashboardCard({
   );
 }
 
+Future<ShareResult> shareJourneyCompletion({
+  required GlobalKey cardKey,
+  required BuildContext shareOriginContext,
+  required String campaignName,
+  required String routeName,
+}) async {
+  final boundary =
+      cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+  final renderBox = shareOriginContext.findRenderObject() as RenderBox?;
+  final sharePositionOrigin = renderBox == null
+      ? null
+      : renderBox.localToGlobal(Offset.zero) & renderBox.size;
+  final png = await captureRecapPng(boundary);
+  return SharePlus.instance.share(
+    ShareParams(
+      text:
+          'Tôi vừa hoàn thành $campaignName ($routeName) trên 3i — cộng dồn '
+          'từng buổi chạy thật, không hệ số!',
+      files: [XFile.fromData(png, mimeType: 'image/png')],
+      fileNameOverrides: ['3i-${_shareFileName(campaignName)}.png'],
+      sharePositionOrigin: sharePositionOrigin,
+    ),
+  );
+}
+
 Future<Uint8List> captureRecapPng(RenderRepaintBoundary? boundary) async {
   if (boundary == null) {
     throw StateError('Recap card chưa sẵn sàng.');

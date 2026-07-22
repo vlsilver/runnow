@@ -1,21 +1,34 @@
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 /// Hiển thị ảnh lưu trên Firebase Storage qua `getDownloadURL()` +
 /// `Image.network` — không dùng `Reference.getData()` vì phương thức đó
 /// không được hỗ trợ trên Flutter Web.
 class StorageImage extends StatefulWidget {
-  const StorageImage({required this.path, this.fit = BoxFit.cover, super.key});
+  const StorageImage({
+    required this.path,
+    this.fit = BoxFit.cover,
+    this.cacheWidth,
+    this.cacheHeight,
+    super.key,
+  });
 
   final String path;
   final BoxFit fit;
+
+  /// Giới hạn kích thước giải mã (physical pixels) — truyền vào khi hiển thị
+  /// ảnh ở khung nhỏ (vd marker trên bản đồ) để tránh giải mã ảnh gốc full
+  /// độ phân giải chỉ để hiện thu nhỏ vài chục px.
+  final int? cacheWidth;
+  final int? cacheHeight;
 
   @override
   State<StorageImage> createState() => _StorageImageState();
 }
 
 class _StorageImageState extends State<StorageImage> {
+  static final Map<String, Future<String>> _downloadUrlCache = {};
+
   late Future<String> _downloadUrl;
 
   @override
@@ -31,21 +44,14 @@ class _StorageImageState extends State<StorageImage> {
   }
 
   Future<String> _loadDownloadUrl() async {
-    _debugLog('Đang lấy download URL cho path=${widget.path}...');
-    try {
-      final url = await FirebaseStorage.instance
-          .ref(widget.path)
-          .getDownloadURL();
-      _debugLog('getDownloadURL thành công cho ${widget.path}: $url');
-      return url;
-    } catch (error, stack) {
-      _debugLog('getDownloadURL LỖI cho ${widget.path}: $error\n$stack');
-      rethrow;
-    }
-  }
-
-  void _debugLog(String message) {
-    if (kDebugMode) debugPrint('[StorageImage] $message');
+    return _downloadUrlCache.putIfAbsent(widget.path, () async {
+      try {
+        return await FirebaseStorage.instance.ref(widget.path).getDownloadURL();
+      } catch (error) {
+        _downloadUrlCache.remove(widget.path);
+        rethrow;
+      }
+    });
   }
 
   @override
@@ -69,15 +75,12 @@ class _StorageImageState extends State<StorageImage> {
           fit: widget.fit,
           width: double.infinity,
           height: double.infinity,
-          errorBuilder: (context, error, stack) {
-            _debugLog(
-              'Image.network LỖI khi tải url cho ${widget.path}: $error',
-            );
-            return ColoredBox(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              child: const Center(child: Icon(Icons.broken_image_outlined)),
-            );
-          },
+          cacheWidth: widget.cacheWidth,
+          cacheHeight: widget.cacheHeight,
+          errorBuilder: (context, error, stack) => ColoredBox(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: const Center(child: Icon(Icons.broken_image_outlined)),
+          ),
         );
       },
     );

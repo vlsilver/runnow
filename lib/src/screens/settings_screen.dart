@@ -7,6 +7,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/theme_controller.dart';
+import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -19,7 +20,7 @@ class SettingsScreen extends ConsumerWidget {
     final themeController = ref.watch(themeControllerProvider);
     final strava = ref.watch(stravaAuthProvider);
     final stravaConnected = ref.watch(stravaConnectionProvider);
-    final googleAuth = ref.watch(googleAuthProvider);
+    final googleAuth = ref.watch(authControllerProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Cài đặt')),
       body: Align(
@@ -77,7 +78,9 @@ class SettingsScreen extends ConsumerWidget {
                         ? Icons.link
                         : Icons.link_off_outlined,
                     title: 'Strava',
-                    value: strava.loading
+                    value: strava.statusLoading
+                        ? 'Đang kiểm tra'
+                        : strava.loading
                         ? 'Đang xử lý'
                         : stravaConnected
                         ? 'Đã kết nối'
@@ -310,7 +313,8 @@ Future<void> _editNickname(
     isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
-    builder: (context) => _NicknameEditorSheet(initialNickname: initialNickname),
+    builder: (context) =>
+        _NicknameEditorSheet(initialNickname: initialNickname),
   );
   if (result == null) return;
   await ref
@@ -361,10 +365,7 @@ class _NicknameEditorSheetState extends State<_NicknameEditorSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Tên hiển thị',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text('Tên hiển thị', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 12),
             TextField(
               controller: _nicknameController,
@@ -494,14 +495,12 @@ class _AccountHeaderState extends ConsumerState<_AccountHeader> {
                       ),
                       backgroundImage: avatarUrl == null
                           ? null
-                          : NetworkImage(avatarUrl),
+                          : cachedAvatarImage(context, avatarUrl, 62),
                       child: _uploadingAvatar
                           ? const SizedBox(
                               width: 20,
                               height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                              ),
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : avatarUrl == null
                           ? Icon(

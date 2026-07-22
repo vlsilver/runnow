@@ -97,6 +97,8 @@ class UserProfile {
     this.visibility = ProfileVisibility.private,
     this.stravaConnected = false,
     this.lastSyncedAt,
+    this.lastCelebratedRankKey,
+    this.journeyRouteId,
   });
 
   factory UserProfile.fromMap(Map<String, dynamic> map) {
@@ -124,6 +126,8 @@ class UserProfile {
       ),
       stravaConnected: map['stravaConnected'] as bool? ?? false,
       lastSyncedAt: syncedAt is DateTime ? syncedAt.toLocal() : null,
+      lastCelebratedRankKey: map['lastCelebratedRankKey'] as String?,
+      journeyRouteId: map['journeyRouteId'] as String?,
     );
   }
 
@@ -142,6 +146,14 @@ class UserProfile {
   final ProfileVisibility visibility;
   final bool stravaConnected;
   final DateTime? lastSyncedAt;
+
+  /// Key của lần gần nhất popup "chúc mừng lên hạng" (club leaderboard) đã
+  /// hiện cho user này — dùng để không hiện lặp lại cùng 1 thành tích.
+  final String? lastCelebratedRankKey;
+
+  /// Cung đường "Hành Trình" user đã chọn (`coastal` | `hcm_trail`) — null
+  /// nếu chưa chọn lần nào, màn Hành Trình sẽ hiện màn chọn cung.
+  final String? journeyRouteId;
 }
 
 class MemberProfile {
@@ -151,6 +163,7 @@ class MemberProfile {
     required this.visibility,
     this.avatarUrl,
     this.stravaConnected = false,
+    this.journeyRouteId,
     this.updatedAt,
   });
 
@@ -169,6 +182,7 @@ class MemberProfile {
         map['profileVisibility'] as String?,
       ),
       stravaConnected: map['stravaConnected'] as bool? ?? false,
+      journeyRouteId: map['journeyRouteId'] as String?,
       updatedAt: map['updatedAt'] is DateTime
           ? (map['updatedAt'] as DateTime).toLocal()
           : null,
@@ -180,6 +194,7 @@ class MemberProfile {
   final String? avatarUrl;
   final ProfileVisibility visibility;
   final bool stravaConnected;
+  final String? journeyRouteId;
   final DateTime? updatedAt;
 
   bool get isPublic => visibility == ProfileVisibility.public;
@@ -193,6 +208,7 @@ class LeaderboardStats {
     required this.activeDays,
     required this.longestDistanceMeters,
     required this.fastestPaceSecondsPerKm,
+    this.elevationGainMeters = 0,
   });
 
   factory LeaderboardStats.fromMap(Map<String, dynamic>? map) {
@@ -205,6 +221,8 @@ class LeaderboardStats {
           (map?['longestDistanceMeters'] as num?)?.toDouble() ?? 0,
       fastestPaceSecondsPerKm: (map?['fastestPaceSecondsPerKm'] as num?)
           ?.toDouble(),
+      elevationGainMeters:
+          (map?['elevationGainMeters'] as num?)?.toDouble() ?? 0,
     );
   }
 
@@ -214,6 +232,7 @@ class LeaderboardStats {
   final int activeDays;
   final double longestDistanceMeters;
   final double? fastestPaceSecondsPerKm;
+  final double elevationGainMeters;
 
   double? get averagePaceSecondsPerKm =>
       distanceMeters <= 0 ? null : movingTimeSeconds / (distanceMeters / 1000);
@@ -225,10 +244,34 @@ class LeaderboardStats {
       'activityCount': activityCount,
       'activeDays': activeDays,
       'longestDistanceMeters': longestDistanceMeters,
+      'elevationGainMeters': elevationGainMeters,
       if (fastestPaceSecondsPerKm != null)
         'fastestPaceSecondsPerKm': fastestPaceSecondsPerKm,
     };
   }
+}
+
+/// 1 document `users/{uid}/periodStats/{periodType}:{periodKey}` — số liệu
+/// tổng hợp backend tính sẵn cho 1 ngày/tuần/tháng cụ thể (đã khử trùng
+/// Strava/3i). Cùng bộ field với [LeaderboardStats] nên tái dùng luôn.
+class PeriodStat {
+  const PeriodStat({
+    required this.periodType,
+    required this.periodKey,
+    required this.stats,
+  });
+
+  factory PeriodStat.fromMap(Map<String, dynamic> map) {
+    return PeriodStat(
+      periodType: map['periodType'] as String? ?? '',
+      periodKey: map['periodKey'] as String? ?? '',
+      stats: LeaderboardStats.fromMap(map),
+    );
+  }
+
+  final String periodType;
+  final String periodKey;
+  final LeaderboardStats stats;
 }
 
 class LeaderboardEntry {
@@ -335,6 +378,8 @@ class LiveTrackingSession {
     this.lastLocation,
     this.averagePaceSecondsPerKm,
     this.routePreview = const [],
+    this.contractId,
+    this.livePhotos = const [],
   });
 
   factory LiveTrackingSession.fromMap(Map<String, dynamic> map) {
@@ -342,6 +387,7 @@ class LiveTrackingSession {
     final updatedAt = map['updatedAt'];
     final lastLocation = map['lastLocation'];
     final routePreview = map['routePreview'] as List<dynamic>? ?? const [];
+    final livePhotos = map['livePhotos'] as List<dynamic>? ?? const [];
     return LiveTrackingSession(
       id: '${map['id'] ?? ''}',
       ownerUid: map['ownerUid'] as String? ?? '',
@@ -363,6 +409,11 @@ class LiveTrackingSession {
           .whereType<Map<String, dynamic>>()
           .map(RoutePoint.fromMap)
           .toList(),
+      contractId: map['contractId'] as String?,
+      livePhotos: livePhotos
+          .whereType<Map<String, dynamic>>()
+          .map(ActivityPhoto.fromMap)
+          .toList(),
     );
   }
 
@@ -379,6 +430,8 @@ class LiveTrackingSession {
   final int movingTimeSeconds;
   final double? averagePaceSecondsPerKm;
   final List<RoutePoint> routePreview;
+  final String? contractId;
+  final List<ActivityPhoto> livePhotos;
 
   bool get isActive =>
       status == LiveTrackingStatus.running ||
@@ -415,12 +468,23 @@ class ActivitySummary {
     this.elevationGainMeters,
     this.polyline,
     this.routePoints = const [],
+    this.photos = const [],
     this.hydrated = false,
     this.schemaVersion = 1,
+    this.duplicateOfActivityId,
   });
 
-  factory ActivitySummary.fromMap(Map<String, dynamic> map) {
-    final rawRoutePoints = map['routePoints'] as List<dynamic>? ?? const [];
+  factory ActivitySummary.fromMap(
+    Map<String, dynamic> map, {
+    bool includeRoutePoints = true,
+    bool includePhotos = true,
+  }) {
+    final rawRoutePoints = includeRoutePoints
+        ? map['routePoints'] as List<dynamic>? ?? const []
+        : const <dynamic>[];
+    final rawPhotos = includePhotos
+        ? map['photos'] as List<dynamic>? ?? const []
+        : const <dynamic>[];
     return ActivitySummary(
       id: '${map['id']}',
       name: map['name'] as String? ?? 'Hoạt động',
@@ -441,8 +505,13 @@ class ActivitySummary {
           .whereType<Map<String, dynamic>>()
           .map(RoutePoint.fromMap)
           .toList(),
+      photos: rawPhotos
+          .whereType<Map<String, dynamic>>()
+          .map(ActivityPhoto.fromMap)
+          .toList(),
       hydrated: map['hydrated'] as bool? ?? false,
       schemaVersion: (map['schemaVersion'] as num?)?.toInt() ?? 1,
+      duplicateOfActivityId: map['duplicateOfActivityId'] as String?,
     );
   }
 
@@ -462,8 +531,14 @@ class ActivitySummary {
   final double? elevationGainMeters;
   final String? polyline;
   final List<RoutePoint> routePoints;
+  final List<ActivityPhoto> photos;
   final bool hydrated;
   final int schemaVersion;
+
+  /// ID của activity Strava mà bản 3i tự-track này trùng (nếu có) — ghi bởi
+  /// backend lúc save/sync, `null` nếu chưa phát hiện trùng. Chỉ có ý nghĩa
+  /// khi `source == ActivitySource.runnow`.
+  final String? duplicateOfActivityId;
 
   double get distanceKm => distanceMeters / 1000;
   double? get paceSecondsPerKm =>

@@ -1,28 +1,30 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/formatters.dart';
+import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/screens/activity_detail_screen.dart';
 import 'package:myrun/src/screens/club_screen.dart';
-import 'package:myrun/src/screens/dashboard_screen.dart';
 import 'package:myrun/src/screens/journal_screen.dart';
+import 'package:myrun/src/screens/journey_hub_screen.dart';
+import 'package:myrun/src/screens/journey_screen.dart';
 import 'package:myrun/src/screens/member_profile_screen.dart';
 import 'package:myrun/src/screens/onboarding_screen.dart';
 import 'package:myrun/src/screens/run_contract_create_screen.dart';
 import 'package:myrun/src/screens/run_contract_detail_screen.dart';
 import 'package:myrun/src/screens/run_contract_home_screen.dart';
+import 'package:myrun/src/screens/run_contract_route_create_screen.dart';
 import 'package:myrun/src/screens/settings_screen.dart';
 import 'package:myrun/src/screens/tracking_screen.dart';
-import 'package:myrun/src/sync.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/web_layout.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
+import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -62,11 +64,25 @@ final _router = GoRouter(
           routes: [
             GoRoute(
               path: '/profile',
-              builder: (context, state) => const DashboardScreen(),
+              builder: (context, state) => const JourneyHubScreen(),
               routes: [
+                GoRoute(
+                  path: 'journey/:campaignId',
+                  builder: (context, state) => JourneyScreen(
+                    campaignId:
+                        parseJourneyCampaignId(
+                          state.pathParameters['campaignId'],
+                        ) ??
+                        JourneyCampaignId.xuyenViet,
+                  ),
+                ),
                 GoRoute(
                   path: 'journal',
                   builder: (context, state) => const JournalScreen(),
+                ),
+                GoRoute(
+                  path: 'stats',
+                  redirect: (context, state) => '/profile/journal',
                 ),
               ],
             ),
@@ -99,6 +115,17 @@ final _router = GoRouter(
       builder: (context, state) =>
           ActivityDetailScreen(activityId: state.pathParameters['id']!),
     ),
+    // Route riêng cho "LIVE NOW" từ màn chi tiết kèo — KHÔNG dùng path
+    // '/tracking' (đó là tab bottom-nav thuộc StatefulShellBranch, chỉ vào
+    // đúng qua `shell.goBranch()`; push thẳng path đó từ ngoài shell từng
+    // gây màn đen do xung đột với IndexedStack của go_router). Route này
+    // nằm ngoài shell nên push/pop bình thường, và nhận `contractId` qua
+    // `extra` như cũ.
+    GoRoute(
+      path: '/tracking/live',
+      builder: (context, state) =>
+          TrackingScreen(contractId: state.extra as String?),
+    ),
     GoRoute(
       path: '/club/:uid/activity/:id',
       builder: (context, state) => ActivityDetailScreen(
@@ -112,6 +139,11 @@ final _router = GoRouter(
           MemberProfileScreen(uid: state.pathParameters['uid']!),
     ),
     GoRoute(
+      path: '/club/:uid/journal',
+      builder: (context, state) =>
+          MemberJournalScreen(uid: state.pathParameters['uid']!),
+    ),
+    GoRoute(
       path: '/oauth',
       builder: (context, state) => const RunContractHomeScreen(),
     ),
@@ -122,6 +154,10 @@ final _router = GoRouter(
             ? state.extra! as RunContractDraft
             : null,
       ),
+    ),
+    GoRoute(
+      path: '/contracts/new/route',
+      builder: (context, state) => const RunContractRouteCreateScreen(),
     ),
     GoRoute(
       path: '/contracts/:id',
@@ -179,7 +215,7 @@ class _AuthGate extends ConsumerWidget {
               : _AuthenticatedSession(child: child),
           error: (error, stack) =>
               Center(child: Text('Không thể kiểm tra đăng nhập: $error')),
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const RunNowLoading(label: 'Đang vào 3i'),
         );
   }
 }
@@ -199,42 +235,10 @@ class _AuthenticatedSessionState extends ConsumerState<_AuthenticatedSession> {
   @override
   Widget build(BuildContext context) {
     final connected = ref.watch(stravaConnectionProvider);
-    ref.listen<SyncController>(syncControllerProvider, (previous, next) {
-      if (next.syncing || !next.lastSyncSucceeded) return;
-      if (next.lastChangedActivities.isEmpty) return;
-      final activeContracts =
-          ref.read(myActiveContractsProvider).value ?? const [];
-      unawaited(
-        ref
-            .read(runContractControllerProvider)
-            .autoAssignSoleActiveContract(
-              activeContracts,
-              next.lastChangedActivities,
-            ),
-      );
-      final activities = next.lastChangedActivities;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        // `context` của State này nằm ngoài Navigator thật (bị `_AuthGate`
-        // bọc quanh child trong `MaterialApp.router`'s builder), nên phải
-        // dùng navigatorKey riêng của GoRouter để lấy context có Navigator.
-        final navigatorContext = _rootNavigatorKey.currentContext;
-        if (navigatorContext == null) return;
-        showModalBottomSheet<void>(
-          context: navigatorContext,
-          isScrollControlled: true,
-          useSafeArea: true,
-          backgroundColor: Colors.transparent,
-          builder: (context) => _SyncedActivitiesSheet(activities: activities),
-        );
-      });
-    });
     if (connected && !_started) {
       _started = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
-        final result = await ref.read(syncControllerProvider).sync();
-        if (!mounted || !result.succeeded) return;
         final uid = ref.read(firebaseUserProvider).value?.uid;
         final controller = ref.read(runContractControllerProvider);
         final mine =
@@ -246,9 +250,31 @@ class _AuthenticatedSessionState extends ConsumerState<_AuthenticatedSession> {
               ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
         for (final contract in mine) {
           if (contract.creatorUid == uid) {
-            await controller.recalculate(contract);
+            if (contractLifecycle(contract, DateTime.now()) ==
+                RunContractLifecycle.awaitingFinalize) {
+              // Tự chốt kèo quá hạn ngay khi owner mở app, thay vì bắt họ
+              // vào tận màn chi tiết kèo rồi bấm "Chốt kết quả" — lỗi (vd
+              // Strava sync tạm thời fail) bỏ qua an toàn, kèo vẫn ở
+              // awaitingFinalize và sẽ được thử lại ở lần mở app kế tiếp.
+              try {
+                await controller.finalize(contract);
+              } catch (_) {
+                // ignore, retried next app open
+              }
+            } else {
+              try {
+                await controller.recalculate(contract);
+              } catch (_) {
+                // ignore (vd Firestore tạm gián đoạn) — thử lại lần mở app
+                // kế tiếp; không để 1 kèo lỗi chặn tính lại các kèo còn lại.
+              }
+            }
           } else {
-            await controller.recalculateParticipant(contract);
+            try {
+              await controller.recalculateParticipant(contract);
+            } catch (_) {
+              // ignore, cùng lý do — xem comment ở nhánh recalculate() trên.
+            }
           }
         }
       });
@@ -263,8 +289,7 @@ class _SyncedActivitiesSheet extends StatefulWidget {
   final List<ActivitySummary> activities;
 
   @override
-  State<_SyncedActivitiesSheet> createState() =>
-      _SyncedActivitiesSheetState();
+  State<_SyncedActivitiesSheet> createState() => _SyncedActivitiesSheetState();
 }
 
 class _SyncedActivitiesSheetState extends State<_SyncedActivitiesSheet> {
@@ -436,7 +461,10 @@ class _SyncedActivitiesSheetState extends State<_SyncedActivitiesSheet> {
       }
       children.add(_SyncedActivityRow(activity: activity, palette: palette));
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: children);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
   }
 }
 
@@ -489,9 +517,7 @@ class _SyncedActivityRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isStrava = activity.source == ActivitySource.strava;
-    final sourceColor = isStrava
-        ? RunNowBrandColors.strava
-        : palette.accent;
+    final sourceColor = isStrava ? RunNowBrandColors.strava : palette.accent;
     final sourceLabel = isStrava ? 'Strava' : 'Tự track';
     final time = TimeOfDay.fromDateTime(activity.startedAt).format(context);
     final onSurface = Theme.of(context).colorScheme.onSurface;
@@ -652,7 +678,6 @@ class _Scaffold extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              DashboardNavFilter(branchActive: location == '/profile'),
               ClubNavFilter(branchActive: shell.currentIndex == 1),
               Row(
                 children: [
@@ -684,9 +709,9 @@ class _Scaffold extends StatelessWidget {
                   Expanded(
                     child: _NavItem(
                       selected: shell.currentIndex == 3,
-                      icon: Icons.person_outline_rounded,
-                      selectedIcon: Icons.person_rounded,
-                      label: 'Cá nhân',
+                      icon: Icons.map_outlined,
+                      selectedIcon: Icons.map_rounded,
+                      label: 'Hành Trình',
                       onTap: () => shell.goBranch(3),
                     ),
                   ),
@@ -739,9 +764,9 @@ class _DesktopNavRail extends StatelessWidget {
           label: Text('Chạy'),
         ),
       const NavigationRailDestination(
-        icon: Icon(Icons.person_outline_rounded),
-        selectedIcon: Icon(Icons.person_rounded),
-        label: Text('Cá nhân'),
+        icon: Icon(Icons.map_outlined),
+        selectedIcon: Icon(Icons.map_rounded),
+        label: Text('Hành Trình'),
       ),
       const NavigationRailDestination(
         icon: Icon(Icons.settings_outlined),
@@ -764,39 +789,36 @@ class _DesktopNavRail extends StatelessWidget {
           constraints: BoxConstraints(
             minHeight: MediaQuery.sizeOf(context).height - 16,
           ),
-          child: IntrinsicHeight(
-            child: NavigationRail(
-              extended: extended,
-              minWidth: 76,
-              minExtendedWidth: 216,
-              backgroundColor: Colors.transparent,
-              labelType: extended
-                  ? NavigationRailLabelType.none
-                  : NavigationRailLabelType.all,
-              groupAlignment: -0.85,
-              selectedIndex: selected,
-              onDestinationSelected: (index) => shell.goBranch(branches[index]),
-              indicatorColor: scheme.primary.withValues(alpha: 0.16),
-              leading: const Padding(
-                padding: EdgeInsets.only(top: 10, bottom: 20),
-                child: _RailBrand(),
-              ),
-              selectedIconTheme: IconThemeData(color: scheme.primary),
-              unselectedIconTheme: IconThemeData(
-                color: onSurface.withValues(alpha: 0.62),
-              ),
-              selectedLabelTextStyle: TextStyle(
-                color: scheme.primary,
-                fontWeight: FontWeight.w900,
-                fontSize: 12,
-              ),
-              unselectedLabelTextStyle: TextStyle(
-                color: onSurface.withValues(alpha: 0.62),
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-              ),
-              destinations: destinations,
+          child: NavigationRail(
+            extended: extended,
+            minWidth: 76,
+            minExtendedWidth: 216,
+            backgroundColor: Colors.transparent,
+            labelType: extended
+                ? NavigationRailLabelType.none
+                : NavigationRailLabelType.all,
+            groupAlignment: -0.85,
+            selectedIndex: selected,
+            onDestinationSelected: (index) => shell.goBranch(branches[index]),
+            indicatorColor: scheme.primary.withValues(alpha: 0.16),
+            leading: const Padding(
+              padding: EdgeInsets.only(top: 10, bottom: 20),
+              child: _RailBrand(),
             ),
+            selectedIconTheme: IconThemeData(color: scheme.primary),
+            unselectedIconTheme: IconThemeData(
+              color: onSurface.withValues(alpha: 0.62),
+            ),
+            selectedLabelTextStyle: TextStyle(
+              color: scheme.primary,
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
+            ),
+            unselectedLabelTextStyle: TextStyle(
+              color: onSurface.withValues(alpha: 0.62),
+              fontWeight: FontWeight.w700,
+            ),
+            destinations: destinations,
           ),
         ),
       ),

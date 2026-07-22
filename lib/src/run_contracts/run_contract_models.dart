@@ -2,7 +2,8 @@ enum RunContractMetric {
   distance('distance'),
   activityCount('activity_count'),
   activeDays('active_days'),
-  longestRun('longest_run');
+  longestRun('longest_run'),
+  routeCompletion('route_completion');
 
   const RunContractMetric(this.value);
   final String value;
@@ -11,7 +12,53 @@ enum RunContractMetric {
     'activity_count' => RunContractMetric.activityCount,
     'active_days' => RunContractMetric.activeDays,
     'longest_run' => RunContractMetric.longestRun,
+    'route_completion' => RunContractMetric.routeCompletion,
     _ => RunContractMetric.distance,
+  };
+}
+
+/// 1 điểm mốc trên tuyến tham khảo do người tạo kèo vẽ — chỉ cần toạ độ,
+/// khác [RoutePoint] (dùng cho GPS đã ghi thật) vốn bắt buộc có timestamp.
+class RunContractRoutePoint {
+  const RunContractRoutePoint({
+    required this.latitude,
+    required this.longitude,
+  });
+
+  factory RunContractRoutePoint.fromMap(Map<String, dynamic> map) =>
+      RunContractRoutePoint(
+        latitude: (map['lat'] as num).toDouble(),
+        longitude: (map['lng'] as num).toDouble(),
+      );
+
+  final double latitude;
+  final double longitude;
+
+  Map<String, dynamic> toMap() => {'lat': latitude, 'lng': longitude};
+}
+
+/// Tuyến tham khảo của 1 kèo "theo tuyến" — người tham gia phải chạy bám
+/// theo tuyến này (xem `route_matching.dart`) để được tính tiến độ.
+class RunContractRoute {
+  const RunContractRoute({required this.points, required this.distanceMeters});
+
+  factory RunContractRoute.fromMap(Map<String, dynamic> map) {
+    final rawPoints = map['points'] as List<dynamic>? ?? const [];
+    return RunContractRoute(
+      points: rawPoints
+          .whereType<Map<String, dynamic>>()
+          .map(RunContractRoutePoint.fromMap)
+          .toList(),
+      distanceMeters: (map['distanceMeters'] as num?)?.toDouble() ?? 0,
+    );
+  }
+
+  final List<RunContractRoutePoint> points;
+  final double distanceMeters;
+
+  Map<String, dynamic> toMap() => {
+    'points': [for (final point in points) point.toMap()],
+    'distanceMeters': distanceMeters,
   };
 }
 
@@ -102,6 +149,8 @@ class RunContractDraft {
     this.title,
     this.customStart,
     this.customEnd,
+    this.route,
+    this.unlimitedRepeat = false,
   });
 
   factory RunContractDraft.weekly10k() => RunContractDraft(
@@ -126,6 +175,14 @@ class RunContractDraft {
   final DateTime? customStart;
   final DateTime? customEnd;
 
+  /// Tuyến tham khảo — bắt buộc khi [metric] == [RunContractMetric.routeCompletion].
+  final RunContractRoute? route;
+
+  /// Không giới hạn số lần hoàn thành tuyến được đếm dồn — [targetValue] vẫn
+  /// giữ nguyên (thường là 1) để logic "đạt mục tiêu" hiện có hoạt động bình
+  /// thường, cờ này chỉ đổi cách hiển thị.
+  final bool unlimitedRepeat;
+
   RunContractDraft copyWith({
     RunContractTemplate? template,
     RunContractMetric? metric,
@@ -135,6 +192,8 @@ class RunContractDraft {
     String? title,
     DateTime? customStart,
     DateTime? customEnd,
+    RunContractRoute? route,
+    bool? unlimitedRepeat,
   }) => RunContractDraft(
     template: template ?? this.template,
     metric: metric ?? this.metric,
@@ -144,6 +203,8 @@ class RunContractDraft {
     title: title ?? this.title,
     customStart: customStart ?? this.customStart,
     customEnd: customEnd ?? this.customEnd,
+    route: route ?? this.route,
+    unlimitedRepeat: unlimitedRepeat ?? this.unlimitedRepeat,
   );
 
   /// Số ngày active tối đa cho phép tùy theo khung thời gian.
@@ -188,6 +249,18 @@ class RunContractDraft {
         maxDays == 1
             ? 'Kèo trong ngày chỉ có thể đặt 1 ngày active.'
             : 'Số ngày active phải từ 1 đến $maxDays.',
+      RunContractMetric.routeCompletion when route == null =>
+        'Hãy vẽ tuyến tham khảo trước.',
+      RunContractMetric.routeCompletion when route!.points.length < 2 =>
+        'Tuyến tham khảo cần ít nhất 2 điểm mốc.',
+      RunContractMetric.routeCompletion
+          when route!.distanceMeters < 100 || route!.distanceMeters > 50000 =>
+        'Tuyến tham khảo phải dài từ 0.1 đến 50 km.',
+      RunContractMetric.routeCompletion
+          when targetValue != targetValue.roundToDouble() ||
+              targetValue < 1 ||
+              targetValue > 100 =>
+        'Số lần hoàn thành phải là số nguyên từ 1 đến 100.',
       _ => null,
     };
   }
@@ -248,6 +321,8 @@ class RunContract {
     this.cancelledAt,
     this.participants = const {},
     this.schemaVersion = 1,
+    this.route,
+    this.unlimitedRepeat = false,
   });
 
   factory RunContract.fromMap(Map<String, dynamic> map) {
@@ -298,6 +373,10 @@ class RunContract {
       createdAt: createdAt,
       updatedAt: _date(map['updatedAt']),
       schemaVersion: (map['schemaVersion'] as num?)?.toInt() ?? 1,
+      route: map['route'] is Map<String, dynamic>
+          ? RunContractRoute.fromMap(map['route'] as Map<String, dynamic>)
+          : null,
+      unlimitedRepeat: map['unlimitedRepeat'] as bool? ?? false,
     );
   }
 
@@ -322,6 +401,8 @@ class RunContract {
   final Map<String, RunContractParticipant> participants;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final RunContractRoute? route;
+  final bool unlimitedRepeat;
 
   double get progressRatio =>
       targetValue <= 0 ? 0 : progressValue / targetValue;

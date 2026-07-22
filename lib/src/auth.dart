@@ -5,16 +5,27 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:myrun/src/config.dart';
+import 'package:myrun/src/runnow_api_client.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:myrun/src/strava_client.dart';
 
-class GoogleAuthController extends ChangeNotifier {
-  GoogleAuthController(this._auth, this._firestore);
+/// Quản lý đăng nhập Google + Apple. Bắt buộc phải có Sign in with Apple vì
+/// App Store Guideline 4.8: app chỉ dùng đăng nhập bên thứ ba (Google) làm
+/// cách đăng nhập duy nhất sẽ bị từ chối.
+class AuthController extends ChangeNotifier {
+  AuthController(this._auth, this._firestore);
 
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
   bool loading = false;
   String? errorMessage;
+
+  /// Sign in with Apple chỉ chạy sẵn trên nền Apple và web. Trên Android
+  /// luồng này cần thêm Service ID + web redirect bên Apple Developer nên
+  /// tạm ẩn nút, Guideline 4.8 cũng chỉ áp cho App Store.
+  static bool get appleSignInAvailable =>
+      kIsWeb ||
+      defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.macOS;
 
   Future<void> signIn() async {
     await _run(() async {
@@ -35,6 +46,29 @@ class GoogleAuthController extends ChangeNotifier {
         final account = await GoogleSignIn.instance.authenticate();
         await _handleAccount(account);
       }
+    });
+  }
+
+  Future<void> signInWithApple() async {
+    await _run(() async {
+      final provider = AppleAuthProvider()
+        ..addScope('email')
+        ..addScope('name');
+      final result = kIsWeb
+          ? await _auth.signInWithPopup(provider)
+          : await _auth.signInWithProvider(provider);
+      final user = result.user;
+      if (user == null) throw StateError('Không thể đăng nhập Apple.');
+      // Apple chỉ trả tên đúng 1 lần ở lần cấp quyền đầu tiên, những lần sau
+      // displayName sẽ null — lúc đó giữ nguyên tên đã lưu trong Firestore
+      // thay vì ghi đè (xem `_upsertProfile`). Người dùng chọn "Ẩn email"
+      // thì email là địa chỉ privaterelay.appleid.com của Apple.
+      await _upsertProfile(
+        user: user,
+        displayName: user.displayName,
+        avatarUrl: user.photoURL,
+        email: user.email,
+      );
     });
   }
 
@@ -104,39 +138,23 @@ class GoogleAuthController extends ChangeNotifier {
 
   Future<void> signOut() async {
     await _run(() async {
-      await _markStravaDisconnectedForCurrentUser();
-      await StravaClient.instance.signOut();
-      await GoogleSignIn.instance.signOut();
+      try {
+        await GoogleSignIn.instance.signOut();
+      } catch (_) {
+        // Tài khoản đăng nhập bằng Apple chưa từng qua Google Sign-In —
+        // bỏ qua, việc signOut Firebase bên dưới mới là phần bắt buộc.
+      }
       await _auth.signOut();
       await _clearFirestoreCache();
     });
-  }
-
-  Future<void> _markStravaDisconnectedForCurrentUser() async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-    final batch = _firestore.batch();
-    batch.set(_firestore.collection('users').doc(user.uid), {
-      'stravaConnected': false,
-      'stravaDisconnectedAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-    batch.set(
-      _firestore.collection('publicProfiles').doc(user.uid),
-      {'stravaConnected': false, 'updatedAt': FieldValue.serverTimestamp()},
-      SetOptions(merge: true),
-    );
-    await batch.commit();
   }
 
   Future<void> _clearFirestoreCache() async {
     try {
       await _firestore.terminate();
       await _firestore.clearPersistence();
-    } catch (error) {
-      if (kDebugMode) {
-        debugPrint('Could not clear Firestore cache on logout: $error');
-      }
+    } catch (_) {
+      // Best-effort cleanup — logout vẫn tiếp tục dù xoá cache thất bại.
     }
   }
 
@@ -147,7 +165,14 @@ class GoogleAuthController extends ChangeNotifier {
     try {
       await operation();
     } on FirebaseAuthException catch (error) {
-      errorMessage = 'Google login thất bại: ${error.message ?? error.code}';
+      // Người dùng bấm huỷ hộp thoại Apple/Google không phải lỗi cần báo đỏ.
+      if (error.code == 'canceled' ||
+          error.code == 'web-context-canceled' ||
+          error.code == 'popup-closed-by-user') {
+        errorMessage = null;
+      } else {
+        errorMessage = 'Đăng nhập thất bại: ${error.message ?? error.code}';
+      }
     } catch (error) {
       errorMessage = '$error';
     } finally {
@@ -158,8 +183,20 @@ class GoogleAuthController extends ChangeNotifier {
 }
 
 class StravaAuthController extends ChangeNotifier {
-  StravaAuthController(this._auth, this._firestore, {AppLinks? appLinks})
+  StravaAuthController(this._auth, this._api, {AppLinks? appLinks})
     : _appLinks = kIsWeb ? null : appLinks ?? AppLinks() {
+    _authSubscription = _auth.authStateChanges().listen((user) {
+      if (user == null) {
+        _status = const StravaConnectionStatus(
+          connected: false,
+          status: 'disconnected',
+        );
+        statusLoading = false;
+        notifyListeners();
+      } else {
+        unawaited(refreshStatus());
+      }
+    });
     if (kIsWeb) {
       unawaited(handleOAuthCallback(Uri.base));
       return;
@@ -173,30 +210,51 @@ class StravaAuthController extends ChangeNotifier {
   }
 
   final FirebaseAuth _auth;
-  final FirebaseFirestore _firestore;
+  final RunNowApiClient _api;
   final AppLinks? _appLinks;
   StreamSubscription<Uri>? _subscription;
+  StreamSubscription<User?>? _authSubscription;
+  StravaConnectionStatus _status = const StravaConnectionStatus(
+    connected: false,
+    status: 'unknown',
+  );
   String? errorMessage;
   bool loading = false;
-  bool get connected => StravaClient.instance.isSignedIn;
+  bool statusLoading = true;
+  bool get connected => _status.connected;
+  String get connectionStatus => _status.status;
+
+  Future<void> refreshStatus() async {
+    if (_auth.currentUser == null) return;
+    statusLoading = true;
+    notifyListeners();
+    try {
+      _status = await _api.getStravaStatus();
+      errorMessage = null;
+    } catch (error) {
+      errorMessage = 'Không kiểm tra được kết nối Strava: $error';
+    } finally {
+      statusLoading = false;
+      notifyListeners();
+    }
+  }
 
   Future<void> connect() async {
     await _run(() async {
       if (_auth.currentUser == null) {
         throw StateError('Bạn cần đăng nhập Google trước khi kết nối Strava.');
       }
-      if (!StravaClient.instance.isConfigured) {
-        throw StateError('STRAVA_CLIENT_ID chưa được cấu hình.');
-      }
-      if (StravaClient.instance.isSignedIn) {
-        await _linkCurrentStravaAthlete();
-        return;
-      }
-      final uri = await StravaClient.instance.beginAuthorization();
-      final mode = kIsWeb
-          ? LaunchMode.platformDefault
-          : LaunchMode.externalApplication;
-      if (!await launchUrl(uri, mode: mode)) {
+      final uri = await _api.createStravaAuthorization(
+        returnTarget: kIsWeb ? 'web' : 'mobile',
+      );
+      final launched = kIsWeb
+          ? await launchUrl(
+              uri,
+              mode: LaunchMode.platformDefault,
+              webOnlyWindowName: '_self',
+            )
+          : await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
         throw StateError('Không thể mở trang kết nối Strava.');
       }
     });
@@ -204,37 +262,15 @@ class StravaAuthController extends ChangeNotifier {
 
   Future<void> disconnect() async {
     await _run(() async {
-      final user = _auth.currentUser;
-      final athleteId = StravaClient.instance.athleteId;
-      if (user != null && athleteId != null && athleteId.isNotEmpty) {
-        await _firestore.runTransaction((transaction) async {
-          final linkRef = _firestore.collection('stravaLinks').doc(athleteId);
-          final link = await transaction.get(linkRef);
-          if (link.data()?['uid'] == user.uid) {
-            transaction.delete(linkRef);
-          }
-          transaction.set(_firestore.collection('users').doc(user.uid), {
-            'stravaConnected': false,
-            'stravaAthleteId': FieldValue.delete(),
-            'athleteId': FieldValue.delete(),
-            'stravaDisconnectedAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-          transaction.set(
-            _firestore.collection('publicProfiles').doc(user.uid),
-            {
-              'stravaConnected': false,
-              'updatedAt': FieldValue.serverTimestamp(),
-            },
-            SetOptions(merge: true),
-          );
-        });
-      }
-      await StravaClient.instance.signOut();
+      await _api.disconnectStrava();
+      _status = const StravaConnectionStatus(
+        connected: false,
+        status: 'disconnected',
+      );
     });
   }
 
-  // Strava returns the short-lived authorization `code` in query params.
+  // Backend exchanges the OAuth code and redirects only the final result here.
   Future<void> handleOAuthCallback(Uri uri) async {
     if (!_isStravaCallback(uri)) {
       return;
@@ -245,20 +281,9 @@ class StravaAuthController extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    final code = uri.queryParameters['code'];
-    if (code != null) {
+    if (uri.queryParameters['strava'] == 'connected') {
       await _run(() async {
-        // Dev-only web flow: this exchanges Strava OAuth code directly from
-        // the browser because 3i is currently an internal demo.
-        // Production must move this exchange to a backend service.
-        await StravaClient.instance.exchangeCode(code);
-        try {
-          await _linkCurrentStravaAthlete();
-        } catch (error) {
-          throw StateError(
-            'Không lưu được liên kết Strava vào Firestore: $error',
-          );
-        }
+        _status = await _api.getStravaStatus();
       });
     }
   }
@@ -266,7 +291,7 @@ class StravaAuthController extends ChangeNotifier {
   bool _isStravaCallback(Uri uri) {
     if (kIsWeb) {
       final hasOAuthResult =
-          uri.queryParameters.containsKey('code') ||
+          uri.queryParameters.containsKey('strava') ||
           uri.queryParameters.containsKey('error');
       if (!hasOAuthResult) return false;
       return uri.scheme == Uri.base.scheme &&
@@ -279,69 +304,6 @@ class StravaAuthController extends ChangeNotifier {
         uri.path == AppConfig.stravaRedirectPath;
   }
 
-  Future<void> _linkCurrentStravaAthlete() async {
-    final user = _auth.currentUser;
-    final athleteId = StravaClient.instance.athleteId;
-    if (user == null) {
-      await StravaClient.instance.signOut();
-      throw StateError('Bạn cần đăng nhập Google trước khi kết nối Strava.');
-    }
-    if (athleteId == null || athleteId.isEmpty) {
-      throw StateError('Không lấy được Strava athlete ID.');
-    }
-    try {
-      await _firestore.runTransaction((transaction) async {
-        final linkRef = _firestore.collection('stravaLinks').doc(athleteId);
-        final userRef = _firestore.collection('users').doc(user.uid);
-        final userSnapshot = await transaction.get(userRef);
-        final userData = userSnapshot.data() ?? const <String, dynamic>{};
-        final lockedAthleteId =
-            userData['lockedStravaAthleteId'] as String? ??
-            userData['stravaAthleteId'] as String? ??
-            userData['athleteId'] as String?;
-        if (lockedAthleteId != null &&
-            lockedAthleteId.isNotEmpty &&
-            lockedAthleteId != athleteId) {
-          throw StateError(
-            'Tài khoản Google này đã được liên kết với một tài khoản Strava khác.',
-          );
-        }
-        final link = await transaction.get(linkRef);
-        final existingUid = link.data()?['uid'] as String?;
-        if (existingUid != null && existingUid != user.uid) {
-          throw StateError(
-            'Tài khoản Strava này đã được liên kết với một tài khoản Google khác.',
-          );
-        }
-        transaction.set(
-          linkRef,
-          {
-            'uid': user.uid,
-            'email': user.email,
-            'linkedAt': FieldValue.serverTimestamp(),
-          }..removeWhere((key, value) => value == null),
-          SetOptions(merge: true),
-        );
-        transaction.set(userRef, {
-          'stravaConnected': true,
-          'lockedStravaAthleteId': lockedAthleteId ?? athleteId,
-          'stravaAthleteId': athleteId,
-          'athleteId': athleteId,
-          'stravaLinkedAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-        transaction.set(
-          _firestore.collection('publicProfiles').doc(user.uid),
-          {'stravaConnected': true, 'updatedAt': FieldValue.serverTimestamp()},
-          SetOptions(merge: true),
-        );
-      });
-    } catch (_) {
-      await StravaClient.instance.signOut();
-      rethrow;
-    }
-  }
-
   Future<void> _run(Future<void> Function() operation) async {
     loading = true;
     errorMessage = null;
@@ -351,15 +313,7 @@ class StravaAuthController extends ChangeNotifier {
     } on FirebaseAuthException catch (error) {
       errorMessage = _firebaseErrorMessage(error);
     } catch (error) {
-      if (kIsWeb) {
-        errorMessage =
-            'Strava đã redirect về 3i, nhưng browser không đổi được code '
-            'sang token trực tiếp. Lưu client secret trong app hoặc Firestore '
-            'không xử lý được lỗi này nếu Strava chặn CORS. Cần backend/proxy '
-            'token exchange để web connect Strava ổn định. Chi tiết: $error';
-      } else {
-        errorMessage = '$error';
-      }
+      errorMessage = '$error';
     } finally {
       loading = false;
       notifyListeners();
@@ -378,6 +332,7 @@ class StravaAuthController extends ChangeNotifier {
   @override
   void dispose() {
     _subscription?.cancel();
+    _authSubscription?.cancel();
     super.dispose();
   }
 }

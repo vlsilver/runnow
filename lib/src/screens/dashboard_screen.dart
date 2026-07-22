@@ -1,3 +1,8 @@
+import 'dart:async';
+
+// TODO(runnow): xoa cac widget dashboard legacy sau khi UI Tong quan moi on dinh.
+// ignore_for_file: unused_element
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,12 +17,10 @@ import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/training_power.dart';
 import 'package:myrun/src/web_layout.dart';
-import 'package:myrun/src/widgets/activity_records_card.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
-import 'package:myrun/src/widgets/discipline_card.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/nav_filter.dart';
-import 'package:myrun/src/widgets/personal_power_card.dart';
+import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:myrun/src/widgets/training_volume_chart.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -28,6 +31,10 @@ class DashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  void _openJournal(BuildContext context) {
+    context.push('/profile/journal');
+  }
+
   @override
   Widget build(BuildContext context) {
     final profileState = ref.watch(userProfileProvider);
@@ -36,20 +43,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       orElse: () => false,
     );
     final stravaConnected = ref.watch(stravaConnectionProvider);
+    final connectionLoading = ref.watch(stravaConnectionLoadingProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Cá nhân'),
+        title: const Text('Tổng quan'),
         actions: [
           IconButton(
-            tooltip: 'Mở nhật ký chạy',
-            onPressed: () => context.push('/profile/journal'),
+            tooltip: 'Mở nhật ký session',
+            onPressed: () => _openJournal(context),
             icon: const Icon(Icons.list_alt_rounded),
           ),
           const SizedBox(width: 8),
         ],
       ),
-      body: profileLoading
-          ? const Center(child: CircularProgressIndicator())
+      body: profileLoading || connectionLoading
+          ? const RunNowLoading(
+              label: 'Đang tải cá nhân',
+              revealDelay: Duration.zero,
+            )
           : stravaConnected
           ? ref
                 .watch(activitiesProvider)
@@ -57,8 +68,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   data: (items) => _DashboardBody(activities: items),
                   error: (error, stack) =>
                       Center(child: Text('Không thể tải dữ liệu: $error')),
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
+                  loading: () => const RunNowLoading(
+                    label: 'Đang tải cá nhân',
+                    revealDelay: Duration.zero,
+                  ),
                 )
           : ListView(
               padding: const EdgeInsets.all(16),
@@ -114,43 +127,29 @@ class _DashboardBody extends ConsumerStatefulWidget {
 
 class _DashboardBodyState extends ConsumerState<_DashboardBody> {
   final _scrollKey = GlobalKey();
-  final _weekKey = GlobalKey();
   final _powerKey = GlobalKey();
-  final _volumeKey = GlobalKey();
+  late DateTime _dataDate;
+  late List<ActivitySummary> _recent;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _updateActiveCard());
+    _recomputeData();
   }
 
-  /// Xác định card filter nào đang chiếm vùng trên cùng của viewport để nav bar
-  /// hiện đúng filter của card đó (null nếu đang là card không có filter).
-  void _updateActiveCard() {
-    if (!mounted) return;
-    final listBox = _scrollKey.currentContext?.findRenderObject() as RenderBox?;
-    if (listBox == null) return;
-    // Lấy đường ngang ~25% từ trên viewport làm mốc "đang xem"; card filter nào
-    // phủ qua mốc này thì nav hiện filter của card đó.
-    final threshold =
-        listBox.localToGlobal(Offset.zero).dy + listBox.size.height * 0.25;
-    DashboardCard? active;
-    for (final section in <(GlobalKey, DashboardCard)>[
-      (_weekKey, DashboardCard.week),
-      (_powerKey, DashboardCard.power),
-      (_volumeKey, DashboardCard.volume),
-    ]) {
-      final box = section.$1.currentContext?.findRenderObject() as RenderBox?;
-      if (box == null) continue;
-      final top = box.localToGlobal(Offset.zero).dy;
-      if (top <= threshold && top + box.size.height > threshold) {
-        active = section.$2;
-        break;
-      }
+  @override
+  void didUpdateWidget(covariant _DashboardBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.activities, widget.activities)) {
+      _recomputeData();
     }
-    if (ref.read(dashboardActiveCardProvider) != active) {
-      ref.read(dashboardActiveCardProvider.notifier).state = active;
-    }
+  }
+
+  void _recomputeData([DateTime? currentTime]) {
+    final now = currentTime ?? DateTime.now();
+    _dataDate = DateTime(now.year, now.month, now.day);
+    _recent = [...widget.activities]
+      ..sort((left, right) => right.startedAt.compareTo(left.startedAt));
   }
 
   @override
@@ -160,248 +159,598 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
         ? RunNowWebLayout.isDesktop(context)
         : screenWidth >= 900;
     final now = DateTime.now();
-    final weekMode = ref.watch(dashboardWeekModeProvider);
-    final comparison = switch (weekMode) {
-      _WeekViewMode.rollingSevenDays => rollingSevenDayComparison(
-        widget.activities,
-        now,
-      ),
-      _WeekViewMode.currentWeek => currentWeekComparison(
-        widget.activities,
-        now,
-      ),
-    };
-    final dailyDistances = switch (weekMode) {
-      _WeekViewMode.rollingSevenDays => rollingSevenDayDistances(
-        widget.activities,
-        now,
-      ),
-      _WeekViewMode.currentWeek => currentWeekDistances(widget.activities, now),
-    };
-    final monthSummary = currentMonthSummary(widget.activities, now);
-    final discipline = personalDisciplineStats(widget.activities, now);
-    final goals = ref.watch(trainingGoalsProvider);
+    if (_dataDate.year != now.year ||
+        _dataDate.month != now.month ||
+        _dataDate.day != now.day) {
+      _recomputeData(now);
+    }
+    final densityRange = ref.watch(dashboardPowerRangeProvider);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ref.read(dashboardActiveCardProvider) != DashboardCard.power) {
+        ref.read(dashboardActiveCardProvider.notifier).state =
+            DashboardCard.power;
+      }
+    });
     final header = Text(
       'Tổng quan',
       style: Theme.of(
         context,
       ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w600),
     );
-    final recent = [...widget.activities]
-      ..sort((left, right) => right.startedAt.compareTo(left.startedAt));
-
-    Widget summaryCard({required bool showControls}) => goals.when(
-      data: (item) => _SummaryCard(
-        comparison: comparison,
-        dailyDistances: dailyDistances,
-        goals: item,
-        monthDistanceMeters: monthSummary.distanceMeters,
-        mode: weekMode,
-        onModeChanged: (mode) =>
-            ref.read(dashboardWeekModeProvider.notifier).state = mode,
-        onEditGoals: () => _editTrainingGoals(context, ref, item),
-        showControls: showControls,
-      ),
-      error: (error, stack) => _SummaryCard(
-        comparison: comparison,
-        dailyDistances: dailyDistances,
-        goals: TrainingGoals.empty,
-        monthDistanceMeters: monthSummary.distanceMeters,
-        mode: weekMode,
-        onModeChanged: (mode) =>
-            ref.read(dashboardWeekModeProvider.notifier).state = mode,
-        onEditGoals: () =>
-            _editTrainingGoals(context, ref, TrainingGoals.empty),
-        showControls: showControls,
-      ),
-      loading: () => _SummaryCard(
-        comparison: comparison,
-        dailyDistances: dailyDistances,
-        goals: TrainingGoals.empty,
-        monthDistanceMeters: monthSummary.distanceMeters,
-        mode: weekMode,
-        onModeChanged: (mode) =>
-            ref.read(dashboardWeekModeProvider.notifier).state = mode,
-        onEditGoals: null,
-        showControls: showControls,
-      ),
+    final stability = _StabilitySnapshot.fromActivities(
+      widget.activities,
+      now,
+      densityRange,
     );
-
-    Widget powerCard({required bool showControls}) => PersonalPowerCard(
-      activities: widget.activities,
-      showControls: showControls,
-      range: ref.watch(dashboardPowerRangeProvider),
+    final overview = _SimpleStatsOverview(
+      stability: stability,
+      range: densityRange,
     );
-
-    Widget volumeCard({required bool showControls}) => TrainingVolumeChart(
-      activities: widget.activities,
-      period: ref.watch(dashboardVolumePeriodProvider),
-      mode: ref.watch(dashboardVolumeModeProvider),
-      showControls: showControls,
+    final journalEntry = _JournalEntryCard(
+      recent: _recent,
+      onTap: () => context.push('/profile/journal'),
     );
-
-    final recentCard = _RecentActivitiesCard(recent: recent);
 
     if (wide) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        if (ref.read(dashboardActiveCardProvider) != null) {
-          ref.read(dashboardActiveCardProvider.notifier).state = null;
-        }
-      });
-      final columns = screenWidth >= 1320 ? 3 : 2;
-      final webColumns = columns == 3
-          ? [
-              _DashboardWebColumn(
-                children: [
-                  _ShareableDashboardCard(
-                    title: '3i tiến độ tuần',
-                    builder: (_) => summaryCard(showControls: true),
-                  ),
-                  _ShareableDashboardCard(
-                    title: '3i kỷ luật & consistency',
-                    builder: (_) => DisciplineCard(
-                      stats: discipline,
-                      activities: widget.activities,
-                    ),
-                  ),
-                ],
-              ),
-              _DashboardWebColumn(
-                children: [
-                  _ShareableDashboardCard(
-                    title: '3i personal power',
-                    builder: (_) => powerCard(showControls: true),
-                  ),
-                ],
-              ),
-              _DashboardWebColumn(
-                children: [
-                  _ShareableDashboardCard(
-                    title: '3i km theo thời gian',
-                    builder: (_) => volumeCard(showControls: true),
-                  ),
-                  _ShareableDashboardCard(
-                    title: '3i kỷ lục cá nhân',
-                    builder: (_) => ActivityRecordsCard(
-                      title: 'KỶ LỤC CÁ NHÂN',
-                      entries: [
-                        for (final activity in widget.activities)
-                          ActivityRecordEntry(activity: activity),
-                      ],
-                    ),
-                  ),
-                  recentCard,
-                ],
-              ),
-            ]
-          : [
-              _DashboardWebColumn(
-                children: [
-                  _ShareableDashboardCard(
-                    title: '3i tiến độ tuần',
-                    builder: (_) => summaryCard(showControls: true),
-                  ),
-                  _ShareableDashboardCard(
-                    title: '3i personal power',
-                    builder: (_) => powerCard(showControls: true),
-                  ),
-                  _ShareableDashboardCard(
-                    title: '3i kỷ luật & consistency',
-                    builder: (_) => DisciplineCard(
-                      stats: discipline,
-                      activities: widget.activities,
-                    ),
-                  ),
-                ],
-              ),
-              _DashboardWebColumn(
-                children: [
-                  _ShareableDashboardCard(
-                    title: '3i km theo thời gian',
-                    builder: (_) => volumeCard(showControls: true),
-                  ),
-                  _ShareableDashboardCard(
-                    title: '3i kỷ lục cá nhân',
-                    builder: (_) => ActivityRecordsCard(
-                      title: 'KỶ LỤC CÁ NHÂN',
-                      entries: [
-                        for (final activity in widget.activities)
-                          ActivityRecordEntry(activity: activity),
-                      ],
-                    ),
-                  ),
-                  recentCard,
-                ],
-              ),
-            ];
-      return _DashboardWebGrid(columns: webColumns);
-    }
-
-    return NotificationListener<ScrollNotification>(
-      onNotification: (_) {
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => _updateActiveCard(),
-        );
-        return false;
-      },
-      child: ListView(
-        key: _scrollKey,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: header,
-          ),
-          const SizedBox(height: 12),
-          KeyedSubtree(
-            key: _weekKey,
-            child: _ShareableDashboardCard(
-              title: '3i tiến độ tuần',
-              builder: (sharing) => summaryCard(showControls: false),
-            ),
-          ),
-          const SizedBox(height: 20),
-          KeyedSubtree(
-            key: _powerKey,
-            child: _ShareableDashboardCard(
-              title: '3i personal power',
-              builder: (sharing) => powerCard(showControls: false),
-            ),
-          ),
-          const SizedBox(height: 20),
-          _ShareableDashboardCard(
-            title: '3i kỷ luật & consistency',
-            builder: (_) => DisciplineCard(
-              stats: discipline,
-              activities: widget.activities,
-            ),
-          ),
-          const SizedBox(height: 20),
-          _ShareableDashboardCard(
-            title: '3i kỷ lục cá nhân',
-            builder: (_) => ActivityRecordsCard(
-              title: 'KỶ LỤC CÁ NHÂN',
-              entries: [
-                for (final activity in widget.activities)
-                  ActivityRecordEntry(activity: activity),
+      return SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          screenWidth >= RunNowWebLayout.wideBreakpoint ? 18 : 0,
+          8,
+          screenWidth >= RunNowWebLayout.wideBreakpoint ? 18 : 0,
+          32,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            header,
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(flex: 2, child: overview),
+                const SizedBox(width: 18),
+                Expanded(child: journalEntry),
               ],
             ),
+          ],
+        ),
+      );
+    }
+
+    return ListView(
+      key: _scrollKey,
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: header,
+        ),
+        const SizedBox(height: 12),
+        KeyedSubtree(key: _powerKey, child: overview),
+        const SizedBox(height: 16),
+        journalEntry,
+      ],
+    );
+  }
+}
+
+class _SimpleStatsOverview extends StatelessWidget {
+  const _SimpleStatsOverview({required this.stability, required this.range});
+
+  final _StabilitySnapshot stability;
+  final PersonalPowerRange range;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return GlassPanel(
+      borderRadius: 0,
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      gradient: LinearGradient(
+        colors: [palette.glassStart, palette.glassEnd],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.track_changes_rounded,
+                color: palette.accent,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'ĐỘ ỔN ĐỊNH',
+                  style: TextStyle(
+                    color: onSurface.withValues(alpha: 0.62),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+              ),
+              Text(
+                personalPowerRangeLabel(range).toUpperCase(),
+                style: TextStyle(
+                  color: palette.accent,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.1,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 20),
-          KeyedSubtree(
-            key: _volumeKey,
-            child: _ShareableDashboardCard(
-              title: '3i km theo thời gian',
-              builder: (sharing) => volumeCard(showControls: false),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${stability.score}',
+                style: TextStyle(
+                  color: onSurface,
+                  fontSize: 58,
+                  height: 0.9,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: Text(
+                  'stability',
+                  style: TextStyle(
+                    color: onSurface.withValues(alpha: 0.48),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            stability.message,
+            style: TextStyle(
+              color: onSurface.withValues(alpha: 0.62),
+              fontSize: 13,
+              height: 1.45,
+              fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 20),
-          recentCard,
+          const SizedBox(height: 18),
+          _StabilityMetricRow(stability: stability),
+          const SizedBox(height: 22),
+          _DensitySection(days: stability.days, range: range),
         ],
       ),
     );
   }
+}
+
+class _StabilityMetricRow extends StatelessWidget {
+  const _StabilityMetricRow({required this.stability});
+
+  final _StabilitySnapshot stability;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _CompactMetric(
+            label: 'ACTIVE',
+            value: '${(stability.activeRatio * 100).round()}%',
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _CompactMetric(
+            label: 'NHỊP',
+            value: '${stability.activityCount}',
+            suffix: 'buổi',
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _CompactMetric(
+            label: 'KM',
+            value: formatDistance(stability.distanceMeters),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CompactMetric extends StatelessWidget {
+  const _CompactMetric({required this.label, required this.value, this.suffix});
+
+  final String label;
+  final String value;
+  final String? suffix;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: onSurface.withValues(alpha: 0.035),
+        border: Border(left: BorderSide(color: palette.accent, width: 3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: onSurface.withValues(alpha: 0.44),
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text.rich(
+            TextSpan(
+              text: value,
+              children: [
+                if (suffix != null)
+                  TextSpan(
+                    text: ' $suffix',
+                    style: TextStyle(
+                      color: onSurface.withValues(alpha: 0.58),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+              ],
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: palette.accent,
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DensitySection extends StatelessWidget {
+  const _DensitySection({required this.days, required this.range});
+
+  final List<_DensityDay> days;
+  final PersonalPowerRange range;
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final activeDays = days.where((day) => day.distanceMeters > 0).length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'MẬT ĐỘ',
+                style: TextStyle(
+                  color: onSurface.withValues(alpha: 0.62),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.1,
+                ),
+              ),
+            ),
+            Text(
+              '$activeDays/${days.length} ngày',
+              style: TextStyle(
+                color: context.runNowPalette.secondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        _DensityGrid(days: days, range: range),
+      ],
+    );
+  }
+}
+
+class _DensityGrid extends StatelessWidget {
+  const _DensityGrid({required this.days, required this.range});
+
+  final List<_DensityDay> days;
+  final PersonalPowerRange range;
+
+  @override
+  Widget build(BuildContext context) {
+    final columns = switch (range) {
+      PersonalPowerRange.currentMonth => 7,
+      PersonalPowerRange.currentWeek ||
+      PersonalPowerRange.rollingSevenDays => 7,
+    };
+    final maxDistance = days.fold<double>(
+      0,
+      (max, day) => day.distanceMeters > max ? day.distanceMeters : max,
+    );
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: days.length,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: columns,
+        crossAxisSpacing: 7,
+        mainAxisSpacing: 7,
+        childAspectRatio: 1.25,
+      ),
+      itemBuilder: (context, index) {
+        final day = days[index];
+        final label = range == PersonalPowerRange.currentMonth
+            ? '${day.date.day}'
+            : _densityWeekdayLabel(day.date);
+        return _DensityCell(day: day, label: label, maxDistance: maxDistance);
+      },
+    );
+  }
+}
+
+class _DensityCell extends StatelessWidget {
+  const _DensityCell({
+    required this.day,
+    required this.label,
+    required this.maxDistance,
+  });
+
+  final _DensityDay day;
+  final String label;
+  final double maxDistance;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final active = day.distanceMeters > 0;
+    final strength = maxDistance <= 0
+        ? 0.0
+        : (day.distanceMeters / maxDistance).clamp(0.0, 1.0);
+    return Tooltip(
+      message:
+          '${day.date.day}/${day.date.month}: ${(day.distanceMeters / 1000).toStringAsFixed(1)} km',
+      child: Container(
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: active
+              ? Color.lerp(
+                  palette.accent.withValues(alpha: 0.28),
+                  palette.accent,
+                  strength,
+                )
+              : onSurface.withValues(alpha: 0.045),
+          border: Border.all(
+            color: active
+                ? palette.accent.withValues(alpha: 0.28)
+                : onSurface.withValues(alpha: 0.08),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: active ? palette.ink : onSurface.withValues(alpha: 0.38),
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _JournalEntryCard extends StatelessWidget {
+  const _JournalEntryCard({required this.recent, required this.onTap});
+
+  final List<ActivitySummary> recent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final latest = recent.isEmpty ? null : recent.first;
+    return InkWell(
+      onTap: onTap,
+      child: GlassPanel(
+        borderRadius: 0,
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          children: [
+            Icon(Icons.list_alt_rounded, color: palette.accent, size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Nhật ký session',
+                    style: TextStyle(
+                      color: onSurface,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    latest == null
+                        ? 'Chưa có buổi chạy nào.'
+                        : '${recent.length} buổi · gần nhất ${formatDistance(latest.distanceMeters)}',
+                    style: TextStyle(
+                      color: onSurface.withValues(alpha: 0.56),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: onSurface.withValues(alpha: 0.42),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StabilitySnapshot {
+  const _StabilitySnapshot({
+    required this.score,
+    required this.activeRatio,
+    required this.activityCount,
+    required this.distanceMeters,
+    required this.days,
+    required this.message,
+  });
+
+  final int score;
+  final double activeRatio;
+  final int activityCount;
+  final double distanceMeters;
+  final List<_DensityDay> days;
+  final String message;
+
+  factory _StabilitySnapshot.fromActivities(
+    List<ActivitySummary> activities,
+    DateTime now,
+    PersonalPowerRange range,
+  ) {
+    final period = _densityPeriod(now, range);
+    final days = [
+      for (var index = 0; index < period.dayCount; index++)
+        _DensityDay(date: period.start.add(Duration(days: index))),
+    ];
+    final totals = {for (final day in days) _statsDay(day.date): 0.0};
+    var activityCount = 0;
+    var distanceMeters = 0.0;
+    for (final activity in activities) {
+      if (activity.startedAt.isBefore(period.start) ||
+          !activity.startedAt.isBefore(period.end)) {
+        continue;
+      }
+      final day = _statsDay(activity.startedAt);
+      totals[day] = (totals[day] ?? 0) + activity.distanceMeters;
+      activityCount++;
+      distanceMeters += activity.distanceMeters;
+    }
+    final filledDays = [
+      for (final day in days)
+        _DensityDay(
+          date: day.date,
+          distanceMeters: totals[_statsDay(day.date)] ?? 0,
+        ),
+    ];
+    final activeDays = filledDays.where((day) => day.distanceMeters > 0).length;
+    final activeRatio = filledDays.isEmpty
+        ? 0.0
+        : activeDays / filledDays.length;
+    final streak = _densityCurrentStreak(filledDays);
+    final streakTarget = range == PersonalPowerRange.currentMonth ? 6.0 : 3.0;
+    final rhythmTarget = range == PersonalPowerRange.currentMonth ? 12.0 : 3.0;
+    final score =
+        ((activeRatio.clamp(0.0, 1.0) * 0.45) +
+                ((streak / streakTarget).clamp(0.0, 1.0) * 0.35) +
+                ((activityCount / rhythmTarget).clamp(0.0, 1.0) * 0.20))
+            .round()
+            .clamp(0, 100);
+    return _StabilitySnapshot(
+      score: score,
+      activeRatio: activeRatio,
+      activityCount: activityCount,
+      distanceMeters: distanceMeters,
+      days: filledDays,
+      message: _stabilityMessage(score),
+    );
+  }
+}
+
+class _DensityDay {
+  const _DensityDay({required this.date, this.distanceMeters = 0});
+
+  final DateTime date;
+  final double distanceMeters;
+}
+
+({DateTime start, DateTime end, int dayCount}) _densityPeriod(
+  DateTime now,
+  PersonalPowerRange range,
+) {
+  final today = _statsDay(now);
+  return switch (range) {
+    PersonalPowerRange.currentWeek => (
+      start: startOfCurrentWeek(now),
+      end: startOfCurrentWeek(now).add(const Duration(days: 7)),
+      dayCount: 7,
+    ),
+    PersonalPowerRange.rollingSevenDays => (
+      start: today.subtract(const Duration(days: 6)),
+      end: today.add(const Duration(days: 1)),
+      dayCount: 7,
+    ),
+    PersonalPowerRange.currentMonth => (
+      start: DateTime(now.year, now.month),
+      end: DateTime(now.year, now.month + 1),
+      dayCount: DateTime(
+        now.year,
+        now.month + 1,
+      ).difference(DateTime(now.year, now.month)).inDays,
+    ),
+  };
+}
+
+int _densityCurrentStreak(List<_DensityDay> days) {
+  var streak = 0;
+  for (final day in days.reversed) {
+    if (day.distanceMeters <= 0) break;
+    streak++;
+  }
+  return streak;
+}
+
+DateTime _statsDay(DateTime date) => DateTime(date.year, date.month, date.day);
+
+String _densityWeekdayLabel(DateTime date) {
+  return switch (date.weekday) {
+    DateTime.monday => 'T2',
+    DateTime.tuesday => 'T3',
+    DateTime.wednesday => 'T4',
+    DateTime.thursday => 'T5',
+    DateTime.friday => 'T6',
+    DateTime.saturday => 'T7',
+    _ => 'CN',
+  };
+}
+
+String _stabilityMessage(int score) {
+  if (score >= 82) return 'Nhịp chạy rất chắc. Giữ đều, đừng vội tăng tải.';
+  if (score >= 60) {
+    return 'Nền ổn định đang hình thành. Chỉ cần đều thêm một chút.';
+  }
+  if (score >= 35) return 'Có tín hiệu tốt, nhưng mật độ còn thưa.';
+  return 'Bắt đầu bằng những buổi ngắn. Điều cần xây là nhịp.';
 }
 
 class _DashboardWebGrid extends StatelessWidget {
@@ -508,7 +857,7 @@ class DashboardNavFilter extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final activeCard = ref.watch(dashboardActiveCardProvider);
     final card = branchActive
-        ? activeCard ?? (showFallback ? DashboardCard.week : null)
+        ? activeCard ?? (showFallback ? DashboardCard.power : null)
         : null;
     final Widget child = switch (card) {
       DashboardCard.week => const _WeekModeNavControl(),

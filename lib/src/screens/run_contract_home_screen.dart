@@ -10,6 +10,7 @@ import 'package:myrun/src/run_contracts/widgets/run_contract_card.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/web_layout.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/run_now_loading.dart';
 
 class RunContractHomeScreen extends ConsumerStatefulWidget {
   const RunContractHomeScreen({super.key});
@@ -20,21 +21,108 @@ class RunContractHomeScreen extends ConsumerStatefulWidget {
 }
 
 class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
-  final _recalculatedBatchKeys = <String>{};
+  static const _pageSize = 20;
+
   final _joining = <String>{};
+  final _pageItems = <RunContract>[];
   _ContractFilter _filter = _ContractFilter.active;
+  Object? _pageCursor;
+  Object? _pageError;
+  StackTrace? _pageStackTrace;
+  bool _loadingInitial = true;
+  bool _loadingMore = false;
+  bool _hasMore = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_loadFirstPage);
+  }
+
+  AsyncValue<List<RunContract>> get _pageSource {
+    if (_loadingInitial) return const AsyncLoading();
+    if (_pageError != null) {
+      return AsyncError(_pageError!, _pageStackTrace ?? StackTrace.empty);
+    }
+    return AsyncData(List.unmodifiable(_pageItems));
+  }
+
+  Future<void> _loadFirstPage() async {
+    if (!mounted) return;
+    setState(() {
+      _pageItems.clear();
+      _pageCursor = null;
+      _pageError = null;
+      _pageStackTrace = null;
+      _hasMore = true;
+      _loadingInitial = true;
+      _loadingMore = false;
+    });
+    await _loadPage(reset: true);
+  }
+
+  Future<void> _loadNextPage() => _loadPage(reset: false);
+
+  Future<void> _loadPage({required bool reset}) async {
+    if (!reset && (!_hasMore || _loadingInitial || _loadingMore)) return;
+    if (!reset) setState(() => _loadingMore = true);
+    final requestedFilter = _filter;
+    try {
+      final repository = ref.read(runContractRepositoryProvider);
+      final page = switch (requestedFilter) {
+        _ContractFilter.active => repository.fetchClubContractsPage(
+          limit: _pageSize,
+          cursor: reset ? null : _pageCursor,
+        ),
+        _ContractFilter.completed => repository.fetchMyContractHistoryPage(
+          status: RunContractStatus.completed,
+          limit: _pageSize,
+          cursor: reset ? null : _pageCursor,
+        ),
+        _ContractFilter.failed => repository.fetchMyContractHistoryPage(
+          status: RunContractStatus.failed,
+          limit: _pageSize,
+          cursor: reset ? null : _pageCursor,
+        ),
+      };
+      final result = await page;
+      if (!mounted || requestedFilter != _filter) return;
+      setState(() {
+        if (reset) _pageItems.clear();
+        final existingIds = _pageItems.map((item) => item.id).toSet();
+        _pageItems.addAll(
+          result.contracts.where((item) => existingIds.add(item.id)),
+        );
+        _pageCursor = result.nextCursor;
+        _hasMore = result.hasMore;
+        _pageError = null;
+        _pageStackTrace = null;
+      });
+    } catch (error, stackTrace) {
+      if (!mounted || requestedFilter != _filter) return;
+      setState(() {
+        _pageError = error;
+        _pageStackTrace = stackTrace;
+      });
+    } finally {
+      if (mounted && requestedFilter == _filter) {
+        setState(() {
+          _loadingInitial = false;
+          _loadingMore = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final connected = ref.watch(stravaConnectionProvider);
+    final connectionLoading = ref.watch(stravaConnectionLoadingProvider);
     final sync = ref.watch(syncControllerProvider);
-    final syncRevision = sync.completedRevision;
     final profile = ref.watch(userProfileProvider).value;
     final members = ref.watch(membersProvider).value ?? const <MemberProfile>[];
     final currentUid = ref.watch(firebaseUserProvider).value?.uid;
     final myActive = ref.watch(myActiveContractsProvider);
-    final clubContracts = ref.watch(clubRunContractsProvider);
-    final myHistory = ref.watch(myContractHistoryProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -54,68 +142,52 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.small(
-        tooltip: connected ? 'Tạo kèo' : 'Kết nối Strava',
-        onPressed: () =>
-            _createContract(myActive.value ?? const [], connected, currentUid),
-        child: Icon(connected ? Icons.add_rounded : Icons.link_rounded),
+        tooltip: connectionLoading
+            ? 'Đang kiểm tra Strava'
+            : connected
+            ? 'Tạo kèo'
+            : 'Kết nối Strava',
+        onPressed: connectionLoading
+            ? null
+            : () => _createContract(
+                myActive.value ?? const [],
+                connected,
+                currentUid,
+              ),
+        child: Icon(
+          connectionLoading
+              ? Icons.more_horiz_rounded
+              : connected
+              ? Icons.add_rounded
+              : Icons.link_rounded,
+        ),
       ),
       body: myActive.when(
         data: (mine) {
-          _scheduleRecalculations(
-            connected: connected,
-            contracts: mine,
-            syncRevision: syncRevision,
-            currentUid: currentUid,
-          );
           return _ContractFeed(
-            contracts: clubContracts,
-            history: myHistory,
+            source: _pageSource,
             myContracts: mine,
             currentUid: currentUid,
             currentProfile: profile,
             members: members,
             joining: _joining,
             filter: _filter,
-            onFilterChanged: (filter) => setState(() => _filter = filter),
+            hasMore: _hasMore,
+            loadingMore: _loadingMore,
+            onFilterChanged: (filter) {
+              if (_filter == filter) return;
+              _filter = filter;
+              _loadFirstPage();
+            },
+            onLoadMore: _loadNextPage,
             onJoin: _joinContract,
           );
         },
         error: (error, stack) =>
             Center(child: Text('Không thể tải kèo của bạn: $error')),
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const RunNowLoading(label: 'Đang tải kèo'),
       ),
     );
-  }
-
-  void _scheduleRecalculations({
-    required bool connected,
-    required List<RunContract> contracts,
-    required int syncRevision,
-    required String? currentUid,
-  }) {
-    if (!connected || currentUid == null) return;
-    final pending =
-        contracts
-            .where((contract) => !contract.completedBy(currentUid))
-            .toList()
-          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    if (pending.isEmpty) return;
-    final key = '$syncRevision:${pending.map((item) => item.id).join(',')}';
-    if (!_recalculatedBatchKeys.add(key)) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-      final controller = ref.read(runContractControllerProvider);
-      // Một activity chỉ thuộc một kèo. Chạy tuần tự để kèo trước lưu claim
-      // trước khi kèo sau đọc danh sách activity đã được sử dụng.
-      for (final contract in pending) {
-        if (!mounted) return;
-        if (contract.creatorUid == currentUid) {
-          await controller.recalculate(contract);
-        } else {
-          await controller.recalculateParticipant(contract);
-        }
-      }
-    });
   }
 
   Future<void> _createContract(
@@ -141,7 +213,8 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
       );
       return;
     }
-    context.push('/contracts/new');
+    await context.push('/contracts/new');
+    if (mounted) await _loadFirstPage();
   }
 
   Future<void> _joinContract(RunContract contract) async {
@@ -149,6 +222,7 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
     setState(() {});
     try {
       await ref.read(runContractControllerProvider).join(contract);
+      if (mounted) await _loadFirstPage();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -262,27 +336,31 @@ class _ContractSyncActionState extends State<_ContractSyncAction>
 
 class _ContractFeed extends StatelessWidget {
   const _ContractFeed({
-    required this.contracts,
-    required this.history,
+    required this.source,
     required this.myContracts,
     required this.currentUid,
     required this.currentProfile,
     required this.members,
     required this.joining,
     required this.filter,
+    required this.hasMore,
+    required this.loadingMore,
     required this.onFilterChanged,
+    required this.onLoadMore,
     required this.onJoin,
   });
 
-  final AsyncValue<List<RunContract>> contracts;
-  final AsyncValue<List<RunContract>> history;
+  final AsyncValue<List<RunContract>> source;
   final List<RunContract> myContracts;
   final String? currentUid;
   final UserProfile? currentProfile;
   final List<MemberProfile> members;
   final Set<String> joining;
   final _ContractFilter filter;
+  final bool hasMore;
+  final bool loadingMore;
   final ValueChanged<_ContractFilter> onFilterChanged;
+  final VoidCallback onLoadMore;
   final ValueChanged<RunContract> onJoin;
 
   @override
@@ -290,7 +368,6 @@ class _ContractFeed extends StatelessWidget {
     final wide = kIsWeb
         ? RunNowWebLayout.isDesktop(context)
         : MediaQuery.sizeOf(context).width >= 900;
-    final source = filter == _ContractFilter.active ? contracts : history;
     return Column(
       children: [
         Padding(
@@ -307,47 +384,62 @@ class _ContractFeed extends StatelessWidget {
                   myContracts,
                   currentUid,
                 ),
-                _ContractFilter.failed => list
-                    .where(
-                      (contract) => contract.status == RunContractStatus.failed,
-                    )
-                    .toList(),
+                _ContractFilter.failed => list,
               };
+              final canLoadMore = hasMore;
               final profiles = {
                 for (final member in members) member.uid: member,
               };
-              return ListView(
-                padding: EdgeInsets.fromLTRB(
-                  wide ? 20 : 16,
-                  0,
-                  wide ? 20 : 16,
-                  130,
-                ),
-                children: [
-                  if (visible.isEmpty)
-                    _EmptyContracts(filter: filter)
-                  else if (wide)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Wrap(
-                        spacing: 18,
-                        runSpacing: 18,
-                        children: [
-                          for (final contract in visible)
-                            SizedBox(
-                              width: 440,
-                              child: _contractCard(context, contract, profiles),
-                            ),
-                        ],
+              if (visible.isEmpty) {
+                return ListView(
+                  padding: EdgeInsets.fromLTRB(
+                    wide ? 20 : 16,
+                    0,
+                    wide ? 20 : 16,
+                    130,
+                  ),
+                  children: [_EmptyContracts(filter: filter)],
+                );
+              }
+              if (wide) {
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(40, 0, 40, 130),
+                  children: [
+                    Wrap(
+                      spacing: 18,
+                      runSpacing: 18,
+                      children: [
+                        for (final contract in visible)
+                          SizedBox(
+                            width: 440,
+                            child: _contractCard(context, contract, profiles),
+                          ),
+                      ],
+                    ),
+                    if (canLoadMore) ...[
+                      const SizedBox(height: 20),
+                      _LoadMoreContracts(
+                        onPressed: loadingMore ? null : onLoadMore,
+                        loading: loadingMore,
                       ),
-                    )
-                  else
-                    for (var index = 0; index < visible.length; index++) ...[
-                      _contractCard(context, visible[index], profiles),
-                      if (index != visible.length - 1)
-                        const SizedBox(height: 14),
                     ],
-                ],
+                  ],
+                );
+              }
+              final itemCount = visible.length + (canLoadMore ? 1 : 0);
+              return ListView.separated(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 130),
+                itemCount: itemCount,
+                separatorBuilder: (_, _) => const SizedBox(height: 14),
+                itemBuilder: (context, index) {
+                  if (index == visible.length) {
+                    return _LoadMoreContracts(
+                      onPressed: loadingMore ? null : onLoadMore,
+                      loading: loadingMore,
+                    );
+                  }
+                  return _contractCard(context, visible[index], profiles);
+                },
               );
             },
             error: (error, stack) => Center(
@@ -356,7 +448,7 @@ class _ContractFeed extends StatelessWidget {
                 child: Text('Không thể tải danh sách kèo: $error'),
               ),
             ),
-            loading: () => const Center(child: CircularProgressIndicator()),
+            loading: () => const RunNowLoading(label: 'Đang tải kèo'),
           ),
         ),
       ],
@@ -394,6 +486,27 @@ class _ContractFeed extends StatelessWidget {
       onTap: () => context.push('/contracts/${contract.id}'),
     );
   }
+}
+
+class _LoadMoreContracts extends StatelessWidget {
+  const _LoadMoreContracts({required this.onPressed, required this.loading});
+
+  final VoidCallback? onPressed;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: TextButton.icon(
+      onPressed: onPressed,
+      icon: loading
+          ? const SizedBox.square(
+              dimension: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.expand_more_rounded),
+      label: Text(loading ? 'Đang tải' : 'Tải thêm'),
+    ),
+  );
 }
 
 List<RunContract> _mergeContracts(

@@ -1,5 +1,6 @@
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/activity_eligibility.dart';
+import 'package:myrun/src/run_contracts/route_matching.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_period.dart';
 
@@ -110,6 +111,23 @@ RunContractProgress calculateRunContractProgress(
       return RunContractProgress(
         value: best.distanceMeters / 1000,
         eligibleActivities: [best],
+      );
+    case RunContractMetric.routeCompletion:
+      final route = contract.route;
+      if (route == null) {
+        return const RunContractProgress(value: 0, eligibleActivities: []);
+      }
+      final matching = eligible
+          .where(
+            (activity) => evaluateRouteMatch(
+              activityPoints: activity.routePoints,
+              routePoints: route.points,
+            ).matches(),
+          )
+          .toList();
+      return RunContractProgress(
+        value: matching.length.toDouble(),
+        eligibleActivities: matching,
       );
   }
 }

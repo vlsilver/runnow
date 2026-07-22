@@ -315,7 +315,7 @@ ThemeData buildRunNowTheme(
   return _baseRunNowTheme(colorScheme).copyWith(
     extensions: [palette],
     brightness: appearance.brightness,
-    scaffoldBackgroundColor: Colors.transparent,
+    scaffoldBackgroundColor: palette.background,
     appBarTheme: AppBarTheme(
       backgroundColor: Colors.transparent,
       foregroundColor: palette.foreground,

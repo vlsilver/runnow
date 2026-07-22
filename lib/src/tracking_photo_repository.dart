@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
@@ -6,10 +5,9 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/tracking_session.dart';
 
 class TrackingPhotoRepository {
-  const TrackingPhotoRepository(this._auth, this._firestore, this._storage);
+  const TrackingPhotoRepository(this._auth, this._storage);
 
   final FirebaseAuth _auth;
-  final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
 
   Future<ActivityPhoto> upload({
@@ -38,14 +36,6 @@ class TrackingPhotoRepository {
       distanceMeters: draft.distanceMeters,
       storagePath: storagePath,
     );
-    await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('activities')
-        .doc(activityId)
-        .set({
-          'photos': FieldValue.arrayUnion([photo.toMap()]),
-        }, SetOptions(merge: true));
     return photo;
   }
 }
