@@ -37,7 +37,7 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data
-                    android:scheme="com.runnow.3aeidiot"
+                    android:scheme="com.threei.run"
                     android:host="localhost"
                     android:path="/oauth"/>
             </intent-filter>

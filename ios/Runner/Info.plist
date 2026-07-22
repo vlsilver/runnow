@@ -29,13 +29,13 @@
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.runnow.3aeidiot</string>
+				<string>com.threei.run</string>
 			</array>
 		</dict>
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.267607013114-8fp8gu3jqkk1jsht4dqsmsjlucl4vhf0</string>
+				<string>com.googleusercontent.apps.267607013114-3694vlec3np6l826qnlgja6ijaludugk</string>
 			</array>
 		</dict>
 	</array>

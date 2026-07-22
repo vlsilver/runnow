@@ -16,9 +16,25 @@ android/.gradle/
 firebase-debug.log
 *-debug.log
 .firebase/
+# Local environment files. Keep committed templates only.
 .env
+.env.*
+!.env.example
+!**/.env.example
 .secret/
 GoogleService-Info.plist
+.firebaserc
+
+# Local Firebase Admin credentials.
+*-firebase-adminsdk-*.json
+service-account*.json
+
+# Go build/test/profiling artifacts.
+backend/bin/
+backend/tmp/
+*.test
+coverage.out
+*.prof
 .claude/
 .vscode/
 .idea/

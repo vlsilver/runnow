@@ -84,8 +84,8 @@ qua Club và đang thử nghiệm khả năng tự ghi lại buổi chạy bằn
 - Thành viên Public có trang tổng quan và nhật ký riêng để người khác xem.
 - Bảng xếp hạng theo km, thời gian, consistency, pace, long run và số buổi.
 - Khoảng xếp hạng: tuần hiện tại, 7 ngày gần nhất và tháng hiện tại.
-- Aggregate leaderboard lưu riêng để không tải toàn bộ activity của mọi thành
-  viên mỗi lần mở Club.
+- Backend worker tính aggregate sau webhook/backfill/tracking save và lưu một
+  document leaderboard cho mỗi thành viên; Club không tải lịch sử của mọi user.
 - Tổng kết Club, power chart, đóng góp theo thành viên và nhật ký chung.
 - Các card tổng kết và leaderboard hỗ trợ nhấn giữ để chia sẻ.
 
@@ -120,28 +120,28 @@ session overlap trên 30% thời lượng với Strava Run, Strava là bản ch�
 | Phạm vi | Trạng thái | Ghi chú |
 | --- | --- | --- |
 | Google login và hồ sơ | Beta ổn định | Cần theo dõi lỗi OAuth trên từng platform |
-| Strava sync và activity detail | Beta ổn định | Direct client integration, chưa phù hợp public production |
+| Strava sync và activity detail | Backend beta | OAuth, token, webhook, repair và hydrate do Cloud Run sở hữu |
 | Dashboard và nhật ký | Beta ổn định | Strava ưu tiên khi trùng 3i |
-| Club và leaderboard | Beta | Một Club chung; aggregate do client cập nhật |
+| Club và leaderboard | Backend beta | Aggregate do worker tính; client chỉ đọc |
 | Tracking bằng điện thoại | Trial | Cần thêm dữ liệu chạy thật và so sánh Garmin/Strava |
 | Background tracking | Trial | Cần acceptance test nhiều thiết bị và trạng thái pin/mạng |
 | Live tracking trong Club | MVP | Chỉ profile Public; chưa có consent riêng cho từng session |
-| Web | Beta | Viewer tốt hơn recorder; Strava OAuth web vẫn là dev-only |
+| Web | Beta | Viewer tốt hơn recorder; Strava OAuth đi qua backend |
 
 ## Product Risks
 
 1. **Live-location consent:** hiện profile Public đồng nghĩa session tracking được
    publish cho Club. Trước khi mở rộng tester, cần toggle `Chia sẻ live với Club`
    theo từng buổi chạy và mặc định Off.
-2. **Strava credential:** client secret hiện nằm trong Flutter config theo quyết
-   định demo nội bộ. Trước public launch phải chuyển OAuth exchange/refresh sang
-   backend service.
+2. **Backend rollout:** bản cập nhật chuyển toàn bộ Strava credential sang Cloud
+   Run. Tester cũ phải kết nối lại Strava một lần; sau đó nên rotate client secret
+   từng được đóng gói trong bản demo cũ.
 3. **Tracking accuracy:** core GPS chưa đủ bằng chứng để trở thành nguồn thành
    tích. Cần test route thoáng, đô thị, dừng đèn đỏ, mất mạng, khóa màn hình và
    pin yếu trên nhiều thiết bị.
-4. **Client-owned aggregate:** leaderboard phù hợp nhóm nhỏ nhưng cần backend
-   aggregation hoặc trusted job nếu quy mô tăng hoặc dữ liệu trở thành cạnh
-   tranh chính thức.
+4. **Aggregate migration:** cần chạy một lần rebuild cho toàn bộ user hiện hữu
+   khi rollout backend, rồi đối chiếu với bảng xếp hạng cũ trước khi xoá dữ liệu
+   legacy.
 5. **No crash recovery guarantee:** local draft giảm mất dữ liệu, nhưng app bị
    force-close không thể tiếp tục tracking như đồng hồ chuyên dụng.
 
@@ -253,7 +253,7 @@ liveSessions/{sessionId}
 
 Bundle/application IDs hiện tại:
 
-- iOS: `com.runnow.3aeidiot`
+- iOS: `com.threei.run`
 - Android: `com.threeaeidiot.runnow`
 
 ### Firebase
@@ -290,8 +290,7 @@ flutter build apk --release
 Build và deploy web:
 
 ```sh
-flutter build web --release
-firebase deploy --only firestore:rules,firestore:indexes,storage,hosting
+scripts/deploy_web.sh
 ```
 
 Kiểm tra iOS trước acceptance test:
