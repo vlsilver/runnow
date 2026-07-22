@@ -139,7 +139,7 @@ class _JourneyMapState extends State<JourneyMap> {
               TileLayer(
                 key: ValueKey(tileTemplate),
                 urlTemplate: tileTemplate,
-                userAgentPackageName: 'com.threeaeidiot.runnow',
+                userAgentPackageName: 'com.threei.run',
                 retinaMode: RetinaMode.isHighDensity(context),
               ),
               PolylineLayer(

@@ -181,7 +181,7 @@ class RunNowApp extends ConsumerWidget {
       darkTone: themeController.darkTone,
     );
     return MaterialApp.router(
-      title: '3i',
+      title: '3i Run',
       debugShowCheckedModeBanner: false,
       theme: selectedTheme,
       darkTheme: selectedTheme,

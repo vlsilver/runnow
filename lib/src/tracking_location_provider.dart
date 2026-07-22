@@ -78,9 +78,9 @@ class GeolocatorTrackingLocationProvider implements TrackingLocationProvider {
         distanceFilter: 5,
         intervalDuration: const Duration(seconds: 1),
         foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationTitle: '3i đang tracking',
+          notificationTitle: '3i Run đang tracking',
           notificationText: 'Đang ghi lại route, distance và pace.',
-          notificationChannelName: '3i Tracking',
+          notificationChannelName: '3i Run Tracking',
           enableWakeLock: true,
           setOngoing: true,
           color: RunNowThemeTokens.waterMain,

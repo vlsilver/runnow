@@ -656,7 +656,7 @@ class _LiveMap extends StatelessWidget {
       children: [
         TileLayer(
           urlTemplate: _liveRouteTileTemplate,
-          userAgentPackageName: 'com.threeaeidiot.runnow',
+          userAgentPackageName: 'com.threei.run',
           retinaMode: RetinaMode.isHighDensity(context),
         ),
         PolylineLayer(

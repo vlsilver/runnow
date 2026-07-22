@@ -725,7 +725,7 @@ class _RouteDrawingMap extends StatelessWidget {
         TileLayer(
           key: ValueKey(tileTemplate),
           urlTemplate: tileTemplate,
-          userAgentPackageName: 'com.threeaeidiot.runnow',
+          userAgentPackageName: 'com.threei.run',
           retinaMode: RetinaMode.isHighDensity(context),
         ),
         if (points.length >= 2)
@@ -1360,7 +1360,7 @@ Future<List<_GeocodingResult>> _searchPlace(String query) async {
     'limit': '5',
   });
   final response = await http
-      .get(uri, headers: {'User-Agent': '3i-app (com.threeaeidiot.runnow)'})
+      .get(uri, headers: {'User-Agent': '3i-app (com.threei.run)'})
       .timeout(const Duration(seconds: 8));
   if (response.statusCode != 200) return const [];
   final decoded = jsonDecode(response.body);
