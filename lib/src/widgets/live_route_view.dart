@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:myrun/src/widgets/map_attribution.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
@@ -659,6 +660,7 @@ class _LiveMap extends StatelessWidget {
           userAgentPackageName: 'com.threei.run',
           retinaMode: RetinaMode.isHighDensity(context),
         ),
+        const MapAttribution(),
         PolylineLayer(
           polylines: [
             Polyline(

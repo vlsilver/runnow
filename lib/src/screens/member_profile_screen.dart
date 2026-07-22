@@ -103,7 +103,6 @@ class MemberJournalScreen extends ConsumerWidget {
                     itemBuilder: (context, index) => RepaintBoundary(
                       child: ActivityTile(
                         activity: activities[index],
-                        sequence: index + 1,
                         ownerUid: uid,
                       ),
                     ),
@@ -290,7 +289,6 @@ class _MemberDashboardState extends State<_MemberDashboard> {
                       )
                         ActivityTile(
                           activity: recent[index],
-                          sequence: index + 1,
                           ownerUid: widget.uid,
                         ),
                   ],
@@ -356,11 +354,7 @@ class _MemberDashboardState extends State<_MemberDashboard> {
             ),
             const SizedBox(height: 16),
             for (var index = 0; index < recent.take(10).length; index++)
-              ActivityTile(
-                activity: recent[index],
-                sequence: index + 1,
-                ownerUid: widget.uid,
-              ),
+              ActivityTile(activity: recent[index], ownerUid: widget.uid),
           ],
         ],
       ),

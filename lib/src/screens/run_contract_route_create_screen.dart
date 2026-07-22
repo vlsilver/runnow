@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:myrun/src/widgets/map_attribution.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
@@ -728,6 +729,7 @@ class _RouteDrawingMap extends StatelessWidget {
           userAgentPackageName: 'com.threei.run',
           retinaMode: RetinaMode.isHighDensity(context),
         ),
+        const MapAttribution(),
         if (points.length >= 2)
           PolylineLayer(
             polylines: [

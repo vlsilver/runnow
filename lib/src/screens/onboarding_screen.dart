@@ -5,13 +5,74 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/auth.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
-import 'package:myrun/src/widgets/glass.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
   @override
   ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
+}
+
+/// Nút đăng nhập dùng chung cho cả Google lẫn Apple — cùng chiều cao, cùng
+/// bo góc, chỉ khác màu. Giữ hai nút đồng cỡ là yêu cầu của Apple: nút Sign
+/// in with Apple không được kém nổi bật hơn lựa chọn đăng nhập khác.
+class _SignInButton extends StatelessWidget {
+  const _SignInButton({
+    required this.label,
+    required this.icon,
+    required this.background,
+    required this.foreground,
+    required this.onPressed,
+    this.iconSize = 22,
+  });
+
+  final String label;
+  final IconData icon;
+  final double iconSize;
+  final Color background;
+  final Color foreground;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: FilledButton(
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: background,
+          foregroundColor: foreground,
+          disabledBackgroundColor: background.withValues(alpha: 0.4),
+          disabledForegroundColor: foreground.withValues(alpha: 0.6),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: iconSize),
+            const SizedBox(width: 8),
+            // Flexible + ellipsis: chữ dài ra khi người dùng bật cỡ chữ lớn
+            // trong trợ năng sẽ co lại thay vì tràn ngang khỏi nút.
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
@@ -48,135 +109,126 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
   Widget build(BuildContext context) {
     final controller = ref.watch(authControllerProvider);
     final palette = context.runNowPalette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
           child: Center(
-            child: GlassPanel(
-              padding: const EdgeInsets.all(28),
-              gradient: LinearGradient(
-                colors: [palette.glassStart, palette.glassEnd],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedBuilder(
-                    animation: _controller,
-                    builder: (context, child) {
-                      final pulse = 0.92 + (_controller.value * 0.12);
-                      return Transform.scale(
-                        scale: pulse,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Container(
-                              width: 106,
-                              height: 106,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: palette.secondary.withValues(
-                                    alpha: 0.18 + _controller.value * 0.28,
-                                  ),
+            // Nút đăng nhập rộng bằng cả màn hình trên desktop trông rất tệ
+            // và khó bấm — khoá bề ngang lại quanh cỡ một cột điện thoại.
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 380),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Chính là file icon đang ship (assets/brand/3i-mark.png là
+                    // bản sao của AppIcon 1024), bo góc theo tỉ lệ squircle của
+                    // iOS để trông đúng như icon người dùng thấy ngoài màn hình
+                    // chính — thay vì cắt tròn thành hình khác.
+                    AnimatedBuilder(
+                      animation: _controller,
+                      builder: (context, child) {
+                        return DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(22),
+                            boxShadow: [
+                              BoxShadow(
+                                color: palette.secondary.withValues(
+                                  alpha: 0.16 + _controller.value * 0.16,
                                 ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: palette.secondary.withValues(
-                                      alpha: 0.20 + _controller.value * 0.22,
-                                    ),
-                                    blurRadius: 34,
-                                    spreadRadius: -8,
-                                  ),
-                                ],
+                                blurRadius: 30,
+                                spreadRadius: -6,
+                                offset: const Offset(0, 8),
                               ),
-                            ),
-                            ClipOval(
-                              child: Image.asset(
-                                'assets/brand/3i-mark.png',
-                                width: 82,
-                                height: 82,
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
+                          child: child,
+                        );
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(22),
+                        child: Image.asset(
+                          'assets/brand/3i-mark.png',
+                          width: 96,
+                          height: 96,
+                          fit: BoxFit.cover,
                         ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    '3i',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.displaySmall,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'INTENT · IMPROVE · INVOLVE',
-                    style: TextStyle(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.onSurface.withValues(alpha: 0.54),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    _quote,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: palette.tertiary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      height: 1.35,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Đăng nhập để tham gia cộng đồng chạy. Kết nối Strava trong Cài đặt để đồng bộ hoạt động.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.onSurface.withValues(alpha: 0.74),
-                      height: 1.35,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: controller.loading ? null : controller.signIn,
-                      icon: const Icon(Icons.login),
-                      label: Text(
-                        controller.loading
-                            ? 'Đang đăng nhập...'
-                            : 'Đăng nhập Google',
                       ),
                     ),
-                  ),
-                  if (AuthController.appleSignInAvailable) ...[
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
+                    // Logo đã là chữ "3i" rồi nên không lặp lại bằng text nữa;
+                    // dòng dưới đóng vai trò wordmark, giải nghĩa ba chữ I.
+                    const SizedBox(height: 16),
+                    Text(
+                      'INTENT · IMPROVE · INVOLVE',
+                      style: TextStyle(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.5),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.6,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      _quote,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: palette.tertiary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    // Hai nút cùng kiểu, cùng cỡ — Apple yêu cầu nút Sign in
+                    // with Apple không được kém nổi bật hơn nút đăng nhập khác.
+                    _SignInButton(
+                      label: 'Tiếp tục với Google',
+                      icon: Icons.g_mobiledata_rounded,
+                      iconSize: 30,
+                      background: palette.ink,
+                      foreground: palette.background,
+                      onPressed: controller.loading ? null : controller.signIn,
+                    ),
+                    if (AuthController.appleSignInAvailable) ...[
+                      const SizedBox(height: 10),
+                      _SignInButton(
+                        label: 'Tiếp tục với Apple',
+                        icon: Icons.apple,
+                        iconSize: 22,
+                        // Theo spec của Apple: nền đen trên giao diện sáng,
+                        // nền trắng trên giao diện tối.
+                        background: isDark ? Colors.white : Colors.black,
+                        foreground: isDark ? Colors.black : Colors.white,
                         onPressed: controller.loading
                             ? null
                             : controller.signInWithApple,
-                        icon: const Icon(Icons.apple, size: 22),
-                        label: const Text('Đăng nhập với Apple'),
                       ),
-                    ),
+                    ],
+                    if (controller.loading) ...[
+                      const SizedBox(height: 16),
+                      const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ],
+                    if (controller.errorMessage != null) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        controller.errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
                   ],
-                  if (controller.errorMessage != null) ...[
-                    const SizedBox(height: 16),
-                    Text(controller.errorMessage!, textAlign: TextAlign.center),
-                  ],
-                ],
+                ),
               ),
             ),
           ),

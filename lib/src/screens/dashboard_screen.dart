@@ -834,7 +834,7 @@ class _RecentActivitiesCard extends StatelessWidget {
             )
           else
             for (var index = 0; index < recent.take(4).length; index++)
-              ActivityTile(activity: recent[index], sequence: index + 1),
+              ActivityTile(activity: recent[index]),
         ],
       ),
     );

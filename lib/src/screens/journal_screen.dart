@@ -22,9 +22,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
     _scrollController.addListener(_loadMoreWhenNearBottom);
     // Trả về ngay nếu đã có cache từ lần vào trước trong phiên này (xem
     // JournalController) — chỉ lần đầu tiên mới thật sự chờ Firestore.
-    Future.microtask(
-      () => ref.read(journalControllerProvider).ensureLoaded(),
-    );
+    Future.microtask(() => ref.read(journalControllerProvider).ensureLoaded());
   }
 
   @override
@@ -62,7 +60,8 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
                 error: journal.error,
                 hasMore: journal.hasMore,
                 loadingMore: journal.loadingMore,
-                onRetry: () => ref.read(journalControllerProvider).loadNextPage(),
+                onRetry: () =>
+                    ref.read(journalControllerProvider).loadNextPage(),
               ),
       ),
     );
@@ -132,7 +131,6 @@ class _JournalPagedList extends StatelessWidget {
               return RepaintBoundary(
                 child: ActivityTile(
                   activity: items[index].activity,
-                  sequence: index + 1,
                   preferredStravaActivityId:
                       items[index].preferredStravaActivityId,
                 ),
@@ -157,7 +155,6 @@ class _JournalPagedList extends StatelessWidget {
             return RepaintBoundary(
               child: ActivityTile(
                 activity: items[index].activity,
-                sequence: index + 1,
                 preferredStravaActivityId:
                     items[index].preferredStravaActivityId,
               ),

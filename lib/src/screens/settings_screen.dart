@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/config.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
@@ -73,20 +74,25 @@ class SettingsScreen extends ConsumerWidget {
               _SettingsSection(
                 title: 'Kết nối',
                 children: [
-                  _SettingsRow(
-                    icon: stravaConnected
-                        ? Icons.link
-                        : Icons.link_off_outlined,
-                    title: 'Strava',
-                    value: strava.statusLoading
-                        ? 'Đang kiểm tra'
-                        : strava.loading
-                        ? 'Đang xử lý'
-                        : stravaConnected
-                        ? 'Đã kết nối'
-                        : 'Chưa kết nối',
-                    onTap: strava.loading ? null : strava.connect,
-                  ),
+                  // Chưa kết nối thì phải dùng đúng nút "Connect with Strava"
+                  // chính thức; đã kết nối rồi thì chỉ còn là dòng trạng
+                  // thái, không cần nút nữa.
+                  if (stravaConnected || strava.statusLoading)
+                    _SettingsRow(
+                      icon: stravaConnected
+                          ? Icons.link
+                          : Icons.link_off_outlined,
+                      title: 'Strava',
+                      value: strava.statusLoading
+                          ? 'Đang kiểm tra'
+                          : strava.loading
+                          ? 'Đang xử lý'
+                          : 'Đã kết nối',
+                    )
+                  else
+                    _ConnectWithStravaButton(
+                      onTap: strava.loading ? null : strava.connect,
+                    ),
                   if (stravaConnected)
                     _SettingsRow(
                       icon: Icons.sync,
@@ -123,6 +129,7 @@ class SettingsScreen extends ConsumerWidget {
                     _SettingsMessage(message: strava.errorMessage!),
                   if (sync.message != null)
                     _SettingsMessage(message: sync.message!),
+                  const _PoweredByStrava(),
                 ],
               ),
               const SizedBox(height: 18),
@@ -181,7 +188,7 @@ class SettingsScreen extends ConsumerWidget {
 Future<void> _openWebDocument(String path) async {
   final uri = kIsWeb
       ? Uri.base.resolve(path)
-      : Uri.parse('https://run-now-79767.web.app/$path');
+      : Uri.parse('${AppConfig.webBaseUrl}/$path');
   await launchUrl(uri, mode: LaunchMode.externalApplication);
 }
 
@@ -811,6 +818,61 @@ IconData _elementIcon(RunNowElement element) => switch (element) {
   RunNowElement.fire => Icons.local_fire_department_outlined,
   RunNowElement.earth => Icons.landscape_outlined,
 };
+
+/// Logo "Powered by Strava" chính thức, lấy nguyên từ bộ brand asset của
+/// Strava (`assets/strava/`). Guideline cấm vẽ lại hay chỉnh sửa logo, nên
+/// ở đây chỉ đổi giữa bản cam (nền sáng) và bản trắng (nền tối).
+class _PoweredByStrava extends StatelessWidget {
+  const _PoweredByStrava();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Image.asset(
+          isDark
+              ? 'assets/strava/api_logo_pwrdBy_strava_horiz_white.png'
+              : 'assets/strava/api_logo_pwrdBy_strava_horiz_orange.png',
+          height: 20,
+          semanticLabel: 'Powered by Strava',
+        ),
+      ),
+    );
+  }
+}
+
+/// Nút "Connect with Strava" chính thức — bắt buộc dùng ảnh nút do Strava
+/// cấp, không được tự dựng nút tương tự.
+class _ConnectWithStravaButton extends StatelessWidget {
+  const _ConnectWithStravaButton({required this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Opacity(
+          opacity: onTap == null ? 0.5 : 1,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(4),
+            child: Image.asset(
+              'assets/strava/btn_strava_connect_with_orange.png',
+              height: 48,
+              semanticLabel: 'Connect with Strava',
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _SettingsDivider extends StatelessWidget {
   @override

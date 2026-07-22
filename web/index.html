@@ -55,7 +55,6 @@
       animation: boot-pulse 1.5s ease-in-out infinite;
     }
     .boot-icon img { width: 100%; height: 100%; display: block; }
-    .boot-title { margin: 0; font-size: 30px; font-weight: 850; letter-spacing: .5px; }
     .boot-copy { margin-top: 7px; color: #9a958b; font-size: 11px; font-weight: 750; letter-spacing: 2px; }
     @keyframes boot-pulse { 50% { transform: translateY(-3px); box-shadow: 0 0 32px rgba(14,150,168,.22); } }
     @media (prefers-reduced-motion: reduce) { .boot-icon { animation: none; } }
@@ -67,7 +66,8 @@
       <div class="boot-icon" aria-hidden="true">
         <img src="icons/Icon-192.png" alt="" />
       </div>
-      <h1 class="boot-title">3i</h1>
+      <!-- Icon đã là chữ "3i" nên không lặp lại bằng <h1> nữa; giữ đúng
+           bố cục của màn đăng nhập trong app để lúc chuyển không bị giật. -->
       <div class="boot-copy">INTENT · IMPROVE · INVOLVE</div>
     </div>
   </div>

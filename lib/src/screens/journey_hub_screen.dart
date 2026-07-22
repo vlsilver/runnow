@@ -138,7 +138,7 @@ class _JourneyHubContent extends StatelessWidget {
               ? const RunNowLoading(compact: true, label: 'Đang mở hành trình')
               : _JourneyLevelList(
                   states: states,
-                  enableDetail: memberUid == null,
+                  memberUid: memberUid,
                 ),
         ),
       ],
@@ -622,10 +622,10 @@ class _DailyQuoteCard extends StatelessWidget {
 }
 
 class _JourneyLevelList extends StatelessWidget {
-  const _JourneyLevelList({required this.states, required this.enableDetail});
+  const _JourneyLevelList({required this.states, required this.memberUid});
 
   final List<_JourneyLevelState> states;
-  final bool enableDetail;
+  final String? memberUid;
 
   @override
   Widget build(BuildContext context) {
@@ -635,7 +635,7 @@ class _JourneyLevelList extends StatelessWidget {
       itemBuilder: (context, index) {
         return _JourneyLevelRow(
           state: states[index],
-          enableDetail: enableDetail,
+          memberUid: memberUid,
           isFirst: index == 0,
           isLast: index == states.length - 1,
         );
@@ -647,13 +647,13 @@ class _JourneyLevelList extends StatelessWidget {
 class _JourneyLevelRow extends StatelessWidget {
   const _JourneyLevelRow({
     required this.state,
-    required this.enableDetail,
+    required this.memberUid,
     required this.isFirst,
     required this.isLast,
   });
 
   final _JourneyLevelState state;
-  final bool enableDetail;
+  final String? memberUid;
   final bool isFirst;
   final bool isLast;
 
@@ -672,7 +672,7 @@ class _JourneyLevelRow extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: EdgeInsets.only(bottom: isLast ? 0 : 16),
-              child: _LevelCard(state: state, enableDetail: enableDetail),
+              child: _LevelCard(state: state, memberUid: memberUid),
             ),
           ),
         ],
@@ -886,10 +886,10 @@ class _LevelNodeState extends State<_LevelNode>
 }
 
 class _LevelCard extends StatelessWidget {
-  const _LevelCard({required this.state, required this.enableDetail});
+  const _LevelCard({required this.state, required this.memberUid});
 
   final _JourneyLevelState state;
-  final bool enableDetail;
+  final String? memberUid;
 
   @override
   Widget build(BuildContext context) {
@@ -900,9 +900,7 @@ class _LevelCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         onTap: locked
             ? () => _showLockedMessage(context)
-            : enableDetail
-            ? () => _open(context)
-            : null,
+            : () => _open(context),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 420),
           curve: Curves.easeOutCubic,
@@ -957,7 +955,12 @@ class _LevelCard extends StatelessWidget {
   }
 
   void _open(BuildContext context) {
-    context.push('/profile/journey/${state.campaign.value}');
+    final uid = memberUid;
+    context.push(
+      uid == null
+          ? '/profile/journey/${state.campaign.value}'
+          : '/club/$uid/journey/${state.campaign.value}',
+    );
   }
 
   void _showLockedMessage(BuildContext context) {

@@ -1,7 +1,7 @@
 name: myrun
 description: 3i Run — nhật ký chạy bộ và cộng đồng, đồng bộ từ Strava.
 publish_to: none
-version: 0.1.0+1
+version: 1.0.0+2
 
 environment:
   sdk: ">=3.12.0 <4.0.0"
@@ -69,6 +69,11 @@ flutter:
   assets:
     - assets/brand/3i-mark.png
     - assets/brand/3i-mark-transparent.png
+    # Asset chính thức của Strava, tải từ developers.strava.com — brand
+    # guideline cấm tự vẽ lại hoặc chỉnh sửa logo/nút của họ.
+    - assets/strava/btn_strava_connect_with_orange.png
+    - assets/strava/api_logo_pwrdBy_strava_horiz_orange.png
+    - assets/strava/api_logo_pwrdBy_strava_horiz_white.png
     - "features/Icon 3I Export/runow-3i-1024.png"
     - assets/medals/medal-gold.svg
     - assets/medals/medal-silver.svg

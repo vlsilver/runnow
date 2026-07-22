@@ -144,6 +144,15 @@ final _router = GoRouter(
           MemberJournalScreen(uid: state.pathParameters['uid']!),
     ),
     GoRoute(
+      path: '/club/:uid/journey/:campaignId',
+      builder: (context, state) => MemberJourneyScreen(
+        uid: state.pathParameters['uid']!,
+        campaignId:
+            parseJourneyCampaignId(state.pathParameters['campaignId']) ??
+            JourneyCampaignId.marathon,
+      ),
+    ),
+    GoRoute(
       path: '/oauth',
       builder: (context, state) => const RunContractHomeScreen(),
     ),

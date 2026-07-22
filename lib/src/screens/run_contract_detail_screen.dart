@@ -1203,7 +1203,6 @@ class _ContractActivityFeedSection extends ConsumerWidget {
             for (var index = 0; index < items.length; index++)
               ActivityTile(
                 activity: items[index].activity,
-                sequence: index + 1,
                 ownerUid: items[index].uid == currentUid
                     ? null
                     : items[index].uid,

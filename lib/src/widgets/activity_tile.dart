@@ -8,7 +8,6 @@ import 'package:myrun/src/widgets/cached_avatar.dart';
 class ActivityTile extends StatelessWidget {
   const ActivityTile({
     required this.activity,
-    this.sequence,
     this.ownerUid,
     this.memberName,
     this.memberAvatarUrl,
@@ -17,7 +16,6 @@ class ActivityTile extends StatelessWidget {
   });
 
   final ActivitySummary activity;
-  final int? sequence;
   final String? ownerUid;
   final String? memberName;
   final String? memberAvatarUrl;
@@ -27,9 +25,6 @@ class ActivityTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final visual = _ActivityVisual.fromKind(activity.kind, palette);
-    final faint = Theme.of(
-      context,
-    ).colorScheme.onSurface.withValues(alpha: 0.42);
     final timelineHeight =
         memberName != null || preferredStravaActivityId != null ? 142.0 : 118.0;
 
@@ -82,23 +77,26 @@ class ActivityTile extends StatelessWidget {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
+                                    // Tiêu đề chiếm trọn bề ngang; hai nhãn
+                                    // (loại vận động + nguồn dữ liệu) xuống
+                                    // dòng dưới, gom lại một chỗ.
+                                    Text(
+                                      activity.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 6),
                                     Row(
                                       children: [
                                         _KindTag(visual: visual),
-                                        const SizedBox(width: 7),
-                                        Expanded(
-                                          child: Text(
-                                            activity.name,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .titleMedium
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.w900,
-                                                ),
-                                          ),
-                                        ),
+                                        const SizedBox(width: 5),
+                                        _SourceBadge(source: activity.source),
                                       ],
                                     ),
                                   ],
@@ -115,18 +113,6 @@ class ActivityTile extends StatelessWidget {
                                       fontSize: 21,
                                       fontWeight: FontWeight.w900,
                                       height: 1,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 5),
-                                  Text(
-                                    sequence == null
-                                        ? 'LOG'
-                                        : '#${sequence!.toString().padLeft(2, '0')}',
-                                    style: TextStyle(
-                                      color: faint,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 1.2,
                                     ),
                                   ),
                                 ],
@@ -332,6 +318,53 @@ class _TimelineRail extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Nhãn nhỏ cho biết buổi chạy này lấy từ đâu: Strava hay do 3i Run tự ghi.
+///
+/// Strava **không phát hành logo dạng mark đứng riêng** — bộ asset chính
+/// thức chỉ có khối "Powered by Strava"/"Compatible with Strava", mà brand
+/// guideline lại cấm cắt lấy một phần logo. Nên phía Strava dùng chữ đặt
+/// trong màu cam thương hiệu `#FC5200`, đúng cỡ nhỏ hơn tên hoạt động như
+/// guideline yêu cầu. Phía 3i thì dùng thẳng app icon.
+class _SourceBadge extends StatelessWidget {
+  const _SourceBadge({required this.source});
+
+  final ActivitySource source;
+
+  @override
+  Widget build(BuildContext context) {
+    if (source == ActivitySource.strava) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: RunNowBrandColors.strava.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          child: Text(
+            'STRAVA',
+            style: TextStyle(
+              color: RunNowBrandColors.strava,
+              fontSize: 8,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.9,
+            ),
+          ),
+        ),
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(5),
+      child: Image.asset(
+        'assets/brand/3i-mark.png',
+        width: 16,
+        height: 16,
+        fit: BoxFit.cover,
+        semanticLabel: '3i Run',
       ),
     );
   }

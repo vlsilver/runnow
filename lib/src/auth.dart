@@ -19,13 +19,14 @@ class AuthController extends ChangeNotifier {
   bool loading = false;
   String? errorMessage;
 
-  /// Sign in with Apple chỉ chạy sẵn trên nền Apple và web. Trên Android
-  /// luồng này cần thêm Service ID + web redirect bên Apple Developer nên
-  /// tạm ẩn nút, Guideline 4.8 cũng chỉ áp cho App Store.
+  /// Chỉ hiện nút Sign in with Apple trên nền Apple, nơi hệ điều hành có sẵn
+  /// hộp thoại đăng nhập. Web và Android cần thêm Service ID + redirect
+  /// riêng bên Apple Developer — chưa cấu hình mà vẫn hiện nút thì bấm vào
+  /// chỉ báo lỗi. Guideline 4.8 cũng chỉ áp cho App Store.
   static bool get appleSignInAvailable =>
-      kIsWeb ||
-      defaultTargetPlatform == TargetPlatform.iOS ||
-      defaultTargetPlatform == TargetPlatform.macOS;
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS);
 
   Future<void> signIn() async {
     await _run(() async {
@@ -164,21 +165,53 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
     try {
       await operation();
-    } on FirebaseAuthException catch (error) {
-      // Người dùng bấm huỷ hộp thoại Apple/Google không phải lỗi cần báo đỏ.
-      if (error.code == 'canceled' ||
-          error.code == 'web-context-canceled' ||
-          error.code == 'popup-closed-by-user') {
-        errorMessage = null;
-      } else {
-        errorMessage = 'Đăng nhập thất bại: ${error.message ?? error.code}';
-      }
-    } catch (error) {
-      errorMessage = '$error';
+    } on FirebaseAuthException catch (error, stack) {
+      // Chi tiết kỹ thuật chỉ đi vào log cho dev — người dùng nhận câu tiếng
+      // Việt nói được họ nên làm gì tiếp theo.
+      debugPrint('Đăng nhập lỗi [${error.code}]: ${error.message}');
+      debugPrintStack(stackTrace: stack, maxFrames: 6);
+      errorMessage = _friendlyAuthMessage(error);
+    } catch (error, stack) {
+      debugPrint('Đăng nhập lỗi ngoài Firebase: $error');
+      debugPrintStack(stackTrace: stack, maxFrames: 6);
+      errorMessage = 'Đăng nhập không thành công. Vui lòng thử lại.';
     } finally {
       loading = false;
       notifyListeners();
     }
+  }
+
+  /// Đổi mã lỗi Firebase sang câu người dùng hiểu được. Trả về null nghĩa là
+  /// không hiện gì — dùng cho trường hợp chính người dùng bấm huỷ.
+  String? _friendlyAuthMessage(FirebaseAuthException error) {
+    return switch (error.code) {
+      // Người dùng tự đóng hộp thoại — không phải lỗi.
+      'canceled' ||
+      'web-context-canceled' ||
+      'popup-closed-by-user' ||
+      'cancelled-popup-request' => null,
+
+      'network-request-failed' =>
+        'Không có kết nối mạng. Kiểm tra Wi-Fi hoặc 4G rồi thử lại.',
+
+      'account-exists-with-different-credential' ||
+      'credential-already-in-use' =>
+        'Email này đã được đăng nhập bằng cách khác. '
+            'Hãy thử nút đăng nhập còn lại.',
+
+      'user-disabled' =>
+        'Tài khoản này đã bị khoá. Liên hệ ban quản trị club để được mở lại.',
+
+      'too-many-requests' =>
+        'Bạn thử quá nhiều lần. Đợi vài phút rồi đăng nhập lại.',
+
+      // Provider chưa bật trong Firebase Console — lỗi cấu hình phía mình,
+      // không phải lỗi người dùng, nên đừng bảo họ "thử lại".
+      'operation-not-allowed' =>
+        'Cách đăng nhập này đang tạm ngưng. Vui lòng dùng cách khác.',
+
+      _ => 'Đăng nhập không thành công. Vui lòng thử lại.',
+    };
   }
 }
 
@@ -232,7 +265,8 @@ class StravaAuthController extends ChangeNotifier {
       _status = await _api.getStravaStatus();
       errorMessage = null;
     } catch (error) {
-      errorMessage = 'Không kiểm tra được kết nối Strava: $error';
+      debugPrint('Không kiểm tra được trạng thái Strava: $error');
+      errorMessage = 'Chưa kiểm tra được kết nối Strava. Kéo xuống để thử lại.';
     } finally {
       statusLoading = false;
       notifyListeners();
@@ -277,7 +311,11 @@ class StravaAuthController extends ChangeNotifier {
     }
     final error = uri.queryParameters['error'];
     if (error != null) {
-      errorMessage = 'Kết nối Strava thất bại: $error';
+      debugPrint('Strava OAuth trả về lỗi: $error');
+      // Người dùng bấm "Không cho phép" ở trang Strava — không phải sự cố.
+      errorMessage = error == 'access_denied'
+          ? null
+          : 'Kết nối Strava chưa xong. Vui lòng thử lại.';
       notifyListeners();
       return;
     }
@@ -311,22 +349,15 @@ class StravaAuthController extends ChangeNotifier {
     try {
       await operation();
     } on FirebaseAuthException catch (error) {
-      errorMessage = _firebaseErrorMessage(error);
+      debugPrint('Strava/Firebase lỗi [${error.code}]: ${error.message}');
+      errorMessage = 'Không kết nối được Strava. Vui lòng thử lại.';
     } catch (error) {
-      errorMessage = '$error';
+      debugPrint('Strava lỗi: $error');
+      errorMessage = 'Không kết nối được Strava. Vui lòng thử lại.';
     } finally {
       loading = false;
       notifyListeners();
     }
-  }
-
-  String _firebaseErrorMessage(FirebaseAuthException error) {
-    if (error.code == 'internal-error' ||
-        error.code == 'operation-not-allowed') {
-      return 'Firebase Authentication chưa được bật đúng provider. '
-          'Hãy bật Google trong Firebase Console.';
-    }
-    return 'Firebase Authentication thất bại: ${error.message ?? error.code}';
   }
 
   @override

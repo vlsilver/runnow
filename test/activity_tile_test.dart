@@ -9,7 +9,6 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: ActivityTile(
-            sequence: 3,
             activity: ActivitySummary(
               id: '42',
               name: 'Night Run',
@@ -29,8 +28,10 @@ void main() {
     expect(find.text('5.10 km'), findsOneWidget);
     expect(find.text('8:39 /km'), findsOneWidget);
     expect(find.text('44:06'), findsOneWidget);
-    expect(find.text('#03'), findsOneWidget);
     expect(find.text('RUN'), findsOneWidget);
+    // Nguồn mặc định của ActivitySummary là Strava — nhãn nguồn phải hiện,
+    // vì brand guideline của Strava yêu cầu ghi rõ dữ liệu lấy từ đâu.
+    expect(find.text('STRAVA'), findsOneWidget);
     expect(find.text('01'), findsOneWidget);
     expect(find.text('JUN'), findsOneWidget);
   });

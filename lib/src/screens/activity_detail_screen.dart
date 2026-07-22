@@ -15,6 +15,7 @@ import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/photo_viewer.dart';
 import 'package:myrun/src/widgets/route_map.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
+import 'package:myrun/src/widgets/strava_activity_link.dart';
 import 'package:myrun/src/widgets/stream_chart.dart';
 
 class ActivityDetailScreen extends ConsumerStatefulWidget {
@@ -81,6 +82,21 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      // Brand guideline của Strava: nơi hiện dữ liệu Strava
+                      // phải có đường dẫn ngược về hoạt động gốc. Đặt ngay
+                      // dưới bản đồ, canh trái.
+                      if (item.summary.source == ActivitySource.strava)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 8, top: 4),
+                            child: StravaActivityLink(
+                              activityId:
+                                  item.summary.sourceActivityId ??
+                                  item.summary.id,
+                            ),
+                          ),
+                        ),
                       if (item.streams.isEmpty) ...[
                         const SizedBox(height: 16),
                         _CachedSummaryFallback(

@@ -6,6 +6,7 @@ import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/journey/widgets/completion_stamp.dart';
 import 'package:myrun/src/journey/widgets/journey_map.dart';
 import 'package:myrun/src/journey/widgets/round_icon_button.dart';
+import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/screens/journey_share_screen.dart';
 import 'package:myrun/src/theme.dart';
@@ -21,20 +22,36 @@ import 'package:myrun/src/widgets/storage_image.dart';
 /// được. Hoàn thành sẽ mở khoá chiến dịch tiếp theo (`CompletionStamp`).
 /// Xem `features/brief_hanh_trinh_xuyen_viet.md` + `journey_models.dart`.
 class JourneyScreen extends ConsumerWidget {
-  const JourneyScreen({required this.campaignId, super.key});
+  const JourneyScreen({required this.campaignId, super.key, this.member});
 
   final JourneyCampaignId campaignId;
 
+  /// Null = đang xem hành trình của chính mình. Khác null = xem của thành
+  /// viên khác: tiến độ lấy theo uid của họ, và không được đổi cung đường
+  /// hộ người ta (xem [_RoutePicker]).
+  final MemberProfile? member;
+
+  bool get _isViewingMember => member != null;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final viewedMember = member;
     final profileState = ref.watch(userProfileProvider);
     return Scaffold(
       appBar: AppBar(
-        title: Text(campaignId.name),
+        title: Text(
+          _isViewingMember
+              ? '${campaignId.name} · ${viewedMember!.displayName}'
+              : campaignId.name,
+        ),
         actions: [
           IconButton(
             tooltip: 'Nhật ký chạy',
-            onPressed: () => context.push('/profile/journal'),
+            onPressed: () => context.push(
+              _isViewingMember
+                  ? '/club/${viewedMember!.uid}/journal'
+                  : '/profile/journal',
+            ),
             icon: const Icon(Icons.list_alt_rounded),
           ),
           const SizedBox(width: 8),
@@ -44,7 +61,12 @@ class JourneyScreen extends ConsumerWidget {
           ? _JourneyBody(
               campaignId: campaignId,
               routeId: campaignId.routeChoices.single,
+              member: viewedMember,
             )
+          : viewedMember != null
+          // Cung đường của thành viên đọc thẳng từ hồ sơ công khai của họ,
+          // không qua userProfileProvider (vốn là hồ sơ của mình).
+          ? _memberRouteBody(parseJourneyRouteId(viewedMember.journeyRouteId))
           : profileState.when(
               data: (profile) {
                 final routeId = parseJourneyRouteId(profile?.journeyRouteId);
@@ -58,6 +80,75 @@ class JourneyScreen extends ConsumerWidget {
                   Center(child: Text('Không tải được: $error')),
             ),
     );
+  }
+
+  Widget _memberRouteBody(JourneyRouteId? routeId) {
+    if (routeId == null) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'Thành viên này chưa chọn cung đường cho chặng Xuyên Việt.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+    return _JourneyBody(
+      campaignId: campaignId,
+      routeId: routeId,
+      member: member,
+    );
+  }
+}
+
+/// Hành trình của 1 thành viên khác, mở từ `/club/:uid/journey/:campaignId`.
+/// Tự nạp hồ sơ từ uid nên deep-link thẳng vào URL vẫn chạy, không phụ
+/// thuộc object truyền qua navigation.
+class MemberJourneyScreen extends ConsumerWidget {
+  const MemberJourneyScreen({
+    required this.uid,
+    required this.campaignId,
+    super.key,
+  });
+
+  final String uid;
+  final JourneyCampaignId campaignId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ref
+        .watch(memberProfileProvider(uid))
+        .when(
+          data: (member) {
+            if (member == null) {
+              return Scaffold(
+                appBar: AppBar(title: Text(campaignId.name)),
+                body: const Center(child: Text('Không tìm thấy thành viên.')),
+              );
+            }
+            if (!member.isPublic) {
+              return Scaffold(
+                appBar: AppBar(title: Text(campaignId.name)),
+                body: const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      'Thành viên này để hồ sơ ở chế độ riêng tư.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              );
+            }
+            return JourneyScreen(campaignId: campaignId, member: member);
+          },
+          loading: () => const Scaffold(body: Center(child: RunNowLoading())),
+          error: (error, _) => Scaffold(
+            appBar: AppBar(title: Text(campaignId.name)),
+            body: Center(child: Text('Không tải được hồ sơ: $error')),
+          ),
+        );
   }
 }
 
@@ -181,10 +272,15 @@ class _RouteOptionCard extends ConsumerWidget {
 }
 
 class _JourneyBody extends ConsumerStatefulWidget {
-  const _JourneyBody({required this.campaignId, required this.routeId});
+  const _JourneyBody({
+    required this.campaignId,
+    required this.routeId,
+    this.member,
+  });
 
   final JourneyCampaignId campaignId;
   final JourneyRouteId routeId;
+  final MemberProfile? member;
 
   @override
   ConsumerState<_JourneyBody> createState() => _JourneyBodyState();
@@ -193,8 +289,13 @@ class _JourneyBody extends ConsumerStatefulWidget {
 class _JourneyBodyState extends ConsumerState<_JourneyBody> {
   @override
   Widget build(BuildContext context) {
+    final memberUid = widget.member?.uid;
     final routeState = ref.watch(journeyRouteDetailProvider(widget.routeId));
-    final distanceState = ref.watch(journeyLifetimeDistanceProvider);
+    // Km trọn đời phải lấy theo đúng người đang xem — dùng nhầm provider của
+    // mình sẽ hiện tiến độ của mình dưới tên người ta.
+    final distanceState = memberUid == null
+        ? ref.watch(journeyLifetimeDistanceProvider)
+        : ref.watch(memberJourneyLifetimeDistanceProvider(memberUid));
     final offsetState = ref.watch(
       journeyCampaignOffsetProvider(widget.campaignId),
     );
@@ -240,6 +341,7 @@ class _JourneyBodyState extends ConsumerState<_JourneyBody> {
                 child: _CompletionBanner(
                   campaignId: widget.campaignId,
                   route: route,
+                  member: widget.member,
                 ),
               ),
             ),
@@ -420,41 +522,56 @@ class _JourneyInfoSheet extends StatelessWidget {
 /// như xong cả hành trình). Nút mở khoá tiếp theo cũng nằm ngay đây, không
 /// cần đào vào popup mới thấy — ẩn hẳn khi đây đã là chiến dịch cuối cùng.
 class _CompletionBanner extends StatelessWidget {
-  const _CompletionBanner({required this.campaignId, required this.route});
+  const _CompletionBanner({
+    required this.campaignId,
+    required this.route,
+    this.member,
+  });
 
   final JourneyCampaignId campaignId;
   final JourneyRoute route;
+  final MemberProfile? member;
 
   @override
   Widget build(BuildContext context) {
     final nextCampaign = campaignId.next;
+    final viewedMember = member;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        RoundIconButton(
-          icon: Icons.share_rounded,
-          tooltip: 'Chia sẻ thành tích',
-          size: 44,
-          iconSize: 22,
-          onTap: () => Navigator.of(context).push(
-            PageRouteBuilder<void>(
-              fullscreenDialog: true,
-              opaque: true,
-              pageBuilder: (context, _, _) => JourneyShareScreen(
-                campaignName: campaignId.name,
-                route: route,
+        // Chia sẻ là "thành tích của tôi" — không hiện khi đang xem hành
+        // trình của người khác.
+        if (viewedMember == null)
+          RoundIconButton(
+            icon: Icons.share_rounded,
+            tooltip: 'Chia sẻ thành tích',
+            size: 44,
+            iconSize: 22,
+            onTap: () => Navigator.of(context).push(
+              PageRouteBuilder<void>(
+                fullscreenDialog: true,
+                opaque: true,
+                pageBuilder: (context, _, _) => JourneyShareScreen(
+                  campaignName: campaignId.name,
+                  route: route,
+                ),
               ),
             ),
           ),
-        ),
         if (nextCampaign != null) ...[
-          const SizedBox(height: 10),
+          if (viewedMember == null) const SizedBox(height: 10),
           RoundIconButton(
             icon: Icons.lock_open_rounded,
-            tooltip: 'Mở khoá hành trình tiếp theo',
+            tooltip: viewedMember == null
+                ? 'Mở khoá hành trình tiếp theo'
+                : 'Xem chặng tiếp theo',
             size: 44,
             iconSize: 22,
-            onTap: () => context.push('/profile/journey/${nextCampaign.value}'),
+            onTap: () => context.push(
+              viewedMember == null
+                  ? '/profile/journey/${nextCampaign.value}'
+                  : '/club/${viewedMember.uid}/journey/${nextCampaign.value}',
+            ),
           ),
         ],
       ],

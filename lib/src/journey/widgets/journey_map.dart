@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:myrun/src/widgets/map_attribution.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/journey/widgets/completion_stamp.dart';
@@ -142,6 +143,7 @@ class _JourneyMapState extends State<JourneyMap> {
                 userAgentPackageName: 'com.threei.run',
                 retinaMode: RetinaMode.isHighDensity(context),
               ),
+              const MapAttribution(),
               PolylineLayer(
                 polylines: [
                   Polyline(
