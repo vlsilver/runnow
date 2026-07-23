@@ -55,6 +55,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   var _saving = false;
   var _capturingPhoto = false;
   String? _message;
+  // Kèm theo _message khi cách khắc phục nằm ở Settings của máy. Null nghĩa
+  // là không hiện nút, tránh mời user vào Settings khi chẳng có gì để sửa.
+  VoidCallback? _settingsAction;
   Map<String, dynamic>? _lastWarmupDebug;
   var _gpsSignal = _GpsSignal.idle;
   var _gpsStableSamples = 0;
@@ -204,9 +207,26 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             GlassPanel(
               borderRadius: 18,
               padding: const EdgeInsets.all(16),
-              child: Text(
-                _message!,
-                style: Theme.of(context).textTheme.bodyMedium,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _message!,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  // Chỉ hiện lối tắt sang Settings, không tự mở. App Store
+                  // guideline 5.1.1(iv) cấm đẩy user sang Settings sau khi
+                  // họ đã bấm "Don't Allow" — quyết định đó phải được tôn
+                  // trọng, mở Settings là do user chủ động bấm.
+                  if (_settingsAction != null) ...[
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: _settingsAction,
+                      child: const Text('Mở Cài đặt'),
+                    ),
+                  ],
+                ],
               ),
             ),
           if (kDebugMode &&
@@ -301,6 +321,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _gpsStableSamples = 0;
       _gpsElapsedSeconds = 0;
       _message = null;
+      _settingsAction = null;
     });
     try {
       final ready = await _ensureLocationReady();
@@ -1023,11 +1044,12 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     final locationProvider = ref.read(trackingLocationProvider);
     final serviceEnabled = await locationProvider.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      setState(
-        () => _message =
-            'Location Service đang tắt. Hãy bật GPS để bắt đầu ghi buổi chạy.',
-      );
-      await locationProvider.openLocationSettings();
+      setState(() {
+        _message =
+            'Dịch vụ vị trí đang tắt. Bật GPS để ghi lại tuyến đường và pace '
+            'của buổi chạy.';
+        _settingsAction = locationProvider.openLocationSettings;
+      });
       return false;
     }
 
@@ -1036,19 +1058,20 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       permission = await locationProvider.requestPermission();
     }
 
-    if (permission == LocationPermission.denied) {
-      setState(
-        () => _message = '3I cần quyền vị trí để tracking route và pace.',
-      );
-      return false;
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      setState(
-        () => _message =
-            'Quyền vị trí đang bị chặn. Mở Settings để cấp lại quyền.',
-      );
-      await locationProvider.openAppSettings();
+    // denied và deniedForever đều là "user đã từ chối" — trên iOS lần bấm
+    // "Don't Allow" đầu tiên đã cho ra deniedForever vì hệ thống không hỏi
+    // lại. Cả hai trường hợp chỉ giải thích tính năng cần gì rồi dừng; mở
+    // Settings hay không là quyền của user.
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      setState(() {
+        _message =
+            'Ghi buổi chạy cần quyền vị trí để vẽ tuyến đường và tính '
+            'quãng đường, pace. Các phần khác của app vẫn dùng bình thường.';
+        _settingsAction = permission == LocationPermission.deniedForever
+            ? locationProvider.openAppSettings
+            : null;
+      });
       return false;
     }
 

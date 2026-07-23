@@ -168,7 +168,7 @@ class SettingsScreen extends ConsumerWidget {
                 children: [
                   _SettingsRow(
                     icon: Icons.logout,
-                    title: 'Đăng xuất Google',
+                    title: 'Đăng xuất',
                     value: googleAuth.loading ? 'Đang xử lý' : null,
                     destructive: true,
                     onTap: googleAuth.loading ? null : googleAuth.signOut,
@@ -177,6 +177,8 @@ class SettingsScreen extends ConsumerWidget {
                     _SettingsMessage(message: googleAuth.errorMessage!),
                 ],
               ),
+              const SizedBox(height: 18),
+              const _DeleteAccountSection(),
             ],
           ),
         ),
@@ -882,5 +884,138 @@ class _SettingsDivider extends StatelessWidget {
       indent: 58,
       color: Theme.of(context).dividerColor.withValues(alpha: 0.5),
     );
+  }
+}
+
+/// Mục xoá tài khoản vĩnh viễn.
+///
+/// Google Play và App Store đều bắt buộc app cho tạo tài khoản phải có
+/// đường xoá tài khoản ngay trong app, và trang
+/// threei.run/delete-account mô tả đúng các bước dưới đây — sửa chỗ này
+/// thì phải sửa cả trang đó.
+class _DeleteAccountSection extends ConsumerStatefulWidget {
+  const _DeleteAccountSection();
+
+  @override
+  ConsumerState<_DeleteAccountSection> createState() =>
+      _DeleteAccountSectionState();
+}
+
+class _DeleteAccountSectionState extends ConsumerState<_DeleteAccountSection> {
+  bool _busy = false;
+  String? _error;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsSection(
+      title: 'Vùng nguy hiểm',
+      children: [
+        _SettingsRow(
+          icon: Icons.delete_forever_outlined,
+          title: 'Xoá tài khoản',
+          subtitle: 'Xoá vĩnh viễn tài khoản và toàn bộ dữ liệu của bạn',
+          value: _busy ? 'Đang xoá' : null,
+          destructive: true,
+          onTap: _busy ? null : _confirmAndDelete,
+        ),
+        if (_error != null) _SettingsMessage(message: _error!),
+      ],
+    );
+  }
+
+  Future<void> _confirmAndDelete() async {
+    // Hai bước xác nhận vì thao tác này không hoàn tác được: bước một giải
+    // thích hậu quả, bước hai buộc bấm thêm lần nữa.
+    final understood = await _showWarning();
+    if (!understood || !mounted) return;
+    final confirmed = await _showFinalConfirm();
+    if (!confirmed || !mounted) return;
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref.read(runNowApiClientProvider).deleteAccount();
+      if (!mounted) return;
+      // Đăng xuất để _AuthGate đưa về màn hình đăng nhập. Tài khoản Firebase
+      // đã bị xoá nên phiên hiện tại không dùng được nữa.
+      await ref.read(authControllerProvider).signOut();
+    } catch (error) {
+      debugPrint('Xoá tài khoản thất bại: $error');
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error =
+            'Không xoá được tài khoản. Kiểm tra kết nối mạng rồi thử lại, '
+            'hoặc gửi yêu cầu tới ${AppConfig.webBaseUrl}/delete-account';
+      });
+    }
+  }
+
+  Future<bool> _showWarning() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xoá tài khoản?'),
+        content: const SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Những dữ liệu sau sẽ bị xoá vĩnh viễn:'),
+              SizedBox(height: 10),
+              Text('• Toàn bộ buổi chạy, tuyến đường GPS và ảnh đính kèm'),
+              Text('• Thống kê, tiến độ hành trình và bảng xếp hạng'),
+              Text('• Kèo chạy bạn đã tạo hoặc tham gia'),
+              Text('• Liên kết Strava (token sẽ bị thu hồi)'),
+              Text('• Tài khoản đăng nhập của bạn'),
+              SizedBox(height: 12),
+              Text(
+                'Dữ liệu trên tài khoản Strava của bạn không bị ảnh hưởng.',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Huỷ'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Tiếp tục'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  Future<bool> _showFinalConfirm() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận lần cuối'),
+        content: const Text(
+          'Thao tác này không thể hoàn tác. Dữ liệu đã xoá không khôi phục '
+          'lại được.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Giữ tài khoản'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Xoá vĩnh viễn'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 }

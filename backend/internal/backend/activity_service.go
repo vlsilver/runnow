@@ -35,10 +35,11 @@ type ActivityService struct {
 	tasks         *TaskPublisher
 	telegram      *TelegramService
 	publicBaseURL string
+	webBaseURL    string
 }
 
-func NewActivityService(db *firestore.Client, g *StravaGateway, tokens *TokenStore, tasks *TaskPublisher, telegram *TelegramService, publicBaseURL string) *ActivityService {
-	return &ActivityService{db: db, gateway: g, tokens: tokens, tasks: tasks, telegram: telegram, publicBaseURL: publicBaseURL}
+func NewActivityService(db *firestore.Client, g *StravaGateway, tokens *TokenStore, tasks *TaskPublisher, telegram *TelegramService, publicBaseURL, webBaseURL string) *ActivityService {
+	return &ActivityService{db: db, gateway: g, tokens: tokens, tasks: tasks, telegram: telegram, publicBaseURL: publicBaseURL, webBaseURL: webBaseURL}
 }
 
 func (s *ActivityService) SaveTracked(ctx context.Context, uid string, raw map[string]any) (TrackedActivityResult, error) {
@@ -506,7 +507,7 @@ func (s *ActivityService) NotifyTelegram(ctx context.Context, uid, activityID st
 	if err != nil {
 		return err
 	}
-	detailURL := s.publicBaseURL + "/v1/public/activities/" + uid + "/" + activityID
+	detailURL := activityDetailURL(s.webBaseURL, uid, activityID)
 	if err := s.telegram.SendActivityAlert(ctx, preferredName(profile), stringValue(data["name"]), activityFact(activityID, data), detailURL); err != nil {
 		return err
 	}

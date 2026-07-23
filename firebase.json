@@ -9,7 +9,10 @@
   "hosting": {
     "public": "build/web",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    "rewrites": [
+      { "source": "/delete-account", "destination": "/delete-account.html" },
+      { "source": "**", "destination": "/index.html" }
+    ]
   },
   "emulators": {
     "auth": { "port": 9099 },

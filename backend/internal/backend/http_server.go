@@ -79,6 +79,15 @@ func (s *Server) apiRoutes() {
 		w.WriteHeader(http.StatusNoContent)
 		return nil
 	}))
+	// Xoá tài khoản vĩnh viễn. Bắt buộc phải có theo chính sách của cả
+	// Google Play lẫn App Store với app cho phép tạo tài khoản.
+	s.route("POST /v1/account/delete", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		if err := s.deps.Accounts.Delete(r.Context(), uid); err != nil {
+			return err
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return nil
+	}))
 	s.route("POST /v1/strava/repair", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		if err := s.requireStravaConnection(r, uid); err != nil {
 			return err
@@ -118,20 +127,17 @@ func (s *Server) apiRoutes() {
 		}
 		return writeJSON(w, 202, map[string]any{"accepted": true})
 	}))
-	// Không bọc s.authenticated — đây là trang share công khai (đích của nút
-	// "Xem chi tiết" trong tin nhắn Telegram), phải xem được không cần đăng
-	// nhập. uid là chuỗi Firebase ~28 ký tự ngẫu nhiên nên không đoán được.
+	// Đích cũ của nút "Xem chi tiết" trong Telegram, trước đây là một trang
+	// HTML backend tự dựng. Giờ chỉ chuyển hướng về app — giữ route để các
+	// tin nhắn đã gửi trước đây không chết link.
 	s.route("GET /v1/public/activities/{uid}/{activityId}", func(w http.ResponseWriter, r *http.Request) error {
 		uid := r.PathValue("uid")
 		id := r.PathValue("activityId")
 		if uid == "" || id == "" || len(uid) > 128 || len(id) > 64 {
 			return invalidRequest()
 		}
-		summary, err := s.deps.Activities.PublicSummary(r.Context(), uid, id)
-		if err != nil {
-			return err
-		}
-		return writePublicActivityPage(w, summary)
+		http.Redirect(w, r, activityDetailURL(s.config.WebBaseURL, uid, id), http.StatusFound)
+		return nil
 	})
 	s.route("POST /v1/activities/tracked", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		var body struct {

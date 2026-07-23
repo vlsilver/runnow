@@ -91,6 +91,7 @@ GOOGLE_CLOUD_PROJECT: ${PROJECT_ID}
 GOOGLE_CLOUD_REGION: ${REGION}
 PUBLIC_BASE_URL: ${public_url}
 WORKER_BASE_URL: ${worker_url}
+WEB_BASE_URL: ${WEB_BASE_URL:-https://threei.run}
 MOBILE_RETURN_URI: ${MOBILE_RETURN_URI}
 WEB_RETURN_URI: ${WEB_RETURN_URI}
 ALLOWED_WEB_ORIGINS: ${ALLOWED_WEB_ORIGINS}
@@ -157,6 +158,15 @@ for runtime_sa in "$API_RUNTIME_SA" "$WORKER_RUNTIME_SA"; do
     --project "$PROJECT_ID" >/dev/null
 done
 
+# Chỉ API service xoá tài khoản, nên chỉ nó cần quyền gỡ user khỏi Firebase
+# Auth và xoá ảnh trong Storage. Worker không đụng tới hai thứ này.
+for role in roles/firebaseauth.admin roles/storage.objectAdmin; do
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member "serviceAccount:${API_RUNTIME_SA}" \
+    --role "$role" \
+    --condition=None >/dev/null
+done
+
 ensure_queue strava-events 5 2
 ensure_queue strava-backfill 2 1
 ensure_queue derived-data 20 8
@@ -179,7 +189,10 @@ for ttl_collection in oauthStates integrationEvents activityTombstones; do
     --project "$PROJECT_ID" >/dev/null
 done
 
-gcloud builds submit . --tag "$IMAGE" --project "$PROJECT_ID"
+# Chỉ đích danh thư mục backend thay vì "." — Dockerfile nằm ở đó, còn "."
+# là thư mục người dùng đang đứng lúc gọi script, chạy từ scripts/ sẽ lỗi
+# "Dockerfile required when specifying --tag".
+gcloud builds submit "${SCRIPT_DIR}/.." --tag "$IMAGE" --project "$PROJECT_ID"
 
 temporary_env="$(mktemp)"
 trap 'rm -f "$temporary_env"' EXIT

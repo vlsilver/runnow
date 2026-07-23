@@ -150,17 +150,33 @@ class RunNowApiClient {
     );
   }
 
+  /// Xoá vĩnh viễn tài khoản và toàn bộ dữ liệu gắn với nó.
+  ///
+  /// Backend phải làm việc này vì client không xoá được subcollection của
+  /// Firestore, không gỡ được chính mình khỏi Firebase Auth, và không thu
+  /// hồi được token Strava. Tài khoản nhiều dữ liệu có thể mất khá lâu nên
+  /// dùng timeout dài hơn mặc định.
+  Future<void> deleteAccount() async {
+    await _send(
+      'POST',
+      '/v1/account/delete',
+      timeout: const Duration(minutes: 2),
+    );
+  }
+
   Future<http.Response> _send(
     String method,
     String path, {
     Map<String, dynamic>? body,
+    Duration? timeout,
   }) async {
-    var response = await _sendOnce(method, path, body: body);
+    var response = await _sendOnce(method, path, body: body, timeout: timeout);
     if (response.statusCode == 401) {
       response = await _sendOnce(
         method,
         path,
         body: body,
+        timeout: timeout,
         forceRefreshToken: true,
       );
     }
@@ -174,6 +190,7 @@ class RunNowApiClient {
     String method,
     String path, {
     Map<String, dynamic>? body,
+    Duration? timeout,
     bool forceRefreshToken = false,
   }) async {
     final token = await tokenProvider(forceRefresh: forceRefreshToken);
@@ -184,7 +201,7 @@ class RunNowApiClient {
         if (body != null) 'Content-Type': 'application/json',
       });
     if (body != null) request.body = jsonEncode(body);
-    final streamed = await _http.send(request).timeout(_timeout);
+    final streamed = await _http.send(request).timeout(timeout ?? _timeout);
     return http.Response.fromStream(streamed);
   }
 

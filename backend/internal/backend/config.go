@@ -30,6 +30,11 @@ type Config struct {
 	NotifyQueue          string
 	TelegramBotToken     string
 	TelegramChatID       string
+	StorageBucket        string
+	// WebBaseURL là domain của app 3i Run bản web, không phải của API. Link
+	// chia sẻ trỏ về đây để mở đúng màn hình chi tiết trong app (hoặc bản
+	// web nếu chưa cài app), thay vì một trang HTML do backend tự dựng.
+	WebBaseURL string
 }
 
 func LoadConfig() (Config, error) {
@@ -50,6 +55,10 @@ func LoadConfig() (Config, error) {
 		TelegramBotToken: env("TELEGRAM_BOT_TOKEN", ""), TelegramChatID: env("TELEGRAM_CHAT_ID", ""),
 		AllowedWebOrigins: map[string]struct{}{},
 	}
+	// Bucket mặc định của Firebase Storage theo project. Đặt riêng biến môi
+	// trường để chuyển được sang bucket khác mà không phải sửa code.
+	c.StorageBucket = env("STORAGE_BUCKET", c.ProjectID+".firebasestorage.app")
+	c.WebBaseURL = trimURL(env("WEB_BASE_URL", "https://threei.run"))
 	missing := []string{}
 	for name, value := range map[string]string{
 		"GOOGLE_CLOUD_PROJECT": c.ProjectID, "PUBLIC_BASE_URL": c.PublicBaseURL, "WORKER_BASE_URL": c.WorkerBaseURL,
