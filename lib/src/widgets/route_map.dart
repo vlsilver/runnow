@@ -426,11 +426,12 @@ class _FlutterRouteMap extends StatefulWidget {
 class _FlutterRouteMapState extends State<_FlutterRouteMap> {
   final _mapController = MapController();
 
-  @override
-  void initState() {
-    super.initState();
-    _scheduleFitBounds();
-  }
+  // Tile chỉ nạp khi tile layer nhận được sự kiện camera. Nếu chưa từng fit
+  // sau khi map ready thì sự kiện đầu tiên không phát ra và nền bản đồ đen
+  // tới khi người dùng zoom/pan tay. Cờ này để fit đúng một lần trong
+  // onMapReady — thời điểm map chắc chắn đã sẵn sàng, khác với postFrame
+  // callback (có thể chạy trước khi controller gắn vào map đã render).
+  var _fittedOnce = false;
 
   @override
   void didUpdateWidget(covariant _FlutterRouteMap oldWidget) {
@@ -490,6 +491,14 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
         ),
         minZoom: 3,
         maxZoom: 18,
+        onMapReady: () {
+          // Fit ngay khi map sẵn sàng để phát sự kiện camera đầu tiên —
+          // đây là thứ kích hoạt tile nạp, tránh nền đen tới khi zoom tay.
+          if (!_fittedOnce) {
+            _fittedOnce = true;
+            _scheduleFitBounds();
+          }
+        },
         backgroundColor: palette.backgroundDeep,
         interactionOptions: const InteractionOptions(
           flags:
@@ -821,6 +830,12 @@ class RouteCamera {
 }
 
 LatLngBounds routeBounds(List<LatLng> points) {
+  // `LatLngBounds.fromPoints` ném lỗi với danh sách rỗng. Bản đồ có thể build
+  // trước khi points tải xong (nhất là trên web), nên trả về một khung mặc
+  // định thay vì để crash — camera sẽ được fit lại đúng khi points về.
+  if (points.isEmpty) {
+    return LatLngBounds(const LatLng(21.0, 105.8), const LatLng(10.8, 106.7));
+  }
   return LatLngBounds.fromPoints(points);
 }
 

@@ -639,14 +639,32 @@ class _LiveMap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // `LatLngBounds.fromPoints` ném lỗi khi rỗng — buổi live lúc mới bắt đầu
+    // có thể chưa có điểm nào. Chặn trước để không crash.
+    final bounds = points.isEmpty
+        ? LatLngBounds(const LatLng(21.0, 105.8), const LatLng(10.8, 106.7))
+        : LatLngBounds.fromPoints(points);
     return FlutterMap(
       mapController: mapController,
       options: MapOptions(
         initialCameraFit: CameraFit.bounds(
-          bounds: LatLngBounds.fromPoints(points),
+          bounds: bounds,
           padding: const EdgeInsets.all(28),
           maxZoom: 16,
         ),
+        onMapReady: () {
+          // Fit khi map ready để phát sự kiện camera đầu tiên — nếu không,
+          // tile nền đen tới khi người dùng zoom/pan tay.
+          if (points.isNotEmpty) {
+            mapController.fitCamera(
+              CameraFit.bounds(
+                bounds: bounds,
+                padding: const EdgeInsets.all(28),
+                maxZoom: 16,
+              ),
+            );
+          }
+        },
         minZoom: 3,
         maxZoom: 18,
         backgroundColor: Colors.black,
