@@ -103,6 +103,11 @@ STRAVA_BACKFILL_QUEUE: strava-backfill
 DERIVED_DATA_QUEUE: derived-data
 NOTIFY_QUEUE: notifications
 TELEGRAM_CHAT_ID: '${TELEGRAM_CHAT_ID:-}'
+TELEGRAM_BOT_USERNAME: '${TELEGRAM_BOT_USERNAME:-}'
+TELEGRAM_WEBHOOK_SECRET: '${TELEGRAM_WEBHOOK_SECRET:-}'
+GEMINI_LOCATION: '${GEMINI_LOCATION:-us-central1}'
+GEMINI_MODEL: '${GEMINI_MODEL:-gemini-2.5-pro}'
+BOT_HOURLY_LIMIT: '${BOT_HOURLY_LIMIT:-100}'
 EOF
 }
 
@@ -132,6 +137,7 @@ gcloud services enable \
   cloudscheduler.googleapis.com \
   secretmanager.googleapis.com \
   firestore.googleapis.com \
+  aiplatform.googleapis.com \
   --project "$PROJECT_ID"
 
 if ! gcloud artifacts repositories describe "$REPOSITORY" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
@@ -167,6 +173,14 @@ for role in roles/firebaseauth.admin roles/storage.objectAdmin; do
     --condition=None >/dev/null
 done
 
+# API service gọi Gemini qua Vertex AI cho bot Telegram — chỉ nó cần quyền
+# này, worker không đụng tới. Cùng service account nên không phải quản thêm
+# API key: xác thực bằng chính danh tính của Cloud Run.
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member "serviceAccount:${API_RUNTIME_SA}" \
+  --role roles/aiplatform.user \
+  --condition=None >/dev/null
+
 ensure_queue strava-events 5 2
 ensure_queue strava-backfill 2 1
 ensure_queue derived-data 20 8
@@ -176,13 +190,19 @@ require_secret STRAVA_WEBHOOK_VERIFY_TOKEN
 # Telegram thông báo hoạt động là tính năng tuỳ chọn — chỉ đòi hỏi secret
 # này nếu bạn thật sự đang cấu hình nó (set TELEGRAM_BOT_TOKEN trước khi
 # chạy script), để không chặn deploy ở môi trường chưa muốn bật.
-WORKER_SECRETS="STRAVA_CLIENT_SECRET=STRAVA_CLIENT_SECRET:latest,STRAVA_WEBHOOK_VERIFY_TOKEN=STRAVA_WEBHOOK_VERIFY_TOKEN:latest"
+BASE_SECRETS="STRAVA_CLIENT_SECRET=STRAVA_CLIENT_SECRET:latest,STRAVA_WEBHOOK_VERIFY_TOKEN=STRAVA_WEBHOOK_VERIFY_TOKEN:latest"
+WORKER_SECRETS="$BASE_SECRETS"
+API_SECRETS="$BASE_SECRETS"
 if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
   require_secret TELEGRAM_BOT_TOKEN
+  # Worker cần token để gửi thông báo hoạt động Strava; API cần để bot trả
+  # lời trong group Telegram. Thiếu ở API thì telegram.Enabled()=false nên
+  # Bot=nil và mọi câu hỏi rơi vào im lặng.
   WORKER_SECRETS="${WORKER_SECRETS},TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest"
+  API_SECRETS="${API_SECRETS},TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest"
 fi
 
-for ttl_collection in oauthStates integrationEvents activityTombstones; do
+for ttl_collection in oauthStates integrationEvents activityTombstones botRateLimits botMessages; do
   gcloud firestore fields ttls update expiresAt \
     --collection-group "$ttl_collection" \
     --enable-ttl \
@@ -226,7 +246,7 @@ gcloud run deploy "$API_SERVICE" \
   --region "$REGION" \
   --service-account "$API_RUNTIME_SA" \
   --env-vars-file "$temporary_env" \
-  --set-secrets STRAVA_CLIENT_SECRET=STRAVA_CLIENT_SECRET:latest,STRAVA_WEBHOOK_VERIFY_TOKEN=STRAVA_WEBHOOK_VERIFY_TOKEN:latest \
+  --set-secrets "$API_SECRETS" \
   --allow-unauthenticated \
   --min-instances 0 \
   --max-instances 5 \

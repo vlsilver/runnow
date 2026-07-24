@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -127,6 +128,43 @@ func (s *Server) apiRoutes() {
 		}
 		return writeJSON(w, 202, map[string]any{"accepted": true})
 	}))
+	// Telegram đẩy update về đây. Không bọc s.authenticated — Telegram không
+	// mang Firebase token; thay vào đó xác thực bằng secret token đăng ký lúc
+	// setWebhook. Thiếu bước này thì ai biết URL cũng giả được update và ra
+	// lệnh cho bot.
+	s.route("POST /v1/telegram/webhook", func(w http.ResponseWriter, r *http.Request) error {
+		if s.config.TelegramWebhookSecret == "" ||
+			r.Header.Get("X-Telegram-Bot-Api-Secret-Token") != s.config.TelegramWebhookSecret {
+			return &HTTPError{Status: 401, Code: "unauthenticated", Message: "Invalid webhook secret"}
+		}
+		// KHÔNG dùng decodeJSONWithLimit ở đây: nó bật DisallowUnknownFields,
+		// mà update thật của Telegram có mấy chục field mình không model
+		// (date, sender_chat, message_thread_id...) — decoder chặt sẽ từ chối
+		// cả payload và bot không bao giờ nhận được tin. Decode lỏng, chỉ lấy
+		// phần mình cần.
+		var update TelegramUpdate
+		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if err != nil || json.Unmarshal(body, &update) != nil {
+			w.WriteHeader(http.StatusOK)
+			return nil
+		}
+		chatID, question, ok := botQuestion(update, s.config.TelegramBotUsername)
+		if ok && s.deps.Bot != nil {
+			name := senderName(update)
+			// Trả lời Telegram ngay rồi mới gọi model: một lượt hỏi đáp mất
+			// vài giây, quá lâu so với timeout của webhook, và Telegram sẽ
+			// gửi lại update khiến bot trả lời trùng.
+			go func() {
+				ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 60*time.Second)
+				defer cancel()
+				if err := s.deps.Bot.HandleMessage(ctx, chatID, name, question); err != nil {
+					slog.ErrorContext(ctx, "telegram.bot_failed", "error", err)
+				}
+			}()
+		}
+		w.WriteHeader(http.StatusOK)
+		return nil
+	})
 	// Đích cũ của nút "Xem chi tiết" trong Telegram, trước đây là một trang
 	// HTML backend tự dựng. Giờ chỉ chuyển hướng về app — giữ route để các
 	// tin nhắn đã gửi trước đây không chết link.

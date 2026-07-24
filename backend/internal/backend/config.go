@@ -10,27 +10,32 @@ import (
 )
 
 type Config struct {
-	Environment          string
-	Port                 int
-	ProjectID            string
-	Region               string
-	PublicBaseURL        string
-	WorkerBaseURL        string
-	MobileReturnURI      string
-	WebReturnURI         string
-	AllowedWebOrigins    map[string]struct{}
-	StravaClientID       string
-	StravaClientSecret   string
-	WebhookVerifyToken   string
-	StravaSubscriptionID string
-	TaskInvokerAccount   string
-	EventsQueue          string
-	BackfillQueue        string
-	DerivedQueue         string
-	NotifyQueue          string
-	TelegramBotToken     string
-	TelegramChatID       string
-	StorageBucket        string
+	Environment           string
+	Port                  int
+	ProjectID             string
+	Region                string
+	PublicBaseURL         string
+	WorkerBaseURL         string
+	MobileReturnURI       string
+	WebReturnURI          string
+	AllowedWebOrigins     map[string]struct{}
+	StravaClientID        string
+	StravaClientSecret    string
+	WebhookVerifyToken    string
+	StravaSubscriptionID  string
+	TaskInvokerAccount    string
+	EventsQueue           string
+	BackfillQueue         string
+	DerivedQueue          string
+	NotifyQueue           string
+	TelegramBotToken      string
+	TelegramChatID        string
+	StorageBucket         string
+	TelegramBotUsername   string
+	TelegramWebhookSecret string
+	GeminiLocation        string
+	GeminiModel           string
+	BotHourlyLimit        int
 	// WebBaseURL là domain của app 3i Run bản web, không phải của API. Link
 	// chia sẻ trỏ về đây để mở đúng màn hình chi tiết trong app (hoặc bản
 	// web nếu chưa cài app), thay vì một trang HTML do backend tự dựng.
@@ -59,6 +64,17 @@ func LoadConfig() (Config, error) {
 	// trường để chuyển được sang bucket khác mà không phải sửa code.
 	c.StorageBucket = env("STORAGE_BUCKET", c.ProjectID+".firebasestorage.app")
 	c.WebBaseURL = trimURL(env("WEB_BASE_URL", "https://threei.run"))
+	c.TelegramBotUsername = strings.TrimPrefix(env("TELEGRAM_BOT_USERNAME", ""), "@")
+	c.TelegramWebhookSecret = env("TELEGRAM_WEBHOOK_SECRET", "")
+	// Gemini chạy ở region riêng: model chưa mở ở asia-southeast1 nơi
+	// backend đang chạy, nên không dùng chung GOOGLE_CLOUD_REGION.
+	c.GeminiLocation = env("GEMINI_LOCATION", "us-central1")
+	c.GeminiModel = env("GEMINI_MODEL", "gemini-2.5-pro")
+	if n, convErr := strconv.Atoi(env("BOT_HOURLY_LIMIT", "100")); convErr == nil && n > 0 {
+		c.BotHourlyLimit = n
+	} else {
+		c.BotHourlyLimit = 100
+	}
 	missing := []string{}
 	for name, value := range map[string]string{
 		"GOOGLE_CLOUD_PROJECT": c.ProjectID, "PUBLIC_BASE_URL": c.PublicBaseURL, "WORKER_BASE_URL": c.WorkerBaseURL,

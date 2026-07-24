@@ -84,6 +84,40 @@ func (s *TelegramService) SendActivityAlert(ctx context.Context, displayName, ac
 	return nil
 }
 
+// SendChatMessage gửi một tin nhắn thuần văn bản tới một chat bất kỳ.
+//
+// Cố tình KHÔNG đặt parse_mode: nội dung do model sinh ra, chứa một dấu `<`
+// hay `&` lạc là Telegram từ chối cả tin nhắn. Bot im lặng vì lỗi cú pháp
+// khó lần ra hơn nhiều so với việc mất mấy chữ in đậm.
+func (s *TelegramService) SendChatMessage(ctx context.Context, chatID, text string) error {
+	if !s.Enabled() {
+		return nil
+	}
+	payload, err := json.Marshal(map[string]any{
+		"chat_id":              chatID,
+		"text":                 text,
+		"link_preview_options": map[string]any{"is_disabled": true},
+	})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.apiBaseURL+"/bot"+s.botToken+"/sendMessage", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("telegram sendMessage failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
 // telegramActivityMessage builds the HTML body.
 //
 // Telegram only supports a small tag set (b, i, u, s, code, pre, a,

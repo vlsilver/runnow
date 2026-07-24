@@ -9,6 +9,7 @@ import (
 	gcs "cloud.google.com/go/storage"
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/auth"
+	"google.golang.org/genai"
 )
 
 type Dependencies struct {
@@ -24,6 +25,7 @@ type Dependencies struct {
 	Reconciliation *ReconciliationService
 	Telegram       *TelegramService
 	Accounts       *AccountService
+	Bot            *BotService
 }
 
 func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) {
@@ -70,6 +72,20 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 		slog.WarnContext(ctx, "dependencies.storage_unavailable", "error", storageErr)
 	}
 	d.Accounts = NewAccountService(db, authClient, d.OAuth, bucket)
+	// Bot chỉ bật khi có đủ Telegram lẫn Vertex AI. Thiếu một trong hai thì
+	// mọi luồng cũ vẫn chạy y như trước, chỉ không có bot.
+	if telegram.Enabled() {
+		genaiClient, genErr := genai.NewClient(ctx, &genai.ClientConfig{
+			Project:  config.ProjectID,
+			Location: config.GeminiLocation,
+			Backend:  genai.BackendVertexAI,
+		})
+		if genErr != nil {
+			slog.WarnContext(ctx, "dependencies.genai_unavailable", "error", genErr)
+		} else {
+			d.Bot = NewBotService(genaiClient, telegram, NewBotTools(db), db, config.GeminiModel, config.BotHourlyLimit)
+		}
+	}
 	return d, nil
 }
 
