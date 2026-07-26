@@ -335,7 +335,11 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       final anchor = await _waitForStableGps();
       if (anchor == null) return;
       if (!mounted) return;
-      final backgroundHint = _backgroundLocationGranted
+      // Trên Android foreground service tự lo tracking nền nên không cần nhắc
+      // "Luôn cho phép"; chỉ iOS mới gợi ý nâng quyền khi chưa có "Always".
+      final backgroundHint =
+          (_backgroundLocationGranted ||
+              defaultTargetPlatform == TargetPlatform.android)
           ? ''
           : ' Bật "Luôn cho phép" vị trí để vẫn tracking khi khóa màn hình.';
       setState(() {
@@ -1075,9 +1079,16 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       return false;
     }
 
-    // Foreground đã được cấp (whileInUse hoặc always). Cố gắng nâng lên quyền
-    // nền "Always" để tracking tiếp tục khi khóa màn hình / chuyển app khác.
-    if (permission == LocationPermission.whileInUse) {
+    // Foreground đã được cấp (whileInUse hoặc always).
+    //
+    // Android: foreground service (loại location, có notification) đã đủ để
+    // tracking tiếp tục khi khóa màn hình / chuyển app khác, nên KHÔNG cần quyền
+    // nền "Always" — app cũng không khai ACCESS_BACKGROUND_LOCATION nữa.
+    //
+    // iOS: giữ nguyên hành vi bản đang chạy trên App Store — thử nâng lên
+    // "Always" để tracking nền mượt hơn.
+    if (defaultTargetPlatform == TargetPlatform.iOS &&
+        permission == LocationPermission.whileInUse) {
       permission = await locationProvider.requestPermission();
     }
     _backgroundLocationGranted = permission == LocationPermission.always;
