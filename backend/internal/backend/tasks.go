@@ -34,13 +34,22 @@ type PublishTask struct {
 	ScheduleTime *time.Time
 }
 type TaskPublisher struct {
-	client                                     *cloudtasks.Client
-	project, region, workerURL, serviceAccount string
-	queues                                     map[QueueName]string
+	client                                             *cloudtasks.Client
+	project, region, workerURL, botURL, serviceAccount string
+	queues                                             map[QueueName]string
 }
 
 func NewTaskPublisher(client *cloudtasks.Client, c Config) *TaskPublisher {
-	return &TaskPublisher{client: client, project: c.ProjectID, region: c.Region, workerURL: c.WorkerBaseURL, serviceAccount: c.TaskInvokerAccount, queues: map[QueueName]string{QueueEvents: c.EventsQueue, QueueBackfill: c.BackfillQueue, QueueDerived: c.DerivedQueue, QueueNotify: c.NotifyQueue, QueueBotInbound: c.BotInboundQueue}}
+	return &TaskPublisher{client: client, project: c.ProjectID, region: c.Region, workerURL: c.WorkerBaseURL, botURL: c.BotBaseURL, serviceAccount: c.TaskInvokerAccount, queues: map[QueueName]string{QueueEvents: c.EventsQueue, QueueBackfill: c.BackfillQueue, QueueDerived: c.DerivedQueue, QueueNotify: c.NotifyQueue, QueueBotInbound: c.BotInboundQueue}}
+}
+
+// targetURL chọn service đích cho một queue. Mặc định worker; riêng bot-inbound
+// đi tới runnow-bot khi đã cấu hình BOT_BASE_URL (chưa set thì rơi về worker).
+func (p *TaskPublisher) targetURL(queue QueueName) string {
+	if queue == QueueBotInbound && p.botURL != "" {
+		return p.botURL
+	}
+	return p.workerURL
 }
 func (p *TaskPublisher) Close() {
 	if p.client != nil {
@@ -53,7 +62,8 @@ func (p *TaskPublisher) Publish(ctx context.Context, input PublishTask) (string,
 		return "", err
 	}
 	parent := "projects/" + p.project + "/locations/" + p.region + "/queues/" + p.queues[input.Queue]
-	task := &cloudtaskspb.Task{MessageType: &cloudtaskspb.Task_HttpRequest{HttpRequest: &cloudtaskspb.HttpRequest{HttpMethod: cloudtaskspb.HttpMethod_POST, Url: p.workerURL + "/" + strings.TrimLeft(input.HandlerPath, "/"), Headers: map[string]string{"Content-Type": "application/json"}, Body: body, AuthorizationHeader: &cloudtaskspb.HttpRequest_OidcToken{OidcToken: &cloudtaskspb.OidcToken{ServiceAccountEmail: p.serviceAccount, Audience: p.workerURL}}}}}
+	target := p.targetURL(input.Queue)
+	task := &cloudtaskspb.Task{MessageType: &cloudtaskspb.Task_HttpRequest{HttpRequest: &cloudtaskspb.HttpRequest{HttpMethod: cloudtaskspb.HttpMethod_POST, Url: target + "/" + strings.TrimLeft(input.HandlerPath, "/"), Headers: map[string]string{"Content-Type": "application/json"}, Body: body, AuthorizationHeader: &cloudtaskspb.HttpRequest_OidcToken{OidcToken: &cloudtaskspb.OidcToken{ServiceAccountEmail: p.serviceAccount, Audience: target}}}}}
 	if input.TaskID != "" {
 		task.Name = parent + "/tasks/" + sanitizeTaskID(input.TaskID)
 	}

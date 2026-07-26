@@ -18,12 +18,15 @@ REPOSITORY="${REPOSITORY:-runnow-backend}"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/backend:${IMAGE_TAG:-$(date +%Y%m%d-%H%M%S)}"
 API_SERVICE="${API_SERVICE:-runnow-api}"
 WORKER_SERVICE="${WORKER_SERVICE:-runnow-worker}"
+BOT_SERVICE="${BOT_SERVICE:-runnow-bot}"
 API_RUNTIME_SA_NAME="${API_RUNTIME_SA_NAME:-runnow-api-runtime}"
 WORKER_RUNTIME_SA_NAME="${WORKER_RUNTIME_SA_NAME:-runnow-worker-runtime}"
+BOT_RUNTIME_SA_NAME="${BOT_RUNTIME_SA_NAME:-runnow-bot-runtime}"
 INVOKER_SA_NAME="${INVOKER_SA_NAME:-runnow-task-invoker}"
 SCHEDULER_JOB="${SCHEDULER_JOB:-runnow-strava-reconcile}"
 API_RUNTIME_SA="${API_RUNTIME_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 WORKER_RUNTIME_SA="${WORKER_RUNTIME_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+BOT_RUNTIME_SA="${BOT_RUNTIME_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 INVOKER_SA="${INVOKER_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
 : "${STRAVA_CLIENT_ID:?Set STRAVA_CLIENT_ID before running deploy.sh}"
@@ -116,8 +119,10 @@ require_command gcloud
 validate_resource_id "Artifact Registry repository" "$REPOSITORY"
 validate_resource_id "Cloud Run API service" "$API_SERVICE"
 validate_resource_id "Cloud Run worker service" "$WORKER_SERVICE"
+validate_resource_id "Cloud Run bot service" "$BOT_SERVICE"
 validate_resource_id "API service account" "$API_RUNTIME_SA_NAME"
 validate_resource_id "worker service account" "$WORKER_RUNTIME_SA_NAME"
+validate_resource_id "bot service account" "$BOT_RUNTIME_SA_NAME"
 validate_resource_id "invoker service account" "$INVOKER_SA_NAME"
 validate_resource_id "Scheduler job" "$SCHEDULER_JOB"
 
@@ -150,9 +155,10 @@ fi
 
 ensure_service_account "$API_RUNTIME_SA_NAME" "3I API runtime"
 ensure_service_account "$WORKER_RUNTIME_SA_NAME" "3I worker runtime"
+ensure_service_account "$BOT_RUNTIME_SA_NAME" "3I bot runtime"
 ensure_service_account "$INVOKER_SA_NAME" "3I Cloud Tasks and Scheduler invoker"
 
-for runtime_sa in "$API_RUNTIME_SA" "$WORKER_RUNTIME_SA"; do
+for runtime_sa in "$API_RUNTIME_SA" "$WORKER_RUNTIME_SA" "$BOT_RUNTIME_SA"; do
   for role in roles/datastore.user roles/cloudtasks.enqueuer roles/secretmanager.secretAccessor; do
     gcloud projects add-iam-policy-binding "$PROJECT_ID" \
       --member "serviceAccount:${runtime_sa}" \
@@ -177,7 +183,7 @@ done
 # Cả hai service gọi Gemini qua Vertex AI: API cho bot Q&A, worker cho chưng
 # cất trí nhớ đêm và nhận xét buổi chạy. Cùng service account nên không phải
 # quản thêm API key — xác thực bằng chính danh tính Cloud Run.
-for ai_sa in "$API_RUNTIME_SA" "$WORKER_RUNTIME_SA"; do
+for ai_sa in "$API_RUNTIME_SA" "$WORKER_RUNTIME_SA" "$BOT_RUNTIME_SA"; do
   gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member "serviceAccount:${ai_sa}" \
     --role roles/aiplatform.user \
@@ -262,6 +268,27 @@ gcloud run deploy "$API_SERVICE" \
 API_URL="$(gcloud run services describe "$API_SERVICE" --region "$REGION" --project "$PROJECT_ID" --format='value(status.url)')"
 write_env_file "$temporary_env" "$API_URL" "$WORKER_URL"
 
+# runnow-bot: service PRIVATE (như worker) để xử lý riêng phần AI. Deploy sau
+# khi đã có URL api/worker để env đầy đủ. Bước này CHƯA trỏ traffic tới nó —
+# chỉ dựng lên và verify. Concurrency 6 khớp queue bot-inbound.
+gcloud run deploy "$BOT_SERVICE" \
+  --image "$IMAGE" \
+  --command /bot \
+  --args '' \
+  --default-url \
+  --region "$REGION" \
+  --service-account "$BOT_RUNTIME_SA" \
+  --env-vars-file "$temporary_env" \
+  --set-secrets "$WORKER_SECRETS" \
+  --no-allow-unauthenticated \
+  --min-instances 0 \
+  --max-instances 5 \
+  --concurrency 6 \
+  --project "$PROJECT_ID"
+BOT_URL="$(gcloud run services describe "$BOT_SERVICE" --region "$REGION" --project "$PROJECT_ID" --format='value(status.url)')"
+
+# Cập nhật lại env (URL đầy đủ) cho api & worker.
+write_env_file "$temporary_env" "$API_URL" "$WORKER_URL"
 gcloud run services update "$WORKER_SERVICE" \
   --region "$REGION" \
   --env-vars-file "$temporary_env" \
@@ -270,8 +297,28 @@ gcloud run services update "$API_SERVICE" \
   --region "$REGION" \
   --env-vars-file "$temporary_env" \
   --project "$PROJECT_ID" >/dev/null
+gcloud run services update "$BOT_SERVICE" \
+  --region "$REGION" \
+  --env-vars-file "$temporary_env" \
+  --project "$PROJECT_ID" >/dev/null
+
+# Set BOT_BASE_URL RIÊNG bằng --update-env-vars (không qua env-file): env-file
+# bỏ rơi biến có value rỗng ở các lần ghi sớm, nên cách này chắc ăn. API cần nó
+# để TaskPublisher đẩy bot-inbound sang runnow-bot; set cả 3 cho nhất quán.
+for svc in "$API_SERVICE" "$WORKER_SERVICE" "$BOT_SERVICE"; do
+  gcloud run services update "$svc" \
+    --region "$REGION" \
+    --update-env-vars "BOT_BASE_URL=${BOT_URL}" \
+    --project "$PROJECT_ID" >/dev/null
+done
 
 gcloud run services add-iam-policy-binding "$WORKER_SERVICE" \
+  --region "$REGION" \
+  --member "serviceAccount:${INVOKER_SA}" \
+  --role roles/run.invoker \
+  --project "$PROJECT_ID" >/dev/null
+# Cho task-invoker gọi được runnow-bot (bot-inbound sẽ trỏ tới đây ở bước sau).
+gcloud run services add-iam-policy-binding "$BOT_SERVICE" \
   --region "$REGION" \
   --member "serviceAccount:${INVOKER_SA}" \
   --role roles/run.invoker \

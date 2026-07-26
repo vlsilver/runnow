@@ -30,6 +30,91 @@ func NewWorkerServer(config Config, deps *Dependencies) http.Handler {
 	s.workerRoutes()
 	return s.mux
 }
+
+// NewBotServer phục vụ riêng phần XỬ LÝ bot/AI. Đây là service PRIVATE (như
+// worker): chỉ nhận task đã xác thực (bot-message, và sau này notify + chưng
+// cất). Webhook Telegram public thì GIỮ trên api — nó chỉ enqueue, siêu nhẹ,
+// và trộn public webhook với private task vào một service sẽ hở endpoint task.
+func NewBotServer(config Config, deps *Dependencies) http.Handler {
+	s := &Server{config: config, deps: deps, mux: http.NewServeMux(), worker: true}
+	s.botRoutes()
+	return s.mux
+}
+func (s *Server) botRoutes() {
+	s.route("GET /health", func(w http.ResponseWriter, r *http.Request) error {
+		return writeJSON(w, 200, map[string]any{"ok": true, "service": "runnow-bot"})
+	})
+	s.route("GET /healthz", func(w http.ResponseWriter, r *http.Request) error {
+		return writeJSON(w, 200, map[string]any{"ok": true, "service": "runnow-bot"})
+	})
+	s.route("POST /tasks/bot-message", s.botMessage)
+}
+
+// telegramWebhook nhận update từ Telegram, xác thực secret, rồi CHỈ enqueue vào
+// queue bot-inbound (không tự xử lý). Việc gọi Gemini nặng để handler botMessage
+// lo trong một task thật — full CPU, timeout dài, tự retry.
+func (s *Server) telegramWebhook(w http.ResponseWriter, r *http.Request) error {
+	if s.config.TelegramWebhookSecret == "" ||
+		r.Header.Get("X-Telegram-Bot-Api-Secret-Token") != s.config.TelegramWebhookSecret {
+		return &HTTPError{Status: 401, Code: "unauthenticated", Message: "Invalid webhook secret"}
+	}
+	// KHÔNG dùng decodeJSONWithLimit: nó bật DisallowUnknownFields, mà update
+	// thật của Telegram có mấy chục field mình không model — decoder chặt sẽ
+	// từ chối cả payload. Decode lỏng, chỉ lấy phần cần.
+	var update TelegramUpdate
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil || json.Unmarshal(body, &update) != nil {
+		w.WriteHeader(http.StatusOK)
+		return nil
+	}
+	if s.deps.Bot != nil && s.deps.Tasks != nil {
+		name := senderName(update)
+		chatID, question, isQuestion := botQuestion(update, s.config.TelegramBotUsername)
+		recordChatID, _, rawText, hasText := incomingMessage(update)
+		if isQuestion || hasText {
+			task := botMessageTask{IsQuestion: isQuestion, Name: name}
+			if isQuestion {
+				task.ChatID, task.Question = chatID, question
+			} else {
+				task.ChatID, task.RawText = recordChatID, rawText
+			}
+			if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{
+				Queue:       QueueBotInbound,
+				HandlerPath: "/tasks/bot-message",
+				Payload:     task,
+				TaskID:      StableTaskID("botmsg", update.UpdateID),
+			}); err != nil {
+				slog.ErrorContext(r.Context(), "telegram.enqueue_failed", "error", err)
+			}
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+	return nil
+}
+
+// botMessage xử lý một tin bot đẩy từ queue bot-inbound: chạy trong request
+// thật (full CPU, timeout 240s); lỗi → non-2xx để Cloud Tasks retry.
+func (s *Server) botMessage(w http.ResponseWriter, r *http.Request) error {
+	if s.deps.Bot == nil {
+		w.WriteHeader(204)
+		return nil
+	}
+	var task botMessageTask
+	if decodeJSON(r, &task) != nil || task.ChatID == "" {
+		w.WriteHeader(204)
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 240*time.Second)
+	defer cancel()
+	if task.IsQuestion {
+		if err := s.deps.Bot.HandleMessage(ctx, task.ChatID, task.Name, task.Question); err != nil {
+			return err
+		}
+	} else if err := s.deps.Bot.RecordIncoming(ctx, task.ChatID, task.Name, task.RawText); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
+}
 func (s *Server) route(pattern string, h handler) {
 	s.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		if err := h(w, r); err != nil {
@@ -128,54 +213,10 @@ func (s *Server) apiRoutes() {
 		}
 		return writeJSON(w, 202, map[string]any{"accepted": true})
 	}))
-	// Telegram đẩy update về đây. Không bọc s.authenticated — Telegram không
-	// mang Firebase token; thay vào đó xác thực bằng secret token đăng ký lúc
-	// setWebhook. Thiếu bước này thì ai biết URL cũng giả được update và ra
-	// lệnh cho bot.
-	s.route("POST /v1/telegram/webhook", func(w http.ResponseWriter, r *http.Request) error {
-		if s.config.TelegramWebhookSecret == "" ||
-			r.Header.Get("X-Telegram-Bot-Api-Secret-Token") != s.config.TelegramWebhookSecret {
-			return &HTTPError{Status: 401, Code: "unauthenticated", Message: "Invalid webhook secret"}
-		}
-		// KHÔNG dùng decodeJSONWithLimit ở đây: nó bật DisallowUnknownFields,
-		// mà update thật của Telegram có mấy chục field mình không model
-		// (date, sender_chat, message_thread_id...) — decoder chặt sẽ từ chối
-		// cả payload và bot không bao giờ nhận được tin. Decode lỏng, chỉ lấy
-		// phần mình cần.
-		var update TelegramUpdate
-		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-		if err != nil || json.Unmarshal(body, &update) != nil {
-			w.WriteHeader(http.StatusOK)
-			return nil
-		}
-		if s.deps.Bot != nil && s.deps.Tasks != nil {
-			name := senderName(update)
-			chatID, question, isQuestion := botQuestion(update, s.config.TelegramBotUsername)
-			recordChatID, _, rawText, hasText := incomingMessage(update)
-			// Webhook CHỈ tách sẵn rồi ĐẨY VÀO QUEUE, không tự xử lý. Việc gọi
-			// Gemini (nặng, có thể 30-90s với Pro) chạy như task ở worker —
-			// full CPU, timeout dài, tự retry. Trước đây chạy trong goroutine
-			// sau-200 nên bị Cloud Run bóp CPU tới mức vượt hạn rồi chết im.
-			if isQuestion || hasText {
-				task := botMessageTask{IsQuestion: isQuestion, Name: name}
-				if isQuestion {
-					task.ChatID, task.Question = chatID, question
-				} else {
-					task.ChatID, task.RawText = recordChatID, rawText
-				}
-				if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{
-					Queue:       QueueBotInbound,
-					HandlerPath: "/tasks/bot-message",
-					Payload:     task,
-					TaskID:      StableTaskID("botmsg", update.UpdateID),
-				}); err != nil {
-					slog.ErrorContext(r.Context(), "telegram.enqueue_failed", "error", err)
-				}
-			}
-		}
-		w.WriteHeader(http.StatusOK)
-		return nil
-	})
+	// Telegram đẩy update về đây (xem telegramWebhook). Handler tách thành
+	// method để service bot dùng chung — dời webhook sang bot chỉ là đổi chỗ
+	// mount, không nhân đôi code.
+	s.route("POST /v1/telegram/webhook", s.telegramWebhook)
 	// Đích cũ của nút "Xem chi tiết" trong Telegram, trước đây là một trang
 	// HTML backend tự dựng. Giờ chỉ chuyển hướng về app — giữ route để các
 	// tin nhắn đã gửi trước đây không chết link.
@@ -338,32 +379,9 @@ func (s *Server) workerRoutes() {
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
 	})
-	// Xử lý một tin nhắn bot (đẩy từ webhook qua queue bot-inbound). Chạy ở
-	// đây — trong một request thật, full CPU, timeout rộng, Cloud Tasks tự
-	// retry nếu lỗi — thay cho goroutine sau-200 vốn bị bóp CPU rồi timeout.
-	s.route("POST /tasks/bot-message", func(w http.ResponseWriter, r *http.Request) error {
-		if s.deps.Bot == nil {
-			w.WriteHeader(204)
-			return nil
-		}
-		var task botMessageTask
-		if decodeJSON(r, &task) != nil || task.ChatID == "" {
-			w.WriteHeader(204)
-			return nil
-		}
-		// Timeout rộng cho Pro (chạy nền, không vướng hạn webhook). Hết hạn
-		// hay lỗi → trả non-2xx để Cloud Tasks retry.
-		ctx, cancel := context.WithTimeout(r.Context(), 240*time.Second)
-		defer cancel()
-		if task.IsQuestion {
-			if err := s.deps.Bot.HandleMessage(ctx, task.ChatID, task.Name, task.Question); err != nil {
-				return err
-			}
-		} else if err := s.deps.Bot.RecordIncoming(ctx, task.ChatID, task.Name, task.RawText); err != nil {
-			return err
-		}
-		return writeJSON(w, 200, map[string]any{"ok": true})
-	})
+	// Xử lý tin bot đẩy từ queue bot-inbound (xem botMessage). Handler tách
+	// method để service bot dùng chung.
+	s.route("POST /tasks/bot-message", s.botMessage)
 	s.route("POST /tasks/reconcile-connections", func(w http.ResponseWriter, r *http.Request) error {
 		var task struct {
 			Cursor string `json:"cursor"`

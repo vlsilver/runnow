@@ -16,6 +16,7 @@ type Config struct {
 	Region                string
 	PublicBaseURL         string
 	WorkerBaseURL         string
+	BotBaseURL            string
 	MobileReturnURI       string
 	WebReturnURI          string
 	AllowedWebOrigins     map[string]struct{}
@@ -66,6 +67,9 @@ func LoadConfig() (Config, error) {
 	// trường để chuyển được sang bucket khác mà không phải sửa code.
 	c.StorageBucket = env("STORAGE_BUCKET", c.ProjectID+".firebasestorage.app")
 	c.WebBaseURL = trimURL(env("WEB_BASE_URL", "https://threei.run"))
+	// BotBaseURL rỗng thì task bot-inbound rơi về worker (hành vi cũ). Set nó
+	// = URL runnow-bot để dời phần xử lý AI sang service riêng.
+	c.BotBaseURL = trimURL(env("BOT_BASE_URL", ""))
 	c.TelegramBotUsername = strings.TrimPrefix(env("TELEGRAM_BOT_USERNAME", ""), "@")
 	c.TelegramWebhookSecret = env("TELEGRAM_WEBHOOK_SECRET", "")
 	// Gemini chạy ở region riêng: model chưa mở ở asia-southeast1 nơi

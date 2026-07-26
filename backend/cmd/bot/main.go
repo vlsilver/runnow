@@ -28,18 +28,16 @@ func main() {
 		os.Exit(1)
 	}
 	defer deps.Close()
-	// WriteTimeout 300s: handler bot-message có thể chạy tới 240s (Gemini Pro).
-	// 60s cũ sẽ cắt kết nối giữa chừng → Cloud Tasks retry → trả lời trùng.
-	server := &http.Server{Addr: fmt.Sprintf(":%d", config.Port), Handler: backend.NewWorkerServer(config, deps), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 300 * time.Second, IdleTimeout: 90 * time.Second}
+	server := &http.Server{Addr: fmt.Sprintf(":%d", config.Port), Handler: backend.NewBotServer(config, deps), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 300 * time.Second, IdleTimeout: 90 * time.Second}
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		_ = server.Shutdown(shutdownCtx)
 	}()
-	slog.Info("worker listening", "address", server.Addr)
+	slog.Info("bot listening", "address", server.Addr)
 	if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		slog.Error("worker stopped", "error", err)
+		slog.Error("bot stopped", "error", err)
 		os.Exit(1)
 	}
 }
