@@ -71,7 +71,9 @@ func (s *Server) telegramWebhook(w http.ResponseWriter, r *http.Request) error {
 		w.WriteHeader(http.StatusOK)
 		return nil
 	}
-	if s.deps.Bot != nil && s.deps.Tasks != nil {
+	// Chỉ cần Tasks để enqueue — webhook KHÔNG cần Bot/Gemini (xử lý ở
+	// runnow-bot). Nhờ vậy api có thể bỏ token Telegram mà webhook vẫn chạy.
+	if s.deps.Tasks != nil {
 		name := senderName(update)
 		chatID, question, isQuestion := botQuestion(update, s.config.TelegramBotUsername)
 		recordChatID, _, rawText, hasText := incomingMessage(update)
@@ -398,10 +400,6 @@ func (s *Server) workerRoutes() {
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
 	})
-	s.route("POST /tasks/notify-telegram", s.notifyTelegram)
-	// Xử lý tin bot đẩy từ queue bot-inbound (xem botMessage). Handler tách
-	// method để service bot dùng chung.
-	s.route("POST /tasks/bot-message", s.botMessage)
 	s.route("POST /tasks/reconcile-connections", func(w http.ResponseWriter, r *http.Request) error {
 		var task struct {
 			Cursor string `json:"cursor"`
@@ -415,9 +413,8 @@ func (s *Server) workerRoutes() {
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
 	})
-	// Chưng cất trí nhớ nhóm — chạy theo lịch hằng ngày qua Cloud Scheduler.
-	// No-op êm nếu bot chưa bật (thiếu Telegram/Vertex).
-	s.route("POST /tasks/consolidate-memory", s.consolidateMemory)
+	// notify-telegram, bot-message, consolidate-memory đã dời sang runnow-bot
+	// (xem botRoutes) — worker không còn phần AI nào.
 }
 
 func (s *Server) authenticated(next func(http.ResponseWriter, *http.Request, string) error) handler {

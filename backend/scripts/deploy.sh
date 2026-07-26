@@ -180,14 +180,18 @@ for role in roles/firebaseauth.admin roles/storage.objectAdmin; do
     --condition=None >/dev/null
 done
 
-# Cả hai service gọi Gemini qua Vertex AI: API cho bot Q&A, worker cho chưng
-# cất trí nhớ đêm và nhận xét buổi chạy. Cùng service account nên không phải
-# quản thêm API key — xác thực bằng chính danh tính Cloud Run.
-for ai_sa in "$API_RUNTIME_SA" "$WORKER_RUNTIME_SA" "$BOT_RUNTIME_SA"; do
-  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-    --member "serviceAccount:${ai_sa}" \
+# Chỉ runnow-bot gọi Gemini (Vertex AI) — Q&A, nhận xét buổi chạy, chưng cất
+# trí nhớ đều nằm trên bot. Cấp aiplatform.user cho bot, và GỠ khỏi api &
+# worker (least-privilege: chúng không còn chạy AI).
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member "serviceAccount:${BOT_RUNTIME_SA}" \
+  --role roles/aiplatform.user \
+  --condition=None >/dev/null
+for strip_sa in "$API_RUNTIME_SA" "$WORKER_RUNTIME_SA"; do
+  gcloud projects remove-iam-policy-binding "$PROJECT_ID" \
+    --member "serviceAccount:${strip_sa}" \
     --role roles/aiplatform.user \
-    --condition=None >/dev/null
+    --condition=None >/dev/null 2>&1 || true
 done
 
 ensure_queue strava-events 5 2
@@ -205,13 +209,14 @@ require_secret STRAVA_WEBHOOK_VERIFY_TOKEN
 BASE_SECRETS="STRAVA_CLIENT_SECRET=STRAVA_CLIENT_SECRET:latest,STRAVA_WEBHOOK_VERIFY_TOKEN=STRAVA_WEBHOOK_VERIFY_TOKEN:latest"
 WORKER_SECRETS="$BASE_SECRETS"
 API_SECRETS="$BASE_SECRETS"
+BOT_SECRETS="$BASE_SECRETS"
 if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
   require_secret TELEGRAM_BOT_TOKEN
-  # Worker cần token để gửi thông báo hoạt động Strava; API cần để bot trả
-  # lời trong group Telegram. Thiếu ở API thì telegram.Enabled()=false nên
-  # Bot=nil và mọi câu hỏi rơi vào im lặng.
-  WORKER_SECRETS="${WORKER_SECRETS},TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest"
-  API_SECRETS="${API_SECRETS},TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest"
+  # CHỈ runnow-bot cần token Telegram (gửi tin + gọi Bot API). api chỉ enqueue
+  # webhook (không gọi Telegram), worker không đụng Telegram nữa → không cấp
+  # token cho hai service này (least-privilege). --set-secrets thay thế toàn
+  # bộ nên bỏ token khỏi danh sách là nó tự bị gỡ khỏi api/worker.
+  BOT_SECRETS="${BOT_SECRETS},TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest"
 fi
 
 for ttl_collection in oauthStates integrationEvents activityTombstones botRateLimits botMessages; do
@@ -279,7 +284,7 @@ gcloud run deploy "$BOT_SERVICE" \
   --region "$REGION" \
   --service-account "$BOT_RUNTIME_SA" \
   --env-vars-file "$temporary_env" \
-  --set-secrets "$WORKER_SECRETS" \
+  --set-secrets "$BOT_SECRETS" \
   --no-allow-unauthenticated \
   --min-instances 0 \
   --max-instances 5 \
