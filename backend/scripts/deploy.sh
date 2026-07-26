@@ -34,6 +34,28 @@ INVOKER_SA="${INVOKER_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 : "${WEB_RETURN_URI:=https://run-now-79767.web.app/oauth}"
 : "${ALLOWED_WEB_ORIGINS:=https://run-now-79767.web.app}"
 
+# Deploy chọn lọc theo service. Không tham số = FULL (build + cả 3 service +
+# setup hạ tầng một-lần). "deploy.sh bot" (hoặc api/worker, nhiều cái cách
+# nhau bởi dấu cách) = build image + CHỈ deploy service đó, bỏ qua service
+# khác và bỏ qua setup hạ tầng (SA/IAM/queue/scheduler). Image vẫn phải build
+# vì dùng chung; targeting cắt phần deploy + hạ tầng thừa.
+DEPLOY_TARGETS=("$@")
+if [ ${#DEPLOY_TARGETS[@]} -gt 0 ]; then
+  for t in "${DEPLOY_TARGETS[@]}"; do
+    case "$t" in
+      api | worker | bot) ;;
+      *) echo "Unknown deploy target '$t' (dùng: api | worker | bot)" >&2; exit 1 ;;
+    esac
+  done
+fi
+should_deploy() {
+  [ ${#DEPLOY_TARGETS[@]} -eq 0 ] && return 0
+  local s
+  for s in "${DEPLOY_TARGETS[@]}"; do [ "$s" = "$1" ] && return 0; done
+  return 1
+}
+is_full_deploy() { [ ${#DEPLOY_TARGETS[@]} -eq 0 ]; }
+
 require_command() {
   command -v "$1" >/dev/null 2>&1 || { echo "Missing required command: $1" >&2; exit 1; }
 }
@@ -135,6 +157,10 @@ printf '%s\n' \
   "  worker:     ${WORKER_SERVICE}"
 
 gcloud config set project "$PROJECT_ID" >/dev/null
+
+# Setup hạ tầng một-lần (enable API, repo, service account, IAM, queue). Chỉ
+# chạy khi FULL deploy — deploy chọn lọc (deploy.sh bot) bỏ qua vì đã có sẵn.
+if is_full_deploy; then
 gcloud services enable \
   artifactregistry.googleapis.com \
   cloudbuild.googleapis.com \
@@ -201,6 +227,7 @@ ensure_queue notifications 20 8
 # bot-inbound: xử lý tin bot song song có kiểm soát. Concurrency 6 — mỗi task
 # một cú Gemini Pro, quá nhiều cùng lúc dễ dính 429 Vertex AI (đã có retry).
 ensure_queue bot-inbound 10 6
+fi # end setup hạ tầng (is_full_deploy)
 require_secret STRAVA_CLIENT_SECRET
 require_secret STRAVA_WEBHOOK_VERIFY_TOKEN
 # Telegram thông báo hoạt động là tính năng tuỳ chọn — chỉ đòi hỏi secret
@@ -219,12 +246,14 @@ if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
   BOT_SECRETS="${BOT_SECRETS},TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest"
 fi
 
-for ttl_collection in oauthStates integrationEvents activityTombstones botRateLimits botMessages; do
-  gcloud firestore fields ttls update expiresAt \
-    --collection-group "$ttl_collection" \
-    --enable-ttl \
-    --project "$PROJECT_ID" >/dev/null
-done
+if is_full_deploy; then
+  for ttl_collection in oauthStates integrationEvents activityTombstones botRateLimits botMessages; do
+    gcloud firestore fields ttls update expiresAt \
+      --collection-group "$ttl_collection" \
+      --enable-ttl \
+      --project "$PROJECT_ID" >/dev/null
+  done
+fi
 
 # Chỉ đích danh thư mục backend thay vì "." — Dockerfile nằm ở đó, còn "."
 # là thư mục người dùng đang đứng lúc gọi script, chạy từ scripts/ sẽ lỗi
@@ -236,6 +265,7 @@ trap 'rm -f "$temporary_env"' EXIT
 placeholder_url="https://bootstrap.invalid"
 write_env_file "$temporary_env" "$placeholder_url" "$placeholder_url"
 
+if should_deploy worker; then
 gcloud run deploy "$WORKER_SERVICE" \
   --image "$IMAGE" \
   --command /worker \
@@ -250,10 +280,12 @@ gcloud run deploy "$WORKER_SERVICE" \
   --max-instances 5 \
   --concurrency 8 \
   --project "$PROJECT_ID"
+fi
 
 WORKER_URL="$(gcloud run services describe "$WORKER_SERVICE" --region "$REGION" --project "$PROJECT_ID" --format='value(status.url)')"
 write_env_file "$temporary_env" "$placeholder_url" "$WORKER_URL"
 
+if should_deploy api; then
 gcloud run deploy "$API_SERVICE" \
   --image "$IMAGE" \
   --command /api \
@@ -269,6 +301,7 @@ gcloud run deploy "$API_SERVICE" \
   --max-instances 5 \
   --concurrency 80 \
   --project "$PROJECT_ID"
+fi
 
 API_URL="$(gcloud run services describe "$API_SERVICE" --region "$REGION" --project "$PROJECT_ID" --format='value(status.url)')"
 write_env_file "$temporary_env" "$API_URL" "$WORKER_URL"
@@ -276,6 +309,7 @@ write_env_file "$temporary_env" "$API_URL" "$WORKER_URL"
 # runnow-bot: service PRIVATE (như worker) để xử lý riêng phần AI. Deploy sau
 # khi đã có URL api/worker để env đầy đủ. Bước này CHƯA trỏ traffic tới nó —
 # chỉ dựng lên và verify. Concurrency 6 khớp queue bot-inbound.
+if should_deploy bot; then
 gcloud run deploy "$BOT_SERVICE" \
   --image "$IMAGE" \
   --command /bot \
@@ -290,33 +324,29 @@ gcloud run deploy "$BOT_SERVICE" \
   --max-instances 5 \
   --concurrency 6 \
   --project "$PROJECT_ID"
+fi
 BOT_URL="$(gcloud run services describe "$BOT_SERVICE" --region "$REGION" --project "$PROJECT_ID" --format='value(status.url)')"
 
-# Cập nhật lại env (URL đầy đủ) cho api & worker.
+# Áp env cuối (URL đầy đủ) + BOT_BASE_URL cho các service ĐƯỢC deploy. Các
+# service deploy sớm nhận env với URL placeholder nên phải cập nhật lại ở đây;
+# BOT_BASE_URL set riêng bằng --update-env-vars (env-file bỏ rơi value rỗng).
 write_env_file "$temporary_env" "$API_URL" "$WORKER_URL"
-gcloud run services update "$WORKER_SERVICE" \
-  --region "$REGION" \
-  --env-vars-file "$temporary_env" \
-  --project "$PROJECT_ID" >/dev/null
-gcloud run services update "$API_SERVICE" \
-  --region "$REGION" \
-  --env-vars-file "$temporary_env" \
-  --project "$PROJECT_ID" >/dev/null
-gcloud run services update "$BOT_SERVICE" \
-  --region "$REGION" \
-  --env-vars-file "$temporary_env" \
-  --project "$PROJECT_ID" >/dev/null
-
-# Set BOT_BASE_URL RIÊNG bằng --update-env-vars (không qua env-file): env-file
-# bỏ rơi biến có value rỗng ở các lần ghi sớm, nên cách này chắc ăn. API cần nó
-# để TaskPublisher đẩy bot-inbound sang runnow-bot; set cả 3 cho nhất quán.
-for svc in "$API_SERVICE" "$WORKER_SERVICE" "$BOT_SERVICE"; do
+for pair in "worker:$WORKER_SERVICE" "api:$API_SERVICE" "bot:$BOT_SERVICE"; do
+  short="${pair%%:*}"
+  svc="${pair#*:}"
+  should_deploy "$short" || continue
+  gcloud run services update "$svc" \
+    --region "$REGION" \
+    --env-vars-file "$temporary_env" \
+    --project "$PROJECT_ID" >/dev/null
   gcloud run services update "$svc" \
     --region "$REGION" \
     --update-env-vars "BOT_BASE_URL=${BOT_URL}" \
     --project "$PROJECT_ID" >/dev/null
 done
 
+# IAM invoker + scheduler là hạ tầng một-lần → chỉ chạy khi FULL deploy.
+if is_full_deploy; then
 gcloud run services add-iam-policy-binding "$WORKER_SERVICE" \
   --region "$REGION" \
   --member "serviceAccount:${INVOKER_SA}" \
@@ -369,6 +399,7 @@ gcloud scheduler jobs "${memory_action}" http "$MEMORY_JOB" \
   --oidc-service-account-email "$INVOKER_SA" \
   --oidc-token-audience "$BOT_URL" \
   --project "$PROJECT_ID"
+fi # end IAM invoker + scheduler (is_full_deploy)
 
 echo "API URL: $API_URL"
 echo "Worker URL: $WORKER_URL"
