@@ -102,6 +102,7 @@ STRAVA_EVENTS_QUEUE: strava-events
 STRAVA_BACKFILL_QUEUE: strava-backfill
 DERIVED_DATA_QUEUE: derived-data
 NOTIFY_QUEUE: notifications
+BOT_INBOUND_QUEUE: bot-inbound
 TELEGRAM_CHAT_ID: '${TELEGRAM_CHAT_ID:-}'
 TELEGRAM_BOT_USERNAME: '${TELEGRAM_BOT_USERNAME:-}'
 TELEGRAM_WEBHOOK_SECRET: '${TELEGRAM_WEBHOOK_SECRET:-}'
@@ -187,6 +188,9 @@ ensure_queue strava-events 5 2
 ensure_queue strava-backfill 2 1
 ensure_queue derived-data 20 8
 ensure_queue notifications 20 8
+# bot-inbound: xử lý tin bot song song có kiểm soát. Concurrency 6 — mỗi task
+# một cú Gemini Pro, quá nhiều cùng lúc dễ dính 429 Vertex AI (đã có retry).
+ensure_queue bot-inbound 10 6
 require_secret STRAVA_CLIENT_SECRET
 require_secret STRAVA_WEBHOOK_VERIFY_TOKEN
 # Telegram thông báo hoạt động là tính năng tuỳ chọn — chỉ đòi hỏi secret

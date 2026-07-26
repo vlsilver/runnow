@@ -28,6 +28,7 @@ type Config struct {
 	BackfillQueue         string
 	DerivedQueue          string
 	NotifyQueue           string
+	BotInboundQueue       string
 	TelegramBotToken      string
 	TelegramChatID        string
 	StorageBucket         string
@@ -57,6 +58,7 @@ func LoadConfig() (Config, error) {
 		TaskInvokerAccount: required("TASK_INVOKER_SERVICE_ACCOUNT"),
 		EventsQueue:        env("STRAVA_EVENTS_QUEUE", "strava-events"), BackfillQueue: env("STRAVA_BACKFILL_QUEUE", "strava-backfill"), DerivedQueue: env("DERIVED_DATA_QUEUE", "derived-data"),
 		NotifyQueue:      env("NOTIFY_QUEUE", "notifications"),
+		BotInboundQueue:  env("BOT_INBOUND_QUEUE", "bot-inbound"),
 		TelegramBotToken: env("TELEGRAM_BOT_TOKEN", ""), TelegramChatID: env("TELEGRAM_CHAT_ID", ""),
 		AllowedWebOrigins: map[string]struct{}{},
 	}

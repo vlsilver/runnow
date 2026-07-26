@@ -19,10 +19,11 @@ import (
 type QueueName string
 
 const (
-	QueueEvents   QueueName = "strava-events"
-	QueueBackfill QueueName = "strava-backfill"
-	QueueDerived  QueueName = "derived-data"
-	QueueNotify   QueueName = "notifications"
+	QueueEvents     QueueName = "strava-events"
+	QueueBackfill   QueueName = "strava-backfill"
+	QueueDerived    QueueName = "derived-data"
+	QueueNotify     QueueName = "notifications"
+	QueueBotInbound QueueName = "bot-inbound"
 )
 
 type PublishTask struct {
@@ -39,7 +40,7 @@ type TaskPublisher struct {
 }
 
 func NewTaskPublisher(client *cloudtasks.Client, c Config) *TaskPublisher {
-	return &TaskPublisher{client: client, project: c.ProjectID, region: c.Region, workerURL: c.WorkerBaseURL, serviceAccount: c.TaskInvokerAccount, queues: map[QueueName]string{QueueEvents: c.EventsQueue, QueueBackfill: c.BackfillQueue, QueueDerived: c.DerivedQueue, QueueNotify: c.NotifyQueue}}
+	return &TaskPublisher{client: client, project: c.ProjectID, region: c.Region, workerURL: c.WorkerBaseURL, serviceAccount: c.TaskInvokerAccount, queues: map[QueueName]string{QueueEvents: c.EventsQueue, QueueBackfill: c.BackfillQueue, QueueDerived: c.DerivedQueue, QueueNotify: c.NotifyQueue, QueueBotInbound: c.BotInboundQueue}}
 }
 func (p *TaskPublisher) Close() {
 	if p.client != nil {

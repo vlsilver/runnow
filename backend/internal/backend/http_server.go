@@ -148,30 +148,29 @@ func (s *Server) apiRoutes() {
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}
-		if s.deps.Bot != nil {
+		if s.deps.Bot != nil && s.deps.Tasks != nil {
 			name := senderName(update)
 			chatID, question, isQuestion := botQuestion(update, s.config.TelegramBotUsername)
 			recordChatID, _, rawText, hasText := incomingMessage(update)
-			// Trả lời Telegram ngay rồi mới xử lý: một lượt hỏi đáp mất vài
-			// giây, quá lâu so với timeout của webhook, và Telegram sẽ gửi
-			// lại update khiến bot làm trùng.
+			// Webhook CHỈ tách sẵn rồi ĐẨY VÀO QUEUE, không tự xử lý. Việc gọi
+			// Gemini (nặng, có thể 30-90s với Pro) chạy như task ở worker —
+			// full CPU, timeout dài, tự retry. Trước đây chạy trong goroutine
+			// sau-200 nên bị Cloud Run bóp CPU tới mức vượt hạn rồi chết im.
 			if isQuestion || hasText {
-				go func() {
-					ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 90*time.Second)
-					defer cancel()
-					// Nhắc tới bot → trả lời (đồng thời tự ghi cặp hỏi–đáp vào
-					// lịch sử). Tin thường → chỉ ghi nhớ, không trả lời, để trí
-					// nhớ dài hạn nắm được cả hội thoại của group.
-					if isQuestion {
-						if err := s.deps.Bot.HandleMessage(ctx, chatID, name, question); err != nil {
-							slog.ErrorContext(ctx, "telegram.bot_failed", "error", err)
-						}
-						return
-					}
-					if err := s.deps.Bot.RecordIncoming(ctx, recordChatID, name, rawText); err != nil {
-						slog.WarnContext(ctx, "telegram.record_failed", "error", err)
-					}
-				}()
+				task := botMessageTask{IsQuestion: isQuestion, Name: name}
+				if isQuestion {
+					task.ChatID, task.Question = chatID, question
+				} else {
+					task.ChatID, task.RawText = recordChatID, rawText
+				}
+				if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{
+					Queue:       QueueBotInbound,
+					HandlerPath: "/tasks/bot-message",
+					Payload:     task,
+					TaskID:      StableTaskID("botmsg", update.UpdateID),
+				}); err != nil {
+					slog.ErrorContext(r.Context(), "telegram.enqueue_failed", "error", err)
+				}
 			}
 		}
 		w.WriteHeader(http.StatusOK)
@@ -335,6 +334,32 @@ func (s *Server) workerRoutes() {
 			return nil
 		}
 		if err := s.deps.Activities.NotifyTelegram(r.Context(), task.UID, task.ActivityID); err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true})
+	})
+	// Xử lý một tin nhắn bot (đẩy từ webhook qua queue bot-inbound). Chạy ở
+	// đây — trong một request thật, full CPU, timeout rộng, Cloud Tasks tự
+	// retry nếu lỗi — thay cho goroutine sau-200 vốn bị bóp CPU rồi timeout.
+	s.route("POST /tasks/bot-message", func(w http.ResponseWriter, r *http.Request) error {
+		if s.deps.Bot == nil {
+			w.WriteHeader(204)
+			return nil
+		}
+		var task botMessageTask
+		if decodeJSON(r, &task) != nil || task.ChatID == "" {
+			w.WriteHeader(204)
+			return nil
+		}
+		// Timeout rộng cho Pro (chạy nền, không vướng hạn webhook). Hết hạn
+		// hay lỗi → trả non-2xx để Cloud Tasks retry.
+		ctx, cancel := context.WithTimeout(r.Context(), 240*time.Second)
+		defer cancel()
+		if task.IsQuestion {
+			if err := s.deps.Bot.HandleMessage(ctx, task.ChatID, task.Name, task.Question); err != nil {
+				return err
+			}
+		} else if err := s.deps.Bot.RecordIncoming(ctx, task.ChatID, task.Name, task.RawText); err != nil {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})

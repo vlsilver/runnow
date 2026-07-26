@@ -10,7 +10,10 @@ import (
 // Telegram gửi rất nhiều loại update; khai đúng thứ dùng tới thay vì map
 // toàn bộ schema để không phải chạy theo mỗi lần họ thêm field.
 type TelegramUpdate struct {
-	Message *struct {
+	// UpdateID là số tăng dần, duy nhất mỗi update — dùng làm khoá dedup khi
+	// đẩy vào queue để Cloud Tasks không tạo task trùng.
+	UpdateID int64 `json:"update_id"`
+	Message  *struct {
 		MessageID int64  `json:"message_id"`
 		Text      string `json:"text"`
 		Chat      struct {
@@ -93,6 +96,18 @@ func botQuestion(update TelegramUpdate, botUsername string) (chatID string, ques
 		return "", "", false
 	}
 	return chatID, cleaned, true
+}
+
+// botMessageTask là payload đẩy vào queue bot-inbound: webhook chỉ tách sẵn
+// phần cần rồi enqueue, còn việc gọi Gemini (nặng) để worker xử lý trong một
+// request thật — full CPU, timeout dài, tự retry — thay cho goroutine sau-200
+// vốn bị Cloud Run bóp CPU tới mức timeout.
+type botMessageTask struct {
+	IsQuestion bool   `json:"isQuestion"`
+	ChatID     string `json:"chatId"`
+	Name       string `json:"name"`
+	Question   string `json:"question,omitempty"`
+	RawText    string `json:"rawText,omitempty"`
 }
 
 // incomingMessage trả về chatID, tên người gửi và text thô của một tin bất kỳ
