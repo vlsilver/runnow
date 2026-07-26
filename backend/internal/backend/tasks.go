@@ -43,13 +43,24 @@ func NewTaskPublisher(client *cloudtasks.Client, c Config) *TaskPublisher {
 	return &TaskPublisher{client: client, project: c.ProjectID, region: c.Region, workerURL: c.WorkerBaseURL, botURL: c.BotBaseURL, serviceAccount: c.TaskInvokerAccount, queues: map[QueueName]string{QueueEvents: c.EventsQueue, QueueBackfill: c.BackfillQueue, QueueDerived: c.DerivedQueue, QueueNotify: c.NotifyQueue, QueueBotInbound: c.BotInboundQueue}}
 }
 
-// targetURL chọn service đích cho một queue. Mặc định worker; riêng bot-inbound
-// đi tới runnow-bot khi đã cấu hình BOT_BASE_URL (chưa set thì rơi về worker).
+// targetURL chọn service đích cho một queue. Mặc định worker; các queue của
+// phần AI (bot-inbound, notifications) đi tới runnow-bot khi đã cấu hình
+// BOT_BASE_URL (chưa set thì rơi về worker — hành vi cũ, an toàn).
 func (p *TaskPublisher) targetURL(queue QueueName) string {
-	if queue == QueueBotInbound && p.botURL != "" {
+	if (queue == QueueBotInbound || queue == QueueNotify) && p.botURL != "" {
 		return p.botURL
 	}
 	return p.workerURL
+}
+
+// retryableTaskErr: lỗi tạm thời của Cloud Tasks CreateTask (mạng chập,
+// backend bận). Một cú reset không được phép làm rớt tin.
+func retryableTaskErr(err error) bool {
+	switch status.Code(err) {
+	case codes.Unavailable, codes.DeadlineExceeded, codes.Internal, codes.Unknown, codes.Aborted, codes.ResourceExhausted:
+		return true
+	}
+	return false
 }
 func (p *TaskPublisher) Close() {
 	if p.client != nil {
@@ -70,7 +81,26 @@ func (p *TaskPublisher) Publish(ctx context.Context, input PublishTask) (string,
 	if input.ScheduleTime != nil {
 		task.ScheduleTime = timestamppb.New(*input.ScheduleTime)
 	}
-	_, err = p.client.CreateTask(ctx, &cloudtaskspb.CreateTaskRequest{Parent: parent, Task: task})
+	// Retry cú CreateTask khi lỗi tạm thời: enqueue hỏng nghĩa là mất luôn tin
+	// (webhook không giữ lại). TaskID cố định nên retry an toàn — lần tạo trùng
+	// trả về AlreadyExists, coi như thành công.
+	req := &cloudtaskspb.CreateTaskRequest{Parent: parent, Task: task}
+	delay := 200 * time.Millisecond
+	for attempt := 0; attempt < 4; attempt++ {
+		_, err = p.client.CreateTask(ctx, req)
+		if err == nil || status.Code(err) == codes.AlreadyExists {
+			break
+		}
+		if !retryableTaskErr(err) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(delay):
+		}
+		delay *= 2
+	}
 	if status.Code(err) == codes.AlreadyExists {
 		return "duplicate", nil
 	}

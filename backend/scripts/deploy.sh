@@ -352,15 +352,17 @@ else
   memory_action=create
   memory_header_flag=--headers
 fi
+# Chưng cất trí nhớ là việc AI → chạy trên runnow-bot. Trỏ scheduler (uri +
+# audience) sang bot thay vì worker.
 gcloud scheduler jobs "${memory_action}" http "$MEMORY_JOB" \
   --location "$REGION" \
   --schedule '0 13 * * *' \
-  --uri "${WORKER_URL}/tasks/consolidate-memory" \
+  --uri "${BOT_URL}/tasks/consolidate-memory" \
   --http-method POST \
   "${memory_header_flag}" 'Content-Type=application/json' \
   --message-body '{}' \
   --oidc-service-account-email "$INVOKER_SA" \
-  --oidc-token-audience "$WORKER_URL" \
+  --oidc-token-audience "$BOT_URL" \
   --project "$PROJECT_ID"
 
 echo "API URL: $API_URL"

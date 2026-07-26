@@ -48,6 +48,10 @@ func (s *Server) botRoutes() {
 		return writeJSON(w, 200, map[string]any{"ok": true, "service": "runnow-bot"})
 	})
 	s.route("POST /tasks/bot-message", s.botMessage)
+	// Cả hai đây cũng là việc AI (notify sinh nhận xét, chưng cất trí nhớ) —
+	// dời sang service bot. Định tuyến queue/scheduler đổi ở deploy.sh.
+	s.route("POST /tasks/notify-telegram", s.notifyTelegram)
+	s.route("POST /tasks/consolidate-memory", s.consolidateMemory)
 }
 
 // telegramWebhook nhận update từ Telegram, xác thực secret, rồi CHỈ enqueue vào
@@ -111,6 +115,35 @@ func (s *Server) botMessage(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 	} else if err := s.deps.Bot.RecordIncoming(ctx, task.ChatID, task.Name, task.RawText); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// notifyTelegram gửi thông báo buổi chạy (sinh nhận xét bằng Gemini). Việc AI,
+// nên chạy trên service bot; dùng chung với worker qua method này.
+func (s *Server) notifyTelegram(w http.ResponseWriter, r *http.Request) error {
+	var task struct {
+		UID        string `json:"uid"`
+		ActivityID string `json:"activityId"`
+	}
+	if decodeJSON(r, &task) != nil || task.UID == "" || task.ActivityID == "" {
+		w.WriteHeader(204)
+		return nil
+	}
+	if err := s.deps.Activities.NotifyTelegram(r.Context(), task.UID, task.ActivityID); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// consolidateMemory chưng cất trí nhớ nhóm (Gemini). Việc AI, chạy trên bot.
+func (s *Server) consolidateMemory(w http.ResponseWriter, r *http.Request) error {
+	if s.deps.Memory == nil {
+		w.WriteHeader(204)
+		return nil
+	}
+	if err := s.deps.Memory.ConsolidateAll(r.Context()); err != nil {
 		return err
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})
@@ -365,20 +398,7 @@ func (s *Server) workerRoutes() {
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
 	})
-	s.route("POST /tasks/notify-telegram", func(w http.ResponseWriter, r *http.Request) error {
-		var task struct {
-			UID        string `json:"uid"`
-			ActivityID string `json:"activityId"`
-		}
-		if decodeJSON(r, &task) != nil || task.UID == "" || task.ActivityID == "" {
-			w.WriteHeader(204)
-			return nil
-		}
-		if err := s.deps.Activities.NotifyTelegram(r.Context(), task.UID, task.ActivityID); err != nil {
-			return err
-		}
-		return writeJSON(w, 200, map[string]any{"ok": true})
-	})
+	s.route("POST /tasks/notify-telegram", s.notifyTelegram)
 	// Xử lý tin bot đẩy từ queue bot-inbound (xem botMessage). Handler tách
 	// method để service bot dùng chung.
 	s.route("POST /tasks/bot-message", s.botMessage)
@@ -397,16 +417,7 @@ func (s *Server) workerRoutes() {
 	})
 	// Chưng cất trí nhớ nhóm — chạy theo lịch hằng ngày qua Cloud Scheduler.
 	// No-op êm nếu bot chưa bật (thiếu Telegram/Vertex).
-	s.route("POST /tasks/consolidate-memory", func(w http.ResponseWriter, r *http.Request) error {
-		if s.deps.Memory == nil {
-			w.WriteHeader(204)
-			return nil
-		}
-		if err := s.deps.Memory.ConsolidateAll(r.Context()); err != nil {
-			return err
-		}
-		return writeJSON(w, 200, map[string]any{"ok": true})
-	})
+	s.route("POST /tasks/consolidate-memory", s.consolidateMemory)
 }
 
 func (s *Server) authenticated(next func(http.ResponseWriter, *http.Request, string) error) handler {
