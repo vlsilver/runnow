@@ -52,6 +52,9 @@ type memberRow struct {
 	MovingMinutes int64   `json:"movingMinutes"`
 	PacePerKm     string  `json:"pacePerKm,omitempty"`
 	paceSeconds   float64
+	// uid không serialize ra cho model — chỉ để lần tới activities của người
+	// này khi cần chi tiết một buổi chạy.
+	uid string
 }
 
 // loadMembers đọc toàn bộ bảng xếp hạng cho một kỳ.
@@ -89,6 +92,7 @@ func (t *BotTools) loadMembers(ctx context.Context, period string) ([]memberRow,
 		if row.paceSeconds > 0 {
 			row.PacePerKm = fmt.Sprintf("%d:%02d", int64(row.paceSeconds)/60, int64(row.paceSeconds)%60)
 		}
+		row.uid = doc.Ref.ID
 		rows = append(rows, row)
 	}
 	return rows, label, nil
@@ -250,6 +254,86 @@ func (t *BotTools) GetRunContracts(ctx context.Context, _ map[string]any) (any, 
 		out = append(out, entry)
 	}
 	return map[string]any{"contracts": out}, nil
+}
+
+// GetRecentRun trả chi tiết một buổi chạy của một thành viên (mặc định buổi
+// gần nhất). Chỉ đọc được của thành viên đặt hồ sơ công khai — cùng ràng buộc
+// với các tool khác. Model nhận facts rồi tự viết nhận xét.
+func (t *BotTools) GetRecentRun(ctx context.Context, args map[string]any) (any, error) {
+	query := strings.ToLower(strings.TrimSpace(stringValue(args["name"])))
+	if query == "" {
+		return nil, fmt.Errorf("thiếu tên thành viên")
+	}
+	// Dùng lại loadMembers để (a) lọc đúng người công khai, (b) lấy uid. Kỳ
+	// truyền vào không ảnh hưởng việc tra uid.
+	rows, _, err := t.loadMembers(ctx, "month")
+	if err != nil {
+		return nil, err
+	}
+	matches := make([]memberRow, 0)
+	for _, r := range rows {
+		if strings.Contains(strings.ToLower(r.Name), query) {
+			matches = append(matches, r)
+		}
+	}
+	switch {
+	case len(matches) == 0:
+		return map[string]any{"found": false, "reason": "không có thành viên công khai nào tên như vậy"}, nil
+	case len(matches) > 1:
+		names := make([]string, 0, len(matches))
+		for _, m := range matches {
+			names = append(names, m.Name)
+		}
+		return map[string]any{"found": false, "reason": "tên trùng nhiều người", "candidates": names}, nil
+	}
+	member := matches[0]
+
+	// startedAt lưu dạng chuỗi RFC3339; OrderBy chuỗi ~ theo thời gian, nhưng
+	// vẫn sort lại trong Go phòng lệch timezone. Lấy dư một ít rồi cắt.
+	docs, err := t.db.Collection("users").Doc(member.uid).Collection("activities").
+		OrderBy("startedAt", firestore.Desc).Limit(50).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	runs := make([]ActivityFact, 0, len(docs))
+	for _, d := range docs {
+		f := activityFact(d.Ref.ID, d.Data())
+		// Bỏ hoạt động từ Strava không phải chạy; hoạt động ghi trong app thì giữ.
+		if f.Source == "strava" && !runSportTypes[f.SportType] {
+			continue
+		}
+		runs = append(runs, f)
+	}
+	sort.SliceStable(runs, func(i, j int) bool { return runs[i].StartedAt.After(runs[j].StartedAt) })
+	if len(runs) == 0 {
+		return map[string]any{"found": false, "member": member.Name, "reason": "chưa có buổi chạy nào"}, nil
+	}
+	offset := int(number(args["offset"]))
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(runs) {
+		return map[string]any{"found": false, "member": member.Name,
+			"reason": fmt.Sprintf("chỉ có %d buổi gần đây, không có buổi thứ %d", len(runs), offset+1)}, nil
+	}
+	run := runs[offset]
+	out := map[string]any{
+		"found":              true,
+		"member":             member.Name,
+		"runIndexFromLatest": offset,
+		"date":               run.StartedAt.In(vietnam).Format("15:04 · 02/01/2006"),
+		"sportType":          run.SportType,
+		"distanceKm":         round2(run.DistanceMeters / 1000),
+		"movingTime":         formatDurationHMS(run.MovingTimeSeconds),
+		"pacePerKm":          formatPacePerKm(run),
+		"elevationM":         int64(math.Round(run.ElevationGainMeters)),
+	}
+	// Nghỉ nhiều (elapsed > moving) là tín hiệu đáng nhận xét (đi bộ, dừng đèn...).
+	if run.ElapsedTimeSeconds > run.MovingTimeSeconds+30 {
+		out["elapsedTime"] = formatDurationHMS(run.ElapsedTimeSeconds)
+		out["stoppedMinutes"] = (run.ElapsedTimeSeconds - run.MovingTimeSeconds) / 60
+	}
+	return out, nil
 }
 
 func round2(v float64) float64 { return math.Round(v*100) / 100 }

@@ -37,6 +37,10 @@ func (s *TelegramService) Enabled() bool {
 	return s.botToken != "" && s.chatID != ""
 }
 
+// ChatID là group đích của các thông báo — cũng là khoá lịch sử/trí nhớ để
+// ghi lại chính những thông báo đó.
+func (s *TelegramService) ChatID() string { return s.chatID }
+
 // SendActivityAlert posts the alert as an HTML text message.
 //
 // An earlier version rendered a PNG card server-side, but Go's standard
@@ -142,6 +146,23 @@ func telegramActivityMessage(displayName, activityName string, fact ActivityFact
 		fmt.Fprintf(&b, "\n<i>%s</i>", telegramActivityTime(fact.StartedAt))
 	}
 	return b.String()
+}
+
+// telegramActivityPlain dựng bản một dòng, không HTML, của thông báo buổi
+// chạy — để LƯU vào trí nhớ (transcript cần chữ đọc được, không phải thẻ
+// HTML). Giữ tên, cự ly, thời gian, pace: đủ để bot nắm ai chạy và thói quen;
+// con số nhất thời thì bước chưng cất sẽ tự loại.
+func telegramActivityPlain(displayName, activityName string, fact ActivityFact) string {
+	if strings.TrimSpace(activityName) == "" {
+		activityName = "Buổi chạy"
+	}
+	s := fmt.Sprintf("🏃 %s vừa hoàn thành %s — %s, %s, pace %s",
+		strings.TrimSpace(displayName), strings.TrimSpace(activityName),
+		formatDistanceKm(fact.DistanceMeters), formatDurationHMS(fact.MovingTimeSeconds), formatPacePerKm(fact))
+	if !fact.StartedAt.IsZero() {
+		s += " (" + telegramActivityTime(fact.StartedAt) + ")"
+	}
+	return s
 }
 
 // telegramActivityTime renders the start time in Vietnam local time — the

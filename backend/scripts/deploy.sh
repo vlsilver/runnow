@@ -173,13 +173,15 @@ for role in roles/firebaseauth.admin roles/storage.objectAdmin; do
     --condition=None >/dev/null
 done
 
-# API service gọi Gemini qua Vertex AI cho bot Telegram — chỉ nó cần quyền
-# này, worker không đụng tới. Cùng service account nên không phải quản thêm
-# API key: xác thực bằng chính danh tính của Cloud Run.
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member "serviceAccount:${API_RUNTIME_SA}" \
-  --role roles/aiplatform.user \
-  --condition=None >/dev/null
+# Cả hai service gọi Gemini qua Vertex AI: API cho bot Q&A, worker cho chưng
+# cất trí nhớ đêm và nhận xét buổi chạy. Cùng service account nên không phải
+# quản thêm API key — xác thực bằng chính danh tính Cloud Run.
+for ai_sa in "$API_RUNTIME_SA" "$WORKER_RUNTIME_SA"; do
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member "serviceAccount:${ai_sa}" \
+    --role roles/aiplatform.user \
+    --condition=None >/dev/null
+done
 
 ensure_queue strava-events 5 2
 ensure_queue strava-backfill 2 1
@@ -284,6 +286,27 @@ gcloud scheduler jobs "${scheduler_action}" http "$SCHEDULER_JOB" \
   --uri "${WORKER_URL}/tasks/reconcile-connections" \
   --http-method POST \
   "${scheduler_header_flag}" 'Content-Type=application/json' \
+  --message-body '{}' \
+  --oidc-service-account-email "$INVOKER_SA" \
+  --oidc-token-audience "$WORKER_URL" \
+  --project "$PROJECT_ID"
+
+# Chưng cất trí nhớ bot mỗi đêm 20:00 giờ VN (13:00 UTC). Một lần/ngày là đủ
+# — trí nhớ dài hạn không cần cập nhật liên tục.
+MEMORY_JOB="${MEMORY_JOB:-runnow-bot-memory}"
+if gcloud scheduler jobs describe "$MEMORY_JOB" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  memory_action=update
+  memory_header_flag=--update-headers
+else
+  memory_action=create
+  memory_header_flag=--headers
+fi
+gcloud scheduler jobs "${memory_action}" http "$MEMORY_JOB" \
+  --location "$REGION" \
+  --schedule '0 13 * * *' \
+  --uri "${WORKER_URL}/tasks/consolidate-memory" \
+  --http-method POST \
+  "${memory_header_flag}" 'Content-Type=application/json' \
   --message-body '{}' \
   --oidc-service-account-email "$INVOKER_SA" \
   --oidc-token-audience "$WORKER_URL" \

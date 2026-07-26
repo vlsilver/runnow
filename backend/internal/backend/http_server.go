@@ -148,19 +148,31 @@ func (s *Server) apiRoutes() {
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}
-		chatID, question, ok := botQuestion(update, s.config.TelegramBotUsername)
-		if ok && s.deps.Bot != nil {
+		if s.deps.Bot != nil {
 			name := senderName(update)
-			// Trả lời Telegram ngay rồi mới gọi model: một lượt hỏi đáp mất
-			// vài giây, quá lâu so với timeout của webhook, và Telegram sẽ
-			// gửi lại update khiến bot trả lời trùng.
-			go func() {
-				ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 60*time.Second)
-				defer cancel()
-				if err := s.deps.Bot.HandleMessage(ctx, chatID, name, question); err != nil {
-					slog.ErrorContext(ctx, "telegram.bot_failed", "error", err)
-				}
-			}()
+			chatID, question, isQuestion := botQuestion(update, s.config.TelegramBotUsername)
+			recordChatID, _, rawText, hasText := incomingMessage(update)
+			// Trả lời Telegram ngay rồi mới xử lý: một lượt hỏi đáp mất vài
+			// giây, quá lâu so với timeout của webhook, và Telegram sẽ gửi
+			// lại update khiến bot làm trùng.
+			if isQuestion || hasText {
+				go func() {
+					ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 90*time.Second)
+					defer cancel()
+					// Nhắc tới bot → trả lời (đồng thời tự ghi cặp hỏi–đáp vào
+					// lịch sử). Tin thường → chỉ ghi nhớ, không trả lời, để trí
+					// nhớ dài hạn nắm được cả hội thoại của group.
+					if isQuestion {
+						if err := s.deps.Bot.HandleMessage(ctx, chatID, name, question); err != nil {
+							slog.ErrorContext(ctx, "telegram.bot_failed", "error", err)
+						}
+						return
+					}
+					if err := s.deps.Bot.RecordIncoming(ctx, recordChatID, name, rawText); err != nil {
+						slog.WarnContext(ctx, "telegram.record_failed", "error", err)
+					}
+				}()
+			}
 		}
 		w.WriteHeader(http.StatusOK)
 		return nil
@@ -336,6 +348,18 @@ func (s *Server) workerRoutes() {
 			return nil
 		}
 		if err := s.deps.Reconciliation.ReconcileConnections(r.Context(), task.Cursor); err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true})
+	})
+	// Chưng cất trí nhớ nhóm — chạy theo lịch hằng ngày qua Cloud Scheduler.
+	// No-op êm nếu bot chưa bật (thiếu Telegram/Vertex).
+	s.route("POST /tasks/consolidate-memory", func(w http.ResponseWriter, r *http.Request) error {
+		if s.deps.Memory == nil {
+			w.WriteHeader(204)
+			return nil
+		}
+		if err := s.deps.Memory.ConsolidateAll(r.Context()); err != nil {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})

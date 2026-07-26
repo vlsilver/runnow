@@ -26,6 +26,8 @@ type Dependencies struct {
 	Telegram       *TelegramService
 	Accounts       *AccountService
 	Bot            *BotService
+	Gemini         *genai.Client
+	Memory         *MemoryService
 }
 
 func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) {
@@ -74,6 +76,10 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 	d.Accounts = NewAccountService(db, authClient, d.OAuth, bucket)
 	// Bot chỉ bật khi có đủ Telegram lẫn Vertex AI. Thiếu một trong hai thì
 	// mọi luồng cũ vẫn chạy y như trước, chỉ không có bot.
+	//
+	// genai client tách khỏi Bot và giữ ở cấp Dependencies: bot Q&A chạy trên
+	// API, còn chưng cất trí nhớ hàng ngày và nhận xét buổi chạy chạy trên
+	// worker — cả ba dùng chung một client.
 	if telegram.Enabled() {
 		genaiClient, genErr := genai.NewClient(ctx, &genai.ClientConfig{
 			Project:  config.ProjectID,
@@ -83,7 +89,12 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 		if genErr != nil {
 			slog.WarnContext(ctx, "dependencies.genai_unavailable", "error", genErr)
 		} else {
-			d.Bot = NewBotService(genaiClient, telegram, NewBotTools(db), db, config.GeminiModel, config.BotHourlyLimit)
+			d.Gemini = genaiClient
+			d.Memory = NewMemoryService(genaiClient, db, config.GeminiModel)
+			d.Bot = NewBotService(genaiClient, telegram, NewBotTools(db), db, config.GeminiModel, config.BotHourlyLimit, d.Memory)
+			// Cho ActivityService ghi lại chính thông báo buổi chạy vào trí
+			// nhớ (Telegram không đẩy lại tin của bot).
+			d.Activities.SetBroadcastRecorder(d.Bot)
 		}
 	}
 	return d, nil

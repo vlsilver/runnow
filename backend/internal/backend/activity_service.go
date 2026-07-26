@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"strings"
 	"time"
@@ -34,13 +35,26 @@ type ActivityService struct {
 	tokens        *TokenStore
 	tasks         *TaskPublisher
 	telegram      *TelegramService
+	broadcast     broadcastRecorder
 	publicBaseURL string
 	webBaseURL    string
+}
+
+// broadcastRecorder ghi lại một tin do chính bot phát ra group (như thông báo
+// buổi chạy) vào trí nhớ. Tuỳ chọn — nil khi bot chưa bật; NotifyTelegram vẫn
+// gửi thông báo bình thường, chỉ không lưu vào trí nhớ.
+type broadcastRecorder interface {
+	RecordBroadcast(ctx context.Context, chatID, text string) error
+	Enabled() bool
 }
 
 func NewActivityService(db *firestore.Client, g *StravaGateway, tokens *TokenStore, tasks *TaskPublisher, telegram *TelegramService, publicBaseURL, webBaseURL string) *ActivityService {
 	return &ActivityService{db: db, gateway: g, tokens: tokens, tasks: tasks, telegram: telegram, publicBaseURL: publicBaseURL, webBaseURL: webBaseURL}
 }
+
+// SetBroadcastRecorder nối recorder sau khi bot được khởi tạo. Tách khỏi
+// constructor vì BotService dựng SAU ActivityService trong dependencies.
+func (s *ActivityService) SetBroadcastRecorder(r broadcastRecorder) { s.broadcast = r }
 
 func (s *ActivityService) SaveTracked(ctx context.Context, uid string, raw map[string]any) (TrackedActivityResult, error) {
 	next, err := normalizeTrackedActivity(raw)
@@ -508,8 +522,20 @@ func (s *ActivityService) NotifyTelegram(ctx context.Context, uid, activityID st
 		return err
 	}
 	detailURL := activityDetailURL(s.webBaseURL, uid, activityID)
-	if err := s.telegram.SendActivityAlert(ctx, preferredName(profile), stringValue(data["name"]), activityFact(activityID, data), detailURL); err != nil {
+	displayName := preferredName(profile)
+	fact := activityFact(activityID, data)
+	if err := s.telegram.SendActivityAlert(ctx, displayName, stringValue(data["name"]), fact, detailURL); err != nil {
 		return err
+	}
+	// Telegram không đẩy lại tin của chính bot, nên nếu không tự ghi ở đây
+	// thì trí nhớ dài hạn sẽ mất phần thông báo này — và mọi phản ứng của
+	// nhóm quanh nó (đã ghi vì là người thật) sẽ mất ngữ cảnh. Ghi bản
+	// plain-text dưới vai bot. Không chặn luồng nếu ghi hỏng.
+	if s.broadcast != nil && s.broadcast.Enabled() {
+		plain := telegramActivityPlain(displayName, stringValue(data["name"]), fact)
+		if err := s.broadcast.RecordBroadcast(ctx, s.telegram.ChatID(), plain); err != nil {
+			slog.WarnContext(ctx, "activity.broadcast_record_failed", "error", err)
+		}
 	}
 	_, err = ref.Set(ctx, map[string]any{"telegramNotifiedAt": firestore.ServerTimestamp, "updatedAt": firestore.ServerTimestamp}, firestore.MergeAll)
 	return err

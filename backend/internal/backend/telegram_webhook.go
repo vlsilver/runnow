@@ -95,6 +95,22 @@ func botQuestion(update TelegramUpdate, botUsername string) (chatID string, ques
 	return chatID, cleaned, true
 }
 
+// incomingMessage trả về chatID, tên người gửi và text thô của một tin bất kỳ
+// có nội dung — để bot GHI NHỚ mọi tin trong group, không chỉ tin nhắc tới nó.
+// ok=false nếu update không phải tin văn bản từ một người thật (bỏ tin dịch
+// vụ, bài đăng kênh, tin rỗng).
+func incomingMessage(update TelegramUpdate) (chatID, name, text string, ok bool) {
+	msg := update.Message
+	if msg == nil || msg.From == nil {
+		return "", "", "", false
+	}
+	text = strings.TrimSpace(msg.Text)
+	if text == "" {
+		return "", "", "", false
+	}
+	return strconv.FormatInt(msg.Chat.ID, 10), senderName(update), text, true
+}
+
 // senderName lấy tên người gửi để gắn vào lịch sử — nhờ đó bot phân biệt
 // được ai hỏi khi nhiều người xen kẽ trong group.
 func senderName(update TelegramUpdate) string {
