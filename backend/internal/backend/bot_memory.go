@@ -33,14 +33,22 @@ func NewMemoryService(gc *genai.Client, db *firestore.Client, model string) *Mem
 }
 
 // maxMemoryChars chặn trí nhớ phình vô hạn — nó luôn nằm trong mọi request
-// nên phải gọn.
-const maxMemoryChars = 3000
+// nên phải có trần. Để rộng (10000) vì chủ trương giờ là giữ nội dung ĐẦY ĐỦ:
+// cả ý tưởng, kế hoạch, thảo luận của nhóm chứ không chỉ vài facts. ~10000 ký
+// tự (~2500 token) vẫn nhỏ so với cửa sổ model, chi phí mỗi request không
+// đáng kể — đổi lại bộ nhớ giữ được nhiều chi tiết hơn, ít bị đẩy cái cũ ra.
+const maxMemoryChars = 10000
 
 // consolidationTriggerCount là số tin MỚI tích lại trước khi chưng cất một
 // lần. Bot ghi mọi tin trong group (Privacy Mode tắt), nên thay vì chỉ chưng
-// cất mỗi đêm — dễ mất mạch nếu group chat sôi nổi — cứ đủ 100 tin chưa xử lý
-// là cuốn ngay vào trí nhớ dài hạn. Job đêm vẫn chạy như lưới an toàn.
-const consolidationTriggerCount = 100
+// cất mỗi đêm — dễ mất mạch nếu group chat sôi nổi — cứ đủ ngần này tin chưa
+// xử lý là cuốn ngay vào trí nhớ dài hạn. Job đêm vẫn chạy như lưới an toàn.
+//
+// Để 200 (không phải 100): mỗi lần chưng cất là một lần VIẾT LẠI bộ nhớ cũ,
+// mà viết lại nhiều lần thì LLM dần bào mòn chi tiết cũ (như photocopy bản
+// photocopy). Batch to hơn = ít vòng viết lại = bộ nhớ ổn định hơn; 200 tin
+// vẫn thừa sức distill gọn trong một lần.
+const consolidationTriggerCount = 200
 
 // maxConsolidationBatch là trần số tin đọc mỗi lần chưng cất. Bình thường mỗi
 // lần chỉ có ~100 tin mới kể từ mốc trước; trần này chỉ chặn trường hợp tồn
@@ -187,19 +195,24 @@ TRÍ NHỚ HIỆN TẠI:
 HỘI THOẠI GẦN ĐÂY:
 %s
 
-Hãy CẬP NHẬT trí nhớ, gộp cái cũ còn đúng với cái mới. Giữ những sự thật đáng
-nhớ LÂU DÀI:
+Hãy CẬP NHẬT trí nhớ, gộp cái cũ còn đúng với cái mới. Mục tiêu là một bản
+tóm tắt ĐẦY ĐỦ nội dung nhóm — không chỉ vài facts về từng người, mà cả những
+gì nhóm đã BÀN. Giữ những thứ đáng nhớ LÂU DÀI:
 - Từng thành viên: đang tập giải gì, thói quen chạy (giờ giấc, cự ly ưa
-  thích), chấn thương hay tình trạng sức khoẻ, tính cách, biệt danh.
+  thích), chấn thương/sức khoẻ, tính cách, biệt danh.
 - Mục tiêu, kèo đang theo đuổi.
-- Chuyện đùa, văn hoá riêng của nhóm.
+- NỘI DUNG THẢO LUẬN: ý tưởng nhóm nêu ra, kế hoạch, quyết định đã chốt, việc
+  ai hứa/rủ làm gì, chủ đề đang bàn dở. Đây là phần quan trọng — ghi lại đủ
+  chi tiết để sau này tổng hợp lại được, đừng lược thành một dòng chung chung.
+- Chuyện đùa, văn hoá, những khoảnh khắc đáng nhớ của nhóm.
 
-BỎ đi: tán gẫu vụn vặt; số liệu nhất thời như số km tuần này (cái đó tra
-realtime được, không cần nhớ); thông tin đã cũ không còn đúng.
+BỎ đi: câu chào hỏi/đế theo vô nghĩa; số liệu nhất thời như số km tuần này
+(tra realtime được, không cần nhớ); thông tin đã cũ không còn đúng.
 
-Viết cô đọng, tối đa 350 từ, gạch đầu dòng theo từng người. CHỈ ghi điều thực
-sự xuất hiện trong hội thoại — tuyệt đối không bịa. Nếu chưa có gì đáng nhớ
-thì trả về đúng trí nhớ cũ.
+Viết có tổ chức theo mục (từng người / các chủ đề đã bàn), tối đa 1500 từ. CHỈ
+ghi điều thực sự xuất hiện trong hội thoại — tuyệt đối không bịa. Giữ lại chi
+tiết cũ còn giá trị thay vì nén thành câu chung chung; chỉ lược khi thật sự đã
+lỗi thời. Nếu chưa có gì mới đáng nhớ thì trả về đúng trí nhớ cũ.
 
 Chỉ trả về nội dung trí nhớ, KHÔNG kèm tiêu đề hay lời dẫn như "TRÍ NHỚ:" —
 bắt đầu thẳng bằng các gạch đầu dòng.`

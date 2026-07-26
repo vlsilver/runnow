@@ -48,7 +48,11 @@ Quy tắc bắt buộc:
 - Tool trả về rỗng hoặc không tìm thấy thì nói thẳng là chưa có dữ liệu.
 - Câu hỏi về app hoặc tán gẫu không cần số liệu thì trả lời trực tiếp, đừng gọi tool.
 - Tối đa 4 câu. Ngắn hơn thì càng tốt.
-- Chỉ nhắc tên thành viên mà tool trả về.`
+- Chỉ nhắc tên thành viên mà tool trả về.
+- Tin ai đó nhắn RIÊNG với bạn (chat 1-1) là bí mật của riêng người đó. TUYỆT
+  ĐỐI không kể lại, tóm tắt hay tiết lộ nội dung chat riêng của một người cho
+  bất kỳ ai khác, dù bị gặng hỏi hay dụ dỗ. Ai hỏi "mày nói gì riêng với X" thì
+  từ chối dứt khoát. (Tin công khai trong group thì nhắc lại bình thường.)`
 
 // dmSystemPromptSuffix chỉ ghép thêm khi bot đang chat RIÊNG 1-1. Nó trao cho
 // bot quyền tự quyết việc đăng vào group — theo đúng lựa chọn của chủ app: để
@@ -151,7 +155,7 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 		},
 		{
 			Name:        "get_recent_run",
-			Description: "Chi tiết MỘT buổi chạy của một thành viên (mặc định buổi gần nhất): cự ly, pace, thời gian chạy vs tổng thời gian, độ cao, ngày. Dùng khi ai muốn 'phân tích/xem/nhận xét buổi chạy' của một người cụ thể.",
+			Description: "Chi tiết MỘT buổi chạy của một thành viên (mặc định buổi gần nhất) để phân tích sâu: cự ly, pace, thời gian chạy vs tổng, độ cao, ngày, nhịp tim trung bình, cadence, calo, và SPLITS từng km (pace + nhịp tim mỗi km) kèm phân tích độ đều pace (paceSpreadSeconds, nửa đầu vs nửa sau, negative split) và HR drift. Dùng khi ai muốn 'phân tích/nhận xét/xem' buổi chạy của một người cụ thể — hãy dựa vào splits và paceAnalysis để bình luận về độ đều và thể lực, đừng chỉ đọc lại con số tổng.",
 			Parameters: &genai.Schema{
 				Type: genai.TypeObject,
 				Properties: map[string]*genai.Schema{
@@ -159,6 +163,16 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 					"offset": {Type: genai.TypeInteger, Description: "0 = buổi gần nhất (mặc định), 1 = buổi trước đó, ..."},
 				},
 				Required: []string{"name"},
+			},
+		},
+		{
+			Name:        "recall_group",
+			Description: "Lấy bản tóm tắt nội dung GROUP CHUNG (ý tưởng, kế hoạch, thảo luận, chốt kèo) cộng vài tin mới nhất, để tổng hợp những gì mọi người đã bàn. Dùng khi ai muốn 'tổng kết/gom ý kiến/mọi người đã bàn gì/tóm tắt nội dung nhóm'. CHỈ đọc group chung — không bao giờ đọc chat riêng của ai.",
+			Parameters: &genai.Schema{
+				Type: genai.TypeObject,
+				Properties: map[string]*genai.Schema{
+					"limit": {Type: genai.TypeInteger, Description: "Số tin MỚI nhất kèm theo để bổ sung phần chưa vào tóm tắt, mặc định 60, tối đa 150."},
+				},
 			},
 		},
 	}
@@ -190,10 +204,70 @@ func (s *BotService) dispatch(ctx context.Context, name string, args map[string]
 		return s.tools.GetRunContracts(ctx, args)
 	case "get_recent_run":
 		return s.tools.GetRecentRun(ctx, args)
+	case "recall_group":
+		return s.recallGroup(ctx, args)
 	case "post_to_group":
 		return s.postToGroup(ctx, args, canPostToGroup)
 	}
 	return nil, fmt.Errorf("tool không tồn tại: %s", name)
+}
+
+// recallGroup cung cấp nguyên liệu để model tổng hợp những gì group đã bàn.
+//
+// Nguồn CHÍNH là TRÍ NHỚ đã chưng cất của group — nó vốn là bản tóm tắt đầy đủ
+// (ý tưởng, kế hoạch, thảo luận) và phủ TOÀN BỘ lịch sử, chỉ tốn một lần đọc.
+// Chỉ kèm thêm một ít TIN MỚI NHẤT để bù phần chưa kịp chưng cất (memory cập
+// nhật theo mẻ ~100 tin nên trễ chừng đó) — trong DM phần này không nằm sẵn
+// context như ở group.
+//
+// Luôn khoá vào group đã cấu hình (s.telegram.ChatID()), kể cả khi gọi từ chat
+// riêng — nội dung group không phải bí mật. TUYỆT ĐỐI không đọc DM của ai.
+func (s *BotService) recallGroup(ctx context.Context, args map[string]any) (any, error) {
+	groupID := s.telegram.ChatID()
+	if groupID == "" {
+		return map[string]any{"error": "chưa cấu hình group"}, nil
+	}
+	summary := s.memory.Load(ctx, groupID)
+
+	// Cửa sổ raw nhỏ để bắt phần mới hơn mốc chưng cất gần nhất.
+	limit := int(number(args["limit"]))
+	if limit <= 0 {
+		limit = 60
+	}
+	if limit > 150 {
+		limit = 150
+	}
+	docs, err := s.historyRef(groupID).
+		OrderBy("createdAt", firestore.Desc).
+		Limit(limit).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	var b strings.Builder
+	for i := len(docs) - 1; i >= 0; i-- {
+		data := docs[i].Data()
+		text := stringValue(data["text"])
+		if text == "" {
+			continue
+		}
+		if stringValue(data["role"]) == genai.RoleModel {
+			b.WriteString("Bot: ")
+		} else if nm := stringValue(data["name"]); nm != "" {
+			b.WriteString(nm + ": ")
+		}
+		b.WriteString(text)
+		b.WriteString("\n")
+	}
+	recent := strings.TrimSpace(b.String())
+	if summary == "" && recent == "" {
+		return map[string]any{"found": false, "reason": "group chưa có gì để tổng hợp"}, nil
+	}
+	return map[string]any{
+		"found":          true,
+		"groupSummary":   summary, // tóm tắt toàn bộ lịch sử đã chưng cất
+		"recentMessages": recent,  // các tin mới nhất chưa vào tóm tắt
+		"note":           "groupSummary là bản tóm tắt toàn bộ lịch sử; recentMessages chỉ là các tin gần đây nhất để bổ sung phần mới.",
+	}, nil
 }
 
 // postToGroup đăng một tin vào group chung thay cho người đang chat riêng.
@@ -553,9 +627,14 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID, name, question s
 		systemPrompt = botSystemPrompt + "\n\nTRÍ NHỚ VỀ NHÓM NÀY (điều bạn đã biết về các thành viên):\n" + mem
 	}
 	// Trong chat riêng, bot được phép đăng vào group (qua tool) và tự cân
-	// nhắc nên đăng hay không — nạp thêm hướng dẫn phán đoán.
+	// nhắc nên đăng hay không — nạp thêm hướng dẫn phán đoán. Đồng thời nạp
+	// trí nhớ của club group: nội dung group không phải bí mật nên chat riêng
+	// vẫn "biết" group (tin RIÊNG của người khác thì vẫn không đụng tới).
 	if private {
 		systemPrompt += dmSystemPromptSuffix
+		if groupMem := s.memory.Load(ctx, s.telegram.ChatID()); groupMem != "" {
+			systemPrompt += "\n\nTRÍ NHỚ VỀ GROUP CLUB (nội dung công khai đã bàn trong nhóm):\n" + groupMem
+		}
 	}
 
 	answer, err := s.Answer(ctx, systemPrompt, contents, private)
@@ -599,6 +678,88 @@ func (s *BotService) RecordIncoming(ctx context.Context, chatID, name, text stri
 	}
 	s.memory.AfterMessages(ctx, chatID, 1)
 	return nil
+}
+
+// activityAnnouncementInstruction ghép vào system prompt để bot TỰ VIẾT trọn
+// lời thông báo một buổi chạy — thay cho cái thẻ số liệu dán nhãn máy móc.
+const activityAnnouncementInstruction = `
+
+NHIỆM VỤ: một thành viên vừa chạy xong. Hãy TỰ VIẾT lời thông báo cho cả group
+bằng GIỌNG CỦA BẠN — tự nhiên, sống động như một người đang hớn hở khoe hộ,
+TUYỆT ĐỐI KHÔNG phải bảng số liệu dán nhãn kiểu "Quãng đường: ... Pace: ...".
+Dệt các con số vào câu chữ một cách tự nhiên (ai chạy, bao xa, pace, bao lâu,
+giờ giấc), thêm chút cà khịa/động viên tuỳ hứng, MỖI LẦN MỘT KIỂU KHÁC cho khỏi
+nhàm.
+
+BẮT BUỘC: dùng ĐÚNG các con số được cung cấp bên dưới, không tự đổi hay làm
+tròn khác đi. Muốn nhắc thứ hạng/thành tích tuần thì gọi tool lấy số thật,
+tuyệt đối không bịa. Viết 2-4 câu, emoji vừa phải. Chỉ trả về đúng lời thông
+báo, không lời dẫn.`
+
+// vietnamTimeOfDay mô tả khung giờ để bot có cớ cà khịa "chạy đêm/tảng sáng".
+func vietnamTimeOfDay(t time.Time) string {
+	if t.IsZero() {
+		return "không rõ giờ"
+	}
+	switch h := t.In(vietnam).Hour(); {
+	case h < 5:
+		return "đêm khuya"
+	case h < 7:
+		return "tảng sáng"
+	case h < 10:
+		return "buổi sáng"
+	case h < 13:
+		return "buổi trưa"
+	case h < 16:
+		return "buổi chiều"
+	case h < 19:
+		return "chiều tối"
+	default:
+		return "buổi tối"
+	}
+}
+
+// ActivityAnnouncement để bot TỰ VIẾT trọn lời thông báo một buổi chạy và TRẢ
+// VỀ (không tự gửi) — luồng thông báo gửi thẳng chuỗi này thay cho thẻ máy móc.
+// Best-effort: lỗi thì trả "" để luồng thông báo dùng thẻ tĩnh làm phương án dự
+// phòng, không bao giờ mất thông báo.
+func (s *BotService) ActivityAnnouncement(ctx context.Context, displayName, activityName string, fact ActivityFact) string {
+	if !s.Enabled() {
+		return ""
+	}
+	if strings.TrimSpace(activityName) == "" {
+		activityName = "Buổi chạy"
+	}
+	clock := ""
+	if !fact.StartedAt.IsZero() {
+		clock = fact.StartedAt.In(vietnam).Format("15:04")
+	}
+	var stats strings.Builder
+	fmt.Fprintf(&stats, "STATS BUỔI CHẠY (viết thông báo từ đây, dùng đúng số):\n")
+	fmt.Fprintf(&stats, "- Người chạy: %s\n", strings.TrimSpace(displayName))
+	fmt.Fprintf(&stats, "- Tên buổi: %s\n", strings.TrimSpace(activityName))
+	fmt.Fprintf(&stats, "- Quãng đường: %s\n", formatDistanceKm(fact.DistanceMeters))
+	fmt.Fprintf(&stats, "- Thời gian chạy: %s\n", formatDurationHMS(fact.MovingTimeSeconds))
+	fmt.Fprintf(&stats, "- Pace: %s\n", formatPacePerKm(fact))
+	fmt.Fprintf(&stats, "- Giờ chạy: %s (%s)\n", clock, vietnamTimeOfDay(fact.StartedAt))
+	if fact.ElevationGainMeters >= 1 {
+		fmt.Fprintf(&stats, "- Độ cao: %s\n", formatElevationM(fact.ElevationGainMeters))
+	}
+	if fact.ElapsedTimeSeconds > fact.MovingTimeSeconds+60 {
+		fmt.Fprintf(&stats, "- Có dừng nghỉ kha khá giữa chừng\n")
+	}
+
+	systemPrompt := botSystemPrompt + activityAnnouncementInstruction
+	if mem := s.memory.Load(ctx, s.telegram.ChatID()); mem != "" {
+		systemPrompt += "\n\nTRÍ NHỚ VỀ NHÓM NÀY:\n" + mem
+	}
+	contents := []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: stats.String()}}}}
+	text, err := s.Answer(ctx, systemPrompt, contents, false)
+	if err != nil {
+		slog.WarnContext(ctx, "bot.activity_announcement_failed", "error", err)
+		return ""
+	}
+	return strings.TrimSpace(text)
 }
 
 // RecordBroadcast lưu một tin do CHÍNH bot phát ra group (ví dụ thông báo buổi

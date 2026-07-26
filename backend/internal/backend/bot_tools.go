@@ -295,16 +295,23 @@ func (t *BotTools) GetRecentRun(ctx context.Context, args map[string]any) (any, 
 	if err != nil {
 		return nil, err
 	}
-	runs := make([]ActivityFact, 0, len(docs))
+	// Giữ cả raw data cạnh ActivityFact: nhịp tim, cadence, splits từng km nằm
+	// trong doc thô, ActivityFact không mang theo.
+	type runDoc struct {
+		fact ActivityFact
+		raw  map[string]any
+	}
+	runs := make([]runDoc, 0, len(docs))
 	for _, d := range docs {
-		f := activityFact(d.Ref.ID, d.Data())
+		data := d.Data()
+		f := activityFact(d.Ref.ID, data)
 		// Bỏ hoạt động từ Strava không phải chạy; hoạt động ghi trong app thì giữ.
 		if f.Source == "strava" && !runSportTypes[f.SportType] {
 			continue
 		}
-		runs = append(runs, f)
+		runs = append(runs, runDoc{fact: f, raw: data})
 	}
-	sort.SliceStable(runs, func(i, j int) bool { return runs[i].StartedAt.After(runs[j].StartedAt) })
+	sort.SliceStable(runs, func(i, j int) bool { return runs[i].fact.StartedAt.After(runs[j].fact.StartedAt) })
 	if len(runs) == 0 {
 		return map[string]any{"found": false, "member": member.Name, "reason": "chưa có buổi chạy nào"}, nil
 	}
@@ -316,7 +323,8 @@ func (t *BotTools) GetRecentRun(ctx context.Context, args map[string]any) (any, 
 		return map[string]any{"found": false, "member": member.Name,
 			"reason": fmt.Sprintf("chỉ có %d buổi gần đây, không có buổi thứ %d", len(runs), offset+1)}, nil
 	}
-	run := runs[offset]
+	run := runs[offset].fact
+	raw := runs[offset].raw
 	out := map[string]any{
 		"found":              true,
 		"member":             member.Name,
@@ -333,7 +341,117 @@ func (t *BotTools) GetRecentRun(ctx context.Context, args map[string]any) (any, 
 		out["elapsedTime"] = formatDurationHMS(run.ElapsedTimeSeconds)
 		out["stoppedMinutes"] = (run.ElapsedTimeSeconds - run.MovingTimeSeconds) / 60
 	}
+	// Chỉ số sinh lý — có thì đưa vào để nhận xét sâu hơn.
+	if hr := number(raw["averageHeartRate"]); hr > 0 {
+		out["averageHeartRate"] = int64(math.Round(hr))
+	}
+	if cad := number(raw["averageCadence"]); cad > 0 {
+		// Strava trả cadence 1 chân; nhân 2 ra spm quen thuộc.
+		out["averageCadenceSpm"] = int64(math.Round(cad * 2))
+	}
+	if cal := number(raw["calories"]); cal > 0 {
+		out["calories"] = int64(math.Round(cal))
+	}
+	if gear := stringValue(raw["gearName"]); gear != "" {
+		out["gear"] = gear
+	}
+	// Splits từng km: pace + nhịp tim mỗi chặng, kèm phân tích độ đều và drift.
+	if rows, analysis := splitAnalysis(raw); rows != nil {
+		out["splits"] = rows
+		if analysis != nil {
+			out["paceAnalysis"] = analysis
+		}
+	} else {
+		out["splitsNote"] = "buổi này chưa có dữ liệu chi tiết từng km (chưa đồng bộ splits)"
+	}
 	return out, nil
+}
+
+// splitAnalysis rút từng chặng (thường mỗi km) thành pace + nhịp tim, và tính
+// vài tín hiệu để model nhận xét độ đều pace lẫn HR drift — thay vì để model
+// tự chia trung bình (dễ sai).
+func splitAnalysis(raw map[string]any) (rows []map[string]any, analysis map[string]any) {
+	arr, _ := raw["splits"].([]any)
+	if len(arr) == 0 {
+		return nil, nil
+	}
+	paces := make([]int, 0, len(arr))
+	hrs := make([]int, 0, len(arr))
+	for i, e := range arr {
+		m, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		dist := number(m["distanceMeters"])
+		mt := number(m["movingTimeSeconds"])
+		row := map[string]any{"km": i + 1}
+		if dist > 0 && mt > 0 {
+			spk := int(math.Round(mt / (dist / 1000)))
+			row["pace"] = fmtPace(spk)
+			// Chỉ tính chặng ~đủ 1km vào phân tích độ đều; chặng lẻ cuối (vd
+			// 300m) pace suy ra dễ thành ngoại lệ, làm lệch spread/nhanh-chậm.
+			if dist >= 900 {
+				paces = append(paces, spk)
+			}
+		}
+		if hr := number(m["averageHeartRate"]); hr > 0 {
+			row["hr"] = int(math.Round(hr))
+			hrs = append(hrs, int(math.Round(hr)))
+		}
+		rows = append(rows, row)
+	}
+	if len(paces) >= 2 {
+		lo, hi := paces[0], paces[0]
+		for _, p := range paces {
+			if p < lo {
+				lo = p
+			}
+			if p > hi {
+				hi = p
+			}
+		}
+		half := len(paces) / 2
+		analysis = map[string]any{
+			"fastestKmPace":     fmtPace(lo),
+			"slowestKmPace":     fmtPace(hi),
+			"paceSpreadSeconds": hi - lo, // càng nhỏ càng đều
+			"firstHalfPace":     fmtPace(avgInt(paces[:half])),
+			"secondHalfPace":    fmtPace(avgInt(paces[half:])),
+			"negativeSplit":     avgInt(paces[half:]) < avgInt(paces[:half]),
+		}
+	}
+	if len(hrs) >= 2 {
+		analysis = ensureMap(analysis)
+		analysis["hrStart"] = hrs[0]
+		analysis["hrEnd"] = hrs[len(hrs)-1]
+		analysis["hrDrift"] = hrs[len(hrs)-1] - hrs[0] // dương = tim trôi lên (đuối/nóng)
+	}
+	return rows, analysis
+}
+
+func fmtPace(secondsPerKm int) string {
+	if secondsPerKm <= 0 {
+		return "--"
+	}
+	return fmt.Sprintf("%d:%02d", secondsPerKm/60, secondsPerKm%60)
+}
+
+func avgInt(xs []int) int {
+	if len(xs) == 0 {
+		return 0
+	}
+	sum := 0
+	for _, x := range xs {
+		sum += x
+	}
+	return sum / len(xs)
+}
+
+func ensureMap(m map[string]any) map[string]any {
+	if m == nil {
+		return map[string]any{}
+	}
+	return m
 }
 
 func round2(v float64) float64 { return math.Round(v*100) / 100 }

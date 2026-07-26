@@ -45,6 +45,7 @@ type ActivityService struct {
 // gửi thông báo bình thường, chỉ không lưu vào trí nhớ.
 type broadcastRecorder interface {
 	RecordBroadcast(ctx context.Context, chatID, text string) error
+	ActivityAnnouncement(ctx context.Context, displayName, activityName string, fact ActivityFact) string
 	Enabled() bool
 }
 
@@ -524,16 +525,34 @@ func (s *ActivityService) NotifyTelegram(ctx context.Context, uid, activityID st
 	detailURL := activityDetailURL(s.webBaseURL, uid, activityID)
 	displayName := preferredName(profile)
 	fact := activityFact(activityID, data)
-	if err := s.telegram.SendActivityAlert(ctx, displayName, stringValue(data["name"]), fact, detailURL); err != nil {
+	activityName := stringValue(data["name"])
+	hasBot := s.broadcast != nil && s.broadcast.Enabled()
+
+	// Để BOT tự viết trọn lời thông báo bằng giọng người thay cho thẻ số liệu
+	// máy móc. Lỗi hay chưa bật bot thì rơi về thẻ tĩnh — không bao giờ mất
+	// thông báo.
+	announcement := ""
+	if hasBot {
+		announcement = s.broadcast.ActivityAnnouncement(ctx, displayName, activityName, fact)
+	}
+	if announcement != "" {
+		if err := s.telegram.SendActivityAnnouncement(ctx, announcement, detailURL); err != nil {
+			return err
+		}
+	} else if err := s.telegram.SendActivityAlert(ctx, displayName, activityName, fact, detailURL, ""); err != nil {
 		return err
 	}
-	// Telegram không đẩy lại tin của chính bot, nên nếu không tự ghi ở đây
-	// thì trí nhớ dài hạn sẽ mất phần thông báo này — và mọi phản ứng của
-	// nhóm quanh nó (đã ghi vì là người thật) sẽ mất ngữ cảnh. Ghi bản
-	// plain-text dưới vai bot. Không chặn luồng nếu ghi hỏng.
-	if s.broadcast != nil && s.broadcast.Enabled() {
-		plain := telegramActivityPlain(displayName, stringValue(data["name"]), fact)
-		if err := s.broadcast.RecordBroadcast(ctx, s.telegram.ChatID(), plain); err != nil {
+
+	// Telegram không đẩy lại tin của chính bot, nên tự ghi vào trí nhớ ở đây —
+	// nếu không, mọi phản ứng của nhóm quanh thông báo sẽ mất ngữ cảnh. Ghi
+	// đúng thứ đã gửi (lời bot viết, hoặc bản plain của thẻ). Không chặn luồng
+	// nếu ghi hỏng.
+	if hasBot {
+		recorded := announcement
+		if recorded == "" {
+			recorded = telegramActivityPlain(displayName, activityName, fact)
+		}
+		if err := s.broadcast.RecordBroadcast(ctx, s.telegram.ChatID(), recorded); err != nil {
 			slog.WarnContext(ctx, "activity.broadcast_record_failed", "error", err)
 		}
 	}

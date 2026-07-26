@@ -48,7 +48,7 @@ func (s *TelegramService) ChatID() string { return s.chatID }
 // was stripped ("hoàn thành" came out "hoan thanh") and the text was
 // aliased. Telegram renders HTML natively with the reader's own font and
 // theme, which handles Unicode correctly and stays sharp at any zoom.
-func (s *TelegramService) SendActivityAlert(ctx context.Context, displayName, activityName string, fact ActivityFact, detailURL string) error {
+func (s *TelegramService) SendActivityAlert(ctx context.Context, displayName, activityName string, fact ActivityFact, detailURL, comment string) error {
 	if !s.Enabled() {
 		return nil
 	}
@@ -60,7 +60,7 @@ func (s *TelegramService) SendActivityAlert(ctx context.Context, displayName, ac
 	}
 	payload, err := json.Marshal(map[string]any{
 		"chat_id":    s.chatID,
-		"text":       telegramActivityMessage(displayName, activityName, fact),
+		"text":       telegramActivityMessage(displayName, activityName, fact, comment),
 		"parse_mode": "HTML",
 		// Link trỏ về app; Telegram xem trước sẽ chỉ lôi về được màn hình
 		// đăng nhập, vừa xấu vừa vô nghĩa.
@@ -84,6 +84,44 @@ func (s *TelegramService) SendActivityAlert(ctx context.Context, displayName, ac
 	if resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		return fmt.Errorf("telegram sendMessage failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+	return nil
+}
+
+// SendActivityAnnouncement gửi lời thông báo buổi chạy do BOT tự viết — text
+// thô (KHÔNG parse_mode vì model sinh, tránh vỡ HTML), kèm nút "Xem chi tiết".
+func (s *TelegramService) SendActivityAnnouncement(ctx context.Context, text, detailURL string) error {
+	if !s.Enabled() {
+		return nil
+	}
+	replyMarkup, err := json.Marshal(map[string]any{
+		"inline_keyboard": [][]map[string]any{{{"text": "Xem chi tiết buổi chạy", "url": detailURL}}},
+	})
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(map[string]any{
+		"chat_id":              s.chatID,
+		"text":                 text,
+		"link_preview_options": map[string]any{"is_disabled": true},
+		"reply_markup":         json.RawMessage(replyMarkup),
+	})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.apiBaseURL+"/bot"+s.botToken+"/sendMessage", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("telegram sendMessage failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return nil
 }
@@ -127,7 +165,7 @@ func (s *TelegramService) SendChatMessage(ctx context.Context, chatID, text stri
 // Telegram only supports a small tag set (b, i, u, s, code, pre, a,
 // blockquote) — no tables, no <br>, no CSS — so layout is done with newlines
 // and emoji labels. Every interpolated value is user-controlled and escaped.
-func telegramActivityMessage(displayName, activityName string, fact ActivityFact) string {
+func telegramActivityMessage(displayName, activityName string, fact ActivityFact, comment string) string {
 	if strings.TrimSpace(activityName) == "" {
 		activityName = "Buổi chạy"
 	}
@@ -144,6 +182,11 @@ func telegramActivityMessage(displayName, activityName string, fact ActivityFact
 	}
 	if !fact.StartedAt.IsZero() {
 		fmt.Fprintf(&b, "\n<i>%s</i>", telegramActivityTime(fact.StartedAt))
+	}
+	// Câu bình luận tuỳ hứng của bot, đính ngay dưới thẻ. Model sinh ra text
+	// thô nên PHẢI escape trước khi nhét vào body parse_mode=HTML.
+	if c := strings.TrimSpace(comment); c != "" {
+		fmt.Fprintf(&b, "\n\n💬 <i>%s</i>", html.EscapeString(c))
 	}
 	return b.String()
 }

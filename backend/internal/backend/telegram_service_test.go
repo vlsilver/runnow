@@ -36,7 +36,7 @@ func TestTelegramActivityAlertSendsHTMLMessage(t *testing.T) {
 		MovingTimeSeconds:   1812,
 		ElevationGainMeters: 24,
 	}
-	if err := service.SendActivityAlert(context.Background(), "vlsilver", "Morning Run", fact, "https://example.test/activity"); err != nil {
+	if err := service.SendActivityAlert(context.Background(), "vlsilver", "Morning Run", fact, "https://example.test/activity", ""); err != nil {
 		t.Fatalf("SendActivityAlert: %v", err)
 	}
 
@@ -73,17 +73,21 @@ func TestTelegramActivityAlertSendsHTMLMessage(t *testing.T) {
 func TestTelegramMessageEscapesUserText(t *testing.T) {
 	// Tên buổi chạy do user đặt và được nhúng thẳng vào HTML — không escape
 	// thì một cái tên chứa thẻ sẽ làm Telegram từ chối cả tin nhắn.
-	text := telegramActivityMessage("a<b>c", "<i>Run</i>", ActivityFact{DistanceMeters: 1000, MovingTimeSeconds: 300})
+	text := telegramActivityMessage("a<b>c", "<i>Run</i>", ActivityFact{DistanceMeters: 1000, MovingTimeSeconds: 300}, "ghê <b>vãi</b>")
 	if strings.Contains(text, "<i>Run</i>") || !strings.Contains(text, "&lt;i&gt;Run&lt;/i&gt;") {
 		t.Fatalf("activity name not escaped:\n%s", text)
 	}
 	if !strings.Contains(text, "a&lt;b&gt;c") {
 		t.Fatalf("display name not escaped:\n%s", text)
 	}
+	// Câu bình luận do model sinh cũng nhúng vào HTML — phải escape.
+	if strings.Contains(text, "<b>vãi</b>") || !strings.Contains(text, "ghê &lt;b&gt;vãi&lt;/b&gt;") {
+		t.Fatalf("comment not escaped:\n%s", text)
+	}
 }
 
 func TestTelegramMessageFallsBackWhenActivityNameEmpty(t *testing.T) {
-	text := telegramActivityMessage("runner", "   ", ActivityFact{DistanceMeters: 1000, MovingTimeSeconds: 300})
+	text := telegramActivityMessage("runner", "   ", ActivityFact{DistanceMeters: 1000, MovingTimeSeconds: 300}, "")
 	if !strings.Contains(text, "Buổi chạy") {
 		t.Fatalf("missing fallback name:\n%s", text)
 	}
@@ -98,7 +102,7 @@ func TestActivityDetailURLPointsAtAppRoute(t *testing.T) {
 
 func TestTelegramActivityAlertSkipsWhenDisabled(t *testing.T) {
 	service := NewTelegramService("", "")
-	if err := service.SendActivityAlert(context.Background(), "runner", "Run", ActivityFact{}, "https://example.test"); err != nil {
+	if err := service.SendActivityAlert(context.Background(), "runner", "Run", ActivityFact{}, "https://example.test", ""); err != nil {
 		t.Fatalf("SendActivityAlert disabled = %v", err)
 	}
 }
