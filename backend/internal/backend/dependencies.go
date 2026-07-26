@@ -91,7 +91,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 		} else {
 			d.Gemini = genaiClient
 			d.Memory = NewMemoryService(genaiClient, db, config.GeminiModel)
-			d.Bot = NewBotService(genaiClient, telegram, NewBotTools(db), db, config.GeminiModel, config.BotHourlyLimit, d.Memory)
+			d.Bot = NewBotService(genaiClient, telegram, NewBotTools(db), db, config.GeminiModel, config.BotHourlyLimit, d.Memory, NewScheduleStore(db))
 			// Cho ActivityService ghi lại chính thông báo buổi chạy vào trí
 			// nhớ (Telegram không đẩy lại tin của bot).
 			d.Activities.SetBroadcastRecorder(d.Bot)

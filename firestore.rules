@@ -232,5 +232,21 @@ service cloud.firestore {
     match /syncRuns/{document=**} {
       allow read, write: if false;
     }
+
+    // Backend-owned bot state (Telegram bot). Admin SDK bypasses these rules;
+    // Flutter clients must never read conversations, memory, rate counters, or
+    // the bot's self-scheduled tasks.
+    match /botConversations/{document=**} {
+      allow read, write: if false;
+    }
+    match /botMemory/{document=**} {
+      allow read, write: if false;
+    }
+    match /botRateLimits/{document=**} {
+      allow read, write: if false;
+    }
+    match /botSchedules/{document=**} {
+      allow read, write: if false;
+    }
   }
 }

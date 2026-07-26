@@ -52,6 +52,19 @@ func (s *Server) botRoutes() {
 	// dời sang service bot. Định tuyến queue/scheduler đổi ở deploy.sh.
 	s.route("POST /tasks/notify-telegram", s.notifyTelegram)
 	s.route("POST /tasks/consolidate-memory", s.consolidateMemory)
+	// Cloud Scheduler gõ mỗi 10 phút → chạy các lịch bot tự đặt tới hạn.
+	s.route("POST /tasks/schedule-tick", func(w http.ResponseWriter, r *http.Request) error {
+		if s.deps.Bot == nil {
+			w.WriteHeader(204)
+			return nil
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 240*time.Second)
+		defer cancel()
+		if err := s.deps.Bot.RunDueSchedules(ctx, time.Now()); err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true})
+	})
 }
 
 // telegramWebhook nhận update từ Telegram, xác thực secret, rồi CHỈ enqueue vào

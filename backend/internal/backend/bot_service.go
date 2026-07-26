@@ -81,21 +81,30 @@ chọn, nhiều khi ẩn danh lại thú vị hơn. NHƯNG khi ẩn danh phải 
 với nội dung: vì không ai chịu trách nhiệm tên tuổi, tuyệt đối không đăng thứ
 nhắm vào hay làm tổn thương một người cụ thể. Và dù nêu tên hay ẩn danh, TUYỆT
 ĐỐI KHÔNG giả làm người khác đang nói (không đăng như thể chính X phát ngôn) —
-ẩn danh là "có người nhờ", không phải mạo danh.`
+ẩn danh là "có người nhờ", không phải mạo danh.
+
+ĐẶT LỊCH: bạn CÓ tool schedule_action để tự đặt lịch đăng vào group sau này
+(nhắc, động viên, đếm ngược sự kiện, tổng kết sau sự kiện...). Mỗi lịch là một
+Ý ĐỊNH — tới giờ bạn mới tự quyết có đăng không tuỳ tình hình, nên KHÔNG lo spam
+cố định. Trước khi đặt, xem "LỊCH BOT ĐANG ĐẶT" bên dưới để KHÔNG tạo trùng/thừa;
+chỉ đặt khi thật sự hữu ích. Tính runAtISO theo GIỜ HIỆN TẠI cho đúng ngày. Với
+việc lặp lại nhiều ngày dùng recurrence=daily và đặt untilISO là mốc kết thúc.
+Có list_schedules / cancel_schedule để xem và huỷ.`
 
 // BotService nối Telegram với Gemini và bộ tool Firestore.
 type BotService struct {
-	genai    *genai.Client
-	telegram *TelegramService
-	tools    *BotTools
-	db       *firestore.Client
-	model    string
-	hourly   int
-	memory   *MemoryService
+	genai     *genai.Client
+	telegram  *TelegramService
+	tools     *BotTools
+	db        *firestore.Client
+	model     string
+	hourly    int
+	memory    *MemoryService
+	schedules *ScheduleStore
 }
 
-func NewBotService(gc *genai.Client, telegram *TelegramService, tools *BotTools, db *firestore.Client, model string, hourlyLimit int, memory *MemoryService) *BotService {
-	return &BotService{genai: gc, telegram: telegram, tools: tools, db: db, model: model, hourly: hourlyLimit, memory: memory}
+func NewBotService(gc *genai.Client, telegram *TelegramService, tools *BotTools, db *firestore.Client, model string, hourlyLimit int, memory *MemoryService, schedules *ScheduleStore) *BotService {
+	return &BotService{genai: gc, telegram: telegram, tools: tools, db: db, model: model, hourly: hourlyLimit, memory: memory, schedules: schedules}
 }
 
 func (s *BotService) Enabled() bool { return s != nil && s.genai != nil && s.telegram.Enabled() }
@@ -188,6 +197,37 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 				Required: []string{"message"},
 			},
 		})
+		decls = append(decls,
+			&genai.FunctionDeclaration{
+				Name:        "schedule_action",
+				Description: "Đặt một LỊCH để chính bạn tự đăng vào group vào lúc nào đó (nhắc nhở, động viên, đếm ngược sự kiện, tổng kết sau sự kiện...). Lịch lưu Ý ĐỊNH, không phải tin cố định: tới giờ bạn sẽ TỰ QUYẾT có đăng không tuỳ tình hình. Tự cân nhắc dựa trên các lịch đang có (đừng đặt trùng/thừa), chỉ đặt khi thật sự hữu ích. Dùng khi ai nhờ 'lên lịch nhắc / đặt lịch / tạo kế hoạch nhắc' cho một dịp.",
+				Parameters: &genai.Schema{
+					Type: genai.TypeObject,
+					Properties: map[string]*genai.Schema{
+						"title":      {Type: genai.TypeString, Description: "Nhãn ngắn cho lịch, vd 'Đếm ngược giải chạy 02/08'."},
+						"intent":     {Type: genai.TypeString, Description: "Điều cần cân nhắc đăng khi tới giờ (bạn tự soạn tin lúc đó). Nêu rõ mục đích + giọng."},
+						"runAtISO":   {Type: genai.TypeString, Description: "Thời điểm chạy lần đầu, ISO 8601 kèm offset giờ VN, vd 2026-08-02T06:00:00+07:00."},
+						"recurrence": {Type: genai.TypeString, Enum: []string{"once", "daily", "weekly"}, Description: "Lặp lại: once / daily / weekly. Mặc định once."},
+						"untilISO":   {Type: genai.TypeString, Description: "(recurring) Ngừng sau mốc này, ISO 8601 kèm offset. Bỏ trống nếu không giới hạn."},
+					},
+					Required: []string{"title", "intent", "runAtISO"},
+				},
+			},
+			&genai.FunctionDeclaration{
+				Name:        "list_schedules",
+				Description: "Liệt kê các lịch bạn đang đặt cho group (trả lời 'đã hẹn gì', hoặc tự kiểm tra trước khi đặt lịch mới để tránh trùng).",
+				Parameters:  &genai.Schema{Type: genai.TypeObject, Properties: map[string]*genai.Schema{}},
+			},
+			&genai.FunctionDeclaration{
+				Name:        "cancel_schedule",
+				Description: "Huỷ lịch khớp id hoặc một phần tiêu đề.",
+				Parameters: &genai.Schema{
+					Type:       genai.TypeObject,
+					Properties: map[string]*genai.Schema{"query": {Type: genai.TypeString, Description: "id hoặc một phần tiêu đề lịch cần huỷ."}},
+					Required:   []string{"query"},
+				},
+			},
+		)
 	}
 	return []*genai.Tool{{FunctionDeclarations: decls}}
 }
@@ -208,6 +248,21 @@ func (s *BotService) dispatch(ctx context.Context, name string, args map[string]
 		return s.recallGroup(ctx, args)
 	case "post_to_group":
 		return s.postToGroup(ctx, args, canPostToGroup)
+	case "schedule_action":
+		if !canPostToGroup || s.schedules == nil {
+			return map[string]any{"created": false, "reason": "chỉ đặt lịch được từ chat riêng"}, nil
+		}
+		return s.createScheduleTool(ctx, args)
+	case "list_schedules":
+		if s.schedules == nil {
+			return map[string]any{"count": 0, "schedules": []any{}}, nil
+		}
+		return s.listSchedulesTool(ctx)
+	case "cancel_schedule":
+		if !canPostToGroup || s.schedules == nil {
+			return map[string]any{"cancelled": 0}, nil
+		}
+		return s.cancelScheduleTool(ctx, args)
 	}
 	return nil, fmt.Errorf("tool không tồn tại: %s", name)
 }
@@ -320,6 +375,10 @@ const botDailyDMLimit = 1000
 // mỗi ngày. Rào chắn cứng: dù ai đó dụ được bot vượt phán đoán, thiệt hại vẫn
 // bị chặn ở đây, không phụ thuộc model có "tỉnh táo" hay không.
 const botDailyGroupPostLimit = 20
+
+// botDailyProactiveLimit là trần TOÀN CỤC số tin bot TỰ ĐĂNG theo lịch mỗi
+// ngày. Chống spam cứng: dù có bao nhiêu lịch tới hạn, không vượt ngần này.
+const botDailyProactiveLimit = 5
 
 // isPrivateChat: chat riêng (DM) có chatId DƯƠNG (= user ID); group/supergroup
 // có chatId ÂM. Đủ để tách hai luồng mà không phải truyền thêm cờ khắp nơi.
@@ -634,6 +693,14 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID, name, question s
 		systemPrompt += dmSystemPromptSuffix
 		if groupMem := s.memory.Load(ctx, s.telegram.ChatID()); groupMem != "" {
 			systemPrompt += "\n\nTRÍ NHỚ VỀ GROUP CLUB (nội dung công khai đã bàn trong nhóm):\n" + groupMem
+		}
+		if s.schedules != nil {
+			now := time.Now().In(vietnam)
+			systemPrompt += "\n\nGIỜ HIỆN TẠI (VN, dùng để tính runAtISO): " +
+				now.Format("2006-01-02T15:04:05+07:00") + " (" + now.Weekday().String() + ")"
+			if sched := s.schedulesSummary(ctx, s.telegram.ChatID()); sched != "" {
+				systemPrompt += "\n\nLỊCH BOT ĐANG ĐẶT (tránh đặt trùng; dùng để trả lời 'đã hẹn gì'):\n" + sched
+			}
 		}
 	}
 

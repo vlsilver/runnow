@@ -399,6 +399,26 @@ gcloud scheduler jobs "${memory_action}" http "$MEMORY_JOB" \
   --oidc-service-account-email "$INVOKER_SA" \
   --oidc-token-audience "$BOT_URL" \
   --project "$PROJECT_ID"
+
+# Tick lịch bot mỗi 10 phút → runnow-bot chạy các lịch tự-đặt tới hạn.
+TICK_JOB="${TICK_JOB:-runnow-bot-tick}"
+if gcloud scheduler jobs describe "$TICK_JOB" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  tick_action=update
+  tick_header_flag=--update-headers
+else
+  tick_action=create
+  tick_header_flag=--headers
+fi
+gcloud scheduler jobs "${tick_action}" http "$TICK_JOB" \
+  --location "$REGION" \
+  --schedule '*/10 * * * *' \
+  --uri "${BOT_URL}/tasks/schedule-tick" \
+  --http-method POST \
+  "${tick_header_flag}" 'Content-Type=application/json' \
+  --message-body '{}' \
+  --oidc-service-account-email "$INVOKER_SA" \
+  --oidc-token-audience "$BOT_URL" \
+  --project "$PROJECT_ID"
 fi # end IAM invoker + scheduler (is_full_deploy)
 
 echo "API URL: $API_URL"
