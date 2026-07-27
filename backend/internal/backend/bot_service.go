@@ -140,6 +140,31 @@ const botDailyImagesPerUser = 3
 // geminiImageModel là model sinh ảnh; chạy ở location "global" (khác client chat).
 const geminiImageModel = "gemini-2.5-flash-image"
 
+// defaultImageStyle là theme dùng khi người vẽ không chỉ định.
+const defaultImageStyle = "anime"
+
+// imageStyles: các THEME vẽ chọn được → đoạn mô tả phong cách chèn vào prompt.
+// Người dùng nói "vẽ kiểu anime/tech..." thì bot chọn style tương ứng; không nói
+// thì dùng defaultImageStyle. Thêm theme mới chỉ cần thêm một dòng ở đây (nhớ
+// cập nhật Enum trong tool declaration cho khớp).
+var imageStyles = map[string]string{
+	"anime":      "vibrant Japanese anime / manga art, dynamic pose, cel shading, dramatic lighting, highly detailed, studio quality",
+	"cyberpunk":  "cyberpunk sci-fi, glowing neon, futuristic tech, holographic UI, moody cinematic atmosphere, highly detailed",
+	"cinematic":  "photorealistic cinematic photo, dramatic lighting, shallow depth of field, epic composition, ultra detailed, 8k",
+	"3d":         "cute Pixar-style 3D render, soft global illumination, expressive, glossy, polished, high detail",
+	"watercolor": "soft watercolor painting, delicate brush strokes, artistic, pastel tones",
+	"comic":      "bold western comic-book art, ink outlines, halftone shading, dynamic, vibrant",
+	"pixel":      "retro 16-bit pixel art, vibrant palette, nostalgic video-game vibe",
+	"sticker":    "bold cartoon sticker art, thick outlines, flat vibrant colors, clean white border, playful",
+}
+
+func imageStyleFragment(style string) string {
+	if frag, ok := imageStyles[strings.ToLower(strings.TrimSpace(style))]; ok {
+		return frag
+	}
+	return imageStyles[defaultImageStyle]
+}
+
 func (s *BotService) Enabled() bool { return s != nil && s.genai != nil && s.telegram.Enabled() }
 
 // toolDeclarations là bề mặt duy nhất model nhìn thấy về dữ liệu.
@@ -225,6 +250,11 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 				Properties: map[string]*genai.Schema{
 					"imagePrompt": {Type: genai.TypeString, Description: "Mô tả cảnh cần vẽ, VIẾT BẰNG TIẾNG ANH (model ảnh hiểu tiếng Anh tốt hơn), sinh động, hài hước, hợp bối cảnh chạy bộ của club."},
 					"caption":     {Type: genai.TypeString, Description: "Lời cà khịa/động viên TIẾNG VIỆT bằng giọng của bạn, gửi kèm ảnh."},
+					"style": {
+						Type:        genai.TypeString,
+						Enum:        []string{"anime", "cyberpunk", "cinematic", "3d", "watercolor", "comic", "pixel", "sticker"},
+						Description: "Phong cách vẽ. Chọn theo ý người dùng nếu họ nói ('kiểu anime', 'kiểu tech/cyberpunk', 'như thật/cinematic', '3d', 'màu nước', 'truyện tranh', 'pixel', 'sticker'). Không nói thì bỏ trống (mặc định anime).",
+					},
 				},
 				Required: []string{"imagePrompt", "caption"},
 			},
@@ -714,8 +744,9 @@ func (s *BotService) generateImage(ctx context.Context, args map[string]any) (an
 				"người này đã dùng hết %d ảnh trong ngày, hãy từ chối lịch sự và hẹn mai", botDailyImagesPerUser)}, nil
 		}
 	}
+	style := stringValue(args["style"])
 	ref, _ := ctx.Value(ctxRefImage).([]byte)
-	img, err := s.generateFunImage(ctx, prompt, ref)
+	img, err := s.generateFunImage(ctx, prompt, style, ref)
 	if err != nil {
 		slog.WarnContext(ctx, "bot.image_generate_failed", "error", err)
 		return map[string]any{"ok": false, "reason": "vẽ hỏng, xin lỗi và bảo thử lại sau"}, nil
@@ -802,20 +833,21 @@ func (s *BotService) bumpImageQuota(ctx context.Context, userID string) error {
 
 // generateFunImage gọi model ảnh (gemini-2.5-flash-image) sinh 1 ảnh sticker
 // hài. Trả về bytes PNG; rỗng nếu model không trả ảnh (vd bị lọc nội dung).
-func (s *BotService) generateFunImage(ctx context.Context, prompt string, ref []byte) ([]byte, error) {
+func (s *BotService) generateFunImage(ctx context.Context, prompt, style string, ref []byte) ([]byte, error) {
+	styleFrag := imageStyleFragment(style)
+	const quality = "High quality, detailed, striking, well composed. Keep it fun " +
+		"and wholesome; no offensive or demeaning content."
 	var parts []*genai.Part
 	var full string
 	if len(ref) > 0 {
 		// Vẽ LẠI từ ảnh tham chiếu người dùng gửi (Telegram photo là JPEG).
-		full = "Using the provided reference image, redraw/edit it into a funny, " +
-			"wholesome sticker-art cartoon. Keep the main subject recognizable, then " +
-			"apply this transformation: " + prompt + ". Thick bold outlines, vibrant " +
-			"colors, playful meme energy, no offensive or demeaning content."
+		full = "Redraw and transform the provided reference image. Keep the main " +
+			"subject recognizable, then apply this: " + prompt + ". Art style: " +
+			styleFrag + ". " + quality
 		parts = append(parts, &genai.Part{InlineData: &genai.Blob{MIMEType: "image/jpeg", Data: ref}})
 	} else {
-		full = "Generate a single funny, wholesome sticker-art cartoon image. Thick " +
-			"bold outlines, vibrant colors, clean background, playful meme energy, no " +
-			"offensive content. Scene: " + prompt
+		full = "Create a single image. Subject: " + prompt + ". Art style: " +
+			styleFrag + ". " + quality
 	}
 	parts = append(parts, &genai.Part{Text: full})
 	resp, err := s.imageGenai.Models.GenerateContent(ctx, s.imageModel,
