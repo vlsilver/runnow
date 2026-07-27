@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:myrun/src/app.dart';
 import 'package:myrun/src/config.dart';
@@ -23,6 +24,11 @@ const _webFirebaseOptions = FirebaseOptions(
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // URL dạng path (threei.run/s/...) thay vì hash (threei.run/#/...). Không có
+  // dòng này Flutter web mặc định dùng hash, nên deep-link dạng path bị bỏ qua
+  // (go_router đọc fragment rỗng → về '/'), khiến link chia sẻ activity không
+  // vào đúng trang. Path strategy cũng khớp WEB_RETURN_URI (.../oauth) sẵn có.
+  if (kIsWeb) usePathUrlStrategy();
   await Firebase.initializeApp(options: kIsWeb ? _webFirebaseOptions : null);
   // Best-effort: trên web các init này có thể chưa cấu hình (web client id),
   // nhưng không nên làm trắng màn cả app — login sẽ báo lỗi khi bấm thay vì crash.
