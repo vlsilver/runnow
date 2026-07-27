@@ -137,6 +137,27 @@ type imageOutcome struct {
 // botDailyImagesPerUser là trần số ảnh AI mỗi NGƯỜI được tạo mỗi ngày.
 const botDailyImagesPerUser = 3
 
+// Tự-chen (proactive): bot tự trả lời tin trong group dù KHÔNG bị nhắc tới, như
+// một thành viên. Rào chống spam: mỗi lần cân nhắc cách nhau tối thiểu
+// proactiveEvalCooldown (bó chi phí, không gọi model cho mọi tin), và tối đa
+// botProactiveDailyLimit lần THỰC SỰ chen mỗi ngày. Model được dạy mặc định IM
+// LẶNG (trả "SKIP"), chỉ nói khi thật đáng.
+const botProactiveDailyLimit = 6
+const proactiveEvalCooldown = 5 * time.Minute
+
+const proactiveInstruction = `
+
+BỐI CẢNH ĐẶC BIỆT: một tin nhắn mới vừa xuất hiện trong group và KHÔNG nhắc tới
+bạn. Bạn là một THÀNH VIÊN thoải mái của nhóm, không phải trợ lý trực tổng đài.
+PHẦN LỚN thời gian hãy IM LẶNG — khi đó trả về ĐÚNG một từ: SKIP.
+
+CHỈ lên tiếng khi THỰC SỰ đáng: trả lời giúp một câu hỏi đang bỏ ngỏ chưa ai
+đáp, một câu cà khịa/động viên đúng lúc, hoặc thông tin hữu ích (được phép dùng
+tool tra số liệu club hoặc tra web nếu cần). ĐỪNG chen vào chuyện riêng
+tư/nhạy cảm, đừng lải nhải, đừng lặp điều vừa nói, đừng tự vẽ ảnh khi không ai
+nhờ. Nếu chen thì NGẮN GỌN, tự nhiên, đúng giọng — như một người bạn buông một
+câu. Không chắc thì → SKIP.`
+
 // geminiImageModel là model sinh ảnh; chạy ở location "global" (khác client chat).
 const geminiImageModel = "gemini-2.5-flash-image"
 
@@ -1077,7 +1098,7 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID, senderID, name, 
 // "thấy" được toàn bộ hội thoại, kể cả tin không nhắc tới bot — nhưng KHÔNG
 // sinh câu trả lời. Chỉ có tác dụng khi Privacy Mode của bot đã tắt (chỉnh ở
 // BotFather), lúc đó Telegram mới đẩy về mọi tin trong group.
-func (s *BotService) RecordIncoming(ctx context.Context, chatID, name, text string) error {
+func (s *BotService) RecordIncoming(ctx context.Context, chatID, senderID, name, text string) error {
 	if !s.Enabled() {
 		return nil
 	}
@@ -1093,7 +1114,121 @@ func (s *BotService) RecordIncoming(ctx context.Context, chatID, name, text stri
 		return err
 	}
 	s.memory.AfterMessages(ctx, chatID, 1)
+	// Cân nhắc TỰ CHEN vào (không cần bị nhắc). Best-effort, có rào chống spam.
+	s.maybeProactiveReply(ctx, chatID, senderID, name, text)
 	return nil
+}
+
+// maybeProactiveReply để bot tự trả lời một tin trong group club dù không bị
+// nhắc — như một thành viên. Rào: chỉ group club, tối thiểu 6 ký tự, qua cổng
+// cooldown + trần ngày, và model tự quyết SKIP phần lớn thời gian.
+func (s *BotService) maybeProactiveReply(ctx context.Context, chatID, senderID, name, text string) {
+	if !s.Enabled() || chatID == "" || chatID != s.telegram.ChatID() {
+		return
+	}
+	if len([]rune(strings.TrimSpace(text))) < 6 {
+		return
+	}
+	if !s.proactiveGate(ctx, chatID) {
+		return
+	}
+	history, err := s.loadHistory(ctx, chatID)
+	if err != nil {
+		history = nil
+	}
+	current := text
+	if name != "" {
+		current = name + ": " + text
+	}
+	contents := append(history, &genai.Content{Role: genai.RoleUser, Parts: []*genai.Part{{Text: current}}})
+	sys := botSystemPrompt + proactiveInstruction
+	if mem := s.memory.Load(ctx, chatID); mem != "" {
+		sys += "\n\nTRÍ NHỚ VỀ NHÓM NÀY:\n" + mem
+	}
+	outcome := &imageOutcome{}
+	ctx = context.WithValue(ctx, ctxChatID, chatID)
+	ctx = context.WithValue(ctx, ctxSenderID, senderID)
+	ctx = context.WithValue(ctx, ctxSenderName, name)
+	ctx = context.WithValue(ctx, ctxImageOutcome, outcome)
+	reply, err := s.Answer(ctx, sys, contents, false)
+	if err != nil {
+		return
+	}
+	if outcome.sent { // model đã tự gửi ảnh (hiếm) → tính là một lần chen
+		s.bumpProactiveReply(ctx, chatID)
+		return
+	}
+	reply = strings.TrimSpace(reply)
+	if reply == "" || strings.EqualFold(reply, "SKIP") || strings.HasPrefix(strings.ToUpper(reply), "SKIP") {
+		return
+	}
+	if err := s.telegram.SendChatMessage(ctx, chatID, reply); err != nil {
+		slog.WarnContext(ctx, "bot.proactive_send_failed", "error", err)
+		return
+	}
+	if rerr := s.RecordBroadcast(ctx, chatID, reply); rerr != nil {
+		slog.WarnContext(ctx, "bot.proactive_record_failed", "error", rerr)
+	}
+	s.bumpProactiveReply(ctx, chatID)
+	slog.InfoContext(ctx, "bot.proactive_reply", "chatId", chatID)
+}
+
+// proactiveGate trả true (chỉ MỘT lần mỗi cooldown) khi được phép CÂN NHẮC chen:
+// chưa chạm trần ngày và đã qua cooldown kể từ lần cân nhắc trước. Ghi lại mốc
+// cân nhắc dù kết quả có chen hay không — để bó số lần gọi model.
+func (s *BotService) proactiveGate(ctx context.Context, chatID string) bool {
+	ref := s.db.Collection("botConversations").Doc(chatID)
+	today := time.Now().UTC().Format("20060102")
+	ok := false
+	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		snap, gerr := tx.Get(ref)
+		if gerr != nil && status.Code(gerr) != codes.NotFound {
+			return gerr
+		}
+		var lastEval time.Time
+		count := 0
+		if gerr == nil {
+			d := snap.Data()
+			if t, k := d["lastProactiveEvalAt"].(time.Time); k {
+				lastEval = t
+			}
+			if stringValue(d["proactiveDay"]) == today {
+				count = int(number(d["proactiveCount"]))
+			}
+		}
+		if count >= botProactiveDailyLimit || time.Since(lastEval) < proactiveEvalCooldown {
+			return nil
+		}
+		ok = true
+		return tx.Set(ref, map[string]any{
+			"lastProactiveEvalAt": time.Now(),
+			"proactiveDay":        today,
+			"proactiveCount":      count,
+		}, firestore.MergeAll)
+	})
+	if err != nil {
+		return false
+	}
+	return ok
+}
+
+func (s *BotService) bumpProactiveReply(ctx context.Context, chatID string) {
+	ref := s.db.Collection("botConversations").Doc(chatID)
+	today := time.Now().UTC().Format("20060102")
+	_ = s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		snap, gerr := tx.Get(ref)
+		if gerr != nil && status.Code(gerr) != codes.NotFound {
+			return gerr
+		}
+		count := 0
+		if gerr == nil && stringValue(snap.Data()["proactiveDay"]) == today {
+			count = int(number(snap.Data()["proactiveCount"]))
+		}
+		return tx.Set(ref, map[string]any{
+			"proactiveDay":   today,
+			"proactiveCount": count + 1,
+		}, firestore.MergeAll)
+	})
 }
 
 // activityAnnouncementInstruction ghép vào system prompt để bot TỰ VIẾT trọn

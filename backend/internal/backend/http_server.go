@@ -129,7 +129,7 @@ func (s *Server) botMessage(w http.ResponseWriter, r *http.Request) error {
 		if err := s.deps.Bot.HandleMessage(ctx, task.ChatID, task.SenderID, task.Name, task.Question, task.PhotoFileID); err != nil {
 			return err
 		}
-	} else if err := s.deps.Bot.RecordIncoming(ctx, task.ChatID, task.Name, task.RawText); err != nil {
+	} else if err := s.deps.Bot.RecordIncoming(ctx, task.ChatID, task.SenderID, task.Name, task.RawText); err != nil {
 		return err
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})
