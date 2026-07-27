@@ -134,11 +134,12 @@ final _router = GoRouter(
         ownerUid: state.pathParameters['uid']!,
       ),
     ),
-    // Trang chi tiết CÔNG KHAI cho link chia sẻ (Telegram) — không cần đăng
-    // nhập. _AuthGate cho path '/s/' đi thẳng; màn tự đọc từ API public.
+    // Link chia sẻ (Telegram). _AuthGate cho path '/s/' đi thẳng; bên trong
+    // ActivitySharePage tự quyết: chưa đăng nhập → bản tối giản + nút đăng nhập;
+    // đã đăng nhập → màn chi tiết đầy đủ như trong app.
     GoRoute(
       path: '/s/:uid/:id',
-      builder: (context, state) => PublicActivityScreen(
+      builder: (context, state) => ActivitySharePage(
         uid: state.pathParameters['uid']!,
         activityId: state.pathParameters['id']!,
       ),
@@ -217,6 +218,36 @@ class RunNowApp extends ConsumerWidget {
         return RunNowBackdrop(child: content);
       },
     );
+  }
+}
+
+/// Trang đích của link chia sẻ hoạt động (/s/:uid/:id). Quyết theo trạng thái
+/// đăng nhập: chưa đăng nhập → bản tối giản công khai + nút đăng nhập; đã đăng
+/// nhập → màn chi tiết đầy đủ (đọc Firestore như xem hoạt động thành viên
+/// khác). Đăng nhập xong, firebaseUserProvider đổi → widget này tự dựng lại và
+/// chuyển sang bản đầy đủ ngay tại URL này.
+class ActivitySharePage extends ConsumerWidget {
+  const ActivitySharePage({
+    required this.uid,
+    required this.activityId,
+    super.key,
+  });
+
+  final String uid;
+  final String activityId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ref
+        .watch(firebaseUserProvider)
+        .when(
+          data: (user) => user == null
+              ? PublicActivityScreen(uid: uid, activityId: activityId)
+              : ActivityDetailScreen(activityId: activityId, ownerUid: uid),
+          loading: () => const RunNowLoading(label: 'Đang tải hoạt động'),
+          error: (_, _) =>
+              PublicActivityScreen(uid: uid, activityId: activityId),
+        );
   }
 }
 

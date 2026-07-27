@@ -1,15 +1,16 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:myrun/src/config.dart';
+import 'package:myrun/src/providers.dart';
 
-/// Trang chi tiết hoạt động CÔNG KHAI — mở được từ link chia sẻ (Telegram) mà
-/// KHÔNG cần đăng nhập. Khác màn chi tiết trong app: nó đọc từ endpoint public
-/// `/v1/public/activities/{uid}/{id}/summary` (Admin SDK phía backend) qua HTTP
-/// thay vì Firestore, nên chạy được với người vãng lai. Route `/s/:uid/:id`
-/// được _AuthGate cho đi thẳng, không ép onboarding.
-class PublicActivityScreen extends StatefulWidget {
+/// Trang chi tiết hoạt động ở dạng TỐI GIẢN cho khách CHƯA đăng nhập, mở từ
+/// link chia sẻ (Telegram). Chỉ hiện vài số cơ bản (đọc từ endpoint public,
+/// không cần đăng nhập) + nút đăng nhập để xem bản đầy đủ (bản đồ, biểu đồ…).
+/// Khi đăng nhập xong, [ActivitySharePage] tự chuyển sang [ActivityDetailScreen].
+class PublicActivityScreen extends ConsumerStatefulWidget {
   const PublicActivityScreen({
     super.key,
     required this.uid,
@@ -20,10 +21,11 @@ class PublicActivityScreen extends StatefulWidget {
   final String activityId;
 
   @override
-  State<PublicActivityScreen> createState() => _PublicActivityScreenState();
+  ConsumerState<PublicActivityScreen> createState() =>
+      _PublicActivityScreenState();
 }
 
-class _PublicActivityScreenState extends State<PublicActivityScreen> {
+class _PublicActivityScreenState extends ConsumerState<PublicActivityScreen> {
   late Future<Map<String, dynamic>> _future;
 
   @override
@@ -58,24 +60,96 @@ class _PublicActivityScreenState extends State<PublicActivityScreen> {
             padding: const EdgeInsets.all(20),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 460),
-              child: FutureBuilder<Map<String, dynamic>>(
-                future: _future,
-                builder: (context, snap) {
-                  if (snap.connectionState != ConnectionState.done) {
-                    return const Padding(
-                      padding: EdgeInsets.all(40),
-                      child: CircularProgressIndicator(),
-                    );
-                  }
-                  if (snap.hasError) {
-                    return _MessageCard(text: '${snap.error}');
-                  }
-                  return _ActivityCard(data: snap.data!);
-                },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FutureBuilder<Map<String, dynamic>>(
+                    future: _future,
+                    builder: (context, snap) {
+                      if (snap.connectionState != ConnectionState.done) {
+                        return const Padding(
+                          padding: EdgeInsets.all(40),
+                          child: CircularProgressIndicator(),
+                        );
+                      }
+                      if (snap.hasError) {
+                        return _MessageCard(text: '${snap.error}');
+                      }
+                      return _ActivityCard(data: snap.data!);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  const _LoginPrompt(),
+                ],
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Khối kêu gọi đăng nhập để mở bản đầy đủ. Dùng lại authController như màn
+/// onboarding; đăng nhập xong luồng auth đổi → [ActivitySharePage] tự chuyển
+/// sang màn chi tiết đầy đủ ngay tại URL này, không cần điều hướng.
+class _LoginPrompt extends ConsumerWidget {
+  const _LoginPrompt();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final controller = ref.watch(authControllerProvider);
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: scheme.surface.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Đăng nhập để xem đầy đủ',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Bản đồ lộ trình, biểu đồ nhịp tim & pace, splits…',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: controller.loading ? null : controller.signIn,
+              icon: controller.loading
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.login),
+              label: Text(
+                controller.loading ? 'Đang đăng nhập…' : 'Đăng nhập',
+              ),
+            ),
+          ),
+          if (controller.errorMessage != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              controller.errorMessage!,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
+            ),
+          ],
+        ],
       ),
     );
   }
