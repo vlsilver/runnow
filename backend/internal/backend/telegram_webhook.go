@@ -5,6 +5,20 @@ import (
 	"strings"
 )
 
+// telegramEntity là một entity trong text hoặc caption (mention, command, ...).
+// Dùng chung cho cả entities (của text) lẫn caption_entities (của ảnh có chữ).
+type telegramEntity struct {
+	Type   string `json:"type"`
+	Offset int    `json:"offset"`
+	Length int    `json:"length"`
+	// User có mặt khi entity là text_mention — Telegram chèn tên hiển thị của
+	// bot ("3i") thay vì chuỗi @username, nên phải khớp qua đây.
+	User *struct {
+		Username string `json:"username"`
+		IsBot    bool   `json:"is_bot"`
+	} `json:"user"`
+}
+
 // TelegramUpdate là phần tối thiểu của update mà bot cần.
 //
 // Telegram gửi rất nhiều loại update; khai đúng thứ dùng tới thay vì map
@@ -16,7 +30,15 @@ type TelegramUpdate struct {
 	Message  *struct {
 		MessageID int64  `json:"message_id"`
 		Text      string `json:"text"`
-		Chat      struct {
+		// Caption + Photo: khi người dùng gửi ẢNH kèm chữ, Telegram để chữ ở
+		// caption (không phải text) và ảnh ở photo (mảng nhiều cỡ, phần tử cuối
+		// là lớn nhất). Bot dùng để "vẽ lại" từ ảnh tham chiếu gửi kèm.
+		Caption string `json:"caption"`
+		Photo   []struct {
+			FileID   string `json:"file_id"`
+			FileSize int64  `json:"file_size"`
+		} `json:"photo"`
+		Chat struct {
 			ID   int64  `json:"id"`
 			Type string `json:"type"`
 		} `json:"chat"`
@@ -25,18 +47,8 @@ type TelegramUpdate struct {
 			Username  string `json:"username"`
 			FirstName string `json:"first_name"`
 		} `json:"from"`
-		Entities []struct {
-			Type   string `json:"type"`
-			Offset int    `json:"offset"`
-			Length int    `json:"length"`
-			// User có mặt khi entity là text_mention — Telegram chèn tên hiển
-			// thị của bot ("3i") thay vì chuỗi @username, nên phải khớp qua
-			// đây chứ không tìm được "@Run3IBot" trong text.
-			User *struct {
-				Username string `json:"username"`
-				IsBot    bool   `json:"is_bot"`
-			} `json:"user"`
-		} `json:"entities"`
+		Entities        []telegramEntity `json:"entities"`
+		CaptionEntities []telegramEntity `json:"caption_entities"`
 		ReplyToMessage *struct {
 			From *struct {
 				IsBot    bool   `json:"is_bot"`
@@ -54,11 +66,21 @@ type TelegramUpdate struct {
 // bị đổi bất cứ lúc nào, và lúc đó bot sẽ trả lời mọi câu trong group.
 func botQuestion(update TelegramUpdate, botUsername string) (chatID string, question string, ok bool) {
 	msg := update.Message
-	if msg == nil || strings.TrimSpace(msg.Text) == "" {
+	if msg == nil {
+		return "", "", false
+	}
+	// Ảnh kèm chữ: chữ + entity nằm ở caption chứ không phải text. Lấy caption
+	// làm nội dung khi text rỗng, để tag bot trong caption vẫn nhận ra.
+	text := msg.Text
+	entities := msg.Entities
+	if strings.TrimSpace(text) == "" && strings.TrimSpace(msg.Caption) != "" {
+		text = msg.Caption
+		entities = msg.CaptionEntities
+	}
+	if strings.TrimSpace(text) == "" {
 		return "", "", false
 	}
 	chatID = strconv.FormatInt(msg.Chat.ID, 10)
-	text := msg.Text
 
 	// Chat riêng với bot thì mọi tin đều là hỏi bot.
 	if msg.Chat.Type == "private" {
@@ -75,7 +97,7 @@ func botQuestion(update TelegramUpdate, botUsername string) (chatID string, ques
 	// entity.user thay vì để "@Run3IBot" trong text. Bắt trường hợp này
 	// trước khi tìm chuỗi, nếu không sẽ trượt.
 	mentionedViaEntity := false
-	for _, e := range msg.Entities {
+	for _, e := range entities {
 		if e.Type == "text_mention" && e.User != nil && strings.EqualFold(e.User.Username, botUsername) {
 			mentionedViaEntity = true
 			// Bỏ đúng đoạn tên bot khỏi text theo offset/length.
@@ -103,12 +125,23 @@ func botQuestion(update TelegramUpdate, botUsername string) (chatID string, ques
 // request thật — full CPU, timeout dài, tự retry — thay cho goroutine sau-200
 // vốn bị Cloud Run bóp CPU tới mức timeout.
 type botMessageTask struct {
-	IsQuestion bool   `json:"isQuestion"`
-	ChatID     string `json:"chatId"`
-	SenderID   string `json:"senderId,omitempty"`
-	Name       string `json:"name"`
-	Question   string `json:"question,omitempty"`
-	RawText    string `json:"rawText,omitempty"`
+	IsQuestion  bool   `json:"isQuestion"`
+	ChatID      string `json:"chatId"`
+	SenderID    string `json:"senderId,omitempty"`
+	Name        string `json:"name"`
+	Question    string `json:"question,omitempty"`
+	RawText     string `json:"rawText,omitempty"`
+	PhotoFileID string `json:"photoFileId,omitempty"`
+}
+
+// photoFileID trả file_id của ảnh CỠ LỚN NHẤT trong tin (nếu có). Telegram xếp
+// message.photo từ nhỏ → lớn, nên phần tử cuối là bản gốc/nét nhất. Rỗng nếu
+// tin không kèm ảnh.
+func photoFileID(update TelegramUpdate) string {
+	if update.Message == nil || len(update.Message.Photo) == 0 {
+		return ""
+	}
+	return update.Message.Photo[len(update.Message.Photo)-1].FileID
 }
 
 // senderID lấy Telegram user id (chuỗi) của người gửi — khoá ổn định cho hạn

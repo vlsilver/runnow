@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -198,6 +199,50 @@ func (s *TelegramService) SendPhoto(ctx context.Context, chatID string, image []
 		return fmt.Errorf("telegram sendPhoto failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return nil
+}
+
+// DownloadFile tải nội dung một file Telegram (vd ảnh người dùng gửi) theo
+// file_id: getFile để lấy file_path rồi tải từ endpoint /file/bot<token>/...
+// Trần 8MB để không nuốt file khổng lồ vào bộ nhớ.
+func (s *TelegramService) DownloadFile(ctx context.Context, fileID string) ([]byte, error) {
+	if !s.Enabled() || strings.TrimSpace(fileID) == "" {
+		return nil, nil
+	}
+	metaURL := s.apiBaseURL + "/bot" + s.botToken + "/getFile?file_id=" + url.QueryEscape(fileID)
+	metaReq, err := http.NewRequestWithContext(ctx, http.MethodGet, metaURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	metaResp, err := s.client.Do(metaReq)
+	if err != nil {
+		return nil, err
+	}
+	defer metaResp.Body.Close()
+	var meta struct {
+		OK     bool `json:"ok"`
+		Result struct {
+			FilePath string `json:"file_path"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(io.LimitReader(metaResp.Body, 1<<16)).Decode(&meta); err != nil {
+		return nil, err
+	}
+	if !meta.OK || meta.Result.FilePath == "" {
+		return nil, fmt.Errorf("getFile không trả file_path (status=%d)", metaResp.StatusCode)
+	}
+	dlReq, err := http.NewRequestWithContext(ctx, http.MethodGet, s.apiBaseURL+"/file/bot"+s.botToken+"/"+meta.Result.FilePath, nil)
+	if err != nil {
+		return nil, err
+	}
+	dlResp, err := s.client.Do(dlReq)
+	if err != nil {
+		return nil, err
+	}
+	defer dlResp.Body.Close()
+	if dlResp.StatusCode >= 300 {
+		return nil, fmt.Errorf("tải file lỗi status=%d", dlResp.StatusCode)
+	}
+	return io.ReadAll(io.LimitReader(dlResp.Body, 8<<20))
 }
 
 // telegramActivityMessage builds the HTML body.

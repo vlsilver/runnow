@@ -124,6 +124,7 @@ const (
 	ctxSenderID
 	ctxSenderName
 	ctxImageOutcome
+	ctxRefImage
 )
 
 // imageOutcome cho tool generate_image báo ngược lên HandleMessage rằng ảnh +
@@ -218,7 +219,7 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 		},
 		{
 			Name: "generate_image",
-			Description: "Vẽ MỘT ảnh minh hoạ vui/bựa (phong cách sticker hài) rồi GỬI thẳng vào chat hiện tại. Dùng khi ai đó nhờ 'vẽ / chế / tạo ảnh' cho vui. TỰ QUYẾT: chỉ vẽ khi lành mạnh, vui vẻ; TỪ CHỐI dứt khoát (trả lời bằng lời, đừng gọi tool) nếu nội dung tục tĩu, khiêu dâm, bạo lực, kỳ thị, bôi nhọ/hạ nhục người thật, hay mạo danh. Ảnh AI viết chữ hay sai nên để phần chữ cà khịa vào caption, mô tả cảnh vẽ ít chữ.",
+			Description: "Vẽ MỘT ảnh minh hoạ vui/bựa (phong cách sticker hài) rồi GỬI thẳng vào chat hiện tại. Dùng khi ai đó nhờ 'vẽ / chế / tạo / vẽ lại ảnh' cho vui. Nếu tin có ĐÍNH KÈM ẢNH (sẽ được báo trong nội dung), ảnh đó tự động dùng làm THAM CHIẾU để VẼ LẠI/CHỈNH — khi đó imagePrompt hãy mô tả phần cần biến đổi/giữ lại. TỰ QUYẾT: chỉ vẽ khi lành mạnh, vui vẻ; TỪ CHỐI dứt khoát (trả lời bằng lời, đừng gọi tool) nếu nội dung tục tĩu, khiêu dâm, bạo lực, kỳ thị, bôi nhọ/hạ nhục người thật, hay mạo danh. Ảnh AI viết chữ hay sai nên để phần chữ cà khịa vào caption, mô tả cảnh vẽ ít chữ.",
 			Parameters: &genai.Schema{
 				Type: genai.TypeObject,
 				Properties: map[string]*genai.Schema{
@@ -713,7 +714,8 @@ func (s *BotService) generateImage(ctx context.Context, args map[string]any) (an
 				"người này đã dùng hết %d ảnh trong ngày, hãy từ chối lịch sự và hẹn mai", botDailyImagesPerUser)}, nil
 		}
 	}
-	img, err := s.generateFunImage(ctx, prompt)
+	ref, _ := ctx.Value(ctxRefImage).([]byte)
+	img, err := s.generateFunImage(ctx, prompt, ref)
 	if err != nil {
 		slog.WarnContext(ctx, "bot.image_generate_failed", "error", err)
 		return map[string]any{"ok": false, "reason": "vẽ hỏng, xin lỗi và bảo thử lại sau"}, nil
@@ -800,12 +802,24 @@ func (s *BotService) bumpImageQuota(ctx context.Context, userID string) error {
 
 // generateFunImage gọi model ảnh (gemini-2.5-flash-image) sinh 1 ảnh sticker
 // hài. Trả về bytes PNG; rỗng nếu model không trả ảnh (vd bị lọc nội dung).
-func (s *BotService) generateFunImage(ctx context.Context, prompt string) ([]byte, error) {
-	full := "Generate a single funny, wholesome sticker-art cartoon image. Thick " +
-		"bold outlines, vibrant colors, clean background, playful meme energy, no " +
-		"offensive content. Scene: " + prompt
+func (s *BotService) generateFunImage(ctx context.Context, prompt string, ref []byte) ([]byte, error) {
+	var parts []*genai.Part
+	var full string
+	if len(ref) > 0 {
+		// Vẽ LẠI từ ảnh tham chiếu người dùng gửi (Telegram photo là JPEG).
+		full = "Using the provided reference image, redraw/edit it into a funny, " +
+			"wholesome sticker-art cartoon. Keep the main subject recognizable, then " +
+			"apply this transformation: " + prompt + ". Thick bold outlines, vibrant " +
+			"colors, playful meme energy, no offensive or demeaning content."
+		parts = append(parts, &genai.Part{InlineData: &genai.Blob{MIMEType: "image/jpeg", Data: ref}})
+	} else {
+		full = "Generate a single funny, wholesome sticker-art cartoon image. Thick " +
+			"bold outlines, vibrant colors, clean background, playful meme energy, no " +
+			"offensive content. Scene: " + prompt
+	}
+	parts = append(parts, &genai.Part{Text: full})
 	resp, err := s.imageGenai.Models.GenerateContent(ctx, s.imageModel,
-		[]*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: full}}}},
+		[]*genai.Content{{Role: genai.RoleUser, Parts: parts}},
 		&genai.GenerateContentConfig{ResponseModalities: []string{"TEXT", "IMAGE"}},
 	)
 	if err != nil {
@@ -827,7 +841,7 @@ func (s *BotService) generateFunImage(ctx context.Context, prompt string) ([]byt
 	return nil, nil
 }
 
-func (s *BotService) HandleMessage(ctx context.Context, chatID, senderID, name, question string) error {
+func (s *BotService) HandleMessage(ctx context.Context, chatID, senderID, name, question, photoFileID string) error {
 	if !s.Enabled() {
 		return nil
 	}
@@ -862,6 +876,17 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID, senderID, name, 
 	ctx = context.WithValue(ctx, ctxSenderID, senderID)
 	ctx = context.WithValue(ctx, ctxSenderName, name)
 	ctx = context.WithValue(ctx, ctxImageOutcome, outcome)
+	// Ảnh người dùng gửi kèm (nếu có) → tải về làm ảnh THAM CHIẾU cho việc vẽ
+	// lại. Best-effort: tải hỏng thì bỏ, coi như tin không kèm ảnh.
+	hasRefImage := false
+	if photoFileID != "" && s.imageGenai != nil {
+		if ref, derr := s.telegram.DownloadFile(ctx, photoFileID); derr != nil {
+			slog.WarnContext(ctx, "bot.ref_image_download_failed", "error", derr)
+		} else if len(ref) > 0 {
+			ctx = context.WithValue(ctx, ctxRefImage, ref)
+			hasRefImage = true
+		}
+	}
 
 	// Lịch sử hỏng thì vẫn trả lời được, chỉ là mất ngữ cảnh — không đáng để
 	// chặn cả câu trả lời.
@@ -873,6 +898,9 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID, senderID, name, 
 	currentText := question
 	if name != "" {
 		currentText = name + ": " + question
+	}
+	if hasRefImage {
+		currentText += "\n[Người này ĐÍNH KÈM 1 ẢNH. Nếu họ nhờ vẽ/chế/vẽ-lại thì gọi generate_image — ảnh kèm sẽ được dùng làm THAM CHIẾU để vẽ lại, hãy mô tả (tiếng Anh) phần cần biến đổi/giữ lại.]"
 	}
 	contents := append(history, &genai.Content{Role: genai.RoleUser, Parts: []*genai.Part{{Text: currentText}}})
 
