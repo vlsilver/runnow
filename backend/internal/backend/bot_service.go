@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/firestore"
+	gcs "cloud.google.com/go/storage"
 	"google.golang.org/genai"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -105,10 +106,13 @@ type BotService struct {
 	// ở location "global", khác client chat (us-central1). nil = tắt tính năng vẽ.
 	imageGenai *genai.Client
 	imageModel string
+	// bucket lưu ảnh AI đã tạo vào Firebase Storage để xem lại lịch sử. nil =
+	// vẫn gửi ảnh bình thường, chỉ không lưu.
+	bucket *gcs.BucketHandle
 }
 
-func NewBotService(gc *genai.Client, telegram *TelegramService, tools *BotTools, db *firestore.Client, model string, hourlyLimit int, memory *MemoryService, schedules *ScheduleStore, imageGenai *genai.Client, imageModel string) *BotService {
-	return &BotService{genai: gc, telegram: telegram, tools: tools, db: db, model: model, hourly: hourlyLimit, memory: memory, schedules: schedules, imageGenai: imageGenai, imageModel: imageModel}
+func NewBotService(gc *genai.Client, telegram *TelegramService, tools *BotTools, db *firestore.Client, model string, hourlyLimit int, memory *MemoryService, schedules *ScheduleStore, imageGenai *genai.Client, imageModel string, bucket *gcs.BucketHandle) *BotService {
+	return &BotService{genai: gc, telegram: telegram, tools: tools, db: db, model: model, hourly: hourlyLimit, memory: memory, schedules: schedules, imageGenai: imageGenai, imageModel: imageModel, bucket: bucket}
 }
 
 // Khoá context để đưa chatID + người gửi + kết quả ảnh xuống tận tool handler mà
@@ -118,6 +122,7 @@ type botCtxKey int
 const (
 	ctxChatID botCtxKey = iota
 	ctxSenderID
+	ctxSenderName
 	ctxImageOutcome
 )
 
@@ -689,6 +694,7 @@ func (s *BotService) generateImage(ctx context.Context, args map[string]any) (an
 	}
 	chatID, _ := ctx.Value(ctxChatID).(string)
 	senderID, _ := ctx.Value(ctxSenderID).(string)
+	senderName, _ := ctx.Value(ctxSenderName).(string)
 	outcome, _ := ctx.Value(ctxImageOutcome).(*imageOutcome)
 	if chatID == "" {
 		return map[string]any{"ok": false, "reason": "không xác định được chat để gửi ảnh"}, nil
@@ -724,11 +730,46 @@ func (s *BotService) generateImage(ctx context.Context, args map[string]any) (an
 			slog.WarnContext(ctx, "bot.image_quota_bump_failed", "error", berr)
 		}
 	}
+	// Lưu lại để xem lịch sử (best-effort, không chặn nếu hỏng).
+	s.saveImageHistory(ctx, chatID, senderID, senderName, prompt, caption, img)
 	if outcome != nil {
 		outcome.sent = true
 		outcome.caption = caption
 	}
 	return map[string]any{"ok": true, "note": "Đã vẽ và GỬI ảnh kèm caption vào chat. KHÔNG cần trả thêm tin text nào nữa."}, nil
+}
+
+// saveImageHistory lưu ảnh AI vào Firebase Storage + một doc metadata trong
+// botImages để sau này xem lại lịch sử (ai xin, lúc nào, prompt, caption). Hoàn
+// toàn best-effort: ảnh đã gửi vào group rồi, lưu hỏng chỉ log chứ không lỗi.
+func (s *BotService) saveImageHistory(ctx context.Context, chatID, senderID, senderName, prompt, caption string, img []byte) {
+	if s.bucket == nil || len(img) == 0 {
+		return
+	}
+	storagePath := fmt.Sprintf("botImages/%s/%s-%s.png",
+		chatID, time.Now().UTC().Format("20060102-150405"), senderID)
+	w := s.bucket.Object(storagePath).NewWriter(ctx)
+	w.ContentType = "image/png"
+	if _, err := w.Write(img); err != nil {
+		slog.WarnContext(ctx, "bot.image_store_write_failed", "error", err)
+		_ = w.Close()
+		return
+	}
+	if err := w.Close(); err != nil {
+		slog.WarnContext(ctx, "bot.image_store_close_failed", "error", err)
+		return
+	}
+	if _, _, err := s.db.Collection("botImages").Add(ctx, map[string]any{
+		"chatId":      chatID,
+		"senderId":    senderID,
+		"senderName":  senderName,
+		"prompt":      prompt,
+		"caption":     caption,
+		"storagePath": storagePath,
+		"createdAt":   firestore.ServerTimestamp,
+	}); err != nil {
+		slog.WarnContext(ctx, "bot.image_store_meta_failed", "error", err)
+	}
 }
 
 func (s *BotService) imageQuotaKey(userID string) string {
@@ -819,6 +860,7 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID, senderID, name, 
 	outcome := &imageOutcome{}
 	ctx = context.WithValue(ctx, ctxChatID, chatID)
 	ctx = context.WithValue(ctx, ctxSenderID, senderID)
+	ctx = context.WithValue(ctx, ctxSenderName, name)
 	ctx = context.WithValue(ctx, ctxImageOutcome, outcome)
 
 	// Lịch sử hỏng thì vẫn trả lời được, chỉ là mất ngữ cảnh — không đáng để

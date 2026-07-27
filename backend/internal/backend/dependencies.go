@@ -103,7 +103,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 				slog.WarnContext(ctx, "dependencies.image_genai_unavailable", "error", imgErr)
 				imageClient = nil
 			}
-			d.Bot = NewBotService(genaiClient, telegram, NewBotTools(db), db, config.GeminiModel, config.BotHourlyLimit, d.Memory, NewScheduleStore(db), imageClient, geminiImageModel)
+			d.Bot = NewBotService(genaiClient, telegram, NewBotTools(db), db, config.GeminiModel, config.BotHourlyLimit, d.Memory, NewScheduleStore(db), imageClient, geminiImageModel, bucket)
 			// Cho ActivityService ghi lại chính thông báo buổi chạy vào trí
 			// nhớ (Telegram không đẩy lại tin của bot).
 			d.Activities.SetBroadcastRecorder(d.Bot)

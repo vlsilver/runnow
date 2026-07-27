@@ -248,5 +248,8 @@ service cloud.firestore {
     match /botSchedules/{document=**} {
       allow read, write: if false;
     }
+    match /botImages/{document=**} {
+      allow read, write: if false;
+    }
   }
 }
