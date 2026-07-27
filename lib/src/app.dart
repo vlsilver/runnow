@@ -230,7 +230,11 @@ class _AuthGate extends ConsumerWidget {
     // nếu vì lý do nào đó không đọc được path, rơi về luồng auth cũ (an toàn,
     // không bao giờ làm hỏng đăng nhập của phần còn lại của app).
     try {
-      if (GoRouterState.of(context).uri.path.startsWith('/s/')) {
+      // Đọc path THẲNG từ router (biến top-level) thay vì GoRouterState.of(
+      // context): trong builder của MaterialApp.router, context chưa có
+      // GoRouterState nên .of() ném lỗi → exemption không chạy. routeInformation
+      // Provider luôn phản ánh URL hiện tại, không phụ thuộc context.
+      if (_router.routeInformationProvider.value.uri.path.startsWith('/s/')) {
         return child;
       }
     } catch (_) {
