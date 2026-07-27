@@ -53,7 +53,7 @@ func (s *TelegramService) SendActivityAlert(ctx context.Context, displayName, ac
 		return nil
 	}
 	replyMarkup, err := json.Marshal(map[string]any{
-		"inline_keyboard": [][]map[string]any{{{"text": "Xem chi tiết buổi chạy", "url": detailURL}}},
+		"inline_keyboard": [][]map[string]any{{{"text": "Xem chi tiết", "url": detailURL}}},
 	})
 	if err != nil {
 		return err
@@ -95,7 +95,7 @@ func (s *TelegramService) SendActivityAnnouncement(ctx context.Context, text, de
 		return nil
 	}
 	replyMarkup, err := json.Marshal(map[string]any{
-		"inline_keyboard": [][]map[string]any{{{"text": "Xem chi tiết buổi chạy", "url": detailURL}}},
+		"inline_keyboard": [][]map[string]any{{{"text": "Xem chi tiết", "url": detailURL}}},
 	})
 	if err != nil {
 		return err
@@ -166,17 +166,19 @@ func (s *TelegramService) SendChatMessage(ctx context.Context, chatID, text stri
 // blockquote) — no tables, no <br>, no CSS — so layout is done with newlines
 // and emoji labels. Every interpolated value is user-controlled and escaped.
 func telegramActivityMessage(displayName, activityName string, fact ActivityFact, comment string) string {
+	disp := sportDisplayFor(fact.SportType)
 	if strings.TrimSpace(activityName) == "" {
-		activityName = "Buổi chạy"
+		activityName = disp.defaultName
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "🏃 <b>%s</b> vừa hoàn thành\n", html.EscapeString(strings.TrimSpace(displayName)))
+	fmt.Fprintf(&b, "%s <b>%s</b> vừa hoàn thành\n", disp.emoji, html.EscapeString(strings.TrimSpace(displayName)))
 	fmt.Fprintf(&b, "<b>%s</b>\n\n", html.EscapeString(strings.TrimSpace(activityName)))
 	// Nhãn dùng dấu hai chấm chứ không căn cột bằng dấu cách: Telegram
 	// render bằng font tỉ lệ nên khoảng trắng không bao giờ thẳng hàng.
 	fmt.Fprintf(&b, "📏 Quãng đường: <b>%s</b>\n", formatDistanceKm(fact.DistanceMeters))
 	fmt.Fprintf(&b, "⏱ Thời gian: <b>%s</b>\n", formatDurationHMS(fact.MovingTimeSeconds))
-	fmt.Fprintf(&b, "⚡ Pace: <b>%s</b>\n", formatPacePerKm(fact))
+	paceLabel, paceVal := paceOrSpeed(fact)
+	fmt.Fprintf(&b, "⚡ %s: <b>%s</b>\n", paceLabel, paceVal)
 	if fact.ElevationGainMeters >= 1 {
 		fmt.Fprintf(&b, "⛰ Độ cao: <b>%s</b>\n", formatElevationM(fact.ElevationGainMeters))
 	}
@@ -196,12 +198,15 @@ func telegramActivityMessage(displayName, activityName string, fact ActivityFact
 // HTML). Giữ tên, cự ly, thời gian, pace: đủ để bot nắm ai chạy và thói quen;
 // con số nhất thời thì bước chưng cất sẽ tự loại.
 func telegramActivityPlain(displayName, activityName string, fact ActivityFact) string {
+	disp := sportDisplayFor(fact.SportType)
 	if strings.TrimSpace(activityName) == "" {
-		activityName = "Buổi chạy"
+		activityName = disp.defaultName
 	}
-	s := fmt.Sprintf("🏃 %s vừa hoàn thành %s — %s, %s, pace %s",
-		strings.TrimSpace(displayName), strings.TrimSpace(activityName),
-		formatDistanceKm(fact.DistanceMeters), formatDurationHMS(fact.MovingTimeSeconds), formatPacePerKm(fact))
+	paceLabel, paceVal := paceOrSpeed(fact)
+	s := fmt.Sprintf("%s %s vừa hoàn thành %s — %s, %s, %s %s",
+		disp.emoji, strings.TrimSpace(displayName), strings.TrimSpace(activityName),
+		formatDistanceKm(fact.DistanceMeters), formatDurationHMS(fact.MovingTimeSeconds),
+		strings.ToLower(paceLabel), paceVal)
 	if !fact.StartedAt.IsZero() {
 		s += " (" + telegramActivityTime(fact.StartedAt) + ")"
 	}
@@ -244,4 +249,51 @@ func formatPacePerKm(fact ActivityFact) string {
 	}
 	secondsPerKm := int64(float64(fact.MovingTimeSeconds) / (fact.DistanceMeters / 1000))
 	return fmt.Sprintf("%d:%02d /km", secondsPerKm/60, secondsPerKm%60)
+}
+
+// formatSpeedKmh dùng cho đạp xe — km/h là quy ước tự nhiên, không phải pace /km.
+func formatSpeedKmh(fact ActivityFact) string {
+	if fact.DistanceMeters <= 0 || fact.MovingTimeSeconds <= 0 {
+		return "--"
+	}
+	kmh := (fact.DistanceMeters / 1000) / (float64(fact.MovingTimeSeconds) / 3600)
+	return fmt.Sprintf("%.1f km/h", kmh)
+}
+
+// paceOrSpeed trả (nhãn, giá trị): pace /km cho chạy & đi bộ, tốc độ km/h cho xe đạp.
+func paceOrSpeed(fact ActivityFact) (string, string) {
+	if sportDisplayFor(fact.SportType).usesSpeed {
+		return "Tốc độ", formatSpeedKmh(fact)
+	}
+	return "Pace", formatPacePerKm(fact)
+}
+
+// notifySportTypes là các loại hoạt động được THÔNG BÁO vào group. Cố ý RỘNG
+// hơn runSportTypes (thứ định nghĩa cái gì tính vào leaderboard chạy bộ): đi bộ
+// và đạp xe được khoe lên group nhưng KHÔNG được cộng vào leaderboard — nên hai
+// tập này tách riêng, sửa cái này không đụng cái kia.
+var notifySportTypes = map[string]bool{
+	"Run": true, "TrailRun": true, "VirtualRun": true, // chạy bộ
+	"Walk": true, "Hike": true, // đi bộ
+	"Ride": true, "VirtualRide": true, "MountainBikeRide": true, "GravelRide": true, "EBikeRide": true, // đạp xe
+}
+
+// sportDisplay gom cách hiển thị một loại hoạt động để thông báo mô tả ĐÚNG:
+// không gọi buổi đạp xe là "chạy", không hiện pace phút/km cho xe đạp.
+type sportDisplay struct {
+	emoji       string
+	verb        string // "chạy bộ" | "đi bộ" | "đạp xe"
+	defaultName string
+	usesSpeed   bool // true → km/h thay vì pace /km
+}
+
+func sportDisplayFor(sportType string) sportDisplay {
+	switch sportType {
+	case "Walk", "Hike":
+		return sportDisplay{"🚶", "đi bộ", "Buổi đi bộ", false}
+	case "Ride", "VirtualRide", "MountainBikeRide", "GravelRide", "EBikeRide":
+		return sportDisplay{"🚴", "đạp xe", "Buổi đạp xe", true}
+	default:
+		return sportDisplay{"🏃", "chạy bộ", "Buổi chạy", false}
+	}
 }

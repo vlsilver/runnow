@@ -751,12 +751,13 @@ func (s *BotService) RecordIncoming(ctx context.Context, chatID, name, text stri
 // lời thông báo một buổi chạy — thay cho cái thẻ số liệu dán nhãn máy móc.
 const activityAnnouncementInstruction = `
 
-NHIỆM VỤ: một thành viên vừa chạy xong. Hãy TỰ VIẾT lời thông báo cho cả group
-bằng GIỌNG CỦA BẠN — tự nhiên, sống động như một người đang hớn hở khoe hộ,
-TUYỆT ĐỐI KHÔNG phải bảng số liệu dán nhãn kiểu "Quãng đường: ... Pace: ...".
-Dệt các con số vào câu chữ một cách tự nhiên (ai chạy, bao xa, pace, bao lâu,
-giờ giấc), thêm chút cà khịa/động viên tuỳ hứng, MỖI LẦN MỘT KIỂU KHÁC cho khỏi
-nhàm.
+NHIỆM VỤ: một thành viên vừa tập xong (loại hoạt động ghi ở dòng "Loại" trong
+STATS — chạy bộ, đi bộ, hay đạp xe; nói ĐÚNG môn đó, đừng mặc định là "chạy").
+Hãy TỰ VIẾT lời thông báo cho cả group bằng GIỌNG CỦA BẠN — tự nhiên, sống động
+như một người đang hớn hở khoe hộ, TUYỆT ĐỐI KHÔNG phải bảng số liệu dán nhãn
+kiểu "Quãng đường: ... Pace: ...". Dệt các con số vào câu chữ một cách tự nhiên
+(ai, môn gì, bao xa, nhanh cỡ nào, bao lâu, giờ giấc), thêm chút cà khịa/động
+viên tuỳ hứng, MỖI LẦN MỘT KIỂU KHÁC cho khỏi nhàm.
 
 BẮT BUỘC: dùng ĐÚNG các con số được cung cấp bên dưới, không tự đổi hay làm
 tròn khác đi. Muốn nhắc thứ hạng/thành tích tuần thì gọi tool lấy số thật,
@@ -794,21 +795,24 @@ func (s *BotService) ActivityAnnouncement(ctx context.Context, displayName, acti
 	if !s.Enabled() {
 		return ""
 	}
+	disp := sportDisplayFor(fact.SportType)
 	if strings.TrimSpace(activityName) == "" {
-		activityName = "Buổi chạy"
+		activityName = disp.defaultName
 	}
 	clock := ""
 	if !fact.StartedAt.IsZero() {
 		clock = fact.StartedAt.In(vietnam).Format("15:04")
 	}
+	paceLabel, paceVal := paceOrSpeed(fact)
 	var stats strings.Builder
-	fmt.Fprintf(&stats, "STATS BUỔI CHẠY (viết thông báo từ đây, dùng đúng số):\n")
-	fmt.Fprintf(&stats, "- Người chạy: %s\n", strings.TrimSpace(displayName))
+	fmt.Fprintf(&stats, "STATS BUỔI TẬP (viết thông báo từ đây, dùng đúng số):\n")
+	fmt.Fprintf(&stats, "- Loại: %s\n", disp.verb)
+	fmt.Fprintf(&stats, "- Người tập: %s\n", strings.TrimSpace(displayName))
 	fmt.Fprintf(&stats, "- Tên buổi: %s\n", strings.TrimSpace(activityName))
 	fmt.Fprintf(&stats, "- Quãng đường: %s\n", formatDistanceKm(fact.DistanceMeters))
-	fmt.Fprintf(&stats, "- Thời gian chạy: %s\n", formatDurationHMS(fact.MovingTimeSeconds))
-	fmt.Fprintf(&stats, "- Pace: %s\n", formatPacePerKm(fact))
-	fmt.Fprintf(&stats, "- Giờ chạy: %s (%s)\n", clock, vietnamTimeOfDay(fact.StartedAt))
+	fmt.Fprintf(&stats, "- Thời gian: %s\n", formatDurationHMS(fact.MovingTimeSeconds))
+	fmt.Fprintf(&stats, "- %s: %s\n", paceLabel, paceVal)
+	fmt.Fprintf(&stats, "- Giờ: %s (%s)\n", clock, vietnamTimeOfDay(fact.StartedAt))
 	if fact.ElevationGainMeters >= 1 {
 		fmt.Fprintf(&stats, "- Độ cao: %s\n", formatElevationM(fact.ElevationGainMeters))
 	}

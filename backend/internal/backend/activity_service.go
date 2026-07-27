@@ -561,7 +561,7 @@ func (s *ActivityService) NotifyTelegram(ctx context.Context, uid, activityID st
 }
 
 func shouldEnqueueTelegramActivity(previousData map[string]any, next map[string]any, now time.Time) bool {
-	if stringValue(next["source"]) != "strava" || !runSportTypes[stringValue(next["sportType"])] {
+	if stringValue(next["source"]) != "strava" || !notifySportTypes[stringValue(next["sportType"])] {
 		return false
 	}
 	if previousData != nil && previousData["telegramNotifiedAt"] != nil {

@@ -84,10 +84,20 @@ func activityFact(id string, data map[string]any) ActivityFact {
 	started, _ := time.Parse(time.RFC3339, stringValue(data["startedAt"]))
 	return ActivityFact{ID: id, Source: defaultString(data["source"], "strava"), SportType: defaultString(data["sportType"], "Run"), StartedAt: started, DistanceMeters: number(data["distanceMeters"]), ElevationGainMeters: number(data["elevationGainMeters"]), MovingTimeSeconds: int64(number(data["movingTimeSeconds"])), ElapsedTimeSeconds: int64(number(data["elapsedTimeSeconds"]))}
 }
-// runSportTypes are the Strava sport types treated as an "official" run
-// across the app — leaderboard aggregation, duplicate detection, and the
-// Telegram activity-alert trigger all key off this same set.
+// runSportTypes are the pure-running sport types. Now used only where "a run"
+// specifically is meant (the bot's run-analysis tool). Leaderboard counting
+// uses leaderboardSportTypes; the Telegram alert uses notifySportTypes — three
+// deliberately distinct sets so a change to one never silently moves the others.
 var runSportTypes = map[string]bool{"Run": true, "TrailRun": true, "VirtualRun": true}
+
+// leaderboardSportTypes are the Strava sport types that COUNT toward the
+// leaderboard / stats: running and walking. Cycling is announced to the group
+// (see notifySportTypes) but deliberately NOT counted here — a distance
+// leaderboard mixing bikes would be meaningless for a run/walk club.
+var leaderboardSportTypes = map[string]bool{
+	"Run": true, "TrailRun": true, "VirtualRun": true,
+	"Walk": true, "Hike": true,
+}
 
 // resolveProfile merges `users/{uid}` with `publicProfiles/{uid}` the same
 // way RebuildCurrent has always derived a leaderboard entry's display
@@ -113,23 +123,30 @@ func resolveProfile(ctx context.Context, db *firestore.Client, uid string) (map[
 }
 
 func SelectOfficialActivities(activities []ActivityFact) []ActivityFact {
-	stravaRuns := []ActivityFact{}
+	// Strava activities that count (run + walk). Also the pool a 3i-tracked
+	// activity is de-duplicated against.
+	counted := []ActivityFact{}
 	for _, a := range activities {
-		if a.Source == "strava" && runSportTypes[a.SportType] {
-			stravaRuns = append(stravaRuns, a)
+		if a.Source == "strava" && leaderboardSportTypes[a.SportType] {
+			counted = append(counted, a)
 		}
 	}
 	out := []ActivityFact{}
 	for _, a := range activities {
 		if a.Source == "strava" {
-			out = append(out, a)
+			// Only run/walk count toward the leaderboard; cycling (and any
+			// other Strava sport) is excluded here even though it still gets
+			// announced to the group.
+			if leaderboardSportTypes[a.SportType] {
+				out = append(out, a)
+			}
 			continue
 		}
 		if a.SportType != "Run" || a.DistanceMeters < 500 {
 			continue
 		}
 		duplicate := false
-		for _, other := range stravaRuns {
+		for _, other := range counted {
 			if overlapRatio(a, other) > 0.3 {
 				duplicate = true
 				break
