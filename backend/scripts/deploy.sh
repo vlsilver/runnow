@@ -32,7 +32,7 @@ INVOKER_SA="${INVOKER_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 : "${STRAVA_CLIENT_ID:?Set STRAVA_CLIENT_ID before running deploy.sh}"
 : "${MOBILE_RETURN_URI:=com.threei.run://localhost/oauth}"
 : "${WEB_RETURN_URI:=https://run-now-79767.web.app/oauth}"
-: "${ALLOWED_WEB_ORIGINS:=https://run-now-79767.web.app}"
+: "${ALLOWED_WEB_ORIGINS:=https://run-now-79767.web.app,https://threei.run}"
 
 # Deploy chọn lọc theo service. Không tham số = FULL (build + cả 3 service +
 # setup hạ tầng một-lần). "deploy.sh bot" (hoặc api/worker, nhiều cái cách
