@@ -140,14 +140,15 @@ const botDailyImagesPerUser = 3
 // geminiImageModel là model sinh ảnh; chạy ở location "global" (khác client chat).
 const geminiImageModel = "gemini-2.5-flash-image"
 
-// defaultImageStyle là theme dùng khi người vẽ không chỉ định.
-const defaultImageStyle = "anime"
+// defaultImageStyle là theme fallback cuối cùng khi không có style hợp lệ và
+// cũng không có ảnh gốc (hiếm — thường bot đã tự chọn hoặc rơi vào realistic).
+const defaultImageStyle = "cinematic"
 
 // imageStyles: các THEME vẽ chọn được → đoạn mô tả phong cách chèn vào prompt.
-// Người dùng nói "vẽ kiểu anime/tech..." thì bot chọn style tương ứng; không nói
-// thì dùng defaultImageStyle. Thêm theme mới chỉ cần thêm một dòng ở đây (nhớ
-// cập nhật Enum trong tool declaration cho khớp).
+// Người dùng nói "vẽ kiểu anime/tech..." thì bot chọn style tương ứng. Thêm
+// theme mới chỉ cần thêm một dòng ở đây (nhớ cập nhật Enum trong tool cho khớp).
 var imageStyles = map[string]string{
+	"realistic":  "photorealistic, natural, true to life, authentic look, faithful likeness, subtle tasteful enhancement, sharp, high detail",
 	"anime":      "vibrant Japanese anime / manga art, dynamic pose, cel shading, dramatic lighting, highly detailed, studio quality",
 	"cyberpunk":  "cyberpunk sci-fi, glowing neon, futuristic tech, holographic UI, moody cinematic atmosphere, highly detailed",
 	"cinematic":  "photorealistic cinematic photo, dramatic lighting, shallow depth of field, epic composition, ultra detailed, 8k",
@@ -158,11 +159,19 @@ var imageStyles = map[string]string{
 	"sticker":    "bold cartoon sticker art, thick outlines, flat vibrant colors, clean white border, playful",
 }
 
-func imageStyleFragment(style string) string {
-	if frag, ok := imageStyles[strings.ToLower(strings.TrimSpace(style))]; ok {
-		return frag
+// resolveImageStyle chốt style thực dùng: ưu tiên style bot chọn; nếu để trống
+// thì có ẢNH GỐC → "realistic" (giữ chân thật, sát ảnh gốc như yêu cầu), không
+// ảnh → default. Trả về (key, fragment).
+func resolveImageStyle(style string, hasRef bool) (string, string) {
+	key := strings.ToLower(strings.TrimSpace(style))
+	if _, ok := imageStyles[key]; !ok {
+		if hasRef {
+			key = "realistic"
+		} else {
+			key = defaultImageStyle
+		}
 	}
-	return imageStyles[defaultImageStyle]
+	return key, imageStyles[key]
 }
 
 func (s *BotService) Enabled() bool { return s != nil && s.genai != nil && s.telegram.Enabled() }
@@ -251,9 +260,9 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 					"imagePrompt": {Type: genai.TypeString, Description: "Mô tả cảnh cần vẽ, VIẾT BẰNG TIẾNG ANH (model ảnh hiểu tiếng Anh tốt hơn), sinh động, hài hước, hợp bối cảnh chạy bộ của club."},
 					"caption":     {Type: genai.TypeString, Description: "Lời cà khịa/động viên TIẾNG VIỆT bằng giọng của bạn, gửi kèm ảnh."},
 					"style": {
-						Type:        genai.TypeString,
-						Enum:        []string{"anime", "cyberpunk", "cinematic", "3d", "watercolor", "comic", "pixel", "sticker"},
-						Description: "Phong cách vẽ. Chọn theo ý người dùng nếu họ nói ('kiểu anime', 'kiểu tech/cyberpunk', 'như thật/cinematic', '3d', 'màu nước', 'truyện tranh', 'pixel', 'sticker'). Không nói thì bỏ trống (mặc định anime).",
+						Type: genai.TypeString,
+						Enum: []string{"realistic", "anime", "cyberpunk", "cinematic", "3d", "watercolor", "comic", "pixel", "sticker"},
+						Description: "Phong cách vẽ. Nếu người dùng NÓI RÕ ('kiểu anime', 'tech/cyberpunk', 'như thật/realistic', 'cinematic', '3d', 'màu nước', 'truyện tranh', 'pixel', 'sticker') thì chọn đúng cái đó. Nếu KHÔNG nói: bạn TỰ CHỌN một phong cách hợp ngữ cảnh — NHƯNG nếu có ẢNH đính kèm và họ không yêu cầu biến đổi cụ thể thì để 'realistic' để giữ CHÂN THẬT, sát ảnh gốc nhất.",
 					},
 				},
 				Required: []string{"imagePrompt", "caption"},
@@ -834,18 +843,30 @@ func (s *BotService) bumpImageQuota(ctx context.Context, userID string) error {
 // generateFunImage gọi model ảnh (gemini-2.5-flash-image) sinh 1 ảnh sticker
 // hài. Trả về bytes PNG; rỗng nếu model không trả ảnh (vd bị lọc nội dung).
 func (s *BotService) generateFunImage(ctx context.Context, prompt, style string, ref []byte) ([]byte, error) {
-	styleFrag := imageStyleFragment(style)
-	const quality = "High quality, detailed, striking, well composed. Keep it fun " +
-		"and wholesome; no offensive or demeaning content."
+	styleKey, styleFrag := resolveImageStyle(style, len(ref) > 0)
+	const quality = "High quality, detailed, well composed. Keep it wholesome; no " +
+		"offensive or demeaning content."
 	var parts []*genai.Part
 	var full string
-	if len(ref) > 0 {
-		// Vẽ LẠI từ ảnh tham chiếu người dùng gửi (Telegram photo là JPEG).
+	switch {
+	case len(ref) > 0 && styleKey == "realistic":
+		// Ảnh gốc + không đổi phong cách → giữ CHÂN THẬT, sát ảnh gốc nhất có thể.
+		full = "Edit the provided reference photo while staying as CLOSE to the " +
+			"original as possible: preserve the real person's face, likeness, body, " +
+			"pose and outfit. Photorealistic, natural, true to life — only a subtle, " +
+			"tasteful enhancement (lighting, sharpness, cleanup)."
+		if strings.TrimSpace(prompt) != "" {
+			full += " Small requested tweak: " + prompt + "."
+		}
+		full += " " + quality
+		parts = append(parts, &genai.Part{InlineData: &genai.Blob{MIMEType: "image/jpeg", Data: ref}})
+	case len(ref) > 0:
+		// Ảnh gốc + có phong cách → vẽ lại/biến đổi theo style.
 		full = "Redraw and transform the provided reference image. Keep the main " +
 			"subject recognizable, then apply this: " + prompt + ". Art style: " +
 			styleFrag + ". " + quality
 		parts = append(parts, &genai.Part{InlineData: &genai.Blob{MIMEType: "image/jpeg", Data: ref}})
-	} else {
+	default:
 		full = "Create a single image. Subject: " + prompt + ". Art style: " +
 			styleFrag + ". " + quality
 	}
