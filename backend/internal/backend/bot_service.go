@@ -850,13 +850,16 @@ func (s *BotService) generateFunImage(ctx context.Context, prompt, style string,
 	var full string
 	switch {
 	case len(ref) > 0 && styleKey == "realistic":
-		// Ảnh gốc + không đổi phong cách → giữ CHÂN THẬT, sát ảnh gốc nhất có thể.
-		full = "Edit the provided reference photo while staying as CLOSE to the " +
-			"original as possible: preserve the real person's face, likeness, body, " +
-			"pose and outfit. Photorealistic, natural, true to life — only a subtle, " +
-			"tasteful enhancement (lighting, sharpness, cleanup)."
+		// Ảnh gốc + không đổi phong cách → GIỮ ĐƯỜNG NÉT KHUÔN MẶT / nhận diện
+		// đúng người; ĐỒ + KHUNG CẢNH có thể đổi; vẫn chân thật, tự nhiên.
+		full = "Create a photorealistic, natural image of the SAME person from the " +
+			"provided reference photo. PRESERVE their real facial features and " +
+			"likeness so they are clearly recognizable as the same person. The outfit " +
+			"and the background/scene MAY be changed (e.g. a fitting running/sport " +
+			"setting). Keep it true to life and natural — NOT a cartoon, anime or " +
+			"illustration."
 		if strings.TrimSpace(prompt) != "" {
-			full += " Small requested tweak: " + prompt + "."
+			full += " Apply this: " + prompt + "."
 		}
 		full += " " + quality
 		parts = append(parts, &genai.Part{InlineData: &genai.Blob{MIMEType: "image/jpeg", Data: ref}})
