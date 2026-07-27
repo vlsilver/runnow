@@ -213,6 +213,11 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member "serviceAccount:${BOT_RUNTIME_SA}" \
   --role roles/aiplatform.user \
   --condition=None >/dev/null
+# Bot lưu ảnh AI đã tạo vào Firebase Storage (botImages/**) để xem lại lịch sử.
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member "serviceAccount:${BOT_RUNTIME_SA}" \
+  --role roles/storage.objectAdmin \
+  --condition=None >/dev/null
 for strip_sa in "$API_RUNTIME_SA" "$WORKER_RUNTIME_SA"; do
   gcloud projects remove-iam-policy-binding "$PROJECT_ID" \
     --member "serviceAccount:${strip_sa}" \
