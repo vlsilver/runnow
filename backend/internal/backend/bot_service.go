@@ -930,19 +930,21 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID, senderID, name, 
 	}
 
 	answer, err := s.Answer(ctx, systemPrompt, contents, private)
-	if err != nil {
-		slog.ErrorContext(ctx, "bot.answer_failed", "error", err)
-		// Im lặng còn hơn phun stack trace vào group.
-		answer = "Đang bị đơ tí, thử lại sau nhé."
-	}
-	// Tool generate_image đã tự gửi ảnh + caption vào chat rồi → không gửi thêm
-	// tin text (tránh lặp), chỉ lưu vào lịch sử để trí nhớ có ngữ cảnh.
+	// Tool generate_image đã tự gửi ảnh + caption vào chat rồi → model trả rỗng ở
+	// vòng cuối là ĐÚNG Ý (ta dặn nó đừng trả thêm text), KHÔNG phải lỗi. Không
+	// gửi thêm tin text (tránh lặp), chỉ lưu lịch sử. Kiểm trước khi xét err để
+	// khỏi log "answer_failed" giả.
 	if outcome.sent {
 		if saveErr := s.saveExchange(ctx, chatID, name, question, "[bot đã gửi 1 ảnh] "+outcome.caption); saveErr != nil {
 			slog.WarnContext(ctx, "bot.history_save_failed", "error", saveErr)
 		}
 		s.memory.AfterMessages(ctx, chatID, 2)
 		return nil
+	}
+	if err != nil {
+		slog.ErrorContext(ctx, "bot.answer_failed", "error", err)
+		// Im lặng còn hơn phun stack trace vào group.
+		answer = "Đang bị đơ tí, thử lại sau nhé."
 	}
 	if err := s.telegram.SendChatMessage(ctx, chatID, answer); err != nil {
 		return err
