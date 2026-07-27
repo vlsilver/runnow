@@ -13,6 +13,7 @@ import 'package:myrun/src/screens/journey_hub_screen.dart';
 import 'package:myrun/src/screens/journey_screen.dart';
 import 'package:myrun/src/screens/member_profile_screen.dart';
 import 'package:myrun/src/screens/onboarding_screen.dart';
+import 'package:myrun/src/screens/public_activity_screen.dart';
 import 'package:myrun/src/screens/run_contract_create_screen.dart';
 import 'package:myrun/src/screens/run_contract_detail_screen.dart';
 import 'package:myrun/src/screens/run_contract_home_screen.dart';
@@ -133,6 +134,15 @@ final _router = GoRouter(
         ownerUid: state.pathParameters['uid']!,
       ),
     ),
+    // Trang chi tiết CÔNG KHAI cho link chia sẻ (Telegram) — không cần đăng
+    // nhập. _AuthGate cho path '/s/' đi thẳng; màn tự đọc từ API public.
+    GoRoute(
+      path: '/s/:uid/:id',
+      builder: (context, state) => PublicActivityScreen(
+        uid: state.pathParameters['uid']!,
+        activityId: state.pathParameters['id']!,
+      ),
+    ),
     GoRoute(
       path: '/club/:uid',
       builder: (context, state) =>
@@ -215,6 +225,17 @@ class _AuthGate extends ConsumerWidget {
   final Widget child;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Route chia sẻ công khai (/s/:uid/:id) KHÔNG cần đăng nhập — render thẳng,
+    // bỏ qua onboarding, để link chia sẻ mở được cho bất kỳ ai. Bọc try/catch:
+    // nếu vì lý do nào đó không đọc được path, rơi về luồng auth cũ (an toàn,
+    // không bao giờ làm hỏng đăng nhập của phần còn lại của app).
+    try {
+      if (GoRouterState.of(context).uri.path.startsWith('/s/')) {
+        return child;
+      }
+    } catch (_) {
+      // bỏ qua — dùng luồng auth mặc định bên dưới
+    }
     ref.watch(stravaAuthProvider);
     return ref
         .watch(firebaseUserProvider)

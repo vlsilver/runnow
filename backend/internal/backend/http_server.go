@@ -277,6 +277,45 @@ func (s *Server) apiRoutes() {
 		http.Redirect(w, r, activityDetailURL(s.config.WebBaseURL, uid, id), http.StatusFound)
 		return nil
 	})
+	// JSON công khai (không cần đăng nhập) cho trang activity detail chia sẻ:
+	// web app gọi endpoint này để hiển thị buổi tập cho BẤT KỲ ai mở link từ
+	// group, kể cả chưa đăng nhập. Dùng Admin SDK nên bỏ qua Firestore rules;
+	// trả về đúng các chuỗi hiển thị đã tính sẵn (sport-aware) để client chỉ việc
+	// render, không phải lặp lại logic format.
+	s.route("GET /v1/public/activities/{uid}/{activityId}/summary", func(w http.ResponseWriter, r *http.Request) error {
+		uid := r.PathValue("uid")
+		id := r.PathValue("activityId")
+		if uid == "" || id == "" || len(uid) > 128 || len(id) > 64 {
+			return invalidRequest()
+		}
+		sum, err := s.deps.Activities.PublicSummary(r.Context(), uid, id)
+		if err != nil {
+			return err
+		}
+		disp := sportDisplayFor(sum.Fact.SportType)
+		paceLabel, paceValue := paceOrSpeed(sum.Fact)
+		body := map[string]any{
+			"displayName":      sum.DisplayName,
+			"activityName":     defaultString(sum.ActivityName, disp.defaultName),
+			"sportType":        sum.Fact.SportType,
+			"sportVerb":        disp.verb,
+			"sportEmoji":       disp.emoji,
+			"distance":         formatDistanceKm(sum.Fact.DistanceMeters),
+			"duration":         formatDurationHMS(sum.Fact.MovingTimeSeconds),
+			"paceLabel":        paceLabel,
+			"paceValue":        paceValue,
+			"distanceMeters":   sum.Fact.DistanceMeters,
+			"movingTimeSecond": sum.Fact.MovingTimeSeconds,
+		}
+		if sum.Fact.ElevationGainMeters >= 1 {
+			body["elevation"] = formatElevationM(sum.Fact.ElevationGainMeters)
+		}
+		if !sum.Fact.StartedAt.IsZero() {
+			body["startedAt"] = sum.Fact.StartedAt.In(vietnam).Format(time.RFC3339)
+			body["startedAtDisplay"] = telegramActivityTime(sum.Fact.StartedAt)
+		}
+		return writeJSON(w, 200, body)
+	})
 	s.route("POST /v1/activities/tracked", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		var body struct {
 			Activity map[string]any `json:"activity"`
