@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"time"
@@ -156,6 +157,45 @@ func (s *TelegramService) SendChatMessage(ctx context.Context, chatID, text stri
 	if resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return fmt.Errorf("telegram sendMessage failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+// SendPhoto tải một ảnh (bytes) lên chat kèm caption, qua multipart/form-data.
+// Caption không đặt parse_mode (cùng lý do SendChatMessage): text do model sinh.
+func (s *TelegramService) SendPhoto(ctx context.Context, chatID string, image []byte, caption string) error {
+	if !s.Enabled() {
+		return nil
+	}
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	_ = w.WriteField("chat_id", chatID)
+	if strings.TrimSpace(caption) != "" {
+		_ = w.WriteField("caption", caption)
+	}
+	part, err := w.CreateFormFile("photo", "image.png")
+	if err != nil {
+		return err
+	}
+	if _, err := part.Write(image); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.apiBaseURL+"/bot"+s.botToken+"/sendPhoto", &buf)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("telegram sendPhoto failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return nil
 }

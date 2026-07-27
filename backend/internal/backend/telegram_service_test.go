@@ -93,9 +93,9 @@ func TestTelegramMessageFallsBackWhenActivityNameEmpty(t *testing.T) {
 	}
 }
 
-func TestActivityDetailURLPointsAtAppRoute(t *testing.T) {
+func TestActivityDetailURLPointsAtShareRoute(t *testing.T) {
 	got := activityDetailURL("https://threei.run", "uid123", "987")
-	if got != "https://threei.run/club/uid123/activity/987" {
+	if got != "https://threei.run/s/uid123/987" {
 		t.Fatalf("detail URL = %s", got)
 	}
 }

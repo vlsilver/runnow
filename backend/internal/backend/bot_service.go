@@ -101,11 +101,38 @@ type BotService struct {
 	hourly    int
 	memory    *MemoryService
 	schedules *ScheduleStore
+	// Client + model RIÊNG cho sinh ảnh: model ảnh (gemini-2.5-flash-image) chạy
+	// ở location "global", khác client chat (us-central1). nil = tắt tính năng vẽ.
+	imageGenai *genai.Client
+	imageModel string
 }
 
-func NewBotService(gc *genai.Client, telegram *TelegramService, tools *BotTools, db *firestore.Client, model string, hourlyLimit int, memory *MemoryService, schedules *ScheduleStore) *BotService {
-	return &BotService{genai: gc, telegram: telegram, tools: tools, db: db, model: model, hourly: hourlyLimit, memory: memory, schedules: schedules}
+func NewBotService(gc *genai.Client, telegram *TelegramService, tools *BotTools, db *firestore.Client, model string, hourlyLimit int, memory *MemoryService, schedules *ScheduleStore, imageGenai *genai.Client, imageModel string) *BotService {
+	return &BotService{genai: gc, telegram: telegram, tools: tools, db: db, model: model, hourly: hourlyLimit, memory: memory, schedules: schedules, imageGenai: imageGenai, imageModel: imageModel}
 }
+
+// Khoá context để đưa chatID + người gửi + kết quả ảnh xuống tận tool handler mà
+// không phải đổi chữ ký dispatch/Answer ở khắp nơi.
+type botCtxKey int
+
+const (
+	ctxChatID botCtxKey = iota
+	ctxSenderID
+	ctxImageOutcome
+)
+
+// imageOutcome cho tool generate_image báo ngược lên HandleMessage rằng ảnh +
+// caption đã được gửi — để khỏi gửi thêm một tin text lặp lại.
+type imageOutcome struct {
+	sent    bool
+	caption string
+}
+
+// botDailyImagesPerUser là trần số ảnh AI mỗi NGƯỜI được tạo mỗi ngày.
+const botDailyImagesPerUser = 3
+
+// geminiImageModel là model sinh ảnh; chạy ở location "global" (khác client chat).
+const geminiImageModel = "gemini-2.5-flash-image"
 
 func (s *BotService) Enabled() bool { return s != nil && s.genai != nil && s.telegram.Enabled() }
 
@@ -184,6 +211,18 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 				},
 			},
 		},
+		{
+			Name: "generate_image",
+			Description: "Vẽ MỘT ảnh minh hoạ vui/bựa (phong cách sticker hài) rồi GỬI thẳng vào chat hiện tại. Dùng khi ai đó nhờ 'vẽ / chế / tạo ảnh' cho vui. TỰ QUYẾT: chỉ vẽ khi lành mạnh, vui vẻ; TỪ CHỐI dứt khoát (trả lời bằng lời, đừng gọi tool) nếu nội dung tục tĩu, khiêu dâm, bạo lực, kỳ thị, bôi nhọ/hạ nhục người thật, hay mạo danh. Ảnh AI viết chữ hay sai nên để phần chữ cà khịa vào caption, mô tả cảnh vẽ ít chữ.",
+			Parameters: &genai.Schema{
+				Type: genai.TypeObject,
+				Properties: map[string]*genai.Schema{
+					"imagePrompt": {Type: genai.TypeString, Description: "Mô tả cảnh cần vẽ, VIẾT BẰNG TIẾNG ANH (model ảnh hiểu tiếng Anh tốt hơn), sinh động, hài hước, hợp bối cảnh chạy bộ của club."},
+					"caption":     {Type: genai.TypeString, Description: "Lời cà khịa/động viên TIẾNG VIỆT bằng giọng của bạn, gửi kèm ảnh."},
+				},
+				Required: []string{"imagePrompt", "caption"},
+			},
+		},
 	}
 	if canPostToGroup {
 		decls = append(decls, &genai.FunctionDeclaration{
@@ -246,6 +285,8 @@ func (s *BotService) dispatch(ctx context.Context, name string, args map[string]
 		return s.tools.GetRecentRun(ctx, args)
 	case "recall_group":
 		return s.recallGroup(ctx, args)
+	case "generate_image":
+		return s.generateImage(ctx, args)
 	case "post_to_group":
 		return s.postToGroup(ctx, args, canPostToGroup)
 	case "schedule_action":
@@ -638,7 +679,114 @@ func (s *BotService) saveExchange(ctx context.Context, chatID, name, question, a
 }
 
 // HandleMessage xử lý một tin nhắn đã được lọc là có nhắc tới bot.
-func (s *BotService) HandleMessage(ctx context.Context, chatID, name, question string) error {
+// generateImage vẽ 1 ảnh theo yêu cầu rồi gửi thẳng vào chat hiện tại. Đọc
+// chatID + người gửi + hộp kết quả từ context (HandleMessage đã nhét vào). Trần
+// theo người/ngày chỉ tính lần THÀNH CÔNG. Lỗi/từ chối trả message cho model để
+// nó tự giải thích lịch sự bằng lời.
+func (s *BotService) generateImage(ctx context.Context, args map[string]any) (any, error) {
+	if s.imageGenai == nil {
+		return map[string]any{"ok": false, "reason": "tính năng vẽ ảnh chưa bật"}, nil
+	}
+	chatID, _ := ctx.Value(ctxChatID).(string)
+	senderID, _ := ctx.Value(ctxSenderID).(string)
+	outcome, _ := ctx.Value(ctxImageOutcome).(*imageOutcome)
+	if chatID == "" {
+		return map[string]any{"ok": false, "reason": "không xác định được chat để gửi ảnh"}, nil
+	}
+	prompt := strings.TrimSpace(stringValue(args["imagePrompt"]))
+	caption := strings.TrimSpace(stringValue(args["caption"]))
+	if prompt == "" {
+		return map[string]any{"ok": false, "reason": "thiếu imagePrompt"}, nil
+	}
+	if senderID != "" {
+		used, qerr := s.imageQuotaUsed(ctx, senderID)
+		if qerr != nil {
+			slog.WarnContext(ctx, "bot.image_quota_read_failed", "error", qerr)
+		} else if used >= botDailyImagesPerUser {
+			return map[string]any{"ok": false, "reason": fmt.Sprintf(
+				"người này đã dùng hết %d ảnh trong ngày, hãy từ chối lịch sự và hẹn mai", botDailyImagesPerUser)}, nil
+		}
+	}
+	img, err := s.generateFunImage(ctx, prompt)
+	if err != nil {
+		slog.WarnContext(ctx, "bot.image_generate_failed", "error", err)
+		return map[string]any{"ok": false, "reason": "vẽ hỏng, xin lỗi và bảo thử lại sau"}, nil
+	}
+	if len(img) == 0 {
+		return map[string]any{"ok": false, "reason": "không vẽ được (có thể bị bộ lọc nội dung), từ chối lịch sự"}, nil
+	}
+	if err := s.telegram.SendPhoto(ctx, chatID, img, caption); err != nil {
+		slog.WarnContext(ctx, "bot.send_photo_failed", "error", err)
+		return map[string]any{"ok": false, "reason": "gửi ảnh hỏng, xin lỗi"}, nil
+	}
+	if senderID != "" {
+		if berr := s.bumpImageQuota(ctx, senderID); berr != nil {
+			slog.WarnContext(ctx, "bot.image_quota_bump_failed", "error", berr)
+		}
+	}
+	if outcome != nil {
+		outcome.sent = true
+		outcome.caption = caption
+	}
+	return map[string]any{"ok": true, "note": "Đã vẽ và GỬI ảnh kèm caption vào chat. KHÔNG cần trả thêm tin text nào nữa."}, nil
+}
+
+func (s *BotService) imageQuotaKey(userID string) string {
+	return "image:" + userID + ":" + time.Now().UTC().Format("20060102")
+}
+
+// imageQuotaUsed đọc số ảnh người này đã tạo hôm nay (UTC). 0 nếu chưa có.
+func (s *BotService) imageQuotaUsed(ctx context.Context, userID string) (int, error) {
+	snap, err := s.db.Collection("botRateLimits").Doc(s.imageQuotaKey(userID)).Get(ctx)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return int(number(snap.Data()["count"])), nil
+}
+
+func (s *BotService) bumpImageQuota(ctx context.Context, userID string) error {
+	_, err := s.db.Collection("botRateLimits").Doc(s.imageQuotaKey(userID)).Set(ctx, map[string]any{
+		"count":     firestore.Increment(1),
+		"kind":      "image",
+		"updatedAt": firestore.ServerTimestamp,
+		"expiresAt": time.Now().Add(48 * time.Hour),
+	}, firestore.MergeAll)
+	return err
+}
+
+// generateFunImage gọi model ảnh (gemini-2.5-flash-image) sinh 1 ảnh sticker
+// hài. Trả về bytes PNG; rỗng nếu model không trả ảnh (vd bị lọc nội dung).
+func (s *BotService) generateFunImage(ctx context.Context, prompt string) ([]byte, error) {
+	full := "Generate a single funny, wholesome sticker-art cartoon image. Thick " +
+		"bold outlines, vibrant colors, clean background, playful meme energy, no " +
+		"offensive content. Scene: " + prompt
+	resp, err := s.imageGenai.Models.GenerateContent(ctx, s.imageModel,
+		[]*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: full}}}},
+		&genai.GenerateContentConfig{ResponseModalities: []string{"TEXT", "IMAGE"}},
+	)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, nil
+	}
+	for _, c := range resp.Candidates {
+		if c.Content == nil {
+			continue
+		}
+		for _, p := range c.Content.Parts {
+			if p.InlineData != nil && len(p.InlineData.Data) > 0 {
+				return p.InlineData.Data, nil
+			}
+		}
+	}
+	return nil, nil
+}
+
+func (s *BotService) HandleMessage(ctx context.Context, chatID, senderID, name, question string) error {
 	if !s.Enabled() {
 		return nil
 	}
@@ -665,6 +813,13 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID, name, question s
 		slog.InfoContext(ctx, "bot.rate_limited", "chatId", chatID, "private", private)
 		return nil
 	}
+
+	// Đưa chat + người gửi + hộp kết quả ảnh xuống tool generate_image qua
+	// context (khỏi đổi chữ ký dispatch/Answer).
+	outcome := &imageOutcome{}
+	ctx = context.WithValue(ctx, ctxChatID, chatID)
+	ctx = context.WithValue(ctx, ctxSenderID, senderID)
+	ctx = context.WithValue(ctx, ctxImageOutcome, outcome)
 
 	// Lịch sử hỏng thì vẫn trả lời được, chỉ là mất ngữ cảnh — không đáng để
 	// chặn cả câu trả lời.
@@ -709,6 +864,15 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID, name, question s
 		slog.ErrorContext(ctx, "bot.answer_failed", "error", err)
 		// Im lặng còn hơn phun stack trace vào group.
 		answer = "Đang bị đơ tí, thử lại sau nhé."
+	}
+	// Tool generate_image đã tự gửi ảnh + caption vào chat rồi → không gửi thêm
+	// tin text (tránh lặp), chỉ lưu vào lịch sử để trí nhớ có ngữ cảnh.
+	if outcome.sent {
+		if saveErr := s.saveExchange(ctx, chatID, name, question, "[bot đã gửi 1 ảnh] "+outcome.caption); saveErr != nil {
+			slog.WarnContext(ctx, "bot.history_save_failed", "error", saveErr)
+		}
+		s.memory.AfterMessages(ctx, chatID, 2)
+		return nil
 	}
 	if err := s.telegram.SendChatMessage(ctx, chatID, answer); err != nil {
 		return err

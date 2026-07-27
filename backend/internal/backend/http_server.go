@@ -91,7 +91,7 @@ func (s *Server) telegramWebhook(w http.ResponseWriter, r *http.Request) error {
 		chatID, question, isQuestion := botQuestion(update, s.config.TelegramBotUsername)
 		recordChatID, _, rawText, hasText := incomingMessage(update)
 		if isQuestion || hasText {
-			task := botMessageTask{IsQuestion: isQuestion, Name: name}
+			task := botMessageTask{IsQuestion: isQuestion, Name: name, SenderID: senderID(update)}
 			if isQuestion {
 				task.ChatID, task.Question = chatID, question
 			} else {
@@ -126,7 +126,7 @@ func (s *Server) botMessage(w http.ResponseWriter, r *http.Request) error {
 	ctx, cancel := context.WithTimeout(r.Context(), 240*time.Second)
 	defer cancel()
 	if task.IsQuestion {
-		if err := s.deps.Bot.HandleMessage(ctx, task.ChatID, task.Name, task.Question); err != nil {
+		if err := s.deps.Bot.HandleMessage(ctx, task.ChatID, task.SenderID, task.Name, task.Question); err != nil {
 			return err
 		}
 	} else if err := s.deps.Bot.RecordIncoming(ctx, task.ChatID, task.Name, task.RawText); err != nil {

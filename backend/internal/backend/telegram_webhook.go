@@ -105,9 +105,19 @@ func botQuestion(update TelegramUpdate, botUsername string) (chatID string, ques
 type botMessageTask struct {
 	IsQuestion bool   `json:"isQuestion"`
 	ChatID     string `json:"chatId"`
+	SenderID   string `json:"senderId,omitempty"`
 	Name       string `json:"name"`
 	Question   string `json:"question,omitempty"`
 	RawText    string `json:"rawText,omitempty"`
+}
+
+// senderID lấy Telegram user id (chuỗi) của người gửi — khoá ổn định cho hạn
+// mức theo NGƯỜI (vd trần số ảnh AI mỗi người/ngày). Rỗng nếu không xác định.
+func senderID(update TelegramUpdate) string {
+	if update.Message == nil || update.Message.From == nil {
+		return ""
+	}
+	return strconv.FormatInt(update.Message.From.ID, 10)
 }
 
 // incomingMessage trả về chatID, tên người gửi và text thô của một tin bất kỳ

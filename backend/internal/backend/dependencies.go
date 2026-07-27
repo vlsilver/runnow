@@ -91,7 +91,19 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 		} else {
 			d.Gemini = genaiClient
 			d.Memory = NewMemoryService(genaiClient, db, config.GeminiModel)
-			d.Bot = NewBotService(genaiClient, telegram, NewBotTools(db), db, config.GeminiModel, config.BotHourlyLimit, d.Memory, NewScheduleStore(db))
+			// Client RIÊNG cho sinh ảnh: model ảnh nằm ở location "global", khác
+			// location chat (us-central1). Hỏng thì chỉ tắt tính năng vẽ, không
+			// ảnh hưởng chat.
+			imageClient, imgErr := genai.NewClient(ctx, &genai.ClientConfig{
+				Project:  config.ProjectID,
+				Location: "global",
+				Backend:  genai.BackendVertexAI,
+			})
+			if imgErr != nil {
+				slog.WarnContext(ctx, "dependencies.image_genai_unavailable", "error", imgErr)
+				imageClient = nil
+			}
+			d.Bot = NewBotService(genaiClient, telegram, NewBotTools(db), db, config.GeminiModel, config.BotHourlyLimit, d.Memory, NewScheduleStore(db), imageClient, geminiImageModel)
 			// Cho ActivityService ghi lại chính thông báo buổi chạy vào trí
 			// nhớ (Telegram không đẩy lại tin của bot).
 			d.Activities.SetBroadcastRecorder(d.Bot)
