@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -62,6 +63,10 @@ func (s *ActivityService) SaveTracked(ctx context.Context, uid string, raw map[s
 	if err != nil {
 		return TrackedActivityResult{}, err
 	}
+	// Buổi chạy DÀI có thể nhồi route+streams tới mức doc vượt trần 1MB của
+	// Firestore → ghi hỏng, mất cả buổi. Giảm mật độ route/streams cho vừa
+	// TRƯỚC khi ghi (bản đồ/biểu đồ vẫn đủ mượt). Không đụng client.
+	shrinkTrackedActivity(ctx, uid, next)
 	activityID := stringValue(next["id"])
 	distance := number(next["distanceMeters"])
 	duplicateID := ""
@@ -109,6 +114,79 @@ func trackedDerivedCause(activity map[string]any) string {
 		identity[key] = activity[key]
 	}
 	return StableTaskID("tracked", identity)
+}
+
+// trackedActivityMaxJSONBytes là ngưỡng an toàn (dưới trần 1,048,576 của
+// Firestore, chừa margin cho tên field + overhead), đo bằng độ dài JSON như một
+// xấp xỉ kích thước document.
+const trackedActivityMaxJSONBytes = 800_000
+
+// shrinkTrackedActivity giảm mật độ routePoints + streams (+ laps nếu cần) tới
+// khi doc ước lượng nằm dưới ngưỡng, để buổi chạy dài không vượt trần 1MB của
+// Firestore. Không đụng client — sửa ngay tại backend, hiệu lực cho mọi app.
+func shrinkTrackedActivity(ctx context.Context, uid string, next map[string]any) {
+	before := estimateDocJSONSize(next)
+	if before <= trackedActivityMaxJSONBytes {
+		return
+	}
+	for maxLen := 4000; maxLen >= 200; maxLen /= 2 {
+		if rp, ok := next["routePoints"].([]any); ok {
+			next["routePoints"] = downsampleList(rp, maxLen)
+		}
+		if st, ok := next["streams"].(map[string]any); ok {
+			for k, v := range st {
+				if arr, ok := v.([]any); ok {
+					st[k] = downsampleList(arr, maxLen)
+				}
+			}
+		}
+		if lp, ok := next["laps"].([]any); ok && maxLen < 1000 {
+			next["laps"] = downsampleList(lp, maxLen)
+		}
+		if after := estimateDocJSONSize(next); after <= trackedActivityMaxJSONBytes {
+			slog.InfoContext(ctx, "activity.tracked_downsampled", "uid", uid,
+				"id", stringValue(next["id"]), "beforeBytes", before, "afterBytes", after, "maxLen", maxLen)
+			return
+		}
+	}
+	// Cực hiếm: vẫn to sau khi giảm mạnh → bỏ streams thô (giữ route đã thưa +
+	// splits + số liệu tổng) để CHẮC CHẮN ghi được — thà thiếu biểu đồ còn hơn
+	// mất cả buổi chạy.
+	delete(next, "streams")
+	next["streamsHydrated"] = false
+	slog.WarnContext(ctx, "activity.tracked_streams_dropped", "uid", uid,
+		"id", stringValue(next["id"]), "beforeBytes", before, "afterBytes", estimateDocJSONSize(next))
+}
+
+// downsampleList giữ tối đa maxLen phần tử phân bố đều, LUÔN gồm phần tử đầu và
+// cuối để bản đồ/biểu đồ không bị cụt hai đầu.
+func downsampleList(list []any, maxLen int) []any {
+	n := len(list)
+	if n <= maxLen || maxLen < 2 {
+		return list
+	}
+	out := make([]any, 0, maxLen)
+	step := float64(n-1) / float64(maxLen-1)
+	last := -1
+	for i := 0; i < maxLen; i++ {
+		idx := int(math.Round(float64(i) * step))
+		if idx >= n {
+			idx = n - 1
+		}
+		if idx != last {
+			out = append(out, list[idx])
+			last = idx
+		}
+	}
+	return out
+}
+
+func estimateDocJSONSize(m map[string]any) int {
+	b, err := json.Marshal(m)
+	if err != nil {
+		return 1 << 30 // không marshal được → coi như rất to để buộc giảm/bỏ streams
+	}
+	return len(b)
 }
 
 func normalizeTrackedActivity(raw map[string]any) (map[string]any, error) {
