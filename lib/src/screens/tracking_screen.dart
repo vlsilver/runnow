@@ -206,39 +206,46 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
           ],
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _RunConsoleHeader(
-                status: _statusLabel(snapshot),
-                active: _running,
-                signal: _gpsSignal,
-                live: _liveEnabled && (_running || _paused),
-                onStopLive: () => setState(() => _liveEnabled = false),
+      body: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _RunConsoleHeader(
+              status: _statusLabel(snapshot),
+              active: _running,
+              signal: _gpsSignal,
+              live: _liveEnabled && (_running || _paused),
+              onStopLive: () => setState(() => _liveEnabled = false),
+            ),
+            const SizedBox(height: 12),
+            // Cockpit chiếm khoảng trống còn lại và TỰ CO (FittedBox) trên máy
+            // nhỏ để cả màn nằm gọn 1 trang, không scroll. Máy lớn giữ nguyên cỡ.
+            Expanded(
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: SizedBox(
+                    width: MediaQuery.sizeOf(context).width - 40,
+                    child: _TrackingCockpit(
+                      snapshot: snapshot,
+                      signal: _gpsSignal,
+                      elapsedSeconds: _gpsElapsedSeconds,
+                      stableSamples: _gpsStableSamples,
+                      minSeconds: 0,
+                      minSamples: _gpsWarmupMinGoodSamples,
+                      subtitle: _distanceSubtitle,
+                      onMap: snapshot == null || snapshot.routePoints.length < 2
+                          ? null
+                          : () => _openLiveMap(snapshot),
+                    ),
+                  ),
+                ),
               ),
+            ),
+            if (isPublic && !_running && !_paused && !_finished) ...[
               const SizedBox(height: 12),
-              _TrackingCockpit(
-                snapshot: snapshot,
-                signal: _gpsSignal,
-                elapsedSeconds: _gpsElapsedSeconds,
-                stableSamples: _gpsStableSamples,
-                minSeconds: 0,
-                minSamples: _gpsWarmupMinGoodSamples,
-                subtitle: _distanceSubtitle,
-                onMap: snapshot == null || snapshot.routePoints.length < 2
-                    ? null
-                    : () => _openLiveMap(snapshot),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (isPublic && !_running && !_paused && !_finished)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: GlassPanel(
+              GlassPanel(
                 borderRadius: 18,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 child: Row(
@@ -267,43 +274,44 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                   ],
                 ),
               ),
-            ),
-          if (_message != null && !_checkingPermission && !_running)
-            GlassPanel(
-              borderRadius: 18,
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _message!,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  // Chỉ hiện lối tắt sang Settings, không tự mở. App Store
-                  // guideline 5.1.1(iv) cấm đẩy user sang Settings sau khi
-                  // họ đã bấm "Don't Allow" — quyết định đó phải được tôn
-                  // trọng, mở Settings là do user chủ động bấm.
-                  if (_settingsAction != null) ...[
-                    const SizedBox(height: 12),
-                    TextButton(
-                      onPressed: _settingsAction,
-                      child: const Text('Mở Cài đặt'),
+            ],
+            if (_message != null && !_checkingPermission && !_running) ...[
+              const SizedBox(height: 12),
+              GlassPanel(
+                borderRadius: 18,
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _message!,
+                      style: Theme.of(context).textTheme.bodyMedium,
                     ),
+                    // Chỉ hiện lối tắt sang Settings, không tự mở. App Store
+                    // guideline 5.1.1(iv) cấm đẩy user sang Settings sau khi
+                    // họ đã bấm "Don't Allow" — quyết định đó phải được tôn
+                    // trọng, mở Settings là do user chủ động bấm.
+                    if (_settingsAction != null) ...[
+                      const SizedBox(height: 12),
+                      TextButton(
+                        onPressed: _settingsAction,
+                        child: const Text('Mở Cài đặt'),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-          if (kDebugMode &&
-              !_checkingPermission &&
-              !_running &&
-              _hasSession) ...[
-            const SizedBox(height: 16),
-            _TrialNoteCard(snapshot: snapshot),
-            const SizedBox(height: 20),
-          ] else
-            const SizedBox(height: 16),
-        ],
+            ],
+            if (kDebugMode &&
+                !_checkingPermission &&
+                !_running &&
+                _hasSession) ...[
+              const SizedBox(height: 12),
+              _TrialNoteCard(snapshot: snapshot),
+            ],
+          ],
+        ),
       ),
       bottomNavigationBar: SafeArea(
         top: false,
