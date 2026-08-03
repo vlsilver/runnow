@@ -206,6 +206,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                 status: _statusLabel(snapshot),
                 active: _running,
                 signal: _gpsSignal,
+                live: _liveEnabled && (_running || _paused),
+                onStopLive: () => setState(() => _liveEnabled = false),
               ),
               const SizedBox(height: 12),
               _TrackingCockpit(
@@ -1821,11 +1823,15 @@ class _RunConsoleHeader extends StatelessWidget {
     required this.status,
     required this.active,
     required this.signal,
+    this.live = false,
+    this.onStopLive,
   });
 
   final String status;
   final bool active;
   final _GpsSignal signal;
+  final bool live;
+  final VoidCallback? onStopLive;
 
   @override
   Widget build(BuildContext context) {
@@ -1866,6 +1872,41 @@ class _RunConsoleHeader extends StatelessWidget {
           ),
         ),
         const Spacer(),
+        if (live) ...[
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onStopLive,
+            behavior: HitTestBehavior.opaque,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: RunNowSemanticColors.danger.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: RunNowSemanticColors.danger.withValues(alpha: 0.55),
+                ),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _StatusDot(color: RunNowSemanticColors.danger),
+                    SizedBox(width: 6),
+                    Text(
+                      'LIVE',
+                      style: TextStyle(
+                        color: RunNowSemanticColors.danger,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.6,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
         const SizedBox(width: 12),
         Row(
           mainAxisSize: MainAxisSize.min,
