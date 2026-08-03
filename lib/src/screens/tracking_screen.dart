@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -483,6 +484,14 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
           .read(trackingPhotoCaptureProvider)
           .capture(sessionId: session.id, photoId: photoId);
       if (path == null || !mounted) return;
+      // Review trước khi giữ: xấu thì bỏ luôn — không lưu vào buổi, không đăng
+      // group. Chỉ khi bấm "giữ" ảnh mới được neo + upload (+ share nếu Live).
+      final keep = await _reviewPhoto(path);
+      if (!keep) {
+        await ref.read(trackingPhotoCaptureProvider).deleteLocal(path);
+        if (mounted) setState(() => _message = 'Đã bỏ ảnh vừa chụp.');
+        return;
+      }
       final draft = TrackingPhotoDraft(
         id: photoId,
         capturedAt: capturedAt,
@@ -504,6 +513,55 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     } finally {
       if (mounted) setState(() => _capturingPhoto = false);
     }
+  }
+
+  /// Xem lại ảnh vừa chụp trước khi giữ. Trả true = giữ (lưu vào buổi, + đăng
+  /// group nếu Live), false = bỏ hẳn.
+  Future<bool> _reviewPhoto(String path) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Dùng ảnh này?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 360),
+                child: Image.file(File(path), fit: BoxFit.contain),
+              ),
+            ),
+            if (_liveEnabled) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Icon(Icons.sensors, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Live đang bật — ảnh sẽ được đăng lên group.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Bỏ'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(_liveEnabled ? 'Lưu & đăng' : 'Lưu'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
   }
 
   Future<bool> _uploadPendingPhotos() async {
