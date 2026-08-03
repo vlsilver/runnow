@@ -134,6 +134,21 @@ class RunNowApiClient {
     return TrackedActivityBackendResult.fromJson(_jsonObject(response));
   }
 
+  /// Hoàn tất buổi chạy đã sync DẦN theo chunk: chỉ gửi phần summary NHẸ
+  /// (stats/splits/streams, KHÔNG kèm routePoints — route đã đẩy sẵn qua các
+  /// chunk `activities/{id}/track/{seq}`). Backend ghép chunk lại thành route
+  /// đầy đủ rồi lưu như buổi thường. Tránh "cú dump khổng lồ" ở cuối buổi.
+  Future<TrackedActivityBackendResult> finalizeTrackedActivity(
+    Map<String, dynamic> summary,
+  ) async {
+    final response = await _send(
+      'POST',
+      '/v1/activities/tracked/finalize',
+      body: {'activity': summary},
+    );
+    return TrackedActivityBackendResult.fromJson(_jsonObject(response));
+  }
+
   Future<void> updateProfile({
     required String nickname,
     required String? avatarUrl,

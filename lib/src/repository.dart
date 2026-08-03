@@ -35,6 +35,26 @@ abstract interface class ActivityRepository {
     ActivityDetail detail, {
     Map<String, dynamic>? trackingDebug,
   });
+
+  /// Đẩy DẦN 1 đoạn điểm route (append-only) vào
+  /// `users/{uid}/activities/{activityId}/track/{seq}` trong lúc chạy (~10s/lần)
+  /// để không mất buổi khi crash/hết pin. [points] là điểm LEAN (lat/lng/ts).
+  Future<void> appendTrackChunk({
+    required String activityId,
+    required int seq,
+    required List<Map<String, dynamic>> points,
+  });
+
+  /// Trạng thái chunk đã ghi (dùng khi khôi phục buổi chạy bị kill giữa chừng):
+  /// [nextSeq] để ghi tiếp không đè, [flushedPoints] tổng điểm đã đẩy để không
+  /// đẩy lặp phần đầu.
+  Future<({int nextSeq, int flushedPoints})> trackChunkState(String activityId);
+
+  /// Hoàn tất buổi đã sync theo chunk: gửi summary NHẸ (không routePoints),
+  /// backend ghép chunk thành route đầy đủ rồi lưu.
+  Future<TrackedActivitySaveResult> finalizeTrackedActivity(
+    ActivityDetail detail,
+  );
 }
 
 class ActivitySyncOutcome {
@@ -428,6 +448,62 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
     final result = await _api.saveTrackedActivity(
       trackedActivityToFirestoreMap(detail, trackingDebug: trackingDebug),
     );
+    return _mapTrackedResult(result);
+  }
+
+  CollectionReference<Map<String, dynamic>> _trackChunks(String activityId) =>
+      _activities.doc(activityId).collection('track');
+
+  @override
+  Future<void> appendTrackChunk({
+    required String activityId,
+    required int seq,
+    required List<Map<String, dynamic>> points,
+  }) async {
+    if (points.isEmpty) return;
+    await _trackChunks(activityId).doc('$seq').set({
+      'seq': seq,
+      'points': points,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  @override
+  Future<({int nextSeq, int flushedPoints})> trackChunkState(
+    String activityId,
+  ) async {
+    final snapshot = await _trackChunks(activityId).get();
+    if (snapshot.docs.isEmpty) return (nextSeq: 0, flushedPoints: 0);
+    var maxSeq = -1;
+    var flushedPoints = 0;
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final seq = (data['seq'] as num?)?.toInt() ?? -1;
+      if (seq > maxSeq) maxSeq = seq;
+      final points = data['points'];
+      if (points is List) flushedPoints += points.length;
+    }
+    return (nextSeq: maxSeq + 1, flushedPoints: flushedPoints);
+  }
+
+  @override
+  Future<TrackedActivitySaveResult> finalizeTrackedActivity(
+    ActivityDetail detail,
+  ) async {
+    if (detail.summary.source != ActivitySource.runnow) {
+      throw StateError('Chỉ lưu activity tracking nội bộ bằng API này.');
+    }
+    final summary = trackedActivityToFirestoreMap(detail);
+    // Route đã được đẩy sẵn qua các chunk → bỏ khỏi summary cho payload nhẹ.
+    // Backend tự ghép route từ chunk. Streams (~50KB) vẫn gửi kèm ở đây.
+    summary.remove('routePoints');
+    final result = await _api.finalizeTrackedActivity(summary);
+    return _mapTrackedResult(result);
+  }
+
+  TrackedActivitySaveResult _mapTrackedResult(
+    TrackedActivityBackendResult result,
+  ) {
     return TrackedActivitySaveResult(
       status: switch (result.status) {
         'below_minimum_distance' =>
@@ -564,6 +640,23 @@ class DemoActivityRepository implements ActivityRepository {
       stravaActivityId: duplicate?.id,
     );
   }
+
+  @override
+  Future<void> appendTrackChunk({
+    required String activityId,
+    required int seq,
+    required List<Map<String, dynamic>> points,
+  }) async {}
+
+  @override
+  Future<({int nextSeq, int flushedPoints})> trackChunkState(
+    String activityId,
+  ) async => (nextSeq: 0, flushedPoints: 0);
+
+  @override
+  Future<TrackedActivitySaveResult> finalizeTrackedActivity(
+    ActivityDetail detail,
+  ) => saveTrackedActivity(detail);
 }
 
 class DemoFeedRepository implements FeedRepository {

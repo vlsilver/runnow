@@ -71,6 +71,15 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   DateTime? _lastDraftSavedAt;
   DateTime? _lastLivePublishedAt;
   double _lastLivePublishedDistanceMeters = 0;
+  // Sync route theo chunk (~10s/lần) để không mất buổi khi crash/hết pin.
+  // `_trackChunkSeq` = seq chunk kế tiếp; `_flushedRoutePointCount` = số điểm
+  // đã đẩy (đẩy tiếp từ đây). Serialize bằng queue để không đua ghi.
+  int _trackChunkSeq = 0;
+  int _flushedRoutePointCount = 0;
+  DateTime? _lastTrackChunkAt;
+  Future<void> _trackChunkQueue = Future<void>.value();
+  bool _trackChunkResumed = false;
+  static const _trackChunkInterval = Duration(seconds: 10);
 
   bool get _running => _snapshot?.status == TrackingSessionStatus.running;
   bool get _paused => _snapshot?.status == TrackingSessionStatus.paused;
@@ -367,6 +376,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       final session = TrackingSession(
         id: 'runnow-${now.toUtc().millisecondsSinceEpoch}',
       )..start(now);
+      _resetTrackChunkState();
       setState(() {
         _session = session;
         _snapshot = session.snapshot();
@@ -574,13 +584,23 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         name: '3I Run',
         recordingDevice: '3I app',
       );
-      // KHÔNG gửi trackingDebug nữa. Nó là bản debug NHÂN ĐÔI (chép lại
-      // routePoints + pointLogs GPS thô) tới ~695KB/buổi, đẩy payload vượt trần
-      // 2MB → decode 400 → MẤT buổi (đúng ca buổi race 10.4km). Backend cũng đã
-      // bỏ không lưu field này. Bỏ ở nguồn = payload nhẹ ~70%.
-      final result = await ref
-          .read(activityRepositoryProvider)
-          .saveTrackedActivity(detail);
+      // Route đã được sync DẦN theo chunk (~10s/lần) trong lúc chạy. Đẩy nốt
+      // đoạn cuối kể từ lần flush trước, rồi finalize chỉ gửi SUMMARY nhẹ
+      // (stats/splits/streams, KHÔNG routePoints) — backend ghép chunk thành
+      // route đầy đủ. Không còn "cú dump khổng lồ" ở cuối buổi (đúng ca buổi
+      // race 10.4km từng vượt trần decode 2MB → mất buổi). trackingDebug cũng
+      // đã bỏ hẳn (bản NHÂN ĐÔI ~695KB/buổi, backend không lưu).
+      await _flushTrackChunk();
+      final repository = ref.read(activityRepositoryProvider);
+      // An toàn: chỉ finalize (nhẹ) khi TẤT CẢ điểm đã nằm trong chunk. Nếu lần
+      // flush cuối lỗi mạng (chunk còn thiếu đuôi), degrade về full-save cũ để
+      // KHÔNG mất phần route cuối — buổi vẫn đầy đủ như trước.
+      final allChunked =
+          _trackChunkResumed &&
+          _flushedRoutePointCount >= finalSnapshot.routePoints.length;
+      final result = allChunked
+          ? await repository.finalizeTrackedActivity(detail)
+          : await repository.saveTrackedActivity(detail);
       if (photosUploaded) await ref.read(trackingDraftStoreProvider).clear();
       if (!mounted) return;
       setState(() {
@@ -884,7 +904,66 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
           now.difference(lastPublishedAt) >= _liveHeartbeatInterval) {
         unawaited(_publishLiveSnapshot());
       }
+      final lastChunkAt = _lastTrackChunkAt;
+      if (lastChunkAt == null ||
+          now.difference(lastChunkAt) >= _trackChunkInterval) {
+        unawaited(_flushTrackChunk());
+      }
     });
+  }
+
+  /// Đẩy đoạn điểm route MỚI (kể từ lần đẩy trước) thành 1 chunk append-only.
+  /// Serialize qua queue để 2 lần tick không đua ghi cùng seq. Lỗi mạng nuốt
+  /// êm — tick sau tự thử lại (seq/điểm chưa đổi vì chỉ nhích khi ghi thành
+  /// công), Stop vẫn chốt bằng finalize.
+  Future<void> _flushTrackChunk() {
+    _trackChunkQueue = _trackChunkQueue
+        .then((_) => _flushTrackChunkNow())
+        .catchError((_) {});
+    return _trackChunkQueue;
+  }
+
+  Future<void> _flushTrackChunkNow() async {
+    final session = _session;
+    if (session == null) return;
+    // Buổi khôi phục sau khi app bị kill: dò chunk đã ghi để đẩy tiếp không đè.
+    if (!_trackChunkResumed) {
+      final state = await ref
+          .read(activityRepositoryProvider)
+          .trackChunkState(session.id);
+      _trackChunkSeq = state.nextSeq;
+      _flushedRoutePointCount = state.flushedPoints;
+      _trackChunkResumed = true;
+    }
+    final points = session.snapshot().routePoints;
+    if (_flushedRoutePointCount >= points.length) {
+      _lastTrackChunkAt = DateTime.now();
+      return;
+    }
+    final segment = points.sublist(_flushedRoutePointCount);
+    final lean = segment
+        .map(
+          (point) => <String, dynamic>{
+            'latitude': point.latitude,
+            'longitude': point.longitude,
+            'timestamp': point.timestamp.toUtc().toIso8601String(),
+          },
+        )
+        .toList();
+    final seq = _trackChunkSeq;
+    await ref
+        .read(activityRepositoryProvider)
+        .appendTrackChunk(activityId: session.id, seq: seq, points: lean);
+    _trackChunkSeq = seq + 1;
+    _flushedRoutePointCount = points.length;
+    _lastTrackChunkAt = DateTime.now();
+  }
+
+  void _resetTrackChunkState() {
+    _trackChunkSeq = 0;
+    _flushedRoutePointCount = 0;
+    _lastTrackChunkAt = null;
+    _trackChunkResumed = true; // buổi mới: bắt đầu sạch từ seq 0, khỏi dò.
   }
 
   Future<TrackingLocationSample?> _waitForStableGps() async {

@@ -112,6 +112,23 @@ class _StubRepository implements ActivityRepository {
   );
 
   @override
+  Future<void> appendTrackChunk({
+    required String activityId,
+    required int seq,
+    required List<Map<String, dynamic>> points,
+  }) async {}
+
+  @override
+  Future<({int nextSeq, int flushedPoints})> trackChunkState(
+    String activityId,
+  ) async => (nextSeq: 0, flushedPoints: 0);
+
+  @override
+  Future<TrackedActivitySaveResult> finalizeTrackedActivity(
+    ActivityDetail detail,
+  ) => saveTrackedActivity(detail);
+
+  @override
   Stream<List<ActivitySummary>> watchActivities({int? limit}) =>
       const Stream.empty();
 }
