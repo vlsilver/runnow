@@ -1776,6 +1776,7 @@ class _CockpitMap extends StatelessWidget {
               builder: (context, constraints) => RouteMap.fromRoutePoints(
                 points: routePoints,
                 height: constraints.maxHeight,
+                follow: true,
               ),
             ),
           ),

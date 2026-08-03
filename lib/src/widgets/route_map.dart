@@ -63,6 +63,7 @@ class RouteMap extends StatelessWidget {
     this.liveRunnersStream,
     this.liveRoutePhotos = const [],
     this.height = 330,
+    this.follow = false,
     super.key,
   });
 
@@ -76,6 +77,7 @@ class RouteMap extends StatelessWidget {
     this.liveRunners = const [],
     this.liveRunnersStream,
     this.liveRoutePhotos = const [],
+    this.follow = false,
     super.key,
   }) : encodedPolyline = null,
        routePoints = points;
@@ -83,6 +85,11 @@ class RouteMap extends StatelessWidget {
   final String? encodedPolyline;
   final List<RoutePoint>? routePoints;
   final double height;
+
+  /// Chế độ theo dõi live: camera bám vị trí hiện tại (điểm cuối) + xoay theo
+  /// hướng di chuyển, thay vì fit cả tuyến. Kéo/zoom tay → tạm chuyển thủ công,
+  /// có nút định vị để quay lại bám. Chỉ dùng cho map lúc đang chạy.
+  final bool follow;
   final List<ActivityPhoto> photos;
   final ValueChanged<ActivityPhoto>? onPhotoTap;
   final double? highlightedDistanceMeters;
@@ -129,6 +136,7 @@ class RouteMap extends StatelessWidget {
                 highlightedDistanceMeters: highlightedDistanceMeters,
                 totalDistanceMeters: totalDistanceMeters,
                 liveRunners: liveRunners,
+                follow: follow,
               ),
             ),
             Positioned(
@@ -410,6 +418,7 @@ class _FlutterRouteMap extends StatefulWidget {
     required this.highlightedDistanceMeters,
     required this.totalDistanceMeters,
     required this.liveRunners,
+    this.follow = false,
   });
 
   final List<LatLng> points;
@@ -418,6 +427,7 @@ class _FlutterRouteMap extends StatefulWidget {
   final double? highlightedDistanceMeters;
   final double? totalDistanceMeters;
   final List<LiveTrackingSession> liveRunners;
+  final bool follow;
 
   @override
   State<_FlutterRouteMap> createState() => _FlutterRouteMapState();
@@ -432,10 +442,50 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
   // onMapReady — thời điểm map chắc chắn đã sẵn sàng, khác với postFrame
   // callback (có thể chạy trước khi controller gắn vào map đã render).
   var _fittedOnce = false;
+  // Chế độ follow: user đã kéo/zoom tay → tạm ngừng bám cho tới khi bấm định vị.
+  var _manual = false;
+  static const _followZoom = 17.0;
+
+  // Hướng di chuyển (độ, 0=Bắc) tính từ 2 điểm cuối để xoay map cho "trước mặt"
+  // lên trên. Ít điểm thì giữ 0 (Bắc lên trên).
+  double _bearingDeg() {
+    final pts = widget.points;
+    if (pts.length < 2) return 0;
+    final a = pts[pts.length - 2];
+    final b = pts.last;
+    final dLon = (b.longitude - a.longitude) * math.pi / 180;
+    final lat1 = a.latitude * math.pi / 180;
+    final lat2 = b.latitude * math.pi / 180;
+    final y = math.sin(dLon) * math.cos(lat2);
+    final x =
+        math.cos(lat1) * math.sin(lat2) -
+        math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
+    return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
+  }
+
+  void _followCurrent() {
+    if (widget.points.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Xoay map -bearing để hướng chạy hướng lên trên.
+      _mapController.moveAndRotate(
+        widget.points.last,
+        _followZoom,
+        -_bearingDeg(),
+      );
+    });
+  }
 
   @override
   void didUpdateWidget(covariant _FlutterRouteMap oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.follow) {
+      // Bám vị trí mới mỗi khi có điểm mới, trừ khi user đang xem thủ công.
+      if (!_manual && !listEquals(oldWidget.points, widget.points)) {
+        _followCurrent();
+      }
+      return;
+    }
     // `MapOptions.initialCameraFit` chỉ được flutter_map áp dụng đúng 1 lần
     // lúc tạo controller — nếu widget này build lần đầu trước khi `points`
     // load xong (dễ xảy ra hơn trên web do thứ tự tải dữ liệu khác app gốc),
@@ -481,14 +531,21 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
     final routeOutline = isDark
         ? Colors.black.withValues(alpha: 0.5)
         : Colors.white.withValues(alpha: 0.88);
-    return FlutterMap(
+    final map = FlutterMap(
       mapController: _mapController,
       options: MapOptions(
-        initialCameraFit: CameraFit.bounds(
-          bounds: routeBounds(points),
-          padding: const EdgeInsets.all(28),
-          maxZoom: 16,
-        ),
+        // Follow: khởi đầu bám vị trí hiện tại + xoay theo hướng; ngược lại fit
+        // cả tuyến như cũ.
+        initialCameraFit: widget.follow
+            ? null
+            : CameraFit.bounds(
+                bounds: routeBounds(points),
+                padding: const EdgeInsets.all(28),
+                maxZoom: 16,
+              ),
+        initialCenter: widget.follow ? points.last : points.first,
+        initialZoom: widget.follow ? _followZoom : 14,
+        initialRotation: widget.follow ? -_bearingDeg() : 0,
         minZoom: 3,
         maxZoom: 18,
         onMapReady: () {
@@ -496,7 +553,17 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
           // đây là thứ kích hoạt tile nạp, tránh nền đen tới khi zoom tay.
           if (!_fittedOnce) {
             _fittedOnce = true;
-            _scheduleFitBounds();
+            if (widget.follow) {
+              _followCurrent();
+            } else {
+              _scheduleFitBounds();
+            }
+          }
+        },
+        onPositionChanged: (camera, hasGesture) {
+          // User tự kéo/zoom → chuyển thủ công, ngừng bám tới khi bấm định vị.
+          if (widget.follow && hasGesture && !_manual) {
+            setState(() => _manual = true);
           }
         },
         backgroundColor: palette.backgroundDeep,
@@ -506,7 +573,8 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
               InteractiveFlag.flingAnimation |
               InteractiveFlag.pinchMove |
               InteractiveFlag.pinchZoom |
-              InteractiveFlag.doubleTapZoom,
+              InteractiveFlag.doubleTapZoom |
+              InteractiveFlag.rotate,
         ),
       ),
       children: [
@@ -588,6 +656,43 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
                 ),
           ],
         ),
+      ],
+    );
+    if (!widget.follow) return map;
+    // Follow: nút định vị hiện khi user đã xem thủ công → bấm để bám lại.
+    return Stack(
+      children: [
+        Positioned.fill(child: map),
+        if (_manual)
+          Positioned(
+            top: 10,
+            left: 10,
+            child: Material(
+              color: Colors.transparent,
+              child: InkResponse(
+                onTap: () {
+                  setState(() => _manual = false);
+                  _followCurrent();
+                },
+                radius: 26,
+                child: Container(
+                  padding: const EdgeInsets.all(9),
+                  decoration: BoxDecoration(
+                    color: palette.glassStart,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: palette.secondary.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.my_location,
+                    size: 20,
+                    color: palette.secondary,
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
