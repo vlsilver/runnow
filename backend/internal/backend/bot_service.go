@@ -1317,19 +1317,15 @@ func (s *BotService) ActivityAnnouncement(ctx context.Context, displayName, acti
 	return strings.TrimSpace(text)
 }
 
-// liveAnnouncementInstruction: bot tường thuật TRỰC TIẾP một buổi tập đang diễn
-// ra (không phải buổi đã xong). event = start | milestone | finish.
+// liveAnnouncementInstruction cố tình NGẮN: giữ nguyên tính cách + trí nhớ ở
+// botSystemPrompt, chỉ thêm bối cảnh "đây là notify việc gì". event = start |
+// milestone | finish.
 const liveAnnouncementInstruction = `
 
-NHIỆM VỤ: tường thuật TRỰC TIẾP một buổi tập ĐANG diễn ra cho cả group, như một
-bình luận viên hớn hở. Loại sự kiện ở dòng "Sự kiện" trong STATS:
-- start: ai đó vừa XUẤT PHÁT — hô hào, chúc buổi tập ngon lành.
-- milestone: vừa chạm một cột mốc quãng đường — reo mừng, cà khịa/động viên đẩy tiếp.
-- finish: vừa VỀ ĐÍCH — chúc mừng, chốt lại thành quả.
-
-Viết 1-2 câu NGẮN GỌN, sống động, emoji vừa phải, MỖI LẦN MỘT KIỂU cho khỏi
-nhàm. Dùng ĐÚNG các con số cho bên dưới, không bịa thêm pace/thứ hạng. Chỉ trả
-về đúng lời tường thuật, không lời dẫn.`
+BỐI CẢNH: một buổi tập đang DIỄN RA trong group vừa có diễn biến (STATS bên
+dưới). Sự kiện: start = vừa xuất phát, milestone = vừa qua một cột mốc quãng
+đường, finish = vừa về đích. Báo tin này lên group theo đúng chất của bạn, dùng
+đúng số liệu cho sẵn. Chỉ trả về lời thông báo, không lời dẫn.`
 
 // LiveAnnouncement để bot viết 1 câu tường thuật cho sự kiện live (app gọi khi
 // user bắt đầu/qua mốc/về đích). Rỗng nếu bot tắt hay model lỗi → caller rơi về
