@@ -104,7 +104,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   int _liveAnnouncedKm = 0;
   Future<void> _liveAnnounceQueue = Future<void>.value();
   static const double _liveStartMinMeters = 300;
-  static const double _liveMilestoneMeters = 5000;
 
   bool get _running => _snapshot?.status == TrackingSessionStatus.running;
   bool get _paused => _snapshot?.status == TrackingSessionStatus.paused;
@@ -1031,13 +1030,24 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       }
       return;
     }
-    final milestoneKm = (distance / _liveMilestoneMeters).floor() * 5;
+    final milestoneKm = _milestoneReachedKm(distance);
     if (milestoneKm > _liveAnnouncedKm) {
       _liveAnnouncedKm = milestoneKm;
       _liveAnnounceQueue = _liveAnnounceQueue
-          .then((_) => _announceLive(session, 'milestone', milestoneKm: milestoneKm))
+          .then(
+            (_) => _announceLive(session, 'milestone', milestoneKm: milestoneKm),
+          )
           .catchError((_) {});
     }
+  }
+
+  /// Mốc km đã đạt để thông báo: 3km, rồi 5/10/15/20… (bội số 5). Dưới 3km
+  /// chưa có mốc nào (đã có tin start ở 300m).
+  int _milestoneReachedKm(double distanceMeters) {
+    final km = distanceMeters / 1000;
+    if (km >= 5) return (km / 5).floor() * 5;
+    if (km >= 3) return 3;
+    return 0;
   }
 
   Future<void> _announceLive(
