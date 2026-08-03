@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/formatters.dart';
@@ -170,18 +171,18 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _liveDefaultApplied = true;
       _liveEnabled = true;
     }
-    // Đang chạy/tạm dừng → ẩn nav dưới của shell (immersive). Set sau frame để
-    // không sửa provider trong lúc build.
-    final immersive = _running || _paused;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (ref.read(trackingImmersiveProvider) != immersive) {
-        ref.read(trackingImmersiveProvider.notifier).state = immersive;
-      }
-    });
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 72,
+        // Nav dưới bị ẩn ở màn Chạy → cần lối thoát khi chưa bắt đầu. Đang chạy
+        // thì thoát bằng Stop/Discard, không hiện X (tránh bỏ dở nhầm).
+        leading: (!_running && !_paused)
+            ? IconButton(
+                icon: const Icon(Icons.close_rounded),
+                tooltip: 'Đóng',
+                onPressed: () => context.go('/'),
+              )
+            : null,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -239,6 +240,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                 minSeconds: 0,
                 minSamples: _gpsWarmupMinGoodSamples,
                 subtitle: _distanceSubtitle,
+                // Map hiện NGAY khi có vị trí: route đang chạy, hoặc chỉ mỗi
+                // anchor GPS vừa khoá (1 điểm → map center chỗ đó). Chưa có gì
+                // (đang dò GPS) → rơi về vòng tròn tiến độ.
+                mapPoints: _liveMapPoints(snapshot),
                 onMap: snapshot == null || snapshot.routePoints.length < 2
                     ? null
                     : () => _openLiveMap(snapshot),
@@ -1064,6 +1069,24 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     });
   }
 
+  /// Điểm để vẽ map trong cockpit: ưu tiên route đang chạy; chưa có thì lấy
+  /// anchor GPS vừa khoá (1 điểm) để map center chỗ đó ngay khi vào màn.
+  List<RoutePoint> _liveMapPoints(TrackingSessionSnapshot? snapshot) {
+    final route = snapshot?.routePoints ?? const <RoutePoint>[];
+    if (route.isNotEmpty) return route;
+    final anchor = _gpsReadyAnchor;
+    if (anchor != null) {
+      return [
+        RoutePoint(
+          latitude: anchor.latitude,
+          longitude: anchor.longitude,
+          timestamp: DateTime.now(),
+        ),
+      ];
+    }
+    return const <RoutePoint>[];
+  }
+
   /// Kiểm mốc live trong lúc chạy: báo start khi vượt ngưỡng, và mỗi khi qua
   /// bội số 5km mới. Bắn API fire-and-forget (không chặn tracking).
   void _maybeAnnounceLive(TrackingSession session) {
@@ -1617,6 +1640,7 @@ class _TrackingCockpit extends StatelessWidget {
     required this.minSeconds,
     required this.minSamples,
     required this.subtitle,
+    required this.mapPoints,
     required this.onMap,
   });
 
@@ -1627,6 +1651,7 @@ class _TrackingCockpit extends StatelessWidget {
   final int minSeconds;
   final int minSamples;
   final String subtitle;
+  final List<RoutePoint> mapPoints;
   final VoidCallback? onMap;
 
   @override
@@ -1663,9 +1688,9 @@ class _TrackingCockpit extends StatelessWidget {
         // liệu quãng đường nổi trên map. Chưa có route (đang khoá GPS) → vẫn là
         // vòng tròn có vòng tiến độ khoá GPS, tự co cho vừa.
         Expanded(
-          child: routePoints.length >= 2
+          child: mapPoints.isNotEmpty
               ? _CockpitMap(
-                  routePoints: routePoints,
+                  routePoints: mapPoints,
                   readout: readout,
                   onExpand: onMap,
                 )
