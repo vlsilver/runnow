@@ -84,8 +84,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   // Tường thuật LIVE lên group qua bot: báo start khi đủ ngưỡng, mốc mỗi 5km,
   // và finish. Gọi API fire-and-forget, không chặn tracking.
   // User bật/tắt "Live" trước khi chạy. BẬT = tự báo mốc km + ảnh lên group
-  // trong lúc chạy. Mặc định TẮT (opt-in, riêng tư).
+  // trong lúc chạy. Mặc định BẬT nếu hồ sơ công khai (private thì Live vô nghĩa
+  // vì backend không khoe), áp dụng 1 lần khi biết visibility.
   bool _liveEnabled = false;
+  bool _liveDefaultApplied = false;
   bool _liveAnnouncedStart = false;
   int _liveAnnouncedKm = 0;
   Future<void> _liveAnnounceQueue = Future<void>.value();
@@ -160,6 +162,14 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   @override
   Widget build(BuildContext context) {
     final snapshot = _snapshot;
+    final isPublic =
+        ref.watch(userProfileProvider).value?.visibility ==
+        ProfileVisibility.public;
+    // Mặc định BẬT Live cho hồ sơ công khai (áp 1 lần khi biết visibility).
+    if (isPublic && !_liveDefaultApplied) {
+      _liveDefaultApplied = true;
+      _liveEnabled = true;
+    }
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 72,
@@ -225,23 +235,36 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             ],
           ),
           const SizedBox(height: 16),
-          if (!_running && !_paused && !_finished)
+          if (isPublic && !_running && !_paused && !_finished)
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
               child: GlassPanel(
                 borderRadius: 18,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                child: SwitchListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                  value: _liveEnabled,
-                  onChanged: (value) => setState(() => _liveEnabled = value),
-                  title: const Text('Live lên group'),
-                  subtitle: const Text(
-                    'Bot tự báo mốc km và ảnh bạn chụp lên group trong lúc chạy',
-                  ),
-                  secondary: Icon(
-                    _liveEnabled ? Icons.sensors : Icons.sensors_off,
-                  ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      _liveEnabled ? Icons.sensors : Icons.sensors_off,
+                      size: 20,
+                      color: _liveEnabled
+                          ? RunNowSemanticColors.danger
+                          : Theme.of(context).colorScheme.onSurface.withValues(
+                              alpha: 0.5,
+                            ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Live lên group',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    Switch(
+                      value: _liveEnabled,
+                      onChanged: (value) =>
+                          setState(() => _liveEnabled = value),
+                    ),
+                  ],
                 ),
               ),
             ),
