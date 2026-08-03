@@ -64,8 +64,13 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   // là không hiện nút, tránh mời user vào Settings khi chẳng có gì để sửa.
   VoidCallback? _settingsAction;
   Map<String, dynamic>? _lastWarmupDebug;
+  // Trạng thái warmup GPS: giữ để lái máy trạng thái khoá (không hiển thị nữa
+  // sau khi bỏ header/vòng tròn — START vẫn dựa vào _gpsReadyAnchor).
+  // ignore: unused_field
   var _gpsSignal = _GpsSignal.idle;
+  // ignore: unused_field
   var _gpsStableSamples = 0;
+  // ignore: unused_field
   var _gpsElapsedSeconds = 0;
   var _autoLockStarted = false;
   var _persistingDraft = false;
@@ -103,18 +108,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   bool get _finished => _snapshot?.status == TrackingSessionStatus.finished;
   bool get _hasSession => _snapshot != null;
   bool get _gpsReady => _gpsReadyAnchor != null;
-  String get _distanceSubtitle {
-    if (_running) return 'ĐANG GHI HÀNH TRÌNH';
-    if (_paused) return 'ĐÃ TẠM DỪNG';
-    if (_finished) {
-      if (_checkingPermission) return 'ĐANG DÒ GPS CHO BUỔI MỚI';
-      if (_gpsReady) return 'SẴN SÀNG CHO BUỔI MỚI';
-      return 'ĐÃ LƯU BUỔI CHẠY';
-    }
-    if (_gpsReady) return 'SẴN SÀNG · CHẠM START ĐỂ BẮT ĐẦU';
-    if (_checkingPermission) return 'ĐANG DÒ TÍN HIỆU GPS';
-    return 'ĐANG CHỜ GPS';
-  }
 
   String get _screenTitle {
     if (_running) return 'Đang chạy';
@@ -224,35 +217,20 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _RunConsoleHeader(
-              status: _statusLabel(snapshot),
-              active: _running,
-              signal: _gpsSignal,
-              live: _liveEnabled && (_running || _paused),
-              onStopLive: () => setState(() => _liveEnabled = false),
-            ),
-            const SizedBox(height: 12),
-            // Cockpit chiếm trọn khoảng trống còn lại (map fill), cả màn nằm
-            // gọn 1 trang, không scroll.
+            // Map chiếm trọn khoảng trống còn lại. Bỏ header trạng thái/GPS cho
+            // map rộng, gọn.
             Expanded(
               child: _TrackingCockpit(
                 snapshot: snapshot,
-                signal: _gpsSignal,
-                elapsedSeconds: _gpsElapsedSeconds,
-                stableSamples: _gpsStableSamples,
-                minSeconds: 0,
-                minSamples: _gpsWarmupMinGoodSamples,
-                subtitle: _distanceSubtitle,
-                // Map hiện NGAY khi có vị trí: route đang chạy, hoặc chỉ mỗi
-                // anchor GPS vừa khoá (1 điểm → map center chỗ đó). Chưa có gì
-                // (đang dò GPS) → rơi về vòng tròn tiến độ.
+                // Map hiện ngay khi có vị trí (route đang chạy / anchor / sample
+                // GPS); chưa có → loading.
                 mapPoints: _liveMapPoints(snapshot),
                 onMap: snapshot == null || snapshot.routePoints.length < 2
                     ? null
                     : () => _openLiveMap(snapshot),
               ),
             ),
-            if (isPublic && !_running && !_paused && !_finished) ...[
+            if (isPublic && !_finished) ...[
               const SizedBox(height: 12),
               GlassPanel(
                 borderRadius: 18,
@@ -1311,8 +1289,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                           windowDriftMeters <= _gpsWarmupMaxWindowDriftMeters
                     ? _GpsSignal.fair
                     : _GpsSignal.weak;
-                _message =
-                    'Đang khóa GPS... good $goodSamples/$_gpsWarmupWindowSamples · acc ${accuracy.toStringAsFixed(0)}m';
+                // Không hiện chuỗi kỹ thuật lúc dò; map đã có "Đang lấy vị trí".
+                _message = null;
               });
             }
             if (ready) {
@@ -1407,20 +1385,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     return true;
   }
 
-  String _statusLabel(TrackingSessionSnapshot? snapshot) {
-    return switch (snapshot?.status) {
-      TrackingSessionStatus.running => 'Đang bám vị trí',
-      TrackingSessionStatus.paused => 'Tạm dừng ghi',
-      TrackingSessionStatus.finished =>
-        _checkingPermission
-            ? 'Đang chuẩn bị buổi mới'
-            : _gpsReady
-            ? 'Sẵn sàng buổi mới'
-            : 'Đã lưu buổi chạy',
-      TrackingSessionStatus.idle ||
-      null => _gpsReady ? 'Đã khóa vị trí' : 'Sẵn sàng',
-    };
-  }
 }
 
 class _Controls extends StatelessWidget {
@@ -1638,23 +1602,11 @@ class _PhotoButton extends StatelessWidget {
 class _TrackingCockpit extends StatelessWidget {
   const _TrackingCockpit({
     required this.snapshot,
-    required this.signal,
-    required this.elapsedSeconds,
-    required this.stableSamples,
-    required this.minSeconds,
-    required this.minSamples,
-    required this.subtitle,
     required this.mapPoints,
     required this.onMap,
   });
 
   final TrackingSessionSnapshot? snapshot;
-  final _GpsSignal signal;
-  final int elapsedSeconds;
-  final int stableSamples;
-  final int minSeconds;
-  final int minSamples;
-  final String subtitle;
   final List<RoutePoint> mapPoints;
   final VoidCallback? onMap;
 
@@ -1664,27 +1616,7 @@ class _TrackingCockpit extends StatelessWidget {
     final time = formatDuration(snapshot?.movingTimeSeconds ?? 0);
     final pace = formatPace(snapshot?.averagePaceSecondsPerKm);
     final livePace = formatPace(snapshot?.currentPaceSecondsPerKm);
-    final readout = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _DistanceReadout(distance: distance),
-        if (subtitle.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface.withValues(
-                alpha: 0.56,
-              ),
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.1,
-            ),
-          ),
-        ],
-      ],
-    );
+    final readout = _DistanceReadout(distance: distance);
     return Column(
       children: [
         // LUÔN full map: có vị trí (route đang chạy / anchor / sample GPS) →
@@ -1905,173 +1837,6 @@ class _DistanceReadout extends StatelessWidget {
         ],
       ),
       textAlign: TextAlign.center,
-    );
-  }
-}
-
-class _StatusDot extends StatelessWidget {
-  const _StatusDot({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 8,
-      height: 8,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: 10),
-        ],
-      ),
-    );
-  }
-}
-
-Color _gpsSignalColor(_GpsSignal signal) {
-  return switch (signal) {
-    // Thủy teal for a resolved lock — keeps the console on-brand instead of
-    // clashing with the Mộc "success" green used elsewhere in the app.
-    _GpsSignal.ready => RunNowSemanticColors.info,
-    _GpsSignal.fair => RunNowSemanticColors.gpsFair,
-    _GpsSignal.weak => RunNowSemanticColors.gpsWeak,
-    _GpsSignal.locking => RunNowSemanticColors.gpsLocking,
-    _GpsSignal.idle => RunNowSemanticColors.inactive,
-  };
-}
-
-String _gpsSignalWord(_GpsSignal signal) {
-  return switch (signal) {
-    _GpsSignal.ready => 'tốt',
-    _GpsSignal.fair => 'khá',
-    _GpsSignal.weak => 'yếu',
-    _GpsSignal.locking => 'đang dò',
-    _GpsSignal.idle => 'chờ',
-  };
-}
-
-class _RunConsoleHeader extends StatelessWidget {
-  const _RunConsoleHeader({
-    required this.status,
-    required this.active,
-    required this.signal,
-    this.live = false,
-    this.onStopLive,
-  });
-
-  final String status;
-  final bool active;
-  final _GpsSignal signal;
-  final bool live;
-  final VoidCallback? onStopLive;
-
-  @override
-  Widget build(BuildContext context) {
-    final signalColor = _gpsSignalColor(signal);
-    final statusColor = active ? RunNowSemanticColors.info : signalColor;
-    return Row(
-      children: [
-        Flexible(
-          fit: FlexFit.loose,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: statusColor.withValues(alpha: 0.5)),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _StatusDot(color: statusColor),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      status,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: statusColor,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.4,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        const Spacer(),
-        if (live) ...[
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: onStopLive,
-            behavior: HitTestBehavior.opaque,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: RunNowSemanticColors.danger.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: RunNowSemanticColors.danger.withValues(alpha: 0.55),
-                ),
-              ),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _StatusDot(color: RunNowSemanticColors.danger),
-                    SizedBox(width: 6),
-                    Text(
-                      'LIVE',
-                      style: TextStyle(
-                        color: RunNowSemanticColors.danger,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.6,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-        const SizedBox(width: 12),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.signal_cellular_alt_rounded,
-              color: signalColor,
-              size: 17,
-            ),
-            const SizedBox(width: 5),
-            Text(
-              'GPS ',
-              style: TextStyle(
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurface.withValues(alpha: 0.56),
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            Text(
-              _gpsSignalWord(signal),
-              style: TextStyle(
-                color: signalColor,
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
-      ],
     );
   }
 }
