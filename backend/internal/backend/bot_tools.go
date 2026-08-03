@@ -66,6 +66,7 @@ func (t *BotTools) loadMembers(ctx context.Context, period string) ([]memberRow,
 	if err != nil {
 		return nil, "", err
 	}
+	periods := PeriodsAt(time.Now())
 	docs, err := t.db.Collection("leaderboardEntries").Documents(ctx).GetAll()
 	if err != nil {
 		return nil, "", err
@@ -77,6 +78,14 @@ func (t *BotTools) loadMembers(ctx context.Context, period string) ([]memberRow,
 			continue
 		}
 		stats, _ := data[field].(map[string]any)
+		// Chống số liệu KỲ CŨ đội lốt kỳ hiện tại. leaderboardEntries chỉ được
+		// rebuild khi CHÍNH chủ nó có activity mới, nên khi sang tuần/tháng mới
+		// mà người đó chưa chạy lại thì currentWeek/currentMonth vẫn giữ nguyên
+		// số của kỳ trước. App zero-hoá chỗ này (normalizeLeaderboardEntryPeriods
+		// ở repository.dart) — bot phải làm y hệt, không thì báo cáo lố hẳn 1 kỳ.
+		if !leaderboardPeriodFresh(data, field, periods) {
+			stats = map[string]any{}
+		}
 		if stats == nil {
 			continue
 		}
@@ -96,6 +105,22 @@ func (t *BotTools) loadMembers(ctx context.Context, period string) ([]memberRow,
 		rows = append(rows, row)
 	}
 	return rows, label, nil
+}
+
+// leaderboardPeriodFresh cho biết số liệu currentWeek/currentMonth trong entry
+// CÓ đúng kỳ hiện tại không, so `currentWeekStart`/`currentMonthStart` (khoá kỳ
+// mà writer đóng dấu) với mốc kỳ hiện tại. rollingSevenDays là cửa sổ trượt,
+// không có khoá kỳ nên không kiểm ở đây — giữ đúng như app (chỉ zero-hoá
+// week/month). Thiếu khoá (doc rất cũ) → coi là cũ: thà báo thiếu còn hơn báo lố.
+func leaderboardPeriodFresh(data map[string]any, field string, periods CurrentPeriods) bool {
+	switch field {
+	case "currentWeek":
+		return stringValue(data["currentWeekStart"]) == dateKey(periods.Week.Start)
+	case "currentMonth":
+		return stringValue(data["currentMonthStart"]) == dateKey(periods.Month.Start)
+	default:
+		return true
+	}
 }
 
 // sortMembers sắp xếp theo tiêu chí. Pace là trường hợp ngược: nhỏ hơn là
