@@ -51,6 +51,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   TrackingSession? _session;
   TrackingSessionSnapshot? _snapshot;
   TrackingLocationSample? _gpsReadyAnchor;
+  // Vị trí GPS mới nhất (kể cả lúc đang dò, chưa khoá) để map có tâm hiển thị
+  // NGAY, không phải chờ khoá xong.
+  TrackingLocationSample? _lastGpsSample;
   StreamSubscription<TrackingLocationSample>? _positionSubscription;
   Timer? _ticker;
   var _checkingPermission = false;
@@ -1074,12 +1077,12 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   List<RoutePoint> _liveMapPoints(TrackingSessionSnapshot? snapshot) {
     final route = snapshot?.routePoints ?? const <RoutePoint>[];
     if (route.isNotEmpty) return route;
-    final anchor = _gpsReadyAnchor;
-    if (anchor != null) {
+    final here = _gpsReadyAnchor ?? _lastGpsSample;
+    if (here != null) {
       return [
         RoutePoint(
-          latitude: anchor.latitude,
-          longitude: anchor.longitude,
+          latitude: here.latitude,
+          longitude: here.longitude,
           timestamp: DateTime.now(),
         ),
       ];
@@ -1299,6 +1302,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                 hasEnoughSamples && hasEnoughGoodSamples && hasAcceptableDrift;
             if (mounted) {
               setState(() {
+                _lastGpsSample = position;
                 _gpsElapsedSeconds = elapsed.inSeconds;
                 _gpsStableSamples = goodSamples;
                 _gpsSignal = ready
@@ -1660,7 +1664,6 @@ class _TrackingCockpit extends StatelessWidget {
     final time = formatDuration(snapshot?.movingTimeSeconds ?? 0);
     final pace = formatPace(snapshot?.averagePaceSecondsPerKm);
     final livePace = formatPace(snapshot?.currentPaceSecondsPerKm);
-    final routePoints = snapshot?.routePoints ?? const <RoutePoint>[];
     final readout = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1684,9 +1687,9 @@ class _TrackingCockpit extends StatelessWidget {
     );
     return Column(
       children: [
-        // Có route → BẢN ĐỒ đầy đủ lấp trọn khu vực (thay vòng tròn nhỏ), số
-        // liệu quãng đường nổi trên map. Chưa có route (đang khoá GPS) → vẫn là
-        // vòng tròn có vòng tiến độ khoá GPS, tự co cho vừa.
+        // LUÔN full map: có vị trí (route đang chạy / anchor / sample GPS) →
+        // bản đồ lấp trọn, số liệu nổi trên map. Chưa có vị trí nào (đang dò
+        // GPS, thường <2s) → loading, KHÔNG còn vòng tròn.
         Expanded(
           child: mapPoints.isNotEmpty
               ? _CockpitMap(
@@ -1694,29 +1697,29 @@ class _TrackingCockpit extends StatelessWidget {
                   readout: readout,
                   onExpand: onMap,
                 )
-              : Center(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: SizedBox(
-                      height: 330,
-                      width: 264,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Positioned(
-                            top: 4,
-                            child: _RoutePreview(
-                              signal: signal,
-                              elapsedSeconds: elapsedSeconds,
-                              stableSamples: stableSamples,
-                              minSeconds: minSeconds,
-                              minSamples: minSamples,
-                              routePoints: routePoints,
-                            ),
+              : GlassPanel(
+                  borderRadius: 20,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 34,
+                          height: 34,
+                          child: CircularProgressIndicator(strokeWidth: 3),
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          'Đang lấy vị trí GPS…',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface
+                                .withValues(alpha: 0.7),
+                            fontWeight: FontWeight.w700,
                           ),
-                          Positioned(bottom: 20, child: readout),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(height: 12),
+                        readout,
+                      ],
                     ),
                   ),
                 ),
@@ -2070,288 +2073,6 @@ class _RunConsoleHeader extends StatelessWidget {
       ],
     );
   }
-}
-
-class _RoutePreview extends StatelessWidget {
-  const _RoutePreview({
-    required this.signal,
-    required this.elapsedSeconds,
-    required this.stableSamples,
-    required this.minSeconds,
-    required this.minSamples,
-    required this.routePoints,
-  });
-
-  final _GpsSignal signal;
-  final int elapsedSeconds;
-  final int stableSamples;
-  final int minSeconds;
-  final int minSamples;
-  final List<RoutePoint> routePoints;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _gpsSignalColor(signal);
-    final locking = signal == _GpsSignal.locking;
-    final sampleProgress = minSamples <= 0
-        ? 0.0
-        : (stableSamples / minSamples).clamp(0.0, 1.0);
-    final timeProgress = minSeconds <= 0
-        ? null
-        : (elapsedSeconds / minSeconds).clamp(0.0, 1.0);
-    final progress = timeProgress == null
-        ? sampleProgress
-        : (timeProgress + sampleProgress) / 2;
-    final hasRoute = routePoints.length >= 2;
-    return SizedBox(
-      width: 238,
-      height: 238,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          CustomPaint(
-            size: const Size.square(238),
-            painter: _RoutePreviewPainter(
-              color: color,
-              backgroundColor: context.runNowPalette.glassStart,
-              roadColor: context.runNowPalette.foreground.withValues(
-                alpha: 0.13,
-              ),
-              progress: locking ? progress : null,
-              routePoints: routePoints,
-            ),
-          ),
-          if (!hasRoute)
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: context.runNowPalette.background,
-                  width: 4,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.42),
-                    blurRadius: 18,
-                    spreadRadius: 7,
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RoutePreviewPainter extends CustomPainter {
-  const _RoutePreviewPainter({
-    required this.color,
-    required this.backgroundColor,
-    required this.roadColor,
-    required this.progress,
-    required this.routePoints,
-  });
-
-  final Color color;
-  final Color backgroundColor;
-  final Color roadColor;
-
-  /// Warmup-lock progress (0..1). Null once the signal has resolved — the
-  /// arc is only meaningful while actively scanning for a fix.
-  final double? progress;
-  final List<RoutePoint> routePoints;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = size.center(Offset.zero);
-    final radius = size.shortestSide / 2;
-    final circle = Path()
-      ..addOval(Rect.fromCircle(center: center, radius: radius));
-    canvas.save();
-    canvas.clipPath(circle);
-    canvas.drawCircle(center, radius, Paint()..color = backgroundColor);
-
-    final areaPaint = Paint()
-      ..style = PaintingStyle.fill
-      ..color = color.withValues(alpha: 0.055);
-    final area = Path()
-      ..moveTo(-20, size.height * 0.58)
-      ..cubicTo(
-        size.width * 0.22,
-        size.height * 0.44,
-        size.width * 0.44,
-        size.height * 0.72,
-        size.width * 0.7,
-        size.height * 0.55,
-      )
-      ..cubicTo(
-        size.width * 0.86,
-        size.height * 0.45,
-        size.width * 1.05,
-        size.height * 0.5,
-        size.width + 20,
-        size.height * 0.5,
-      )
-      ..lineTo(size.width + 20, size.height + 20)
-      ..lineTo(-20, size.height + 20)
-      ..close();
-    canvas.drawPath(area, areaPaint);
-
-    final roadPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5
-      ..strokeCap = StrokeCap.round
-      ..color = roadColor;
-    final minorRoadPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round
-      ..color = roadColor.withValues(alpha: 0.65);
-
-    final verticalRoads = [0.23, 0.5, 0.77];
-    for (final x in verticalRoads) {
-      final path = Path()
-        ..moveTo(size.width * x, -12)
-        ..cubicTo(
-          size.width * (x - 0.04),
-          size.height * 0.3,
-          size.width * (x + 0.05),
-          size.height * 0.68,
-          size.width * (x - 0.02),
-          size.height + 12,
-        );
-      canvas.drawPath(path, x == 0.5 ? roadPaint : minorRoadPaint);
-    }
-    final horizontalRoads = [0.26, 0.52, 0.78];
-    for (final y in horizontalRoads) {
-      final path = Path()
-        ..moveTo(-12, size.height * y)
-        ..cubicTo(
-          size.width * 0.3,
-          size.height * (y + 0.05),
-          size.width * 0.68,
-          size.height * (y - 0.04),
-          size.width + 12,
-          size.height * (y + 0.02),
-        );
-      canvas.drawPath(path, y == 0.52 ? roadPaint : minorRoadPaint);
-    }
-
-    final progress = this.progress;
-    if (progress != null) {
-      final glowPaint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 8
-        ..strokeCap = StrokeCap.round
-        ..color = color.withValues(alpha: 0.18);
-      final activePaint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 5
-        ..strokeCap = StrokeCap.round
-        ..color = color;
-      final rect = Rect.fromCircle(center: center, radius: radius * 0.92);
-      canvas.drawArc(
-        rect,
-        -math.pi / 2,
-        math.pi * 2 * progress,
-        false,
-        glowPaint,
-      );
-      canvas.drawArc(
-        rect,
-        -math.pi / 2,
-        math.pi * 2 * progress,
-        false,
-        activePaint,
-      );
-      final dotAngle = -math.pi / 2 + math.pi * 2 * progress;
-      final dot = Offset(
-        center.dx + math.cos(dotAngle) * radius * 0.92,
-        center.dy + math.sin(dotAngle) * radius * 0.92,
-      );
-      canvas.drawCircle(dot, 7, Paint()..color = color);
-    }
-
-    if (routePoints.length >= 2) {
-      final points = _fitRoutePoints(routePoints, radius * 0.78, center);
-      final path = Path()..moveTo(points.first.dx, points.first.dy);
-      for (final point in points.skip(1)) {
-        path.lineTo(point.dx, point.dy);
-      }
-      final routePaint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 4
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..color = color;
-      canvas.drawPath(path, routePaint);
-      canvas.drawCircle(
-        points.last,
-        9,
-        Paint()..color = color.withValues(alpha: 0.25),
-      );
-      canvas.drawCircle(points.last, 5, Paint()..color = color);
-    }
-    canvas.restore();
-    canvas.drawCircle(
-      center,
-      radius - 1,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = roadColor,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _RoutePreviewPainter oldDelegate) {
-    // `routePoints` được bọc lại bằng `List.unmodifiable(...)` mỗi lần lấy
-    // snapshot (kể cả khi tick mỗi giây, không có điểm GPS mới), nên so theo
-    // tham chiếu (`!=`) sẽ luôn coi là "đổi" và vẽ lại toàn bộ route dù không
-    // cần thiết. Route chỉ được append, không bao giờ sửa nội dung mà giữ
-    // nguyên độ dài, nên so độ dài là đủ và rẻ hơn nhiều so với việc project
-    // lại toàn bộ điểm mỗi giây.
-    return oldDelegate.color != color ||
-        oldDelegate.backgroundColor != backgroundColor ||
-        oldDelegate.roadColor != roadColor ||
-        oldDelegate.progress != progress ||
-        oldDelegate.routePoints.length != routePoints.length;
-  }
-}
-
-/// Projects [points] onto a square inscribed in the radar circle, centered
-/// on their own bounding box — a lightweight preview, not a real map.
-List<Offset> _fitRoutePoints(
-  List<RoutePoint> points,
-  double maxRadius,
-  Offset center,
-) {
-  var minLat = points.first.latitude;
-  var maxLat = points.first.latitude;
-  var minLng = points.first.longitude;
-  var maxLng = points.first.longitude;
-  for (final point in points) {
-    minLat = math.min(minLat, point.latitude);
-    maxLat = math.max(maxLat, point.latitude);
-    minLng = math.min(minLng, point.longitude);
-    maxLng = math.max(maxLng, point.longitude);
-  }
-  final span = math.max(maxLat - minLat, maxLng - minLng);
-  if (span <= 0) {
-    return points.map((_) => center).toList();
-  }
-  final midLat = (minLat + maxLat) / 2;
-  final midLng = (minLng + maxLng) / 2;
-  return points.map((point) {
-    final dx = (point.longitude - midLng) / span * maxRadius * 2;
-    // Latitude increases northward but screen y increases downward.
-    final dy = -(point.latitude - midLat) / span * maxRadius * 2;
-    return Offset(center.dx + dx, center.dy + dy);
-  }).toList();
 }
 
 class _TrialNoteCard extends StatelessWidget {
