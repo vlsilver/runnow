@@ -139,17 +139,20 @@ class RouteMap extends StatelessWidget {
                 follow: follow,
               ),
             ),
-            Positioned(
-              top: 10,
-              right: 10,
-              child: liveRunnersStream != null
-                  ? _ViewLiveButton(
-                      onTap: () => _openFullscreen(context, points),
-                    )
-                  : _MapExpandButton(
-                      onTap: () => _openFullscreen(context, points),
-                    ),
-            ),
+            // Map tracking (follow) đã tràn viền toàn màn → không cần nút
+            // phóng-to-toàn-màn (gây rối ở góc trên).
+            if (!follow)
+              Positioned(
+                top: 10,
+                right: 10,
+                child: liveRunnersStream != null
+                    ? _ViewLiveButton(
+                        onTap: () => _openFullscreen(context, points),
+                      )
+                    : _MapExpandButton(
+                        onTap: () => _openFullscreen(context, points),
+                      ),
+              ),
           ],
         ),
       ),
@@ -584,7 +587,7 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
           userAgentPackageName: 'com.threei.run',
           retinaMode: RetinaMode.isHighDensity(context),
         ),
-        const MapAttribution(),
+        MapAttribution(top: widget.follow),
         PolylineLayer(
           polylines: [
             Polyline(
@@ -665,35 +668,56 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
         Positioned.fill(child: map),
         if (_manual)
           Positioned(
-            top: 10,
-            right: 10,
-            child: Material(
-              color: Colors.transparent,
-              child: InkResponse(
-                onTap: () {
-                  setState(() => _manual = false);
-                  _followCurrent();
-                },
-                radius: 26,
-                child: Container(
-                  padding: const EdgeInsets.all(9),
-                  decoration: BoxDecoration(
-                    color: palette.glassStart,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: palette.secondary.withValues(alpha: 0.5),
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.my_location,
-                    size: 20,
-                    color: palette.secondary,
-                  ),
+            top: 0,
+            right: 0,
+            child: SafeArea(
+              // Xếp DƯỚI nút ℹ️ (cũng SafeArea) theo offset, không dùng số tuyệt
+              // đối — để không đè nhau trên máy có notch/Dynamic Island.
+              child: Padding(
+                padding: const EdgeInsets.only(top: 54, right: 12),
+                child: _MapCircleButton(
+                  icon: Icons.my_location,
+                  onTap: () {
+                    setState(() => _manual = false);
+                    _followCurrent();
+                  },
                 ),
               ),
             ),
           ),
       ],
+    );
+  }
+}
+
+/// Nút tròn nổi trên map — nền sáng, bóng nhẹ, icon trung tính. Dùng chung để
+/// các nút (recenter, nguồn bản đồ) đồng bộ, sạch, không chói.
+class _MapCircleButton extends StatelessWidget {
+  const _MapCircleButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surface.withValues(alpha: 0.92),
+      elevation: 3,
+      shadowColor: Colors.black.withValues(alpha: 0.3),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Icon(
+            icon,
+            size: 20,
+            color: scheme.onSurface.withValues(alpha: 0.75),
+          ),
+        ),
+      ),
     );
   }
 }

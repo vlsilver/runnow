@@ -32,8 +32,6 @@ class TrackingScreen extends ConsumerStatefulWidget {
   ConsumerState<TrackingScreen> createState() => _TrackingScreenState();
 }
 
-enum _GpsSignal { idle, locking, weak, fair, ready }
-
 class _TrackingScreenState extends ConsumerState<TrackingScreen>
     with WidgetsBindingObserver {
   static const _gpsWarmupTimeout = Duration(seconds: 45);
@@ -59,22 +57,27 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   var _checkingPermission = false;
   var _saving = false;
   var _capturingPhoto = false;
-  String? _message;
+  // Thông báo dưới đáy TỰ TẮT sau vài giây — không để dính panel "show mãi".
+  // Mọi chỗ vẫn gán `_message = ...` như thường; setter tự hẹn giờ xoá.
+  String? _messageValue;
+  Timer? _messageTimer;
+  String? get _message => _messageValue;
+  set _message(String? value) {
+    _messageValue = value;
+    _messageTimer?.cancel();
+    if (value != null) {
+      _messageTimer = Timer(const Duration(seconds: 4), () {
+        if (mounted) setState(() => _messageValue = null);
+      });
+    }
+  }
+
   // Kèm theo _message khi cách khắc phục nằm ở Settings của máy. Null nghĩa
   // là không hiện nút, tránh mời user vào Settings khi chẳng có gì để sửa.
   VoidCallback? _settingsAction;
   Map<String, dynamic>? _lastWarmupDebug;
-  // Trạng thái warmup GPS: giữ để lái máy trạng thái khoá (không hiển thị nữa
-  // sau khi bỏ header/vòng tròn — START vẫn dựa vào _gpsReadyAnchor).
-  // ignore: unused_field
-  var _gpsSignal = _GpsSignal.idle;
-  // ignore: unused_field
-  var _gpsStableSamples = 0;
-  // ignore: unused_field
-  var _gpsElapsedSeconds = 0;
   var _autoLockStarted = false;
   var _persistingDraft = false;
-  var _backgroundLocationGranted = false;
   String? _contractId;
   Future<void> _livePublishQueue = Future<void>.value();
   Future<void> _photoUploadQueue = Future<void>.value();
@@ -127,6 +130,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     WidgetsBinding.instance.removeObserver(this);
     _positionSubscription?.cancel();
     _ticker?.cancel();
+    _messageTimer?.cancel();
     _setWakelock(false);
     super.dispose();
   }
@@ -209,16 +213,25 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
               left: 0,
               child: SafeArea(
                 child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: context.runNowPalette.glassStart,
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.close_rounded),
-                      tooltip: 'Đóng',
-                      onPressed: () => context.go('/'),
+                  padding: const EdgeInsets.only(top: 8, left: 12),
+                  child: Material(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surface.withValues(alpha: 0.92),
+                    elevation: 3,
+                    shadowColor: Colors.black.withValues(alpha: 0.3),
+                    shape: const CircleBorder(),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () => context.go('/'),
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 20,
+                          color: onSurface.withValues(alpha: 0.75),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -297,42 +310,43 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                             ),
                           ],
                         ),
+                        // Live gom vào cùng card cho liền khối, không trôi nổi.
+                        if (isPublic && !_finished) ...[
+                          const SizedBox(height: 10),
+                          Divider(
+                            height: 1,
+                            color: onSurface.withValues(alpha: 0.08),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Icon(
+                                _liveEnabled
+                                    ? Icons.sensors
+                                    : Icons.sensors_off,
+                                size: 19,
+                                color: _liveEnabled
+                                    ? RunNowSemanticColors.danger
+                                    : onSurface.withValues(alpha: 0.5),
+                              ),
+                              const SizedBox(width: 10),
+                              const Expanded(
+                                child: Text(
+                                  'Live lên group',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                              Switch(
+                                value: _liveEnabled,
+                                onChanged: (value) =>
+                                    setState(() => _liveEnabled = value),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
-                  if (isPublic && !_finished) ...[
-                    const SizedBox(height: 10),
-                    GlassPanel(
-                      borderRadius: 18,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 4,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            _liveEnabled ? Icons.sensors : Icons.sensors_off,
-                            size: 20,
-                            color: _liveEnabled
-                                ? RunNowSemanticColors.danger
-                                : onSurface.withValues(alpha: 0.5),
-                          ),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Text(
-                              'Live lên group',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                          Switch(
-                            value: _liveEnabled,
-                            onChanged: (value) =>
-                                setState(() => _liveEnabled = value),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
                   const SizedBox(height: 10),
                   _Controls(
                     running: _running,
@@ -376,7 +390,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         _snapshot = snapshot;
         _lastWarmupDebug = draft.gpsWarmup;
         _contractId = draft.contractId ?? widget.contractId;
-        _gpsSignal = wasRunning ? _GpsSignal.fair : _GpsSignal.idle;
         _message = snapshot.status == TrackingSessionStatus.finished
             ? 'Đang hoàn tất upload ảnh của buổi chạy.'
             : wasRunning
@@ -413,37 +426,20 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _checkingPermission = true;
       _gpsReadyAnchor = null;
       _lastWarmupDebug = null;
-      _gpsSignal = _GpsSignal.locking;
-      _gpsStableSamples = 0;
-      _gpsElapsedSeconds = 0;
       _message = null;
       _settingsAction = null;
     });
     try {
       final ready = await _ensureLocationReady();
       if (!ready) {
-        if (mounted) setState(() => _gpsSignal = _GpsSignal.weak);
         return;
       }
-      setState(() {
-        _message = 'Đứng yên vài giây để khóa GPS...';
-      });
       final anchor = await _waitForStableGps();
       if (anchor == null) return;
       if (!mounted) return;
-      // Trên Android foreground service tự lo tracking nền nên không cần nhắc
-      // "Luôn cho phép"; chỉ iOS mới gợi ý nâng quyền khi chưa có "Always".
-      final backgroundHint =
-          (_backgroundLocationGranted ||
-              defaultTargetPlatform == TargetPlatform.android)
-          ? ''
-          : ' Bật "Luôn cho phép" vị trí để vẫn tracking khi khóa màn hình.';
-      setState(() {
-        _gpsReadyAnchor = anchor;
-        _gpsSignal = _GpsSignal.ready;
-        _message =
-            'GPS READY (${(anchor.accuracyMeters ?? 0).toStringAsFixed(0)}m). Bấm START NOW để bắt đầu tính distance.$backgroundHint';
-      });
+      // Sẵn sàng rồi: nút đổi thành START + map đã hiện vị trí — không cần báo
+      // chữ "GPS READY" gây rối.
+      setState(() => _gpsReadyAnchor = anchor);
       HapticFeedback.selectionClick();
     } finally {
       if (mounted) setState(() => _checkingPermission = false);
@@ -468,9 +464,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         _session = session;
         _snapshot = session.snapshot();
         _gpsReadyAnchor = null;
-        _gpsSignal = _GpsSignal.ready;
-        _message =
-            'Đã bắt đầu tracking. Điểm GPS đầu tiên sau START NOW sẽ làm anchor.';
       });
       await _startRunningLocationStream();
       _startTicker();
@@ -827,9 +820,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _snapshot = null;
       _gpsReadyAnchor = null;
       _lastWarmupDebug = null;
-      _gpsSignal = _GpsSignal.idle;
-      _gpsStableSamples = 0;
-      _gpsElapsedSeconds = 0;
       _lastLivePublishedAt = null;
       _lastLivePublishedDistanceMeters = 0;
       _contractId = widget.contractId;
@@ -912,13 +902,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     final session = _session;
     if (session == null || !_running) return;
     final snapshot = session.addLocation(sample);
-    final latestLog = snapshot.pointLogs.isEmpty
-        ? null
-        : snapshot.pointLogs.last;
-    setState(() {
-      _snapshot = snapshot;
-      _gpsSignal = _runningGpsSignal(sample, latestLog);
-    });
+    setState(() => _snapshot = snapshot);
     unawaited(_persistDraftThrottled());
     unawaited(_publishLiveSnapshot());
   }
@@ -991,30 +975,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       }
     }
     return preview;
-  }
-
-  _GpsSignal _runningGpsSignal(
-    TrackingLocationSample sample,
-    TrackingPointLog? log,
-  ) {
-    final accuracy = sample.accuracyMeters ?? double.infinity;
-    if (log?.decision == TrackingPointDecision.rejected) {
-      return switch (log?.rejectReason) {
-        TrackingRejectReason.lowAccuracy ||
-        TrackingRejectReason.unrealisticSpeed ||
-        TrackingRejectReason.nonMonotonicTime => _GpsSignal.weak,
-        TrackingRejectReason.paused => _GpsSignal.fair,
-        TrackingRejectReason.stationaryNoise =>
-          accuracy <= 12 ? _GpsSignal.ready : _GpsSignal.fair,
-        null => _GpsSignal.fair,
-      };
-    }
-
-    final sampleSpeed = sample.speedMetersPerSecond ?? 0.0;
-    final reportedSpeed = sampleSpeed.isFinite ? sampleSpeed : 0.0;
-    if (accuracy <= 12 && reportedSpeed <= 7.5) return _GpsSignal.ready;
-    if (accuracy <= 25 && reportedSpeed <= 9) return _GpsSignal.fair;
-    return _GpsSignal.weak;
   }
 
   void _startTicker() {
@@ -1200,7 +1160,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         return;
       }
       setState(() {
-        _gpsSignal = _GpsSignal.weak;
         _message = null;
       });
       // Báo 1 lần rồi tự tắt, không để dính panel liên tục. Trạng thái GPS yếu
@@ -1259,7 +1218,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                 ? double.infinity
                 : accuracySum / finiteAccuracyCount;
             windowDriftMeters = _windowDriftMeters(window);
-            final elapsed = DateTime.now().difference(startedAt);
             final hasEnoughSamples = window.length >= _gpsWarmupWindowSamples;
             final hasEnoughGoodSamples =
                 goodSamples >= _gpsWarmupMinGoodSamples;
@@ -1270,14 +1228,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             if (mounted) {
               setState(() {
                 _lastGpsSample = position;
-                _gpsElapsedSeconds = elapsed.inSeconds;
-                _gpsStableSamples = goodSamples;
-                _gpsSignal = ready
-                    ? _GpsSignal.ready
-                    : fairSamples >= _gpsWarmupMinGoodSamples &&
-                          windowDriftMeters <= _gpsWarmupMaxWindowDriftMeters
-                    ? _GpsSignal.fair
-                    : _GpsSignal.weak;
                 // Không hiện chuỗi kỹ thuật lúc dò; map đã có "Đang lấy vị trí".
                 _message = null;
               });
@@ -1289,7 +1239,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
           onError: (Object error) {
             if (mounted) {
               setState(() {
-                _gpsSignal = _GpsSignal.weak;
                 _message = 'Không đọc được GPS: $error';
               });
             }
@@ -1370,7 +1319,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         permission == LocationPermission.whileInUse) {
       permission = await locationProvider.requestPermission();
     }
-    _backgroundLocationGranted = permission == LocationPermission.always;
     return true;
   }
 
