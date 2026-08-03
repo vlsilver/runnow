@@ -271,7 +271,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                           children: [
                             Expanded(
                               child: SizedBox(
-                                height: 62,
+                                height: 74,
                                 child: _MetricCard(
                                   label: 'THỜI GIAN',
                                   value: time,
@@ -281,14 +281,14 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                             const SizedBox(width: 8),
                             Expanded(
                               child: SizedBox(
-                                height: 62,
+                                height: 74,
                                 child: _MetricCard(label: 'PACE TB', value: pace),
                               ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: SizedBox(
-                                height: 62,
+                                height: 74,
                                 child: _MetricCard(
                                   label: 'PACE TỨC THỜI',
                                   value: livePace,
