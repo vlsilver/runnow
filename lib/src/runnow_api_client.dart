@@ -158,6 +158,7 @@ class RunNowApiClient {
     required double distanceMeters,
     required double movingTimeSeconds,
     int milestoneKm = 0,
+    String photoPath = '',
   }) async {
     await _send(
       'POST',
@@ -168,6 +169,7 @@ class RunNowApiClient {
         'distanceMeters': distanceMeters,
         'movingTimeSeconds': movingTimeSeconds,
         'milestoneKm': milestoneKm,
+        'photoPath': photoPath,
       },
     );
   }

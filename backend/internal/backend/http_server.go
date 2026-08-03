@@ -163,12 +163,13 @@ func (s *Server) liveAnnounce(w http.ResponseWriter, r *http.Request) error {
 		DistanceMeters    float64 `json:"distanceMeters"`
 		MovingTimeSeconds float64 `json:"movingTimeSeconds"`
 		MilestoneKm       int     `json:"milestoneKm"`
+		PhotoPath         string  `json:"photoPath"`
 	}
 	if decodeJSON(r, &task) != nil || task.UID == "" || task.ActivityID == "" || task.Event == "" {
 		w.WriteHeader(204)
 		return nil
 	}
-	if err := s.deps.Activities.LiveAnnounce(r.Context(), task.UID, task.ActivityID, task.Event, task.DistanceMeters, task.MovingTimeSeconds, task.MilestoneKm); err != nil {
+	if err := s.deps.Activities.LiveAnnounce(r.Context(), task.UID, task.ActivityID, task.Event, task.DistanceMeters, task.MovingTimeSeconds, task.MilestoneKm, task.PhotoPath); err != nil {
 		return err
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})
@@ -348,12 +349,13 @@ func (s *Server) apiRoutes() {
 			DistanceMeters    float64 `json:"distanceMeters"`
 			MovingTimeSeconds float64 `json:"movingTimeSeconds"`
 			MilestoneKm       int     `json:"milestoneKm"`
+			PhotoPath         string  `json:"photoPath"`
 		}
 		if decodeJSON(r, &body) != nil || body.ActivityID == "" || body.Event == "" {
 			return invalidRequest()
 		}
-		payload := map[string]any{"uid": uid, "activityId": body.ActivityID, "event": body.Event, "distanceMeters": body.DistanceMeters, "movingTimeSeconds": body.MovingTimeSeconds, "milestoneKm": body.MilestoneKm}
-		dedup := map[string]any{"activityId": body.ActivityID, "event": body.Event, "km": body.MilestoneKm}
+		payload := map[string]any{"uid": uid, "activityId": body.ActivityID, "event": body.Event, "distanceMeters": body.DistanceMeters, "movingTimeSeconds": body.MovingTimeSeconds, "milestoneKm": body.MilestoneKm, "photoPath": body.PhotoPath}
+		dedup := map[string]any{"activityId": body.ActivityID, "event": body.Event, "km": body.MilestoneKm, "photo": body.PhotoPath}
 		if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/live-announce", Payload: payload, TaskID: StableTaskID("live", dedup)}); err != nil {
 			return err
 		}

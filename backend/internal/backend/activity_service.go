@@ -48,6 +48,7 @@ type broadcastRecorder interface {
 	RecordBroadcast(ctx context.Context, chatID, text string) error
 	ActivityAnnouncement(ctx context.Context, displayName, activityName string, fact ActivityFact) string
 	LiveAnnouncement(ctx context.Context, displayName, event string, distanceMeters, movingTimeSeconds float64, milestoneKm int) string
+	LivePhotoAnnouncement(ctx context.Context, displayName, photoPath string, distanceMeters float64) error
 	Enabled() bool
 }
 

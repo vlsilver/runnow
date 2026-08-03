@@ -23,22 +23,31 @@ const (
 	liveEventStart     = "start"
 	liveEventMilestone = "milestone"
 	liveEventFinish    = "finish"
+	liveEventPhoto     = "photo"
 )
 
-func liveAnnounceMarkerKey(event string, milestoneKm int) string {
-	if event == liveEventMilestone {
+var liveMarkerSanitizer = strings.NewReplacer("/", "_", ".", "_")
+
+func liveAnnounceMarkerKey(event string, milestoneKm int, photoPath string) string {
+	switch event {
+	case liveEventMilestone:
 		return fmt.Sprintf("km-%d", milestoneKm)
+	case liveEventPhoto:
+		return "photo-" + liveMarkerSanitizer.Replace(photoPath)
 	}
 	return event
 }
 
-func (s *ActivityService) LiveAnnounce(ctx context.Context, uid, activityID, event string, distanceMeters, movingTimeSeconds float64, milestoneKm int) error {
+func (s *ActivityService) LiveAnnounce(ctx context.Context, uid, activityID, event string, distanceMeters, movingTimeSeconds float64, milestoneKm int, photoPath string) error {
 	if !s.telegram.Enabled() {
 		return nil
 	}
 	switch event {
-	case liveEventStart, liveEventMilestone, liveEventFinish:
+	case liveEventStart, liveEventMilestone, liveEventFinish, liveEventPhoto:
 	default:
+		return nil
+	}
+	if event == liveEventPhoto && photoPath == "" {
 		return nil
 	}
 	profile, err := resolveProfile(ctx, s.db, uid)
@@ -52,7 +61,7 @@ func (s *ActivityService) LiveAnnounce(ctx context.Context, uid, activityID, eve
 	}
 	displayName := preferredName(profile)
 
-	marker := liveAnnounceMarkerKey(event, milestoneKm)
+	marker := liveAnnounceMarkerKey(event, milestoneKm, photoPath)
 	stateRef := s.db.Collection("liveAnnounceState").Doc(activityID)
 	state, err := getData(ctx, stateRef)
 	if err != nil {
@@ -65,6 +74,20 @@ func (s *ActivityService) LiveAnnounce(ctx context.Context, uid, activityID, eve
 	}
 
 	hasBot := s.broadcast != nil && s.broadcast.Enabled()
+
+	// Ảnh: cần bot (tải ảnh từ Storage + caption + SendPhoto). Không có bot thì
+	// bỏ qua êm (ảnh không gửi được bằng thẻ tĩnh).
+	if event == liveEventPhoto {
+		if !hasBot {
+			return nil
+		}
+		if err := s.broadcast.LivePhotoAnnouncement(ctx, displayName, photoPath, distanceMeters); err != nil {
+			return err
+		}
+		_, err = stateRef.Set(ctx, map[string]any{marker: true, "uid": uid, "updatedAt": firestore.ServerTimestamp}, firestore.MergeAll)
+		return err
+	}
+
 	text := ""
 	if hasBot {
 		text = s.broadcast.LiveAnnouncement(ctx, displayName, event, distanceMeters, movingTimeSeconds, milestoneKm)

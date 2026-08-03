@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 	"time"
@@ -1357,6 +1358,51 @@ func (s *BotService) LiveAnnouncement(ctx context.Context, displayName, event st
 	text, err := s.Answer(ctx, systemPrompt, contents, false)
 	if err != nil {
 		slog.WarnContext(ctx, "bot.live_announcement_failed", "error", err)
+		return ""
+	}
+	return strings.TrimSpace(text)
+}
+
+// LivePhotoAnnouncement tải ảnh user vừa chụp giữa buổi chạy từ Storage rồi gửi
+// vào group kèm caption bot tự viết. Bot tắt / không có bucket / đọc lỗi thì bỏ
+// qua êm — mất tấm ảnh chứ không làm hỏng buổi chạy.
+func (s *BotService) LivePhotoAnnouncement(ctx context.Context, displayName, photoPath string, distanceMeters float64) error {
+	if !s.Enabled() || s.bucket == nil || photoPath == "" {
+		return nil
+	}
+	r, err := s.bucket.Object(photoPath).NewReader(ctx)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	img, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	caption := s.livePhotoCaption(ctx, displayName, distanceMeters)
+	if caption == "" {
+		caption = fmt.Sprintf("📸 %s vừa khoe một tấm giữa buổi chạy (%s).", strings.TrimSpace(displayName), formatDistanceKm(distanceMeters))
+	}
+	if err := s.telegram.SendPhoto(ctx, s.telegram.ChatID(), img, caption); err != nil {
+		return err
+	}
+	if err := s.RecordBroadcast(ctx, s.telegram.ChatID(), caption); err != nil {
+		slog.WarnContext(ctx, "bot.live_photo_record_failed", "error", err)
+	}
+	return nil
+}
+
+func (s *BotService) livePhotoCaption(ctx context.Context, displayName string, distanceMeters float64) string {
+	prompt := fmt.Sprintf("BỐI CẢNH: %s vừa CHỤP một tấm ảnh giữa buổi chạy đang diễn ra (đã đi %s). Viết 1 câu caption ngắn cho tấm ảnh này để đăng group, theo đúng chất của bạn. Chỉ trả về caption.",
+		strings.TrimSpace(displayName), formatDistanceKm(distanceMeters))
+	systemPrompt := botSystemPrompt
+	if mem := s.memory.Load(ctx, s.telegram.ChatID()); mem != "" {
+		systemPrompt += "\n\nTRÍ NHỚ VỀ NHÓM NÀY:\n" + mem
+	}
+	contents := []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: prompt}}}}
+	text, err := s.Answer(ctx, systemPrompt, contents, false)
+	if err != nil {
+		slog.WarnContext(ctx, "bot.live_photo_caption_failed", "error", err)
 		return ""
 	}
 	return strings.TrimSpace(text)

@@ -82,6 +82,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   static const _trackChunkInterval = Duration(seconds: 10);
   // Tường thuật LIVE lên group qua bot: báo start khi đủ ngưỡng, mốc mỗi 5km,
   // và finish. Gọi API fire-and-forget, không chặn tracking.
+  // User bật/tắt "Live" trước khi chạy. BẬT = tự báo mốc km + ảnh lên group
+  // trong lúc chạy. Mặc định TẮT (opt-in, riêng tư).
+  bool _liveEnabled = false;
   bool _liveAnnouncedStart = false;
   int _liveAnnouncedKm = 0;
   Future<void> _liveAnnounceQueue = Future<void>.value();
@@ -219,6 +222,26 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             ],
           ),
           const SizedBox(height: 16),
+          if (!_running && !_paused && !_finished)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: GlassPanel(
+                borderRadius: 18,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                child: SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  value: _liveEnabled,
+                  onChanged: (value) => setState(() => _liveEnabled = value),
+                  title: const Text('Live lên group'),
+                  subtitle: const Text(
+                    'Bot tự báo mốc km và ảnh bạn chụp lên group trong lúc chạy',
+                  ),
+                  secondary: Icon(
+                    _liveEnabled ? Icons.sensors : Icons.sensors_off,
+                  ),
+                ),
+              ),
+            ),
           if (_message != null && !_checkingPermission && !_running)
             GlassPanel(
               borderRadius: 18,
@@ -539,6 +562,21 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             .read(liveTrackingRepositoryProvider)
             .publishPhoto(sessionId: session.id, photo: uploaded);
       }
+      if (_liveEnabled) {
+        // Live bật → khoe tấm ảnh vừa chụp lên group qua bot. Fire-and-forget.
+        unawaited(
+          ref
+              .read(runNowApiClientProvider)
+              .announceLive(
+                activityId: session.id,
+                event: 'photo',
+                distanceMeters: next.distanceMeters,
+                movingTimeSeconds: next.movingTimeSeconds.toDouble(),
+                photoPath: uploaded.storagePath,
+              )
+              .catchError((_) {}),
+        );
+      }
     } catch (_) {
       // Bỏ qua — `_uploadPendingPhotos()` lúc dừng buổi chạy sẽ tự thử lại
       // (photo vẫn `!isUploaded` nên không mất dữ liệu, chỉ mất tính "live").
@@ -608,7 +646,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       final result = allChunked
           ? await repository.finalizeTrackedActivity(detail)
           : await repository.saveTrackedActivity(detail);
-      if (_liveAnnouncedStart) {
+      if (_liveEnabled && _liveAnnouncedStart) {
         // Buổi đã tường thuật live → chốt bằng tin "về đích". Fire-and-forget.
         unawaited(
           ref
@@ -937,6 +975,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   /// Kiểm mốc live trong lúc chạy: báo start khi vượt ngưỡng, và mỗi khi qua
   /// bội số 5km mới. Bắn API fire-and-forget (không chặn tracking).
   void _maybeAnnounceLive(TrackingSession session) {
+    if (!_liveEnabled) return;
     final distance = session.snapshot().distanceMeters;
     if (!_liveAnnouncedStart) {
       if (distance >= _liveStartMinMeters) {
