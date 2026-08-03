@@ -574,13 +574,13 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         name: '3I Run',
         recordingDevice: '3I app',
       );
-      final debug = {
-        ...finalSnapshot.toDebugMap(),
-        if (_lastWarmupDebug != null) 'gpsWarmup': _lastWarmupDebug,
-      };
+      // KHÔNG gửi trackingDebug nữa. Nó là bản debug NHÂN ĐÔI (chép lại
+      // routePoints + pointLogs GPS thô) tới ~695KB/buổi, đẩy payload vượt trần
+      // 2MB → decode 400 → MẤT buổi (đúng ca buổi race 10.4km). Backend cũng đã
+      // bỏ không lưu field này. Bỏ ở nguồn = payload nhẹ ~70%.
       final result = await ref
           .read(activityRepositoryProvider)
-          .saveTrackedActivity(detail, trackingDebug: debug);
+          .saveTrackedActivity(detail);
       if (photosUploaded) await ref.read(trackingDraftStoreProvider).clear();
       if (!mounted) return;
       setState(() {
