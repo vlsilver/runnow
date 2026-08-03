@@ -214,7 +214,10 @@ func normalizeTrackedActivity(raw map[string]any) (map[string]any, error) {
 		"elevationGainMeters": true, "polyline": true, "routePoints": true,
 		"hydrated": true, "calories": true, "gearName": true, "splits": true,
 		"laps": true, "streams": true, "photos": true, "streamsHydrated": true,
-		"streamsVersion": true, "trackingDebug": true,
+		"streamsVersion": true,
+		// trackingDebug CỐ Ý bị loại: nó là log debug chiếm tới ~70% doc (695KB
+		// cho buổi 6km) và không ai đọc — bỏ khỏi bản lưu để doc gọn, tránh vượt
+		// trần 1MB. App vẫn gửi cũng không sao, ở đây không lưu nữa.
 	}
 	next := make(map[string]any, len(raw)+4)
 	for key, value := range raw {

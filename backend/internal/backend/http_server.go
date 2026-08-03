@@ -320,7 +320,10 @@ func (s *Server) apiRoutes() {
 		var body struct {
 			Activity map[string]any `json:"activity"`
 		}
-		if err := decodeJSONWithLimit(r, &body, 2<<20); err != nil || body.Activity == nil {
+		// 10MB: buổi chạy DÀI (route dày + streams) có payload lớn — trần 2MB cũ
+		// chặn ngay ở decode → 400, mất buổi (vd buổi race 10.4km). Cho payload
+		// to lọt vào, rồi SaveTracked tự bỏ trackingDebug + downsample cho gọn.
+		if err := decodeJSONWithLimit(r, &body, 10<<20); err != nil || body.Activity == nil {
 			return invalidRequest()
 		}
 		result, err := s.deps.Activities.SaveTracked(r.Context(), uid, body.Activity)
