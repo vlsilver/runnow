@@ -471,6 +471,34 @@ func (s *Server) workerRoutes() {
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
 	})
+	s.route("POST /tasks/refresh-leaderboard", func(w http.ResponseWriter, r *http.Request) error {
+		// FIX GỐC bug "người ma 0 km": leaderboardEntries chỉ rebuild khi CHÍNH
+		// chủ nó có activity mới, nên người ngừng chạy vẫn kẹt số kỳ cũ
+		// (currentWeek/Month/rollingSevenDays) Ở NGUỒN. Cron hằng ngày (sau nửa
+		// đêm VN) fan-out rebuild-derived-data cho MỌI member → RebuildCurrent
+		// tính lại theo kỳ hiện tại (0 nếu không chạy) và tự bỏ ghi nếu không
+		// đổi. Nhờ vậy cả app lẫn bot đọc đúng ngay tại nguồn; guard read-side
+		// chỉ còn đỡ cửa sổ vài phút trước khi cron kịp chạy.
+		docs, err := s.deps.Firestore.Collection("leaderboardEntries").Documents(r.Context()).GetAll()
+		if err != nil {
+			return err
+		}
+		cause := "daily-refresh-" + dateKey(time.Now())
+		enqueued := 0
+		for _, doc := range docs {
+			payload := map[string]any{"uid": doc.Ref.ID, "cause": cause}
+			if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{
+				Queue:       QueueDerived,
+				HandlerPath: "/tasks/rebuild-derived-data",
+				Payload:     payload,
+				TaskID:      StableTaskID("derived", payload),
+			}); err != nil {
+				return err
+			}
+			enqueued++
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true, "enqueued": enqueued})
+	})
 	s.route("POST /tasks/reconcile-connections", func(w http.ResponseWriter, r *http.Request) error {
 		var task struct {
 			Cursor string `json:"cursor"`

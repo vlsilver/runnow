@@ -424,6 +424,29 @@ gcloud scheduler jobs "${tick_action}" http "$TICK_JOB" \
   --oidc-service-account-email "$INVOKER_SA" \
   --oidc-token-audience "$BOT_URL" \
   --project "$PROJECT_ID"
+
+# Làm tươi leaderboard mỗi ngày lúc 00:10 giờ VN (17:10 UTC), NGAY SAU mốc
+# đổi ngày/tuần/tháng. Fan-out rebuild-derived-data cho mọi member để
+# currentWeek/Month/rollingSevenDays không kẹt số kỳ cũ ở nguồn (người ngừng
+# chạy tự về 0). Trỏ worker (nơi có /tasks/refresh-leaderboard).
+LEADERBOARD_JOB="${LEADERBOARD_JOB:-runnow-refresh-leaderboard}"
+if gcloud scheduler jobs describe "$LEADERBOARD_JOB" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  leaderboard_action=update
+  leaderboard_header_flag=--update-headers
+else
+  leaderboard_action=create
+  leaderboard_header_flag=--headers
+fi
+gcloud scheduler jobs "${leaderboard_action}" http "$LEADERBOARD_JOB" \
+  --location "$REGION" \
+  --schedule '10 17 * * *' \
+  --uri "${WORKER_URL}/tasks/refresh-leaderboard" \
+  --http-method POST \
+  "${leaderboard_header_flag}" 'Content-Type=application/json' \
+  --message-body '{}' \
+  --oidc-service-account-email "$INVOKER_SA" \
+  --oidc-token-audience "$WORKER_URL" \
+  --project "$PROJECT_ID"
 fi # end IAM invoker + scheduler (is_full_deploy)
 
 echo "API URL: $API_URL"
