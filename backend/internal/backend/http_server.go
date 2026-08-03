@@ -332,6 +332,22 @@ func (s *Server) apiRoutes() {
 		}
 		return writeJSON(w, 200, result)
 	}))
+	// Hoàn tất buổi chạy đã SYNC THEO CHUNK: body chỉ mang phần summary nhẹ
+	// (không route/streams — chúng đã được đẩy dần vào track/{seq}); backend ghép
+	// chunk lại. Nhờ vậy không còn payload khổng lồ ở cuối.
+	s.route("POST /v1/activities/tracked/finalize", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		var body struct {
+			Activity map[string]any `json:"activity"`
+		}
+		if err := decodeJSONWithLimit(r, &body, 2<<20); err != nil || body.Activity == nil {
+			return invalidRequest()
+		}
+		result, err := s.deps.Activities.FinalizeTracked(r.Context(), uid, body.Activity)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, result)
+	}))
 	s.route("POST /v1/profile", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		var body ProfileUpdate
 		if err := decodeJSON(r, &body); err != nil {

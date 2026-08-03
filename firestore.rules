@@ -28,6 +28,15 @@ service cloud.firestore {
       match /activities/{activityId} {
         allow read: if owns(userId) || isPublicProfile(userId);
         allow write: if false;
+
+        // Track chunks: app ĐẨY DẦN (mỗi ~10s) đoạn điểm/streams trong lúc chạy
+        // để không mất buổi. Append-only từ phía client (chỉ tạo, không sửa/xoá);
+        // backend gộp thành activity rồi dọn bằng Admin SDK (bỏ qua rules).
+        match /track/{chunkId} {
+          allow read: if owns(userId) || isPublicProfile(userId);
+          allow create: if owns(userId);
+          allow update, delete: if false;
+        }
       }
 
       match /trainingGoalHistory/{historyId} {
