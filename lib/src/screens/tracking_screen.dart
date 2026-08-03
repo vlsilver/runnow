@@ -80,6 +80,13 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   Future<void> _trackChunkQueue = Future<void>.value();
   bool _trackChunkResumed = false;
   static const _trackChunkInterval = Duration(seconds: 10);
+  // Tường thuật LIVE lên group qua bot: báo start khi đủ ngưỡng, mốc mỗi 5km,
+  // và finish. Gọi API fire-and-forget, không chặn tracking.
+  bool _liveAnnouncedStart = false;
+  int _liveAnnouncedKm = 0;
+  Future<void> _liveAnnounceQueue = Future<void>.value();
+  static const double _liveStartMinMeters = 500;
+  static const double _liveMilestoneMeters = 5000;
 
   bool get _running => _snapshot?.status == TrackingSessionStatus.running;
   bool get _paused => _snapshot?.status == TrackingSessionStatus.paused;
@@ -601,6 +608,20 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       final result = allChunked
           ? await repository.finalizeTrackedActivity(detail)
           : await repository.saveTrackedActivity(detail);
+      if (_liveAnnouncedStart) {
+        // Buổi đã tường thuật live → chốt bằng tin "về đích". Fire-and-forget.
+        unawaited(
+          ref
+              .read(runNowApiClientProvider)
+              .announceLive(
+                activityId: session.id,
+                event: 'finish',
+                distanceMeters: finalSnapshot.distanceMeters,
+                movingTimeSeconds: finalSnapshot.movingTimeSeconds.toDouble(),
+              )
+              .catchError((_) {}),
+        );
+      }
       if (photosUploaded) await ref.read(trackingDraftStoreProvider).clear();
       if (!mounted) return;
       setState(() {
@@ -909,7 +930,47 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
           now.difference(lastChunkAt) >= _trackChunkInterval) {
         unawaited(_flushTrackChunk());
       }
+      _maybeAnnounceLive(session);
     });
+  }
+
+  /// Kiểm mốc live trong lúc chạy: báo start khi vượt ngưỡng, và mỗi khi qua
+  /// bội số 5km mới. Bắn API fire-and-forget (không chặn tracking).
+  void _maybeAnnounceLive(TrackingSession session) {
+    final distance = session.snapshot().distanceMeters;
+    if (!_liveAnnouncedStart) {
+      if (distance >= _liveStartMinMeters) {
+        _liveAnnouncedStart = true;
+        _liveAnnounceQueue = _liveAnnounceQueue
+            .then((_) => _announceLive(session, 'start'))
+            .catchError((_) {});
+      }
+      return;
+    }
+    final milestoneKm = (distance / _liveMilestoneMeters).floor() * 5;
+    if (milestoneKm > _liveAnnouncedKm) {
+      _liveAnnouncedKm = milestoneKm;
+      _liveAnnounceQueue = _liveAnnounceQueue
+          .then((_) => _announceLive(session, 'milestone', milestoneKm: milestoneKm))
+          .catchError((_) {});
+    }
+  }
+
+  Future<void> _announceLive(
+    TrackingSession session,
+    String event, {
+    int milestoneKm = 0,
+  }) async {
+    final snapshot = session.snapshot();
+    await ref
+        .read(runNowApiClientProvider)
+        .announceLive(
+          activityId: session.id,
+          event: event,
+          distanceMeters: snapshot.distanceMeters,
+          movingTimeSeconds: snapshot.movingTimeSeconds.toDouble(),
+          milestoneKm: milestoneKm,
+        );
   }
 
   /// Đẩy đoạn điểm route MỚI (kể từ lần đẩy trước) thành 1 chunk append-only.
@@ -964,6 +1025,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     _flushedRoutePointCount = 0;
     _lastTrackChunkAt = null;
     _trackChunkResumed = true; // buổi mới: bắt đầu sạch từ seq 0, khỏi dò.
+    _liveAnnouncedStart = false;
+    _liveAnnouncedKm = 0;
   }
 
   Future<TrackingLocationSample?> _waitForStableGps() async {

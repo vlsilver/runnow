@@ -47,6 +47,7 @@ type ActivityService struct {
 type broadcastRecorder interface {
 	RecordBroadcast(ctx context.Context, chatID, text string) error
 	ActivityAnnouncement(ctx context.Context, displayName, activityName string, fact ActivityFact) string
+	LiveAnnouncement(ctx context.Context, displayName, event string, distanceMeters, movingTimeSeconds float64, milestoneKm int) string
 	Enabled() bool
 }
 
@@ -602,6 +603,12 @@ func (s *ActivityService) NotifyTelegram(ctx context.Context, uid, activityID st
 	profile, err := resolveProfile(ctx, s.db, uid)
 	if err != nil {
 		return err
+	}
+	// Chống double-notify: nếu buổi này đã được tường thuật LIVE (app 3i) và
+	// giờ bản Strava trùng sync về, nuốt tin lặp. Đánh dấu đã-notify rồi thôi.
+	if stringValue(data["source"]) == "strava" && liveFinishAlreadyCovered(profile, data, time.Now()) {
+		_, _ = ref.Set(ctx, map[string]any{"telegramNotifiedAt": firestore.ServerTimestamp}, firestore.MergeAll)
+		return nil
 	}
 	detailURL := activityDetailURL(s.webBaseURL, uid, activityID)
 	displayName := preferredName(profile)

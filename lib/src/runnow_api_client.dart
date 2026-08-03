@@ -149,6 +149,29 @@ class RunNowApiClient {
     return TrackedActivityBackendResult.fromJson(_jsonObject(response));
   }
 
+  /// Tường thuật LIVE 1 sự kiện buổi tập (start / milestone / finish). Backend
+  /// enqueue task cho bot viết + gửi group. Gọi fire-and-forget từ vòng tracking
+  /// — lỗi mạng bỏ qua, không chặn buổi chạy.
+  Future<void> announceLive({
+    required String activityId,
+    required String event,
+    required double distanceMeters,
+    required double movingTimeSeconds,
+    int milestoneKm = 0,
+  }) async {
+    await _send(
+      'POST',
+      '/v1/live/announce',
+      body: {
+        'activityId': activityId,
+        'event': event,
+        'distanceMeters': distanceMeters,
+        'movingTimeSeconds': movingTimeSeconds,
+        'milestoneKm': milestoneKm,
+      },
+    );
+  }
+
   Future<void> updateProfile({
     required String nickname,
     required String? avatarUrl,

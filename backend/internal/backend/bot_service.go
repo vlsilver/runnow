@@ -1317,6 +1317,55 @@ func (s *BotService) ActivityAnnouncement(ctx context.Context, displayName, acti
 	return strings.TrimSpace(text)
 }
 
+// liveAnnouncementInstruction: bot tường thuật TRỰC TIẾP một buổi tập đang diễn
+// ra (không phải buổi đã xong). event = start | milestone | finish.
+const liveAnnouncementInstruction = `
+
+NHIỆM VỤ: tường thuật TRỰC TIẾP một buổi tập ĐANG diễn ra cho cả group, như một
+bình luận viên hớn hở. Loại sự kiện ở dòng "Sự kiện" trong STATS:
+- start: ai đó vừa XUẤT PHÁT — hô hào, chúc buổi tập ngon lành.
+- milestone: vừa chạm một cột mốc quãng đường — reo mừng, cà khịa/động viên đẩy tiếp.
+- finish: vừa VỀ ĐÍCH — chúc mừng, chốt lại thành quả.
+
+Viết 1-2 câu NGẮN GỌN, sống động, emoji vừa phải, MỖI LẦN MỘT KIỂU cho khỏi
+nhàm. Dùng ĐÚNG các con số cho bên dưới, không bịa thêm pace/thứ hạng. Chỉ trả
+về đúng lời tường thuật, không lời dẫn.`
+
+// LiveAnnouncement để bot viết 1 câu tường thuật cho sự kiện live (app gọi khi
+// user bắt đầu/qua mốc/về đích). Rỗng nếu bot tắt hay model lỗi → caller rơi về
+// bản mẫu tĩnh, không bao giờ mất thông báo.
+func (s *BotService) LiveAnnouncement(ctx context.Context, displayName, event string, distanceMeters, movingTimeSeconds float64, milestoneKm int) string {
+	if !s.Enabled() {
+		return ""
+	}
+	var stats strings.Builder
+	fmt.Fprintf(&stats, "STATS LIVE (viết tường thuật từ đây, dùng đúng số):\n")
+	fmt.Fprintf(&stats, "- Sự kiện: %s\n", event)
+	fmt.Fprintf(&stats, "- Người tập: %s\n", strings.TrimSpace(displayName))
+	if milestoneKm > 0 {
+		fmt.Fprintf(&stats, "- Cột mốc: %dkm\n", milestoneKm)
+	}
+	fmt.Fprintf(&stats, "- Quãng đường: %s\n", formatDistanceKm(distanceMeters))
+	if movingTimeSeconds >= 1 {
+		fmt.Fprintf(&stats, "- Thời gian: %s\n", formatDurationHMS(int64(movingTimeSeconds)))
+		if distanceMeters >= 100 {
+			pace := movingTimeSeconds / (distanceMeters / 1000)
+			fmt.Fprintf(&stats, "- Pace: %d:%02d /km\n", int64(pace)/60, int64(pace)%60)
+		}
+	}
+	systemPrompt := botSystemPrompt + liveAnnouncementInstruction
+	if mem := s.memory.Load(ctx, s.telegram.ChatID()); mem != "" {
+		systemPrompt += "\n\nTRÍ NHỚ VỀ NHÓM NÀY:\n" + mem
+	}
+	contents := []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: stats.String()}}}}
+	text, err := s.Answer(ctx, systemPrompt, contents, false)
+	if err != nil {
+		slog.WarnContext(ctx, "bot.live_announcement_failed", "error", err)
+		return ""
+	}
+	return strings.TrimSpace(text)
+}
+
 // RecordBroadcast lưu một tin do CHÍNH bot phát ra group (ví dụ thông báo buổi
 // chạy mới) vào lịch sử dưới vai model. Telegram không đẩy lại tin của bot nên
 // nếu không tự ghi ở đây thì trí nhớ dài hạn mất hẳn phần này — và phản ứng

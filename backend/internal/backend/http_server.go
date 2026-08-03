@@ -51,6 +51,7 @@ func (s *Server) botRoutes() {
 	// Cả hai đây cũng là việc AI (notify sinh nhận xét, chưng cất trí nhớ) —
 	// dời sang service bot. Định tuyến queue/scheduler đổi ở deploy.sh.
 	s.route("POST /tasks/notify-telegram", s.notifyTelegram)
+	s.route("POST /tasks/live-announce", s.liveAnnounce)
 	s.route("POST /tasks/consolidate-memory", s.consolidateMemory)
 	// Cloud Scheduler gõ mỗi 10 phút → chạy các lịch bot tự đặt tới hạn.
 	s.route("POST /tasks/schedule-tick", func(w http.ResponseWriter, r *http.Request) error {
@@ -147,6 +148,27 @@ func (s *Server) notifyTelegram(w http.ResponseWriter, r *http.Request) error {
 		return nil
 	}
 	if err := s.deps.Activities.NotifyTelegram(r.Context(), task.UID, task.ActivityID); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// liveAnnounce: task chạy trên bot — tường thuật LIVE 1 sự kiện buổi tập (app
+// gọi qua /v1/live/announce). Việc AI + gửi group nên nằm ở runnow-bot.
+func (s *Server) liveAnnounce(w http.ResponseWriter, r *http.Request) error {
+	var task struct {
+		UID               string  `json:"uid"`
+		ActivityID        string  `json:"activityId"`
+		Event             string  `json:"event"`
+		DistanceMeters    float64 `json:"distanceMeters"`
+		MovingTimeSeconds float64 `json:"movingTimeSeconds"`
+		MilestoneKm       int     `json:"milestoneKm"`
+	}
+	if decodeJSON(r, &task) != nil || task.UID == "" || task.ActivityID == "" || task.Event == "" {
+		w.WriteHeader(204)
+		return nil
+	}
+	if err := s.deps.Activities.LiveAnnounce(r.Context(), task.UID, task.ActivityID, task.Event, task.DistanceMeters, task.MovingTimeSeconds, task.MilestoneKm); err != nil {
 		return err
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})
@@ -316,6 +338,27 @@ func (s *Server) apiRoutes() {
 		}
 		return writeJSON(w, 200, body)
 	})
+	s.route("POST /v1/live/announce", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		// App 3i gọi khi tới mốc trong lúc tập (start / mỗi 5km / finish). Chỉ
+		// enqueue task nhẹ sang bot để viết + gửi group; không chặn app. TaskID
+		// ổn định theo (buổi, sự kiện, mốc) nên gọi lặp không bắn trùng.
+		var body struct {
+			ActivityID        string  `json:"activityId"`
+			Event             string  `json:"event"`
+			DistanceMeters    float64 `json:"distanceMeters"`
+			MovingTimeSeconds float64 `json:"movingTimeSeconds"`
+			MilestoneKm       int     `json:"milestoneKm"`
+		}
+		if decodeJSON(r, &body) != nil || body.ActivityID == "" || body.Event == "" {
+			return invalidRequest()
+		}
+		payload := map[string]any{"uid": uid, "activityId": body.ActivityID, "event": body.Event, "distanceMeters": body.DistanceMeters, "movingTimeSeconds": body.MovingTimeSeconds, "milestoneKm": body.MilestoneKm}
+		dedup := map[string]any{"activityId": body.ActivityID, "event": body.Event, "km": body.MilestoneKm}
+		if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/live-announce", Payload: payload, TaskID: StableTaskID("live", dedup)}); err != nil {
+			return err
+		}
+		return writeJSON(w, 202, map[string]any{"ok": true})
+	}))
 	s.route("POST /v1/activities/tracked", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		var body struct {
 			Activity map[string]any `json:"activity"`
