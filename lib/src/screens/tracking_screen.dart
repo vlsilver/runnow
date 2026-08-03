@@ -88,7 +88,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   bool _liveAnnouncedStart = false;
   int _liveAnnouncedKm = 0;
   Future<void> _liveAnnounceQueue = Future<void>.value();
-  static const double _liveStartMinMeters = 500;
+  static const double _liveStartMinMeters = 300;
   static const double _liveMilestoneMeters = 5000;
 
   bool get _running => _snapshot?.status == TrackingSessionStatus.running;
