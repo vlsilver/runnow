@@ -666,7 +666,7 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
         if (_manual)
           Positioned(
             top: 10,
-            left: 10,
+            right: 10,
             child: Material(
               color: Colors.transparent,
               child: InkResponse(
