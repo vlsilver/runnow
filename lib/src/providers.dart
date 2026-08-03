@@ -560,3 +560,7 @@ final journeyPowerSnapshotProvider = FutureProvider.autoDispose
           return monthRange('2000-01', monthKey(now));
       }
     });
+
+/// BẬT khi đang tracking (chạy/tạm dừng) để ẩn thanh nav dưới của shell — cho
+/// màn chạy chiếm trọn màn, tập trung. TrackingScreen tự cập nhật.
+final trackingImmersiveProvider = StateProvider<bool>((ref) => false);

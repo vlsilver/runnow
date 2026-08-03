@@ -688,14 +688,17 @@ class _SyncedActivityRow extends StatelessWidget {
   };
 }
 
-class _Scaffold extends StatelessWidget {
+class _Scaffold extends ConsumerWidget {
   const _Scaffold({required this.shell, required this.location});
   final StatefulNavigationShell shell;
   final String location;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final width = MediaQuery.sizeOf(context).width;
+    // Đang chạy (immersive) trên tab Chạy → ẩn nav dưới cho gọn cả màn.
+    final hideNav =
+        ref.watch(trackingImmersiveProvider) && shell.currentIndex == 2;
     final wide = kIsWeb ? RunNowWebLayout.isDesktop(context) : width >= 760;
     if (wide) {
       return Scaffold(
@@ -735,7 +738,9 @@ class _Scaffold extends StatelessWidget {
           child: shell,
         ),
       ),
-      bottomNavigationBar: SafeArea(
+      bottomNavigationBar: hideNav
+          ? null
+          : SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         child: GlassPanel(
           borderRadius: 22,

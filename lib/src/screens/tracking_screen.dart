@@ -170,6 +170,15 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _liveDefaultApplied = true;
       _liveEnabled = true;
     }
+    // Đang chạy/tạm dừng → ẩn nav dưới của shell (immersive). Set sau frame để
+    // không sửa provider trong lúc build.
+    final immersive = _running || _paused;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ref.read(trackingImmersiveProvider) != immersive) {
+        ref.read(trackingImmersiveProvider.notifier).state = immersive;
+      }
+    });
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 72,
@@ -219,28 +228,20 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
               onStopLive: () => setState(() => _liveEnabled = false),
             ),
             const SizedBox(height: 12),
-            // Cockpit chiếm khoảng trống còn lại và TỰ CO (FittedBox) trên máy
-            // nhỏ để cả màn nằm gọn 1 trang, không scroll. Máy lớn giữ nguyên cỡ.
+            // Cockpit chiếm trọn khoảng trống còn lại (map fill), cả màn nằm
+            // gọn 1 trang, không scroll.
             Expanded(
-              child: Center(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: SizedBox(
-                    width: MediaQuery.sizeOf(context).width - 40,
-                    child: _TrackingCockpit(
-                      snapshot: snapshot,
-                      signal: _gpsSignal,
-                      elapsedSeconds: _gpsElapsedSeconds,
-                      stableSamples: _gpsStableSamples,
-                      minSeconds: 0,
-                      minSamples: _gpsWarmupMinGoodSamples,
-                      subtitle: _distanceSubtitle,
-                      onMap: snapshot == null || snapshot.routePoints.length < 2
-                          ? null
-                          : () => _openLiveMap(snapshot),
-                    ),
-                  ),
-                ),
+              child: _TrackingCockpit(
+                snapshot: snapshot,
+                signal: _gpsSignal,
+                elapsedSeconds: _gpsElapsedSeconds,
+                stableSamples: _gpsStableSamples,
+                minSeconds: 0,
+                minSamples: _gpsWarmupMinGoodSamples,
+                subtitle: _distanceSubtitle,
+                onMap: snapshot == null || snapshot.routePoints.length < 2
+                    ? null
+                    : () => _openLiveMap(snapshot),
               ),
             ),
             if (isPublic && !_running && !_paused && !_finished) ...[
@@ -1635,63 +1636,65 @@ class _TrackingCockpit extends StatelessWidget {
     final pace = formatPace(snapshot?.averagePaceSecondsPerKm);
     final livePace = formatPace(snapshot?.currentPaceSecondsPerKm);
     final routePoints = snapshot?.routePoints ?? const <RoutePoint>[];
+    final readout = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _DistanceReadout(distance: distance),
+        if (subtitle.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withValues(
+                alpha: 0.56,
+              ),
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.1,
+            ),
+          ),
+        ],
+      ],
+    );
     return Column(
       children: [
-        SizedBox(
-          height: 330,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Positioned(
-                top: 4,
-                child: Semantics(
-                  button: onMap != null,
-                  enabled: onMap != null,
-                  label: 'Xem bản đồ hành trình',
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkResponse(
-                      onTap: onMap,
-                      customBorder: const CircleBorder(),
-                      radius: 119,
-                      child: _RoutePreview(
-                        signal: signal,
-                        elapsedSeconds: elapsedSeconds,
-                        stableSamples: stableSamples,
-                        minSeconds: minSeconds,
-                        minSamples: minSamples,
-                        routePoints: routePoints,
+        // Có route → BẢN ĐỒ đầy đủ lấp trọn khu vực (thay vòng tròn nhỏ), số
+        // liệu quãng đường nổi trên map. Chưa có route (đang khoá GPS) → vẫn là
+        // vòng tròn có vòng tiến độ khoá GPS, tự co cho vừa.
+        Expanded(
+          child: routePoints.length >= 2
+              ? _CockpitMap(
+                  routePoints: routePoints,
+                  readout: readout,
+                  onExpand: onMap,
+                )
+              : Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: SizedBox(
+                      height: 330,
+                      width: 264,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Positioned(
+                            top: 4,
+                            child: _RoutePreview(
+                              signal: signal,
+                              elapsedSeconds: elapsedSeconds,
+                              stableSamples: stableSamples,
+                              minSeconds: minSeconds,
+                              minSamples: minSamples,
+                              routePoints: routePoints,
+                            ),
+                          ),
+                          Positioned(bottom: 20, child: readout),
+                        ],
                       ),
                     ),
                   ),
                 ),
-              ),
-              Positioned(
-                bottom: 20,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _DistanceReadout(distance: distance),
-                    if (subtitle.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withValues(alpha: 0.56),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.1,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
         ),
         const SizedBox(height: 12),
         Row(
@@ -1719,6 +1722,65 @@ class _TrackingCockpit extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+class _CockpitMap extends StatelessWidget {
+  const _CockpitMap({
+    required this.routePoints,
+    required this.readout,
+    required this.onExpand,
+  });
+
+  final List<RoutePoint> routePoints;
+  final Widget readout;
+  final VoidCallback? onExpand;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: LayoutBuilder(
+              builder: (context, constraints) => RouteMap.fromRoutePoints(
+                points: routePoints,
+                height: constraints.maxHeight,
+              ),
+            ),
+          ),
+          // Quãng đường nổi trên map, nền kính cho dễ đọc ở cả 2 theme.
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 12,
+            child: GlassPanel(
+              borderRadius: 18,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+              child: readout,
+            ),
+          ),
+          if (onExpand != null)
+            Positioned(
+              top: 10,
+              right: 10,
+              child: Material(
+                color: Colors.transparent,
+                child: InkResponse(
+                  onTap: onExpand,
+                  radius: 26,
+                  child: const GlassPanel(
+                    borderRadius: 12,
+                    padding: EdgeInsets.all(8),
+                    child: Icon(Icons.fullscreen, size: 20),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
