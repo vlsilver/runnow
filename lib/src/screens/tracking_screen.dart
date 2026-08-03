@@ -1199,9 +1199,21 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       }
       setState(() {
         _gpsSignal = _GpsSignal.weak;
-        _message =
-            'GPS chưa ổn định. Đứng yên ở nơi thoáng hơn rồi bấm LOCK GPS lại.';
+        _message = null;
       });
+      // Báo 1 lần rồi tự tắt, không để dính panel liên tục. Trạng thái GPS yếu
+      // vẫn hiện ở chỉ báo tín hiệu trên header.
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 4),
+            content: Text(
+              'GPS chưa ổn định. Đứng yên nơi thoáng hơn rồi bấm LOCK GPS lại.',
+            ),
+          ),
+        );
       complete(null);
     });
 
