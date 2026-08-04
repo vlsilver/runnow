@@ -855,23 +855,30 @@ class _LiveRunnerMarkerState extends State<_LiveRunnerMarker>
   }
 }
 
-// Chấm "vị trí hiện tại" cho map đang chạy (follow) — không phải cờ đích.
+// "Vị trí hiện tại" cho map đang chạy (follow): icon người chạy 🏃, không phải
+// cờ đích. rotate:true để icon luôn thẳng đứng dù map xoay theo hướng chạy.
 Marker _currentPositionMarker(LatLng point) {
   const color = RunNowSemanticColors.info;
   return Marker(
     point: point,
-    width: 26,
-    height: 26,
+    width: 36,
+    height: 36,
+    rotate: true,
     child: Semantics(
       label: 'Vị trí hiện tại',
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: color,
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 3),
+          border: Border.all(color: Colors.white, width: 2.5),
           boxShadow: [
             BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 10),
           ],
+        ),
+        child: const Icon(
+          Icons.directions_run_rounded,
+          color: Colors.white,
+          size: 21,
         ),
       ),
     ),
