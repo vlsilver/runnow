@@ -1041,13 +1041,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     }
   }
 
-  /// Mốc km đã đạt để thông báo: 3km, rồi 5/10/15/20… (bội số 5). Dưới 3km
-  /// chưa có mốc nào (đã có tin start ở 300m).
+  /// Mốc km đã đạt để thông báo: MỖI 1km một lần (1, 2, 3, 4, 5…) cho xôm.
+  /// Đã có tin start riêng ở 300m + tin finish lúc Stop.
   int _milestoneReachedKm(double distanceMeters) {
-    final km = distanceMeters / 1000;
-    if (km >= 5) return (km / 5).floor() * 5;
-    if (km >= 3) return 3;
-    return 0;
+    return (distanceMeters / 1000).floor();
   }
 
   Future<void> _announceLive(
