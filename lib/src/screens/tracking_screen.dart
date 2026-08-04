@@ -102,6 +102,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   bool _liveDefaultApplied = false;
   bool _liveAnnouncedStart = false;
   int _liveAnnouncedKm = 0;
+  // User tự chỉnh trong nút cài đặt Live: báo mỗi mấy km, và có đăng ảnh không.
+  int _liveMilestoneKm = 2;
+  bool _livePhotoEnabled = true;
+  static const List<int> _liveMilestoneOptions = [1, 2, 3, 5];
   Future<void> _liveAnnounceQueue = Future<void>.value();
   static const double _liveStartMinMeters = 300;
 
@@ -329,12 +333,39 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                     : onSurface.withValues(alpha: 0.5),
                               ),
                               const SizedBox(width: 10),
-                              const Expanded(
-                                child: Text(
-                                  'Live lên group',
-                                  style: TextStyle(fontWeight: FontWeight.w700),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text(
+                                      'Live lên group',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    if (_liveEnabled)
+                                      Text(
+                                        'Báo mỗi ${_liveMilestoneKm}km'
+                                        '${_livePhotoEnabled ? ' · kèm ảnh' : ''}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: onSurface.withValues(
+                                            alpha: 0.55,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
                                 ),
                               ),
+                              // Nút cài đặt: chỉ hiện khi Live bật (có gì để chỉnh).
+                              if (_liveEnabled)
+                                IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  icon: const Icon(Icons.tune_rounded, size: 20),
+                                  tooltip: 'Cài đặt Live',
+                                  onPressed: _openLiveSettings,
+                                ),
                               Switch(
                                 value: _liveEnabled,
                                 onChanged: (value) =>
@@ -668,8 +699,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             .read(liveTrackingRepositoryProvider)
             .publishPhoto(sessionId: session.id, photo: uploaded);
       }
-      if (_liveEnabled) {
-        // Live bật → khoe tấm ảnh vừa chụp lên group qua bot. Fire-and-forget.
+      if (_liveEnabled && _livePhotoEnabled) {
+        // Live + cho đăng ảnh → khoe tấm vừa chụp lên group. Fire-and-forget.
         unawaited(
           ref
               .read(runNowApiClientProvider)
@@ -1041,10 +1072,84 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     }
   }
 
-  /// Mốc km đã đạt để thông báo: MỖI 1km một lần (1, 2, 3, 4, 5…) cho xôm.
-  /// Đã có tin start riêng ở 300m + tin finish lúc Stop.
+  /// Mốc km đã đạt để thông báo, theo bước _liveMilestoneKm user chọn (vd mỗi
+  /// 2km → 2,4,6…). Đã có tin start riêng ở 300m + tin finish lúc Stop.
   int _milestoneReachedKm(double distanceMeters) {
-    return (distanceMeters / 1000).floor();
+    final step = _liveMilestoneKm;
+    return (distanceMeters / 1000 / step).floor() * step;
+  }
+
+  /// Sheet cài đặt Live: bật/tắt Live + (khi bật) chọn mốc km báo + có đăng ảnh
+  /// không. update() ghi cả state màn (để logic + card đổi) lẫn state sheet.
+  void _openLiveSettings() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheet) {
+          void update(VoidCallback fn) {
+            setState(fn);
+            setSheet(() {});
+          }
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Cài đặt Live',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: _liveEnabled,
+                    onChanged: (v) => update(() => _liveEnabled = v),
+                    title: const Text('Live lên group'),
+                    subtitle: const Text(
+                      'Bot tự báo mốc km lên group khi bạn chạy',
+                    ),
+                  ),
+                  if (_liveEnabled) ...[
+                    const Divider(),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Báo mỗi mốc',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        for (final km in _liveMilestoneOptions)
+                          ChoiceChip(
+                            label: Text('${km}km'),
+                            selected: _liveMilestoneKm == km,
+                            onSelected: (_) =>
+                                update(() => _liveMilestoneKm = km),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: _livePhotoEnabled,
+                      onChanged: (v) => update(() => _livePhotoEnabled = v),
+                      title: const Text('Đăng ảnh lên group'),
+                      subtitle: const Text(
+                        'Ảnh bạn chụp lúc chạy sẽ được đăng vào group',
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _announceLive(
