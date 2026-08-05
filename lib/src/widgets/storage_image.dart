@@ -19,6 +19,9 @@ class StorageImage extends StatefulWidget {
   /// Giới hạn kích thước giải mã (physical pixels) — truyền vào khi hiển thị
   /// ảnh ở khung nhỏ (vd marker trên bản đồ) để tránh giải mã ảnh gốc full
   /// độ phân giải chỉ để hiện thu nhỏ vài chục px.
+  ///
+  /// LƯU Ý: chỉ 1 trong 2 chiều được dùng lúc decode (ưu tiên cacheWidth) để
+  /// GIỮ ĐÚNG TỈ LỆ. Truyền cả 2 vào Image sẽ ép decode đúng WxH → bóp méo ảnh.
   final int? cacheWidth;
   final int? cacheHeight;
 
@@ -75,8 +78,9 @@ class _StorageImageState extends State<StorageImage> {
           fit: widget.fit,
           width: double.infinity,
           height: double.infinity,
+          // Chỉ dùng 1 chiều để decode giữ đúng tỉ lệ (không bóp méo).
           cacheWidth: widget.cacheWidth,
-          cacheHeight: widget.cacheHeight,
+          cacheHeight: widget.cacheWidth == null ? widget.cacheHeight : null,
           errorBuilder: (context, error, stack) => ColoredBox(
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             child: const Center(child: Icon(Icons.broken_image_outlined)),

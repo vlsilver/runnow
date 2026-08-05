@@ -597,49 +597,98 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   /// Xem lại ảnh vừa chụp trước khi giữ. Trả true = giữ (lưu vào buổi, + đăng
   /// group nếu Live), false = bỏ hẳn.
   Future<bool> _reviewPhoto(String path) async {
+    final willPost = _liveEnabled && _livePhotoEnabled;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Dùng ảnh này?'),
-        content: Column(
+      builder: (context) => Dialog(
+        clipBehavior: Clip.antiAlias,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+            // Ảnh giữ ĐÚNG tỉ lệ (contain) trên nền tối — không bóp méo, gọn.
+            ColoredBox(
+              color: Colors.black,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 360),
-                child: Image.file(File(path), fit: BoxFit.contain),
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.5,
+                ),
+                child: Center(
+                  child: Image.file(
+                    File(path),
+                    fit: BoxFit.contain,
+                    width: double.infinity,
+                  ),
+                ),
               ),
             ),
-            if (_liveEnabled && _livePhotoEnabled) ...[
-              const SizedBox(height: 12),
-              Row(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.sensors, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Live đang bật — ảnh sẽ được đăng lên group.',
-                      style: Theme.of(context).textTheme.bodySmall,
+                  Text(
+                    willPost ? 'Đăng ảnh này lên group?' : 'Dùng ảnh này?',
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
                     ),
+                  ),
+                  if (willPost) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.sensors,
+                          size: 16,
+                          color: RunNowSemanticColors.danger,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Live đang bật — ảnh sẽ lên group ngay.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: onSurface.withValues(alpha: 0.6),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Bỏ'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () => Navigator.pop(context, true),
+                          icon: Icon(
+                            willPost ? Icons.send_rounded : Icons.check_rounded,
+                            size: 18,
+                          ),
+                          label: Text(willPost ? 'Đăng' : 'Lưu'),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Bỏ'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(
-              _liveEnabled && _livePhotoEnabled ? 'Lưu & đăng' : 'Lưu',
-            ),
-          ),
-        ],
       ),
     );
     return confirmed == true;
