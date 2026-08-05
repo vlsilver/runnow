@@ -421,6 +421,12 @@ ThemeData buildRunNowTheme(
       textColor: palette.foreground,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
     ),
+    // Mọi SnackBar nổi + bo tròn cho nhất quán, không dính đáy che nội dung.
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      insetPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    ),
     dividerColor: palette.border,
     progressIndicatorTheme: ProgressIndicatorThemeData(color: palette.accent),
   );
