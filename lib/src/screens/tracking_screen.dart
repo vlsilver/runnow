@@ -611,7 +611,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                 child: Image.file(File(path), fit: BoxFit.contain),
               ),
             ),
-            if (_liveEnabled) ...[
+            if (_liveEnabled && _livePhotoEnabled) ...[
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -635,7 +635,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(_liveEnabled ? 'Lưu & đăng' : 'Lưu'),
+            child: Text(
+              _liveEnabled && _livePhotoEnabled ? 'Lưu & đăng' : 'Lưu',
+            ),
           ),
         ],
       ),
