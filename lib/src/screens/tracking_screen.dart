@@ -1084,9 +1084,13 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   /// Sheet cài đặt Live: bật/tắt Live + (khi bật) chọn mốc km báo + có đăng ảnh
   /// không. update() ghi cả state màn (để logic + card đổi) lẫn state sheet.
   void _openLiveSettings() {
+    // Theo đúng style sheet nhà: nền trong suốt + GlassPanel(22), tiêu đề section
+    // UPPERCASE nhỏ, chọn bằng SegmentedButton (xem settings_screen).
     showModalBottomSheet<void>(
       context: context,
-      showDragHandle: true,
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setSheet) {
           void update(VoidCallback fn) {
@@ -1094,16 +1098,27 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             setSheet(() {});
           }
 
-          return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              14,
+              0,
+              14,
+              MediaQuery.viewInsetsOf(context).bottom + 12,
+            ),
+            child: GlassPanel(
+              borderRadius: 22,
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Cài đặt Live',
-                    style: Theme.of(context).textTheme.titleMedium,
+                  const Text(
+                    'CÀI ĐẶT LIVE',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.4,
+                    ),
                   ),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
@@ -1115,26 +1130,26 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                     ),
                   ),
                   if (_liveEnabled) ...[
-                    const Divider(),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     const Text(
-                      'Báo mỗi mốc',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                      'BÁO MỖI MỐC',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.4,
+                      ),
                     ),
                     const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      children: [
+                    SegmentedButton<int>(
+                      showSelectedIcon: false,
+                      segments: [
                         for (final km in _liveMilestoneOptions)
-                          ChoiceChip(
-                            label: Text('${km}km'),
-                            selected: _liveMilestoneKm == km,
-                            onSelected: (_) =>
-                                update(() => _liveMilestoneKm = km),
-                          ),
+                          ButtonSegment(value: km, label: Text('${km}km')),
                       ],
+                      selected: {_liveMilestoneKm},
+                      onSelectionChanged: (s) =>
+                          update(() => _liveMilestoneKm = s.first),
                     ),
-                    const SizedBox(height: 8),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       value: _livePhotoEnabled,

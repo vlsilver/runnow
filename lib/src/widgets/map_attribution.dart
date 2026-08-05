@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:myrun/src/widgets/glass.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Ghi công nguồn bản đồ — bắt buộc, không phải trang trí.
@@ -68,23 +69,39 @@ class MapAttribution extends StatelessWidget {
   void _showSources(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('Nguồn bản đồ'),
-            ),
-            ListTile(
-              title: const Text('© OpenStreetMap contributors'),
-              onTap: () => _open('https://www.openstreetmap.org/copyright'),
-            ),
-            ListTile(
-              title: const Text('CARTO'),
-              onTap: () => _open('https://carto.com/attributions'),
-            ),
-          ],
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+        child: GlassPanel(
+          borderRadius: 22,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 10, 16, 4),
+                child: Text(
+                  'NGUỒN BẢN ĐỒ',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.4,
+                  ),
+                ),
+              ),
+              ListTile(
+                title: const Text('© OpenStreetMap contributors'),
+                onTap: () => _open('https://www.openstreetmap.org/copyright'),
+              ),
+              ListTile(
+                title: const Text('CARTO'),
+                onTap: () => _open('https://carto.com/attributions'),
+              ),
+            ],
+          ),
         ),
       ),
     );
