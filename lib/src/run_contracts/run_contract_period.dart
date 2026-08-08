@@ -16,7 +16,23 @@ RunContractPeriod contractPeriod(RunContractPeriodType type, DateTime now) {
 
 /// Tính kỳ hạn cho [draft]. Với khung [RunContractPeriodType.custom] dùng đúng
 /// mốc thời gian người dùng chọn; còn lại quy về [contractPeriod].
+/// Kèo hành trình không đặt hạn (openEnded): không có deadline thật sự, nhưng
+/// model kèo vẫn cần 1 mốc kết thúc. Dùng mốc rất xa (~10 năm) để coi như
+/// "chạy tới khi về đích" — tiến độ vẫn tính bình thường, chỉ là không bao giờ
+/// tự hết hạn trước khi chinh phục xong cung đường.
+const _openEndedJourneyDuration = Duration(days: 3650);
+
 RunContractPeriod contractPeriodForDraft(RunContractDraft draft, DateTime now) {
+  if (draft.isJourney && draft.openEnded) {
+    final start = (draft.customStart ?? now).toUtc();
+    final end = start.add(_openEndedJourneyDuration);
+    return RunContractPeriod(
+      type: RunContractPeriodType.custom,
+      startAt: start,
+      endAtExclusive: end,
+      finalizeAt: end.add(const Duration(hours: 6)),
+    );
+  }
   if (draft.period == RunContractPeriodType.custom &&
       draft.customStart != null &&
       draft.customEnd != null) {

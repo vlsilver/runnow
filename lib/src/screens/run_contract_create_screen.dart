@@ -176,6 +176,12 @@ class _RunContractCreateScreenState
         subtitle: 'Vẽ tuyến tham khảo, chạy đúng tuyến để được cứu',
         onTap: () => context.push('/contracts/new/route'),
       ),
+      _TemplateTile(
+        icon: Icons.explore_rounded,
+        title: 'Hành trình',
+        subtitle: 'Tích luỹ km chinh phục cung đường dài — có hoặc không hạn',
+        onTap: () => context.push('/contracts/new/journey'),
+      ),
     ],
   );
 

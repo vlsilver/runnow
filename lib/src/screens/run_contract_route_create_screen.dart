@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
@@ -34,7 +35,11 @@ const _assumedPaceSecondsPerKm = 370;
 enum _ImportKind { gpx, svg }
 
 class RunContractRouteCreateScreen extends ConsumerStatefulWidget {
-  const RunContractRouteCreateScreen({super.key});
+  const RunContractRouteCreateScreen({super.key, this.journey = false});
+
+  /// true = tạo KÈO HÀNH TRÌNH (tích luỹ km để phủ hết chiều dài cung tự vẽ),
+  /// false = "Theo tuyến" (phải chạy đúng tuyến N lần). Dùng chung công cụ vẽ.
+  final bool journey;
 
   @override
   ConsumerState<RunContractRouteCreateScreen> createState() =>
@@ -52,8 +57,13 @@ class _RunContractRouteCreateScreenState
   var _titleEdited = false;
   var _working = false;
   var _freehand = false;
+  // Hành trình: không hạn (mặc định) hoặc chọn deadline.
+  var _openEnded = true;
+  DateTime? _deadline;
   String? _error;
   LatLng? _initialCenter;
+
+  bool get _journey => widget.journey;
 
   @override
   void initState() {
@@ -332,17 +342,43 @@ class _RunContractRouteCreateScreenState
   void _goToConfirm() {
     if (!_canContinue) return;
     if (!_titleEdited) {
-      _titleController.text =
-          'Route ${(_distanceMeters / 1000).toStringAsFixed(1)}km';
+      final km = (_distanceMeters / 1000).toStringAsFixed(1);
+      _titleController.text = _journey ? 'Hành trình $km km' : 'Route $km km';
     }
     setState(() => _step = 1);
+  }
+
+  Future<void> _pickDeadline() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _deadline ?? now.add(const Duration(days: 30)),
+      firstDate: now.add(const Duration(days: 1)),
+      lastDate: now.add(const Duration(days: 365 * 3)),
+    );
+    if (picked != null) {
+      setState(
+        () => _deadline = DateTime(
+          picked.year,
+          picked.month,
+          picked.day,
+          23,
+          59,
+          59,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_step == 0 ? 'Vẽ tuyến đường' : 'Xác nhận tuyến'),
+        title: Text(
+          _journey
+              ? (_step == 0 ? 'Vẽ hành trình' : 'Xác nhận hành trình')
+              : (_step == 0 ? 'Vẽ tuyến đường' : 'Xác nhận tuyến'),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () {
@@ -432,8 +468,13 @@ class _RunContractRouteCreateScreenState
                         const SizedBox(width: 8),
                         GlassIconButton(
                           icon: const Icon(Icons.upload_file_rounded),
-                          tooltip: 'Nhập từ file GPX/SVG',
-                          onPressed: _working ? null : _showImportMenu,
+                          tooltip: _journey
+                              ? 'Nhập từ file GPX'
+                              : 'Nhập từ file GPX/SVG',
+                          // Hành trình chỉ cần cung thật → nhập GPX thẳng, bỏ SVG.
+                          onPressed: _working
+                              ? null
+                              : (_journey ? _importGpx : _showImportMenu),
                         ),
                         const SizedBox(width: 8),
                         GlassIconButton(
@@ -547,77 +588,10 @@ class _RunContractRouteCreateScreenState
           ),
         ),
         const SizedBox(height: 22),
-        Text(
-          'SỐ LẦN CẦN HOÀN THÀNH',
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-            fontSize: 11,
-            letterSpacing: 0.8,
-            color: palette.textMuted,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _TargetChip(
-                label: '1 lần',
-                selected: !_unlimited && _targetValue == 1,
-                onTap: () => setState(() {
-                  _unlimited = false;
-                  _targetValue = 1;
-                }),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _TargetChip(
-                label: '3 lần',
-                selected: !_unlimited && _targetValue == 3,
-                onTap: () => setState(() {
-                  _unlimited = false;
-                  _targetValue = 3;
-                }),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _TargetChip(
-                label: 'Không giới hạn',
-                selected: _unlimited,
-                onTap: () => setState(() {
-                  _unlimited = true;
-                  _targetValue = 1;
-                }),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: palette.tint,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: palette.accent.withValues(alpha: 0.35)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.flag_rounded, size: 18, color: palette.accentDeep),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Hoàn thành đúng tuyến ${_titleController.text.trim().isEmpty ? 'này' : _titleController.text.trim()}, '
-                  '$label trong tuần này để được cứu.',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    height: 1.35,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+        if (_journey)
+          ..._journeyOptions(palette)
+        else
+          ..._routeCompletionOptions(palette, label),
         if (_error != null) ...[
           const SizedBox(height: 12),
           Text(
@@ -635,11 +609,189 @@ class _RunContractRouteCreateScreenState
                     dimension: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Tạo kèo'),
+                : Text(_journey ? 'Chốt kèo hành trình' : 'Tạo kèo'),
           ),
         ),
       ],
     );
+  }
+
+  /// Lựa chọn cho "Theo tuyến" (routeCompletion): số lần chạy đúng tuyến.
+  List<Widget> _routeCompletionOptions(RunNowPalette palette, String label) => [
+    Text(
+      'SỐ LẦN CẦN HOÀN THÀNH',
+      style: TextStyle(
+        fontWeight: FontWeight.w900,
+        fontSize: 11,
+        letterSpacing: 0.8,
+        color: palette.textMuted,
+      ),
+    ),
+    const SizedBox(height: 10),
+    Row(
+      children: [
+        Expanded(
+          child: _TargetChip(
+            label: '1 lần',
+            selected: !_unlimited && _targetValue == 1,
+            onTap: () => setState(() {
+              _unlimited = false;
+              _targetValue = 1;
+            }),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _TargetChip(
+            label: '3 lần',
+            selected: !_unlimited && _targetValue == 3,
+            onTap: () => setState(() {
+              _unlimited = false;
+              _targetValue = 3;
+            }),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _TargetChip(
+            label: 'Không giới hạn',
+            selected: _unlimited,
+            onTap: () => setState(() {
+              _unlimited = true;
+              _targetValue = 1;
+            }),
+          ),
+        ),
+      ],
+    ),
+    const SizedBox(height: 16),
+    Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: palette.tint,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: palette.accent.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.flag_rounded, size: 18, color: palette.accentDeep),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Hoàn thành đúng tuyến ${_titleController.text.trim().isEmpty ? 'này' : _titleController.text.trim()}, '
+              '$label trong tuần này để được cứu.',
+              style: const TextStyle(fontWeight: FontWeight.w700, height: 1.35),
+            ),
+          ),
+        ],
+      ),
+    ),
+  ];
+
+  /// Lựa chọn cho KÈO HÀNH TRÌNH: mục tiêu = độ dài cung (tự động), + thời hạn
+  /// (không hạn hoặc chọn ngày). Tích luỹ km để phủ hết cung.
+  List<Widget> _journeyOptions(RunNowPalette palette) {
+    final km = (_distanceMeters / 1000);
+    return [
+      GlassPanel(
+        borderRadius: 16,
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Icon(Icons.straighten_rounded, color: palette.accentDeep),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Mục tiêu tích luỹ',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            Text(
+              '${km.toStringAsFixed(km >= 100 ? 0 : 1)} km',
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 18,
+                color: palette.accentDeep,
+              ),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 18),
+      Text(
+        'THỜI HẠN',
+        style: TextStyle(
+          fontWeight: FontWeight.w900,
+          fontSize: 11,
+          letterSpacing: 0.8,
+          color: palette.textMuted,
+        ),
+      ),
+      const SizedBox(height: 10),
+      Row(
+        children: [
+          Expanded(
+            child: _TargetChip(
+              label: 'Không hạn',
+              selected: _openEnded,
+              onTap: () => setState(() => _openEnded = true),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _TargetChip(
+              label: 'Có hạn',
+              selected: !_openEnded,
+              onTap: () => setState(() {
+                _openEnded = false;
+                _deadline ??= DateTime.now().add(const Duration(days: 30));
+              }),
+            ),
+          ),
+        ],
+      ),
+      if (!_openEnded) ...[
+        const SizedBox(height: 10),
+        GlassPanel(
+          borderRadius: 14,
+          padding: EdgeInsets.zero,
+          child: ListTile(
+            leading: Icon(Icons.event_rounded, color: palette.accentDeep),
+            title: const Text('Về đích trước ngày'),
+            subtitle: Text(
+              _deadline == null
+                  ? 'Chọn ngày'
+                  : DateFormat('dd/MM/yyyy').format(_deadline!),
+            ),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: _pickDeadline,
+          ),
+        ),
+      ],
+      const SizedBox(height: 16),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: palette.tint,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: palette.accent.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.directions_run_rounded, size: 18, color: palette.accentDeep),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _openEnded
+                    ? 'Mỗi buổi chạy cộng dồn km, đi dần tới đích — không giới hạn thời gian.'
+                    : 'Tích luỹ đủ km trước hạn để chinh phục trọn cung đường.',
+                style: const TextStyle(fontWeight: FontWeight.w700, height: 1.35),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ];
   }
 
   Future<void> _create() async {
@@ -649,28 +801,47 @@ class _RunContractRouteCreateScreenState
     });
     try {
       final title = _titleController.text.trim();
-      final draft = RunContractDraft(
-        template: RunContractTemplate.custom,
-        metric: RunContractMetric.routeCompletion,
-        targetValue: _targetValue,
-        period: RunContractPeriodType.weekly,
-        visibility: RunContractVisibility.club,
-        title: title.isEmpty ? null : title,
-        route: RunContractRoute(
-          points: [
-            for (final point in _points)
-              RunContractRoutePoint(
-                latitude: point.latitude,
-                longitude: point.longitude,
-              ),
-          ],
-          distanceMeters: _distanceMeters,
-        ),
-        unlimitedRepeat: _unlimited,
+      final route = RunContractRoute(
+        points: [
+          for (final point in _points)
+            RunContractRoutePoint(
+              latitude: point.latitude,
+              longitude: point.longitude,
+            ),
+        ],
+        distanceMeters: _distanceMeters,
       );
+      final now = DateTime.now();
+      final draft = _journey
+          ? RunContractDraft(
+              template: RunContractTemplate.custom,
+              // Hành trình: đếm theo km tích luỹ tới khi phủ hết độ dài cung.
+              metric: RunContractMetric.distance,
+              targetValue: _distanceMeters / 1000,
+              period: RunContractPeriodType.custom,
+              visibility: RunContractVisibility.club,
+              title: title.isEmpty ? null : title,
+              route: route,
+              customStart: now,
+              customEnd: _openEnded ? null : _deadline,
+              openEnded: _openEnded,
+            )
+          : RunContractDraft(
+              template: RunContractTemplate.custom,
+              metric: RunContractMetric.routeCompletion,
+              targetValue: _targetValue,
+              period: RunContractPeriodType.weekly,
+              visibility: RunContractVisibility.club,
+              title: title.isEmpty ? null : title,
+              route: route,
+              unlimitedRepeat: _unlimited,
+            );
       ref
           .read(runContractAnalyticsProvider)
-          .log('contract_route_created', draft: draft)
+          .log(
+            _journey ? 'contract_journey_created' : 'contract_route_created',
+            draft: draft,
+          )
           .ignore();
       final id = await ref.read(runContractControllerProvider).create(draft);
       if (mounted) context.go('/contracts/$id');

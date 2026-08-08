@@ -108,7 +108,10 @@ class _RunContractDetailScreenState
     // động đã có sẵn) bằng nút LIVE — chạy trực tiếp cho kèo là luồng chính
     // của loại kèo này, không cần cả 2 nút cùng lúc gây rối. Ẩn hẳn nếu
     // ngoài kỳ chạy (`running`) hoặc đã hoàn thành mục tiêu (check ở trên).
-    if (contract.route != null) {
+    // Chỉ kèo "Theo tuyến" (chạy đúng tuyến live) mới thay nút bằng LIVE. Kèo
+    // HÀNH TRÌNH cũng có route nhưng tích luỹ km bất kỳ, không chạy đúng tuyến
+    // → giữ luồng "chọn buổi chạy áp dụng" bình thường.
+    if (contract.route != null && !contract.isJourney) {
       // Web không có tab "Chạy"/tracking (không GPS liên tục) nên cũng ẩn
       // luôn nút bắt đầu live ở đây — web chỉ xem live (qua "Xem live" trên
       // bản đồ), không tự chạy live được.
@@ -880,7 +883,9 @@ class _ContractDetailHeader extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Deadline ${DateFormat('dd/MM · HH:mm').format(contract.endAtExclusive.subtract(const Duration(seconds: 1)))}',
+            contract.openEnded
+                ? 'Không giới hạn thời gian'
+                : 'Deadline ${DateFormat('dd/MM · HH:mm').format(contract.endAtExclusive.subtract(const Duration(seconds: 1)))}',
             style: TextStyle(
               color: Theme.of(
                 context,

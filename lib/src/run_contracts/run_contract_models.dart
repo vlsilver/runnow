@@ -202,12 +202,15 @@ class RunContractDraft {
   final bool unlimitedRepeat;
 
   /// Kèo hành trình: cung đường + chế độ + có/không thời hạn (xem [RunContract]).
+  /// [journeyRouteId] dành cho tương lai (chọn cung từ kho seed sẵn); hiện tại
+  /// hành trình dùng cung TỰ VẼ nhúng thẳng vào [route], nên marker là
+  /// [isJourney] = có route + đếm theo quãng đường tích luỹ.
   final String? journeyRouteId;
   final RunContractMode mode;
   final bool openEnded;
 
   bool get isJourney =>
-      journeyRouteId != null && journeyRouteId!.isNotEmpty;
+      route != null && metric == RunContractMetric.distance;
 
   RunContractDraft copyWith({
     RunContractTemplate? template,
@@ -254,6 +257,20 @@ class RunContractDraft {
 
   String? validate() {
     if (!targetValue.isFinite) return 'Mục tiêu không hợp lệ.';
+    // Kèo HÀNH TRÌNH: đích = chiều dài cung (rất dài, không áp trần 500km/khung
+    // ngày như kèo thường). Thời hạn tùy chọn — openEnded thì bỏ qua period.
+    if (isJourney) {
+      if (targetValue < 0.2) return 'Cung đường quá ngắn.';
+      if (!openEnded && period == RunContractPeriodType.custom) {
+        if (customStart == null || customEnd == null) {
+          return 'Hãy chọn thời gian bắt đầu và kết thúc.';
+        }
+        if (!customEnd!.isAfter(customStart!)) {
+          return 'Thời gian kết thúc phải sau thời gian bắt đầu.';
+        }
+      }
+      return null;
+    }
     if (period == RunContractPeriodType.custom) {
       if (customStart == null || customEnd == null) {
         return 'Hãy chọn thời gian bắt đầu và kết thúc.';
@@ -444,8 +461,8 @@ class RunContract {
   final RunContractRoute? route;
   final bool unlimitedRepeat;
 
-  /// Kèo HÀNH TRÌNH: id cung đường thật (journeyRoutes/{id}) mà km tích dồn dọc
-  /// theo. null = kèo thường (không phải hành trình).
+  /// Dành cho tương lai (chọn cung từ kho seed). Hiện hành trình dùng cung TỰ
+  /// VẼ nhúng trong [route] nên field này thường null.
   final String? journeyRouteId;
 
   /// Chế độ hành trình (chỉ có ý nghĩa khi [isJourney]).
@@ -455,9 +472,11 @@ class RunContract {
   /// bỏ qua [endAtExclusive]/[finalizeAt] về mặt hiển thị & finalize.
   final bool openEnded;
 
-  /// Kèo hành trình khi có trỏ tới 1 cung đường.
+  /// Kèo HÀNH TRÌNH = có cung đường ([route]) + đếm theo quãng đường tích luỹ
+  /// (km dồn dọc cung tới khi phủ hết chiều dài). Phân biệt với "Theo tuyến"
+  /// (metric routeCompletion — phải chạy đúng tuyến).
   bool get isJourney =>
-      journeyRouteId != null && journeyRouteId!.isNotEmpty;
+      route != null && metric == RunContractMetric.distance;
 
   double get progressRatio =>
       targetValue <= 0 ? 0 : progressValue / targetValue;

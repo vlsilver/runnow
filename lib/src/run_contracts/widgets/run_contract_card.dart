@@ -169,11 +169,13 @@ class RunContractCard extends StatelessWidget {
                     )
                   else
                     Text(
-                      DateFormat('dd/MM · HH:mm').format(
-                        contract.endAtExclusive.subtract(
-                          const Duration(seconds: 1),
-                        ),
-                      ),
+                      contract.openEnded
+                          ? 'Không giới hạn'
+                          : DateFormat('dd/MM · HH:mm').format(
+                              contract.endAtExclusive.subtract(
+                                const Duration(seconds: 1),
+                              ),
+                            ),
                       style: TextStyle(
                         color: onSurface.withValues(alpha: 0.42),
                         fontSize: 11,

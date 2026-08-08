@@ -180,6 +180,11 @@ final _router = GoRouter(
       builder: (context, state) => const RunContractRouteCreateScreen(),
     ),
     GoRoute(
+      path: '/contracts/new/journey',
+      builder: (context, state) =>
+          const RunContractRouteCreateScreen(journey: true),
+    ),
+    GoRoute(
       path: '/contracts/:id',
       builder: (context, state) =>
           RunContractDetailScreen(contractId: state.pathParameters['id']!),

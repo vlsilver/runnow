@@ -7,6 +7,11 @@ import 'package:myrun/src/run_contracts/run_contract_models.dart';
 /// Số kèo CHƯA HOÀN THÀNH tối đa mỗi người được tham gia (tạo + join) cùng lúc.
 const int maxActiveRunContracts = 5;
 
+/// schemaVersion kèo cao nhất mà bản app NÀY hiểu & render đúng. Kèo có
+/// schemaVersion lớn hơn (loại mới hơn do bản app mới tạo) sẽ bị ẩn ở client
+/// này thay vì hiển thị sai. Bản này hiểu tới 2 (2 = kèo hành trình).
+const int kSupportedRunContractSchemaVersion = 2;
+
 class RunContractPage {
   const RunContractPage({
     required this.contracts,
@@ -187,7 +192,9 @@ class FirestoreRunContractRepository implements RunContractRepository {
     final contractRef = _contracts.doc();
     await contractRef.set({
       'id': contractRef.id,
-      'schemaVersion': 1,
+      // Kèo hành trình là loại mới (schema 2): app cũ chưa hiểu sẽ ẩn đi thay
+      // vì hiển thị sai (xem lọc theo schemaVersion ở phía đọc).
+      'schemaVersion': draft.isJourney ? 2 : 1,
       'type': 'group',
       'creatorUid': _uid,
       'title': _titleFor(draft),
@@ -220,9 +227,9 @@ class FirestoreRunContractRepository implements RunContractRepository {
       'updatedAt': FieldValue.serverTimestamp(),
       if (draft.route != null) 'route': draft.route!.toMap(),
       'unlimitedRepeat': draft.unlimitedRepeat,
-      // Kèo hành trình: cung đường + chế độ + cờ không-thời-hạn.
-      if (draft.isJourney) 'journeyRouteId': draft.journeyRouteId,
+      // Kèo hành trình: cung tự vẽ (đã ghi ở 'route') + chế độ + cờ không-hạn.
       if (draft.isJourney) 'mode': draft.mode.value,
+      if (draft.journeyRouteId != null) 'journeyRouteId': draft.journeyRouteId,
       if (draft.openEnded) 'openEnded': true,
     });
     return contractRef.id;
@@ -581,6 +588,10 @@ class FirestoreRunContractRepository implements RunContractRepository {
   ) {
     final data = document.data();
     if (data == null) return null;
+    // Version gate: kèo loại mới hơn (schemaVersion cao hơn mức app này hiểu)
+    // bị ẩn thay vì render sai — vd app cũ gặp kèo hành trình (schema 2).
+    final schema = (data['schemaVersion'] as num?)?.toInt() ?? 1;
+    if (schema > kSupportedRunContractSchemaVersion) return null;
     final rawParticipants = data['participants'];
     final participants = rawParticipants is Map<String, dynamic>
         ? {
