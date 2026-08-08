@@ -220,6 +220,10 @@ class FirestoreRunContractRepository implements RunContractRepository {
       'updatedAt': FieldValue.serverTimestamp(),
       if (draft.route != null) 'route': draft.route!.toMap(),
       'unlimitedRepeat': draft.unlimitedRepeat,
+      // Kèo hành trình: cung đường + chế độ + cờ không-thời-hạn.
+      if (draft.isJourney) 'journeyRouteId': draft.journeyRouteId,
+      if (draft.isJourney) 'mode': draft.mode.value,
+      if (draft.openEnded) 'openEnded': true,
     });
     return contractRef.id;
   }

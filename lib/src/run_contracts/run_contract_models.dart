@@ -17,6 +17,21 @@ enum RunContractMetric {
   };
 }
 
+/// Chế độ của KÈO HÀNH TRÌNH (kèo tích luỹ km dọc 1 cung đường có thật):
+/// - [individual]: mỗi người tích km riêng, xếp hạng ai đi xa nhất.
+/// - [team]: cả nhóm gộp km đẩy 1 marker về đích, hiện % đóng góp.
+/// Kèo thường (không phải hành trình) mặc định [individual] và bỏ qua field này.
+enum RunContractMode {
+  individual('individual'),
+  team('team');
+
+  const RunContractMode(this.value);
+  final String value;
+
+  static RunContractMode fromValue(String? value) =>
+      value == 'team' ? RunContractMode.team : RunContractMode.individual;
+}
+
 /// 1 điểm mốc trên tuyến tham khảo do người tạo kèo vẽ — chỉ cần toạ độ,
 /// khác [RoutePoint] (dùng cho GPS đã ghi thật) vốn bắt buộc có timestamp.
 class RunContractRoutePoint {
@@ -151,6 +166,9 @@ class RunContractDraft {
     this.customEnd,
     this.route,
     this.unlimitedRepeat = false,
+    this.journeyRouteId,
+    this.mode = RunContractMode.individual,
+    this.openEnded = false,
   });
 
   factory RunContractDraft.weekly10k() => RunContractDraft(
@@ -183,6 +201,14 @@ class RunContractDraft {
   /// thường, cờ này chỉ đổi cách hiển thị.
   final bool unlimitedRepeat;
 
+  /// Kèo hành trình: cung đường + chế độ + có/không thời hạn (xem [RunContract]).
+  final String? journeyRouteId;
+  final RunContractMode mode;
+  final bool openEnded;
+
+  bool get isJourney =>
+      journeyRouteId != null && journeyRouteId!.isNotEmpty;
+
   RunContractDraft copyWith({
     RunContractTemplate? template,
     RunContractMetric? metric,
@@ -194,6 +220,9 @@ class RunContractDraft {
     DateTime? customEnd,
     RunContractRoute? route,
     bool? unlimitedRepeat,
+    String? journeyRouteId,
+    RunContractMode? mode,
+    bool? openEnded,
   }) => RunContractDraft(
     template: template ?? this.template,
     metric: metric ?? this.metric,
@@ -205,6 +234,9 @@ class RunContractDraft {
     customEnd: customEnd ?? this.customEnd,
     route: route ?? this.route,
     unlimitedRepeat: unlimitedRepeat ?? this.unlimitedRepeat,
+    journeyRouteId: journeyRouteId ?? this.journeyRouteId,
+    mode: mode ?? this.mode,
+    openEnded: openEnded ?? this.openEnded,
   );
 
   /// Số ngày active tối đa cho phép tùy theo khung thời gian.
@@ -323,6 +355,9 @@ class RunContract {
     this.schemaVersion = 1,
     this.route,
     this.unlimitedRepeat = false,
+    this.journeyRouteId,
+    this.mode = RunContractMode.individual,
+    this.openEnded = false,
   });
 
   factory RunContract.fromMap(Map<String, dynamic> map) {
@@ -377,6 +412,11 @@ class RunContract {
           ? RunContractRoute.fromMap(map['route'] as Map<String, dynamic>)
           : null,
       unlimitedRepeat: map['unlimitedRepeat'] as bool? ?? false,
+      journeyRouteId: (map['journeyRouteId'] as String?)?.isNotEmpty ?? false
+          ? map['journeyRouteId'] as String
+          : null,
+      mode: RunContractMode.fromValue(map['mode'] as String?),
+      openEnded: map['openEnded'] as bool? ?? false,
     );
   }
 
@@ -403,6 +443,21 @@ class RunContract {
   final DateTime updatedAt;
   final RunContractRoute? route;
   final bool unlimitedRepeat;
+
+  /// Kèo HÀNH TRÌNH: id cung đường thật (journeyRoutes/{id}) mà km tích dồn dọc
+  /// theo. null = kèo thường (không phải hành trình).
+  final String? journeyRouteId;
+
+  /// Chế độ hành trình (chỉ có ý nghĩa khi [isJourney]).
+  final RunContractMode mode;
+
+  /// true = kèo KHÔNG thời hạn (chạy tới khi chinh phục/không kết thúc). Khi đó
+  /// bỏ qua [endAtExclusive]/[finalizeAt] về mặt hiển thị & finalize.
+  final bool openEnded;
+
+  /// Kèo hành trình khi có trỏ tới 1 cung đường.
+  bool get isJourney =>
+      journeyRouteId != null && journeyRouteId!.isNotEmpty;
 
   double get progressRatio =>
       targetValue <= 0 ? 0 : progressValue / targetValue;
