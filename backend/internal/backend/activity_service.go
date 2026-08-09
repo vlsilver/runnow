@@ -49,6 +49,7 @@ type broadcastRecorder interface {
 	ActivityAnnouncement(ctx context.Context, displayName, activityName string, fact ActivityFact) string
 	LiveAnnouncement(ctx context.Context, displayName, event string, distanceMeters, movingTimeSeconds float64, milestoneKm int) string
 	LivePhotoAnnouncement(ctx context.Context, displayName, photoPath string, distanceMeters float64) error
+	ContractRoast(ctx context.Context, title, targetLabel string, failers []roastFailer) string
 	Enabled() bool
 }
 

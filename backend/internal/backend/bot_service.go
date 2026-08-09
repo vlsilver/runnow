@@ -1378,6 +1378,44 @@ dưới). Sự kiện: start = vừa xuất phát, milestone = vừa qua một c
 đường, finish = vừa về đích. Báo tin này lên group theo đúng chất của bạn, dùng
 đúng số liệu cho sẵn. Chỉ trả về lời thông báo, không lời dẫn.`
 
+const contractRoastInstruction = `
+
+BỐI CẢNH: một KÈO trong group vừa ĐÓNG. Có người ĐĂNG KÝ tham gia mà KHÔNG
+hoàn thành mục tiêu (danh sách bên dưới). Nhiệm vụ của bạn: "bôi tro trét trấu"
+— cà khịa ĐÍCH DANH những người trượt lên group cho vui, đúng chất lầy của bạn.
+Nêu tên họ, cà khịa hài hước, có thể thách gỡ gạc kèo sau. NGẮN (2-4 câu). Vui
+là chính — KHÔNG xúc phạm nặng, không ác ý, không đụng ngoại hình/gia cảnh/vấn
+đề nhạy cảm; chỉ ghẹo chuyện lười chạy/bỏ kèo. Chỉ trả về lời cà khịa, không lời
+dẫn.`
+
+// ContractRoast để bot viết lời "bôi tro trét trấu" những người trượt 1 kèo vừa
+// đóng, bằng giọng của nó. Rỗng nếu bot tắt/model lỗi → caller rơi về bản mẫu
+// tĩnh (contractRoastPlain), không bao giờ mất tin.
+func (s *BotService) ContractRoast(ctx context.Context, title, targetLabel string, failers []roastFailer) string {
+	if !s.Enabled() || len(failers) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "KÈO VỪA ĐÓNG (viết lời cà khịa từ đây, dùng đúng tên + số):\n")
+	fmt.Fprintf(&b, "- Tên kèo: %s\n", title)
+	fmt.Fprintf(&b, "- Mục tiêu: %s\n", targetLabel)
+	fmt.Fprintf(&b, "- Những người ĐĂNG KÝ mà KHÔNG hoàn thành:\n")
+	for _, f := range failers {
+		fmt.Fprintf(&b, "  · %s — mới đạt %s\n", f.name, f.progress)
+	}
+	systemPrompt := botSystemPrompt + contractRoastInstruction
+	if mem := s.memory.Load(ctx, s.telegram.ChatID()); mem != "" {
+		systemPrompt += "\n\nTRÍ NHỚ VỀ NHÓM NÀY:\n" + mem
+	}
+	contents := []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: b.String()}}}}
+	text, err := s.Answer(ctx, systemPrompt, contents, false)
+	if err != nil {
+		slog.WarnContext(ctx, "bot.contract_roast_failed", "error", err)
+		return ""
+	}
+	return strings.TrimSpace(text)
+}
+
 // LiveAnnouncement để bot viết 1 câu tường thuật cho sự kiện live (app gọi khi
 // user bắt đầu/qua mốc/về đích). Rỗng nếu bot tắt hay model lỗi → caller rơi về
 // bản mẫu tĩnh, không bao giờ mất thông báo.

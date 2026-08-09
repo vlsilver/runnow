@@ -52,6 +52,7 @@ func (s *Server) botRoutes() {
 	// dời sang service bot. Định tuyến queue/scheduler đổi ở deploy.sh.
 	s.route("POST /tasks/notify-telegram", s.notifyTelegram)
 	s.route("POST /tasks/live-announce", s.liveAnnounce)
+	s.route("POST /tasks/contract-roast", s.contractRoast)
 	s.route("POST /tasks/consolidate-memory", s.consolidateMemory)
 	// Cloud Scheduler gõ mỗi 10 phút → chạy các lịch bot tự đặt tới hạn.
 	s.route("POST /tasks/schedule-tick", func(w http.ResponseWriter, r *http.Request) error {
@@ -170,6 +171,24 @@ func (s *Server) liveAnnounce(w http.ResponseWriter, r *http.Request) error {
 		return nil
 	}
 	if err := s.deps.Activities.LiveAnnounce(r.Context(), task.UID, task.ActivityID, task.Event, task.DistanceMeters, task.MovingTimeSeconds, task.MilestoneKm, task.PhotoPath); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// contractRoast: task chạy trên bot — bêu những người trượt của 1 kèo vừa đóng
+// (app chủ kèo gọi qua /v1/contracts/announce-result). Việc AI + gửi group nên
+// nằm ở runnow-bot.
+func (s *Server) contractRoast(w http.ResponseWriter, r *http.Request) error {
+	var task struct {
+		UID        string `json:"uid"`
+		ContractID string `json:"contractId"`
+	}
+	if decodeJSON(r, &task) != nil || task.UID == "" || task.ContractID == "" {
+		w.WriteHeader(204)
+		return nil
+	}
+	if err := s.deps.Activities.AnnounceContractResult(r.Context(), task.UID, task.ContractID); err != nil {
 		return err
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})
@@ -357,6 +376,22 @@ func (s *Server) apiRoutes() {
 		payload := map[string]any{"uid": uid, "activityId": body.ActivityID, "event": body.Event, "distanceMeters": body.DistanceMeters, "movingTimeSeconds": body.MovingTimeSeconds, "milestoneKm": body.MilestoneKm, "photoPath": body.PhotoPath}
 		dedup := map[string]any{"activityId": body.ActivityID, "event": body.Event, "km": body.MilestoneKm, "photo": body.PhotoPath}
 		if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/live-announce", Payload: payload, TaskID: StableTaskID("live", dedup)}); err != nil {
+			return err
+		}
+		return writeJSON(w, 202, map[string]any{"ok": true})
+	}))
+	s.route("POST /v1/contracts/announce-result", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		// App (CHỦ kèo) gọi sau khi chốt kèo. Chỉ enqueue task nhẹ sang bot; việc
+		// đọc kèo + tìm ai trượt + bêu để bot lo. TaskID theo contract nên gọi lại
+		// không bắn trùng (bot còn chốt thêm bằng roastedAt trên doc kèo).
+		var body struct {
+			ContractID string `json:"contractId"`
+		}
+		if decodeJSON(r, &body) != nil || body.ContractID == "" {
+			return invalidRequest()
+		}
+		payload := map[string]any{"uid": uid, "contractId": body.ContractID}
+		if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/contract-roast", Payload: payload, TaskID: StableTaskID("roast", body.ContractID)}); err != nil {
 			return err
 		}
 		return writeJSON(w, 202, map[string]any{"ok": true})
