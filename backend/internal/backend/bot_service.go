@@ -696,6 +696,47 @@ func (s *BotService) loadHistory(ctx context.Context, chatID string) ([]*genai.C
 	return buildHistoryContents(rows), nil
 }
 
+// botDuplicateWindow: trong khoảng này, một tin user TRÙNG Y HỆT (cùng người +
+// cùng chữ) bị coi là bản lặp do gửi/deliver 2 lần và bị BỎ QUA — không lưu,
+// không trả lời lại. Trước đây bot đọc thấy tin đôi rồi "diễn" thành sếp nhấn
+// mạnh; giờ coi như chỉ có một tin.
+const botDuplicateWindow = 5 * time.Minute
+
+// isRecentDuplicate báo tin (name+text) có phải bản lặp của một tin user vừa
+// xuất hiện trong botDuplicateWindow không. Best-effort: lỗi đọc thì trả false
+// (thà xử lý lặp còn hơn nuốt tin thật).
+func (s *BotService) isRecentDuplicate(ctx context.Context, chatID, name, text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	docs, err := s.historyRef(chatID).
+		OrderBy("createdAt", firestore.Desc).
+		Limit(4).Documents(ctx).GetAll()
+	if err != nil {
+		return false
+	}
+	cutoff := time.Now().UTC().Add(-botDuplicateWindow)
+	for _, d := range docs {
+		data := d.Data()
+		if stringValue(data["role"]) != genai.RoleUser {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(stringValue(data["text"])), text) {
+			continue
+		}
+		// Cùng người gửi (khi có tên) — tránh nuốt nhầm 2 người tình cờ gõ giống
+		// nhau ("ok", "chạy đi").
+		if name != "" && !strings.EqualFold(stringValue(data["name"]), name) {
+			continue
+		}
+		if ts, ok := data["createdAt"].(time.Time); ok && ts.After(cutoff) {
+			return true
+		}
+	}
+	return false
+}
+
 // buildHistoryContents biến các doc (thứ tự mới→cũ như Firestore trả) thành
 // chuỗi content cũ→mới, hợp lệ với Gemini.
 //
@@ -984,6 +1025,11 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID, senderID, name, 
 	if question == "" {
 		return nil
 	}
+	// Câu hỏi bị gửi/deliver 2 lần: chỉ trả lời bản đầu, bỏ bản lặp (không ai
+	// hỏi — và không ai trả lời — hai lần).
+	if s.isRecentDuplicate(ctx, chatID, name, question) {
+		return nil
+	}
 	// Giới hạn theo giờ cho từng chat (áp cho cả group lẫn DM).
 	allowed, err := s.allowChat(ctx, chatID)
 	if err != nil {
@@ -1105,6 +1151,10 @@ func (s *BotService) RecordIncoming(ctx context.Context, chatID, senderID, name,
 	}
 	text = strings.TrimSpace(text)
 	if text == "" {
+		return nil
+	}
+	// Tin gửi/deliver 2 lần: bỏ qua bản lặp — không lưu, không tự chen trả lời.
+	if s.isRecentDuplicate(ctx, chatID, name, text) {
 		return nil
 	}
 	now := time.Now().UTC()
