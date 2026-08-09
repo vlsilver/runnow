@@ -133,6 +133,33 @@ class RunContractController {
     return progress;
   }
 
+  /// Kèo HÀNH TRÌNH: TỰ cộng MỌI buổi chạy hợp lệ trong kỳ (khác kèo thường —
+  /// phải tự áp từng buổi). Cố ý KHÔNG "claim" buổi chạy nào (countedActivityIds
+  /// rỗng) để hành trình chỉ TÍNH mà không CHIẾM — cùng 1 buổi vẫn đếm được cho
+  /// cả hành trình lẫn kèo tuần/tháng khác. Cập nhật tiến độ của CHÍNH user
+  /// hiện tại (creator hoặc participant đã tham gia).
+  Future<RunContractProgress> recalculateJourney(
+    RunContract contract,
+    String currentUid,
+  ) async {
+    final (activities, _) = await _officialActivitiesFor(contract);
+    final progress = calculateRunContractProgress(contract, activities);
+    if (contract.creatorUid == currentUid) {
+      await _contracts.updateProgress(
+        contract.id,
+        progress.value,
+        countedActivityIds: const [],
+      );
+    } else {
+      await _contracts.updateParticipantProgress(
+        contract.id,
+        progress.value,
+        countedActivityIds: const [],
+      );
+    }
+    return progress;
+  }
+
   /// Activity "chính thức" trong khoảng của [contract] (đã khử trùng
   /// Strava/3i), CỘNG với những activity đã claim vào đúng kèo này nhưng vừa
   /// "thua" bước khử trùng đó (vd 1 activity 3i đã áp vào kèo, sau đó Strava
@@ -287,6 +314,17 @@ class RunContractController {
     if (activeContracts.isEmpty || changedActivities.isEmpty) return;
     final changedIds = changedActivities.map((activity) => activity.id).toSet();
     for (final contract in activeContracts) {
+      // Hành trình: TỰ cộng mọi buổi mới — không gate theo buổi đã-claim (nó
+      // không claim buổi nào), chỉ cần có buổi nào đó vừa đổi là tính lại.
+      if (contract.isJourney) {
+        if (contract.participantFor(currentUid) == null) continue;
+        try {
+          await recalculateJourney(contract, currentUid);
+        } catch (_) {
+          // Bỏ qua — snapshot activity đổi lần sau sẽ tự tính lại.
+        }
+        continue;
+      }
       final countedIds =
           contract.participantFor(currentUid)?.countedActivityIds ?? const [];
       if (!countedIds.any(changedIds.contains)) continue;

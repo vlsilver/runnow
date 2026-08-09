@@ -60,6 +60,8 @@ class _RunContractRouteCreateScreenState
   // Hành trình: không hạn (mặc định) hoặc chọn deadline.
   var _openEnded = true;
   DateTime? _deadline;
+  // Hành trình: cá nhân (mỗi người tự chinh phục) hoặc tập thể (cả nhóm gộp km).
+  var _mode = RunContractMode.individual;
   String? _error;
   LatLng? _initialCenter;
 
@@ -719,6 +721,48 @@ class _RunContractRouteCreateScreenState
       ),
       const SizedBox(height: 18),
       Text(
+        'CHẾ ĐỘ',
+        style: TextStyle(
+          fontWeight: FontWeight.w900,
+          fontSize: 11,
+          letterSpacing: 0.8,
+          color: palette.textMuted,
+        ),
+      ),
+      const SizedBox(height: 10),
+      Row(
+        children: [
+          Expanded(
+            child: _TargetChip(
+              label: 'Cá nhân',
+              selected: _mode == RunContractMode.individual,
+              onTap: () =>
+                  setState(() => _mode = RunContractMode.individual),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _TargetChip(
+              label: 'Tập thể',
+              selected: _mode == RunContractMode.team,
+              onTap: () => setState(() => _mode = RunContractMode.team),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 6),
+      Text(
+        _mode == RunContractMode.team
+            ? 'Cả nhóm gộp km cùng chinh phục cung — hiện % đóng góp từng người.'
+            : 'Mỗi người tự tích luỹ chinh phục cung của mình.',
+        style: TextStyle(
+          color: palette.textMuted,
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+        ),
+      ),
+      const SizedBox(height: 18),
+      Text(
         'THỜI HẠN',
         style: TextStyle(
           fontWeight: FontWeight.w900,
@@ -825,6 +869,7 @@ class _RunContractRouteCreateScreenState
               customStart: now,
               customEnd: _openEnded ? null : _deadline,
               openEnded: _openEnded,
+              mode: _mode,
             )
           : RunContractDraft(
               template: RunContractTemplate.custom,

@@ -154,7 +154,10 @@ class _RunContractDetailScreenState
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           final controller = ref.read(runContractControllerProvider);
-          if (currentUid == contract.creatorUid) {
+          if (contract.isJourney && currentUid != null) {
+            // Hành trình: tự cộng mọi buổi hợp lệ (không cần áp thủ công).
+            controller.recalculateJourney(contract, currentUid).ignore();
+          } else if (currentUid == contract.creatorUid) {
             controller.recalculate(contract).ignore();
           } else {
             controller.recalculateParticipant(contract).ignore();
@@ -239,7 +242,10 @@ class _RunContractDetailScreenState
             onToggle: () => setState(() => _showRouteMap = !_showRouteMap),
           ),
         ],
-        if (participant != null) ...[
+        if (contract.isJourney && contract.mode == RunContractMode.team) ...[
+          const SizedBox(height: 12),
+          _TeamConquestCard(contract: contract),
+        ] else if (participant != null) ...[
           const SizedBox(height: 12),
           _MyProgressCard(contract: contract, participant: participant),
         ],
@@ -249,6 +255,7 @@ class _RunContractDetailScreenState
           profiles: profiles,
           currentUid: uid,
           currentProfile: currentProfile,
+          teamMode: contract.isJourney && contract.mode == RunContractMode.team,
         ),
         const SizedBox(height: 12),
         _LazyContractSection(
@@ -356,6 +363,15 @@ class _RunContractDetailScreenState
             contract: contract,
           )
           .ignore();
+      // Kèo public vừa đóng: nhờ backend để 3i "bôi tro trét trấu" những người
+      // đăng ký mà không hoàn thành, lên group. Fire-and-forget — không có ai
+      // trượt / bot tắt thì backend tự bỏ qua êm.
+      if (contract.visibility == RunContractVisibility.club) {
+        ref
+            .read(runNowApiClientProvider)
+            .announceContractResult(contractId: contract.id)
+            .ignore();
+      }
     } catch (error) {
       _showError(error);
     } finally {
@@ -1005,6 +1021,128 @@ class _MyProgressCard extends StatelessWidget {
   }
 }
 
+/// Kèo HÀNH TRÌNH TẬP THỂ: tiến độ GỘP cả nhóm (tổng km mọi người / độ dài
+/// cung). % đóng góp từng người nằm ở [_ParticipantProgressList] bên dưới.
+class _TeamConquestCard extends StatelessWidget {
+  const _TeamConquestCard({required this.contract});
+
+  final RunContract contract;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final teamTotal = contract.participants.values.fold<double>(
+      0,
+      (sum, p) => sum + p.progressValue,
+    );
+    final ratio = contract.targetValue <= 0
+        ? 0.0
+        : teamTotal / contract.targetValue;
+    final remaining = (contract.targetValue - teamTotal).clamp(
+      0.0,
+      contract.targetValue,
+    );
+    final completed = ratio >= 1;
+    final foreground =
+        ThemeData.estimateBrightnessForColor(palette.accent) == Brightness.dark
+        ? Colors.white
+        : Colors.black;
+    return GlassPanel(
+      borderRadius: 18,
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+      gradient: LinearGradient(
+        colors: [palette.accent, palette.accentDeep],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Icon(Icons.groups_2_rounded, color: foreground, size: 18),
+              const SizedBox(width: 6),
+              Text(
+                'CẢ NHÓM',
+                style: TextStyle(
+                  color: foreground.withValues(alpha: 0.78),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _contractValue(contract.metric, teamTotal),
+                style: TextStyle(
+                  color: foreground,
+                  fontSize: 22,
+                  height: 1,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              Text(
+                '/${_contractValue(contract.metric, contract.targetValue)}',
+                style: TextStyle(
+                  color: foreground.withValues(alpha: 0.62),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const Spacer(),
+              if (completed)
+                Row(
+                  children: [
+                    Icon(
+                      Icons.emoji_events_rounded,
+                      color: foreground,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Chinh phục!',
+                      style: TextStyle(
+                        color: foreground,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                )
+              else
+                Text(
+                  'Còn ${_contractValue(contract.metric, remaining)}',
+                  style: TextStyle(
+                    color: foreground.withValues(alpha: 0.82),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          LinearProgressIndicator(
+            value: ratio.clamp(0.0, 1.0),
+            minHeight: 9,
+            borderRadius: BorderRadius.circular(2),
+            backgroundColor: foreground.withValues(alpha: 0.2),
+            color: foreground,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${(ratio * 100).clamp(0, 100).toStringAsFixed(0)}% chặng đường · '
+            '${contract.participants.length} người cùng đi',
+            style: TextStyle(
+              color: foreground.withValues(alpha: 0.82),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _LazyContractSection extends StatelessWidget {
   const _LazyContractSection({
     required this.title,
@@ -1445,12 +1583,17 @@ class _ParticipantProgressList extends StatelessWidget {
     required this.profiles,
     required this.currentUid,
     required this.currentProfile,
+    this.teamMode = false,
   });
 
   final RunContract contract;
   final Map<String, MemberProfile> profiles;
   final String? currentUid;
   final UserProfile? currentProfile;
+
+  /// true = kèo hành trình TẬP THỂ: hiện % đóng góp của mỗi người vào tổng km
+  /// cả nhóm thay vì tiến độ cá nhân so với đích.
+  final bool teamMode;
 
   @override
   Widget build(BuildContext context) {
@@ -1461,6 +1604,10 @@ class _ParticipantProgressList extends StatelessWidget {
           (participant) => participant.progressValue >= contract.targetValue,
         )
         .length;
+    final teamTotal = participants.fold<double>(
+      0,
+      (sum, p) => sum + p.progressValue,
+    );
     return GlassPanel(
       borderRadius: 18,
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -1487,7 +1634,9 @@ class _ParticipantProgressList extends StatelessWidget {
                 ),
               ),
               Text(
-                '$completedCount/${participants.length} đã hoàn thành',
+                teamMode
+                    ? 'Tổng ${_contractValue(contract.metric, teamTotal)}'
+                    : '$completedCount/${participants.length} đã hoàn thành',
                 style: TextStyle(
                   color: context.runNowPalette.accent,
                   fontSize: 11,
@@ -1509,6 +1658,7 @@ class _ParticipantProgressList extends StatelessWidget {
                   ? currentProfile?.avatarUrl
                   : profiles[participants[index].uid]?.avatarUrl,
               isCurrentUser: participants[index].uid == currentUid,
+              teamTotal: teamMode ? teamTotal : null,
             ),
             if (index != participants.length - 1) const SizedBox(height: 20),
           ],
@@ -1525,6 +1675,7 @@ class _ParticipantRow extends StatelessWidget {
     required this.name,
     required this.avatarUrl,
     required this.isCurrentUser,
+    this.teamTotal,
   });
 
   final RunContract contract;
@@ -1533,13 +1684,21 @@ class _ParticipantRow extends StatelessWidget {
   final String? avatarUrl;
   final bool isCurrentUser;
 
+  /// Không null = kèo tập thể: thanh & % thể hiện phần đóng góp vào tổng km cả
+  /// nhóm, không phải tiến độ so với đích cá nhân.
+  final double? teamTotal;
+
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final completed = participant.progressValue >= contract.targetValue;
-    final ratio = contract.targetValue <= 0
+    final teamMode = teamTotal != null;
+    // Team: không có khái niệm "hoàn thành cá nhân" — cả nhóm cùng về đích.
+    final completed =
+        !teamMode && participant.progressValue >= contract.targetValue;
+    final denom = teamMode ? teamTotal! : contract.targetValue;
+    final ratio = denom <= 0
         ? 0.0
-        : (participant.progressValue / contract.targetValue).clamp(0.0, 1.0);
+        : (participant.progressValue / denom).clamp(0.0, 1.0);
     return Row(
       children: [
         CircleAvatar(

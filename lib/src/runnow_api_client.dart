@@ -174,6 +174,17 @@ class RunNowApiClient {
     );
   }
 
+  /// Sau khi CHỦ kèo chốt kết quả: nhờ backend cho 3i "bôi tro trét trấu" những
+  /// người đăng ký mà không hoàn thành, lên group. Fire-and-forget, chỉ kèo
+  /// public mới nên gọi. Lỗi mạng bỏ qua (không chặn luồng chốt kèo).
+  Future<void> announceContractResult({required String contractId}) async {
+    await _send(
+      'POST',
+      '/v1/contracts/announce-result',
+      body: {'contractId': contractId},
+    );
+  }
+
   Future<void> updateProfile({
     required String nickname,
     required String? avatarUrl,
