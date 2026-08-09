@@ -117,7 +117,7 @@ class JourneyRouteSummary {
   final double totalLengthMeters;
 }
 
-enum JourneyRouteId { athensMarathon, tourDuMontBlanc, coastal, hcmTrail }
+enum JourneyRouteId { athensMarathon, tourDuMontBlanc, coastal, hcmTrail, dongNamA }
 
 extension JourneyRouteIdInfo on JourneyRouteId {
   /// Trùng với document id trong collection `journeyRoutes` trên Firestore.
@@ -126,6 +126,7 @@ extension JourneyRouteIdInfo on JourneyRouteId {
     JourneyRouteId.tourDuMontBlanc => 'tour_du_mont_blanc',
     JourneyRouteId.coastal => 'coastal',
     JourneyRouteId.hcmTrail => 'hcm_trail',
+    JourneyRouteId.dongNamA => 'dong_nam_a',
   };
 }
 
@@ -134,6 +135,7 @@ JourneyRouteId? parseJourneyRouteId(String? value) => switch (value) {
   'tour_du_mont_blanc' => JourneyRouteId.tourDuMontBlanc,
   'coastal' => JourneyRouteId.coastal,
   'hcm_trail' => JourneyRouteId.hcmTrail,
+  'dong_nam_a' => JourneyRouteId.dongNamA,
   _ => null,
 };
 
@@ -142,7 +144,7 @@ JourneyRouteId? parseJourneyRouteId(String? value) => switch (value) {
 /// [JourneyCampaignInfo.priorCampaigns] + cách dùng ở
 /// `journeyCampaignOffsetProvider`, `providers.dart`). Chỉ giữ các chiến
 /// dịch đã có đủ cả ảnh đại diện thật lẫn cung đường thật.
-enum JourneyCampaignId { marathon, montBlanc, xuyenViet }
+enum JourneyCampaignId { marathon, montBlanc, xuyenViet, dongNamA }
 
 /// Thứ tự cố định của các chiến dịch, xếp theo cự ly tăng dần — nguồn sự
 /// thật duy nhất cho "level" và cho việc tính offset km dồn từ (các) chiến
@@ -151,6 +153,7 @@ const journeyCampaignOrder = [
   JourneyCampaignId.marathon,
   JourneyCampaignId.montBlanc,
   JourneyCampaignId.xuyenViet,
+  JourneyCampaignId.dongNamA,
 ];
 
 extension JourneyCampaignInfo on JourneyCampaignId {
@@ -161,12 +164,14 @@ extension JourneyCampaignInfo on JourneyCampaignId {
     JourneyCampaignId.marathon => 'Marathon Athens',
     JourneyCampaignId.montBlanc => 'Tour du Mont Blanc',
     JourneyCampaignId.xuyenViet => 'Hành Trình Xuyên Việt',
+    JourneyCampaignId.dongNamA => 'Đông Nam Á',
   };
 
   String get value => switch (this) {
     JourneyCampaignId.marathon => 'marathon',
     JourneyCampaignId.montBlanc => 'mont_blanc',
     JourneyCampaignId.xuyenViet => 'xuyen_viet',
+    JourneyCampaignId.dongNamA => 'dong_nam_a',
   };
 
   /// Cung đường trong chiến dịch. Chỉ Xuyên Việt có 2 lựa chọn (coastal/hcm
@@ -178,6 +183,7 @@ extension JourneyCampaignInfo on JourneyCampaignId {
       JourneyRouteId.coastal,
       JourneyRouteId.hcmTrail,
     ],
+    JourneyCampaignId.dongNamA => const [JourneyRouteId.dongNamA],
   };
 
   /// Các chiến dịch đứng trước, theo đúng thứ tự — dùng để cộng dồn km làm
@@ -198,6 +204,7 @@ JourneyCampaignId? parseJourneyCampaignId(String? value) => switch (value) {
   'marathon' => JourneyCampaignId.marathon,
   'mont_blanc' => JourneyCampaignId.montBlanc,
   'xuyen_viet' => JourneyCampaignId.xuyenViet,
+  'dong_nam_a' => JourneyCampaignId.dongNamA,
   _ => null,
 };
 

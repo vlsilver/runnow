@@ -1049,32 +1049,42 @@ class _CurrentCardContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
+    // Bố cục GỌN như card "hoàn thành" (tên trên, thông tin dồn đáy qua
+    // Spacer) — nhờ vậy chiều cao card ~bằng các card khác, ô ảnh bên trái
+    // giữ tỉ lệ NGANG thay vì bị kéo cao thành ~vuông.
     return _LevelCardShell(
       state: state,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
         children: [
-          const _StatusChip(label: '● Đang chạy'),
-          const SizedBox(height: 5),
+          Row(
+            children: [
+              const _StatusChip(label: '● Đang chạy'),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  formatDistance(state.route.totalLengthMeters),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: palette.ink,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
           Text(
             state.displayName,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: _cardTitleStyle(palette),
           ),
-          const SizedBox(height: 8),
-          Text(
-            formatDistance(state.route.totalLengthMeters),
-            style: TextStyle(
-              color: palette.ink,
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 8),
+          const Spacer(),
           _LevelProgressBar(value: state.ratio),
-          const SizedBox(height: 7),
+          const SizedBox(height: 6),
           Text(
             '${(state.ratio * 100).round()}% · còn ${formatDistance(state.remainingMeters)} nữa',
             style: TextStyle(
@@ -1249,6 +1259,7 @@ String _campaignImageAsset(JourneyCampaignId campaign) {
     JourneyCampaignId.montBlanc =>
       'assets/journey/images/tour_du_mont_blanc.jpg',
     JourneyCampaignId.xuyenViet => 'assets/journey/images/xuyen_viet_coast.jpg',
+    JourneyCampaignId.dongNamA => 'assets/journey/images/dong_nam_a.jpg',
   };
 }
 

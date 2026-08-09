@@ -306,5 +306,8 @@ routes.append(build_route(
     extra_interp=10, amplitude_frac=0.24, cycles=3,
 ))
 
+# Ghi chú: cung "dong_nam_a" (Xuyên thủ đô Đông Nam Á) KHÔNG dùng waypoint-wiggle
+# ở đây mà bám đường thật qua OSRM — xem scripts/journey/build_dong_nam_a.py.
+
 print("---")
 print("Total routes built:", len(routes))
