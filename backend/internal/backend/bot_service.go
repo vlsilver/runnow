@@ -1057,16 +1057,21 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID, senderID, name, 
 	ctx = context.WithValue(ctx, ctxSenderID, senderID)
 	ctx = context.WithValue(ctx, ctxSenderName, name)
 	ctx = context.WithValue(ctx, ctxImageOutcome, outcome)
-	// Ảnh người dùng gửi kèm (nếu có) → tải về làm ảnh THAM CHIẾU cho việc vẽ
-	// lại. Best-effort: tải hỏng thì bỏ, coi như tin không kèm ảnh.
-	hasRefImage := false
-	if photoFileID != "" && s.imageGenai != nil {
+	// Ảnh người dùng gửi kèm (nếu có): tải MỘT lần, dùng cho CẢ (a) ĐỌC/HIỂU
+	// bằng vision — đưa thẳng vào input gemini-2.5-pro để nó nhìn thấy ảnh, LẪN
+	// (b) vẽ-lại qua generate_image. Best-effort: tải hỏng thì coi như không ảnh.
+	var refImage []byte
+	if photoFileID != "" {
 		if ref, derr := s.telegram.DownloadFile(ctx, photoFileID); derr != nil {
 			slog.WarnContext(ctx, "bot.ref_image_download_failed", "error", derr)
 		} else if len(ref) > 0 {
-			ctx = context.WithValue(ctx, ctxRefImage, ref)
-			hasRefImage = true
+			refImage = ref
 		}
+	}
+	hasImage := len(refImage) > 0
+	// Vẽ-lại cần model ảnh riêng; chỉ gắn ref cho tool khi model ảnh có mặt.
+	if hasImage && s.imageGenai != nil {
+		ctx = context.WithValue(ctx, ctxRefImage, refImage)
 	}
 
 	// Lịch sử hỏng thì vẫn trả lời được, chỉ là mất ngữ cảnh — không đáng để
@@ -1080,10 +1085,14 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID, senderID, name, 
 	if name != "" {
 		currentText = name + ": " + question
 	}
-	if hasRefImage {
-		currentText += "\n[Người này ĐÍNH KÈM 1 ẢNH. Nếu họ nhờ vẽ/chế/vẽ-lại thì gọi generate_image — ảnh kèm sẽ được dùng làm THAM CHIẾU để vẽ lại, hãy mô tả (tiếng Anh) phần cần biến đổi/giữ lại.]"
+	if hasImage {
+		currentText += "\n[Người này ĐÍNH KÈM 1 ẢNH và bạn NHÌN THẤY nó. Nếu ảnh có số liệu chạy (màn đồng hồ Garmin/Coros, ảnh chụp Strava, bib số báo danh, huy chương, biểu đồ pace/nhịp tim) thì ĐỌC số trong ảnh rồi phản ứng theo đúng chất của bạn — dùng ĐÚNG số đọc được, đừng bịa; số nào không rõ thì nói không rõ. Nếu họ nhờ vẽ/chế/vẽ-lại thì gọi generate_image (ảnh này làm tham chiếu).]"
 	}
-	contents := append(history, &genai.Content{Role: genai.RoleUser, Parts: []*genai.Part{{Text: currentText}}})
+	userParts := []*genai.Part{{Text: currentText}}
+	if hasImage {
+		userParts = append(userParts, &genai.Part{InlineData: &genai.Blob{MIMEType: "image/jpeg", Data: refImage}})
+	}
+	contents := append(history, &genai.Content{Role: genai.RoleUser, Parts: userParts})
 
 	// Ghép trí nhớ dài hạn vào system prompt để bot "biết" mọi người mà
 	// không phải replay tin thô. Trống thì bỏ qua — bot vẫn chạy như cũ.
