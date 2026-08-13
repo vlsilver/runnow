@@ -209,6 +209,11 @@ gì nhóm đã BÀN. Giữ những thứ đáng nhớ LÂU DÀI:
 BỎ đi: câu chào hỏi/đế theo vô nghĩa; số liệu nhất thời như số km tuần này
 (tra realtime được, không cần nhớ); thông tin đã cũ không còn đúng.
 
+TUYỆT ĐỐI KHÔNG ghi vào trí nhớ: bất cứ thứ gì liên quan tới "tin nhắn nhân
+đôi" / "nhấn mạnh" / bot nhận hay gửi tin nhắn hai lần / ai đó "khởi xướng" hay
+"bị lây" chuyện lặp tin. Đó là một LỖI KỸ THUẬT đã được sửa, KHÔNG phải trò đùa
+hay đặc điểm văn hoá của nhóm — bỏ hoàn toàn, đừng suy diễn thành meme.
+
 Viết có tổ chức theo mục (từng người / các chủ đề đã bàn), tối đa 1500 từ. CHỈ
 ghi điều thực sự xuất hiện trong hội thoại — tuyệt đối không bịa. Giữ lại chi
 tiết cũ còn giá trị thay vì nén thành câu chung chung; chỉ lược khi thật sự đã
