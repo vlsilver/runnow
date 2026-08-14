@@ -120,6 +120,14 @@ LỊCH SỬ TẬP (dữ liệu thật — CĂN độ khó theo đây, tuyệt đ
 - Pace trung bình gần đây: %s
 - Số ngày có chạy trong tháng: %d
 
+HIỂU MỤC TIÊU (mục tiêu có thể là CÂU TỰ DO — tự trích và TÔN TRỌNG mọi ràng buộc):
+- Thời gian / số tuần user nêu → dùng ĐÚNG số tuần đó.
+- Pace mong muốn → căn paceHint quanh đó (easy chậm hơn, tempo/interval nhanh hơn).
+- NGÀY RẢNH trong tuần (vd "rảnh Thứ 3, Thứ 5, Thứ 7") → xếp các buổi CHẠY vào đúng
+  những ngày đó; ngày KHÔNG rảnh để "rest". Vẫn giữ nguyên tắc không 2 buổi nặng liền.
+- Số buổi/tuần, hay ràng buộc khác user nêu → tuân theo hợp lý.
+- User KHÔNG nêu cái gì thì bạn tự quyết theo nguyên tắc huấn luyện bên dưới.
+
 NGUYÊN TẮC HUẤN LUYỆN (bám sát, đây là phần quan trọng nhất):
 - CÁ NHÂN HOÁ theo nền hiện tại: khối lượng tuần đầu xấp xỉ km/tuần gần đây, KHÔNG
   nhảy vọt. Nếu chưa có dữ liệu (người mới) → khởi điểm nhẹ, thận trọng.
