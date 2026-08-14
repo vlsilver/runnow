@@ -43,10 +43,20 @@ service cloud.firestore {
         allow read, write: if owns(userId);
       }
 
-      // AI Coach: giáo án active của user. Backend (bot) ghi qua admin SDK; app
-      // đọc, tick done, xoá/đổi. Chỉ chủ mới đụng được.
+      // AI Coach: giáo án đang chạy (current) và bản nháp chờ xác nhận (draft).
+      // Backend (bot) ghi qua admin SDK; app đọc, tick done, xoá/đổi. Chỉ chủ
+      // mới đụng được.
       match /coach/{doc} {
         allow read, write: if owns(userId);
+      }
+
+      // Hội thoại hỏi đáp với coach. Rule ngay trên KHÔNG phủ subcollection —
+      // phải khai riêng. App chỉ ĐỌC: cho ghi thì user tự dựng được tin nhắn
+      // mang danh coach trong lịch sử của chính mình. Backend ghi qua admin
+      // SDK nên không vướng rule này.
+      match /coach/chat/messages/{messageId} {
+        allow read: if owns(userId);
+        allow write: if false;
       }
 
       match /stats/{statsId} {

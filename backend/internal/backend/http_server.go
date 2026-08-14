@@ -421,9 +421,9 @@ func (s *Server) apiRoutes() {
 		return writeJSON(w, 202, map[string]any{"ok": true})
 	}))
 	s.route("POST /v1/training-plan/generate", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
-		// App (Coach tab) gọi để sinh giáo án. Luật "1 active/complete mới tạo
-		// mới" enforce ở APP; backend luôn ghi đè coach/current. Enqueue sang bot
-		// (Gemini nặng). TaskID kèm goal+phút để bấm lại nhanh không bị nuốt trùng.
+		// App (Coach tab) gọi để sinh giáo án. Kết quả ghi vào coach/DRAFT —
+		// giáo án đang chạy không bị đụng tới cho tới khi user bấm xác nhận.
+		// Enqueue sang bot vì Gemini nặng (tới 120s).
 		var body struct {
 			Goal string `json:"goal"`
 		}
@@ -435,6 +435,47 @@ func (s *Server) apiRoutes() {
 			return err
 		}
 		return writeJSON(w, 202, map[string]any{"ok": true})
+	}))
+	// Xác nhận bản nháp → giáo án đang chạy. Chỉ đụng Firestore nên chạy thẳng
+	// trên API, không qua hàng đợi: user vừa bấm nút và đang đợi màn hình đổi.
+	s.route("POST /v1/training-plan/confirm", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		if s.deps.Bot == nil {
+			return invalidRequest()
+		}
+		if err := s.deps.Bot.ConfirmTrainingPlan(r.Context(), uid); err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true})
+	}))
+	// Bỏ bản nháp. Giáo án đang chạy giữ nguyên.
+	s.route("POST /v1/training-plan/discard", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		if s.deps.Bot == nil {
+			return invalidRequest()
+		}
+		if err := s.deps.Bot.DiscardTrainingPlanDraft(r.Context(), uid); err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true})
+	}))
+	// Hỏi đáp với coach. Đồng bộ vì user đang chờ câu trả lời trên màn chat;
+	// hạn 60s để một câu hỏi treo không giữ kết nối mãi.
+	s.route("POST /v1/coach/ask", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		if s.deps.Bot == nil {
+			return invalidRequest()
+		}
+		var body struct {
+			Question string `json:"question"`
+		}
+		if decodeJSON(r, &body) != nil || strings.TrimSpace(body.Question) == "" {
+			return invalidRequest()
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+		defer cancel()
+		answer, err := s.deps.Bot.AskCoach(ctx, uid, body.Question)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"answer": answer})
 	}))
 	s.route("POST /v1/activities/tracked", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		var body struct {
