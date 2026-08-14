@@ -8,6 +8,9 @@ import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_repository.dart';
 import 'package:myrun/src/run_contracts/widgets/run_contract_card.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/training_plan/coach_card.dart';
+import 'package:myrun/src/training_plan/training_plan_models.dart';
+import 'package:myrun/src/training_plan/training_plan_repository.dart';
 import 'package:myrun/src/web_layout.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
@@ -124,6 +127,47 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
     final currentUid = ref.watch(firebaseUserProvider).value?.uid;
     final myActive = ref.watch(myActiveContractsProvider);
 
+    // Giáo án AI Coach giờ nằm chung feed Kèo: giáo án mình sở hữu (kể cả riêng
+    // tư) + các giáo án công khai của người khác. Dedup theo id, của mình trước.
+    final ownedCoach = ref.watch(coachPlanProvider).value;
+    final publicCoaches =
+        ref.watch(publicCoachPlansProvider).value ?? const <TrainingPlan>[];
+    final coachPlans = <TrainingPlan>[
+      ?ownedCoach,
+      ...(publicCoaches.where((p) => p.id != ownedCoach?.id).toList()
+        ..sort((a, b) => (b.createdAt ?? DateTime(0)).compareTo(
+              a.createdAt ?? DateTime(0),
+            ))),
+    ];
+
+    final keoBody = myActive.when(
+      data: (mine) {
+        return _ContractFeed(
+          source: _pageSource,
+          myContracts: mine,
+          coachPlans: coachPlans,
+          currentUid: currentUid,
+          currentProfile: profile,
+          members: members,
+          joining: _joining,
+          filter: _filter,
+          hasMore: _hasMore,
+          loadingMore: _loadingMore,
+          onFilterChanged: (filter) {
+            if (_filter == filter) return;
+            _filter = filter;
+            _loadFirstPage();
+          },
+          onLoadMore: _loadNextPage,
+          onJoin: _joinContract,
+          onOpenCoach: (plan) => context.push('/coach/${plan.id}'),
+        );
+      },
+      error: (error, stack) =>
+          Center(child: Text('Không thể tải kèo của bạn: $error')),
+      loading: () => const RunNowLoading(label: 'Đang tải kèo'),
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Kèo'),
@@ -162,31 +206,7 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
               : Icons.link_rounded,
         ),
       ),
-      body: myActive.when(
-        data: (mine) {
-          return _ContractFeed(
-            source: _pageSource,
-            myContracts: mine,
-            currentUid: currentUid,
-            currentProfile: profile,
-            members: members,
-            joining: _joining,
-            filter: _filter,
-            hasMore: _hasMore,
-            loadingMore: _loadingMore,
-            onFilterChanged: (filter) {
-              if (_filter == filter) return;
-              _filter = filter;
-              _loadFirstPage();
-            },
-            onLoadMore: _loadNextPage,
-            onJoin: _joinContract,
-          );
-        },
-        error: (error, stack) =>
-            Center(child: Text('Không thể tải kèo của bạn: $error')),
-        loading: () => const RunNowLoading(label: 'Đang tải kèo'),
-      ),
+      body: keoBody,
     );
   }
 
@@ -338,6 +358,7 @@ class _ContractFeed extends StatelessWidget {
   const _ContractFeed({
     required this.source,
     required this.myContracts,
+    required this.coachPlans,
     required this.currentUid,
     required this.currentProfile,
     required this.members,
@@ -348,10 +369,12 @@ class _ContractFeed extends StatelessWidget {
     required this.onFilterChanged,
     required this.onLoadMore,
     required this.onJoin,
+    required this.onOpenCoach,
   });
 
   final AsyncValue<List<RunContract>> source;
   final List<RunContract> myContracts;
+  final List<TrainingPlan> coachPlans;
   final String? currentUid;
   final UserProfile? currentProfile;
   final List<MemberProfile> members;
@@ -362,6 +385,7 @@ class _ContractFeed extends StatelessWidget {
   final ValueChanged<_ContractFilter> onFilterChanged;
   final VoidCallback onLoadMore;
   final ValueChanged<RunContract> onJoin;
+  final ValueChanged<TrainingPlan> onOpenCoach;
 
   @override
   Widget build(BuildContext context) {
@@ -390,7 +414,11 @@ class _ContractFeed extends StatelessWidget {
               final profiles = {
                 for (final member in members) member.uid: member,
               };
-              if (visible.isEmpty) {
+              // Coach card chỉ xuất hiện ở filter "đang chạy", nằm đầu feed.
+              final coachCards = filter == _ContractFilter.active
+                  ? coachPlans
+                  : const <TrainingPlan>[];
+              if (visible.isEmpty && coachCards.isEmpty) {
                 return ListView(
                   padding: EdgeInsets.fromLTRB(
                     wide ? 20 : 16,
@@ -409,6 +437,11 @@ class _ContractFeed extends StatelessWidget {
                       spacing: 18,
                       runSpacing: 18,
                       children: [
+                        for (final plan in coachCards)
+                          SizedBox(
+                            width: 440,
+                            child: _coachCard(context, plan, profiles),
+                          ),
                         for (final contract in visible)
                           SizedBox(
                             width: 440,
@@ -426,19 +459,25 @@ class _ContractFeed extends StatelessWidget {
                   ],
                 );
               }
-              final itemCount = visible.length + (canLoadMore ? 1 : 0);
+              final lead = coachCards.length;
+              final itemCount =
+                  lead + visible.length + (canLoadMore ? 1 : 0);
               return ListView.separated(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 130),
                 itemCount: itemCount,
                 separatorBuilder: (_, _) => const SizedBox(height: 14),
                 itemBuilder: (context, index) {
-                  if (index == visible.length) {
+                  if (index < lead) {
+                    return _coachCard(context, coachCards[index], profiles);
+                  }
+                  final i = index - lead;
+                  if (i == visible.length) {
                     return _LoadMoreContracts(
                       onPressed: loadingMore ? null : onLoadMore,
                       loading: loadingMore,
                     );
                   }
-                  return _contractCard(context, visible[index], profiles);
+                  return _contractCard(context, visible[i], profiles);
                 },
               );
             },
@@ -452,6 +491,25 @@ class _ContractFeed extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _coachCard(
+    BuildContext context,
+    TrainingPlan plan,
+    Map<String, MemberProfile> profiles,
+  ) {
+    final isMine = plan.isOwner(currentUid);
+    return CoachCard(
+      plan: plan,
+      currentUid: currentUid,
+      ownerName: isMine
+          ? (currentProfile?.displayName ?? 'Bạn')
+          : (profiles[plan.ownerUid]?.displayName ?? 'HLV 3i'),
+      ownerAvatarUrl: isMine
+          ? currentProfile?.avatarUrl
+          : profiles[plan.ownerUid]?.avatarUrl,
+      onTap: () => onOpenCoach(plan),
     );
   }
 

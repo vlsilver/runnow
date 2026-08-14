@@ -124,10 +124,31 @@ class _RunContractCreateScreenState
     padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
     children: [
       Text(
-        'Bạn muốn chốt kèo gì?',
+        'Bạn muốn tạo gì?',
         style: Theme.of(context).textTheme.headlineSmall,
       ),
       const SizedBox(height: 14),
+      _TemplateTile(
+        icon: Icons.auto_awesome_rounded,
+        title: 'Giáo án AI Coach',
+        subtitle: 'AI dựng lịch tập theo mục tiêu của bạn. '
+            'Tập một mình hoặc rủ cả nhóm theo chung.',
+        accent: true,
+        onTap: _createCoach,
+      ),
+      const SizedBox(height: 10),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+        child: Text(
+          'HOẶC CHỐT MỘT KÈO',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.2,
+            color: context.runNowPalette.textMuted,
+          ),
+        ),
+      ),
       _TemplateTile(
         icon: Icons.route_rounded,
         title: '10km tuần này',
@@ -351,6 +372,14 @@ class _RunContractCreateScreenState
         period: period,
       ),
     );
+  }
+
+  /// Tạo giáo án AI Coach: mở hub coach của chính mình (/coach/{uid}) — ở đó
+  /// nhập mục tiêu + chọn riêng tư/công khai rồi AI sinh lịch.
+  void _createCoach() {
+    final uid = ref.read(firebaseUserProvider).value?.uid;
+    if (uid == null) return;
+    context.push('/coach/$uid');
   }
 
   void _select(RunContractDraft draft) {
@@ -667,6 +696,13 @@ class _RunContractCreateScreenState
           .read(runContractAnalyticsProvider)
           .log('contract_created', draft: _draft)
           .ignore();
+      // Kèo công khai → 3i bot báo group rủ tham gia (fire-and-forget).
+      if (draft.visibility == RunContractVisibility.club) {
+        ref
+            .read(runNowApiClientProvider)
+            .announceNewContract(contractId: id)
+            .ignore();
+      }
       if (mounted) context.pushReplacement('/contracts/$id');
     } catch (error) {
       if (mounted) setState(() => _error = '$error');
@@ -692,12 +728,14 @@ class _TemplateTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.accent = false,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final bool accent; // nổi bật ô đặc biệt (giáo án AI)
 
   @override
   Widget build(BuildContext context) {
@@ -707,6 +745,19 @@ class _TemplateTile extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: GlassPanel(
         borderRadius: 20,
+        border: accent
+            ? Border.all(color: primary.withValues(alpha: 0.55), width: 1.5)
+            : null,
+        gradient: accent
+            ? LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  primary.withValues(alpha: 0.12),
+                  primary.withValues(alpha: 0.03),
+                ],
+              )
+            : null,
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
           onTap: onTap,
@@ -718,7 +769,7 @@ class _TemplateTile extends StatelessWidget {
                   width: 46,
                   height: 46,
                   decoration: BoxDecoration(
-                    color: primary.withValues(alpha: 0.14),
+                    color: primary.withValues(alpha: accent ? 0.18 : 0.14),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Icon(icon, color: primary, size: 24),
@@ -728,26 +779,55 @@ class _TemplateTile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                          color: onSurface,
-                        ),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              title,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                                color: onSurface,
+                              ),
+                            ),
+                          ),
+                          if (accent) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: primary.withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                'MỚI',
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.5,
+                                  color: primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 4),
                       Text(
                         subtitle,
                         style: TextStyle(
-                          color: onSurface.withValues(alpha: 0.6),
+                          color: onSurface.withValues(alpha: 0.62),
                           fontSize: 13,
-                          height: 1.3,
+                          height: 1.4,
                         ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(width: 6),
                 Icon(
                   Icons.chevron_right_rounded,
                   color: onSurface.withValues(alpha: 0.4),

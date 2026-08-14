@@ -16,6 +16,7 @@ import 'package:myrun/src/screens/onboarding_screen.dart';
 import 'package:myrun/src/screens/public_activity_screen.dart';
 import 'package:myrun/src/screens/run_contract_create_screen.dart';
 import 'package:myrun/src/screens/run_contract_detail_screen.dart';
+import 'package:myrun/src/training_plan/coach_detail_screen.dart';
 import 'package:myrun/src/screens/run_contract_home_screen.dart';
 import 'package:myrun/src/screens/run_contract_route_create_screen.dart';
 import 'package:myrun/src/screens/settings_screen.dart';
@@ -188,6 +189,11 @@ final _router = GoRouter(
       path: '/contracts/:id',
       builder: (context, state) =>
           RunContractDetailScreen(contractId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/coach/:planId',
+      builder: (context, state) =>
+          CoachDetailScreen(planId: state.pathParameters['planId']!),
     ),
   ],
 );

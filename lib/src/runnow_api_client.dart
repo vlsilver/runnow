@@ -185,6 +185,56 @@ class RunNowApiClient {
     );
   }
 
+  /// Báo group qua 3i bot khi vừa TẠO một kèo công khai — rủ mọi người tham gia.
+  /// Fire-and-forget, chỉ kèo public mới nên gọi. Lỗi mạng bỏ qua.
+  Future<void> announceNewContract({required String contractId}) async {
+    await _send(
+      'POST',
+      '/v1/contracts/announce-new',
+      body: {'contractId': contractId},
+    );
+  }
+
+  /// AI Coach: nhờ backend sinh ĐỀ XUẤT giáo án theo mục tiêu + lịch sử chạy
+  /// thật. Chạy bất đồng bộ (Gemini) — backend ghi users/{uid}/coach/draft xong
+  /// app tự nhận qua stream Firestore. Giáo án đang chạy không bị đụng tới.
+  Future<void> generateTrainingPlan({
+    required String goal,
+    String visibility = 'private',
+  }) async {
+    await _send(
+      'POST',
+      '/v1/training-plan/generate',
+      body: {'goal': goal, 'visibility': visibility},
+    );
+  }
+
+  /// Xác nhận bản nháp → giáo án đang chạy.
+  Future<void> confirmTrainingPlan() async {
+    await _send('POST', '/v1/training-plan/confirm');
+  }
+
+  /// Bỏ bản nháp, giữ nguyên giáo án đang chạy.
+  Future<void> discardTrainingPlan() async {
+    await _send('POST', '/v1/training-plan/discard');
+  }
+
+  /// Hỏi coach một câu trong ngữ cảnh giáo án của chính user. Đồng bộ vì màn
+  /// chat đang đợi câu trả lời. Hạn 70s — backend cho Gemini 60s, chừa biên để
+  /// lỗi hiện ra là lỗi thật chứ không phải client bỏ cuộc sớm.
+  Future<String> askCoach({
+    required String planId,
+    required String question,
+  }) async {
+    final res = await _send(
+      'POST',
+      '/v1/coach/ask',
+      body: {'planId': planId, 'question': question},
+      timeout: const Duration(seconds: 70),
+    );
+    return _jsonObject(res)['answer'] as String? ?? '';
+  }
+
   Future<void> updateProfile({
     required String nickname,
     required String? avatarUrl,

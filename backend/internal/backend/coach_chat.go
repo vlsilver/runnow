@@ -44,7 +44,7 @@ NGUYÊN TẮC TRẢ LỜI:
 
 // AskCoach trả lời một câu hỏi của user trong ngữ cảnh giáo án của họ, rồi lưu
 // cả câu hỏi lẫn câu trả lời vào lịch sử hội thoại.
-func (s *BotService) AskCoach(ctx context.Context, uid, question string) (string, error) {
+func (s *BotService) AskCoach(ctx context.Context, uid, planId, question string) (string, error) {
 	if !s.Enabled() {
 		return "", fmt.Errorf("bot chưa bật")
 	}
@@ -52,9 +52,12 @@ func (s *BotService) AskCoach(ctx context.Context, uid, question string) (string
 	if question == "" {
 		return "", fmt.Errorf("câu hỏi rỗng")
 	}
+	if strings.TrimSpace(planId) == "" {
+		planId = uid // tương thích: không truyền planId thì hiểu là giáo án của chính mình
+	}
 
-	planCtx := s.coachPlanContext(ctx, uid)
-	history := s.coachChatHistory(ctx, uid)
+	planCtx := s.coachPlanContext(ctx, uid, planId)
+	history := s.coachChatHistory(ctx, uid, planId)
 
 	prompt := fmt.Sprintf(coachChatPrompt, planCtx, formatCoachHistory(history, question))
 	resp, err := s.genai.Models.GenerateContent(ctx, s.model,
@@ -71,9 +74,10 @@ func (s *BotService) AskCoach(ctx context.Context, uid, question string) (string
 	}
 
 	// Ghi sau khi đã có câu trả lời: hỏi mà lỗi thì không để lại câu treo
-	// trong lịch sử.
-	msgs := s.db.Collection("users").Doc(uid).Collection("coach").
-		Doc("chat").Collection("messages")
+	// trong lịch sử. Mỗi thành viên có kênh chat RIÊNG theo từng giáo án:
+	// users/{uid}/coachChats/{planId}/messages.
+	msgs := s.db.Collection("users").Doc(uid).
+		Collection("coachChats").Doc(planId).Collection("messages")
 	now := time.Now()
 	if _, _, err := msgs.Add(ctx, map[string]any{
 		"role": "user", "text": question, "createdAt": now,
@@ -89,15 +93,18 @@ func (s *BotService) AskCoach(ctx context.Context, uid, question string) (string
 // coachPlanContext tóm tắt giáo án đang chạy (ưu tiên) hoặc bản nháp chờ xác
 // nhận, kèm phong độ gần đây. Chỉ đưa phần cần cho việc trả lời — cả 28 ngày
 // dạng thô làm loãng ngữ cảnh mà không thêm được gì.
-func (s *BotService) coachPlanContext(ctx context.Context, uid string) string {
-	coach := s.db.Collection("users").Doc(uid).Collection("coach")
+func (s *BotService) coachPlanContext(ctx context.Context, uid, planId string) string {
 	var b strings.Builder
 
+	// Ngữ cảnh là giáo án ĐANG BÀN (planId) — có thể là của chính user hoặc giáo
+	// án công khai họ đang theo. Bản nháp chỉ xét khi hỏi về slot của chính mình.
 	doc, label := map[string]any(nil), ""
-	if snap, err := coach.Doc("current").Get(ctx); err == nil && snap.Exists() {
+	if snap, err := s.db.Collection("coachPlans").Doc(planId).Get(ctx); err == nil && snap.Exists() {
 		doc, label = snap.Data(), "GIÁO ÁN ĐANG CHẠY"
-	} else if snap, err := coach.Doc("draft").Get(ctx); err == nil && snap.Exists() {
-		doc, label = snap.Data(), "BẢN NHÁP CHỜ XÁC NHẬN (user chưa đồng ý)"
+	} else if planId == uid {
+		if snap, err := s.db.Collection("users").Doc(uid).Collection("coach").Doc("draft").Get(ctx); err == nil && snap.Exists() {
+			doc, label = snap.Data(), "BẢN NHÁP CHỜ XÁC NHẬN (user chưa đồng ý)"
+		}
 	}
 
 	if doc == nil {
@@ -181,9 +188,9 @@ func coachUpcomingDays(doc map[string]any, now time.Time) string {
 }
 
 // coachChatHistory đọc các lượt gần nhất, trả về theo thứ tự cũ → mới.
-func (s *BotService) coachChatHistory(ctx context.Context, uid string) []coachMessage {
-	it := s.db.Collection("users").Doc(uid).Collection("coach").
-		Doc("chat").Collection("messages").
+func (s *BotService) coachChatHistory(ctx context.Context, uid, planId string) []coachMessage {
+	it := s.db.Collection("users").Doc(uid).
+		Collection("coachChats").Doc(planId).Collection("messages").
 		OrderBy("createdAt", firestore.Desc).Limit(coachChatHistoryTurns).Documents(ctx)
 	defer it.Stop()
 

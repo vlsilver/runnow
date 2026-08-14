@@ -145,6 +145,24 @@ abstract final class RunNowDataColors {
   static const zone3 = Color(0xffffd166);
   static const zone4 = Color(0xffff8f00);
   static const zone5 = heart;
+
+  // AI Coach — màu LOẠI BÀI (ngũ hành theo cường độ; cố định light/dark, không
+  // đổi theo accent người dùng vì nó mã hoá cường độ tập).
+  static const coachEasyLight = Color(0xff34965e);
+  static const coachEasyDark = Color(0xff58c888);
+  static const coachLongLight = Color(0xff2a73c9);
+  static const coachLongDark = Color(0xff5fa0ee);
+  static const coachTempoLight = Color(0xffb87a22);
+  static const coachTempoDark = Color(0xffe2a94f);
+  static const coachIntervalLight = Color(0xffd9502f);
+  static const coachIntervalDark = Color(0xfff4785c);
+  static const coachRestLight = Color(0xff7e8d97);
+  static const coachRestDark = Color(0xff93a4ad);
+  static const coachRaceLight = Color(0xffb92a57);
+  static const coachRaceDark = Color(0xffef5b87);
+  // Chữ trên nền accent (dark) + nền sheet Coach (dark).
+  static const coachOnAccentDark = Color(0xff04201d);
+  static const coachSheetDark = Color(0xff0e1a18);
 }
 
 /// Third-party brand colors are fixed by the provider, not by 3i themes.

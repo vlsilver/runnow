@@ -59,6 +59,13 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // Chat coach RIÊNG theo từng giáo án: mỗi giáo án (planId) một kênh. App
+      // chỉ đọc; backend (bot) ghi qua admin SDK.
+      match /coachChats/{planId}/messages/{messageId} {
+        allow read: if owns(userId);
+        allow write: if false;
+      }
+
       match /stats/{statsId} {
         allow read: if owns(userId) || isPublicProfile(userId);
         allow write: if false;
@@ -182,6 +189,55 @@ service cloud.firestore {
           !('participants' in resource.data)
           || resource.data.participants.size() <= 1
         );
+    }
+
+    // Giáo án AI Coach chia sẻ được (coachPlans/{ownerUid}). Doc do backend
+    // (Admin SDK) tạo qua confirmCoachDraft — client KHÔNG tự tạo. Chủ giáo án
+    // (ownerUid = trưởng nhóm) sửa được lịch; người khác chỉ đọc nếu public và
+    // ghi tiến độ RIÊNG của mình (participants.{uid}).
+    match /coachPlans/{planId} {
+      allow read: if signedIn()
+        && (
+          // Doc chưa tồn tại → cho đọc (trả null): tạo giáo án mới / sau khi xoá
+          // đều điều hướng tới coachPlans/{uid} rỗng, phải đọc được để vào màn tạo.
+          resource == null
+          || resource.data.visibility == 'club'
+          || resource.data.ownerUid == request.auth.uid
+          || (
+            'participantUids' in resource.data
+            && request.auth.uid in resource.data.participantUids
+          )
+        );
+
+      // Chỉ backend tạo — client không tạo giáo án trực tiếp.
+      allow create: if false;
+
+      allow update: if signedIn() && (
+        // A) Chủ giáo án: toàn quyền sửa plan của mình (đổi lịch, tick tiến độ),
+        //    miễn giữ nguyên chủ.
+        (
+          resource.data.ownerUid == request.auth.uid
+          && request.resource.data.ownerUid == request.auth.uid
+        )
+        // B) Người tham gia giáo án public: chỉ đụng participants / participantUids
+        //    / updatedAt, và chỉ subtree uid của mình (join + tick tiến độ riêng).
+        || (
+          resource.data.ownerUid != request.auth.uid
+          && resource.data.visibility == 'club'
+          && request.resource.data.ownerUid == resource.data.ownerUid
+          && request.resource.data.visibility == resource.data.visibility
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participants', 'participantUids', 'updatedAt'])
+          && request.resource.data.participants is map
+          // Chỉ được đụng subtree tiến độ của CHÍNH MÌNH (join / tick / rời).
+          // participantUids là index phụ; không cho sửa participants của người khác
+          // đã đủ bảo vệ dữ liệu tiến độ.
+          && request.resource.data.participants.diff(resource.data.participants).affectedKeys().hasOnly([request.auth.uid])
+        )
+      );
+
+      // Chủ giáo án xoá được (kể cả khi có người tham gia — "đổi coach").
+      allow delete: if signedIn()
+        && resource.data.ownerUid == request.auth.uid;
     }
 
     match /feedPosts/{postId} {

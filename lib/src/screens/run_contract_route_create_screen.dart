@@ -889,6 +889,13 @@ class _RunContractRouteCreateScreenState
           )
           .ignore();
       final id = await ref.read(runContractControllerProvider).create(draft);
+      // Kèo công khai → 3i bot báo group rủ tham gia (fire-and-forget).
+      if (draft.visibility == RunContractVisibility.club) {
+        ref
+            .read(runNowApiClientProvider)
+            .announceNewContract(contractId: id)
+            .ignore();
+      }
       if (mounted) context.go('/contracts/$id');
     } catch (error) {
       if (mounted) setState(() => _error = '$error');

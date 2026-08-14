@@ -53,6 +53,8 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/notify-telegram", s.notifyTelegram)
 	s.route("POST /tasks/live-announce", s.liveAnnounce)
 	s.route("POST /tasks/contract-roast", s.contractRoast)
+	s.route("POST /tasks/contract-announce-new", s.contractAnnounceNew)
+	s.route("POST /tasks/coach-announce", s.coachAnnounce)
 	s.route("POST /tasks/generate-plan", s.generatePlan)
 	s.route("POST /tasks/coach-ask", s.coachAsk)
 	s.route("POST /tasks/consolidate-memory", s.consolidateMemory)
@@ -196,6 +198,38 @@ func (s *Server) contractRoast(w http.ResponseWriter, r *http.Request) error {
 	return writeJSON(w, 200, map[string]any{"ok": true})
 }
 
+// contractAnnounceNew: bot báo group có kèo public mới. Chạy trên bot (telegram).
+func (s *Server) contractAnnounceNew(w http.ResponseWriter, r *http.Request) error {
+	var task struct {
+		UID        string `json:"uid"`
+		ContractID string `json:"contractId"`
+	}
+	if decodeJSON(r, &task) != nil || task.UID == "" || task.ContractID == "" {
+		w.WriteHeader(204)
+		return nil
+	}
+	if err := s.deps.Activities.AnnounceNewContract(r.Context(), task.UID, task.ContractID); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// coachAnnounce: bot báo group có giáo án AI Coach công khai được mở/đổi.
+func (s *Server) coachAnnounce(w http.ResponseWriter, r *http.Request) error {
+	var task struct {
+		UID     string `json:"uid"`
+		Changed bool   `json:"changed"`
+	}
+	if decodeJSON(r, &task) != nil || task.UID == "" {
+		w.WriteHeader(204)
+		return nil
+	}
+	if err := s.deps.Activities.AnnounceCoachPlan(r.Context(), task.UID, task.Changed); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
 // generatePlan: task chạy trên bot — sinh giáo án AI Coach cho user rồi ghi
 // users/{uid}/coach/current. Việc AI (Gemini) nên nằm ở runnow-bot.
 func (s *Server) generatePlan(w http.ResponseWriter, r *http.Request) error {
@@ -204,8 +238,9 @@ func (s *Server) generatePlan(w http.ResponseWriter, r *http.Request) error {
 		return nil
 	}
 	var task struct {
-		UID  string `json:"uid"`
-		Goal string `json:"goal"`
+		UID        string `json:"uid"`
+		Goal       string `json:"goal"`
+		Visibility string `json:"visibility"`
 	}
 	if decodeJSON(r, &task) != nil || task.UID == "" {
 		w.WriteHeader(204)
@@ -213,7 +248,7 @@ func (s *Server) generatePlan(w http.ResponseWriter, r *http.Request) error {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
-	if err := s.deps.Bot.GenerateTrainingPlan(ctx, task.UID, task.Goal); err != nil {
+	if err := s.deps.Bot.GenerateTrainingPlan(ctx, task.UID, task.Goal, task.Visibility); err != nil {
 		return err
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})
@@ -228,6 +263,7 @@ func (s *Server) coachAsk(w http.ResponseWriter, r *http.Request) error {
 	}
 	var task struct {
 		UID      string `json:"uid"`
+		PlanID   string `json:"planId"`
 		Question string `json:"question"`
 	}
 	if decodeJSON(r, &task) != nil || task.UID == "" || strings.TrimSpace(task.Question) == "" {
@@ -236,7 +272,7 @@ func (s *Server) coachAsk(w http.ResponseWriter, r *http.Request) error {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
-	if _, err := s.deps.Bot.AskCoach(ctx, task.UID, task.Question); err != nil {
+	if _, err := s.deps.Bot.AskCoach(ctx, task.UID, task.PlanID, task.Question); err != nil {
 		return err
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})
@@ -444,17 +480,33 @@ func (s *Server) apiRoutes() {
 		}
 		return writeJSON(w, 202, map[string]any{"ok": true})
 	}))
+	s.route("POST /v1/contracts/announce-new", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		// App (CHỦ kèo) gọi sau khi tạo 1 kèo CÔNG KHAI. Bot báo group để rủ tham
+		// gia. TaskID theo contract + announcedAt trên doc để không bắn trùng.
+		var body struct {
+			ContractID string `json:"contractId"`
+		}
+		if decodeJSON(r, &body) != nil || body.ContractID == "" {
+			return invalidRequest()
+		}
+		payload := map[string]any{"uid": uid, "contractId": body.ContractID}
+		if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/contract-announce-new", Payload: payload, TaskID: StableTaskID("announce-new", body.ContractID)}); err != nil {
+			return err
+		}
+		return writeJSON(w, 202, map[string]any{"ok": true})
+	}))
 	s.route("POST /v1/training-plan/generate", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		// App (Coach tab) gọi để sinh giáo án. Kết quả ghi vào coach/DRAFT —
 		// giáo án đang chạy không bị đụng tới cho tới khi user bấm xác nhận.
 		// Enqueue sang bot vì Gemini nặng (tới 120s).
 		var body struct {
-			Goal string `json:"goal"`
+			Goal       string `json:"goal"`
+			Visibility string `json:"visibility"`
 		}
 		if decodeJSON(r, &body) != nil {
 			return invalidRequest()
 		}
-		payload := map[string]any{"uid": uid, "goal": body.Goal}
+		payload := map[string]any{"uid": uid, "goal": body.Goal, "visibility": body.Visibility}
 		if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/generate-plan", Payload: payload}); err != nil {
 			return err
 		}
@@ -463,10 +515,19 @@ func (s *Server) apiRoutes() {
 	// Xác nhận bản nháp → giáo án đang chạy. Chỉ đụng Firestore nên chạy thẳng
 	// trên API, không qua hàng đợi: user vừa bấm nút và đang đợi màn hình đổi.
 	s.route("POST /v1/training-plan/confirm", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
-		// Thao tác Firestore thuần (draft→current) — chạy thẳng trên api, KHÔNG
+		// Thao tác Firestore thuần (draft→coachPlans) — chạy thẳng trên api, KHÔNG
 		// cần Bot/Gemini (Bot nil trên api).
-		if err := confirmCoachDraft(r.Context(), s.deps.Firestore, uid); err != nil {
+		vis, replaced, err := confirmCoachDraft(r.Context(), s.deps.Firestore, uid)
+		if err != nil {
 			return err
+		}
+		// Giáo án CÔNG KHAI thì báo group qua 3i bot (mở mới / đổi). Enqueue sang
+		// bot vì telegram + broadcast nằm ở đó; api chỉ đẩy task.
+		if vis == "club" {
+			payload := map[string]any{"uid": uid, "changed": replaced}
+			if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/coach-announce", Payload: payload}); err != nil {
+				return err
+			}
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
 	}))
@@ -484,12 +545,13 @@ func (s *Server) apiRoutes() {
 		// lời được bot ghi vào coach/chat/messages nên app nhận qua stream — không
 		// cần trả answer đồng bộ ở đây.
 		var body struct {
+			PlanID   string `json:"planId"`
 			Question string `json:"question"`
 		}
 		if decodeJSON(r, &body) != nil || strings.TrimSpace(body.Question) == "" {
 			return invalidRequest()
 		}
-		payload := map[string]any{"uid": uid, "question": body.Question}
+		payload := map[string]any{"uid": uid, "planId": body.PlanID, "question": body.Question}
 		if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/coach-ask", Payload: payload}); err != nil {
 			return err
 		}

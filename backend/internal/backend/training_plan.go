@@ -226,7 +226,7 @@ func goalConstraintLines(spec goalSpec) string {
 // GenerateTrainingPlan sinh giáo án cho user rồi ghi users/{uid}/coach/draft
 // (status draft). User xem tóm tắt + lý do rồi mới xác nhận sang current —
 // xem ConfirmTrainingPlan. Giáo án đang chạy ở coach/current không bị đụng tới.
-func (s *BotService) GenerateTrainingPlan(ctx context.Context, uid, goal string) error {
+func (s *BotService) GenerateTrainingPlan(ctx context.Context, uid, goal, visibility string) error {
 	if !s.Enabled() {
 		return fmt.Errorf("bot chưa bật")
 	}
@@ -261,6 +261,13 @@ func (s *BotService) GenerateTrainingPlan(ctx context.Context, uid, goal string)
 	}
 
 	doc := buildTrainingPlanDoc(uid, goal, spec, plan, time.Now(), h.longestKm)
+	// Nhớ lựa chọn hiển thị (private/club) ngay trên bản nháp để lúc confirm biết
+	// giáo án là cá nhân hay công khai cho cả nhóm.
+	if visibility == "club" {
+		doc["visibility"] = "club"
+	} else {
+		doc["visibility"] = "private"
+	}
 	_, err = s.db.Collection("users").Doc(uid).Collection("coach").Doc("draft").
 		Set(ctx, doc)
 	return err
@@ -271,23 +278,47 @@ func (s *BotService) GenerateTrainingPlan(ctx context.Context, uid, goal string)
 // transaction để không có lúc nào cả hai cùng tồn tại ở trạng thái nửa vời.
 // confirmCoachDraft chuyển coach/draft → coach/current (active) rồi xoá draft.
 // Thao tác Firestore thuần (KHÔNG cần Gemini) nên chạy được ngay trên api.
-func confirmCoachDraft(ctx context.Context, db *firestore.Client, uid string) error {
-	coach := db.Collection("users").Doc(uid).Collection("coach")
-	draftRef, curRef := coach.Doc("draft"), coach.Doc("current")
+// confirmCoachDraft biến bản nháp riêng (users/{uid}/coach/draft) thành giáo án
+// top-level coachPlans/{uid} — entity chia sẻ được: có ownerUid, visibility, và
+// participants (tiến độ riêng từng người). Chủ giáo án là participant đầu tiên.
+// confirmCoachDraft trả thêm visibility cuối cùng + replaced (đã có giáo án cũ
+// bị ghi đè hay chưa) để endpoint biết nên báo group là "mở mới" hay "đổi".
+func confirmCoachDraft(ctx context.Context, db *firestore.Client, uid string) (visibility string, replaced bool, err error) {
+	draftRef := db.Collection("users").Doc(uid).Collection("coach").Doc("draft")
+	planRef := db.Collection("coachPlans").Doc(uid)
 
-	return db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+	err = db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		snap, err := tx.Get(draftRef)
 		if err != nil || !snap.Exists() {
 			return fmt.Errorf("chưa có bản nháp nào để xác nhận")
 		}
+		// Đọc giáo án cũ (nếu có) TRƯỚC mọi write — transaction Firestore bắt buộc.
+		if psnap, perr := tx.Get(planRef); perr == nil && psnap.Exists() {
+			replaced = true
+		}
 		doc := snap.Data()
 		doc["status"] = "active"
+		doc["ownerUid"] = uid
+		if v, ok := doc["visibility"].(string); !ok || (v != "club" && v != "private") {
+			doc["visibility"] = "private" // mặc định giáo án cá nhân
+		}
+		visibility, _ = doc["visibility"].(string)
+		// Tiến độ thật nằm ở participants (mỗi người một doneIndices); cờ done
+		// trong days chỉ là template. Chủ giáo án bắt đầu với tiến độ rỗng.
+		doc["participants"] = map[string]any{
+			uid: map[string]any{
+				"joinedAt":    firestore.ServerTimestamp,
+				"doneIndices": []int{},
+			},
+		}
+		doc["participantUids"] = []string{uid}
 		doc["confirmedAt"] = firestore.ServerTimestamp
-		if err := tx.Set(curRef, doc); err != nil {
+		if err := tx.Set(planRef, doc); err != nil {
 			return err
 		}
 		return tx.Delete(draftRef)
 	})
+	return visibility, replaced, err
 }
 
 // DiscardTrainingPlanDraft bỏ bản nháp mà không đụng tới giáo án đang chạy.
