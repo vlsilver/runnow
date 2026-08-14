@@ -463,20 +463,16 @@ func (s *Server) apiRoutes() {
 	// Xác nhận bản nháp → giáo án đang chạy. Chỉ đụng Firestore nên chạy thẳng
 	// trên API, không qua hàng đợi: user vừa bấm nút và đang đợi màn hình đổi.
 	s.route("POST /v1/training-plan/confirm", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
-		if s.deps.Bot == nil {
-			return invalidRequest()
-		}
-		if err := s.deps.Bot.ConfirmTrainingPlan(r.Context(), uid); err != nil {
+		// Thao tác Firestore thuần (draft→current) — chạy thẳng trên api, KHÔNG
+		// cần Bot/Gemini (Bot nil trên api).
+		if err := confirmCoachDraft(r.Context(), s.deps.Firestore, uid); err != nil {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
 	}))
 	// Bỏ bản nháp. Giáo án đang chạy giữ nguyên.
 	s.route("POST /v1/training-plan/discard", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
-		if s.deps.Bot == nil {
-			return invalidRequest()
-		}
-		if err := s.deps.Bot.DiscardTrainingPlanDraft(r.Context(), uid); err != nil {
+		if err := discardCoachDraft(r.Context(), s.deps.Firestore, uid); err != nil {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})

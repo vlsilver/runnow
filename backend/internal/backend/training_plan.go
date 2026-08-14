@@ -269,11 +269,13 @@ func (s *BotService) GenerateTrainingPlan(ctx context.Context, uid, goal string)
 // ConfirmTrainingPlan chuyển bản nháp thành giáo án đang chạy: copy
 // coach/draft → coach/current với status active, rồi xoá nháp. Chạy trong một
 // transaction để không có lúc nào cả hai cùng tồn tại ở trạng thái nửa vời.
-func (s *BotService) ConfirmTrainingPlan(ctx context.Context, uid string) error {
-	coach := s.db.Collection("users").Doc(uid).Collection("coach")
+// confirmCoachDraft chuyển coach/draft → coach/current (active) rồi xoá draft.
+// Thao tác Firestore thuần (KHÔNG cần Gemini) nên chạy được ngay trên api.
+func confirmCoachDraft(ctx context.Context, db *firestore.Client, uid string) error {
+	coach := db.Collection("users").Doc(uid).Collection("coach")
 	draftRef, curRef := coach.Doc("draft"), coach.Doc("current")
 
-	return s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+	return db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		snap, err := tx.Get(draftRef)
 		if err != nil || !snap.Exists() {
 			return fmt.Errorf("chưa có bản nháp nào để xác nhận")
@@ -289,8 +291,8 @@ func (s *BotService) ConfirmTrainingPlan(ctx context.Context, uid string) error 
 }
 
 // DiscardTrainingPlanDraft bỏ bản nháp mà không đụng tới giáo án đang chạy.
-func (s *BotService) DiscardTrainingPlanDraft(ctx context.Context, uid string) error {
-	_, err := s.db.Collection("users").Doc(uid).Collection("coach").Doc("draft").Delete(ctx)
+func discardCoachDraft(ctx context.Context, db *firestore.Client, uid string) error {
+	_, err := db.Collection("users").Doc(uid).Collection("coach").Doc("draft").Delete(ctx)
 	return err
 }
 
