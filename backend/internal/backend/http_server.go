@@ -53,6 +53,7 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/notify-telegram", s.notifyTelegram)
 	s.route("POST /tasks/live-announce", s.liveAnnounce)
 	s.route("POST /tasks/contract-roast", s.contractRoast)
+	s.route("POST /tasks/generate-plan", s.generatePlan)
 	s.route("POST /tasks/consolidate-memory", s.consolidateMemory)
 	// Cloud Scheduler gõ mỗi 10 phút → chạy các lịch bot tự đặt tới hạn.
 	s.route("POST /tasks/schedule-tick", func(w http.ResponseWriter, r *http.Request) error {
@@ -189,6 +190,29 @@ func (s *Server) contractRoast(w http.ResponseWriter, r *http.Request) error {
 		return nil
 	}
 	if err := s.deps.Activities.AnnounceContractResult(r.Context(), task.UID, task.ContractID); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// generatePlan: task chạy trên bot — sinh giáo án AI Coach cho user rồi ghi
+// users/{uid}/coach/current. Việc AI (Gemini) nên nằm ở runnow-bot.
+func (s *Server) generatePlan(w http.ResponseWriter, r *http.Request) error {
+	if s.deps.Bot == nil {
+		w.WriteHeader(204)
+		return nil
+	}
+	var task struct {
+		UID  string `json:"uid"`
+		Goal string `json:"goal"`
+	}
+	if decodeJSON(r, &task) != nil || task.UID == "" {
+		w.WriteHeader(204)
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+	defer cancel()
+	if err := s.deps.Bot.GenerateTrainingPlan(ctx, task.UID, task.Goal); err != nil {
 		return err
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})
@@ -392,6 +416,22 @@ func (s *Server) apiRoutes() {
 		}
 		payload := map[string]any{"uid": uid, "contractId": body.ContractID}
 		if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/contract-roast", Payload: payload, TaskID: StableTaskID("roast", body.ContractID)}); err != nil {
+			return err
+		}
+		return writeJSON(w, 202, map[string]any{"ok": true})
+	}))
+	s.route("POST /v1/training-plan/generate", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		// App (Coach tab) gọi để sinh giáo án. Luật "1 active/complete mới tạo
+		// mới" enforce ở APP; backend luôn ghi đè coach/current. Enqueue sang bot
+		// (Gemini nặng). TaskID kèm goal+phút để bấm lại nhanh không bị nuốt trùng.
+		var body struct {
+			Goal string `json:"goal"`
+		}
+		if decodeJSON(r, &body) != nil {
+			return invalidRequest()
+		}
+		payload := map[string]any{"uid": uid, "goal": body.Goal}
+		if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/generate-plan", Payload: payload}); err != nil {
 			return err
 		}
 		return writeJSON(w, 202, map[string]any{"ok": true})

@@ -43,6 +43,12 @@ service cloud.firestore {
         allow read, write: if owns(userId);
       }
 
+      // AI Coach: giáo án active của user. Backend (bot) ghi qua admin SDK; app
+      // đọc, tick done, xoá/đổi. Chỉ chủ mới đụng được.
+      match /coach/{doc} {
+        allow read, write: if owns(userId);
+      }
+
       match /stats/{statsId} {
         allow read: if owns(userId) || isPublicProfile(userId);
         allow write: if false;
