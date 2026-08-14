@@ -108,31 +108,42 @@ func trainingPlanSchema() *genai.Schema {
 	}
 }
 
-const trainingPlanPrompt = `Bạn là HLV chạy bộ. Hãy dựng MỘT giáo án tập luyện cá nhân, an toàn và thực tế
-cho một runner, dựa trên MỤC TIÊU và LỊCH SỬ TẬP dưới đây.
+const trainingPlanPrompt = `Bạn là một HUẤN LUYỆN VIÊN CHẠY BỘ CHUYÊN NGHIỆP, nắm vững khoa học thể thao và
+đã dựng giáo án cho nhiều trình độ. Hãy thiết kế MỘT giáo án cá nhân hoá, AN TOÀN
+và có cơ sở, dựa trên MỤC TIÊU và LỊCH SỬ TẬP THẬT của runner dưới đây.
 
 MỤC TIÊU: %s
-LỊCH SỬ TẬP (dữ liệu thật, dùng để căn độ khó — đừng nhồi quá sức):
+LỊCH SỬ TẬP (dữ liệu thật — CĂN độ khó theo đây, tuyệt đối không nhồi quá sức):
 - Km trung bình 7 ngày gần đây: %s
 - Km tháng này: %s
 - Buổi dài nhất gần đây: %s
 - Pace trung bình gần đây: %s
 - Số ngày có chạy trong tháng: %d
 
-YÊU CẦU:
-- Tự chọn số TUẦN hợp lý cho mục tiêu (thường 2–8 tuần). Nếu mục tiêu ghi rõ số
-  tuần thì theo đúng.
-- days phải có ĐÚNG weeks×7 phần tử, theo thứ tự Thứ 2 → Chủ nhật của từng tuần,
-  field week chạy từ 1..weeks.
-- Mỗi tuần có 2–3 ngày NGHỈ (type "rest"), xen kẽ hợp lý; đừng xếp 2 buổi nặng
-  liền nhau. Tăng tải từ từ (~10%%/tuần), tuần cuối GIẢM tải rồi tới buổi đích.
-- Buổi cuối cùng là type "race" đúng bằng mục tiêu (nếu mục tiêu là cự ly).
-- type ∈ easy|long|tempo|interval|rest|race. Ngày rest: title "Nghỉ", không cần
-  distanceKm/pace.
-- distanceKm: km của buổi (số thực). paceHint: pace mục tiêu dạng "6:15" (phút:giây/km).
-  detail: chỉ điền cho interval (vd "5×400m nghỉ 90s"). note: 1 câu khuyên ngắn,
-  giọng thân thiện, không sáo rỗng — không phải buổi nào cũng cần note.
-- summary: 1 câu tóm tắt giáo án.
+NGUYÊN TẮC HUẤN LUYỆN (bám sát, đây là phần quan trọng nhất):
+- CÁ NHÂN HOÁ theo nền hiện tại: khối lượng tuần đầu xấp xỉ km/tuần gần đây, KHÔNG
+  nhảy vọt. Nếu chưa có dữ liệu (người mới) → khởi điểm nhẹ, thận trọng.
+- TĂNG TẢI TỪ TỪ: tổng km mỗi tuần tăng không quá ~10%% so với tuần trước (quy tắc 10%%).
+- PHÂN BỔ 80/20: phần lớn là chạy nhẹ (easy, đủ chậm để nói chuyện được); chỉ khoảng
+  20%% khối lượng là cường độ cao (tempo/interval). Đừng lạm dụng buổi nặng.
+- HỒI PHỤC: mỗi tuần có 2–3 ngày nghỉ/hồi phục xen kẽ; KHÔNG xếp 2 buổi nặng
+  (interval/tempo/long) liền nhau.
+- CHẠY DÀI tăng dần theo tuần để xây nền bền cho cự ly mục tiêu.
+- TAPER: tuần CUỐI giảm tải rõ (~40–50%%) để chân tươi trước ngày về đích.
+- Buổi CUỐI CÙNG là type "race" đúng bằng cự ly mục tiêu (nếu mục tiêu là cự ly).
+- PACE MỤC TIÊU phải suy ra từ pace hiện tại của runner — thực tế, không viển vông.
+  Buổi easy chậm hơn pace mục tiêu; interval/tempo nhanh hơn.
+- Nếu mục tiêu quá sức so với nền trong thời gian ngắn → ưu tiên AN TOÀN, đặt cột
+  mốc vừa sức thay vì ép.
+
+RÀNG BUỘC ĐẦU RA:
+- Tự chọn số TUẦN hợp lý (thường 2–8). Mục tiêu ghi rõ số tuần thì theo đúng.
+- days có ĐÚNG weeks×7 phần tử, thứ tự Thứ 2 → Chủ nhật; field week = 1..weeks.
+- type ∈ easy|long|tempo|interval|rest|race. Ngày rest: title "Nghỉ", bỏ distanceKm/pace.
+- distanceKm: km buổi (số thực). paceHint dạng "6:15" (phút:giây/km). detail chỉ cho
+  interval (vd "5×400m nghỉ 90s"). note: lời khuyên NGẮN, chuyên môn mà dễ hiểu
+  (kỹ thuật/cảm giác/nhắc nhở cho ĐÚNG buổi đó) — không sáo rỗng, không cần mọi buổi.
+- summary: 1 câu nêu định hướng giáo án.
 Trả về DUY NHẤT JSON theo schema, không kèm giải thích.`
 
 // GenerateTrainingPlan sinh giáo án cho user rồi ghi users/{uid}/coach/current
