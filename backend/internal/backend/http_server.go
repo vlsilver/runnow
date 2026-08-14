@@ -54,6 +54,7 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/live-announce", s.liveAnnounce)
 	s.route("POST /tasks/contract-roast", s.contractRoast)
 	s.route("POST /tasks/generate-plan", s.generatePlan)
+	s.route("POST /tasks/coach-ask", s.coachAsk)
 	s.route("POST /tasks/consolidate-memory", s.consolidateMemory)
 	// Cloud Scheduler gõ mỗi 10 phút → chạy các lịch bot tự đặt tới hạn.
 	s.route("POST /tasks/schedule-tick", func(w http.ResponseWriter, r *http.Request) error {
@@ -213,6 +214,29 @@ func (s *Server) generatePlan(w http.ResponseWriter, r *http.Request) error {
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
 	if err := s.deps.Bot.GenerateTrainingPlan(ctx, task.UID, task.Goal); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// coachAsk: task chạy trên bot — trả lời câu hỏi cho AI Coach (Gemini) rồi ghi
+// hỏi+đáp vào coach/chat/messages. Việc AI nên nằm ở runnow-bot.
+func (s *Server) coachAsk(w http.ResponseWriter, r *http.Request) error {
+	if s.deps.Bot == nil {
+		w.WriteHeader(204)
+		return nil
+	}
+	var task struct {
+		UID      string `json:"uid"`
+		Question string `json:"question"`
+	}
+	if decodeJSON(r, &task) != nil || task.UID == "" || strings.TrimSpace(task.Question) == "" {
+		w.WriteHeader(204)
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+	if _, err := s.deps.Bot.AskCoach(ctx, task.UID, task.Question); err != nil {
 		return err
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})
@@ -460,22 +484,20 @@ func (s *Server) apiRoutes() {
 	// Hỏi đáp với coach. Đồng bộ vì user đang chờ câu trả lời trên màn chat;
 	// hạn 60s để một câu hỏi treo không giữ kết nối mãi.
 	s.route("POST /v1/coach/ask", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
-		if s.deps.Bot == nil {
-			return invalidRequest()
-		}
+		// Việc AI (Gemini) nằm ở runnow-bot; api CHỈ enqueue task. Câu hỏi + trả
+		// lời được bot ghi vào coach/chat/messages nên app nhận qua stream — không
+		// cần trả answer đồng bộ ở đây.
 		var body struct {
 			Question string `json:"question"`
 		}
 		if decodeJSON(r, &body) != nil || strings.TrimSpace(body.Question) == "" {
 			return invalidRequest()
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
-		defer cancel()
-		answer, err := s.deps.Bot.AskCoach(ctx, uid, body.Question)
-		if err != nil {
+		payload := map[string]any{"uid": uid, "question": body.Question}
+		if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/coach-ask", Payload: payload}); err != nil {
 			return err
 		}
-		return writeJSON(w, 200, map[string]any{"answer": answer})
+		return writeJSON(w, 202, map[string]any{"ok": true})
 	}))
 	s.route("POST /v1/activities/tracked", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		var body struct {
