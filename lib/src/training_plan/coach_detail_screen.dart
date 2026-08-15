@@ -83,10 +83,24 @@ class CoachDetailScreen extends ConsumerWidget {
                         : Icons.lock_rounded,
                   ),
                   onPressed: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    final others = plan.participantCount - 1;
+                    // Công khai → Riêng tư chỉ khi CHƯA có ai khác theo — kẻo họ
+                    // bị kẹt (không tick/rời được khi giáo án riêng tư).
+                    if (plan.visibility.isPublic && others > 0) {
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Còn $others người đang theo — chuyển Riêng tư được '
+                            'khi họ rời hết. Công khai → Riêng tư chỉ khi một mình bạn.',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
                     final next = plan.visibility.isPublic
                         ? CoachVisibility.private
                         : CoachVisibility.club;
-                    final messenger = ScaffoldMessenger.of(context);
                     try {
                       await ref
                           .read(coachControllerProvider)

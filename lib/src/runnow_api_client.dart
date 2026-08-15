@@ -195,6 +195,12 @@ class RunNowApiClient {
     );
   }
 
+  /// Báo group khi chủ GỠ một giáo án công khai (kèm goal vì doc sắp bị xoá).
+  /// Fire-and-forget, chỉ giáo án public mới nên gọi.
+  Future<void> announceCoachRemoved({required String goal}) async {
+    await _send('POST', '/v1/coach/announce-removed', body: {'goal': goal});
+  }
+
   /// AI Coach: nhờ backend sinh ĐỀ XUẤT giáo án theo mục tiêu + lịch sử chạy
   /// thật. Chạy bất đồng bộ (Gemini) — backend ghi users/{uid}/coach/draft xong
   /// app tự nhận qua stream Firestore. Giáo án đang chạy không bị đụng tới.

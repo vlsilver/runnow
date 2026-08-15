@@ -55,6 +55,7 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/contract-roast", s.contractRoast)
 	s.route("POST /tasks/contract-announce-new", s.contractAnnounceNew)
 	s.route("POST /tasks/coach-announce", s.coachAnnounce)
+	s.route("POST /tasks/coach-announce-removed", s.coachAnnounceRemoved)
 	s.route("POST /tasks/generate-plan", s.generatePlan)
 	s.route("POST /tasks/coach-ask", s.coachAsk)
 	s.route("POST /tasks/consolidate-memory", s.consolidateMemory)
@@ -225,6 +226,22 @@ func (s *Server) coachAnnounce(w http.ResponseWriter, r *http.Request) error {
 		return nil
 	}
 	if err := s.deps.Activities.AnnounceCoachPlan(r.Context(), task.UID, task.Changed); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// coachAnnounceRemoved: bot báo group chủ đã GỠ một giáo án công khai.
+func (s *Server) coachAnnounceRemoved(w http.ResponseWriter, r *http.Request) error {
+	var task struct {
+		UID  string `json:"uid"`
+		Goal string `json:"goal"`
+	}
+	if decodeJSON(r, &task) != nil || task.UID == "" {
+		w.WriteHeader(204)
+		return nil
+	}
+	if err := s.deps.Activities.AnnounceCoachRemoved(r.Context(), task.UID, task.Goal); err != nil {
 		return err
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})
@@ -507,6 +524,8 @@ func (s *Server) apiRoutes() {
 			return invalidRequest()
 		}
 		payload := map[string]any{"uid": uid, "goal": body.Goal, "visibility": body.Visibility}
+		// KHÔNG đặt StableTaskID: sinh giáo án là hành động chủ ý; user có thể tạo
+		// lại (kể cả cùng mục tiêu) trong ngày — dedup theo (uid,goal) sẽ chặn oan.
 		if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/generate-plan", Payload: payload}); err != nil {
 			return err
 		}
@@ -525,7 +544,7 @@ func (s *Server) apiRoutes() {
 		// bot vì telegram + broadcast nằm ở đó; api chỉ đẩy task.
 		if vis == "club" {
 			payload := map[string]any{"uid": uid, "changed": replaced}
-			if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/coach-announce", Payload: payload}); err != nil {
+			if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/coach-announce", Payload: payload, TaskID: StableTaskID("coach-announce", []any{uid, replaced})}); err != nil {
 				return err
 			}
 		}
@@ -552,7 +571,22 @@ func (s *Server) apiRoutes() {
 			return invalidRequest()
 		}
 		payload := map[string]any{"uid": uid, "planId": body.PlanID, "question": body.Question}
-		if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/coach-ask", Payload: payload}); err != nil {
+		if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/coach-ask", Payload: payload, TaskID: StableTaskID("coach-ask", []any{uid, body.PlanID, body.Question})}); err != nil {
+			return err
+		}
+		return writeJSON(w, 202, map[string]any{"ok": true})
+	}))
+	s.route("POST /v1/coach/announce-removed", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		// App (CHỦ giáo án) gọi khi gỡ một giáo án công khai. Gửi kèm goal vì doc
+		// sắp bị xoá; bot báo group. Enqueue sang bot (telegram nằm ở đó).
+		var body struct {
+			Goal string `json:"goal"`
+		}
+		if decodeJSON(r, &body) != nil {
+			return invalidRequest()
+		}
+		payload := map[string]any{"uid": uid, "goal": body.Goal}
+		if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/coach-announce-removed", Payload: payload, TaskID: StableTaskID("coach-removed", []any{uid, body.Goal})}); err != nil {
 			return err
 		}
 		return writeJSON(w, 202, map[string]any{"ok": true})

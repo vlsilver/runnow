@@ -143,12 +143,18 @@ class _TrainingPlanViewState extends ConsumerState<TrainingPlanView> {
     );
   }
 
-  void _confirmDelete() {
+  void _confirmDelete(TrainingPlan plan) {
+    // Số người khác đang theo (không tính chủ) — để cảnh báo hậu quả khi xoá.
+    final others = (plan.participantCount - 1).clamp(0, 9999);
+    final warn = others > 0
+        ? 'Có $others người khác đang theo giáo án này — họ sẽ mất giáo án và '
+              'tiến độ. 3i sẽ báo group. Không hoàn tác được.'
+        : 'Giáo án hiện tại sẽ bị xoá, không hoàn tác được.';
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Xoá giáo án?'),
-        content: const Text('Giáo án hiện tại sẽ bị xoá, không hoàn tác được.'),
+        content: Text(warn),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
@@ -157,6 +163,14 @@ class _TrainingPlanViewState extends ConsumerState<TrainingPlanView> {
           FilledButton(
             onPressed: () {
               Navigator.pop(dialogContext);
+              // Giáo án công khai → 3i bot báo group đã gỡ (enqueue kèm goal
+              // TRƯỚC khi xoá để khỏi race đọc doc đã mất).
+              if (plan.visibility.isPublic) {
+                ref
+                    .read(runNowApiClientProvider)
+                    .announceCoachRemoved(goal: plan.goal)
+                    .ignore();
+              }
               ref.read(coachControllerProvider).delete();
             },
             child: const Text('Xoá'),
@@ -267,7 +281,7 @@ class _TrainingPlanViewState extends ConsumerState<TrainingPlanView> {
         // Actions pin đáy — luôn với tay tới khi cuộn lịch.
         _CoachActionBar(
           onAsk: () => _openCoachChat(plan.id),
-          onDelete: _confirmDelete,
+          onDelete: () => _confirmDelete(plan),
         ),
       ],
     );

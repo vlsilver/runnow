@@ -130,16 +130,26 @@ func (s *ActivityService) AnnounceContractResult(ctx context.Context, callerUID,
 	if text == "" {
 		text = contractRoastPlain(title, targetLabel, failers)
 	}
-	if err := s.telegram.SendChatMessage(ctx, s.telegram.ChatID(), text); err != nil {
+	// Claim cờ TRƯỚC khi gửi để retry không bêu lặp; gửi lỗi sau claim thì thôi.
+	claimed, err := claimOnce(ctx, s.db, ref, "roastedAt", map[string]any{
+		"roastedAt": firestore.ServerTimestamp,
+	})
+	if err != nil {
 		return err
+	}
+	if !claimed {
+		return nil
+	}
+	if err := s.telegram.SendChatMessage(ctx, s.telegram.ChatID(), text); err != nil {
+		slog.WarnContext(ctx, "roast.telegram_send_failed_after_claim", "error", err)
+		return nil
 	}
 	if s.broadcast != nil && s.broadcast.Enabled() {
 		if err := s.broadcast.RecordBroadcast(ctx, s.telegram.ChatID(), text); err != nil {
 			slog.WarnContext(ctx, "roast.broadcast_record_failed", "error", err)
 		}
 	}
-	_, err = ref.Set(ctx, map[string]any{"roastedAt": firestore.ServerTimestamp}, firestore.MergeAll)
-	return err
+	return nil
 }
 
 // contractRoastPlain: bản mẫu tĩnh khi bot tắt/model lỗi — vẫn bêu được, chỉ là

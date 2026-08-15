@@ -81,11 +81,20 @@ func (s *ActivityService) LiveAnnounce(ctx context.Context, uid, activityID, eve
 		if !hasBot {
 			return nil
 		}
-		if err := s.broadcast.LivePhotoAnnouncement(ctx, displayName, photoPath, distanceMeters); err != nil {
-			return err
+		claimed, cerr := claimOnce(ctx, s.db, stateRef, marker, map[string]any{
+			marker: true, "uid": uid, "updatedAt": firestore.ServerTimestamp,
+		})
+		if cerr != nil {
+			return cerr
 		}
-		_, err = stateRef.Set(ctx, map[string]any{marker: true, "uid": uid, "updatedAt": firestore.ServerTimestamp}, firestore.MergeAll)
-		return err
+		if !claimed {
+			return nil
+		}
+		if err := s.broadcast.LivePhotoAnnouncement(ctx, displayName, photoPath, distanceMeters); err != nil {
+			slog.WarnContext(ctx, "live.photo_send_failed_after_claim", "error", err)
+			return nil
+		}
+		return nil
 	}
 
 	text := ""
@@ -95,20 +104,13 @@ func (s *ActivityService) LiveAnnounce(ctx context.Context, uid, activityID, eve
 	if text == "" {
 		text = liveAnnouncePlain(displayName, event, distanceMeters, movingTimeSeconds, milestoneKm)
 	}
-	if err := s.telegram.SendChatMessage(ctx, s.telegram.ChatID(), text); err != nil {
-		return err
-	}
-	if hasBot {
-		if err := s.broadcast.RecordBroadcast(ctx, s.telegram.ChatID(), text); err != nil {
-			slog.WarnContext(ctx, "live.broadcast_record_failed", "error", err)
-		}
-	}
 
+	// Chuẩn bị marker + (finish) mốc chống double khi Strava sync trùng về.
 	update := map[string]any{marker: true, "uid": uid, "updatedAt": firestore.ServerTimestamp}
 	if event == liveEventFinish {
-		// Chống double-notify: buổi này đã live-finish. Khi bản Strava trùng
-		// sync về sau, NotifyTelegram dò mốc dưới đây để nuốt tin lặp. startMs
-		// nằm sẵn trong id "runnow-<ms>".
+		// Buổi này đã live-finish. Khi bản Strava trùng sync về sau,
+		// NotifyTelegram dò mốc dưới đây để nuốt tin lặp. startMs nằm sẵn trong
+		// id "runnow-<ms>".
 		if ms := runnowStartMs(activityID); ms > 0 {
 			update["liveFinishStartMs"] = ms
 			if _, err := s.db.Collection("users").Doc(uid).Set(ctx, map[string]any{
@@ -119,8 +121,25 @@ func (s *ActivityService) LiveAnnounce(ctx context.Context, uid, activityID, eve
 			}
 		}
 	}
-	_, err = stateRef.Set(ctx, update, firestore.MergeAll)
-	return err
+
+	// Claim marker TRƯỚC khi gửi để retry không tường thuật lặp.
+	claimed, err := claimOnce(ctx, s.db, stateRef, marker, update)
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return nil
+	}
+	if err := s.telegram.SendChatMessage(ctx, s.telegram.ChatID(), text); err != nil {
+		slog.WarnContext(ctx, "live.telegram_send_failed_after_claim", "error", err)
+		return nil
+	}
+	if hasBot {
+		if err := s.broadcast.RecordBroadcast(ctx, s.telegram.ChatID(), text); err != nil {
+			slog.WarnContext(ctx, "live.broadcast_record_failed", "error", err)
+		}
+	}
+	return nil
 }
 
 // runnowStartMs tách mốc thời gian bắt đầu (ms) từ id buổi 3i "runnow-<ms>".

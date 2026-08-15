@@ -214,10 +214,17 @@ service cloud.firestore {
 
       allow update: if signedIn() && (
         // A) Chủ giáo án: toàn quyền sửa plan của mình (đổi lịch, tick tiến độ),
-        //    miễn giữ nguyên chủ.
+        //    miễn giữ nguyên chủ. NGOẠI TRỪ: không được chuyển Công khai →
+        //    Riêng tư khi còn người khác đang theo (họ sẽ bị kẹt: rule B đòi
+        //    visibility == 'club' mới tick/rời được).
         (
           resource.data.ownerUid == request.auth.uid
           && request.resource.data.ownerUid == request.auth.uid
+          && !(
+            resource.data.visibility == 'club'
+            && request.resource.data.visibility == 'private'
+            && resource.data.participants.size() > 1
+          )
         )
         // B) Người tham gia giáo án public: chỉ đụng participants / participantUids
         //    / updatedAt, và chỉ subtree uid của mình (join + tick tiến độ riêng).

@@ -542,19 +542,26 @@ class _AccountHeaderState extends ConsumerState<_AccountHeader> {
                       user?.displayName ?? 'Đang tải tài khoản',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      _accountSubtitle(user),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.onSurface.withValues(alpha: 0.62),
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        color: palette.ink,
                       ),
                     ),
+                    if (user?.email != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        user!.email!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.55),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -566,60 +573,152 @@ class _AccountHeaderState extends ConsumerState<_AccountHeader> {
             ],
           ),
           if (user != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
+            Divider(height: 1, color: palette.border),
+            const SizedBox(height: 16),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Hiển thị Club',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.onSurface.withValues(alpha: 0.62),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Hiển thị trong Club',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: palette.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Ai xem được hồ sơ & hoạt động của bạn',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.55),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const Spacer(),
-                if (_updatingVisibility)
+                if (_updatingVisibility) ...[
+                  const SizedBox(width: 12),
                   const SizedBox(
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                else
-                  SegmentedButton<ProfileVisibility>(
-                    style: const ButtonStyle(
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    segments: const [
-                      ButtonSegment(
-                        value: ProfileVisibility.private,
-                        icon: Icon(Icons.lock_outline, size: 16),
-                        label: Text('Private'),
-                      ),
-                      ButtonSegment(
-                        value: ProfileVisibility.public,
-                        icon: Icon(Icons.public, size: 16),
-                        label: Text('Public'),
-                      ),
-                    ],
-                    selected: {user.visibility},
-                    onSelectionChanged: (selection) =>
-                        _toggleVisibility(selection.single),
                   ),
+                ],
               ],
             ),
+            const SizedBox(height: 12),
+            _VisibilityToggle(
+              value: user.visibility,
+              enabled: !_updatingVisibility,
+              onChanged: _toggleVisibility,
+            ),
+            if (user.lastSyncedAt != null) ...[
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Icon(Icons.sync_rounded, size: 14, color: palette.textMuted),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Đồng bộ ${formatDate(user.lastSyncedAt!)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ],
       ),
     );
   }
 
-  String _accountSubtitle(UserProfile? user) {
-    if (user == null) return 'Google account';
-    final parts = [
-      if (user.email != null) user.email!,
-      if (user.lastSyncedAt != null) 'Sync ${formatDate(user.lastSyncedAt!)}',
-    ];
-    return parts.join('  •  ');
+}
+
+/// Toggle Riêng tư ↔ Công khai kiểu pill 2 ô, khớp accent app (thay
+/// SegmentedButton mặc định trông generic).
+class _VisibilityToggle extends StatelessWidget {
+  const _VisibilityToggle({
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final ProfileVisibility value;
+  final bool enabled;
+  final ValueChanged<ProfileVisibility> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: palette.glassStart,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: palette.border),
+      ),
+      child: Row(
+        children: [
+          _seg(context, ProfileVisibility.private, Icons.lock_outline_rounded,
+              'Riêng tư'),
+          _seg(context, ProfileVisibility.public, Icons.public_rounded,
+              'Công khai'),
+        ],
+      ),
+    );
+  }
+
+  Widget _seg(
+    BuildContext context,
+    ProfileVisibility v,
+    IconData icon,
+    String label,
+  ) {
+    final palette = context.runNowPalette;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final selected = value == v;
+    final onAccent = dark ? RunNowDataColors.coachOnAccentDark : Colors.white;
+    return Expanded(
+      child: GestureDetector(
+        onTap: enabled && !selected ? () => onChanged(v) : null,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(
+            color: selected ? palette.accent : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon,
+                  size: 15, color: selected ? onAccent : palette.textMuted),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? onAccent : palette.ink,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

@@ -625,12 +625,28 @@ func (s *ActivityService) NotifyTelegram(ctx context.Context, uid, activityID st
 	if hasBot {
 		announcement = s.broadcast.ActivityAnnouncement(ctx, displayName, activityName, fact)
 	}
+
+	// Claim cờ TRƯỚC khi gửi để retry (hoặc giao song song) không bắn lặp: nếu
+	// ghi cờ SAU khi gửi mà ghi hỏng, retry sẽ gửi lần 2. Gửi lỗi sau claim thì
+	// mất tin còn hơn gửi đôi.
+	claimed, err := claimOnce(ctx, s.db, ref, "telegramNotifiedAt", map[string]any{
+		"telegramNotifiedAt": firestore.ServerTimestamp,
+		"updatedAt":          firestore.ServerTimestamp,
+	})
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return nil
+	}
 	if announcement != "" {
 		if err := s.telegram.SendActivityAnnouncement(ctx, announcement, detailURL); err != nil {
-			return err
+			slog.WarnContext(ctx, "activity.telegram_send_failed_after_claim", "error", err, "activityId", activityID)
+			return nil
 		}
 	} else if err := s.telegram.SendActivityAlert(ctx, displayName, activityName, fact, detailURL, ""); err != nil {
-		return err
+		slog.WarnContext(ctx, "activity.telegram_send_failed_after_claim", "error", err, "activityId", activityID)
+		return nil
 	}
 
 	// Telegram không đẩy lại tin của chính bot, nên tự ghi vào trí nhớ ở đây —
@@ -646,8 +662,7 @@ func (s *ActivityService) NotifyTelegram(ctx context.Context, uid, activityID st
 			slog.WarnContext(ctx, "activity.broadcast_record_failed", "error", err)
 		}
 	}
-	_, err = ref.Set(ctx, map[string]any{"telegramNotifiedAt": firestore.ServerTimestamp, "updatedAt": firestore.ServerTimestamp}, firestore.MergeAll)
-	return err
+	return nil
 }
 
 func shouldEnqueueTelegramActivity(previousData map[string]any, next map[string]any, now time.Time) bool {

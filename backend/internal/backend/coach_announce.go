@@ -47,6 +47,35 @@ func (s *ActivityService) AnnounceCoachPlan(ctx context.Context, ownerUID string
 	return nil
 }
 
+// AnnounceCoachRemoved báo group khi chủ GỠ một giáo án công khai. Doc đã (hoặc
+// sắp) bị xoá nên goal truyền thẳng vào, chỉ cần resolve tên chủ. No-op nếu
+// telegram tắt.
+func (s *ActivityService) AnnounceCoachRemoved(ctx context.Context, ownerUID, goal string) error {
+	if !s.telegram.Enabled() || ownerUID == "" {
+		return nil
+	}
+	name := ownerUID
+	if profile, perr := resolveProfile(ctx, s.db, ownerUID); perr == nil {
+		if n := preferredName(profile); strings.TrimSpace(n) != "" {
+			name = n
+		}
+	}
+	goal = strings.TrimSpace(goal)
+	if goal == "" {
+		goal = "giáo án chạy"
+	}
+	text := fmt.Sprintf("🗑️ %s đã gỡ giáo án chung: %s. Ai đang theo thì dừng nhé!", name, goal)
+	if err := s.telegram.SendChatMessage(ctx, s.telegram.ChatID(), text); err != nil {
+		return err
+	}
+	if s.broadcast != nil && s.broadcast.Enabled() {
+		if err := s.broadcast.RecordBroadcast(ctx, s.telegram.ChatID(), text); err != nil {
+			slog.WarnContext(ctx, "coach.announce_removed_record_failed", "error", err)
+		}
+	}
+	return nil
+}
+
 func coachAnnouncePlain(name, goal string, weeks int, changed bool) string {
 	wk := ""
 	if weeks > 0 {
