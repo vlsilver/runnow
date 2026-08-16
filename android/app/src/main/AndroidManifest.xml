@@ -1,4 +1,10 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Package `health` (Apple Health) đòi minSdk 26; app chỉ dùng nó trên iOS
+         (HealthSyncController.available = iOS-only) nên bỏ qua ràng buộc minSdk
+         của plugin trên Android để không phải bump minSdk toàn app. Plugin inert
+         trên Android vì không bao giờ được gọi. -->
+    <uses-sdk tools:overrideLibrary="cachet.plugins.health,androidx.health.connect.client" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- Không khai ACCESS_BACKGROUND_LOCATION: tracking chạy nền qua foreground

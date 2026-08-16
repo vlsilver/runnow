@@ -53,6 +53,10 @@
 	<string>3i Run cần quyền vị trí nền khi bạn khoá màn hình hoặc dùng app khác trong lúc đang chạy.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>3i Run cần quyền vị trí khi bạn bấm chạy để ghi lại quãng đường, pace và lộ trình buổi chạy.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>3i Run đọc các buổi chạy từ app Sức khoẻ để cập nhật quãng đường và bảng xếp hạng của bạn.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>3i Run không ghi dữ liệu vào Sức khoẻ; quyền này chỉ để hoàn tất kết nối HealthKit.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

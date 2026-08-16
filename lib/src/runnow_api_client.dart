@@ -201,6 +201,16 @@ class RunNowApiClient {
     await _send('POST', '/v1/coach/announce-removed', body: {'goal': goal});
   }
 
+  /// Nhập buổi CHẠY từ Apple Health (source apple_health). Backend upsert theo
+  /// sourceId + dedup thời gian với Strava/native để không đếm đôi km.
+  Future<void> importHealthWorkouts(List<Map<String, dynamic>> workouts) async {
+    await _send(
+      'POST',
+      '/v1/activities/health-import',
+      body: {'workouts': workouts},
+    );
+  }
+
   /// AI Coach: nhờ backend sinh ĐỀ XUẤT giáo án theo mục tiêu + lịch sử chạy
   /// thật. Chạy bất đồng bộ (Gemini) — backend ghi users/{uid}/coach/draft xong
   /// app tự nhận qua stream Firestore. Giáo án đang chạy không bị đụng tới.

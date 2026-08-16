@@ -302,6 +302,13 @@ service cloud.firestore {
 
     // Backend-owned integration state. Firebase Admin bypasses these rules;
     // Flutter clients must never read tokens, OAuth state, or event payloads.
+    // Cấu hình tích hợp (cap Strava + số đang kết nối). Client ĐỌC để gate nút
+    // connect; số đếm do backend ghi, cap do admin đặt trên console.
+    match /appConfig/{doc} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
     match /stravaConnections/{document=**} {
       allow read, write: if false;
     }

@@ -491,7 +491,7 @@ const maxToolRounds = 4
 // botHistoryLimit là số tin gần nhất nạp lại làm ngữ cảnh. Giờ bot ghi mọi
 // tin trong group (không chỉ tin nhắc nó), nên cửa sổ này gồm cả hội thoại
 // thường — nâng lên 100 để bot nắm được mạch chuyện rộng hơn khi trả lời.
-const botHistoryLimit = 100
+const botHistoryLimit = 150
 
 // botDailyDMLimit là trần TOÀN CỤC số câu trả lời cho tin nhắn RIÊNG mỗi ngày.
 // Chat riêng phục vụ được cả người ngoài group nên phải chặn tổng chi phí; tin
@@ -1023,6 +1023,28 @@ func (s *BotService) generateFunImage(ctx context.Context, prompt, style string,
 	return nil, nil
 }
 
+// readImageMemo đọc ảnh MỘT LẦN rồi trích mô tả ngắn (số liệu chạy nếu có) để
+// lưu vào lịch sử dưới dạng CHỮ. Nhờ đó lần sau bot "nhớ" nội dung ảnh qua
+// history mà không phải gửi lại ảnh cho Gemini đọc lại.
+func (s *BotService) readImageMemo(ctx context.Context, img []byte) string {
+	if !s.Enabled() || len(img) == 0 {
+		return ""
+	}
+	const prompt = "Mô tả NGẮN GỌN nội dung ảnh này (1-2 câu) để lưu làm ghi chú. " +
+		"Nếu có số liệu chạy bộ (quãng đường, pace, thời gian, nhịp tim, bib, huy chương, biểu đồ) thì ghi RÕ CÁC SỐ đọc được. " +
+		"Chỉ mô tả, không bình luận, không xưng hô."
+	content := &genai.Content{Role: genai.RoleUser, Parts: []*genai.Part{
+		{Text: prompt},
+		{InlineData: &genai.Blob{MIMEType: "image/jpeg", Data: img}},
+	}}
+	text, err := s.Answer(ctx, "Bạn là công cụ đọc ảnh, chỉ trả về mô tả ngắn gọn khách quan.", []*genai.Content{content}, false)
+	if err != nil {
+		slog.WarnContext(ctx, "bot.image_memo_failed", "error", err)
+		return ""
+	}
+	return strings.TrimSpace(text)
+}
+
 func (s *BotService) HandleMessage(ctx context.Context, chatID, senderID, name, question, photoFileID string) error {
 	if !s.Enabled() {
 		return nil
@@ -1126,6 +1148,13 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID, senderID, name, 
 	}
 
 	answer, err := s.Answer(ctx, systemPrompt, contents, private)
+	// Có ảnh → đọc MỘT LẦN rồi đính mô tả vào tin lưu history, để lần sau bot nhớ
+	// nội dung (số liệu) qua chữ mà không phải đọc lại ảnh.
+	if hasImage {
+		if memo := s.readImageMemo(ctx, refImage); memo != "" {
+			question = strings.TrimRight(question, "\n") + "\n[Ảnh đã đọc: " + memo + "]"
+		}
+	}
 	// Tool generate_image đã tự gửi ảnh + caption vào chat rồi → model trả rỗng ở
 	// vòng cuối là ĐÚNG Ý (ta dặn nó đừng trả thêm text), KHÔNG phải lỗi. Không
 	// gửi thêm tin text (tránh lặp), chỉ lưu lịch sử. Kiểm trước khi xét err để
@@ -1388,10 +1417,16 @@ func (s *BotService) ActivityAnnouncement(ctx context.Context, displayName, acti
 // milestone | finish.
 const liveAnnouncementInstruction = `
 
-BỐI CẢNH: một buổi tập đang DIỄN RA trong group vừa có diễn biến (STATS bên
-dưới). Sự kiện: start = vừa xuất phát, milestone = vừa qua một cột mốc quãng
-đường, finish = vừa về đích. Báo tin này lên group theo đúng chất của bạn, dùng
-đúng số liệu cho sẵn. Chỉ trả về lời thông báo, không lời dẫn.`
+BỐI CẢNH: một buổi tập đang DIỄN RA trong group vừa có diễn biến (STATS ở TIN
+CUỐI). Sự kiện: start = vừa xuất phát, milestone = vừa qua một cột mốc quãng
+đường, finish = vừa về đích. Lịch sử phía trên GỒM CÁC THÔNG BÁO TRƯỚC của chính
+buổi này + tin nhắn mọi người trong group.
+
+Báo tin này lên group theo đúng chất của bạn, dùng ĐÚNG số liệu cho sẵn, và:
+- NỐI TIẾP mạch buổi như một câu chuyện liền: nhắc tiến triển ("nãy Xkm giờ đã
+  Ykm"), bắt không khí nhóm (ai vừa cổ vũ thì đáp lại).
+- TUYỆT ĐỐI KHÔNG lặp lại câu/ý đã đăng ở các thông báo trước — mỗi mốc một góc mới.
+Chỉ trả về lời thông báo, không lời dẫn.`
 
 const contractRoastInstruction = `
 
@@ -1457,7 +1492,15 @@ func (s *BotService) LiveAnnouncement(ctx context.Context, displayName, event st
 	if mem := s.memory.Load(ctx, s.telegram.ChatID()); mem != "" {
 		systemPrompt += "\n\nTRÍ NHỚ VỀ NHÓM NÀY:\n" + mem
 	}
-	contents := []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: stats.String()}}}}
+	// Nạp lịch sử group (gồm các thông báo live TRƯỚC của buổi này + tin nhắn mọi
+	// người) rồi đặt STATS làm tin cuối → tường thuật NỐI TIẾP, bắt được không khí
+	// nhóm, hết rời rạc. Chung cơ chế với chat reply (loadHistory).
+	history, herr := s.loadHistory(ctx, s.telegram.ChatID())
+	if herr != nil {
+		slog.WarnContext(ctx, "bot.live_history_load_failed", "error", herr)
+		history = nil
+	}
+	contents := append(history, &genai.Content{Role: genai.RoleUser, Parts: []*genai.Part{{Text: stats.String()}}})
 	text, err := s.Answer(ctx, systemPrompt, contents, false)
 	if err != nil {
 		slog.WarnContext(ctx, "bot.live_announcement_failed", "error", err)
@@ -1496,13 +1539,18 @@ func (s *BotService) LivePhotoAnnouncement(ctx context.Context, displayName, pho
 }
 
 func (s *BotService) livePhotoCaption(ctx context.Context, displayName string, distanceMeters float64) string {
-	prompt := fmt.Sprintf("BỐI CẢNH: %s vừa CHỤP một tấm ảnh giữa buổi chạy đang diễn ra (đã đi %s). Viết 1 câu caption ngắn cho tấm ảnh này để đăng group, theo đúng chất của bạn. Chỉ trả về caption.",
+	prompt := fmt.Sprintf("BỐI CẢNH: %s vừa CHỤP một tấm ảnh giữa buổi chạy đang diễn ra (đã đi %s). Lịch sử phía trên là các thông báo/ảnh trước của chính buổi này + tin nhắn nhóm. Viết 1 câu caption ngắn cho ảnh này, NỐI TIẾP mạch buổi (đừng lặp câu đã đăng), theo đúng chất của bạn. Chỉ trả về caption.",
 		strings.TrimSpace(displayName), formatDistanceKm(distanceMeters))
 	systemPrompt := botSystemPrompt
 	if mem := s.memory.Load(ctx, s.telegram.ChatID()); mem != "" {
 		systemPrompt += "\n\nTRÍ NHỚ VỀ NHÓM NÀY:\n" + mem
 	}
-	contents := []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: prompt}}}}
+	history, herr := s.loadHistory(ctx, s.telegram.ChatID())
+	if herr != nil {
+		slog.WarnContext(ctx, "bot.live_photo_history_load_failed", "error", herr)
+		history = nil
+	}
+	contents := append(history, &genai.Content{Role: genai.RoleUser, Parts: []*genai.Part{{Text: prompt}}})
 	text, err := s.Answer(ctx, systemPrompt, contents, false)
 	if err != nil {
 		slog.WarnContext(ctx, "bot.live_photo_caption_failed", "error", err)

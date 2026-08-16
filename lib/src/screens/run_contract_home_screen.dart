@@ -120,7 +120,6 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final connected = ref.watch(stravaConnectionProvider);
-    final connectionLoading = ref.watch(stravaConnectionLoadingProvider);
     final sync = ref.watch(syncControllerProvider);
     final profile = ref.watch(userProfileProvider).value;
     final members = ref.watch(membersProvider).value ?? const <MemberProfile>[];
@@ -186,25 +185,10 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.small(
-        tooltip: connectionLoading
-            ? 'Đang kiểm tra Strava'
-            : connected
-            ? 'Tạo kèo'
-            : 'Kết nối Strava',
-        onPressed: connectionLoading
-            ? null
-            : () => _createContract(
-                myActive.value ?? const [],
-                connected,
-                currentUid,
-              ),
-        child: Icon(
-          connectionLoading
-              ? Icons.more_horiz_rounded
-              : connected
-              ? Icons.add_rounded
-              : Icons.link_rounded,
-        ),
+        tooltip: 'Tạo kèo',
+        onPressed: () =>
+            _createContract(myActive.value ?? const [], currentUid),
+        child: const Icon(Icons.add_rounded),
       ),
       body: keoBody,
     );
@@ -212,13 +196,10 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
 
   Future<void> _createContract(
     List<RunContract> myActive,
-    bool connected,
     String? currentUid,
   ) async {
-    if (!connected) {
-      ref.read(stravaAuthProvider).connect();
-      return;
-    }
+    // Ai cũng tạo được kèo — không cần kết nối Strava (chạy bằng 3i native cũng
+    // theo dõi được tiến độ). Chỉ chặn khi đang dở quá nhiều kèo.
     final unfinished = myActive
         .where((contract) => !contract.completedBy(currentUid))
         .toList();

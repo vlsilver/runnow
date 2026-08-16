@@ -607,6 +607,24 @@ func (s *Server) apiRoutes() {
 		}
 		return writeJSON(w, 200, result)
 	}))
+	s.route("POST /v1/activities/health-import", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		// App (iOS) đọc Workout từ Apple Health rồi đẩy lên; backend upsert +
+		// dedup với Strava. Giới hạn batch để 1 lần đồng bộ không quá tải.
+		var body struct {
+			Workouts []healthWorkout `json:"workouts"`
+		}
+		if decodeJSON(r, &body) != nil {
+			return invalidRequest()
+		}
+		if len(body.Workouts) > 500 {
+			body.Workouts = body.Workouts[:500]
+		}
+		imported, err := s.deps.Activities.ImportHealthWorkouts(r.Context(), uid, body.Workouts)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"imported": imported})
+	}))
 	// Hoàn tất buổi chạy đã SYNC THEO CHUNK: body chỉ mang phần summary nhẹ
 	// (không route/streams — chúng đã được đẩy dần vào track/{seq}); backend ghép
 	// chunk lại. Nhờ vậy không còn payload khổng lồ ở cuối.

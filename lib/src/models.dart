@@ -18,13 +18,15 @@ enum ProfileVisibility {
 
 enum ActivitySource {
   strava('strava'),
-  runnow('runnow');
+  runnow('runnow'),
+  appleHealth('apple_health');
 
   const ActivitySource(this.value);
 
   factory ActivitySource.fromValue(String? value) {
     return switch (value) {
       'runnow' => ActivitySource.runnow,
+      'apple_health' => ActivitySource.appleHealth,
       _ => ActivitySource.strava,
     };
   }

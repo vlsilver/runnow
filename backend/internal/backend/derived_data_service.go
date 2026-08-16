@@ -122,29 +122,52 @@ func resolveProfile(ctx context.Context, db *firestore.Client, uid string) (map[
 	return profile, nil
 }
 
+// nonStravaSourcePriority: khi hai buổi non-Strava TRÙNG nhau (cùng một lần
+// chạy ở hai nguồn), giữ nguồn giàu dữ liệu hơn. 3i native có GPS/route/streams
+// nên ưu tiên hơn Apple Health (chỉ có quãng đường + thời gian).
+func nonStravaSourcePriority(source string) int {
+	if source == "runnow" {
+		return 2
+	}
+	return 1 // apple_health & các nguồn phụ khác
+}
+
 func SelectOfficialActivities(activities []ActivityFact) []ActivityFact {
-	// Strava activities that count (run + walk). Also the pool a 3i-tracked
-	// activity is de-duplicated against.
+	// Strava run/walk = pool để dedup các nguồn phụ, và luôn được tính (giữ
+	// nguyên hành vi cũ: không dedup Strava-vs-Strava).
 	counted := []ActivityFact{}
+	out := []ActivityFact{}
 	for _, a := range activities {
 		if a.Source == "strava" && leaderboardSportTypes[a.SportType] {
 			counted = append(counted, a)
+			out = append(out, a)
 		}
 	}
-	out := []ActivityFact{}
+
+	// Nguồn PHỤ (runnow, apple_health…): Run ≥ 500m. Loại nếu trùng một buổi
+	// Strava, HOẶC trùng một buổi non-Strava ĐÃ được chọn — chống đếm đôi khi
+	// cùng một lần chạy nằm ở nhiều nguồn phụ (vd Apple Health + 3i native) hoặc
+	// bản Health bị sửa (sinh 2 doc trùng thời gian).
+	nonStrava := make([]ActivityFact, 0, len(activities))
 	for _, a := range activities {
 		if a.Source == "strava" {
-			// Only run/walk count toward the leaderboard; cycling (and any
-			// other Strava sport) is excluded here even though it still gets
-			// announced to the group.
-			if leaderboardSportTypes[a.SportType] {
-				out = append(out, a)
-			}
 			continue
 		}
-		if a.SportType != "Run" || a.DistanceMeters < 500 {
-			continue
+		if a.SportType == "Run" && a.DistanceMeters >= 500 {
+			nonStrava = append(nonStrava, a)
 		}
+	}
+	// Xét theo ưu tiên nguồn giảm dần, tie-break theo ID → kết quả ỔN ĐỊNH,
+	// không đổi giữa các lần rebuild dù thứ tự đầu vào khác nhau.
+	sort.SliceStable(nonStrava, func(i, j int) bool {
+		pi, pj := nonStravaSourcePriority(nonStrava[i].Source), nonStravaSourcePriority(nonStrava[j].Source)
+		if pi != pj {
+			return pi > pj
+		}
+		return nonStrava[i].ID < nonStrava[j].ID
+	})
+	kept := make([]ActivityFact, 0, len(nonStrava))
+	for _, a := range nonStrava {
 		duplicate := false
 		for _, other := range counted {
 			if overlapRatio(a, other) > 0.3 {
@@ -153,6 +176,15 @@ func SelectOfficialActivities(activities []ActivityFact) []ActivityFact {
 			}
 		}
 		if !duplicate {
+			for _, other := range kept {
+				if overlapRatio(a, other) > 0.3 {
+					duplicate = true
+					break
+				}
+			}
+		}
+		if !duplicate {
+			kept = append(kept, a)
 			out = append(out, a)
 		}
 	}

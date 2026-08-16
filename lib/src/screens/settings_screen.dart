@@ -21,6 +21,8 @@ class SettingsScreen extends ConsumerWidget {
     final themeController = ref.watch(themeControllerProvider);
     final strava = ref.watch(stravaAuthProvider);
     final stravaConnected = ref.watch(stravaConnectionProvider);
+    final integrationConfig = ref.watch(integrationConfigProvider).value;
+    final health = ref.watch(healthSyncProvider);
     final googleAuth = ref.watch(authControllerProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Cài đặt')),
@@ -74,9 +76,9 @@ class SettingsScreen extends ConsumerWidget {
               _SettingsSection(
                 title: 'Kết nối',
                 children: [
+                  // ── Strava ─────────────────────────────────────────────
                   // Chưa kết nối thì phải dùng đúng nút "Connect with Strava"
-                  // chính thức; đã kết nối rồi thì chỉ còn là dòng trạng
-                  // thái, không cần nút nữa.
+                  // chính thức; đã kết nối rồi thì chỉ còn là dòng trạng thái.
                   if (stravaConnected || strava.statusLoading)
                     _SettingsRow(
                       icon: stravaConnected
@@ -89,11 +91,20 @@ class SettingsScreen extends ConsumerWidget {
                           ? 'Đang xử lý'
                           : 'Đã kết nối',
                     )
+                  else if (integrationConfig?.stravaFull ?? false)
+                    // Đủ chỗ (app chưa được Strava review) → không nhận kết nối mới.
+                    _SettingsRow(
+                      icon: Icons.lock_clock_outlined,
+                      title: 'Strava',
+                      subtitle:
+                          'Đã đủ ${integrationConfig!.stravaCount}/${integrationConfig.stravaMax} chỗ. '
+                          '3i đang chờ Strava duyệt để mở thêm — tạm thời chưa nhận kết nối mới.',
+                    )
                   else
                     _ConnectWithStravaButton(
                       onTap: strava.loading ? null : strava.connect,
                     ),
-                  if (stravaConnected)
+                  if (stravaConnected) ...[
                     _SettingsRow(
                       icon: Icons.sync,
                       title: 'Đồng bộ Strava',
@@ -104,7 +115,6 @@ class SettingsScreen extends ConsumerWidget {
                                 .read(syncControllerProvider)
                                 .startBackgroundSync(force: true),
                     ),
-                  if (stravaConnected)
                     _SettingsRow(
                       icon: Icons.history,
                       title: 'Đồng bộ toàn bộ lịch sử',
@@ -118,18 +128,60 @@ class SettingsScreen extends ConsumerWidget {
                                   fullResync: true,
                                 ),
                     ),
-                  if (stravaConnected)
                     _SettingsRow(
                       icon: Icons.link_off,
                       title: 'Ngắt kết nối Strava',
                       destructive: true,
                       onTap: strava.loading ? null : strava.disconnect,
                     ),
+                  ],
                   if (strava.errorMessage != null)
                     _SettingsMessage(message: strava.errorMessage!),
                   if (sync.message != null)
                     _SettingsMessage(message: sync.message!),
                   const _PoweredByStrava(),
+
+                  // ── Apple Health (chỉ iOS) ────────────────────────────
+                  if (health.available) ...[
+                    const SizedBox(height: 6),
+                    Divider(height: 1, color: context.runNowPalette.border),
+                    const SizedBox(height: 6),
+                    if (!health.connected)
+                      _SettingsRow(
+                        icon: Icons.favorite_rounded,
+                        title: 'Kết nối Apple Health',
+                        subtitle: 'Đồng bộ buổi chạy từ app Sức khoẻ',
+                        value: health.busy ? 'Đang xử lý' : null,
+                        onTap: health.busy
+                            ? null
+                            : () => ref.read(healthSyncProvider).connect(),
+                      )
+                    else ...[
+                      _SettingsRow(
+                        icon: Icons.favorite_rounded,
+                        title: 'Apple Health',
+                        value: 'Đã kết nối',
+                      ),
+                      _SettingsRow(
+                        icon: Icons.sync,
+                        title: 'Đồng bộ Apple Health',
+                        value: health.busy ? 'Đang chạy' : null,
+                        onTap: health.busy
+                            ? null
+                            : () => ref.read(healthSyncProvider).sync(),
+                      ),
+                      _SettingsRow(
+                        icon: Icons.link_off,
+                        title: 'Ngắt Apple Health',
+                        destructive: true,
+                        onTap: health.busy
+                            ? null
+                            : () => ref.read(healthSyncProvider).disconnect(),
+                      ),
+                    ],
+                    if (health.error != null)
+                      _SettingsMessage(message: health.error!),
+                  ],
                 ],
               ),
               const SizedBox(height: 18),

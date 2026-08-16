@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:myrun/src/auth.dart';
 import 'package:myrun/src/avatar_repository.dart';
+import 'package:myrun/src/health_sync.dart';
 import 'package:myrun/src/journal_controller.dart';
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
@@ -155,8 +156,39 @@ final stravaConnectionProvider = Provider<bool>((ref) {
   return ref.watch(stravaAuthProvider).connected;
 });
 
+/// Đồng bộ Apple Health (iOS). Quản trạng thái kết nối + đồng bộ workout.
+final healthSyncProvider = ChangeNotifierProvider<HealthSyncController>(
+  (ref) => HealthSyncController(ref.watch(runNowApiClientProvider)),
+);
+
 final stravaConnectionLoadingProvider = Provider<bool>((ref) {
   return ref.watch(stravaAuthProvider).statusLoading;
+});
+
+/// Cấu hình tích hợp đọc từ appConfig/integrations: cap Strava (admin đặt trên
+/// console) + số user đang kết nối (backend đếm). Dùng để ẩn nút connect khi
+/// đủ chỗ (app chưa được Strava review, tối đa ~10 athlete).
+class IntegrationConfig {
+  const IntegrationConfig({this.stravaMax = 10, this.stravaCount = 0});
+  final int stravaMax;
+  final int stravaCount;
+
+  /// Đã đủ chỗ — không nhận kết nối Strava mới.
+  bool get stravaFull => stravaMax > 0 && stravaCount >= stravaMax;
+}
+
+final integrationConfigProvider = StreamProvider<IntegrationConfig>((ref) {
+  return FirebaseFirestore.instance
+      .collection('appConfig')
+      .doc('integrations')
+      .snapshots()
+      .map((snap) {
+        final d = snap.data();
+        return IntegrationConfig(
+          stravaMax: (d?['stravaMaxConnections'] as num?)?.toInt() ?? 10,
+          stravaCount: (d?['stravaConnectedCount'] as num?)?.toInt() ?? 0,
+        );
+      });
 });
 
 final authControllerProvider = ChangeNotifierProvider<AuthController>(

@@ -108,6 +108,78 @@ func (s *ActivityService) SaveTracked(ctx context.Context, uid string, raw map[s
 	return TrackedActivityResult{Status: "counted"}, nil
 }
 
+// healthWorkout là 1 buổi chạy nhập từ Apple Health (client đọc HealthKit).
+type healthWorkout struct {
+	SourceID          string  `json:"sourceId"`
+	StartedAt         string  `json:"startedAt"`
+	DistanceMeters    float64 `json:"distanceMeters"`
+	MovingTimeSeconds int64   `json:"movingTimeSeconds"`
+}
+
+// ImportHealthWorkouts upsert các buổi chạy từ Apple Health thành activity
+// source=apple_health (id = "health-<uuid>" nên nhập lại chỉ ghi đè, không nhân
+// bản), rồi dedup với Strava (đồng hồ thường vừa lên Strava vừa vào Health) để
+// KHÔNG đếm đôi km. Trả về số buổi đã ghi.
+func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, workouts []healthWorkout) (int, error) {
+	imported := 0
+	now := time.Now()
+	months := map[string]time.Time{} // tháng khác nhau bị đụng → rebuild period 1 lần/tháng
+	for _, w := range workouts {
+		if w.SourceID == "" || len(w.SourceID) > 100 || strings.ContainsAny(w.SourceID, "/ ") {
+			continue
+		}
+		if w.DistanceMeters <= 0 || w.DistanceMeters > 1e7 || w.MovingTimeSeconds <= 0 || w.MovingTimeSeconds > 7*24*60*60 {
+			continue
+		}
+		started, err := time.Parse(time.RFC3339, w.StartedAt)
+		if err != nil || started.After(now.Add(10*time.Minute)) {
+			continue
+		}
+		activityID := "health-" + w.SourceID
+		next := map[string]any{
+			"id":                 activityID,
+			"source":             "apple_health",
+			"sourceActivityId":   w.SourceID,
+			"sportType":          "Run",
+			"name":               "Chạy (Apple Health)",
+			"manual":             false,
+			"recordingDevice":    "apple_health",
+			"startedAt":          started.UTC().Format(time.RFC3339Nano),
+			"distanceMeters":     w.DistanceMeters,
+			"movingTimeSeconds":  w.MovingTimeSeconds,
+			"elapsedTimeSeconds": w.MovingTimeSeconds,
+			"updatedAt":          firestore.ServerTimestamp,
+		}
+		// Trùng với 1 buổi Strava đang có → đánh dấu để leaderboard không đếm đôi.
+		if w.DistanceMeters >= 500 {
+			if dupID, derr := s.preferredStravaDuplicate(ctx, uid, next); derr == nil && dupID != "" {
+				next["duplicateOfActivityId"] = dupID
+			}
+		}
+		ref := s.db.Collection("users").Doc(uid).Collection("activities").Doc(activityID)
+		if _, err := ref.Set(ctx, next, firestore.MergeAll); err != nil {
+			return imported, err
+		}
+		months[started.Format("2006-01")] = started
+		imported++
+	}
+	if imported == 0 {
+		return 0, nil
+	}
+	// Gom việc rebuild: leaderboard hiện tại rebuild MỘT lần cho cả batch; stats
+	// theo tháng rebuild một lần cho MỖI tháng khác nhau bị đụng — thay vì bắn
+	// một task cho từng buổi (sync 90 ngày = ~90 task trùng).
+	if err := s.enqueueDerived(ctx, uid, "health-import"); err != nil {
+		return imported, err
+	}
+	for _, m := range months {
+		if err := s.enqueuePeriodStats(ctx, uid, m); err != nil {
+			return imported, err
+		}
+	}
+	return imported, nil
+}
+
 func trackedDerivedCause(activity map[string]any) string {
 	identity := map[string]any{}
 	for _, key := range []string{

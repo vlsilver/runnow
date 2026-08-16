@@ -123,6 +123,9 @@ func (s *OAuthService) Disconnect(ctx context.Context, uid string) error {
 		return err
 	}
 	token, _ := snap.Data()["accessToken"].(string)
+	// Chỉ giảm bộ đếm nếu connection đang CÒN active — disconnect lại khi đã
+	// revoked (idempotent) không trừ oan.
+	wasActive := stringValue(snap.Data()["status"]) != "revoked"
 	if token != "" {
 		if revokeErr := s.gateway.Revoke(ctx, token); revokeErr != nil {
 			var api *StravaAPIError
@@ -137,6 +140,11 @@ func (s *OAuthService) Disconnect(ctx context.Context, uid string) error {
 		}
 		if err := tx.Set(s.db.Collection("users").Doc(uid), map[string]any{"stravaConnected": false, "stravaAthleteId": firestore.Delete, "athleteId": firestore.Delete, "stravaDisconnectedAt": firestore.ServerTimestamp, "updatedAt": firestore.ServerTimestamp}, firestore.MergeAll); err != nil {
 			return err
+		}
+		if wasActive {
+			if err := tx.Set(s.db.Collection("appConfig").Doc("integrations"), map[string]any{"stravaConnectedCount": firestore.Increment(-1), "updatedAt": firestore.ServerTimestamp}, firestore.MergeAll); err != nil {
+				return err
+			}
 		}
 		return tx.Set(s.db.Collection("publicProfiles").Doc(uid), map[string]any{"stravaConnected": false, "updatedAt": firestore.ServerTimestamp}, firestore.MergeAll)
 	})
@@ -190,6 +198,10 @@ func (s *OAuthService) linkConnection(ctx context.Context, uid, athleteID string
 		if userErr == nil {
 			userData = userSnap.Data()
 		}
+		// Đếm số user đang kết nối Strava để gate theo cap (app chưa được Strava
+		// review, tối đa 10 athlete). Chỉ tăng khi user CHUYỂN từ chưa-connect →
+		// connect (re-link cùng tài khoản không cộng thêm).
+		wasConnected, _ := userData["stravaConnected"].(bool)
 		locked := firstString(userData, "lockedStravaAthleteId", "stravaAthleteId", "athleteId")
 		if locked != "" && locked != athleteID {
 			return &HTTPError{Status: 409, Code: "strava_uid_mismatch", Message: "Firebase account is locked to a different Strava athlete"}
@@ -210,6 +222,11 @@ func (s *OAuthService) linkConnection(ctx context.Context, uid, athleteID string
 		}
 		if err := tx.Set(user, map[string]any{"stravaConnected": true, "lockedStravaAthleteId": locked, "stravaAthleteId": athleteID, "athleteId": athleteID, "stravaLinkedAt": firestore.ServerTimestamp, "updatedAt": firestore.ServerTimestamp}, firestore.MergeAll); err != nil {
 			return err
+		}
+		if !wasConnected {
+			if err := tx.Set(s.db.Collection("appConfig").Doc("integrations"), map[string]any{"stravaConnectedCount": firestore.Increment(1), "updatedAt": firestore.ServerTimestamp}, firestore.MergeAll); err != nil {
+				return err
+			}
 		}
 		return tx.Set(public, map[string]any{"stravaConnected": true, "updatedAt": firestore.ServerTimestamp}, firestore.MergeAll)
 	})

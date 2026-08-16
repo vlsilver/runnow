@@ -1,7 +1,7 @@
 name: myrun
 description: 3i Run — nhật ký chạy bộ và cộng đồng, đồng bộ từ Strava.
 publish_to: none
-version: 1.3.0+7
+version: 1.4.0+8
 
 environment:
   sdk: ">=3.12.0 <4.0.0"
@@ -43,6 +43,7 @@ dependencies:
   # 12 beta đã tự cập nhật lên win32 mới, hết xung đột — chấp nhận dùng
   # bản beta vì bản stable hiện có không build được cho project này.
   file_picker: ^12.0.0-0
+  health: ^13.3.2
 dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
