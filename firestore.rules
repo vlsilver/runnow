@@ -71,6 +71,12 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // Số bước theo ngày (Apple Health) — backend ghi qua Admin SDK.
+      match /stepDays/{dayId} {
+        allow read: if owns(userId) || isPublicProfile(userId);
+        allow write: if false;
+      }
+
       match /periodStats/{periodId} {
         allow read: if owns(userId) || isPublicProfile(userId);
         allow write: if false;
@@ -265,6 +271,12 @@ service cloud.firestore {
     }
 
     match /leaderboardEntries/{userId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Bảng xếp hạng SỐ BƯỚC (Apple Health) — công khai đọc, chỉ backend ghi.
+    match /stepLeaderboardEntries/{userId} {
       allow read: if signedIn();
       allow write: if false;
     }

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
+import 'package:myrun/src/health_sync.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/screens/activity_detail_screen.dart';
 import 'package:myrun/src/screens/club_screen.dart';
@@ -35,8 +36,9 @@ final _router = GoRouter(
   initialLocation: '/',
   routes: [
     StatefulShellRoute.indexedStack(
-      builder: (context, state, shell) =>
-          _Scaffold(shell: shell, location: state.uri.path),
+      builder: (context, state, shell) => _HealthSyncTrigger(
+        child: _Scaffold(shell: shell, location: state.uri.path),
+      ),
       branches: [
         StatefulShellBranch(
           routes: [
@@ -697,6 +699,55 @@ class _SyncedActivityRow extends StatelessWidget {
     ActivityKind.walk => Icons.directions_walk_rounded,
     ActivityKind.hike => Icons.terrain_rounded,
   };
+}
+
+/// Đồng bộ Apple Health lúc MỞ APP và mỗi khi app QUAY LẠI foreground — để buổi
+/// chạy mới từ Health/Apple Watch tự lên bảng xếp hạng mà không cần vào Cài đặt.
+/// (Không dùng HealthKit background delivery, nên "tự động" = mỗi lần app active.)
+/// No-op trên Android / khi chưa kết nối. Sync im lặng, không dội banner lỗi.
+class _HealthSyncTrigger extends ConsumerStatefulWidget {
+  const _HealthSyncTrigger({required this.child});
+  final Widget child;
+
+  @override
+  ConsumerState<_HealthSyncTrigger> createState() => _HealthSyncTriggerState();
+}
+
+class _HealthSyncTriggerState extends ConsumerState<_HealthSyncTrigger>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Tạo controller (constructor gọi load() → tự sync nếu đang kết nối) lúc mở.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _readHealth();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _readHealth()?.sync(silent: true);
+  }
+
+  /// Đọc controller phòng thủ: ở demo mode (không có api client) provider ném →
+  /// bỏ qua, health sync không liên quan ở đó.
+  HealthSyncController? _readHealth() {
+    try {
+      return ref.read(healthSyncProvider);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class _Scaffold extends StatelessWidget {

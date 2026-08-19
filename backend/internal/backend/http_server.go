@@ -612,18 +612,41 @@ func (s *Server) apiRoutes() {
 		// dedup với Strava. Giới hạn batch để 1 lần đồng bộ không quá tải.
 		var body struct {
 			Workouts []healthWorkout `json:"workouts"`
+			// Khoảng [from,to) để dọn buổi đã xoá trong Health. Client CHỈ gửi khi
+			// đọc trọn cửa sổ (không bị cap cắt); rỗng = không reconcile.
+			ReconcileFrom string `json:"reconcileFrom"`
+			ReconcileTo   string `json:"reconcileTo"`
 		}
 		if decodeJSON(r, &body) != nil {
 			return invalidRequest()
 		}
 		if len(body.Workouts) > 500 {
+			// Bị cắt → KHÔNG reconcile (kẻo xoá nhầm buổi nằm ngoài 500 đầu).
 			body.Workouts = body.Workouts[:500]
+			body.ReconcileFrom, body.ReconcileTo = "", ""
 		}
-		imported, err := s.deps.Activities.ImportHealthWorkouts(r.Context(), uid, body.Workouts)
+		imported, err := s.deps.Activities.ImportHealthWorkouts(r.Context(), uid, body.Workouts, body.ReconcileFrom, body.ReconcileTo)
 		if err != nil {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"imported": imported})
+	}))
+	s.route("POST /v1/health/steps-import", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		// App (iOS) đọc số bước theo ngày từ Apple Health rồi đẩy lên; backend
+		// upsert + dựng lại BXH bước. BXH bước RIÊNG, không dính km chạy/kèo.
+		var body struct {
+			Days []healthStepDay `json:"days"`
+		}
+		if decodeJSON(r, &body) != nil {
+			return invalidRequest()
+		}
+		if len(body.Days) > 400 {
+			body.Days = body.Days[:400]
+		}
+		if err := s.deps.Activities.ImportHealthSteps(r.Context(), uid, body.Days); err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true})
 	}))
 	// Hoàn tất buổi chạy đã SYNC THEO CHUNK: body chỉ mang phần summary nhẹ
 	// (không route/streams — chúng đã được đẩy dần vào track/{seq}); backend ghép

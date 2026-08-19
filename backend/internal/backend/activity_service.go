@@ -120,10 +120,11 @@ type healthWorkout struct {
 // source=apple_health (id = "health-<uuid>" nên nhập lại chỉ ghi đè, không nhân
 // bản), rồi dedup với Strava (đồng hồ thường vừa lên Strava vừa vào Health) để
 // KHÔNG đếm đôi km. Trả về số buổi đã ghi.
-func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, workouts []healthWorkout) (int, error) {
+func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, workouts []healthWorkout, reconcileFrom, reconcileTo string) (int, error) {
 	imported := 0
 	now := time.Now()
 	months := map[string]time.Time{} // tháng khác nhau bị đụng → rebuild period 1 lần/tháng
+	seen := map[string]bool{}        // activityID đã ghi lần này (để reconcile xoá stale)
 	for _, w := range workouts {
 		if w.SourceID == "" || len(w.SourceID) > 100 || strings.ContainsAny(w.SourceID, "/ ") {
 			continue
@@ -136,6 +137,7 @@ func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, 
 			continue
 		}
 		activityID := "health-" + w.SourceID
+		seen[activityID] = true
 		next := map[string]any{
 			"id":                 activityID,
 			"source":             "apple_health",
@@ -164,7 +166,43 @@ func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, 
 		imported++
 	}
 	if imported == 0 {
+		// An toàn: đọc ra 0 buổi có thể do glitch quyền HealthKit → KHÔNG reconcile
+		// (kẻo xoá sạch dữ liệu đã nhập). Chỉ dọn stale khi có ÍT NHẤT 1 buổi.
 		return 0, nil
+	}
+	// Reconcile: xoá buổi apple_health trong cửa sổ client vừa đọc [from,to) mà
+	// KHÔNG còn trong batch (đã xoá trong app Sức khoẻ). Client chỉ gửi khoảng này
+	// khi đọc TRỌN (không bị cap 500 cắt). Chuẩn hoá mốc về RFC3339Nano cho khớp
+	// định dạng startedAt đã lưu; query theo startedAt (index sẵn), lọc source +
+	// chỉ đụng doc apple_health.
+	if fromT, ferr := time.Parse(time.RFC3339, reconcileFrom); ferr == nil {
+		if toT, terr := time.Parse(time.RFC3339, reconcileTo); terr == nil {
+			iter := s.db.Collection("users").Doc(uid).Collection("activities").
+				Where("startedAt", ">=", fromT.UTC().Format(time.RFC3339Nano)).
+				Where("startedAt", "<", toT.UTC().Format(time.RFC3339Nano)).Documents(ctx)
+			for {
+				doc, err := iter.Next()
+				if err == iterator.Done {
+					break
+				}
+				if err != nil {
+					iter.Stop()
+					return imported, err
+				}
+				data := doc.Data()
+				if stringValue(data["source"]) != "apple_health" || seen[doc.Ref.ID] {
+					continue
+				}
+				if _, derr := doc.Ref.Delete(ctx); derr != nil {
+					iter.Stop()
+					return imported, derr
+				}
+				if t, perr := time.Parse(time.RFC3339, stringValue(data["startedAt"])); perr == nil {
+					months[t.Format("2006-01")] = t
+				}
+			}
+			iter.Stop()
+		}
 	}
 	// Gom việc rebuild: leaderboard hiện tại rebuild MỘT lần cho cả batch; stats
 	// theo tháng rebuild một lần cho MỖI tháng khác nhau bị đụng — thay vì bắn

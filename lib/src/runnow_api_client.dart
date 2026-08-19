@@ -203,11 +203,30 @@ class RunNowApiClient {
 
   /// Nhập buổi CHẠY từ Apple Health (source apple_health). Backend upsert theo
   /// sourceId + dedup thời gian với Strava/native để không đếm đôi km.
-  Future<void> importHealthWorkouts(List<Map<String, dynamic>> workouts) async {
+  Future<void> importHealthWorkouts(
+    List<Map<String, dynamic>> workouts, {
+    String? reconcileFrom,
+    String? reconcileTo,
+  }) async {
     await _send(
       'POST',
       '/v1/activities/health-import',
-      body: {'workouts': workouts},
+      body: {
+        'workouts': workouts,
+        // Có mốc → backend dọn buổi apple_health đã xoá trong Health ở khoảng này.
+        'reconcileFrom': ?reconcileFrom,
+        'reconcileTo': ?reconcileTo,
+      },
+    );
+  }
+
+  /// Nhập số bước theo NGÀY từ Apple Health (bảng xếp hạng bước riêng). Backend
+  /// upsert theo ngày + dựng lại BXH bước.
+  Future<void> importHealthSteps(List<Map<String, dynamic>> days) async {
+    await _send(
+      'POST',
+      '/v1/health/steps-import',
+      body: {'days': days},
     );
   }
 

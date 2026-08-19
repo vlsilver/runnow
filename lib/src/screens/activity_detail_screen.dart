@@ -69,15 +69,19 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
           child: detail.when(
             data: (item) => CustomScrollView(
               slivers: [
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _ActivityRouteHeaderDelegate(
-                    detail: item,
-                    selectedDistanceMeters: _selectedDistanceMeters,
-                    onPhotoTap: _openPhoto,
-                    showSyncBadge: widget.ownerUid == null,
+                // Chỉ hiện bản đồ khi buổi CÓ route. Buổi Apple Health chỉ có
+                // km + thời gian (không GPS) → bỏ map thay vì vẽ bản đồ trống.
+                if ((item.summary.polyline?.isNotEmpty ?? false) ||
+                    item.summary.routePoints.isNotEmpty)
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: _ActivityRouteHeaderDelegate(
+                      detail: item,
+                      selectedDistanceMeters: _selectedDistanceMeters,
+                      onPhotoTap: _openPhoto,
+                      showSyncBadge: widget.ownerUid == null,
+                    ),
                   ),
-                ),
                 SliverToBoxAdapter(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -443,7 +447,7 @@ class _MapSyncBadgeState extends ConsumerState<_MapSyncBadge> {
         activity.kind == ActivityKind.run &&
         activity.manual != true &&
         (activity.source == ActivitySource.strava ||
-            isRunNowActivityDistanceEligible(activity));
+            isCountedNonStravaRun(activity));
     if (!basicEligible) return const SizedBox.shrink();
 
     final contractsState = ref.watch(myActiveContractsProvider);

@@ -3,10 +3,19 @@ import 'package:myrun/src/models.dart';
 const minimumOfficialRunNowDistanceMeters = 500.0;
 const stravaDuplicateOverlapThreshold = 0.30;
 
-bool isRunNowActivityDistanceEligible(ActivitySummary activity) =>
-    activity.source == ActivitySource.runnow &&
+/// Buổi chạy từ nguồn PHỤ (3i native hoặc Apple Health) đủ điều kiện tính vào
+/// stats/kèo/journal: là Run + đủ cự ly tối thiểu. Strava xét riêng (luôn tính).
+/// (Tên cũ `isRunNowActivityDistanceEligible` — nay gồm cả apple_health.)
+bool isCountedNonStravaRun(ActivitySummary activity) =>
+    (activity.source == ActivitySource.runnow ||
+        activity.source == ActivitySource.appleHealth) &&
     activity.kind == ActivityKind.run &&
     activity.distanceMeters >= minimumOfficialRunNowDistanceMeters;
+
+/// Ưu tiên giữ khi hai buổi nguồn-phụ TRÙNG nhau: 3i native (có GPS/route) hơn
+/// Apple Health (chỉ cự ly + thời gian).
+int _nonStravaSourcePriority(ActivitySource source) =>
+    source == ActivitySource.runnow ? 2 : 1;
 
 bool isPotentialStravaRecording(ActivitySummary activity) =>
     activity.source == ActivitySource.strava &&
@@ -69,14 +78,37 @@ List<ActivitySummary> selectOfficialActivities(
   Iterable<ActivitySummary> activities,
 ) {
   final all = activities.toList();
-  final duplicates = preferredStravaDuplicates(all);
+  // Strava luôn tính; run/trail/virtual của Strava là pool dedup cho nguồn phụ.
+  final stravaPool = [for (final a in all) if (isPotentialStravaRecording(a)) a];
   final selected = <ActivitySummary>[
-    for (final activity in all)
-      if (activity.source == ActivitySource.strava ||
-          (isRunNowActivityDistanceEligible(activity) &&
-              !duplicates.containsKey(activity.id)))
-        activity,
+    for (final a in all)
+      if (a.source == ActivitySource.strava) a,
   ];
+  // Nguồn phụ (3i native + Apple Health): xét theo ưu tiên nguồn (native > health)
+  // rồi id → kết quả ỔN ĐỊNH. Loại nếu trùng một buổi Strava HOẶC trùng một buổi
+  // nguồn-phụ ĐÃ giữ — chống đếm đôi cùng một lần chạy ở nhiều nguồn (vd Apple
+  // Health + 3i native) hoặc bản Health bị sửa (2 doc trùng thời gian).
+  final nonStrava = [for (final a in all) if (isCountedNonStravaRun(a)) a]
+    ..sort((x, y) {
+      final byPrio = _nonStravaSourcePriority(
+        y.source,
+      ).compareTo(_nonStravaSourcePriority(x.source));
+      return byPrio != 0 ? byPrio : x.id.compareTo(y.id);
+    });
+  final kept = <ActivitySummary>[];
+  for (final a in nonStrava) {
+    final isDup =
+        stravaPool.any(
+          (s) => activityOverlapRatio(a, s) > stravaDuplicateOverlapThreshold,
+        ) ||
+        kept.any(
+          (k) => activityOverlapRatio(a, k) > stravaDuplicateOverlapThreshold,
+        );
+    if (!isDup) {
+      kept.add(a);
+      selected.add(a);
+    }
+  }
   selected.sort((a, b) => b.startedAt.compareTo(a.startedAt));
   return selected;
 }

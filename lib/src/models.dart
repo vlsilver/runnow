@@ -211,6 +211,7 @@ class LeaderboardStats {
     required this.longestDistanceMeters,
     required this.fastestPaceSecondsPerKm,
     this.elevationGainMeters = 0,
+    this.steps = 0,
   });
 
   factory LeaderboardStats.fromMap(Map<String, dynamic>? map) {
@@ -225,6 +226,7 @@ class LeaderboardStats {
           ?.toDouble(),
       elevationGainMeters:
           (map?['elevationGainMeters'] as num?)?.toDouble() ?? 0,
+      steps: (map?['steps'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -235,9 +237,23 @@ class LeaderboardStats {
   final double longestDistanceMeters;
   final double? fastestPaceSecondsPerKm;
   final double elevationGainMeters;
+  final int steps; // dùng cho BXH bước chân (Apple Health)
 
   double? get averagePaceSecondsPerKm =>
       distanceMeters <= 0 ? null : movingTimeSeconds / (distanceMeters / 1000);
+
+  /// Cộng thêm quãng đường (mét), giữ nguyên các chỉ số khác — dùng gộp km đi bộ
+  /// vào km chạy cho BXH "Tổng km".
+  LeaderboardStats plusDistance(double meters) => LeaderboardStats(
+    distanceMeters: distanceMeters + meters,
+    movingTimeSeconds: movingTimeSeconds,
+    activityCount: activityCount,
+    activeDays: activeDays,
+    longestDistanceMeters: longestDistanceMeters,
+    fastestPaceSecondsPerKm: fastestPaceSecondsPerKm,
+    elevationGainMeters: elevationGainMeters,
+    steps: steps,
+  );
 
   Map<String, dynamic> toMap() {
     return {
@@ -327,6 +343,19 @@ class LeaderboardEntry {
   final DateTime? updatedAt;
 
   bool get isPublic => visibility == ProfileVisibility.public;
+}
+
+/// Số bước + quãng đường (đi bộ+chạy) của MỘT ngày (Apple Health) — hiển thị
+/// dạng list ở Nhật ký. distanceMeters chỉ để hiện kèm bước, KHÔNG phải km chạy.
+class StepDay {
+  const StepDay({
+    required this.date,
+    required this.steps,
+    this.distanceMeters = 0,
+  });
+  final String date; // YYYY-MM-DD
+  final int steps;
+  final double distanceMeters;
 }
 
 enum LiveTrackingStatus {

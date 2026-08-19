@@ -57,7 +57,12 @@ class _RankingTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final metric = ref.watch(clubRankingMetricProvider);
     final range = ref.watch(clubRankingRangeProvider);
-    final leaderboard = ref.watch(leaderboardEntriesProvider);
+    // Bước = bảng RIÊNG; Km = TỔNG (chạy + đi bộ) gộp; còn lại = leaderboard chạy.
+    final leaderboard = switch (metric) {
+      ClubRankingMetric.steps => ref.watch(stepLeaderboardProvider),
+      ClubRankingMetric.distance => ref.watch(totalKmLeaderboardProvider),
+      _ => ref.watch(leaderboardEntriesProvider),
+    };
 
     return leaderboard.when(
       data: (items) {
@@ -140,12 +145,13 @@ class _RankingNavControls extends ConsumerWidget {
               icon: Icons.leaderboard_outlined,
               value: metric,
               items: const {
-                ClubRankingMetric.distance: 'Km',
+                ClubRankingMetric.distance: 'Tổng km',
                 ClubRankingMetric.time: 'Thời gian',
                 ClubRankingMetric.consistency: 'Đều',
                 ClubRankingMetric.pace: 'Pace',
                 ClubRankingMetric.longestRun: 'Dài nhất',
                 ClubRankingMetric.activityCount: 'Buổi',
+                ClubRankingMetric.steps: 'Bước chân',
               },
               onChanged: (value) =>
                   ref.read(clubRankingMetricProvider.notifier).state = value,
@@ -652,6 +658,7 @@ class _RankingEntry {
         stats.averagePaceSecondsPerKm ?? double.infinity,
       ClubRankingMetric.longestRun => stats.longestDistanceMeters,
       ClubRankingMetric.activityCount => stats.activityCount.toDouble(),
+      ClubRankingMetric.steps => stats.steps.toDouble(),
     };
     return _RankingEntry(entry: entry, stats: stats, score: score);
   }
@@ -896,17 +903,20 @@ String _scoreLabel(_RankingEntry entry, ClubRankingMetric metric) {
       entry.stats.longestDistanceMeters,
     ),
     ClubRankingMetric.activityCount => '${entry.stats.activityCount} buổi',
+    ClubRankingMetric.steps =>
+      '${entry.stats.steps.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]}.')} bước',
   };
 }
 
 String _rankingMetricLabel(ClubRankingMetric metric) {
   return switch (metric) {
-    ClubRankingMetric.distance => 'Km',
+    ClubRankingMetric.distance => 'Tổng km',
     ClubRankingMetric.time => 'Thời gian',
     ClubRankingMetric.consistency => 'Đều',
     ClubRankingMetric.pace => 'Pace',
     ClubRankingMetric.longestRun => 'Dài nhất',
     ClubRankingMetric.activityCount => 'Buổi',
+    ClubRankingMetric.steps => 'Bước chân',
   };
 }
 

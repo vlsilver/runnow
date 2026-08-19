@@ -102,7 +102,7 @@ List<JournalActivityEntry> buildJournalActivityEntries(
   final entries = <JournalActivityEntry>[
     for (final activity in all)
       if (activity.source == ActivitySource.strava ||
-          isRunNowActivityDistanceEligible(activity))
+          isCountedNonStravaRun(activity))
         JournalActivityEntry(
           activity: activity,
           preferredStravaActivityId: activity.source == ActivitySource.runnow
@@ -305,7 +305,7 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
       entries: [
         for (final activity in activities)
           if (activity.source == ActivitySource.strava ||
-              isRunNowActivityDistanceEligible(activity))
+              isCountedNonStravaRun(activity))
             JournalActivityEntry(
               activity: activity,
               preferredStravaActivityId: activity.source == ActivitySource.runnow
@@ -627,7 +627,7 @@ class DemoActivityRepository implements ActivityRepository {
   }) async {
     _activities.removeWhere((activity) => activity.id == detail.summary.id);
     _activities.insert(0, detail.summary);
-    if (!isRunNowActivityDistanceEligible(detail.summary)) {
+    if (!isCountedNonStravaRun(detail.summary)) {
       return const TrackedActivitySaveResult(
         status: TrackedActivitySaveStatus.belowMinimumDistance,
       );

@@ -44,7 +44,7 @@ bool isEligibleForContract(
   Set<String>? includeIds,
 }) =>
     (activity.source == ActivitySource.strava ||
-        isRunNowActivityDistanceEligible(activity)) &&
+        isCountedNonStravaRun(activity)) &&
     activity.kind == ActivityKind.run &&
     activity.manual != true &&
     meetsMetricDistanceThreshold(activity, contract.metric) &&

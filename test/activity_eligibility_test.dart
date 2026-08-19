@@ -5,8 +5,8 @@ import 'package:myrun/src/repository.dart';
 
 void main() {
   test('counts RunNow sessions from exactly 500 meters', () {
-    expect(isRunNowActivityDistanceEligible(_runNow('ok', 500)), isTrue);
-    expect(isRunNowActivityDistanceEligible(_runNow('short', 499.9)), isFalse);
+    expect(isCountedNonStravaRun(_runNow('ok', 500)), isTrue);
+    expect(isCountedNonStravaRun(_runNow('short', 499.9)), isFalse);
   });
 
   test(
@@ -139,7 +139,60 @@ void main() {
       preferred,
     );
   });
+
+  test('apple_health run is eligible and dedups vs strava + native', () {
+    final start = DateTime.utc(2026, 7, 6, 6);
+    expect(isCountedNonStravaRun(_appleHealth('h', 5000)), isTrue);
+    expect(isCountedNonStravaRun(_appleHealth('short', 499)), isFalse);
+
+    // Health trùng Strava → Strava thắng.
+    final health = _appleHealth(
+      'health',
+      5000,
+      startedAt: start.add(const Duration(minutes: 2)),
+    );
+    final strava = _strava('strava', start);
+    expect(selectOfficialActivities([health, strava]), [strava]);
+
+    // Health trùng 3i native (không Strava) → giữ native, order-independent.
+    final runNow = _runNow('runnow', 5000, startedAt: start);
+    for (final input in [
+      [health, runNow],
+      [runNow, health],
+    ]) {
+      final got = selectOfficialActivities(input);
+      expect(got, hasLength(1));
+      expect(got.single.source, ActivitySource.runnow);
+    }
+  });
+
+  test('two apple_health runs at different times both count', () {
+    final base = DateTime.utc(2026, 7, 6, 6);
+    final a = _appleHealth('h-a', 5000, startedAt: base);
+    final b = _appleHealth(
+      'h-b',
+      3000,
+      startedAt: base.add(const Duration(hours: 3)),
+    );
+    expect(selectOfficialActivities([a, b]), hasLength(2));
+  });
 }
+
+ActivitySummary _appleHealth(
+  String id,
+  double distanceMeters, {
+  int elapsedSeconds = 1800,
+  DateTime? startedAt,
+}) => ActivitySummary(
+  id: id,
+  name: id,
+  kind: ActivityKind.run,
+  startedAt: startedAt ?? DateTime.utc(2026, 7, 6, 6),
+  distanceMeters: distanceMeters,
+  movingTimeSeconds: elapsedSeconds,
+  elapsedTimeSeconds: elapsedSeconds,
+  source: ActivitySource.appleHealth,
+);
 
 ActivitySummary _runNow(
   String id,
