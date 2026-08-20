@@ -113,6 +113,12 @@ func (s *ActivityService) rebuildStepLeaderboard(ctx context.Context, uid string
 		"currentWeekStart":      weekKey,
 		"currentMonthStart":     monthKey,
 		"updatedAt":             firestore.ServerTimestamp,
+		// Ghi đè km-đi-bộ CŨ (từ lần thử "Tổng km") về 0 — để app còn chạy code
+		// merge cũ cũng cộng "running + 0 = running", km về chạy-thuần mà KHÔNG
+		// cần build lại mobile. Khi mọi bản đã bỏ merge, có thể gỡ 3 dòng này.
+		"rollingSevenDaysDistance": 0,
+		"currentWeekDistance":      0,
+		"currentMonthDistance":     0,
 	}, firestore.MergeAll)
 	return err
 }
