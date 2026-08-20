@@ -57,12 +57,12 @@ class _RankingTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final metric = ref.watch(clubRankingMetricProvider);
     final range = ref.watch(clubRankingRangeProvider);
-    // Bước = bảng RIÊNG; Km = TỔNG (chạy + đi bộ) gộp; còn lại = leaderboard chạy.
-    final leaderboard = switch (metric) {
-      ClubRankingMetric.steps => ref.watch(stepLeaderboardProvider),
-      ClubRankingMetric.distance => ref.watch(totalKmLeaderboardProvider),
-      _ => ref.watch(leaderboardEntriesProvider),
-    };
+    // Bước chân = bảng RIÊNG (theo số bước). Km = distance của ACTIVITY đã dedup
+    // đa-nguồn (3i + Strava + Apple-workout, trùng thì tính 1 lần) — KHÔNG cộng
+    // đi bộ nền của Apple (đó là chỉ số thụ động, thuộc về BXH Bước).
+    final leaderboard = metric == ClubRankingMetric.steps
+        ? ref.watch(stepLeaderboardProvider)
+        : ref.watch(leaderboardEntriesProvider);
 
     return leaderboard.when(
       data: (items) {
@@ -145,7 +145,7 @@ class _RankingNavControls extends ConsumerWidget {
               icon: Icons.leaderboard_outlined,
               value: metric,
               items: const {
-                ClubRankingMetric.distance: 'Tổng km',
+                ClubRankingMetric.distance: 'Km',
                 ClubRankingMetric.time: 'Thời gian',
                 ClubRankingMetric.consistency: 'Đều',
                 ClubRankingMetric.pace: 'Pace',
@@ -910,7 +910,7 @@ String _scoreLabel(_RankingEntry entry, ClubRankingMetric metric) {
 
 String _rankingMetricLabel(ClubRankingMetric metric) {
   return switch (metric) {
-    ClubRankingMetric.distance => 'Tổng km',
+    ClubRankingMetric.distance => 'Km',
     ClubRankingMetric.time => 'Thời gian',
     ClubRankingMetric.consistency => 'Đều',
     ClubRankingMetric.pace => 'Pace',
