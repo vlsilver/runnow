@@ -301,13 +301,13 @@ class _RankingPodium extends StatelessWidget {
     // Bấm vào 1 slot podium đi thẳng vào profile thành viên đó — không còn
     // mở popup chúc mừng ở đây nữa (popup chúc mừng giờ tự hiện riêng cho
     // đúng người đạt hạng, xem `ref.listen` trong `_RankingTab`).
+    // Bấm 1 người trên BXH → THẲNG nhật ký (list buổi chạy) của họ. Chính mình
+    // → nhật ký của mình.
     void onTap(_RankingEntry entry) {
       final uid = entry.entry.uid;
-      if (uid == currentUid) {
-        context.go('/');
-        return;
-      }
-      context.push('/club/$uid');
+      context.push(
+        uid == currentUid ? '/profile/journal' : '/club/$uid/journal',
+      );
     }
 
     // Mỗi cột bọc trong SizedBox cùng chiều cao cố định + Align bottomCenter —
@@ -720,13 +720,9 @@ class _RankingCard extends StatelessWidget {
             : null,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            if (isMe) {
-              context.go('/');
-              return;
-            }
-            context.push('/club/${member.uid}');
-          },
+          onTap: () => context.push(
+            isMe ? '/profile/journal' : '/club/${member.uid}/journal',
+          ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(10, 10, 12, 10),
             child: Row(
