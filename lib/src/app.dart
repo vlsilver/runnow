@@ -326,6 +326,21 @@ class _AuthenticatedSessionState extends ConsumerState<_AuthenticatedSession> {
               ]
               ..removeWhere((contract) => contract.completedBy(uid))
               ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        // TỰ LINK buổi chạy vừa xong (chưa gán) vào kèo user tham gia — rồi vòng
+        // recalc bên dưới cộng luôn. Await .future để chắc activity đã tải (coordinator
+        // chạy 1 lần lúc mở app, đọc .value có thể còn null). Lỗi bỏ qua an toàn.
+        if (uid != null && mine.isNotEmpty) {
+          try {
+            final recent = await ref.read(activitiesProvider.future);
+            if (recent.isNotEmpty) {
+              await controller.autoLinkUnassignedActivities(
+                activeContracts: mine,
+                recentActivities: recent,
+                currentUid: uid,
+              );
+            }
+          } catch (_) {}
+        }
         for (final contract in mine) {
           if (contract.creatorUid == uid) {
             if (contractLifecycle(contract, DateTime.now()) ==

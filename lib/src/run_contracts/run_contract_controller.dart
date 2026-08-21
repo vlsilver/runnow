@@ -434,6 +434,59 @@ class RunContractController {
     });
   }
 
+  /// TỰ LINK buổi chạy CHƯA gán vào 1 kèo user ĐANG THAM GIA (active, còn trong
+  /// khoảng, đạt ngưỡng, không trùng buổi đã claim). Mỗi buổi → kèo SẮP HẾT HẠN
+  /// nhất mà nó hợp lệ (dồn vào kèo gấp trước). Bỏ qua Hành trình (tự cộng sẵn).
+  /// Tái dùng [applyActivityToContract] nên thừa hưởng nguyên dedup Strava/3i.
+  /// Trả về số buổi vừa link. Gọi lúc mở app / sau sync — idempotent (buổi đã
+  /// gán bị bỏ qua), lỗi 1 buổi không chặn buổi khác.
+  Future<int> autoLinkUnassignedActivities({
+    required List<RunContract> activeContracts,
+    required List<ActivitySummary> recentActivities,
+    required String currentUid,
+  }) async {
+    final joinable = activeContracts
+        .where(
+          (c) =>
+              !c.isJourney &&
+              c.participantFor(currentUid) != null &&
+              !c.completedBy(currentUid),
+        )
+        .toList();
+    if (joinable.isEmpty) return 0;
+    final assignments = await _contracts.activityAssignments();
+    var linked = 0;
+    for (final activity in recentActivities) {
+      if (assignments.containsKey(activity.id)) continue; // đã gán ở đâu đó rồi
+      // Bỏ SỚM buổi ngoài mọi khoảng kèo — applyOptionsFor tốn nhiều query/kèo,
+      // đừng gọi cho buổi chắc chắn không hợp lệ.
+      final startedUtc = activity.startedAt.toUtc();
+      final inAnyWindow = joinable.any(
+        (c) =>
+            !startedUtc.isBefore(c.startAt.toUtc()) &&
+            startedUtc.isBefore(c.endAtExclusive.toUtc()),
+      );
+      if (!inAnyWindow) continue;
+      List<ContractApplyOption> options;
+      try {
+        options = await applyOptionsFor(activity, joinable);
+      } catch (_) {
+        continue;
+      }
+      final eligible =
+          options.where((o) => o.eligible).map((o) => o.contract).toList()
+            ..sort((a, b) => a.endAtExclusive.compareTo(b.endAtExclusive));
+      if (eligible.isEmpty) continue;
+      try {
+        await applyActivityToContract(eligible.first, activity);
+        linked++;
+      } catch (_) {
+        // race / dup vừa bị kèo khác giành — bỏ qua, lần sau tự thử lại.
+      }
+    }
+    return linked;
+  }
+
   /// Gỡ [activity] khỏi [contract], giữ nguyên các activity khác đã gán.
   Future<void> removeActivityFromContract(
     RunContract contract,
