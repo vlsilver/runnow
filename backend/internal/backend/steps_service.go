@@ -9,6 +9,12 @@ import (
 	"google.golang.org/api/iterator"
 )
 
+// NewActivityFact dựng ActivityFact từ doc Firestore — wrapper EXPORT cho
+// migration (activityFact nội bộ không export). Đúng cùng parse với leaderboard.
+func NewActivityFact(id string, data map[string]any) ActivityFact {
+	return activityFact(id, data)
+}
+
 // RebuildStepLeaderboardFor dựng lại stepLeaderboardEntries/{uid} — wrapper
 // EXPORT cho migration one-off (chỉ cần firestore client, không cần deps khác).
 // Dùng đúng logic rebuildStepLeaderboard hiện tại (đi-bộ-thuần = Apple − chạy).
