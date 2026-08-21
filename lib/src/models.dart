@@ -242,6 +242,19 @@ class LeaderboardStats {
   double? get averagePaceSecondsPerKm =>
       distanceMeters <= 0 ? null : movingTimeSeconds / (distanceMeters / 1000);
 
+  /// Cộng thêm quãng đường (mét), giữ nguyên các chỉ số khác — dùng gộp km đi bộ
+  /// vào km chạy cho BXH "Tổng km".
+  LeaderboardStats plusDistance(double meters) => LeaderboardStats(
+    distanceMeters: distanceMeters + meters,
+    movingTimeSeconds: movingTimeSeconds,
+    activityCount: activityCount,
+    activeDays: activeDays,
+    longestDistanceMeters: longestDistanceMeters,
+    fastestPaceSecondsPerKm: fastestPaceSecondsPerKm,
+    elevationGainMeters: elevationGainMeters,
+    steps: steps,
+  );
+
   Map<String, dynamic> toMap() {
     return {
       'distanceMeters': distanceMeters,

@@ -60,11 +60,38 @@ func (s *ActivityService) ImportHealthSteps(ctx context.Context, uid string, day
 	return s.rebuildStepLeaderboard(ctx, uid, time.Now())
 }
 
-// rebuildStepLeaderboard tổng BƯỚC theo 7 ngày / tuần / tháng (lịch VN, khớp
+// officialRunMetersByDay tổng quãng đường các buổi CHÍNH THỨC (đã khử trùng
+// Strava/3i qua SelectOfficialActivities — đúng bộ đang tính ở km leaderboard)
+// theo NGÀY (dateKey VN) trong khoảng các kỳ hiện tại. Dùng để trừ khỏi chỉ số
+// đi-bộ-chạy của Apple, tránh đếm đôi phần chạy trong "Tổng km".
+func (s *ActivityService) officialRunMetersByDay(ctx context.Context, uid string, periods CurrentPeriods) (map[string]float64, error) {
+	start := earliest(periods.Rolling.Start, periods.Week.Start, periods.Month.Start).Add(-24 * time.Hour)
+	end := latest(periods.Rolling.End, periods.Week.End, periods.Month.End)
+	iter := s.db.Collection("users").Doc(uid).Collection("activities").
+		Where("startedAt", ">=", start.UTC().Format(time.RFC3339Nano)).
+		Where("startedAt", "<", end.UTC().Format(time.RFC3339Nano)).Documents(ctx)
+	defer iter.Stop()
+	facts := []ActivityFact{}
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		facts = append(facts, activityFact(doc.Ref.ID, doc.Data()))
+	}
+	byDay := map[string]float64{}
+	for _, a := range SelectOfficialActivities(facts) {
+		byDay[dateKey(a.StartedAt)] += a.DistanceMeters
+	}
+	return byDay, nil
+}
+
+// rebuildStepLeaderboard tổng bước theo 7 ngày / tuần / tháng (lịch VN, khớp
 // leaderboard km) rồi ghi stepLeaderboardEntries/{uid}. Query 1 field `date`
-// (range) — không cần composite index. Chỉ xếp hạng theo SỐ BƯỚC; quãng đường
-// đi bộ (Apple) KHÔNG vào leaderboard (nó gộp cả đi-lại-thường-ngày + trùng km
-// chạy) — chỉ hiển thị theo ngày ở card, còn km là leaderboardEntries (activity).
+// (range) — không cần composite index.
 func (s *ActivityService) rebuildStepLeaderboard(ctx context.Context, uid string, now time.Time) error {
 	periods := PeriodsAt(now)
 	rollingKey := dateKey(periods.Rolling.Start)
@@ -72,10 +99,20 @@ func (s *ActivityService) rebuildStepLeaderboard(ctx context.Context, uid string
 	monthKey := dateKey(periods.Month.Start)
 	earliestKey := minStr(minStr(rollingKey, weekKey), monthKey)
 
+	// Km CHẠY chính thức (đã khử trùng Strava/3i) theo NGÀY — để TRỪ khỏi chỉ số
+	// Apple "Walking + RUNNING Distance" (vốn đã gồm cả chạy). Còn lại là đi bộ
+	// THUẦN → cộng vào "Tổng km" mà không đếm đôi phần chạy (đã có ở km leaderboard).
+	runByDay, err := s.officialRunMetersByDay(ctx, uid, periods)
+	if err != nil {
+		return err
+	}
+
 	iter := s.db.Collection("users").Doc(uid).Collection("stepDays").
 		Where("date", ">=", earliestKey).Documents(ctx)
 	defer iter.Stop()
 	var rolling, week, month int64
+	// Quãng đường ĐI BỘ THUẦN (mét) theo kỳ — client cộng vào BXH "Tổng km".
+	var rollingDist, weekDist, monthDist float64
 	for {
 		doc, err := iter.Next()
 		if err == iterator.Done {
@@ -87,14 +124,22 @@ func (s *ActivityService) rebuildStepLeaderboard(ctx context.Context, uid string
 		data := doc.Data()
 		date := stringValue(data["date"])
 		steps := int64(number(data["steps"]))
+		// Apple(đi+chạy) trừ km chạy chính thức ngày đó = đi bộ thuần (không âm).
+		walk := number(data["distanceMeters"]) - runByDay[date]
+		if walk < 0 {
+			walk = 0
+		}
 		if date >= rollingKey {
 			rolling += steps
+			rollingDist += walk
 		}
 		if date >= weekKey {
 			week += steps
+			weekDist += walk
 		}
 		if date >= monthKey {
 			month += steps
+			monthDist += walk
 		}
 	}
 
@@ -107,18 +152,15 @@ func (s *ActivityService) rebuildStepLeaderboard(ctx context.Context, uid string
 		"displayName":           preferredName(profile),
 		"avatarUrl":             nullableString(profile["avatarUrl"]),
 		"profileVisibility":     defaultString(profile["profileVisibility"], "private"),
-		"rollingSevenDaysSteps": rolling,
-		"currentWeekSteps":      week,
-		"currentMonthSteps":     month,
-		"currentWeekStart":      weekKey,
-		"currentMonthStart":     monthKey,
-		"updatedAt":             firestore.ServerTimestamp,
-		// Ghi đè km-đi-bộ CŨ (từ lần thử "Tổng km") về 0 — để app còn chạy code
-		// merge cũ cũng cộng "running + 0 = running", km về chạy-thuần mà KHÔNG
-		// cần build lại mobile. Khi mọi bản đã bỏ merge, có thể gỡ 3 dòng này.
-		"rollingSevenDaysDistance": 0,
-		"currentWeekDistance":      0,
-		"currentMonthDistance":     0,
+		"rollingSevenDaysSteps":    rolling,
+		"currentWeekSteps":         week,
+		"currentMonthSteps":        month,
+		"rollingSevenDaysDistance": rollingDist,
+		"currentWeekDistance":      weekDist,
+		"currentMonthDistance":     monthDist,
+		"currentWeekStart":         weekKey,
+		"currentMonthStart":        monthKey,
+		"updatedAt":                firestore.ServerTimestamp,
 	}, firestore.MergeAll)
 	return err
 }

@@ -298,16 +298,15 @@ final myStepDaysProvider = StreamProvider<List<StepDay>>((ref) {
 /// để tái dùng nguyên UI xếp hạng.
 final stepLeaderboardProvider = StreamProvider<List<LeaderboardEntry>>((ref) {
   ref.watch(firebaseUserProvider);
-  // Chỉ xếp hạng theo SỐ BƯỚC (nhét vào stats.steps để tái dùng UI). Km đi bộ
-  // KHÔNG vào leaderboard — km là chuyện của leaderboardEntries (activity dedup).
-  LeaderboardStats stepStat(int v) => LeaderboardStats(
-    distanceMeters: 0,
+  // steps → xếp hạng BXH Bước; meters (km đi bộ) → cộng vào BXH "Tổng km".
+  LeaderboardStats stepStat(int steps, double meters) => LeaderboardStats(
+    distanceMeters: meters,
     movingTimeSeconds: 0,
     activityCount: 0,
     activeDays: 0,
     longestDistanceMeters: 0,
     fastestPaceSecondsPerKm: null,
-    steps: v,
+    steps: steps,
   );
   return FirebaseFirestore.instance
       .collection('stepLeaderboardEntries')
@@ -316,6 +315,8 @@ final stepLeaderboardProvider = StreamProvider<List<LeaderboardEntry>>((ref) {
         (snap) => snap.docs.map((d) {
           final m = d.data();
           final name = (m['displayName'] as String?)?.trim();
+          double dist(String k) => (m[k] as num?)?.toDouble() ?? 0;
+          int steps(String k) => (m[k] as num?)?.toInt() ?? 0;
           return LeaderboardEntry(
             uid: m['uid'] as String? ?? d.id,
             displayName: (name?.isNotEmpty ?? false) ? name! : '3i member',
@@ -324,16 +325,61 @@ final stepLeaderboardProvider = StreamProvider<List<LeaderboardEntry>>((ref) {
               m['profileVisibility'] as String?,
             ),
             rollingSevenDays: stepStat(
-              (m['rollingSevenDaysSteps'] as num?)?.toInt() ?? 0,
+              steps('rollingSevenDaysSteps'),
+              dist('rollingSevenDaysDistance'),
             ),
-            currentWeek: stepStat((m['currentWeekSteps'] as num?)?.toInt() ?? 0),
+            currentWeek: stepStat(
+              steps('currentWeekSteps'),
+              dist('currentWeekDistance'),
+            ),
             currentMonth: stepStat(
-              (m['currentMonthSteps'] as num?)?.toInt() ?? 0,
+              steps('currentMonthSteps'),
+              dist('currentMonthDistance'),
             ),
           );
         }).toList(),
       );
 });
+
+/// BXH "Tổng km" = km CHẠY (leaderboardEntries) + km ĐI BỘ (stepLeaderboardEntries)
+/// cộng theo uid. CHỈ dùng cho metric Km; các metric chạy khác (pace/dài nhất/
+/// buổi…) vẫn dùng leaderboardEntriesProvider riêng. Người chỉ đi bộ (chưa có
+/// buổi chạy) vẫn lên bảng nhờ union uid.
+final totalKmLeaderboardProvider =
+    Provider<AsyncValue<List<LeaderboardEntry>>>((ref) {
+      final running = ref.watch(leaderboardEntriesProvider);
+      final walking = ref.watch(stepLeaderboardProvider);
+      return running.whenData((runList) {
+        final walkList = walking.asData?.value ?? const <LeaderboardEntry>[];
+        final byUid = <String, LeaderboardEntry>{
+          for (final e in runList) e.uid: e,
+        };
+        for (final w in walkList) {
+          final r = byUid[w.uid];
+          if (r == null) {
+            byUid[w.uid] = w; // chỉ có đi bộ → lên bảng với km đi bộ
+          } else {
+            byUid[w.uid] = LeaderboardEntry(
+              uid: r.uid,
+              displayName: r.displayName,
+              avatarUrl: r.avatarUrl,
+              visibility: r.visibility,
+              updatedAt: r.updatedAt,
+              rollingSevenDays: r.rollingSevenDays.plusDistance(
+                w.rollingSevenDays.distanceMeters,
+              ),
+              currentWeek: r.currentWeek.plusDistance(
+                w.currentWeek.distanceMeters,
+              ),
+              currentMonth: r.currentMonth.plusDistance(
+                w.currentMonth.distanceMeters,
+              ),
+            );
+          }
+        }
+        return byUid.values.toList();
+      });
+    });
 
 final clubLiveSessionsProvider =
     StreamProvider.autoDispose<List<LiveTrackingSession>>(
