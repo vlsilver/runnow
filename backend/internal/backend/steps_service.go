@@ -9,6 +9,14 @@ import (
 	"google.golang.org/api/iterator"
 )
 
+// RebuildStepLeaderboardFor dựng lại stepLeaderboardEntries/{uid} — wrapper
+// EXPORT cho migration one-off (chỉ cần firestore client, không cần deps khác).
+// Dùng đúng logic rebuildStepLeaderboard hiện tại (đi-bộ-thuần = Apple − chạy).
+func RebuildStepLeaderboardFor(ctx context.Context, db *firestore.Client, uid string, now time.Time) error {
+	s := &ActivityService{db: db}
+	return s.rebuildStepLeaderboard(ctx, uid, now)
+}
+
 // healthStepDay là số bước + quãng đường (đi bộ+chạy) của MỘT ngày (lịch VN)
 // client đọc từ Apple Health. HealthKit đã tự dedup giữa iPhone + Apple Watch
 // khi lấy tổng theo khoảng (HKStatisticsCollectionQuery cumulativeSum).
