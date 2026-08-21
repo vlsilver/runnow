@@ -64,31 +64,117 @@ class _RankingTab extends ConsumerWidget {
       _ => ref.watch(leaderboardEntriesProvider),
     };
 
-    return leaderboard.when(
-      data: (items) {
-        final entries = _sortedRankingEntries(items, metric, range);
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(0, 8, 0, 16),
-          children: [
-            if (entries.isEmpty)
-              const _EmptyRanking()
-            else
-              _ShareableClubCard(
-                title:
-                    '3i bảng xếp hạng ${_rankingMetricLabel(metric)} ${_rankingRangeLabel(range)}',
-                child: _RankingBoardCard(
-                  entries: entries,
-                  metric: metric,
-                  range: range,
-                  currentUid: currentUid,
+    return Column(
+      children: [
+        // Switch NHANH giữa 2 BXH chính: Tổng km ↔ Bước chân (luôn hiện, 1 chạm).
+        // Các metric chạy khác (pace/dài nhất/buổi…) vẫn ở dropdown.
+        const _LeaderboardTypeTabs(),
+        Expanded(
+          child: leaderboard.when(
+            data: (items) {
+              final entries = _sortedRankingEntries(items, metric, range);
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(0, 4, 0, 16),
+                children: [
+                  if (entries.isEmpty)
+                    const _EmptyRanking()
+                  else
+                    _ShareableClubCard(
+                      title:
+                          '3i bảng xếp hạng ${_rankingMetricLabel(metric)} ${_rankingRangeLabel(range)}',
+                      child: _RankingBoardCard(
+                        entries: entries,
+                        metric: metric,
+                        range: range,
+                        currentUid: currentUid,
+                      ),
+                    ),
+                ],
+              );
+            },
+            error: (error, stack) =>
+                Center(child: Text('Không thể tải bảng xếp hạng: $error')),
+            loading: () => const RunNowLoading(label: 'Đang tải tổng kết'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Dải tab nổi bật đầu BXH: switch nhanh Tổng km ↔ Bước chân (2 BXH chính).
+/// "Bước" = metric steps; còn lại (km/pace/dài nhất…) coi là phía "Tổng km".
+class _LeaderboardTypeTabs extends ConsumerWidget {
+  const _LeaderboardTypeTabs();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final metric = ref.watch(clubRankingMetricProvider);
+    final isSteps = metric == ClubRankingMetric.steps;
+    final palette = context.runNowPalette;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final onAccent = dark ? RunNowDataColors.coachOnAccentDark : Colors.white;
+
+    Widget seg(bool steps, IconData icon, String label) {
+      final target = steps
+          ? ClubRankingMetric.steps
+          : ClubRankingMetric.distance;
+      // Tô sáng theo "phía" đang xem (steps vs chạy); vẫn cho bấm nếu chưa đúng
+      // metric target (vd đang ở Pace → bấm "Tổng km" để về distance).
+      final highlighted = isSteps == steps;
+      final enabled = metric != target;
+      return Expanded(
+        child: GestureDetector(
+          onTap: enabled
+              ? () => ref.read(clubRankingMetricProvider.notifier).state = target
+              : null,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: highlighted ? palette.accent : Colors.transparent,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 17,
+                  color: highlighted ? onAccent : palette.textMuted,
                 ),
-              ),
+                const SizedBox(width: 7),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: highlighted ? onAccent : palette.ink,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: palette.glassStart,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: palette.border),
+        ),
+        child: Row(
+          children: [
+            seg(false, Icons.directions_run_rounded, 'Tổng km'),
+            seg(true, Icons.directions_walk_rounded, 'Bước chân'),
           ],
-        );
-      },
-      error: (error, stack) =>
-          Center(child: Text('Không thể tải bảng xếp hạng: $error')),
-      loading: () => const RunNowLoading(label: 'Đang tải tổng kết'),
+        ),
+      ),
     );
   }
 }
