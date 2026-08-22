@@ -255,6 +255,20 @@ class LeaderboardStats {
     steps: steps,
   );
 
+  /// ĐẶT distance = [meters] (giữ nguyên các stats khác để hiển thị pace/buổi…).
+  /// Dùng cho BXH "Tổng km": distance = TỔNG do BACKEND tính sẵn, client KHÔNG tự
+  /// cộng 2 nguồn nữa (tránh lệch/đếm đôi).
+  LeaderboardStats withDistance(double meters) => LeaderboardStats(
+    distanceMeters: meters,
+    movingTimeSeconds: movingTimeSeconds,
+    activityCount: activityCount,
+    activeDays: activeDays,
+    longestDistanceMeters: longestDistanceMeters,
+    fastestPaceSecondsPerKm: fastestPaceSecondsPerKm,
+    elevationGainMeters: elevationGainMeters,
+    steps: steps,
+  );
+
   Map<String, dynamic> toMap() {
     return {
       'distanceMeters': distanceMeters,
@@ -352,10 +366,18 @@ class StepDay {
     required this.date,
     required this.steps,
     this.distanceMeters = 0,
+    this.hourlySteps,
+    this.hourlyDistance,
   });
   final String date; // YYYY-MM-DD
   final int steps;
   final double distanceMeters;
+
+  /// Chi tiết THEO GIỜ (24 phần tử 0h→23h) đã LƯU từ Apple Health — để màn chi
+  /// tiết đọc từ Firestore thay vì get live mỗi lần (xem được cả trên simulator/
+  /// offline/của user khác). null = ngày cũ chưa lưu → màn detail fallback live.
+  final List<int>? hourlySteps;
+  final List<double>? hourlyDistance;
 }
 
 enum LiveTrackingStatus {

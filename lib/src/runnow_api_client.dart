@@ -201,10 +201,12 @@ class RunNowApiClient {
     await _send('POST', '/v1/coach/announce-removed', body: {'goal': goal});
   }
 
-  /// Nhập buổi CHẠY từ Apple Health (source apple_health). Backend upsert theo
-  /// sourceId + dedup thời gian với Strava/native để không đếm đôi km.
+  /// Nhập buổi CHẠY từ kho sức khoẻ máy. Backend upsert theo sourceId + dedup thời
+  /// gian với Strava/native để không đếm đôi km. [source]: "apple_health" (iOS) |
+  /// "health_connect" (Android); bỏ trống = backend mặc định apple_health.
   Future<void> importHealthWorkouts(
     List<Map<String, dynamic>> workouts, {
+    String? source,
     String? reconcileFrom,
     String? reconcileTo,
   }) async {
@@ -213,7 +215,8 @@ class RunNowApiClient {
       '/v1/activities/health-import',
       body: {
         'workouts': workouts,
-        // Có mốc → backend dọn buổi apple_health đã xoá trong Health ở khoảng này.
+        'source': ?source,
+        // Có mốc → backend dọn buổi ĐÚNG nguồn này đã xoá trong Health ở khoảng đó.
         'reconcileFrom': ?reconcileFrom,
         'reconcileTo': ?reconcileTo,
       },

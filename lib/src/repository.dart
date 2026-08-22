@@ -185,7 +185,7 @@ abstract interface class MemberRepository {
     required String fromKey,
     required String toKeyInclusive,
   });
-  Stream<List<LeaderboardEntry>> watchLeaderboardEntries();
+  Future<List<LeaderboardEntry>> getLeaderboardEntries();
   Future<void> updateCurrentProfile({
     required String nickname,
     required String? avatarUrl,
@@ -308,7 +308,8 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
               isCountedNonStravaRun(activity))
             JournalActivityEntry(
               activity: activity,
-              preferredStravaActivityId: activity.source == ActivitySource.runnow
+              preferredStravaActivityId:
+                  activity.source == ActivitySource.runnow
                   ? activity.duplicateOfActivityId
                   : null,
             ),
@@ -1042,23 +1043,24 @@ class FirestoreMemberRepository implements MemberRepository {
   }
 
   @override
-  Stream<List<LeaderboardEntry>> watchLeaderboardEntries() {
-    return _firestore.collection('leaderboardEntries').snapshots().map((
-      snapshot,
-    ) {
-      final now = DateTime.now();
-      return snapshot.docs.map((document) {
-        final data = document.data();
-        final updatedAt = data['updatedAt'];
-        return LeaderboardEntry.fromMap(
-          normalizeLeaderboardEntryPeriods({
-            ...data,
-            'uid': document.id,
-            if (updatedAt is Timestamp) 'updatedAt': updatedAt.toDate(),
-          }, now),
-        );
-      }).toList();
-    });
+  Future<List<LeaderboardEntry>> getLeaderboardEntries() async {
+    // GET thẳng từ SERVER (không cache, không listener). Leaderboard đã precompute
+    // nên đọc 1 lần là đủ nhanh; muốn tươi lại thì pull-to-refresh.
+    final snapshot = await _firestore
+        .collection('leaderboardEntries')
+        .get(const GetOptions(source: Source.server));
+    final now = DateTime.now();
+    return snapshot.docs.map((document) {
+      final data = document.data();
+      final updatedAt = data['updatedAt'];
+      return LeaderboardEntry.fromMap(
+        normalizeLeaderboardEntryPeriods({
+          ...data,
+          'uid': document.id,
+          if (updatedAt is Timestamp) 'updatedAt': updatedAt.toDate(),
+        }, now),
+      );
+    }).toList();
   }
 
   @override

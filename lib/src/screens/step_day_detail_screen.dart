@@ -7,16 +7,19 @@ import 'package:myrun/src/widgets/glass.dart';
 
 /// Trang CHI TIẾT số bước một ngày (Apple Health): tổng + tiến độ mục tiêu, các
 /// chỉ số suy ra (quãng đường thật, giờ hoạt động, cao điểm, so 7 ngày) và biểu
-/// đồ phân bố theo giờ (bước hoặc km) — đọc THẲNG từ Health nên luôn khớp.
+/// đồ phân bố theo giờ (bước hoặc km) — ưu tiên bản ĐÃ LƯU (Firestore) để xem
+/// được cả simulator/offline/user khác; ngày cũ chưa lưu thì fallback đọc live.
 class StepDayDetailScreen extends StatefulWidget {
   const StepDayDetailScreen({
-    required this.controller,
     required this.day,
     required this.recentDays,
+    this.controller,
     super.key,
   });
 
-  final HealthSyncController controller;
+  /// null khi xem detail của USER KHÁC (không có quyền đọc Health máy này) —
+  /// khi đó chỉ dùng dữ liệu theo giờ ĐÃ LƯU, không fallback đọc live.
+  final HealthSyncController? controller;
   final StepDay day;
 
   /// Các ngày gần đây (đã tải ở Nhật ký) để tính trung bình 7 ngày mà so sánh.
@@ -35,11 +38,16 @@ class _StepDayDetailScreenState extends State<StepDayDetailScreen> {
   void initState() {
     super.initState();
     final parsed = DateTime.tryParse(widget.day.date) ?? DateTime.now();
-    // KHÔNG nuốt lỗi: để lỗi/timeout nổi lên FutureBuilder mà hiện ra màn hình —
-    // nếu Health trả lỗi quyền thì phải thấy, không được giả vờ "rỗng".
-    _future = widget.controller
-        .hourlySteps(parsed)
-        .timeout(const Duration(seconds: 15));
+    // ƯU TIÊN chi tiết theo giờ ĐÃ LƯU (Firestore) → hiện được cả simulator/offline/
+    // user khác, khỏi get live. Ngày cũ CHƯA lưu → fallback đọc live từ Health.
+    // KHÔNG nuốt lỗi ở nhánh live: thiếu quyền thì phải thấy, không giả vờ "rỗng".
+    final stored = widget.day.hourlySteps;
+    final controller = widget.controller;
+    _future = stored != null
+        ? Future.value(stored)
+        : controller == null
+        ? Future.value(const <int>[]) // user khác + chưa lưu → không có gì để đọc
+        : controller.hourlySteps(parsed).timeout(const Duration(seconds: 15));
   }
 
   /// Trung bình bước của tối đa 7 ngày GẦN ĐÂY khác (không tính ngày đang xem).
@@ -90,7 +98,7 @@ class _StepDayDetailScreenState extends State<StepDayDetailScreen> {
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    'Số liệu theo giờ đọc trực tiếp từ Apple Health. Km là quãng '
+                    'Số liệu theo giờ từ Health (đã lưu để xem lại). Km là quãng '
                     'đường đi bộ + chạy — không tính vào km chạy.',
                     style: TextStyle(
                       fontSize: 11.5,
@@ -344,14 +352,14 @@ class _StatTile extends StatelessWidget {
 /// đường theo giờ khi bấm, để km KHÔNG chặn biểu đồ bước.
 class _ChartCard extends StatefulWidget {
   const _ChartCard({
-    required this.controller,
     required this.day,
     required this.done,
     required this.stepsHours,
     required this.error,
+    this.controller,
   });
 
-  final HealthSyncController controller;
+  final HealthSyncController? controller;
   final StepDay day;
   final bool done;
   final List<int> stepsHours;
@@ -369,14 +377,24 @@ class _ChartCardState extends State<_ChartCard> {
     setState(() {
       _showKm = km;
       if (km && _distFuture == null) {
-        final parsed = DateTime.tryParse(widget.day.date) ?? DateTime.now();
-        _distFuture = widget.controller
-            .hourlyDistance(parsed)
-            .timeout(
-              const Duration(seconds: 10),
-              onTimeout: () => const <double>[],
-            )
-            .catchError((_) => const <double>[]);
+        // Ưu tiên km/giờ ĐÃ LƯU (Firestore) → hiện được simulator/offline/user khác.
+        // Ngày cũ chưa lưu → fallback đọc live từ Health.
+        final storedDist = widget.day.hourlyDistance;
+        final controller = widget.controller;
+        if (storedDist != null) {
+          _distFuture = Future.value(storedDist);
+        } else if (controller == null) {
+          _distFuture = Future.value(const <double>[]); // user khác + chưa lưu
+        } else {
+          final parsed = DateTime.tryParse(widget.day.date) ?? DateTime.now();
+          _distFuture = controller
+              .hourlyDistance(parsed)
+              .timeout(
+                const Duration(seconds: 10),
+                onTimeout: () => const <double>[],
+              )
+              .catchError((_) => const <double>[]);
+        }
       }
     });
   }

@@ -6,7 +6,8 @@ import 'package:health/health.dart';
 
 import 'runnow_api_client.dart';
 
-/// Đồng bộ buổi CHẠY từ Apple Health (HealthKit) — chỉ iOS.
+/// Đồng bộ buổi CHẠY từ kho sức khoẻ máy: iOS = Apple Health (HealthKit),
+/// Android = Health Connect. Cùng một luồng đọc → đẩy backend (source khác nhau).
 ///
 /// Khác Strava: "kết nối" ở đây là QUYỀN hệ điều hành (không OAuth/token/server).
 /// Cờ đã-kết-nối lưu CỤC BỘ trên máy (HealthKit là dữ liệu thiết bị). Ngắt kết
@@ -27,19 +28,26 @@ class HealthSyncController extends ChangeNotifier {
   // lại quyền đúng 1 lần cho loại mới. v2: thêm DISTANCE_WALKING_RUNNING.
   static const _permVersion = '2';
 
-  // Loại dữ liệu Health cần ĐỌC: buổi tập (km chạy), số bước, và quãng đường
-  // đi bộ+chạy (chỉ hiển thị kèm bước, KHÔNG tính vào km chạy). Dùng chung cho
-  // connect() lẫn _reauthorize() để danh sách không lệch nhau.
-  static const _readTypes = <HealthDataType>[
-    HealthDataType.WORKOUT,
-    HealthDataType.STEPS,
-    HealthDataType.DISTANCE_WALKING_RUNNING,
-  ];
-  static const _readAccess = <HealthDataAccess>[
-    HealthDataAccess.READ,
-    HealthDataAccess.READ,
-    HealthDataAccess.READ,
-  ];
+  bool get _isAndroid =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  bool get _isIOS => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  /// Nguồn kho gửi cho backend: iOS=apple_health, Android=health_connect.
+  String get _healthSource => _isAndroid ? 'health_connect' : 'apple_health';
+
+  /// Quãng đường: iOS dùng DISTANCE_WALKING_RUNNING; Android (Health Connect) dùng
+  /// DISTANCE_DELTA (DistanceRecord) — WORKOUT trên HC KHÔNG kèm quãng đường nên
+  /// phải đọc record distance riêng rồi cộng vào từng buổi.
+  HealthDataType get _distanceType => _isAndroid
+      ? HealthDataType.DISTANCE_DELTA
+      : HealthDataType.DISTANCE_WALKING_RUNNING;
+
+  // Loại dữ liệu Health cần ĐỌC: buổi tập (km chạy), số bước, quãng đường. Getter
+  // theo platform để iOS/Android không lệch type; dùng chung connect()/_reauthorize().
+  List<HealthDataType> get _readTypes =>
+      [HealthDataType.WORKOUT, HealthDataType.STEPS, _distanceType];
+  List<HealthDataAccess> get _readAccess =>
+      List<HealthDataAccess>.filled(_readTypes.length, HealthDataAccess.READ);
 
   bool _connected = false;
   bool _busy = false;
@@ -49,8 +57,12 @@ class HealthSyncController extends ChangeNotifier {
   // mỗi lần app resume nếu user cứ gạt bỏ). Reset khi đã đọc được lại.
   bool _autoReauthTried = false;
 
-  /// HealthKit chỉ có trên iOS.
-  bool get available => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+  /// Kho sức khoẻ máy: iOS (Apple Health) hoặc Android (Health Connect). Riêng
+  /// Android còn phải kiểm Health Connect đã cài chưa — làm trong connect().
+  bool get available => _isIOS || _isAndroid;
+
+  /// Tên kho để hiển thị trên UI (Settings…): iOS=Apple Health, Android=Health Connect.
+  String get providerName => _isAndroid ? 'Health Connect' : 'Apple Health';
   bool get connected => _connected;
   bool get busy => _busy;
   String? get error => _error;
@@ -74,32 +86,62 @@ class HealthSyncController extends ChangeNotifier {
     notifyListeners();
     try {
       await _health.configure();
+      // Android: Health Connect có thể CHƯA CÀI / cần cập nhật → đẩy user ra store
+      // cài rồi thử lại (không có nó thì mọi thao tác đọc đều vô nghĩa).
+      if (_isAndroid) {
+        final status = await _health.getHealthConnectSdkStatus();
+        if (status != HealthConnectSdkStatus.sdkAvailable) {
+          _error =
+              'Máy chưa có Health Connect (hoặc cần cập nhật). Cài/cập nhật Health '
+              'Connect từ Google Play rồi bấm Kết nối lại.';
+          try {
+            await _health.installHealthConnect();
+          } catch (_) {}
+          return; // finally vẫn set _busy=false
+        }
+      }
       final granted = await _health.requestAuthorization(
         _readTypes,
         permissions: _readAccess,
       );
-      if (!granted) {
+      // iOS: bool `granted` tin cậy. Android/Health Connect: KHÔNG cho kiểm tra
+      // chắc chắn quyền READ (HC ẩn vì privacy) → `granted` có thể = false DÙ user
+      // đã cấp (OS hiện "Allowed"). Nên KHÔNG chặn ở đây trên Android — để phần
+      // THỬ ĐỌC bên dưới quyết định: đọc được = đã kết nối; chưa cấp thật thì
+      // _syncInternal ném auth error → nhảy catch → gợi ý cấp quyền.
+      if (!granted && !_isAndroid) {
         _error = 'Bạn chưa cấp quyền đọc Sức khoẻ cho 3i Run.';
       } else {
+        // Android: Health Connect mặc định chỉ cho đọc 30 ngày gần nhất — xin thêm
+        // quyền đọc LỊCH SỬ để backfill 90 ngày được (best-effort, hỏng thì bỏ qua).
+        if (_isAndroid) {
+          try {
+            await _health.requestHealthDataHistoryAuthorization();
+          } catch (_) {}
+        }
+        // Kết nối = kéo TOÀN BỘ 90 ngày (bỏ mốc sync cũ còn sót — vd cài lại app
+        // nhưng Keychain vẫn giữ lastSync → nếu không sẽ chỉ kéo 1 ngày). ĐỌC TRƯỚC
+        // khi bật cờ: chưa cấp quyền thật thì ném auth error ở đây → catch xử, KHÔNG
+        // đánh dấu đã kết nối (tránh "connected nhưng đọc rỗng vì thiếu quyền").
+        final found = await _syncInternal(full: true);
         _connected = true;
         await _store.write(key: _kConnected, value: '1');
         await _store.write(key: _kPermVersion, value: _permVersion);
-        // Kết nối = kéo TOÀN BỘ 90 ngày (bỏ mốc sync cũ còn sót — vd cài lại app
-        // nhưng Keychain vẫn giữ lastSync → nếu không sẽ chỉ kéo 1 ngày).
-        final found = await _syncInternal(full: true);
-        // iOS trả "granted" kể cả khi user TỪ CHỐI đọc → đọc ra 0 buổi. Gợi ý
-        // kiểm tra quyền thay vì để user tưởng đã kết nối mà chẳng có gì.
+        // Đọc được nhưng 0 buổi → đã kết nối, chỉ là chưa có dữ liệu. Gợi ý kiểm tra.
         if (found == 0) {
-          _error =
-              'Chưa thấy buổi chạy nào trong Sức khoẻ. Nếu bạn có chạy (Apple '
-              'Watch/app khác), vào Cài đặt iOS > Sức khoẻ > Truy cập & Thiết bị '
-              '> 3i Run và bật quyền đọc "Workouts".';
+          _error = _isAndroid
+              ? 'Chưa thấy buổi chạy nào trong Health Connect. Nếu bạn có chạy '
+                    '(Garmin/COROS…), mở app đó bật đồng bộ sang Health Connect, hoặc '
+                    'kiểm tra quyền đọc "Bài tập/Quãng đường" cho 3i Run rồi thử lại.'
+              : 'Chưa thấy buổi chạy nào trong Sức khoẻ. Nếu bạn có chạy (Apple '
+                    'Watch/app khác), vào Cài đặt iOS > Sức khoẻ > Truy cập & Thiết bị '
+                    '> 3i Run và bật quyền đọc "Workouts".';
         }
       }
     } catch (e) {
       _error = _isAuthError(e)
           ? _authHint
-          : 'Không kết nối được Apple Health: $e';
+          : 'Không kết nối được Sức khoẻ: $e';
     } finally {
       _busy = false;
       notifyListeners();
@@ -121,18 +163,27 @@ class HealthSyncController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Gợi ý khi quyền HealthKit chưa/không được cấp (không tự sửa bằng code được).
-  static const _authHint =
-      'Apple Health chưa cấp quyền đọc cho 3i Run. Mở Cài đặt iOS > Sức khoẻ > '
-      'Truy cập & Thiết bị > 3i Run rồi bật quyền đọc "Bước" và "Workouts", sau '
-      'đó bấm Đồng bộ lại.';
+  /// Gợi ý khi quyền kho sức khoẻ chưa/không được cấp (không tự sửa bằng code).
+  String get _authHint => _isAndroid
+      ? 'Health Connect chưa cấp quyền đọc cho 3i Run. Mở Health Connect > Quyền '
+            'ứng dụng > 3i Run rồi bật đọc "Bài tập", "Bước", "Quãng đường", sau đó '
+            'bấm Đồng bộ lại.'
+      : 'Apple Health chưa cấp quyền đọc cho 3i Run. Mở Cài đặt iOS > Sức khoẻ > '
+            'Truy cập & Thiết bị > 3i Run rồi bật quyền đọc "Bước" và "Workouts", '
+            'sau đó bấm Đồng bộ lại.';
 
   /// Lỗi HealthKit kiểu "Authorization not determined" — quyền đọc chưa được xác
   /// định (hay gặp khi cài lại app: Keychain giữ cờ đã-kết-nối nhưng iOS đã reset
   /// quyền) hoặc user từng từ chối (iOS vẫn trả granted=true cho READ).
   bool _isAuthError(Object e) {
     final s = e.toString().toLowerCase();
-    return s.contains('not determined') || s.contains('authorization');
+    // iOS: "not determined"/"authorization". Android/Health Connect: đọc khi thiếu
+    // quyền ném SecurityException / "permission denied".
+    return s.contains('not determined') ||
+        s.contains('authorization') ||
+        s.contains('permission') ||
+        s.contains('securityexception') ||
+        s.contains('denied');
   }
 
   /// Xin lại quyền đọc HealthKit. Trên iOS: đã cấp → trả true NGAY, không hiện
@@ -142,10 +193,13 @@ class HealthSyncController extends ChangeNotifier {
   Future<bool> _reauthorize() async {
     try {
       await _health.configure();
-      return await _health.requestAuthorization(
+      final ok = await _health.requestAuthorization(
         _readTypes,
         permissions: _readAccess,
       );
+      // Android/Health Connect: bool không tin cậy cho quyền READ → luôn cho THỬ
+      // đọc lại (true); lần _syncInternal kế mới thực sự quyết định. iOS tin bool.
+      return _isAndroid ? true : ok;
     } catch (_) {
       return false;
     }
@@ -196,7 +250,7 @@ class HealthSyncController extends ChangeNotifier {
         // Cài đặt iOS — và chỉ khi user đang chủ động (không dội lỗi lúc mở app).
         if (!recovered && !silent) _error = _authHint;
       } else if (!silent) {
-        _error = 'Đồng bộ Apple Health lỗi: $e';
+        _error = 'Đồng bộ Sức khoẻ lỗi: $e';
       }
     } finally {
       _busy = false;
@@ -225,24 +279,52 @@ class HealthSyncController extends ChangeNotifier {
       startTime: from,
       endTime: now,
     );
+    // Android (Health Connect): WORKOUT KHÔNG kèm quãng đường (plugin trả null) →
+    // đọc DISTANCE_DELTA cùng cửa sổ rồi cộng vào từng buổi theo thời gian. iOS đã
+    // có totalDistance trong WORKOUT nên bỏ qua query này.
+    final distancePoints = _isAndroid
+        ? await _health.getHealthDataFromTypes(
+            types: [HealthDataType.DISTANCE_DELTA],
+            startTime: from,
+            endTime: now,
+          )
+        : const <HealthDataPoint>[];
 
-    final workouts = <Map<String, dynamic>>[];
+    final sessions = <_HealthWorkout>[];
     for (final p in points) {
       final v = p.value;
       if (v is! WorkoutHealthValue) continue;
-      if (v.workoutActivityType != HealthWorkoutActivityType.RUNNING) continue;
-      // totalDistance của WORKOUT do plugin trả về theo MÉT.
-      final dist = (v.totalDistance ?? 0).toDouble();
+      if (!_isRunning(v.workoutActivityType)) continue;
+      // iOS: totalDistance (MÉT) có sẵn. Android: cộng DISTANCE_DELTA rơi trong buổi.
+      final dist = _isAndroid
+          ? _sumDistanceInWindow(distancePoints, p.dateFrom, p.dateTo)
+          : (v.totalDistance ?? 0).toDouble();
       if (dist <= 0) continue;
       final moving = p.dateTo.difference(p.dateFrom).inSeconds;
       if (moving <= 0) continue;
-      workouts.add({
-        'sourceId': p.uuid,
-        'startedAt': p.dateFrom.toUtc().toIso8601String(),
-        'distanceMeters': dist,
-        'movingTimeSeconds': moving,
-      });
+      // uuid = metadata.id (thường có), nhưng plugin gán "" nếu native thiếu → id
+      // TẤT ĐỊNH theo MỐC BẮT ĐẦU (giây) để idempotent giữa các lần sync (không mất
+      // buổi, không nhân bản). KHÔNG kèm quãng đường: dist có thể đổi nhẹ khi delta
+      // về trễ → id đổi → nhân bản. Start của buổi là bất biến. Không chứa "/ ".
+      final sourceId = p.uuid.isNotEmpty
+          ? p.uuid
+          : 'gen-${p.dateFrom.toUtc().millisecondsSinceEpoch ~/ 1000}';
+      sessions.add(
+        _HealthWorkout(
+          sourceId: sourceId,
+          start: p.dateFrom,
+          end: p.dateTo,
+          distanceMeters: dist,
+          movingSeconds: moving,
+        ),
+      );
     }
+
+    // DEDUP tầng "trong-kho": HealthKit tự gộp iPhone+Watch, nhưng Health Connect
+    // KHÔNG — nhiều app (Garmin + Google Fit…) cùng ghi 1 buổi → nhiều record chồng
+    // thời gian. Gộp nhóm chồng nhau, giữ bản QUÃNG ĐƯỜNG DÀI NHẤT (giàu nhất).
+    final deduped = _isAndroid ? _dedupOverlapping(sessions) : sessions;
+    final workouts = [for (final s in deduped) s.toPayload()];
 
     if (workouts.isNotEmpty) {
       // Gửi khoảng [from, now] để backend dọn buổi đã xoá trong Health — CHỈ khi
@@ -250,6 +332,7 @@ class HealthSyncController extends ChangeNotifier {
       final canReconcile = workouts.length <= 500;
       await _api.importHealthWorkouts(
         workouts,
+        source: _healthSource,
         reconcileFrom: canReconcile ? from.toUtc().toIso8601String() : null,
         reconcileTo: canReconcile ? now.toUtc().toIso8601String() : null,
       );
@@ -260,6 +343,64 @@ class HealthSyncController extends ChangeNotifier {
     } catch (_) {}
     await _store.write(key: _kLastSync, value: now.toUtc().toIso8601String());
     return workouts.length;
+  }
+
+  /// Buổi CHẠY: nhận cả RUNNING lẫn RUNNING_TREADMILL (Android map chạy máy thành
+  /// treadmill; iOS coi hai cái là một nên không đổi hành vi iOS).
+  bool _isRunning(HealthWorkoutActivityType t) =>
+      t == HealthWorkoutActivityType.RUNNING ||
+      t == HealthWorkoutActivityType.RUNNING_TREADMILL;
+
+  /// Cộng các mẩu DISTANCE_DELTA (mét) có thời điểm BẮT ĐẦU nằm trong [start,end)
+  /// → tổng quãng đường 1 buổi (Health Connect tách distance khỏi WORKOUT). Dùng
+  /// mốc bắt đầu để mỗi mẩu chỉ thuộc đúng 1 buổi, tránh đếm đôi khi 2 buổi kề.
+  double _sumDistanceInWindow(
+    List<HealthDataPoint> points,
+    DateTime start,
+    DateTime end,
+  ) {
+    var sum = 0.0;
+    for (final p in points) {
+      if (p.dateFrom.isBefore(start) || !p.dateFrom.isBefore(end)) continue;
+      final v = p.value;
+      if (v is NumericHealthValue) sum += v.numericValue.toDouble();
+    }
+    return sum;
+  }
+
+  /// Gộp các buổi CÙNG 1 LẦN CHẠY (nhiều app ghi vào Health Connect thành nhiều
+  /// record chồng thời gian) thành 1 — giữ bản quãng đường DÀI NHẤT. So bằng TỶ LỆ
+  /// CHỒNG với bản đại diện (>0.3, khớp overlapRatio backend) thay vì chồng-bất-kỳ,
+  /// để KHÔNG gộp nhầm 2 buổi RIÊNG gần nhau bị 1 record rác bắc cầu.
+  List<_HealthWorkout> _dedupOverlapping(List<_HealthWorkout> items) {
+    if (items.length <= 1) return items;
+    final sorted = [...items]..sort((a, b) => a.start.compareTo(b.start));
+    final result = <_HealthWorkout>[];
+    var best = sorted.first;
+    for (var i = 1; i < sorted.length; i++) {
+      final cur = sorted[i];
+      if (_overlapRatio(cur, best) > 0.3) {
+        if (cur.distanceMeters > best.distanceMeters) best = cur;
+      } else {
+        result.add(best);
+        best = cur;
+      }
+    }
+    result.add(best);
+    return result;
+  }
+
+  /// Tỷ lệ chồng thời gian = (giao) / (buổi NGẮN hơn). 0 nếu không chồng.
+  double _overlapRatio(_HealthWorkout a, _HealthWorkout b) {
+    final start = a.start.isAfter(b.start) ? a.start : b.start;
+    final end = a.end.isBefore(b.end) ? a.end : b.end;
+    final overlap = end.difference(start).inSeconds;
+    if (overlap <= 0) return 0;
+    final da = a.end.difference(a.start).inSeconds;
+    final db = b.end.difference(b.start).inSeconds;
+    final minDur = da < db ? da : db;
+    if (minDur <= 0) return 0;
+    return overlap / minDur;
   }
 
   /// Đọc TỔNG số bước theo từng NGÀY (lịch máy) rồi đẩy lên. full = backfill 35
@@ -278,11 +419,26 @@ class HealthSyncController extends ChangeNotifier {
       final meters = await _dayDistanceMeters(start, end);
       final steps = total ?? 0;
       if (steps > 0 || meters > 0) {
-        days.add({
+        final day = <String, dynamic>{
           'date': _dateKey(start),
           'steps': steps,
           'distanceMeters': meters,
-        });
+        };
+        // LƯU chi tiết theo giờ cho 14 ngày GẦN NHẤT (đủ cho phần lớn lượt xem;
+        // giới hạn để full-sync không phải đọc 35×2 query hourly). Màn detail đọc
+        // từ Firestore → xem được cả simulator/offline/user khác. Lỗi hourly KHÔNG
+        // chặn phần ngày.
+        if (i < 14) {
+          try {
+            final hSteps = await hourlySteps(start);
+            if (hSteps.any((h) => h > 0)) day['hourlySteps'] = hSteps;
+          } catch (_) {}
+          try {
+            final hDist = await hourlyDistance(start);
+            if (hDist.any((d) => d > 0)) day['hourlyDistance'] = hDist;
+          } catch (_) {}
+        }
+        days.add(day);
       }
     }
     if (days.isNotEmpty) await _api.importHealthSteps(days);
@@ -296,7 +452,7 @@ class HealthSyncController extends ChangeNotifier {
       final points = await _health.getHealthIntervalDataFromTypes(
         startDate: start,
         endDate: end,
-        types: [HealthDataType.DISTANCE_WALKING_RUNNING],
+        types: [_distanceType],
         interval: 86400, // 1 bucket/ngày → tổng ngày
       );
       return points.fold<double>(0, (a, p) => a + _numericValue(p));
@@ -350,7 +506,7 @@ class HealthSyncController extends ChangeNotifier {
     if (end.isAfter(now)) end = now;
     if (!end.isAfter(base)) return buckets;
     final points = await _health.getHealthDataFromTypes(
-      types: [HealthDataType.DISTANCE_WALKING_RUNNING],
+      types: [_distanceType],
       startTime: base,
       endTime: end,
     );
@@ -365,4 +521,29 @@ class HealthSyncController extends ChangeNotifier {
       '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
+}
+
+/// Một buổi chạy đọc từ kho sức khoẻ (Apple Health / Health Connect), trước khi
+/// gộp trùng + đẩy lên backend.
+class _HealthWorkout {
+  _HealthWorkout({
+    required this.sourceId,
+    required this.start,
+    required this.end,
+    required this.distanceMeters,
+    required this.movingSeconds,
+  });
+
+  final String sourceId;
+  final DateTime start;
+  final DateTime end;
+  final double distanceMeters;
+  final int movingSeconds;
+
+  Map<String, dynamic> toPayload() => {
+    'sourceId': sourceId,
+    'startedAt': start.toUtc().toIso8601String(),
+    'distanceMeters': distanceMeters,
+    'movingTimeSeconds': movingSeconds,
+  };
 }

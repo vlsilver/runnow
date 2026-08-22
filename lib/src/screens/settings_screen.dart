@@ -22,6 +22,8 @@ class SettingsScreen extends ConsumerWidget {
     final strava = ref.watch(stravaAuthProvider);
     final stravaConnected = ref.watch(stravaConnectionProvider);
     final integrationConfig = ref.watch(integrationConfigProvider).value;
+    // Ẩn Strava khi RC strava_enabled=false (app Strava đang Inactive).
+    final stravaEnabled = ref.watch(stravaEnabledProvider).value ?? false;
     final health = ref.watch(healthSyncProvider);
     final googleAuth = ref.watch(authControllerProvider);
     return Scaffold(
@@ -76,72 +78,74 @@ class SettingsScreen extends ConsumerWidget {
               _SettingsSection(
                 title: 'Kết nối',
                 children: [
-                  // ── Strava ─────────────────────────────────────────────
-                  // Chưa kết nối thì phải dùng đúng nút "Connect with Strava"
-                  // chính thức; đã kết nối rồi thì chỉ còn là dòng trạng thái.
-                  if (stravaConnected || strava.statusLoading)
-                    _SettingsRow(
-                      icon: stravaConnected
-                          ? Icons.link
-                          : Icons.link_off_outlined,
-                      title: 'Strava',
-                      value: strava.statusLoading
-                          ? 'Đang kiểm tra'
-                          : strava.loading
-                          ? 'Đang xử lý'
-                          : 'Đã kết nối',
-                    )
-                  else if (integrationConfig?.stravaFull ?? false)
-                    // Đủ chỗ (app chưa được Strava review) → không nhận kết nối mới.
-                    _SettingsRow(
-                      icon: Icons.lock_clock_outlined,
-                      title: 'Strava',
-                      subtitle:
-                          'Đã đủ ${integrationConfig!.stravaCount}/${integrationConfig.stravaMax} chỗ. '
-                          '3i đang chờ Strava duyệt để mở thêm — tạm thời chưa nhận kết nối mới.',
-                    )
-                  else
-                    _ConnectWithStravaButton(
-                      onTap: strava.loading ? null : strava.connect,
-                    ),
-                  if (stravaConnected) ...[
-                    _SettingsRow(
-                      icon: Icons.sync,
-                      title: 'Đồng bộ Strava',
-                      value: sync.syncing ? 'Đang chạy' : null,
-                      onTap: sync.syncing
-                          ? null
-                          : () => ref
-                                .read(syncControllerProvider)
-                                .startBackgroundSync(force: true),
-                    ),
-                    _SettingsRow(
-                      icon: Icons.history,
-                      title: 'Đồng bộ toàn bộ lịch sử',
-                      value: sync.syncing ? 'Đang chạy' : null,
-                      onTap: sync.syncing
-                          ? null
-                          : () => ref
-                                .read(syncControllerProvider)
-                                .startBackgroundSync(
-                                  force: true,
-                                  fullResync: true,
-                                ),
-                    ),
-                    _SettingsRow(
-                      icon: Icons.link_off,
-                      title: 'Ngắt kết nối Strava',
-                      destructive: true,
-                      onTap: strava.loading ? null : strava.disconnect,
-                    ),
+                  // ── Strava (ẩn khi RC strava_enabled=false) ──────────────
+                  if (stravaEnabled) ...[
+                    // Chưa kết nối thì phải dùng đúng nút "Connect with Strava"
+                    // chính thức; đã kết nối rồi thì chỉ còn là dòng trạng thái.
+                    if (stravaConnected || strava.statusLoading)
+                      _SettingsRow(
+                        icon: stravaConnected
+                            ? Icons.link
+                            : Icons.link_off_outlined,
+                        title: 'Strava',
+                        value: strava.statusLoading
+                            ? 'Đang kiểm tra'
+                            : strava.loading
+                            ? 'Đang xử lý'
+                            : 'Đã kết nối',
+                      )
+                    else if (integrationConfig?.stravaFull ?? false)
+                      // Đủ chỗ (app chưa được Strava review) → không nhận kết nối mới.
+                      _SettingsRow(
+                        icon: Icons.lock_clock_outlined,
+                        title: 'Strava',
+                        subtitle:
+                            'Đã đủ ${integrationConfig!.stravaCount}/${integrationConfig.stravaMax} chỗ. '
+                            '3i đang chờ Strava duyệt để mở thêm — tạm thời chưa nhận kết nối mới.',
+                      )
+                    else
+                      _ConnectWithStravaButton(
+                        onTap: strava.loading ? null : strava.connect,
+                      ),
+                    if (stravaConnected) ...[
+                      _SettingsRow(
+                        icon: Icons.sync,
+                        title: 'Đồng bộ Strava',
+                        value: sync.syncing ? 'Đang chạy' : null,
+                        onTap: sync.syncing
+                            ? null
+                            : () => ref
+                                  .read(syncControllerProvider)
+                                  .startBackgroundSync(force: true),
+                      ),
+                      _SettingsRow(
+                        icon: Icons.history,
+                        title: 'Đồng bộ toàn bộ lịch sử',
+                        value: sync.syncing ? 'Đang chạy' : null,
+                        onTap: sync.syncing
+                            ? null
+                            : () => ref
+                                  .read(syncControllerProvider)
+                                  .startBackgroundSync(
+                                    force: true,
+                                    fullResync: true,
+                                  ),
+                      ),
+                      _SettingsRow(
+                        icon: Icons.link_off,
+                        title: 'Ngắt kết nối Strava',
+                        destructive: true,
+                        onTap: strava.loading ? null : strava.disconnect,
+                      ),
+                    ],
+                    if (strava.errorMessage != null)
+                      _SettingsMessage(message: strava.errorMessage!),
+                    if (sync.message != null)
+                      _SettingsMessage(message: sync.message!),
+                    const _PoweredByStrava(),
                   ],
-                  if (strava.errorMessage != null)
-                    _SettingsMessage(message: strava.errorMessage!),
-                  if (sync.message != null)
-                    _SettingsMessage(message: sync.message!),
-                  const _PoweredByStrava(),
 
-                  // ── Apple Health (chỉ iOS) ────────────────────────────
+                  // ── Sức khoẻ máy: Apple Health (iOS) / Health Connect (Android) ──
                   if (health.available) ...[
                     const SizedBox(height: 6),
                     Divider(height: 1, color: context.runNowPalette.border),
@@ -149,7 +153,7 @@ class SettingsScreen extends ConsumerWidget {
                     if (!health.connected)
                       _SettingsRow(
                         icon: Icons.favorite_rounded,
-                        title: 'Kết nối Apple Health',
+                        title: 'Kết nối ${health.providerName}',
                         subtitle: 'Đồng bộ buổi chạy từ app Sức khoẻ',
                         value: health.busy ? 'Đang xử lý' : null,
                         onTap: health.busy
@@ -159,12 +163,12 @@ class SettingsScreen extends ConsumerWidget {
                     else ...[
                       _SettingsRow(
                         icon: Icons.favorite_rounded,
-                        title: 'Apple Health',
+                        title: health.providerName,
                         value: 'Đã kết nối',
                       ),
                       _SettingsRow(
                         icon: Icons.sync,
-                        title: 'Đồng bộ Apple Health',
+                        title: 'Đồng bộ ${health.providerName}',
                         value: health.busy ? 'Đang chạy' : null,
                         onTap: health.busy
                             ? null
@@ -172,7 +176,7 @@ class SettingsScreen extends ConsumerWidget {
                       ),
                       _SettingsRow(
                         icon: Icons.link_off,
-                        title: 'Ngắt Apple Health',
+                        title: 'Ngắt ${health.providerName}',
                         destructive: true,
                         onTap: health.busy
                             ? null
@@ -695,7 +699,6 @@ class _AccountHeaderState extends ConsumerState<_AccountHeader> {
       ),
     );
   }
-
 }
 
 /// Toggle Riêng tư ↔ Công khai kiểu pill 2 ô, khớp accent app (thay
@@ -723,10 +726,18 @@ class _VisibilityToggle extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _seg(context, ProfileVisibility.private, Icons.lock_outline_rounded,
-              'Riêng tư'),
-          _seg(context, ProfileVisibility.public, Icons.public_rounded,
-              'Công khai'),
+          _seg(
+            context,
+            ProfileVisibility.private,
+            Icons.lock_outline_rounded,
+            'Riêng tư',
+          ),
+          _seg(
+            context,
+            ProfileVisibility.public,
+            Icons.public_rounded,
+            'Công khai',
+          ),
         ],
       ),
     );
@@ -755,8 +766,11 @@ class _VisibilityToggle extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon,
-                  size: 15, color: selected ? onAccent : palette.textMuted),
+              Icon(
+                icon,
+                size: 15,
+                color: selected ? onAccent : palette.textMuted,
+              ),
               const SizedBox(width: 6),
               Text(
                 label,
@@ -1122,9 +1136,7 @@ class _DeleteAccountSectionState extends ConsumerState<_DeleteAccountSection> {
               Text('• Liên kết Strava (token sẽ bị thu hồi)'),
               Text('• Tài khoản đăng nhập của bạn'),
               SizedBox(height: 12),
-              Text(
-                'Dữ liệu trên tài khoản Strava của bạn không bị ảnh hưởng.',
-              ),
+              Text('Dữ liệu trên tài khoản Strava của bạn không bị ảnh hưởng.'),
             ],
           ),
         ),

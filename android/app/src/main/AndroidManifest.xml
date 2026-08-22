@@ -16,6 +16,15 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- Health Connect (Android): đọc buổi tập/bước/quãng đường từ kho sức khoẻ máy
+         mà Garmin/COROS/Google Fit… ghi vào. Khai các quyền này sẽ kích hoạt Google
+         Play Health declaration khi phát hành. READ_HEALTH_DATA_HISTORY để backfill
+         >30 ngày (Health Connect mặc định chỉ cho đọc 30 ngày gần nhất). -->
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_DISTANCE" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_HISTORY" />
+
     <application
         android:label="3i Run"
         android:name="${applicationName}"
@@ -50,7 +59,24 @@
                     android:host="localhost"
                     android:path="/oauth"/>
             </intent-filter>
+            <!-- Health Connect BẮT BUỘC app xử lý intent "lý do xin quyền" (hiện màn
+                 giải thích + link chính sách). Android 13-: dùng action này. Thiếu
+                 khai báo này Health Connect sẽ từ chối / Play review đánh rớt. -->
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
         </activity>
+        <!-- Android 14+: Health Connect nằm trong OS → dùng cơ chế VIEW_PERMISSION_USAGE. -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
@@ -69,6 +95,11 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Để check/mở app Health Connect (Android 13-) + xử lý quyền HC. -->
+        <package android:name="com.google.android.apps.healthdata" />
+        <intent>
+            <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
         </intent>
     </queries>
 </manifest>

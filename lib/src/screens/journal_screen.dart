@@ -162,8 +162,8 @@ List<_JournalRow> _mergeJournalRows({
 
 /// Thẻ TỔNG BƯỚC của một ngày trong timeline nhật ký — có rail mốc thời gian
 /// (khớp [ActivityTile]) với chấm hình người đi bộ để phân biệt với buổi chạy.
-class _StepTimelineRow extends StatelessWidget {
-  const _StepTimelineRow({required this.day, required this.onTap});
+class StepTimelineRow extends StatelessWidget {
+  const StepTimelineRow({required this.day, required this.onTap, super.key});
 
   final StepDay day;
   final VoidCallback onTap;
@@ -407,7 +407,7 @@ class _JournalPagedList extends StatelessWidget {
                 activity: entry.activity,
                 preferredStravaActivityId: entry.preferredStravaActivityId,
               ),
-              _StepJournalRow(:final day) => _StepTimelineRow(
+              _StepJournalRow(:final day) => StepTimelineRow(
                 day: day,
                 onTap: () => onStepTap(day),
               ),

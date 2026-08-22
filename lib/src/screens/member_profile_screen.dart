@@ -5,6 +5,8 @@ import 'package:myrun/src/dashboard_analytics.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/screens/journal_screen.dart' show StepTimelineRow;
+import 'package:myrun/src/screens/step_day_detail_screen.dart';
 import 'package:myrun/src/screens/journey_hub_screen.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/training_power.dart';
@@ -79,6 +81,9 @@ class MemberJournalScreen extends ConsumerWidget {
 
     final profileState = ref.watch(memberProfileProvider(uid));
     final activitiesState = ref.watch(memberActivitiesProvider(uid));
+    final memberStepDays =
+        ref.watch(memberStepDaysProvider(uid)).asData?.value ??
+        const <StepDay>[];
     return Scaffold(
       appBar: AppBar(title: const Text('Nhật ký')),
       body: Center(
@@ -92,20 +97,42 @@ class MemberJournalScreen extends ConsumerWidget {
               if (!member.isPublic) return _PrivateMember(member: member);
               return activitiesState.when(
                 data: (activities) {
-                  if (activities.isEmpty) {
+                  if (activities.isEmpty && memberStepDays.isEmpty) {
                     return const Center(
                       child: Text('Thành viên này chưa có hoạt động public.'),
                     );
                   }
+                  // Trộn buổi chạy + thẻ bước thành 1 timeline giảm dần — GIỐNG
+                  // nhật ký của mình, chỉ đổi nguồn sang member đang xem.
+                  final rows =
+                      <_MemberJournalRow>[
+                        for (final a in activities) _MemberJournalRow.activity(a),
+                        for (final d in memberStepDays) _MemberJournalRow.step(d),
+                      ]..sort((x, y) => y.sortAt.compareTo(x.sortAt));
                   return ListView.builder(
                     padding: const EdgeInsets.fromLTRB(0, 12, 0, 110),
-                    itemCount: activities.length,
-                    itemBuilder: (context, index) => RepaintBoundary(
-                      child: ActivityTile(
-                        activity: activities[index],
-                        ownerUid: uid,
-                      ),
-                    ),
+                    itemCount: rows.length,
+                    itemBuilder: (context, index) {
+                      final act = rows[index].activity;
+                      return RepaintBoundary(
+                        child: act != null
+                            ? ActivityTile(activity: act, ownerUid: uid)
+                            // Member: mở chi tiết theo giờ ĐÃ LƯU (controller null
+                            // → không đọc live Health máy này; ngày chưa lưu thì
+                            // biểu đồ rỗng). recentDays = các thẻ bước đang xem.
+                            : StepTimelineRow(
+                                day: rows[index].step!,
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => StepDayDetailScreen(
+                                      day: rows[index].step!,
+                                      recentDays: memberStepDays,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                      );
+                    },
                   );
                 },
                 error: (error, stack) =>
@@ -120,6 +147,23 @@ class MemberJournalScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+/// 1 dòng trong nhật ký member: hoặc buổi CHẠY, hoặc thẻ BƯỚC của 1 ngày.
+class _MemberJournalRow {
+  _MemberJournalRow.activity(this.activity) : step = null;
+  _MemberJournalRow.step(this.step) : activity = null;
+  final ActivitySummary? activity;
+  final StepDay? step;
+
+  /// Mốc xếp: buổi chạy = lúc bắt đầu; thẻ bước = CUỐI ngày (nổi lên đầu ngày đó).
+  DateTime get sortAt {
+    final a = activity;
+    if (a != null) return a.startedAt;
+    final d = DateTime.tryParse(step!.date);
+    if (d == null) return DateTime.fromMillisecondsSinceEpoch(0);
+    return DateTime(d.year, d.month, d.day, 23, 59, 59);
   }
 }
 

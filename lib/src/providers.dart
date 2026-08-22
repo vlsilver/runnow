@@ -1,6 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -19,6 +22,7 @@ import 'package:myrun/src/run_contracts/run_contract_controller.dart';
 import 'package:myrun/src/run_contracts/run_contract_analytics.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_repository.dart';
+import 'package:myrun/src/tracking_session.dart';
 import 'package:myrun/src/sync.dart';
 import 'package:myrun/src/tracking_draft_store.dart';
 import 'package:myrun/src/tracking_location_provider.dart';
@@ -192,9 +196,70 @@ final integrationConfigProvider = StreamProvider<IntegrationConfig>((ref) {
       });
 });
 
+/// Cấu hình GPS tracking đọc từ **Firebase Remote Config**. ĐIỀU KIỆN theo
+/// platform (Android/iOS qua `device.os`) xử lý ở SERVER RC → app chỉ getDouble,
+/// không tự rẽ nhánh. Mặc định (lần đầu/offline/chưa fetch) lấy từ setDefaults ở
+/// main() theo platform (Android giãn mẫu 15s, iOS 0). Cập nhật **REALTIME** khi
+/// admin đổi trên console (onConfigUpdated) — không cần mở lại app.
+final trackingConfigProvider = StreamProvider<TrackingConfig>((ref) async* {
+  final rc = FirebaseRemoteConfig.instance;
+  final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  // Lấy giá trị RC; nếu chưa có (valueStatic — RC init lỗi/chưa fetch) → fallback
+  // cứng để KHÔNG bao giờ ra 0 vô lý (vd maxAccuracy=0 sẽ chặn sạch điểm GPS).
+  double cfg(String key, double fallback) {
+    try {
+      final v = rc.getValue(key);
+      return v.source == ValueSource.valueStatic ? fallback : v.asDouble();
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  TrackingConfig read() => TrackingConfig(
+    maxAccuracyMeters: cfg('tracking_max_accuracy_meters', 25),
+    maxRunningSpeedMetersPerSecond: cfg('tracking_max_running_speed_mps', 10),
+    minSegmentDistanceMeters: cfg('tracking_min_segment_distance_meters', 2),
+    minSampleIntervalSeconds: cfg(
+      'tracking_min_sample_interval_seconds',
+      isAndroid ? 15 : 0,
+    ),
+  );
+  yield read();
+  try {
+    // Realtime RC: admin đổi giá trị trên console → tự áp ngay (không cần build/
+    // mở lại app). Web / môi trường không hỗ trợ → catch, giữ giá trị đã có.
+    await for (final _ in rc.onConfigUpdated) {
+      await rc.activate();
+      yield read();
+    }
+  } catch (_) {}
+});
+
+/// Cờ HIỆN/ẨN Strava ở Settings — Remote Config `strava_enabled`. Tạm ẩn khi app
+/// Strava đang Inactive (không kết nối được); đặt true trên console khi xong việc
+/// với Strava để hiện lại (áp realtime). Mặc định/khi chưa fetch = false (ẩn).
+final stravaEnabledProvider = StreamProvider<bool>((ref) async* {
+  final rc = FirebaseRemoteConfig.instance;
+  bool read() {
+    try {
+      final v = rc.getValue('strava_enabled');
+      return v.source == ValueSource.valueStatic ? false : v.asBool();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  yield read();
+  try {
+    await for (final _ in rc.onConfigUpdated) {
+      await rc.activate();
+      yield read();
+    }
+  } catch (_) {}
+});
+
 final authControllerProvider = ChangeNotifierProvider<AuthController>(
-  (ref) =>
-      AuthController(FirebaseAuth.instance, FirebaseFirestore.instance),
+  (ref) => AuthController(FirebaseAuth.instance, FirebaseFirestore.instance),
 );
 
 final themeControllerProvider = ChangeNotifierProvider<ThemeController>(
@@ -263,8 +328,23 @@ final membersProvider = StreamProvider<List<MemberProfile>>(
   (ref) => ref.watch(memberRepositoryProvider).watchMembers(),
 );
 
-final leaderboardEntriesProvider = StreamProvider<List<LeaderboardEntry>>(
-  (ref) => ref.watch(memberRepositoryProvider).watchLeaderboardEntries(),
+final leaderboardEntriesProvider =
+    FutureProvider.autoDispose<List<LeaderboardEntry>>(
+      (ref) => ref.watch(memberRepositoryProvider).getLeaderboardEntries(),
+    );
+
+/// Parse 1 doc stepDays → StepDay (kèm chi tiết theo giờ nếu đã lưu). Dùng chung
+/// cho nhật ký của mình lẫn của member.
+StepDay _stepDayFromDoc(Map<String, dynamic> m, String id) => StepDay(
+  date: m['date'] as String? ?? id,
+  steps: (m['steps'] as num?)?.toInt() ?? 0,
+  distanceMeters: (m['distanceMeters'] as num?)?.toDouble() ?? 0,
+  hourlySteps: (m['hourlySteps'] as List?)
+      ?.map((e) => (e as num).toInt())
+      .toList(),
+  hourlyDistance: (m['hourlyDistance'] as List?)
+      ?.map((e) => (e as num).toDouble())
+      .toList(),
 );
 
 /// Số bước theo NGÀY của CHÍNH MÌNH (mới → cũ) để hiện list ở Nhật ký.
@@ -282,103 +362,116 @@ final myStepDaysProvider = StreamProvider<List<StepDay>>((ref) {
       .map(
         (snap) => snap.docs
             .map(
-              (d) => StepDay(
-                date: d.data()['date'] as String? ?? d.id,
-                steps: (d.data()['steps'] as num?)?.toInt() ?? 0,
-                distanceMeters:
-                    (d.data()['distanceMeters'] as num?)?.toDouble() ?? 0,
-              ),
+              (d) => _stepDayFromDoc(d.data(), d.id),
             )
             .toList(),
       );
 });
 
+/// Số bước theo NGÀY của MỘT MEMBER khác (public) — để hiện thẻ bước trong nhật
+/// ký của họ khi mình bấm xem. Rules cho đọc stepDays nếu profile public.
+final memberStepDaysProvider = StreamProvider.autoDispose
+    .family<List<StepDay>, String>((ref, uid) {
+      return FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('stepDays')
+          .orderBy('date', descending: true)
+          .limit(60)
+          .snapshots()
+          .map(
+            (snap) => snap.docs
+                .map(
+                  (d) => _stepDayFromDoc(d.data(), d.id),
+                )
+                .toList(),
+          );
+    });
+
 /// Bảng xếp hạng SỐ BƯỚC CHÂN (Apple Health) — riêng với km chạy. Map doc
 /// stepLeaderboardEntries về [LeaderboardEntry], nhét số bước vào stats.steps
 /// để tái dùng nguyên UI xếp hạng.
-final stepLeaderboardProvider = StreamProvider<List<LeaderboardEntry>>((ref) {
-  ref.watch(firebaseUserProvider);
-  // steps → xếp hạng BXH Bước; meters (km đi bộ) → cộng vào BXH "Tổng km".
-  LeaderboardStats stepStat(int steps, double meters) => LeaderboardStats(
-    distanceMeters: meters,
-    movingTimeSeconds: 0,
-    activityCount: 0,
-    activeDays: 0,
-    longestDistanceMeters: 0,
-    fastestPaceSecondsPerKm: null,
-    steps: steps,
-  );
-  return FirebaseFirestore.instance
-      .collection('stepLeaderboardEntries')
-      .snapshots()
-      .map(
-        (snap) => snap.docs.map((d) {
-          final m = d.data();
-          final name = (m['displayName'] as String?)?.trim();
-          double dist(String k) => (m[k] as num?)?.toDouble() ?? 0;
-          int steps(String k) => (m[k] as num?)?.toInt() ?? 0;
-          return LeaderboardEntry(
-            uid: m['uid'] as String? ?? d.id,
-            displayName: (name?.isNotEmpty ?? false) ? name! : '3i member',
-            avatarUrl: m['avatarUrl'] as String?,
-            visibility: ProfileVisibility.fromValue(
-              m['profileVisibility'] as String?,
-            ),
-            rollingSevenDays: stepStat(
-              steps('rollingSevenDaysSteps'),
-              dist('rollingSevenDaysDistance'),
-            ),
-            currentWeek: stepStat(
-              steps('currentWeekSteps'),
-              dist('currentWeekDistance'),
-            ),
-            currentMonth: stepStat(
-              steps('currentMonthSteps'),
-              dist('currentMonthDistance'),
-            ),
-          );
-        }).toList(),
+final stepLeaderboardProvider =
+    FutureProvider.autoDispose<List<LeaderboardEntry>>((ref) async {
+      ref.watch(firebaseUserProvider);
+      // steps → xếp hạng BXH Bước; meters (km đi bộ) → cộng vào BXH "Tổng km".
+      LeaderboardStats stepStat(int steps, double meters) => LeaderboardStats(
+        distanceMeters: meters,
+        movingTimeSeconds: 0,
+        activityCount: 0,
+        activeDays: 0,
+        longestDistanceMeters: 0,
+        fastestPaceSecondsPerKm: null,
+        steps: steps,
       );
-});
+      final snap = await FirebaseFirestore.instance
+          .collection('stepLeaderboardEntries')
+          .get(const GetOptions(source: Source.server));
+      return snap.docs.map((d) {
+        final m = d.data();
+        final name = (m['displayName'] as String?)?.trim();
+        double dist(String k) => (m[k] as num?)?.toDouble() ?? 0;
+        int steps(String k) => (m[k] as num?)?.toInt() ?? 0;
+        return LeaderboardEntry(
+          uid: m['uid'] as String? ?? d.id,
+          displayName: (name?.isNotEmpty ?? false) ? name! : '3i member',
+          avatarUrl: m['avatarUrl'] as String?,
+          visibility: ProfileVisibility.fromValue(
+            m['profileVisibility'] as String?,
+          ),
+          rollingSevenDays: stepStat(
+            steps('rollingSevenDaysSteps'),
+            dist('rollingSevenDaysDistance'),
+          ),
+          currentWeek: stepStat(
+            steps('currentWeekSteps'),
+            dist('currentWeekDistance'),
+          ),
+          currentMonth: stepStat(
+            steps('currentMonthSteps'),
+            dist('currentMonthDistance'),
+          ),
+        );
+      }).toList();
+    });
 
-/// BXH "Tổng km" = km CHẠY (leaderboardEntries) + km ĐI BỘ (stepLeaderboardEntries)
-/// cộng theo uid. CHỈ dùng cho metric Km; các metric chạy khác (pace/dài nhất/
-/// buổi…) vẫn dùng leaderboardEntriesProvider riêng. Người chỉ đi bộ (chưa có
-/// buổi chạy) vẫn lên bảng nhờ union uid.
+/// BXH "Tổng km" = ĐÚNG 1 CON SỐ do BACKEND tính sẵn: stepLeaderboardEntries.
+/// *TotalDistance (= km chạy + km đi-bộ, đã khử trùng ở backend). Client CHỈ ĐỌC,
+/// TUYỆT ĐỐI không cộng/gộp/phân biệt 2 nguồn. Mỗi user có đúng 1 doc (backend
+/// rebuild cho cả người-chỉ-chạy lẫn người-chỉ-đi-bộ khi activity/bước đổi).
 final totalKmLeaderboardProvider =
-    Provider<AsyncValue<List<LeaderboardEntry>>>((ref) {
-      final running = ref.watch(leaderboardEntriesProvider);
-      final walking = ref.watch(stepLeaderboardProvider);
-      return running.whenData((runList) {
-        final walkList = walking.asData?.value ?? const <LeaderboardEntry>[];
-        final byUid = <String, LeaderboardEntry>{
-          for (final e in runList) e.uid: e,
-        };
-        for (final w in walkList) {
-          final r = byUid[w.uid];
-          if (r == null) {
-            byUid[w.uid] = w; // chỉ có đi bộ → lên bảng với km đi bộ
-          } else {
-            byUid[w.uid] = LeaderboardEntry(
-              uid: r.uid,
-              displayName: r.displayName,
-              avatarUrl: r.avatarUrl,
-              visibility: r.visibility,
-              updatedAt: r.updatedAt,
-              rollingSevenDays: r.rollingSevenDays.plusDistance(
-                w.rollingSevenDays.distanceMeters,
-              ),
-              currentWeek: r.currentWeek.plusDistance(
-                w.currentWeek.distanceMeters,
-              ),
-              currentMonth: r.currentMonth.plusDistance(
-                w.currentMonth.distanceMeters,
-              ),
-            );
-          }
-        }
-        return byUid.values.toList();
-      });
+    FutureProvider.autoDispose<List<LeaderboardEntry>>((ref) async {
+      ref.watch(firebaseUserProvider);
+      // Chỉ hiển thị 1 số (quãng đường). Các stat khác để 0 — Tổng km không có
+      // pace/buổi (là chạy + đi-bộ gộp), đúng tinh thần "1 con số".
+      LeaderboardStats totalStat(double meters) => LeaderboardStats(
+        distanceMeters: meters,
+        movingTimeSeconds: 0,
+        activityCount: 0,
+        activeDays: 0,
+        longestDistanceMeters: 0,
+        fastestPaceSecondsPerKm: null,
+        steps: 0,
+      );
+      final snap = await FirebaseFirestore.instance
+          .collection('stepLeaderboardEntries')
+          .get(const GetOptions(source: Source.server));
+      return snap.docs.map((d) {
+        final m = d.data();
+        final name = (m['displayName'] as String?)?.trim();
+        double dist(String k) => (m[k] as num?)?.toDouble() ?? 0;
+        return LeaderboardEntry(
+          uid: m['uid'] as String? ?? d.id,
+          displayName: (name?.isNotEmpty ?? false) ? name! : '3i member',
+          avatarUrl: m['avatarUrl'] as String?,
+          visibility: ProfileVisibility.fromValue(
+            m['profileVisibility'] as String?,
+          ),
+          rollingSevenDays: totalStat(dist('rollingSevenDaysTotalDistance')),
+          currentWeek: totalStat(dist('currentWeekTotalDistance')),
+          currentMonth: totalStat(dist('currentMonthTotalDistance')),
+        );
+      }).toList();
     });
 
 final clubLiveSessionsProvider =
@@ -685,6 +778,23 @@ final journeyPowerSnapshotProvider = FutureProvider.autoDispose
         );
       }
 
+      // KM TÍCH LUỸ = TỔNG mọi nguồn (chạy + đi-bộ), khử trùng — do BACKEND tính sẵn
+      // (stepLeaderboardEntries.*TotalDistance). Hành Trình dùng đúng con số này cho
+      // Tuần/Tháng (khớp leaderboard). Năm/Total tạm giữ km CHẠY vì đi-bộ chưa lưu
+      // lịch sử theo năm (dữ liệu bước mới có gần đây → chênh không đáng kể lúc này).
+      Future<double?> totalKm(String field) async {
+        try {
+          final doc = await FirebaseFirestore.instance
+              .collection('stepLeaderboardEntries')
+              .doc(query.uid)
+              .get(const GetOptions(source: Source.server));
+          final v = doc.data()?[field];
+          return v is num ? v.toDouble() : null;
+        } catch (_) {
+          return null;
+        }
+      }
+
       switch (query.scope) {
         case JourneyPowerScope.week:
           final key = weekKey(now);
@@ -694,13 +804,22 @@ final journeyPowerSnapshotProvider = FutureProvider.autoDispose
             fromKey: key,
             toKeyInclusive: key,
           );
+          final run = combineLeaderboardStats(stats.map((stat) => stat.stats));
+          final total = await totalKm('currentWeekTotalDistance');
           return JourneyPowerSnapshot(
-            stats: combineLeaderboardStats(stats.map((stat) => stat.stats)),
+            stats: total != null ? run.withDistance(total) : run,
             activeMonths: 1,
           );
         case JourneyPowerScope.month:
           final key = monthKey(now);
-          return monthRange(key, key);
+          final snap = await monthRange(key, key);
+          final total = await totalKm('currentMonthTotalDistance');
+          return total != null
+              ? JourneyPowerSnapshot(
+                  stats: snap.stats.withDistance(total),
+                  activeMonths: snap.activeMonths,
+                )
+              : snap;
         case JourneyPowerScope.year:
           return monthRange('${now.year}-01', monthKey(now));
         case JourneyPowerScope.total:

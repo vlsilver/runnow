@@ -312,35 +312,39 @@ class _AuthenticatedSessionState extends ConsumerState<_AuthenticatedSession> {
 
   @override
   Widget build(BuildContext context) {
-    final connected = ref.watch(stravaConnectionProvider);
-    if (connected && !_started) {
+    // Coordinator kèo chạy 1 lần khi user ĐÃ đăng nhập — KHÔNG gate theo Strava:
+    // user chỉ dùng Apple Health / tự-track cũng phải được auto-link + recalc + tự
+    // chốt kèo quá hạn (đa-đối-tác: ai cũng tạo/tham gia kèo, không riêng Strava).
+    final uid = ref.watch(firebaseUserProvider).value?.uid;
+    if (uid != null && !_started) {
       _started = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
-        final uid = ref.read(firebaseUserProvider).value?.uid;
         final controller = ref.read(runContractControllerProvider);
-        final mine =
-            [
-                ...ref.read(myActiveContractsProvider).value ??
-                    const <RunContract>[],
-              ]
-              ..removeWhere((contract) => contract.completedBy(uid))
-              ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        // TỰ LINK buổi chạy vừa xong (chưa gán) vào kèo user tham gia — rồi vòng
-        // recalc bên dưới cộng luôn. Await .future để chắc activity đã tải (coordinator
-        // chạy 1 lần lúc mở app, đọc .value có thể còn null). Lỗi bỏ qua an toàn.
-        if (uid != null && mine.isNotEmpty) {
-          try {
-            final recent = await ref.read(activitiesProvider.future);
-            if (recent.isNotEmpty) {
-              await controller.autoLinkUnassignedActivities(
-                activeContracts: mine,
-                recentActivities: recent,
-                currentUid: uid,
-              );
-            }
-          } catch (_) {}
+        // Await .future để chắc kèo ĐÃ tải: coordinator chạy 1 lần lúc mở app; đọc
+        // .value lúc stream chưa emit sẽ ra rỗng → bỏ sót recalc/auto-link cả phiên.
+        List<RunContract> mine;
+        try {
+          mine =
+              [...await ref.read(myActiveContractsProvider.future)]
+                ..removeWhere((contract) => contract.completedBy(uid))
+                ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        } catch (_) {
+          return; // Firestore tạm gián đoạn — thử lại lần mở app kế tiếp.
         }
+        if (mine.isEmpty) return;
+        // TỰ LINK buổi chạy vừa xong (chưa gán) vào kèo user tham gia — rồi vòng
+        // recalc bên dưới cộng luôn. Await .future để chắc activity đã tải. Lỗi bỏ qua.
+        try {
+          final recent = await ref.read(activitiesProvider.future);
+          if (recent.isNotEmpty) {
+            await controller.autoLinkUnassignedActivities(
+              activeContracts: mine,
+              recentActivities: recent,
+              currentUid: uid,
+            );
+          }
+        } catch (_) {}
         for (final contract in mine) {
           if (contract.creatorUid == uid) {
             if (contractLifecycle(contract, DateTime.now()) ==
