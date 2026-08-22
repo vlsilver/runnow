@@ -120,7 +120,17 @@ type healthWorkout struct {
 // source=apple_health (id = "health-<uuid>" nên nhập lại chỉ ghi đè, không nhân
 // bản), rồi dedup với Strava (đồng hồ thường vừa lên Strava vừa vào Health) để
 // KHÔNG đếm đôi km. Trả về số buổi đã ghi.
-func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, workouts []healthWorkout, reconcileFrom, reconcileTo string) (int, error) {
+func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, workouts []healthWorkout, source, reconcileFrom, reconcileTo string) (int, error) {
+	// Nguồn kho sức khoẻ: apple_health (iOS) | health_connect (Android). Chỉ nhận 2
+	// giá trị này; rỗng/lạ → apple_health (giữ tương thích client iOS cũ). Dùng
+	// nhất quán cho cả source activity LẪN bộ lọc reconcile (không đụng nguồn khác).
+	if source != "health_connect" {
+		source = "apple_health"
+	}
+	workoutName := "Chạy (Apple Health)"
+	if source == "health_connect" {
+		workoutName = "Chạy (Health Connect)"
+	}
 	imported := 0
 	now := time.Now()
 	months := map[string]time.Time{} // tháng khác nhau bị đụng → rebuild period 1 lần/tháng
@@ -140,12 +150,12 @@ func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, 
 		seen[activityID] = true
 		next := map[string]any{
 			"id":                 activityID,
-			"source":             "apple_health",
+			"source":             source,
 			"sourceActivityId":   w.SourceID,
 			"sportType":          "Run",
-			"name":               "Chạy (Apple Health)",
+			"name":               workoutName,
 			"manual":             false,
-			"recordingDevice":    "apple_health",
+			"recordingDevice":    source,
 			"startedAt":          started.UTC().Format(time.RFC3339Nano),
 			"distanceMeters":     w.DistanceMeters,
 			"movingTimeSeconds":  w.MovingTimeSeconds,
@@ -190,7 +200,9 @@ func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, 
 					return imported, err
 				}
 				data := doc.Data()
-				if stringValue(data["source"]) != "apple_health" || seen[doc.Ref.ID] {
+				// Chỉ dọn stale ĐÚNG nguồn đang import (iOS reconcile apple_health,
+				// Android reconcile health_connect) — không xoá nhầm buổi nguồn kia.
+				if stringValue(data["source"]) != source || seen[doc.Ref.ID] {
 					continue
 				}
 				if _, derr := doc.Ref.Delete(ctx); derr != nil {

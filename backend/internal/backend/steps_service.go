@@ -32,6 +32,10 @@ type healthStepDay struct {
 	Date           string  `json:"date"` // YYYY-MM-DD
 	Steps          int64   `json:"steps"`
 	DistanceMeters float64 `json:"distanceMeters"`
+	// Chi tiết THEO GIỜ (24 phần tử 0h→23h) — client đọc từ Apple Health rồi lưu để
+	// màn detail đọc từ Firestore (xem được simulator/offline/user khác). Có thể rỗng.
+	HourlySteps    []int64   `json:"hourlySteps"`
+	HourlyDistance []float64 `json:"hourlyDistance"`
 }
 
 var stepDateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
@@ -57,13 +61,22 @@ func (s *ActivityService) ImportHealthSteps(ctx context.Context, uid string, day
 		if dist < 0 || dist > 200000 {
 			dist = 0
 		}
-		ref := s.db.Collection("users").Doc(uid).Collection("stepDays").Doc(d.Date)
-		if _, err := ref.Set(ctx, map[string]any{
+		doc := map[string]any{
 			"date":           d.Date,
 			"steps":          d.Steps,
 			"distanceMeters": dist,
 			"updatedAt":      firestore.ServerTimestamp,
-		}, firestore.MergeAll); err != nil {
+		}
+		// Chi tiết theo giờ (24 phần tử) — chỉ ghi khi client gửi (ngày cũ / client
+		// cũ không gửi thì giữ nguyên field cũ nhờ MergeAll, không xoá).
+		if len(d.HourlySteps) == 24 {
+			doc["hourlySteps"] = d.HourlySteps
+		}
+		if len(d.HourlyDistance) == 24 {
+			doc["hourlyDistance"] = d.HourlyDistance
+		}
+		ref := s.db.Collection("users").Doc(uid).Collection("stepDays").Doc(d.Date)
+		if _, err := ref.Set(ctx, doc, firestore.MergeAll); err != nil {
 			return err
 		}
 		wrote = true
@@ -157,6 +170,22 @@ func (s *ActivityService) rebuildStepLeaderboard(ctx context.Context, uid string
 		}
 	}
 
+	// Km CHẠY chính thức theo kỳ (từ runByDay) — để BACKEND tự tính TỔNG = chạy +
+	// đi-bộ (client KHÔNG phải cộng 2 nguồn nữa). Cộng theo ngày để phủ cả ngày có
+	// chạy nhưng không có stepDay. dateKey (YYYY-MM-DD) so chuỗi = so thời gian.
+	var rollingRun, weekRun, monthRun float64
+	for date, m := range runByDay {
+		if date >= rollingKey {
+			rollingRun += m
+		}
+		if date >= weekKey {
+			weekRun += m
+		}
+		if date >= monthKey {
+			monthRun += m
+		}
+	}
+
 	profile, err := resolveProfile(ctx, s.db, uid)
 	if err != nil {
 		return err
@@ -172,9 +201,18 @@ func (s *ActivityService) rebuildStepLeaderboard(ctx context.Context, uid string
 		"rollingSevenDaysDistance": rollingDist,
 		"currentWeekDistance":      weekDist,
 		"currentMonthDistance":     monthDist,
-		"currentWeekStart":         weekKey,
-		"currentMonthStart":        monthKey,
-		"updatedAt":                firestore.ServerTimestamp,
+		// Km CHẠY chính thức theo kỳ (để minh bạch/đối chiếu).
+		"rollingSevenDaysRunDistance": rollingRun,
+		"currentWeekRunDistance":      weekRun,
+		"currentMonthRunDistance":     monthRun,
+		// TỔNG km = chạy + đi-bộ-thuần — BACKEND tính sẵn, client đọc thẳng số này
+		// cho BXH "Tổng km" (khỏi tự cộng 2 nguồn → hết lệch/đếm đôi).
+		"rollingSevenDaysTotalDistance": rollingRun + rollingDist,
+		"currentWeekTotalDistance":      weekRun + weekDist,
+		"currentMonthTotalDistance":     monthRun + monthDist,
+		"currentWeekStart":              weekKey,
+		"currentMonthStart":             monthKey,
+		"updatedAt":                     firestore.ServerTimestamp,
 	}, firestore.MergeAll)
 	return err
 }

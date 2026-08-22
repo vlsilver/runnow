@@ -46,26 +46,34 @@ func main() {
 		return
 	}
 
-	// Chỉ user đã có stepLeaderboardEntries (tức có dữ liệu bước) — không tạo
-	// entry rỗng cho người chưa từng đồng bộ Apple Health.
-	iter := client.Collection("stepLeaderboardEntries").Documents(ctx)
-	defer iter.Stop()
+	// Union uid từ CẢ leaderboardEntries (người có chạy) LẪN stepLeaderboardEntries
+	// (người có bước) → MỌI user đều có 1 doc stepLeaderboardEntries chứa TỔNG (chạy
+	// + đi-bộ), kể cả người chỉ-chạy chưa từng sync bước. FE đọc đúng 1 số này.
+	uids := map[string]bool{}
+	for _, coll := range []string{"leaderboardEntries", "stepLeaderboardEntries"} {
+		it := client.Collection(coll).Documents(ctx)
+		for {
+			doc, err := it.Next()
+			if err == iterator.Done {
+				break
+			}
+			if err != nil {
+				it.Stop()
+				slog.Error("list collection failed", "coll", coll, "error", err)
+				os.Exit(1)
+			}
+			uids[doc.Ref.ID] = true
+		}
+		it.Stop()
+	}
 	n := 0
-	for {
-		doc, err := iter.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			slog.Error("list stepLeaderboardEntries failed", "error", err)
-			os.Exit(1)
-		}
-		if err := backend.RebuildStepLeaderboardFor(ctx, client, doc.Ref.ID, now); err != nil {
-			slog.Error("rebuild user failed", "uid", doc.Ref.ID, "error", err)
+	for uid := range uids {
+		if err := backend.RebuildStepLeaderboardFor(ctx, client, uid, now); err != nil {
+			slog.Error("rebuild user failed", "uid", uid, "error", err)
 			continue
 		}
 		n++
-		slog.Info("rebuilt", "uid", doc.Ref.ID)
+		slog.Info("rebuilt", "uid", uid)
 	}
 	slog.Info("rebuild-step-leaderboards complete", "users", n)
 }

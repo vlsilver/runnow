@@ -4,9 +4,10 @@
 // mỗi buổi → kèo SẮP HẾT HẠN nhất mà nó hợp lệ, 1-buổi-1-kèo, dedup Strava/3i
 // (dùng backend.SelectOfficialActivities).
 //
-// PHẠM VI (an toàn): chỉ metric "distance", bỏ qua Hành trình (có route) +
-// metric khác (route_completion/longest_run/activity_count/active_days) — in ra
-// để xử riêng. Buổi đã claim ở kèo nào rồi thì bỏ qua (idempotent).
+// PHẠM VI (an toàn): metric distance / activity_count / active_days; bỏ qua Hành
+// trình (có route) + metric phức tạp (route_completion/longest_run) — in ra để xử
+// riêng. Chỉ gán buổi CHẠY (kind==run: loại TrailRun/VirtualRun/Walk/Hike). Buổi
+// đã claim (hoặc bản trùng-nguồn đã claim) thì bỏ qua → idempotent, không đếm đôi.
 //
 // MẶC ĐỊNH -dry-run=true: chỉ in dự định, KHÔNG ghi. Chạy lại với -dry-run=false
 // để ghi thật.
@@ -30,11 +31,16 @@ import (
 	"github.com/vlsilver/runnow/backend/internal/backend"
 )
 
-var runSports = map[string]bool{"Run": true, "TrailRun": true, "VirtualRun": true}
+// nonRunSports khớp CHÍNH XÁC client: kind = parseActivityKind(sportType) ?? run.
+// CHỈ 4 loại này KHÔNG phải "run" (isEligibleForContract yêu cầu kind==run); mọi
+// giá trị khác — kể cả rỗng / không rõ — client mặc định về run. Dùng denylist để
+// KHÔNG gán TrailRun/VirtualRun/Walk/Hike mà client không đếm → tránh lệch progress.
+var nonRunSports = map[string]bool{"TrailRun": true, "VirtualRun": true, "Walk": true, "Hike": true}
 
 type contractInfo struct {
 	id          string
 	metric      string
+	creator     string // creatorUid — để cập nhật cả top-level progressValue nếu creator
 	start, end  time.Time
 	participant map[string]any // participants[uid] hiện tại (giữ joinedAt…)
 	counted     map[string]bool
@@ -94,6 +100,7 @@ func main() {
 		if start.IsZero() || end.IsZero() {
 			continue
 		}
+		creator, _ := d["creatorUid"].(string)
 		participants, _ := d["participants"].(map[string]any)
 		for uid, raw := range participants {
 			p, _ := raw.(map[string]any)
@@ -106,7 +113,7 @@ func main() {
 				}
 			}
 			byUser[uid] = append(byUser[uid], &contractInfo{
-				id: doc.Ref.ID, metric: metric, start: start, end: end, participant: p, counted: counted,
+				id: doc.Ref.ID, metric: metric, creator: creator, start: start, end: end, participant: p, counted: counted,
 			})
 		}
 	}
@@ -165,6 +172,7 @@ func processUser(ctx context.Context, client *firestore.Client, uid string, cont
 	defer actIter.Stop()
 	facts := []backend.ActivityFact{}
 	manual := map[string]bool{}
+	dupOf := map[string]string{} // activityId → id buổi-gốc mà nó trùng (đa-nguồn)
 	for {
 		doc, err := actIter.Next()
 		if err == iterator.Done {
@@ -177,6 +185,9 @@ func processUser(ctx context.Context, client *firestore.Client, uid string, cont
 		data := doc.Data()
 		if m, _ := data["manual"].(bool); m {
 			manual[doc.Ref.ID] = true
+		}
+		if dup, _ := data["duplicateOfActivityId"].(string); dup != "" {
+			dupOf[doc.Ref.ID] = dup
 		}
 		facts = append(facts, backend.NewActivityFact(doc.Ref.ID, data))
 	}
@@ -203,11 +214,26 @@ func processUser(ctx context.Context, client *firestore.Client, uid string, cont
 		claimed[doc.Ref.ID] = true
 	}
 
+	// Chặn ĐẾM ĐÔI đa-nguồn: một buổi thật có thể có 2 bản (3i + Strava). Nếu bản
+	// KIA đã claim rồi thì KHÔNG claim bản này (khớp _duplicateOfClaimed ở client;
+	// SelectOfficialActivities có thể đổi bản "official" giữa 2 lần → phải map 2 chiều).
+	blocked := map[string]bool{}
+	for id := range claimed {
+		blocked[id] = true
+		if d := dupOf[id]; d != "" {
+			blocked[d] = true
+		}
+	}
+
 	// Gán mỗi buổi chưa claim vào kèo sắp hết hạn nhất mà nó hợp lệ (distance:
-	// trong cửa sổ + distance>0 + là buổi CHẠY).
+	// trong cửa sổ + distance>0 + là buổi CHẠY, khớp kind==run của client).
 	newByContract := map[string][]string{}
 	for _, f := range official {
-		if claimed[f.ID] || manual[f.ID] || !runSports[f.SportType] {
+		if manual[f.ID] || nonRunSports[f.SportType] {
+			continue
+		}
+		// Đã claim trực tiếp, hoặc bản trùng-nguồn của nó đã claim → bỏ (1-buổi-1-claim).
+		if blocked[f.ID] || (dupOf[f.ID] != "" && blocked[dupOf[f.ID]]) {
 			continue
 		}
 		var target *contractInfo
@@ -270,9 +296,16 @@ func processUser(ctx context.Context, client *firestore.Client, uid string, cont
 			"joinedAt":           c.participant["joinedAt"],
 			"updatedAt":          firestore.ServerTimestamp,
 		}
-		_, err := client.Collection("runContracts").Doc(c.id).Update(ctx, []firestore.Update{
+		updates := []firestore.Update{
 			{FieldPath: firestore.FieldPath{"participants", uid}, Value: p},
-		})
+		}
+		// Kèo do CHÍNH user tạo: client (creator path) ghi CẢ top-level progressValue
+		// = tiến độ creator. Cập nhật luôn để progressRatio/progressPercent + analytics
+		// không lệch (đọc top-level) cho tới lần client recalc kế tiếp.
+		if c.creator == uid {
+			updates = append(updates, firestore.Update{Path: "progressValue", Value: progress})
+		}
+		_, err := client.Collection("runContracts").Doc(c.id).Update(ctx, updates)
 		if err != nil {
 			slog.Error("cập nhật participant lỗi", "contract", c.id, "uid", uid, "error", err)
 		}

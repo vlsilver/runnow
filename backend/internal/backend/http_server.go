@@ -612,6 +612,9 @@ func (s *Server) apiRoutes() {
 		// dedup với Strava. Giới hạn batch để 1 lần đồng bộ không quá tải.
 		var body struct {
 			Workouts []healthWorkout `json:"workouts"`
+			// Nguồn kho: "apple_health" (iOS) | "health_connect" (Android). Rỗng =
+			// mặc định apple_health (tương thích client iOS cũ chưa gửi field này).
+			Source string `json:"source"`
 			// Khoảng [from,to) để dọn buổi đã xoá trong Health. Client CHỈ gửi khi
 			// đọc trọn cửa sổ (không bị cap cắt); rỗng = không reconcile.
 			ReconcileFrom string `json:"reconcileFrom"`
@@ -625,7 +628,7 @@ func (s *Server) apiRoutes() {
 			body.Workouts = body.Workouts[:500]
 			body.ReconcileFrom, body.ReconcileTo = "", ""
 		}
-		imported, err := s.deps.Activities.ImportHealthWorkouts(r.Context(), uid, body.Workouts, body.ReconcileFrom, body.ReconcileTo)
+		imported, err := s.deps.Activities.ImportHealthWorkouts(r.Context(), uid, body.Workouts, body.Source, body.ReconcileFrom, body.ReconcileTo)
 		if err != nil {
 			return err
 		}
@@ -766,8 +769,17 @@ func (s *Server) workerRoutes() {
 			w.WriteHeader(204)
 			return nil
 		}
-		if err := s.deps.Derived.RebuildCurrent(r.Context(), task.UID, time.Now()); err != nil {
+		now := time.Now()
+		if err := s.deps.Derived.RebuildCurrent(r.Context(), task.UID, now); err != nil {
 			return err
+		}
+		// FIX GỐC đếm-đôi Tổng km: đi-bộ = Apple − run được tính trong
+		// rebuildStepLeaderboard, TRƯỚC ĐÂY chỉ chạy khi sync bước → buổi chạy mới
+		// (tạo sau lần sync bước cuối) không được trừ khỏi đi-bộ → đếm đôi. Giờ mỗi
+		// khi ACTIVITY đổi cũng rebuild lại đi-bộ để 2 nguồn (chạy/đi-bộ) luôn khớp,
+		// không đợi lần sync Apple Health kế tiếp. Lỗi ở đây KHÔNG chặn task chính.
+		if err := RebuildStepLeaderboardFor(r.Context(), s.deps.Firestore, task.UID, now); err != nil {
+			slog.Error("rebuild step leaderboard on derived failed", "uid", task.UID, "error", err)
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true, "cause": task.Cause})
 	})
