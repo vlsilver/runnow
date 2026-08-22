@@ -12,6 +12,7 @@ enum TrackingRejectReason {
   nonMonotonicTime,
   unrealisticSpeed,
   stationaryNoise,
+  subSampled,
 }
 
 class TrackingConfig {
@@ -19,6 +20,7 @@ class TrackingConfig {
     this.maxAccuracyMeters = 25,
     this.maxRunningSpeedMetersPerSecond = 10,
     this.minSegmentDistanceMeters = 2,
+    this.minSampleIntervalSeconds = 15,
     this.splitDistanceMeters = 1000,
     this.currentPaceWindow = const Duration(seconds: 12),
   });
@@ -26,6 +28,13 @@ class TrackingConfig {
   final double maxAccuracyMeters;
   final double maxRunningSpeedMetersPerSecond;
   final double minSegmentDistanceMeters;
+
+  /// GIÃN MẪU chống zigzag: chỉ cộng quãng đường giữa 2 điểm cách nhau >= ngưỡng
+  /// GIÂY này (điểm đến sớm hơn bị bỏ qua khỏi tính distance). GPS Android bắn dày
+  /// + lượn hai bên → đoạn ngắn nuốt jitter, đoạn dài hơn (theo thời gian) làm
+  /// jitter thành tỷ lệ nhỏ → giảm phồng km. Đọc từ appConfig/tracking (đổi được
+  /// không cần build lại). 0 = tắt (cộng mọi điểm như cũ).
+  final double minSampleIntervalSeconds;
   final double splitDistanceMeters;
   final Duration currentPaceWindow;
 }
@@ -500,6 +509,16 @@ class TrackingSession {
         .inSeconds;
     if (deltaSeconds <= 0) {
       _pointLogs.add(_rejected(sample, TrackingRejectReason.nonMonotonicTime));
+      return snapshot();
+    }
+
+    // GIÃN MẪU chống zigzag GPS (đặc biệt Android): chưa đủ ngưỡng giây kể từ điểm
+    // đã nhận trước → BỎ QUA khỏi tính distance (giữ anchor cũ). Khi đủ ngưỡng,
+    // đoạn haversine là chord dài hơn nên jitter ngang thành tỷ lệ nhỏ → bớt phồng.
+    // Ngưỡng lấy từ config (DB đổi được); 0 = tắt.
+    if (config.minSampleIntervalSeconds > 0 &&
+        deltaSeconds < config.minSampleIntervalSeconds) {
+      _pointLogs.add(_rejected(sample, TrackingRejectReason.subSampled));
       return snapshot();
     }
 

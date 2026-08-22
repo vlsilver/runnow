@@ -160,6 +160,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Giữ subscribe cấu hình tracking từ DB để lúc bấm Bắt đầu đã có giá trị mới
+    // nhất (appConfig/tracking) thay vì mặc định.
+    ref.watch(trackingConfigProvider);
     final snapshot = _snapshot;
     final isPublic =
         ref.watch(userProfileProvider).value?.visibility ==
@@ -488,6 +491,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       final now = DateTime.now();
       final session = TrackingSession(
         id: 'runnow-${now.toUtc().millisecondsSinceEpoch}',
+        // Cấu hình từ DB (appConfig/tracking) — giãn mẫu chống zigzag GPS. Chưa
+        // tải kịp thì dùng mặc định (đã có minSampleIntervalSeconds=15).
+        config:
+            ref.read(trackingConfigProvider).value ?? const TrackingConfig(),
       )..start(now);
       _resetTrackChunkState();
       setState(() {
