@@ -11,6 +11,7 @@
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
       { "source": "/delete-account", "destination": "/delete-account.html" },
+      { "source": "/connect-health", "destination": "/connect-health.html" },
       { "source": "**", "destination": "/index.html" }
     ]
   },

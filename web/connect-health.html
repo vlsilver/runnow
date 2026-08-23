@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Kết nối Health — 3i</title>
+<link rel="icon" href="icons/Icon-192.png" />
+<style>
+  :root {
+    color-scheme: light dark;
+    --ink: #16160f;
+    --paper: #f5f4ee;
+    --card: #ffffff;
+    --muted: #6b6b60;
+    --accent: #5a8f3c;
+    --accent-ink: #ffffff;
+    --border: #e3e1d6;
+    --chip: #eeece2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #f2f1ea;
+      --paper: #14140f;
+      --card: #1c1c15;
+      --muted: #a6a597;
+      --accent: #8bc36a;
+      --accent-ink: #14140f;
+      --border: #2c2c22;
+      --chip: #23231b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 28px 18px 72px; }
+  .back-link {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-bottom: 14px; color: var(--muted); font-weight: 600; font-size: 14px;
+    text-decoration: none;
+  }
+  .back-link:hover { color: var(--accent); }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+  header img { width: 40px; height: 40px; border-radius: 10px; }
+  header h1 { font-size: 20px; margin: 0; }
+  .lede { color: var(--muted); margin: 4px 0 22px; font-size: 15px; }
+
+  /* Platform toggle */
+  .seg {
+    display: flex; gap: 6px; background: var(--chip); border: 1px solid var(--border);
+    border-radius: 999px; padding: 5px; margin-bottom: 22px;
+  }
+  .seg button {
+    flex: 1; border: 0; background: transparent; color: var(--muted);
+    font: inherit; font-weight: 700; font-size: 14px; padding: 10px 8px;
+    border-radius: 999px; cursor: pointer; transition: background .15s, color .15s;
+  }
+  .seg button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+
+  section {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 20px 20px; margin-bottom: 16px;
+  }
+  h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--accent); margin: 0 0 14px;
+  }
+  p { margin: 0 0 10px; }
+  p:last-child { margin-bottom: 0; }
+  a { color: var(--accent); font-weight: 600; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  ol.steps { list-style: none; counter-reset: s; margin: 0; padding: 0; }
+  ol.steps > li {
+    counter-increment: s; position: relative; padding: 0 0 16px 42px;
+  }
+  ol.steps > li:last-child { padding-bottom: 0; }
+  ol.steps > li::before {
+    content: counter(s); position: absolute; left: 0; top: -1px;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); color: var(--accent-ink);
+    font-weight: 800; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  ol.steps > li::after {
+    content: ""; position: absolute; left: 13px; top: 30px; bottom: 6px;
+    width: 2px; background: var(--border);
+  }
+  ol.steps > li:last-child::after { display: none; }
+  .k { font-weight: 700; }
+
+  .tip {
+    background: var(--chip); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 14px; margin-top: 12px;
+    font-size: 14px; color: var(--muted);
+  }
+  .tip b { color: var(--ink); }
+  .note { color: var(--muted); font-size: 14px; }
+  .contact { text-align: center; margin-top: 26px; color: var(--muted); font-size: 13px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back-link" href="index.html">← Về trang chính</a>
+    <header>
+      <img src="icons/Icon-192.png" alt="3i" />
+      <h1>Kết nối Health với 3i</h1>
+    </header>
+    <p class="lede">
+      3i đọc <b>số bước</b> và <b>quãng đường đi bộ</b> từ kho sức khoẻ của điện
+      thoại để hiện dòng thời gian, chi tiết theo giờ và bảng xếp hạng. Chọn đúng
+      thiết bị của bạn:
+    </p>
+
+    <div class="seg" role="tablist" aria-label="Chọn nền tảng">
+      <button id="tab-ios" role="tab" aria-selected="true" onclick="pick('ios')">
+        iPhone · Apple Health
+      </button>
+      <button id="tab-android" role="tab" aria-selected="false" onclick="pick('android')">
+        Android · Health Connect
+      </button>
+    </div>
+
+    <!-- iOS -->
+    <div id="panel-ios">
+      <section>
+        <h2>Kết nối Apple Health</h2>
+        <ol class="steps">
+          <li>Mở <span class="k">3i Run</span> → tab <span class="k">Cài đặt</span>.</li>
+          <li>Ở mục sức khoẻ, bấm <span class="k">Kết nối Apple Health</span>.</li>
+          <li>iOS hiện hộp thoại quyền — bật <span class="k">TẤT CẢ</span>: Bước
+            (Steps), Khoảng cách đi bộ + chạy, Bài tập (Workouts). Rồi bấm
+            <span class="k">Cho phép</span>.</li>
+          <li>Quay lại 3i, <span class="k">kéo màn hình xuống để đồng bộ</span>.
+            Số bước và km đi bộ sẽ xuất hiện.</li>
+        </ol>
+      </section>
+      <section>
+        <h2>Nếu báo chưa kết nối / thiếu dữ liệu</h2>
+        <p class="note">Mở <span class="k">Cài đặt</span> của iPhone →
+          <span class="k">Quyền riêng tư &amp; Bảo mật</span> →
+          <span class="k">Sức khoẻ</span> → <span class="k">3i Run</span> → bật
+          lại tất cả các mục.</p>
+        <div class="tip">
+          <b>Mẹo:</b> iOS chỉ trả dữ liệu khi app Sức khoẻ THẬT SỰ có số bước —
+          hãy chắc iPhone (hoặc Apple Watch) đang ghi bước. Mở app Sức khoẻ →
+          Duyệt → Hoạt động → Số bước để kiểm tra.
+        </div>
+      </section>
+    </div>
+
+    <!-- Android -->
+    <div id="panel-android" hidden>
+      <section>
+        <h2>Kết nối Health Connect</h2>
+        <ol class="steps">
+          <li>Cài <span class="k">Health Connect</span> nếu chưa có: Android 14
+            trở lên đã tích hợp sẵn; máy cũ hơn tải trên
+            <span class="k">Google Play</span> (“Health Connect by Android”).</li>
+          <li>Mở <span class="k">3i Run</span> → tab <span class="k">Cài đặt</span>
+            → bấm <span class="k">Kết nối Health Connect</span>.</li>
+          <li>Health Connect hiện danh sách quyền — cho phép
+            <span class="k">Bước, Khoảng cách, Bài tập (Exercise)</span>.</li>
+          <li>Quay lại 3i, <span class="k">kéo màn hình xuống để đồng bộ</span>.</li>
+        </ol>
+      </section>
+      <section>
+        <h2>Nếu báo chưa kết nối dù đã cho phép</h2>
+        <p class="note">Mở app <span class="k">Health Connect</span> →
+          <span class="k">Quyền &amp; dữ liệu ứng dụng</span> →
+          <span class="k">3i Run</span> → bật đọc Bước / Khoảng cách / Bài tập.</p>
+        <div class="tip">
+          <b>Mẹo:</b> Health Connect chỉ là “kho trung chuyển” — cần một app ghi
+          bước (Google Fit, Samsung Health…) đang đẩy dữ liệu vào đó thì 3i mới có
+          gì để đọc. Mở Health Connect → Dữ liệu → Bước để kiểm tra đã có số liệu.
+        </div>
+      </section>
+    </div>
+
+    <section>
+      <h2>3i xử lý dữ liệu thế nào</h2>
+      <p class="note">Km đi bộ được tính <b>tách riêng</b> khỏi km chạy và tự
+        <b>khử trùng lặp</b> — một buổi chạy đã ghi sẽ không bị đếm hai lần. Dữ
+        liệu sức khoẻ chỉ dùng để hiển thị và xếp hạng trong 3i, xem thêm
+        <a href="privacy.html">Chính sách quyền riêng tư</a>.</p>
+    </section>
+
+    <p class="contact">
+      Cần hỗ trợ? <a href="support.html">Trang hỗ trợ</a> ·
+      <a href="mailto:vanglinh128@gmail.com">vanglinh128@gmail.com</a>
+    </p>
+  </div>
+
+  <script>
+    // Chọn nền tảng: ưu tiên ?platform= (App truyền vào), sau đó tự đoán từ
+    // user-agent; mặc định iOS. Không đụng localStorage để tránh lỗi ở webview.
+    function pick(p) {
+      var ios = p === 'ios';
+      document.getElementById('panel-ios').hidden = !ios;
+      document.getElementById('panel-android').hidden = ios;
+      document.getElementById('tab-ios').setAttribute('aria-selected', ios);
+      document.getElementById('tab-android').setAttribute('aria-selected', !ios);
+    }
+    (function () {
+      var q = (new URLSearchParams(location.search).get('platform') || '').toLowerCase();
+      if (q === 'ios' || q === 'android') return pick(q);
+      var ua = navigator.userAgent || '';
+      if (/android/i.test(ua)) return pick('android');
+      pick('ios'); // iPhone/iPad hoặc desktop → mặc định Apple Health
+    })();
+  </script>
+</body>
+</html>

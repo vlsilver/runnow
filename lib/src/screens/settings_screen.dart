@@ -183,6 +183,15 @@ class SettingsScreen extends ConsumerWidget {
                             : () => ref.read(healthSyncProvider).disconnect(),
                       ),
                     ],
+                    _SettingsRow(
+                      icon: Icons.help_outline_rounded,
+                      title: 'Hướng dẫn kết nối',
+                      subtitle: 'Các bước cấp quyền ${health.providerName}',
+                      onTap: () => _openWebDocument(
+                        'connect-health?platform='
+                        '${defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android'}',
+                      ),
+                    ),
                     if (health.error != null)
                       _SettingsMessage(message: health.error!),
                   ],
