@@ -55,25 +55,48 @@ class RunContractRoutePoint {
 /// Tuyến tham khảo của 1 kèo "theo tuyến" — người tham gia phải chạy bám
 /// theo tuyến này (xem `route_matching.dart`) để được tính tiến độ.
 class RunContractRoute {
-  const RunContractRoute({required this.points, required this.distanceMeters});
+  RunContractRoute({
+    required this.points,
+    required this.distanceMeters,
+    int? pointCount,
+  }) : pointCount = pointCount ?? points.length;
 
   factory RunContractRoute.fromMap(Map<String, dynamic> map) {
     final rawPoints = map['points'] as List<dynamic>? ?? const [];
+    final points = rawPoints
+        .whereType<Map<String, dynamic>>()
+        .map(RunContractRoutePoint.fromMap)
+        .toList();
     return RunContractRoute(
-      points: rawPoints
-          .whereType<Map<String, dynamic>>()
-          .map(RunContractRoutePoint.fromMap)
-          .toList(),
+      points: points,
       distanceMeters: (map['distanceMeters'] as num?)?.toDouble() ?? 0,
+      // Doc kèo NHẸ (đã tách points ra runContractRoutes) chỉ còn `pointCount`;
+      // doc cũ không có field này thì suy từ số points inline.
+      pointCount: (map['pointCount'] as num?)?.toInt() ?? points.length,
     );
   }
 
   final List<RunContractRoutePoint> points;
   final double distanceMeters;
 
+  /// Số điểm THẬT của tuyến. Với bản nhẹ (points đã tách ra collection riêng)
+  /// thì [points] rỗng nhưng pointCount vẫn cho biết tuyến có bao nhiêu mốc.
+  final int pointCount;
+
+  /// true nếu đây là bản NHẸ (chưa nạp points) — phải hydrate từ
+  /// `runContractRoutes/{contractId}` trước khi vẽ bản đồ / tính khớp tuyến.
+  bool get isLight => points.isEmpty && pointCount > 0;
+
   Map<String, dynamic> toMap() => {
     'points': [for (final point in points) point.toMap()],
     'distanceMeters': distanceMeters,
+  };
+
+  /// Bản NHẸ để nhúng trong doc kèo (KHÔNG kèm polyline) — points thật lưu ở
+  /// `runContractRoutes/{contractId}`. Chỉ dùng cho kèo "Theo tuyến".
+  Map<String, dynamic> toLightMap() => {
+    'distanceMeters': distanceMeters,
+    'pointCount': points.length,
   };
 }
 
@@ -436,6 +459,37 @@ class RunContract {
       openEnded: map['openEnded'] as bool? ?? false,
     );
   }
+
+  /// Trả về bản sao với [route] đã NẠP đầy points (từ `runContractRoutes`) —
+  /// dùng khi doc kèo chỉ mang route nhẹ mà cần vẽ bản đồ / tính khớp tuyến.
+  RunContract withRoute(RunContractRoute route) => RunContract(
+    id: id,
+    creatorUid: creatorUid,
+    title: title,
+    template: template,
+    metric: metric,
+    targetValue: targetValue,
+    periodType: periodType,
+    startAt: startAt,
+    endAtExclusive: endAtExclusive,
+    finalizeAt: finalizeAt,
+    status: status,
+    visibility: visibility,
+    progressValue: progressValue,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+    lastCalculatedAt: lastCalculatedAt,
+    completedAt: completedAt,
+    failedAt: failedAt,
+    cancelledAt: cancelledAt,
+    participants: participants,
+    schemaVersion: schemaVersion,
+    route: route,
+    unlimitedRepeat: unlimitedRepeat,
+    journeyRouteId: journeyRouteId,
+    mode: mode,
+    openEnded: openEnded,
+  );
 
   final String id;
   final int schemaVersion;

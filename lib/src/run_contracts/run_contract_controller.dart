@@ -53,6 +53,30 @@ class RunContractController {
   final RunContractRepository _contracts;
   final ActivityRepository _activities;
 
+  /// Kèo "Theo tuyến" mà doc chỉ mang route NHẸ (points rỗng) → NẠP polyline từ
+  /// `runContractRoutes` để tính khớp tuyến. Kèo cũ (points inline) hoặc metric
+  /// khác → trả nguyên. Nạp không được cũng trả nguyên (guard bên dưới chặn ghi).
+  Future<RunContract> _hydrateRoute(RunContract contract) async {
+    if (contract.metric != RunContractMetric.routeCompletion) return contract;
+    final route = contract.route;
+    if (route == null || route.points.isNotEmpty) return contract;
+    final full = await _contracts.fetchContractRoute(contract.id);
+    if (full == null || full.points.isEmpty) return contract;
+    return contract.withRoute(full);
+  }
+
+  /// Kèo "Theo tuyến" mà KHÔNG có points (hydrate không được) → thiếu dữ liệu để
+  /// tính khớp tuyến; phải BỎ QUA việc ghi để không đè progress cũ thành 0.
+  bool _routeUnresolved(RunContract contract) =>
+      contract.metric == RunContractMetric.routeCompletion &&
+      (contract.route == null || contract.route!.points.isEmpty);
+
+  /// Progress "giữ nguyên" khi bỏ qua ghi (kết quả thường bị caller .ignore()).
+  RunContractProgress _keepProgress(RunContract contract) => RunContractProgress(
+    value: contract.progressValue,
+    eligibleActivities: const [],
+  );
+
   Future<RunContractPreview> preview(
     RunContractDraft draft, {
     DateTime? now,
@@ -103,6 +127,8 @@ class RunContractController {
   }
 
   Future<RunContractProgress> recalculate(RunContract contract) async {
+    contract = await _hydrateRoute(contract);
+    if (_routeUnresolved(contract)) return _keepProgress(contract);
     final progress = await _calculateProgress(contract);
     await _contracts.updateProgress(
       contract.id,
@@ -122,6 +148,8 @@ class RunContractController {
   Future<RunContractProgress> recalculateParticipant(
     RunContract contract,
   ) async {
+    contract = await _hydrateRoute(contract);
+    if (_routeUnresolved(contract)) return _keepProgress(contract);
     final progress = await _calculateProgress(contract);
     await _contracts.updateParticipantProgress(
       contract.id,
@@ -263,6 +291,10 @@ class RunContractController {
     RunContract contract,
     Set<String> selectedActivityIds,
   ) async {
+    contract = await _hydrateRoute(contract);
+    if (_routeUnresolved(contract)) {
+      throw StateError('Chưa tải được tuyến tham khảo — thử lại sau.');
+    }
     final options = await activityOptions(contract);
     final available = {
       for (final option in options)
@@ -353,7 +385,9 @@ class RunContractController {
       globalAssignments,
     );
     final options = <ContractApplyOption>[];
-    for (final contract in activeContracts) {
+    for (final rawContract in activeContracts) {
+      // Nạp tuyến (nếu là "Theo tuyến" doc nhẹ) để preview khớp tuyến chính xác.
+      final contract = await _hydrateRoute(rawContract);
       final withinWindow =
           !activity.startedAt.toUtc().isBefore(contract.startAt.toUtc()) &&
           activity.startedAt.toUtc().isBefore(contract.endAtExclusive.toUtc());

@@ -63,6 +63,7 @@ class _EmptyRunContractRepository implements RunContractRepository {
   Future<RunContractPage> fetchClubContractsPage({
     int limit = 20,
     Object? cursor,
+    bool fromCache = false,
   }) async => const RunContractPage(contracts: [], hasMore: false);
 
   @override
@@ -70,6 +71,7 @@ class _EmptyRunContractRepository implements RunContractRepository {
     required RunContractStatus status,
     int limit = 20,
     Object? cursor,
+    bool fromCache = false,
   }) async => const RunContractPage(contracts: [], hasMore: false);
 
   @override
@@ -77,6 +79,9 @@ class _EmptyRunContractRepository implements RunContractRepository {
 
   @override
   Stream<RunContract?> watchContract(String contractId) => Stream.value(null);
+
+  @override
+  Future<RunContractRoute?> fetchContractRoute(String contractId) async => null;
 
   @override
   Future<String> create({

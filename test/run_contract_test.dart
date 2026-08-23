@@ -928,6 +928,9 @@ class _FakeContractRepository implements RunContractRepository {
   Future<Map<String, String>> activityAssignments() async => assignments;
 
   @override
+  Future<RunContractRoute?> fetchContractRoute(String contractId) async => null;
+
+  @override
   Future<void> replaceActivityAssignments(
     String contractId, {
     required List<String> activityIds,
@@ -980,6 +983,7 @@ class _FakeContractRepository implements RunContractRepository {
   Future<RunContractPage> fetchClubContractsPage({
     int limit = 20,
     Object? cursor,
+    bool fromCache = false,
   }) async => const RunContractPage(contracts: [], hasMore: false);
 
   @override
@@ -993,5 +997,6 @@ class _FakeContractRepository implements RunContractRepository {
     required RunContractStatus status,
     int limit = 20,
     Object? cursor,
+    bool fromCache = false,
   }) async => const RunContractPage(contracts: [], hasMore: false);
 }

@@ -17,7 +17,6 @@ import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:myrun/src/widgets/discipline_card.dart';
 import 'package:myrun/src/widgets/glass.dart';
-import 'package:myrun/src/widgets/nav_filter.dart';
 import 'package:myrun/src/widgets/personal_power_card.dart';
 import 'package:myrun/src/widgets/training_volume_chart.dart';
 
@@ -167,8 +166,6 @@ class _MemberJournalRow {
   }
 }
 
-enum _MemberFilterSection { power, volume }
-
 class _MemberDashboard extends StatefulWidget {
   const _MemberDashboard({
     required this.uid,
@@ -185,13 +182,9 @@ class _MemberDashboard extends StatefulWidget {
 }
 
 class _MemberDashboardState extends State<_MemberDashboard> {
-  final _scrollKey = GlobalKey();
-  final _powerKey = GlobalKey();
-  final _volumeKey = GlobalKey();
   var _powerRange = PersonalPowerRange.rollingSevenDays;
-  var _volumePeriod = TrainingVolumePeriod.month;
-  var _volumeMode = TrainingVolumeChartMode.bar;
-  _MemberFilterSection? _activeFilter;
+  final _volumePeriod = TrainingVolumePeriod.month;
+  final _volumeMode = TrainingVolumeChartMode.bar;
   late TrainingComparison _comparison;
   late List<DailyDistance> _dailyDistances;
   late TrainingSummary _month;
@@ -203,7 +196,6 @@ class _MemberDashboardState extends State<_MemberDashboard> {
   void initState() {
     super.initState();
     _recomputeAnalytics();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _updateActiveFilter());
   }
 
   @override
@@ -229,28 +221,6 @@ class _MemberDashboardState extends State<_MemberDashboard> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     if (today != _analyticsDay) _recomputeAnalytics();
-  }
-
-  void _updateActiveFilter() {
-    if (!mounted) return;
-    final listBox = _scrollKey.currentContext?.findRenderObject() as RenderBox?;
-    if (listBox == null) return;
-    final threshold =
-        listBox.localToGlobal(Offset.zero).dy + listBox.size.height * 0.28;
-    _MemberFilterSection? active;
-    for (final section in <(GlobalKey, _MemberFilterSection)>[
-      (_powerKey, _MemberFilterSection.power),
-      (_volumeKey, _MemberFilterSection.volume),
-    ]) {
-      final box = section.$1.currentContext?.findRenderObject() as RenderBox?;
-      if (box == null) continue;
-      final top = box.localToGlobal(Offset.zero).dy;
-      if (top <= threshold && top + box.size.height > threshold) {
-        active = section.$2;
-        break;
-      }
-    }
-    if (_activeFilter != active) setState(() => _activeFilter = active);
   }
 
   @override
@@ -343,165 +313,53 @@ class _MemberDashboardState extends State<_MemberDashboard> {
         ],
       );
     }
-    final list = NotificationListener<ScrollNotification>(
-      onNotification: (_) {
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => _updateActiveFilter(),
-        );
-        return false;
-      },
-      child: ListView(
-        key: _scrollKey,
-        padding: const EdgeInsets.fromLTRB(0, 8, 0, 132),
-        children: [
-          _MemberHeader(member: widget.member),
-          const SizedBox(height: 14),
-          _MemberSummaryCard(
-            comparison: comparison,
-            dailyDistances: dailyDistances,
-            month: month,
-          ),
-          const SizedBox(height: 20),
-          KeyedSubtree(
-            key: _powerKey,
-            child: PersonalPowerCard(
-              activities: widget.activities,
-              range: _powerRange,
-              onRangeChanged: (value) => setState(() => _powerRange = value),
-              showControls: false,
-            ),
-          ),
-          const SizedBox(height: 20),
-          DisciplineCard(stats: discipline, activities: widget.activities),
-          const SizedBox(height: 20),
-          KeyedSubtree(
-            key: _volumeKey,
-            child: TrainingVolumeChart(
-              uid: widget.uid,
-              period: _volumePeriod,
-              mode: _volumeMode,
-              showControls: false,
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text('Gần đây', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
-          if (recent.isEmpty)
-            const Text('Thành viên này chưa có hoạt động public.')
-          else ...[
-            ActivityRecordsCard(
-              title: 'BEST BOARD',
-              entries: [
-                for (final activity in widget.activities)
-                  ActivityRecordEntry(activity: activity, ownerUid: widget.uid),
-              ],
-            ),
-            const SizedBox(height: 16),
-            for (var index = 0; index < recent.take(10).length; index++)
-              ActivityTile(activity: recent[index], ownerUid: widget.uid),
-          ],
-        ],
-      ),
-    );
-    return Stack(
+    // Control range/period nằm INLINE trong card (showControls: true) — bỏ thanh
+    // filter PIN ở đáy (nhìn như nav-filter dính lại khi mở từ Club). Giống hệt
+    // layout desktop bên trên.
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 40),
       children: [
-        Positioned.fill(child: list),
-        Positioned(
-          left: 14,
-          right: 14,
-          bottom: 12,
-          child: SafeArea(
-            top: false,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              child: _MemberPinnedFilter(
-                key: ValueKey(_activeFilter),
-                section: _activeFilter,
-                powerRange: _powerRange,
-                volumePeriod: _volumePeriod,
-                volumeMode: _volumeMode,
-                onPowerRangeChanged: (value) =>
-                    setState(() => _powerRange = value),
-                onVolumePeriodChanged: (value) =>
-                    setState(() => _volumePeriod = value),
-                onVolumeModeChanged: (value) =>
-                    setState(() => _volumeMode = value),
-              ),
-            ),
-          ),
+        _MemberHeader(member: widget.member),
+        const SizedBox(height: 14),
+        _MemberSummaryCard(
+          comparison: comparison,
+          dailyDistances: dailyDistances,
+          month: month,
         ),
-      ],
-    );
-  }
-}
-
-class _MemberPinnedFilter extends StatelessWidget {
-  const _MemberPinnedFilter({
-    required this.section,
-    required this.powerRange,
-    required this.volumePeriod,
-    required this.volumeMode,
-    required this.onPowerRangeChanged,
-    required this.onVolumePeriodChanged,
-    required this.onVolumeModeChanged,
-    super.key,
-  });
-
-  final _MemberFilterSection? section;
-  final PersonalPowerRange powerRange;
-  final TrainingVolumePeriod volumePeriod;
-  final TrainingVolumeChartMode volumeMode;
-  final ValueChanged<PersonalPowerRange> onPowerRangeChanged;
-  final ValueChanged<TrainingVolumePeriod> onVolumePeriodChanged;
-  final ValueChanged<TrainingVolumeChartMode> onVolumeModeChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    if (section == null) return const SizedBox.shrink();
-    return GlassPanel(
-      borderRadius: 12,
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-      child: NavFilterShell(
-        child: switch (section!) {
-          _MemberFilterSection.power => NavPillToggle<PersonalPowerRange>(
-            value: powerRange,
-            items: const {
-              PersonalPowerRange.currentWeek: 'Tuần',
-              PersonalPowerRange.rollingSevenDays: '7 ngày',
-              PersonalPowerRange.currentMonth: 'Tháng',
-            },
-            onChanged: onPowerRangeChanged,
-          ),
-          _MemberFilterSection.volume => Row(
-            children: [
-              Expanded(
-                child: NavDropdown<TrainingVolumeChartMode>(
-                  icon: Icons.show_chart_rounded,
-                  value: volumeMode,
-                  items: const {
-                    TrainingVolumeChartMode.bar: 'Cột',
-                    TrainingVolumeChartMode.line: 'Line',
-                  },
-                  onChanged: onVolumeModeChanged,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: NavDropdown<TrainingVolumePeriod>(
-                  icon: Icons.date_range_outlined,
-                  value: volumePeriod,
-                  items: const {
-                    TrainingVolumePeriod.month: 'Tháng',
-                    TrainingVolumePeriod.quarter: 'Quý',
-                    TrainingVolumePeriod.year: 'Năm',
-                  },
-                  onChanged: onVolumePeriodChanged,
-                ),
-              ),
+        const SizedBox(height: 20),
+        PersonalPowerCard(
+          activities: widget.activities,
+          range: _powerRange,
+          onRangeChanged: (value) => setState(() => _powerRange = value),
+          showControls: true,
+        ),
+        const SizedBox(height: 20),
+        DisciplineCard(stats: discipline, activities: widget.activities),
+        const SizedBox(height: 20),
+        TrainingVolumeChart(
+          uid: widget.uid,
+          period: _volumePeriod,
+          mode: _volumeMode,
+          showControls: true,
+        ),
+        const SizedBox(height: 20),
+        Text('Gần đây', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 8),
+        if (recent.isEmpty)
+          const Text('Thành viên này chưa có hoạt động public.')
+        else ...[
+          ActivityRecordsCard(
+            title: 'BEST BOARD',
+            entries: [
+              for (final activity in widget.activities)
+                ActivityRecordEntry(activity: activity, ownerUid: widget.uid),
             ],
           ),
-        },
-      ),
+          const SizedBox(height: 16),
+          for (var index = 0; index < recent.take(10).length; index++)
+            ActivityTile(activity: recent[index], ownerUid: widget.uid),
+        ],
+      ],
     );
   }
 }

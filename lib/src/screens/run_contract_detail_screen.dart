@@ -1289,6 +1289,14 @@ class _LazyRouteMapSection extends ConsumerWidget {
           ),
     ];
 
+    // Kèo "Theo tuyến" mới lưu polyline tách ở runContractRoutes (doc kèo chỉ có
+    // route nhẹ) → nạp lazy khi mở bản đồ. Kèo cũ / hành trình giữ points inline
+    // → dùng thẳng, không cần đọc thêm.
+    final routePoints = route.points.isNotEmpty
+        ? route.points
+        : (ref.watch(contractRouteProvider(contract.id)).value?.points ??
+              const <RunContractRoutePoint>[]);
+
     return _LazyContractSection(
       title: 'Tuyến tham khảo',
       subtitle: '$distanceKm km · đang hiển thị bản đồ',
@@ -1300,7 +1308,7 @@ class _LazyRouteMapSection extends ConsumerWidget {
           borderRadius: BorderRadius.circular(18),
           child: RouteMap.fromRoutePoints(
             points: [
-              for (final point in route.points)
+              for (final point in routePoints)
                 RoutePoint(
                   latitude: point.latitude,
                   longitude: point.longitude,

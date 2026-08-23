@@ -57,9 +57,10 @@ class _RankingTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final metric = ref.watch(clubRankingMetricProvider);
     final range = ref.watch(clubRankingRangeProvider);
-    // Nạp CẢ 3 nguồn khi mở màn + GIỮ SỐNG trong lúc ở màn (watch cả 3) → chuyển
-    // metric (Km↔Bước↔chạy) TỨC THÌ, không get lại/spinner. autoDispose dọn khi
-    // rời màn → lần mở sau tươi. Bước = bảng RIÊNG; Km = TỔNG (chạy+đi bộ) gộp.
+    // Watch CẢ 3 nguồn → chuyển metric (Km↔Bước↔chạy) TỨC THÌ, không get lại.
+    // Provider keepAlive + được prefetch lúc khởi động app (xem coordinator) nên
+    // mở tab Club là có sẵn, khỏi chờ round-trip. Số vẫn tươi (fetch từ server);
+    // pull-to-refresh để lấy mới. Bước = bảng RIÊNG; Km = TỔNG (chạy+đi bộ) gộp.
     final runBoard = ref.watch(leaderboardEntriesProvider);
     final stepBoard = ref.watch(stepLeaderboardProvider);
     final totalBoard = ref.watch(totalKmLeaderboardProvider);
@@ -78,9 +79,10 @@ class _RankingTab extends ConsumerWidget {
         return RefreshIndicator(
           // Get 1 lần (không live) → KÉO-để-làm-mới: nạp lại + đợi nguồn đang xem.
           onRefresh: () async {
+            // Invalidate nguồn ĐỌC gốc: leaderboardEntries (chạy) + docs bước
+            // (chia sẻ cho Bước & Tổng km) → cả 3 bảng tự tính lại từ server.
             ref.invalidate(leaderboardEntriesProvider);
-            ref.invalidate(stepLeaderboardProvider);
-            ref.invalidate(totalKmLeaderboardProvider);
+            ref.invalidate(stepLeaderboardDocsProvider);
             await ref.read(switch (metric) {
               ClubRankingMetric.steps => stepLeaderboardProvider.future,
               ClubRankingMetric.distance => totalKmLeaderboardProvider.future,

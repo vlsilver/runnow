@@ -38,9 +38,18 @@ abstract interface class RunContractRepository {
   /// [maxActiveRunContracts].
   Stream<List<RunContract>> watchMyActiveContracts();
   Stream<RunContract?> watchContract(String contractId);
+
+  /// Tuyến ĐẦY ĐỦ (polyline) của kèo "Theo tuyến" — lưu tách ở
+  /// `runContractRoutes/{contractId}` để doc kèo trong danh sách khỏi cõng cả
+  /// polyline nặng. Trả `null` nếu kèo không có tuyến / chưa tách (kèo cũ vẫn
+  /// giữ points inline trong chính doc kèo).
+  Future<RunContractRoute?> fetchContractRoute(String contractId);
+  /// [fromCache] = true đọc thẳng cache đĩa Firestore (vẽ tức thì, né cold-start
+  /// query đầu); mặc định serverAndCache để lấy dữ liệu tươi.
   Future<RunContractPage> fetchClubContractsPage({
     int limit = 20,
     Object? cursor,
+    bool fromCache = false,
   });
 
   /// Các kèo (tạo hoặc join) đã kết thúc — hoàn thành, thất bại hoặc bị huỷ.
@@ -48,6 +57,7 @@ abstract interface class RunContractRepository {
     required RunContractStatus status,
     int limit = 20,
     Object? cursor,
+    bool fromCache = false,
   });
   Future<String> create({
     required RunContractDraft draft,
@@ -105,6 +115,22 @@ class FirestoreRunContractRepository implements RunContractRepository {
   CollectionReference<Map<String, dynamic>> get _contracts =>
       _firestore.collection('runContracts');
 
+  /// Polyline đầy đủ của kèo "Theo tuyến", tách khỏi doc kèo cho danh sách nhẹ.
+  CollectionReference<Map<String, dynamic>> get _routes =>
+      _firestore.collection('runContractRoutes');
+
+  @override
+  Future<RunContractRoute?> fetchContractRoute(String contractId) async {
+    final snap = await _routes.doc(contractId).get();
+    final data = snap.data();
+    if (data == null) return null;
+    final route = RunContractRoute.fromMap(data);
+    // Doc route mà không có points thì coi như chưa có (để caller fallback về
+    // points inline của kèo cũ, không nhầm là "tuyến rỗng").
+    if (route.points.isEmpty) return null;
+    return route;
+  }
+
   CollectionReference<Map<String, dynamic>> get _activityClaims => _firestore
       .collection('users')
       .doc(_uid)
@@ -125,6 +151,7 @@ class FirestoreRunContractRepository implements RunContractRepository {
   Future<RunContractPage> fetchClubContractsPage({
     int limit = 20,
     Object? cursor,
+    bool fromCache = false,
   }) async {
     Query<Map<String, dynamic>> query = _contracts
         .where('visibility', isEqualTo: RunContractVisibility.club.value)
@@ -133,7 +160,7 @@ class FirestoreRunContractRepository implements RunContractRepository {
     if (cursor is DocumentSnapshot<Map<String, dynamic>>) {
       query = query.startAfterDocument(cursor);
     }
-    return _fetchPage(query, limit);
+    return _fetchPage(query, limit, fromCache: fromCache);
   }
 
   @override
@@ -141,6 +168,7 @@ class FirestoreRunContractRepository implements RunContractRepository {
     required RunContractStatus status,
     int limit = 20,
     Object? cursor,
+    bool fromCache = false,
   }) async {
     Query<Map<String, dynamic>> query = _contracts
         .where('participantUids', arrayContains: _uid)
@@ -149,14 +177,17 @@ class FirestoreRunContractRepository implements RunContractRepository {
     if (cursor is DocumentSnapshot<Map<String, dynamic>>) {
       query = query.startAfterDocument(cursor);
     }
-    return _fetchPage(query, limit);
+    return _fetchPage(query, limit, fromCache: fromCache);
   }
 
   Future<RunContractPage> _fetchPage(
     Query<Map<String, dynamic>> query,
-    int limit,
-  ) async {
-    final snapshot = await query.limit(limit).get();
+    int limit, {
+    bool fromCache = false,
+  }) async {
+    final snapshot = await query.limit(limit).get(
+      GetOptions(source: fromCache ? Source.cache : Source.serverAndCache),
+    );
     return RunContractPage(
       contracts: _contractsFromDocuments(snapshot.docs),
       nextCursor: snapshot.docs.isEmpty ? null : snapshot.docs.last,
@@ -190,6 +221,24 @@ class FirestoreRunContractRepository implements RunContractRepository {
     if (validation != null) throw StateError(validation);
     await _ensureUnderLimit();
     final contractRef = _contracts.doc();
+    final route = draft.route;
+    // Chỉ TÁCH tuyến cho kèo "Theo tuyến" (routeCompletion). Kèo HÀNH TRÌNH cũng
+    // có route nhưng giữ inline như cũ (feature riêng, có hạ tầng route khác) —
+    // không đụng để khỏi sinh bug.
+    final splitRoute =
+        route != null &&
+        draft.metric == RunContractMetric.routeCompletion &&
+        route.points.isNotEmpty;
+    if (splitRoute) {
+      // Ghi polyline ra doc riêng TRƯỚC khi tạo kèo — doc kèo chỉ giữ bản nhẹ.
+      // creatorUid nhúng kèm để rule tự kiểm quyền ghi (khỏi đọc chéo doc kèo).
+      await _routes.doc(contractRef.id).set({
+        ...route.toMap(),
+        'pointCount': route.points.length,
+        'creatorUid': _uid,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
     await contractRef.set({
       'id': contractRef.id,
       // Kèo hành trình là loại mới (schema 2): app cũ chưa hiểu sẽ ẩn đi thay
@@ -225,7 +274,9 @@ class FirestoreRunContractRepository implements RunContractRepository {
       'lastCalculatedAt': FieldValue.serverTimestamp(),
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
-      if (draft.route != null) 'route': draft.route!.toMap(),
+      // routeCompletion → nhúng bản NHẸ (points nằm ở runContractRoutes).
+      // Journey / trường hợp khác → giữ route inline như cũ.
+      if (route != null) 'route': splitRoute ? route.toLightMap() : route.toMap(),
       'unlimitedRepeat': draft.unlimitedRepeat,
       // Kèo hành trình: cung tự vẽ (đã ghi ở 'route') + chế độ + cờ không-hạn.
       if (draft.isJourney) 'mode': draft.mode.value,

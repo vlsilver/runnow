@@ -197,6 +197,22 @@ service cloud.firestore {
         );
     }
 
+    // Tuyến ĐẦY ĐỦ (polyline) của kèo "Theo tuyến", tách khỏi doc kèo để danh
+    // sách kèo khỏi cõng polyline nặng. Tuyến tham khảo không nhạy cảm → ai đăng
+    // nhập cũng đọc được; chỉ NGƯỜI TẠO kèo (creatorUid nhúng trong doc) mới
+    // ghi/sửa/xoá. Migration dùng Admin SDK (bỏ qua rule).
+    match /runContractRoutes/{contractId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.creatorUid == request.auth.uid
+        && request.resource.data.points is list;
+      allow update: if signedIn()
+        && resource.data.creatorUid == request.auth.uid
+        && request.resource.data.creatorUid == resource.data.creatorUid;
+      allow delete: if signedIn()
+        && resource.data.creatorUid == request.auth.uid;
+    }
+
     // Giáo án AI Coach chia sẻ được (coachPlans/{ownerUid}). Doc do backend
     // (Admin SDK) tạo qua confirmCoachDraft — client KHÔNG tự tạo. Chủ giáo án
     // (ownerUid = trưởng nhóm) sửa được lịch; người khác chỉ đọc nếu public và

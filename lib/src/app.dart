@@ -320,6 +320,11 @@ class _AuthenticatedSessionState extends ConsumerState<_AuthenticatedSession> {
       _started = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
+        // Prefetch BXH ngay lúc mở app → tới lúc mở tab Club đã có sẵn, khỏi chờ
+        // round-trip (số vẫn TƯƠI từ server, không phải disk-cache cũ). keepAlive
+        // giữ giá trị tới khi Club watch; stepLeaderboardDocs dùng chung Bước+Tổng.
+        ref.read(leaderboardEntriesProvider);
+        ref.read(stepLeaderboardDocsProvider);
         final controller = ref.read(runContractControllerProvider);
         // Await .future để chắc kèo ĐÃ tải: coordinator chạy 1 lần lúc mở app; đọc
         // .value lúc stream chưa emit sẽ ra rỗng → bỏ sót recalc/auto-link cả phiên.
@@ -829,7 +834,12 @@ class _Scaffold extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ClubNavFilter(branchActive: shell.currentIndex == 1),
+              // CHỈ hiện filter xếp hạng khi đang ở đúng màn Club gốc (/club).
+              // Khi push sang màn con (nhật ký member, chi tiết hoạt động…) thì
+              // ẩn — không để filter Club "dính" lại ở màn khác.
+              ClubNavFilter(
+                branchActive: shell.currentIndex == 1 && location == '/club',
+              ),
               Row(
                 children: [
                   Expanded(

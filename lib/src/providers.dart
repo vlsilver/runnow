@@ -320,6 +320,21 @@ final runContractProvider = StreamProvider.family<RunContract?, String>((
   return ref.watch(runContractRepositoryProvider).watchContract(contractId);
 });
 
+/// Tuyến ĐẦY ĐỦ (polyline) của kèo "Theo tuyến" — đọc lazy từ
+/// `runContractRoutes/{id}` khi màn chi tiết cần vẽ bản đồ. Trả `null` nếu kèo
+/// không tách tuyến (kèo cũ giữ points inline → dùng thẳng `contract.route`).
+final contractRouteProvider =
+    FutureProvider.autoDispose.family<RunContractRoute?, String>((
+      ref,
+      contractId,
+    ) {
+      final uid = ref.watch(firebaseUserProvider).value?.uid;
+      if (uid == null) return Future.value(null);
+      return ref
+          .watch(runContractRepositoryProvider)
+          .fetchContractRoute(contractId);
+    });
+
 final feedPostsProvider = StreamProvider<List<FeedPost>>(
   (ref) => ref.watch(feedRepositoryProvider).watchPosts(),
 );
@@ -328,10 +343,12 @@ final membersProvider = StreamProvider<List<MemberProfile>>(
   (ref) => ref.watch(memberRepositoryProvider).watchMembers(),
 );
 
-final leaderboardEntriesProvider =
-    FutureProvider.autoDispose<List<LeaderboardEntry>>(
-      (ref) => ref.watch(memberRepositoryProvider).getLeaderboardEntries(),
-    );
+/// BXH km CHẠY. keepAlive (không autoDispose) để giá trị prefetch lúc khởi động
+/// sống tới khi tab Club dùng → mở Club là có sẵn, khỏi chờ round-trip. Số vẫn
+/// tươi (fetch từ server); pull-to-refresh invalidate để lấy mới.
+final leaderboardEntriesProvider = FutureProvider<List<LeaderboardEntry>>(
+  (ref) => ref.watch(memberRepositoryProvider).getLeaderboardEntries(),
+);
 
 /// Parse 1 doc stepDays → StepDay (kèm chi tiết theo giờ nếu đã lưu). Dùng chung
 /// cho nhật ký của mình lẫn của member.
@@ -388,91 +405,98 @@ final memberStepDaysProvider = StreamProvider.autoDispose
           );
     });
 
-/// Bảng xếp hạng SỐ BƯỚC CHÂN (Apple Health) — riêng với km chạy. Map doc
-/// stepLeaderboardEntries về [LeaderboardEntry], nhét số bước vào stats.steps
-/// để tái dùng nguyên UI xếp hạng.
-final stepLeaderboardProvider =
-    FutureProvider.autoDispose<List<LeaderboardEntry>>((ref) async {
+/// Đọc collection `stepLeaderboardEntries` MỘT lần (server) — CHIA SẺ cho cả BXH
+/// Bước lẫn BXH Tổng km (trước đây mỗi bên tự `.get()` → đọc trùng gấp đôi cùng
+/// data). keepAlive để prefetch lúc khởi động sống tới khi Club dùng. Trả doc thô
+/// để mỗi BXH tự map field cần. Pull-to-refresh invalidate provider NÀY để lấy mới.
+final stepLeaderboardDocsProvider =
+    FutureProvider<List<QueryDocumentSnapshot<Map<String, dynamic>>>>((
+      ref,
+    ) async {
       ref.watch(firebaseUserProvider);
-      // steps → xếp hạng BXH Bước; meters (km đi bộ) → cộng vào BXH "Tổng km".
-      LeaderboardStats stepStat(int steps, double meters) => LeaderboardStats(
-        distanceMeters: meters,
-        movingTimeSeconds: 0,
-        activityCount: 0,
-        activeDays: 0,
-        longestDistanceMeters: 0,
-        fastestPaceSecondsPerKm: null,
-        steps: steps,
-      );
       final snap = await FirebaseFirestore.instance
           .collection('stepLeaderboardEntries')
           .get(const GetOptions(source: Source.server));
-      return snap.docs.map((d) {
-        final m = d.data();
-        final name = (m['displayName'] as String?)?.trim();
-        double dist(String k) => (m[k] as num?)?.toDouble() ?? 0;
-        int steps(String k) => (m[k] as num?)?.toInt() ?? 0;
-        return LeaderboardEntry(
-          uid: m['uid'] as String? ?? d.id,
-          displayName: (name?.isNotEmpty ?? false) ? name! : '3i member',
-          avatarUrl: m['avatarUrl'] as String?,
-          visibility: ProfileVisibility.fromValue(
-            m['profileVisibility'] as String?,
-          ),
-          rollingSevenDays: stepStat(
-            steps('rollingSevenDaysSteps'),
-            dist('rollingSevenDaysDistance'),
-          ),
-          currentWeek: stepStat(
-            steps('currentWeekSteps'),
-            dist('currentWeekDistance'),
-          ),
-          currentMonth: stepStat(
-            steps('currentMonthSteps'),
-            dist('currentMonthDistance'),
-          ),
-        );
-      }).toList();
+      return snap.docs;
     });
+
+/// Bảng xếp hạng SỐ BƯỚC CHÂN (Apple Health) — riêng với km chạy. Map doc
+/// stepLeaderboardEntries về [LeaderboardEntry], nhét số bước vào stats.steps để
+/// tái dùng nguyên UI. Dùng CHUNG read với [totalKmLeaderboardProvider].
+final stepLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
+  ref,
+) async {
+  // steps → xếp hạng BXH Bước; meters (km đi bộ) → cộng vào BXH "Tổng km".
+  LeaderboardStats stepStat(int steps, double meters) => LeaderboardStats(
+    distanceMeters: meters,
+    movingTimeSeconds: 0,
+    activityCount: 0,
+    activeDays: 0,
+    longestDistanceMeters: 0,
+    fastestPaceSecondsPerKm: null,
+    steps: steps,
+  );
+  final docs = await ref.watch(stepLeaderboardDocsProvider.future);
+  return docs.map((d) {
+    final m = d.data();
+    final name = (m['displayName'] as String?)?.trim();
+    double dist(String k) => (m[k] as num?)?.toDouble() ?? 0;
+    int steps(String k) => (m[k] as num?)?.toInt() ?? 0;
+    return LeaderboardEntry(
+      uid: m['uid'] as String? ?? d.id,
+      displayName: (name?.isNotEmpty ?? false) ? name! : '3i member',
+      avatarUrl: m['avatarUrl'] as String?,
+      visibility: ProfileVisibility.fromValue(m['profileVisibility'] as String?),
+      rollingSevenDays: stepStat(
+        steps('rollingSevenDaysSteps'),
+        dist('rollingSevenDaysDistance'),
+      ),
+      currentWeek: stepStat(
+        steps('currentWeekSteps'),
+        dist('currentWeekDistance'),
+      ),
+      currentMonth: stepStat(
+        steps('currentMonthSteps'),
+        dist('currentMonthDistance'),
+      ),
+    );
+  }).toList();
+});
 
 /// BXH "Tổng km" = ĐÚNG 1 CON SỐ do BACKEND tính sẵn: stepLeaderboardEntries.
 /// *TotalDistance (= km chạy + km đi-bộ, đã khử trùng ở backend). Client CHỈ ĐỌC,
 /// TUYỆT ĐỐI không cộng/gộp/phân biệt 2 nguồn. Mỗi user có đúng 1 doc (backend
 /// rebuild cho cả người-chỉ-chạy lẫn người-chỉ-đi-bộ khi activity/bước đổi).
-final totalKmLeaderboardProvider =
-    FutureProvider.autoDispose<List<LeaderboardEntry>>((ref) async {
-      ref.watch(firebaseUserProvider);
-      // Chỉ hiển thị 1 số (quãng đường). Các stat khác để 0 — Tổng km không có
-      // pace/buổi (là chạy + đi-bộ gộp), đúng tinh thần "1 con số".
-      LeaderboardStats totalStat(double meters) => LeaderboardStats(
-        distanceMeters: meters,
-        movingTimeSeconds: 0,
-        activityCount: 0,
-        activeDays: 0,
-        longestDistanceMeters: 0,
-        fastestPaceSecondsPerKm: null,
-        steps: 0,
-      );
-      final snap = await FirebaseFirestore.instance
-          .collection('stepLeaderboardEntries')
-          .get(const GetOptions(source: Source.server));
-      return snap.docs.map((d) {
-        final m = d.data();
-        final name = (m['displayName'] as String?)?.trim();
-        double dist(String k) => (m[k] as num?)?.toDouble() ?? 0;
-        return LeaderboardEntry(
-          uid: m['uid'] as String? ?? d.id,
-          displayName: (name?.isNotEmpty ?? false) ? name! : '3i member',
-          avatarUrl: m['avatarUrl'] as String?,
-          visibility: ProfileVisibility.fromValue(
-            m['profileVisibility'] as String?,
-          ),
-          rollingSevenDays: totalStat(dist('rollingSevenDaysTotalDistance')),
-          currentWeek: totalStat(dist('currentWeekTotalDistance')),
-          currentMonth: totalStat(dist('currentMonthTotalDistance')),
-        );
-      }).toList();
-    });
+final totalKmLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
+  ref,
+) async {
+  // Chỉ hiển thị 1 số (quãng đường). Các stat khác để 0 — Tổng km không có
+  // pace/buổi (là chạy + đi-bộ gộp), đúng tinh thần "1 con số".
+  LeaderboardStats totalStat(double meters) => LeaderboardStats(
+    distanceMeters: meters,
+    movingTimeSeconds: 0,
+    activityCount: 0,
+    activeDays: 0,
+    longestDistanceMeters: 0,
+    fastestPaceSecondsPerKm: null,
+    steps: 0,
+  );
+  final docs = await ref.watch(stepLeaderboardDocsProvider.future);
+  return docs.map((d) {
+    final m = d.data();
+    final name = (m['displayName'] as String?)?.trim();
+    double dist(String k) => (m[k] as num?)?.toDouble() ?? 0;
+    return LeaderboardEntry(
+      uid: m['uid'] as String? ?? d.id,
+      displayName: (name?.isNotEmpty ?? false) ? name! : '3i member',
+      avatarUrl: m['avatarUrl'] as String?,
+      visibility: ProfileVisibility.fromValue(m['profileVisibility'] as String?),
+      rollingSevenDays: totalStat(dist('rollingSevenDaysTotalDistance')),
+      currentWeek: totalStat(dist('currentWeekTotalDistance')),
+      currentMonth: totalStat(dist('currentMonthTotalDistance')),
+    );
+  }).toList();
+});
 
 final clubLiveSessionsProvider =
     StreamProvider.autoDispose<List<LiveTrackingSession>>(

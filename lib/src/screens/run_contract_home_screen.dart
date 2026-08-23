@@ -66,29 +66,70 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
 
   Future<void> _loadNextPage() => _loadPage(reset: false);
 
+  /// Dựng future nạp 1 trang theo filter. [fromCache] = đọc thẳng cache đĩa (vẽ
+  /// tức thì, né cold-start) thay vì serverAndCache (mặc định, lấy tươi).
+  Future<RunContractPage> _fetchFilterPage(
+    _ContractFilter filter, {
+    required bool reset,
+    bool fromCache = false,
+  }) {
+    final repository = ref.read(runContractRepositoryProvider);
+    final cursor = reset ? null : _pageCursor;
+    return switch (filter) {
+      _ContractFilter.active => repository.fetchClubContractsPage(
+        limit: _pageSize,
+        cursor: cursor,
+        fromCache: fromCache,
+      ),
+      _ContractFilter.completed => repository.fetchMyContractHistoryPage(
+        status: RunContractStatus.completed,
+        limit: _pageSize,
+        cursor: cursor,
+        fromCache: fromCache,
+      ),
+      _ContractFilter.failed => repository.fetchMyContractHistoryPage(
+        status: RunContractStatus.failed,
+        limit: _pageSize,
+        cursor: cursor,
+        fromCache: fromCache,
+      ),
+    };
+  }
+
   Future<void> _loadPage({required bool reset}) async {
     if (!reset && (!_hasMore || _loadingInitial || _loadingMore)) return;
     if (!reset) setState(() => _loadingMore = true);
     final requestedFilter = _filter;
+    // Màn Kèo là tab MẶC ĐỊNH → query đầu tiên gánh cold-start Firestore (~1–3s).
+    // Lần nạp đầu: VẼ NGAY bằng cache đĩa (nếu có từ lần mở trước) rồi mới chờ
+    // server refresh — user khỏi nhìn màn trắng. "Tải thêm" đi thẳng server.
+    if (reset && _loadingInitial) {
+      try {
+        final cached = await _fetchFilterPage(
+          requestedFilter,
+          reset: true,
+          fromCache: true,
+        );
+        if (mounted &&
+            requestedFilter == _filter &&
+            cached.contracts.isNotEmpty) {
+          setState(() {
+            _pageItems
+              ..clear()
+              ..addAll(cached.contracts);
+            _pageCursor = cached.nextCursor;
+            _hasMore = cached.hasMore;
+            _pageError = null;
+            _pageStackTrace = null;
+            _loadingInitial = false; // đã có gì để hiện → tắt spinner
+          });
+        }
+      } catch (_) {
+        // Cache rỗng / không dùng được → chờ server bên dưới.
+      }
+    }
     try {
-      final repository = ref.read(runContractRepositoryProvider);
-      final page = switch (requestedFilter) {
-        _ContractFilter.active => repository.fetchClubContractsPage(
-          limit: _pageSize,
-          cursor: reset ? null : _pageCursor,
-        ),
-        _ContractFilter.completed => repository.fetchMyContractHistoryPage(
-          status: RunContractStatus.completed,
-          limit: _pageSize,
-          cursor: reset ? null : _pageCursor,
-        ),
-        _ContractFilter.failed => repository.fetchMyContractHistoryPage(
-          status: RunContractStatus.failed,
-          limit: _pageSize,
-          cursor: reset ? null : _pageCursor,
-        ),
-      };
-      final result = await page;
+      final result = await _fetchFilterPage(requestedFilter, reset: reset);
       if (!mounted || requestedFilter != _filter) return;
       setState(() {
         if (reset) _pageItems.clear();
@@ -103,6 +144,9 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
       });
     } catch (error, stackTrace) {
       if (!mounted || requestedFilter != _filter) return;
+      // Đã vẽ được từ cache thì đừng phủ màn lỗi lên (server lỗi tạm thời vẫn
+      // còn list cũ để xem) — chỉ báo lỗi khi chẳng có gì hiển thị.
+      if (_pageItems.isNotEmpty) return;
       setState(() {
         _pageError = error;
         _pageStackTrace = stackTrace;
