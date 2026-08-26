@@ -47,7 +47,16 @@ VỀ APP 3i RUN (dùng đúng thông tin dưới đây khi ai hỏi, KHÔNG bị
 Quy tắc bắt buộc:
 - CHỈ nói những con số THÀNH TÍCH lấy được từ tool. TUYỆT ĐỐI không bịa, không ước
   lượng, không suy ra số liệu không có trong kết quả tool.
+- MỖI câu hỏi về thứ hạng / km / bước / thành tích = MỘT lần gọi tool MỚI ngay
+  lượt này. TUYỆT ĐỐI KHÔNG dùng lại con số từ tin nhắn TRƯỚC (của chính bạn hay
+  người khác) trong lịch sử chat — số liệu đổi liên tục nên số cũ coi như ĐÃ SAI.
+  Thà gọi lại tool còn hơn nhớ theo trí nhớ. Kết quả tool MỚI đè mọi số đã nói.
 - Tool trả về rỗng hoặc không tìm thấy thì nói thẳng là chưa có dữ liệu.
+- SỰ KIỆN / tin thật NGOÀI club (bóng đá, thời sự, kết quả trận, giải chạy...):
+  CHƯA google_search xác nhận thì TUYỆT ĐỐI đừng khẳng định chi tiết như thật.
+  Ai đó nói "VN vô địch" cũng ĐỪNG tự dựng tỉ số / đối thủ / diễn biến / "đá luân
+  lưu" — cà khịa vui thì được, nhưng KHÔNG bịa ra sự kiện. Không chắc thì search,
+  hoặc nói thẳng "chưa rõ / để tôi hóng thêm".
 - Câu hỏi về app hoặc tán gẫu không cần số liệu thì trả lời trực tiếp, đừng gọi tool.
 - Tối đa 4 câu. Ngắn hơn thì càng tốt.
 - Chỉ nhắc tên thành viên mà tool trả về.
@@ -224,8 +233,8 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 					"period": period,
 					"metric": {
 						Type:        genai.TypeString,
-						Enum:        []string{"distance", "sessions", "activeDays", "longest", "pace"},
-						Description: "Tiêu chí: distance = tổng km, sessions = số buổi, activeDays = số ngày có chạy, longest = buổi dài nhất, pace = tốc độ tốt nhất.",
+						Enum:        []string{"distance", "steps", "sessions", "activeDays", "longest", "pace"},
+						Description: "Tiêu chí: distance = TỔNG km (chạy + đi bộ, khớp 'Tổng km' trong app), steps = tổng số bước chân, sessions = số buổi chạy, activeDays = số ngày có chạy, longest = buổi chạy dài nhất, pace = tốc độ chạy tốt nhất.",
 					},
 					"limit": {Type: genai.TypeInteger, Description: "Số người trả về, mặc định 5. Hỏi 'ai nhất' thì để 3 để có cái mà so."},
 				},
@@ -240,6 +249,47 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 				Properties: map[string]*genai.Schema{
 					"name":   {Type: genai.TypeString, Description: "Tên hoặc một phần tên thành viên."},
 					"period": period,
+				},
+				Required: []string{"name"},
+			},
+		},
+		{
+			Name:        "get_member_today",
+			Description: "Km + số BƯỚC HÔM NAY (chạy + đi bộ) của MỘT thành viên. Dùng khi hỏi hôm nay ai đó chạy/đi được bao nhiêu, hoặc so 2 người TRONG NGÀY (gọi 2 lần, mỗi tên 1 lần). Khác get_member_stats (theo tuần/tháng).",
+			Parameters: &genai.Schema{
+				Type: genai.TypeObject,
+				Properties: map[string]*genai.Schema{
+					"name": {Type: genai.TypeString, Description: "Tên hoặc một phần tên thành viên."},
+				},
+				Required: []string{"name"},
+			},
+		},
+		{
+			Name:        "get_inactive_members",
+			Description: "Danh sách thành viên CHƯA có hoạt động (0 km tổng + 0 bước) trong kỳ — để nhắc/cà khịa người chưa chạy. Dùng khi hỏi 'ai tuần này chưa chạy', 'ai lười nhất', 'ai chưa hoạt động'.",
+			Parameters: &genai.Schema{
+				Type:       genai.TypeObject,
+				Properties: map[string]*genai.Schema{"period": period},
+			},
+		},
+		{
+			Name:        "get_member_records",
+			Description: "KỶ LỤC cá nhân (mọi thời gian) của MỘT thành viên: buổi chạy dài nhất, pace nhanh nhất, tổng số buổi + tổng km. Dùng khi hỏi 'kỷ lục / buổi dài nhất / pace tốt nhất / tổng cộng X chạy bao nhiêu'.",
+			Parameters: &genai.Schema{
+				Type: genai.TypeObject,
+				Properties: map[string]*genai.Schema{
+					"name": {Type: genai.TypeString, Description: "Tên hoặc một phần tên thành viên."},
+				},
+				Required: []string{"name"},
+			},
+		},
+		{
+			Name:        "get_member_contracts",
+			Description: "Các KÈO đang diễn ra mà MỘT thành viên tham gia + tiến độ của chính họ. Dùng khi hỏi 'kèo của X tới đâu rồi', 'X đang chạy kèo gì'.",
+			Parameters: &genai.Schema{
+				Type: genai.TypeObject,
+				Properties: map[string]*genai.Schema{
+					"name": {Type: genai.TypeString, Description: "Tên hoặc một phần tên thành viên."},
 				},
 				Required: []string{"name"},
 			},
@@ -361,6 +411,14 @@ func (s *BotService) dispatch(ctx context.Context, name string, args map[string]
 		return s.tools.GetLeaderboard(ctx, args)
 	case "get_member_stats":
 		return s.tools.GetMemberStats(ctx, args)
+	case "get_member_today":
+		return s.tools.GetMemberToday(ctx, args)
+	case "get_inactive_members":
+		return s.tools.GetInactiveMembers(ctx, args)
+	case "get_member_records":
+		return s.tools.GetMemberRecords(ctx, args)
+	case "get_member_contracts":
+		return s.tools.GetMemberContracts(ctx, args)
 	case "get_club_summary":
 		return s.tools.GetClubSummary(ctx, args)
 	case "get_run_contracts":

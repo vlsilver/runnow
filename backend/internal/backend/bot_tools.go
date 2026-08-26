@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/firestore"
+	"google.golang.org/api/iterator"
 )
 
 // BotTools là tập truy vấn Firestore mà model được phép gọi.
@@ -45,7 +46,8 @@ func periodField(period string) (string, string, error) {
 // nhẩm sai là chuyện thường, mà sai số quãng đường thì người đọc tin ngay.
 type memberRow struct {
 	Name          string  `json:"name"`
-	DistanceKm    float64 `json:"distanceKm"`
+	DistanceKm    float64 `json:"distanceKm"` // TỔNG km = chạy + đi bộ (khớp "Tổng km" app)
+	Steps         int64   `json:"steps"`      // tổng số bước trong kỳ
 	Sessions      int64   `json:"sessions"`
 	ActiveDays    int64   `json:"activeDays"`
 	LongestKm     float64 `json:"longestKm"`
@@ -67,41 +69,60 @@ func (t *BotTools) loadMembers(ctx context.Context, period string) ([]memberRow,
 		return nil, "", err
 	}
 	periods := PeriodsAt(time.Now())
-	docs, err := t.db.Collection("leaderboardEntries").Documents(ctx).GetAll()
+
+	// Chỉ số CHẠY (buổi / ngày chạy / dài nhất / pace) từ leaderboardEntries, gom
+	// theo uid. Zero-hoá kỳ cũ y như app (normalizeLeaderboardEntryPeriods).
+	runByUID := map[string]map[string]any{}
+	runDocs, err := t.db.Collection("leaderboardEntries").Documents(ctx).GetAll()
 	if err != nil {
 		return nil, "", err
 	}
-	rows := make([]memberRow, 0, len(docs))
-	for _, doc := range docs {
+	for _, doc := range runDocs {
+		data := doc.Data()
+		stats, _ := data[field].(map[string]any)
+		if stats == nil || !leaderboardPeriodFresh(data, field, periods) {
+			continue
+		}
+		runByUID[doc.Ref.ID] = stats
+	}
+
+	// NGUỒN CHÍNH của bảng = stepLeaderboardEntries: chứa TỔNG km (chạy+đi bộ, =
+	// "Tổng km" app) + số BƯỚC, và có CẢ người CHỈ đi bộ (không có ở leaderboard
+	// chạy). leaderboardEntries chỉ bù chỉ số chạy. Trước đây bot đọc mỗi
+	// leaderboardEntries nên báo km THIẾU phần đi bộ + sót người chỉ đi bộ.
+	stepDocs, err := t.db.Collection("stepLeaderboardEntries").Documents(ctx).GetAll()
+	if err != nil {
+		return nil, "", err
+	}
+	rows := make([]memberRow, 0, len(stepDocs))
+	for _, doc := range stepDocs {
 		data := doc.Data()
 		if stringValue(data["profileVisibility"]) != "public" {
 			continue
 		}
-		stats, _ := data[field].(map[string]any)
-		// Chống số liệu KỲ CŨ đội lốt kỳ hiện tại. leaderboardEntries chỉ được
-		// rebuild khi CHÍNH chủ nó có activity mới, nên khi sang tuần/tháng mới
-		// mà người đó chưa chạy lại thì currentWeek/currentMonth vẫn giữ nguyên
-		// số của kỳ trước. App zero-hoá chỗ này (normalizeLeaderboardEntryPeriods
-		// ở repository.dart) — bot phải làm y hệt, không thì báo cáo lố hẳn 1 kỳ.
-		if !leaderboardPeriodFresh(data, field, periods) {
-			stats = map[string]any{}
+		var totalMeters float64
+		var steps int64
+		// stepLeaderboardEntries dùng field PHẲNG (currentWeekTotalDistance…), khoá
+		// kỳ currentWeekStart/currentMonthStart — cùng cơ chế fresh với bảng chạy.
+		if leaderboardPeriodFresh(data, field, periods) {
+			totalMeters = number(data[field+"TotalDistance"])
+			steps = int64(number(data[field+"Steps"]))
 		}
-		if stats == nil {
-			continue
-		}
+		run := runByUID[doc.Ref.ID] // nil nếu người này CHỈ đi bộ, chưa từng chạy
 		row := memberRow{
 			Name:          preferredName(data),
-			DistanceKm:    round2(number(stats["distanceMeters"]) / 1000),
-			Sessions:      int64(number(stats["activityCount"])),
-			ActiveDays:    int64(number(stats["activeDays"])),
-			LongestKm:     round2(number(stats["longestDistanceMeters"]) / 1000),
-			MovingMinutes: int64(number(stats["movingTimeSeconds"]) / 60),
-			paceSeconds:   number(stats["fastestPaceSecondsPerKm"]),
+			DistanceKm:    round2(totalMeters / 1000),
+			Steps:         steps,
+			Sessions:      int64(number(run["activityCount"])),
+			ActiveDays:    int64(number(run["activeDays"])),
+			LongestKm:     round2(number(run["longestDistanceMeters"]) / 1000),
+			MovingMinutes: int64(number(run["movingTimeSeconds"]) / 60),
+			paceSeconds:   number(run["fastestPaceSecondsPerKm"]),
+			uid:           doc.Ref.ID,
 		}
 		if row.paceSeconds > 0 {
 			row.PacePerKm = fmt.Sprintf("%d:%02d", int64(row.paceSeconds)/60, int64(row.paceSeconds)%60)
 		}
-		row.uid = doc.Ref.ID
 		rows = append(rows, row)
 	}
 	return rows, label, nil
@@ -134,6 +155,8 @@ func sortMembers(rows []memberRow, metric string) error {
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i].Sessions > rows[j].Sessions })
 	case "activedays":
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i].ActiveDays > rows[j].ActiveDays })
+	case "steps":
+		sort.SliceStable(rows, func(i, j int) bool { return rows[i].Steps > rows[j].Steps })
 	case "longest":
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i].LongestKm > rows[j].LongestKm })
 	case "pace":
@@ -171,10 +194,22 @@ func (t *BotTools) GetLeaderboard(ctx context.Context, args map[string]any) (any
 	if limit > 20 {
 		limit = 20
 	}
-	// Người chưa chạy buổi nào không nên chiếm chỗ trong bảng xếp hạng.
+	// Lọc "có mặt" theo ĐÚNG metric: BXH tổng km / bước gồm CẢ người chỉ đi bộ
+	// (Sessions=0) nên không được đòi buổi chạy — trước đây đòi Sessions>0 nên
+	// bảng "Tổng km" mất sạch người đi-bộ-thuần. Chỉ metric CHẠY mới đòi Sessions.
+	hasValue := func(r memberRow) bool {
+		switch strings.ToLower(strings.TrimSpace(metric)) {
+		case "steps":
+			return r.Steps > 0
+		case "sessions", "activedays", "longest", "pace":
+			return r.Sessions > 0
+		default: // distance (tổng km) + rỗng
+			return r.DistanceKm > 0
+		}
+	}
 	active := rows[:0]
 	for _, r := range rows {
-		if r.Sessions > 0 {
+		if hasValue(r) {
 			active = append(active, r)
 		}
 	}
@@ -480,6 +515,228 @@ func ensureMap(m map[string]any) map[string]any {
 }
 
 func round2(v float64) float64 { return math.Round(v*100) / 100 }
+
+// GetMemberToday: km + bước HÔM NAY (lịch VN) của 1 thành viên — chạy + đi bộ.
+// Số "hôm nay" KHÔNG nằm trong aggregate (chỉ tuần/tháng) nên tính trực tiếp từ
+// activities + stepDays của ngày hôm nay. Đi-bộ-thuần = Apple ngày − official (khớp
+// leaderboard). Dùng khi hỏi "hôm nay A/B chạy bao nhiêu".
+func (t *BotTools) GetMemberToday(ctx context.Context, args map[string]any) (any, error) {
+	query := strings.ToLower(strings.TrimSpace(stringValue(args["name"])))
+	if query == "" {
+		return nil, fmt.Errorf("thiếu tên thành viên")
+	}
+	rows, _, err := t.loadMembers(ctx, "week") // chỉ để khớp tên → uid (đã lọc public)
+	if err != nil {
+		return nil, err
+	}
+	matches := []memberRow{}
+	for _, r := range rows {
+		if strings.Contains(strings.ToLower(r.Name), query) {
+			matches = append(matches, r)
+		}
+	}
+	switch {
+	case len(matches) == 0:
+		return map[string]any{"found": false, "reason": "không có thành viên công khai nào tên như vậy"}, nil
+	case len(matches) > 1:
+		names := make([]string, 0, len(matches))
+		for _, m := range matches {
+			names = append(names, m.Name)
+		}
+		return map[string]any{"found": false, "reason": "tên trùng nhiều người", "candidates": names}, nil
+	}
+	uid, name := matches[0].uid, matches[0].Name
+
+	now := time.Now().In(vietnam)
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, vietnam)
+	today := dateKey(start)
+
+	// Buổi chạy hôm nay → official (đã khử trùng) → km chạy + tổng official/ngày.
+	facts := []ActivityFact{}
+	aIter := t.db.Collection("users").Doc(uid).Collection("activities").
+		Where("startedAt", ">=", start.UTC().Format(time.RFC3339Nano)).Documents(ctx)
+	for {
+		doc, err := aIter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			aIter.Stop()
+			return nil, err
+		}
+		facts = append(facts, activityFact(doc.Ref.ID, doc.Data()))
+	}
+	aIter.Stop()
+	var officialMeters, runMeters float64
+	runCount := 0
+	for _, f := range SelectOfficialActivities(facts) {
+		if f.StartedAt.Before(start) {
+			continue
+		}
+		officialMeters += f.DistanceMeters
+		if f.SportType == "Run" {
+			runMeters += f.DistanceMeters
+			runCount++
+		}
+	}
+
+	// stepDay hôm nay → đi-bộ-thuần (Apple − official) + số bước.
+	var walkMeters float64
+	var steps int64
+	if sdoc, err := t.db.Collection("users").Doc(uid).Collection("stepDays").Doc(today).Get(ctx); err == nil && sdoc.Exists() {
+		m := sdoc.Data()
+		steps = int64(number(m["steps"]))
+		if w := number(m["distanceMeters"]) - officialMeters; w > 0 {
+			walkMeters = w
+		}
+	}
+
+	return map[string]any{
+		"found": true, "name": name, "date": today,
+		"runKm": round2(runMeters / 1000), "runCount": runCount,
+		"walkKm": round2(walkMeters / 1000), "steps": steps,
+		"totalKm": round2((runMeters + walkMeters) / 1000),
+	}, nil
+}
+
+// GetInactiveMembers: các thành viên CÔNG KHAI chưa có hoạt động (0 km tổng + 0
+// bước) trong kỳ — để bot nhắc/cà khịa người còn "ngủ đông". Dùng khi hỏi "ai
+// tuần này chưa chạy / ai lười nhất / ai chưa hoạt động".
+func (t *BotTools) GetInactiveMembers(ctx context.Context, args map[string]any) (any, error) {
+	rows, label, err := t.loadMembers(ctx, stringValue(args["period"]))
+	if err != nil {
+		return nil, err
+	}
+	names := []string{}
+	for _, r := range rows {
+		if r.DistanceKm == 0 && r.Steps == 0 {
+			names = append(names, r.Name)
+		}
+	}
+	return map[string]any{"period": label, "inactiveCount": len(names), "inactive": names}, nil
+}
+
+// resolveMember khớp tên (một phần, không dấu OK vì Contains) → uid + tên hiển
+// thị. Nếu 0 hoặc nhiều người thì trả resp != nil để caller đưa thẳng cho model.
+func (t *BotTools) resolveMember(ctx context.Context, name string) (uid, display string, resp map[string]any, err error) {
+	query := strings.ToLower(strings.TrimSpace(name))
+	if query == "" {
+		return "", "", nil, fmt.Errorf("thiếu tên thành viên")
+	}
+	rows, _, err := t.loadMembers(ctx, "week") // chỉ để khớp tên (đã lọc public)
+	if err != nil {
+		return "", "", nil, err
+	}
+	matches := []memberRow{}
+	for _, r := range rows {
+		if strings.Contains(strings.ToLower(r.Name), query) {
+			matches = append(matches, r)
+		}
+	}
+	switch {
+	case len(matches) == 0:
+		return "", "", map[string]any{"found": false, "reason": "không có thành viên công khai nào tên như vậy"}, nil
+	case len(matches) > 1:
+		names := make([]string, 0, len(matches))
+		for _, m := range matches {
+			names = append(names, m.Name)
+		}
+		return "", "", map[string]any{"found": false, "reason": "tên trùng nhiều người", "candidates": names}, nil
+	}
+	return matches[0].uid, matches[0].Name, nil, nil
+}
+
+// GetMemberRecords: KỶ LỤC cá nhân (mọi thời gian) của 1 thành viên — buổi CHẠY
+// dài nhất, pace nhanh nhất, tổng số buổi + tổng km. Dùng khi hỏi "kỷ lục / buổi
+// dài nhất / pace tốt nhất / chạy tổng bao nhiêu của X".
+func (t *BotTools) GetMemberRecords(ctx context.Context, args map[string]any) (any, error) {
+	uid, name, resp, err := t.resolveMember(ctx, stringValue(args["name"]))
+	if err != nil || resp != nil {
+		return resp, err
+	}
+	facts := []ActivityFact{}
+	aIter := t.db.Collection("users").Doc(uid).Collection("activities").Documents(ctx)
+	for {
+		doc, err := aIter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			aIter.Stop()
+			return nil, err
+		}
+		facts = append(facts, activityFact(doc.Ref.ID, doc.Data()))
+	}
+	aIter.Stop()
+
+	var longest, totalKm, fastestPace float64
+	runs := 0
+	for _, f := range SelectOfficialActivities(facts) {
+		if f.SportType != "Run" {
+			continue
+		}
+		runs++
+		totalKm += f.DistanceMeters / 1000
+		if f.DistanceMeters > longest {
+			longest = f.DistanceMeters
+		}
+		// Pace chỉ xét buổi >= 1km để khỏi nhiễu vì buổi lẻ vài trăm mét.
+		if f.DistanceMeters >= 1000 && f.MovingTimeSeconds > 0 {
+			pace := float64(f.MovingTimeSeconds) / (f.DistanceMeters / 1000)
+			if fastestPace == 0 || pace < fastestPace {
+				fastestPace = pace
+			}
+		}
+	}
+	if runs == 0 {
+		return map[string]any{"found": true, "name": name, "totalRuns": 0, "reason": "chưa có buổi chạy nào"}, nil
+	}
+	out := map[string]any{
+		"found": true, "name": name, "totalRuns": runs,
+		"totalKm": round2(totalKm), "longestKm": round2(longest / 1000),
+	}
+	if fastestPace > 0 {
+		out["fastestPacePerKm"] = fmt.Sprintf("%d:%02d", int64(fastestPace)/60, int64(fastestPace)%60)
+	}
+	return out, nil
+}
+
+// GetMemberContracts: các kèo ĐANG diễn ra mà 1 thành viên tham gia + tiến độ của
+// CHÍNH họ. Dùng khi hỏi "kèo của X tới đâu rồi / X đang chạy kèo gì".
+func (t *BotTools) GetMemberContracts(ctx context.Context, args map[string]any) (any, error) {
+	uid, name, resp, err := t.resolveMember(ctx, stringValue(args["name"]))
+	if err != nil || resp != nil {
+		return resp, err
+	}
+	cIter := t.db.Collection("runContracts").
+		Where("participantUids", "array-contains", uid).
+		Where("status", "==", "active").Documents(ctx)
+	contracts := []map[string]any{}
+	for {
+		doc, err := cIter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			cIter.Stop()
+			return nil, err
+		}
+		d := doc.Data()
+		var progress float64
+		if parts, ok := d["participants"].(map[string]any); ok {
+			if pm, ok := parts[uid].(map[string]any); ok {
+				progress = number(pm["progressValue"])
+			}
+		}
+		contracts = append(contracts, map[string]any{
+			"title":    stringValue(d["title"]),
+			"metric":   stringValue(d["metric"]),
+			"target":   number(d["targetValue"]),
+			"progress": round2(progress),
+		})
+	}
+	return map[string]any{"found": true, "name": name, "contractCount": len(contracts), "contracts": contracts}, nil
+}
 
 func toAnySlice(v any) []any {
 	s, _ := v.([]any)
