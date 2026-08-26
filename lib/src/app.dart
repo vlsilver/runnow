@@ -722,6 +722,7 @@ class _SyncedActivityRow extends StatelessWidget {
     ActivityKind.virtualRun => Icons.directions_run_rounded,
     ActivityKind.walk => Icons.directions_walk_rounded,
     ActivityKind.hike => Icons.terrain_rounded,
+    ActivityKind.ride => Icons.directions_bike_rounded,
   };
 }
 

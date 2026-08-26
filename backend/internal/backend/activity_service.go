@@ -111,6 +111,7 @@ func (s *ActivityService) SaveTracked(ctx context.Context, uid string, raw map[s
 // healthWorkout là 1 buổi chạy nhập từ Apple Health (client đọc HealthKit).
 type healthWorkout struct {
 	SourceID          string  `json:"sourceId"`
+	SportType         string  `json:"sportType"` // Run/Walk/Hike/Ride; rỗng (client cũ) → "Run"
 	StartedAt         string  `json:"startedAt"`
 	DistanceMeters    float64 `json:"distanceMeters"`
 	MovingTimeSeconds int64   `json:"movingTimeSeconds"`
@@ -127,9 +128,9 @@ func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, 
 	if source != "health_connect" {
 		source = "apple_health"
 	}
-	workoutName := "Chạy (Apple Health)"
+	srcLabel := "Apple Health"
 	if source == "health_connect" {
-		workoutName = "Chạy (Health Connect)"
+		srcLabel = "Health Connect"
 	}
 	imported := 0
 	now := time.Now()
@@ -148,12 +149,16 @@ func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, 
 		}
 		activityID := "health-" + w.SourceID
 		seen[activityID] = true
+		sport := w.SportType
+		if sport == "" {
+			sport = "Run" // client cũ chỉ gửi buổi chạy, không kèm sportType
+		}
 		next := map[string]any{
 			"id":                 activityID,
 			"source":             source,
 			"sourceActivityId":   w.SourceID,
-			"sportType":          "Run",
-			"name":               workoutName,
+			"sportType":          sport,
+			"name":               sportDisplayFor(sport).defaultName + " (" + srcLabel + ")",
 			"manual":             false,
 			"recordingDevice":    source,
 			"startedAt":          started.UTC().Format(time.RFC3339Nano),

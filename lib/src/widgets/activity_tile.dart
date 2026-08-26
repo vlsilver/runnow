@@ -474,6 +474,11 @@ class _ActivityVisual {
         color: palette.accent,
         code: 'RUN',
       ),
+      ActivityKind.ride => _ActivityVisual(
+        icon: Icons.directions_bike,
+        color: palette.accent,
+        code: 'RIDE',
+      ),
     };
   }
 

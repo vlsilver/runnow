@@ -1546,5 +1546,6 @@ String _sportType(ActivityKind kind) {
     ActivityKind.virtualRun => 'VirtualRun',
     ActivityKind.walk => 'Walk',
     ActivityKind.hike => 'Hike',
+    ActivityKind.ride => 'Ride',
   };
 }

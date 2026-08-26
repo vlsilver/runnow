@@ -294,7 +294,8 @@ class HealthSyncController extends ChangeNotifier {
     for (final p in points) {
       final v = p.value;
       if (v is! WorkoutHealthValue) continue;
-      if (!_isRunning(v.workoutActivityType)) continue;
+      final sport = _sportTypeFor(v.workoutActivityType);
+      if (sport == null) continue; // loại không hỗ trợ (gym, bơi…) → bỏ
       // iOS: totalDistance (MÉT) có sẵn. Android: cộng DISTANCE_DELTA rơi trong buổi.
       final dist = _isAndroid
           ? _sumDistanceInWindow(distancePoints, p.dateFrom, p.dateTo)
@@ -312,6 +313,7 @@ class HealthSyncController extends ChangeNotifier {
       sessions.add(
         _HealthWorkout(
           sourceId: sourceId,
+          sportType: sport,
           start: p.dateFrom,
           end: p.dateTo,
           distanceMeters: dist,
@@ -345,11 +347,19 @@ class HealthSyncController extends ChangeNotifier {
     return workouts.length;
   }
 
-  /// Buổi CHẠY: nhận cả RUNNING lẫn RUNNING_TREADMILL (Android map chạy máy thành
-  /// treadmill; iOS coi hai cái là một nên không đổi hành vi iOS).
-  bool _isRunning(HealthWorkoutActivityType t) =>
-      t == HealthWorkoutActivityType.RUNNING ||
-      t == HealthWorkoutActivityType.RUNNING_TREADMILL;
+  /// Map loại workout Health → sportType 3i. null = loại KHÔNG hỗ trợ (gym, bơi,
+  /// yoga…) → bỏ qua. Run mới cộng km chạy/kèo; Walk/Hike/Ride chỉ HIỂN THỊ thành
+  /// buổi riêng (backend + selectOfficialActivities lọc kind==run nên không lọt
+  /// vào km chạy). Ride (đạp xe) sync để xem, chưa cộng leaderboard.
+  String? _sportTypeFor(HealthWorkoutActivityType t) => switch (t) {
+    HealthWorkoutActivityType.RUNNING ||
+    HealthWorkoutActivityType.RUNNING_TREADMILL => 'Run',
+    HealthWorkoutActivityType.WALKING => 'Walk',
+    HealthWorkoutActivityType.HIKING => 'Hike',
+    HealthWorkoutActivityType.BIKING ||
+    HealthWorkoutActivityType.BIKING_STATIONARY => 'Ride',
+    _ => null,
+  };
 
   /// Cộng các mẩu DISTANCE_DELTA (mét) có thời điểm BẮT ĐẦU nằm trong [start,end)
   /// → tổng quãng đường 1 buổi (Health Connect tách distance khỏi WORKOUT). Dùng
@@ -528,6 +538,7 @@ class HealthSyncController extends ChangeNotifier {
 class _HealthWorkout {
   _HealthWorkout({
     required this.sourceId,
+    required this.sportType,
     required this.start,
     required this.end,
     required this.distanceMeters,
@@ -535,6 +546,7 @@ class _HealthWorkout {
   });
 
   final String sourceId;
+  final String sportType; // Run / Walk / Hike / Ride
   final DateTime start;
   final DateTime end;
   final double distanceMeters;
@@ -542,6 +554,7 @@ class _HealthWorkout {
 
   Map<String, dynamic> toPayload() => {
     'sourceId': sourceId,
+    'sportType': sportType,
     'startedAt': start.toUtc().toIso8601String(),
     'distanceMeters': distanceMeters,
     'movingTimeSeconds': movingSeconds,

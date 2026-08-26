@@ -1,4 +1,4 @@
-enum ActivityKind { run, trailRun, virtualRun, walk, hike }
+enum ActivityKind { run, trailRun, virtualRun, walk, hike, ride }
 
 enum ProfileVisibility {
   public('public'),
@@ -85,6 +85,7 @@ ActivityKind? parseActivityKind(String? value) {
     'VirtualRun' => ActivityKind.virtualRun,
     'Walk' => ActivityKind.walk,
     'Hike' => ActivityKind.hike,
+    'Ride' || 'VirtualRide' || 'Cycling' => ActivityKind.ride,
     _ => null,
   };
 }
