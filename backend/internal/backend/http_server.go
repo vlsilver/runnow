@@ -827,6 +827,23 @@ func (s *Server) workerRoutes() {
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true, "enqueued": enqueued})
 	})
+	s.route("POST /tasks/recalc-contracts", func(w http.ResponseWriter, r *http.Request) error {
+		// Cron 14h + 20h VN: link buổi chạy CHƯA gán + tính lại tiến độ kèo (GỒM
+		// đi bộ: km đi-bộ-thuần + luật >=2500 bước/ngày = 1 buổi) cho MỌI kèo
+		// active — để kèo luôn tươi mà user khỏi phải mở app. routeCompletion bỏ
+		// qua (client lo). Ghi progress khớp logic client (distance/count/days/
+		// longest/journey).
+		dry := r.URL.Query().Get("dry") == "1"
+		results, err := RecalcActiveContracts(r.Context(), s.deps.Firestore, dry)
+		if err != nil {
+			return err
+		}
+		linked := 0
+		for _, rr := range results {
+			linked += rr.NewLinked
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true, "dry": dry, "contracts": len(results), "linked": linked, "results": results})
+	})
 	s.route("POST /tasks/reconcile-connections", func(w http.ResponseWriter, r *http.Request) error {
 		var task struct {
 			Cursor string `json:"cursor"`

@@ -405,6 +405,28 @@ gcloud scheduler jobs "${memory_action}" http "$MEMORY_JOB" \
   --oidc-token-audience "$BOT_URL" \
   --project "$PROJECT_ID"
 
+# Cập nhật kèo 2 lần/ngày: 14:00 + 20:00 giờ VN (07:00 + 13:00 UTC). Link buổi
+# chạy chưa gán + tính lại tiến độ (gồm đi bộ) server-side → kèo tươi mà user
+# khỏi mở app. Một job, 2 mốc giờ.
+RECALC_JOB="${RECALC_JOB:-runnow-recalc-contracts}"
+if gcloud scheduler jobs describe "$RECALC_JOB" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  recalc_action=update
+  recalc_header_flag=--update-headers
+else
+  recalc_action=create
+  recalc_header_flag=--headers
+fi
+gcloud scheduler jobs "${recalc_action}" http "$RECALC_JOB" \
+  --location "$REGION" \
+  --schedule '0 7,13 * * *' \
+  --uri "${WORKER_URL}/tasks/recalc-contracts" \
+  --http-method POST \
+  "${recalc_header_flag}" 'Content-Type=application/json' \
+  --message-body '{}' \
+  --oidc-service-account-email "$INVOKER_SA" \
+  --oidc-token-audience "$WORKER_URL" \
+  --project "$PROJECT_ID"
+
 # Tick lịch bot mỗi 10 phút → runnow-bot chạy các lịch tự-đặt tới hạn.
 TICK_JOB="${TICK_JOB:-runnow-bot-tick}"
 if gcloud scheduler jobs describe "$TICK_JOB" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
