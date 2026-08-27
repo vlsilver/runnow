@@ -233,8 +233,8 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 					"period": period,
 					"metric": {
 						Type:        genai.TypeString,
-						Enum:        []string{"distance", "steps", "sessions", "activeDays", "longest", "pace"},
-						Description: "Tiêu chí: distance = TỔNG km (chạy + đi bộ, khớp 'Tổng km' trong app), steps = tổng số bước chân, sessions = số buổi chạy, activeDays = số ngày có chạy, longest = buổi chạy dài nhất, pace = tốc độ chạy tốt nhất.",
+						Enum:        []string{"distance", "steps", "swim", "sessions", "activeDays", "longest", "pace"},
+						Description: "Tiêu chí: distance = TỔNG km (chạy + đi bộ, khớp 'Tổng km' trong app), steps = tổng số bước chân, swim = tổng km BƠI, sessions = số buổi chạy, activeDays = số ngày có chạy, longest = buổi chạy dài nhất, pace = tốc độ chạy tốt nhất.",
 					},
 					"limit": {Type: genai.TypeInteger, Description: "Số người trả về, mặc định 5. Hỏi 'ai nhất' thì để 3 để có cái mà so."},
 				},
