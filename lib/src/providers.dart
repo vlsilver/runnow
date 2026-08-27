@@ -93,6 +93,8 @@ enum ClubRankingMetric {
   longestRun,
   activityCount,
   steps, // bảng xếp hạng số bước chân (Apple Health) — dữ liệu riêng
+  swim, // BXH bơi — km bơi (leaderboardEntries.swim)
+  gym, // BXH gym/workout — tổng phút tập (leaderboardEntries.gym)
 }
 
 enum ClubRankingRange { currentWeek, currentMonth }
@@ -496,6 +498,74 @@ final totalKmLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
       currentMonth: totalStat(dist('currentMonthTotalDistance')),
     );
   }).toList();
+});
+
+/// Docs thô leaderboardEntries — chia sẻ cho BXH Bơi + Gym (đọc field lồng
+/// swim/gym). keepAlive + prefetch giống các BXH khác.
+final leaderboardDocsProvider =
+    FutureProvider<List<QueryDocumentSnapshot<Map<String, dynamic>>>>((
+      ref,
+    ) async {
+      ref.watch(firebaseUserProvider);
+      final snap = await FirebaseFirestore.instance
+          .collection('leaderboardEntries')
+          .get(const GetOptions(source: Source.server));
+      return snap.docs;
+    });
+
+LeaderboardEntry _sportEntry(
+  QueryDocumentSnapshot<Map<String, dynamic>> d,
+  String sportKey,
+  LeaderboardStats Function(Map<String, dynamic>? period) stat,
+) {
+  final m = d.data();
+  final sport = (m[sportKey] as Map?)?.cast<String, dynamic>();
+  Map<String, dynamic>? pd(String k) =>
+      (sport?[k] as Map?)?.cast<String, dynamic>();
+  final name = (m['displayName'] as String?)?.trim();
+  return LeaderboardEntry(
+    uid: m['uid'] as String? ?? d.id,
+    displayName: (name?.isNotEmpty ?? false) ? name! : '3i member',
+    avatarUrl: m['avatarUrl'] as String?,
+    visibility: ProfileVisibility.fromValue(m['profileVisibility'] as String?),
+    rollingSevenDays: stat(pd('rollingSevenDays')),
+    currentWeek: stat(pd('currentWeek')),
+    currentMonth: stat(pd('currentMonth')),
+  );
+}
+
+/// BXH BƠI — km bơi/kỳ (leaderboardEntries.swim.distanceMeters).
+final swimLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
+  ref,
+) async {
+  LeaderboardStats stat(Map<String, dynamic>? p) => LeaderboardStats(
+    distanceMeters: (p?['distanceMeters'] as num?)?.toDouble() ?? 0,
+    movingTimeSeconds: 0,
+    activityCount: 0,
+    activeDays: 0,
+    longestDistanceMeters: 0,
+    fastestPaceSecondsPerKm: null,
+    steps: 0,
+  );
+  final docs = await ref.watch(leaderboardDocsProvider.future);
+  return docs.map((d) => _sportEntry(d, 'swim', stat)).toList();
+});
+
+/// BXH GYM/workout — tổng PHÚT tập/kỳ (leaderboardEntries.gym.movingTimeSeconds).
+final gymLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
+  ref,
+) async {
+  LeaderboardStats stat(Map<String, dynamic>? p) => LeaderboardStats(
+    distanceMeters: 0,
+    movingTimeSeconds: (p?['movingTimeSeconds'] as num?)?.toInt() ?? 0,
+    activityCount: 0,
+    activeDays: 0,
+    longestDistanceMeters: 0,
+    fastestPaceSecondsPerKm: null,
+    steps: 0,
+  );
+  final docs = await ref.watch(leaderboardDocsProvider.future);
+  return docs.map((d) => _sportEntry(d, 'gym', stat)).toList();
 });
 
 final clubLiveSessionsProvider =

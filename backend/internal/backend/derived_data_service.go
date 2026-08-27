@@ -52,7 +52,7 @@ func (s *DerivedDataService) RebuildCurrent(ctx context.Context, uid string, now
 		return err
 	}
 	displayName := preferredName(profile)
-	payload := map[string]any{"uid": uid, "displayName": displayName, "nickname": displayName, "profileVisibility": defaultString(profile["profileVisibility"], "private"), "avatarUrl": nullableString(profile["avatarUrl"]), "rollingSevenDays": StatsFor(official, periods.Rolling), "currentWeek": StatsFor(official, periods.Week), "currentMonth": StatsFor(official, periods.Month), "swim": map[string]any{"rollingSevenDays": swimStatsFor(facts, periods.Rolling), "currentWeek": swimStatsFor(facts, periods.Week), "currentMonth": swimStatsFor(facts, periods.Month)}, "currentWeekStart": dateKey(periods.Week.Start), "currentMonthStart": dateKey(periods.Month.Start)}
+	payload := map[string]any{"uid": uid, "displayName": displayName, "nickname": displayName, "profileVisibility": defaultString(profile["profileVisibility"], "private"), "avatarUrl": nullableString(profile["avatarUrl"]), "rollingSevenDays": StatsFor(official, periods.Rolling), "currentWeek": StatsFor(official, periods.Week), "currentMonth": StatsFor(official, periods.Month), "swim": map[string]any{"rollingSevenDays": swimStatsFor(facts, periods.Rolling), "currentWeek": swimStatsFor(facts, periods.Week), "currentMonth": swimStatsFor(facts, periods.Month)}, "gym": map[string]any{"rollingSevenDays": sportStatsFor(facts, "Gym", periods.Rolling), "currentWeek": sportStatsFor(facts, "Gym", periods.Week), "currentMonth": sportStatsFor(facts, "Gym", periods.Month)}, "currentWeekStart": dateKey(periods.Week.Start), "currentMonthStart": dateKey(periods.Month.Start)}
 	currentLeader, err := getData(ctx, leaderRef)
 	if err != nil {
 		return err
@@ -206,23 +206,28 @@ func overlapRatio(candidate, other ActivityFact) float64 {
 	}
 	return float64(end.Sub(start)) / float64(duration)
 }
-// swimStatsFor tổng quãng đường + số buổi BƠI (sportType Swim) trong kỳ. Bơi
-// KHÔNG nằm trong official (chỉ chạy) nên tính RIÊNG từ facts cho BXH bơi. v1
-// cộng thẳng (trùng Apple+Strava hiếm; ActivityFact chưa mang duplicateOfActivityId).
-func swimStatsFor(facts []ActivityFact, period Period) map[string]any {
+// sportStatsFor tổng theo kỳ cho MỘT môn ngoài-chạy (Swim/Gym) — tính RIÊNG vì
+// không nằm trong official (chỉ chạy). Trả quãng đường + thời lượng + số buổi;
+// caller lấy field hợp: bơi xếp theo distanceMeters, gym theo movingTimeSeconds.
+func sportStatsFor(facts []ActivityFact, sport string, period Period) map[string]any {
 	var meters float64
-	count := int64(0)
+	var seconds, count int64
 	for _, f := range facts {
-		if f.SportType != "Swim" {
+		if f.SportType != sport {
 			continue
 		}
 		if f.StartedAt.Before(period.Start) || !f.StartedAt.Before(period.End) {
 			continue
 		}
 		meters += f.DistanceMeters
+		seconds += f.MovingTimeSeconds
 		count++
 	}
-	return map[string]any{"distanceMeters": meters, "activityCount": count}
+	return map[string]any{"distanceMeters": meters, "movingTimeSeconds": seconds, "activityCount": count}
+}
+
+func swimStatsFor(facts []ActivityFact, period Period) map[string]any {
+	return sportStatsFor(facts, "Swim", period)
 }
 
 func StatsFor(activities []ActivityFact, period Period) map[string]any {

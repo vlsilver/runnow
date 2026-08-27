@@ -64,9 +64,13 @@ class _RankingTab extends ConsumerWidget {
     final runBoard = ref.watch(leaderboardEntriesProvider);
     final stepBoard = ref.watch(stepLeaderboardProvider);
     final totalBoard = ref.watch(totalKmLeaderboardProvider);
+    final swimBoard = ref.watch(swimLeaderboardProvider);
+    final gymBoard = ref.watch(gymLeaderboardProvider);
     final leaderboard = switch (metric) {
       ClubRankingMetric.steps => stepBoard,
       ClubRankingMetric.distance => totalBoard,
+      ClubRankingMetric.swim => swimBoard,
+      ClubRankingMetric.gym => gymBoard,
       _ => runBoard,
     };
 
@@ -83,9 +87,12 @@ class _RankingTab extends ConsumerWidget {
             // (chia sẻ cho Bước & Tổng km) → cả 3 bảng tự tính lại từ server.
             ref.invalidate(leaderboardEntriesProvider);
             ref.invalidate(stepLeaderboardDocsProvider);
+            ref.invalidate(leaderboardDocsProvider); // Bơi + Gym
             await ref.read(switch (metric) {
               ClubRankingMetric.steps => stepLeaderboardProvider.future,
               ClubRankingMetric.distance => totalKmLeaderboardProvider.future,
+              ClubRankingMetric.swim => swimLeaderboardProvider.future,
+              ClubRankingMetric.gym => gymLeaderboardProvider.future,
               _ => leaderboardEntriesProvider.future,
             });
           },
@@ -123,26 +130,25 @@ class _LeaderboardTypeToggle extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final metric = ref.watch(clubRankingMetricProvider);
-    final isSteps = metric == ClubRankingMetric.steps;
     final palette = context.runNowPalette;
     final dark = Theme.of(context).brightness == Brightness.dark;
     final onAccent = dark ? RunNowDataColors.coachOnAccentDark : Colors.white;
 
-    Widget seg(bool steps, IconData icon, String label) {
-      final target = steps
-          ? ClubRankingMetric.steps
-          : ClubRankingMetric.distance;
-      // Tô sáng theo "phía" đang xem (steps vs chạy); vẫn cho bấm nếu chưa đúng
-      // metric target (vd đang ở Pace → bấm "Tổng km" để về distance).
-      final highlighted = isSteps == steps;
-      final enabled = metric != target;
+    // "Tổng km" đại diện phía CHẠY (gồm pace/dài nhất/buổi… ở dropdown) → sáng khi
+    // metric KHÔNG phải steps/swim/gym. Các nút còn lại sáng khi trúng đúng metric.
+    Widget seg(ClubRankingMetric target, IconData icon, String label) {
+      final highlighted = target == ClubRankingMetric.distance
+          ? (metric != ClubRankingMetric.steps &&
+                metric != ClubRankingMetric.swim &&
+                metric != ClubRankingMetric.gym)
+          : metric == target;
       return GestureDetector(
-        onTap: enabled
-            ? () => ref.read(clubRankingMetricProvider.notifier).state = target
-            : null,
+        onTap: metric == target
+            ? null
+            : () => ref.read(clubRankingMetricProvider.notifier).state = target,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
           decoration: BoxDecoration(
             color: highlighted ? palette.accent : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
@@ -155,11 +161,11 @@ class _LeaderboardTypeToggle extends ConsumerWidget {
                 size: 13,
                 color: highlighted ? onAccent : palette.textMuted,
               ),
-              const SizedBox(width: 5),
+              const SizedBox(width: 4),
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 11.5,
                   fontWeight: FontWeight.w700,
                   color: highlighted ? onAccent : palette.textMuted,
                 ),
@@ -180,8 +186,10 @@ class _LeaderboardTypeToggle extends ConsumerWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          seg(false, Icons.directions_run_rounded, 'Tổng km'),
-          seg(true, Icons.directions_walk_rounded, 'Bước chân'),
+          seg(ClubRankingMetric.distance, Icons.directions_run_rounded, 'Km'),
+          seg(ClubRankingMetric.steps, Icons.directions_walk_rounded, 'Bước'),
+          seg(ClubRankingMetric.swim, Icons.pool_rounded, 'Bơi'),
+          seg(ClubRankingMetric.gym, Icons.fitness_center_rounded, 'Gym'),
         ],
       ),
     );
@@ -767,6 +775,8 @@ class _RankingEntry {
       ClubRankingMetric.longestRun => stats.longestDistanceMeters,
       ClubRankingMetric.activityCount => stats.activityCount.toDouble(),
       ClubRankingMetric.steps => stats.steps.toDouble(),
+      ClubRankingMetric.swim => stats.distanceMeters, // km bơi
+      ClubRankingMetric.gym => stats.movingTimeSeconds.toDouble(), // phút gym
     };
     return _RankingEntry(entry: entry, stats: stats, score: score);
   }
@@ -996,6 +1006,8 @@ String _scoreLabel(_RankingEntry entry, ClubRankingMetric metric) {
     ClubRankingMetric.activityCount => '${entry.stats.activityCount} buổi',
     ClubRankingMetric.steps =>
       '${entry.stats.steps.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]}.')} bước',
+    ClubRankingMetric.swim => formatDistance(entry.stats.distanceMeters),
+    ClubRankingMetric.gym => formatDuration(entry.stats.movingTimeSeconds),
   };
 }
 
@@ -1008,6 +1020,8 @@ String _rankingMetricLabel(ClubRankingMetric metric) {
     ClubRankingMetric.longestRun => 'Dài nhất',
     ClubRankingMetric.activityCount => 'Buổi',
     ClubRankingMetric.steps => 'Bước chân',
+    ClubRankingMetric.swim => 'Bơi',
+    ClubRankingMetric.gym => 'Gym',
   };
 }
 

@@ -48,7 +48,8 @@ type memberRow struct {
 	Name          string  `json:"name"`
 	DistanceKm    float64 `json:"distanceKm"` // TỔNG km = chạy + đi bộ (khớp "Tổng km" app)
 	Steps         int64   `json:"steps"`      // tổng số bước trong kỳ
-	SwimKm        float64 `json:"swimKm"`     // tổng km BƠI trong kỳ
+	SwimKm        float64 `json:"swimKm"`      // tổng km BƠI trong kỳ
+	GymMinutes    int64   `json:"gymMinutes"`  // tổng phút GYM/workout trong kỳ
 	Sessions      int64   `json:"sessions"`
 	ActiveDays    int64   `json:"activeDays"`
 	LongestKm     float64 `json:"longestKm"`
@@ -75,6 +76,7 @@ func (t *BotTools) loadMembers(ctx context.Context, period string) ([]memberRow,
 	// theo uid. Zero-hoá kỳ cũ y như app (normalizeLeaderboardEntryPeriods).
 	runByUID := map[string]map[string]any{}
 	swimByUID := map[string]map[string]any{} // BXH bơi: leaderboardEntries.swim[field]
+	gymByUID := map[string]map[string]any{}  // BXH gym: leaderboardEntries.gym[field]
 	runDocs, err := t.db.Collection("leaderboardEntries").Documents(ctx).GetAll()
 	if err != nil {
 		return nil, "", err
@@ -90,6 +92,11 @@ func (t *BotTools) loadMembers(ctx context.Context, period string) ([]memberRow,
 		if sw, _ := data["swim"].(map[string]any); sw != nil {
 			if s, _ := sw[field].(map[string]any); s != nil {
 				swimByUID[doc.Ref.ID] = s
+			}
+		}
+		if gy, _ := data["gym"].(map[string]any); gy != nil {
+			if g, _ := gy[field].(map[string]any); g != nil {
+				gymByUID[doc.Ref.ID] = g
 			}
 		}
 	}
@@ -122,6 +129,7 @@ func (t *BotTools) loadMembers(ctx context.Context, period string) ([]memberRow,
 			DistanceKm:    round2(totalMeters / 1000),
 			Steps:         steps,
 			SwimKm:        round2(number(swimByUID[doc.Ref.ID]["distanceMeters"]) / 1000),
+			GymMinutes:    int64(number(gymByUID[doc.Ref.ID]["movingTimeSeconds"]) / 60),
 			Sessions:      int64(number(run["activityCount"])),
 			ActiveDays:    int64(number(run["activeDays"])),
 			LongestKm:     round2(number(run["longestDistanceMeters"]) / 1000),
@@ -168,6 +176,8 @@ func sortMembers(rows []memberRow, metric string) error {
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i].Steps > rows[j].Steps })
 	case "swim":
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i].SwimKm > rows[j].SwimKm })
+	case "gym":
+		sort.SliceStable(rows, func(i, j int) bool { return rows[i].GymMinutes > rows[j].GymMinutes })
 	case "longest":
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i].LongestKm > rows[j].LongestKm })
 	case "pace":
@@ -214,6 +224,8 @@ func (t *BotTools) GetLeaderboard(ctx context.Context, args map[string]any) (any
 			return r.Steps > 0
 		case "swim":
 			return r.SwimKm > 0
+		case "gym":
+			return r.GymMinutes > 0
 		case "sessions", "activedays", "longest", "pace":
 			return r.Sessions > 0
 		default: // distance (tổng km) + rỗng

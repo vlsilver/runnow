@@ -325,6 +325,7 @@ class _AuthenticatedSessionState extends ConsumerState<_AuthenticatedSession> {
         // giữ giá trị tới khi Club watch; stepLeaderboardDocs dùng chung Bước+Tổng.
         ref.read(leaderboardEntriesProvider);
         ref.read(stepLeaderboardDocsProvider);
+        ref.read(leaderboardDocsProvider); // BXH Bơi + Gym
         final controller = ref.read(runContractControllerProvider);
         // Await .future để chắc kèo ĐÃ tải: coordinator chạy 1 lần lúc mở app; đọc
         // .value lúc stream chưa emit sẽ ra rỗng → bỏ sót recalc/auto-link cả phiên.
