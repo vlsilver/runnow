@@ -1547,5 +1547,7 @@ String _sportType(ActivityKind kind) {
     ActivityKind.walk => 'Walk',
     ActivityKind.hike => 'Hike',
     ActivityKind.ride => 'Ride',
+    ActivityKind.swim => 'Swim',
+    ActivityKind.gym => 'Gym',
   };
 }

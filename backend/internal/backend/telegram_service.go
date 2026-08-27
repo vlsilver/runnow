@@ -378,6 +378,10 @@ func sportDisplayFor(sportType string) sportDisplay {
 		return sportDisplay{"🚶", "đi bộ", "Buổi đi bộ", false}
 	case "Ride", "VirtualRide", "MountainBikeRide", "GravelRide", "EBikeRide":
 		return sportDisplay{"🚴", "đạp xe", "Buổi đạp xe", true}
+	case "Swim":
+		return sportDisplay{"🏊", "bơi", "Buổi bơi", false}
+	case "Gym", "Workout", "WeightTraining", "Crossfit":
+		return sportDisplay{"🏋️", "tập gym", "Buổi gym", false}
 	default:
 		return sportDisplay{"🏃", "chạy bộ", "Buổi chạy", false}
 	}

@@ -111,10 +111,11 @@ func (s *ActivityService) SaveTracked(ctx context.Context, uid string, raw map[s
 // healthWorkout là 1 buổi chạy nhập từ Apple Health (client đọc HealthKit).
 type healthWorkout struct {
 	SourceID          string  `json:"sourceId"`
-	SportType         string  `json:"sportType"` // Run/Walk/Hike/Ride; rỗng (client cũ) → "Run"
+	SportType         string  `json:"sportType"` // Run/Walk/Hike/Ride/Swim/Gym; rỗng (client cũ) → "Run"
 	StartedAt         string  `json:"startedAt"`
 	DistanceMeters    float64 `json:"distanceMeters"`
 	MovingTimeSeconds int64   `json:"movingTimeSeconds"`
+	CaloriesKcal      float64 `json:"caloriesKcal"` // chủ yếu cho Gym/Swim (có thể 0)
 }
 
 // ImportHealthWorkouts upsert các buổi chạy từ Apple Health thành activity
@@ -140,7 +141,16 @@ func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, 
 		if w.SourceID == "" || len(w.SourceID) > 100 || strings.ContainsAny(w.SourceID, "/ ") {
 			continue
 		}
-		if w.DistanceMeters <= 0 || w.DistanceMeters > 1e7 || w.MovingTimeSeconds <= 0 || w.MovingTimeSeconds > 7*24*60*60 {
+		sport := w.SportType
+		if sport == "" {
+			sport = "Run" // client cũ chỉ gửi buổi chạy, không kèm sportType
+		}
+		// Gym KHÔNG có quãng đường (đo bằng thời lượng/calo) → cho phép dist=0.
+		// Môn có km mà dist<=0 = thiếu dữ liệu → bỏ. Bound trên + thời lượng vẫn kiểm.
+		if w.MovingTimeSeconds <= 0 || w.MovingTimeSeconds > 7*24*60*60 || w.DistanceMeters > 1e7 {
+			continue
+		}
+		if w.DistanceMeters <= 0 && sport != "Gym" {
 			continue
 		}
 		started, err := time.Parse(time.RFC3339, w.StartedAt)
@@ -149,10 +159,6 @@ func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, 
 		}
 		activityID := "health-" + w.SourceID
 		seen[activityID] = true
-		sport := w.SportType
-		if sport == "" {
-			sport = "Run" // client cũ chỉ gửi buổi chạy, không kèm sportType
-		}
 		next := map[string]any{
 			"id":                 activityID,
 			"source":             source,
@@ -166,6 +172,9 @@ func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, 
 			"movingTimeSeconds":  w.MovingTimeSeconds,
 			"elapsedTimeSeconds": w.MovingTimeSeconds,
 			"updatedAt":          firestore.ServerTimestamp,
+		}
+		if w.CaloriesKcal > 0 {
+			next["caloriesKcal"] = w.CaloriesKcal // chủ yếu Gym/Swim, để hiển thị
 		}
 		// Trùng với 1 buổi Strava đang có → đánh dấu để leaderboard không đếm đôi.
 		if w.DistanceMeters >= 500 {

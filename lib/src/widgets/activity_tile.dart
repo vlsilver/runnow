@@ -479,6 +479,16 @@ class _ActivityVisual {
         color: palette.accent,
         code: 'RIDE',
       ),
+      ActivityKind.swim => _ActivityVisual(
+        icon: Icons.pool,
+        color: palette.accent,
+        code: 'SWIM',
+      ),
+      ActivityKind.gym => _ActivityVisual(
+        icon: Icons.fitness_center,
+        color: palette.accent,
+        code: 'GYM',
+      ),
     };
   }
 

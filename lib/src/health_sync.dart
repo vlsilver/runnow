@@ -295,14 +295,17 @@ class HealthSyncController extends ChangeNotifier {
       final v = p.value;
       if (v is! WorkoutHealthValue) continue;
       final sport = _sportTypeFor(v.workoutActivityType);
-      if (sport == null) continue; // loại không hỗ trợ (gym, bơi…) → bỏ
+      if (sport == null) continue; // loại không hỗ trợ → bỏ
+      final moving = p.dateTo.difference(p.dateFrom).inSeconds;
+      if (moving <= 0) continue;
       // iOS: totalDistance (MÉT) có sẵn. Android: cộng DISTANCE_DELTA rơi trong buổi.
       final dist = _isAndroid
           ? _sumDistanceInWindow(distancePoints, p.dateFrom, p.dateTo)
           : (v.totalDistance ?? 0).toDouble();
-      if (dist <= 0) continue;
-      final moving = p.dateTo.difference(p.dateFrom).inSeconds;
-      if (moving <= 0) continue;
+      // Gym KHÔNG có quãng đường (đo bằng thời lượng/calo) → chấp nhận dist=0.
+      // Môn có quãng đường (chạy/đi/đạp/bơi) mà dist<=0 = thiếu dữ liệu → bỏ.
+      if (dist <= 0 && sport != 'Gym') continue;
+      final calories = (v.totalEnergyBurned ?? 0).toDouble();
       // uuid = metadata.id (thường có), nhưng plugin gán "" nếu native thiếu → id
       // TẤT ĐỊNH theo MỐC BẮT ĐẦU (giây) để idempotent giữa các lần sync (không mất
       // buổi, không nhân bản). KHÔNG kèm quãng đường: dist có thể đổi nhẹ khi delta
@@ -318,6 +321,7 @@ class HealthSyncController extends ChangeNotifier {
           end: p.dateTo,
           distanceMeters: dist,
           movingSeconds: moving,
+          caloriesKcal: calories,
         ),
       );
     }
@@ -358,6 +362,20 @@ class HealthSyncController extends ChangeNotifier {
     HealthWorkoutActivityType.HIKING => 'Hike',
     HealthWorkoutActivityType.BIKING ||
     HealthWorkoutActivityType.BIKING_STATIONARY => 'Ride',
+    HealthWorkoutActivityType.SWIMMING ||
+    HealthWorkoutActivityType.SWIMMING_POOL ||
+    HealthWorkoutActivityType.SWIMMING_OPEN_WATER => 'Swim',
+    // Gym: các buổi KHÔNG có quãng đường (đo bằng thời lượng/calo).
+    HealthWorkoutActivityType.STRENGTH_TRAINING ||
+    HealthWorkoutActivityType.TRADITIONAL_STRENGTH_TRAINING ||
+    HealthWorkoutActivityType.FUNCTIONAL_STRENGTH_TRAINING ||
+    HealthWorkoutActivityType.HIGH_INTENSITY_INTERVAL_TRAINING ||
+    HealthWorkoutActivityType.CROSS_TRAINING ||
+    HealthWorkoutActivityType.CORE_TRAINING ||
+    HealthWorkoutActivityType.WEIGHTLIFTING ||
+    HealthWorkoutActivityType.YOGA ||
+    HealthWorkoutActivityType.PILATES ||
+    HealthWorkoutActivityType.GYMNASTICS => 'Gym',
     _ => null,
   };
 
@@ -543,14 +561,16 @@ class _HealthWorkout {
     required this.end,
     required this.distanceMeters,
     required this.movingSeconds,
+    this.caloriesKcal = 0,
   });
 
   final String sourceId;
-  final String sportType; // Run / Walk / Hike / Ride
+  final String sportType; // Run / Walk / Hike / Ride / Swim / Gym
   final DateTime start;
   final DateTime end;
   final double distanceMeters;
   final int movingSeconds;
+  final double caloriesKcal; // calo tiêu hao (chủ yếu cho Gym/Swim, có thể 0)
 
   Map<String, dynamic> toPayload() => {
     'sourceId': sourceId,
@@ -558,5 +578,6 @@ class _HealthWorkout {
     'startedAt': start.toUtc().toIso8601String(),
     'distanceMeters': distanceMeters,
     'movingTimeSeconds': movingSeconds,
+    if (caloriesKcal > 0) 'caloriesKcal': caloriesKcal,
   };
 }
