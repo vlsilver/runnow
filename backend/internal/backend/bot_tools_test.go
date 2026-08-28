@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -32,6 +33,28 @@ func TestLeaderboardPeriodFresh(t *testing.T) {
 	for _, c := range cases {
 		if got := leaderboardPeriodFresh(c.data, c.field, periods); got != c.want {
 			t.Errorf("%s: leaderboardPeriodFresh = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestRelativeVN(t *testing.T) {
+	now := time.Now().In(vietnam)
+	cases := []struct {
+		delta int
+		want  string
+	}{
+		{0, "hôm nay"},
+		{1, "hôm qua"},
+		{3, "3 ngày trước"},
+		{14, "14 ngày trước"},
+	}
+	for _, c := range cases {
+		ts := now.AddDate(0, 0, -c.delta)
+		if got := daysAgoVN(ts); got != c.delta {
+			t.Errorf("daysAgoVN(-%dd) = %d, want %d", c.delta, got, c.delta)
+		}
+		if s := relativeVN(ts); !strings.Contains(s, c.want) {
+			t.Errorf("relativeVN(-%dd) = %q, want contains %q", c.delta, s, c.want)
 		}
 	}
 }

@@ -341,6 +341,41 @@ func (t *BotTools) GetRunContracts(ctx context.Context, _ map[string]any) (any, 
 	return map[string]any{"contracts": out}, nil
 }
 
+// daysAgoVN trả số ngày lịch (theo giờ VN) tính từ hôm nay tới ngày của t.
+// 0 = hôm nay, 1 = hôm qua, ... Tính theo mốc nửa đêm nên không lệch vì giờ.
+func daysAgoVN(t time.Time) int {
+	now := time.Now().In(vietnam)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, vietnam)
+	tv := t.In(vietnam)
+	that := time.Date(tv.Year(), tv.Month(), tv.Day(), 0, 0, 0, 0, vietnam)
+	return int(today.Sub(that).Hours() / 24)
+}
+
+// relativeVN diễn giải mốc thời gian sang tiếng Việt sẵn để model chép lại, khỏi
+// tự tính "hôm qua/hôm nay" (LLM hay tính sai khoảng cách ngày).
+func relativeVN(t time.Time) string {
+	d := daysAgoVN(t)
+	base := t.In(vietnam).Format("15:04 ngày 02/01/2006")
+	var rel string
+	switch {
+	case d < 0:
+		rel = "trong tương lai (dữ liệu lỗi?)"
+	case d == 0:
+		rel = "hôm nay"
+	case d == 1:
+		rel = "hôm qua"
+	case d < 7:
+		rel = fmt.Sprintf("%d ngày trước", d)
+	case d < 14:
+		rel = "hơn 1 tuần trước"
+	case d < 30:
+		rel = fmt.Sprintf("%d ngày trước (khoảng %d tuần)", d, d/7)
+	default:
+		rel = fmt.Sprintf("%d ngày trước (khoảng %d tháng)", d, d/30)
+	}
+	return base + " — " + rel
+}
+
 // GetRecentRun trả chi tiết một buổi chạy của một thành viên (mặc định buổi
 // gần nhất). Chỉ đọc được của thành viên đặt hồ sơ công khai — cùng ràng buộc
 // với các tool khác. Model nhận facts rồi tự viết nhận xét.
@@ -415,6 +450,8 @@ func (t *BotTools) GetRecentRun(ctx context.Context, args map[string]any) (any, 
 		"member":             member.Name,
 		"runIndexFromLatest": offset,
 		"date":               run.StartedAt.In(vietnam).Format("15:04 · 02/01/2006"),
+		"khiNao":             relativeVN(run.StartedAt),
+		"daysAgo":            daysAgoVN(run.StartedAt),
 		"sportType":          run.SportType,
 		"distanceKm":         round2(run.DistanceMeters / 1000),
 		"movingTime":         formatDurationHMS(run.MovingTimeSeconds),
