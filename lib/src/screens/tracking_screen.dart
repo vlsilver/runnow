@@ -106,6 +106,32 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   int _liveMilestoneKm = 2;
   bool _livePhotoEnabled = true;
   static const List<int> _liveMilestoneOptions = [1, 2, 3, 5];
+
+  // Môn của buổi đang ghi. Chọn TRƯỚC khi bắt đầu; chốt khi bấm Bắt đầu. Chạy
+  // bộ là mặc định. Đạp xe/xe máy KHÔNG cộng vào km chạy/kèo — có BXH riêng.
+  ActivityKind _selectedKind = ActivityKind.run;
+
+  // Ngưỡng tốc độ chống-nhảy-GPS theo môn (m/s). Chạy giữ mặc định từ DB; đạp
+  // ~90km/h, xe máy ~162km/h — nếu vẫn 36km/h như chạy sẽ cắt nhầm điểm thật.
+  double? _maxSpeedOverrideFor(ActivityKind kind) => switch (kind) {
+    ActivityKind.ride => 25, // ~90 km/h
+    ActivityKind.motorbike => 45, // ~162 km/h
+    _ => null, // chạy/khác: dùng cấu hình DB (mặc định 10 m/s)
+  };
+
+  // Bước báo mốc km khi Live. Chạy = user chọn; đạp = mỗi 10km; xe máy = mỗi
+  // 20km (quãng đường đạp/xe máy dài, mốc nhỏ sẽ spam group).
+  int get _effectiveMilestoneKm => switch (_selectedKind) {
+    ActivityKind.ride => 10,
+    ActivityKind.motorbike => 20,
+    _ => _liveMilestoneKm,
+  };
+
+  String _activityNameFor(ActivityKind kind) => switch (kind) {
+    ActivityKind.ride => '3I Ride',
+    ActivityKind.motorbike => '3I Moto',
+    _ => '3I Run',
+  };
   Future<void> _liveAnnounceQueue = Future<void>.value();
   static const double _liveStartMinMeters = 300;
 
@@ -167,10 +193,11 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     final isPublic =
         ref.watch(userProfileProvider).value?.visibility ==
         ProfileVisibility.public;
-    // Mặc định BẬT Live cho hồ sơ công khai (áp 1 lần khi biết visibility).
+    // Mặc định BẬT Live cho hồ sơ công khai — nhưng CHỈ với chạy bộ. Đạp xe/xe
+    // máy mặc định TẮT Live (user bật tay nếu muốn). Áp 1 lần khi biết visibility.
     if (isPublic && !_liveDefaultApplied) {
       _liveDefaultApplied = true;
-      _liveEnabled = true;
+      _liveEnabled = _selectedKind == ActivityKind.run;
     }
     final distance = formatDistance(snapshot?.distanceMeters ?? 0);
     final time = formatDuration(snapshot?.movingTimeSeconds ?? 0);
@@ -349,7 +376,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                     ),
                                     if (_liveEnabled)
                                       Text(
-                                        'Báo mỗi ${_liveMilestoneKm}km'
+                                        'Báo mỗi ${_effectiveMilestoneKm}km'
                                         '${_livePhotoEnabled ? ' · kèm ảnh' : ''}',
                                         style: TextStyle(
                                           fontSize: 11,
@@ -380,6 +407,23 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                       ],
                     ),
                   ),
+                  // Chọn môn — chỉ trước khi bắt đầu (chưa có phiên). Khi đã ghi
+                  // thì môn đã chốt, không đổi giữa chừng.
+                  if (!_running && !_paused && !_finished && !_hasSession) ...[
+                    const SizedBox(height: 10),
+                    _SportPicker(
+                      selected: _selectedKind,
+                      onChanged: (kind) {
+                        setState(() {
+                          _selectedKind = kind;
+                          // Đạp/xe máy: Live mặc định TẮT. Chạy: bật lại nếu công
+                          // khai (đúng mặc định của chạy bộ).
+                          _liveEnabled =
+                              kind == ActivityKind.run ? isPublic : false;
+                        });
+                      },
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   _Controls(
                     running: _running,
@@ -489,12 +533,19 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     }
     try {
       final now = DateTime.now();
+      var config =
+          ref.read(trackingConfigProvider).value ?? const TrackingConfig();
+      // Đạp/xe máy đi nhanh hơn ngưỡng chống-nhảy-GPS của chạy (36km/h) → nâng
+      // ngưỡng theo môn, không thì điểm thật bị cắt, quãng đường hụt.
+      final maxSpeed = _maxSpeedOverrideFor(_selectedKind);
+      if (maxSpeed != null) {
+        config = config.copyWith(maxRunningSpeedMetersPerSecond: maxSpeed);
+      }
       final session = TrackingSession(
         id: 'runnow-${now.toUtc().millisecondsSinceEpoch}',
         // Cấu hình từ DB (appConfig/tracking) — giãn mẫu chống zigzag GPS. Chưa
         // tải kịp thì dùng mặc định (đã có minSampleIntervalSeconds=15).
-        config:
-            ref.read(trackingConfigProvider).value ?? const TrackingConfig(),
+        config: config,
       )..start(now);
       _resetTrackChunkState();
       setState(() {
@@ -821,7 +872,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       final photosUploaded = await _uploadPendingPhotos();
       final finalSnapshot = session.snapshot();
       final detail = finalSnapshot.toActivityDetail(
-        name: '3I Run',
+        name: _activityNameFor(_selectedKind),
+        kind: _selectedKind,
         recordingDevice: '3I app',
       );
       // Route đã được sync DẦN theo chunk (~10s/lần) trong lúc chạy. Đẩy nốt
@@ -1133,7 +1185,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   /// Mốc km đã đạt để thông báo, theo bước _liveMilestoneKm user chọn (vd mỗi
   /// 2km → 2,4,6…). Đã có tin start riêng ở 300m + tin finish lúc Stop.
   int _milestoneReachedKm(double distanceMeters) {
-    final step = _liveMilestoneKm;
+    final step = _effectiveMilestoneKm;
     return (distanceMeters / 1000 / step).floor() * step;
   }
 
@@ -1196,16 +1248,29 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                       ),
                     ),
                     const SizedBox(height: 8),
-                    SegmentedButton<int>(
-                      showSelectedIcon: false,
-                      segments: [
-                        for (final km in _liveMilestoneOptions)
-                          ButtonSegment(value: km, label: Text('${km}km')),
-                      ],
-                      selected: {_liveMilestoneKm},
-                      onSelectionChanged: (s) =>
-                          update(() => _liveMilestoneKm = s.first),
-                    ),
+                    // Chạy: user chọn mốc. Đạp/xe máy: mốc CỐ ĐỊNH (10/20km) vì
+                    // quãng đường dài, mốc nhỏ sẽ spam group.
+                    if (_selectedKind == ActivityKind.run)
+                      SegmentedButton<int>(
+                        showSelectedIcon: false,
+                        segments: [
+                          for (final km in _liveMilestoneOptions)
+                            ButtonSegment(value: km, label: Text('${km}km')),
+                        ],
+                        selected: {_liveMilestoneKm},
+                        onSelectionChanged: (s) =>
+                            update(() => _liveMilestoneKm = s.first),
+                      )
+                    else
+                      Text(
+                        'Cố định mỗi ${_effectiveMilestoneKm}km',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       value: _livePhotoEnabled,
@@ -1507,6 +1572,75 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     return true;
   }
 
+}
+
+/// Chọn môn trước khi bắt đầu: Chạy / Đạp / Xe máy. Đạp & xe máy có BXH riêng,
+/// KHÔNG cộng vào km chạy hay kèo.
+class _SportPicker extends StatelessWidget {
+  const _SportPicker({required this.selected, required this.onChanged});
+
+  final ActivityKind selected;
+  final ValueChanged<ActivityKind> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final onAccent = dark ? RunNowDataColors.coachOnAccentDark : Colors.white;
+
+    Widget seg(ActivityKind kind, IconData icon, String label) {
+      final on = selected == kind;
+      return Expanded(
+        child: GestureDetector(
+          onTap: on ? null : () => onChanged(kind),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: on ? palette.accent : Colors.transparent,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 16,
+                  color: on ? onAccent : onSurface.withValues(alpha: 0.6),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: on ? onAccent : onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: palette.glassStart,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: palette.border),
+      ),
+      child: Row(
+        children: [
+          seg(ActivityKind.run, Icons.directions_run_rounded, 'Chạy'),
+          seg(ActivityKind.ride, Icons.directions_bike_rounded, 'Đạp'),
+          seg(ActivityKind.motorbike, Icons.two_wheeler_rounded, 'Xe máy'),
+        ],
+      ),
+    );
+  }
 }
 
 class _Controls extends StatelessWidget {

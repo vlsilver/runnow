@@ -37,6 +37,18 @@ class TrackingConfig {
   final double minSampleIntervalSeconds;
   final double splitDistanceMeters;
   final Duration currentPaceWindow;
+
+  TrackingConfig copyWith({double? maxRunningSpeedMetersPerSecond}) {
+    return TrackingConfig(
+      maxAccuracyMeters: maxAccuracyMeters,
+      maxRunningSpeedMetersPerSecond:
+          maxRunningSpeedMetersPerSecond ?? this.maxRunningSpeedMetersPerSecond,
+      minSegmentDistanceMeters: minSegmentDistanceMeters,
+      minSampleIntervalSeconds: minSampleIntervalSeconds,
+      splitDistanceMeters: splitDistanceMeters,
+      currentPaceWindow: currentPaceWindow,
+    );
+  }
 }
 
 class TrackingLocationSample {

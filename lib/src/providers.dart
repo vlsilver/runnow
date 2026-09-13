@@ -95,6 +95,8 @@ enum ClubRankingMetric {
   steps, // bảng xếp hạng số bước chân (Apple Health) — dữ liệu riêng
   swim, // BXH bơi — km bơi (leaderboardEntries.swim)
   gym, // BXH gym/workout — tổng phút tập (leaderboardEntries.gym)
+  bike, // BXH đạp xe — km đạp (leaderboardEntries.ride)
+  motorbike, // BXH xe máy — km chạy xe máy (leaderboardEntries.motorbike)
 }
 
 enum ClubRankingRange { currentWeek, currentMonth }
@@ -566,6 +568,43 @@ final gymLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
   );
   final docs = await ref.watch(leaderboardDocsProvider.future);
   return docs.map((d) => _sportEntry(d, 'gym', stat)).toList();
+});
+
+/// BXH ĐẠP XE — km đạp/kỳ (leaderboardEntries.ride.distanceMeters). Xe đạp
+/// KHÔNG cộng vào km chạy/kèo — bảng hoàn toàn riêng.
+final bikeLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
+  ref,
+) async {
+  LeaderboardStats stat(Map<String, dynamic>? p) => LeaderboardStats(
+    distanceMeters: (p?['distanceMeters'] as num?)?.toDouble() ?? 0,
+    movingTimeSeconds: 0,
+    activityCount: 0,
+    activeDays: 0,
+    longestDistanceMeters: 0,
+    fastestPaceSecondsPerKm: null,
+    steps: 0,
+  );
+  final docs = await ref.watch(leaderboardDocsProvider.future);
+  return docs.map((d) => _sportEntry(d, 'ride', stat)).toList();
+});
+
+/// BXH XE MÁY — km chạy xe máy/kỳ (leaderboardEntries.motorbike.distanceMeters).
+/// Là bảng vui/riêng, KHÔNG phải môn thể thao: không cộng vào bất cứ bảng
+/// thể lực nào (km chạy, bước, tổng, kèo).
+final motorbikeLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
+  ref,
+) async {
+  LeaderboardStats stat(Map<String, dynamic>? p) => LeaderboardStats(
+    distanceMeters: (p?['distanceMeters'] as num?)?.toDouble() ?? 0,
+    movingTimeSeconds: 0,
+    activityCount: 0,
+    activeDays: 0,
+    longestDistanceMeters: 0,
+    fastestPaceSecondsPerKm: null,
+    steps: 0,
+  );
+  final docs = await ref.watch(leaderboardDocsProvider.future);
+  return docs.map((d) => _sportEntry(d, 'motorbike', stat)).toList();
 });
 
 final clubLiveSessionsProvider =

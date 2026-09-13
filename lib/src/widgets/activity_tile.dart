@@ -489,6 +489,11 @@ class _ActivityVisual {
         color: palette.accent,
         code: 'GYM',
       ),
+      ActivityKind.motorbike => _ActivityVisual(
+        icon: Icons.two_wheeler,
+        color: palette.accent,
+        code: 'MOTO',
+      ),
     };
   }
 

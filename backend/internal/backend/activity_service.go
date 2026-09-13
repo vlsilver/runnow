@@ -328,6 +328,12 @@ func estimateDocJSONSize(m map[string]any) int {
 	return len(b)
 }
 
+// appRecordableSports là các môn app được phép TỰ GHI qua live-tracking. Cố ý
+// KHÔNG gồm Walk/Hike/Swim/Gym (các môn đó nhập từ Health, không track tay). Xe
+// đạp (Ride) và xe máy (Motorbike) là môn có route → track tay được. Rỗng =
+// client cũ chỉ gửi buổi chạy → coi là "Run".
+var appRecordableSports = map[string]bool{"Run": true, "Ride": true, "Motorbike": true}
+
 func normalizeTrackedActivity(raw map[string]any) (map[string]any, error) {
 	id := strings.TrimSpace(stringValue(raw["id"]))
 	name := strings.TrimSpace(stringValue(raw["name"]))
@@ -336,9 +342,13 @@ func normalizeTrackedActivity(raw map[string]any) (map[string]any, error) {
 	distance := number(raw["distanceMeters"])
 	moving := int64(number(raw["movingTimeSeconds"]))
 	elapsed := int64(number(raw["elapsedTimeSeconds"]))
+	sport := stringValue(raw["sportType"])
+	if sport == "" {
+		sport = "Run" // client cũ không gửi sportType
+	}
 	if id == "" || len(id) > 128 || !strings.HasPrefix(id, "runnow-") ||
 		name == "" || len([]rune(name)) > 80 || raw["source"] != "runnow" ||
-		raw["sportType"] != "Run" || parseErr != nil ||
+		!appRecordableSports[sport] || parseErr != nil ||
 		started.After(time.Now().Add(10*time.Minute)) ||
 		math.IsNaN(distance) || math.IsInf(distance, 0) || distance < 0 || distance > 1e7 ||
 		moving < 0 || elapsed < 0 || elapsed > 7*24*60*60 || moving > elapsed+60 {
@@ -368,7 +378,7 @@ func normalizeTrackedActivity(raw map[string]any) (map[string]any, error) {
 	next["name"] = name
 	next["source"] = "runnow"
 	next["sourceActivityId"] = id
-	next["sportType"] = "Run"
+	next["sportType"] = sport
 	next["startedAt"] = started.UTC().Format(time.RFC3339Nano)
 	next["distanceMeters"] = distance
 	next["movingTimeSeconds"] = moving

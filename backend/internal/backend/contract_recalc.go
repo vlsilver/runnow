@@ -15,6 +15,7 @@ import (
 // (>=2500/ngày) + km đi-bộ-thuần, KHÔNG qua linking activity.
 var contractNonRunSports = map[string]bool{
 	"TrailRun": true, "VirtualRun": true, "Walk": true, "Hike": true, "Ride": true,
+	"Motorbike": true, "Swim": true, "Gym": true,
 }
 
 // stepDaySessionThreshold: >= 2500 bước trong 1 ngày (lịch VN) = 1 buổi thành công.

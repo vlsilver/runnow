@@ -66,11 +66,15 @@ class _RankingTab extends ConsumerWidget {
     final totalBoard = ref.watch(totalKmLeaderboardProvider);
     final swimBoard = ref.watch(swimLeaderboardProvider);
     final gymBoard = ref.watch(gymLeaderboardProvider);
+    final bikeBoard = ref.watch(bikeLeaderboardProvider);
+    final motorbikeBoard = ref.watch(motorbikeLeaderboardProvider);
     final leaderboard = switch (metric) {
       ClubRankingMetric.steps => stepBoard,
       ClubRankingMetric.distance => totalBoard,
       ClubRankingMetric.swim => swimBoard,
       ClubRankingMetric.gym => gymBoard,
+      ClubRankingMetric.bike => bikeBoard,
+      ClubRankingMetric.motorbike => motorbikeBoard,
       _ => runBoard,
     };
 
@@ -93,6 +97,8 @@ class _RankingTab extends ConsumerWidget {
               ClubRankingMetric.distance => totalKmLeaderboardProvider.future,
               ClubRankingMetric.swim => swimLeaderboardProvider.future,
               ClubRankingMetric.gym => gymLeaderboardProvider.future,
+              ClubRankingMetric.bike => bikeLeaderboardProvider.future,
+              ClubRankingMetric.motorbike => motorbikeLeaderboardProvider.future,
               _ => leaderboardEntriesProvider.future,
             });
           },
@@ -140,7 +146,9 @@ class _LeaderboardTypeToggle extends ConsumerWidget {
       final highlighted = target == ClubRankingMetric.distance
           ? (metric != ClubRankingMetric.steps &&
                 metric != ClubRankingMetric.swim &&
-                metric != ClubRankingMetric.gym)
+                metric != ClubRankingMetric.gym &&
+                metric != ClubRankingMetric.bike &&
+                metric != ClubRankingMetric.motorbike)
           : metric == target;
       return GestureDetector(
         onTap: metric == target
@@ -183,13 +191,18 @@ class _LeaderboardTypeToggle extends ConsumerWidget {
         borderRadius: BorderRadius.circular(11),
         border: Border.all(color: palette.border),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      // 6 segment → dùng Wrap: máy rộng nằm 1 hàng, máy hẹp TỰ XUỐNG 2 hàng,
+      // hiện đủ cả 6 nút, không cuộn ngang, không tràn màn hình.
+      child: Wrap(
+        spacing: 2,
+        runSpacing: 2,
         children: [
           seg(ClubRankingMetric.distance, Icons.directions_run_rounded, 'Km'),
           seg(ClubRankingMetric.steps, Icons.directions_walk_rounded, 'Bước'),
           seg(ClubRankingMetric.swim, Icons.pool_rounded, 'Bơi'),
           seg(ClubRankingMetric.gym, Icons.fitness_center_rounded, 'Gym'),
+          seg(ClubRankingMetric.bike, Icons.directions_bike_rounded, 'Đạp'),
+          seg(ClubRankingMetric.motorbike, Icons.two_wheeler_rounded, 'Xe máy'),
         ],
       ),
     );
@@ -777,6 +790,8 @@ class _RankingEntry {
       ClubRankingMetric.steps => stats.steps.toDouble(),
       ClubRankingMetric.swim => stats.distanceMeters, // km bơi
       ClubRankingMetric.gym => stats.movingTimeSeconds.toDouble(), // phút gym
+      ClubRankingMetric.bike => stats.distanceMeters, // km đạp xe
+      ClubRankingMetric.motorbike => stats.distanceMeters, // km xe máy
     };
     return _RankingEntry(entry: entry, stats: stats, score: score);
   }
@@ -1008,6 +1023,8 @@ String _scoreLabel(_RankingEntry entry, ClubRankingMetric metric) {
       '${entry.stats.steps.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]}.')} bước',
     ClubRankingMetric.swim => formatDistance(entry.stats.distanceMeters),
     ClubRankingMetric.gym => formatDuration(entry.stats.movingTimeSeconds),
+    ClubRankingMetric.bike => formatDistance(entry.stats.distanceMeters),
+    ClubRankingMetric.motorbike => formatDistance(entry.stats.distanceMeters),
   };
 }
 
@@ -1022,6 +1039,8 @@ String _rankingMetricLabel(ClubRankingMetric metric) {
     ClubRankingMetric.steps => 'Bước chân',
     ClubRankingMetric.swim => 'Bơi',
     ClubRankingMetric.gym => 'Gym',
+    ClubRankingMetric.bike => 'Đạp xe',
+    ClubRankingMetric.motorbike => 'Xe máy',
   };
 }
 

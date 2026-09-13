@@ -6,7 +6,14 @@ void main() {
   test('accepts only supported activity kinds', () {
     expect(parseActivityKind('Run'), ActivityKind.run);
     expect(parseActivityKind('Hike'), ActivityKind.hike);
-    expect(parseActivityKind('Ride'), isNull);
+    // Đa môn: đạp xe, bơi, gym, xe máy đều được nhận (mỗi môn có BXH riêng;
+    // đạp/xe máy KHÔNG cộng vào km chạy/kèo — xem selectOfficialActivities).
+    expect(parseActivityKind('Ride'), ActivityKind.ride);
+    expect(parseActivityKind('Swim'), ActivityKind.swim);
+    expect(parseActivityKind('Gym'), ActivityKind.gym);
+    expect(parseActivityKind('Motorbike'), ActivityKind.motorbike);
+    // Chuỗi lạ vẫn trả null (không đoán bừa thành run).
+    expect(parseActivityKind('Kayak'), isNull);
   });
 
   test('calculates pace from moving time and distance', () {
