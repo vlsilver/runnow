@@ -30,6 +30,12 @@ type TelegramUpdate struct {
 	Message  *struct {
 		MessageID int64  `json:"message_id"`
 		Text      string `json:"text"`
+		// Forum (group bật Topics): tin trong một topic có is_topic_message và
+		// message_thread_id = id tin tạo topic. Tin ở General không có hai field
+		// này. Supergroup thường cũng có thể gắn message_thread_id cho chuỗi
+		// reply, nên chỉ tin message_thread_id khi is_topic_message.
+		MessageThreadID int64 `json:"message_thread_id"`
+		IsTopicMessage  bool  `json:"is_topic_message"`
 		// Caption + Photo: khi người dùng gửi ẢNH kèm chữ, Telegram để chữ ở
 		// caption (không phải text) và ảnh ở photo (mảng nhiều cỡ, phần tử cuối
 		// là lớn nhất). Bot dùng để "vẽ lại" từ ảnh tham chiếu gửi kèm.
@@ -49,8 +55,9 @@ type TelegramUpdate struct {
 		} `json:"from"`
 		Entities        []telegramEntity `json:"entities"`
 		CaptionEntities []telegramEntity `json:"caption_entities"`
-		ReplyToMessage *struct {
-			From *struct {
+		ReplyToMessage  *struct {
+			MessageID int64 `json:"message_id"`
+			From      *struct {
 				IsBot    bool   `json:"is_bot"`
 				Username string `json:"username"`
 			} `json:"from"`
@@ -87,9 +94,11 @@ func botQuestion(update TelegramUpdate, botUsername string) (chatID string, ques
 		return chatID, strings.TrimSpace(stripCommandSuffix(text, botUsername)), true
 	}
 
-	// Reply vào chính tin nhắn của bot.
+	// Reply vào chính tin nhắn của bot. Bỏ qua reply ngầm vào tin tạo topic:
+	// Telegram gắn nó cho mọi tin trong topic, kể cả khi người ta không reply ai.
 	if r := msg.ReplyToMessage; r != nil && r.From != nil && r.From.IsBot &&
-		strings.EqualFold(r.From.Username, botUsername) {
+		strings.EqualFold(r.From.Username, botUsername) &&
+		!(msg.IsTopicMessage && r.MessageID == msg.MessageThreadID) {
 		return chatID, strings.TrimSpace(stripCommandSuffix(text, botUsername)), true
 	}
 
@@ -125,8 +134,12 @@ func botQuestion(update TelegramUpdate, botUsername string) (chatID string, ques
 // request thật — full CPU, timeout dài, tự retry — thay cho goroutine sau-200
 // vốn bị Cloud Run bóp CPU tới mức timeout.
 type botMessageTask struct {
-	IsQuestion  bool   `json:"isQuestion"`
-	ChatID      string `json:"chatId"`
+	IsQuestion bool   `json:"isQuestion"`
+	ChatID     string `json:"chatId"`
+	// ThreadID: topic của tin (0 = General). omitempty để tin ở General giữ
+	// nguyên payload cũ; tin trong topic thì bot phải được deploy trước api, vì
+	// bot decode chặt (DisallowUnknownFields).
+	ThreadID    int64  `json:"threadId,omitempty"`
 	SenderID    string `json:"senderId,omitempty"`
 	Name        string `json:"name"`
 	Question    string `json:"question,omitempty"`
@@ -142,6 +155,15 @@ func photoFileID(update TelegramUpdate) string {
 		return ""
 	}
 	return update.Message.Photo[len(update.Message.Photo)-1].FileID
+}
+
+// messageThreadID trả topic của tin (0 = General hoặc group không có Topics),
+// để câu trả lời quay về đúng topic người ta hỏi.
+func messageThreadID(update TelegramUpdate) int64 {
+	if update.Message == nil || !update.Message.IsTopicMessage {
+		return 0
+	}
+	return update.Message.MessageThreadID
 }
 
 // senderID lấy Telegram user id (chuỗi) của người gửi — khoá ổn định cho hạn

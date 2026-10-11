@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -133,5 +134,59 @@ func TestTelegramTransportErrorDoesNotLeakToken(t *testing.T) {
 		if strings.Contains(err.Error(), token) || strings.Contains(err.Error(), "SECRET") {
 			t.Fatalf("%s lộ token: %v", name, err)
 		}
+	}
+}
+
+// Trả lời trong topic phải mang message_thread_id, không thì tin rơi về General.
+// Thread 0 (General / group thường) thì không gửi field: Telegram từ chối id lạ.
+func TestTelegramSendsThreadIDOnlyWhenInTopic(t *testing.T) {
+	var texts, photos []map[string]string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got := map[string]string{}
+		if strings.HasSuffix(r.URL.Path, "/sendPhoto") {
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				t.Fatalf("parse multipart: %v", err)
+			}
+			for k, v := range r.MultipartForm.Value {
+				got[k] = v[0]
+			}
+			photos = append(photos, got)
+		} else {
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			for k, v := range body {
+				if f, ok := v.(float64); ok {
+					got[k] = strconv.FormatInt(int64(f), 10)
+				} else if s, ok := v.(string); ok {
+					got[k] = s
+				}
+			}
+			texts = append(texts, got)
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+	service := NewTelegramService("token", "chat")
+	service.apiBaseURL = server.URL
+	ctx := context.Background()
+
+	for _, err := range []error{
+		service.SendChatMessageInThread(ctx, "-100", 7, "trong topic"),
+		service.SendChatMessageInThread(ctx, "-100", 0, "ở General"),
+		service.SendPhotoInThread(ctx, "-100", 7, []byte("png"), "ảnh topic"),
+		service.SendPhotoInThread(ctx, "-100", 0, []byte("png"), "ảnh General"),
+	} {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if texts[0]["message_thread_id"] != "7" || photos[0]["message_thread_id"] != "7" {
+		t.Fatalf("thiếu thread id: text=%v photo=%v", texts[0], photos[0])
+	}
+	if _, ok := texts[1]["message_thread_id"]; ok {
+		t.Fatalf("General không được có thread id: %v", texts[1])
+	}
+	if _, ok := photos[1]["message_thread_id"]; ok {
+		t.Fatalf("General không được có thread id: %v", photos[1])
 	}
 }

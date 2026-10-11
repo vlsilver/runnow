@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -159,14 +160,24 @@ func (s *TelegramService) SendActivityAnnouncement(ctx context.Context, text, de
 // hay `&` lạc là Telegram từ chối cả tin nhắn. Bot im lặng vì lỗi cú pháp
 // khó lần ra hơn nhiều so với việc mất mấy chữ in đậm.
 func (s *TelegramService) SendChatMessage(ctx context.Context, chatID, text string) error {
+	return s.SendChatMessageInThread(ctx, chatID, 0, text)
+}
+
+// SendChatMessageInThread như SendChatMessage nhưng gửi vào một topic của forum.
+// threadID 0 = General / group không có Topics.
+func (s *TelegramService) SendChatMessageInThread(ctx context.Context, chatID string, threadID int64, text string) error {
 	if !s.Enabled() {
 		return nil
 	}
-	payload, err := json.Marshal(map[string]any{
+	body := map[string]any{
 		"chat_id":              chatID,
 		"text":                 text,
 		"link_preview_options": map[string]any{"is_disabled": true},
-	})
+	}
+	if threadID != 0 {
+		body["message_thread_id"] = threadID
+	}
+	payload, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
@@ -190,12 +201,20 @@ func (s *TelegramService) SendChatMessage(ctx context.Context, chatID, text stri
 // SendPhoto tải một ảnh (bytes) lên chat kèm caption, qua multipart/form-data.
 // Caption không đặt parse_mode (cùng lý do SendChatMessage): text do model sinh.
 func (s *TelegramService) SendPhoto(ctx context.Context, chatID string, image []byte, caption string) error {
+	return s.SendPhotoInThread(ctx, chatID, 0, image, caption)
+}
+
+// SendPhotoInThread như SendPhoto nhưng gửi vào một topic (0 = General).
+func (s *TelegramService) SendPhotoInThread(ctx context.Context, chatID string, threadID int64, image []byte, caption string) error {
 	if !s.Enabled() {
 		return nil
 	}
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
 	_ = w.WriteField("chat_id", chatID)
+	if threadID != 0 {
+		_ = w.WriteField("message_thread_id", strconv.FormatInt(threadID, 10))
+	}
 	if strings.TrimSpace(caption) != "" {
 		_ = w.WriteField("caption", caption)
 	}

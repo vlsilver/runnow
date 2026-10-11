@@ -1,7 +1,9 @@
 package backend
 
 import (
+	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -196,5 +198,62 @@ func TestHistorySkipsEmptyAndBadRoles(t *testing.T) {
 	c := buildHistoryContents(rows)
 	if len(c) != 1 || c[0].Parts[0].Text != "A: ok" {
 		t.Fatalf("chỉ giữ lượt hợp lệ, còn: %+v", c)
+	}
+}
+
+// Trong forum, tin thường gửi trong một topic mang reply_to_message trỏ về tin
+// tạo topic (message_id == message_thread_id). Topic do bot tạo thì tin gốc là
+// của bot — coi đó là "reply vào bot" là bot trả lời mọi câu trong topic.
+func TestBotIgnoresImplicitReplyToTopicRoot(t *testing.T) {
+	u := mentionRaw(t, `{"message_id":50,"message_thread_id":7,"is_topic_message":true,"text":"đêm nay ai sói",`+
+		`"chat":{"id":-100,"type":"supergroup"},"reply_to_message":{"message_id":7,"from":{"is_bot":true,"username":"RunBot"}}}`)
+	if _, _, ok := botQuestion(u, "RunBot"); ok {
+		t.Fatal("tin thường trong topic do bot tạo không phải hỏi bot")
+	}
+}
+
+// Reply thật vào một tin của bot nằm trong topic thì vẫn là hỏi bot.
+func TestBotAnswersReplyToItsMessageInsideTopic(t *testing.T) {
+	u := mentionRaw(t, `{"message_id":50,"message_thread_id":7,"is_topic_message":true,"text":"thế còn tháng",`+
+		`"chat":{"id":-100,"type":"supergroup"},"reply_to_message":{"message_id":42,"from":{"is_bot":true,"username":"RunBot"}}}`)
+	if _, q, ok := botQuestion(u, "RunBot"); !ok || q != "thế còn tháng" {
+		t.Fatalf("ok=%v question=%q", ok, q)
+	}
+}
+
+// Tin ở General (thread 0) phải ra đúng payload cũ, để bot bản trước — decode
+// chặt bằng DisallowUnknownFields — vẫn đọc được trong lúc deploy nửa chừng.
+func TestBotMessageTaskOmitsThreadOutsideTopic(t *testing.T) {
+	b, err := json.Marshal(botMessageTask{ChatID: "-100", Question: "hi", IsQuestion: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "threadId") {
+		t.Fatalf("payload General không được có threadId: %s", b)
+	}
+	b, _ = json.Marshal(botMessageTask{ChatID: "-100", ThreadID: 7})
+	var back botMessageTask
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&back); err != nil || back.ThreadID != 7 {
+		t.Fatalf("threadId phải đi qua queue nguyên vẹn: err=%v back=%+v", err, back)
+	}
+}
+
+func TestMessageThreadIDOnlyForTopicMessages(t *testing.T) {
+	// Supergroup không bật topic vẫn có thể gửi message_thread_id (reply thread);
+	// chỉ is_topic_message mới là topic thật.
+	cases := []struct {
+		raw  string
+		want int64
+	}{
+		{`{"message_id":50,"message_thread_id":7,"is_topic_message":true,"text":"x","chat":{"id":-100,"type":"supergroup"}}`, 7},
+		{`{"message_id":50,"message_thread_id":7,"text":"x","chat":{"id":-100,"type":"supergroup"}}`, 0},
+		{`{"message_id":50,"text":"x","chat":{"id":-100,"type":"supergroup"}}`, 0},
+	}
+	for _, c := range cases {
+		if got := messageThreadID(mentionRaw(t, c.raw)); got != c.want {
+			t.Fatalf("%s: thread = %d, mong đợi %d", c.raw, got, c.want)
+		}
 	}
 }

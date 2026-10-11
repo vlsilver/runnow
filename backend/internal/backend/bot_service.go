@@ -145,6 +145,7 @@ type botCtxKey int
 
 const (
 	ctxChatID botCtxKey = iota
+	ctxThreadID
 	ctxSenderID
 	ctxSenderName
 	ctxImageOutcome
@@ -338,7 +339,7 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 			},
 		},
 		{
-			Name: "generate_image",
+			Name:        "generate_image",
 			Description: "Vẽ MỘT ảnh minh hoạ vui/bựa (phong cách sticker hài) rồi GỬI thẳng vào chat hiện tại. Dùng khi ai đó nhờ 'vẽ / chế / tạo / vẽ lại ảnh' cho vui. Nếu tin có ĐÍNH KÈM ẢNH (sẽ được báo trong nội dung), ảnh đó tự động dùng làm THAM CHIẾU để VẼ LẠI/CHỈNH — khi đó imagePrompt hãy mô tả phần cần biến đổi/giữ lại. TỰ QUYẾT: chỉ vẽ khi lành mạnh, vui vẻ; TỪ CHỐI dứt khoát (trả lời bằng lời, đừng gọi tool) nếu nội dung tục tĩu, khiêu dâm, bạo lực, kỳ thị, bôi nhọ/hạ nhục người thật, hay mạo danh. Ảnh AI viết chữ hay sai nên để phần chữ cà khịa vào caption, mô tả cảnh vẽ ít chữ.",
 			Parameters: &genai.Schema{
 				Type: genai.TypeObject,
@@ -346,8 +347,8 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 					"imagePrompt": {Type: genai.TypeString, Description: "Mô tả cảnh cần vẽ, VIẾT BẰNG TIẾNG ANH (model ảnh hiểu tiếng Anh tốt hơn), sinh động, hài hước, hợp bối cảnh chạy bộ của club."},
 					"caption":     {Type: genai.TypeString, Description: "Lời cà khịa/động viên TIẾNG VIỆT bằng giọng của bạn, gửi kèm ảnh."},
 					"style": {
-						Type: genai.TypeString,
-						Enum: []string{"realistic", "anime", "cyberpunk", "cinematic", "3d", "watercolor", "comic", "pixel", "sticker"},
+						Type:        genai.TypeString,
+						Enum:        []string{"realistic", "anime", "cyberpunk", "cinematic", "3d", "watercolor", "comic", "pixel", "sticker"},
 						Description: "Phong cách vẽ. Nếu người dùng NÓI RÕ ('kiểu anime', 'tech/cyberpunk', 'như thật/realistic', 'cinematic', '3d', 'màu nước', 'truyện tranh', 'pixel', 'sticker') thì chọn đúng cái đó. Nếu KHÔNG nói: bạn TỰ CHỌN một phong cách hợp ngữ cảnh — NHƯNG nếu có ẢNH đính kèm và họ không yêu cầu biến đổi cụ thể thì để 'realistic' để giữ CHÂN THẬT, sát ảnh gốc nhất.",
 					},
 				},
@@ -884,7 +885,7 @@ func (s *BotService) webSearch(ctx context.Context, args map[string]any) (any, e
 	resp, err := s.genai.Models.GenerateContent(ctx, s.model,
 		[]*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: query}}}},
 		&genai.GenerateContentConfig{
-			Tools: []*genai.Tool{{GoogleSearch: &genai.GoogleSearch{}}},
+			Tools:             []*genai.Tool{{GoogleSearch: &genai.GoogleSearch{}}},
 			SystemInstruction: &genai.Content{Parts: []*genai.Part{{Text: "Tra Google và trả lời NGẮN GỌN, chính xác, ưu tiên thông tin mới nhất. Nếu kết quả không rõ ràng thì nói thẳng là không chắc."}}},
 		})
 	if err != nil {
@@ -925,6 +926,7 @@ func (s *BotService) generateImage(ctx context.Context, args map[string]any) (an
 		return map[string]any{"ok": false, "reason": "tính năng vẽ ảnh chưa bật"}, nil
 	}
 	chatID, _ := ctx.Value(ctxChatID).(string)
+	threadID, _ := ctx.Value(ctxThreadID).(int64)
 	senderID, _ := ctx.Value(ctxSenderID).(string)
 	senderName, _ := ctx.Value(ctxSenderName).(string)
 	outcome, _ := ctx.Value(ctxImageOutcome).(*imageOutcome)
@@ -955,7 +957,7 @@ func (s *BotService) generateImage(ctx context.Context, args map[string]any) (an
 	if len(img) == 0 {
 		return map[string]any{"ok": false, "reason": "không vẽ được (có thể bị bộ lọc nội dung), từ chối lịch sự"}, nil
 	}
-	if err := s.telegram.SendPhoto(ctx, chatID, img, caption); err != nil {
+	if err := s.telegram.SendPhotoInThread(ctx, chatID, threadID, img, caption); err != nil {
 		slog.WarnContext(ctx, "bot.send_photo_failed", "error", err)
 		return map[string]any{"ok": false, "reason": "gửi ảnh hỏng, xin lỗi"}, nil
 	}
@@ -1111,7 +1113,8 @@ func (s *BotService) readImageMemo(ctx context.Context, img []byte) string {
 	return strings.TrimSpace(text)
 }
 
-func (s *BotService) HandleMessage(ctx context.Context, chatID, senderID, name, question, photoFileID string) error {
+// threadID là topic của câu hỏi (0 = General / DM): câu trả lời quay về đúng đó.
+func (s *BotService) HandleMessage(ctx context.Context, chatID string, threadID int64, senderID, name, question, photoFileID string) error {
 	if !s.Enabled() {
 		return nil
 	}
@@ -1148,6 +1151,7 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID, senderID, name, 
 	// context (khỏi đổi chữ ký dispatch/Answer).
 	outcome := &imageOutcome{}
 	ctx = context.WithValue(ctx, ctxChatID, chatID)
+	ctx = context.WithValue(ctx, ctxThreadID, threadID)
 	ctx = context.WithValue(ctx, ctxSenderID, senderID)
 	ctx = context.WithValue(ctx, ctxSenderName, name)
 	ctx = context.WithValue(ctx, ctxImageOutcome, outcome)
@@ -1237,7 +1241,7 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID, senderID, name, 
 		// Im lặng còn hơn phun stack trace vào group.
 		answer = "Đang bị đơ tí, thử lại sau nhé."
 	}
-	if err := s.telegram.SendChatMessage(ctx, chatID, answer); err != nil {
+	if err := s.telegram.SendChatMessageInThread(ctx, chatID, threadID, answer); err != nil {
 		return err
 	}
 	// Lưu sau khi gửi thành công. Lưu trước mà gửi hỏng thì lịch sử có câu
@@ -1255,7 +1259,7 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID, senderID, name, 
 // "thấy" được toàn bộ hội thoại, kể cả tin không nhắc tới bot — nhưng KHÔNG
 // sinh câu trả lời. Chỉ có tác dụng khi Privacy Mode của bot đã tắt (chỉnh ở
 // BotFather), lúc đó Telegram mới đẩy về mọi tin trong group.
-func (s *BotService) RecordIncoming(ctx context.Context, chatID, senderID, name, text string) error {
+func (s *BotService) RecordIncoming(ctx context.Context, chatID string, threadID int64, senderID, name, text string) error {
 	if !s.Enabled() {
 		return nil
 	}
@@ -1276,14 +1280,14 @@ func (s *BotService) RecordIncoming(ctx context.Context, chatID, senderID, name,
 	}
 	s.memory.AfterMessages(ctx, chatID, 1)
 	// Cân nhắc TỰ CHEN vào (không cần bị nhắc). Best-effort, có rào chống spam.
-	s.maybeProactiveReply(ctx, chatID, senderID, name, text)
+	s.maybeProactiveReply(ctx, chatID, threadID, senderID, name, text)
 	return nil
 }
 
 // maybeProactiveReply để bot tự trả lời một tin trong group club dù không bị
 // nhắc — như một thành viên. Rào: chỉ group club, tối thiểu 6 ký tự, qua cổng
 // cooldown + trần ngày, và model tự quyết SKIP phần lớn thời gian.
-func (s *BotService) maybeProactiveReply(ctx context.Context, chatID, senderID, name, text string) {
+func (s *BotService) maybeProactiveReply(ctx context.Context, chatID string, threadID int64, senderID, name, text string) {
 	if !s.Enabled() || chatID == "" || chatID != s.telegram.ChatID() {
 		return
 	}
@@ -1308,6 +1312,7 @@ func (s *BotService) maybeProactiveReply(ctx context.Context, chatID, senderID, 
 	}
 	outcome := &imageOutcome{}
 	ctx = context.WithValue(ctx, ctxChatID, chatID)
+	ctx = context.WithValue(ctx, ctxThreadID, threadID)
 	ctx = context.WithValue(ctx, ctxSenderID, senderID)
 	ctx = context.WithValue(ctx, ctxSenderName, name)
 	ctx = context.WithValue(ctx, ctxImageOutcome, outcome)
@@ -1323,7 +1328,7 @@ func (s *BotService) maybeProactiveReply(ctx context.Context, chatID, senderID, 
 	if reply == "" || strings.EqualFold(reply, "SKIP") || strings.HasPrefix(strings.ToUpper(reply), "SKIP") {
 		return
 	}
-	if err := s.telegram.SendChatMessage(ctx, chatID, reply); err != nil {
+	if err := s.telegram.SendChatMessageInThread(ctx, chatID, threadID, reply); err != nil {
 		slog.WarnContext(ctx, "bot.proactive_send_failed", "error", err)
 		return
 	}
