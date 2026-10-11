@@ -257,3 +257,23 @@ func TestMessageThreadIDOnlyForTopicMessages(t *testing.T) {
 		}
 	}
 }
+
+func TestClubDayKeepsOnlyActiveAndRanksRunnersFirst(t *testing.T) {
+	got := rankClubDay([]string{"An", "Bình", "Chi", "Dũng", "Em"}, []memberDayStats{
+		{RunKm: 5, RunCount: 1, TotalKm: 5},
+		{WalkKm: 3, Steps: 4000, TotalKm: 3},
+		{},
+		{RunKm: 5, RunCount: 1, WalkKm: 1, Steps: 2000, TotalKm: 6},
+		{Steps: 300},
+	})
+	names := []string{}
+	for _, e := range got {
+		names = append(names, e.Name)
+	}
+	// Chạy trước (cùng 5 km thì ai tổng nhiều hơn đứng trên), rồi tới người chỉ
+	// đi bộ, rồi người chỉ có bước. Chi không làm gì thì không có mặt.
+	want := []string{"Dũng", "An", "Bình", "Em"}
+	if strings.Join(names, ",") != strings.Join(want, ",") {
+		t.Fatalf("thứ tự = %v, mong đợi %v", names, want)
+	}
+}

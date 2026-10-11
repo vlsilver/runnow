@@ -10,6 +10,8 @@ import (
 
 	"cloud.google.com/go/firestore"
 	"google.golang.org/api/iterator"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // BotTools là tập truy vấn Firestore mà model được phép gọi.
@@ -672,7 +674,11 @@ func (t *BotTools) memberDay(ctx context.Context, uid string, start time.Time) (
 	// stepDay hôm nay → đi-bộ-thuần (Apple − official) + số bước.
 	var walkMeters float64
 	var steps int64
-	if sdoc, err := t.db.Collection("users").Doc(uid).Collection("stepDays").Doc(today).Get(ctx); err == nil && sdoc.Exists() {
+	sdoc, err := t.db.Collection("users").Doc(uid).Collection("stepDays").Doc(today).Get(ctx)
+	if err != nil && status.Code(err) != codes.NotFound {
+		return memberDayStats{}, err
+	}
+	if err == nil && sdoc.Exists() {
 		m := sdoc.Data()
 		steps = int64(number(m["steps"]))
 		if w := number(m["distanceMeters"]) - officialMeters; w > 0 {
@@ -685,6 +691,74 @@ func (t *BotTools) memberDay(ctx context.Context, uid string, start time.Time) (
 		WalkKm: round2(walkMeters / 1000), Steps: steps,
 		TotalKm: round2((runMeters + walkMeters) / 1000),
 	}, nil
+}
+
+// GetClubToday: ai trong club (hồ sơ công khai) đã chạy / đi bộ HÔM NAY. Không
+// có tool này thì model chỉ có số theo tuần hoặc từng người một, nên với "hôm
+// nay ai chạy" nó đoán bừa hoặc gọi get_member_today lần lượt từng người.
+//
+// Đọc 2 doc cho mỗi thành viên (activities hôm nay + stepDay), chạy tuần tự:
+// club cỡ vài chục người thì dưới một giây.
+func (t *BotTools) GetClubToday(ctx context.Context, _ map[string]any) (any, error) {
+	rows, _, err := t.loadMembers(ctx, "week") // chỉ để lấy danh sách public + uid
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().In(vietnam)
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, vietnam)
+	names := make([]string, len(rows))
+	days := make([]memberDayStats, len(rows))
+	for i, r := range rows {
+		names[i] = r.Name
+		if days[i], err = t.memberDay(ctx, r.uid, start); err != nil {
+			return nil, err
+		}
+	}
+	entries := rankClubDay(names, days)
+	runners := 0
+	for _, e := range entries {
+		if e.RunCount > 0 {
+			runners++
+		}
+	}
+	return map[string]any{
+		"date": dateKey(start), "asOf": now.Format("15:04"),
+		"members": len(rows), "activeCount": len(entries), "runnerCount": runners,
+		"entries": entries,
+	}, nil
+}
+
+// clubDayEntry là một dòng của GetClubToday.
+type clubDayEntry struct {
+	Name     string  `json:"name"`
+	RunKm    float64 `json:"runKm"`
+	RunCount int     `json:"runCount"`
+	WalkKm   float64 `json:"walkKm"`
+	Steps    int64   `json:"steps"`
+	TotalKm  float64 `json:"totalKm"`
+}
+
+// rankClubDay bỏ người chưa có gì trong ngày, xếp người chạy lên trước (km chạy
+// giảm dần), rồi tới tổng km, rồi số bước. names và days cùng chỉ số.
+func rankClubDay(names []string, days []memberDayStats) []clubDayEntry {
+	out := []clubDayEntry{}
+	for i, d := range days {
+		if d.RunKm == 0 && d.TotalKm == 0 && d.Steps == 0 {
+			continue
+		}
+		out = append(out, clubDayEntry{Name: names[i], RunKm: d.RunKm, RunCount: d.RunCount, WalkKm: d.WalkKm, Steps: d.Steps, TotalKm: d.TotalKm})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.RunKm != b.RunKm {
+			return a.RunKm > b.RunKm
+		}
+		if a.TotalKm != b.TotalKm {
+			return a.TotalKm > b.TotalKm
+		}
+		return a.Steps > b.Steps
+	})
+	return out
 }
 
 // GetInactiveMembers: các thành viên CÔNG KHAI chưa có hoạt động (0 km tổng + 0

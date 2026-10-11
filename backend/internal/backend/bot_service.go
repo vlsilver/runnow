@@ -274,6 +274,11 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 			},
 		},
 		{
+			Name:        "get_club_today",
+			Description: "Ai trong club đã chạy / đi bộ HÔM NAY (giờ VN, tính tới lúc hỏi): mỗi người km chạy, số buổi, km đi bộ, số bước; người chạy đứng trước. Dùng khi hỏi chung 'hôm nay ai chạy', 'hôm nay có ai chạy chưa', 'hôm nay ai đi nhiều nhất'. entries rỗng nghĩa là hôm nay chưa ai có số. Hỏi về MỘT người cụ thể thì dùng get_member_today.",
+			Parameters:  &genai.Schema{Type: genai.TypeObject, Properties: map[string]*genai.Schema{}},
+		},
+		{
 			Name:        "get_inactive_members",
 			Description: "Danh sách thành viên CHƯA có hoạt động (0 km tổng + 0 bước) trong kỳ — để nhắc/cà khịa người chưa chạy. Dùng khi hỏi 'ai tuần này chưa chạy', 'ai lười nhất', 'ai chưa hoạt động'.",
 			Parameters: &genai.Schema{
@@ -422,6 +427,8 @@ func (s *BotService) dispatch(ctx context.Context, name string, args map[string]
 		return s.tools.GetMemberStats(ctx, args)
 	case "get_member_today":
 		return s.tools.GetMemberToday(ctx, args)
+	case "get_club_today":
+		return s.tools.GetClubToday(ctx, args)
 	case "get_inactive_members":
 		return s.tools.GetInactiveMembers(ctx, args)
 	case "get_member_records":
