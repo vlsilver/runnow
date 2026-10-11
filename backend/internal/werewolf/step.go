@@ -238,10 +238,11 @@ func (r *resolver) pairLovers() {
 			cupid = uid
 		}
 	}
+	picks := r.actionsOf(KindCupidPair) // Cupid đã chết thì lựa chọn bị huỷ (R19)
 	if cupid == "" || len(r.st.Lovers) == 2 {
 		return
 	}
-	for _, a := range r.actionsOf(KindCupidPair) {
+	for _, a := range picks {
 		if a.Actor == cupid && r.targetAlive(a) {
 			r.st.Lovers = append([]string(nil), a.Targets...)
 			sort.Strings(r.st.Lovers)

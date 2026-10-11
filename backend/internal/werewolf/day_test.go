@@ -55,6 +55,23 @@ func TestR6CupidPairsOnceAndLoversDieTogether(t *testing.T) {
 	g.reject(ErrPhaseClosed, act(KindCupidPair, "cupid", "v3", "v4")) // đêm 2 cũng là phase night nhưng đã quá lượt ghép
 }
 
+// Cupid ghép xong rồi rời PSC trước 0h: lựa chọn bị huỷ và không ai thành cặp,
+// vì bot chỉ ghép thay khi Cupid còn sống (R19).
+func TestR6CupidLeavesBeforeLockPairIsVoided(t *testing.T) {
+	roles := baseRoles()
+	roles["cupid"] = Cupid
+	g := newGame(t, roles)
+	g.do(KindCupidPair, "cupid", "v1", "v2")
+	g.next("cupid")
+	evs := g.next()
+	if e := find(evs, EventLovers); e != nil || len(g.st.Lovers) != 0 {
+		t.Fatalf("Cupid đã rời mà vẫn có cặp: %+v, lovers %v", e, g.st.Lovers)
+	}
+	if r := voids(evs)["cupid/"+string(KindCupidPair)]; r != VoidActorDead {
+		t.Fatalf("void = %v, mong đợi %s", voids(evs), VoidActorDead)
+	}
+}
+
 // Quá 0h chưa ghép thì bot ghép ngẫu nhiên, không gồm Cupid; cùng seed ra cùng cặp.
 func TestR6UnpairedCupidGetsDeterministicRandomPairWithoutCupid(t *testing.T) {
 	roles := baseRoles()
