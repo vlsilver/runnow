@@ -319,8 +319,12 @@ func (t *BotTools) GetRunContracts(ctx context.Context, _ map[string]any) (any, 
 		return nil, err
 	}
 	out := make([]map[string]any, 0, len(docs))
+	now := time.Now()
 	for _, doc := range docs {
 		data := doc.Data()
+		if contractPeriodEnded(data, now) {
+			continue // hết kỳ, chờ job chốt — không còn "đang chạy"
+		}
 		target := number(data["targetValue"])
 		progress := number(data["progressValue"])
 		entry := map[string]any{
@@ -784,6 +788,9 @@ func (t *BotTools) GetMemberContracts(ctx context.Context, args map[string]any) 
 			return nil, err
 		}
 		d := doc.Data()
+		if contractPeriodEnded(d, time.Now()) {
+			continue // hết kỳ, chờ job chốt — không còn "đang diễn ra"
+		}
 		var progress float64
 		if parts, ok := d["participants"].(map[string]any); ok {
 			if pm, ok := parts[uid].(map[string]any); ok {

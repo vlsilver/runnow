@@ -405,9 +405,10 @@ gcloud scheduler jobs "${memory_action}" http "$MEMORY_JOB" \
   --oidc-token-audience "$BOT_URL" \
   --project "$PROJECT_ID"
 
-# Cập nhật kèo 2 lần/ngày: 14:00 + 20:00 giờ VN (07:00 + 13:00 UTC). Link buổi
-# chạy chưa gán + tính lại tiến độ (gồm đi bộ) server-side → kèo tươi mà user
-# khỏi mở app. Một job, 2 mốc giờ.
+# Cập nhật kèo 3 lần/ngày: 06:05 + 14:05 + 20:05 giờ VN (23:05 + 07:05 + 13:05
+# UTC). Link buổi chạy chưa gán + tính lại tiến độ (gồm đi bộ) server-side → kèo
+# tươi mà user khỏi mở app, rồi chốt kèo đã qua finalizeAt (06:00 VN sau ngày
+# kết thúc) — mốc 06:05 để kèo đóng ngay sau grace. Một job, 3 mốc giờ.
 RECALC_JOB="${RECALC_JOB:-runnow-recalc-contracts}"
 if gcloud scheduler jobs describe "$RECALC_JOB" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
   recalc_action=update
@@ -418,7 +419,7 @@ else
 fi
 gcloud scheduler jobs "${recalc_action}" http "$RECALC_JOB" \
   --location "$REGION" \
-  --schedule '0 7,13 * * *' \
+  --schedule '5 7,13,23 * * *' \
   --uri "${WORKER_URL}/tasks/recalc-contracts" \
   --http-method POST \
   "${recalc_header_flag}" 'Content-Type=application/json' \

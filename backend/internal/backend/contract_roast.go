@@ -25,16 +25,16 @@ type roastFailer struct {
 // bot đọc đúng "km / buổi / ngày / lần".
 func formatContractMetricValue(metric string, v float64) string {
 	switch metric {
-	case "distance", "longestRun":
+	case "distance", "longest_run":
 		if v == float64(int64(v)) {
 			return fmt.Sprintf("%d km", int64(v))
 		}
 		return fmt.Sprintf("%.1f km", v)
-	case "activityCount":
+	case "activity_count":
 		return fmt.Sprintf("%d buổi", int64(v+0.5))
-	case "activeDays":
+	case "active_days":
 		return fmt.Sprintf("%d ngày", int64(v+0.5))
-	case "routeCompletion":
+	case "route_completion":
 		return fmt.Sprintf("%d lần", int64(v+0.5))
 	default:
 		return fmt.Sprintf("%.1f", v)
@@ -44,7 +44,7 @@ func formatContractMetricValue(metric string, v float64) string {
 // contractMetTarget: participant đạt mục tiêu chưa. Với km dùng ngưỡng mm để
 // tránh sai số dấu phẩy động (khớp contractTargetMet phía client).
 func contractMetTarget(metric string, progress, target float64) bool {
-	if metric == "distance" || metric == "longestRun" {
+	if metric == "distance" || metric == "longest_run" {
 		return int64(progress*1000+0.5) >= int64(target*1000+0.5)
 	}
 	return progress+1e-6 >= target
