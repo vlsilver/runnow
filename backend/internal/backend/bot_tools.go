@@ -615,6 +615,29 @@ func (t *BotTools) GetMemberToday(ctx context.Context, args map[string]any) (any
 
 	now := time.Now().In(vietnam)
 	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, vietnam)
+	day, err := t.memberDay(ctx, uid, start)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"found": true, "name": name, "date": dateKey(start),
+		"runKm": day.RunKm, "runCount": day.RunCount,
+		"walkKm": day.WalkKm, "steps": day.Steps,
+		"totalKm": day.TotalKm,
+	}, nil
+}
+
+// memberDayStats là km + bước của một người trong một ngày VN.
+type memberDayStats struct {
+	RunKm    float64
+	RunCount int
+	WalkKm   float64
+	Steps    int64
+	TotalKm  float64
+}
+
+// memberDay tính số của uid trong ngày VN bắt đầu từ start (0h VN).
+func (t *BotTools) memberDay(ctx context.Context, uid string, start time.Time) (memberDayStats, error) {
 	today := dateKey(start)
 
 	// Buổi chạy hôm nay → official (đã khử trùng) → km chạy + tổng official/ngày.
@@ -628,7 +651,7 @@ func (t *BotTools) GetMemberToday(ctx context.Context, args map[string]any) (any
 		}
 		if err != nil {
 			aIter.Stop()
-			return nil, err
+			return memberDayStats{}, err
 		}
 		facts = append(facts, activityFact(doc.Ref.ID, doc.Data()))
 	}
@@ -657,11 +680,10 @@ func (t *BotTools) GetMemberToday(ctx context.Context, args map[string]any) (any
 		}
 	}
 
-	return map[string]any{
-		"found": true, "name": name, "date": today,
-		"runKm": round2(runMeters / 1000), "runCount": runCount,
-		"walkKm": round2(walkMeters / 1000), "steps": steps,
-		"totalKm": round2((runMeters + walkMeters) / 1000),
+	return memberDayStats{
+		RunKm: round2(runMeters / 1000), RunCount: runCount,
+		WalkKm: round2(walkMeters / 1000), Steps: steps,
+		TotalKm: round2((runMeters + walkMeters) / 1000),
 	}, nil
 }
 
