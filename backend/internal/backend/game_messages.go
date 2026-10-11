@@ -27,6 +27,8 @@ const (
 	tplReminder = "reminder" // group: nhắc 15h, 21h
 	tplPrivate  = "private"  // dm: việc riêng sau một lần chốt (bị huỷ, người yêu, bạn chết…)
 	tplPrompt   = "prompt"   // dm: tới lượt một loại hành động
+	tplChoice   = "choice"   // dm: sửa prompt cho khớp lựa chọn vừa đổi
+	tplTally    = "tally"    // group: sửa tin đếm đề cử/phiếu
 )
 
 // publicEvent trả bản công khai của e, hoặc false nếu e chỉ dành cho người

@@ -49,3 +49,6 @@ func (st *State) Available(uid string) []Kind {
 	}
 	return out
 }
+
+// Kinds trả mọi loại hành động theo thứ tự cố định.
+func Kinds() []Kind { return append([]Kind(nil), kindOrder...) }
