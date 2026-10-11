@@ -1,0 +1,602 @@
+package backend
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"sort"
+	"strconv"
+	"time"
+
+	"cloud.google.com/go/firestore"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/vlsilver/runnow/backend/internal/werewolf"
+)
+
+// GameStore là lớp Firestore của Ma Sói (3.7). Mỗi lần chốt là một transaction:
+// đọc state, action, km, người rời nhóm; chạy engine; ghi state, phần công khai,
+// event, outbox và feed cùng lúc. Hai lần chốt chạy song song thì Firestore cho
+// một bên chạy lại và bên đó thấy đã chốt rồi, nên không có event hay tin đôi.
+type GameStore struct {
+	db *firestore.Client
+	// frameKm tính km khung của một người; mặc định LoadFrameKm.
+	frameKm func(ctx context.Context, uid string, frameEnd time.Time) (FrameKm, error)
+}
+
+func NewGameStore(db *firestore.Client) *GameStore {
+	return &GameStore{db: db, frameKm: func(ctx context.Context, uid string, frameEnd time.Time) (FrameKm, error) {
+		return LoadFrameKm(ctx, db, uid, frameEnd)
+	}}
+}
+
+const (
+	gameRegistering = "registering"
+	gameStarting    = "starting" // api đã nhận Start, chờ bot kiểm người và chia vai
+	gameRunning     = "running"
+	gameEnded       = "ended"
+	gameCancelled   = "cancelled"
+)
+
+var errGameRunning = &HTTPError{Status: http.StatusConflict, Code: "game_running", Message: "Đang có ván Ma Sói chưa kết thúc."}
+
+// errKmNotReady: state đã sang mốc cần km mà snapshot chưa ghi (bước khác chốt
+// xen vào giữa lúc ghi km và lúc mở transaction). Chạy lại vòng snapshot.
+var errKmNotReady = errors.New("snapshot km chưa có")
+
+// maxAdvanceSteps chặn vòng chạy bù: một lần gọi chạy tối đa ngần này bước,
+// phần còn lại để task hoặc tick kế tiếp chạy tiếp.
+const maxAdvanceSteps = 20
+
+func (s *GameStore) gameRef(id string) *firestore.DocumentRef {
+	return s.db.Collection("games").Doc(id)
+}
+
+func (s *GameStore) currentRef() *firestore.DocumentRef {
+	return s.db.Collection("gameState").Doc("current")
+}
+
+func secretRef(game *firestore.DocumentRef) *firestore.DocumentRef {
+	return game.Collection("secret").Doc("state")
+}
+
+func roundRef(game *firestore.DocumentRef, n int) *firestore.DocumentRef {
+	return game.Collection("rounds").Doc(strconv.Itoa(n))
+}
+
+// kmRound là vòng chứa snapshot km của mốc 22h kế tiếp: mở đêm 1 ghi vào
+// rounds/0, chốt ngày n ghi vào rounds/n.
+func kmRound(st *werewolf.State) int {
+	if st.Phase == werewolf.PhaseSetup {
+		return 0
+	}
+	return st.Round
+}
+
+type NewGameInput struct {
+	CreatedBy string
+	ChatID    string
+	ThreadID  int64
+	Config    werewolf.Config
+}
+
+// CreateGame mở ván mới ở trạng thái đăng ký. Chỉ một ván được mở một lúc:
+// gameState/current còn trỏ tới ván chưa kết thúc thì trả 409 game_running.
+func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Time) (string, error) {
+	ref := s.db.Collection("games").NewDoc()
+	cfg, err := json.Marshal(in.Config)
+	if err != nil {
+		return "", err
+	}
+	err = s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		cur, err := tx.Get(s.currentRef())
+		if err != nil && status.Code(err) != codes.NotFound {
+			return err
+		}
+		if cur.Exists() {
+			if id := stringValue(cur.Data()["gameId"]); id != "" {
+				g, err := tx.Get(s.gameRef(id))
+				if err != nil && status.Code(err) != codes.NotFound {
+					return err
+				}
+				if g.Exists() && !gameClosed(stringValue(g.Data()["status"])) {
+					return errGameRunning
+				}
+			}
+		}
+		if err := tx.Create(ref, map[string]any{
+			"status": gameRegistering, "createdBy": in.CreatedBy, "createdAt": now,
+			"chatId": in.ChatID, "threadId": in.ThreadID, "testMode": in.Config.TestMode,
+			"config": string(cfg), "version": 0, "eventSeq": 0, "feedSeq": 0, "updatedAt": now,
+		}); err != nil {
+			return err
+		}
+		return tx.Set(s.currentRef(), map[string]any{"gameId": ref.ID, "updatedAt": now})
+	})
+	if err != nil {
+		return "", err
+	}
+	return ref.ID, nil
+}
+
+func gameClosed(status string) bool { return status == gameEnded || status == gameCancelled }
+
+// StartGame ghi state ban đầu (đã chia vai) và các tin mở ván. Chỉ chạy được
+// một lần: ván đã chạy thì trả 409.
+func (s *GameStore) StartGame(ctx context.Context, gameID string, st *werewolf.State, now time.Time) error {
+	game := s.gameRef(gameID)
+	return s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		g, err := tx.Get(game)
+		if err != nil {
+			return err
+		}
+		if st := stringValue(g.Data()["status"]); st != gameRegistering && st != gameStarting {
+			return &HTTPError{Status: http.StatusConflict, Code: "game_running", Message: "Ván đã bắt đầu hoặc đã kết thúc."}
+		}
+		// players/{uid} do bước đăng ký ghi, có tgUserId; thiếu thì dữ liệu đã hỏng,
+		// không tự tạo, vì tới 22h người đó sẽ bị tính là đã rời PSC.
+		uids := sortedPlayers(st)
+		var refs []*firestore.DocumentRef
+		for _, uid := range uids {
+			refs = append(refs, game.Collection("players").Doc(uid))
+		}
+		players, err := tx.GetAll(refs)
+		if err != nil {
+			return err
+		}
+		for i, p := range players {
+			if !p.Exists() {
+				return fmt.Errorf("thiếu players/%s", uids[i])
+			}
+		}
+		msgs := startMessages(st)
+		chats, err := readChats(tx, game, msgs)
+		if err != nil {
+			return err
+		}
+		for _, ref := range refs {
+			if err := tx.Set(ref, map[string]any{"alive": true}, firestore.MergeAll); err != nil {
+				return err
+			}
+		}
+		w := stepWrite{tx: tx, game: game, gameData: g.Data(), after: st, msgs: msgs, chats: chats, now: now}
+		return w.commit(map[string]any{"kind": "start"})
+	})
+}
+
+// AdvanceResult là việc AdvanceGame đã làm và lần hẹn kế tiếp. Caller hẹn task
+// game-advance vào NextAt + 30s với TaskID StableTaskID("gameadv", gameId+TaskKey).
+type AdvanceResult struct {
+	Steps   int
+	Status  string
+	NextAt  time.Time
+	TaskKey string
+}
+
+// AdvanceGame chạy hết các bước đã tới hạn lúc now, mỗi bước một transaction,
+// đúng thứ tự (E5). Gọi lại bao nhiêu lần cũng được: bước đã chốt thì thôi.
+func (s *GameStore) AdvanceGame(ctx context.Context, gameID string, now time.Time) (AdvanceResult, error) {
+	var res AdvanceResult
+	for i := 0; i < maxAdvanceSteps; i++ {
+		if err := s.snapshotKmIfDue(ctx, gameID, now); err != nil {
+			return res, err
+		}
+		stepped, err := s.advanceOnce(ctx, gameID, now, &res)
+		if errors.Is(err, errKmNotReady) {
+			continue
+		}
+		if err != nil || !stepped {
+			return res, err
+		}
+		res.Steps++
+	}
+	return res, nil
+}
+
+// snapshotKmIfDue: tới mốc 22h thì tính km của mọi người chơi và ghi bằng
+// Create, bản ghi đầu tiên thắng (R29: không chốt lại). Chạy ngoài transaction vì
+// mỗi người tốn vài query; transaction của bước chỉ đọc các doc này.
+func (s *GameStore) snapshotKmIfDue(ctx context.Context, gameID string, now time.Time) error {
+	game := s.gameRef(gameID)
+	snap, err := secretRef(game).Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return nil // chưa Start
+	}
+	if err != nil {
+		return err
+	}
+	st, err := decodeState(snap.Data())
+	if err != nil {
+		return err
+	}
+	end, ok := st.KmFrameEnd()
+	if !ok || st.Paused || now.Before(end) {
+		return nil
+	}
+	refs := kmRefs(game, st)
+	existing, err := s.db.GetAll(ctx, refs)
+	if err != nil {
+		return err
+	}
+	for i, doc := range existing {
+		if doc.Exists() {
+			continue
+		}
+		uid := refs[i].ID
+		fk, err := s.frameKm(ctx, uid, end)
+		if err != nil {
+			return fmt.Errorf("km của %s: %w", uid, err)
+		}
+		if _, err := refs[i].Create(ctx, kmDoc(fk, now)); err != nil && status.Code(err) != codes.AlreadyExists {
+			return err
+		}
+	}
+	return nil
+}
+
+func kmRefs(game *firestore.DocumentRef, st *werewolf.State) []*firestore.DocumentRef {
+	col := roundRef(game, kmRound(st)).Collection("km")
+	var refs []*firestore.DocumentRef
+	for _, uid := range sortedPlayers(st) {
+		refs = append(refs, col.Doc(uid))
+	}
+	return refs
+}
+
+func kmDoc(fk FrameKm, now time.Time) map[string]any {
+	return map[string]any{
+		"frameStart": fk.FrameStart, "frameEnd": fk.FrameEnd,
+		"officialMeters": fk.OfficialMeters, "healthMeters": fk.HealthMeters, "meters": fk.Meters,
+		"kmSource": fk.Source, "hourlyYesterday": fk.HourlyYesterday, "hourlyToday": fk.HourlyToday,
+		"scaleYesterday": fk.ScaleYesterday, "scaleToday": fk.ScaleToday,
+		"source": "auto", "createdAt": now,
+	}
+}
+
+// advanceOnce chạy một việc đã tới hạn trong một transaction. stepped=false khi
+// không còn gì tới hạn hoặc ván không chạy.
+func (s *GameStore) advanceOnce(ctx context.Context, gameID string, now time.Time, res *AdvanceResult) (bool, error) {
+	game := s.gameRef(gameID)
+	var stepped bool
+	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		stepped = false
+		g, err := tx.Get(game)
+		if err != nil {
+			return err
+		}
+		res.Status = stringValue(g.Data()["status"])
+		if res.Status != gameRunning {
+			return nil
+		}
+		sec, err := tx.Get(secretRef(game))
+		if err != nil {
+			return err
+		}
+		st, err := decodeState(sec.Data())
+		if err != nil {
+			return err
+		}
+		res.NextAt, res.TaskKey = st.NextAt(), st.TaskKey()
+		in, err := s.readInputs(tx, game, st, now)
+		if err != nil {
+			return err
+		}
+		next, evs, err := werewolf.Advance(st, in, now)
+		if errors.Is(err, werewolf.ErrNotDue) || errors.Is(err, werewolf.ErrNotRunning) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		msgs := stepMessages(st, next, evs)
+		chats, err := readChats(tx, game, msgs)
+		if err != nil {
+			return err
+		}
+		inputs, err := json.Marshal(in)
+		if err != nil {
+			return err
+		}
+		w := stepWrite{tx: tx, game: game, gameData: g.Data(), before: st, after: next, events: evs, msgs: msgs, chats: chats, now: now}
+		if err := w.commit(map[string]any{"kind": "step", "phaseKey": st.PhaseKey(), "inputs": string(inputs)}); err != nil {
+			return err
+		}
+		stepped = true
+		res.Status = w.status()
+		res.NextAt, res.TaskKey = next.NextAt(), next.TaskKey()
+		return nil
+	})
+	return stepped, err
+}
+
+// readInputs đọc trong transaction mọi thứ engine cần cho bước kế: action của
+// vòng hiện tại, snapshot km nếu bước này là mốc 22h, và người đã rời PSC.
+func (s *GameStore) readInputs(tx *firestore.Transaction, game *firestore.DocumentRef, st *werewolf.State, now time.Time) (werewolf.Inputs, error) {
+	var in werewolf.Inputs
+	docs, err := tx.Documents(roundRef(game, st.Round).Collection("actions")).GetAll()
+	if err != nil {
+		return in, err
+	}
+	for _, d := range docs {
+		if a, ok := decodeAction(d.Data()); ok {
+			in.Actions = append(in.Actions, a)
+		}
+	}
+	sort.Slice(in.Actions, func(i, j int) bool {
+		a, b := in.Actions[i], in.Actions[j]
+		if !a.ReceivedAt.Equal(b.ReceivedAt) {
+			return a.ReceivedAt.Before(b.ReceivedAt)
+		}
+		return a.Actor+string(a.Kind) < b.Actor+string(b.Kind)
+	})
+
+	if end, ok := st.KmFrameEnd(); ok && !now.Before(end) {
+		kms, err := tx.GetAll(kmRefs(game, st))
+		if err != nil {
+			return in, err
+		}
+		in.Km = map[string]float64{}
+		for _, d := range kms {
+			if !d.Exists() {
+				return in, errKmNotReady
+			}
+			in.Km[d.Ref.ID] = number(d.Data()["meters"])
+		}
+	}
+
+	in.Left, err = s.readLeft(tx, game, st)
+	return in, err
+}
+
+// readLeft: người chơi còn sống mà tgLinks báo không còn ở PSC, hoặc không còn
+// liên kết (xoá tài khoản, R33). Người chơi giả của testMode không rời được.
+func (s *GameStore) readLeft(tx *firestore.Transaction, game *firestore.DocumentRef, st *werewolf.State) ([]string, error) {
+	uids := sortedPlayers(st)
+	var refs []*firestore.DocumentRef
+	for _, uid := range uids {
+		refs = append(refs, game.Collection("players").Doc(uid))
+	}
+	players, err := tx.GetAll(refs)
+	if err != nil {
+		return nil, err
+	}
+	var linkRefs []*firestore.DocumentRef
+	var linkUIDs, left []string
+	for i, p := range players {
+		uid := uids[i]
+		if !st.Players[uid].Alive {
+			continue
+		}
+		if !p.Exists() {
+			return nil, fmt.Errorf("thiếu players/%s của người chơi trong state", uid)
+		}
+		if p.Data()["fake"] == true {
+			continue
+		}
+		tg := tgIDString(p.Data()["tgUserId"])
+		if tg == "" {
+			left = append(left, uid)
+			continue
+		}
+		linkRefs = append(linkRefs, s.db.Collection("tgLinks").Doc(tg))
+		linkUIDs = append(linkUIDs, uid)
+	}
+	if len(linkRefs) > 0 {
+		links, err := tx.GetAll(linkRefs)
+		if err != nil {
+			return nil, err
+		}
+		for i, l := range links {
+			if !l.Exists() || l.Data()["inPsc"] != true || stringValue(l.Data()["uid"]) != linkUIDs[i] {
+				left = append(left, linkUIDs[i])
+			}
+		}
+	}
+	sort.Strings(left)
+	return left, nil
+}
+
+func tgIDString(v any) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case int64:
+		return strconv.FormatInt(x, 10)
+	case float64:
+		return strconv.FormatInt(int64(x), 10)
+	}
+	return ""
+}
+
+func decodeAction(d map[string]any) (werewolf.Action, bool) {
+	if d["cleared"] == true {
+		return werewolf.Action{}, false
+	}
+	a := werewolf.Action{Kind: werewolf.Kind(stringValue(d["kind"])), Actor: stringValue(d["uid"]), Choice: stringValue(d["choice"])}
+	if t, ok := d["receivedAt"].(time.Time); ok {
+		a.ReceivedAt = t
+	}
+	if raw, ok := d["targets"].([]any); ok {
+		for _, t := range raw {
+			a.Targets = append(a.Targets, stringValue(t))
+		}
+	}
+	return a, a.Kind != "" && a.Actor != ""
+}
+
+func decodeState(d map[string]any) (*werewolf.State, error) {
+	raw, ok := d["state"].(string)
+	if !ok {
+		return nil, errors.New("secret/state thiếu field state")
+	}
+	var st werewolf.State
+	if err := json.Unmarshal([]byte(raw), &st); err != nil {
+		return nil, fmt.Errorf("đọc secret/state: %w", err)
+	}
+	return &st, nil
+}
+
+// readChats đọc nextSeq của các chat sắp nhận tin. Phải đọc trước mọi lần ghi
+// của transaction.
+func readChats(tx *firestore.Transaction, game *firestore.DocumentRef, msgs []gameMsg) (map[string]int64, error) {
+	chats := map[string]int64{}
+	var refs []*firestore.DocumentRef
+	for _, m := range msgs {
+		if _, ok := chats[m.ChatKey]; !ok {
+			chats[m.ChatKey] = 1
+			refs = append(refs, game.Collection("outboxChats").Doc(m.ChatKey))
+		}
+	}
+	if len(refs) == 0 {
+		return chats, nil
+	}
+	docs, err := tx.GetAll(refs)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range docs {
+		if d.Exists() {
+			if n := int64(number(d.Data()["nextSeq"])); n > 0 {
+				chats[d.Ref.ID] = n
+			}
+		}
+	}
+	return chats, nil
+}
+
+// stepWrite gom mọi lần ghi của một lần chốt (hoặc Start) trong transaction.
+type stepWrite struct {
+	tx            *firestore.Transaction
+	game          *firestore.DocumentRef
+	gameData      map[string]any
+	before, after *werewolf.State // before nil khi Start
+	events        []werewolf.Event
+	msgs          []gameMsg
+	chats         map[string]int64
+	now           time.Time
+}
+
+func (w *stepWrite) status() string {
+	if w.after.Phase == werewolf.PhaseEnded {
+		return gameEnded
+	}
+	return gameRunning
+}
+
+func (w *stepWrite) commit(event map[string]any) error {
+	tx, game, now := w.tx, w.game, w.now
+	state, err := json.Marshal(w.after)
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256(state)
+	if err := tx.Set(secretRef(game), map[string]any{"state": string(state), "phaseKey": w.after.PhaseKey(), "updatedAt": now}); err != nil {
+		return err
+	}
+
+	eventSeq := int64(number(w.gameData["eventSeq"])) + 1
+	evs, err := json.Marshal(w.events)
+	if err != nil {
+		return err
+	}
+	event["seq"], event["at"], event["events"], event["stateHash"] = eventSeq, now, string(evs), hex.EncodeToString(sum[:])
+	if event["kind"] == "start" {
+		event["state"] = string(state) // điểm đầu để replay
+	}
+	if err := tx.Create(game.Collection("events").Doc(strconv.FormatInt(eventSeq, 10)), event); err != nil {
+		return err
+	}
+
+	public := w.publicGame()
+	public["eventSeq"] = eventSeq
+	public["version"] = int64(number(w.gameData["version"])) + 1
+	reminderOnly := len(w.events) == 1 && w.events[0].Kind == werewolf.EventReminder
+	if w.before != nil && !reminderOnly {
+		feedSeq := int64(number(w.gameData["feedSeq"])) + 1
+		public["feedSeq"] = feedSeq
+		feed, err := json.Marshal(publicEvents(w.events))
+		if err != nil {
+			return err
+		}
+		if err := tx.Create(game.Collection("feed").Doc(strconv.FormatInt(feedSeq, 10)), map[string]any{
+			"seq": feedSeq, "at": now, "phaseKey": w.before.PhaseKey(), "round": w.after.Round,
+			"phase": string(w.after.Phase), "events": string(feed),
+		}); err != nil {
+			return err
+		}
+	}
+	if err := tx.Set(game, public, firestore.MergeAll); err != nil {
+		return err
+	}
+
+	for _, e := range w.events {
+		switch e.Kind {
+		case werewolf.EventDeath:
+			p := w.after.Players[e.UID]
+			if err := tx.Set(game.Collection("players").Doc(e.UID), map[string]any{"alive": false, "deathRound": p.DeathRound, "diedAt": now}, firestore.MergeAll); err != nil {
+				return err
+			}
+		case werewolf.EventVoid:
+			ref := roundRef(game, w.before.Round).Collection("actions").Doc(e.UID + "_" + string(e.Action))
+			if err := tx.Set(ref, map[string]any{"voidReason": e.Reason}, firestore.MergeAll); err != nil {
+				return err
+			}
+		}
+	}
+	return w.writeOutbox(eventSeq)
+}
+
+// publicGame là phần của games/{id} mà API được đọc: không có vai của người còn
+// sống, không có seed, km chi tiết hay lựa chọn.
+func (w *stepWrite) publicGame() map[string]any {
+	st := w.after
+	revealed := map[string]any{}
+	for uid, p := range st.Players {
+		if !p.Alive || st.Phase == werewolf.PhaseEnded {
+			revealed[uid] = string(p.Role)
+		}
+	}
+	out := map[string]any{
+		"status": w.status(), "round": st.Round, "phase": string(st.Phase), "phaseKey": st.PhaseKey(),
+		"paused": st.Paused, "nextAt": nil, "taskKey": st.TaskKey(), "updatedAt": w.now,
+		"deadline": nil, "winner": string(st.Winner),
+	}
+	if len(revealed) > 0 {
+		out["revealed"] = revealed
+	}
+	if st.Phase != werewolf.PhaseEnded {
+		out["deadline"], out["nextAt"] = st.Deadline(), st.NextAt()
+	}
+	return out
+}
+
+func (w *stepWrite) writeOutbox(eventSeq int64) error {
+	for _, m := range w.msgs {
+		seq := w.chats[m.ChatKey]
+		w.chats[m.ChatKey] = seq + 1
+		data, err := json.Marshal(m.Data)
+		if err != nil {
+			return err
+		}
+		ref := w.game.Collection("outbox").Doc(m.ChatKey + "_" + strconv.FormatInt(seq, 10))
+		if err := w.tx.Create(ref, map[string]any{
+			"chatKey": m.ChatKey, "seq": seq, "template": m.Template, "data": string(data),
+			"status": "pending", "eventSeq": eventSeq, "createdAt": w.now,
+		}); err != nil {
+			return err
+		}
+	}
+	for key, next := range w.chats {
+		if err := w.tx.Set(w.game.Collection("outboxChats").Doc(key), map[string]any{
+			"chatKey": key, "nextSeq": next, "pending": true, "updatedAt": w.now,
+		}, firestore.MergeAll); err != nil {
+			return err
+		}
+	}
+	return nil
+}

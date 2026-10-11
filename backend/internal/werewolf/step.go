@@ -10,12 +10,12 @@ import (
 // Inputs là những gì một lần chốt đọc từ Firestore.
 type Inputs struct {
 	// Actions là các lựa chọn đang lưu của vòng hiện tại, mỗi (Actor, Kind) một bản.
-	Actions []Action
+	Actions []Action `json:"actions,omitempty"`
 	// Km là snapshot km (mét) vừa chốt lúc 22h. Chỉ bước mở đêm 1 và bước chốt
 	// ngày dùng; bước khác bỏ qua.
-	Km map[string]float64
+	Km map[string]float64 `json:"km,omitempty"`
 	// Left là người đã rời PSC hoặc xoá tài khoản tính tới lúc chốt (R33).
-	Left []string
+	Left []string `json:"left,omitempty"`
 }
 
 type EventKind string
