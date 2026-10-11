@@ -600,7 +600,9 @@ func (s *BotService) Answer(ctx context.Context, systemPrompt string, contents [
 	}
 
 	for round := 0; round < maxToolRounds; round++ {
+		genStart := time.Now()
 		resp, err := s.generateWithRetry(ctx, contents, config)
+		genMs := time.Since(genStart).Milliseconds()
 		if err != nil {
 			return "", err
 		}
@@ -610,6 +612,7 @@ func (s *BotService) Answer(ctx context.Context, systemPrompt string, contents [
 		modelContent := resp.Candidates[0].Content
 		calls := resp.FunctionCalls()
 		if len(calls) == 0 {
+			slog.InfoContext(ctx, "bot.answer_round", "round", round, "modelMs", genMs)
 			if text := strings.TrimSpace(resp.Text()); text != "" {
 				return text, nil
 			}
@@ -618,7 +621,10 @@ func (s *BotService) Answer(ctx context.Context, systemPrompt string, contents [
 
 		contents = append(contents, modelContent)
 		results := make([]*genai.Part, 0, len(calls))
+		toolStart := time.Now()
+		names := make([]string, 0, len(calls))
 		for _, call := range calls {
+			names = append(names, call.Name)
 			out, err := s.dispatch(ctx, call.Name, call.Args, canPostToGroup)
 			if err != nil {
 				// Trả lỗi vào cho model thay vì bỏ cuộc: nó thường tự
@@ -628,6 +634,10 @@ func (s *BotService) Answer(ctx context.Context, systemPrompt string, contents [
 			}
 			results = append(results, genai.NewPartFromFunctionResponse(call.Name, toJSONMap(out)))
 		}
+		// Một dòng mỗi vòng để biết câu trả lời chậm vì model, vì tool, hay vì gọi
+		// quá nhiều vòng.
+		slog.InfoContext(ctx, "bot.answer_round", "round", round, "modelMs", genMs,
+			"tools", names, "toolMs", time.Since(toolStart).Milliseconds())
 		contents = append(contents, &genai.Content{Role: genai.RoleUser, Parts: results})
 	}
 	return "", fmt.Errorf("model gọi tool quá %d vòng mà chưa trả lời", maxToolRounds)
@@ -650,6 +660,7 @@ func (s *BotService) generateWithRetry(ctx context.Context, contents []*genai.Co
 		if !isRetryableGenAIError(err) {
 			return nil, err
 		}
+		slog.WarnContext(ctx, "bot.genai_retry", "attempt", attempt, "error", err)
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
