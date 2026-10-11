@@ -48,6 +48,7 @@ func (s *Server) botRoutes() {
 		return writeJSON(w, 200, map[string]any{"ok": true, "service": "runnow-bot"})
 	})
 	s.route("POST /tasks/bot-message", s.botMessage)
+	s.route("POST /tasks/game-update", s.gameUpdate)
 	// Cả hai đây cũng là việc AI (notify sinh nhận xét, chưng cất trí nhớ) —
 	// dời sang service bot. Định tuyến queue/scheduler đổi ở deploy.sh.
 	s.route("POST /tasks/notify-telegram", s.notifyTelegram)
@@ -74,9 +75,10 @@ func (s *Server) botRoutes() {
 	})
 }
 
-// telegramWebhook nhận update từ Telegram, xác thực secret, rồi CHỈ enqueue vào
-// queue bot-inbound (không tự xử lý). Việc gọi Gemini nặng để handler botMessage
-// lo trong một task thật — full CPU, timeout dài, tự retry.
+// telegramWebhook nhận update từ Telegram, xác thực secret, rồi định tuyến
+// (serveTelegramUpdate): nút bấm và lệnh cố định trả lời ngay, còn lại chỉ
+// enqueue. Việc gọi Gemini nặng để handler botMessage lo trong một task thật —
+// full CPU, timeout dài, tự retry.
 func (s *Server) telegramWebhook(w http.ResponseWriter, r *http.Request) error {
 	if s.config.TelegramWebhookSecret == "" ||
 		r.Header.Get("X-Telegram-Bot-Api-Secret-Token") != s.config.TelegramWebhookSecret {
@@ -85,37 +87,44 @@ func (s *Server) telegramWebhook(w http.ResponseWriter, r *http.Request) error {
 	// KHÔNG dùng decodeJSONWithLimit: nó bật DisallowUnknownFields, mà update
 	// thật của Telegram có mấy chục field mình không model — decoder chặt sẽ
 	// từ chối cả payload. Decode lỏng, chỉ lấy phần cần.
-	var update TelegramUpdate
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-	if err != nil || json.Unmarshal(body, &update) != nil {
+	if err != nil {
 		w.WriteHeader(http.StatusOK)
 		return nil
 	}
 	// Chỉ cần Tasks để enqueue — webhook KHÔNG cần Bot/Gemini (xử lý ở
 	// runnow-bot). Nhờ vậy api có thể bỏ token Telegram mà webhook vẫn chạy.
+	var publish taskPublishFunc
 	if s.deps.Tasks != nil {
-		name := senderName(update)
-		chatID, question, isQuestion := botQuestion(update, s.config.TelegramBotUsername)
-		recordChatID, _, rawText, hasText := incomingMessage(update)
-		if isQuestion || hasText {
-			task := botMessageTask{IsQuestion: isQuestion, Name: name, SenderID: senderID(update), PhotoFileID: photoFileID(update), ThreadID: messageThreadID(update)}
-			if isQuestion {
-				task.ChatID, task.Question = chatID, question
-			} else {
-				task.ChatID, task.RawText = recordChatID, rawText
-			}
-			if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{
-				Queue:       QueueBotInbound,
-				HandlerPath: "/tasks/bot-message",
-				Payload:     task,
-				TaskID:      StableTaskID("botmsg", update.UpdateID),
-			}); err != nil {
-				slog.ErrorContext(r.Context(), "telegram.enqueue_failed", "error", err)
-			}
+		publish = s.deps.Tasks.Publish
+	}
+	s.serveTelegramUpdate(r.Context(), w, body, publish)
+	return nil
+}
+
+// gameUpdate nhận update thành viên/join/migrate mà webhook chuyển sang. Hiện
+// mới ghi log loại update (không ghi nội dung, có tên và id người dùng); L1 sẽ
+// cập nhật inPsc từ đây. Decode lỏng: thêm field không bị ràng buộc thứ tự deploy.
+func (s *Server) gameUpdate(w http.ResponseWriter, r *http.Request) error {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		return err
+	}
+	var task gameUpdateTask
+	var kinds map[string]json.RawMessage
+	if json.Unmarshal(body, &task) != nil || json.Unmarshal(task.Raw, &kinds) != nil {
+		slog.WarnContext(r.Context(), "game.update_bad_payload")
+		w.WriteHeader(204)
+		return nil
+	}
+	names := make([]string, 0, len(kinds))
+	for k := range kinds {
+		if k != "update_id" {
+			names = append(names, k)
 		}
 	}
-	w.WriteHeader(http.StatusOK)
-	return nil
+	slog.InfoContext(r.Context(), "game.update_received", "updateId", task.UpdateID, "kinds", names)
+	return writeJSON(w, 200, map[string]any{"ok": true})
 }
 
 // botMessage xử lý một tin bot đẩy từ queue bot-inbound: chạy trong request

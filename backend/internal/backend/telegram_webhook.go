@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 )
@@ -27,7 +28,21 @@ type TelegramUpdate struct {
 	// UpdateID là số tăng dần, duy nhất mỗi update — dùng làm khoá dedup khi
 	// đẩy vào queue để Cloud Tasks không tạo task trùng.
 	UpdateID int64 `json:"update_id"`
-	Message  *struct {
+	// CallbackQuery: người dùng bấm nút inline. Người bấm là From.ID; không tin
+	// uid nằm trong Data.
+	CallbackQuery *struct {
+		ID   string `json:"id"`
+		From struct {
+			ID int64 `json:"id"`
+		} `json:"from"`
+		Data string `json:"data"`
+	} `json:"callback_query"`
+	// Update thành viên của group: chỉ cần biết là có, nội dung chuyển nguyên
+	// sang bot qua game-update.
+	ChatMember      json.RawMessage `json:"chat_member"`
+	MyChatMember    json.RawMessage `json:"my_chat_member"`
+	ChatJoinRequest json.RawMessage `json:"chat_join_request"`
+	Message         *struct {
 		MessageID int64  `json:"message_id"`
 		Text      string `json:"text"`
 		// Forum (group bật Topics): tin trong một topic có is_topic_message và
@@ -48,7 +63,12 @@ type TelegramUpdate struct {
 			ID   int64  `json:"id"`
 			Type string `json:"type"`
 		} `json:"chat"`
-		From *struct {
+		// Tin dịch vụ: có người vào/rời group, hoặc group lên supergroup và đổi ID.
+		NewChatMembers    json.RawMessage `json:"new_chat_members"`
+		LeftChatMember    json.RawMessage `json:"left_chat_member"`
+		MigrateToChatID   int64           `json:"migrate_to_chat_id"`
+		MigrateFromChatID int64           `json:"migrate_from_chat_id"`
+		From              *struct {
 			ID        int64  `json:"id"`
 			Username  string `json:"username"`
 			FirstName string `json:"first_name"`

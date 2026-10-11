@@ -19,11 +19,12 @@ import (
 type QueueName string
 
 const (
-	QueueEvents     QueueName = "strava-events"
-	QueueBackfill   QueueName = "strava-backfill"
-	QueueDerived    QueueName = "derived-data"
-	QueueNotify     QueueName = "notifications"
-	QueueBotInbound QueueName = "bot-inbound"
+	QueueEvents      QueueName = "strava-events"
+	QueueBackfill    QueueName = "strava-backfill"
+	QueueDerived     QueueName = "derived-data"
+	QueueNotify      QueueName = "notifications"
+	QueueBotInbound  QueueName = "bot-inbound"
+	QueueGameInbound QueueName = "game-inbound"
 )
 
 type PublishTask struct {
@@ -40,14 +41,15 @@ type TaskPublisher struct {
 }
 
 func NewTaskPublisher(client *cloudtasks.Client, c Config) *TaskPublisher {
-	return &TaskPublisher{client: client, project: c.ProjectID, region: c.Region, workerURL: c.WorkerBaseURL, botURL: c.BotBaseURL, serviceAccount: c.TaskInvokerAccount, queues: map[QueueName]string{QueueEvents: c.EventsQueue, QueueBackfill: c.BackfillQueue, QueueDerived: c.DerivedQueue, QueueNotify: c.NotifyQueue, QueueBotInbound: c.BotInboundQueue}}
+	return &TaskPublisher{client: client, project: c.ProjectID, region: c.Region, workerURL: c.WorkerBaseURL, botURL: c.BotBaseURL, serviceAccount: c.TaskInvokerAccount, queues: map[QueueName]string{QueueEvents: c.EventsQueue, QueueBackfill: c.BackfillQueue, QueueDerived: c.DerivedQueue, QueueNotify: c.NotifyQueue, QueueBotInbound: c.BotInboundQueue, QueueGameInbound: c.GameInboundQueue}}
 }
 
 // targetURL chọn service đích cho một queue. Mặc định worker; các queue của
-// phần AI (bot-inbound, notifications) đi tới runnow-bot khi đã cấu hình
-// BOT_BASE_URL (chưa set thì rơi về worker — hành vi cũ, an toàn).
+// phần AI (bot-inbound, notifications) và game (game-inbound, cần token bot)
+// đi tới runnow-bot khi đã cấu hình BOT_BASE_URL (chưa set thì rơi về worker —
+// hành vi cũ, an toàn).
 func (p *TaskPublisher) targetURL(queue QueueName) string {
-	if (queue == QueueBotInbound || queue == QueueNotify) && p.botURL != "" {
+	if (queue == QueueBotInbound || queue == QueueNotify || queue == QueueGameInbound) && p.botURL != "" {
 		return p.botURL
 	}
 	return p.workerURL

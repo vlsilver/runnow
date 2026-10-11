@@ -30,6 +30,7 @@ type Config struct {
 	DerivedQueue          string
 	NotifyQueue           string
 	BotInboundQueue       string
+	GameInboundQueue      string
 	TelegramBotToken      string
 	TelegramChatID        string
 	StorageBucket         string
@@ -60,6 +61,7 @@ func LoadConfig() (Config, error) {
 		EventsQueue:        env("STRAVA_EVENTS_QUEUE", "strava-events"), BackfillQueue: env("STRAVA_BACKFILL_QUEUE", "strava-backfill"), DerivedQueue: env("DERIVED_DATA_QUEUE", "derived-data"),
 		NotifyQueue:      env("NOTIFY_QUEUE", "notifications"),
 		BotInboundQueue:  env("BOT_INBOUND_QUEUE", "bot-inbound"),
+		GameInboundQueue: env("GAME_INBOUND_QUEUE", ""), // rỗng: webhook bỏ qua update thành viên của Ma Sói
 		TelegramBotToken: env("TELEGRAM_BOT_TOKEN", ""), TelegramChatID: env("TELEGRAM_CHAT_ID", ""),
 		AllowedWebOrigins: map[string]struct{}{},
 	}
