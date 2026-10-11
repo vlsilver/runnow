@@ -18,6 +18,9 @@ func baseRoles() map[string]Role {
 	}
 }
 
+// testStart: Start lúc 9h ngày 15/10, nên đêm 1 là 22h cùng ngày.
+var testStart = time.Date(2026, 10, 15, 9, 0, 0, 0, vietnam)
+
 // tg giả lập một ván: giữ state, các action đang lưu của vòng hiện tại, và
 // snapshot km sẽ chốt ở lần 22h kế tiếp.
 type tg struct {
@@ -25,13 +28,12 @@ type tg struct {
 	st      *State
 	actions map[string]Action // key actor/kind; ghi đè như doc action
 	km      map[string]float64
-	clock   time.Time
+	seq     int
 }
 
 func newGame(t *testing.T, roles map[string]Role) *tg {
 	t.Helper()
-	g := &tg{t: t, st: NewState(Seed{7}, Config{}, roles), actions: map[string]Action{}, km: map[string]float64{},
-		clock: time.Date(2026, 10, 15, 20, 0, 0, 0, vietnam)}
+	g := &tg{t: t, st: NewState(Seed{7}, Config{}, roles, testStart), actions: map[string]Action{}, km: map[string]float64{}}
 	for uid := range roles {
 		g.km[uid] = 5000
 	}
@@ -55,10 +57,20 @@ func (g *tg) mine(actor string) []Action {
 	return out
 }
 
+// now trả một giờ nằm trong cửa sổ đang mở: 30 phút trước hạn gần nhất, cộng dần
+// từng giây để receivedAt giữ đúng thứ tự bấm.
+func (g *tg) now() time.Time {
+	g.seq++
+	end := g.st.Deadline()
+	if g.st.Hunter != nil {
+		end = g.st.hunterClose()
+	}
+	return end.Add(-30*time.Minute + time.Duration(g.seq)*time.Second)
+}
+
 func (g *tg) try(a Action) error {
-	g.clock = g.clock.Add(time.Minute)
-	a.ReceivedAt = g.clock
-	if err := Validate(g.st, a, g.mine(a.Actor)); err != nil {
+	a.ReceivedAt = g.now()
+	if err := Validate(g.st, a, g.mine(a.Actor), a.ReceivedAt); err != nil {
 		return err
 	}
 	key := a.Actor + "/" + string(a.Kind)

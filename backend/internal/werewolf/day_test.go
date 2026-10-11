@@ -61,7 +61,7 @@ func TestR6UnpairedCupidGetsDeterministicRandomPairWithoutCupid(t *testing.T) {
 	roles["cupid"] = Cupid
 	var first []string
 	for seed := byte(0); seed < 200; seed++ {
-		st := NewState(Seed{seed}, Config{}, roles)
+		st := NewState(Seed{seed}, Config{}, roles, testStart)
 		st, _, _ = Step(st, Inputs{})
 		st, evs, _ := Step(st, Inputs{})
 		e := find(evs, EventLovers)
@@ -77,7 +77,7 @@ func TestR6UnpairedCupidGetsDeterministicRandomPairWithoutCupid(t *testing.T) {
 			first = st.Lovers
 		}
 	}
-	st := NewState(Seed{0}, Config{}, roles)
+	st := NewState(Seed{0}, Config{}, roles, testStart)
 	st, _, _ = Step(st, Inputs{})
 	st, _, _ = Step(st, Inputs{})
 	if !reflect.DeepEqual(st.Lovers, first) {
@@ -116,7 +116,7 @@ func TestR7VillagerOnlyNominatesAndVotes(t *testing.T) {
 
 func TestR10ConfigSnapshotAtStart(t *testing.T) {
 	cfg := Config{KmPerUnit: 2, Disabled: []Role{Witch}}
-	st := NewState(Seed{1}, cfg, baseRoles())
+	st := NewState(Seed{1}, cfg, baseRoles(), testStart)
 	cfg.Disabled[0] = Hunter
 	if st.Config.Disabled[0] != Witch || st.Config.unitMeters() != 2000 {
 		t.Fatalf("cấu hình trong ván bị đổi theo: %+v", st.Config)

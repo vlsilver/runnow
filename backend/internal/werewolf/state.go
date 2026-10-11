@@ -3,6 +3,7 @@ package werewolf
 import (
 	"fmt"
 	"sort"
+	"time"
 )
 
 // Phase là đoạn giữa hai lần chốt trong một vòng (bảng 1.3). Engine chỉ biết thứ
@@ -60,12 +61,17 @@ type HunterTurn struct {
 // State là toàn bộ trạng thái một ván. Lớp Firestore (W1) tách phần công khai
 // sang games/{id}, phần còn lại vào secret/state.
 type State struct {
-	Config  Config             `json:"config"`
-	Seed    Seed               `json:"seed"`
-	Round   int                `json:"round"` // vòng n gồm đêm n và ngày n; setup thuộc vòng 1
-	Phase   Phase              `json:"phase"`
-	Paused  bool               `json:"paused,omitempty"`
-	Players map[string]*Player `json:"players"`
+	Config Config `json:"config"`
+	Seed   Seed   `json:"seed"`
+	Round  int    `json:"round"` // vòng n gồm đêm n và ngày n; setup thuộc vòng 1
+	Phase  Phase  `json:"phase"`
+	Paused bool   `json:"paused,omitempty"`
+	// NightAt là mốc 22h mở đêm của vòng hiện tại; mọi hạn trong vòng tính từ đây
+	// (schedule.go). Pause rồi resume thì mốc này dời theo ngày (R14).
+	NightAt time.Time `json:"nightAt"`
+	// Reminded là PhaseKey đã gửi tin nhắc (15h, 21h), để chạy lại không nhắc hai lần.
+	Reminded string             `json:"reminded,omitempty"`
+	Players  map[string]*Player `json:"players"`
 
 	// Km là snapshot km (mét) của lần chốt 22h gần nhất. Dùng cho kỹ năng của đêm
 	// kế tiếp và cho thợ săn (R26, R5).
@@ -82,10 +88,10 @@ type State struct {
 	Winner Team        `json:"winner,omitempty"`
 }
 
-// NewState dựng ván lúc Start, sau khi đã chia vai.
-func NewState(seed Seed, cfg Config, roles map[string]Role) *State {
+// NewState dựng ván lúc Start, sau khi đã chia vai. Đêm 1 là FirstNight(start).
+func NewState(seed Seed, cfg Config, roles map[string]Role, start time.Time) *State {
 	cfg.Disabled = append([]Role(nil), cfg.Disabled...) // chụp cấu hình (R10)
-	st := &State{Config: cfg, Seed: seed, Round: 1, Phase: PhaseSetup, Players: map[string]*Player{}, SavePotion: true, PoisonPotion: true}
+	st := &State{Config: cfg, Seed: seed, Round: 1, Phase: PhaseSetup, NightAt: FirstNight(start), Players: map[string]*Player{}, SavePotion: true, PoisonPotion: true}
 	for uid, r := range roles {
 		st.Players[uid] = &Player{Role: r, Alive: true}
 	}
@@ -93,7 +99,11 @@ func NewState(seed Seed, cfg Config, roles map[string]Role) *State {
 }
 
 // PhaseKey định danh lần chốt kế tiếp, dùng cho CAS ở W1 và làm nhãn ngẫu nhiên.
+// Lượt thợ săn có key riêng, vì nó là một lần chốt nằm giữa phase.
 func (st *State) PhaseKey() string {
+	if st.Hunter != nil {
+		return fmt.Sprintf("r%d/%s/hunter", st.Round, st.Phase)
+	}
 	return fmt.Sprintf("r%d/%s", st.Round, st.Phase)
 }
 

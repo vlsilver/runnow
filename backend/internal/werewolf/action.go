@@ -79,9 +79,10 @@ var kindRules = map[Kind]kindRule{
 
 // Validate kiểm một hành động theo luật, trước khi service hành động ghi nó.
 // mine là các action actor đang có trong vòng này (mọi kind), để kiểm luật chọn
-// một lần và luật giữa hai bình của phù thuỷ. Giờ của từng cửa sổ (biểu quyết mở
-// lúc 20h, thợ săn đóng lúc 12h/23h…) do E5 kiểm thêm; ở đây chỉ kiểm theo phase.
-func Validate(st *State, a Action, mine []Action) error {
+// một lần và luật giữa hai bình của phù thuỷ. now là receivedAt: hành động phải
+// nằm trong cửa sổ của nó (schedule.go), nên action tới sau hạn mà bước chốt chưa
+// chạy vẫn bị từ chối, không lọt vào hay mất lặng lẽ.
+func Validate(st *State, a Action, mine []Action, now time.Time) error {
 	rule, ok := kindRules[a.Kind]
 	if !ok {
 		return ErrPhaseClosed
@@ -101,14 +102,14 @@ func Validate(st *State, a Action, mine []Action) error {
 	}
 	if a.Kind == KindHunterShoot {
 		// Thợ săn bắn sau khi chết, nên không kiểm còn sống.
-		if st.Hunter == nil || st.Hunter.UID != a.Actor {
+		if st.Hunter == nil || st.Hunter.UID != a.Actor || !now.Before(st.hunterClose()) {
 			return ErrPhaseClosed
 		}
 	} else {
 		if !p.Alive {
 			return ErrNotAlive
 		}
-		if !phaseOpen(rule.phases, st.Phase) {
+		if !phaseOpen(rule.phases, st.Phase) || !st.windowOpen(a.Kind, now) {
 			return ErrPhaseClosed
 		}
 	}
