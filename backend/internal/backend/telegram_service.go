@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -37,6 +38,30 @@ func NewTelegramService(botToken, chatID string) *TelegramService {
 // deployments that never set up Telegram behave exactly as before.
 func (s *TelegramService) Enabled() bool {
 	return s.botToken != "" && s.chatID != ""
+}
+
+// do gửi request và che token trong lỗi transport: *url.Error của net/http chứa
+// nguyên URL /bot<token>/..., mà lỗi này đi thẳng lên log và vào cả context của
+// model (tool trả err.Error()).
+func (s *TelegramService) do(req *http.Request) (*http.Response, error) {
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, s.redact(err)
+	}
+	return resp, nil
+}
+
+// redact thay token trong lỗi bằng "<token>". Giữ *url.Error (chỉ đổi URL) để
+// errors.Is(err, context.DeadlineExceeded) vẫn chạy được.
+func (s *TelegramService) redact(err error) error {
+	if err == nil || s.botToken == "" || !strings.Contains(err.Error(), s.botToken) {
+		return err
+	}
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return &url.Error{Op: ue.Op, URL: strings.ReplaceAll(ue.URL, s.botToken, "<token>"), Err: ue.Err}
+	}
+	return errors.New(strings.ReplaceAll(err.Error(), s.botToken, "<token>"))
 }
 
 // ChatID là group đích của các thông báo — cũng là khoá lịch sử/trí nhớ để
@@ -75,10 +100,10 @@ func (s *TelegramService) SendActivityAlert(ctx context.Context, displayName, ac
 	url := s.apiBaseURL + "/bot" + s.botToken + "/sendMessage"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
-		return err
+		return s.redact(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := s.client.Do(req)
+	resp, err := s.do(req)
 	if err != nil {
 		return err
 	}
@@ -113,10 +138,10 @@ func (s *TelegramService) SendActivityAnnouncement(ctx context.Context, text, de
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.apiBaseURL+"/bot"+s.botToken+"/sendMessage", bytes.NewReader(payload))
 	if err != nil {
-		return err
+		return s.redact(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := s.client.Do(req)
+	resp, err := s.do(req)
 	if err != nil {
 		return err
 	}
@@ -147,10 +172,10 @@ func (s *TelegramService) SendChatMessage(ctx context.Context, chatID, text stri
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.apiBaseURL+"/bot"+s.botToken+"/sendMessage", bytes.NewReader(payload))
 	if err != nil {
-		return err
+		return s.redact(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := s.client.Do(req)
+	resp, err := s.do(req)
 	if err != nil {
 		return err
 	}
@@ -186,10 +211,10 @@ func (s *TelegramService) SendPhoto(ctx context.Context, chatID string, image []
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.apiBaseURL+"/bot"+s.botToken+"/sendPhoto", &buf)
 	if err != nil {
-		return err
+		return s.redact(err)
 	}
 	req.Header.Set("Content-Type", w.FormDataContentType())
-	resp, err := s.client.Do(req)
+	resp, err := s.do(req)
 	if err != nil {
 		return err
 	}
@@ -211,9 +236,9 @@ func (s *TelegramService) DownloadFile(ctx context.Context, fileID string) ([]by
 	metaURL := s.apiBaseURL + "/bot" + s.botToken + "/getFile?file_id=" + url.QueryEscape(fileID)
 	metaReq, err := http.NewRequestWithContext(ctx, http.MethodGet, metaURL, nil)
 	if err != nil {
-		return nil, err
+		return nil, s.redact(err)
 	}
-	metaResp, err := s.client.Do(metaReq)
+	metaResp, err := s.do(metaReq)
 	if err != nil {
 		return nil, err
 	}
@@ -232,9 +257,9 @@ func (s *TelegramService) DownloadFile(ctx context.Context, fileID string) ([]by
 	}
 	dlReq, err := http.NewRequestWithContext(ctx, http.MethodGet, s.apiBaseURL+"/file/bot"+s.botToken+"/"+meta.Result.FilePath, nil)
 	if err != nil {
-		return nil, err
+		return nil, s.redact(err)
 	}
-	dlResp, err := s.client.Do(dlReq)
+	dlResp, err := s.do(dlReq)
 	if err != nil {
 		return nil, err
 	}

@@ -106,3 +106,32 @@ func TestTelegramActivityAlertSkipsWhenDisabled(t *testing.T) {
 		t.Fatalf("SendActivityAlert disabled = %v", err)
 	}
 }
+
+// Lỗi transport của net/http (*url.Error) chứa nguyên URL /bot<token>/... —
+// không che thì token lên log và vào cả context của model (tool trả err.Error()).
+func TestTelegramTransportErrorDoesNotLeakToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	baseURL := server.URL
+	server.Close() // gọi vào là connection refused
+
+	const token = "123456:SECRET-token"
+	service := NewTelegramService(token, "chat")
+	service.apiBaseURL = baseURL
+	ctx := context.Background()
+	calls := map[string]error{
+		"SendActivityAlert":        service.SendActivityAlert(ctx, "a", "b", ActivityFact{}, "https://x.test", ""),
+		"SendActivityAnnouncement": service.SendActivityAnnouncement(ctx, "hi", "https://x.test"),
+		"SendChatMessage":          service.SendChatMessage(ctx, "chat", "hi"),
+		"SendPhoto":                service.SendPhoto(ctx, "chat", []byte("png"), "cap"),
+	}
+	_, dlErr := service.DownloadFile(ctx, "file")
+	calls["DownloadFile"] = dlErr
+	for name, err := range calls {
+		if err == nil {
+			t.Fatalf("%s: muốn lỗi transport, nhận nil", name)
+		}
+		if strings.Contains(err.Error(), token) || strings.Contains(err.Error(), "SECRET") {
+			t.Fatalf("%s lộ token: %v", name, err)
+		}
+	}
+}
