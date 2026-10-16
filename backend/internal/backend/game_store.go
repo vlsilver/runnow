@@ -149,13 +149,29 @@ func gameClosed(status string) bool { return status == gameEnded || status == ga
 // StartGame ghi state ban đầu (đã chia vai) và các tin mở ván. Chỉ chạy được
 // một lần: ván đã chạy thì trả 409.
 func (s *GameStore) StartGame(ctx context.Context, gameID string, st *werewolf.State, now time.Time) error {
+	return s.startGame(ctx, gameID, st, nil, now)
+}
+
+// startRoster là phần game-start sửa danh sách người chơi lúc Start: xoá người
+// bị loại và ghi tg hiện tại của người còn lại, vì lúc đăng ký người đó có thể đã
+// đổi liên kết (L1 (b)).
+type startRoster struct {
+	exclude  []string
+	tgUserID map[string]int64
+}
+
+// startGame là StartGame; roster khác nil thì là đường của game-start: ván phải
+// còn ở starting, vì admin có thể đã huỷ trong lúc bot hỏi Telegram.
+func (s *GameStore) startGame(ctx context.Context, gameID string, st *werewolf.State, roster *startRoster, now time.Time) error {
 	game := s.gameRef(gameID)
 	return s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		g, err := tx.Get(game)
 		if err != nil {
 			return err
 		}
-		if st := stringValue(g.Data()["status"]); st != gameRegistering && st != gameStarting {
+		status := stringValue(g.Data()["status"])
+		open := status == gameStarting || roster == nil && status == gameRegistering
+		if !open {
 			return &HTTPError{Status: http.StatusConflict, Code: "game_running", Message: "Ván đã bắt đầu hoặc đã kết thúc."}
 		}
 		// players/{uid} do bước đăng ký ghi, có tgUserId; thiếu thì dữ liệu đã hỏng,
@@ -180,11 +196,25 @@ func (s *GameStore) StartGame(ctx context.Context, gameID string, st *werewolf.S
 			return err
 		}
 		for _, ref := range refs {
-			if err := tx.Set(ref, map[string]any{"alive": true}, firestore.MergeAll); err != nil {
+			fields := map[string]any{"alive": true}
+			if roster != nil {
+				if tg, ok := roster.tgUserID[ref.ID]; ok {
+					fields["tgUserId"] = tg
+				}
+			}
+			if err := tx.Set(ref, fields, firestore.MergeAll); err != nil {
 				return err
 			}
 		}
-		w := stepWrite{tx: tx, game: game, gameData: g.Data(), after: st, msgs: msgs, chats: chats, now: now, wall: now}
+		if roster != nil {
+			for _, uid := range roster.exclude {
+				if err := tx.Delete(game.Collection("players").Doc(uid)); err != nil {
+					return err
+				}
+			}
+		}
+		w := stepWrite{tx: tx, game: game, gameData: g.Data(), after: st, msgs: msgs, chats: chats, now: now, wall: now,
+			extra: map[string]any{"playerCount": len(st.Players), "startError": nil}}
 		return w.commit(map[string]any{"kind": "start"})
 	})
 }
@@ -513,13 +543,15 @@ type stepWrite struct {
 	tx            *firestore.Transaction
 	game          *firestore.DocumentRef
 	gameData      map[string]any
-	before, after *werewolf.State // before nil khi Start
+	before, after *werewolf.State // before nil khi không phải bước engine (Start, pause, resume)
 	events        []werewolf.Event
 	msgs          []gameMsg
 	chats         map[string]int64
 	// now là giờ ván (engine, event, feed, diedAt); wall là giờ thật (updatedAt,
 	// outbox). Hai giờ chỉ khác nhau ở ván thử đã bị admin/advance đẩy giờ.
 	now, wall time.Time
+	// extra gộp thêm vào games/{id} (Start ghi playerCount sau khi loại người).
+	extra map[string]any
 }
 
 func (w *stepWrite) status() string {
@@ -555,6 +587,9 @@ func (w *stepWrite) commit(event map[string]any) error {
 	}
 
 	public := w.publicGame()
+	for k, v := range w.extra {
+		public[k] = v
+	}
 	public["eventSeq"] = eventSeq
 	public["version"] = int64(number(w.gameData["version"])) + 1
 	reminderOnly := len(w.events) == 1 && w.events[0].Kind == werewolf.EventReminder

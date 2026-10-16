@@ -30,6 +30,8 @@ type apiHarness struct {
 	srv    http.Handler
 	auth   *auth.Client
 	tokens map[string]string
+	cfg    Config
+	deps   *Dependencies
 }
 
 func newAPIHarness(t *testing.T, store *GameStore) *apiHarness {
@@ -48,7 +50,7 @@ func newAPIHarness(t *testing.T, store *GameStore) *apiHarness {
 	}
 	deps := &Dependencies{Firestore: store.db, Auth: ac, Games: store, TelegramLinks: NewTelegramLinkService(store.db, "threei_bot")}
 	cfg := Config{AllowedWebOrigins: map[string]struct{}{"https://threei.run": {}}}
-	return &apiHarness{t: t, store: store, srv: NewAPIServer(cfg, deps), auth: ac, tokens: map[string]string{}}
+	return &apiHarness{t: t, store: store, srv: NewAPIServer(cfg, deps), auth: ac, tokens: map[string]string{}, cfg: cfg, deps: deps}
 }
 
 // token đổi custom token của uid lấy ID token như app làm sau khi đăng nhập.

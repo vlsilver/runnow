@@ -279,21 +279,26 @@ func replayMatches(t *testing.T, g *storeGame) {
 	var st *ww.State
 	for _, d := range docs {
 		ev := d.Data()
-		if ev["kind"] == "start" {
+		var err error
+		switch ev["kind"] {
+		case "cancel":
+			continue // huỷ không đổi state
+		case "start":
 			st = &ww.State{}
-			if err := json.Unmarshal([]byte(ev["state"].(string)), st); err != nil {
-				t.Fatal(err)
-			}
-		} else {
+			err = json.Unmarshal([]byte(ev["state"].(string)), st)
+		case "pause":
+			st, err = ww.Pause(st)
+		case "resume":
+			st, err = ww.Resume(st, ev["at"].(time.Time))
+		default:
 			var in ww.Inputs
 			if err := json.Unmarshal([]byte(ev["inputs"].(string)), &in); err != nil {
 				t.Fatal(err)
 			}
-			next, _, err := ww.Advance(st, in, ev["at"].(time.Time))
-			if err != nil {
-				t.Fatalf("replay event %v: %v", ev["seq"], err)
-			}
-			st = next
+			st, _, err = ww.Advance(st, in, ev["at"].(time.Time))
+		}
+		if err != nil {
+			t.Fatalf("replay event %v (%v): %v", ev["seq"], ev["kind"], err)
 		}
 		b, _ := json.Marshal(st)
 		sum := sha256.Sum256(b)

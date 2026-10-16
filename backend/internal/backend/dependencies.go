@@ -30,6 +30,9 @@ type Dependencies struct {
 	Memory         *MemoryService
 	TelegramLinks  *TelegramLinkService
 	Games          *GameStore
+	// EnqueueTask thay Tasks.Publish khi khác nil; test gài để bắt task mà
+	// không cần Cloud Tasks.
+	EnqueueTask taskPublishFunc
 }
 
 func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) {

@@ -14,9 +14,9 @@ const (
 // ErrPlayerCount: dưới 10 hoặc trên 16 người thì không Start được (R9).
 var ErrPlayerCount = errors.New("số người chơi phải từ 10 tới 16")
 
-// composition trả bộ vai cho n người theo bảng 1.2, rồi áp công tắc (R8): vai
-// bị tắt thành Dân, số sói giữ nguyên.
-func composition(n int, cfg Config) ([]Role, error) {
+// Composition trả bộ vai cho n người theo bảng 1.2, rồi áp công tắc (R8): vai
+// bị tắt thành Dân, số sói giữ nguyên. dryRun của Start dùng để tính điểm cân bằng.
+func Composition(n int, cfg Config) ([]Role, error) {
 	if n < MinPlayers || n > MaxPlayers {
 		return nil, fmt.Errorf("%w (đang có %d)", ErrPlayerCount, n)
 	}
@@ -64,7 +64,7 @@ func DealForced(seed Seed, players []string, cfg Config, forced map[string]Role)
 			return nil, fmt.Errorf("người chơi %q bị trùng", sorted[i])
 		}
 	}
-	roles, err := composition(len(sorted), cfg)
+	roles, err := Composition(len(sorted), cfg)
 	if err != nil {
 		return nil, err
 	}

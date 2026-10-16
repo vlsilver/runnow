@@ -168,3 +168,25 @@ func TestAPIStatusMapsPause(t *testing.T) {
 		t.Fatal("ván đã kết thúc vẫn ra paused")
 	}
 }
+
+func TestBalanceScoreByHand(t *testing.T) {
+	cases := []struct {
+		n    int
+		cfg  ww.Config
+		want int
+	}{
+		{10, ww.Config{}, -12 + 7 + 3 + 6},                                       // 2 sói, Tiên tri, Bảo vệ, 6 dân
+		{16, ww.Config{}, -18 + 7 + 3 + 4 + 3 - 3 + 8},                           // đủ 5 vai đặc biệt, 8 dân
+		{13, ww.Config{Disabled: []ww.Role{ww.Cupid}}, -18 + 7 + 3 + 4 + 3 + 6},  // Cupid thành dân
+		{12, ww.Config{Disabled: []ww.Role{ww.Seer, ww.Witch}}, -18 + 3 + 3 + 7}, // Bảo vệ, Thợ săn, 7 dân
+	}
+	for _, c := range cases {
+		roles, err := ww.Composition(c.n, c.cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := balanceScore(roles); got != c.want {
+			t.Errorf("n=%d %v: %d, mong đợi %d", c.n, c.cfg.Disabled, got, c.want)
+		}
+	}
+}

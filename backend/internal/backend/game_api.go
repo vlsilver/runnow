@@ -156,6 +156,7 @@ type viewerLink struct {
 	linked      bool
 	inPsc       bool
 	displayName string
+	username    string
 }
 
 type docGetter func(*firestore.DocumentRef) (*firestore.DocumentSnapshot, error)
@@ -188,7 +189,7 @@ func (s *GameStore) readLink(get docGetter, uid string) (viewerLink, error) {
 		return viewerLink{}, err
 	}
 	id, _ := strconv.ParseInt(tg, 10, 64)
-	return viewerLink{tgUserID: id, linked: true, inPsc: link.Data()["inPsc"] == true, displayName: stringValue(link.Data()["displayName"])}, nil
+	return viewerLink{tgUserID: id, linked: true, inPsc: link.Data()["inPsc"] == true, displayName: stringValue(link.Data()["displayName"]), username: stringValue(link.Data()["username"])}, nil
 }
 
 func requirementsFor(link viewerLink, appVersion, minAppVersion string) []GameRequirement {
@@ -668,6 +669,8 @@ type GameDetail struct {
 	WinnerLabel          string            `json:"winnerLabel,omitempty"`
 	// TaskKey chỉ trả cho admin ở ván thử, để gửi kèm admin/advance.
 	TaskKey string `json:"taskKey,omitempty"`
+	// StartError chỉ trả cho admin: lần Start gần nhất bị bot trả về đăng ký.
+	StartError *GameStartError `json:"startError,omitempty"`
 }
 
 type GamePhase struct {
@@ -752,6 +755,9 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 	}
 	if out.IsAdmin && out.TestMode && stringValue(data["status"]) == gameRunning {
 		out.TaskKey = stringValue(data["taskKey"])
+	}
+	if out.IsAdmin {
+		out.StartError = startErrorOf(data)
 	}
 	if stringValue(data["status"]) == gameRunning {
 		deadline := nextDeadline(data)
