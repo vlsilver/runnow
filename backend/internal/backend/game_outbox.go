@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -119,6 +120,70 @@ func (s *GameStore) FlushGame(ctx context.Context, gameID string, tg outboxTeleg
 		}
 	}
 	return res, errors.Join(errs...)
+}
+
+// AdminRetryOutbox xếp mọi tin failed chưa gửi lại thành tin mới ở cuối chat
+// của nó và trả số tin đã xếp; người gọi kick flush. Tin cũ giữ status failed
+// (M1 vẫn đếm) và ghi retriedAs, nên gọi lại không xếp đôi. Tin gửi bù tới sau
+// những tin mới hơn, nên bộ gửi thêm dòng giờ của tin gốc (origAt). Prompt và
+// tin sửa của lượt đã qua thì bộ gửi bỏ (stale) như thường. Một transaction là
+// đủ: Firestore không còn giới hạn 500 lần ghi mỗi commit.
+func (s *GameStore) AdminRetryOutbox(ctx context.Context, gameID, by string, wall time.Time) (int, error) {
+	if _, err := s.readStartGame(ctx, gameID); err != nil {
+		return 0, err
+	}
+	game := s.gameRef(gameID)
+	var n int
+	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		docs, err := tx.Documents(game.Collection("outbox").Where("status", "==", outboxFailed)).GetAll()
+		if err != nil {
+			return err
+		}
+		var failed []*firestore.DocumentSnapshot
+		for _, d := range docs {
+			if _, done := d.Data()["retriedAs"]; !done {
+				failed = append(failed, d)
+			}
+		}
+		// Theo seq là đủ: seq tăng dần trong từng chat, nên chat nào cũng giữ thứ tự cũ.
+		sort.Slice(failed, func(i, j int) bool { return number(failed[i].Data()["seq"]) < number(failed[j].Data()["seq"]) })
+		msgs := make([]gameMsg, len(failed))
+		for i, d := range failed {
+			msgs[i] = gameMsg{ChatKey: stringValue(d.Data()["chatKey"])}
+		}
+		chats, err := readChats(tx, game, msgs)
+		if err != nil {
+			return err
+		}
+		for _, d := range failed {
+			m := d.Data()
+			key := stringValue(m["chatKey"])
+			seq := chats[key]
+			chats[key] = seq + 1
+			id := key + "_" + strconv.FormatInt(seq, 10)
+			origAt := m["origAt"]
+			if origAt == nil {
+				origAt = m["createdAt"]
+			}
+			if err := tx.Create(game.Collection("outbox").Doc(id), map[string]any{
+				"chatKey": key, "seq": seq, "template": m["template"], "data": m["data"],
+				"status": outboxPending, "eventSeq": m["eventSeq"], "createdAt": wall,
+				"retryOf": d.Ref.ID, "origAt": origAt,
+			}); err != nil {
+				return err
+			}
+			if err := tx.Update(d.Ref, []firestore.Update{{Path: "retriedAs", Value: id}, {Path: "retriedAt", Value: wall}}); err != nil {
+				return err
+			}
+		}
+		n = len(failed)
+		return markChatsPending(tx, game, chats, wall)
+	})
+	if err != nil {
+		return 0, err
+	}
+	slog.InfoContext(ctx, "game.outbox_retried", "gameId", gameID, "by", by, "requeued", n)
+	return n, nil
 }
 
 func leaseOwner() (string, error) {
@@ -268,6 +333,9 @@ func (f *chatFlusher) deliver(ctx context.Context, key string, seq int64, msg, c
 	}
 	if out.skip != "" {
 		return delivery{result: map[string]any{"status": outboxSkipped, "skipReason": out.skip}}, outcomeSent, nil
+	}
+	if at := timeValue(msg["origAt"]); !at.IsZero() && out.editID == 0 {
+		out.parts = withLateLabel(out.parts, at)
 	}
 	var ids []int64
 	for i, part := range out.parts {
@@ -822,6 +890,16 @@ func adminText(action string, deadline time.Time, minutes int) (string, error) {
 		return fmt.Sprintf("<b>Dời hạn</b>\nAdmin dời hạn lượt này thêm %d phút. Hạn mới: %s.", minutes, vnTime(deadline)), nil
 	}
 	return "", fmt.Errorf("lệnh admin lạ %q", action)
+}
+
+// withLateLabel thêm dòng báo tin gửi bù vào đầu phần đầu, hoặc thành phần
+// riêng nếu phần đầu đã sát giới hạn.
+func withLateLabel(parts []string, at time.Time) []string {
+	label := "<i>Gửi bù tin lúc " + vnTime(at) + "</i>"
+	if len(parts) > 0 && utf16Len(label)+1+utf16Len(parts[0]) <= telegramTextLimit {
+		return append([]string{label + "\n" + parts[0]}, parts[1:]...)
+	}
+	return append([]string{label}, parts...)
 }
 
 // splitTelegramText tách theo dòng cho mỗi phần không quá limit đơn vị UTF-16.

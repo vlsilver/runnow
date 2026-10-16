@@ -214,6 +214,28 @@ func (e *buttonEnv) actionCount(round int, uid string) int {
 	return len(docs)
 }
 
+// Tin sửa bị lỗi rồi được gửi bù: vẫn sửa đúng prompt, không chèn dòng gửi bù
+// vào prompt.
+func TestEmulatorButtonRetriedChoiceEditsPrompt(t *testing.T) {
+	e := newButtonEnv(t)
+	if text, _ := e.press(e.storeGame.tg["w1"], e.btn(ww.KindWolfBite, opPick, "v1")); text != "Đã chọn V1." {
+		t.Fatalf("cắn = %q", text)
+	}
+	e.tg.Then("editMessageText", tgBadRequest("Bad Request: can't parse entities"))
+	if res, err := e.store.FlushGame(context.Background(), e.id, e.tg.service(testPscChat), time.Now); err != nil || res.Failed != 1 {
+		t.Fatalf("flush = %+v, %v", res, err)
+	}
+	if n, err := e.store.AdminRetryOutbox(context.Background(), e.id, "boss", time.Now()); err != nil || n != 1 {
+		t.Fatalf("retry = %d, %v", n, err)
+	}
+	e.flush()
+	last := e.lastDM("w1")
+	if text := last.Params["text"].(string); last.Method != "editMessageText" || last.Params["message_id"] != e.promptID("w1", ww.KindWolfBite) ||
+		strings.Contains(text, "Gửi bù") || !strings.Contains(text, "\nĐang chọn: V1.\n") {
+		t.Fatalf("DM = %v", last)
+	}
+}
+
 // W2 "Xong khi": chọn chéo kênh thì tin DM cuối cùng hiện đúng lựa chọn đang lưu.
 func TestEmulatorButtonCrossChannelShowsStoredChoice(t *testing.T) {
 	e := newButtonEnv(t)

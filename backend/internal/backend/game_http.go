@@ -136,6 +136,16 @@ func (s *Server) gameRoutes() {
 		s.kickGameFlush(r.Context(), id)
 		return writeJSON(w, 200, map[string]any{"ok": true})
 	}))
+	// Kick flush cả khi không có tin failed, để đẩy tin pending đang kẹt.
+	s.route("POST /v1/games/{id}/admin/retry-outbox", s.gameAdmin(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+		id := r.PathValue("id")
+		n, err := s.deps.Games.AdminRetryOutbox(r.Context(), id, v.UID, time.Now())
+		if err != nil {
+			return err
+		}
+		s.kickGameFlush(r.Context(), id)
+		return writeJSON(w, 200, map[string]any{"ok": true, "requeued": n})
+	}))
 
 	// Lệnh admin của ván thử (X1). Store từ chối nếu ván không phải ván thử.
 	s.route("POST /v1/games/{id}/admin/advance", s.gameAdmin(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {

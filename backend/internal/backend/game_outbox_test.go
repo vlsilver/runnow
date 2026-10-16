@@ -68,6 +68,22 @@ func TestSplitTelegramText(t *testing.T) {
 	}
 }
 
+// Dòng gửi bù "<i>Gửi bù tin lúc 22:00 12/10</i>" dài 33 đơn vị UTF-16, cộng
+// một dấu xuống dòng: phần đầu dài 4062 thì vừa khít 4096, dài 4063 thì dòng
+// gửi bù thành phần riêng.
+func TestWithLateLabel(t *testing.T) {
+	at := time.Date(2026, 10, 12, 15, 0, 0, 0, time.UTC)
+	label := "<i>Gửi bù tin lúc 22:00 12/10</i>"
+	fit := strings.Repeat("x", 4062)
+	if got := withLateLabel([]string{fit, "b"}, at); len(got) != 2 || got[0] != label+"\n"+fit || got[1] != "b" {
+		t.Fatalf("vừa khít: %d phần", len(got))
+	}
+	over := fit + "x"
+	if got := withLateLabel([]string{over}, at); len(got) != 2 || got[0] != label || got[1] != over {
+		t.Fatalf("quá giới hạn: %d phần", len(got))
+	}
+}
+
 func testRenderer() *outboxRenderer {
 	players := []gamePlayerInfo{
 		{uid: "w1", name: "An <Sói>", data: map[string]any{"tgUserId": "71"}},

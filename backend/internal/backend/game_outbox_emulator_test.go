@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -587,6 +588,119 @@ func TestEmulatorOutboxStalePendingClears(t *testing.T) {
 	}
 }
 
+func (e *outboxEnv) retry() int {
+	e.t.Helper()
+	n, err := e.store.AdminRetryOutbox(context.Background(), outboxGame, "boss", e.now())
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return n
+}
+
+// Retry xếp tin failed thành tin mới ở cuối chat, theo đúng thứ tự cũ, có dòng
+// gửi bù với giờ tin gốc. Tin cũ giữ failed và trỏ sang tin mới, nên gọi lại
+// không xếp đôi.
+func TestEmulatorOutboxRetryRequeuesFailed(t *testing.T) {
+	e := newOutboxEnv(t)
+	e.write(adminMsg("pause"), adminMsg("cancel"), noteMsg(dmChat("u1"), werewolf.KindGuard))
+	// Chat được duyệt theo ID: dm:u1 trước group.
+	e.tg.Then("sendMessage", tgForbidden("Forbidden: bot was blocked by the user"), tgBadRequest("Bad Request: chat not found"), tgBadRequest("Bad Request: chat not found"))
+	if res := e.flush(); res.Failed != 3 {
+		t.Fatalf("res = %+v", res)
+	}
+	e.advance(2 * time.Hour)
+	e.write(adminMsg("resume"))
+	e.flush()
+
+	if n := e.retry(); n != 3 {
+		t.Fatalf("requeued = %d", n)
+	}
+	for old, want := range map[string]string{"group_1": "group_4", "group_2": "group_5", "dm:u1_1": "dm:u1_2"} {
+		o, m := e.doc("outbox/"+old), e.doc("outbox/"+want)
+		if o["status"] != outboxFailed || o["retriedAs"] != want || !timeValue(o["retriedAt"]).Equal(e.now()) {
+			t.Fatalf("%s = %v", old, o)
+		}
+		if m["status"] != outboxPending || m["retryOf"] != old || m["template"] != o["template"] || m["data"] != o["data"] ||
+			m["eventSeq"] != o["eventSeq"] || !timeValue(m["origAt"]).Equal(timeValue(o["createdAt"])) {
+			t.Fatalf("%s = %v", want, m)
+		}
+	}
+	if n := e.retry(); n != 0 {
+		t.Fatalf("gọi lại xếp thêm %d tin", n)
+	}
+
+	if res := e.flush(); res.Sent != 3 {
+		t.Fatalf("res = %+v", res)
+	}
+	texts := e.sent()[4:]
+	late := "<i>Gửi bù tin lúc 22:00 12/10</i>\n"
+	if len(texts) != 3 || !strings.HasPrefix(texts[0], late) || !strings.Contains(texts[0], "Bảo vệ") ||
+		!strings.HasPrefix(texts[1], late+"<b>Ván tạm dừng") || !strings.HasPrefix(texts[2], late+"<b>Ván đã huỷ") {
+		t.Fatalf("texts = %q", texts)
+	}
+	if !strings.HasPrefix(e.sent()[3], "<b>Ván chạy tiếp") {
+		t.Fatalf("tin thường có dòng gửi bù: %q", e.sent()[3])
+	}
+}
+
+// Nhiều tin (hơn 500 lần ghi trong một transaction) vẫn xếp đủ, đúng thứ tự
+// seq. Tin gửi bù rồi lại lỗi thì lần sau vẫn ghi giờ của tin gốc đầu tiên.
+func TestEmulatorOutboxRetryManyKeepsOrder(t *testing.T) {
+	e := newOutboxEnv(t)
+	first := e.now().Add(-5 * time.Hour)
+	const total = 260
+	for i := 1; i <= total; i++ {
+		m := map[string]any{"chatKey": chatGroup, "seq": int64(i), "template": tplAdmin, "data": `{"action":"pause"}`,
+			"status": outboxFailed, "eventSeq": int64(i), "createdAt": e.now()}
+		if i == 1 {
+			m["origAt"], m["retryOf"] = first, "group_0"
+		}
+		seed(t, e.db, "games/"+outboxGame+"/outbox/group_"+strconv.Itoa(i), m)
+	}
+	seed(t, e.db, "games/"+outboxGame+"/outboxChats/group", map[string]any{"chatKey": chatGroup, "nextSeq": int64(total + 1), "lastSentSeq": int64(total)})
+
+	if n := e.retry(); n != total {
+		t.Fatalf("requeued = %d", n)
+	}
+	for i := 1; i <= total; i++ {
+		m := e.doc("outbox/group_" + strconv.Itoa(total+i))
+		if m["retryOf"] != "group_"+strconv.Itoa(i) || m["seq"] != int64(total+i) || m["eventSeq"] != int64(i) {
+			t.Fatalf("group_%d = %v", total+i, m)
+		}
+	}
+	if at := timeValue(e.doc("outbox/group_" + strconv.Itoa(total+1))["origAt"]); !at.Equal(first) {
+		t.Fatalf("origAt = %v", at)
+	}
+	if c := e.doc("outboxChats/group"); c["nextSeq"] != int64(2*total+1) || c["pending"] != true {
+		t.Fatalf("chat = %v", c)
+	}
+}
+
+// Hai admin bấm retry cùng lúc: mỗi tin chỉ được xếp lại một lần.
+func TestEmulatorOutboxRetryParallelOnce(t *testing.T) {
+	e := newOutboxEnv(t)
+	e.write(adminMsg("pause"), adminMsg("cancel"))
+	e.tg.Then("sendMessage", tgBadRequest("Bad Request: chat not found"), tgBadRequest("Bad Request: chat not found"))
+	e.flush()
+
+	var wg sync.WaitGroup
+	ns, errs := make([]int, 2), make([]error, 2)
+	for i := range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ns[i], errs[i] = e.store.AdminRetryOutbox(context.Background(), outboxGame, "boss", e.now())
+		}()
+	}
+	wg.Wait()
+	if errs[0] != nil || errs[1] != nil || ns[0]+ns[1] != 2 {
+		t.Fatalf("ns = %v, errs = %v", ns, errs)
+	}
+	if c := e.doc("outboxChats/group"); c["nextSeq"] != int64(5) {
+		t.Fatalf("chat = %v", c)
+	}
+}
+
 // Mỗi lần ghi qua api đều giao bot một lượt gửi ngay (3.2 bước 5); luật từ chối
 // thì không có gì để gửi.
 func TestEmulatorGameWritesKickFlush(t *testing.T) {
@@ -630,5 +744,18 @@ func TestEmulatorGameWritesKickFlush(t *testing.T) {
 	h.want(h.call("boss", "POST", path+"/admin/act-as", map[string]any{"uid": "fake-01", "kind": "wolf_bite", "targets": []string{"r2"}}, ""), 200, "")
 	if flushes() != 2 {
 		t.Fatalf("act-as: tasks = %v", tasks)
+	}
+
+	h.want(h.call("v1", "POST", path+"/admin/retry-outbox", nil, ""), 403, "not_admin")
+	h.want(h.call("boss", "POST", "/v1/games/nope/admin/retry-outbox", nil, ""), 404, "")
+	if flushes() != 2 {
+		t.Fatalf("retry bị từ chối mà vẫn giao gửi: %v", tasks)
+	}
+	seed(t, g.db, "games/"+g.id+"/outbox/group_99", map[string]any{"chatKey": chatGroup, "seq": int64(99), "template": tplAdmin,
+		"data": `{"action":"pause"}`, "status": outboxFailed, "eventSeq": int64(1), "createdAt": g.wall})
+	r := h.call("boss", "POST", path+"/admin/retry-outbox", nil, "")
+	h.want(r, 200, "")
+	if !strings.Contains(string(r.raw), `"requeued":1`) || flushes() != 3 {
+		t.Fatalf("retry: %s, tasks = %v", r.raw, tasks)
 	}
 }

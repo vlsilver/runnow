@@ -674,9 +674,15 @@ func (w *stepWrite) writeOutbox(eventSeq int64) error {
 			return err
 		}
 	}
-	for key, next := range w.chats {
-		if err := w.tx.Set(w.game.Collection("outboxChats").Doc(key), map[string]any{
-			"chatKey": key, "nextSeq": next, "pending": true, "updatedAt": w.wall,
+	return markChatsPending(w.tx, w.game, w.chats, w.wall)
+}
+
+// markChatsPending ghi nextSeq mới của các chat vừa nhận tin và bật pending
+// cho bộ gửi.
+func markChatsPending(tx *firestore.Transaction, game *firestore.DocumentRef, chats map[string]int64, wall time.Time) error {
+	for key, next := range chats {
+		if err := tx.Set(game.Collection("outboxChats").Doc(key), map[string]any{
+			"chatKey": key, "nextSeq": next, "pending": true, "updatedAt": wall,
 		}, firestore.MergeAll); err != nil {
 			return err
 		}
