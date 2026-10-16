@@ -733,9 +733,22 @@ func TestEmulatorGameWritesKickFlush(t *testing.T) {
 		return n
 	}
 	path := "/v1/games/" + g.id
-	h.want(h.call("boss", "POST", path+"/admin/advance", map[string]any{"expectedKey": stringValue(g.public()["taskKey"])}, ""), 200, "")
+	adv := h.call("boss", "POST", path+"/admin/advance", map[string]any{"expectedKey": stringValue(g.public()["taskKey"])}, "")
+	h.want(adv, 200, "")
 	if flushes() != 1 {
 		t.Fatalf("advance: tasks = %v", tasks)
+	}
+	// admin/advance hẹn luôn game-advance cho mốc kế tiếp mà nó trả về (I5).
+	nextAt, _ := time.Parse(time.RFC3339Nano, stringValue(adv.body["nextAt"]))
+	var scheduled []PublishTask
+	for _, task := range tasks {
+		if task.HandlerPath == "/tasks/game-advance" {
+			scheduled = append(scheduled, task)
+		}
+	}
+	if len(scheduled) != 1 || scheduled[0].ScheduleTime == nil || !scheduled[0].ScheduleTime.Equal(nextAt.Add(30*time.Second)) ||
+		scheduled[0].TaskID != StableTaskID("gameadv", g.id+stringValue(adv.body["taskKey"])) {
+		t.Fatalf("game-advance = %+v, body %s", scheduled, adv.raw)
 	}
 	h.want(h.call("boss", "POST", path+"/admin/act-as", map[string]any{"uid": "fake-01", "kind": "seer_peek", "targets": []string{"r2"}}, ""), 422, "not_your_role")
 	if flushes() != 1 {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"time"
 )
@@ -62,19 +63,53 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/generate-plan", s.generatePlan)
 	s.route("POST /tasks/coach-ask", s.coachAsk)
 	s.route("POST /tasks/consolidate-memory", s.consolidateMemory)
-	// Cloud Scheduler gõ mỗi 10 phút → chạy các lịch bot tự đặt tới hạn.
-	s.route("POST /tasks/schedule-tick", func(w http.ResponseWriter, r *http.Request) error {
-		if s.deps.Bot == nil {
-			w.WriteHeader(204)
-			return nil
+	s.route("POST /tasks/game-advance", s.gameAdvance)
+	s.route("POST /tasks/schedule-tick", s.scheduleTick)
+}
+
+// tickJob là một việc của schedule-tick, với timeout riêng.
+type tickJob struct {
+	name    string
+	timeout time.Duration
+	run     func(ctx context.Context, now time.Time) error
+}
+
+// scheduleTick: Cloud Scheduler gõ mỗi 10 phút. Game chạy trước, vì chốt phase
+// trễ thì cả ván phải chờ; rồi tới các lịch bot tự đặt. Tổng timeout dưới 300s
+// mặc định của Cloud Run.
+func (s *Server) scheduleTick(w http.ResponseWriter, r *http.Request) error {
+	jobs := []tickJob{{name: "game", timeout: 45 * time.Second, run: s.tickGame}}
+	if s.deps.Bot != nil {
+		jobs = append(jobs, tickJob{name: "bot", timeout: 240 * time.Second, run: s.deps.Bot.RunDueSchedules})
+	}
+	if err := runTickJobs(r.Context(), s.now(), jobs); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// runTickJobs chạy lần lượt từng việc, mỗi việc một context riêng. Việc nào lỗi,
+// timeout hay panic thì vẫn chạy việc sau; lỗi gom lại trả ra để tick báo 5xx.
+func runTickJobs(ctx context.Context, now time.Time, jobs []tickJob) error {
+	var errs []error
+	for _, j := range jobs {
+		if err := runTickJob(ctx, now, j); err != nil {
+			slog.ErrorContext(ctx, "tick.job_failed", "job", j.name, "error", err)
+			errs = append(errs, fmt.Errorf("%s: %w", j.name, err))
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 240*time.Second)
-		defer cancel()
-		if err := s.deps.Bot.RunDueSchedules(ctx, time.Now()); err != nil {
-			return err
+	}
+	return errors.Join(errs...)
+}
+
+func runTickJob(ctx context.Context, now time.Time, j tickJob) (err error) {
+	ctx, cancel := context.WithTimeout(ctx, j.timeout)
+	defer cancel()
+	defer func() {
+		if p := recover(); p != nil {
+			err = fmt.Errorf("panic: %v\n%s", p, debug.Stack())
 		}
-		return writeJSON(w, 200, map[string]any{"ok": true})
-	})
+	}()
+	return j.run(ctx, now)
 }
 
 // telegramWebhook nhận update từ Telegram, xác thực secret, rồi định tuyến

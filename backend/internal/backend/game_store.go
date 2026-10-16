@@ -224,7 +224,8 @@ func (s *GameStore) startGame(ctx context.Context, gameID string, st *werewolf.S
 
 // AdvanceResult là việc AdvanceGame đã làm và lần hẹn kế tiếp. Caller hẹn task
 // game-advance vào NextAt + 30s với TaskID StableTaskID("gameadv", gameId+TaskKey).
-// NextAt là giờ thật, đã trừ độ lệch đồng hồ của ván thử.
+// NextAt là giờ thật, đã trừ độ lệch đồng hồ của ván thử; rỗng khi ván không
+// chạy hoặc đang tạm dừng.
 type AdvanceResult struct {
 	Steps   int
 	Status  string
@@ -251,6 +252,60 @@ func (s *GameStore) AdvanceGame(ctx context.Context, gameID string, wall time.Ti
 		res.Steps++
 	}
 	return res, nil
+}
+
+// gameAdvanceTask là payload của /tasks/game-advance. Bot decode chặt, nên thêm
+// field thì deploy bot trước. TaskKey chỉ để đọc log: handler luôn đọc lại state.
+type gameAdvanceTask struct {
+	GameID  string `json:"gameId"`
+	TaskKey string `json:"taskKey,omitempty"`
+}
+
+// advanceDelay: task hẹn sau mốc một chút, để đồng hồ lệch vài giây không làm
+// task tới sớm, thấy chưa tới hạn rồi hẹn lại đúng mốc cũ (trùng TaskID, bị bỏ).
+const advanceDelay = 30 * time.Second
+
+// gameAdvanceTaskFor: res rỗng là chạy ngay, không TaskID (sau Start, resume,
+// extend: handler đọc state rồi tự hẹn). Có NextAt thì hẹn vào NextAt + 30s,
+// TaskID theo TaskKey nên tick, task và admin cùng hẹn một mốc chỉ ra một task.
+func gameAdvanceTaskFor(gameID string, res AdvanceResult) PublishTask {
+	t := PublishTask{Queue: QueueGameInbound, HandlerPath: "/tasks/game-advance", Payload: gameAdvanceTask{GameID: gameID, TaskKey: res.TaskKey}}
+	if !res.NextAt.IsZero() {
+		at := res.NextAt.Add(advanceDelay)
+		t.ScheduleTime = &at
+		t.TaskID = StableTaskID("gameadv", gameID+res.TaskKey)
+	}
+	return t
+}
+
+// CurrentGame là ván gameState/current trỏ tới và status của nó; chưa có ván
+// nào thì id rỗng.
+func (s *GameStore) CurrentGame(ctx context.Context) (id, gameStatus string, err error) {
+	cur, err := s.currentRef().Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return "", "", nil
+	}
+	if err != nil {
+		return "", "", err
+	}
+	id = stringValue(cur.Data()["gameId"])
+	if id == "" {
+		return "", "", nil
+	}
+	g, err := s.gameRef(id).Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return "", "", nil
+	}
+	if err != nil {
+		return "", "", err
+	}
+	return id, stringValue(g.Data()["status"]), nil
+}
+
+// HasPendingOutbox: ván còn chat có tin chờ gửi.
+func (s *GameStore) HasPendingOutbox(ctx context.Context, gameID string) (bool, error) {
+	docs, err := s.gameRef(gameID).Collection("outboxChats").Where("pending", "==", true).Limit(1).Documents(ctx).GetAll()
+	return len(docs) > 0, err
 }
 
 // snapshotKmIfDue: tới mốc 22h thì tính km của mọi người chơi và ghi bằng
@@ -331,7 +386,7 @@ func (s *GameStore) advanceOnce(ctx context.Context, gameID string, wall time.Ti
 	game := s.gameRef(gameID)
 	var stepped bool
 	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
-		stepped = false
+		stepped, res.NextAt, res.TaskKey = false, time.Time{}, ""
 		g, err := tx.Get(game)
 		if err != nil {
 			return err
@@ -353,7 +408,10 @@ func (s *GameStore) advanceOnce(ctx context.Context, gameID string, wall time.Ti
 		}
 		offset := clockOffset(g.Data())
 		now := wall.Add(offset)
-		res.NextAt, res.TaskKey = st.NextAt().Add(-offset), st.TaskKey()
+		// Ván tạm dừng thì không hẹn gì; resume sẽ kick game-advance.
+		if !st.Paused {
+			res.NextAt, res.TaskKey = st.NextAt().Add(-offset), st.TaskKey()
+		}
 		in, err := s.readInputs(tx, game, st, now)
 		if err != nil {
 			return err
@@ -379,8 +437,10 @@ func (s *GameStore) advanceOnce(ctx context.Context, gameID string, wall time.Ti
 			return err
 		}
 		stepped = true
-		res.Status = w.status()
-		res.NextAt, res.TaskKey = next.NextAt().Add(-offset), next.TaskKey()
+		res.Status, res.NextAt, res.TaskKey = w.status(), time.Time{}, ""
+		if res.Status == gameRunning {
+			res.NextAt, res.TaskKey = next.NextAt().Add(-offset), next.TaskKey()
+		}
 		return nil
 	})
 	return stepped, err

@@ -52,7 +52,8 @@ func (e *startEnv) publish(_ context.Context, task PublishTask) (string, error) 
 		return "", e.publishErr
 	}
 	e.tasks = append(e.tasks, task)
-	deliver := e.deliver
+	// Task hẹn giờ (game-advance cho mốc sau) thì Cloud Tasks chưa chạy ngay.
+	deliver := e.deliver && task.ScheduleTime == nil
 	e.mu.Unlock()
 	if deliver {
 		if rec := e.runTask(task); rec.Code != 200 {
@@ -224,6 +225,11 @@ func TestEmulatorGameStartThroughBot(t *testing.T) {
 		t.Fatalf("state có %d người", len(st.Players))
 	}
 	replayMatches(t, sg)
+	// Chia bài xong thì kick game-advance chạy ngay, để nó hẹn mốc 22h (I5).
+	if adv := e.tasksTo("/tasks/game-advance"); len(adv) != 1 || adv[0].ScheduleTime != nil || adv[0].TaskID != "" ||
+		adv[0].Payload != (gameAdvanceTask{GameID: id}) {
+		t.Fatalf("game-advance = %+v", adv)
+	}
 
 	// Task chạy lại (Cloud Tasks giao hai lần) thì không hỏi Telegram, không chia lại.
 	rec = e.runTask(tasks[0])

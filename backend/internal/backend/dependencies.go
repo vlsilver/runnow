@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"cloud.google.com/go/cloudtasks/apiv2"
 	"cloud.google.com/go/firestore"
@@ -33,6 +34,9 @@ type Dependencies struct {
 	// EnqueueTask thay Tasks.Publish khi khác nil; test gài để bắt task mà
 	// không cần Cloud Tasks.
 	EnqueueTask taskPublishFunc
+	// Now thay time.Now ở game-advance và schedule-tick khi khác nil; test gài
+	// đồng hồ giả để chạy task hẹn giờ mà không phải chờ.
+	Now func() time.Time
 }
 
 func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) {

@@ -51,7 +51,8 @@ func TestEmulatorTestModeInPscIs422(t *testing.T) {
 // wall là giờ thật, mỗi lần bấm trôi 1 phút.
 type testModeGame struct {
 	*storeGame
-	wall time.Time
+	wall    time.Time
+	lastAdv AdvanceResult // kết quả lần adv() gần nhất
 }
 
 var realTesters = []string{"r1", "r2", "r3", "r4"}
@@ -122,6 +123,7 @@ func (g *testModeGame) adv() {
 	if err != nil || res.Steps != 1 {
 		g.t.Fatalf("advance %s: %+v, %v", key, res, err)
 	}
+	g.lastAdv = res
 }
 
 // do gửi một hành động qua W0: người giả thì admin bấm thay, người thật tự bấm.
@@ -230,6 +232,10 @@ func TestEmulatorTestModeGameRunsToEndByAdvance(t *testing.T) {
 	pub := g.public()
 	if st.Phase != ww.PhaseEnded || st.Winner != ww.TeamVillage || pub["status"] != gameEnded || pub["winner"] != "village" {
 		t.Fatalf("kết thúc: %s thắng %q, status %v", st.PhaseKey(), st.Winner, pub["status"])
+	}
+	// Bước kết thúc ván không còn mốc nào để hẹn game-advance.
+	if res := g.lastAdv; res.Status != gameEnded || !res.NextAt.IsZero() || res.TaskKey != "" {
+		t.Fatalf("bước cuối = %+v", res)
 	}
 	dead := map[string]ww.Cause{}
 	for uid, p := range st.Players {

@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -118,6 +119,9 @@ func (s *Server) gameRoutes() {
 				return err
 			}
 			s.kickGameFlush(r.Context(), id)
+			if action == "resume" {
+				s.kickGameAdvance(r.Context(), id) // resume dời lịch, hẹn lại theo hạn mới
+			}
 			return writeJSON(w, 200, map[string]any{"ok": true})
 		}))
 	}
@@ -134,6 +138,7 @@ func (s *Server) gameRoutes() {
 			return err
 		}
 		s.kickGameFlush(r.Context(), id)
+		s.kickGameAdvance(r.Context(), id)
 		return writeJSON(w, 200, map[string]any{"ok": true})
 	}))
 	// Kick flush cả khi không có tin failed, để đẩy tin pending đang kẹt.
@@ -162,6 +167,10 @@ func (s *Server) gameRoutes() {
 		}
 		if res.Steps > 0 {
 			s.kickGameFlush(r.Context(), id)
+		}
+		// Bước đã commit; hẹn lỗi thì tick hẹn lại, không báo admin bấm lại.
+		if err := s.scheduleGameAdvance(r.Context(), id, res); err != nil {
+			slog.WarnContext(r.Context(), "game.advance_schedule_failed", "gameId", id, "error", err)
 		}
 		return writeJSON(w, 200, map[string]any{"steps": res.Steps, "status": res.Status, "taskKey": res.TaskKey, "nextAt": res.NextAt})
 	}))
@@ -259,6 +268,108 @@ func (s *Server) kickGameFlush(ctx context.Context, gameID string) {
 	}
 }
 
+// kickGameAdvance giao bot chạy game-advance ngay, sau những lệnh đổi lịch của
+// ván (Start, resume, extend). Handler đọc state rồi tự hẹn mốc kế tiếp. Enqueue
+// lỗi thì chỉ log: tick 10 phút vẫn chạy bước và hẹn lại.
+func (s *Server) kickGameAdvance(ctx context.Context, gameID string) {
+	publish := s.enqueueTask()
+	if publish == nil || s.config.GameInboundQueue == "" {
+		return
+	}
+	if _, err := publish(ctx, gameAdvanceTaskFor(gameID, AdvanceResult{})); err != nil {
+		slog.WarnContext(ctx, "game.advance_enqueue_failed", "gameId", gameID, "error", err)
+	}
+}
+
+// scheduleGameAdvance hẹn game-advance cho mốc kế tiếp trong res. Ván không chạy
+// hay đang tạm dừng thì NextAt rỗng, không hẹn gì.
+func (s *Server) scheduleGameAdvance(ctx context.Context, gameID string, res AdvanceResult) error {
+	if res.NextAt.IsZero() {
+		return nil
+	}
+	publish := s.enqueueTask()
+	if publish == nil || s.config.GameInboundQueue == "" {
+		return errors.New("chưa cấu hình queue game-inbound, không hẹn được game-advance")
+	}
+	_, err := publish(ctx, gameAdvanceTaskFor(gameID, res))
+	return err
+}
+
+// advanceGame là phần chung của game-advance và tick (3.3): chạy các bước đã
+// tới hạn, kick flush nếu có bước, rồi hẹn mốc kế tiếp. Bước lỗi giữa chừng thì
+// vẫn kick flush cho các bước đã commit, và không hẹn: task retry hoặc tick sau
+// chạy tiếp từ chỗ dừng.
+func (s *Server) advanceGame(ctx context.Context, gameID string, wall time.Time) (AdvanceResult, error) {
+	res, err := s.deps.Games.AdvanceGame(ctx, gameID, wall)
+	if res.Steps > 0 {
+		s.kickGameFlush(ctx, gameID)
+	}
+	if err != nil {
+		return res, err
+	}
+	return res, s.scheduleGameAdvance(ctx, gameID, res)
+}
+
+// gameAdvance chạy bước chốt của một ván lúc task tới hạn. Payload hỏng thì 204
+// cho task thôi retry; Firestore hay enqueue lỗi thì 5xx để task chạy lại, an
+// toàn vì bước đã chốt thì không chốt lại.
+func (s *Server) gameAdvance(w http.ResponseWriter, r *http.Request) error {
+	var task gameAdvanceTask
+	if err := decodeJSON(r, &task); err != nil || task.GameID == "" {
+		slog.WarnContext(r.Context(), "game.advance_bad_payload")
+		w.WriteHeader(http.StatusNoContent)
+		return nil
+	}
+	if s.deps.Games == nil {
+		return errors.New("game-advance cần Games")
+	}
+	res, err := s.advanceGame(r.Context(), task.GameID, s.now())
+	if err != nil {
+		return err
+	}
+	slog.InfoContext(r.Context(), "game.advance_done", "gameId", task.GameID, "taskKey", task.TaskKey, "steps", res.Steps, "status", res.Status, "nextKey", res.TaskKey, "nextAt", res.NextAt)
+	return writeJSON(w, 200, map[string]any{"steps": res.Steps, "status": res.Status, "taskKey": res.TaskKey, "nextAt": res.NextAt})
+}
+
+// tickGame là lưới an toàn của ván hiện tại: chạy bước quá hạn và hẹn lại
+// game-advance (task hẹn bị mất hay enqueue lỗi thì phase trễ tối đa một tick),
+// rồi kick flush nếu outbox còn tin chờ, kể cả ván đã kết thúc.
+func (s *Server) tickGame(ctx context.Context, wall time.Time) error {
+	if s.deps.Games == nil {
+		return nil
+	}
+	id, st, err := s.deps.Games.CurrentGame(ctx)
+	if err != nil || id == "" {
+		return err
+	}
+	if st == gameRunning {
+		res, err := s.advanceGame(ctx, id, wall)
+		if err != nil {
+			return fmt.Errorf("ván %s: %w", id, err)
+		}
+		if res.Steps > 0 {
+			slog.WarnContext(ctx, "game.tick_stepped", "gameId", id, "steps", res.Steps, "nextKey", res.TaskKey)
+			return nil // advanceGame đã kick flush
+		}
+	}
+	pending, err := s.deps.Games.HasPendingOutbox(ctx, id)
+	if err != nil {
+		return fmt.Errorf("ván %s: %w", id, err)
+	}
+	if pending {
+		s.kickGameFlush(ctx, id)
+	}
+	return nil
+}
+
+// now là Dependencies.Now nếu có, không thì time.Now.
+func (s *Server) now() time.Time {
+	if s.deps.Now != nil {
+		return s.deps.Now()
+	}
+	return time.Now()
+}
+
 // enqueueTask là Dependencies.EnqueueTask nếu có, không thì Tasks.Publish.
 func (s *Server) enqueueTask() taskPublishFunc {
 	if s.deps.EnqueueTask != nil {
@@ -318,6 +429,7 @@ func (s *Server) gameStart(w http.ResponseWriter, r *http.Request) error {
 	// reverted thì không có tin nào.
 	if out.Result != "reverted" {
 		s.kickGameFlush(r.Context(), task.GameID)
+		s.kickGameAdvance(r.Context(), task.GameID)
 	}
 	return writeJSON(w, 200, out)
 }

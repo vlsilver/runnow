@@ -112,6 +112,9 @@ func (s *Server) runAdminCommand(ctx context.Context, gameID, uid, cmd, arg stri
 		return "", nil, err
 	}
 	s.kickGameFlush(ctx, gameID)
+	if cmd == "/resume" || cmd == "/extend" {
+		s.kickGameAdvance(ctx, gameID) // lịch vừa dời, hẹn lại theo hạn mới
+	}
 	return text, nil, nil
 }
 
