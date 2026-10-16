@@ -31,6 +31,7 @@ const (
 	opConfirm      = "c"
 	opReset        = "r"
 	opCard         = "v"
+	opCancel       = "k" // nút xác nhận của /cancel trong DM admin
 	answerTextSize = 200 // answerCallbackQuery.text tối đa 200 ký tự
 )
 
@@ -58,8 +59,8 @@ type gameButton struct {
 
 func (b gameButton) data() (string, error) {
 	var s string
-	if b.Op == opCard {
-		s = strings.Join([]string{buttonPrefix, b.GameID, opCard}, "|")
+	if b.Op == opCard || b.Op == opCancel {
+		s = strings.Join([]string{buttonPrefix, b.GameID, b.Op}, "|")
 	} else {
 		code, ok := kindCodes[b.Kind]
 		if !ok {
@@ -86,7 +87,7 @@ func parseGameButton(s string) (gameButton, bool) {
 	b := gameButton{GameID: parts[1]}
 	if len(parts) == 3 {
 		b.Op = parts[2]
-		return b, b.Op == opCard
+		return b, b.Op == opCard || b.Op == opCancel
 	}
 	if len(parts) != 6 || parts[2] == "" {
 		return gameButton{}, false
@@ -498,9 +499,8 @@ func truncateUTF16(s string, limit int) string {
 	return head + "…"
 }
 
-// CardText là lá bài của uid trong ván hiện tại, cho /vai trong DM. Rỗng là
-// uid không ở trong ván nào đang chạy.
-func (s *GameStore) CardText(ctx context.Context, uid string) (string, error) {
+// currentGameID là ván ở gameState/current; rỗng là chưa có ván nào.
+func (s *GameStore) currentGameID(ctx context.Context) (string, error) {
 	cur, err := s.db.Collection("gameState").Doc("current").Get(ctx)
 	if status.Code(err) == codes.NotFound {
 		return "", nil
@@ -508,9 +508,15 @@ func (s *GameStore) CardText(ctx context.Context, uid string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	id := stringValue(cur.Data()["gameId"])
-	if id == "" {
-		return "", nil
+	return stringValue(cur.Data()["gameId"]), nil
+}
+
+// CardText là lá bài của uid trong ván hiện tại, cho /vai trong DM. Rỗng là
+// uid không ở trong ván nào đang chạy.
+func (s *GameStore) CardText(ctx context.Context, uid string) (string, error) {
+	id, err := s.currentGameID(ctx)
+	if err != nil || id == "" {
+		return "", err
 	}
 	game := s.gameRef(id)
 	g, err := game.Get(ctx)

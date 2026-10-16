@@ -134,15 +134,16 @@ func isMembershipUpdate(u TelegramUpdate) bool {
 	return m != nil && (len(m.NewChatMembers) > 0 || len(m.LeftChatMember) > 0 || m.MigrateToChatID != 0 || m.MigrateFromChatID != 0)
 }
 
-// commandReply trả lời ngay các lệnh không cần LLM (/vai). Không enqueue,
-// không ghi history. Firestore lỗi tạm thời thì trả lỗi không kèm câu trả lời,
-// để webhook trả 5xx và Telegram gửi lại.
+// commandReply trả lời ngay các lệnh không cần LLM (/vai, lệnh admin Ma Sói).
+// Không enqueue, không ghi history. Firestore lỗi tạm thời thì trả lỗi không
+// kèm câu trả lời, để webhook trả 5xx và Telegram gửi lại.
 func (s *Server) commandReply(ctx context.Context, update TelegramUpdate) (map[string]any, bool, error) {
 	msg := update.Message
 	if msg == nil || msg.From == nil {
 		return nil, false, nil
 	}
-	if cmd, _ := parseBotCommand(msg.Text, s.config.TelegramBotUsername); cmd != "/vai" {
+	cmd, arg := parseBotCommand(msg.Text, s.config.TelegramBotUsername)
+	if cmd != "/vai" && !adminCommands[cmd] {
 		return nil, false, nil
 	}
 	reply := func(text string, html bool) map[string]any {
@@ -154,6 +155,14 @@ func (s *Server) commandReply(ctx context.Context, update TelegramUpdate) (map[s
 			r["message_thread_id"] = id
 		}
 		return r
+	}
+	if adminCommands[cmd] {
+		text, markup, err := s.adminReply(ctx, update, cmd, arg)
+		r := reply(text, false)
+		if markup != nil {
+			r["reply_markup"] = markup
+		}
+		return r, true, err
 	}
 	if msg.Chat.Type != "private" {
 		// Lá bài không bao giờ hiện trong group.
@@ -203,6 +212,11 @@ func (s *Server) callbackReply(ctx context.Context, update TelegramUpdate) (map[
 	uid, err := s.deps.TelegramLinks.UIDForTelegram(ctx, cq.From.ID)
 	if err == nil && uid == "" {
 		return answer("Tài khoản Telegram này chưa liên kết với RunNow.", false), nil
+	}
+	if err == nil && b.Op == opCancel {
+		// Admin có thể không chơi ván, nên không đi qua PressButton.
+		text, err := s.cancelButtonReply(ctx, b.GameID, uid)
+		return answer(text, true), err
 	}
 	var reply ButtonReply
 	if err == nil {
