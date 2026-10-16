@@ -69,6 +69,9 @@ type State struct {
 	// NightAt là mốc 22h mở đêm của vòng hiện tại; mọi hạn trong vòng tính từ đây
 	// (schedule.go). Pause rồi resume thì mốc này dời theo ngày (R14).
 	NightAt time.Time `json:"nightAt"`
+	// Extra là phần admin dời hạn (Extend) của lượt ExtraKey (một PhaseKey).
+	Extra    time.Duration `json:"extra,omitempty"`
+	ExtraKey string        `json:"extraKey,omitempty"`
 	// Reminded là PhaseKey đã gửi tin nhắc (15h, 21h), để chạy lại không nhắc hai lần.
 	Reminded string             `json:"reminded,omitempty"`
 	Players  map[string]*Player `json:"players"`

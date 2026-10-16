@@ -178,6 +178,10 @@ func TestRenderPrivatePromptAdminReminder(t *testing.T) {
 	if out.parts[0] != "<b>Ván chạy tiếp</b>\nHạn kế tiếp: 10:30 16/10." {
 		t.Fatalf("resume = %q", out.parts[0])
 	}
+	out = renderOne(t, r, chatGroup, tplAdmin, map[string]any{"action": "extend", "minutes": 30, "deadline": resumeAt.Format(time.RFC3339)})
+	if out.parts[0] != "<b>Dời hạn</b>\nAdmin dời hạn lượt này thêm 30 phút. Hạn mới: 10:30 16/10." {
+		t.Fatalf("extend = %q", out.parts[0])
+	}
 	out = renderOne(t, r, chatGroup, tplReminder, map[string]any{"reason": "vote"})
 	if !strings.HasPrefix(out.parts[0], "<b>Nhắc biểu quyết</b>") {
 		t.Fatalf("reminder = %q", out.parts[0])

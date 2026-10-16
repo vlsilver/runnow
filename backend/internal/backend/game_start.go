@@ -358,6 +358,55 @@ func (s *GameStore) AdminResume(ctx context.Context, gameID, by string, wall tim
 }
 
 func (s *GameStore) adminSetPaused(ctx context.Context, gameID, by string, pause bool, wall time.Time) error {
+	action := "pause"
+	if !pause {
+		action = "resume"
+	}
+	return s.adminUpdate(ctx, gameID, wall, map[string]any{"kind": action, "by": by}, func(st *werewolf.State, now time.Time) (*werewolf.State, map[string]any, error) {
+		if pause {
+			next, err := werewolf.Pause(st)
+			if errors.Is(err, werewolf.ErrPauseState) {
+				return nil, nil, &HTTPError{Status: http.StatusConflict, Code: "invalid_state", Message: "Ván đang tạm dừng rồi."}
+			}
+			return next, map[string]any{"action": action}, err
+		}
+		next, err := werewolf.Resume(st, now)
+		if errors.Is(err, werewolf.ErrPauseState) {
+			return nil, nil, &HTTPError{Status: http.StatusConflict, Code: "invalid_state", Message: "Ván không tạm dừng."}
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		return next, map[string]any{"action": action, "deadline": next.Deadline().UTC().Format(time.RFC3339)}, nil
+	})
+}
+
+// maxExtendMinutes chặn số phút gõ nhầm (/extend 3000); engine còn chặn theo lượt sau.
+const maxExtendMinutes = 240
+
+// AdminExtend dời hạn lượt đang mở thêm minutes phút (werewolf.Extend). Event
+// extend mang minutes, replay chạy lại Extend. Không ghi feed; group nhận tin admin.
+func (s *GameStore) AdminExtend(ctx context.Context, gameID, by string, minutes int, wall time.Time) error {
+	return s.adminUpdate(ctx, gameID, wall, map[string]any{"kind": "extend", "by": by, "minutes": minutes}, func(st *werewolf.State, _ time.Time) (*werewolf.State, map[string]any, error) {
+		next, err := werewolf.Extend(st, time.Duration(minutes)*time.Minute)
+		var tooLong *werewolf.ExtendTooLong
+		switch {
+		case errors.As(err, &tooLong):
+			msg := "Lượt sau cần ít nhất 1 giờ nên không dời thêm được nữa."
+			if m := int(tooLong.Max / time.Minute); m > 0 {
+				msg = fmt.Sprintf("Chỉ dời thêm được tối đa %d phút, để lượt sau còn ít nhất 1 giờ.", m)
+			}
+			return nil, nil, &HTTPError{Status: http.StatusUnprocessableEntity, Code: "extend_too_long", Message: msg}
+		case err != nil:
+			return nil, nil, err
+		}
+		return next, map[string]any{"action": "extend", "minutes": minutes, "deadline": next.TurnClose().UTC().Format(time.RFC3339)}, nil
+	})
+}
+
+// adminUpdate chạy một lệnh admin đổi state của ván đang chạy: change trả state
+// mới và data của tin admin gửi group. event ghi vào events (kèm at, để replay).
+func (s *GameStore) adminUpdate(ctx context.Context, gameID string, wall time.Time, event map[string]any, change func(st *werewolf.State, now time.Time) (*werewolf.State, map[string]any, error)) error {
 	if _, err := s.readStartGame(ctx, gameID); err != nil {
 		return err
 	}
@@ -379,26 +428,9 @@ func (s *GameStore) adminSetPaused(ctx context.Context, gameID, by string, pause
 			return err
 		}
 		now := gameNow(g.Data(), wall)
-		action, next := "pause", (*werewolf.State)(nil)
-		if pause {
-			next, err = werewolf.Pause(st)
-		} else {
-			action = "resume"
-			next, err = werewolf.Resume(st, now)
-		}
-		if errors.Is(err, werewolf.ErrPauseState) {
-			msg := "Ván đang tạm dừng rồi."
-			if !pause {
-				msg = "Ván không tạm dừng."
-			}
-			return &HTTPError{Status: http.StatusConflict, Code: "invalid_state", Message: msg}
-		}
+		next, data, err := change(st, now)
 		if err != nil {
 			return err
-		}
-		data := map[string]any{"action": action}
-		if !pause {
-			data["deadline"] = next.Deadline().UTC().Format(time.RFC3339)
 		}
 		msgs := []gameMsg{{ChatKey: chatGroup, Template: tplAdmin, Data: data}}
 		chats, err := readChats(tx, game, msgs)
@@ -406,7 +438,7 @@ func (s *GameStore) adminSetPaused(ctx context.Context, gameID, by string, pause
 			return err
 		}
 		w := stepWrite{tx: tx, game: game, gameData: g.Data(), after: next, msgs: msgs, chats: chats, now: now, wall: wall}
-		return w.commit(map[string]any{"kind": action, "by": by})
+		return w.commit(event)
 	})
 }
 

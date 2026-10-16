@@ -122,6 +122,21 @@ func (s *Server) gameRoutes() {
 		}))
 	}
 
+	s.route("POST /v1/games/{id}/admin/extend", s.gameAdmin(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+		var body struct {
+			Minutes int `json:"minutes"`
+		}
+		if err := decodeJSON(r, &body); err != nil || body.Minutes < 1 || body.Minutes > maxExtendMinutes {
+			return invalidRequest()
+		}
+		id := r.PathValue("id")
+		if err := s.deps.Games.AdminExtend(r.Context(), id, v.UID, body.Minutes, time.Now()); err != nil {
+			return err
+		}
+		s.kickGameFlush(r.Context(), id)
+		return writeJSON(w, 200, map[string]any{"ok": true})
+	}))
+
 	// Lệnh admin của ván thử (X1). Store từ chối nếu ván không phải ván thử.
 	s.route("POST /v1/games/{id}/admin/advance", s.gameAdmin(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
 		var body struct {

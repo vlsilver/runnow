@@ -290,6 +290,8 @@ func replayMatches(t *testing.T, g *storeGame) {
 			st, err = ww.Pause(st)
 		case "resume":
 			st, err = ww.Resume(st, ev["at"].(time.Time))
+		case "extend":
+			st, err = ww.Extend(st, time.Duration(number(ev["minutes"]))*time.Minute)
 		default:
 			var in ww.Inputs
 			if err := json.Unmarshal([]byte(ev["inputs"].(string)), &in); err != nil {

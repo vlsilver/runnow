@@ -37,19 +37,78 @@ const (
 	hunterNight   = 1 * time.Hour  // bị treo: bắn trong 22h–23h
 )
 
-// Deadline là lúc chốt phase hiện tại.
+// Deadline là lúc chốt phase hiện tại, kể cả phần admin đã dời (Extend).
 func (st *State) Deadline() time.Time {
-	return st.NightAt.Add(phaseEnd[st.Phase])
+	return st.NightAt.Add(phaseEnd[st.Phase] + st.extra())
 }
 
 func (st *State) hunterClose() time.Time {
 	if st.Hunter == nil {
 		return time.Time{}
 	}
+	end := hunterNight
 	if st.Hunter.Phase == PhaseDay {
-		return st.NightAt.Add(hunterDay)
+		end = hunterDay
 	}
-	return st.NightAt.Add(hunterNight)
+	return st.NightAt.Add(end + st.extra())
+}
+
+// TurnClose là hạn của lượt đang mở: lượt bắn của thợ săn nếu đang có, không
+// thì hạn phase.
+func (st *State) TurnClose() time.Time {
+	if st.Hunter != nil {
+		return st.hunterClose()
+	}
+	return st.Deadline()
+}
+
+// extra là phần dời hạn của lượt đang mở. Sang lượt khác thì PhaseKey đổi nên
+// tự hết, lịch các phase sau giữ đúng giờ.
+func (st *State) extra() time.Duration {
+	if st.ExtraKey != st.PhaseKey() {
+		return 0
+	}
+	return st.Extra
+}
+
+// nextPhase là phase mở ngay sau khi phase này chốt (trial thì sang đêm vòng sau).
+var nextPhase = map[Phase]Phase{
+	PhaseSetup: PhaseNight, PhaseNight: PhaseDawn, PhaseDawn: PhaseDay, PhaseDay: PhaseTrial, PhaseTrial: PhaseNight,
+}
+
+// extendGap là thời gian tối thiểu còn lại cho lượt kế tiếp sau khi dời hạn.
+const extendGap = time.Hour
+
+var ErrExtendState = errors.New("ván không dời hạn được")
+
+// ExtendTooLong: dời quá mức để lượt sau còn extendGap. Max là phần còn dời được.
+type ExtendTooLong struct{ Max time.Duration }
+
+func (e *ExtendTooLong) Error() string {
+	return fmt.Sprintf("chỉ dời được tối đa %s", e.Max)
+}
+
+// Extend dời hạn của lượt đang mở thêm d (admin, khi người chơi cần thêm giờ).
+// Chỉ lượt này dời; lượt sau vẫn khoá đúng giờ cũ, nên phải còn ít nhất
+// extendGap. Lượt thợ săn thì lượt sau là phase mà lượt bắn chen vào.
+func Extend(st *State, d time.Duration) (*State, error) {
+	if st.Phase == PhaseEnded || d <= 0 {
+		return nil, ErrExtendState
+	}
+	follow := st.NightAt.Add(phaseEnd[nextPhase[st.Phase]])
+	if st.Phase == PhaseTrial {
+		follow = follow.Add(24 * time.Hour)
+	}
+	if st.Hunter != nil {
+		follow = st.NightAt.Add(phaseEnd[st.Phase])
+	}
+	// Lượt ngắn nhất (thợ săn bị treo, 22h–23h) dài đúng extendGap, nên Max >= 0.
+	if closes, limit := st.TurnClose(), follow.Add(-extendGap); closes.Add(d).After(limit) {
+		return nil, &ExtendTooLong{Max: limit.Sub(closes)}
+	}
+	next := st.clone()
+	next.Extra, next.ExtraKey = st.extra()+d, st.PhaseKey()
+	return next, nil
 }
 
 // windowOpen: hành động chỉ nhận trước hạn của phase, kể cả khi bước chốt tới

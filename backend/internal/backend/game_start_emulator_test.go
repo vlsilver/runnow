@@ -416,6 +416,71 @@ func TestEmulatorGamePauseResume(t *testing.T) {
 	replayMatches(t, g)
 }
 
+// Admin dời hạn đêm 1 thêm 30 phút: hạn trong state, games/{id} và /me đổi theo,
+// group nhận tin admin, replay vẫn khớp. Số phút sai thì 400; dời quá mức để lượt
+// sau còn 1 giờ thì 422; ván hết thì 409.
+func TestEmulatorGameExtend(t *testing.T) {
+	g, h := runningAPIGame(t)
+	path := "/v1/games/" + g.id
+	h.want(h.call("v1", "POST", path+"/admin/extend", map[string]any{"minutes": 30}, ""), 403, "not_admin")
+	for _, body := range []any{nil, map[string]any{"minutes": 0}, map[string]any{"minutes": 241}, map[string]any{"minutes": "30"}} {
+		h.want(h.call("boss", "POST", path+"/admin/extend", body, ""), 400, "invalid_request")
+	}
+	h.want(h.call("boss", "POST", path+"/admin/extend", map[string]any{"minutes": 30}, ""), 200, "")
+	deadline := time.Date(2026, 10, 16, 0, 30, 0, 0, vietnam)
+	if st := g.state(); !st.Deadline().Equal(deadline) {
+		t.Fatalf("hạn = %s", st.Deadline())
+	}
+	snap, err := g.db.Doc("games/" + g.id).Get(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := snap.Data()["deadline"].(time.Time); !d.Equal(deadline) {
+		t.Fatalf("games.deadline = %v", snap.Data()["deadline"])
+	}
+	// Cắn lúc 0:15 giờ ván vẫn được nhận.
+	seedMerge(t, g, map[string]any{"clockOffsetNs": int64(deadline.Add(-15 * time.Minute).Sub(time.Now()))})
+	h.want(h.call("w1", "POST", path+"/actions", map[string]any{"kind": "wolf_bite", "targets": []string{"hunter"}}, ""), 200, "")
+
+	// 10h thợ săn chết, lượt bắn 10h–12h: dời thì tin admin báo hạn của lượt bắn.
+	seedMerge(t, g, map[string]any{"clockOffsetNs": int64(0)})
+	g.advance(time.Date(2026, 10, 16, 10, 0, 0, 0, vietnam))
+	if g.state().Hunter == nil {
+		t.Fatal("chưa tới lượt thợ săn")
+	}
+	h.want(h.call("boss", "POST", path+"/admin/extend", map[string]any{"minutes": 15}, ""), 200, "")
+
+	ob, err := g.db.Collection("games/"+g.id+"/outbox").Where("template", "==", tplAdmin).Documents(context.Background()).GetAll()
+	sort.Slice(ob, func(i, j int) bool { return number(ob[i].Data()["seq"]) < number(ob[j].Data()["seq"]) })
+	if err != nil || len(ob) != 2 {
+		t.Fatalf("outbox admin: %d, %v", len(ob), err)
+	}
+	for i, w := range []map[string]any{
+		{"action": "extend", "minutes": 30, "deadline": deadline.UTC().Format(time.RFC3339)},
+		{"action": "extend", "minutes": 15, "deadline": time.Date(2026, 10, 16, 12, 15, 0, 0, vietnam).UTC().Format(time.RFC3339)},
+	} {
+		want, _ := json.Marshal(w)
+		if ob[i].Data()["data"] != string(want) {
+			t.Fatalf("outbox admin %d = %v", i, ob[i].Data()["data"])
+		}
+	}
+
+	// Sang trial (chốt 22h, đêm sau khoá 0h): chỉ còn dời được 60 phút.
+	g.advance(time.Date(2026, 10, 16, 17, 0, 0, 0, vietnam))
+	if p := g.state().Phase; p != "trial" {
+		t.Fatalf("phase = %s", p)
+	}
+	r := h.call("boss", "POST", path+"/admin/extend", map[string]any{"minutes": 61}, "")
+	h.want(r, 422, "extend_too_long")
+	if !strings.Contains(string(r.raw), "tối đa 60 phút") {
+		t.Fatalf("thông báo = %s", r.raw)
+	}
+	replayMatches(t, g)
+
+	seedMerge(t, g, map[string]any{"status": gameEnded})
+	h.want(h.call("boss", "POST", path+"/admin/extend", map[string]any{"minutes": 5}, ""), 409, "invalid_state")
+}
+
 // runSmoke chạy scripts/game_smoke.sh với api thật qua HTTP.
 func (e *startEnv) runSmoke(env ...string) (string, error) {
 	srv := httptest.NewServer(e.srv)

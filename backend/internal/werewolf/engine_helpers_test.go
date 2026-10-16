@@ -61,11 +61,7 @@ func (g *tg) mine(actor string) []Action {
 // từng giây để receivedAt giữ đúng thứ tự bấm.
 func (g *tg) now() time.Time {
 	g.seq++
-	end := g.st.Deadline()
-	if g.st.Hunter != nil {
-		end = g.st.hunterClose()
-	}
-	return end.Add(-30*time.Minute + time.Duration(g.seq)*time.Second)
+	return g.st.TurnClose().Add(-30*time.Minute + time.Duration(g.seq)*time.Second)
 }
 
 func (g *tg) try(a Action) error {

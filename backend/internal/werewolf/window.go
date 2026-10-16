@@ -39,6 +39,9 @@ func (st *State) Window(kind Kind) (opens, closes time.Time) {
 	if kind == KindVote {
 		opens = st.NightAt.Add(voteOpens)
 	}
+	if last == st.Phase {
+		return opens, st.Deadline() // có cả phần admin dời hạn
+	}
 	return opens, st.NightAt.Add(phaseEnd[last])
 }
 

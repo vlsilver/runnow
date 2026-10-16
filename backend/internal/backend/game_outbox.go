@@ -564,9 +564,10 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 		var d struct {
 			Action   string    `json:"action"`
 			Deadline time.Time `json:"deadline"`
+			Minutes  int       `json:"minutes"`
 		}
 		if err = json.Unmarshal([]byte(raw), &d); err == nil {
-			text, err = adminText(d.Action, d.Deadline)
+			text, err = adminText(d.Action, d.Deadline, d.Minutes)
 		}
 	case tplTally:
 		// Tin đếm đề cử/phiếu trong topic là W2b.
@@ -805,7 +806,7 @@ func anyMap(v any) map[string]any {
 	return m
 }
 
-func adminText(action string, deadline time.Time) (string, error) {
+func adminText(action string, deadline time.Time, minutes int) (string, error) {
 	switch action {
 	case "pause":
 		return "<b>Ván tạm dừng</b>\nAdmin đã tạm dừng ván. Mọi hạn đứng yên tới khi chạy tiếp.", nil
@@ -817,6 +818,8 @@ func adminText(action string, deadline time.Time) (string, error) {
 		return text, nil
 	case "cancel":
 		return "<b>Ván đã huỷ</b>\nAdmin đã huỷ ván Ma Sói này.", nil
+	case "extend":
+		return fmt.Sprintf("<b>Dời hạn</b>\nAdmin dời hạn lượt này thêm %d phút. Hạn mới: %s.", minutes, vnTime(deadline)), nil
 	}
 	return "", fmt.Errorf("lệnh admin lạ %q", action)
 }
