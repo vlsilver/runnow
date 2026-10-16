@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"testing"
 
@@ -142,5 +143,41 @@ func TestWebhookMembershipGoesToGameInbound(t *testing.T) {
 	_, _, tasks := webhookCall(t, Config{TelegramBotUsername: "Run3IBot"}, raws[0], nil)
 	if len(tasks) != 0 {
 		t.Fatalf("chưa có GAME_INBOUND_QUEUE mà vẫn enqueue: %v", tasks)
+	}
+}
+
+func TestChatMemberInChat(t *testing.T) {
+	cases := map[TelegramChatMember]bool{
+		{Status: "creator"}:                     true,
+		{Status: "administrator"}:               true,
+		{Status: "member"}:                      true,
+		{Status: "restricted", IsMember: true}:  true,
+		{Status: "restricted", IsMember: false}: false,
+		{Status: "left"}:                        false,
+		{Status: "kicked"}:                      false,
+		{Status: "lạ", IsMember: true}:          false,
+	}
+	for m, want := range cases {
+		if got := m.InChat(); got != want {
+			t.Errorf("%+v: InChat=%v, mong đợi %v", m, got, want)
+		}
+	}
+}
+
+func TestMembershipUserIDs(t *testing.T) {
+	cases := []struct {
+		raw  string
+		want []int64
+	}{
+		{`{"update_id":1,"chat_member":{"chat":{"id":-100},"from":{"id":1},"new_chat_member":{"status":"left","user":{"id":5}}}}`, []int64{5}},
+		{`{"update_id":2,"message":{"chat":{"id":42,"type":"private"},"from":{"id":42},"text":"/start abc"}}`, []int64{42}},
+		// Tin dịch vụ trong group: lấy người vào/rời, không lấy người thêm (from).
+		{`{"update_id":3,"message":{"chat":{"id":-100,"type":"supergroup"},"from":{"id":1},"new_chat_members":[{"id":5},{"id":5},{"id":6,"is_bot":true}]}}`, []int64{5}},
+		{`{"update_id":4,"my_chat_member":{"chat":{"id":-100},"new_chat_member":{"status":"administrator","user":{"id":9,"is_bot":true}}}}`, nil},
+	}
+	for _, c := range cases {
+		if got := membershipUserIDs([]byte(c.raw)); fmt.Sprint(got) != fmt.Sprint(c.want) {
+			t.Errorf("%s: được %v, mong đợi %v", c.raw, got, c.want)
+		}
 	}
 }

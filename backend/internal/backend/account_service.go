@@ -154,6 +154,7 @@ func (s *AccountService) deleteOwnedDocuments(ctx context.Context, uid, athleteI
 		s.db.Collection("publicProfiles").Doc(uid),
 		s.db.Collection("leaderboardEntries").Doc(uid),
 		s.db.Collection("stravaConnections").Doc(uid),
+		s.db.Collection("telegramLinks").Doc(uid),
 	}
 	if athleteID != "" {
 		refs = append(refs, s.db.Collection("stravaAthleteLinks").Doc(athleteID))
@@ -168,6 +169,10 @@ func (s *AccountService) deleteOwnedDocuments(ctx context.Context, uid, athleteI
 		s.db.Collection("feedPosts").Where("authorUid", "==", uid),
 		s.db.Collection("liveSessions").Where("ownerUid", "==", uid),
 		s.db.Collection("activityTombstones").Where("uid", "==", uid),
+		// Liên kết Telegram (L1). Đang trong ván thì người chơi mất tgLinks và bị
+		// tính là đã rời PSC ở mốc chốt kế tiếp (R33).
+		s.db.Collection("tgLinks").Where("uid", "==", uid),
+		s.db.Collection("linkCodes").Where("uid", "==", uid),
 	}
 	if athleteID != "" {
 		queries = append(queries, s.db.Collection("integrationEvents").Where("ownerId", "==", athleteID))

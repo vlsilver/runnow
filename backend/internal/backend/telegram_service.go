@@ -245,6 +245,61 @@ func (s *TelegramService) SendPhotoInThread(ctx context.Context, chatID string, 
 	return nil
 }
 
+// TelegramChatMember là phần cần dùng của ChatMember mà getChatMember trả về.
+type TelegramChatMember struct {
+	Status   string `json:"status"`
+	IsMember bool   `json:"is_member"`
+	User     struct {
+		Username string `json:"username"`
+	} `json:"user"`
+}
+
+// InChat: creator/administrator/member là đang ở trong chat. restricted thì
+// tuỳ is_member (bị hạn chế mà vẫn ở lại, hay đã rời khi còn bị hạn chế).
+func (m TelegramChatMember) InChat() bool {
+	switch m.Status {
+	case "creator", "administrator", "member":
+		return true
+	case "restricted":
+		return m.IsMember
+	}
+	return false
+}
+
+// GetChatMember hỏi trạng thái của userID trong chatID. Lỗi gì cũng trả ra để
+// task retry, kể cả 400: không đoán một lỗi lạ là "đã rời nhóm".
+func (s *TelegramService) GetChatMember(ctx context.Context, chatID string, userID int64) (TelegramChatMember, error) {
+	if !s.Enabled() {
+		return TelegramChatMember{}, errors.New("telegram chưa cấu hình")
+	}
+	payload, err := json.Marshal(map[string]any{"chat_id": chatID, "user_id": userID})
+	if err != nil {
+		return TelegramChatMember{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.apiBaseURL+"/bot"+s.botToken+"/getChatMember", bytes.NewReader(payload))
+	if err != nil {
+		return TelegramChatMember{}, s.redact(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.do(req)
+	if err != nil {
+		return TelegramChatMember{}, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if err != nil {
+		return TelegramChatMember{}, err
+	}
+	var out struct {
+		OK     bool               `json:"ok"`
+		Result TelegramChatMember `json:"result"`
+	}
+	if resp.StatusCode >= 300 || json.Unmarshal(body, &out) != nil || !out.OK || out.Result.Status == "" {
+		return TelegramChatMember{}, fmt.Errorf("telegram getChatMember failed: status=%d body=%.512s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return out.Result, nil
+}
+
 // DownloadFile tải nội dung một file Telegram (vd ảnh người dùng gửi) theo
 // file_id: getFile để lấy file_path rồi tải từ endpoint /file/bot<token>/...
 // Trần 8MB để không nuốt file khổng lồ vào bộ nhớ.

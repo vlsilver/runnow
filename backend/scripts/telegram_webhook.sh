@@ -4,6 +4,7 @@
 #   backend/scripts/telegram_webhook.sh info
 #   backend/scripts/telegram_webhook.sh set              # 5 loại update Ma Sói cần
 #   backend/scripts/telegram_webhook.sh set message      # quay lại như trước T3
+#   backend/scripts/telegram_webhook.sh commands         # thêm /vai vào menu DM của bot
 #
 # setWebhook đặt lại TOÀN BỘ cấu hình: gọi thiếu secret_token là webhook mất
 # secret, api trả 401 cho mọi update và 3i im. Script luôn gửi lại URL đang chạy
@@ -42,5 +43,20 @@ case "${1:-info}" in
       | python3 -c 'import json,sys; d=json.load(sys.stdin); print("setWebhook:", d.get("ok"), d.get("description",""))'
     info
     ;;
-  *) echo "dùng: $0 info | set [loại update...]" >&2; exit 2 ;;
+  commands)
+    # setMyCommands thay cả danh sách, nên đọc danh sách đang có của DM rồi
+    # thêm /vai, không xoá lệnh khác. Chỉ đặt cho DM: /vai trong group chỉ trả
+    # lời "nhắn riêng cho 3i".
+    scope='{"type":"all_private_chats"}'
+    python3 -c 'import json,sys; print(json.dumps({"scope": json.loads(sys.argv[1])}))' "$scope" \
+      | curl -fsS -X POST "$API/getMyCommands" -H 'Content-Type: application/json' --data @- \
+      | python3 -c '
+import json, sys
+cmds = [c for c in json.load(sys.stdin)["result"] if c["command"] != "vai"]
+cmds.append({"command": "vai", "description": "Xem lá bài Ma Sói của bạn"})
+print(json.dumps({"commands": cmds, "scope": json.loads(sys.argv[1])}))' "$scope" \
+      | curl -fsS -X POST "$API/setMyCommands" -H 'Content-Type: application/json' --data @- \
+      | python3 -c 'import json,sys; d=json.load(sys.stdin); print("setMyCommands:", d.get("ok"), d.get("description",""))'
+    ;;
+  *) echo "dùng: $0 info | set [loại update...] | commands" >&2; exit 2 ;;
 esac

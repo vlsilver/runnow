@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -75,6 +76,9 @@ func (s *Server) routeTelegramUpdate(ctx context.Context, update TelegramUpdate,
 		// không thì nút cứ quay vòng trên máy người bấm.
 		return map[string]any{"method": "answerCallbackQuery", "callback_query_id": cq.ID, "text": "Nút này chưa dùng được."}, nil
 	}
+	if reply, ok, err := s.linkReply(ctx, update, raw, publish); ok {
+		return reply, err
+	}
 	if reply, ok := s.commandReply(update); ok {
 		return reply, nil
 	}
@@ -132,15 +136,14 @@ func isMembershipUpdate(u TelegramUpdate) bool {
 	return m != nil && (len(m.NewChatMembers) > 0 || len(m.LeftChatMember) > 0 || m.MigrateToChatID != 0 || m.MigrateFromChatID != 0)
 }
 
-// commandReply trả lời ngay các lệnh không cần LLM: /vai, và /start kèm mã
-// liên kết. Không enqueue, không ghi history. /start không kèm mã vẫn đi LLM
-// như trước.
+// commandReply trả lời ngay các lệnh không cần LLM (/vai). Không enqueue,
+// không ghi history.
 func (s *Server) commandReply(update TelegramUpdate) (map[string]any, bool) {
 	msg := update.Message
 	if msg == nil || msg.From == nil {
 		return nil, false
 	}
-	cmd, arg := parseBotCommand(msg.Text, s.config.TelegramBotUsername)
+	cmd, _ := parseBotCommand(msg.Text, s.config.TelegramBotUsername)
 	private := msg.Chat.Type == "private"
 	var text string
 	switch {
@@ -149,8 +152,6 @@ func (s *Server) commandReply(update TelegramUpdate) (map[string]any, bool) {
 	case cmd == "/vai":
 		// Lá bài không bao giờ hiện trong group.
 		text = "Nhắn /vai riêng cho 3i để xem lá bài của bạn."
-	case cmd == "/start" && arg != "" && private:
-		text = "Mã liên kết không đúng hoặc đã hết hạn. Mở app 3i Run để lấy mã mới."
 	default:
 		return nil, false
 	}
@@ -159,6 +160,63 @@ func (s *Server) commandReply(update TelegramUpdate) (map[string]any, bool) {
 		reply["message_thread_id"] = id
 	}
 	return reply, true
+}
+
+// linkReply tiêu mã của "/start <mã>" trong DM (L1) và trả lời ngay trong
+// response webhook. Liên kết xong thì enqueue game-update để bot ghi inPsc.
+// /start không kèm mã không phải việc của hàm này: vẫn đi LLM như trước.
+//
+// Telegram gửi lại update (do 5xx hay mất response) thì mã đã dùng bởi chính tg
+// đó vẫn ra "đã liên kết", và TaskID theo update_id nên không enqueue đôi.
+func (s *Server) linkReply(ctx context.Context, update TelegramUpdate, raw []byte, publish taskPublishFunc) (map[string]any, bool, error) {
+	msg := update.Message
+	if msg == nil || msg.From == nil || msg.Chat.Type != "private" {
+		return nil, false, nil
+	}
+	cmd, code := parseBotCommand(msg.Text, s.config.TelegramBotUsername)
+	if cmd != "/start" || code == "" {
+		return nil, false, nil
+	}
+	reply := func(text string) map[string]any {
+		return map[string]any{"method": "sendMessage", "chat_id": msg.Chat.ID, "text": text}
+	}
+	if s.deps == nil || s.deps.TelegramLinks == nil {
+		slog.ErrorContext(ctx, "telegram.link_unconfigured", "updateId", update.UpdateID)
+		return reply("Chưa liên kết được lúc này, bạn thử lại sau nhé."), true, nil
+	}
+	tg := TelegramUser{ID: msg.From.ID, Username: msg.From.Username, FirstName: msg.From.FirstName}
+	name, err := s.deps.TelegramLinks.ConsumeLinkCode(ctx, code, tg, time.Now())
+	switch {
+	case errors.Is(err, errLinkCodeInvalid), errors.Is(err, errLinkCodeExpired):
+		return reply("Mã liên kết không đúng hoặc đã hết hạn. Mở app 3i Run để lấy mã mới."), true, nil
+	case errors.Is(err, errLinkCodeUsed):
+		return reply("Mã này đã được dùng rồi. Mở app 3i Run để lấy mã mới."), true, nil
+	case errors.Is(err, errLinkInGame):
+		return reply(errLinkInGame.Message), true, nil
+	case err != nil:
+		if transientEnqueueErr(err) {
+			// Không trả lời: trả 5xx để Telegram gửi lại, lần sau có thể qua.
+			return nil, true, err
+		}
+		return reply("Chưa liên kết được lúc này, bạn thử lại sau nhé."), true, err
+	}
+	if name == "" {
+		name = "tài khoản 3i Run của bạn"
+	}
+	out := reply("Đã liên kết Telegram với " + name + ".")
+	if publish == nil || s.config.GameInboundQueue == "" {
+		return out, true, nil
+	}
+	_, err = publish(ctx, PublishTask{
+		Queue:       QueueGameInbound,
+		HandlerPath: "/tasks/game-update",
+		Payload:     gameUpdateTask{UpdateID: update.UpdateID, Raw: raw},
+		TaskID:      StableTaskID("gameupd", update.UpdateID),
+	})
+	if err != nil && transientEnqueueErr(err) {
+		return nil, true, err
+	}
+	return out, true, err
 }
 
 // parseBotCommand tách "/lenh@TenBot tham số". Lệnh gắn tên bot khác thì trả

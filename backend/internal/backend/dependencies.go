@@ -28,6 +28,7 @@ type Dependencies struct {
 	Bot            *BotService
 	Gemini         *genai.Client
 	Memory         *MemoryService
+	TelegramLinks  *TelegramLinkService
 }
 
 func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) {
@@ -54,6 +55,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 	tokens := NewTokenStore(db, gateway)
 	telegram := NewTelegramService(config.TelegramBotToken, config.TelegramChatID)
 	d := &Dependencies{Firestore: db, Auth: authClient, Tasks: tasks, Telegram: telegram}
+	d.TelegramLinks = NewTelegramLinkService(db, config.TelegramBotUsername)
 	d.OAuth = NewOAuthService(db, gateway, tasks, config)
 	d.Webhook = NewWebhookService(db, tasks, config.WebhookVerifyToken, config.StravaSubscriptionID)
 	d.Activities = NewActivityService(db, gateway, tokens, tasks, telegram, config.PublicBaseURL, config.WebBaseURL)

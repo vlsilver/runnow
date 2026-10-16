@@ -102,9 +102,11 @@ func (s *Server) telegramWebhook(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-// gameUpdate nhận update thành viên/join/migrate mà webhook chuyển sang. Hiện
-// mới ghi log loại update (không ghi nội dung, có tên và id người dùng); L1 sẽ
-// cập nhật inPsc từ đây. Decode lỏng: thêm field không bị ràng buộc thứ tự deploy.
+// gameUpdate nhận update thành viên/join/migrate, và /start vừa liên kết xong,
+// mà webhook chuyển sang. Với từng người trong update, hỏi getChatMember ở PSC
+// rồi ghi inPsc lên tgLinks (L1). Hỏi lại thay vì tin trạng thái trong update,
+// vì update có thể đến từ group khác (group kín, group test). Decode lỏng: thêm
+// field không bị ràng buộc thứ tự deploy.
 func (s *Server) gameUpdate(w http.ResponseWriter, r *http.Request) error {
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
@@ -123,8 +125,75 @@ func (s *Server) gameUpdate(w http.ResponseWriter, r *http.Request) error {
 			names = append(names, k)
 		}
 	}
-	slog.InfoContext(r.Context(), "game.update_received", "updateId", task.UpdateID, "kinds", names)
+	users := membershipUserIDs(task.Raw)
+	slog.InfoContext(r.Context(), "game.update_received", "updateId", task.UpdateID, "kinds", names, "users", len(users))
+	if len(users) == 0 {
+		return writeJSON(w, 200, map[string]any{"ok": true})
+	}
+	if s.deps.Telegram == nil || !s.deps.Telegram.Enabled() || s.deps.TelegramLinks == nil {
+		return errors.New("game-update cần Telegram và TelegramLinks để ghi inPsc")
+	}
+	for _, id := range users {
+		checkedAt := time.Now()
+		m, err := s.deps.Telegram.GetChatMember(r.Context(), s.deps.Telegram.ChatID(), id)
+		if err != nil {
+			return err
+		}
+		if err := s.deps.TelegramLinks.RecordMembership(r.Context(), id, m, checkedAt); err != nil {
+			return err
+		}
+	}
 	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// membershipUserIDs lấy những người cần kiểm lại inPsc: người được đổi trạng
+// thái trong chat_member, người vào/rời trong tin dịch vụ, và người nhắn DM
+// (/start vừa liên kết). Bỏ bot và id trùng.
+func membershipUserIDs(raw []byte) []int64 {
+	type user struct {
+		ID    int64 `json:"id"`
+		IsBot bool  `json:"is_bot"`
+	}
+	var u struct {
+		ChatMember *struct {
+			NewChatMember struct {
+				User user `json:"user"`
+			} `json:"new_chat_member"`
+		} `json:"chat_member"`
+		Message *struct {
+			Chat struct {
+				Type string `json:"type"`
+			} `json:"chat"`
+			From           *user  `json:"from"`
+			NewChatMembers []user `json:"new_chat_members"`
+			LeftChatMember *user  `json:"left_chat_member"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(raw, &u) != nil {
+		return nil
+	}
+	var candidates []user
+	if u.ChatMember != nil {
+		candidates = append(candidates, u.ChatMember.NewChatMember.User)
+	}
+	if m := u.Message; m != nil {
+		candidates = append(candidates, m.NewChatMembers...)
+		if m.LeftChatMember != nil {
+			candidates = append(candidates, *m.LeftChatMember)
+		}
+		if m.Chat.Type == "private" && m.From != nil {
+			candidates = append(candidates, *m.From)
+		}
+	}
+	seen := map[int64]bool{}
+	var ids []int64
+	for _, c := range candidates {
+		if c.ID != 0 && !c.IsBot && !seen[c.ID] {
+			seen[c.ID] = true
+			ids = append(ids, c.ID)
+		}
+	}
+	return ids
 }
 
 // botMessage xử lý một tin bot đẩy từ queue bot-inbound: chạy trong request
@@ -417,6 +486,28 @@ func (s *Server) apiRoutes() {
 	// method để service bot dùng chung — dời webhook sang bot chỉ là đổi chỗ
 	// mount, không nhân đôi code.
 	s.route("POST /v1/telegram/webhook", s.telegramWebhook)
+	// Liên kết Telegram cho Ma Sói (L1). App lấy mã, mở t.me/<bot>?start=<mã>,
+	// rồi poll GET cho tới khi linked.
+	s.route("POST /v1/telegram/link-code", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		code, err := s.deps.TelegramLinks.CreateLinkCode(r.Context(), uid, time.Now())
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, code)
+	}))
+	s.route("GET /v1/telegram/link", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		link, err := s.deps.TelegramLinks.Link(r.Context(), uid)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, link)
+	}))
+	s.route("DELETE /v1/telegram/link", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		if err := s.deps.TelegramLinks.Unlink(r.Context(), uid); err != nil {
+			return err
+		}
+		return writeJSON(w, 200, LinkStatus{})
+	}))
 	// Đích cũ của nút "Xem chi tiết" trong Telegram, trước đây là một trang
 	// HTML backend tự dựng. Giờ chỉ chuyển hướng về app — giữ route để các
 	// tin nhắn đã gửi trước đây không chết link.
