@@ -47,6 +47,13 @@ func composition(n int, cfg Config) ([]Role, error) {
 // Deal chia vai (R8–R11). Danh sách người chơi được sort theo uid trước, nên
 // thứ tự đăng ký không ảnh hưởng kết quả; ngẫu nhiên lấy từ hash(seed, "deal").
 func Deal(seed Seed, players []string, cfg Config) (map[string]Role, error) {
+	return DealForced(seed, players, cfg, nil)
+}
+
+// DealForced là Deal cho ván thử (X1): người trong forced nhận đúng vai đó, lấy
+// chỗ trong bộ của bảng 1.2; phần còn lại chia ngẫu nhiên như Deal. forced rỗng
+// thì ra đúng kết quả của Deal.
+func DealForced(seed Seed, players []string, cfg Config, forced map[string]Role) (map[string]Role, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -61,10 +68,48 @@ func Deal(seed Seed, players []string, cfg Config) (map[string]Role, error) {
 	if err != nil {
 		return nil, err
 	}
-	newStream(seed, "", "deal").shuffle(len(roles), func(i, j int) { roles[i], roles[j] = roles[j], roles[i] })
 	out := make(map[string]Role, len(sorted))
+	if len(forced) > 0 {
+		inGame := map[string]bool{}
+		for _, uid := range sorted {
+			inGame[uid] = true
+		}
+		forcedUIDs := make([]string, 0, len(forced))
+		for uid := range forced {
+			forcedUIDs = append(forcedUIDs, uid)
+		}
+		sort.Strings(forcedUIDs)
+		for _, uid := range forcedUIDs {
+			if !inGame[uid] {
+				return nil, fmt.Errorf("ép vai cho %q nhưng người này không có trong ván", uid)
+			}
+			i := indexOf(roles, forced[uid])
+			if i < 0 {
+				return nil, fmt.Errorf("không còn chỗ cho vai %q của %q trong bộ %d người", forced[uid], uid, len(sorted))
+			}
+			roles = append(roles[:i], roles[i+1:]...)
+			out[uid] = forced[uid]
+		}
+		rest := sorted[:0:0]
+		for _, uid := range sorted {
+			if _, ok := forced[uid]; !ok {
+				rest = append(rest, uid)
+			}
+		}
+		sorted = rest
+	}
+	newStream(seed, "", "deal").shuffle(len(roles), func(i, j int) { roles[i], roles[j] = roles[j], roles[i] })
 	for i, uid := range sorted {
 		out[uid] = roles[i]
 	}
 	return out, nil
+}
+
+func indexOf(roles []Role, r Role) int {
+	for i, x := range roles {
+		if x == r {
+			return i
+		}
+	}
+	return -1
 }

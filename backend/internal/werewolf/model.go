@@ -24,6 +24,9 @@ const (
 // specialRoles theo thứ tự thêm vào khi số người tăng (bảng 1.2).
 var specialRoles = []Role{Seer, Guard, Witch, Hunter, Cupid}
 
+// ValidRole: r là một trong các vai ở bảng 1.1.
+func ValidRole(r Role) bool { return r == Wolf || r == Villager || isSpecial(r) }
+
 func isSpecial(r Role) bool {
 	for _, s := range specialRoles {
 		if s == r {

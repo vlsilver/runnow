@@ -20,9 +20,12 @@ type ActionRequest struct {
 	Targets    []string
 	Choice     string
 	Clear      bool
-	Source     string // app | telegram
+	Source     string // app | telegram | admin
 	TgUpdateID int64  // update_id của Telegram, 0 nếu từ app
 	ReceivedAt time.Time
+	// ActAs: admin bấm thay người chơi giả của ván thử (X1). Ván thật hoặc người
+	// chơi thật thì bị từ chối, nên admin không bấm thay được người nào đang chơi.
+	ActAs bool
 }
 
 // ActionResult: Reject khác nil là luật từ chối (trả 409/422, không phải 5xx).
@@ -56,10 +59,20 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 		if err != nil {
 			return err
 		}
+		if req.ActAs {
+			if g.Data()["testMode"] != true {
+				return errNotTestMode
+			}
+			if !fakeUIDs(g.Data())[req.UID] {
+				return errNotFakePlayer
+			}
+		}
 		if stringValue(g.Data()["status"]) != gameRunning {
 			res.Reject = errGameNotRunning
 			return nil
 		}
+		// Mọi so sánh giờ dùng giờ ván; ván thật thì đúng bằng ReceivedAt.
+		now := gameNow(g.Data(), req.ReceivedAt)
 		sec, err := tx.Get(secretRef(game))
 		if err != nil {
 			return err
@@ -99,13 +112,13 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 			return nil
 		}
 		// Hai kênh cùng ghi một doc: bản có receivedAt muộn hơn thắng.
-		if t, ok := cur["receivedAt"].(time.Time); ok && t.After(req.ReceivedAt) {
+		if t, ok := cur["receivedAt"].(time.Time); ok && t.After(now) {
 			res.Current, res.Peek = storedAction(cur)
 			return nil
 		}
 
-		a := werewolf.Action{Kind: req.Kind, Actor: req.UID, Targets: req.Targets, Choice: req.Choice, Clear: req.Clear, ReceivedAt: req.ReceivedAt}
-		if err := werewolf.Validate(st, a, mine, req.ReceivedAt); err != nil {
+		a := werewolf.Action{Kind: req.Kind, Actor: req.UID, Targets: req.Targets, Choice: req.Choice, Clear: req.Clear, ReceivedAt: now}
+		if err := werewolf.Validate(st, a, mine, now); err != nil {
 			var reject werewolf.Reject
 			if !errors.As(err, &reject) {
 				return err
@@ -114,14 +127,14 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 			return nil
 		}
 
-		msgs := []gameMsg{actionMessage(req.UID, req.Kind)}
+		msgs := withoutFakeDMs([]gameMsg{actionMessage(req.UID, req.Kind)}, g.Data())
 		chats, err := readChats(tx, game, msgs)
 		if err != nil {
 			return err
 		}
 		doc := map[string]any{
 			"uid": req.UID, "kind": string(req.Kind), "targets": req.Targets, "choice": req.Choice,
-			"cleared": req.Clear, "receivedAt": req.ReceivedAt, "source": req.Source,
+			"cleared": req.Clear, "receivedAt": now, "source": req.Source,
 			"lastTgUpdateId": max(lastTg, req.TgUpdateID), "phaseKey": st.PhaseKey(), "updatedAt": req.ReceivedAt,
 		}
 		if req.Kind == werewolf.KindSeerPeek {
@@ -132,7 +145,7 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 		if err := tx.Set(actionRef(game, st.Round, req.UID, req.Kind), doc); err != nil {
 			return err
 		}
-		w := stepWrite{tx: tx, game: game, msgs: msgs, chats: chats, now: req.ReceivedAt}
+		w := stepWrite{tx: tx, game: game, gameData: g.Data(), msgs: msgs, chats: chats, now: now, wall: req.ReceivedAt}
 		if err := w.writeOutbox(int64(number(g.Data()["eventSeq"]))); err != nil {
 			return err
 		}

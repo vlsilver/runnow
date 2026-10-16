@@ -206,7 +206,7 @@ func TestEmulatorActionOverwriteDropsVoidAndNeedsRunningGame(t *testing.T) {
 		t.Fatalf("tạo được ván %s", id)
 	}
 	db := emulatorDB(t)
-	store := NewGameStore(db)
+	store := NewGameStore(db, testPscChat)
 	id, err = store.CreateGame(context.Background(), NewGameInput{}, msgStart)
 	if err != nil {
 		t.Fatal(err)

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -25,12 +26,14 @@ import (
 // một bên chạy lại và bên đó thấy đã chốt rồi, nên không có event hay tin đôi.
 type GameStore struct {
 	db *firestore.Client
+	// pscChatID là TELEGRAM_CHAT_ID; ván thử không được tạo trong chat này (X1).
+	pscChatID string
 	// frameKm tính km khung của một người; mặc định LoadFrameKm.
 	frameKm func(ctx context.Context, uid string, frameEnd time.Time) (FrameKm, error)
 }
 
-func NewGameStore(db *firestore.Client) *GameStore {
-	return &GameStore{db: db, frameKm: func(ctx context.Context, uid string, frameEnd time.Time) (FrameKm, error) {
+func NewGameStore(db *firestore.Client, pscChatID string) *GameStore {
+	return &GameStore{db: db, pscChatID: pscChatID, frameKm: func(ctx context.Context, uid string, frameEnd time.Time) (FrameKm, error) {
 		return LoadFrameKm(ctx, db, uid, frameEnd)
 	}}
 }
@@ -88,6 +91,16 @@ type NewGameInput struct {
 // CreateGame mở ván mới ở trạng thái đăng ký. Chỉ một ván được mở một lúc:
 // gameState/current còn trỏ tới ván chưa kết thúc thì trả 409 game_running.
 func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Time) (string, error) {
+	if in.Config.TestMode {
+		// Ván thử có người giả và lệnh admin đẩy giờ; chạy trong PSC là tin của nó
+		// tới cả 16 người thật. Thiếu cấu hình thì không kiểm được, nên từ chối.
+		if s.pscChatID == "" {
+			return "", errors.New("thiếu TELEGRAM_CHAT_ID, không kiểm được ván thử có nằm ngoài PSC không")
+		}
+		if strings.TrimSpace(in.ChatID) == s.pscChatID {
+			return "", errTestModeInPsc
+		}
+	}
 	ref := s.db.Collection("games").NewDoc()
 	cfg, err := json.Marshal(in.Config)
 	if err != nil {
@@ -154,7 +167,7 @@ func (s *GameStore) StartGame(ctx context.Context, gameID string, st *werewolf.S
 				return fmt.Errorf("thiếu players/%s", uids[i])
 			}
 		}
-		msgs := startMessages(st)
+		msgs := withoutFakeDMs(startMessages(st), g.Data())
 		chats, err := readChats(tx, game, msgs)
 		if err != nil {
 			return err
@@ -164,13 +177,14 @@ func (s *GameStore) StartGame(ctx context.Context, gameID string, st *werewolf.S
 				return err
 			}
 		}
-		w := stepWrite{tx: tx, game: game, gameData: g.Data(), after: st, msgs: msgs, chats: chats, now: now}
+		w := stepWrite{tx: tx, game: game, gameData: g.Data(), after: st, msgs: msgs, chats: chats, now: now, wall: now}
 		return w.commit(map[string]any{"kind": "start"})
 	})
 }
 
 // AdvanceResult là việc AdvanceGame đã làm và lần hẹn kế tiếp. Caller hẹn task
 // game-advance vào NextAt + 30s với TaskID StableTaskID("gameadv", gameId+TaskKey).
+// NextAt là giờ thật, đã trừ độ lệch đồng hồ của ván thử.
 type AdvanceResult struct {
 	Steps   int
 	Status  string
@@ -178,15 +192,16 @@ type AdvanceResult struct {
 	TaskKey string
 }
 
-// AdvanceGame chạy hết các bước đã tới hạn lúc now, mỗi bước một transaction,
-// đúng thứ tự (E5). Gọi lại bao nhiêu lần cũng được: bước đã chốt thì thôi.
-func (s *GameStore) AdvanceGame(ctx context.Context, gameID string, now time.Time) (AdvanceResult, error) {
+// AdvanceGame chạy hết các bước đã tới hạn lúc wall (giờ thật), mỗi bước một
+// transaction, đúng thứ tự (E5). Gọi lại bao nhiêu lần cũng được: bước đã chốt
+// thì thôi.
+func (s *GameStore) AdvanceGame(ctx context.Context, gameID string, wall time.Time) (AdvanceResult, error) {
 	var res AdvanceResult
 	for i := 0; i < maxAdvanceSteps; i++ {
-		if err := s.snapshotKmIfDue(ctx, gameID, now); err != nil {
+		if err := s.snapshotKmIfDue(ctx, gameID, wall); err != nil {
 			return res, err
 		}
-		stepped, err := s.advanceOnce(ctx, gameID, now, &res)
+		stepped, err := s.advanceOnce(ctx, gameID, wall, "", &res)
 		if errors.Is(err, errKmNotReady) {
 			continue
 		}
@@ -200,9 +215,16 @@ func (s *GameStore) AdvanceGame(ctx context.Context, gameID string, now time.Tim
 
 // snapshotKmIfDue: tới mốc 22h thì tính km của mọi người chơi và ghi bằng
 // Create, bản ghi đầu tiên thắng (R29: không chốt lại). Chạy ngoài transaction vì
-// mỗi người tốn vài query; transaction của bước chỉ đọc các doc này.
-func (s *GameStore) snapshotKmIfDue(ctx context.Context, gameID string, now time.Time) error {
+// mỗi người tốn vài query; transaction của bước chỉ đọc các doc này. Ván thử
+// không đọc buổi chạy: giờ ván đã bị đẩy nên khung không khớp buổi chạy thật,
+// km do admin/km ghi, ai không được ghi thì là 0.
+func (s *GameStore) snapshotKmIfDue(ctx context.Context, gameID string, wall time.Time) error {
 	game := s.gameRef(gameID)
+	g, err := game.Get(ctx)
+	if err != nil {
+		return err
+	}
+	now, testMode := gameNow(g.Data(), wall), g.Data()["testMode"] == true
 	snap, err := secretRef(game).Get(ctx)
 	if status.Code(err) == codes.NotFound {
 		return nil // chưa Start
@@ -228,11 +250,15 @@ func (s *GameStore) snapshotKmIfDue(ctx context.Context, gameID string, now time
 			continue
 		}
 		uid := refs[i].ID
-		fk, err := s.frameKm(ctx, uid, end)
-		if err != nil {
-			return fmt.Errorf("km của %s: %w", uid, err)
+		doc := map[string]any{"frameEnd": end, "meters": 0.0, "source": "test", "createdAt": wall}
+		if !testMode {
+			fk, err := s.frameKm(ctx, uid, end)
+			if err != nil {
+				return fmt.Errorf("km của %s: %w", uid, err)
+			}
+			doc = kmDoc(fk, wall)
 		}
-		if _, err := refs[i].Create(ctx, kmDoc(fk, now)); err != nil && status.Code(err) != codes.AlreadyExists {
+		if _, err := refs[i].Create(ctx, doc); err != nil && status.Code(err) != codes.AlreadyExists {
 			return err
 		}
 	}
@@ -259,8 +285,9 @@ func kmDoc(fk FrameKm, now time.Time) map[string]any {
 }
 
 // advanceOnce chạy một việc đã tới hạn trong một transaction. stepped=false khi
-// không còn gì tới hạn hoặc ván không chạy.
-func (s *GameStore) advanceOnce(ctx context.Context, gameID string, now time.Time, res *AdvanceResult) (bool, error) {
+// không còn gì tới hạn hoặc ván không chạy. expectKey khác rỗng là CAS của
+// admin/advance: TaskKey đã khác thì trả errPhaseMoved, không chạy gì.
+func (s *GameStore) advanceOnce(ctx context.Context, gameID string, wall time.Time, expectKey string, res *AdvanceResult) (bool, error) {
 	game := s.gameRef(gameID)
 	var stepped bool
 	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
@@ -281,7 +308,12 @@ func (s *GameStore) advanceOnce(ctx context.Context, gameID string, now time.Tim
 		if err != nil {
 			return err
 		}
-		res.NextAt, res.TaskKey = st.NextAt(), st.TaskKey()
+		if expectKey != "" && st.TaskKey() != expectKey {
+			return errPhaseMoved
+		}
+		offset := clockOffset(g.Data())
+		now := wall.Add(offset)
+		res.NextAt, res.TaskKey = st.NextAt().Add(-offset), st.TaskKey()
 		in, err := s.readInputs(tx, game, st, now)
 		if err != nil {
 			return err
@@ -293,7 +325,7 @@ func (s *GameStore) advanceOnce(ctx context.Context, gameID string, now time.Tim
 		if err != nil {
 			return err
 		}
-		msgs := stepMessages(st, next, evs)
+		msgs := withoutFakeDMs(stepMessages(st, next, evs), g.Data())
 		chats, err := readChats(tx, game, msgs)
 		if err != nil {
 			return err
@@ -302,13 +334,13 @@ func (s *GameStore) advanceOnce(ctx context.Context, gameID string, now time.Tim
 		if err != nil {
 			return err
 		}
-		w := stepWrite{tx: tx, game: game, gameData: g.Data(), before: st, after: next, events: evs, msgs: msgs, chats: chats, now: now}
+		w := stepWrite{tx: tx, game: game, gameData: g.Data(), before: st, after: next, events: evs, msgs: msgs, chats: chats, now: now, wall: wall}
 		if err := w.commit(map[string]any{"kind": "step", "phaseKey": st.PhaseKey(), "inputs": string(inputs)}); err != nil {
 			return err
 		}
 		stepped = true
 		res.Status = w.status()
-		res.NextAt, res.TaskKey = next.NextAt(), next.TaskKey()
+		res.NextAt, res.TaskKey = next.NextAt().Add(-offset), next.TaskKey()
 		return nil
 	})
 	return stepped, err
@@ -478,7 +510,9 @@ type stepWrite struct {
 	events        []werewolf.Event
 	msgs          []gameMsg
 	chats         map[string]int64
-	now           time.Time
+	// now là giờ ván (engine, event, feed, diedAt); wall là giờ thật (updatedAt,
+	// outbox). Hai giờ chỉ khác nhau ở ván thử đã bị admin/advance đẩy giờ.
+	now, wall time.Time
 }
 
 func (w *stepWrite) status() string {
@@ -489,13 +523,13 @@ func (w *stepWrite) status() string {
 }
 
 func (w *stepWrite) commit(event map[string]any) error {
-	tx, game, now := w.tx, w.game, w.now
+	tx, game, now, wall := w.tx, w.game, w.now, w.wall
 	state, err := json.Marshal(w.after)
 	if err != nil {
 		return err
 	}
 	sum := sha256.Sum256(state)
-	if err := tx.Set(secretRef(game), map[string]any{"state": string(state), "phaseKey": w.after.PhaseKey(), "updatedAt": now}); err != nil {
+	if err := tx.Set(secretRef(game), map[string]any{"state": string(state), "phaseKey": w.after.PhaseKey(), "updatedAt": wall}); err != nil {
 		return err
 	}
 
@@ -504,7 +538,8 @@ func (w *stepWrite) commit(event map[string]any) error {
 	if err != nil {
 		return err
 	}
-	event["seq"], event["at"], event["events"], event["stateHash"] = eventSeq, now, string(evs), hex.EncodeToString(sum[:])
+	// at là giờ engine đã chạy bước, để replay; wallAt là giờ thật.
+	event["seq"], event["at"], event["wallAt"], event["events"], event["stateHash"] = eventSeq, now, wall, string(evs), hex.EncodeToString(sum[:])
 	if event["kind"] == "start" {
 		event["state"] = string(state) // điểm đầu để replay
 	}
@@ -563,7 +598,7 @@ func (w *stepWrite) publicGame() map[string]any {
 	}
 	out := map[string]any{
 		"status": w.status(), "round": st.Round, "phase": string(st.Phase), "phaseKey": st.PhaseKey(),
-		"paused": st.Paused, "nextAt": nil, "taskKey": st.TaskKey(), "updatedAt": w.now,
+		"paused": st.Paused, "nextAt": nil, "taskKey": st.TaskKey(), "updatedAt": w.wall,
 		"deadline": nil, "winner": string(st.Winner),
 	}
 	if len(revealed) > 0 {
@@ -586,14 +621,14 @@ func (w *stepWrite) writeOutbox(eventSeq int64) error {
 		ref := w.game.Collection("outbox").Doc(m.ChatKey + "_" + strconv.FormatInt(seq, 10))
 		if err := w.tx.Create(ref, map[string]any{
 			"chatKey": m.ChatKey, "seq": seq, "template": m.Template, "data": string(data),
-			"status": "pending", "eventSeq": eventSeq, "createdAt": w.now,
+			"status": "pending", "eventSeq": eventSeq, "createdAt": w.wall,
 		}); err != nil {
 			return err
 		}
 	}
 	for key, next := range w.chats {
 		if err := w.tx.Set(w.game.Collection("outboxChats").Doc(key), map[string]any{
-			"chatKey": key, "nextSeq": next, "pending": true, "updatedAt": w.now,
+			"chatKey": key, "nextSeq": next, "pending": true, "updatedAt": w.wall,
 		}, firestore.MergeAll); err != nil {
 			return err
 		}

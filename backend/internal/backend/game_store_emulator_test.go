@@ -40,7 +40,7 @@ type storeGame struct {
 func newStoreGame(t *testing.T) *storeGame {
 	t.Helper()
 	db := emulatorDB(t)
-	g := &storeGame{t: t, db: db, store: NewGameStore(db), tg: map[string]string{}}
+	g := &storeGame{t: t, db: db, store: NewGameStore(db, testPscChat), tg: map[string]string{}}
 	g.store.frameKm = func(_ context.Context, _ string, end time.Time) (FrameKm, error) {
 		return FrameKm{FrameEnd: end, OfficialMeters: 5000, Meters: 5000, Source: "official"}, nil
 	}
@@ -112,7 +112,7 @@ func (g *storeGame) act(round int, kind ww.Kind, uid string, at time.Time, targe
 
 func TestEmulatorCreateGameWhileOneIsOpenIs409(t *testing.T) {
 	db := emulatorDB(t)
-	store := NewGameStore(db)
+	store := NewGameStore(db, testPscChat)
 	ctx := context.Background()
 	first, err := store.CreateGame(ctx, NewGameInput{CreatedBy: "admin"}, msgStart)
 	if err != nil {
@@ -346,7 +346,7 @@ func TestEmulatorAdvanceNothingDue(t *testing.T) {
 func TestEmulatorStepWithoutKmSnapshotIsRetriedNotRun(t *testing.T) {
 	g := newStoreGame(t)
 	var res AdvanceResult
-	stepped, err := g.store.advanceOnce(context.Background(), g.id, g.start.NightAt.Add(time.Minute), &res)
+	stepped, err := g.store.advanceOnce(context.Background(), g.id, g.start.NightAt.Add(time.Minute), "", &res)
 	if !errors.Is(err, errKmNotReady) || stepped {
 		t.Fatalf("stepped = %v, err = %v; mong đợi errKmNotReady", stepped, err)
 	}
@@ -357,7 +357,7 @@ func TestEmulatorStepWithoutKmSnapshotIsRetriedNotRun(t *testing.T) {
 
 func TestEmulatorStartGameNeedsRegisteredPlayers(t *testing.T) {
 	db := emulatorDB(t)
-	store := NewGameStore(db)
+	store := NewGameStore(db, testPscChat)
 	ctx := context.Background()
 	id, err := store.CreateGame(ctx, NewGameInput{CreatedBy: "admin"}, msgStart)
 	if err != nil {
