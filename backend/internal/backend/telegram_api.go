@@ -86,6 +86,16 @@ func (s *TelegramService) EditText(ctx context.Context, chatID string, messageID
 	return s.callAPI(ctx, "editMessageText", body, nil)
 }
 
+// WebhookPendingCount là pending_update_count của getWebhookInfo: số update
+// Telegram còn giữ vì chưa giao được tới webhook.
+func (s *TelegramService) WebhookPendingCount(ctx context.Context) (int, error) {
+	var out struct {
+		PendingUpdateCount int `json:"pending_update_count"`
+	}
+	err := s.callAPI(ctx, "getWebhookInfo", map[string]any{}, &out)
+	return out.PendingUpdateCount, err
+}
+
 // callAPI gọi một method JSON và đọc result vào out (nil thì bỏ result).
 func (s *TelegramService) callAPI(ctx context.Context, method string, body map[string]any, out any) error {
 	if s.botToken == "" {

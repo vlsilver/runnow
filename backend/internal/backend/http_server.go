@@ -75,12 +75,22 @@ type tickJob struct {
 }
 
 // scheduleTick: Cloud Scheduler gõ mỗi 10 phút. Game chạy trước, vì chốt phase
-// trễ thì cả ván phải chờ; rồi tới các lịch bot tự đặt. Tổng timeout dưới 300s
-// mặc định của Cloud Run.
+// trễ thì cả ván phải chờ; rồi tới alert của game (M1, cần biết phần game có
+// lỗi không) và các lịch bot tự đặt. Tổng timeout dưới 300s mặc định của Cloud Run.
 func (s *Server) scheduleTick(w http.ResponseWriter, r *http.Request) error {
-	jobs := []tickJob{{name: "game", timeout: 45 * time.Second, run: s.tickGame}}
+	var gameErr error
+	jobs := []tickJob{
+		{name: "game", timeout: 40 * time.Second, run: func(ctx context.Context, now time.Time) error {
+			gameErr = errors.New("panic") // panic thì dòng dưới không chạy, alert vẫn thấy lỗi
+			gameErr = s.tickGame(ctx, now)
+			return gameErr
+		}},
+		{name: "alert", timeout: 20 * time.Second, run: func(ctx context.Context, now time.Time) error {
+			return s.tickAlerts(ctx, now, gameErr)
+		}},
+	}
 	if s.deps.Bot != nil {
-		jobs = append(jobs, tickJob{name: "bot", timeout: 240 * time.Second, run: s.deps.Bot.RunDueSchedules})
+		jobs = append(jobs, tickJob{name: "bot", timeout: 230 * time.Second, run: s.deps.Bot.RunDueSchedules})
 	}
 	if err := runTickJobs(r.Context(), s.now(), jobs); err != nil {
 		return err
