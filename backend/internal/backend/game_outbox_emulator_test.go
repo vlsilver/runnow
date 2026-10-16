@@ -109,14 +109,18 @@ func adminMsg(action string) gameMsg {
 	return gameMsg{ChatKey: chatGroup, Template: tplAdmin, Data: map[string]any{"action": action}}
 }
 
-func promptMsg(key string, kind werewolf.Kind) gameMsg {
-	return gameMsg{ChatKey: key, Template: tplPrompt, Data: map[string]any{"kind": string(kind)}}
+// noteMsg là một tin riêng có chữ phân biệt theo kind. Không dùng prompt: prompt
+// đọc state của ván lúc gửi (W2), còn ván ở đây chỉ có outbox.
+func noteMsg(key string, kind werewolf.Kind) gameMsg {
+	return gameMsg{ChatKey: key, Template: tplPrivate, Data: map[string]any{"events": []werewolf.Event{
+		{Kind: werewolf.EventVoid, Action: kind, Reason: werewolf.VoidNoKm},
+	}}}
 }
 
 // Gửi đúng chat, đúng topic, theo seq; ghi messageId; hết tin thì tắt pending.
 func TestEmulatorOutboxSendsInOrder(t *testing.T) {
 	e := newOutboxEnv(t)
-	e.write(adminMsg("pause"), adminMsg("cancel"), promptMsg(dmChat("u2"), werewolf.KindGuard))
+	e.write(adminMsg("pause"), adminMsg("cancel"), noteMsg(dmChat("u2"), werewolf.KindGuard))
 
 	res := e.flush()
 	if res.Sent != 3 || res.Failed != 0 || !res.RetryAt.IsZero() {
@@ -192,7 +196,7 @@ func TestEmulatorOutboxParallelFlushersSendOnce(t *testing.T) {
 	kinds := []werewolf.Kind{werewolf.KindWolfBite, werewolf.KindSeerPeek, werewolf.KindGuard, werewolf.KindWitchSave, werewolf.KindWitchPoison}
 	var msgs []gameMsg
 	for _, k := range kinds {
-		msgs = append(msgs, promptMsg(chatGroup, k))
+		msgs = append(msgs, noteMsg(chatGroup, k))
 	}
 	e.write(msgs...)
 	e.tg.OnCall(func(tgCall) { time.Sleep(30 * time.Millisecond) })
@@ -222,7 +226,7 @@ func TestEmulatorOutboxParallelFlushersSendOnce(t *testing.T) {
 		t.Fatalf("gửi %d tin, mong đợi 5", len(texts))
 	}
 	for i, k := range kinds {
-		if !strings.Contains(texts[i], "Tới lượt bạn: "+actionTexts[k].label+"<") {
+		if !strings.Contains(texts[i], "Lựa chọn "+actionTexts[k].label+" của bạn") {
 			t.Fatalf("tin %d = %q, mong đợi %s", i, texts[i], k)
 		}
 	}
@@ -297,7 +301,7 @@ func TestEmulatorOutboxBadRequestDoesNotBlock(t *testing.T) {
 func TestEmulatorOutboxDMBlockedMarksPlayer(t *testing.T) {
 	e := newOutboxEnv(t)
 	seed(t, e.db, "games/"+outboxGame+"/players/u3", map[string]any{"name": "Chi"})
-	e.write(promptMsg(dmChat("u1"), werewolf.KindGuard), promptMsg(dmChat("u3"), werewolf.KindGuard))
+	e.write(noteMsg(dmChat("u1"), werewolf.KindGuard), noteMsg(dmChat("u3"), werewolf.KindGuard))
 	e.tg.Then("sendMessage", tgForbidden("Forbidden: bot was blocked by the user"))
 
 	if res := e.flush(); res.Failed != 1 || res.Skipped != 1 || len(e.sent()) != 1 {
@@ -313,7 +317,7 @@ func TestEmulatorOutboxDMBlockedMarksPlayer(t *testing.T) {
 		t.Fatalf("dm:u3_1 = %v", m)
 	}
 
-	e.write(promptMsg(dmChat("u1"), werewolf.KindSeerPeek))
+	e.write(noteMsg(dmChat("u1"), werewolf.KindSeerPeek))
 	if res := e.flush(); res.Sent != 1 {
 		t.Fatalf("res = %+v", res)
 	}
@@ -557,7 +561,7 @@ func TestEmulatorOutboxLeaseRenewedPerMessage(t *testing.T) {
 // Lỗi tạm thời ở một chat không chặn các chat khác của ván.
 func TestEmulatorOutboxChatErrorDoesNotBlockOthers(t *testing.T) {
 	e := newOutboxEnv(t)
-	e.write(promptMsg(dmChat("u1"), werewolf.KindGuard), adminMsg("pause"))
+	e.write(noteMsg(dmChat("u1"), werewolf.KindGuard), adminMsg("pause"))
 	// Chat được duyệt theo ID: dm:u1 trước group.
 	e.tg.Then("sendMessage", tgReply{502, `{"ok":false,"error_code":502,"description":"Bad Gateway"}`})
 	if _, err := e.flushCtx(context.Background()); err == nil {

@@ -30,6 +30,9 @@ type GameStore struct {
 	pscChatID string
 	// frameKm tính km khung của một người; mặc định LoadFrameKm.
 	frameKm func(ctx context.Context, uid string, frameEnd time.Time) (FrameKm, error)
+	// beforeSubmit chỉ test đặt: chen một bước chốt vào giữa lúc PressButton đọc
+	// state và lúc transaction ghi action.
+	beforeSubmit func()
 }
 
 func NewGameStore(db *firestore.Client, pscChatID string) *GameStore {

@@ -69,13 +69,16 @@ func TestWebhookPanicReturns200(t *testing.T) {
 	}
 }
 
+// Nút lạ, hoặc nút Ma Sói trên server thiếu Firestore, vẫn được trả lời.
 func TestWebhookCallbackAnsweredInlineWithoutEnqueue(t *testing.T) {
-	code, body, tasks := webhookCall(t, testBotCfg, `{"update_id":11,"callback_query":{"id":"cq-1","from":{"id":5},"data":"x"}}`, nil)
-	if code != 200 || body["method"] != "answerCallbackQuery" || body["callback_query_id"] != "cq-1" || body["text"] == "" {
-		t.Fatalf("code=%d body=%v", code, body)
-	}
-	if len(tasks) != 0 {
-		t.Fatalf("bấm nút không được enqueue sang LLM: %v", tasks)
+	for _, data := range []string{"x", "m1|g1|v"} {
+		code, body, tasks := webhookCall(t, testBotCfg, `{"update_id":11,"callback_query":{"id":"cq-1","from":{"id":5},"data":"`+data+`"}}`, nil)
+		if code != 200 || body["method"] != "answerCallbackQuery" || body["callback_query_id"] != "cq-1" || body["text"] != "Nút này chưa dùng được." {
+			t.Fatalf("%s: code=%d body=%v", data, code, body)
+		}
+		if len(tasks) != 0 {
+			t.Fatalf("bấm nút không được enqueue sang LLM: %v", tasks)
+		}
 	}
 }
 
@@ -99,8 +102,8 @@ func TestWebhookCommandsAnsweredInlineWithoutLLM(t *testing.T) {
 // /vai gõ trong topic thì câu trả lời cố định cũng phải vào đúng topic.
 func TestWebhookCommandReplyStaysInTopic(t *testing.T) {
 	_, body, _ := webhookCall(t, testBotCfg, `{"update_id":15,"message":{"message_id":9,"message_thread_id":7,"is_topic_message":true,"text":"/vai","chat":{"id":-100,"type":"supergroup"},"from":{"id":5}}}`, nil)
-	if body["message_thread_id"] != float64(7) {
-		t.Fatalf("thiếu thread: %v", body)
+	if body["message_thread_id"] != float64(7) || body["text"] != "Nhắn /vai riêng cho 3i để xem lá bài của bạn." {
+		t.Fatalf("/vai trong topic: %v", body)
 	}
 }
 

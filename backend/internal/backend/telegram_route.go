@@ -71,16 +71,14 @@ func transientEnqueueErr(err error) bool {
 // sendMessage), hoặc nil nếu chỉ enqueue. Body trả trong response webhook không
 // cần token bot, và không biết được là gửi thành công hay không.
 func (s *Server) routeTelegramUpdate(ctx context.Context, update TelegramUpdate, raw []byte, publish taskPublishFunc) (map[string]any, error) {
-	if cq := update.CallbackQuery; cq != nil {
-		// Chưa có ván nào dùng nút (W0 mới ghi hành động). Vẫn phải trả lời,
-		// không thì nút cứ quay vòng trên máy người bấm.
-		return map[string]any{"method": "answerCallbackQuery", "callback_query_id": cq.ID, "text": "Nút này chưa dùng được."}, nil
+	if update.CallbackQuery != nil {
+		return s.callbackReply(ctx, update)
 	}
 	if reply, ok, err := s.linkReply(ctx, update, raw, publish); ok {
 		return reply, err
 	}
-	if reply, ok := s.commandReply(update); ok {
-		return reply, nil
+	if reply, ok, err := s.commandReply(ctx, update); ok {
+		return reply, err
 	}
 	if isMembershipUpdate(update) {
 		if m := update.Message; m != nil && (m.MigrateToChatID != 0 || m.MigrateFromChatID != 0) {
@@ -137,29 +135,89 @@ func isMembershipUpdate(u TelegramUpdate) bool {
 }
 
 // commandReply trả lời ngay các lệnh không cần LLM (/vai). Không enqueue,
-// không ghi history.
-func (s *Server) commandReply(update TelegramUpdate) (map[string]any, bool) {
+// không ghi history. Firestore lỗi tạm thời thì trả lỗi không kèm câu trả lời,
+// để webhook trả 5xx và Telegram gửi lại.
+func (s *Server) commandReply(ctx context.Context, update TelegramUpdate) (map[string]any, bool, error) {
 	msg := update.Message
 	if msg == nil || msg.From == nil {
-		return nil, false
+		return nil, false, nil
 	}
-	cmd, _ := parseBotCommand(msg.Text, s.config.TelegramBotUsername)
-	private := msg.Chat.Type == "private"
-	var text string
-	switch {
-	case cmd == "/vai" && private:
-		text = "Bạn chưa ở trong ván Ma Sói nào."
-	case cmd == "/vai":
+	if cmd, _ := parseBotCommand(msg.Text, s.config.TelegramBotUsername); cmd != "/vai" {
+		return nil, false, nil
+	}
+	reply := func(text string, html bool) map[string]any {
+		r := map[string]any{"method": "sendMessage", "chat_id": msg.Chat.ID, "text": text}
+		if html {
+			r["parse_mode"] = "HTML"
+		}
+		if id := messageThreadID(update); id != 0 {
+			r["message_thread_id"] = id
+		}
+		return r
+	}
+	if msg.Chat.Type != "private" {
 		// Lá bài không bao giờ hiện trong group.
-		text = "Nhắn /vai riêng cho 3i để xem lá bài của bạn."
-	default:
-		return nil, false
+		return reply("Nhắn /vai riêng cho 3i để xem lá bài của bạn.", false), true, nil
 	}
-	reply := map[string]any{"method": "sendMessage", "chat_id": msg.Chat.ID, "text": text}
-	if id := messageThreadID(update); id != 0 {
-		reply["message_thread_id"] = id
+	const failed = "Chưa xem được lá bài lúc này, bạn thử lại sau nhé."
+	if s.deps == nil || s.deps.Games == nil || s.deps.TelegramLinks == nil {
+		slog.ErrorContext(ctx, "telegram.card_unconfigured", "updateId", update.UpdateID)
+		return reply(failed, false), true, nil
 	}
-	return reply, true
+	uid, err := s.deps.TelegramLinks.UIDForTelegram(ctx, msg.From.ID)
+	if err == nil && uid == "" {
+		return reply("Tài khoản Telegram này chưa liên kết với RunNow. Mở app RunNow để lấy mã liên kết.", false), true, nil
+	}
+	var card string
+	if err == nil {
+		card, err = s.deps.Games.CardText(ctx, uid)
+	}
+	switch {
+	case err != nil && transientEnqueueErr(err):
+		return nil, true, err
+	case err != nil:
+		return reply(failed, false), true, err
+	case card == "":
+		return reply("Bạn chưa ở trong ván Ma Sói nào.", false), true, nil
+	}
+	return reply(card, true), true, nil
+}
+
+// callbackReply trả answerCallbackQuery cho mọi nút: không trả lời thì nút cứ
+// quay vòng trên máy người bấm. Firestore lỗi tạm thời thì trả lỗi để webhook
+// trả 5xx; Telegram gửi lại cùng update_id nên SubmitAction không ghi đôi.
+func (s *Server) callbackReply(ctx context.Context, update TelegramUpdate) (map[string]any, error) {
+	received := time.Now()
+	cq := update.CallbackQuery
+	answer := func(text string, alert bool) map[string]any {
+		r := map[string]any{"method": "answerCallbackQuery", "callback_query_id": cq.ID, "text": truncateUTF16(text, answerTextSize)}
+		if alert {
+			r["show_alert"] = true
+		}
+		return r
+	}
+	b, ok := parseGameButton(cq.Data)
+	if !ok || s.deps == nil || s.deps.Games == nil || s.deps.TelegramLinks == nil {
+		return answer("Nút này chưa dùng được.", false), nil
+	}
+	uid, err := s.deps.TelegramLinks.UIDForTelegram(ctx, cq.From.ID)
+	if err == nil && uid == "" {
+		return answer("Tài khoản Telegram này chưa liên kết với RunNow.", false), nil
+	}
+	var reply ButtonReply
+	if err == nil {
+		reply, err = s.deps.Games.PressButton(ctx, b, uid, update.UpdateID, received)
+	}
+	switch {
+	case err != nil && transientEnqueueErr(err):
+		return nil, err
+	case err != nil:
+		return answer("Chưa làm được lúc này, bạn thử lại sau nhé.", false), err
+	}
+	if reply.Wrote {
+		s.kickGameFlush(ctx, b.GameID)
+	}
+	return answer(reply.Text, reply.Alert), nil
 }
 
 // linkReply tiêu mã của "/start <mã>" trong DM (L1) và trả lời ngay trong

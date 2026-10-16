@@ -104,9 +104,16 @@ func TestRenderStartAndCard(t *testing.T) {
 	want = "Lá bài của bạn trong ván Ma Sói:\n<b>Sói</b>\n" +
 		"Đêm nào cả phe cũng chọn một người để cắn, từ 22h tới 0h. Lựa chọn bấm sau cùng của phe được tính. Tổng km của sói còn sống phải đủ 2.5 km cho mỗi sói.\n" +
 		"Đồng đội: Bình &amp; Co."
-	if out.chatID != "71" || out.threadID != 0 || out.parts[0] != want {
+	if out.chatID != "71" || out.threadID != 0 || out.parts[0] != want || out.markup != nil {
 		t.Fatalf("card sói = %+v", out)
 	}
+	r.gameID = "g1"
+	out = renderOne(t, r, dmChat("w1"), tplCard, map[string]any{"role": "wolf"})
+	kb, _ := json.Marshal(out.markup)
+	if string(kb) != `{"inline_keyboard":[[{"callback_data":"m1|g1|v","text":"Xem lại lá bài"}]]}` {
+		t.Fatalf("nút lá bài = %s", kb)
+	}
+	r.gameID = ""
 	out = renderOne(t, r, dmChat("w2"), tplCard, map[string]any{"role": "seer"})
 	if out.chatID != "72" || strings.Contains(out.parts[0], "Đồng đội") || !strings.HasSuffix(out.parts[0], "Cần đủ 2.5 km.") {
 		t.Fatalf("card tiên tri = %+v", out)
@@ -166,11 +173,6 @@ func TestRenderPrivatePromptAdminReminder(t *testing.T) {
 		t.Fatalf("private không cắn = %q", out.parts[0])
 	}
 
-	out = renderOne(t, r, dmChat("s1"), tplPrompt, map[string]any{"kind": "seer_peek"})
-	if out.parts[0] != "<b>Tới lượt bạn: Soi</b>\nChọn một người để biết là Sói hay Dân.\nChọn trong app RunNow." {
-		t.Fatalf("prompt = %q", out.parts[0])
-	}
-
 	resumeAt := time.Date(2026, 10, 16, 3, 30, 0, 0, time.UTC)
 	out = renderOne(t, r, chatGroup, tplAdmin, map[string]any{"action": "resume", "deadline": resumeAt.Format(time.RFC3339)})
 	if out.parts[0] != "<b>Ván chạy tiếp</b>\nHạn kế tiếp: 10:30 16/10." {
@@ -181,12 +183,10 @@ func TestRenderPrivatePromptAdminReminder(t *testing.T) {
 		t.Fatalf("reminder = %q", out.parts[0])
 	}
 
-	for _, tpl := range []string{tplChoice, tplTally} {
-		if out := renderOne(t, r, chatGroup, tpl, map[string]any{"kind": "vote"}); out.skip != "not_implemented" {
-			t.Fatalf("%s = %+v", tpl, out)
-		}
+	if out := renderOne(t, r, chatGroup, tplTally, map[string]any{"kind": "vote"}); out.skip != "not_implemented" {
+		t.Fatalf("tally = %+v", out)
 	}
-	for _, c := range [][2]string{{"nope", `{}`}, {tplAdmin, `{"action":"x"}`}, {tplReminder, `{"reason":"x"}`}, {tplPrompt, `{"kind":"x"}`}, {tplStart, `{`}} {
+	for _, c := range [][2]string{{"nope", `{}`}, {tplAdmin, `{"action":"x"}`}, {tplReminder, `{"reason":"x"}`}, {tplStart, `{`}} {
 		if _, err := r.render(chatGroup, c[0], c[1]); err == nil {
 			t.Fatalf("%s %s: không lỗi", c[0], c[1])
 		}

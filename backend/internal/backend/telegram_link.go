@@ -289,6 +289,19 @@ func (s *TelegramLinkService) RecordMembership(ctx context.Context, tgID int64, 
 	})
 }
 
+// UIDForTelegram là uid đang liên kết với tg, rỗng nếu chưa liên kết. Người bấm
+// nút hay gõ lệnh luôn lấy qua đây, không tin uid trong callback_data (3.2).
+func (s *TelegramLinkService) UIDForTelegram(ctx context.Context, tgID int64) (string, error) {
+	d, err := s.tgLinkRef(strconv.FormatInt(tgID, 10)).Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return stringValue(d.Data()["uid"]), nil
+}
+
 // inActiveGame: có uid nào là người chơi của ván đang starting/running không.
 // Ván đang đăng ký thì chưa tính: lúc Start bot kiểm lại liên kết của từng người.
 func inActiveGame(tx *firestore.Transaction, db *firestore.Client, uids ...string) (bool, error) {

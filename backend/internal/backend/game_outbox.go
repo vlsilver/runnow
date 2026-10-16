@@ -37,6 +37,7 @@ const (
 // outboxTelegram là phần Bot API bộ gửi cần; TelegramService đáp ứng.
 type outboxTelegram interface {
 	SendText(ctx context.Context, m TelegramText) (int64, error)
+	EditText(ctx context.Context, chatID string, messageID int64, text string, html bool, markup any) error
 }
 
 // FlushResult: RetryAt khác 0 là còn chat phải gửi sau mốc đó (429, hoặc bộ
@@ -105,6 +106,7 @@ func (s *GameStore) FlushGame(ctx context.Context, gameID string, tg outboxTeleg
 	if err != nil {
 		return res, err
 	}
+	r.store, r.game, r.now = s, game, now
 	owner, err := leaseOwner()
 	if err != nil {
 		return res, err
@@ -203,7 +205,7 @@ func (f *chatFlusher) holds(c map[string]any) bool {
 // dừng (429, lỗi tạm thời).
 func (f *chatFlusher) sendOne(ctx context.Context, chat *firestore.DocumentRef, key string, seq int64) (int64, error) {
 	msgRef := f.game.Collection("outbox").Doc(key + "_" + strconv.FormatInt(seq, 10))
-	var msg map[string]any
+	var msg, chatData map[string]any
 	err := f.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		c, err := tx.Get(chat)
 		if err != nil {
@@ -216,7 +218,7 @@ func (f *chatFlusher) sendOne(ctx context.Context, chat *firestore.DocumentRef, 
 		if !f.holds(c.Data()) {
 			return errLeaseLost
 		}
-		msg = m.Data()
+		msg, chatData = m.Data(), c.Data()
 		if st := stringValue(msg["status"]); st != outboxPending && st != outboxSending {
 			return nil // đã ghi kết quả ở lần trước; chỉ còn dời lastSentSeq
 		}
@@ -230,33 +232,55 @@ func (f *chatFlusher) sendOne(ctx context.Context, chat *firestore.DocumentRef, 
 		return 0, err
 	}
 
-	var result map[string]any // nil: tin đã có kết quả từ lượt trước
+	var d delivery // result nil: tin đã có kết quả từ lượt trước
 	outcome := outcomeSent
 	var sendErr error
 	if st := stringValue(msg["status"]); st == outboxPending || st == outboxSending {
-		result, outcome, sendErr = f.deliver(ctx, key, seq, msg)
+		d, outcome, sendErr = f.deliver(ctx, key, seq, msg, chatData)
 	}
 	switch outcome {
 	case outcomeLater, outcomeRetry:
 		return 0, f.keepPending(ctx, chat, msgRef, outcome, sendErr)
 	}
-	return f.finish(ctx, chat, msgRef, key, seq, result)
+	return f.finish(ctx, chat, msgRef, key, seq, d)
 }
 
-// deliver render rồi gửi tin; trả field kết quả để ghi lên outbox/{key}_{seq}.
-func (f *chatFlusher) deliver(ctx context.Context, key string, seq int64, msg map[string]any) (map[string]any, sendOutcome, error) {
+// delivery là kết quả ghi lên outbox/{key}_{seq}, cùng phần ghi thêm lên doc
+// chat (message_id của prompt, để tin sửa tìm được).
+type delivery struct {
+	result  map[string]any
+	chatUps []firestore.Update
+}
+
+// deliver render rồi gửi (hoặc sửa) tin.
+func (f *chatFlusher) deliver(ctx context.Context, key string, seq int64, msg, chat map[string]any) (delivery, sendOutcome, error) {
 	tpl := stringValue(msg["template"])
-	out, err := f.r.render(key, tpl, stringValue(msg["data"]))
+	var out outboxText
+	var err error
+	if tpl == tplPrompt || tpl == tplChoice {
+		out, err = f.r.renderAction(ctx, key, tpl, stringValue(msg["data"]), chat)
+	} else {
+		out, err = f.r.render(key, tpl, stringValue(msg["data"]))
+	}
 	if err != nil {
 		f.logFailed(ctx, key, seq, tpl, err)
-		return map[string]any{"status": outboxFailed, "error": err.Error(), "failedAt": f.now()}, outcomeFailed, nil
+		return delivery{result: map[string]any{"status": outboxFailed, "error": err.Error(), "failedAt": f.now()}}, outcomeFailed, nil
 	}
 	if out.skip != "" {
-		return map[string]any{"status": outboxSkipped, "skipReason": out.skip}, outcomeSent, nil
+		return delivery{result: map[string]any{"status": outboxSkipped, "skipReason": out.skip}}, outcomeSent, nil
 	}
 	var ids []int64
-	for _, part := range out.parts {
-		id, err := f.tg.SendText(ctx, TelegramText{ChatID: out.chatID, ThreadID: out.threadID, Text: part, HTML: true})
+	for i, part := range out.parts {
+		var markup any
+		if i == len(out.parts)-1 {
+			markup = out.markup // nút đi cùng phần cuối
+		}
+		var id int64
+		if out.editID != 0 {
+			err = f.tg.EditText(ctx, out.chatID, out.editID, part, true, markup)
+		} else {
+			id, err = f.tg.SendText(ctx, TelegramText{ChatID: out.chatID, ThreadID: out.threadID, Text: part, HTML: true, Markup: markup})
+		}
 		switch outcome := classifySend(err); outcome {
 		case outcomeSent:
 			if id != 0 {
@@ -279,13 +303,22 @@ func (f *chatFlusher) deliver(ctx context.Context, key string, seq int64, msg ma
 			if len(ids) > 0 {
 				res["messageIds"] = ids
 			}
-			return res, outcome, err
+			return delivery{result: res}, outcome, err
 		default:
 			// Phần đã gửi sẽ được gửi lại cùng cả tin; tin dài quá 4096 hiếm nên chấp nhận.
-			return nil, outcome, err
+			return delivery{}, outcome, err
 		}
 	}
-	return map[string]any{"status": outboxSent, "messageIds": ids, "sentAt": f.now()}, outcomeSent, nil
+	d := delivery{result: map[string]any{"status": outboxSent, "messageIds": ids, "sentAt": f.now()}}
+	if out.editID != 0 {
+		d.result["editedId"] = out.editID
+	}
+	if out.promptKind != "" && len(ids) > 0 {
+		d.chatUps = []firestore.Update{{Path: "prompts." + out.promptKind, Value: map[string]any{
+			"messageId": ids[len(ids)-1], "phaseKey": out.phaseKey,
+		}}}
+	}
+	return d, outcomeSent, nil
 }
 
 func (f *chatFlusher) logFailed(ctx context.Context, key string, seq int64, tpl string, err error) {
@@ -296,7 +329,8 @@ func (f *chatFlusher) logFailed(ctx context.Context, key string, seq int64, tpl 
 // finish ghi kết quả của tin seq, dời lastSentSeq và trả seq kế tiếp; hết tin
 // thì nhả lease và tắt pending trong cùng transaction, nên tin ghi xen vào lúc
 // này (nextSeq tăng) vẫn được gửi.
-func (f *chatFlusher) finish(ctx context.Context, chat, msgRef *firestore.DocumentRef, key string, seq int64, result map[string]any) (int64, error) {
+func (f *chatFlusher) finish(ctx context.Context, chat, msgRef *firestore.DocumentRef, key string, seq int64, d delivery) (int64, error) {
+	result := d.result
 	uid, isDM := strings.CutPrefix(key, "dm:")
 	dmOk, writeDM := false, false
 	if isDM && result != nil {
@@ -327,10 +361,10 @@ func (f *chatFlusher) finish(ctx context.Context, chat, msgRef *firestore.Docume
 			}
 		}
 		if seq+1 >= int64(number(c.Data()["nextSeq"])) {
-			return tx.Update(chat, releaseLease(firestore.Update{Path: "lastSentSeq", Value: seq}, firestore.Update{Path: "pending", Value: false}))
+			return tx.Update(chat, append(releaseLease(firestore.Update{Path: "lastSentSeq", Value: seq}, firestore.Update{Path: "pending", Value: false}), d.chatUps...))
 		}
 		next = seq + 1
-		return tx.Update(chat, []firestore.Update{{Path: "lastSentSeq", Value: seq}, {Path: "leaseUntil", Value: f.now().Add(outboxLease)}})
+		return tx.Update(chat, append([]firestore.Update{{Path: "lastSentSeq", Value: seq}, {Path: "leaseUntil", Value: f.now().Add(outboxLease)}}, d.chatUps...))
 	})
 	if err != nil {
 		return 0, err
@@ -407,12 +441,20 @@ func (f *chatFlusher) keepPending(ctx context.Context, chat, msgRef *firestore.D
 
 // outboxRenderer giữ những gì render cần, đọc một lần cho cả lượt gửi.
 type outboxRenderer struct {
+	gameID   string
+	gameData map[string]any
 	chatID   string
 	threadID int64
 	cfg      werewolf.Config
 	players  []gamePlayerInfo // theo thứ tự đăng ký
 	byUID    map[string]gamePlayerInfo
 	dmOk     map[string]bool // chỉ có uid đã từng ghi dmOk
+
+	// Cho prompt và tin sửa: đọc state và lựa chọn đang lưu lúc gửi (3.4).
+	store *GameStore
+	game  *firestore.DocumentRef
+	now   func() time.Time
+	st    *werewolf.State
 }
 
 func (s *GameStore) outboxRenderer(ctx context.Context, game *firestore.DocumentRef, g map[string]any) (*outboxRenderer, error) {
@@ -424,7 +466,7 @@ func (s *GameStore) outboxRenderer(ctx context.Context, game *firestore.Document
 	if err != nil {
 		return nil, err
 	}
-	r := &outboxRenderer{chatID: stringValue(g["chatId"]), threadID: int64(number(g["threadId"])), cfg: cfg,
+	r := &outboxRenderer{gameID: game.ID, gameData: g, chatID: stringValue(g["chatId"]), threadID: int64(number(g["threadId"])), cfg: cfg,
 		players: players, byUID: playerIndex(players), dmOk: map[string]bool{}}
 	for _, p := range players {
 		if v, ok := p.data["dmOk"].(bool); ok {
@@ -439,6 +481,12 @@ type outboxText struct {
 	threadID int64
 	parts    []string
 	skip     string // khác rỗng: không gửi, ghi lý do
+	markup   any    // reply_markup của phần cuối
+	editID   int64  // khác 0: sửa tin này thay vì gửi mới
+
+	// promptKind khác rỗng: tin là prompt, gửi xong thì ghi message_id lên
+	// outboxChats/{key}.prompts.{kind} cho tin sửa sau này.
+	promptKind, phaseKey string
 }
 
 func (r *outboxRenderer) name(uid string) string {
@@ -448,7 +496,9 @@ func (r *outboxRenderer) name(uid string) string {
 	return "Người chơi"
 }
 
-func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
+// target chọn chat của key: DM tới tgUserId của người chơi, còn lại là topic
+// Ma Sói của group ván. skip khác rỗng là không gửi được.
+func (r *outboxRenderer) target(key string) (outboxText, error) {
 	var out outboxText
 	if uid, ok := strings.CutPrefix(key, "dm:"); ok {
 		p, known := r.byUID[uid]
@@ -457,14 +507,21 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 			return outboxText{skip: "no_telegram"}, nil
 		}
 		out.chatID = tg
-	} else {
-		out.chatID, out.threadID = r.chatID, r.threadID
-		if out.chatID == "" {
-			return out, errors.New("ván không có chatId")
-		}
+		return out, nil
+	}
+	out.chatID, out.threadID = r.chatID, r.threadID
+	if out.chatID == "" {
+		return out, errors.New("ván không có chatId")
+	}
+	return out, nil
+}
+
+func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
+	out, err := r.target(key)
+	if err != nil || out.skip != "" {
+		return out, err
 	}
 	var text string
-	var err error
 	switch tpl {
 	case tplStart:
 		var d struct {
@@ -480,6 +537,12 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 		}
 		if err = json.Unmarshal([]byte(raw), &d); err == nil {
 			text, err = r.cardText(strings.TrimPrefix(key, "dm:"), d.Role, d.Wolves)
+		}
+		if err == nil && r.gameID != "" {
+			var data string
+			if data, err = (gameButton{GameID: r.gameID, Op: opCard}).data(); err == nil {
+				out.markup = inlineKeyboard([][]map[string]any{{{"text": "Xem lại lá bài", "callback_data": data}}})
+			}
 		}
 	case tplDigest:
 		text, err = r.digestText(raw)
@@ -497,13 +560,6 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 		if err = json.Unmarshal([]byte(raw), &d); err == nil {
 			text = r.privateText(d.Events)
 		}
-	case tplPrompt:
-		var d struct {
-			Kind werewolf.Kind `json:"kind"`
-		}
-		if err = json.Unmarshal([]byte(raw), &d); err == nil {
-			text, err = promptText(d.Kind)
-		}
 	case tplAdmin:
 		var d struct {
 			Action   string    `json:"action"`
@@ -512,8 +568,8 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 		if err = json.Unmarshal([]byte(raw), &d); err == nil {
 			text, err = adminText(d.Action, d.Deadline)
 		}
-	case tplChoice, tplTally:
-		// Sửa tin theo lựa chọn đang lưu cần message_id và nút, làm ở W2/W2b.
+	case tplTally:
+		// Tin đếm đề cử/phiếu trong topic là W2b.
 		return outboxText{skip: "not_implemented"}, nil
 	default:
 		err = fmt.Errorf("template lạ %q", tpl)
@@ -669,12 +725,84 @@ func (r *outboxRenderer) privateText(evs []werewolf.Event) string {
 	return strings.Join(lines, "\n")
 }
 
-func promptText(kind werewolf.Kind) (string, error) {
-	t, ok := actionTexts[kind]
-	if !ok {
-		return "", fmt.Errorf("hành động lạ %q", kind)
+// renderAction vẽ prompt (gửi mới) hoặc tin sửa prompt (choice) từ state và
+// lựa chọn đang lưu lúc gửi, nên gửi lại bao nhiêu lần cũng ra cùng kết quả.
+// Tin sửa cần message_id của prompt cùng lượt; prompt chưa gửi được (không có
+// Telegram, bị chặn) hay đã sang lượt khác thì bỏ.
+func (r *outboxRenderer) renderAction(ctx context.Context, key, tpl, raw string, chat map[string]any) (outboxText, error) {
+	out, err := r.target(key)
+	if err != nil || out.skip != "" {
+		return out, err
 	}
-	return "<b>Tới lượt bạn: " + t.label + "</b>\n" + html.EscapeString(t.help) + "\nChọn trong app RunNow.", nil
+	var d struct {
+		Kind     werewolf.Kind `json:"kind"`
+		PhaseKey string        `json:"phaseKey"`
+		Pick     []string      `json:"pick"`
+	}
+	if err := json.Unmarshal([]byte(raw), &d); err != nil {
+		return out, fmt.Errorf("render %s: %w", tpl, err)
+	}
+	st, err := r.state(ctx)
+	if err != nil {
+		return out, err
+	}
+	phaseKey := st.PhaseKey()
+	if tpl == tplPrompt && d.PhaseKey != phaseKey {
+		return outboxText{skip: "stale"}, nil
+	}
+	if tpl == tplChoice {
+		prompt := anyMap(anyMap(chat["prompts"])[string(d.Kind)])
+		id := int64(number(prompt["messageId"]))
+		switch {
+		case id == 0:
+			return outboxText{skip: "no_prompt"}, nil
+		case stringValue(prompt["phaseKey"]) != phaseKey:
+			return outboxText{skip: "stale"}, nil
+		}
+		out.editID = id
+	}
+	uid := strings.TrimPrefix(key, "dm:")
+	mine, raws, err := r.store.loadMine(ctx, r.game, st.Round, uid)
+	if err != nil {
+		return out, err
+	}
+	acts := meActions(st, uid, mine, raws, r.players, gameNow(r.gameData, r.now()), clockOffset(r.gameData))
+	a := findAction(acts, d.Kind)
+	if tpl == tplPrompt && a == nil {
+		return outboxText{skip: "closed"}, nil
+	}
+	v := promptView{gameID: r.gameID, phaseKey: phaseKey, st: st, kind: d.Kind, a: a, pick: d.Pick,
+		name: func(uid string) string { return playerName(r.byUID, uid) }}
+	text, markup, err := v.render()
+	if err != nil {
+		return out, fmt.Errorf("render %s: %w", tpl, err)
+	}
+	out.parts, out.markup = splitTelegramText(text, telegramTextLimit), markup
+	if tpl == tplPrompt {
+		out.promptKind, out.phaseKey = string(d.Kind), phaseKey
+	}
+	return out, nil
+}
+
+// state đọc secret/state một lần cho cả lượt gửi.
+func (r *outboxRenderer) state(ctx context.Context) (*werewolf.State, error) {
+	if r.st != nil {
+		return r.st, nil
+	}
+	st, err := r.store.loadState(ctx, r.game)
+	if err != nil {
+		return nil, err
+	}
+	if st == nil {
+		return nil, errors.New("ván chưa có state")
+	}
+	r.st = st
+	return st, nil
+}
+
+func anyMap(v any) map[string]any {
+	m, _ := v.(map[string]any)
+	return m
 }
 
 func adminText(action string, deadline time.Time) (string, error) {

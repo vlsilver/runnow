@@ -22,6 +22,9 @@ type ActionRequest struct {
 	Clear      bool
 	Source     string // app | telegram | admin
 	TgUpdateID int64  // update_id của Telegram, 0 nếu từ app
+	// PhaseKey khác rỗng: nút Telegram vẽ cho lượt này. Ván đã sang lượt khác thì
+	// từ chối (errStaleButton), kể cả khi kind cùng tên đang mở ở lượt mới.
+	PhaseKey   string
 	ReceivedAt time.Time
 	// ActAs: admin bấm thay người chơi giả của ván thử (X1). Ván thật hoặc người
 	// chơi thật thì bị từ chối, nên admin không bấm thay được người nào đang chơi.
@@ -40,6 +43,8 @@ type ActionResult struct {
 
 // errGameNotRunning: ván chưa Start hoặc đã kết thúc thì không nhận hành động.
 var errGameNotRunning = werewolf.ErrPhaseClosed
+
+var errStaleButton = errors.New("stale_button")
 
 func actionRef(game *firestore.DocumentRef, round int, uid string, kind werewolf.Kind) *firestore.DocumentRef {
 	return roundRef(game, round).Collection("actions").Doc(uid + "_" + string(kind))
@@ -80,6 +85,10 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 		st, err := decodeState(sec.Data())
 		if err != nil {
 			return err
+		}
+		if req.PhaseKey != "" && req.PhaseKey != st.PhaseKey() {
+			res.Reject = errStaleButton
+			return nil
 		}
 
 		var refs []*firestore.DocumentRef
