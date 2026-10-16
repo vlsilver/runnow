@@ -564,8 +564,9 @@ func (r *outboxRenderer) name(uid string) string {
 	return "Người chơi"
 }
 
-// target chọn chat của key: DM tới tgUserId của người chơi, còn lại là topic
-// Ma Sói của group ván. skip khác rỗng là không gửi được.
+// target chọn chat của key: DM tới tgUserId của người chơi, topic Ma Sói của
+// group ván, hoặc group Phe Sói. Key lạ thì lỗi, không rơi về group chung, vì
+// tin của phe kín mà vào group chung là lộ. skip khác rỗng là không gửi được.
 func (r *outboxRenderer) target(key string) (outboxText, error) {
 	var out outboxText
 	if uid, ok := strings.CutPrefix(key, "dm:"); ok {
@@ -577,9 +578,19 @@ func (r *outboxRenderer) target(key string) (outboxText, error) {
 		out.chatID = tg
 		return out, nil
 	}
-	out.chatID, out.threadID = r.chatID, r.threadID
-	if out.chatID == "" {
-		return out, errors.New("ván không có chatId")
+	switch key {
+	case chatGroup:
+		out.chatID, out.threadID = r.chatID, r.threadID
+		if out.chatID == "" {
+			return out, errors.New("ván không có chatId")
+		}
+	case chatWolves:
+		// W3 ghi wolfChatId lúc tạo group; chưa có thì bỏ tin.
+		if out.chatID = tgIDString(r.gameData["wolfChatId"]); out.chatID == "" {
+			return outboxText{skip: "no_chat"}, nil
+		}
+	default:
+		return out, fmt.Errorf("chat lạ %q", key)
 	}
 	return out, nil
 }
@@ -636,6 +647,18 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 		}
 		if err = json.Unmarshal([]byte(raw), &d); err == nil {
 			text, err = adminText(d.Action, d.Deadline, d.Minutes)
+		}
+	case tplWolfPick:
+		var d struct {
+			UID     string `json:"uid"`
+			Target  string `json:"target"`
+			Cleared bool   `json:"cleared"`
+		}
+		if err = json.Unmarshal([]byte(raw), &d); err == nil {
+			text = "<b>" + r.name(d.UID) + "</b> chọn cắn <b>" + r.name(d.Target) + "</b>."
+			if d.Cleared {
+				text = "<b>" + r.name(d.UID) + "</b> bỏ chọn cắn."
+			}
 		}
 	case tplTally:
 		// Tin đếm đề cử/phiếu trong topic là W2b.

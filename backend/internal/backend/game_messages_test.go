@@ -154,3 +154,20 @@ func TestStepMessagesEndRevealsAllRoles(t *testing.T) {
 	}
 	_ = day
 }
+
+// Đề cử và biểu quyết là công khai nên vào tin đếm trong topic; lựa chọn riêng
+// sửa tin DM của người chọn; lựa chọn cắn có thêm tin cho group Phe Sói.
+func TestActionMessagesChats(t *testing.T) {
+	for _, c := range []struct {
+		a    ww.Action
+		want []gameMsg
+	}{
+		{ww.Action{Kind: ww.KindVote, Actor: "v1", Choice: ww.ChoiceHang}, []gameMsg{{ChatKey: chatGroup, Template: tplTally, Data: map[string]any{"kind": "vote"}}}},
+		{ww.Action{Kind: ww.KindNominate, Actor: "v1", Targets: []string{"w1"}}, []gameMsg{{ChatKey: chatGroup, Template: tplTally, Data: map[string]any{"kind": "nominate"}}}},
+		{ww.Action{Kind: ww.KindSeerPeek, Actor: "seer", Targets: []string{"w1"}}, []gameMsg{{ChatKey: "dm:seer", Template: tplChoice, Data: map[string]any{"kind": "seer_peek"}}}},
+	} {
+		if got := actionMessages(c.a); !reflect.DeepEqual(got, c.want) {
+			t.Fatalf("%s = %+v", c.a.Kind, got)
+		}
+	}
+}

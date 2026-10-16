@@ -167,7 +167,7 @@ func TestEmulatorAdminDMSummary(t *testing.T) {
 		return vnTime(gameAt.Add(-time.Duration(number(e.data("games/" + e.id)["clockOffsetNs"]))))
 	}
 	want := "Trạng thái: Đang chơi\nLượt: Đêm 1, sói đang chọn\nHạn: " + real(time.Date(2026, 10, 16, 0, 0, 0, 0, vietnam)) +
-		"\nCòn sống: 10/10\nTin chờ gửi: 1, tin lỗi: 0"
+		"\nCòn sống: 10/10\nTin chờ gửi: 2, tin lỗi: 0" // tin sửa DM và tin Phe Sói của lần cắn
 	if got := e.adminSays("/xem"); got != want {
 		t.Fatalf("/xem đêm =\n%s\nmong đợi\n%s", got, want)
 	}

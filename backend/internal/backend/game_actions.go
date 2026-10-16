@@ -136,7 +136,7 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 			return nil
 		}
 
-		msgs := withoutFakeDMs([]gameMsg{actionMessage(req.UID, req.Kind)}, g.Data())
+		msgs := withoutFakeDMs(actionMessages(a), g.Data())
 		chats, err := readChats(tx, game, msgs)
 		if err != nil {
 			return err
@@ -167,14 +167,24 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 	return res, err
 }
 
-// actionMessage: lựa chọn riêng thì sửa tin DM của người đó; đề cử và biểu quyết
-// là công khai nên sửa tin đếm phiếu trong topic (W2b). Tin chỉ chở (uid, kind),
-// lúc gửi mới đọc lựa chọn đang lưu.
-func actionMessage(uid string, kind werewolf.Kind) gameMsg {
-	if kind == werewolf.KindNominate || kind == werewolf.KindVote {
-		return gameMsg{ChatKey: chatGroup, Template: tplTally, Data: map[string]any{"kind": string(kind)}}
+// actionMessages: lựa chọn riêng thì sửa tin DM của người đó; đề cử và biểu
+// quyết là công khai nên sửa tin đếm phiếu trong topic (W2b). Các tin này chỉ
+// chở (uid, kind), lúc gửi mới đọc lựa chọn đang lưu. Lựa chọn cắn còn được
+// đăng vào group Phe Sói (C2), chở luôn lựa chọn lúc đó, để cả phe thấy từng
+// lần đổi.
+func actionMessages(a werewolf.Action) []gameMsg {
+	kind := map[string]any{"kind": string(a.Kind)}
+	switch a.Kind {
+	case werewolf.KindNominate, werewolf.KindVote:
+		return []gameMsg{{ChatKey: chatGroup, Template: tplTally, Data: kind}}
+	case werewolf.KindWolfBite:
+		pick := map[string]any{"uid": a.Actor, "cleared": true}
+		if !a.Clear && len(a.Targets) > 0 {
+			pick = map[string]any{"uid": a.Actor, "target": a.Targets[0]}
+		}
+		return []gameMsg{{ChatKey: dmChat(a.Actor), Template: tplChoice, Data: kind}, {ChatKey: chatWolves, Template: tplWolfPick, Data: pick}}
 	}
-	return gameMsg{ChatKey: dmChat(uid), Template: tplChoice, Data: map[string]any{"kind": string(kind)}}
+	return []gameMsg{{ChatKey: dmChat(a.Actor), Template: tplChoice, Data: kind}}
 }
 
 func storedAction(d map[string]any) (*werewolf.Action, werewolf.Team) {

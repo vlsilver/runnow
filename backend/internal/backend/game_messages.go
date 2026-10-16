@@ -16,19 +16,23 @@ type gameMsg struct {
 	Data     map[string]any
 }
 
-const chatGroup = "group" // topic Ma Sói của group ván
+const (
+	chatGroup  = "group"  // topic Ma Sói của group ván
+	chatWolves = "wolves" // group Phe Sói (wolfChatId), cả topic General
+)
 
 func dmChat(uid string) string { return "dm:" + uid }
 
 const (
-	tplStart    = "start"    // group: ván bắt đầu, đêm 1 lúc nào
-	tplCard     = "card"     // dm: lá bài; sói thấy đồng đội
-	tplDigest   = "digest"   // group: bản tin gộp của một lần chốt
-	tplReminder = "reminder" // group: nhắc 15h, 21h
-	tplPrivate  = "private"  // dm: việc riêng sau một lần chốt (bị huỷ, người yêu, bạn chết…)
-	tplPrompt   = "prompt"   // dm: tới lượt một loại hành động
-	tplChoice   = "choice"   // dm: sửa prompt cho khớp lựa chọn vừa đổi
-	tplTally    = "tally"    // group: sửa tin đếm đề cử/phiếu
+	tplStart    = "start"     // group: ván bắt đầu, đêm 1 lúc nào
+	tplCard     = "card"      // dm: lá bài; sói thấy đồng đội
+	tplDigest   = "digest"    // group: bản tin gộp của một lần chốt
+	tplReminder = "reminder"  // group: nhắc 15h, 21h
+	tplPrivate  = "private"   // dm: việc riêng sau một lần chốt (bị huỷ, người yêu, bạn chết…)
+	tplPrompt   = "prompt"    // dm: tới lượt một loại hành động
+	tplChoice   = "choice"    // dm: sửa prompt cho khớp lựa chọn vừa đổi
+	tplTally    = "tally"     // group: sửa tin đếm đề cử/phiếu
+	tplWolfPick = "wolf_pick" // wolves: một sói vừa chọn hay bỏ chọn cắn (C2)
 )
 
 // publicEvent trả bản công khai của e, hoặc false nếu e chỉ dành cho người

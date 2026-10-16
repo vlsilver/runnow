@@ -216,6 +216,27 @@ func TestRenderPrivatePromptAdminReminder(t *testing.T) {
 	}
 }
 
+// Lựa chọn của từng sói đi vào group Phe Sói (C2), không bao giờ vào group
+// chung; chat key lạ thì lỗi chứ không rơi về group chung.
+func TestRenderWolfPick(t *testing.T) {
+	r := testRenderer()
+	if out := renderOne(t, r, chatWolves, tplWolfPick, map[string]any{"uid": "w1", "target": "s1"}); out.skip != "no_chat" {
+		t.Fatalf("chưa có group Phe Sói = %+v", out)
+	}
+	r.gameData = map[string]any{"wolfChatId": "-100w"}
+	out := renderOne(t, r, chatWolves, tplWolfPick, map[string]any{"uid": "w1", "target": "s1"})
+	if out.chatID != "-100w" || out.threadID != 0 || len(out.parts) != 1 || out.parts[0] != "<b>An &lt;Sói&gt;</b> chọn cắn <b>Chi</b>." {
+		t.Fatalf("chọn cắn = %+v", out)
+	}
+	out = renderOne(t, r, chatWolves, tplWolfPick, map[string]any{"uid": "w2", "cleared": true})
+	if out.parts[0] != "<b>Bình &amp; Co</b> bỏ chọn cắn." {
+		t.Fatalf("bỏ chọn = %q", out.parts[0])
+	}
+	if _, err := r.render("lovers", tplAdmin, `{"action":"pause"}`); err == nil {
+		t.Fatal("chat key lạ mà không lỗi")
+	}
+}
+
 func TestTelegramSendTextAndErrors(t *testing.T) {
 	tg := newFakeTelegram(t)
 	s := tg.service("-1")

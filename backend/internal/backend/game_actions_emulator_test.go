@@ -149,7 +149,8 @@ func TestEmulatorActionAtDeadlineIsCountedOrRejected(t *testing.T) {
 }
 
 // Luật từ chối thì không ghi gì; tiên tri có kết quả ngay và không soi lại được;
-// bỏ chọn thì bước chốt không tính; mỗi lần ghi có một tin sửa DM hoặc đếm phiếu.
+// bỏ chọn thì bước chốt không tính; mỗi lần ghi có một tin sửa DM hoặc đếm phiếu,
+// lựa chọn cắn có thêm một tin cho group Phe Sói (C2).
 func TestEmulatorActionRulesPeekClearAndOutbox(t *testing.T) {
 	g, at := nightGame(t)
 	if r := g.submit(ActionRequest{UID: "v1", Kind: ww.KindWolfBite, Targets: []string{"v2"}, ReceivedAt: at(time.Minute)}); !errors.Is(r.Reject, ww.ErrNotYourRole) || r.Applied {
@@ -168,8 +169,8 @@ func TestEmulatorActionRulesPeekClearAndOutbox(t *testing.T) {
 	if r := g.submit(ActionRequest{UID: "w1", Kind: ww.KindWolfBite, Clear: true, ReceivedAt: at(5 * time.Minute)}); !r.Applied || r.Current != nil {
 		t.Fatalf("bỏ chọn: %+v", r)
 	}
-	if n := g.count("outbox") - before; n != 2 {
-		t.Fatalf("%d tin outbox cho 2 lần ghi", n)
+	if n := g.count("outbox") - before; n != 4 {
+		t.Fatalf("%d tin outbox cho 2 lần cắn, mong đợi 2 tin DM và 2 tin Phe Sói", n)
 	}
 	chat, err := g.ref("outboxChats/dm:w1").Get(context.Background())
 	if err != nil || chat.Data()["pending"] != true {

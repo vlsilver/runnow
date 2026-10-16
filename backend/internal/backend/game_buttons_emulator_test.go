@@ -236,6 +236,51 @@ func TestEmulatorButtonRetriedChoiceEditsPrompt(t *testing.T) {
 	}
 }
 
+// C2: mỗi lần một sói chọn, đổi hay bỏ chọn cắn (qua nút hay app), group Phe
+// Sói nhận một tin theo đúng thứ tự. Chưa có group thì bỏ tin (no_chat), hành
+// động khác không vào group.
+func TestEmulatorWolfPicksPostToWolfChat(t *testing.T) {
+	e := newButtonEnv(t)
+	if text, _ := e.press(e.storeGame.tg["w1"], e.btn(ww.KindWolfBite, opPick, "v1")); text != "Đã chọn V1." {
+		t.Fatalf("w1 cắn = %q", text)
+	}
+	e.flush()
+	if m := e.data("games/" + e.id + "/outbox/wolves_1"); m["status"] != outboxSkipped || m["skipReason"] != "no_chat" || m["template"] != tplWolfPick {
+		t.Fatalf("wolves_1 = %v", m)
+	}
+
+	seedMerge(t, e.storeGame, map[string]any{"wolfChatId": "-100w"})
+	if text, _ := e.press(e.storeGame.tg["w2"], e.btn(ww.KindWolfBite, opPick, "v2")); text != "Đã chọn V2." {
+		t.Fatalf("w2 cắn = %q", text)
+	}
+	if text, _ := e.press(e.storeGame.tg["seer"], e.btn(ww.KindSeerPeek, opPick, "w1")); text != "Bấm Chốt để xác nhận." {
+		t.Fatalf("soi = %q", text)
+	}
+	// Bỏ chọn mà vẫn gửi kèm targets thì vẫn là bỏ chọn.
+	e.h.want(e.h.call("w1", "POST", "/v1/games/"+e.id+"/actions", map[string]any{"kind": "wolf_bite", "clear": true, "targets": []string{"v2"}}, ""), 200, "")
+	e.h.want(e.h.call("w1", "POST", "/v1/games/"+e.id+"/actions", map[string]any{"kind": "wolf_bite", "targets": []string{"v3"}}, ""), 200, "")
+	e.flush()
+
+	var got []string
+	for _, c := range e.tg.Calls("sendMessage") {
+		if c.Params["chat_id"] == "-100w" {
+			if c.Params["message_thread_id"] != nil || c.Params["parse_mode"] != "HTML" {
+				t.Fatalf("gửi sai chỗ: %v", c.Params)
+			}
+			got = append(got, c.Params["text"].(string))
+		}
+	}
+	want := []string{"<b>W2</b> chọn cắn <b>V2</b>.", "<b>W1</b> bỏ chọn cắn.", "<b>W1</b> chọn cắn <b>V3</b>."}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("group Phe Sói = %q", got)
+	}
+	for _, c := range e.tg.Calls("sendMessage") {
+		if text := c.Params["text"].(string); c.Params["chat_id"] != "-100w" && (strings.Contains(text, "</b> chọn cắn <b>") || strings.Contains(text, "bỏ chọn cắn")) {
+			t.Fatalf("lựa chọn của sói ra ngoài group Phe Sói: %v", c.Params)
+		}
+	}
+}
+
 // W2 "Xong khi": chọn chéo kênh thì tin DM cuối cùng hiện đúng lựa chọn đang lưu.
 func TestEmulatorButtonCrossChannelShowsStoredChoice(t *testing.T) {
 	e := newButtonEnv(t)
