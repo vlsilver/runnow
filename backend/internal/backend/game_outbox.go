@@ -322,7 +322,7 @@ func (f *chatFlusher) deliver(ctx context.Context, key string, seq int64, msg, c
 	tpl := stringValue(msg["template"])
 	var out outboxText
 	var err error
-	if tpl == tplPrompt || tpl == tplChoice {
+	if tpl == tplPrompt || tpl == tplChoice || tpl == tplTally {
 		out, err = f.r.renderAction(ctx, key, tpl, stringValue(msg["data"]), chat)
 	} else {
 		out, err = f.r.render(key, tpl, stringValue(msg["data"]))
@@ -660,9 +660,6 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 				text = "<b>" + r.name(d.UID) + "</b> bỏ chọn cắn."
 			}
 		}
-	case tplTally:
-		// Tin đếm đề cử/phiếu trong topic là W2b.
-		return outboxText{skip: "not_implemented"}, nil
 	default:
 		err = fmt.Errorf("template lạ %q", tpl)
 	}
@@ -842,7 +839,7 @@ func (r *outboxRenderer) renderAction(ctx context.Context, key, tpl, raw string,
 	if tpl == tplPrompt && d.TurnKey != turn {
 		return outboxText{skip: "stale"}, nil
 	}
-	if tpl == tplChoice {
+	if tpl == tplChoice || tpl == tplTally {
 		prompt := anyMap(anyMap(chat["prompts"])[string(d.Kind)])
 		id := int64(number(prompt["messageId"]))
 		switch {
@@ -852,6 +849,9 @@ func (r *outboxRenderer) renderAction(ctx context.Context, key, tpl, raw string,
 			return outboxText{skip: "stale"}, nil
 		}
 		out.editID = id
+	}
+	if key == chatGroup {
+		return r.renderTally(ctx, out, tpl, st, d.Kind, turn)
 	}
 	uid := strings.TrimPrefix(key, "dm:")
 	mine, raws, err := r.store.loadMine(ctx, r.game, st.Round, uid)
@@ -872,6 +872,40 @@ func (r *outboxRenderer) renderAction(ctx context.Context, key, tpl, raw string,
 	out.parts, out.markup = splitTelegramText(text, telegramTextLimit), markup
 	if tpl == tplPrompt {
 		out.promptKind, out.turnKey = string(d.Kind), turn
+	}
+	return out, nil
+}
+
+// renderTally vẽ prompt đề cử hay biểu quyết trong topic từ mọi lựa chọn đang
+// lưu của vòng. Hết phase thì prompt chưa gửi bị bỏ, còn tin sửa vẫn vẽ số đếm
+// cuối cùng nhưng không còn nút.
+func (r *outboxRenderer) renderTally(ctx context.Context, out outboxText, tpl string, st *werewolf.State, kind werewolf.Kind, turn string) (outboxText, error) {
+	open := st.Phase == werewolf.PhaseDay && kind == werewolf.KindNominate ||
+		st.Phase == werewolf.PhaseTrial && kind == werewolf.KindVote
+	if tpl == tplPrompt && !open {
+		return outboxText{skip: "closed"}, nil
+	}
+	docs, err := roundRef(r.game, st.Round).Collection("actions").Where("kind", "==", string(kind)).Documents(ctx).GetAll()
+	if err != nil {
+		return out, err
+	}
+	var acts []werewolf.Action
+	for _, d := range docs {
+		if a, ok := decodeAction(d.Data()); ok {
+			acts = append(acts, a)
+		}
+	}
+	offset := clockOffset(r.gameData)
+	opens, closes := st.Window(kind)
+	v := tallyView{gameID: r.gameID, turnKey: turn, st: st, kind: kind, acts: acts, players: r.players, open: open,
+		opens: opens.Add(-offset), closes: closes.Add(-offset), notYet: gameNow(r.gameData, r.now()).Before(opens)}
+	text, markup, err := v.render()
+	if err != nil {
+		return out, fmt.Errorf("render %s: %w", tpl, err)
+	}
+	out.parts, out.markup = splitTelegramText(text, telegramTextLimit), markup
+	if tpl == tplPrompt {
+		out.promptKind, out.turnKey = string(kind), turn
 	}
 	return out, nil
 }

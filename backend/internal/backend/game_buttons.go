@@ -16,10 +16,12 @@ import (
 	"github.com/vlsilver/runnow/backend/internal/werewolf"
 )
 
-// Nút Telegram trong DM của Ma Sói (W2). callback_data chỉ chở ván, lượt, loại
+// Nút Telegram của Ma Sói: trong DM (W2a) và trong topic cho đề cử, biểu quyết
+// (W2b). callback_data chỉ chở ván, lượt, loại
 // hành động và vị trí người được chọn; người bấm luôn lấy từ from.id qua
 // tgLinks (3.2). Telegram giới hạn callback_data 64 byte, nên người được chọn
 // ghi bằng vị trí trong danh sách uid đã sort của state (cố định từ lúc chia bài).
+// Nút Treo/Tha chở vị trí trong voteChoices.
 //
 // Dạng: m1|<gameId>|<turnKey>|<kind>|<op>|<i.j>, riêng nút xem lá bài là
 // m1|<gameId>|v. op: t chọn, c chốt, r chọn lại.
@@ -38,7 +40,10 @@ const (
 var kindCodes = map[werewolf.Kind]string{
 	werewolf.KindWolfBite: "b", werewolf.KindSeerPeek: "s", werewolf.KindGuard: "g", werewolf.KindWitchSave: "w",
 	werewolf.KindWitchPoison: "p", werewolf.KindHunterShoot: "h", werewolf.KindCupidPair: "c",
+	werewolf.KindNominate: "n", werewolf.KindVote: "x",
 }
+
+var voteChoices = []string{werewolf.ChoiceHang, werewolf.ChoiceSpare}
 
 func kindOfCode(code string) (werewolf.Kind, bool) {
 	for k, c := range kindCodes {
@@ -363,6 +368,9 @@ func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, u
 		return ButtonReply{Text: buttonTexts.stale}, nil
 	}
 	order := sortedPlayers(st)
+	if b.Kind == werewolf.KindVote {
+		order = voteChoices
+	}
 	var targets []string
 	for _, n := range b.Idx {
 		if n >= len(order) {
@@ -402,10 +410,14 @@ func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, u
 	if s.beforeSubmit != nil {
 		s.beforeSubmit()
 	}
-	res, err := s.SubmitAction(ctx, ActionRequest{
+	req := ActionRequest{
 		GameID: b.GameID, UID: uid, Kind: b.Kind, Targets: targets, Source: "telegram",
 		TgUpdateID: updateID, TurnKey: b.TurnKey, ReceivedAt: received,
-	})
+	}
+	if b.Kind == werewolf.KindVote {
+		req.Choice, req.Targets = targets[0], nil
+	}
+	res, err := s.SubmitAction(ctx, req)
 	if err != nil {
 		return ButtonReply{}, err
 	}
@@ -418,8 +430,12 @@ func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, u
 		return ButtonReply{Text: buttonTexts.kept}, nil
 	}
 	reply := ButtonReply{Wrote: true}
-	if b.Kind == werewolf.KindWitchSave {
+	switch b.Kind {
+	case werewolf.KindWitchSave:
 		reply.Text = "Đã dùng bình cứu."
+		return reply, nil
+	case werewolf.KindVote:
+		reply.Text = "Đã chọn " + choiceLabels[req.Choice] + "."
 		return reply, nil
 	}
 	players, err := s.loadPlayers(ctx, game)

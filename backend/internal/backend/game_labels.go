@@ -74,6 +74,9 @@ func rejectText(kind werewolf.Kind, err error) string {
 	if kind == werewolf.KindWitchSave && errors.Is(err, werewolf.ErrInvalidTarget) {
 		return "Đêm nay không có ai để cứu."
 	}
+	if kind == werewolf.KindVote && errors.Is(err, werewolf.ErrNotYourRole) {
+		return "Người lên giàn không bỏ phiếu."
+	}
 	var r werewolf.Reject
 	if errors.As(err, &r) {
 		if t, ok := rejectTexts[r]; ok {

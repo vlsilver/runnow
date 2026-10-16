@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"slices"
 	"sort"
 	"time"
 
@@ -31,7 +32,7 @@ const (
 	tplPrivate  = "private"   // dm: việc riêng sau một lần chốt (bị huỷ, người yêu, bạn chết…)
 	tplPrompt   = "prompt"    // dm: tới lượt một loại hành động
 	tplChoice   = "choice"    // dm: sửa prompt cho khớp lựa chọn vừa đổi
-	tplTally    = "tally"     // group: sửa tin đếm đề cử/phiếu
+	tplTally    = "tally"     // group: sửa prompt đề cử/biểu quyết cho khớp lựa chọn vừa đổi
 	tplWolfPick = "wolf_pick" // wolves: một sói vừa chọn hay bỏ chọn cắn (C2)
 )
 
@@ -142,8 +143,8 @@ func stepMessages(before, after *werewolf.State, evs []werewolf.Event) []gameMsg
 
 // promptMessages: một prompt cho mỗi (uid, kind) vừa mở. Kind mở tiếp qua
 // phase sau thì giữ prompt cũ, vì nút gắn với vòng (turnKey) nên vẫn bấm được.
-// Đề cử và biểu quyết là việc của cả group nên đi trong bản tin, không DM từng
-// người.
+// Đề cử và biểu quyết là việc của cả group: một prompt có nút trong topic, đi
+// sau bản tin, không DM từng người.
 func promptMessages(before, after *werewolf.State) []gameMsg {
 	var msgs []gameMsg
 	for _, uid := range sortedPlayers(after) {
@@ -162,7 +163,23 @@ func promptMessages(before, after *werewolf.State) []gameMsg {
 			}})
 		}
 	}
+	for _, k := range []werewolf.Kind{werewolf.KindNominate, werewolf.KindVote} {
+		if openForAnyone(after, k) && (before == nil || !openForAnyone(before, k)) {
+			msgs = append(msgs, gameMsg{ChatKey: chatGroup, Template: tplPrompt, Data: map[string]any{
+				"kind": string(k), "turnKey": turnKey(after),
+			}})
+		}
+	}
 	return msgs
+}
+
+func openForAnyone(st *werewolf.State, kind werewolf.Kind) bool {
+	for _, uid := range sortedPlayers(st) {
+		if slices.Contains(st.Available(uid), kind) {
+			return true
+		}
+	}
+	return false
 }
 
 func loverOf(st *werewolf.State, uid string) string {

@@ -101,7 +101,7 @@ func TestStepMessagesThroughANight(t *testing.T) {
 
 	day, evs := mustStep(t, dawn)
 	msgs = stepMessages(dawn, day, evs)
-	sameMsgs(t, msgs, "group/digest", "dm:v2/private")
+	sameMsgs(t, msgs, "group/digest", "dm:v2/private", "group/prompt/nominate")
 	pub := msgs[0].Data["events"].([]ww.Event)
 	if len(pub) != 1 || !reflect.DeepEqual(pub[0], ww.Event{Kind: ww.EventDeath, UID: "v2", Role: ww.Villager}) {
 		t.Fatalf("bản tin 10h = %+v", pub)
@@ -109,6 +109,16 @@ func TestStepMessagesThroughANight(t *testing.T) {
 	if got := msgs[0].Data["deadline"]; got != "2026-10-16T10:00:00Z" {
 		t.Fatalf("hạn đề cử = %v", got)
 	}
+	if got := msgs[2].Data; !reflect.DeepEqual(got, map[string]any{"kind": "nominate", "turnKey": "r1"}) {
+		t.Fatalf("prompt đề cử = %v", got)
+	}
+
+	// 17h có người lên giàn thì topic có prompt biểu quyết; không ai được đề cử
+	// thì không.
+	trial, evs := mustStep(t, day, act1(ww.KindNominate, "v1", "w1"))
+	sameMsgs(t, stepMessages(day, trial, evs), "group/digest", "group/prompt/vote")
+	empty, evs := mustStep(t, day)
+	sameMsgs(t, stepMessages(day, empty, evs), "group/digest")
 }
 
 func TestStepMessagesHunterTurnPromptsTheHunter(t *testing.T) {
@@ -117,7 +127,14 @@ func TestStepMessagesHunterTurnPromptsTheHunter(t *testing.T) {
 	dawn, _ := mustStep(t, night, act1(ww.KindWolfBite, "w1", "hunter"))
 	day, evs := mustStep(t, dawn)
 	msgs := stepMessages(dawn, day, evs)
-	sameMsgs(t, msgs, "group/digest", "dm:hunter/private", "dm:hunter/prompt/hunter_shoot")
+	sameMsgs(t, msgs, "group/digest", "dm:hunter/private", "dm:hunter/prompt/hunter_shoot", "group/prompt/nominate")
+
+	// Thợ săn bắn xong thì đề cử vẫn đang mở: giữ prompt cũ, không đăng lại.
+	after, evs := mustStep(t, day, act1(ww.KindHunterShoot, "hunter", "v3"))
+	if after.Hunter != nil || after.Phase != ww.PhaseDay {
+		t.Fatalf("chưa chốt lượt thợ săn: %s", after.PhaseKey())
+	}
+	sameMsgs(t, stepMessages(day, after, evs), "group/digest", "dm:v3/private")
 }
 
 func TestStepMessagesReminderOnly(t *testing.T) {

@@ -203,9 +203,6 @@ func TestRenderPrivatePromptAdminReminder(t *testing.T) {
 		t.Fatalf("reminder = %q", out.parts[0])
 	}
 
-	if out := renderOne(t, r, chatGroup, tplTally, map[string]any{"kind": "vote"}); out.skip != "not_implemented" {
-		t.Fatalf("tally = %+v", out)
-	}
 	for _, c := range [][2]string{{"nope", `{}`}, {tplAdmin, `{"action":"x"}`}, {tplReminder, `{"reason":"x"}`}, {tplStart, `{`}} {
 		if _, err := r.render(chatGroup, c[0], c[1]); err == nil {
 			t.Fatalf("%s %s: không lỗi", c[0], c[1])
