@@ -86,6 +86,8 @@ type NewGameInput struct {
 	ChatID    string
 	ThreadID  int64
 	Config    werewolf.Config
+	// RegistrationDeadline: quá hạn thì không đăng ký được nữa; zero là không hạn.
+	RegistrationDeadline time.Time
 }
 
 // CreateGame mở ván mới ở trạng thái đăng ký. Chỉ một ván được mở một lúc:
@@ -105,6 +107,10 @@ func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Ti
 	cfg, err := json.Marshal(in.Config)
 	if err != nil {
 		return "", err
+	}
+	var deadline any
+	if !in.RegistrationDeadline.IsZero() {
+		deadline = in.RegistrationDeadline
 	}
 	err = s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		cur, err := tx.Get(s.currentRef())
@@ -126,6 +132,7 @@ func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Ti
 			"status": gameRegistering, "createdBy": in.CreatedBy, "createdAt": now,
 			"chatId": in.ChatID, "threadId": in.ThreadID, "testMode": in.Config.TestMode,
 			"config": string(cfg), "version": 0, "eventSeq": 0, "feedSeq": 0, "updatedAt": now,
+			"registrationDeadline": deadline, "playerCount": 0,
 		}); err != nil {
 			return err
 		}
@@ -559,7 +566,7 @@ func (w *stepWrite) commit(event map[string]any) error {
 			return err
 		}
 		if err := tx.Create(game.Collection("feed").Doc(strconv.FormatInt(feedSeq, 10)), map[string]any{
-			"seq": feedSeq, "at": now, "phaseKey": w.before.PhaseKey(), "round": w.after.Round,
+			"seq": feedSeq, "at": now, "wallAt": wall, "phaseKey": w.before.PhaseKey(), "round": w.after.Round,
 			"phase": string(w.after.Phase), "events": string(feed),
 		}); err != nil {
 			return err
@@ -599,7 +606,10 @@ func (w *stepWrite) publicGame() map[string]any {
 	out := map[string]any{
 		"status": w.status(), "round": st.Round, "phase": string(st.Phase), "phaseKey": st.PhaseKey(),
 		"paused": st.Paused, "nextAt": nil, "taskKey": st.TaskKey(), "updatedAt": w.wall,
-		"deadline": nil, "winner": string(st.Winner),
+		"deadline": nil, "winner": string(st.Winner), "nominee": nil,
+	}
+	if st.Phase == werewolf.PhaseTrial && st.Nominee != "" {
+		out["nominee"] = st.Nominee
 	}
 	if len(revealed) > 0 {
 		out["revealed"] = revealed

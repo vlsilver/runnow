@@ -114,6 +114,17 @@ func (s *GameStore) SetFakePlayers(ctx context.Context, gameID string, n int, wa
 			want[fakeUID(i)] = true
 			uids = append(uids, fakeUID(i))
 		}
+		// Đọc trước mọi lần ghi để đếm lại playerCount cho /v1/games.
+		players, err := tx.Documents(game.Collection("players")).GetAll()
+		if err != nil {
+			return err
+		}
+		realPlayers := 0
+		for _, p := range players {
+			if p.Data()["fake"] != true {
+				realPlayers++
+			}
+		}
 		have := fakeUIDs(g.Data())
 		for uid := range have {
 			if !want[uid] {
@@ -132,7 +143,7 @@ func (s *GameStore) SetFakePlayers(ctx context.Context, gameID string, n int, wa
 				return err
 			}
 		}
-		return tx.Update(game, []firestore.Update{{Path: "fakeUids", Value: uids}, {Path: "updatedAt", Value: wall}})
+		return tx.Update(game, []firestore.Update{{Path: "fakeUids", Value: uids}, {Path: "playerCount", Value: realPlayers + n}, {Path: "updatedAt", Value: wall}})
 	})
 	return uids, err
 }

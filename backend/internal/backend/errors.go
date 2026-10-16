@@ -5,6 +5,9 @@ import "fmt"
 type HTTPError struct {
 	Status        int
 	Code, Message string
+	// Extra là field thêm vào body lỗi, cạnh error và message (vd requirements
+	// của requirements_unmet).
+	Extra map[string]any
 }
 
 func (e *HTTPError) Error() string { return e.Message }

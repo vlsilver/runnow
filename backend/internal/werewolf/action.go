@@ -83,43 +83,10 @@ var kindRules = map[Kind]kindRule{
 // nằm trong cửa sổ của nó (schedule.go), nên action tới sau hạn mà bước chốt chưa
 // chạy vẫn bị từ chối, không lọt vào hay mất lặng lẽ.
 func Validate(st *State, a Action, mine []Action, now time.Time) error {
-	rule, ok := kindRules[a.Kind]
-	if !ok {
-		return ErrPhaseClosed
+	if err := precheck(st, a.Kind, a.Actor, mine, now); err != nil {
+		return err
 	}
-	if st.Phase == PhaseEnded {
-		return ErrPhaseClosed
-	}
-	if st.Paused {
-		return ErrPaused
-	}
-	p := st.Players[a.Actor]
-	if p == nil {
-		return ErrNotYourRole
-	}
-	if rule.role != "" && p.Role != rule.role {
-		return ErrNotYourRole
-	}
-	if a.Kind == KindHunterShoot {
-		// Thợ săn bắn sau khi chết, nên không kiểm còn sống.
-		if st.Hunter == nil || st.Hunter.UID != a.Actor || !now.Before(st.hunterClose()) {
-			return ErrPhaseClosed
-		}
-	} else {
-		if !p.Alive {
-			return ErrNotAlive
-		}
-		if !phaseOpen(rule.phases, st.Phase) || !st.windowOpen(a.Kind, now) {
-			return ErrPhaseClosed
-		}
-	}
-	if a.Kind == KindCupidPair && st.Round > 1 {
-		return ErrPhaseClosed // Cupid chỉ ghép tới 0h đêm 1 (R6, R12)
-	}
-	prev := findAction(mine, a.Kind)
-	if !rule.changeable && prev != nil {
-		return ErrAlreadyUsed
-	}
+	rule := kindRules[a.Kind]
 	if a.Clear {
 		if !rule.changeable {
 			return ErrAlreadyUsed
@@ -197,6 +164,48 @@ func validateKind(st *State, a Action, mine []Action) error {
 		if a.Choice == ChoiceHang && st.loverOf(a.Actor) == st.Nominee {
 			return ErrLoverTarget
 		}
+	}
+	return nil
+}
+
+// precheck là phần của Validate không phụ thuộc mục tiêu: ván còn chạy, đúng vai,
+// còn sống, trong cửa sổ, chưa dùng lượt chọn một lần.
+func precheck(st *State, kind Kind, actor string, mine []Action, now time.Time) error {
+	rule, ok := kindRules[kind]
+	if !ok {
+		return ErrPhaseClosed
+	}
+	if st.Phase == PhaseEnded {
+		return ErrPhaseClosed
+	}
+	if st.Paused {
+		return ErrPaused
+	}
+	p := st.Players[actor]
+	if p == nil {
+		return ErrNotYourRole
+	}
+	if rule.role != "" && p.Role != rule.role {
+		return ErrNotYourRole
+	}
+	if kind == KindHunterShoot {
+		// Thợ săn bắn sau khi chết, nên không kiểm còn sống.
+		if st.Hunter == nil || st.Hunter.UID != actor || !now.Before(st.hunterClose()) {
+			return ErrPhaseClosed
+		}
+	} else {
+		if !p.Alive {
+			return ErrNotAlive
+		}
+		if !phaseOpen(rule.phases, st.Phase) || !st.windowOpen(kind, now) {
+			return ErrPhaseClosed
+		}
+	}
+	if kind == KindCupidPair && st.Round > 1 {
+		return ErrPhaseClosed // Cupid chỉ ghép tới 0h đêm 1 (R6, R12)
+	}
+	if !rule.changeable && findAction(mine, kind) != nil {
+		return ErrAlreadyUsed
 	}
 	return nil
 }

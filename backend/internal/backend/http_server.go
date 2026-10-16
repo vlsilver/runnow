@@ -486,6 +486,7 @@ func (s *Server) apiRoutes() {
 	// method để service bot dùng chung — dời webhook sang bot chỉ là đổi chỗ
 	// mount, không nhân đôi code.
 	s.route("POST /v1/telegram/webhook", s.telegramWebhook)
+	s.gameRoutes()
 	// Liên kết Telegram cho Ma Sói (L1). App lấy mã, mở t.me/<bot>?start=<mã>,
 	// rồi poll GET cho tới khi linked.
 	s.route("POST /v1/telegram/link-code", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
@@ -989,8 +990,10 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 			}
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
-			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			// X-App-*: Ma Sói đọc bản app để báo "cần cập nhật" (3.8). DELETE:
+			// huỷ liên kết Telegram, rời ván.
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-App-Version, X-App-Platform")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(204)
@@ -1002,7 +1005,11 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 func (s *Server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var httpErr *HTTPError
 	if errors.As(err, &httpErr) {
-		_ = writeJSON(w, httpErr.Status, map[string]any{"error": httpErr.Code, "message": httpErr.Message})
+		body := map[string]any{"error": httpErr.Code, "message": httpErr.Message}
+		for k, v := range httpErr.Extra {
+			body[k] = v
+		}
+		_ = writeJSON(w, httpErr.Status, body)
 		return
 	}
 	if s.worker {
