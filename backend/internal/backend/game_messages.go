@@ -140,8 +140,10 @@ func stepMessages(before, after *werewolf.State, evs []werewolf.Event) []gameMsg
 	return append(msgs, promptMessages(before, after)...)
 }
 
-// promptMessages: một prompt cho mỗi (uid, kind) vừa mở. Đề cử và biểu quyết
-// là việc của cả group nên đi trong bản tin, không DM từng người.
+// promptMessages: một prompt cho mỗi (uid, kind) vừa mở. Kind mở tiếp qua
+// phase sau thì giữ prompt cũ, vì nút gắn với vòng (turnKey) nên vẫn bấm được.
+// Đề cử và biểu quyết là việc của cả group nên đi trong bản tin, không DM từng
+// người.
 func promptMessages(before, after *werewolf.State) []gameMsg {
 	var msgs []gameMsg
 	for _, uid := range sortedPlayers(after) {
@@ -156,7 +158,7 @@ func promptMessages(before, after *werewolf.State) []gameMsg {
 				continue
 			}
 			msgs = append(msgs, gameMsg{ChatKey: dmChat(uid), Template: tplPrompt, Data: map[string]any{
-				"kind": string(k), "phaseKey": after.PhaseKey(),
+				"kind": string(k), "turnKey": turnKey(after),
 			}})
 		}
 	}

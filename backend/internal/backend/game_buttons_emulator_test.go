@@ -102,7 +102,7 @@ func (e *buttonEnv) btn(kind ww.Kind, op string, uids ...string) string {
 	for _, uid := range uids {
 		idx = append(idx, pos[uid])
 	}
-	data, err := gameButton{GameID: e.id, PhaseKey: st.PhaseKey(), Kind: kind, Op: op, Idx: idx}.data()
+	data, err := gameButton{GameID: e.id, TurnKey: turnKey(st), Kind: kind, Op: op, Idx: idx}.data()
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func (e *buttonEnv) promptID(uid string, kind ww.Kind) float64 {
 		e.t.Fatal(err)
 	}
 	p := anyMap(anyMap(snap.Data()["prompts"])[string(kind)])
-	if p["phaseKey"] != e.state().PhaseKey() {
+	if p["turnKey"] != turnKey(e.state()) {
 		e.t.Fatalf("prompt %s/%s = %v", uid, kind, p)
 	}
 	return float64(number(p["messageId"]))
@@ -322,9 +322,9 @@ func (e *buttonEnv) data(path string) map[string]any {
 func TestEmulatorButtonRejectsWithReason(t *testing.T) {
 	e := newButtonEnv(t)
 	seer, guard := e.storeGame.tg["seer"], e.storeGame.tg["guard"]
-	stale, _ := gameButton{GameID: e.id, PhaseKey: "r1/setup", Kind: ww.KindSeerPeek, Op: opPick, Idx: []int{0}}.data()
-	outside, _ := gameButton{GameID: e.id, PhaseKey: e.state().PhaseKey(), Kind: ww.KindGuard, Op: opPick, Idx: []int{99}}.data()
-	justOutside, _ := gameButton{GameID: e.id, PhaseKey: e.state().PhaseKey(), Kind: ww.KindGuard, Op: opPick, Idx: []int{len(e.state().Players)}}.data()
+	stale, _ := gameButton{GameID: e.id, TurnKey: "r0", Kind: ww.KindSeerPeek, Op: opPick, Idx: []int{0}}.data()
+	outside, _ := gameButton{GameID: e.id, TurnKey: turnKey(e.state()), Kind: ww.KindGuard, Op: opPick, Idx: []int{99}}.data()
+	justOutside, _ := gameButton{GameID: e.id, TurnKey: turnKey(e.state()), Kind: ww.KindGuard, Op: opPick, Idx: []int{len(e.state().Players)}}.data()
 	linkUser(t, e.h, "stranger", "777", true)
 	cases := []struct{ name, tg, data, want string }{
 		{"nút lạ", seer, "x", "Nút này chưa dùng được."},
@@ -549,9 +549,9 @@ func TestEmulatorButtonCupidPicksTwoThenConfirms(t *testing.T) {
 		t.Fatalf("tin sửa không có prompt = %v", last)
 	}
 
-	// Chạy qua 22h rồi 0h mà chưa gửi, sau đó admin tạm dừng ván. Prompt đêm
-	// thuộc lượt cũ, prompt bình thuốc thuộc lượt đang pause: đều bỏ. Tin sửa
-	// prompt Cupid ghi lúc này cũng bỏ.
+	// Chạy qua 22h rồi 0h mà chưa gửi, sau đó admin tạm dừng ván. Prompt soi
+	// và prompt bình thuốc vẫn thuộc vòng 1 nhưng ván đang pause nên bỏ
+	// (closed). Tin sửa prompt Cupid ghi lúc này sửa prompt thành đã đóng.
 	// AdvanceGame cộng clockOffsetNs vào giờ truyền vào; bỏ offset để chạy đúng mốc.
 	seedMerge(t, g, map[string]any{"clockOffsetNs": int64(0)})
 	g.advance(time.Date(2026, 10, 15, 22, 0, 0, 0, vietnam))
@@ -565,16 +565,16 @@ func TestEmulatorButtonCupidPicksTwoThenConfirms(t *testing.T) {
 	if err := g.store.queuePrompt(ctx, g.id, "v4", ww.KindCupidPair, nil); err != nil {
 		t.Fatal(err)
 	}
-	before := len(e.tg.Calls("editMessageText"))
 	e.flush()
-	if n := len(e.tg.Calls("editMessageText")); n != before {
-		t.Fatalf("sửa prompt của lượt cũ: %d → %d: %v", before, n, e.tg.Calls("editMessageText")[n-1])
+	if c := e.lastDM("v4"); c.Method != "editMessageText" || c.Params["message_id"] != e.promptID("v4", ww.KindCupidPair) ||
+		!strings.HasSuffix(c.Params["text"].(string), "\nLượt này đã đóng.") || len(buttonsOf(c)) != 0 {
+		t.Fatalf("sửa prompt Cupid lúc pause = %v", c)
 	}
 	for _, c := range []struct {
 		uid  string
 		kind ww.Kind
 		want string
-	}{{"seer", ww.KindSeerPeek, "stale"}, {"witch", ww.KindWitchPoison, "closed"}} {
+	}{{"seer", ww.KindSeerPeek, "closed"}, {"witch", ww.KindWitchPoison, "closed"}} {
 		p := e.outboxWhere(c.uid, func(m map[string]any) bool {
 			return m["template"] == tplPrompt && strings.Contains(stringValue(m["data"]), `"`+string(c.kind)+`"`)
 		})
@@ -582,8 +582,77 @@ func TestEmulatorButtonCupidPicksTwoThenConfirms(t *testing.T) {
 			t.Fatalf("prompt %s = %v", c.kind, p)
 		}
 	}
-	if last := e.lastOutbox("v4"); last["template"] != tplChoice || last["status"] != outboxSkipped || last["skipReason"] != "stale" {
-		t.Fatalf("tin sửa cuối = %v", last)
+}
+
+// Nút DM gắn với vòng chứ không với phase: tiên tri chưa soi lúc 22h thì sau 0h
+// vẫn bấm được nút của tin gửi lúc 22h, và tin sửa vẫn sửa đúng tin đó.
+func TestEmulatorButtonSeerNightButtonWorksAfterMidnight(t *testing.T) {
+	e := newButtonEnv(t)
+	peek := e.btn(ww.KindSeerPeek, opPick, "w1")
+	promptID := e.promptID("seer", ww.KindSeerPeek)
+	e.advanceTo(time.Date(2026, 10, 16, 0, 0, 0, 0, vietnam))
+	e.flush()
+	if pk := e.state().PhaseKey(); pk != "r1/dawn" {
+		t.Fatalf("sau 0h: %s", pk)
+	}
+	if id := e.promptID("seer", ww.KindSeerPeek); id != promptID {
+		t.Fatalf("0h gửi lại prompt soi: %v → %v", promptID, id)
+	}
+	seer := e.storeGame.tg["seer"]
+	if text, _ := e.press(seer, peek); text != buttonTexts.confirm {
+		t.Fatalf("nút soi của tin 22h lúc 0h30 = %q", text)
+	}
+	e.flush()
+	if c := e.lastDM("seer"); c.Method != "editMessageText" || c.Params["message_id"] != promptID || !strings.Contains(c.Params["text"].(string), "Bạn chọn W1.") {
+		t.Fatalf("tin sửa = %v", c)
+	}
+	if text, alert := e.press(seer, e.btn(ww.KindSeerPeek, opConfirm, "w1")); text != "W1 là Sói." || !alert {
+		t.Fatalf("chốt soi = %q", text)
+	}
+}
+
+// Sang vòng mới thì mọi thứ của vòng cũ bị chặn, kể cả khi kind cùng tên đang
+// mở: nút (lúc đọc và trong transaction), prompt chưa kịp gửi, tin sửa prompt cũ.
+func TestEmulatorButtonOldRoundIsStale(t *testing.T) {
+	e := newButtonEnv(t)
+	guard := e.storeGame.tg["guard"]
+	oldGuard := e.btn(ww.KindGuard, opPick, "v1")
+	e.advanceTo(time.Date(2026, 10, 16, 0, 0, 0, 0, vietnam)) // prompt phù thuỷ vòng 1, chưa gửi
+	if err := e.store.queuePrompt(context.Background(), e.id, "guard", ww.KindGuard, nil); err != nil {
+		t.Fatal(err)
+	}
+	e.advanceTo(time.Date(2026, 10, 16, 22, 0, 0, 0, vietnam))
+	if pk := e.state().PhaseKey(); pk != "r2/night" {
+		t.Fatalf("chưa sang vòng 2: %s", pk)
+	}
+	e.flush()
+	for _, c := range []struct {
+		uid, tpl, kind string
+	}{{"witch", tplPrompt, "witch_poison"}, {"guard", tplChoice, "guard"}} {
+		m := e.outboxWhere(c.uid, func(m map[string]any) bool {
+			return m["template"] == c.tpl && strings.Contains(stringValue(m["data"]), `"`+c.kind+`"`)
+		})
+		if m["status"] != outboxSkipped || m["skipReason"] != "stale" {
+			t.Fatalf("%s %s vòng 1 = %v", c.uid, c.tpl, m)
+		}
+	}
+	if text, _ := e.press(guard, oldGuard); text != buttonTexts.stale {
+		t.Fatalf("nút bảo vệ vòng 1 ở vòng 2 = %q", text)
+	}
+
+	// Bước chốt chen vào giữa lúc đọc state và lúc ghi: nút vòng 2 bấm đúng lúc
+	// ván sang vòng 3, nơi bảo vệ cũng đang mở.
+	newGuard := e.btn(ww.KindGuard, opPick, "v1")
+	e.store.beforeSubmit = func() { e.advanceTo(time.Date(2026, 10, 17, 22, 0, 0, 0, vietnam)) }
+	defer func() { e.store.beforeSubmit = nil }()
+	if text, _ := e.press(guard, newGuard); text != buttonTexts.stale {
+		t.Fatalf("nút vòng 2 khi vừa sang vòng 3 = %q", text)
+	}
+	if pk := e.state().PhaseKey(); pk != "r3/night" {
+		t.Fatalf("chưa sang vòng 3: %s", pk)
+	}
+	if n := e.actionCount(3, "guard") + e.actionCount(2, "guard"); n != 0 {
+		t.Fatalf("bảo vệ có %d action", n)
 	}
 }
 
@@ -612,8 +681,9 @@ func (e *buttonEnv) lastOutbox(uid string) map[string]any {
 }
 
 // Phù thuỷ dùng bình cứu bằng nút; prompt bình cứu không phải tin cuối của
-// lượt gửi mà message_id vẫn được ghi. Rồi một bước chốt chen vào giữa lúc đọc
-// state và lúc ghi action: transaction từ chối, không ghi vào lượt mới.
+// lượt gửi mà message_id vẫn được ghi. Rồi bước chốt 10h chen vào giữa lúc đọc
+// state và lúc ghi action: transaction kiểm luật trên state mới nên từ chối,
+// không ghi gì.
 func TestEmulatorButtonWitchSaveAndPhaseRace(t *testing.T) {
 	e := newButtonEnv(t)
 	if text, _ := e.press(e.storeGame.tg["w1"], e.btn(ww.KindWolfBite, opPick, "v1")); text != "Đã chọn V1." {
@@ -638,7 +708,7 @@ func TestEmulatorButtonWitchSaveAndPhaseRace(t *testing.T) {
 	poison := e.btn(ww.KindWitchPoison, opPick, "w1")
 	e.store.beforeSubmit = func() { e.advanceTo(time.Date(2026, 10, 16, 10, 0, 0, 0, vietnam)) }
 	defer func() { e.store.beforeSubmit = nil }()
-	if text, _ := e.press(witch, poison); text != buttonTexts.stale {
+	if text, _ := e.press(witch, poison); text != rejectText(ww.KindWitchPoison, ww.ErrPhaseClosed) {
 		t.Fatalf("bình độc khi lượt vừa chốt = %q", text)
 	}
 	if pk := e.state().PhaseKey(); pk != "r1/day" {

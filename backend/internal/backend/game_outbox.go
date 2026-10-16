@@ -383,7 +383,7 @@ func (f *chatFlusher) deliver(ctx context.Context, key string, seq int64, msg, c
 	}
 	if out.promptKind != "" && len(ids) > 0 {
 		d.chatUps = []firestore.Update{{Path: "prompts." + out.promptKind, Value: map[string]any{
-			"messageId": ids[len(ids)-1], "phaseKey": out.phaseKey,
+			"messageId": ids[len(ids)-1], "turnKey": out.turnKey,
 		}}}
 	}
 	return d, outcomeSent, nil
@@ -554,7 +554,7 @@ type outboxText struct {
 
 	// promptKind khác rỗng: tin là prompt, gửi xong thì ghi message_id lên
 	// outboxChats/{key}.prompts.{kind} cho tin sửa sau này.
-	promptKind, phaseKey string
+	promptKind, turnKey string
 }
 
 func (r *outboxRenderer) name(uid string) string {
@@ -827,9 +827,9 @@ func (r *outboxRenderer) renderAction(ctx context.Context, key, tpl, raw string,
 		return out, err
 	}
 	var d struct {
-		Kind     werewolf.Kind `json:"kind"`
-		PhaseKey string        `json:"phaseKey"`
-		Pick     []string      `json:"pick"`
+		Kind    werewolf.Kind `json:"kind"`
+		TurnKey string        `json:"turnKey"`
+		Pick    []string      `json:"pick"`
 	}
 	if err := json.Unmarshal([]byte(raw), &d); err != nil {
 		return out, fmt.Errorf("render %s: %w", tpl, err)
@@ -838,8 +838,8 @@ func (r *outboxRenderer) renderAction(ctx context.Context, key, tpl, raw string,
 	if err != nil {
 		return out, err
 	}
-	phaseKey := st.PhaseKey()
-	if tpl == tplPrompt && d.PhaseKey != phaseKey {
+	turn := turnKey(st)
+	if tpl == tplPrompt && d.TurnKey != turn {
 		return outboxText{skip: "stale"}, nil
 	}
 	if tpl == tplChoice {
@@ -848,7 +848,7 @@ func (r *outboxRenderer) renderAction(ctx context.Context, key, tpl, raw string,
 		switch {
 		case id == 0:
 			return outboxText{skip: "no_prompt"}, nil
-		case stringValue(prompt["phaseKey"]) != phaseKey:
+		case stringValue(prompt["turnKey"]) != turn:
 			return outboxText{skip: "stale"}, nil
 		}
 		out.editID = id
@@ -863,7 +863,7 @@ func (r *outboxRenderer) renderAction(ctx context.Context, key, tpl, raw string,
 	if tpl == tplPrompt && a == nil {
 		return outboxText{skip: "closed"}, nil
 	}
-	v := promptView{gameID: r.gameID, phaseKey: phaseKey, st: st, kind: d.Kind, a: a, pick: d.Pick,
+	v := promptView{gameID: r.gameID, turnKey: turn, st: st, kind: d.Kind, a: a, pick: d.Pick,
 		name: func(uid string) string { return playerName(r.byUID, uid) }}
 	text, markup, err := v.render()
 	if err != nil {
@@ -871,7 +871,7 @@ func (r *outboxRenderer) renderAction(ctx context.Context, key, tpl, raw string,
 	}
 	out.parts, out.markup = splitTelegramText(text, telegramTextLimit), markup
 	if tpl == tplPrompt {
-		out.promptKind, out.phaseKey = string(d.Kind), phaseKey
+		out.promptKind, out.turnKey = string(d.Kind), turn
 	}
 	return out, nil
 }

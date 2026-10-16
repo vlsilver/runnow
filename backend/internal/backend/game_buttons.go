@@ -21,7 +21,7 @@ import (
 // tgLinks (3.2). Telegram giới hạn callback_data 64 byte, nên người được chọn
 // ghi bằng vị trí trong danh sách uid đã sort của state (cố định từ lúc chia bài).
 //
-// Dạng: m1|<gameId>|<phaseKey>|<kind>|<op>|<i.j>, riêng nút xem lá bài là
+// Dạng: m1|<gameId>|<turnKey>|<kind>|<op>|<i.j>, riêng nút xem lá bài là
 // m1|<gameId>|v. op: t chọn, c chốt, r chọn lại.
 
 const (
@@ -50,12 +50,19 @@ func kindOfCode(code string) (werewolf.Kind, bool) {
 }
 
 type gameButton struct {
-	GameID   string
-	PhaseKey string
-	Kind     werewolf.Kind
-	Op       string
-	Idx      []int
+	GameID  string
+	TurnKey string
+	Kind    werewolf.Kind
+	Op      string
+	Idx     []int
 }
+
+// turnKey định danh cửa sổ của mọi kind đang mở, để nhận ra nút của lượt
+// trước. Dùng vòng chứ không dùng PhaseKey, vì một kind mở qua nhiều phase
+// (tiên tri, bảo vệ từ 22h tới 10h; Cupid từ setup tới 0h) và PhaseKey còn đổi
+// giữa phase khi lượt thợ săn mở hay đóng. Trong một vòng mỗi kind chỉ có một
+// cửa sổ: vòng chỉ tăng ở lần chốt 22h, và thợ săn chỉ chết một lần.
+func turnKey(st *werewolf.State) string { return "r" + strconv.Itoa(st.Round) }
 
 func (b gameButton) data() (string, error) {
 	var s string
@@ -70,7 +77,7 @@ func (b gameButton) data() (string, error) {
 		for i, n := range b.Idx {
 			idx[i] = strconv.Itoa(n)
 		}
-		s = strings.Join([]string{buttonPrefix, b.GameID, b.PhaseKey, code, b.Op, strings.Join(idx, ".")}, "|")
+		s = strings.Join([]string{buttonPrefix, b.GameID, b.TurnKey, code, b.Op, strings.Join(idx, ".")}, "|")
 	}
 	if len(s) > callbackLimit {
 		return "", fmt.Errorf("callback_data dài %d byte", len(s))
@@ -96,7 +103,7 @@ func parseGameButton(s string) (gameButton, bool) {
 	if !ok {
 		return gameButton{}, false
 	}
-	b.PhaseKey, b.Kind, b.Op = parts[2], kind, parts[4]
+	b.TurnKey, b.Kind, b.Op = parts[2], kind, parts[4]
 	if b.Op != opPick && b.Op != opConfirm && b.Op != opReset {
 		return gameButton{}, false
 	}
@@ -144,13 +151,13 @@ func inlineKeyboard(rows [][]map[string]any) map[string]any {
 // pick chỉ có ở kind phải chốt, mà kind đó đã có lựa chọn thì bị khoá, nên hai
 // thứ không đi cùng nhau.
 type promptView struct {
-	gameID   string
-	phaseKey string
-	st       *werewolf.State
-	kind     werewolf.Kind
-	a        *GameAction
-	pick     []string
-	name     func(uid string) string // tên chưa escape
+	gameID  string
+	turnKey string
+	st      *werewolf.State
+	kind    werewolf.Kind
+	a       *GameAction
+	pick    []string
+	name    func(uid string) string // tên chưa escape
 }
 
 func (v promptView) render() (string, map[string]any, error) {
@@ -222,7 +229,7 @@ func (v promptView) render() (string, map[string]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		data, err := gameButton{GameID: v.gameID, PhaseKey: v.phaseKey, Kind: v.kind, Op: op, Idx: n}.data()
+		data, err := gameButton{GameID: v.gameID, TurnKey: v.turnKey, Kind: v.kind, Op: op, Idx: n}.data()
 		if err != nil {
 			return nil, err
 		}
@@ -352,7 +359,7 @@ func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, u
 	default:
 		return ButtonReply{Text: buttonTexts.notStarted}, nil
 	}
-	if b.PhaseKey != st.PhaseKey() {
+	if b.TurnKey != turnKey(st) {
 		return ButtonReply{Text: buttonTexts.stale}, nil
 	}
 	order := sortedPlayers(st)
@@ -397,7 +404,7 @@ func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, u
 	}
 	res, err := s.SubmitAction(ctx, ActionRequest{
 		GameID: b.GameID, UID: uid, Kind: b.Kind, Targets: targets, Source: "telegram",
-		TgUpdateID: updateID, PhaseKey: b.PhaseKey, ReceivedAt: received,
+		TgUpdateID: updateID, TurnKey: b.TurnKey, ReceivedAt: received,
 	})
 	if err != nil {
 		return ButtonReply{}, err

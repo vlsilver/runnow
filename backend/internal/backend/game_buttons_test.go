@@ -13,9 +13,9 @@ func TestGameButtonRoundTrip(t *testing.T) {
 	gameID := strings.Repeat("a", 20) // id tự sinh của Firestore dài 20 ký tự
 	cases := []gameButton{
 		{GameID: gameID, Op: opCard},
-		{GameID: gameID, PhaseKey: "r14/night/hunter", Kind: ww.KindCupidPair, Op: opConfirm, Idx: []int{15, 14}},
-		{GameID: gameID, PhaseKey: "r1/setup", Kind: ww.KindWitchSave, Op: opPick},
-		{GameID: gameID, PhaseKey: "r3/night", Kind: ww.KindSeerPeek, Op: opReset},
+		{GameID: gameID, TurnKey: "r14", Kind: ww.KindCupidPair, Op: opConfirm, Idx: []int{15, 14}},
+		{GameID: gameID, TurnKey: "r1", Kind: ww.KindWitchSave, Op: opPick},
+		{GameID: gameID, TurnKey: "r3", Kind: ww.KindSeerPeek, Op: opReset},
 	}
 	for _, b := range cases {
 		data, err := b.data()
@@ -35,19 +35,19 @@ func TestGameButtonRoundTrip(t *testing.T) {
 			t.Fatalf("%q: đọc ra %s, muốn %s", data, g, w)
 		}
 	}
-	if s, _ := cases[1].data(); s != "m1|"+gameID+"|r14/night/hunter|c|c|15.14" {
+	if s, _ := cases[1].data(); s != "m1|"+gameID+"|r14|c|c|15.14" {
 		t.Fatalf("data = %q", s)
 	}
 	// Ván có id dài bất thường thì báo lỗi lúc vẽ, không gửi nút Telegram từ chối.
-	if _, err := (gameButton{GameID: strings.Repeat("a", 40), PhaseKey: "r14/night/hunter", Kind: ww.KindCupidPair, Op: opPick, Idx: []int{1, 2}}).data(); err == nil {
+	if _, err := (gameButton{GameID: strings.Repeat("a", 50), TurnKey: "r14", Kind: ww.KindCupidPair, Op: opPick, Idx: []int{1, 2}}).data(); err == nil {
 		t.Fatal("callback_data quá 64 byte mà không lỗi")
 	}
 }
 
 func TestParseGameButtonRejectsTampered(t *testing.T) {
 	for _, s := range []string{
-		"", "x", "m2|g|v", "m1||v", "m1|g|x", "m1|g|r1/night|z|t|1", "m1|g|r1/night|s|q|1",
-		"m1|g|r1/night|s|t|-1", "m1|g|r1/night|s|t|a", "m1|g||s|t|1", "m1|g|r1/night|s|t", "m1|g|r1/night|s|t|1|2",
+		"", "x", "m2|g|v", "m1||v", "m1|g|x", "m1|g|r1|z|t|1", "m1|g|r1|s|q|1",
+		"m1|g|r1|s|t|-1", "m1|g|r1|s|t|a", "m1|g||s|t|1", "m1|g|r1|s|t", "m1|g|r1|s|t|1|2",
 	} {
 		if _, ok := parseGameButton(s); ok {
 			t.Fatalf("%q được nhận", s)
@@ -92,7 +92,7 @@ func TestPromptViewSingleTarget(t *testing.T) {
 	closes := time.Date(2026, 10, 12, 17, 0, 0, 0, time.UTC) // 0:00 ngày 13 giờ Việt Nam
 	a := &GameAction{Kind: "wolf_bite", Enabled: true, ClosesAt: &closes, Options: options("a", "c", "d"),
 		Selected: &GameSelected{Targets: []string{"c"}}}
-	v := promptView{gameID: "g1", phaseKey: "r1/night", st: promptState(), kind: ww.KindWolfBite, a: a, name: promptNames}
+	v := promptView{gameID: "g1", turnKey: "r1", st: promptState(), kind: ww.KindWolfBite, a: a, name: promptNames}
 	text, markup, err := v.render()
 	if err != nil {
 		t.Fatal(err)
@@ -103,7 +103,7 @@ func TestPromptViewSingleTarget(t *testing.T) {
 		t.Fatalf("text = %q", text)
 	}
 	kb := keyboard(t, markup)
-	if len(kb) != 2 || kb[0][0] != "An=m1|g1|r1/night|b|t|0" || kb[0][1] != "✅ Chi=m1|g1|r1/night|b|t|2" || kb[1][0] != "Dũng=m1|g1|r1/night|b|t|3" {
+	if len(kb) != 2 || kb[0][0] != "An=m1|g1|r1|b|t|0" || kb[0][1] != "✅ Chi=m1|g1|r1|b|t|2" || kb[1][0] != "Dũng=m1|g1|r1|b|t|3" {
 		t.Fatalf("nút = %v", kb)
 	}
 }
@@ -111,7 +111,7 @@ func TestPromptViewSingleTarget(t *testing.T) {
 func TestPromptViewConfirmAndLocked(t *testing.T) {
 	st := promptState()
 	a := &GameAction{Kind: "seer_peek", Enabled: true, Options: options("b", "c", "d")}
-	v := promptView{gameID: "g1", phaseKey: "r1/night", st: st, kind: ww.KindSeerPeek, a: a, pick: []string{"b"}, name: promptNames}
+	v := promptView{gameID: "g1", turnKey: "r1", st: st, kind: ww.KindSeerPeek, a: a, pick: []string{"b"}, name: promptNames}
 	text, markup, err := v.render()
 	if err != nil {
 		t.Fatal(err)
@@ -119,7 +119,7 @@ func TestPromptViewConfirmAndLocked(t *testing.T) {
 	if !strings.Contains(text, "\nBạn chọn Bình &lt;b&gt;. Chọn rồi không đổi được. Chắc chưa?\n") {
 		t.Fatalf("text chờ chốt = %q", text)
 	}
-	if kb := keyboard(t, markup); len(kb) != 1 || kb[0][0] != "Chốt=m1|g1|r1/night|s|c|1" || kb[0][1] != "Chọn lại=m1|g1|r1/night|s|r|" {
+	if kb := keyboard(t, markup); len(kb) != 1 || kb[0][0] != "Chốt=m1|g1|r1|s|c|1" || kb[0][1] != "Chọn lại=m1|g1|r1|s|r|" {
 		t.Fatalf("nút chờ chốt = %v", kb)
 	}
 
@@ -138,7 +138,7 @@ func TestPromptViewConfirmAndLocked(t *testing.T) {
 
 func TestPromptViewCupidTwoSteps(t *testing.T) {
 	a := &GameAction{Kind: "cupid_pair", Enabled: true, Options: options("a", "b", "c", "d")}
-	v := promptView{gameID: "g1", phaseKey: "r1/setup", st: promptState(), kind: ww.KindCupidPair, a: a, pick: []string{"d"}, name: promptNames}
+	v := promptView{gameID: "g1", turnKey: "r1", st: promptState(), kind: ww.KindCupidPair, a: a, pick: []string{"d"}, name: promptNames}
 	text, markup, err := v.render()
 	if err != nil {
 		t.Fatal(err)
@@ -148,7 +148,7 @@ func TestPromptViewCupidTwoSteps(t *testing.T) {
 	}
 	kb := keyboard(t, markup)
 	// Người đã chọn không hiện lại; nút mang cả người thứ nhất.
-	if len(kb) != 3 || kb[0][0] != "An=m1|g1|r1/setup|c|t|3.0" || kb[1][0] != "Chi=m1|g1|r1/setup|c|t|3.2" || kb[2][0] != "Chọn lại=m1|g1|r1/setup|c|r|" {
+	if len(kb) != 3 || kb[0][0] != "An=m1|g1|r1|c|t|3.0" || kb[1][0] != "Chi=m1|g1|r1|c|t|3.2" || kb[2][0] != "Chọn lại=m1|g1|r1|c|r|" {
 		t.Fatalf("nút = %v", kb)
 	}
 	v.pick = []string{"d", "a"}
@@ -156,20 +156,20 @@ func TestPromptViewCupidTwoSteps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(text, "Bạn chọn Dũng và An.") || keyboard(t, markup)[0][0] != "Chốt=m1|g1|r1/setup|c|c|3.0" {
+	if !strings.Contains(text, "Bạn chọn Dũng và An.") || keyboard(t, markup)[0][0] != "Chốt=m1|g1|r1|c|c|3.0" {
 		t.Fatalf("chờ chốt = %q %v", text, keyboard(t, markup))
 	}
 }
 
 func TestPromptViewWitchSaveDisabledAndClosed(t *testing.T) {
 	a := &GameAction{Kind: "witch_save", Enabled: false, DisabledReason: "Chưa đủ km."}
-	v := promptView{gameID: "g1", phaseKey: "r1/dawn", st: promptState(), kind: ww.KindWitchSave, a: a, name: promptNames}
+	v := promptView{gameID: "g1", turnKey: "r1", st: promptState(), kind: ww.KindWitchSave, a: a, name: promptNames}
 	text, markup, err := v.render()
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Vẫn có nút: bấm thì nhận toast lý do, và km có thể đủ sau khi admin sửa.
-	if !strings.Contains(text, "\nChưa bấm được: Chưa đủ km.\n") || keyboard(t, markup)[0][0] != "Dùng bình cứu=m1|g1|r1/dawn|w|t|" {
+	if !strings.Contains(text, "\nChưa bấm được: Chưa đủ km.\n") || keyboard(t, markup)[0][0] != "Dùng bình cứu=m1|g1|r1|w|t|" {
 		t.Fatalf("bình cứu = %q %v", text, markup)
 	}
 	a.Selected = &GameSelected{}

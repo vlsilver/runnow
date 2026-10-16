@@ -22,9 +22,9 @@ type ActionRequest struct {
 	Clear      bool
 	Source     string // app | telegram | admin
 	TgUpdateID int64  // update_id của Telegram, 0 nếu từ app
-	// PhaseKey khác rỗng: nút Telegram vẽ cho lượt này. Ván đã sang lượt khác thì
-	// từ chối (errStaleButton), kể cả khi kind cùng tên đang mở ở lượt mới.
-	PhaseKey   string
+	// TurnKey khác rỗng: nút Telegram vẽ cho vòng này (turnKey). Ván đã sang vòng
+	// khác thì từ chối (errStaleButton), kể cả khi kind cùng tên đang mở ở vòng mới.
+	TurnKey    string
 	ReceivedAt time.Time
 	// ActAs: admin bấm thay người chơi giả của ván thử (X1). Ván thật hoặc người
 	// chơi thật thì bị từ chối, nên admin không bấm thay được người nào đang chơi.
@@ -86,7 +86,7 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 		if err != nil {
 			return err
 		}
-		if req.PhaseKey != "" && req.PhaseKey != st.PhaseKey() {
+		if req.TurnKey != "" && req.TurnKey != turnKey(st) {
 			res.Reject = errStaleButton
 			return nil
 		}
