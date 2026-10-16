@@ -25,6 +25,7 @@ type fakeTelegram struct {
 	calls  []tgCall
 	script map[string][]tgReply
 	nextID int64
+	onCall func(tgCall)
 }
 
 type tgCall struct {
@@ -60,6 +61,14 @@ func (f *fakeTelegram) Then(method string, replies ...tgReply) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.script[method] = append(f.script[method], replies...)
+}
+
+// OnCall chạy fn sau khi ghi nhận mỗi call, trước khi trả lời. Test dùng nó để
+// chen việc vào giữa lúc Telegram nhận tin và lúc bộ gửi ghi kết quả.
+func (f *fakeTelegram) OnCall(fn func(tgCall)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onCall = fn
 }
 
 // Calls trả các call của method theo thứ tự; method rỗng thì trả hết.
@@ -120,7 +129,11 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 	if !scripted {
 		reply = f.okReply(method, params)
 	}
+	hook := f.onCall
 	f.mu.Unlock()
+	if hook != nil {
+		hook(tgCall{Method: method, Params: params})
+	}
 	writeTelegram(w, reply)
 }
 

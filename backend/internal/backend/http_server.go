@@ -50,6 +50,7 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/bot-message", s.botMessage)
 	s.route("POST /tasks/game-update", s.gameUpdate)
 	s.route("POST /tasks/game-start", s.gameStart)
+	s.route("POST /tasks/game-flush", s.gameFlush)
 	// Cả hai đây cũng là việc AI (notify sinh nhận xét, chưng cất trí nhớ) —
 	// dời sang service bot. Định tuyến queue/scheduler đổi ở deploy.sh.
 	s.route("POST /tasks/notify-telegram", s.notifyTelegram)

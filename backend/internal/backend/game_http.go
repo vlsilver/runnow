@@ -113,9 +113,11 @@ func (s *Server) gameRoutes() {
 			run := map[string]func(context.Context, string, string, time.Time) error{
 				"pause": s.deps.Games.AdminPause, "resume": s.deps.Games.AdminResume, "cancel": s.deps.Games.AdminCancel,
 			}[action]
-			if err := run(r.Context(), r.PathValue("id"), v.UID, time.Now()); err != nil {
+			id := r.PathValue("id")
+			if err := run(r.Context(), id, v.UID, time.Now()); err != nil {
 				return err
 			}
+			s.kickGameFlush(r.Context(), id)
 			return writeJSON(w, 200, map[string]any{"ok": true})
 		}))
 	}
@@ -128,9 +130,13 @@ func (s *Server) gameRoutes() {
 		if err := decodeJSON(r, &body); err != nil || body.ExpectedKey == "" {
 			return invalidRequest()
 		}
-		res, err := s.deps.Games.AdminAdvance(r.Context(), r.PathValue("id"), body.ExpectedKey, time.Now())
+		id := r.PathValue("id")
+		res, err := s.deps.Games.AdminAdvance(r.Context(), id, body.ExpectedKey, time.Now())
 		if err != nil {
 			return err
+		}
+		if res.Steps > 0 {
+			s.kickGameFlush(r.Context(), id)
 		}
 		return writeJSON(w, 200, map[string]any{"steps": res.Steps, "status": res.Status, "taskKey": res.TaskKey, "nextAt": res.NextAt})
 	}))
@@ -210,7 +216,22 @@ func (s *Server) submitGameAction(r *http.Request, req ActionRequest, body gameA
 	if res.Reject != nil {
 		return rejectHTTP(req.Kind, res.Reject)
 	}
+	if res.Applied {
+		s.kickGameFlush(r.Context(), req.GameID)
+	}
 	return nil
+}
+
+// kickGameFlush giao bot gửi outbox ngay sau khi commit (3.2 bước 5). Enqueue
+// lỗi thì chỉ log: tin vẫn nằm pending, lượt gửi sau gửi bù.
+func (s *Server) kickGameFlush(ctx context.Context, gameID string) {
+	publish := s.enqueueTask()
+	if publish == nil || s.config.GameInboundQueue == "" {
+		return
+	}
+	if _, err := publish(ctx, gameFlushTaskFor(gameID, time.Time{})); err != nil {
+		slog.WarnContext(ctx, "game.flush_enqueue_failed", "gameId", gameID, "error", err)
+	}
 }
 
 // enqueueTask là Dependencies.EnqueueTask nếu có, không thì Tasks.Publish.
@@ -268,5 +289,40 @@ func (s *Server) gameStart(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	slog.InfoContext(r.Context(), "game.start_done", "gameId", task.GameID, "attempt", task.Attempt, "result", out.Result, "players", out.Players, "excluded", len(out.Excluded))
+	// Cả khi skipped: lần trước có thể đã chia bài xong mà chưa kịp enqueue.
+	// reverted thì không có tin nào.
+	if out.Result != "reverted" {
+		s.kickGameFlush(r.Context(), task.GameID)
+	}
 	return writeJSON(w, 200, out)
+}
+
+// gameFlush gửi outbox của một ván (3.4). Còn chat phải chờ (429, bộ gửi khác
+// đang giữ lease) thì hẹn một lượt nữa đúng mốc đó. Lỗi thì trả 5xx để task
+// retry; tin chưa gửi vẫn nằm pending.
+func (s *Server) gameFlush(w http.ResponseWriter, r *http.Request) error {
+	var task gameFlushTask
+	if err := decodeJSON(r, &task); err != nil || task.GameID == "" {
+		slog.WarnContext(r.Context(), "game.flush_bad_payload")
+		w.WriteHeader(http.StatusNoContent)
+		return nil
+	}
+	if s.deps.Telegram == nil || !s.deps.Telegram.Enabled() || s.deps.Games == nil {
+		return errors.New("game-flush cần Telegram và Games")
+	}
+	res, err := s.deps.Games.FlushGame(r.Context(), task.GameID, s.deps.Telegram, time.Now)
+	if !res.RetryAt.IsZero() {
+		at := res.RetryAt.Add(time.Second)
+		publish := s.enqueueTask()
+		if publish == nil || s.config.GameInboundQueue == "" {
+			slog.WarnContext(r.Context(), "game.flush_retry_unscheduled", "gameId", task.GameID, "retryAt", at)
+		} else if _, perr := publish(r.Context(), gameFlushTaskFor(task.GameID, at)); perr != nil {
+			err = errors.Join(err, perr)
+		}
+	}
+	if err != nil {
+		return err
+	}
+	slog.InfoContext(r.Context(), "game.flush_done", "gameId", task.GameID, "sent", res.Sent, "failed", res.Failed, "skipped", res.Skipped, "retryAt", res.RetryAt)
+	return writeJSON(w, 200, res)
 }

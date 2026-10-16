@@ -40,7 +40,7 @@ func newStartEnv(t *testing.T) *startEnv {
 	h.cfg.GameInboundQueue = "game-inbound"
 	h.deps.EnqueueTask = e.publish
 	h.srv = NewAPIServer(h.cfg, h.deps)
-	e.bot = NewBotServer(Config{}, &Dependencies{Firestore: db, Games: h.store, TelegramLinks: h.deps.TelegramLinks, Telegram: e.tg.service("-100psc")})
+	e.bot = NewBotServer(Config{GameInboundQueue: "game-inbound"}, &Dependencies{Firestore: db, Games: h.store, TelegramLinks: h.deps.TelegramLinks, Telegram: e.tg.service("-100psc"), EnqueueTask: e.publish})
 	setConfig(t, h, map[string]any{"adminUids": []any{"boss"}})
 	return e
 }
@@ -73,6 +73,17 @@ func (e *startEnv) taskList() []PublishTask {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return append([]PublishTask(nil), e.tasks...)
+}
+
+// tasksTo là các task đã enqueue tới route path.
+func (e *startEnv) tasksTo(path string) []PublishTask {
+	var out []PublishTask
+	for _, t := range e.taskList() {
+		if t.HandlerPath == path {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func tgOf(i int) string { return fmt.Sprint(7000 + i) }
@@ -434,7 +445,7 @@ func TestEmulatorGameSmokeScript(t *testing.T) {
 			t.Fatalf("output thiếu %q:\n%s", want, out)
 		}
 	}
-	tasks := e.taskList()
+	tasks := e.tasksTo("/tasks/game-start")
 	if len(tasks) != 1 || len(e.tg.Calls("getChatMember")) != 2 {
 		t.Fatalf("tasks = %d, getChatMember = %d", len(tasks), len(e.tg.Calls("getChatMember")))
 	}

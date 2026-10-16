@@ -281,6 +281,33 @@ func TestEmulatorTestModeGameRunsToEndByAdvance(t *testing.T) {
 		}
 	}
 	replayMatches(t, g.storeGame)
+
+	// T6: gửi hết outbox của cả ván bằng chữ render từ event thật. Không tin nào
+	// lỗi; group nhận bản tin cuối có bên thắng và lá bài của mọi người; DM chỉ
+	// tới tg của người thật.
+	tg := newFakeTelegram(t)
+	res, err := g.store.FlushGame(context.Background(), g.id, tg.service(testPscChat), time.Now)
+	if err != nil || res.Failed != 0 || res.Sent == 0 {
+		t.Fatalf("flush = %+v, %v", res, err)
+	}
+	real := map[string]bool{}
+	for _, tgID := range g.tg {
+		real[tgID] = true
+	}
+	var lastGroup string
+	for _, c := range tg.Calls("sendMessage") {
+		switch chat := c.Params["chat_id"].(string); {
+		case chat == "-1002222":
+			lastGroup = c.Params["text"].(string)
+		case !real[chat]:
+			t.Fatalf("tin gửi tới %s", chat)
+		}
+	}
+	head, roles, ok := strings.Cut(lastGroup, "\n\nLá bài:\n")
+	if !ok || !strings.HasSuffix(head, "Phe Dân thắng.") || len(strings.Split(roles, "\n")) != 10 ||
+		strings.Count(roles, ": Dân") != 6 || strings.Count(roles, ": Sói") != 2 {
+		t.Fatalf("bản tin cuối = %q", lastGroup)
+	}
 }
 
 func (g *testModeGame) actionCount(round int) int {
