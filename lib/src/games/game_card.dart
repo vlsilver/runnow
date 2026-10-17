@@ -95,26 +95,36 @@ class GameCard extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 14),
-              Row(
+              // Wrap: màn hẹp hay chữ phóng to thì badge xuống dòng chứ không
+              // bị cắt.
+              Wrap(
+                spacing: 10,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Icon(
-                    Icons.person_rounded,
-                    size: 15,
-                    color: palette.textMuted,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.person_rounded,
+                        size: 15,
+                        color: palette.textMuted,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${game.playerCount}/${game.maxPlayers} người',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: palette.textMuted,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 3),
-                  Text(
-                    '${game.playerCount}/${game.maxPlayers} người',
-                    style: TextStyle(fontSize: 13, color: palette.textMuted),
-                  ),
-                  if (deadline != null) ...[
-                    const SizedBox(width: 10),
+                  if (deadline != null)
                     Text(
                       'Hạn ${_deadlineFormat.format(deadline.toLocal())}',
                       style: TextStyle(fontSize: 13, color: palette.textMuted),
                     ),
-                  ],
-                  const Spacer(),
                   if (game.hasTodo)
                     _Badge(label: 'Có việc cho bạn', color: accent),
                 ],

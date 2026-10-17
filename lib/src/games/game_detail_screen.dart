@@ -46,6 +46,10 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   bool _starting = false;
   bool? _linked;
 
+  /// Lá bài úp thì ẩn cả việc của vai. Rời màn (nền, app switcher, mở chat)
+  /// thì úp lại, để quay lại không thấy vai đang ngửa.
+  bool _faceUp = false;
+
   @override
   void initState() {
     super.initState();
@@ -80,9 +84,17 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
         _telegram.onResume();
       case AppLifecycleState.paused || AppLifecycleState.hidden:
         _controller.setActive(false);
-      case AppLifecycleState.inactive || AppLifecycleState.detached:
+        _turnFaceDown();
+      // iOS chụp ảnh màn cho app switcher ngay khi inactive.
+      case AppLifecycleState.inactive:
+        _turnFaceDown();
+      case AppLifecycleState.detached:
         break;
     }
+  }
+
+  void _turnFaceDown() {
+    if (_faceUp && mounted) setState(() => _faceUp = false);
   }
 
   @override
@@ -133,7 +145,14 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     final open =
         widget.openUrl ??
         (uri) => launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (await open(Uri.parse(url)) || !mounted) return;
+    var opened = false;
+    try {
+      opened = await open(Uri.parse(url));
+    } catch (error) {
+      // URL rỗng hay sai thì iOS ném PlatformException thay vì trả false.
+      debugPrint('Ma Sói: mở $url lỗi: $error');
+    }
+    if (opened || !mounted) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Không mở được link.')));
@@ -207,7 +226,11 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 48),
                     children: [
-                      if (_controller.error != null) const _StaleBanner(),
+                      // Giữ chỗ cố định để banner bật tắt không làm các mục
+                      // phía dưới đổi vị trí và mất state.
+                      _controller.error != null
+                          ? const _StaleBanner()
+                          : const SizedBox.shrink(),
                       _Header(
                         detail: detail,
                         closing: _controller.phaseClosing,
@@ -216,14 +239,19 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                         const SizedBox(height: 12),
                         GameMyCard(
                           me: me,
+                          faceUp: _faceUp,
+                          onFlip: () => setState(() => _faceUp = !_faceUp),
                           onOpenUrl: _openLink,
-                          onOpenChat: (key) => context.push(
-                            '/games/${Uri.encodeComponent(widget.gameId)}'
-                            '/chat/${Uri.encodeComponent(key)}',
-                          ),
+                          onOpenChat: (key) {
+                            _turnFaceDown();
+                            context.push(
+                              '/games/${Uri.encodeComponent(widget.gameId)}'
+                              '/chat/${Uri.encodeComponent(key)}',
+                            );
+                          },
                         ),
                       ],
-                      if (me != null && me.actions.isNotEmpty) ...[
+                      if (_faceUp && me != null && me.actions.isNotEmpty) ...[
                         const SizedBox(height: 20),
                         const _SectionTitle('Việc của bạn'),
                         for (final action in me.actions)

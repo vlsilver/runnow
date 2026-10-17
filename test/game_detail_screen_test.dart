@@ -436,6 +436,9 @@ void main() {
     });
   });
 
+  const faceDown =
+      'Lá bài của bạn đang úp. Chạm để xem vai, việc cần làm và chat phe.';
+
   group('my card', () {
     Map<String, dynamic> running({bool registered = true}) => {
       'id': 'g1',
@@ -466,14 +469,11 @@ void main() {
       await pumpScreen(tester);
       await tester.pump();
 
-      expect(
-        find.text('Lá bài của bạn đang úp. Chạm để xem vai.'),
-        findsOneWidget,
-      );
+      expect(find.text(faceDown), findsOneWidget);
       expect(find.text('Tiên tri'), findsNothing);
       expect(find.text('Vòng 1: An là Dân'), findsNothing);
 
-      await tester.tap(find.text('Lá bài của bạn đang úp. Chạm để xem vai.'));
+      await tester.tap(find.text(faceDown));
       await tester.pumpAndSettle();
       expect(find.text('Tiên tri'), findsWidgets);
       expect(find.text('Mỗi đêm soi một người.'), findsOneWidget);
@@ -532,13 +532,81 @@ void main() {
 
       // Tên chat lộ phe, nên chỉ hiện khi lật bài.
       expect(find.text('Chat Phe Sói'), findsNothing);
-      await tester.tap(find.text('Lá bài của bạn đang úp. Chạm để xem vai.'));
+      await tester.tap(find.text(faceDown));
       await tester.pumpAndSettle();
       expect(find.text('Chat Cặp đôi'), findsOneWidget);
 
       await tester.tap(find.text('Chat Phe Sói'));
       await tester.pumpAndSettle();
       expect(find.text('chat g1/wolves'), findsOneWidget);
+
+      // Quay lại từ chat thì bài đã úp.
+      router.pop();
+      await tester.pumpAndSettle();
+      expect(find.text(faceDown), findsOneWidget);
+      expect(find.text('Chat Phe Sói'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('turns face down when the app leaves the foreground', (
+      tester,
+    ) async {
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+      expect(find.text('Tiên tri'), findsWidgets);
+
+      // App switcher của iOS chụp màn lúc inactive.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.pumpAndSettle();
+      expect(find.text(faceDown), findsOneWidget);
+      expect(find.text('Tiên tri'), findsNothing);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await close(tester);
+    });
+
+    testWidgets('hides what you must do while the card is face down', (
+      tester,
+    ) async {
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'wolf',
+        'roleLabel': 'Sói',
+        'actions': [
+          {
+            'kind': 'wolf_bite',
+            'label': 'Cắn',
+            'help': 'Chọn người phe Sói cắn đêm nay.',
+            'input': 'single_target',
+            'enabled': true,
+            'options': [
+              {'id': 'u2', 'label': 'Bình'},
+            ],
+          },
+        ],
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+
+      // Người ngồi cạnh đọc được "Cắn" là biết người này là sói; ban đêm
+      // dân không có việc gì, nên có mục này thôi cũng đã lộ.
+      expect(find.text('Việc của bạn'), findsNothing);
+      expect(find.text('Cắn'), findsNothing);
+
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+      expect(find.text('Việc của bạn'), findsOneWidget);
+      expect(find.text('Cắn'), findsOneWidget);
       await close(tester);
     });
 
@@ -554,7 +622,7 @@ void main() {
       await pumpScreen(tester);
       await tester.pump();
 
-      await tester.tap(find.text('Lá bài của bạn đang úp. Chạm để xem vai.'));
+      await tester.tap(find.text(faceDown));
       await tester.pumpAndSettle();
       expect(find.text('Bình cứu: đã dùng · Bình độc: còn'), findsOneWidget);
       await close(tester);
@@ -673,6 +741,8 @@ void main() {
     testWidgets('sends the pick for the action kind', (tester) async {
       await pumpScreen(tester);
       await tester.pump();
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
       expect(find.text('Việc của bạn'), findsOneWidget);
 
       await tester.tap(find.text('Bình'));
@@ -696,6 +766,8 @@ void main() {
       );
       await pumpScreen(tester);
       await tester.pump();
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.text('Bình'));
       await tester.pump();
