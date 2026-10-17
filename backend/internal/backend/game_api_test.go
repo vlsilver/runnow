@@ -37,8 +37,26 @@ func TestAppVersionOK(t *testing.T) {
 	}
 }
 
+func TestRequirementsForPscInvite(t *testing.T) {
+	cfg := gameConfig{pscInviteURL: "https://t.me/+abc"}
+	reqs := requirementsFor(viewerLink{linked: true}, "", cfg)
+	if a := reqs[1].Action; a == nil || a.Type != "open_url" || a.URL != "https://t.me/+abc" {
+		t.Fatalf("chưa ở PSC mà không có link vào group: %+v", reqs[1])
+	}
+	// Chưa liên kết thì chưa biết có ở PSC không; vẫn đưa link vì mở link khi đã ở trong group thì vô hại.
+	if a := requirementsFor(viewerLink{}, "", cfg)[1].Action; a == nil || a.URL != "https://t.me/+abc" {
+		t.Fatalf("chưa liên kết mà không có link vào group: %+v", a)
+	}
+	if a := requirementsFor(viewerLink{linked: true, inPsc: true}, "", cfg)[1].Action; a != nil {
+		t.Fatalf("đã ở PSC mà vẫn có action: %+v", a)
+	}
+	if a := requirementsFor(viewerLink{linked: true}, "", gameConfig{})[1].Action; a != nil {
+		t.Fatalf("config chưa có link mà vẫn có action: %+v", a)
+	}
+}
+
 func TestRequirementsFor(t *testing.T) {
-	reqs := requirementsFor(viewerLink{linked: true, inPsc: false}, "1.0.0", "1.2.0")
+	reqs := requirementsFor(viewerLink{linked: true, inPsc: false}, "1.0.0", gameConfig{minAppVersion: "1.2.0"})
 	got := map[string]bool{}
 	for _, r := range reqs {
 		got[r.Key] = r.OK
@@ -50,10 +68,10 @@ func TestRequirementsFor(t *testing.T) {
 		t.Fatalf("action/label = %+v", reqs)
 	}
 	// inPsc chỉ tính khi đã liên kết.
-	if requirementsFor(viewerLink{inPsc: true}, "", "")[1].OK {
+	if requirementsFor(viewerLink{inPsc: true}, "", gameConfig{})[1].OK {
 		t.Fatal("chưa liên kết mà in_psc ok")
 	}
-	if !requirementsMet(requirementsFor(viewerLink{linked: true, inPsc: true}, "", "")) {
+	if !requirementsMet(requirementsFor(viewerLink{linked: true, inPsc: true}, "", gameConfig{})) {
 		t.Fatal("đủ điều kiện mà bị chặn")
 	}
 }

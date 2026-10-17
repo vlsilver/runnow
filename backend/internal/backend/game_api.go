@@ -49,6 +49,7 @@ type GameViewer struct {
 type gameConfig struct {
 	admins, testers map[string]bool
 	minAppVersion   string
+	pscInviteURL    string            // link mời vào PSC, gắn vào mục in_psc khi chưa đạt
 	cards           map[string]string // vai → URL ảnh lá bài; "back" là mặt sau
 }
 
@@ -72,6 +73,7 @@ func (s *GameStore) loadConfig(ctx context.Context) (gameConfig, error) {
 		cfg.testers[stringValue(v)] = true
 	}
 	cfg.minAppVersion = strings.TrimSpace(stringValue(d["minAppVersion"]))
+	cfg.pscInviteURL = strings.TrimSpace(stringValue(d["pscInviteUrl"]))
 	if cards, ok := d["cards"].(map[string]any); ok {
 		for k, v := range cards {
 			cfg.cards[k] = stringValue(v)
@@ -192,17 +194,23 @@ func (s *GameStore) readLink(get docGetter, uid string) (viewerLink, error) {
 	return viewerLink{tgUserID: id, linked: true, inPsc: link.Data()["inPsc"] == true, displayName: stringValue(link.Data()["displayName"]), username: stringValue(link.Data()["username"])}, nil
 }
 
-func requirementsFor(link viewerLink, appVersion, minAppVersion string) []GameRequirement {
+func requirementsFor(link viewerLink, appVersion string, cfg gameConfig) []GameRequirement {
 	reqs := []GameRequirement{
 		{Key: "telegram_linked", OK: link.linked, Label: "Đã liên kết Telegram"},
 		{Key: "in_psc", OK: link.linked && link.inPsc, Label: "Đang ở trong group PSC"},
-		{Key: "app_version", OK: appVersionOK(appVersion, minAppVersion), Label: "Bản app đủ mới"},
+		{Key: "app_version", OK: appVersionOK(appVersion, cfg.minAppVersion), Label: "Bản app đủ mới"},
 	}
 	if !reqs[0].OK {
 		reqs[0].Action = &RequirementAction{Type: "link_telegram"}
 	}
-	if minAppVersion != "" {
-		reqs[2].Label = "Bản app từ " + minAppVersion + " trở lên"
+	// Chưa liên kết thì chưa biết có ở PSC không, vẫn đưa link: mở link khi đã ở
+	// trong group thì Telegram chỉ mở group ra. Vào xong, bot nhận chat_member và
+	// ghi inPsc, nên link phải là link mời thường, không phải link cần duyệt.
+	if !reqs[1].OK && cfg.pscInviteURL != "" {
+		reqs[1].Action = &RequirementAction{Type: "open_url", URL: cfg.pscInviteURL}
+	}
+	if cfg.minAppVersion != "" {
+		reqs[2].Label = "Bản app từ " + cfg.minAppVersion + " trở lên"
 	}
 	if !reqs[2].OK {
 		reqs[2].Action = &RequirementAction{Type: "update_app"}
@@ -745,7 +753,7 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 		ID: g.Ref.ID, Title: gameTitle, Status: apiStatus(data), StatusLabel: statusLabel(data),
 		TestMode: data["testMode"] == true, Version: int64(number(data["version"])), ServerNow: wall,
 		RulesText: gameRulesText, PlayerCount: len(players), MinPlayers: werewolf.MinPlayers, MaxPlayers: werewolf.MaxPlayers,
-		Feed: feed, Requirements: requirementsFor(link, v.AppVersion, cfg.minAppVersion),
+		Feed: feed, Requirements: requirementsFor(link, v.AppVersion, cfg),
 		IsRegistered: registered, IsAdmin: cfg.isAdmin(v.UID), MinAppVersion: cfg.minAppVersion,
 		Winner: stringValue(data["winner"]),
 	}
@@ -1208,7 +1216,7 @@ func (s *GameStore) Register(ctx context.Context, gameID string, v GameViewer, w
 		if err != nil {
 			return err
 		}
-		if reqs := requirementsFor(link, v.AppVersion, cfg.minAppVersion); !requirementsMet(reqs) {
+		if reqs := requirementsFor(link, v.AppVersion, cfg); !requirementsMet(reqs) {
 			return &HTTPError{Status: http.StatusUnprocessableEntity, Code: "requirements_unmet", Message: "Bạn chưa đủ điều kiện đăng ký.", Extra: map[string]any{"requirements": reqs}}
 		}
 		if len(players) >= werewolf.MaxPlayers {
