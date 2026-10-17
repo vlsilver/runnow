@@ -148,6 +148,30 @@ class RunNowApiClient {
     return GameMe.fromJson(_jsonObject(response));
   }
 
+  /// Một trang chat phe [key], tin mới trước. [cursor] null là trang mới nhất.
+  Future<GameChat> getGameChat(
+    String gameId,
+    String key, {
+    String? cursor,
+  }) async {
+    final query = cursor == null
+        ? ''
+        : '?cursor=${Uri.encodeQueryComponent(cursor)}';
+    final response = await _send(
+      'GET',
+      '${_gamePath(gameId)}/chats/${Uri.encodeComponent(key)}$query',
+    );
+    return GameChat.fromJson(_jsonObject(response));
+  }
+
+  /// Gửi tin vào chat phe. Lỗi `chat_read_only`, `too_fast`, `invalid_text`
+  /// có message đọc được để hiện thẳng.
+  Future<void> postGameChat(String gameId, String key, String text) => _send(
+    'POST',
+    '${_gamePath(gameId)}/chats/${Uri.encodeComponent(key)}',
+    body: {'text': text},
+  );
+
   /// Chỉ admin. [roles] là công tắc theo `createOptions.roles`. Ván thử phải
   /// có [chatId] của group test. Trả id ván mới.
   Future<String> createGame({

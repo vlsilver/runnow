@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/formatters.dart';
+import 'package:myrun/src/games/game_chat_screen.dart';
 import 'package:myrun/src/games/game_create_screen.dart';
 import 'package:myrun/src/games/game_detail_screen.dart';
 import 'package:myrun/src/journey/journey_models.dart';
@@ -207,6 +208,13 @@ final _router = GoRouter(
       path: '/games/:id',
       builder: (context, state) =>
           GameDetailScreen(gameId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/games/:id/chat/:key',
+      builder: (context, state) => GameChatScreen(
+        gameId: state.pathParameters['id']!,
+        chatKey: state.pathParameters['key']!,
+      ),
     ),
   ],
 );

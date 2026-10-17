@@ -375,6 +375,7 @@ class GameMe {
     required this.potions,
     required this.notes,
     required this.inviteLinks,
+    required this.chats,
     required this.actions,
     required this.allRoles,
   });
@@ -391,6 +392,7 @@ class GameMe {
       potions: _obj(json['potions'], GamePotions.fromJson),
       notes: _list(json['notes'], GameNote.fromJson),
       inviteLinks: _list(json['inviteLinks'], GameInvite.fromJson),
+      chats: _list(json['chats'], GameChatLink.fromJson),
       actions: _list(json['actions'], GameAction.fromJson),
       allRoles: _list(json['allRoles'], GameRoleReveal.fromJson),
     );
@@ -410,6 +412,10 @@ class GameMe {
   final GamePotions? potions;
   final List<GameNote> notes;
   final List<GameInvite> inviteLinks;
+
+  /// Chat phe người xem vào được (Phe Sói, Cặp đôi). Backend quyết có chat
+  /// nào, app chỉ vẽ lối vào theo list này.
+  final List<GameChatLink> chats;
   final List<GameAction> actions;
 
   /// Vai của cả ván, chỉ có sau khi ván kết thúc.
@@ -450,6 +456,88 @@ class GameInvite {
 
   final String label;
   final String url;
+}
+
+class GameChatLink {
+  const GameChatLink({
+    required this.key,
+    required this.label,
+    required this.canSend,
+  });
+
+  factory GameChatLink.fromJson(Map<String, dynamic> json) {
+    return GameChatLink(
+      key: _string(json['key']),
+      label: _string(json['label']),
+      canSend: json['canSend'] == true,
+    );
+  }
+
+  final String key;
+  final String label;
+  final bool canSend;
+}
+
+/// Một trang của chat phe, tin mới trước.
+class GameChat {
+  const GameChat({
+    required this.key,
+    required this.label,
+    required this.canSend,
+    required this.messages,
+    required this.cursor,
+  });
+
+  factory GameChat.fromJson(Map<String, dynamic> json) {
+    return GameChat(
+      key: _string(json['key']),
+      label: _string(json['label']),
+      canSend: json['canSend'] == true,
+      messages: _list(json['messages'], GameChatMessage.fromJson),
+      cursor: _optString(json['cursor']),
+    );
+  }
+
+  final String key;
+  final String label;
+
+  /// false khi người xem đã chết hoặc ván đã hết: chỉ đọc.
+  final bool canSend;
+  final List<GameChatMessage> messages;
+
+  /// Có khi còn tin cũ hơn; null là đã hết.
+  final String? cursor;
+}
+
+class GameChatMessage {
+  const GameChatMessage({
+    required this.seq,
+    required this.uid,
+    required this.name,
+    required this.text,
+    required this.system,
+    required this.at,
+  });
+
+  factory GameChatMessage.fromJson(Map<String, dynamic> json) {
+    return GameChatMessage(
+      seq: _int(json['seq']),
+      uid: _string(json['uid']),
+      name: _string(json['name']),
+      text: _string(json['text']),
+      system: json['system'] == true,
+      at: _date(json['at']),
+    );
+  }
+
+  final int seq;
+  final String uid;
+  final String name;
+  final String text;
+
+  /// Tin bot ghi (vd. một sói vừa chọn cắn), không phải người chơi gõ.
+  final bool system;
+  final DateTime? at;
 }
 
 /// Một việc người chơi làm được lúc này. App vẽ theo [input] và [options],

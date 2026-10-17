@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:myrun/src/games/game_detail_screen.dart';
 import 'package:myrun/src/providers.dart';
 
@@ -485,6 +486,59 @@ void main() {
       await tester.tap(find.text('Chạm để úp lại.'));
       await tester.pumpAndSettle();
       expect(find.text('Mỗi đêm soi một người.'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('opens faction chats listed in /me from the face', (
+      tester,
+    ) async {
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'wolf',
+        'roleLabel': 'Sói',
+        'chats': [
+          {'key': 'wolves', 'label': 'Phe Sói', 'canSend': true},
+          {'key': 'lovers', 'label': 'Cặp đôi', 'canSend': false},
+        ],
+      };
+      final router = GoRouter(
+        initialLocation: '/games/g1',
+        routes: [
+          GoRoute(
+            path: '/games/:id',
+            builder: (_, _) => GameDetailScreen(gameId: 'g1', clock: () => now),
+          ),
+          GoRoute(
+            path: '/games/:id/chat/:key',
+            builder: (_, state) => Text(
+              'chat ${state.pathParameters['id']}/'
+              '${state.pathParameters['key']}',
+            ),
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            runNowApiClientProvider.overrideWithValue(backend.client()),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // Tên chat lộ phe, nên chỉ hiện khi lật bài.
+      expect(find.text('Chat Phe Sói'), findsNothing);
+      await tester.tap(find.text('Lá bài của bạn đang úp. Chạm để xem vai.'));
+      await tester.pumpAndSettle();
+      expect(find.text('Chat Cặp đôi'), findsOneWidget);
+
+      await tester.tap(find.text('Chat Phe Sói'));
+      await tester.pumpAndSettle();
+      expect(find.text('chat g1/wolves'), findsOneWidget);
       await close(tester);
     });
 

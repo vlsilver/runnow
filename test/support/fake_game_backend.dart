@@ -37,6 +37,11 @@ class FakeGameBackend {
   /// Mọi request đã gửi, để xem body và query.
   final requests = <http.Request>[];
 
+  /// Trang chat theo cursor; khoá '' là trang mới nhất. POST thêm tin của
+  /// [chatSender] lên đầu trang ''.
+  Map<String, Map<String, dynamic>> chatPages = {};
+  String chatSender = 'me';
+
   RunNowApiClient client() => RunNowApiClient(
     baseUri: Uri.parse('https://api.example.test'),
     tokenProvider: ({required forceRefresh}) async => 'token',
@@ -93,6 +98,32 @@ class FakeGameBackend {
           ],
         };
         body = me;
+      } else if (path.contains('/chats/')) {
+        if (request.method == 'POST') {
+          final page = chatPages['']!;
+          final messages = (page['messages'] as List).cast<Object>();
+          final top = messages.isEmpty
+              ? 0
+              : (messages.first as Map<String, dynamic>)['seq'] as int;
+          final text = (jsonDecode(request.body) as Map)['text'];
+          chatPages[''] = {
+            ...page,
+            'messages': [
+              {
+                'seq': top + 1,
+                'uid': chatSender,
+                'name': 'Tôi',
+                'text': text,
+                'system': false,
+                'at': now().toUtc().toIso8601String(),
+              },
+              ...messages,
+            ],
+          };
+          body = {'ok': true};
+        } else {
+          body = chatPages[request.url.queryParameters['cursor'] ?? '']!;
+        }
       } else if (path.endsWith('/feed')) {
         body = feedPages[request.url.queryParameters['cursor']]!;
       } else {

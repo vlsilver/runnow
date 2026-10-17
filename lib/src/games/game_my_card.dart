@@ -4,13 +4,21 @@ import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
 
 /// Lá bài của người xem, lấy từ `/me`. Mặc định úp vì người ngồi cạnh nhìn
-/// được màn hình; chạm để lật. Ghi chú, bình thuốc và link nhóm cũng là
-/// thông tin riêng của lá nên chỉ hiện khi lật.
+/// được màn hình; chạm để lật. Ghi chú, bình thuốc, link nhóm và lối vào
+/// chat phe cũng là thông tin riêng của lá nên chỉ hiện khi lật.
 class GameMyCard extends StatefulWidget {
-  const GameMyCard({super.key, required this.me, required this.onOpenUrl});
+  const GameMyCard({
+    super.key,
+    required this.me,
+    required this.onOpenUrl,
+    required this.onOpenChat,
+  });
 
   final GameMe me;
   final ValueChanged<String> onOpenUrl;
+
+  /// Nhận `key` của chat trong `me.chats`.
+  final ValueChanged<String> onOpenChat;
 
   @override
   State<GameMyCard> createState() => _GameMyCardState();
@@ -37,6 +45,7 @@ class _GameMyCardState extends State<GameMyCard> {
                     key: const ValueKey('face'),
                     me: me,
                     onOpenUrl: widget.onOpenUrl,
+                    onOpenChat: widget.onOpenChat,
                   )
                 : Row(
                     key: const ValueKey('back'),
@@ -59,10 +68,16 @@ class _GameMyCardState extends State<GameMyCard> {
 }
 
 class _Face extends StatelessWidget {
-  const _Face({super.key, required this.me, required this.onOpenUrl});
+  const _Face({
+    super.key,
+    required this.me,
+    required this.onOpenUrl,
+    required this.onOpenChat,
+  });
 
   final GameMe me;
   final ValueChanged<String> onOpenUrl;
+  final ValueChanged<String> onOpenChat;
 
   @override
   Widget build(BuildContext context) {
@@ -117,6 +132,15 @@ class _Face extends StatelessWidget {
             child: OutlinedButton(
               onPressed: () => onOpenUrl(invite.url),
               child: Text(invite.label),
+            ),
+          ),
+        for (final chat in me.chats)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: FilledButton.tonalIcon(
+              onPressed: () => onOpenChat(chat.key),
+              icon: const Icon(Icons.forum_outlined),
+              label: Text('Chat ${chat.label}'),
             ),
           ),
         const SizedBox(height: 8),

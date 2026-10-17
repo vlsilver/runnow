@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_action_card.dart';
 import 'package:myrun/src/games/game_detail_controller.dart';
@@ -213,7 +214,14 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                       ),
                       if (me != null && me.role != null) ...[
                         const SizedBox(height: 12),
-                        GameMyCard(me: me, onOpenUrl: _openLink),
+                        GameMyCard(
+                          me: me,
+                          onOpenUrl: _openLink,
+                          onOpenChat: (key) => context.push(
+                            '/games/${Uri.encodeComponent(widget.gameId)}'
+                            '/chat/${Uri.encodeComponent(key)}',
+                          ),
+                        ),
                       ],
                       if (me != null && me.actions.isNotEmpty) ...[
                         const SizedBox(height: 20),
