@@ -486,7 +486,7 @@ func TestEmulatorStartSendsCardsThroughFlush(t *testing.T) {
 	}
 	for i := 1; i <= 10; i++ {
 		text, ok := cards[tgOf(i)]
-		if !ok || !strings.HasPrefix(text, "Lá bài của bạn trong ván Ma Sói:\n<b>"+roleLabels[st.Players[userOf(i)].Role]+"</b>") {
+		if !ok || !strings.HasPrefix(text, "<b>Ma Sói: có tin riêng cho bạn</b>\n<tg-spoiler>Lá bài của bạn: <b>"+roleLabels[st.Players[userOf(i)].Role]+"</b></tg-spoiler>") {
 			t.Fatalf("lá bài của %s = %q", userOf(i), text)
 		}
 		if wolf := st.Players[userOf(i)].Role == werewolf.Wolf; wolf != strings.Contains(text, "Đồng đội:") {

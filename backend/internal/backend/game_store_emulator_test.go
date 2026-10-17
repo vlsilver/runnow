@@ -138,7 +138,8 @@ func TestEmulatorCreateGameWhileOneIsOpenIs409(t *testing.T) {
 
 // Hai bên cùng chốt mốc 22h đêm 1: đúng một event bước và một bộ outbox.
 // Bộ outbox tính tay: Start ra 1 tin group + 10 lá bài; mở đêm ra 1 bản tin +
-// prompt cho guard, seer, w1, w2. Tổng 16; chat group có 2 tin nên nextSeq = 3.
+// prompt cho guard, seer, w1, w2, cùng tin đêm cho 6 người còn lại. Tổng 22;
+// chat group có 2 tin nên nextSeq = 3.
 func TestEmulatorConcurrentAdvanceRunsTheStepOnce(t *testing.T) {
 	for round := 0; round < 5; round++ {
 		g := newStoreGame(t)
@@ -167,8 +168,8 @@ func TestEmulatorConcurrentAdvanceRunsTheStepOnce(t *testing.T) {
 		if n := g.count("events"); n != 2 {
 			t.Fatalf("lần %d: %d event, mong đợi 2 (start + 1 bước)", round, n)
 		}
-		if n := g.count("outbox"); n != 16 {
-			t.Fatalf("lần %d: %d tin outbox, mong đợi 16", round, n)
+		if n := g.count("outbox"); n != 22 {
+			t.Fatalf("lần %d: %d tin outbox, mong đợi 22", round, n)
 		}
 		chat, err := g.ref("outboxChats/group").Get(context.Background())
 		if err != nil || chat.Data()["nextSeq"] != int64(3) || chat.Data()["pending"] != true {

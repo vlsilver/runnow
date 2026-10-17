@@ -81,8 +81,10 @@ func TestStepMessagesThroughANight(t *testing.T) {
 	st := ww.NewState(ww.Seed{1}, ww.Config{}, msgRoles(), msgStart)
 	pair := act1(ww.KindCupidPair, "cupid", "w1", "v1") // action của vòng 1 còn đó tới 0h
 	night, evs := mustStep(t, st, pair)
+	// Ai không có lượt mới cũng nhận DM, để lúc vào đêm máy ai cũng báo tin như nhau.
 	sameMsgs(t, stepMessages(st, night, evs), "group/digest",
-		"dm:guard/prompt/guard", "dm:seer/prompt/seer_peek", "dm:w1/prompt/wolf_bite", "dm:w2/prompt/wolf_bite")
+		"dm:guard/prompt/guard", "dm:seer/prompt/seer_peek", "dm:w1/prompt/wolf_bite", "dm:w2/prompt/wolf_bite",
+		"dm:cupid/night", "dm:hunter/night", "dm:v1/night", "dm:v2/night", "dm:v3/night", "dm:witch/night")
 
 	dawn, evs := mustStep(t, night, pair, act1(ww.KindWolfBite, "w2", "v2"))
 	msgs := stepMessages(night, dawn, evs)
@@ -117,6 +119,16 @@ func TestStepMessagesThroughANight(t *testing.T) {
 	// thì không.
 	trial, evs := mustStep(t, day, act1(ww.KindNominate, "v1", "w1"))
 	sameMsgs(t, stepMessages(day, trial, evs), "group/digest", "group/prompt/vote")
+
+	// Sang đêm 2: v2 đã chết nên không nhận gì; cupid đã ghép, chỉ còn tin đêm.
+	night2, evs := mustStep(t, trial)
+	if night2.Phase != ww.PhaseNight || night2.Round != 2 {
+		t.Fatalf("chưa sang đêm 2: %s", night2.PhaseKey())
+	}
+	sameMsgs(t, stepMessages(trial, night2, evs), "group/digest",
+		"dm:guard/prompt/guard", "dm:seer/prompt/seer_peek", "dm:w1/prompt/wolf_bite", "dm:w2/prompt/wolf_bite",
+		"dm:cupid/night", "dm:hunter/night", "dm:v1/night", "dm:v3/night", "dm:witch/night")
+
 	empty, evs := mustStep(t, day)
 	sameMsgs(t, stepMessages(day, empty, evs), "group/digest")
 }

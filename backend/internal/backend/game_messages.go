@@ -34,6 +34,7 @@ const (
 	tplChoice   = "choice"    // dm: sửa prompt cho khớp lựa chọn vừa đổi
 	tplTally    = "tally"     // group: sửa prompt đề cử/biểu quyết cho khớp lựa chọn vừa đổi
 	tplChatPing = "chat_ping" // dm: có tin mới trong chat phe ở app
+	tplNight    = "night"     // dm: vào đêm mà không có lượt mới (nightMessages)
 )
 
 // publicEvent trả bản công khai của e, hoặc false nếu e chỉ dành cho người
@@ -138,7 +139,31 @@ func stepMessages(before, after *werewolf.State, evs []werewolf.Event) []gameMsg
 			"phaseKey": before.PhaseKey(), "events": private[uid],
 		}})
 	}
-	return append(msgs, promptMessages(before, after)...)
+	msgs = append(msgs, promptMessages(before, after)...)
+	if after.Phase == werewolf.PhaseNight && before.Phase != werewolf.PhaseNight {
+		msgs = append(msgs, nightMessages(after, msgs)...)
+	}
+	return msgs
+}
+
+// nightMessages: lúc vào đêm, ai còn sống mà chưa có DM nào trong msgs thì
+// nhận một tin đêm. Nếu không, chỉ sói, tiên tri, bảo vệ nhận DM lúc 22h, và
+// người nhìn màn hình khoá biết được ai có vai. Rạng sáng (0h) thì không làm
+// vậy, để không đánh thức cả nhóm: sói và phù thuỷ vẫn nhận DM riêng lúc đó.
+func nightMessages(st *werewolf.State, msgs []gameMsg) []gameMsg {
+	has := map[string]bool{}
+	for _, m := range msgs {
+		has[m.ChatKey] = true
+	}
+	var out []gameMsg
+	for _, uid := range sortedPlayers(st) {
+		if st.Players[uid].Alive && !has[dmChat(uid)] {
+			out = append(out, gameMsg{ChatKey: dmChat(uid), Template: tplNight, Data: map[string]any{
+				"phaseKey": st.PhaseKey(), "round": st.Round,
+			}})
+		}
+	}
+	return out
 }
 
 // promptMessages: một prompt cho mỗi (uid, kind) vừa mở. Kind mở tiếp qua

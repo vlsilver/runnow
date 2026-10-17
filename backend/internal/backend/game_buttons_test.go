@@ -97,8 +97,8 @@ func TestPromptViewSingleTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "<b>Tới lượt bạn: Cắn</b>\nChọn người phe Sói cắn đêm nay. Lựa chọn bấm sau cùng của phe được tính. Khoá lúc 0h.\n" +
-		"Hạn: 00:00 13/10.\nĐang chọn: Chi.\nBấm nút bên dưới, hoặc chọn trong app RunNow."
+	want := dmText("<b>Tới lượt bạn: Cắn</b>", "Chọn người phe Sói cắn đêm nay. Lựa chọn bấm sau cùng của phe được tính. Khoá lúc 0h.",
+		"Hạn: 00:00 13/10.", "Đang chọn: Chi.", "Bấm nút bên dưới, hoặc chọn trong app RunNow.")
 	if text != want {
 		t.Fatalf("text = %q", text)
 	}
@@ -116,7 +116,7 @@ func TestPromptViewConfirmAndLocked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(text, "\nBạn chọn Bình &lt;b&gt;. Chọn rồi không đổi được. Chắc chưa?\n") {
+	if !strings.Contains(text, "\n<tg-spoiler>Bạn chọn Bình &lt;b&gt;. Chọn rồi không đổi được. Chắc chưa?</tg-spoiler>\n") {
 		t.Fatalf("text chờ chốt = %q", text)
 	}
 	if kb := keyboard(t, markup); len(kb) != 1 || kb[0][0] != "Chốt=m1|g1|r1|s|c|1" || kb[0][1] != "Chọn lại=m1|g1|r1|s|r|" {
@@ -131,7 +131,7 @@ func TestPromptViewConfirmAndLocked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(text, "\nĐã chốt: Bình &lt;b&gt;.") || strings.Contains(text, "Chưa bấm được") || len(keyboard(t, markup)) != 0 {
+	if !strings.HasSuffix(text, "\n<tg-spoiler>Đã chốt: Bình &lt;b&gt;.</tg-spoiler>") || strings.Contains(text, "Chưa bấm được") || len(keyboard(t, markup)) != 0 {
 		t.Fatalf("đã chốt = %q %v", text, markup)
 	}
 }
@@ -143,7 +143,7 @@ func TestPromptViewCupidTwoSteps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(text, "\nĐã chọn Dũng. Chọn thêm một người.\n") {
+	if !strings.Contains(text, "\n<tg-spoiler>Đã chọn Dũng. Chọn thêm một người.</tg-spoiler>\n") {
 		t.Fatalf("text = %q", text)
 	}
 	kb := keyboard(t, markup)
@@ -169,17 +169,17 @@ func TestPromptViewWitchSaveDisabledAndClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Vẫn có nút: bấm thì nhận toast lý do, và km có thể đủ sau khi admin sửa.
-	if !strings.Contains(text, "\nChưa bấm được: Chưa đủ km.\n") || keyboard(t, markup)[0][0] != "Dùng bình cứu=m1|g1|r1|w|t|" {
+	if !strings.Contains(text, "\n<tg-spoiler>Chưa bấm được: Chưa đủ km.</tg-spoiler>\n") || keyboard(t, markup)[0][0] != "Dùng bình cứu=m1|g1|r1|w|t|" {
 		t.Fatalf("bình cứu = %q %v", text, markup)
 	}
 	a.Selected = &GameSelected{}
 	text, markup, _ = v.render()
-	if !strings.HasSuffix(text, "\nBạn đã dùng bình cứu.") || strings.Contains(text, "Chưa bấm được") || len(keyboard(t, markup)) != 0 {
+	if !strings.HasSuffix(text, "\n<tg-spoiler>Bạn đã dùng bình cứu.</tg-spoiler>") || strings.Contains(text, "Chưa bấm được") || len(keyboard(t, markup)) != 0 {
 		t.Fatalf("đã dùng = %q", text)
 	}
 	v.a = nil
 	text, markup, _ = v.render()
-	if !strings.HasSuffix(text, "\nLượt này đã đóng.") || len(keyboard(t, markup)) != 0 {
+	if !strings.HasSuffix(text, "\n<tg-spoiler>Lượt này đã đóng.</tg-spoiler>") || len(keyboard(t, markup)) != 0 {
 		t.Fatalf("đã đóng = %q", text)
 	}
 }

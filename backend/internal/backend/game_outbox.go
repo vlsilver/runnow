@@ -648,14 +648,21 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 		var d struct {
 			Chat string `json:"chat"`
 		}
-		// Không nói tên chat: Telegram hiện tin trên màn hình khoá, mà "Phe Sói"
-		// là lộ vai. Phe Sói hay Cặp đôi đều nhận cùng một câu.
+		// Không nói tên chat: "Phe Sói" là lộ vai. Phe Sói hay Cặp đôi đều nhận
+		// cùng một câu, và chỉ người trong phe kín mới nhận tin này.
 		if err = json.Unmarshal([]byte(raw), &d); err == nil {
 			if _, ok := chatLabels[d.Chat]; ok {
-				text = "Bạn có tin nhắn mới trong chat kín của ván Ma Sói. Mở app 3i, vào ván để đọc và trả lời."
+				text = privateDM([]string{"Bạn có tin nhắn mới trong chat kín của ván Ma Sói. Mở app 3i, vào ván để đọc và trả lời."})
 			} else {
 				err = fmt.Errorf("chat lạ %q", d.Chat)
 			}
+		}
+	case tplNight:
+		var d struct {
+			Round int `json:"round"`
+		}
+		if err = json.Unmarshal([]byte(raw), &d); err == nil {
+			text = privateDM([]string{fmt.Sprintf("Đêm %d bắt đầu. Lúc này bạn không có lượt mới. Sáng mai xem bản tin trong group.", d.Round)})
 		}
 	default:
 		err = fmt.Errorf("template lạ %q", tpl)
@@ -681,14 +688,34 @@ func (r *outboxRenderer) startText(nightAt time.Time) string {
 		len(names), strings.Join(names, ", "), vnTime(nightAt))
 }
 
-// cardText: dòng đầu không lộ vai, vì Telegram hiện dòng đầu trên màn hình khoá.
+// privateHeader mở mọi DM riêng của ván. Telegram hiện vài dòng đầu của tin
+// trên màn hình khoá, nên DM nào cũng mở bằng cùng một câu, phần còn lại nằm
+// trong spoiler: người nhìn thông báo không đọc được vai hay việc, cũng không
+// phân biệt được tin của sói với tin của dân.
+const privateHeader = "<b>Ma Sói: có tin riêng cho bạn</b>"
+
+// privateDM ghép một DM riêng từ các dòng HTML đã escape. Spoiler bọc từng
+// dòng chứ không bọc cả khối, vì splitTelegramText cắt theo dòng, và spoiler
+// nhiều dòng đã có client hiện thành chữ thường.
+func privateDM(lines []string) string {
+	out := make([]string, 0, len(lines)+1)
+	out = append(out, privateHeader)
+	for _, l := range lines {
+		if l != "" {
+			l = "<tg-spoiler>" + l + "</tg-spoiler>"
+		}
+		out = append(out, l)
+	}
+	return strings.Join(out, "\n")
+}
+
 func (r *outboxRenderer) cardText(uid string, role werewolf.Role, wolves []string) (string, error) {
 	label, ok := roleLabels[role]
 	if !ok {
 		return "", fmt.Errorf("vai lạ %q", role)
 	}
 	rules := strings.ReplaceAll(roleRules[role], "X km", formatKm(kmPerUnit(r.cfg))+" km")
-	lines := []string{"Lá bài của bạn trong ván Ma Sói:", "<b>" + label + "</b>", html.EscapeString(rules)}
+	lines := []string{"Lá bài của bạn: <b>" + label + "</b>", html.EscapeString(rules)}
 	var mates []string
 	for _, w := range wolves {
 		if w != uid {
@@ -698,7 +725,7 @@ func (r *outboxRenderer) cardText(uid string, role werewolf.Role, wolves []strin
 	if len(mates) > 0 {
 		lines = append(lines, "Đồng đội: "+strings.Join(mates, ", ")+".")
 	}
-	return strings.Join(lines, "\n"), nil
+	return privateDM(lines), nil
 }
 
 // digestText dùng lại chữ của feed để group và app đọc cùng một bản tin. Bước
@@ -773,7 +800,7 @@ var causeTexts = map[werewolf.Cause]string{
 
 // privateText: việc riêng của một người sau một lần chốt (stepMessages).
 func (r *outboxRenderer) privateText(evs []werewolf.Event) string {
-	lines := []string{"<b>Ma Sói: tin riêng</b>"}
+	var lines []string
 	for _, e := range evs {
 		switch e.Kind {
 		case werewolf.EventVoid:
@@ -805,10 +832,10 @@ func (r *outboxRenderer) privateText(evs []werewolf.Event) string {
 			}
 		}
 	}
-	if len(lines) == 1 {
+	if len(lines) == 0 {
 		return ""
 	}
-	return strings.Join(lines, "\n")
+	return privateDM(lines)
 }
 
 // renderAction vẽ prompt (gửi mới) hoặc tin sửa prompt (choice) từ state và

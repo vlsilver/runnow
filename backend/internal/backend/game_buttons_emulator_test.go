@@ -164,7 +164,7 @@ func (e *buttonEnv) flushTasks() int {
 func TestEmulatorButtonSeerPeekConfirmFlow(t *testing.T) {
 	e := newButtonEnv(t)
 	prompt := e.lastDM("seer")
-	if prompt.Method != "sendMessage" || !strings.HasPrefix(prompt.Params["text"].(string), "<b>Tới lượt bạn: Soi</b>") {
+	if prompt.Method != "sendMessage" || !strings.HasPrefix(prompt.Params["text"].(string), "<b>Ma Sói: có tin riêng cho bạn</b>\n<tg-spoiler><b>Tới lượt bạn: Soi</b></tg-spoiler>") {
 		t.Fatalf("prompt soi = %v", prompt)
 	}
 	// Không có nút tự soi; tên lấy từ publicProfiles.
@@ -196,7 +196,7 @@ func TestEmulatorButtonSeerPeekConfirmFlow(t *testing.T) {
 	}
 	e.flush()
 	edit = e.lastDM("seer")
-	if edit.Method != "editMessageText" || !strings.HasSuffix(edit.Params["text"].(string), "\nĐã chốt: W1.") || len(buttonsOf(edit)) != 0 {
+	if edit.Method != "editMessageText" || !strings.HasSuffix(edit.Params["text"].(string), "\n<tg-spoiler>Đã chốt: W1.</tg-spoiler>") || len(buttonsOf(edit)) != 0 {
 		t.Fatalf("tin đã chốt = %v", edit)
 	}
 	// Bấm lại nút cũ: soi một lần mỗi đêm.
@@ -231,7 +231,7 @@ func TestEmulatorButtonRetriedChoiceEditsPrompt(t *testing.T) {
 	e.flush()
 	last := e.lastDM("w1")
 	if text := last.Params["text"].(string); last.Method != "editMessageText" || last.Params["message_id"] != e.promptID("w1", ww.KindWolfBite) ||
-		strings.Contains(text, "Gửi bù") || !strings.Contains(text, "\nĐang chọn: V1.\n") {
+		strings.Contains(text, "Gửi bù") || !strings.Contains(text, "\n<tg-spoiler>Đang chọn: V1.</tg-spoiler>\n") {
 		t.Fatalf("DM = %v", last)
 	}
 }
@@ -293,7 +293,7 @@ func TestEmulatorButtonCrossChannelShowsStoredChoice(t *testing.T) {
 	e.h.want(r, 200, "")
 	e.flush()
 	last := e.lastDM("w1")
-	if last.Method != "editMessageText" || !strings.Contains(last.Params["text"].(string), "\nĐang chọn: V2.\n") {
+	if last.Method != "editMessageText" || !strings.Contains(last.Params["text"].(string), "\n<tg-spoiler>Đang chọn: V2.</tg-spoiler>\n") {
 		t.Fatalf("DM sau khi đổi trong app = %v", last)
 	}
 	if b := strings.Join(buttonsOf(last), ","); !strings.Contains(b, "✅ V2") || strings.Contains(b, "✅ V1") {
@@ -389,7 +389,7 @@ func TestEmulatorVaiCommandAndCardButton(t *testing.T) {
 		return body
 	}
 	body := vai(e.storeGame.tg["w1"])
-	if body["parse_mode"] != "HTML" || !strings.Contains(body["text"].(string), "\n<b>Sói</b>\n") || !strings.HasSuffix(body["text"].(string), "Đồng đội: W2.") {
+	if body["parse_mode"] != "HTML" || !strings.Contains(body["text"].(string), "\n<tg-spoiler>Lá bài của bạn: <b>Sói</b></tg-spoiler>\n") || !strings.HasSuffix(body["text"].(string), "<tg-spoiler>Đồng đội: W2.</tg-spoiler>") {
 		t.Fatalf("/vai sói = %v", body)
 	}
 	if text := vai(e.storeGame.tg["seer"])["text"].(string); !strings.Contains(text, "<b>Tiên tri</b>") || strings.Contains(text, "W1") || strings.Contains(text, "Đồng đội") {
@@ -406,7 +406,7 @@ func TestEmulatorVaiCommandAndCardButton(t *testing.T) {
 	card, _ := gameButton{GameID: e.id, Op: opCard}.data()
 	var cardMsg tgCall
 	for _, c := range e.tg.Calls("sendMessage") {
-		if c.Params["chat_id"] == e.storeGame.tg["v1"] && strings.HasPrefix(c.Params["text"].(string), "Lá bài của bạn") {
+		if c.Params["chat_id"] == e.storeGame.tg["v1"] && strings.Contains(c.Params["text"].(string), "<tg-spoiler>Lá bài của bạn: ") {
 			cardMsg = c
 		}
 	}
@@ -479,7 +479,7 @@ func TestEmulatorButtonCupidPicksTwoThenConfirms(t *testing.T) {
 	g, h := cupidGame(t)
 	e := buttonEnvFor(t, g, h)
 	cupid := g.tg["v4"]
-	if p := e.lastDM("v4"); p.Method != "sendMessage" || !strings.HasPrefix(p.Params["text"].(string), "<b>Tới lượt bạn: Ghép đôi</b>") || len(buttonsOf(p)) != 10 {
+	if p := e.lastDM("v4"); p.Method != "sendMessage" || !strings.HasPrefix(p.Params["text"].(string), "<b>Ma Sói: có tin riêng cho bạn</b>\n<tg-spoiler><b>Tới lượt bạn: Ghép đôi</b></tg-spoiler>") || len(buttonsOf(p)) != 10 {
 		t.Fatalf("prompt Cupid = %v", p)
 	}
 	kicks := e.flushTasks()
@@ -530,7 +530,7 @@ func TestEmulatorButtonCupidPicksTwoThenConfirms(t *testing.T) {
 	if text, _ := e.press(cupid, e.btn(ww.KindCupidPair, opConfirm, "v1", "w1")); text != "Đã chọn V1 và W1." {
 		t.Fatalf("chốt = %q", text)
 	}
-	if c := edit(); !strings.HasSuffix(c.Params["text"].(string), "\nĐã chốt: V1 và W1.") || len(buttonsOf(c)) != 0 {
+	if c := edit(); !strings.HasSuffix(c.Params["text"].(string), "\n<tg-spoiler>Đã chốt: V1 và W1.</tg-spoiler>") || len(buttonsOf(c)) != 0 {
 		t.Fatalf("đã chốt = %v", c)
 	}
 	// Chốt thiếu người (data bị sửa) thì không ghi gì.
@@ -567,7 +567,7 @@ func TestEmulatorButtonCupidPicksTwoThenConfirms(t *testing.T) {
 	}
 	e.flush()
 	if c := e.lastDM("v4"); c.Method != "editMessageText" || c.Params["message_id"] != e.promptID("v4", ww.KindCupidPair) ||
-		!strings.HasSuffix(c.Params["text"].(string), "\nLượt này đã đóng.") || len(buttonsOf(c)) != 0 {
+		!strings.HasSuffix(c.Params["text"].(string), "\n<tg-spoiler>Lượt này đã đóng.</tg-spoiler>") || len(buttonsOf(c)) != 0 {
 		t.Fatalf("sửa prompt Cupid lúc pause = %v", c)
 	}
 	for _, c := range []struct {
@@ -701,7 +701,7 @@ func TestEmulatorButtonWitchSaveAndPhaseRace(t *testing.T) {
 	}
 	e.flush()
 	if c := e.lastDM("witch"); c.Method != "editMessageText" || c.Params["message_id"] != saveID ||
-		!strings.HasSuffix(c.Params["text"].(string), "\nBạn đã dùng bình cứu.") || len(buttonsOf(c)) != 0 {
+		!strings.HasSuffix(c.Params["text"].(string), "\n<tg-spoiler>Bạn đã dùng bình cứu.</tg-spoiler>") || len(buttonsOf(c)) != 0 {
 		t.Fatalf("tin bình cứu = %v", c)
 	}
 

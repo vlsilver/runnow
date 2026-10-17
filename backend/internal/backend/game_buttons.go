@@ -154,7 +154,8 @@ func inlineKeyboard(rows [][]map[string]any) map[string]any {
 // mà app cũng dùng (meActions), nên hai kênh luôn khớp nhau. pick là người đã
 // chọn dở (Cupid chọn người thứ nhất) hoặc đang chờ chốt; a nil là lượt đã đóng.
 // pick chỉ có ở kind phải chốt, mà kind đó đã có lựa chọn thì bị khoá, nên hai
-// thứ không đi cùng nhau.
+// thứ không đi cùng nhau. Chữ đi qua privateDM như mọi DM riêng, vì tên việc
+// ("Cắn", "Soi") là lộ vai.
 type promptView struct {
 	gameID  string
 	turnKey string
@@ -180,7 +181,7 @@ func (v promptView) render() (string, map[string]any, error) {
 	}
 	if v.a == nil {
 		lines = append(lines, "Lượt này đã đóng.")
-		return strings.Join(lines, "\n"), inlineKeyboard(nil), nil
+		return privateDM(lines), inlineKeyboard(nil), nil
 	}
 	var selected []string
 	hasSel := v.a.Selected != nil
@@ -213,7 +214,7 @@ func (v promptView) render() (string, map[string]any, error) {
 		lines = append(lines, "Đã chọn "+names(v.pick)+". Chọn thêm một người.")
 	}
 	if used || locked {
-		return strings.Join(lines, "\n"), inlineKeyboard(nil), nil
+		return privateDM(lines), inlineKeyboard(nil), nil
 	}
 	lines = append(lines, "Bấm nút bên dưới, hoặc chọn trong app RunNow.")
 
@@ -251,14 +252,14 @@ func (v promptView) render() (string, map[string]any, error) {
 			return "", nil, err
 		}
 		rows = append(rows, []map[string]any{ok, again})
-		return strings.Join(lines, "\n"), inlineKeyboard(rows), nil
+		return privateDM(lines), inlineKeyboard(rows), nil
 	}
 	if v.kind == werewolf.KindWitchSave {
 		b, err := button("Dùng bình cứu", opPick, nil)
 		if err != nil {
 			return "", nil, err
 		}
-		return strings.Join(lines, "\n"), inlineKeyboard([][]map[string]any{{b}}), nil
+		return privateDM(lines), inlineKeyboard([][]map[string]any{{b}}), nil
 	}
 	picked := map[string]bool{}
 	for _, uid := range v.pick {
@@ -296,7 +297,7 @@ func (v promptView) render() (string, map[string]any, error) {
 		}
 		rows = append(rows, []map[string]any{again})
 	}
-	return strings.Join(lines, "\n"), inlineKeyboard(rows), nil
+	return privateDM(lines), inlineKeyboard(rows), nil
 }
 
 func findAction(acts []GameAction, kind werewolf.Kind) *GameAction {

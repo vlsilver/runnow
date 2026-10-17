@@ -94,6 +94,16 @@ func testRenderer() *outboxRenderer {
 	return &outboxRenderer{chatID: "-100g", threadID: 5, cfg: ww.Config{KmPerUnit: 2.5}, players: players, byUID: playerIndex(players)}
 }
 
+// dmText dựng chữ mong đợi của một DM riêng: dòng đầu chung, mỗi dòng sau bọc
+// spoiler.
+func dmText(lines ...string) string {
+	s := "<b>Ma Sói: có tin riêng cho bạn</b>"
+	for _, l := range lines {
+		s += "\n<tg-spoiler>" + l + "</tg-spoiler>"
+	}
+	return s
+}
+
 func renderOne(t *testing.T, r *outboxRenderer, key, tpl string, data any) outboxText {
 	t.Helper()
 	raw, err := json.Marshal(data)
@@ -117,9 +127,10 @@ func TestRenderStartAndCard(t *testing.T) {
 	}
 
 	out = renderOne(t, r, dmChat("w1"), tplCard, map[string]any{"role": "wolf", "wolves": []string{"w1", "w2"}})
-	want = "Lá bài của bạn trong ván Ma Sói:\n<b>Sói</b>\n" +
-		"Đêm nào cả phe cũng chọn một người để cắn, từ 22h tới 0h. Lựa chọn bấm sau cùng của phe được tính. Tổng km của sói còn sống phải đủ 2.5 km cho mỗi sói.\n" +
-		"Đồng đội: Bình &amp; Co."
+	want = "<b>Ma Sói: có tin riêng cho bạn</b>\n" +
+		"<tg-spoiler>Lá bài của bạn: <b>Sói</b></tg-spoiler>\n" +
+		"<tg-spoiler>Đêm nào cả phe cũng chọn một người để cắn, từ 22h tới 0h. Lựa chọn bấm sau cùng của phe được tính. Tổng km của sói còn sống phải đủ 2.5 km cho mỗi sói.</tg-spoiler>\n" +
+		"<tg-spoiler>Đồng đội: Bình &amp; Co.</tg-spoiler>"
 	if out.chatID != "71" || out.threadID != 0 || out.parts[0] != want || out.markup != nil {
 		t.Fatalf("card sói = %+v", out)
 	}
@@ -131,7 +142,7 @@ func TestRenderStartAndCard(t *testing.T) {
 	}
 	r.gameID = ""
 	out = renderOne(t, r, dmChat("w2"), tplCard, map[string]any{"role": "seer"})
-	if out.chatID != "72" || strings.Contains(out.parts[0], "Đồng đội") || !strings.HasSuffix(out.parts[0], "Cần đủ 2.5 km.") {
+	if out.chatID != "72" || strings.Contains(out.parts[0], "Đồng đội") || !strings.HasSuffix(out.parts[0], "Cần đủ 2.5 km.</tg-spoiler>") {
 		t.Fatalf("card tiên tri = %+v", out)
 	}
 	if out := renderOne(t, r, dmChat("f1"), tplCard, map[string]any{"role": "villager"}); out.skip != "no_telegram" {
@@ -178,14 +189,14 @@ func TestRenderPrivatePromptAdminReminder(t *testing.T) {
 		{Kind: ww.EventLovers, UID: "w2", Role: ww.Wolf, Draw: true},
 		{Kind: ww.EventDeath, UID: "w1", Cause: ww.CauseLover},
 	}})
-	want := "<b>Ma Sói: tin riêng</b>\nLựa chọn Cắn của bạn không được tính: chưa đủ km.\nPhe Sói chốt cắn Chi.\n" +
-		"Cupid không ghép nên bot ghép thay. Bạn được ghép đôi với Bình &amp; Co, lá bài Sói. Một người chết thì người kia chết theo.\n" +
-		"Bạn đã chết, chết theo người yêu."
+	want := dmText("Lựa chọn Cắn của bạn không được tính: chưa đủ km.", "Phe Sói chốt cắn Chi.",
+		"Cupid không ghép nên bot ghép thay. Bạn được ghép đôi với Bình &amp; Co, lá bài Sói. Một người chết thì người kia chết theo.",
+		"Bạn đã chết, chết theo người yêu.")
 	if out.parts[0] != want {
 		t.Fatalf("private = %q", out.parts[0])
 	}
 	out = renderOne(t, r, dmChat("w1"), tplPrivate, map[string]any{"events": []ww.Event{{Kind: ww.EventWolvesTarget, Reason: ww.VoidNoKm}}})
-	if out.parts[0] != "<b>Ma Sói: tin riêng</b>\nPhe Sói chưa đủ km nên đêm nay không cắn được ai." {
+	if out.parts[0] != dmText("Phe Sói chưa đủ km nên đêm nay không cắn được ai.") {
 		t.Fatalf("private không cắn = %q", out.parts[0])
 	}
 
@@ -213,12 +224,62 @@ func TestRenderPrivatePromptAdminReminder(t *testing.T) {
 	}
 }
 
+// Telegram hiện vài dòng đầu của tin trên màn hình khoá. Mọi DM riêng mở bằng
+// cùng một dòng, còn lại nằm trong spoiler từng dòng, nên nhìn thông báo không
+// biết được vai, việc, hay tin này của sói hay của dân.
+func TestPrivateDMsShowOnlyTheHeader(t *testing.T) {
+	r := testRenderer()
+	var texts []string
+	add := func(out outboxText) { texts = append(texts, out.parts...) }
+	for role := range roleLabels {
+		add(renderOne(t, r, dmChat("w1"), tplCard, map[string]any{"role": role, "wolves": []string{"w1", "w2"}}))
+	}
+	add(renderOne(t, r, dmChat("w1"), tplPrivate, map[string]any{"events": []ww.Event{
+		{Kind: ww.EventVoid, UID: "w1", Action: ww.KindGuard, Reason: ww.VoidRepeat},
+		{Kind: ww.EventWolvesTarget, UID: "s1"},
+		{Kind: ww.EventLovers, UID: "w2", Role: ww.Wolf},
+		{Kind: ww.EventDeath, UID: "w1", Cause: ww.CauseBite},
+	}}))
+	add(renderOne(t, r, dmChat("w1"), tplChatPing, map[string]any{"chat": chatWolves}))
+	night := renderOne(t, r, dmChat("w1"), tplNight, map[string]any{"round": 2})
+	if want := dmText("Đêm 2 bắt đầu. Lúc này bạn không có lượt mới. Sáng mai xem bản tin trong group."); night.parts[0] != want {
+		t.Fatalf("tin đêm = %q", night.parts[0])
+	}
+	add(night)
+	closes := time.Date(2026, 10, 12, 17, 0, 0, 0, time.UTC)
+	for kind := range actionTexts {
+		if kind == ww.KindNominate || kind == ww.KindVote {
+			continue // vào topic của group, không DM
+		}
+		for _, a := range []*GameAction{nil, {Kind: string(kind), Enabled: true, ClosesAt: &closes, Options: options("a", "c")}} {
+			text, _, err := promptView{gameID: "g1", turnKey: "r1", st: promptState(), kind: kind, a: a, name: promptNames}.render()
+			if err != nil {
+				t.Fatal(err)
+			}
+			texts = append(texts, text)
+		}
+	}
+	for _, text := range texts {
+		lines := strings.Split(text, "\n")
+		if lines[0] != "<b>Ma Sói: có tin riêng cho bạn</b>" || len(lines) < 2 {
+			t.Fatalf("dòng đầu lộ hoặc tin rỗng: %q", text)
+		}
+		for _, l := range lines[1:] {
+			inner, open := strings.CutPrefix(l, "<tg-spoiler>")
+			inner, closed := strings.CutSuffix(inner, "</tg-spoiler>")
+			if l != "" && (!open || !closed || strings.Contains(inner, "tg-spoiler")) {
+				t.Fatalf("dòng nằm ngoài spoiler: %q\ntrong %q", l, text)
+			}
+		}
+	}
+}
+
 // DM báo tin mới không chở nội dung, cũng không nói chat nào, để màn hình khoá
 // không lộ ai là sói. Chat phe không có đích Telegram: key của phe hay key lạ
 // đều lỗi chứ không rơi về group chung.
 func TestRenderChatPing(t *testing.T) {
 	r := testRenderer()
-	want := "Bạn có tin nhắn mới trong chat kín của ván Ma Sói. Mở app 3i, vào ván để đọc và trả lời."
+	want := dmText("Bạn có tin nhắn mới trong chat kín của ván Ma Sói. Mở app 3i, vào ván để đọc và trả lời.")
 	for _, chat := range []string{chatWolves, chatLovers} {
 		out := renderOne(t, r, dmChat("w2"), tplChatPing, map[string]any{"chat": chat})
 		if out.chatID != "72" || len(out.parts) != 1 || out.parts[0] != want {
