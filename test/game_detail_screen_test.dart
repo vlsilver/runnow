@@ -427,6 +427,159 @@ void main() {
 
       expect(find.text('Đang ở trong group PSC'), findsNothing);
       expect(find.text('Huỷ đăng ký'), findsOneWidget);
+      // Chưa chia vai thì /me chưa có role: chưa có lá bài.
+      expect(find.textContaining('Lá bài của bạn'), findsNothing);
+      await close(tester);
+    });
+  });
+
+  group('my card', () {
+    Map<String, dynamic> running({bool registered = true}) => {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'running',
+      'statusLabel': 'Đang chơi',
+      'refreshAfterSeconds': 300,
+      'isRegistered': registered,
+    };
+
+    testWidgets('stays face down until tapped, then shows what it knows', (
+      tester,
+    ) async {
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+        'roleRules': 'Mỗi đêm soi một người.',
+        'notes': [
+          {'round': 1, 'text': 'An là Dân'},
+        ],
+        'inviteLinks': [
+          {'label': 'Vào nhóm Sói', 'url': 'https://t.me/+wolves'},
+        ],
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+
+      expect(
+        find.text('Lá bài của bạn đang úp. Chạm để xem vai.'),
+        findsOneWidget,
+      );
+      expect(find.text('Tiên tri'), findsNothing);
+      expect(find.text('Vòng 1: An là Dân'), findsNothing);
+
+      await tester.tap(find.text('Lá bài của bạn đang úp. Chạm để xem vai.'));
+      await tester.pumpAndSettle();
+      expect(find.text('Tiên tri'), findsWidgets);
+      expect(find.text('Mỗi đêm soi một người.'), findsOneWidget);
+      expect(find.text('Vòng 1: An là Dân'), findsOneWidget);
+
+      await tester.tap(find.text('Vào nhóm Sói'));
+      await tester.pump();
+      expect(opened, [Uri.parse('https://t.me/+wolves')]);
+
+      await tester.tap(find.text('Chạm để úp lại.'));
+      await tester.pumpAndSettle();
+      expect(find.text('Mỗi đêm soi một người.'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('shows the witch her potions', (tester) async {
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'witch',
+        'roleLabel': 'Phù thuỷ',
+        'potions': {'save': false, 'poison': true},
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+
+      await tester.tap(find.text('Lá bài của bạn đang úp. Chạm để xem vai.'));
+      await tester.pumpAndSettle();
+      expect(find.text('Bình cứu: đã dùng · Bình độc: còn'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('is not there for people outside the game', (tester) async {
+      backend.game = running(registered: false);
+      backend.me = {
+        'status': 'running',
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+
+      expect(find.textContaining('Lá bài của bạn'), findsNothing);
+      expect(backend.calls, isNot(contains('GET /v1/games/g1/me')));
+      await close(tester);
+    });
+
+    testWidgets('players list shows a revealed card while the game runs', (
+      tester,
+    ) async {
+      backend.game = {
+        ...running(registered: false),
+        'players': [
+          {
+            'uid': 'u2',
+            'name': 'Bình',
+            'alive': false,
+            'deathRound': 2,
+            'revealedRoleLabel': 'Thợ săn',
+          },
+        ],
+      };
+      await pumpScreen(tester);
+
+      expect(find.text('Chết vòng 2 · Thợ săn'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('players list shows every role once the game ends', (
+      tester,
+    ) async {
+      backend.game = {
+        ...running(),
+        'status': 'ended',
+        'statusLabel': 'Đã kết thúc',
+        'players': [
+          {'uid': 'u1', 'name': 'An', 'alive': false},
+          {
+            'uid': 'u2',
+            'name': 'Bình',
+            'alive': false,
+            'revealedRoleLabel': 'Thợ săn',
+          },
+          {'uid': 'u3', 'name': 'Chi', 'alive': true},
+        ],
+      };
+      backend.me = {
+        'status': 'ended',
+        'alive': true,
+        'role': 'villager',
+        'roleLabel': 'Dân',
+        'allRoles': [
+          {'uid': 'u1', 'name': 'An', 'role': 'wolf', 'roleLabel': 'Sói'},
+          {
+            'uid': 'u2',
+            'name': 'Bình',
+            'role': 'hunter',
+            'roleLabel': 'Thợ săn',
+          },
+          {'uid': 'u3', 'name': 'Chi', 'role': 'villager', 'roleLabel': 'Dân'},
+        ],
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+
+      expect(find.text('Đã chết · Sói'), findsOneWidget);
+      expect(find.text('Đã chết · Thợ săn'), findsOneWidget);
+      expect(find.text('Dân'), findsOneWidget);
       await close(tester);
     });
   });

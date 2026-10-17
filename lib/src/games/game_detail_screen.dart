@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_detail_controller.dart';
+import 'package:myrun/src/games/game_my_card.dart';
 import 'package:myrun/src/games/telegram_link_controller.dart';
 import 'package:myrun/src/games/telegram_link_section.dart';
 import 'package:myrun/src/providers.dart';
@@ -108,7 +109,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     }
   }
 
-  Future<void> _openRequirement(String url) async {
+  Future<void> _openLink(String url) async {
     final open =
         widget.openUrl ??
         (uri) => launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -164,6 +165,9 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
       listenable: Listenable.merge([_controller, _telegram]),
       builder: (context, _) {
         final detail = _controller.detail;
+        final me = _controller.me;
+        // Vai của cả ván chỉ có trong /me sau khi ván kết thúc.
+        final reveals = {for (final r in me?.allRoles ?? const []) r.uid: r};
         return Scaffold(
           backgroundColor: palette.background,
           appBar: AppBar(
@@ -188,6 +192,10 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                         detail: detail,
                         closing: _controller.phaseClosing,
                       ),
+                      if (me != null && me.role != null) ...[
+                        const SizedBox(height: 12),
+                        GameMyCard(me: me, onOpenUrl: _openLink),
+                      ],
                       if (detail.status == 'registering' ||
                           detail.isRegistered) ...[
                         const SizedBox(height: 12),
@@ -203,7 +211,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                           busy: _registering,
                           onToggle: () =>
                               _toggleRegistration(detail.isRegistered),
-                          onOpenUrl: _openRequirement,
+                          onOpenUrl: _openLink,
                         ),
                       ],
                       if (detail.isAdmin && detail.status == 'registering') ...[
@@ -223,7 +231,10 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                         const SizedBox(height: 20),
                         _SectionTitle('Người chơi (${detail.players.length})'),
                         for (final player in detail.players)
-                          _PlayerRow(player: player),
+                          _PlayerRow(
+                            player: player,
+                            reveal: reveals[player.uid],
+                          ),
                       ],
                       const SizedBox(height: 20),
                       const _SectionTitle('Diễn biến'),
@@ -388,20 +399,23 @@ class _Rules extends StatelessWidget {
 }
 
 class _PlayerRow extends StatelessWidget {
-  const _PlayerRow({required this.player});
+  const _PlayerRow({required this.player, required this.reveal});
 
   final GamePlayer player;
+  final GameRoleReveal? reveal;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final avatar = player.avatarUrl;
+    final roleLabel = player.revealedRoleLabel ?? reveal?.roleLabel;
+    final cardUrl = player.revealedCardUrl ?? reveal?.cardUrl;
     final details = [
       if (!player.alive)
         player.deathRound == null
             ? 'Đã chết'
             : 'Chết vòng ${player.deathRound}',
-      ?player.revealedRoleLabel,
+      ?roleLabel,
       if (player.lastKm != null) '${player.lastKm!.toStringAsFixed(1)} km',
     ];
     return Padding(
@@ -445,6 +459,20 @@ class _PlayerRow extends StatelessWidget {
               ],
             ),
           ),
+          if (cardUrl != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: Image.network(
+                  cardUrl,
+                  width: 28,
+                  height: 40,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
           if (player.onTrial)
             _Chip(
               label: 'Lên giàn',
