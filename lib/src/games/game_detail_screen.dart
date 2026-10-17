@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_detail_controller.dart';
+import 'package:myrun/src/games/telegram_link_controller.dart';
+import 'package:myrun/src/games/telegram_link_section.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
@@ -12,12 +14,20 @@ import 'package:myrun/src/widgets/run_now_loading.dart';
 /// Màn chi tiết một ván Ma Sói. Mọi chữ (trạng thái, phase, luật, feed) lấy
 /// từ API, nên đổi nội dung ở backend thì app đổi theo, không cần ra bản mới.
 class GameDetailScreen extends ConsumerStatefulWidget {
-  const GameDetailScreen({super.key, required this.gameId, this.clock});
+  const GameDetailScreen({
+    super.key,
+    required this.gameId,
+    this.clock,
+    this.openUrl,
+  });
 
   final String gameId;
 
   /// Đồng hồ của máy; test thay để chạy thời gian giả.
   final DateTime Function()? clock;
+
+  /// Mở deep link Telegram; test thay để không mở trình duyệt.
+  final UrlOpener? openUrl;
 
   @override
   ConsumerState<GameDetailScreen> createState() => _GameDetailScreenState();
@@ -26,7 +36,9 @@ class GameDetailScreen extends ConsumerStatefulWidget {
 class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     with WidgetsBindingObserver {
   late final GameDetailController _controller;
+  late final TelegramLinkController _telegram;
   bool _registering = false;
+  bool? _linked;
 
   @override
   void initState() {
@@ -36,8 +48,22 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
       gameId: widget.gameId,
       clock: widget.clock,
     );
+    _telegram = TelegramLinkController(
+      api: ref.read(runNowApiClientProvider),
+      openUrl: widget.openUrl,
+    )..addListener(_onTelegramChanged);
     WidgetsBinding.instance.addObserver(this);
     _controller.setActive(true);
+    _telegram.load();
+  }
+
+  /// Vừa liên kết xong thì requirements của ván đổi: đọc lại ván.
+  /// Mở màn lúc đã liên kết sẵn thì không đọc lại.
+  void _onTelegramChanged() {
+    final linked = _telegram.status?.linked;
+    if (linked == null) return;
+    if (linked && _linked == false) _controller.refresh();
+    _linked = linked;
   }
 
   @override
@@ -45,6 +71,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     switch (state) {
       case AppLifecycleState.resumed:
         _controller.setActive(true);
+        _telegram.onResume();
       case AppLifecycleState.paused || AppLifecycleState.hidden:
         _controller.setActive(false);
       case AppLifecycleState.inactive || AppLifecycleState.detached:
@@ -56,6 +83,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
+    _telegram.dispose();
     super.dispose();
   }
 
@@ -96,7 +124,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     return ListenableBuilder(
-      listenable: _controller,
+      listenable: Listenable.merge([_controller, _telegram]),
       builder: (context, _) {
         final detail = _controller.detail;
         return Scaffold(
@@ -123,6 +151,14 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                         detail: detail,
                         closing: _controller.phaseClosing,
                       ),
+                      if (detail.status == 'registering' ||
+                          detail.isRegistered) ...[
+                        const SizedBox(height: 12),
+                        TelegramLinkSection(
+                          controller: _telegram,
+                          onError: _showError,
+                        ),
+                      ],
                       if (detail.status == 'registering') ...[
                         const SizedBox(height: 12),
                         _Registration(

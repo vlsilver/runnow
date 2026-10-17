@@ -4,6 +4,13 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 
+const unlinkedTelegram = {
+  'linked': false,
+  'tgUsername': '',
+  'displayName': '',
+  'inPsc': false,
+};
+
 /// Backend giả: trả state đang giữ, ghi lại các lời gọi.
 class FakeGameBackend {
   FakeGameBackend(this.now);
@@ -13,12 +20,13 @@ class FakeGameBackend {
   Map<String, dynamic> game = {};
   Map<String, dynamic> me = {'status': 'running', 'alive': true};
   Map<String, Map<String, dynamic>> feedPages = {};
+  Map<String, dynamic> telegram = {...unlinkedTelegram};
 
   /// Chặn trả lời `/me` cho tới khi complete, để dựng ca chạy chồng.
   Future<void>? holdMe;
 
-  /// Có thì GET detail trả lỗi này (status, body).
-  (int, Map<String, dynamic>)? failGame;
+  /// Lỗi trả cho từng route, khoá là `METHOD path`: (status, body).
+  final failures = <String, (int, Map<String, dynamic>)>{};
 
   RunNowApiClient client() => RunNowApiClient(
     baseUri: Uri.parse('https://api.example.test'),
@@ -27,9 +35,28 @@ class FakeGameBackend {
     appPlatform: 'ios',
     httpClient: MockClient((request) async {
       final path = request.url.path;
-      calls.add('${request.method} $path');
+      final route = '${request.method} $path';
+      calls.add(route);
+      if (failures[route] case (final status, final error)?) {
+        return _json(error, status);
+      }
       Object body;
-      if (path.endsWith('/me')) {
+      if (path == '/v1/telegram/link-code') {
+        body = {
+          'code': 'K7Q2',
+          'deepLink': 'https://t.me/runnow3i_bot?start=K7Q2',
+          'expiresAt': now().add(const Duration(minutes: 10)).toIso8601String(),
+        };
+      } else if (path == '/v1/telegram/link') {
+        if (request.method == 'DELETE') telegram = {...unlinkedTelegram};
+        body = telegram;
+      } else if (path.endsWith('/registration')) {
+        final registered = request.method == 'POST';
+        final count =
+            (game['playerCount'] as int? ?? 0) + (registered ? 1 : -1);
+        game = {...game, 'isRegistered': registered, 'playerCount': count};
+        body = {'isRegistered': registered, 'playerCount': count};
+      } else if (path.endsWith('/me')) {
         // Trả state lúc server đọc, dù câu trả lời tới muộn.
         body = me;
         final hold = holdMe;
@@ -45,20 +72,17 @@ class FakeGameBackend {
         body = me;
       } else if (path.endsWith('/feed')) {
         body = feedPages[request.url.queryParameters['cursor']]!;
-      } else if (failGame case (final status, final error)?) {
-        return http.Response.bytes(
-          utf8.encode(jsonEncode(error)),
-          status,
-          headers: {'content-type': 'application/json'},
-        );
       } else {
         body = {'serverNow': now().toUtc().toIso8601String(), ...game};
       }
-      return http.Response.bytes(
-        utf8.encode(jsonEncode(body)),
-        200,
-        headers: {'content-type': 'application/json'},
-      );
+      return _json(body);
     }),
   );
+
+  static http.Response _json(Object body, [int status = 200]) =>
+      http.Response.bytes(
+        utf8.encode(jsonEncode(body)),
+        status,
+        headers: {'content-type': 'application/json'},
+      );
 }

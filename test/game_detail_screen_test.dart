@@ -9,6 +9,7 @@ import 'support/fake_game_backend.dart';
 void main() {
   late DateTime now;
   late FakeGameBackend backend;
+  late List<Uri> opened;
 
   Future<void> pumpScreen(WidgetTester tester) async {
     await tester.pumpWidget(
@@ -17,7 +18,14 @@ void main() {
           runNowApiClientProvider.overrideWithValue(backend.client()),
         ],
         child: MaterialApp(
-          home: GameDetailScreen(gameId: 'g1', clock: () => now),
+          home: GameDetailScreen(
+            gameId: 'g1',
+            clock: () => now,
+            openUrl: (uri) async {
+              opened.add(uri);
+              return true;
+            },
+          ),
         ),
       ),
     );
@@ -36,6 +44,7 @@ void main() {
   setUp(() {
     now = DateTime.utc(2026, 10, 17, 14);
     backend = FakeGameBackend(() => now);
+    opened = [];
   });
 
   testWidgets('follows rules text from backend', (tester) async {
@@ -89,13 +98,108 @@ void main() {
   testWidgets('shows backend message when the game cannot load', (
     tester,
   ) async {
-    backend.failGame = (
+    backend.failures['GET /v1/games/g1'] = (
       404,
       {'error': 'not_found', 'message': 'Không tìm thấy ván.'},
     );
     await pumpScreen(tester);
 
     expect(find.text('Không tìm thấy ván.'), findsOneWidget);
+    await close(tester);
+  });
+
+  testWidgets('links Telegram and reads the game again once linked', (
+    tester,
+  ) async {
+    backend.game = {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'registering',
+      'statusLabel': 'Đang mở đăng ký',
+      'refreshAfterSeconds': 300,
+    };
+    await pumpScreen(tester);
+    final gameReads = backend.calls.where((c) => c == 'GET /v1/games/g1');
+    expect(gameReads, hasLength(1));
+
+    await tester.tap(find.text('Liên kết Telegram'));
+    await tester.pump();
+    expect(opened.single.toString(), 'https://t.me/runnow3i_bot?start=K7Q2');
+    expect(
+      find.text('Bấm Start trong Telegram rồi quay lại đây.'),
+      findsOneWidget,
+    );
+
+    backend.telegram = {
+      'linked': true,
+      'tgUsername': 'an',
+      'displayName': 'An',
+      'inPsc': true,
+    };
+    await elapse(tester, const Duration(seconds: 3));
+
+    expect(find.text('Đã liên kết @an.'), findsOneWidget);
+    expect(gameReads, hasLength(2));
+    await close(tester);
+  });
+
+  testWidgets('shows why unlinking is refused mid-game', (tester) async {
+    backend.game = {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'running',
+      'statusLabel': 'Đang chơi',
+      'isRegistered': true,
+    };
+    backend.telegram = {
+      'linked': true,
+      'tgUsername': 'an',
+      'displayName': 'An',
+      'inPsc': true,
+    };
+    backend.failures['DELETE /v1/telegram/link'] = (
+      409,
+      {'error': 'in_game', 'message': 'Đang trong ván, chưa huỷ được.'},
+    );
+    await pumpScreen(tester);
+
+    await tester.tap(find.text('Không phải bạn? Huỷ'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Đang trong ván, chưa huỷ được.'), findsOneWidget);
+    expect(find.text('Đã liên kết @an.'), findsOneWidget);
+    expect(backend.calls.where((c) => c == 'GET /v1/games/g1'), hasLength(1));
+    await close(tester);
+  });
+
+  testWidgets('reads Telegram again when the app comes back', (tester) async {
+    backend.game = {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'registering',
+      'statusLabel': 'Đang mở đăng ký',
+      'refreshAfterSeconds': 300,
+    };
+    await pumpScreen(tester);
+    expect(find.text('Liên kết Telegram'), findsOneWidget);
+
+    backend.telegram = {
+      'linked': true,
+      'tgUsername': 'an',
+      'displayName': 'An',
+      'inPsc': true,
+    };
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Đã liên kết @an.'), findsOneWidget);
     await close(tester);
   });
 }
