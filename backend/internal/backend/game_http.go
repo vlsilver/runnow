@@ -53,6 +53,30 @@ func (s *Server) gameRoutes() {
 		}
 		return writeJSON(w, 200, me)
 	}))
+	s.route("GET /v1/games/{id}/chats/{key}", s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+		chat, err := s.deps.Games.Chat(r.Context(), r.PathValue("id"), r.PathValue("key"), r.URL.Query().Get("cursor"), v)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, chat)
+	}))
+	s.route("POST /v1/games/{id}/chats/{key}", s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+		var body struct {
+			Text string `json:"text"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			return invalidRequest()
+		}
+		id := r.PathValue("id")
+		pinged, err := s.deps.Games.PostChat(r.Context(), id, r.PathValue("key"), body.Text, v, time.Now())
+		if err != nil {
+			return err
+		}
+		if pinged {
+			s.kickGameFlush(r.Context(), id)
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true})
+	}))
 	s.route("POST /v1/games/{id}/registration", s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
 		res, err := s.deps.Games.Register(r.Context(), r.PathValue("id"), v, time.Now())
 		if err != nil {

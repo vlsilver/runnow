@@ -236,20 +236,15 @@ func TestEmulatorButtonRetriedChoiceEditsPrompt(t *testing.T) {
 	}
 }
 
-// C2: mỗi lần một sói chọn, đổi hay bỏ chọn cắn (qua nút hay app), group Phe
-// Sói nhận một tin theo đúng thứ tự. Chưa có group thì bỏ tin (no_chat), hành
-// động khác không vào group.
+// C2: mỗi lần một sói chọn, đổi hay bỏ chọn cắn (qua nút hay app), chat Phe
+// Sói trong app nhận một tin hệ thống theo đúng thứ tự. Hành động khác không
+// vào chat, và lựa chọn của sói không bao giờ ra Telegram ngoài DM của chính
+// người chọn.
 func TestEmulatorWolfPicksPostToWolfChat(t *testing.T) {
 	e := newButtonEnv(t)
 	if text, _ := e.press(e.storeGame.tg["w1"], e.btn(ww.KindWolfBite, opPick, "v1")); text != "Đã chọn V1." {
 		t.Fatalf("w1 cắn = %q", text)
 	}
-	e.flush()
-	if m := e.data("games/" + e.id + "/outbox/wolves_1"); m["status"] != outboxSkipped || m["skipReason"] != "no_chat" || m["template"] != tplWolfPick {
-		t.Fatalf("wolves_1 = %v", m)
-	}
-
-	seedMerge(t, e.storeGame, map[string]any{"wolfChatId": "-100w"})
 	if text, _ := e.press(e.storeGame.tg["w2"], e.btn(ww.KindWolfBite, opPick, "v2")); text != "Đã chọn V2." {
 		t.Fatalf("w2 cắn = %q", text)
 	}
@@ -261,22 +256,27 @@ func TestEmulatorWolfPicksPostToWolfChat(t *testing.T) {
 	e.h.want(e.h.call("w1", "POST", "/v1/games/"+e.id+"/actions", map[string]any{"kind": "wolf_bite", "targets": []string{"v3"}}, ""), 200, "")
 	e.flush()
 
+	r := e.h.call("w2", "GET", "/v1/games/"+e.id+"/chats/wolves", nil, "")
+	e.h.want(r, 200, "")
 	var got []string
-	for _, c := range e.tg.Calls("sendMessage") {
-		if c.Params["chat_id"] == "-100w" {
-			if c.Params["message_thread_id"] != nil || c.Params["parse_mode"] != "HTML" {
-				t.Fatalf("gửi sai chỗ: %v", c.Params)
-			}
-			got = append(got, c.Params["text"].(string))
+	for _, m := range chatMessages(t, r) {
+		if m["system"] != true {
+			t.Fatalf("tin không phải hệ thống: %v", m)
 		}
+		got = append(got, m["text"].(string))
 	}
-	want := []string{"<b>W2</b> chọn cắn <b>V2</b>.", "<b>W1</b> bỏ chọn cắn.", "<b>W1</b> chọn cắn <b>V3</b>."}
+	want := []string{"W1 chọn cắn V3.", "W1 bỏ chọn cắn.", "W2 chọn cắn V2.", "W1 chọn cắn V1."}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Fatalf("group Phe Sói = %q", got)
+		t.Fatalf("chat Phe Sói = %q", got)
 	}
-	for _, c := range e.tg.Calls("sendMessage") {
-		if text := c.Params["text"].(string); c.Params["chat_id"] != "-100w" && (strings.Contains(text, "</b> chọn cắn <b>") || strings.Contains(text, "bỏ chọn cắn")) {
-			t.Fatalf("lựa chọn của sói ra ngoài group Phe Sói: %v", c.Params)
+	// Mỗi sói được báo một lần cho lựa chọn của sói kia; các lần sau còn trong 10 phút.
+	if got := strings.Join(chatPings(t, e.storeGame), "|"); got != `dm:w1 {"chat":"wolves"}|dm:w2 {"chat":"wolves"}` {
+		t.Fatalf("ping = %q", got)
+	}
+	for _, c := range e.tg.Calls("") {
+		text, _ := c.Params["text"].(string)
+		if strings.Contains(text, " chọn cắn ") || strings.Contains(text, "bỏ chọn cắn") {
+			t.Fatalf("lựa chọn của sói ra Telegram: %v", c.Params)
 		}
 	}
 }

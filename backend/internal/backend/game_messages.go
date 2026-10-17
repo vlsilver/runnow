@@ -19,7 +19,7 @@ type gameMsg struct {
 
 const (
 	chatGroup  = "group"  // topic Ma Sói của group ván
-	chatWolves = "wolves" // group Phe Sói (wolfChatId), cả topic General
+	chatWolves = "wolves" // chat Phe Sói trong app (game_chat.go), không gửi Telegram
 )
 
 func dmChat(uid string) string { return "dm:" + uid }
@@ -33,7 +33,7 @@ const (
 	tplPrompt   = "prompt"    // dm: tới lượt một loại hành động
 	tplChoice   = "choice"    // dm: sửa prompt cho khớp lựa chọn vừa đổi
 	tplTally    = "tally"     // group: sửa prompt đề cử/biểu quyết cho khớp lựa chọn vừa đổi
-	tplWolfPick = "wolf_pick" // wolves: một sói vừa chọn hay bỏ chọn cắn (C2)
+	tplChatPing = "chat_ping" // dm: có tin mới trong chat phe ở app
 )
 
 // publicEvent trả bản công khai của e, hoặc false nếu e chỉ dành cho người

@@ -885,6 +885,7 @@ type GameMe struct {
 	Potions     *GamePotions     `json:"potions,omitempty"`
 	Notes       []GameNote       `json:"notes"`
 	InviteLinks []GameInvite     `json:"inviteLinks"`
+	Chats       []GameChatLink   `json:"chats"`
 	Actions     []GameAction     `json:"actions"`
 	AllRoles    []GameRoleReveal `json:"allRoles,omitempty"`
 }
@@ -902,6 +903,13 @@ type GameNote struct {
 type GameInvite struct {
 	Label string `json:"label"`
 	URL   string `json:"url"`
+}
+
+// GameChatLink là một chat phe người gọi vào được (game_chat.go).
+type GameChatLink struct {
+	Key     string `json:"key"`
+	Label   string `json:"label"`
+	CanSend bool   `json:"canSend"`
 }
 
 type GameAction struct {
@@ -952,7 +960,7 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 		return GameMe{}, errNotGamePlayer
 	}
 	data := g.Data()
-	out := GameMe{Status: apiStatus(data), Alive: true, Notes: []GameNote{}, InviteLinks: []GameInvite{}, Actions: []GameAction{}}
+	out := GameMe{Status: apiStatus(data), Alive: true, Notes: []GameNote{}, InviteLinks: []GameInvite{}, Chats: []GameChatLink{}, Actions: []GameAction{}}
 	st, err := s.loadState(ctx, g.Ref)
 	if err != nil {
 		return out, err
@@ -983,6 +991,11 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 	}
 	if out.Notes, err = s.notes(ctx, g.Ref, st, v.UID, name); err != nil {
 		return out, err
+	}
+	for _, key := range []string{chatWolves, chatLovers} {
+		if member, canSend := chatAccess(st, key, v.UID); member {
+			out.Chats = append(out.Chats, GameChatLink{Key: key, Label: chatLabels[key], CanSend: canSend})
+		}
 	}
 	if st.Phase == werewolf.PhaseEnded {
 		for _, uid := range sortedPlayers(st) {

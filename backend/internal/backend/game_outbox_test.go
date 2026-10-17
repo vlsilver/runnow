@@ -213,24 +213,25 @@ func TestRenderPrivatePromptAdminReminder(t *testing.T) {
 	}
 }
 
-// Lựa chọn của từng sói đi vào group Phe Sói (C2), không bao giờ vào group
-// chung; chat key lạ thì lỗi chứ không rơi về group chung.
-func TestRenderWolfPick(t *testing.T) {
+// DM báo tin mới không chở nội dung, cũng không nói chat nào, để màn hình khoá
+// không lộ ai là sói. Chat phe không có đích Telegram: key của phe hay key lạ
+// đều lỗi chứ không rơi về group chung.
+func TestRenderChatPing(t *testing.T) {
 	r := testRenderer()
-	if out := renderOne(t, r, chatWolves, tplWolfPick, map[string]any{"uid": "w1", "target": "s1"}); out.skip != "no_chat" {
-		t.Fatalf("chưa có group Phe Sói = %+v", out)
+	want := "Bạn có tin nhắn mới trong chat kín của ván Ma Sói. Mở app 3i, vào ván để đọc và trả lời."
+	for _, chat := range []string{chatWolves, chatLovers} {
+		out := renderOne(t, r, dmChat("w2"), tplChatPing, map[string]any{"chat": chat})
+		if out.chatID != "72" || len(out.parts) != 1 || out.parts[0] != want {
+			t.Fatalf("ping %s = %+v", chat, out)
+		}
 	}
-	r.gameData = map[string]any{"wolfChatId": "-100w"}
-	out := renderOne(t, r, chatWolves, tplWolfPick, map[string]any{"uid": "w1", "target": "s1"})
-	if out.chatID != "-100w" || out.threadID != 0 || len(out.parts) != 1 || out.parts[0] != "<b>An &lt;Sói&gt;</b> chọn cắn <b>Chi</b>." {
-		t.Fatalf("chọn cắn = %+v", out)
+	if _, err := r.render(dmChat("w2"), tplChatPing, `{"chat":"group"}`); err == nil {
+		t.Fatal("ping chat lạ mà không lỗi")
 	}
-	out = renderOne(t, r, chatWolves, tplWolfPick, map[string]any{"uid": "w2", "cleared": true})
-	if out.parts[0] != "<b>Bình &amp; Co</b> bỏ chọn cắn." {
-		t.Fatalf("bỏ chọn = %q", out.parts[0])
-	}
-	if _, err := r.render("lovers", tplAdmin, `{"action":"pause"}`); err == nil {
-		t.Fatal("chat key lạ mà không lỗi")
+	for _, key := range []string{chatWolves, chatLovers, "nope"} {
+		if _, err := r.render(key, tplAdmin, `{"action":"pause"}`); err == nil {
+			t.Fatalf("chat %q mà không lỗi", key)
+		}
 	}
 }
 

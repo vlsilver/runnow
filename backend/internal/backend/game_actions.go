@@ -137,6 +137,16 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 		}
 
 		msgs := withoutFakeDMs(actionMessages(a), g.Data())
+		var wolfChat *chatPost
+		var pings []gameMsg
+		if a.Kind == werewolf.KindWolfBite && chatMembers(st, chatWolves) != nil {
+			c, err := readChat(tx, game, chatWolves)
+			if err != nil {
+				return err
+			}
+			wolfChat, pings = &c, c.pings(st, chatWolves, a.Actor, g.Data(), req.ReceivedAt)
+			msgs = append(msgs, pings...)
+		}
 		chats, err := readChats(tx, game, msgs)
 		if err != nil {
 			return err
@@ -154,6 +164,11 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 		if err := tx.Set(actionRef(game, st.Round, req.UID, req.Kind), doc); err != nil {
 			return err
 		}
+		if wolfChat != nil {
+			if err := wolfChat.write(tx, wolfPickMessage(a), "", pings, req.ReceivedAt); err != nil {
+				return err
+			}
+		}
 		w := stepWrite{tx: tx, game: game, gameData: g.Data(), msgs: msgs, chats: chats, now: now, wall: req.ReceivedAt}
 		if err := w.writeOutbox(int64(number(g.Data()["eventSeq"]))); err != nil {
 			return err
@@ -169,22 +184,25 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 
 // actionMessages: lựa chọn riêng thì sửa tin DM của người đó; đề cử và biểu
 // quyết là công khai nên sửa tin đếm phiếu trong topic (W2b). Các tin này chỉ
-// chở (uid, kind), lúc gửi mới đọc lựa chọn đang lưu. Lựa chọn cắn còn được
-// đăng vào group Phe Sói (C2), chở luôn lựa chọn lúc đó, để cả phe thấy từng
-// lần đổi.
+// chở (uid, kind), lúc gửi mới đọc lựa chọn đang lưu. Lựa chọn cắn còn vào chat
+// Phe Sói trong app (C2), ghi ở SubmitAction.
 func actionMessages(a werewolf.Action) []gameMsg {
 	kind := map[string]any{"kind": string(a.Kind)}
 	switch a.Kind {
 	case werewolf.KindNominate, werewolf.KindVote:
 		return []gameMsg{{ChatKey: chatGroup, Template: tplTally, Data: kind}}
-	case werewolf.KindWolfBite:
-		pick := map[string]any{"uid": a.Actor, "cleared": true}
-		if !a.Clear && len(a.Targets) > 0 {
-			pick = map[string]any{"uid": a.Actor, "target": a.Targets[0]}
-		}
-		return []gameMsg{{ChatKey: dmChat(a.Actor), Template: tplChoice, Data: kind}, {ChatKey: chatWolves, Template: tplWolfPick, Data: pick}}
 	}
 	return []gameMsg{{ChatKey: dmChat(a.Actor), Template: tplChoice, Data: kind}}
+}
+
+// wolfPickMessage là tin hệ thống của chat Phe Sói cho một lần chọn cắn, chở
+// lựa chọn lúc đó để cả phe thấy từng lần đổi.
+func wolfPickMessage(a werewolf.Action) map[string]any {
+	msg := map[string]any{"uid": a.Actor, "kind": chatKindWolfPick}
+	if !a.Clear && len(a.Targets) > 0 {
+		msg["target"] = a.Targets[0]
+	}
+	return msg
 }
 
 func storedAction(d map[string]any) (*werewolf.Action, werewolf.Team) {

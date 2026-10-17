@@ -564,8 +564,9 @@ func (r *outboxRenderer) name(uid string) string {
 	return "Người chơi"
 }
 
-// target chọn chat của key: DM tới tgUserId của người chơi, topic Ma Sói của
-// group ván, hoặc group Phe Sói. Key lạ thì lỗi, không rơi về group chung, vì
+// target chọn chat của key: DM tới tgUserId của người chơi hoặc topic Ma Sói
+// của group ván. Chat phe nằm trong app, không qua outbox. Key lạ thì lỗi,
+// không rơi về group chung, vì
 // tin của phe kín mà vào group chung là lộ. skip khác rỗng là không gửi được.
 func (r *outboxRenderer) target(key string) (outboxText, error) {
 	var out outboxText
@@ -583,11 +584,6 @@ func (r *outboxRenderer) target(key string) (outboxText, error) {
 		out.chatID, out.threadID = r.chatID, r.threadID
 		if out.chatID == "" {
 			return out, errors.New("ván không có chatId")
-		}
-	case chatWolves:
-		// W3 ghi wolfChatId lúc tạo group; chưa có thì bỏ tin.
-		if out.chatID = tgIDString(r.gameData["wolfChatId"]); out.chatID == "" {
-			return outboxText{skip: "no_chat"}, nil
 		}
 	default:
 		return out, fmt.Errorf("chat lạ %q", key)
@@ -648,16 +644,17 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 		if err = json.Unmarshal([]byte(raw), &d); err == nil {
 			text, err = adminText(d.Action, d.Deadline, d.Minutes)
 		}
-	case tplWolfPick:
+	case tplChatPing:
 		var d struct {
-			UID     string `json:"uid"`
-			Target  string `json:"target"`
-			Cleared bool   `json:"cleared"`
+			Chat string `json:"chat"`
 		}
+		// Không nói tên chat: Telegram hiện tin trên màn hình khoá, mà "Phe Sói"
+		// là lộ vai. Phe Sói hay Cặp đôi đều nhận cùng một câu.
 		if err = json.Unmarshal([]byte(raw), &d); err == nil {
-			text = "<b>" + r.name(d.UID) + "</b> chọn cắn <b>" + r.name(d.Target) + "</b>."
-			if d.Cleared {
-				text = "<b>" + r.name(d.UID) + "</b> bỏ chọn cắn."
+			if _, ok := chatLabels[d.Chat]; ok {
+				text = "Bạn có tin nhắn mới trong chat kín của ván Ma Sói. Mở app 3i, vào ván để đọc và trả lời."
+			} else {
+				err = fmt.Errorf("chat lạ %q", d.Chat)
 			}
 		}
 	default:
