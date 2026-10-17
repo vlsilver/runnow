@@ -2,8 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:myrun/src/config.dart';
+import 'package:myrun/src/games/game_models.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+
+export 'package:myrun/src/games/game_models.dart';
 
 typedef IdTokenProvider = Future<String> Function({required bool forceRefresh});
 
@@ -49,23 +54,34 @@ class RunNowApiException implements Exception {
     required this.statusCode,
     required this.code,
     required this.message,
+    this.body = const {},
   });
 
   final int statusCode;
   final String code;
   final String message;
 
+  /// Body lỗi nguyên vẹn. Backend thêm field cạnh `error` và `message` cho vài
+  /// mã, ví dụ `requirements` của `requirements_unmet`.
+  final Map<String, dynamic> body;
+
   @override
   String toString() => message;
 }
+
+typedef AppVersionProvider = Future<String> Function();
 
 class RunNowApiClient {
   RunNowApiClient({
     required this.tokenProvider,
     http.Client? httpClient,
     Uri? baseUri,
+    AppVersionProvider? appVersion,
+    String? appPlatform,
   }) : _http = httpClient ?? http.Client(),
-       _baseUri = baseUri ?? Uri.parse(AppConfig.runNowApiBaseUrl);
+       _baseUri = baseUri ?? Uri.parse(AppConfig.runNowApiBaseUrl),
+       _appVersionSource = appVersion ?? _packageVersion,
+       _appPlatform = appPlatform ?? _currentPlatform();
 
   factory RunNowApiClient.firebase(FirebaseAuth auth) {
     return RunNowApiClient(
@@ -86,6 +102,167 @@ class RunNowApiClient {
   final IdTokenProvider tokenProvider;
   final http.Client _http;
   final Uri _baseUri;
+  final AppVersionProvider _appVersionSource;
+  final String _appPlatform;
+  String? _appVersion;
+
+  /// Bản store không có dart-define, nên version lấy từ chính gói app
+  /// (pubspec `version`), dạng `1.4.3+11`.
+  static Future<String> _packageVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    return '${info.version}+${info.buildNumber}';
+  }
+
+  static String _currentPlatform() {
+    if (kIsWeb) return 'web';
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.iOS => 'ios',
+      TargetPlatform.android => 'android',
+      final other => other.name,
+    };
+  }
+
+  // ---- Ma Sói (/v1/games*) ----
+
+  Future<GameList> listGames() async {
+    final response = await _send('GET', '/v1/games');
+    return GameList.fromJson(_jsonObject(response));
+  }
+
+  Future<GameDetail> getGame(String gameId) async {
+    final response = await _send('GET', _gamePath(gameId));
+    return GameDetail.fromJson(_jsonObject(response));
+  }
+
+  /// Trang feed cũ hơn [cursor]; cursor lấy từ trang trước.
+  Future<GameFeed> getGameFeed(String gameId, {required String cursor}) async {
+    final response = await _send(
+      'GET',
+      '${_gamePath(gameId)}/feed?cursor=${Uri.encodeQueryComponent(cursor)}',
+    );
+    return GameFeed.fromJson(_jsonObject(response));
+  }
+
+  Future<GameMe> getGameMe(String gameId) async {
+    final response = await _send('GET', '${_gamePath(gameId)}/me');
+    return GameMe.fromJson(_jsonObject(response));
+  }
+
+  /// Chỉ admin. [roles] là công tắc theo `createOptions.roles`. Ván thử phải
+  /// có [chatId] của group test. Trả id ván mới.
+  Future<String> createGame({
+    required Map<String, bool> roles,
+    DateTime? registrationDeadline,
+    bool testMode = false,
+    String? chatId,
+    int? threadId,
+    double? kmPerUnit,
+  }) async {
+    final response = await _send(
+      'POST',
+      '/v1/games',
+      body: {
+        'roles': roles,
+        'registrationDeadline': ?registrationDeadline
+            ?.toUtc()
+            .toIso8601String(),
+        if (testMode) 'testMode': true,
+        'chatId': ?chatId,
+        'threadId': ?threadId,
+        'kmPerUnit': ?kmPerUnit,
+      },
+    );
+    return _jsonObject(response)['id'] as String;
+  }
+
+  Future<GameRegistration> registerForGame(String gameId) async {
+    final response = await _send('POST', '${_gamePath(gameId)}/registration');
+    return GameRegistration.fromJson(_jsonObject(response));
+  }
+
+  Future<GameRegistration> unregisterFromGame(String gameId) async {
+    final response = await _send('DELETE', '${_gamePath(gameId)}/registration');
+    return GameRegistration.fromJson(_jsonObject(response));
+  }
+
+  /// Gửi một hành động. [clear] là bỏ lựa chọn đang lưu. Trả `/me` mới để
+  /// màn hình vẽ lại ngay.
+  Future<GameMe> submitGameAction(
+    String gameId, {
+    required String kind,
+    List<String> targets = const [],
+    String? choice,
+    bool clear = false,
+  }) async {
+    final response = await _send(
+      'POST',
+      '${_gamePath(gameId)}/actions',
+      body: {
+        'kind': kind,
+        if (targets.isNotEmpty) 'targets': targets,
+        'choice': ?choice,
+        if (clear) 'clear': true,
+      },
+    );
+    return GameMe.fromJson(_jsonObject(response));
+  }
+
+  /// Chỉ admin: xem ai sẽ vào ván, ai bị loại, chưa đổi gì.
+  Future<GameStartPreview> previewGameStart(String gameId) async {
+    final response = await _send(
+      'POST',
+      '${_gamePath(gameId)}/start?dryRun=true',
+    );
+    return GameStartPreview.fromJson(_jsonObject(response));
+  }
+
+  /// Chỉ admin: ván sang starting, bot chia vai sau đó. Kết quả xem ở
+  /// `status` và `startError` của [getGame]. Trả số lần Start.
+  Future<int> startGame(String gameId) async {
+    final response = await _send('POST', '${_gamePath(gameId)}/start');
+    return (_jsonObject(response)['attempt'] as num).toInt();
+  }
+
+  Future<void> pauseGame(String gameId) =>
+      _send('POST', '${_gamePath(gameId)}/admin/pause');
+
+  Future<void> resumeGame(String gameId) =>
+      _send('POST', '${_gamePath(gameId)}/admin/resume');
+
+  Future<void> cancelGame(String gameId) =>
+      _send('POST', '${_gamePath(gameId)}/admin/cancel');
+
+  /// Dời hạn phase hiện tại thêm [minutes] phút.
+  Future<void> extendGame(String gameId, {required int minutes}) => _send(
+    'POST',
+    '${_gamePath(gameId)}/admin/extend',
+    body: {'minutes': minutes},
+  );
+
+  /// Gửi lại các tin Telegram bị lỗi của ván. Trả số tin được gửi lại.
+  Future<int> retryGameOutbox(String gameId) async {
+    final response = await _send(
+      'POST',
+      '${_gamePath(gameId)}/admin/retry-outbox',
+    );
+    return (_jsonObject(response)['requeued'] as num?)?.toInt() ?? 0;
+  }
+
+  String _gamePath(String gameId) => '/v1/games/${Uri.encodeComponent(gameId)}';
+
+  // ---- Liên kết Telegram ----
+
+  Future<TelegramLinkCode> createTelegramLinkCode() async {
+    final response = await _send('POST', '/v1/telegram/link-code');
+    return TelegramLinkCode.fromJson(_jsonObject(response));
+  }
+
+  Future<TelegramLinkStatus> getTelegramLink() async {
+    final response = await _send('GET', '/v1/telegram/link');
+    return TelegramLinkStatus.fromJson(_jsonObject(response));
+  }
+
+  Future<void> unlinkTelegram() => _send('DELETE', '/v1/telegram/link');
 
   Future<StravaConnectionStatus> getStravaStatus() async {
     final response = await _send('GET', '/v1/strava/status');
@@ -333,11 +510,20 @@ class RunNowApiClient {
     bool forceRefreshToken = false,
   }) async {
     final token = await tokenProvider(forceRefresh: forceRefreshToken);
+    // Backend chỉ đọc version ở /v1/games*. Route khác không gửi, vì API bản
+    // trước chỉ cho Authorization, Content-Type qua CORS: thêm header lạ thì
+    // preflight trên web hỏng ở mọi route.
+    final gameRoute = path.startsWith('/v1/games');
+    final appVersion = gameRoute
+        ? _appVersion ??= await _appVersionSource()
+        : null;
     final request = http.Request(method, _baseUri.resolve(path))
       ..headers.addAll({
         'Authorization': 'Bearer $token',
         'Accept': 'application/json',
         if (body != null) 'Content-Type': 'application/json',
+        'X-App-Version': ?appVersion,
+        if (gameRoute) 'X-App-Platform': _appPlatform,
       });
     if (body != null) request.body = jsonEncode(body);
     final streamed = await _http.send(request).timeout(timeout ?? _timeout);
@@ -357,8 +543,9 @@ class RunNowApiClient {
       final data = _jsonObject(response);
       return RunNowApiException(
         statusCode: response.statusCode,
-        code: data['code'] as String? ?? 'request_failed',
+        code: data['error'] as String? ?? 'request_failed',
         message: data['message'] as String? ?? 'Backend từ chối yêu cầu.',
+        body: data,
       );
     } catch (_) {
       return RunNowApiException(
