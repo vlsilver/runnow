@@ -202,4 +202,94 @@ void main() {
     expect(find.text('Đã liên kết @an.'), findsOneWidget);
     await close(tester);
   });
+
+  group('admin start', () {
+    Map<String, dynamic> registering({required bool admin}) => {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'registering',
+      'statusLabel': 'Đang mở đăng ký',
+      'refreshAfterSeconds': 300,
+      'playerCount': 9,
+      'minPlayers': 8,
+      'maxPlayers': 16,
+      'isAdmin': admin,
+    };
+
+    List<String> starts() => [
+      for (final r in backend.requests)
+        if (r.url.path == '/v1/games/g1/start') r.url.query,
+    ];
+
+    testWidgets('previews, then starts once the admin confirms', (
+      tester,
+    ) async {
+      backend.game = registering(admin: true);
+      backend.startPreview = {
+        'willExclude': [
+          {
+            'uid': 'u9',
+            'name': 'Bình',
+            'reason': 'not_linked',
+            'reasonLabel': 'chưa liên kết Telegram',
+          },
+        ],
+        'players': [],
+        'count': 8,
+        'minPlayers': 8,
+        'maxPlayers': 16,
+        'canStart': true,
+      };
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Bắt đầu ván'));
+      await tester.pumpAndSettle();
+      expect(find.text('8 người sẽ chơi, cần 8–16.'), findsOneWidget);
+      expect(find.text('Bình: chưa liên kết Telegram'), findsOneWidget);
+      expect(starts(), ['dryRun=true']);
+
+      await tester.tap(find.text('Bắt đầu'));
+      await tester.pumpAndSettle();
+
+      expect(starts(), ['dryRun=true', '']);
+      expect(find.text('Đang chia bài'), findsOneWidget);
+      expect(find.text('Bắt đầu ván'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('does not start when the preview says it cannot', (
+      tester,
+    ) async {
+      backend.game = registering(admin: true);
+      backend.startPreview = {
+        'willExclude': [],
+        'players': [],
+        'count': 5,
+        'minPlayers': 8,
+        'maxPlayers': 16,
+        'canStart': false,
+      };
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Bắt đầu ván'));
+      await tester.pumpAndSettle();
+      expect(find.text('Chưa bắt đầu được'), findsOneWidget);
+      expect(find.text('Bắt đầu'), findsNothing);
+
+      await tester.tap(find.text('Đóng'));
+      await tester.pumpAndSettle();
+      expect(starts(), ['dryRun=true']);
+      expect(find.text('Bắt đầu ván'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('is hidden from players', (tester) async {
+      backend.game = registering(admin: false);
+      await pumpScreen(tester);
+
+      expect(find.text('Đăng ký'), findsOneWidget);
+      expect(find.text('Bắt đầu ván'), findsNothing);
+      await close(tester);
+    });
+  });
 }

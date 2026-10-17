@@ -28,6 +28,15 @@ class FakeGameBackend {
   /// Lỗi trả cho từng route, khoá là `METHOD path`: (status, body).
   final failures = <String, (int, Map<String, dynamic>)>{};
 
+  /// Body của `GET /v1/games`.
+  Map<String, dynamic> list = {'items': []};
+
+  /// Trả cho `start?dryRun=true`.
+  Map<String, dynamic> startPreview = {};
+
+  /// Mọi request đã gửi, để xem body và query.
+  final requests = <http.Request>[];
+
   RunNowApiClient client() => RunNowApiClient(
     baseUri: Uri.parse('https://api.example.test'),
     tokenProvider: ({required forceRefresh}) async => 'token',
@@ -37,11 +46,25 @@ class FakeGameBackend {
       final path = request.url.path;
       final route = '${request.method} $path';
       calls.add(route);
+      requests.add(request);
       if (failures[route] case (final status, final error)?) {
         return _json(error, status);
       }
       Object body;
-      if (path == '/v1/telegram/link-code') {
+      if (path == '/v1/games') {
+        body = request.method == 'POST' ? {'id': 'g9'} : list;
+      } else if (path.endsWith('/start')) {
+        if (request.url.queryParameters['dryRun'] == 'true') {
+          body = startPreview;
+        } else {
+          game = {
+            ...game,
+            'status': 'starting',
+            'statusLabel': 'Đang chia bài',
+          };
+          body = {'attempt': 1};
+        }
+      } else if (path == '/v1/telegram/link-code') {
         body = {
           'code': 'K7Q2',
           'deepLink': 'https://t.me/runnow3i_bot?start=K7Q2',

@@ -263,12 +263,20 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
         .where((contract) => !contract.completedBy(currentUid))
         .toList();
     if (unfinished.length >= maxActiveRunContracts) {
+      // Ván Ma Sói không phải kèo, nên giới hạn số kèo không chặn admin mở ván.
+      final canCreateGame = ref.read(gameListProvider).value?.canCreate == true;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             'Bạn đang tham gia ${unfinished.length} kèo chưa hoàn thành. '
             'Hãy chốt một kèo để tạo kèo mới.',
           ),
+          action: canCreateGame
+              ? SnackBarAction(
+                  label: 'Mở ván Ma Sói',
+                  onPressed: () => context.push('/games/new'),
+                )
+              : null,
         ),
       );
       return;

@@ -78,8 +78,11 @@ http.Response _json(Object body, [int status = 200]) => http.Response.bytes(
   headers: {'content-type': 'application/json'},
 );
 
-Map<String, dynamic> _games(List<Map<String, dynamic>> items) => {
-  'viewer': {'canCreate': false},
+Map<String, dynamic> _games(
+  List<Map<String, dynamic>> items, {
+  bool canCreate = false,
+}) => {
+  'viewer': {'canCreate': canCreate},
   'createOptions': {'roles': null},
   'items': items,
 };
@@ -103,6 +106,7 @@ Future<void> _pump(
   WidgetTester tester, {
   required List<RunContract> contracts,
   required Future<http.Response> Function() games,
+  List<RunContract> myActive = const [],
 }) async {
   final api = RunNowApiClient(
     baseUri: Uri.parse('https://api.example.test'),
@@ -120,9 +124,7 @@ Future<void> _pump(
         membersProvider.overrideWith(
           (ref) => Stream.value(const <MemberProfile>[]),
         ),
-        myActiveContractsProvider.overrideWith(
-          (ref) => Stream.value(const <RunContract>[]),
-        ),
+        myActiveContractsProvider.overrideWith((ref) => Stream.value(myActive)),
         coachPlanProvider.overrideWith((ref) => Stream.value(null)),
         publicCoachPlansProvider.overrideWith(
           (ref) => Stream.value(const <TrainingPlan>[]),
@@ -211,5 +213,37 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     }
     expect(find.text('Ma Sói tuần 42'), findsNothing);
+  });
+
+  group('at the contract limit', () {
+    final full = List.filled(maxActiveRunContracts, _contract('Kèo dở'));
+
+    testWidgets('admins can still open a game', (tester) async {
+      await _pump(
+        tester,
+        contracts: const [],
+        myActive: full,
+        games: () async => _json(_games(const [], canCreate: true)),
+      );
+
+      await tester.tap(find.byTooltip('Tạo kèo'));
+      await tester.pump();
+      expect(find.textContaining('kèo chưa hoàn thành'), findsOneWidget);
+      expect(find.text('Mở ván Ma Sói'), findsOneWidget);
+    });
+
+    testWidgets('players only see the limit', (tester) async {
+      await _pump(
+        tester,
+        contracts: const [],
+        myActive: full,
+        games: () async => _json(_games(const [])),
+      );
+
+      await tester.tap(find.byTooltip('Tạo kèo'));
+      await tester.pump();
+      expect(find.textContaining('kèo chưa hoàn thành'), findsOneWidget);
+      expect(find.text('Mở ván Ma Sói'), findsNothing);
+    });
   });
 }

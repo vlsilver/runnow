@@ -38,6 +38,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   late final GameDetailController _controller;
   late final TelegramLinkController _telegram;
   bool _registering = false;
+  bool _starting = false;
   bool? _linked;
 
   @override
@@ -99,6 +100,27 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
       _showError(error);
     } finally {
       if (mounted) setState(() => _registering = false);
+    }
+  }
+
+  /// Chạy dryRun trước để admin thấy ai sẽ bị loại, đồng ý rồi mới Start.
+  Future<void> _start() async {
+    final api = ref.read(runNowApiClientProvider);
+    setState(() => _starting = true);
+    try {
+      final preview = await api.previewGameStart(widget.gameId);
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => _StartPreviewDialog(preview: preview),
+      );
+      if (confirmed != true) return;
+      await api.startGame(widget.gameId);
+      await _controller.refresh();
+    } catch (error) {
+      _showError(error);
+    } finally {
+      if (mounted) setState(() => _starting = false);
     }
   }
 
@@ -166,6 +188,15 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                           busy: _registering,
                           onToggle: () =>
                               _toggleRegistration(detail.isRegistered),
+                        ),
+                      ],
+                      if (detail.isAdmin && detail.status == 'registering') ...[
+                        const SizedBox(height: 12),
+                        FilledButton.tonal(
+                          onPressed: _starting ? null : _start,
+                          child: Text(
+                            _starting ? 'Đang kiểm tra…' : 'Bắt đầu ván',
+                          ),
                         ),
                       ],
                       if (detail.rulesText.isNotEmpty) ...[
@@ -536,6 +567,57 @@ class _LoadError extends StatelessWidget {
           TextButton(onPressed: onRetry, child: const Text('Thử lại')),
         ],
       ),
+    );
+  }
+}
+
+class _StartPreviewDialog extends StatelessWidget {
+  const _StartPreviewDialog({required this.preview});
+
+  final GameStartPreview preview;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(preview.canStart ? 'Bắt đầu ván?' : 'Chưa bắt đầu được'),
+      content: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${preview.count} người sẽ chơi, cần '
+              '${preview.minPlayers}–${preview.maxPlayers}.',
+            ),
+            if (preview.willExclude.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Sẽ bị loại:',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              for (final excluded in preview.willExclude)
+                Text('${excluded.name}: ${excluded.reasonLabel}'),
+            ],
+          ],
+        ),
+      ),
+      actions: preview.canStart
+          ? [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Thôi'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Bắt đầu'),
+              ),
+            ]
+          : [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Đóng'),
+              ),
+            ],
     );
   }
 }

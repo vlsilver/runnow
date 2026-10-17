@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:myrun/src/games/game_providers.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
@@ -128,6 +129,13 @@ class _RunContractCreateScreenState
         style: Theme.of(context).textTheme.headlineSmall,
       ),
       const SizedBox(height: 14),
+      if (ref.watch(gameListProvider).value?.canCreate == true)
+        _TemplateTile(
+          icon: Icons.nightlight_round,
+          title: 'Ván Ma Sói',
+          subtitle: 'Chỉ admin thấy. Mở ván cho cả PSC đăng ký.',
+          onTap: () => context.push('/games/new'),
+        ),
       _TemplateTile(
         icon: Icons.auto_awesome_rounded,
         title: 'Giáo án AI Coach',
