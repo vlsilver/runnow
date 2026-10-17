@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -10,6 +11,7 @@ import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Màn chi tiết một ván Ma Sói. Mọi chữ (trạng thái, phase, luật, feed) lấy
 /// từ API, nên đổi nội dung ở backend thì app đổi theo, không cần ra bản mới.
@@ -98,9 +100,22 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
       }
     } catch (error) {
       _showError(error);
+      if (error is RunNowApiException && error.code == 'requirements_unmet') {
+        await _controller.refresh();
+      }
     } finally {
       if (mounted) setState(() => _registering = false);
     }
+  }
+
+  Future<void> _openRequirement(String url) async {
+    final open =
+        widget.openUrl ??
+        (uri) => launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (await open(Uri.parse(url)) || !mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Không mở được link.')));
   }
 
   /// Chạy dryRun trước để admin thấy ai sẽ bị loại, đồng ý rồi mới Start.
@@ -188,6 +203,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                           busy: _registering,
                           onToggle: () =>
                               _toggleRegistration(detail.isRegistered),
+                          onOpenUrl: _openRequirement,
                         ),
                       ],
                       if (detail.isAdmin && detail.status == 'registering') ...[
@@ -300,16 +316,19 @@ class _Registration extends StatelessWidget {
     required this.detail,
     required this.busy,
     required this.onToggle,
+    required this.onOpenUrl,
   });
 
   final GameDetail detail;
   final bool busy;
   final VoidCallback onToggle;
+  final ValueChanged<String> onOpenUrl;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final deadline = detail.registrationDeadline;
+    final ready = detail.requirements.every((r) => r.ok);
     return GlassPanel(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -325,6 +344,9 @@ class _Registration extends StatelessWidget {
               'Đóng đăng ký ${_timeFormat.format(deadline.toLocal())}',
               style: TextStyle(color: palette.textMuted),
             ),
+          if (!detail.isRegistered)
+            for (final requirement in detail.requirements)
+              _RequirementRow(requirement: requirement, onOpenUrl: onOpenUrl),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -334,7 +356,7 @@ class _Registration extends StatelessWidget {
                     child: const Text('Huỷ đăng ký'),
                   )
                 : FilledButton(
-                    onPressed: busy ? null : onToggle,
+                    onPressed: busy || !ready ? null : onToggle,
                     child: const Text('Đăng ký'),
                   ),
           ),
@@ -568,6 +590,74 @@ class _LoadError extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Một điều kiện đăng ký. Nút theo `action.type` của backend; link_telegram
+/// không có nút ở đây vì phần Telegram ngay trên đã có nút liên kết.
+class _RequirementRow extends StatelessWidget {
+  const _RequirementRow({required this.requirement, required this.onOpenUrl});
+
+  final GameRequirement requirement;
+  final ValueChanged<String> onOpenUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final action = requirement.action;
+    final url = action?.url;
+    final Widget? trailing = switch (action?.type) {
+      'open_url' when url != null => TextButton(
+        onPressed: () => onOpenUrl(url),
+        child: const Text('Mở'),
+      ),
+      'update_app' when url != null => TextButton(
+        onPressed: () => onOpenUrl(url),
+        child: const Text('Cập nhật'),
+      ),
+      _ => null,
+    };
+    final hint = action?.type == 'update_app' && url == null
+        ? _updateHint()
+        : null;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          Icon(
+            requirement.ok
+                ? Icons.check_circle_rounded
+                : Icons.radio_button_unchecked_rounded,
+            size: 20,
+            color: requirement.ok ? palette.accent : palette.textMuted,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(requirement.label, style: TextStyle(color: palette.ink)),
+                if (hint != null)
+                  Text(
+                    hint,
+                    style: TextStyle(fontSize: 12, color: palette.textMuted),
+                  ),
+              ],
+            ),
+          ),
+          ?trailing,
+        ],
+      ),
+    );
+  }
+
+  static String _updateHint() {
+    if (kIsWeb) return 'Tải lại trang để lấy bản mới.';
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.iOS => 'Cập nhật app trên App Store.',
+      TargetPlatform.android => 'Cập nhật app trên Google Play.',
+      _ => 'Cập nhật app lên bản mới.',
+    };
   }
 }
 

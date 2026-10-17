@@ -10,6 +10,7 @@ void main() {
   late DateTime now;
   late FakeGameBackend backend;
   late List<Uri> opened;
+  late bool openOk;
 
   Future<void> pumpScreen(WidgetTester tester) async {
     await tester.pumpWidget(
@@ -23,7 +24,7 @@ void main() {
             clock: () => now,
             openUrl: (uri) async {
               opened.add(uri);
-              return true;
+              return openOk;
             },
           ),
         ),
@@ -45,6 +46,7 @@ void main() {
     now = DateTime.utc(2026, 10, 17, 14);
     backend = FakeGameBackend(() => now);
     opened = [];
+    openOk = true;
   });
 
   testWidgets('follows rules text from backend', (tester) async {
@@ -289,6 +291,142 @@ void main() {
 
       expect(find.text('Đăng ký'), findsOneWidget);
       expect(find.text('Bắt đầu ván'), findsNothing);
+      await close(tester);
+    });
+  });
+
+  group('requirements', () {
+    Map<String, dynamic> open(List<Map<String, dynamic>> requirements) => {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'registering',
+      'statusLabel': 'Đang mở đăng ký',
+      'refreshAfterSeconds': 300,
+      'requirements': requirements,
+    };
+    const linked = {
+      'key': 'telegram_linked',
+      'ok': true,
+      'label': 'Đã liên kết Telegram',
+    };
+    const notInPsc = {
+      'key': 'in_psc',
+      'ok': false,
+      'label': 'Đang ở trong group PSC',
+      'action': {'type': 'open_url', 'url': 'https://t.me/+psc'},
+    };
+    const appOk = {
+      'key': 'app_version',
+      'ok': true,
+      'label': 'Bản app từ 1.5.0 trở lên',
+    };
+
+    FilledButton registerButton(WidgetTester tester) =>
+        tester.widget(find.widgetWithText(FilledButton, 'Đăng ký'));
+
+    testWidgets('lists what is missing and blocks registering', (tester) async {
+      backend.game = open([linked, notInPsc, appOk]);
+      await pumpScreen(tester);
+
+      expect(find.text('Đã liên kết Telegram'), findsOneWidget);
+      expect(find.text('Đang ở trong group PSC'), findsOneWidget);
+      expect(find.text('Bản app từ 1.5.0 trở lên'), findsOneWidget);
+      expect(registerButton(tester).onPressed, isNull);
+
+      await tester.tap(find.text('Mở'));
+      await tester.pump();
+      expect(opened, [Uri.parse('https://t.me/+psc')]);
+      await close(tester);
+    });
+
+    testWidgets('says so when the link cannot open', (tester) async {
+      backend.game = open([linked, notInPsc, appOk]);
+      openOk = false;
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Mở'));
+      await tester.pump();
+      expect(find.text('Không mở được link.'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('lets the player register once everything is met', (
+      tester,
+    ) async {
+      backend.game = open([linked, appOk]);
+      await pumpScreen(tester);
+
+      expect(registerButton(tester).onPressed, isNotNull);
+      await close(tester);
+    });
+
+    testWidgets('opens the update link or says where to update', (
+      tester,
+    ) async {
+      backend.game = open([
+        linked,
+        {
+          'key': 'app_version',
+          'ok': false,
+          'label': 'Bản app từ 1.6.0 trở lên',
+          'action': {'type': 'update_app'},
+        },
+      ]);
+      await pumpScreen(tester);
+      expect(find.text('Cập nhật app trên Google Play.'), findsOneWidget);
+      expect(find.text('Cập nhật'), findsNothing);
+      await close(tester);
+
+      backend.game = open([
+        linked,
+        {
+          'key': 'app_version',
+          'ok': false,
+          'label': 'Bản app từ 1.6.0 trở lên',
+          'action': {'type': 'update_app', 'url': 'https://store.example/3i'},
+        },
+      ]);
+      await pumpScreen(tester);
+      await tester.tap(find.text('Cập nhật'));
+      await tester.pump();
+      expect(opened, [Uri.parse('https://store.example/3i')]);
+      await close(tester);
+    });
+
+    testWidgets('reads the game again when registering is refused', (
+      tester,
+    ) async {
+      backend.game = open([linked, appOk]);
+      backend.failures['POST /v1/games/g1/registration'] = (
+        422,
+        {
+          'error': 'requirements_unmet',
+          'message': 'Bạn chưa đủ điều kiện đăng ký.',
+          'requirements': [linked, notInPsc, appOk],
+        },
+      );
+      await pumpScreen(tester);
+      backend.game = open([linked, notInPsc, appOk]);
+
+      await tester.tap(find.text('Đăng ký'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Bạn chưa đủ điều kiện đăng ký.'), findsOneWidget);
+      expect(find.text('Đang ở trong group PSC'), findsOneWidget);
+      expect(registerButton(tester).onPressed, isNull);
+      await close(tester);
+    });
+
+    testWidgets('hides the checklist once registered', (tester) async {
+      backend.game = {
+        ...open([linked, notInPsc, appOk]),
+        'isRegistered': true,
+      };
+      await pumpScreen(tester);
+
+      expect(find.text('Đang ở trong group PSC'), findsNothing);
+      expect(find.text('Huỷ đăng ký'), findsOneWidget);
       await close(tester);
     });
   });
