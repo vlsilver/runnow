@@ -201,7 +201,8 @@ class _MessageRow extends StatelessWidget {
           margin: const EdgeInsets.symmetric(vertical: 4),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: mine ? palette.accent.withValues(alpha: 0.18) : palette.tint,
+            // 0.18 thì ở theme tối gần trùng màu tint, không nhận ra tin của mình.
+            color: mine ? palette.accent.withValues(alpha: 0.38) : palette.tint,
             borderRadius: BorderRadius.circular(14),
           ),
           child: Column(
