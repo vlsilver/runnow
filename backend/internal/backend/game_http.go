@@ -77,6 +77,23 @@ func (s *Server) gameRoutes() {
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
 	}))
+	s.route("POST /v1/games/{id}/chats/{key}/reports", s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+		var body struct {
+			Seq   int64 `json:"seq"`
+			Block bool  `json:"block"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			return invalidRequest()
+		}
+		text, err := s.deps.Games.ReportChat(r.Context(), r.PathValue("id"), r.PathValue("key"), body.Seq, body.Block, v, time.Now())
+		if err != nil {
+			return err
+		}
+		if err := s.alertChatReport(r.Context(), text); err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true})
+	}))
 	s.route("POST /v1/games/{id}/registration", s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
 		res, err := s.deps.Games.Register(r.Context(), r.PathValue("id"), v, time.Now())
 		if err != nil {

@@ -255,3 +255,51 @@ func TestEmulatorGameChatCancelledReadOnly(t *testing.T) {
 		t.Fatalf("ping sau khi huỷ = %q", got)
 	}
 }
+
+// App Store 1.2: từ tục bị che lúc ghi; người chơi báo cáo được một tin (admin
+// nhận DM ngay, kèm nội dung và ai báo) và chặn được người gửi. Tin của người
+// bị chặn vẫn giữ seq trong trang nhưng ẩn chữ, để poll after không kẹt.
+func TestEmulatorGameChatReportAndBlock(t *testing.T) {
+	g, h := runningAPIGame(t)
+	tg := newFakeTelegram(t)
+	h.deps.Telegram = tg.service(testPscChat)
+	seed(t, g.db, "telegramLinks/boss", map[string]any{"tgUserId": "5000"})
+	seed(t, g.db, "tgLinks/5000", map[string]any{"uid": "boss"})
+	path := "/v1/games/" + g.id + "/chats/wolves"
+	h.want(h.call("w1", "POST", path, map[string]any{"text": "đm cắn seer"}, ""), 200, "")
+	msgs := chatMessages(t, h.call("w2", "GET", path, nil, ""))
+	if len(msgs) != 1 || msgs[0]["text"] != "** cắn seer" {
+		t.Fatalf("tin đã lọc = %v", msgs)
+	}
+	seq := msgs[0]["seq"]
+
+	h.want(h.call("w2", "POST", path+"/reports", map[string]any{"seq": seq}, ""), 200, "")
+	var dms []string
+	for _, c := range tg.Calls("sendMessage") {
+		if c.Params["chat_id"] == "5000" {
+			dms = append(dms, c.Params["text"].(string))
+		}
+	}
+	if len(dms) != 1 || !strings.Contains(dms[0], "W2 báo cáo tin của W1") || !strings.Contains(dms[0], "** cắn seer") {
+		t.Fatalf("DM admin = %q", dms)
+	}
+	// Chỉ báo cáo thì chưa chặn.
+	if msgs := chatMessages(t, h.call("w2", "GET", path, nil, "")); msgs[0]["hidden"] == true {
+		t.Fatalf("chưa chặn mà tin bị ẩn: %v", msgs)
+	}
+
+	h.want(h.call("w2", "POST", path+"/reports", map[string]any{"seq": seq, "block": true}, ""), 200, "")
+	if msgs := chatMessages(t, h.call("w2", "GET", path, nil, "")); len(msgs) != 1 || msgs[0]["hidden"] != true || msgs[0]["text"] != "" || msgs[0]["seq"] != seq {
+		t.Fatalf("w2 đã chặn w1 mà thấy %v", msgs)
+	}
+	if msgs := chatMessages(t, h.call("w1", "GET", path, nil, "")); msgs[0]["hidden"] == true {
+		t.Fatalf("người bị chặn không thấy tin của chính mình: %v", msgs)
+	}
+	if got := chatPings(t, g); len(got) != 1 {
+		t.Fatalf("ping = %q", got)
+	}
+
+	h.want(h.call("w1", "POST", path+"/reports", map[string]any{"seq": seq}, ""), 400, "invalid_request")
+	h.want(h.call("w2", "POST", path+"/reports", map[string]any{"seq": 999}, ""), 404, "message_not_found")
+	h.want(h.call("v1", "POST", path+"/reports", map[string]any{"seq": seq}, ""), 404, "chat_not_found")
+}

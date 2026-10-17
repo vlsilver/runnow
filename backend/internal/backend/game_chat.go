@@ -39,6 +39,7 @@ var (
 	errChatReadOnly = &HTTPError{Status: http.StatusForbidden, Code: "chat_read_only", Message: "Bạn chỉ xem được chat này."}
 	errChatTooFast  = &HTTPError{Status: http.StatusTooManyRequests, Code: "too_fast", Message: "Gửi chậm lại một chút."}
 	errChatText     = &HTTPError{Status: http.StatusBadRequest, Code: "invalid_text", Message: fmt.Sprintf("Tin nhắn trống hoặc dài quá %d ký tự.", chatMaxRunes)}
+	errChatNoMsg    = &HTTPError{Status: http.StatusNotFound, Code: "message_not_found", Message: "Không còn tin nhắn này."}
 )
 
 var chatLabels = map[string]string{chatWolves: "Phe Sói", chatLovers: "Cặp đôi"}
@@ -89,6 +90,8 @@ type GameChatMessage struct {
 	Text   string    `json:"text"`
 	System bool      `json:"system"`
 	At     time.Time `json:"at"`
+	// Hidden: người xem đã chặn người gửi; Text rỗng, app không vẽ tin này.
+	Hidden bool `json:"hidden,omitempty"`
 }
 
 func chatRef(game *firestore.DocumentRef, key string) *firestore.DocumentRef {
@@ -156,6 +159,10 @@ func (s *GameStore) Chat(ctx context.Context, gameID, key, cursor, after string,
 	if err != nil {
 		return GameChat{}, err
 	}
+	blocked, err := s.blockedBy(ctx, v.UID)
+	if err != nil {
+		return GameChat{}, err
+	}
 	index := playerIndex(players)
 	name := func(uid string) string {
 		if p, ok := index[uid]; ok {
@@ -170,6 +177,8 @@ func (s *GameStore) Chat(ctx context.Context, gameID, key, cursor, after string,
 		if kind := stringValue(m["kind"]); kind != "text" {
 			msg.System = true
 			msg.Text = chatSystemText(kind, msg.Name, m, name)
+		} else if blocked[msg.UID] {
+			msg.Hidden, msg.Text = true, ""
 		}
 		out.Messages = append(out.Messages, msg)
 	}
@@ -199,6 +208,7 @@ func (s *GameStore) PostChat(ctx context.Context, gameID, key, text string, v Ga
 	if text == "" || utf8.RuneCountInString(text) > chatMaxRunes {
 		return false, errChatText
 	}
+	text = maskProfanity(text)
 	cfg, err := s.loadConfig(ctx)
 	if err != nil {
 		return false, err
