@@ -233,8 +233,7 @@ void main() {
       await tester.pump();
     }
     final afters = [
-      for (final r in backend.requests)
-        ?r.url.queryParameters['after'],
+      for (final r in backend.requests) ?r.url.queryParameters['after'],
     ];
     expect(afters, ['3', '5']);
     for (final text in ['d', 'e', 'f', 'g']) {
@@ -265,6 +264,38 @@ void main() {
     // Tin hệ thống về sói chọn cắn vẫn là thông tin của ván.
     expect(find.textContaining('W1 chọn cắn V2.'), findsOneWidget);
     expect(find.textContaining('Đã gửi báo cáo'), findsOneWidget);
+    await close(tester);
+  });
+
+  testWidgets('covers the chat while the app is not in front', (tester) async {
+    await pumpScreen(tester);
+    // Sheet báo cáo có tên đồng đội nên cũng phải bị che.
+    await tester.longPress(find.text('a'));
+    await tester.pumpAndSettle();
+    final cover = find.byKey(const ValueKey('game-chat-cover'));
+    final secrets = ['Phe Sói', 'Báo cáo và chặn W1'];
+
+    for (final state in [
+      AppLifecycleState.inactive,
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+    ]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+      await tester.pump();
+      expect(cover, findsOneWidget, reason: '$state');
+      // Đục hẳn, không để chữ bên dưới lộ ra ảnh chụp app switcher.
+      expect(tester.widget<ColoredBox>(cover).color.a, 1.0);
+      for (final text in secrets) {
+        expect(find.text(text).hitTestable(), findsNothing, reason: text);
+      }
+    }
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(cover, findsNothing);
+    expect(find.text('Báo cáo và chặn W1').hitTestable(), findsOneWidget);
     await close(tester);
   });
 

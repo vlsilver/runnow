@@ -35,6 +35,8 @@ class _GameChatScreenState extends ConsumerState<GameChatScreen>
   /// null khi đang đọc; chưa đồng ý thì chưa tải chat.
   bool? _termsAccepted;
 
+  OverlayEntry? _cover;
+
   @override
   void initState() {
     super.initState();
@@ -65,6 +67,9 @@ class _GameChatScreenState extends ConsumerState<GameChatScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // iOS chụp màn cho app switcher lúc inactive, Android lúc vào nền: che
+    // trước để ảnh chụp không có tên phe, tin hay tên đồng đội.
+    _setCovered(state != AppLifecycleState.resumed);
     if (_termsAccepted != true) return;
     switch (state) {
       case AppLifecycleState.resumed:
@@ -76,8 +81,26 @@ class _GameChatScreenState extends ConsumerState<GameChatScreen>
     }
   }
 
+  /// Lớp che nằm trên root overlay để che cả bottom sheet báo cáo và
+  /// snackbar, không chỉ route chat.
+  void _setCovered(bool covered) {
+    if (covered == (_cover != null) || !mounted) return;
+    if (covered) {
+      _cover = OverlayEntry(builder: (_) => const _PrivacyCover());
+      Overlay.of(context, rootOverlay: true).insert(_cover!);
+    } else {
+      _cover!
+        ..remove()
+        ..dispose();
+      _cover = null;
+    }
+  }
+
   @override
   void dispose() {
+    _cover
+      ?..remove()
+      ..dispose();
     WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     _input.dispose();
@@ -404,6 +427,25 @@ class _Composer extends StatelessWidget {
               icon: const Icon(Icons.send_rounded),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Màn trơn, giống nhau với mọi phe, che chat khi app không ở trước mặt.
+class _PrivacyCover extends StatelessWidget {
+  const _PrivacyCover();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return Positioned.fill(
+      child: ColoredBox(
+        key: const ValueKey('game-chat-cover'),
+        color: palette.background,
+        child: Center(
+          child: Icon(Icons.lock_outline, size: 48, color: palette.textMuted),
         ),
       ),
     );
