@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/config.dart';
 import 'package:myrun/src/formatters.dart';
+import 'package:myrun/src/games/telegram_link_controller.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/theme_controller.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
@@ -195,6 +197,7 @@ class SettingsScreen extends ConsumerWidget {
                     if (health.error != null)
                       _SettingsMessage(message: health.error!),
                   ],
+                  const TelegramLinkSettings(),
                 ],
               ),
               const SizedBox(height: 18),
@@ -798,6 +801,120 @@ class _VisibilityToggle extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Liên kết Telegram trong Cài đặt, để liên kết được cả khi chưa có ván Ma Sói
+/// nào (màn ván chỉ hiện lúc đang đăng ký). Admin cũng cần liên kết thì mới
+/// nhận được báo cáo chat và cảnh báo của ván.
+class TelegramLinkSettings extends ConsumerStatefulWidget {
+  const TelegramLinkSettings({super.key, this.openUrl});
+
+  /// Thay cho launchUrl trong test.
+  final UrlOpener? openUrl;
+
+  @override
+  ConsumerState<TelegramLinkSettings> createState() =>
+      _TelegramLinkSettingsState();
+}
+
+class _TelegramLinkSettingsState extends ConsumerState<TelegramLinkSettings>
+    with WidgetsBindingObserver {
+  late final TelegramLinkController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TelegramLinkController(
+      api: ref.read(runNowApiClientProvider),
+      openUrl: widget.openUrl,
+    );
+    WidgetsBinding.instance.addObserver(this);
+    _controller.load();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Bấm Start bên Telegram rồi quay lại, kể cả sau khi hết 2 phút poll.
+    if (state == AppLifecycleState.resumed) _controller.onResume();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _guard(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (error) {
+      if (!mounted) return;
+      final message = error is RunNowApiException
+          ? error.message
+          : error is StateError
+          ? error.message
+          : 'Không kết nối được, thử lại sau.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: _controller,
+      builder: (context, _) {
+        final status = _controller.status;
+        final busy = _controller.busy;
+        if (status == null) {
+          return _controller.error == null
+              ? const _SettingsRow(
+                  icon: Icons.send_rounded,
+                  title: 'Telegram',
+                  value: 'Đang kiểm tra',
+                )
+              : _SettingsRow(
+                  icon: Icons.send_rounded,
+                  title: 'Telegram',
+                  subtitle: 'Chưa đọc được trạng thái. Chạm để thử lại.',
+                  onTap: _controller.load,
+                );
+        }
+        if (!status.linked) {
+          return _SettingsRow(
+            icon: Icons.send_rounded,
+            title: 'Liên kết Telegram',
+            subtitle: _controller.waiting
+                ? 'Bấm Start trong Telegram rồi quay lại đây.'
+                : 'Nhận lá bài và lượt chơi Ma Sói qua bot 3i',
+            value: busy ? 'Đang xử lý' : null,
+            onTap: busy ? null : () => _guard(_controller.link),
+          );
+        }
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _SettingsRow(
+              icon: Icons.send_rounded,
+              title: 'Telegram',
+              value: status.tgUsername != null
+                  ? '@${status.tgUsername}'
+                  : status.displayName ?? 'Đã liên kết',
+            ),
+            _SettingsDivider(),
+            _SettingsRow(
+              icon: Icons.link_off,
+              title: 'Huỷ liên kết Telegram',
+              destructive: true,
+              onTap: busy ? null : () => _guard(_controller.unlink),
+            ),
+          ],
+        );
+      },
     );
   }
 }
