@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/app_update.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_chat_screen.dart';
 import 'package:myrun/src/games/game_create_screen.dart';
@@ -40,7 +41,9 @@ final _router = GoRouter(
   routes: [
     StatefulShellRoute.indexedStack(
       builder: (context, state, shell) => _HealthSyncTrigger(
-        child: _Scaffold(shell: shell, location: state.uri.path),
+        child: AppUpdatePrompt(
+          child: _Scaffold(shell: shell, location: state.uri.path),
+        ),
       ),
       branches: [
         StatefulShellBranch(
