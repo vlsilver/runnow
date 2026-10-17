@@ -153,10 +153,13 @@ class RunNowApiClient {
     String gameId,
     String key, {
     String? cursor,
+    int? after,
   }) async {
-    final query = cursor == null
-        ? ''
-        : '?cursor=${Uri.encodeQueryComponent(cursor)}';
+    final query = cursor != null
+        ? '?cursor=${Uri.encodeQueryComponent(cursor)}'
+        : after != null
+        ? '?after=$after'
+        : '';
     final response = await _send(
       'GET',
       '${_gamePath(gameId)}/chats/${Uri.encodeComponent(key)}$query',
@@ -170,6 +173,18 @@ class RunNowApiClient {
     'POST',
     '${_gamePath(gameId)}/chats/${Uri.encodeComponent(key)}',
     body: {'text': text},
+  );
+
+  /// Báo cáo tin [seq] cho admin; [block] chặn luôn người gửi.
+  Future<void> reportGameChat(
+    String gameId,
+    String key,
+    int seq, {
+    required bool block,
+  }) => _send(
+    'POST',
+    '${_gamePath(gameId)}/chats/${Uri.encodeComponent(key)}/reports',
+    body: {'seq': seq, 'block': block},
   );
 
   /// Chỉ admin. [roles] là công tắc theo `createOptions.roles`. Ván thử phải

@@ -486,6 +486,7 @@ class GameChat {
     required this.canSend,
     required this.messages,
     required this.cursor,
+    this.hasNewer = false,
   });
 
   factory GameChat.fromJson(Map<String, dynamic> json) {
@@ -495,6 +496,7 @@ class GameChat {
       canSend: json['canSend'] == true,
       messages: _list(json['messages'], GameChatMessage.fromJson),
       cursor: _optString(json['cursor']),
+      hasNewer: json['hasNewer'] == true,
     );
   }
 
@@ -507,6 +509,9 @@ class GameChat {
 
   /// Có khi còn tin cũ hơn; null là đã hết.
   final String? cursor;
+
+  /// Trang đọc bằng `after` còn tin mới hơn: đọc tiếp từ seq lớn nhất.
+  final bool hasNewer;
 }
 
 class GameChatMessage {
@@ -517,6 +522,7 @@ class GameChatMessage {
     required this.text,
     required this.system,
     required this.at,
+    this.hidden = false,
   });
 
   factory GameChatMessage.fromJson(Map<String, dynamic> json) {
@@ -527,8 +533,19 @@ class GameChatMessage {
       text: _string(json['text']),
       system: json['system'] == true,
       at: _date(json['at']),
+      hidden: json['hidden'] == true,
     );
   }
+
+  GameChatMessage asHidden() => GameChatMessage(
+    seq: seq,
+    uid: uid,
+    name: name,
+    text: '',
+    system: system,
+    at: at,
+    hidden: true,
+  );
 
   final int seq;
   final String uid;
@@ -538,6 +555,9 @@ class GameChatMessage {
   /// Tin bot ghi (vd. một sói vừa chọn cắn), không phải người chơi gõ.
   final bool system;
   final DateTime? at;
+
+  /// Người xem đã chặn người gửi: không vẽ.
+  final bool hidden;
 }
 
 /// Một việc người chơi làm được lúc này. App vẽ theo [input] và [options],

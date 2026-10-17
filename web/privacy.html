@@ -103,7 +103,7 @@
       <img src="icons/Icon-192.png" alt="3i" />
       <h1>Chính sách quyền riêng tư — 3i</h1>
     </header>
-    <p class="updated">Cập nhật lần cuối: 04/07/2026</p>
+    <p class="updated">Cập nhật lần cuối: 18/10/2026</p>
 
     <section>
       <h2>Giới thiệu</h2>
@@ -138,6 +138,24 @@
           thu thập vị trí dừng ngay khi bạn kết thúc buổi chạy.
         </li>
         <li>
+          <strong>Liên kết Telegram (tuỳ chọn, dùng cho game Ma Sói):</strong>
+          khi bạn liên kết Telegram, chúng tôi lưu Telegram user ID, username
+          và tên hiển thị Telegram của bạn.
+        </li>
+        <li>
+          <strong>Game Ma Sói:</strong> đăng ký tham gia ván, vai được chia,
+          hành động của bạn trong ván và số km dùng để tính điểm.
+        </li>
+        <li>
+          <strong>Chat phe trong game Ma Sói:</strong> nội dung tin nhắn bạn
+          gửi và thời điểm gửi.
+        </li>
+        <li>
+          <strong>Báo cáo và chặn:</strong> khi bạn báo cáo một tin nhắn,
+          chúng tôi lưu bản sao nội dung tin bị báo cáo, người gửi và người
+          báo cáo. Chúng tôi cũng lưu danh sách người bạn đã chặn.
+        </li>
+        <li>
           <strong>Dữ liệu sử dụng ứng dụng:</strong> một số thao tác (tạo,
           tham gia, hoàn thành Kèo Chạy...) được ghi nhận qua Firebase
           Analytics để cải thiện sản phẩm, không gắn với danh tính ngoài tài
@@ -153,6 +171,23 @@
         trong Club, vận hành tính năng Kèo Chạy giữa các thành viên, và hiển
         thị vị trí trực tiếp cho thành viên Club khi bạn bật live tracking.
       </p>
+      <ul>
+        <li>
+          <strong>Telegram:</strong> để bot @threei_bot gửi tin nhắn riêng
+          cho bạn (vai, nhắc việc, báo có tin chat mới) và kiểm tra bạn có
+          trong nhóm chat của câu lạc bộ không.
+        </li>
+        <li>
+          <strong>Game Ma Sói:</strong> để vận hành ván chơi và tính điểm
+          theo số km.
+        </li>
+        <li>
+          <strong>Báo cáo:</strong> để quản trị viên xem xét tin bị báo cáo.
+        </li>
+        <li>
+          <strong>Danh sách chặn:</strong> để ẩn tin của người bạn đã chặn.
+        </li>
+      </ul>
     </section>
 
     <section>
@@ -171,11 +206,21 @@
           <strong>Strava:</strong> chỉ khi bạn chủ động kết nối tài khoản, để
           đọc dữ liệu buổi chạy.
         </li>
+        <li>
+          <strong>Telegram:</strong> chỉ khi bạn chủ động liên kết, để bot
+          @threei_bot nhắn riêng cho bạn và kiểm tra bạn có trong nhóm chat
+          của câu lạc bộ không. Telegram là dịch vụ bên thứ ba và có chính
+          sách quyền riêng tư riêng.
+        </li>
       </ul>
       <p>
         Dữ liệu bạn đặt ở chế độ "Public trong Club" (ví dụ tiến độ Kèo Chạy,
         hoạt động, vị trí live) sẽ hiển thị cho các thành viên khác trong
         cùng Club. Dữ liệu đặt "Chỉ mình tôi" không hiển thị cho ai khác.
+      </p>
+      <p>
+        Tin nhắn chat phe trong game Ma Sói chỉ người cùng phe trong ván đó
+        đọc được.
       </p>
     </section>
 
@@ -186,6 +231,9 @@
         (Firestore Security Rules) giới hạn quyền đọc/ghi theo từng tài
         khoản — bạn chỉ đọc/ghi được dữ liệu của chính mình hoặc dữ liệu
         Club được phép xem.
+      </p>
+      <p>
+        Tin nhắn chat phe trong game Ma Sói tự xoá sau 90 ngày.
       </p>
     </section>
 

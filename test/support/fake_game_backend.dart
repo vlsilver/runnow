@@ -38,9 +38,11 @@ class FakeGameBackend {
   final requests = <http.Request>[];
 
   /// Trang chat theo cursor; khoá '' là trang mới nhất. POST thêm tin của
-  /// [chatSender] lên đầu trang ''.
+  /// [chatSender] lên đầu trang ''. `after=n` trả tối đa [chatAfterLimit] tin
+  /// sau seq n lấy từ trang '', kèm hasNewer.
   Map<String, Map<String, dynamic>> chatPages = {};
   String chatSender = 'me';
+  int chatAfterLimit = 30;
 
   RunNowApiClient client() => RunNowApiClient(
     baseUri: Uri.parse('https://api.example.test'),
@@ -98,7 +100,10 @@ class FakeGameBackend {
           ],
         };
         body = me;
+      } else if (path.endsWith('/reports')) {
+        body = {'ok': true};
       } else if (path.contains('/chats/')) {
+        final after = int.tryParse(request.url.queryParameters['after'] ?? '');
         if (request.method == 'POST') {
           final page = chatPages['']!;
           final messages = (page['messages'] as List).cast<Object>();
@@ -121,6 +126,18 @@ class FakeGameBackend {
             ],
           };
           body = {'ok': true};
+        } else if (after != null) {
+          final page = chatPages['']!;
+          final newer = [
+            for (final m in page['messages'] as List)
+              if ((m as Map<String, dynamic>)['seq'] as int > after) m,
+          ]..sort((a, b) => (a['seq'] as int).compareTo(b['seq'] as int));
+          body = {
+            ...page,
+            'cursor': null,
+            'messages': newer.take(chatAfterLimit).toList().reversed.toList(),
+            'hasNewer': newer.length > chatAfterLimit,
+          };
         } else {
           body = chatPages[request.url.queryParameters['cursor'] ?? '']!;
         }

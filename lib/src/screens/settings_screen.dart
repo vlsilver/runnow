@@ -226,6 +226,11 @@ class SettingsScreen extends ConsumerWidget {
                     title: 'Chính sách quyền riêng tư',
                     onTap: () => _openWebDocument('privacy.html'),
                   ),
+                  _SettingsRow(
+                    icon: Icons.gavel_rounded,
+                    title: 'Điều khoản sử dụng',
+                    onTap: () => _openWebDocument('terms.html'),
+                  ),
                 ],
               ),
               const SizedBox(height: 18),

@@ -5,10 +5,9 @@ import 'package:myrun/src/runnow_api_client.dart';
 
 /// Giữ state một chat phe (Phe Sói, Cặp đôi) và poll tin mới.
 ///
-/// Màn chat đang mở thì poll trang mới nhất mỗi [pollEvery]. Một trang có
-/// 30 tin, mà mỗi người gửi tối đa 1 tin/giây và phe chỉ vài người, nên giữa
-/// hai lần poll không thể có quá một trang tin mới: gộp theo seq là đủ, không
-/// sót tin.
+/// Lần đầu đọc trang mới nhất. Sau đó màn chat đang mở thì mỗi [pollEvery]
+/// đọc các tin sau seq lớn nhất đang có (`after`), còn tin mới hơn thì đọc
+/// tiếp ngay. App vào nền hay mất mạng lâu, lúc quay lại vẫn lấp đủ đoạn giữa.
 class GameChatController extends ChangeNotifier {
   GameChatController({
     required this._api,
@@ -28,7 +27,7 @@ class GameChatController extends ChangeNotifier {
   bool _loaded = false;
   Object? _error;
   bool _hasOlder = false;
-  bool _olderLoaded = false;
+  String? _olderCursor;
   bool _loadingOlder = false;
 
   bool _active = false;
@@ -47,9 +46,10 @@ class GameChatController extends ChangeNotifier {
   bool get hasOlder => _hasOlder;
   bool get loadingOlder => _loadingOlder;
 
-  /// Tin mới trước.
+  /// Tin mới trước, bỏ tin của người đã chặn.
   List<GameChatMessage> get messages =>
-      _messages.values.toList()..sort((a, b) => b.seq.compareTo(a.seq));
+      _messages.values.where((m) => !m.hidden).toList()
+        ..sort((a, b) => b.seq.compareTo(a.seq));
 
   /// Bật khi màn đang hiện và app ở foreground: tải ngay rồi poll. Tắt thì
   /// dừng poll.
@@ -91,11 +91,22 @@ class GameChatController extends ChangeNotifier {
 
   Future<void> _fetch() async {
     try {
-      final page = await _api.getGameChat(gameId, chatKey);
-      if (_disposed) return;
-      _apply(page);
-      if (!_olderLoaded) _hasOlder = page.cursor != null;
-      _loaded = true;
+      if (!_loaded) {
+        final page = await _api.getGameChat(gameId, chatKey);
+        if (_disposed) return;
+        _apply(page);
+        _olderCursor = page.cursor;
+        _hasOlder = page.cursor != null;
+        _loaded = true;
+      } else {
+        final newest = _messages.isEmpty
+            ? 0
+            : _messages.keys.reduce((a, b) => a > b ? a : b);
+        final page = await _api.getGameChat(gameId, chatKey, after: newest);
+        if (_disposed) return;
+        _apply(page);
+        if (page.hasNewer) _again = true;
+      }
       _error = null;
     } catch (error, stack) {
       if (_disposed) return;
@@ -126,18 +137,29 @@ class GameChatController extends ChangeNotifier {
     await refresh();
   }
 
-  /// Tải trang cũ hơn tin cũ nhất đang có. Lỗi ném ra cho màn hình báo.
+  /// Báo cáo tin cho admin; [block] thì ẩn luôn mọi tin của người gửi ngay
+  /// trên máy, không chờ lần đọc sau. Lỗi ném ra cho màn hình báo.
+  Future<void> report(GameChatMessage message, {required bool block}) async {
+    await _api.reportGameChat(gameId, chatKey, message.seq, block: block);
+    if (!block || _disposed) return;
+    for (final m in _messages.values.toList()) {
+      if (m.uid == message.uid && !m.system) _messages[m.seq] = m.asHidden();
+    }
+    notifyListeners();
+  }
+
+  /// Tải trang cũ hơn theo cursor backend trả. Lỗi ném ra cho màn hình báo.
   Future<void> loadOlder() async {
-    if (!_hasOlder || _loadingOlder || _messages.isEmpty) return;
-    final oldest = _messages.keys.reduce((a, b) => a < b ? a : b);
+    final cursor = _olderCursor;
+    if (!_hasOlder || _loadingOlder || cursor == null) return;
     _loadingOlder = true;
     notifyListeners();
     try {
-      final page = await _api.getGameChat(gameId, chatKey, cursor: '$oldest');
+      final page = await _api.getGameChat(gameId, chatKey, cursor: cursor);
       if (_disposed) return;
       _apply(page);
+      _olderCursor = page.cursor;
       _hasOlder = page.cursor != null;
-      _olderLoaded = true;
     } finally {
       if (!_disposed) {
         _loadingOlder = false;
