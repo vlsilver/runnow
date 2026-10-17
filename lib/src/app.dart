@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/formatters.dart';
+import 'package:myrun/src/games/game_detail_screen.dart';
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/health_sync.dart';
@@ -196,6 +197,11 @@ final _router = GoRouter(
       path: '/coach/:planId',
       builder: (context, state) =>
           CoachDetailScreen(planId: state.pathParameters['planId']!),
+    ),
+    GoRoute(
+      path: '/games/:id',
+      builder: (context, state) =>
+          GameDetailScreen(gameId: state.pathParameters['id']!),
     ),
   ],
 );
