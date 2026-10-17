@@ -164,33 +164,15 @@ func TestR12FirstNightIsFirst22hAtLeastTwoHoursAfterStart(t *testing.T) {
 	g.do(KindCupidPair, "cupid", "cupid", "v1")
 }
 
-func TestR13VillageWinsWhenRound14EndsWithoutWinner(t *testing.T) {
+// R13: ván không giới hạn số vòng. Chưa phe nào thắng thì ván chạy tiếp, kể
+// cả qua vòng 14 (trước đây hết vòng 14 thì Dân thắng).
+func TestR13NoRoundLimit(t *testing.T) {
 	g := game13(t)
-	for g.st.Round <= MaxRounds {
+	for g.st.Round <= 30 {
 		if g.st.Phase == PhaseEnded {
-			t.Fatalf("kết thúc sớm ở vòng %d", g.st.Round)
+			t.Fatalf("kết thúc ở vòng %d, winner %s", g.st.Round, g.st.Winner)
 		}
 		g.next()
-	}
-	if g.st.Phase != PhaseEnded || g.st.Winner != TeamVillage {
-		t.Fatalf("hết vòng 14: phase=%s winner=%s", g.st.Phase, g.st.Winner)
-	}
-}
-
-// R13 tính sau khi hết khung thợ săn: thợ săn bị treo ngày 14 vẫn được bắn trước.
-func TestR13TimeoutWaitsForHangedHunter(t *testing.T) {
-	g := game13(t)
-	for g.st.Round < MaxRounds {
-		g.next()
-	}
-	g.hang("hunter")
-	if g.st.Phase == PhaseEnded || g.st.Hunter == nil {
-		t.Fatalf("phải chờ thợ săn bắn: phase=%s", g.st.Phase)
-	}
-	g.do(KindHunterShoot, "hunter", "v1")
-	evs := g.next()
-	if deaths(evs)["v1"] != CauseShot || g.st.Winner != TeamVillage {
-		t.Fatalf("winner=%s evs=%+v", g.st.Winner, evs)
 	}
 }
 
@@ -434,17 +416,6 @@ func TestR24LoversWinWhenOnlyTheTwoRemain(t *testing.T) {
 	g.toPhase(PhaseDay)
 	if g.st.Winner != TeamLovers {
 		t.Fatalf("Cupid tự ghép: winner = %q", g.st.Winner)
-	}
-}
-
-func TestR25TimeoutVillageWinsLoversAndWolvesLose(t *testing.T) {
-	g := game13(t)
-	g.st.Lovers = []string{"v1", "w1"}
-	for g.st.Phase != PhaseEnded {
-		g.next()
-	}
-	if g.st.Winner != TeamVillage || !g.st.alive("w1") || !g.st.alive("v1") {
-		t.Fatalf("winner = %q", g.st.Winner)
 	}
 }
 

@@ -20,9 +20,6 @@ const (
 	PhaseEnded Phase = "ended"
 )
 
-// MaxRounds: hết vòng 14 mà chưa ai thắng thì Dân thắng (R13).
-const MaxRounds = 14
-
 // Team là phe thắng.
 type Team string
 

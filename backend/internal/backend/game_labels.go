@@ -27,7 +27,7 @@ var roleRules = map[werewolf.Role]string{
 
 const gameRulesText = "Mỗi vòng dài một ngày. 22h tới 10h là đêm: các vai có kỹ năng chọn người. 10h bản tin đêm, đề cử tới 17h; người nhiều đề cử nhất lên giàn. 20h tới 22h biểu quyết Treo hay Tha. 22h chốt phiếu và km.\n" +
 	"km trong khung 22h hôm qua tới 22h hôm nay quyết định có được dùng kỹ năng và có được bỏ phiếu không.\n" +
-	"Dân thắng khi hết sói. Sói thắng khi số sói bằng số người còn lại. Cặp đôi Sói và Dân thắng khi chỉ còn hai người họ. Hết 14 vòng thì Dân thắng."
+	"Dân thắng khi hết sói. Sói thắng khi số sói bằng số người còn lại. Cặp đôi Sói và Dân thắng khi chỉ còn hai người họ. Ván chạy tới khi có phe thắng, không giới hạn số vòng."
 
 var teamLabels = map[werewolf.Team]string{
 	werewolf.TeamVillage: "Phe Dân", werewolf.TeamWolves: "Phe Sói", werewolf.TeamLovers: "Cặp đôi",

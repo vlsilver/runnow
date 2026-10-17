@@ -63,7 +63,6 @@ const (
 	VoidGameOver    = "game_over"
 	ReasonNoChoice  = "no_choice"
 	ReasonNoTrial   = "nominee_left"
-	ReasonTimeout   = "timeout"
 )
 
 var ErrNotRunning = errors.New("ván đã kết thúc hoặc đang pause")
@@ -525,7 +524,8 @@ func (r *resolver) resolveHunter() {
 	}
 }
 
-// finish xét thắng thua (R18, R22–R25). Đang chờ thợ săn bắn thì chỉ kết thúc
+// finish xét thắng thua (R18, R22–R25). Ván không giới hạn số vòng (R13): chưa
+// phe nào thắng thì chạy tiếp, ván kẹt thì admin huỷ. Đang chờ thợ săn bắn thì chỉ kết thúc
 // khi kết quả không còn phụ thuộc phát bắn: Dân đã thắng (hết sói) thì phát bắn
 // không đổi được gì nữa.
 func (r *resolver) finish() {
@@ -537,15 +537,11 @@ func (r *resolver) finish() {
 		r.st.Hunter = nil
 		r.dropEvents(EventHunterTurn)
 	}
-	reason := ""
-	if w == "" && r.st.Phase == PhaseNight && r.st.Round > MaxRounds {
-		w, reason = TeamVillage, ReasonTimeout // R13, R25
-	}
 	if w == "" {
 		return
 	}
 	r.st.Winner, r.st.Phase = w, PhaseEnded
-	r.emit(Event{Kind: EventWinner, Team: w, Reason: reason})
+	r.emit(Event{Kind: EventWinner, Team: w})
 }
 
 // winner trả phe thắng, rỗng nếu ván còn tiếp.

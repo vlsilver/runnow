@@ -29,6 +29,9 @@ func TestFuzzRandomGames(t *testing.T) {
 	}
 }
 
+// fuzzMaxSteps khoảng 100 vòng, gấp nhiều lần một ván thật.
+const fuzzMaxSteps = 400
+
 var fuzzKm = []float64{0, 0, 500, 999, 1000, 1000, 2500, 5000, 12000}
 
 func playRandomGame(t *testing.T, seed uint64) []Event {
@@ -59,10 +62,9 @@ func playRandomGame(t *testing.T, seed uint64) []Event {
 	dead := map[string]bool{}
 	saveUsed, poisonUsed, winners, poisoned := 0, 0, 0, 0
 
-	for steps := 0; st.Phase != PhaseEnded; steps++ {
-		if steps > 200 {
-			t.Fatalf("seed %d: quá 200 bước mà chưa kết thúc (%s)", seed, st.PhaseKey())
-		}
+	// Ván không giới hạn số vòng (R13), nên ván ngẫu nhiên có thể chạy mãi khi
+	// không ai đủ km. Dừng ở fuzzMaxSteps bước và vẫn kiểm bất biến tới đó.
+	for steps := 0; st.Phase != PhaseEnded && steps < fuzzMaxSteps; steps++ {
 		now := st.NextAt()
 		// Người chơi bấm ngẫu nhiên trong cửa sổ, trước giờ chốt kế tiếp.
 		for i := 0; i < 2*len(players); i++ {
@@ -158,11 +160,8 @@ func playRandomGame(t *testing.T, seed uint64) []Event {
 	if saveUsed > 1 || poisonUsed > 1 || poisoned > 1 {
 		t.Fatalf("seed %d: dùng bình cứu %d lần, bình độc %d lần", seed, saveUsed, poisonUsed)
 	}
-	if winners != 1 || st.Winner == "" {
-		t.Fatalf("seed %d: %d event thắng, winner %q", seed, winners, st.Winner)
-	}
-	if st.Round > MaxRounds+1 {
-		t.Fatalf("seed %d: kết thúc ở vòng %d", seed, st.Round)
+	if ended := st.Phase == PhaseEnded; ended != (winners == 1) || ended != (st.Winner != "") || winners > 1 {
+		t.Fatalf("seed %d: phase %s, %d event thắng, winner %q", seed, st.Phase, winners, st.Winner)
 	}
 	return all
 }

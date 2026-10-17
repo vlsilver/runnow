@@ -45,6 +45,10 @@ type simEnv struct {
 
 const simPlayers = 16
 
+// simRounds là số vòng ván giả lập chạy rồi admin huỷ, vì ván không giới hạn
+// số vòng và kịch bản dưới không để phe nào thắng.
+const simRounds = 14
+
 func newSimEnv(t *testing.T) *simEnv {
 	t.Helper()
 	e := &simEnv{startEnv: newStartEnv(t)}
@@ -419,9 +423,12 @@ func TestEmulatorGameSimulation(t *testing.T) {
 	}
 
 	// Vòng 2 → 14: sói không cắn, tiên tri soi qua nút, bảo vệ qua app, ban ngày
-	// một người đề cử qua app và ba người bấm Tha. Mong đợi: không ai chết, hết
-	// vòng 14 thì Dân thắng vì hết giờ.
-	for st.Phase != ww.PhaseEnded {
+	// một người đề cử qua app và ba người bấm Tha. Mong đợi: không ai chết, chưa
+	// phe nào thắng nên hết vòng 14 ván vẫn chạy sang vòng 15.
+	for st.Round <= simRounds {
+		if st.Phase == ww.PhaseEnded {
+			t.Fatalf("vòng %d: ván kết thúc, thắng %q", st.Round, st.Winner)
+		}
 		r := st.Round
 		switch {
 		case st.Phase == ww.PhaseNight && st.Hunter == nil:
@@ -461,13 +468,17 @@ func TestEmulatorGameSimulation(t *testing.T) {
 			t.Fatalf("vòng %d %s: còn %d người", st.Round, st.Phase, len(e.alive()))
 		}
 	}
-	if st.Winner != ww.TeamVillage || st.Round != ww.MaxRounds+1 || e.game(e.g.id)["status"] != gameEnded {
-		t.Fatalf("kết thúc: thắng %q, vòng %d, status %v", st.Winner, st.Round, e.game(e.g.id)["status"])
+	if st.Winner != "" || st.Round != simRounds+1 || st.Phase != ww.PhaseNight || e.game(e.g.id)["status"] != gameRunning {
+		t.Fatalf("sau vòng %d: thắng %q, vòng %d %s, status %v", simRounds, st.Winner, st.Round, st.Phase, e.game(e.g.id)["status"])
 	}
+	e.due() // vẫn hẹn mốc kế của vòng 15
+
+	// Ván kẹt thì admin huỷ: từ đó game-advance không hẹn mốc nào nữa.
+	e.want(e.call("boss", "POST", "/v1/games/"+e.g.id+"/admin/cancel", nil, ""), 200, "")
 	n := len(e.scheduled())
 	e.post("/tasks/game-advance", gameAdvanceTask{GameID: e.g.id})
-	if len(e.scheduled()) != n {
-		t.Fatal("ván đã xong mà game-advance vẫn hẹn mốc kế")
+	if len(e.scheduled()) != n || e.game(e.g.id)["status"] != gameCancelled {
+		t.Fatalf("ván đã huỷ mà game-advance vẫn hẹn mốc kế, status %v", e.game(e.g.id)["status"])
 	}
 
 	replayMatches(t, e.g)
@@ -475,7 +486,7 @@ func TestEmulatorGameSimulation(t *testing.T) {
 	// Tiêu chí 1 phút tính phần ván, không tính lượt bấm dồn: thời gian tranh
 	// chấp ở đó là số đo của kịch bản, đã log riêng.
 	elapsed := time.Since(began)
-	t.Logf("ván %d vòng: %d event, %d call Telegram, %d lần webhook 503, %s (bấm dồn %s)", ww.MaxRounds, e.events(), len(e.tg.Calls("")), e.retries.Load(), elapsed.Round(time.Millisecond), e.bursts.Round(time.Millisecond))
+	t.Logf("ván %d vòng: %d event, %d call Telegram, %d lần webhook 503, %s (bấm dồn %s)", simRounds, e.events(), len(e.tg.Calls("")), e.retries.Load(), elapsed.Round(time.Millisecond), e.bursts.Round(time.Millisecond))
 	if elapsed-e.bursts > time.Minute {
 		t.Errorf("chạy hết ván mất %s ngoài lượt bấm dồn, quá 1 phút", elapsed-e.bursts)
 	}

@@ -631,10 +631,6 @@ func feedItem(d map[string]any, players map[string]gamePlayerInfo) (GameFeedItem
 		case werewolf.EventHunterTurn:
 			item.Lines = append(item.Lines, fmt.Sprintf("%s là Thợ săn, được bắn một người.", name(e.UID)))
 		case werewolf.EventWinner:
-			if e.Reason == werewolf.ReasonTimeout {
-				item.Lines = append(item.Lines, fmt.Sprintf("Hết %d vòng, %s thắng.", werewolf.MaxRounds, teamLabels[e.Team]))
-				continue
-			}
 			item.Lines = append(item.Lines, teamLabels[e.Team]+" thắng.")
 		}
 	}
