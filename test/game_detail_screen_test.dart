@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -580,6 +582,72 @@ void main() {
       expect(find.text('Đã chết · Sói'), findsOneWidget);
       expect(find.text('Đã chết · Thợ săn'), findsOneWidget);
       expect(find.text('Dân'), findsOneWidget);
+      await close(tester);
+    });
+  });
+
+  group('actions', () {
+    setUp(() {
+      backend.game = {
+        'id': 'g1',
+        'title': 'Ma Sói tuần 42',
+        'status': 'running',
+        'statusLabel': 'Đang chơi',
+        'refreshAfterSeconds': 300,
+        'isRegistered': true,
+      };
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'villager',
+        'roleLabel': 'Dân',
+        'actions': [
+          {
+            'kind': 'nominate',
+            'label': 'Đề cử',
+            'help': 'Chọn một người lên giàn.',
+            'input': 'single_target',
+            'enabled': true,
+            'options': [
+              {'id': 'u2', 'label': 'Bình'},
+            ],
+          },
+        ],
+      };
+    });
+
+    testWidgets('sends the pick for the action kind', (tester) async {
+      await pumpScreen(tester);
+      await tester.pump();
+      expect(find.text('Việc của bạn'), findsOneWidget);
+
+      await tester.tap(find.text('Bình'));
+      await tester.pump();
+      await tester.pump();
+
+      final sent = backend.requests.singleWhere(
+        (r) => r.url.path == '/v1/games/g1/actions',
+      );
+      expect(jsonDecode(sent.body), {
+        'kind': 'nominate',
+        'targets': ['u2'],
+      });
+      await close(tester);
+    });
+
+    testWidgets('shows why the backend refused the pick', (tester) async {
+      backend.failures['POST /v1/games/g1/actions'] = (
+        409,
+        {'error': 'phase_closed', 'message': 'Đã quá giờ đề cử.'},
+      );
+      await pumpScreen(tester);
+      await tester.pump();
+
+      await tester.tap(find.text('Bình'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Đã quá giờ đề cử.'), findsOneWidget);
       await close(tester);
     });
   });

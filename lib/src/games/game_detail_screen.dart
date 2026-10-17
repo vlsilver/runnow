@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:myrun/src/games/game_action_card.dart';
 import 'package:myrun/src/games/game_detail_controller.dart';
 import 'package:myrun/src/games/game_my_card.dart';
 import 'package:myrun/src/games/telegram_link_controller.dart';
@@ -109,6 +110,24 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     }
   }
 
+  Future<void> _submit(
+    String kind, {
+    List<String> targets = const [],
+    String? choice,
+    bool clear = false,
+  }) async {
+    try {
+      await _controller.submitAction(
+        kind: kind,
+        targets: targets,
+        choice: choice,
+        clear: clear,
+      );
+    } catch (error) {
+      _showError(error);
+    }
+  }
+
   Future<void> _openLink(String url) async {
     final open =
         widget.openUrl ??
@@ -195,6 +214,30 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                       if (me != null && me.role != null) ...[
                         const SizedBox(height: 12),
                         GameMyCard(me: me, onOpenUrl: _openLink),
+                      ],
+                      if (me != null && me.actions.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        const _SectionTitle('Việc của bạn'),
+                        for (final action in me.actions)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: GameActionCard(
+                              key: ValueKey(action.kind),
+                              action: action,
+                              serverNow: _controller.serverNow,
+                              onSubmit:
+                                  ({
+                                    targets = const [],
+                                    choice,
+                                    clear = false,
+                                  }) => _submit(
+                                    action.kind,
+                                    targets: targets,
+                                    choice: choice,
+                                    clear: clear,
+                                  ),
+                            ),
+                          ),
                       ],
                       if (detail.status == 'registering' ||
                           detail.isRegistered) ...[
