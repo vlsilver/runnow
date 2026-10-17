@@ -82,12 +82,14 @@ ensure_queue() {
   local queue="$1"
   local rate="$2"
   local concurrency="$3"
+  shift 3
   if ! gcloud tasks queues describe "$queue" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
     gcloud tasks queues create "$queue" \
       --location "$REGION" \
       --max-dispatches-per-second "$rate" \
       --max-concurrent-dispatches "$concurrency" \
       --max-attempts 8 \
+      "$@" \
       --project "$PROJECT_ID"
   fi
 }
@@ -128,6 +130,7 @@ STRAVA_BACKFILL_QUEUE: strava-backfill
 DERIVED_DATA_QUEUE: derived-data
 NOTIFY_QUEUE: notifications
 BOT_INBOUND_QUEUE: bot-inbound
+GAME_INBOUND_QUEUE: game-inbound
 TELEGRAM_CHAT_ID: '${TELEGRAM_CHAT_ID:-}'
 TELEGRAM_BOT_USERNAME: '${TELEGRAM_BOT_USERNAME:-}'
 TELEGRAM_WEBHOOK_SECRET: '${TELEGRAM_WEBHOOK_SECRET:-}'
@@ -232,6 +235,10 @@ ensure_queue notifications 20 8
 # bot-inbound: xử lý tin bot song song có kiểm soát. Concurrency 6 — mỗi task
 # một cú Gemini Pro, quá nhiều cùng lúc dễ dính 429 Vertex AI (đã có retry).
 ensure_queue bot-inbound 10 6
+# game-inbound: update thành viên, flush outbox, chuyển pha Ma Sói (chạy trên
+# bot). Mỗi lúc chỉ có một ván nên concurrency 2 là đủ; backoff ngắn để tin của
+# ván không trễ lâu khi Telegram lỗi tạm.
+ensure_queue game-inbound 10 2 --min-backoff 2s --max-backoff 60s
 fi # end setup hạ tầng (is_full_deploy)
 require_secret STRAVA_CLIENT_SECRET
 require_secret STRAVA_WEBHOOK_VERIFY_TOKEN
@@ -252,7 +259,7 @@ if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
 fi
 
 if is_full_deploy; then
-  for ttl_collection in oauthStates integrationEvents activityTombstones botRateLimits botMessages; do
+  for ttl_collection in oauthStates integrationEvents activityTombstones botRateLimits botMessages linkCodes; do
     gcloud firestore fields ttls update expiresAt \
       --collection-group "$ttl_collection" \
       --enable-ttl \
