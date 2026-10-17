@@ -182,6 +182,33 @@ func TestEmulatorGameChatPages(t *testing.T) {
 	h.want(h.call("w2", "GET", path+"?cursor=x", nil, ""), 400, "")
 }
 
+// Poll bằng after lấy tin mới hơn seq app đang có, bắt đầu từ tin ngay sau
+// seq đó, để app vắng mặt lâu (nền, mất mạng) vẫn lấp được hết đoạn giữa.
+func TestEmulatorGameChatAfter(t *testing.T) {
+	g, h := runningAPIGame(t)
+	t0 := time.Now()
+	for i := 1; i <= 35; i++ {
+		if _, err := g.store.PostChat(context.Background(), g.id, chatWolves, fmt.Sprint(i), GameViewer{UID: "w1"}, t0.Add(time.Duration(i)*time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := "/v1/games/" + g.id + "/chats/wolves"
+	r := h.call("w2", "GET", path+"?after=2", nil, "")
+	msgs := chatMessages(t, r)
+	if len(msgs) != 30 || msgs[0]["text"] != "32" || msgs[29]["text"] != "3" || r.body["hasNewer"] != true || r.body["cursor"] != nil {
+		t.Fatalf("after=2: %d tin, %v … %v, %s", len(msgs), msgs[0]["text"], msgs[len(msgs)-1]["text"], r.raw)
+	}
+	r = h.call("w2", "GET", path+"?after=32", nil, "")
+	if msgs := chatMessages(t, r); len(msgs) != 3 || msgs[0]["text"] != "35" || msgs[2]["text"] != "33" || r.body["hasNewer"] != false {
+		t.Fatalf("after=32 = %s", r.raw)
+	}
+	if r := h.call("w2", "GET", path+"?after=35", nil, ""); len(chatMessages(t, r)) != 0 || r.body["hasNewer"] != false {
+		t.Fatalf("after=35 = %s", r.raw)
+	}
+	h.want(h.call("w2", "GET", path+"?after=-1", nil, ""), 400, "")
+	h.want(h.call("w2", "GET", path+"?after=1&cursor=5", nil, ""), 400, "")
+}
+
 // Sói đã chết và mọi người khi ván đã hết thì vẫn đọc được nhưng không gửi được.
 // Tin trống, tin quá dài và tin gửi dồn trong một giây bị từ chối, không ghi.
 func TestEmulatorGameChatSendRules(t *testing.T) {
@@ -206,5 +233,25 @@ func TestEmulatorGameChatSendRules(t *testing.T) {
 	h.want(h.call("w2", "POST", path, map[string]any{"text": "hết ván"}, ""), 403, "chat_read_only")
 	if r := h.call("w2", "GET", path, nil, ""); r.status != 200 || r.body["canSend"] != false {
 		t.Fatalf("hết ván đọc chat = %d %s", r.status, r.raw)
+	}
+}
+
+// Huỷ ván chỉ đổi status của game, state engine vẫn đang chạy dở. Chat vẫn
+// phải chỉ còn đọc, và không bắn DM báo tin cho một ván đã chết.
+func TestEmulatorGameChatCancelledReadOnly(t *testing.T) {
+	g, h := runningAPIGame(t)
+	if err := g.store.AdminCancel(context.Background(), g.id, "admin", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	path := "/v1/games/" + g.id + "/chats/wolves"
+	h.want(h.call("w1", "POST", path, map[string]any{"text": "còn ai không"}, ""), 403, "chat_read_only")
+	if r := h.call("w1", "GET", path, nil, ""); r.status != 200 || r.body["canSend"] != false {
+		t.Fatalf("ván huỷ đọc chat = %d %s", r.status, r.raw)
+	}
+	if got := meChats(t, h, g.id, "w1"); got != "wolves:Phe Sói:false" {
+		t.Fatalf("/me chats sau khi huỷ = %q", got)
+	}
+	if got := chatPings(t, g); len(got) != 0 {
+		t.Fatalf("ping sau khi huỷ = %q", got)
 	}
 }

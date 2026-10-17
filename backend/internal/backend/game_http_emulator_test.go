@@ -446,17 +446,12 @@ func TestEmulatorGameMeAndActions(t *testing.T) {
 	h.want(h.call("outsider", "GET", "/v1/games/"+g.id+"/me", nil, ""), 404, "not_player")
 	h.want(h.call("outsider", "POST", "/v1/games/"+g.id+"/actions", map[string]any{"kind": "wolf_bite", "targets": []string{"v1"}}, ""), 422, "not_your_role")
 
-	// Danh sách: tiên tri đã soi thì hết việc, sói chưa cắn thì còn việc.
-	if item := h.call("seer", "GET", "/v1/games", nil, "").body["items"].([]any)[0].(map[string]any); item["hasTodo"] != false {
-		t.Fatalf("seer hasTodo = %v", item["hasTodo"])
-	}
-	if item := h.call("w1", "GET", "/v1/games", nil, "").body["items"].([]any)[0].(map[string]any); item["hasTodo"] != true {
-		t.Fatalf("w1 hasTodo = %v", item["hasTodo"])
+	// Danh sách nằm trên feed Kèo, ai cũng liếc thấy, nên việc ban đêm không bật
+	// badge: sói chưa cắn vẫn hasTodo false như dân. Việc ban ngày: xem tally test.
+	if item := h.call("w1", "GET", "/v1/games", nil, "").body["items"].([]any)[0].(map[string]any); item["hasTodo"] != false {
+		t.Fatalf("w1 chưa cắn mà hasTodo = %v", item["hasTodo"])
 	}
 	h.want(h.call("w1", "POST", "/v1/games/"+g.id+"/actions", map[string]any{"kind": "wolf_bite", "targets": []string{"v1"}}, ""), 200, "")
-	if item := h.call("w1", "GET", "/v1/games", nil, "").body["items"].([]any)[0].(map[string]any); item["hasTodo"] != false {
-		t.Fatalf("w1 đã cắn mà hasTodo = %v", item["hasTodo"])
-	}
 	// Admin không bấm thay được người chơi thật, không đẩy giờ được ván thật.
 	h.want(h.call("boss", "POST", "/v1/games/"+g.id+"/admin/act-as", map[string]any{"uid": "w1", "kind": "wolf_bite", "targets": []string{"v1"}}, ""), 422, "not_test_mode")
 	h.want(h.call("w1", "POST", "/v1/games/"+g.id+"/admin/advance", map[string]any{"expectedKey": "x"}, ""), 403, "not_admin")
@@ -475,5 +470,22 @@ func TestEmulatorGameMeAfterEndShowsAllRoles(t *testing.T) {
 	h.want(me, 200, "")
 	if roles := me.body["allRoles"].([]any); len(roles) != 10 || len(me.body["actions"].([]any)) != 0 {
 		t.Fatalf("me = %s", me.raw)
+	}
+}
+
+// Ván đã huỷ hay đã hết chỉ nằm trên feed thêm một ngày, để mọi người kịp thấy
+// kết quả, rồi thôi chiếm chỗ trên các kèo đang chạy.
+func TestEmulatorGameListHidesOldClosedGames(t *testing.T) {
+	g, h := runningAPIGame(t)
+	if err := g.store.AdminCancel(context.Background(), g.id, "admin", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	items := h.call("outsider", "GET", "/v1/games", nil, "").body["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["status"] != "cancelled" {
+		t.Fatalf("vừa huỷ: items = %v", items)
+	}
+	seedMerge(t, g, map[string]any{"updatedAt": time.Now().Add(-25 * time.Hour)})
+	if items := h.call("outsider", "GET", "/v1/games", nil, "").body["items"].([]any); len(items) != 0 {
+		t.Fatalf("huỷ quá một ngày: items = %v", items)
 	}
 }

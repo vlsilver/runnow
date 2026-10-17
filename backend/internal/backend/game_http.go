@@ -54,7 +54,7 @@ func (s *Server) gameRoutes() {
 		return writeJSON(w, 200, me)
 	}))
 	s.route("GET /v1/games/{id}/chats/{key}", s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
-		chat, err := s.deps.Games.Chat(r.Context(), r.PathValue("id"), r.PathValue("key"), r.URL.Query().Get("cursor"), v)
+		chat, err := s.deps.Games.Chat(r.Context(), r.PathValue("id"), r.PathValue("key"), r.URL.Query().Get("cursor"), r.URL.Query().Get("after"), v)
 		if err != nil {
 			return err
 		}

@@ -123,8 +123,17 @@ func TestEmulatorTopicNominateAndVote(t *testing.T) {
 		t.Fatal("cú bấm bị từ chối mà tin trong topic vẫn bị sửa")
 	}
 
+	todo := func(uid string) any {
+		return e.h.call(uid, "GET", "/v1/games", nil, "").body["items"].([]any)[0].(map[string]any)["hasTodo"]
+	}
+	if got := todo("v3"); got != true {
+		t.Fatalf("v3 chưa đề cử mà hasTodo = %v", got)
+	}
 	e.h.want(e.h.call("v3", "POST", "/v1/games/"+e.id+"/actions", map[string]any{"kind": "nominate", "targets": []string{"w1"}}, ""), 200, "")
 	wantEdit("<b>W1</b>: 2 (V2, V3)")
+	if got := todo("v3"); got != false {
+		t.Fatalf("v3 đã đề cử mà hasTodo = %v", got)
+	}
 
 	// Tin sửa ghi trước 17h mà gửi sau lần chốt thì vẽ số cuối, hết nút.
 	if text, _ := e.press(tg["v4"], pick); text != "Đã chọn W1." {

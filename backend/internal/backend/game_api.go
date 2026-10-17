@@ -264,10 +264,15 @@ type GameListItem struct {
 	TestMode     bool       `json:"testMode"`
 }
 
-const gameListLimit = 10
+const (
+	gameListLimit = 10
+	// gameListKeepClosed: ván đã hết hay đã huỷ còn trên feed bấy lâu.
+	gameListKeepClosed = 24 * time.Hour
+)
 
-// List trả 10 ván mới nhất. Ván thử chỉ hiện với admin, người test và người đã
-// đăng ký vào ván đó.
+// List trả các ván trong 10 ván mới nhất còn đáng hiện: ván đã đóng quá
+// gameListKeepClosed thì bỏ. Ván thử chỉ hiện với admin, người test và người
+// đã đăng ký vào ván đó.
 func (s *GameStore) List(ctx context.Context, v GameViewer, wall time.Time) (GameList, error) {
 	cfg, err := s.loadConfig(ctx)
 	if err != nil {
@@ -293,6 +298,9 @@ func (s *GameStore) List(ctx context.Context, v GameViewer, wall time.Time) (Gam
 		g := d.Data()
 		registered := mine[i].Exists()
 		if g["testMode"] == true && !cfg.isTester(v.UID) && !registered {
+			continue
+		}
+		if gameClosed(stringValue(g["status"])) && wall.Sub(timeValue(g["updatedAt"])) > gameListKeepClosed {
 			continue
 		}
 		item := GameListItem{
@@ -435,6 +443,9 @@ func todoKinds(st *werewolf.State, uid string, mine []werewolf.Action, now time.
 	return out
 }
 
+// hasTodo bật badge trên feed Kèo, nơi ai cũng liếc thấy, nên chỉ tính việc
+// mọi người còn sống đều có. Việc riêng của vai (cắn, soi, cứu…) mà bật badge
+// thì lộ vai; những việc đó đã có DM và màn chi tiết ván.
 func (s *GameStore) hasTodo(ctx context.Context, game *firestore.DocumentRef, g map[string]any, uid string, wall time.Time) (bool, error) {
 	st, err := s.loadState(ctx, game)
 	if err != nil || st == nil {
@@ -444,7 +455,12 @@ func (s *GameStore) hasTodo(ctx context.Context, game *firestore.DocumentRef, g 
 	if err != nil {
 		return false, err
 	}
-	return len(todoKinds(st, uid, mine, gameNow(g, wall))) > 0, nil
+	for _, k := range todoKinds(st, uid, mine, gameNow(g, wall)) {
+		if k == werewolf.KindNominate || k == werewolf.KindVote {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // ---- Người chơi và feed ----
@@ -993,7 +1009,7 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 		return out, err
 	}
 	for _, key := range []string{chatWolves, chatLovers} {
-		if member, canSend := chatAccess(st, key, v.UID); member {
+		if member, canSend := chatAccess(st, data, key, v.UID); member {
 			out.Chats = append(out.Chats, GameChatLink{Key: key, Label: chatLabels[key], CanSend: canSend})
 		}
 	}

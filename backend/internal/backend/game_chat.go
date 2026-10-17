@@ -63,12 +63,13 @@ func chatMembers(st *werewolf.State, key string) []string {
 	return out
 }
 
-// chatAccess: người đã chết và ván đã hết thì chỉ còn đọc.
-func chatAccess(st *werewolf.State, key, uid string) (member, canSend bool) {
+// chatAccess: người đã chết, ván đã hết hay đã huỷ thì chỉ còn đọc. Huỷ ván chỉ
+// đổi status của game, không đụng state, nên phải xét cả gameData.
+func chatAccess(st *werewolf.State, gameData map[string]any, key, uid string) (member, canSend bool) {
 	if st == nil || !slices.Contains(chatMembers(st, key), uid) {
 		return false, false
 	}
-	return true, st.Players[uid].Alive && st.Phase != werewolf.PhaseEnded
+	return true, st.Players[uid].Alive && st.Phase != werewolf.PhaseEnded && !gameClosed(stringValue(gameData["status"]))
 }
 
 type GameChat struct {
@@ -77,6 +78,8 @@ type GameChat struct {
 	CanSend  bool              `json:"canSend"`
 	Messages []GameChatMessage `json:"messages"`
 	Cursor   string            `json:"cursor,omitempty"`
+	// HasNewer: trang after còn tin mới hơn, gọi tiếp với after là seq lớn nhất.
+	HasNewer bool `json:"hasNewer"`
 }
 
 type GameChatMessage struct {
@@ -92,8 +95,13 @@ func chatRef(game *firestore.DocumentRef, key string) *firestore.DocumentRef {
 	return game.Collection("chats").Doc(key)
 }
 
-// Chat trả một trang tin, mới trước, như feed. cursor là seq cuối của trang trước.
-func (s *GameStore) Chat(ctx context.Context, gameID, key, cursor string, v GameViewer) (GameChat, error) {
+// Chat trả một trang tin, luôn mới trước. Không có tham số là trang mới nhất;
+// cursor (seq cuối của trang trước) lùi về tin cũ hơn; after lấy tối đa một
+// trang tin ngay sau seq đó, để poll lấp được đoạn app chưa có.
+func (s *GameStore) Chat(ctx context.Context, gameID, key, cursor, after string, v GameViewer) (GameChat, error) {
+	if cursor != "" && after != "" {
+		return GameChat{}, invalidRequest()
+	}
 	cfg, err := s.loadConfig(ctx)
 	if err != nil {
 		return GameChat{}, err
@@ -109,22 +117,40 @@ func (s *GameStore) Chat(ctx context.Context, gameID, key, cursor string, v Game
 	if err != nil {
 		return GameChat{}, err
 	}
-	member, canSend := chatAccess(st, key, v.UID)
+	member, canSend := chatAccess(st, g.Data(), key, v.UID)
 	if !member {
 		return GameChat{}, errChatNotFound
 	}
 	col := chatRef(g.Ref, key).Collection("chatMessages")
 	q := col.OrderBy("seq", firestore.Desc).Limit(chatPageSize)
-	if cursor != "" {
+	switch {
+	case cursor != "":
 		n, err := strconv.ParseInt(cursor, 10, 64)
 		if err != nil || n < 1 {
 			return GameChat{}, invalidRequest()
 		}
 		q = col.Where("seq", "<", n).OrderBy("seq", firestore.Desc).Limit(chatPageSize)
+	case after != "":
+		n, err := strconv.ParseInt(after, 10, 64)
+		if err != nil || n < 0 {
+			return GameChat{}, invalidRequest()
+		}
+		// Lấy dư một tin để biết còn tin mới hơn hay không.
+		q = col.Where("seq", ">", n).OrderBy("seq", firestore.Asc).Limit(chatPageSize + 1)
 	}
 	docs, err := q.Documents(ctx).GetAll()
 	if err != nil {
 		return GameChat{}, err
+	}
+	out := GameChat{Key: key, Label: chatLabels[key], CanSend: canSend, Messages: []GameChatMessage{}}
+	if after != "" {
+		if len(docs) > chatPageSize {
+			docs, out.HasNewer = docs[:chatPageSize], true
+		}
+		slices.Reverse(docs)
+	}
+	if len(docs) == 0 {
+		return out, nil // poll không có tin mới thì khỏi đọc danh sách người chơi
 	}
 	players, err := s.loadPlayers(ctx, g.Ref)
 	if err != nil {
@@ -137,7 +163,6 @@ func (s *GameStore) Chat(ctx context.Context, gameID, key, cursor string, v Game
 		}
 		return "Người chơi"
 	}
-	out := GameChat{Key: key, Label: chatLabels[key], CanSend: canSend, Messages: []GameChatMessage{}}
 	for _, d := range docs {
 		m := d.Data()
 		msg := GameChatMessage{Seq: int64(number(m["seq"])), UID: stringValue(m["uid"]), Text: stringValue(m["text"]), At: timeValue(m["at"])}
@@ -148,7 +173,7 @@ func (s *GameStore) Chat(ctx context.Context, gameID, key, cursor string, v Game
 		}
 		out.Messages = append(out.Messages, msg)
 	}
-	if len(docs) == chatPageSize {
+	if after == "" && len(docs) == chatPageSize {
 		out.Cursor = strconv.FormatInt(int64(number(docs[len(docs)-1].Data()["seq"])), 10)
 	}
 	return out, nil
@@ -204,7 +229,7 @@ func (s *GameStore) PostChat(ctx context.Context, gameID, key, text string, v Ga
 		if err != nil {
 			return err
 		}
-		member, canSend := chatAccess(st, key, v.UID)
+		member, canSend := chatAccess(st, gd.Data(), key, v.UID)
 		if !member {
 			return errChatNotFound
 		}
