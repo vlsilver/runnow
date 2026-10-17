@@ -2,8 +2,11 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/games/game_card.dart';
+import 'package:myrun/src/games/game_providers.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_repository.dart';
 import 'package:myrun/src/run_contracts/widgets/run_contract_card.dart';
@@ -183,11 +186,17 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
             ))),
     ];
 
+    // Ván Ma Sói chỉ đọc value: API lỗi hay đang chờ thì không có card, list
+    // kèo vẫn hiện như cũ.
+    final games =
+        ref.watch(gameListProvider).value?.items ?? const <GameListItem>[];
+
     final keoBody = myActive.when(
       data: (mine) {
         return _ContractFeed(
           source: _pageSource,
           myContracts: mine,
+          games: games,
           coachPlans: coachPlans,
           currentUid: currentUid,
           currentProfile: profile,
@@ -199,11 +208,17 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
           onFilterChanged: (filter) {
             if (_filter == filter) return;
             _filter = filter;
+            ref.invalidate(gameListProvider);
             _loadFirstPage();
           },
           onLoadMore: _loadNextPage,
           onJoin: _joinContract,
           onOpenCoach: (plan) => context.push('/coach/${plan.id}'),
+          onOpenGame: (game) async {
+            await context.push('/games/${game.id}');
+            // Trong ván có thể đã đăng ký hay làm xong việc: đọc lại card.
+            ref.invalidate(gameListProvider);
+          },
         );
       },
       error: (error, stack) =>
@@ -383,6 +398,7 @@ class _ContractFeed extends StatelessWidget {
   const _ContractFeed({
     required this.source,
     required this.myContracts,
+    required this.games,
     required this.coachPlans,
     required this.currentUid,
     required this.currentProfile,
@@ -395,10 +411,12 @@ class _ContractFeed extends StatelessWidget {
     required this.onLoadMore,
     required this.onJoin,
     required this.onOpenCoach,
+    required this.onOpenGame,
   });
 
   final AsyncValue<List<RunContract>> source;
   final List<RunContract> myContracts;
+  final List<GameListItem> games;
   final List<TrainingPlan> coachPlans;
   final String? currentUid;
   final UserProfile? currentProfile;
@@ -411,6 +429,7 @@ class _ContractFeed extends StatelessWidget {
   final VoidCallback onLoadMore;
   final ValueChanged<RunContract> onJoin;
   final ValueChanged<TrainingPlan> onOpenCoach;
+  final ValueChanged<GameListItem> onOpenGame;
 
   @override
   Widget build(BuildContext context) {
@@ -443,7 +462,11 @@ class _ContractFeed extends StatelessWidget {
               final coachCards = filter == _ContractFilter.active
                   ? coachPlans
                   : const <TrainingPlan>[];
-              if (visible.isEmpty && coachCards.isEmpty) {
+              // Ván Ma Sói cũng chỉ ở "đang chạy", đứng trước coach card.
+              final gameCards = filter == _ContractFilter.active
+                  ? games
+                  : const <GameListItem>[];
+              if (visible.isEmpty && coachCards.isEmpty && gameCards.isEmpty) {
                 return ListView(
                   padding: EdgeInsets.fromLTRB(
                     wide ? 20 : 16,
@@ -462,6 +485,14 @@ class _ContractFeed extends StatelessWidget {
                       spacing: 18,
                       runSpacing: 18,
                       children: [
+                        for (final game in gameCards)
+                          SizedBox(
+                            width: 440,
+                            child: GameCard(
+                              game: game,
+                              onTap: () => onOpenGame(game),
+                            ),
+                          ),
                         for (final plan in coachCards)
                           SizedBox(
                             width: 440,
@@ -484,7 +515,7 @@ class _ContractFeed extends StatelessWidget {
                   ],
                 );
               }
-              final lead = coachCards.length;
+              final lead = gameCards.length + coachCards.length;
               final itemCount =
                   lead + visible.length + (canLoadMore ? 1 : 0);
               return ListView.separated(
@@ -492,8 +523,16 @@ class _ContractFeed extends StatelessWidget {
                 itemCount: itemCount,
                 separatorBuilder: (_, _) => const SizedBox(height: 14),
                 itemBuilder: (context, index) {
+                  if (index < gameCards.length) {
+                    final game = gameCards[index];
+                    return GameCard(game: game, onTap: () => onOpenGame(game));
+                  }
                   if (index < lead) {
-                    return _coachCard(context, coachCards[index], profiles);
+                    return _coachCard(
+                      context,
+                      coachCards[index - gameCards.length],
+                      profiles,
+                    );
                   }
                   final i = index - lead;
                   if (i == visible.length) {
