@@ -32,8 +32,10 @@ const _roles = [
   (id: 'tester', title: 'Tester Ma Sói', hint: 'Vào được ván Ma Sói thử.'),
   (
     id: 'bot',
-    title: 'Dùng bot cá nhân',
-    hint: 'Có bot riêng và vào phòng bot. Admin luôn có quyền này.',
+    title: 'Bot cá nhân trong app',
+    hint:
+        'Có bot riêng ở mục "Bot của tôi" và vào phòng bot trong app, không '
+        'liên quan bot Telegram. Admin luôn có quyền này.',
   ),
 ];
 
