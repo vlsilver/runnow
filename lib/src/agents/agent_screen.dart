@@ -113,6 +113,27 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
     if (yes == true) await _run((api) => api.deleteAgentMemory(memory.id));
   }
 
+  Future<void> _forgetLearned(AgentLearnedFact fact) async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cho bot quên điều này?'),
+        content: Text(fact.text),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Thôi'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Quên'),
+          ),
+        ],
+      ),
+    );
+    if (yes == true) await _run((api) => api.deleteAgentLearned(fact.id));
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
@@ -246,6 +267,50 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
                 ),
               ),
           ],
+          const SizedBox(height: 24),
+          Text(
+            'Bot tự học về bạn (${data.learned.length})',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: palette.ink,
+            ),
+          ),
+          Text(
+            'Bot rút ra từ tin bạn nói trong phòng bot và group Telegram, rồi '
+            'dùng khi nói chuyện với bạn và mọi người. Mục nào sai hay bạn '
+            'không muốn bot nhớ thì cho bot quên.',
+            style: TextStyle(color: palette.textMuted),
+          ),
+          const SizedBox(height: 8),
+          if (data.learned.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Text(
+                'Bot chưa học được gì về bạn.',
+                style: TextStyle(color: palette.textMuted),
+              ),
+            ),
+          for (final f in data.learned)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(f.text),
+              subtitle: Text(
+                f.migrated ? 'Từ trí nhớ cũ của 3i' : 'Bot tự học',
+              ),
+              trailing: IconButton(
+                tooltip: 'Quên',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: _busy ? null : () => _forgetLearned(f),
+              ),
+            ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.groups_2_outlined),
+            title: const Text('Bot biết gì về nhóm'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _open('/agent/group-facts'),
+          ),
         ],
       );
     }

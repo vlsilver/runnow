@@ -62,12 +62,54 @@ class AgentMemory {
   bool get fromChat => source == 'chat';
 }
 
+/// Điều bot tự học được từ tin trong phòng bot và group Telegram.
+class AgentLearnedFact {
+  const AgentLearnedFact({
+    required this.id,
+    required this.text,
+    required this.source,
+    this.updatedAt,
+  });
+
+  factory AgentLearnedFact.fromJson(Map<String, dynamic> json) =>
+      AgentLearnedFact(
+        id: _string(json['id']),
+        text: _string(json['text']),
+        source: _string(json['source']),
+        updatedAt: _date(json['updatedAt']),
+      );
+
+  final String id;
+  final String text;
+
+  /// `learned`: bot tự học; `migrated`: chuyển từ trí nhớ cũ của 3i.
+  final String source;
+  final DateTime? updatedAt;
+
+  bool get migrated => source == 'migrated';
+}
+
+/// Điều bot biết về cả nhóm; chỉ admin xoá được.
+class AgentGroupFacts {
+  const AgentGroupFacts({required this.facts, required this.canDelete});
+
+  factory AgentGroupFacts.fromJson(Map<String, dynamic> json) =>
+      AgentGroupFacts(
+        facts: _list(json['facts'], AgentLearnedFact.fromJson),
+        canDelete: json['canDelete'] == true,
+      );
+
+  final List<AgentLearnedFact> facts;
+  final bool canDelete;
+}
+
 class AgentMe {
   const AgentMe({
     required this.enabled,
     required this.agent,
     required this.memories,
     required this.memoryLimit,
+    required this.learned,
   });
 
   factory AgentMe.fromJson(Map<String, dynamic> json) {
@@ -79,6 +121,7 @@ class AgentMe {
           : null,
       memories: _list(json['memories'], AgentMemory.fromJson),
       memoryLimit: _int(json['memoryLimit']),
+      learned: _list(json['learned'], AgentLearnedFact.fromJson),
     );
   }
 
@@ -87,6 +130,9 @@ class AgentMe {
   final AgentProfile? agent;
   final List<AgentMemory> memories;
   final int memoryLimit;
+
+  /// Điều bot tự học về người này, có cả khi chưa tạo bot.
+  final List<AgentLearnedFact> learned;
 }
 
 /// Tin có seq, để một controller dùng chung cho chat riêng và phòng bot.

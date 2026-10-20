@@ -13,7 +13,7 @@ import (
 // chỉ cho GET, POST, DELETE.
 func (s *Server) agentRoutes() {
 	s.route("GET /v1/agents/me", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
-		me, err := s.deps.Agents.Me(r.Context(), uid)
+		me, err := s.deps.Agents.Me(r.Context(), uid, s.now())
 		if err != nil {
 			return err
 		}
@@ -70,6 +70,36 @@ func (s *Server) agentRoutes() {
 			return err
 		}
 		if err := s.deps.Agents.DeleteMemory(r.Context(), uid, r.PathValue("id")); err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true})
+	}))
+	// Xoá lần hai vẫn 200 như xoá mục nhớ, để app bấm lại không báo lỗi.
+	s.route("DELETE /v1/agents/me/learned/{id}", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		if err := s.deps.Agents.requireMember(r.Context(), uid); err != nil {
+			return err
+		}
+		if err := s.deps.Agents.ForgetLearnedFact(r.Context(), uid, r.PathValue("id"), s.now()); err != nil && !errors.Is(err, errLearnedNotFound) {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true})
+	}))
+	s.route("GET /v1/agents/group-facts", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		facts, err := s.deps.Agents.GroupFacts(r.Context(), uid, s.now())
+		if err != nil {
+			return err
+		}
+		admin := s.deps.Games.RequireAdmin(r.Context(), uid)
+		if admin != nil && !errors.Is(admin, errNotAdmin) {
+			return admin
+		}
+		return writeJSON(w, 200, map[string]any{"facts": facts, "canDelete": admin == nil})
+	}))
+	s.route("DELETE /v1/agents/group-facts/{id}", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		if err := s.deps.Games.RequireAdmin(r.Context(), uid); err != nil {
+			return err
+		}
+		if err := s.deps.Agents.ForgetGroupFact(r.Context(), uid, r.PathValue("id"), s.now()); err != nil && !errors.Is(err, errLearnedNotFound) {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})

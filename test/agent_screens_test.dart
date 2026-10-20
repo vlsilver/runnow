@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
+import 'package:myrun/src/agents/agent_group_facts_screen.dart';
 import 'package:myrun/src/agents/agent_screen.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -27,6 +28,9 @@ class _AgentBackend {
     'created': false,
   };
   final memories = <Map<String, dynamic>>[];
+  final learned = <Map<String, dynamic>>[];
+  final groupFacts = <Map<String, dynamic>>[];
+  var admin = false;
   Map<String, dynamic> dm = {'messages': [], 'waiting': false};
   Map<String, dynamic> room = {'messages': [], 'members': []};
   final requests = <http.Request>[];
@@ -55,7 +59,14 @@ class _AgentBackend {
             'agent': agent,
             'memories': memories,
             'memoryLimit': 50,
+            'learned': learned,
           };
+        case ('DELETE', final p) when p.startsWith('/v1/agents/me/learned/'):
+          learned.removeWhere((f) => p.endsWith('/${f['id']}'));
+        case ('GET', '/v1/agents/group-facts'):
+          out = {'facts': groupFacts, 'canDelete': admin};
+        case ('DELETE', final p) when p.startsWith('/v1/agents/group-facts/'):
+          groupFacts.removeWhere((f) => p.endsWith('/${f['id']}'));
         case ('POST', '/v1/agents/me'):
           agent = {...body, 'created': true};
           out = agent;
@@ -155,6 +166,51 @@ void main() {
     await tester.pumpAndSettle();
     expect(backend.calls, contains('DELETE /v1/agents/me/memories/m1'));
     expect(find.text('Bộ nhớ (0/50)'), findsOneWidget);
+  });
+
+  testWidgets('shows what the bot learned and forgets on request', (
+    tester,
+  ) async {
+    backend.learned.addAll([
+      {'id': 'f1', 'text': 'Mê chạy trail', 'source': 'learned'},
+      {'id': 'tg-f2', 'text': 'Đi giày Pegasus', 'source': 'migrated'},
+    ]);
+    // Chưa tạo bot vẫn thấy điều bot học được từ group Telegram.
+    await pump(tester, const AgentScreen());
+    await tester.scrollUntilVisible(
+      find.text('Bot biết gì về nhóm'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Bot tự học về bạn (2)'), findsOneWidget);
+    expect(find.text('Từ trí nhớ cũ của 3i'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Quên').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Quên').last);
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('DELETE /v1/agents/me/learned/tg-f2'));
+    expect(find.text('Đi giày Pegasus'), findsNothing);
+    expect(find.text('Bot tự học về bạn (1)'), findsOneWidget);
+  });
+
+  testWidgets('only admins can make the bot forget group facts', (
+    tester,
+  ) async {
+    backend.groupFacts.add({'id': 'f1', 'text': 'Nhóm chạy 6h thứ 7'});
+    await pump(tester, const AgentGroupFactsScreen());
+    expect(find.text('Nhóm chạy 6h thứ 7'), findsOneWidget);
+    expect(find.byTooltip('Quên'), findsNothing);
+    await close(tester);
+
+    backend.admin = true;
+    await pump(tester, const AgentGroupFactsScreen());
+    await tester.tap(find.byTooltip('Quên'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Quên').last);
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('DELETE /v1/agents/group-facts/f1'));
+    expect(find.text('Bot chưa học được gì về nhóm.'), findsOneWidget);
   });
 
   testWidgets('DM shows typing only while a recent message waits', (

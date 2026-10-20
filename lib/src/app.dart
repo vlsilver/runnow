@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
+import 'package:myrun/src/agents/agent_group_facts_screen.dart';
 import 'package:myrun/src/agents/agent_screen.dart';
 import 'package:myrun/src/app_update.dart';
 import 'package:myrun/src/formatters.dart';
@@ -222,6 +223,10 @@ final _router = GoRouter(
     GoRoute(
       path: '/agent/room',
       builder: (context, state) => const AgentRoomScreen(),
+    ),
+    GoRoute(
+      path: '/agent/group-facts',
+      builder: (context, state) => const AgentGroupFactsScreen(),
     ),
     GoRoute(
       path: '/games/:id/chat/:key',

@@ -129,6 +129,53 @@ type learnedPerson struct {
 	facts []learnedFact
 }
 
+// AgentLearnedFact là một ký ức tự học trả cho app. Source là "learned" hay
+// "migrated" (chuyển từ tóm tắt cũ của 3i).
+type AgentLearnedFact struct {
+	ID        string    `json:"id"`
+	Text      string    `json:"text"`
+	Source    string    `json:"source"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+func learnedFactsJSON(facts []learnedFact) []AgentLearnedFact {
+	out := make([]AgentLearnedFact, len(facts))
+	for i, f := range facts {
+		source := f.Source
+		if source == "" {
+			source = "learned"
+		}
+		out[i] = AgentLearnedFact{ID: f.ID, Text: f.Text, Source: source, UpdatedAt: f.UpdatedAt}
+	}
+	return out
+}
+
+// LearnedAbout là ký ức tự học về uid, id như ForgetLearnedFact nhận.
+func (s *AgentStore) LearnedAbout(ctx context.Context, uid string, now time.Time) ([]AgentLearnedFact, error) {
+	by, err := s.learnedOf(ctx, []string{uid}, now)
+	if err != nil {
+		return nil, err
+	}
+	return learnedFactsJSON(by[uid]), nil
+}
+
+// GroupFacts là ký ức nhóm còn hạn cho thành viên phòng bot.
+func (s *AgentStore) GroupFacts(ctx context.Context, uid string, now time.Time) ([]AgentLearnedFact, error) {
+	if err := s.requireMember(ctx, uid); err != nil {
+		return nil, err
+	}
+	facts, err := s.learnedGroup(ctx, now)
+	if err != nil {
+		return nil, err
+	}
+	return learnedFactsJSON(facts), nil
+}
+
+// ForgetGroupFact xoá một ký ức nhóm; quyền admin do nơi gọi kiểm.
+func (s *AgentStore) ForgetGroupFact(ctx context.Context, admin, id string, now time.Time) error {
+	return s.forgetLearnedIn(ctx, agentGroupScope, id, "admin:"+admin, now)
+}
+
 // learnedSubject là một người cần đưa ký ức vào prompt 3i: uid khi biết tài
 // khoản app, không thì tg là id Telegram của người gửi.
 type learnedSubject struct{ uid, tg, name string }

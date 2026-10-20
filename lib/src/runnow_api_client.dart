@@ -347,6 +347,18 @@ class RunNowApiClient {
   Future<void> deleteAgentMemory(String id) =>
       _send('DELETE', '/v1/agents/me/memories/${Uri.encodeComponent(id)}');
 
+  Future<void> deleteAgentLearned(String id) =>
+      _send('DELETE', '/v1/agents/me/learned/${Uri.encodeComponent(id)}');
+
+  Future<AgentGroupFacts> getAgentGroupFacts() async {
+    final response = await _send('GET', '/v1/agents/group-facts');
+    return AgentGroupFacts.fromJson(_jsonObject(response));
+  }
+
+  /// Chỉ admin; người khác nhận `not_admin`.
+  Future<void> deleteAgentGroupFact(String id) =>
+      _send('DELETE', '/v1/agents/group-facts/${Uri.encodeComponent(id)}');
+
   Future<AgentChatPage<AgentMessage>> getAgentDM({
     String? cursor,
     int? after,

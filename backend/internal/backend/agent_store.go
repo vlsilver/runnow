@@ -90,6 +90,9 @@ type AgentMe struct {
 	Agent       *AgentProfile `json:"agent,omitempty"`
 	Memories    []AgentMemory `json:"memories"`
 	MemoryLimit int           `json:"memoryLimit"`
+	// Learned là ký ức bot tự học về chính người gọi, kể cả khi chưa tạo bot.
+	Learned      []AgentLearnedFact `json:"learned"`
+	LearnedLimit int                `json:"learnedLimit"`
 }
 
 type AgentMessage struct {
@@ -195,16 +198,19 @@ func defaultAgentName(owner string) string {
 
 // Me trả hồ sơ bot và bộ nhớ của uid. Người ngoài danh sách nhận enabled false
 // chứ không phải lỗi, để app chỉ cần ẩn mục bot.
-func (s *AgentStore) Me(ctx context.Context, uid string) (AgentMe, error) {
+func (s *AgentStore) Me(ctx context.Context, uid string, wall time.Time) (AgentMe, error) {
 	members, err := s.members(ctx)
 	if err != nil {
 		return AgentMe{}, err
 	}
-	out := AgentMe{Memories: []AgentMemory{}, MemoryLimit: agentMemoryLimit}
+	out := AgentMe{Memories: []AgentMemory{}, MemoryLimit: agentMemoryLimit, Learned: []AgentLearnedFact{}, LearnedLimit: agentLearnedLimit}
 	if !slices.Contains(members, uid) {
 		return out, nil
 	}
 	out.Enabled = true
+	if out.Learned, err = s.LearnedAbout(ctx, uid, wall); err != nil {
+		return AgentMe{}, err
+	}
 	doc, err := s.agentRef(uid).Get(ctx)
 	switch {
 	case status.Code(err) == codes.NotFound:

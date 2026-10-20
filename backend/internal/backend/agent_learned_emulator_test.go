@@ -155,6 +155,73 @@ func TestEmulatorAgentRoomLearned(t *testing.T) {
 	}
 }
 
+func TestEmulatorAgentLearnedAPI(t *testing.T) {
+	e := newAgentEnv(t)
+	seed(t, e.store.db, "telegramLinks/cuong", map[string]any{"tgUserId": int64(333)})
+	e.seedLearned("cuong", map[string]string{"f1": "Cường tập full Đà Nẵng"})
+	seed(t, e.store.db, "agentRooms/main/learned/tg-333", map[string]any{"facts": []any{
+		map[string]any{"id": "f2", "text": "Cường đau gối", "source": "migrated", "updatedAt": e.clock},
+	}})
+	seed(t, e.store.db, "agentRooms/main/learned/"+agentGroupScope, map[string]any{"facts": []any{
+		map[string]any{"id": "f1", "text": "Nhóm chạy 6h thứ 7", "updatedAt": e.clock},
+		map[string]any{"id": "f2", "text": "Nhóm hay ăn phở sau chạy", "updatedAt": e.clock},
+	}})
+	learnedOf := func(r apiResp) []string {
+		var out []string
+		for _, v := range anyList(r.body["learned"]) {
+			m := v.(map[string]any)
+			out = append(out, stringValue(m["id"])+" "+stringValue(m["source"])+" "+stringValue(m["text"]))
+		}
+		return out
+	}
+	factsOf := func(r apiResp) []string {
+		var out []string
+		for _, v := range anyList(r.body["facts"]) {
+			out = append(out, stringValue(v.(map[string]any)["id"]))
+		}
+		return out
+	}
+
+	// Người ngoài danh sách: không thấy gì, không xoá được.
+	if r := e.call("dung", "GET", "/v1/agents/me", nil, ""); r.status != 200 || r.body["learned"] == nil || len(anyList(r.body["learned"])) != 0 {
+		t.Fatalf("người ngoài: %d %s", r.status, r.raw)
+	}
+	e.want(e.call("dung", "DELETE", "/v1/agents/me/learned/f1", nil, ""), 403, "agent_disabled")
+	e.want(e.call("dung", "GET", "/v1/agents/group-facts", nil, ""), 403, "agent_disabled")
+
+	// Chưa tạo bot vẫn thấy ký ức về mình, gồm cả doc tg đang liên kết.
+	r := e.call("cuong", "GET", "/v1/agents/me", nil, "")
+	if r.status != 200 || r.body["learnedLimit"] != float64(agentLearnedLimit) {
+		t.Fatalf("me: %d %s", r.status, r.raw)
+	}
+	wantList(t, "learned", learnedOf(r), "f1 learned Cường tập full Đà Nẵng", "tg-f2 migrated Cường đau gối")
+	for i := 0; i < 2; i++ {
+		e.want(e.call("cuong", "DELETE", "/v1/agents/me/learned/tg-f2", nil, ""), 200, "")
+	}
+	wantList(t, "learned sau xoá", learnedOf(e.call("cuong", "GET", "/v1/agents/me", nil, "")), "f1 learned Cường tập full Đà Nẵng")
+	if l := e.doc("agentRooms/main/learnLog/forget-tg-333-f2"); l["by"] != "owner:cuong" {
+		t.Fatalf("learnLog: %v", l)
+	}
+
+	// Ký ức nhóm: thành viên xem được, chỉ admin xoá.
+	r = e.call("cuong", "GET", "/v1/agents/group-facts", nil, "")
+	if r.status != 200 || r.body["canDelete"] != false {
+		t.Fatalf("group-facts thành viên: %d %s", r.status, r.raw)
+	}
+	wantList(t, "group-facts", factsOf(r), "f1", "f2")
+	e.want(e.call("cuong", "DELETE", "/v1/agents/group-facts/f1", nil, ""), 403, "not_admin")
+	if r = e.call("an", "GET", "/v1/agents/group-facts", nil, ""); r.body["canDelete"] != true {
+		t.Fatalf("group-facts admin: %s", r.raw)
+	}
+	for i := 0; i < 2; i++ {
+		e.want(e.call("an", "DELETE", "/v1/agents/group-facts/f1", nil, ""), 200, "")
+	}
+	wantList(t, "group-facts sau xoá", factsOf(e.call("an", "GET", "/v1/agents/group-facts", nil, "")), "f2")
+	if l := e.doc("agentRooms/main/learnLog/forget-_group-f1"); l["by"] != "admin:an" || l["before"] != "Nhóm chạy 6h thứ 7" {
+		t.Fatalf("learnLog nhóm: %v", l)
+	}
+}
+
 func toStrings(v any) []string {
 	switch x := v.(type) {
 	case []string:
