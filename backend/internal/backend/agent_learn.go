@@ -81,9 +81,10 @@ var learnActionSchema = &genai.Schema{
 	},
 }
 
-// learnLLM là lượt gọi model rút ký ức, tách ra để test thay bằng model giả.
+// learnLLM là lượt gọi model trả JSON theo schema, tách ra để test thay bằng
+// model giả.
 type learnLLM interface {
-	Learn(ctx context.Context, system, input string) (*genai.GenerateContentResponse, error)
+	Learn(ctx context.Context, system, input string, schema *genai.Schema) (*genai.GenerateContentResponse, error)
 }
 
 type genaiLearnLLM struct {
@@ -91,11 +92,11 @@ type genaiLearnLLM struct {
 	model  string
 }
 
-func (g genaiLearnLLM) Learn(ctx context.Context, system, input string) (*genai.GenerateContentResponse, error) {
+func (g genaiLearnLLM) Learn(ctx context.Context, system, input string, schema *genai.Schema) (*genai.GenerateContentResponse, error) {
 	cfg := &genai.GenerateContentConfig{
 		SystemInstruction: &genai.Content{Parts: []*genai.Part{{Text: system}}},
 		ResponseMIMEType:  "application/json",
-		ResponseSchema:    learnActionSchema,
+		ResponseSchema:    schema,
 	}
 	return g.client.Models.GenerateContent(ctx, g.model, []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: input}}}}, cfg)
 }
@@ -391,7 +392,7 @@ func (l *LearnService) learnScope(ctx context.Context, b *learnBatch, sc learnSc
 		return nil
 	}
 	system, input := learnPrompt(sc, liveFacts(doc["facts"], now))
-	resp, err := l.llm.Learn(ctx, system, input)
+	resp, err := l.llm.Learn(ctx, system, input, learnActionSchema)
 	if err != nil {
 		return fmt.Errorf("agent learn %s: %w", sc.key, err)
 	}

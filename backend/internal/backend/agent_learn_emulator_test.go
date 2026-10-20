@@ -26,7 +26,7 @@ type fakeLearn struct {
 
 type learnCall struct{ system, input string }
 
-func (f *fakeLearn) Learn(_ context.Context, system, input string) (*genai.GenerateContentResponse, error) {
+func (f *fakeLearn) Learn(_ context.Context, system, input string, _ *genai.Schema) (*genai.GenerateContentResponse, error) {
 	f.calls = append(f.calls, learnCall{system, input})
 	text, err := f.reply(system, input)
 	if err != nil {
