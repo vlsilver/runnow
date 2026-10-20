@@ -31,6 +31,9 @@ type Dependencies struct {
 	Memory         *MemoryService
 	TelegramLinks  *TelegramLinkService
 	Games          *GameStore
+	Agents         *AgentStore
+	// AgentBrain chạy LLM của bot cá nhân; chỉ có trên service có Gemini (bot).
+	AgentBrain *AgentService
 	// EnqueueTask thay Tasks.Publish khi khác nil; test gài để bắt task mà
 	// không cần Cloud Tasks.
 	EnqueueTask taskPublishFunc
@@ -65,6 +68,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 	d := &Dependencies{Firestore: db, Auth: authClient, Tasks: tasks, Telegram: telegram}
 	d.TelegramLinks = NewTelegramLinkService(db, config.TelegramBotUsername)
 	d.Games = NewGameStore(db, config.TelegramChatID)
+	d.Agents = NewAgentStore(db)
 	d.OAuth = NewOAuthService(db, gateway, tasks, config)
 	d.Webhook = NewWebhookService(db, tasks, config.WebhookVerifyToken, config.StravaSubscriptionID)
 	d.Activities = NewActivityService(db, gateway, tokens, tasks, telegram, config.PublicBaseURL, config.WebBaseURL)
@@ -102,6 +106,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 		} else {
 			d.Gemini = genaiClient
 			d.Memory = NewMemoryService(genaiClient, db, config.GeminiModel)
+			d.AgentBrain = NewAgentService(d.Agents, genaiAgentLLM{client: genaiClient, model: config.AgentModel}, tasks.Publish)
 			// Client RIÊNG cho sinh ảnh: model ảnh nằm ở location "global", khác
 			// location chat (us-central1). Hỏng thì chỉ tắt tính năng vẽ, không
 			// ảnh hưởng chat.

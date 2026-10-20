@@ -1,0 +1,181 @@
+package backend
+
+import (
+	"context"
+	"slices"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"cloud.google.com/go/firestore"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+// Phòng bot: một phòng chung cho mọi thành viên thử nghiệm và bot của họ.
+// Người gửi tin qua api; bot nói theo lượt do task agent-turn chạy trên bot
+// service (agent_core.go). Doc phòng giữ seq và state lượt nói:
+//
+//	seq         seq của tin mới nhất
+//	chain       số tin bot liên tiếp kể từ tin người gần nhất
+//	lastSpeaker chủ của bot vừa nói, rỗng nếu tin cuối là của người
+//	lastSpoke   uid chủ bot → seq lần cuối bot đó nói
+//	turnOf      seq mà lượt bot gần nhất trả lời, để task chạy lại biết đã ghi
+//	day, dayCount  ngân sách tin bot trong ngày (giờ VN)
+
+type AgentRoomMessage struct {
+	Seq  int64  `json:"seq"`
+	Kind string `json:"kind"` // human | agent
+	// UID là người gửi; tin của bot thì là uid chủ bot.
+	UID  string `json:"uid"`
+	Name string `json:"name"`
+	// Owner: tên chủ bot, chỉ có ở tin của bot.
+	Owner string    `json:"owner,omitempty"`
+	Text  string    `json:"text"`
+	At    time.Time `json:"at"`
+}
+
+type AgentRoomMember struct {
+	UID     string `json:"uid"`
+	Name    string `json:"name"`
+	BotName string `json:"botName,omitempty"` // rỗng khi người này chưa tạo bot
+}
+
+type AgentRoomPage struct {
+	Messages []AgentRoomMessage `json:"messages"`
+	Members  []AgentRoomMember  `json:"members"`
+	Cursor   string             `json:"cursor,omitempty"`
+	HasNewer bool               `json:"hasNewer"`
+}
+
+// roomAgent là một bot trong phòng: chủ, tên, persona.
+type roomAgent struct {
+	uid, name, persona string
+}
+
+// roomAgents là bot của các thành viên đã tạo bot, theo thứ tự uid.
+func (s *AgentStore) roomAgents(ctx context.Context, members []string) ([]roomAgent, error) {
+	if len(members) == 0 {
+		return nil, nil
+	}
+	refs := make([]*firestore.DocumentRef, len(members))
+	for i, uid := range members {
+		refs[i] = s.agentRef(uid)
+	}
+	docs, err := s.db.GetAll(ctx, refs)
+	if err != nil {
+		return nil, err
+	}
+	var out []roomAgent
+	for i, d := range docs {
+		if d.Exists() {
+			out = append(out, roomAgent{uid: members[i], name: stringValue(d.Data()["name"]), persona: stringValue(d.Data()["persona"])})
+		}
+	}
+	return out, nil
+}
+
+func (s *AgentStore) Room(ctx context.Context, uid, cursor, after string) (AgentRoomPage, error) {
+	members, err := s.members(ctx)
+	if err != nil {
+		return AgentRoomPage{}, err
+	}
+	if !slices.Contains(members, uid) {
+		return AgentRoomPage{}, errAgentDisabled
+	}
+	docs, next, hasNewer, err := pageBySeq(ctx, s.roomRef(agentMainRoom).Collection("messages"), cursor, after)
+	if err != nil {
+		return AgentRoomPage{}, err
+	}
+	out := AgentRoomPage{Messages: make([]AgentRoomMessage, 0, len(docs)), Members: []AgentRoomMember{}, Cursor: next, HasNewer: hasNewer}
+	// Poll không có tin mới thì khỏi đọc tên và danh sách bot.
+	if after != "" && len(docs) == 0 {
+		return out, nil
+	}
+	uids := slices.Clone(members)
+	for _, d := range docs {
+		if u := stringValue(d.Data()["uid"]); !slices.Contains(uids, u) {
+			uids = append(uids, u) // người đã rời danh sách vẫn hiện tên
+		}
+	}
+	names, err := s.displayNames(ctx, uids)
+	if err != nil {
+		return AgentRoomPage{}, err
+	}
+	agents, err := s.roomAgents(ctx, members)
+	if err != nil {
+		return AgentRoomPage{}, err
+	}
+	bots := map[string]string{}
+	for _, a := range agents {
+		bots[a.uid] = a.name
+	}
+	for _, m := range members {
+		out.Members = append(out.Members, AgentRoomMember{UID: m, Name: names[m], BotName: bots[m]})
+	}
+	for _, d := range docs {
+		m := d.Data()
+		msg := AgentRoomMessage{Seq: int64(number(m["seq"])), Kind: stringValue(m["kind"]), UID: stringValue(m["uid"]), Text: stringValue(m["text"]), At: timeValue(m["at"])}
+		msg.Name = names[msg.UID]
+		if msg.Kind == agentKindAgent {
+			// Tên bot chụp lúc nói, đúng với tên mà các bot khác đã đọc.
+			msg.Owner, msg.Name = msg.Name, stringValue(m["name"])
+		}
+		out.Messages = append(out.Messages, msg)
+	}
+	return out, nil
+}
+
+// PostRoom ghi tin của người vào phòng và trả seq. Tin người reset chuỗi bot,
+// nên sau mỗi tin người các bot lại được nói tối đa agentChainMax tin.
+func (s *AgentStore) PostRoom(ctx context.Context, uid, text string, wall time.Time) (int64, error) {
+	text = strings.TrimSpace(text)
+	if text == "" || utf8.RuneCountInString(text) > agentTextMaxRunes {
+		return 0, errAgentText
+	}
+	text = maskProfanity(text)
+	if err := s.requireMember(ctx, uid); err != nil {
+		return 0, err
+	}
+	ref := s.roomRef(agentMainRoom)
+	var seq int64
+	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		room, err := readRoom(tx, ref)
+		if err != nil {
+			return err
+		}
+		if last := timeValue(nested(room, "lastSentAt", uid)); !last.IsZero() && wall.Sub(last) < agentMinGap {
+			return errAgentTooFast
+		}
+		seq = int64(number(room["seq"])) + 1
+		if err := tx.Create(ref.Collection("messages").Doc(seqDocID(seq)), map[string]any{"seq": seq, "kind": agentKindHuman, "uid": uid, "text": text, "channel": agentChannelApp, "at": wall}); err != nil {
+			return err
+		}
+		return tx.Set(ref, map[string]any{"seq": seq, "chain": 0, "lastSpeaker": "", "lastSentAt": map[string]any{uid: wall}, "updatedAt": wall}, firestore.MergeAll)
+	})
+	return seq, err
+}
+
+func readRoom(tx *firestore.Transaction, ref *firestore.DocumentRef) (map[string]any, error) {
+	doc, err := tx.Get(ref)
+	if status.Code(err) == codes.NotFound {
+		return map[string]any{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return doc.Data(), nil
+}
+
+// roomTranscript là tối đa limit tin gần nhất tới seq upTo, cũ trước.
+func (s *AgentStore) roomTranscript(ctx context.Context, upTo int64, limit int) ([]map[string]any, error) {
+	docs, err := s.roomRef(agentMainRoom).Collection("messages").Where("seq", "<=", upTo).OrderBy("seq", firestore.Desc).Limit(limit).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, len(docs))
+	for i, d := range docs {
+		out[len(docs)-1-i] = d.Data()
+	}
+	return out, nil
+}

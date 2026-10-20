@@ -65,6 +65,8 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/consolidate-memory", s.consolidateMemory)
 	s.route("POST /tasks/game-advance", s.gameAdvance)
 	s.route("POST /tasks/schedule-tick", s.scheduleTick)
+	s.route("POST /tasks/agent-dm", s.agentDM)
+	s.route("POST /tasks/agent-turn", s.agentTurn)
 }
 
 // tickJob là một việc của schedule-tick, với timeout riêng.
@@ -534,6 +536,7 @@ func (s *Server) apiRoutes() {
 	// mount, không nhân đôi code.
 	s.route("POST /v1/telegram/webhook", s.telegramWebhook)
 	s.gameRoutes()
+	s.agentRoutes()
 	// Liên kết Telegram cho Ma Sói (L1). App lấy mã, mở t.me/<bot>?start=<mã>,
 	// rồi poll GET cho tới khi linked.
 	s.route("POST /v1/telegram/link-code", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {

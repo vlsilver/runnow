@@ -38,7 +38,10 @@ type Config struct {
 	TelegramWebhookSecret string
 	GeminiLocation        string
 	GeminiModel           string
-	BotHourlyLimit        int
+	// AgentModel là model của bot cá nhân. Mặc định Flash: phòng bot nói nhiều
+	// tin ngắn, Pro đắt mà không cần.
+	AgentModel     string
+	BotHourlyLimit int
 	// WebBaseURL là domain của app 3i Run bản web, không phải của API. Link
 	// chia sẻ trỏ về đây để mở đúng màn hình chi tiết trong app (hoặc bản
 	// web nếu chưa cài app), thay vì một trang HTML do backend tự dựng.
@@ -78,6 +81,7 @@ func LoadConfig() (Config, error) {
 	// backend đang chạy, nên không dùng chung GOOGLE_CLOUD_REGION.
 	c.GeminiLocation = env("GEMINI_LOCATION", "us-central1")
 	c.GeminiModel = env("GEMINI_MODEL", "gemini-2.5-pro")
+	c.AgentModel = env("AGENT_MODEL", "gemini-2.5-flash")
 	if n, convErr := strconv.Atoi(env("BOT_HOURLY_LIMIT", "100")); convErr == nil && n > 0 {
 		c.BotHourlyLimit = n
 	} else {
