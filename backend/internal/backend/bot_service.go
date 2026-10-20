@@ -705,12 +705,12 @@ func (s *BotService) Answer(ctx context.Context, systemPrompt string, contents [
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: &genai.Content{Parts: []*genai.Part{{Text: systemPrompt}}},
 		Tools:             s.toolDeclarations(canPostToGroup),
-		ThinkingConfig:    s.thinkingConfig(),
+		ThinkingConfig:    thinkingConfig(s.thinking),
 	}
 
 	for round := 0; round < maxToolRounds; round++ {
 		genStart := time.Now()
-		resp, err := s.generateWithRetry(ctx, contents, config)
+		resp, err := generateWithRetry(ctx, s.genai, s.model, contents, config, s.attemptTimeout)
 		genMs := time.Since(genStart).Milliseconds()
 		if err != nil {
 			return "", err
@@ -755,11 +755,11 @@ func (s *BotService) Answer(ctx context.Context, systemPrompt string, contents [
 // thinkingConfig: để thinking mặc định thì gemini-3.8-flash có lúc giữ một vòng
 // hơn một phút, có khi tới lúc Vertex cắt 504, dù chỉ nghĩ vài trăm token. LOW
 // thì vòng nào cũng vài giây mà câu trả lời vẫn đủ ý.
-func (s *BotService) thinkingConfig() *genai.ThinkingConfig {
-	if s.thinking == "" || strings.EqualFold(s.thinking, "default") {
+func thinkingConfig(level string) *genai.ThinkingConfig {
+	if level == "" || strings.EqualFold(level, "default") {
 		return nil
 	}
-	return &genai.ThinkingConfig{ThinkingLevel: genai.ThinkingLevel(strings.ToUpper(s.thinking))}
+	return &genai.ThinkingConfig{ThinkingLevel: genai.ThinkingLevel(strings.ToUpper(level))}
 }
 
 // botGenerateAttemptTimeout đủ rộng cho một vòng bình thường kèm ảnh, và đủ
@@ -774,8 +774,8 @@ const botGenerateAttemptTimeout = 45 * time.Second
 // lặng không rõ lý do. Lần gọi treo thì cắt riêng lần đó: SDK gửi thời gian
 // còn lại của ctx lên Vertex (x-server-timeout), nên không có trần riêng thì
 // một lần treo ăn hết giờ của cả câu trả lời.
-func (s *BotService) generateWithRetry(ctx context.Context, contents []*genai.Content, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
-	timeout := s.attemptTimeout
+// timeout 0 = botGenerateAttemptTimeout.
+func generateWithRetry(ctx context.Context, client *genai.Client, model string, contents []*genai.Content, config *genai.GenerateContentConfig, timeout time.Duration) (*genai.GenerateContentResponse, error) {
 	if timeout == 0 {
 		timeout = botGenerateAttemptTimeout
 	}
@@ -783,7 +783,7 @@ func (s *BotService) generateWithRetry(ctx context.Context, contents []*genai.Co
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
 		attemptCtx, cancel := context.WithTimeout(ctx, timeout)
-		resp, err := s.genai.Models.GenerateContent(attemptCtx, s.model, contents, config)
+		resp, err := client.Models.GenerateContent(attemptCtx, model, contents, config)
 		cancel()
 		if err == nil {
 			return resp, nil
