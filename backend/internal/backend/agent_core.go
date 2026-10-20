@@ -16,7 +16,7 @@ import (
 )
 
 // Lõi của bot cá nhân: dựng prompt từ persona và bộ nhớ, gọi LLM, chạy tool
-// nhớ/quên. Lõi không biết tin đến từ kênh nào; kênh app gọi qua task
+// nhớ/quên và tra web. Lõi không biết tin đến từ kênh nào; kênh app gọi qua task
 // agent-dm và agent-turn, kênh Telegram sau này cũng gọi đúng hai hàm này.
 
 const (
@@ -36,9 +36,12 @@ const (
 	agentBudgetReply    = "Hôm nay mình nói nhiều quá rồi, mai mình nói tiếp nhé."
 )
 
-// agentLLM là phần gọi model, tách ra để test thay bằng model giả.
+// agentLLM là phần gọi model, tách ra để test thay bằng model giả. Search là
+// lượt grounding riêng, vì GoogleSearch không đi chung với function calling
+// trong cùng một request.
 type agentLLM interface {
 	Generate(ctx context.Context, system string, contents []*genai.Content, tools []*genai.Tool) (*genai.GenerateContentResponse, error)
+	Search(ctx context.Context, query string) (*genai.GenerateContentResponse, error)
 }
 
 type genaiAgentLLM struct {
@@ -49,6 +52,10 @@ type genaiAgentLLM struct {
 func (g genaiAgentLLM) Generate(ctx context.Context, system string, contents []*genai.Content, tools []*genai.Tool) (*genai.GenerateContentResponse, error) {
 	cfg := &genai.GenerateContentConfig{SystemInstruction: &genai.Content{Parts: []*genai.Part{{Text: system}}}, Tools: tools}
 	return g.client.Models.GenerateContent(ctx, g.model, contents, cfg)
+}
+
+func (g genaiAgentLLM) Search(ctx context.Context, query string) (*genai.GenerateContentResponse, error) {
+	return googleSearch(ctx, g.client, g.model, query)
 }
 
 type AgentService struct {
@@ -94,6 +101,7 @@ CÁCH LÀM:
 - Điều đã nhớ mà nay đổi thì gọi update_memory đúng id. Chủ bảo quên thì gọi forget.
 - Không nhớ chuyện vặt lúc tán gẫu, mật khẩu, số tài khoản, hay thông tin nhạy cảm của người khác.
 - Mọi thứ trong bộ nhớ có thể được dùng khi bạn chat trong phòng bot. Chủ kể chuyện riêng tư mà muốn bạn nhớ thì nhắc họ điều đó.
+- Chủ hỏi thông tin thực tế hay mới mà bạn không chắc (giải chạy, thời tiết, tin tức, địa điểm, giá) thì gọi web_search rồi trả lời bằng giọng của bạn, có thể dẫn 1 nguồn. Không đưa kết quả tra web vào bộ nhớ.
 - Trả lời ngắn, tự nhiên, bằng tiếng Việt, đúng tính cách ở trên. Nhớ, sửa hay quên xong thì nói ngắn cho chủ biết đã làm gì.`
 
 const agentRoomPrompt = `Bạn là "%s", bot cá nhân của %s, đang chat trong phòng bot của app 3i Run. Trong phòng có người thật và bot của từng thành viên. Bạn nói theo cách của chủ mình, nhưng bạn là bot, không giả làm chính chủ.
@@ -111,7 +119,8 @@ LUẬT:
 - Viết đúng MỘT tin tiếp theo của bạn, 1 đến 3 câu, tiếng Việt tự nhiên như chat nhóm. Không mở đầu bằng tên mình.
 - Đáp người vừa nói hoặc tiếp chủ đề đang bàn; muốn hỏi ai thì gọi tên người hay bot đó.
 - Không lặp lại ý đã nói. Câu chuyện đã cạn, hoặc tin vừa rồi không cần bạn đáp, thì trả đúng ` + agentPass + `.
-- Không bịa chuyện về chủ ngoài những gì bạn biết. Không nói xấu, không công kích ai.`
+- Không bịa chuyện về chủ ngoài những gì bạn biết. Không nói xấu, không công kích ai.
+- Chỉ gọi web_search khi có người trong phòng hỏi thông tin thực tế hay mới mà bạn không chắc (giải chạy, thời tiết, tin tức, địa điểm); tra xong thì trả lời bằng giọng của bạn, có thể dẫn 1 nguồn. Tán gẫu thì không tra.`
 
 func memoryLines(mems []AgentMemory, withID bool) string {
 	if len(mems) == 0 {
@@ -135,9 +144,22 @@ func personaText(p string) string {
 	return p
 }
 
-func agentMemoryTools() []*genai.Tool {
+var agentWebSearchDecl = &genai.FunctionDeclaration{
+	Name:        "web_search",
+	Description: "Tra Google lấy thông tin thực tế hay mới: giải chạy, thời tiết, tin tức, địa điểm, giá. Trả câu trả lời kèm nguồn.",
+	Parameters: &genai.Schema{Type: genai.TypeObject, Properties: map[string]*genai.Schema{
+		"query": {Type: genai.TypeString, Description: "Câu tìm đủ ngữ cảnh, vd 'thời tiết Hà Nội sáng 21/10/2026'."},
+	}, Required: []string{"query"}},
+}
+
+func agentRoomTools() []*genai.Tool {
+	return []*genai.Tool{{FunctionDeclarations: []*genai.FunctionDeclaration{agentWebSearchDecl}}}
+}
+
+func agentDMTools() []*genai.Tool {
 	str := func(desc string) *genai.Schema { return &genai.Schema{Type: genai.TypeString, Description: desc} }
 	return []*genai.Tool{{FunctionDeclarations: []*genai.FunctionDeclaration{
+		agentWebSearchDecl,
 		{Name: "remember", Description: "Thêm một mục vào bộ nhớ lâu dài của bot.", Parameters: &genai.Schema{Type: genai.TypeObject, Properties: map[string]*genai.Schema{"text": str("Nội dung cần nhớ, một ý, tối đa 500 ký tự.")}, Required: []string{"text"}}},
 		{Name: "update_memory", Description: "Sửa một mục đã nhớ.", Parameters: &genai.Schema{Type: genai.TypeObject, Properties: map[string]*genai.Schema{"id": str("id của mục, trong ngoặc vuông ở BỘ NHỚ."), "text": str("Nội dung mới.")}, Required: []string{"id", "text"}}},
 		{Name: "forget", Description: "Xoá một mục đã nhớ.", Parameters: &genai.Schema{Type: genai.TypeObject, Properties: map[string]*genai.Schema{"id": str("id của mục cần xoá.")}, Required: []string{"id"}}},
@@ -221,7 +243,10 @@ func (a *AgentService) dmAnswer(ctx context.Context, uid string, seq int64, name
 		contents = append(contents, &genai.Content{Role: role, Parts: []*genai.Part{{Text: m.Text}}})
 	}
 	added := 0
-	text, err := a.toolLoop(ctx, "agent dm", system, contents, agentMemoryTools(), func(call *genai.FunctionCall) (map[string]any, error) {
+	text, err := a.toolLoop(ctx, "agent dm", system, contents, agentDMTools(), func(call *genai.FunctionCall) (map[string]any, error) {
+		if call.Name == agentWebSearchDecl.Name {
+			return a.webSearch(ctx, call), nil
+		}
 		return a.runMemoryTool(ctx, uid, seq, &added, call, wall)
 	})
 	if err != nil {
@@ -291,6 +316,22 @@ func (a *AgentService) runMemoryTool(ctx context.Context, uid string, seq int64,
 	}
 	slog.InfoContext(ctx, "agent.memory_tool", "uid", uid, "tool", call.Name)
 	return out, nil
+}
+
+// webSearch chạy tool web_search. Tra hỏng thì báo cho model để nó xin lỗi
+// người hỏi, như web_search của bot 3i, thay vì bắt cả câu trả lời chạy lại.
+func (a *AgentService) webSearch(ctx context.Context, call *genai.FunctionCall) map[string]any {
+	query := strings.TrimSpace(stringValue(call.Args["query"]))
+	if query == "" {
+		return map[string]any{"ok": false, "reason": "thiếu query"}
+	}
+	resp, err := a.llm.Search(ctx, query)
+	if err != nil {
+		slog.WarnContext(ctx, "agent.web_search_failed", "error", err)
+		return map[string]any{"ok": false, "reason": "tra web hỏng, xin lỗi và bảo thử lại sau"}
+	}
+	slog.InfoContext(ctx, "agent.web_search")
+	return groundedResult(resp)
 }
 
 func truncateRunes(s string, max int) string {
@@ -444,11 +485,16 @@ func (a *AgentService) roomReply(ctx context.Context, speaker roomAgent, agents 
 		}
 	}
 	fmt.Fprintf(&chat, "\nViết tin tiếp theo của %s.", speaker.name)
-	resp, err := a.llm.Generate(ctx, system, []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: chat.String()}}}}, nil)
+	text, err := a.toolLoop(ctx, "agent room", system, []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: chat.String()}}}}, agentRoomTools(), func(call *genai.FunctionCall) (map[string]any, error) {
+		if call.Name == agentWebSearchDecl.Name {
+			return a.webSearch(ctx, call), nil
+		}
+		return map[string]any{"error": "không có tool " + call.Name}, nil
+	})
 	if err != nil {
-		return "", fmt.Errorf("agent room llm: %w", err)
+		return "", err
 	}
-	return cleanRoomReply(resp.Text(), speaker.name), nil
+	return cleanRoomReply(text, speaker.name), nil
 }
 
 // cleanRoomReply bỏ phần model hay tự thêm (tên mình ở đầu, ngoặc kép), cắt

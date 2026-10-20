@@ -19,12 +19,16 @@ import (
 )
 
 // fakeLLM trả lần lượt các câu trong script và ghi lại mỗi lần gọi. onCall
-// chạy trước khi trả, để test chen tin vào lúc "model đang viết".
+// chạy trước khi trả, để test chen tin vào lúc "model đang viết". Search trả
+// searchResp hoặc searchErr và ghi lại query.
 type fakeLLM struct {
-	script []*genai.GenerateContentResponse
-	err    error
-	calls  []fakeCall
-	onCall func()
+	script     []*genai.GenerateContentResponse
+	err        error
+	calls      []fakeCall
+	onCall     func()
+	searchResp *genai.GenerateContentResponse
+	searchErr  error
+	searches   []string
 }
 
 type fakeCall struct {
@@ -46,6 +50,32 @@ func (f *fakeLLM) Generate(_ context.Context, system string, contents []*genai.C
 	resp := f.script[0]
 	f.script = f.script[1:]
 	return resp, nil
+}
+
+func (f *fakeLLM) Search(_ context.Context, query string) (*genai.GenerateContentResponse, error) {
+	f.searches = append(f.searches, query)
+	return f.searchResp, f.searchErr
+}
+
+// grounded là câu trả lời Google Search kèm nguồn, như Vertex trả.
+func grounded(text string, titles ...string) *genai.GenerateContentResponse {
+	resp := llmText(text)
+	gm := &genai.GroundingMetadata{}
+	for _, t := range titles {
+		gm.GroundingChunks = append(gm.GroundingChunks, &genai.GroundingChunk{Web: &genai.GroundingChunkWeb{Title: t}})
+	}
+	resp.Candidates[0].GroundingMetadata = gm
+	return resp
+}
+
+// toolResult là kết quả tool cuối cùng gửi lại model trong lần gọi call.
+func toolResult(t *testing.T, call fakeCall) map[string]any {
+	t.Helper()
+	last := call.contents[len(call.contents)-1]
+	if len(last.Parts) == 0 || last.Parts[0].FunctionResponse == nil {
+		t.Fatalf("lần gọi model không kèm kết quả tool: %+v", last)
+	}
+	return last.Parts[0].FunctionResponse.Response
 }
 
 func llmText(text string) *genai.GenerateContentResponse {
@@ -307,6 +337,39 @@ func TestEmulatorAgentDM(t *testing.T) {
 		t.Fatalf("lịch sử phải bỏ tin bot ở đầu cửa sổ: %d tin", len(sent))
 	}
 
+	// Tra web: kết quả grounded và nguồn về lại model, model trả lời bằng chữ.
+	e.tick(time.Second)
+	e.want(e.call("binh", "POST", "/v1/agents/me/dm", map[string]any{"text": "VnExpress Marathon Hà Nội ngày nào?"}, ""), 200, "")
+	e.llm.searchResp = grounded("Ngày 29/11/2026.", "vnexpress.net", "vnexpress.net", "bestmarathon.vn")
+	e.llm.script = []*genai.GenerateContentResponse{
+		llmCall("web_search", map[string]any{"query": "VnExpress Marathon Hà Nội 2026 ngày"}),
+		llmText("29/11 nha, theo vnexpress.net."),
+	}
+	calls = len(e.llm.calls)
+	e.mustRun("/tasks/agent-dm", agentDMTask{UID: "binh", Seq: 23})
+	out := toolResult(t, e.llm.calls[calls+1])
+	if len(e.llm.searches) != 1 || e.llm.searches[0] != "VnExpress Marathon Hà Nội 2026 ngày" || out["ok"] != true || out["answer"] != "Ngày 29/11/2026." || fmt.Sprint(out["sources"]) != "[vnexpress.net bestmarathon.vn]" {
+		t.Fatalf("web_search: query %v, kết quả %v", e.llm.searches, out)
+	}
+	if msgs = messages(t, e.call("binh", "GET", "/v1/agents/me/dm", nil, "")); msgs[0]["text"] != "29/11 nha, theo vnexpress.net." {
+		t.Fatalf("trả lời sau khi tra: %v", msgs[0])
+	}
+
+	// Tra hỏng: model được báo để xin lỗi, task vẫn xong, không chạy lại.
+	e.tick(time.Second)
+	e.want(e.call("binh", "POST", "/v1/agents/me/dm", map[string]any{"text": "Mai mưa không?"}, ""), 200, "")
+	e.llm.searchResp, e.llm.searchErr = nil, errors.New("grounding 503")
+	e.llm.script = []*genai.GenerateContentResponse{
+		llmCall("web_search", map[string]any{"query": "thời tiết Hà Nội"}),
+		llmText("Mình tra không được, lát hỏi lại nhé."),
+	}
+	calls = len(e.llm.calls)
+	e.mustRun("/tasks/agent-dm", agentDMTask{UID: "binh", Seq: 25})
+	if out = toolResult(t, e.llm.calls[calls+1]); out["ok"] != false || out["reason"] == nil {
+		t.Fatalf("tra hỏng phải báo model: %v", out)
+	}
+	e.llm.searchErr = nil
+
 	// Payload hỏng: 204 cho task thôi chạy lại.
 	if code := e.runTask("/tasks/agent-dm", map[string]any{"uid": "an"}); code != 204 {
 		t.Fatalf("payload hỏng: %d", code)
@@ -415,6 +478,24 @@ func TestEmulatorAgentRoom(t *testing.T) {
 	e.mustRun("/tasks/agent-turn", agentTurnTask{AfterSeq: seq})
 	if len(roomTurnTasks(e)) != tasks || len(messages(t, e.call("an", "GET", "/v1/agents/room?after="+fmt.Sprint(seq), nil, ""))) != 0 {
 		t.Fatal("[PASS] mà vẫn ghi tin hoặc hẹn lượt")
+	}
+
+	// Có người hỏi thông tin thực tế: bot tra web rồi mới nói.
+	e.tick(time.Second)
+	e.want(e.call("binh", "POST", "/v1/agents/room", map[string]any{"text": "Vòng hồ Tây bao nhiêu km nhỉ?"}, ""), 200, "")
+	seq = lastTurn(t, e).AfterSeq
+	e.llm.searchResp = grounded("Khoảng 17 km.", "vinpearl.com")
+	e.llm.script = []*genai.GenerateContentResponse{
+		llmCall("web_search", map[string]any{"query": "chu vi hồ Tây"}),
+		llmText("Khoảng 17 km đó Bình."),
+	}
+	calls = len(e.llm.calls)
+	e.mustRun("/tasks/agent-turn", agentTurnTask{AfterSeq: seq})
+	if out := toolResult(t, e.llm.calls[calls+1]); len(e.llm.searches) != 1 || out["answer"] != "Khoảng 17 km." {
+		t.Fatalf("web_search trong phòng: %v %v", e.llm.searches, out)
+	}
+	if msgs = messages(t, e.call("an", "GET", "/v1/agents/room?after="+fmt.Sprint(seq), nil, "")); len(msgs) != 1 || msgs[0]["text"] != "Khoảng 17 km đó Bình." {
+		t.Fatalf("tin bot sau khi tra: %v", msgs)
 	}
 
 	// Người chen vào lúc model đang viết: tin bot bỏ, không hẹn lượt từ tin cũ.
