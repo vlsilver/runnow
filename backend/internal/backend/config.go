@@ -38,8 +38,9 @@ type Config struct {
 	TelegramWebhookSecret string
 	GeminiLocation        string
 	GeminiModel           string
-	// GeminiThinkingLevel là mức thinking của 3i. "default" để model tự chọn,
-	// dùng khi đổi GEMINI_MODEL sang model không nhận thinkingLevel.
+	// GeminiThinkingLevel là mức thinking của 3i và bot trong app. "default"
+	// để model tự chọn, dùng khi đổi GEMINI_MODEL hay AGENT_MODEL sang model
+	// không nhận thinkingLevel.
 	GeminiThinkingLevel string
 	// AgentModel là model của bot cá nhân. Mặc định Flash: phòng bot nói nhiều
 	// tin ngắn, Pro đắt mà không cần.

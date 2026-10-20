@@ -108,7 +108,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 		} else {
 			d.Gemini = genaiClient
 			d.Memory = NewMemoryService(genaiClient, db, config.GeminiModel)
-			d.AgentBrain = NewAgentService(d.Agents, genaiAgentLLM{client: genaiClient, model: config.AgentModel}, tasks.Publish)
+			d.AgentBrain = NewAgentService(d.Agents, genaiAgentLLM{client: genaiClient, model: config.AgentModel, thinking: config.GeminiThinkingLevel}, tasks.Publish)
 			d.AgentBrain.chatID = config.TelegramChatID
 			if config.AgentLearn {
 				d.Learn = NewLearnService(d.Agents, genaiLearnLLM{client: genaiClient, model: config.AgentLearnModel}, config.TelegramChatID)

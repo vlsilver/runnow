@@ -22,6 +22,11 @@ type fakeGemini struct {
 
 func newFakeGeminiBot(t *testing.T, f *fakeGemini) *BotService {
 	t.Helper()
+	return &BotService{genai: newFakeGeminiClient(t, f), model: "m"}
+}
+
+func newFakeGeminiClient(t *testing.T, f *fakeGemini) *genai.Client {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		f.mu.Lock()
@@ -35,7 +40,7 @@ func newFakeGeminiBot(t *testing.T, f *fakeGemini) *BotService {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &BotService{genai: gc, model: "m"}
+	return gc
 }
 
 func (f *fakeGemini) requests() []string {

@@ -44,14 +44,22 @@ type agentLLM interface {
 	Search(ctx context.Context, query string) (*genai.GenerateContentResponse, error)
 }
 
+// genaiAgentLLM gọi cùng model với 3i nên dùng chung thinking level và trần
+// mỗi lần gọi (xem thinkingConfig, generateWithRetry).
 type genaiAgentLLM struct {
-	client *genai.Client
-	model  string
+	client         *genai.Client
+	model          string
+	thinking       string
+	attemptTimeout time.Duration
 }
 
 func (g genaiAgentLLM) Generate(ctx context.Context, system string, contents []*genai.Content, tools []*genai.Tool) (*genai.GenerateContentResponse, error) {
-	cfg := &genai.GenerateContentConfig{SystemInstruction: &genai.Content{Parts: []*genai.Part{{Text: system}}}, Tools: tools}
-	return g.client.Models.GenerateContent(ctx, g.model, contents, cfg)
+	cfg := &genai.GenerateContentConfig{
+		SystemInstruction: &genai.Content{Parts: []*genai.Part{{Text: system}}},
+		Tools:             tools,
+		ThinkingConfig:    thinkingConfig(g.thinking),
+	}
+	return generateWithRetry(ctx, g.client, g.model, contents, cfg, g.attemptTimeout)
 }
 
 func (g genaiAgentLLM) Search(ctx context.Context, query string) (*genai.GenerateContentResponse, error) {
