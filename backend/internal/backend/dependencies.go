@@ -107,8 +107,8 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 			d.Gemini = genaiClient
 			d.Memory = NewMemoryService(genaiClient, db, config.GeminiModel)
 			d.AgentBrain = NewAgentService(d.Agents, genaiAgentLLM{client: genaiClient, model: config.AgentModel}, tasks.Publish)
-			// Client RIÊNG cho sinh ảnh: model ảnh nằm ở location "global", khác
-			// location chat (us-central1). Hỏng thì chỉ tắt tính năng vẽ, không
+			// Client RIÊNG cho sinh ảnh: model ảnh nằm cố định ở location "global",
+			// không theo GEMINI_LOCATION. Hỏng thì chỉ tắt tính năng vẽ, không
 			// ảnh hưởng chat.
 			imageClient, imgErr := genai.NewClient(ctx, &genai.ClientConfig{
 				Project:  config.ProjectID,

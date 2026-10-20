@@ -77,11 +77,12 @@ func LoadConfig() (Config, error) {
 	c.BotBaseURL = trimURL(env("BOT_BASE_URL", ""))
 	c.TelegramBotUsername = strings.TrimPrefix(env("TELEGRAM_BOT_USERNAME", ""), "@")
 	c.TelegramWebhookSecret = env("TELEGRAM_WEBHOOK_SECRET", "")
-	// Gemini chạy ở region riêng: model chưa mở ở asia-southeast1 nơi
-	// backend đang chạy, nên không dùng chung GOOGLE_CLOUD_REGION.
-	c.GeminiLocation = env("GEMINI_LOCATION", "us-central1")
-	c.GeminiModel = env("GEMINI_MODEL", "gemini-2.5-pro")
-	c.AgentModel = env("AGENT_MODEL", "gemini-2.5-flash")
+	// Gemini chạy ở location riêng, không dùng chung GOOGLE_CLOUD_REGION:
+	// gemini-3.8-flash chỉ mở ở global. Dòng 2.5 Vertex retire 20/10/2026, và
+	// Google ghi 3.8-flash là model thay cho 2.5-pro.
+	c.GeminiLocation = env("GEMINI_LOCATION", "global")
+	c.GeminiModel = env("GEMINI_MODEL", "gemini-3.8-flash")
+	c.AgentModel = env("AGENT_MODEL", "gemini-3.8-flash")
 	if n, convErr := strconv.Atoi(env("BOT_HOURLY_LIMIT", "100")); convErr == nil && n > 0 {
 		c.BotHourlyLimit = n
 	} else {

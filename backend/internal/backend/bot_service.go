@@ -127,7 +127,7 @@ type BotService struct {
 	memory    *MemoryService
 	schedules *ScheduleStore
 	// Client + model RIÊNG cho sinh ảnh: model ảnh (gemini-2.5-flash-image) chạy
-	// ở location "global", khác client chat (us-central1). nil = tắt tính năng vẽ.
+	// ở location "global" cố định, không theo GEMINI_LOCATION. nil = tắt tính năng vẽ.
 	imageGenai *genai.Client
 	imageModel string
 	// bucket lưu ảnh AI đã tạo vào Firebase Storage để xem lại lịch sử. nil =
@@ -1197,7 +1197,7 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID string, threadID 
 	ctx = context.WithValue(ctx, ctxSenderName, name)
 	ctx = context.WithValue(ctx, ctxImageOutcome, outcome)
 	// Ảnh người dùng gửi kèm (nếu có): tải MỘT lần, dùng cho CẢ (a) ĐỌC/HIỂU
-	// bằng vision — đưa thẳng vào input gemini-2.5-pro để nó nhìn thấy ảnh, LẪN
+	// bằng vision — đưa thẳng vào input model chat để nó nhìn thấy ảnh, LẪN
 	// (b) vẽ-lại qua generate_image. Best-effort: tải hỏng thì coi như không ảnh.
 	var refImage []byte
 	if photoFileID != "" {
