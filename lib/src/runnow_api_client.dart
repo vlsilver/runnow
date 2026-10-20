@@ -4,11 +4,13 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:myrun/src/admin/admin_models.dart';
 import 'package:myrun/src/agents/agent_models.dart';
 import 'package:myrun/src/config.dart';
 import 'package:myrun/src/games/game_models.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+export 'package:myrun/src/admin/admin_models.dart';
 export 'package:myrun/src/agents/agent_models.dart';
 export 'package:myrun/src/games/game_models.dart';
 
@@ -358,6 +360,22 @@ class RunNowApiClient {
   /// Chỉ admin; người khác nhận `not_admin`.
   Future<void> deleteAgentGroupFact(String id) =>
       _send('DELETE', '/v1/agents/group-facts/${Uri.encodeComponent(id)}');
+
+  /// Chỉ admin; người khác nhận `not_admin`.
+  Future<AdminSettings> getAdminSettings() async {
+    final response = await _send('GET', '/v1/admin/settings');
+    return AdminSettings.fromJson(_jsonObject(response));
+  }
+
+  /// Cấp hay bỏ quyền [role] (`admin`, `tester`, `bot`). Gọi lại vẫn 200.
+  Future<void> grantRole(String role, String uid) =>
+      _send('POST', _rolePath(role, uid));
+
+  Future<void> revokeRole(String role, String uid) =>
+      _send('DELETE', _rolePath(role, uid));
+
+  String _rolePath(String role, String uid) =>
+      '/v1/admin/roles/${Uri.encodeComponent(role)}/${Uri.encodeComponent(uid)}';
 
   Future<AgentChatPage<AgentMessage>> getAgentDM({
     String? cursor,

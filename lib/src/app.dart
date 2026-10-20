@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/admin/admin_screen.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
 import 'package:myrun/src/agents/agent_group_facts_screen.dart';
 import 'package:myrun/src/agents/agent_screen.dart';
@@ -112,6 +113,16 @@ final _router = GoRouter(
                   redirect: (context, state) => '/profile',
                 ),
               ],
+            ),
+          ],
+        ),
+        // Tab chỉ hiện cho admin trên web (_showAdminTab). Người khác gõ thẳng
+        // /admin thì màn báo không có quyền, backend cũng chặn.
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/admin',
+              builder: (context, state) => const AdminScreen(),
             ),
           ],
         ),
@@ -817,13 +828,18 @@ class _HealthSyncTriggerState extends ConsumerState<_HealthSyncTrigger>
   Widget build(BuildContext context) => widget.child;
 }
 
-class _Scaffold extends StatelessWidget {
+/// Tab Admin chỉ có trên web, cho tài khoản nằm trong adminUids.
+bool _showAdminTab(WidgetRef ref) =>
+    kIsWeb && ref.watch(adminSettingsProvider).value != null;
+
+class _Scaffold extends ConsumerWidget {
   const _Scaffold({required this.shell, required this.location});
   final StatefulNavigationShell shell;
   final String location;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final admin = _showAdminTab(ref);
     final width = MediaQuery.sizeOf(context).width;
     // Ở tab Chạy (index 2) → ẩn nav dưới cho màn chạy chiếm trọn, tập trung.
     // Thoát bằng nút X trên màn Chạy (khi chưa bắt đầu) hoặc Stop/Discard.
@@ -835,7 +851,7 @@ class _Scaffold extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _DesktopNavRail(shell: shell),
+              _DesktopNavRail(shell: shell, admin: admin),
               Expanded(
                 child: Align(
                   alignment: Alignment.topCenter,
@@ -928,6 +944,16 @@ class _Scaffold extends StatelessWidget {
                       onTap: () => shell.goBranch(4),
                     ),
                   ),
+                  if (admin)
+                    Expanded(
+                      child: _NavItem(
+                        selected: shell.currentIndex == 5,
+                        icon: Icons.admin_panel_settings_outlined,
+                        selectedIcon: Icons.admin_panel_settings,
+                        label: 'Admin',
+                        onTap: () => shell.goBranch(5),
+                      ),
+                    ),
                 ],
               ),
             ],
@@ -939,9 +965,10 @@ class _Scaffold extends StatelessWidget {
 }
 
 class _DesktopNavRail extends StatelessWidget {
-  const _DesktopNavRail({required this.shell});
+  const _DesktopNavRail({required this.shell, required this.admin});
 
   final StatefulNavigationShell shell;
+  final bool admin;
 
   @override
   Widget build(BuildContext context) {
@@ -949,7 +976,7 @@ class _DesktopNavRail extends StatelessWidget {
     final extended = width >= 1240;
     final scheme = Theme.of(context).colorScheme;
     final onSurface = scheme.onSurface;
-    final branches = <int>[0, 1, if (!kIsWeb) 2, 3, 4];
+    final branches = <int>[0, 1, if (!kIsWeb) 2, 3, 4, if (admin) 5];
     final destinations = <NavigationRailDestination>[
       const NavigationRailDestination(
         icon: Icon(Icons.flag_outlined),
@@ -977,6 +1004,12 @@ class _DesktopNavRail extends StatelessWidget {
         selectedIcon: Icon(Icons.settings),
         label: Text('Cài đặt'),
       ),
+      if (admin)
+        const NavigationRailDestination(
+          icon: Icon(Icons.admin_panel_settings_outlined),
+          selectedIcon: Icon(Icons.admin_panel_settings),
+          label: Text('Admin'),
+        ),
     ];
     var selected = branches.indexOf(shell.currentIndex);
     if (selected < 0) selected = 0;
