@@ -873,14 +873,14 @@ func buildHistoryContents(rowsNewestFirst []map[string]any) []*genai.Content {
 //
 // Hai tin cách nhau 1ms để thứ tự user-trước-model luôn ổn định khi order
 // theo createdAt.
-func (s *BotService) saveExchange(ctx context.Context, chatID, name, question, answer string) error {
+func (s *BotService) saveExchange(ctx context.Context, chatID string, threadID int64, senderID, name, question, answer string) error {
 	col := s.historyRef(chatID)
 	now := time.Now().UTC()
 	expires := now.Add(30 * 24 * time.Hour)
-	if _, _, err := col.Add(ctx, map[string]any{
+	if _, _, err := col.Add(ctx, withSender(map[string]any{
 		"role": genai.RoleUser, "name": name, "text": question,
 		"createdAt": now, "expiresAt": expires,
-	}); err != nil {
+	}, senderID, threadID)); err != nil {
 		return err
 	}
 	_, _, err := col.Add(ctx, map[string]any{
@@ -888,6 +888,19 @@ func (s *BotService) saveExchange(ctx context.Context, chatID, name, question, a
 		"createdAt": now.Add(time.Millisecond), "expiresAt": expires,
 	})
 	return err
+}
+
+// withSender ghi kèm ai gửi tin và tin ở topic nào. tgUserId để học ký ức
+// đúng người và để xoá tin khi người đó xoá tài khoản; tin cũ không có field
+// này.
+func withSender(doc map[string]any, senderID string, threadID int64) map[string]any {
+	if senderID != "" {
+		doc["tgUserId"] = senderID
+	}
+	if threadID != 0 {
+		doc["threadId"] = threadID
+	}
+	return doc
 }
 
 // HandleMessage xử lý một tin nhắn đã được lọc là có nhắc tới bot.
@@ -1258,7 +1271,7 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID string, threadID 
 	// gửi thêm tin text (tránh lặp), chỉ lưu lịch sử. Kiểm trước khi xét err để
 	// khỏi log "answer_failed" giả.
 	if outcome.sent {
-		if saveErr := s.saveExchange(ctx, chatID, name, question, "[bot đã gửi 1 ảnh] "+outcome.caption); saveErr != nil {
+		if saveErr := s.saveExchange(ctx, chatID, threadID, senderID, name, question, "[bot đã gửi 1 ảnh] "+outcome.caption); saveErr != nil {
 			slog.WarnContext(ctx, "bot.history_save_failed", "error", saveErr)
 		}
 		s.memory.AfterMessages(ctx, chatID, 2)
@@ -1274,7 +1287,7 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID string, threadID 
 	}
 	// Lưu sau khi gửi thành công. Lưu trước mà gửi hỏng thì lịch sử có câu
 	// trả lời người dùng chưa từng thấy.
-	if saveErr := s.saveExchange(ctx, chatID, name, question, answer); saveErr != nil {
+	if saveErr := s.saveExchange(ctx, chatID, threadID, senderID, name, question, answer); saveErr != nil {
 		slog.WarnContext(ctx, "bot.history_save_failed", "error", saveErr)
 	}
 	// Vừa ghi 2 tin (hỏi + đáp): cộng vào bộ đếm chưng cất và chưng cất luôn
@@ -1300,10 +1313,10 @@ func (s *BotService) RecordIncoming(ctx context.Context, chatID string, threadID
 		return nil
 	}
 	now := time.Now().UTC()
-	if _, _, err := s.historyRef(chatID).Add(ctx, map[string]any{
+	if _, _, err := s.historyRef(chatID).Add(ctx, withSender(map[string]any{
 		"role": genai.RoleUser, "name": name, "text": text,
 		"createdAt": now, "expiresAt": now.Add(30 * 24 * time.Hour),
-	}); err != nil {
+	}, senderID, threadID)); err != nil {
 		return err
 	}
 	s.memory.AfterMessages(ctx, chatID, 1)

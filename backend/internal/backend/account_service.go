@@ -57,6 +57,10 @@ func (s *AccountService) Delete(ctx context.Context, uid string) error {
 	if err := s.leaveRunContracts(ctx, uid); err != nil {
 		return fmt.Errorf("leave run contracts: %w", err)
 	}
+	// Trước deleteOwnedDocuments: tgLinks là chỗ duy nhất còn biết tg id.
+	if err := s.deleteTelegramHistory(ctx, uid); err != nil {
+		return fmt.Errorf("delete telegram history: %w", err)
+	}
 	if err := s.deleteOwnedDocuments(ctx, uid, athleteID); err != nil {
 		return fmt.Errorf("delete documents: %w", err)
 	}
@@ -185,6 +189,30 @@ func (s *AccountService) deleteOwnedDocuments(ctx context.Context, uid, athleteI
 	}
 	for _, query := range queries {
 		if err := s.deleteQuery(ctx, query); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// deleteTelegramHistory xoá chat Telegram của mọi tài khoản Telegram từng liên
+// kết với uid: tin của họ trong group, cả cuộc chat riêng với 3i lẫn trí nhớ 3i
+// rút ra từ chat đó (chat riêng có chatID bằng tg id). Tin group ghi trước khi
+// có field tgUserId thì không truy được, tự hết hạn theo TTL 30 ngày.
+func (s *AccountService) deleteTelegramHistory(ctx context.Context, uid string) error {
+	links, err := s.db.Collection("tgLinks").Where("uid", "==", uid).Documents(ctx).GetAll()
+	if err != nil {
+		return err
+	}
+	for _, link := range links {
+		tgID := link.Ref.ID
+		if err := s.deleteQuery(ctx, s.db.CollectionGroup("botMessages").Where("tgUserId", "==", tgID)); err != nil {
+			return err
+		}
+		if err := s.deleteDocumentTree(ctx, s.db.Collection("botConversations").Doc(tgID)); err != nil {
+			return err
+		}
+		if _, err := s.db.Collection("botMemory").Doc(tgID).Delete(ctx); err != nil && status.Code(err) != codes.NotFound {
 			return err
 		}
 	}

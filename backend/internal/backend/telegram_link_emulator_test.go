@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/firestore"
+	"google.golang.org/genai"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -478,4 +479,77 @@ func TestEmulatorAccountDeleteRemovesTelegramLinks(t *testing.T) {
 		t.Fatalf("còn %d mã của uA (%v)", len(docs), err)
 	}
 	e.wantLink("uB", 8)
+}
+
+func TestEmulatorAccountDeleteRemovesTelegramHistory(t *testing.T) {
+	e := newLinkEnv(t)
+	e.start(100, 7, e.code("uA", time.Now()))
+	e.start(101, 8, e.code("uB", time.Now()))
+	at := time.Now()
+	for path, doc := range map[string]map[string]any{
+		"botConversations/-100/botMessages/a1": {"role": "user", "name": "An", "text": "của An", "tgUserId": "7", "createdAt": at},
+		"botConversations/-100/botMessages/b1": {"role": "user", "name": "Bình", "text": "của Bình", "tgUserId": "8", "createdAt": at},
+		"botConversations/-100/botMessages/m1": {"role": "model", "text": "3i đáp", "createdAt": at},
+		"botConversations/7/botMessages/d1":    {"role": "user", "name": "An", "text": "chat riêng", "tgUserId": "7", "createdAt": at},
+		"botConversations/7/botMessages/d2":    {"role": "model", "text": "3i đáp riêng", "createdAt": at},
+		"botMemory/7":                          {"text": "An thích chạy đêm"},
+		"botMemory/8":                          {"text": "Bình đau gối"},
+		"botMemory/-100":                       {"text": "nhóm"},
+	} {
+		seed(t, e.db, path, doc)
+	}
+	accounts := &AccountService{db: e.db}
+	for i := 0; i < 2; i++ { // xoá tài khoản lỗi giữa chừng thì chạy lại, phải ra cùng kết quả
+		if err := accounts.deleteTelegramHistory(context.Background(), "uA"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, gone := range []string{"botConversations/-100/botMessages/a1", "botConversations/7/botMessages/d1", "botConversations/7/botMessages/d2", "botMemory/7"} {
+		if e.data(gone) != nil {
+			t.Fatalf("xoá tài khoản mà còn %s", gone)
+		}
+	}
+	for _, kept := range []string{"botConversations/-100/botMessages/b1", "botConversations/-100/botMessages/m1", "botMemory/8", "botMemory/-100"} {
+		if e.data(kept) == nil {
+			t.Fatalf("xoá nhầm %s", kept)
+		}
+	}
+}
+
+func TestEmulatorBotHistoryRecordsSender(t *testing.T) {
+	db := emulatorDB(t)
+	gc, err := genai.NewClient(context.Background(), &genai.ClientConfig{APIKey: "test", Backend: genai.BackendGeminiAPI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Chat id khác group club để RecordIncoming không thử tự chen trả lời.
+	s := &BotService{genai: gc, telegram: NewTelegramService("token", "-999"), db: db}
+	ctx := context.Background()
+	if err := s.RecordIncoming(ctx, "-100", 5, "7", "An", "sáng mai chạy hồ Tây"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordIncoming(ctx, "-100", 0, "", "ai đó", "tin không rõ người gửi"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.saveExchange(ctx, "-100", 5, "8", "Bình", "@3i mai mưa không", "Không mưa"); err != nil {
+		t.Fatal(err)
+	}
+	docs, err := db.Collection("botConversations").Doc("-100").Collection("botMessages").Documents(ctx).GetAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, d := range docs {
+		m := d.Data()
+		got[stringValue(m["text"])] = fmt.Sprint(m["tgUserId"], "/", m["threadId"])
+	}
+	want := map[string]string{
+		"sáng mai chạy hồ Tây":   "7/5",
+		"tin không rõ người gửi": "<nil>/<nil>",
+		"@3i mai mưa không":      "8/5",
+		"Không mưa":              "<nil>/<nil>",
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("người gửi trong lịch sử: %v, mong đợi %v", got, want)
+	}
 }
