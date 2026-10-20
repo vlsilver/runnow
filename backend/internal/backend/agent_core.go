@@ -221,26 +221,37 @@ func (a *AgentService) dmAnswer(ctx context.Context, uid string, seq int64, name
 		contents = append(contents, &genai.Content{Role: role, Parts: []*genai.Part{{Text: m.Text}}})
 	}
 	added := 0
+	text, err := a.toolLoop(ctx, "agent dm", system, contents, agentMemoryTools(), func(call *genai.FunctionCall) (map[string]any, error) {
+		return a.runMemoryTool(ctx, uid, seq, &added, call, wall)
+	})
+	if err != nil {
+		return "", err
+	}
+	if text == "" {
+		return "", errors.New("agent dm: model không trả lời")
+	}
+	return truncateRunes(text, agentReplyMaxRune), nil
+}
+
+// toolLoop gọi model, chạy các tool nó gọi rồi gọi lại, tới khi model trả chữ
+// hoặc hết agentToolRounds vòng. Lỗi từ run thì dừng để task chạy lại.
+func (a *AgentService) toolLoop(ctx context.Context, label, system string, contents []*genai.Content, tools []*genai.Tool, run func(*genai.FunctionCall) (map[string]any, error)) (string, error) {
 	for round := 0; round < agentToolRounds; round++ {
-		resp, err := a.llm.Generate(ctx, system, contents, agentMemoryTools())
+		resp, err := a.llm.Generate(ctx, system, contents, tools)
 		if err != nil {
-			return "", fmt.Errorf("agent dm llm: %w", err)
+			return "", fmt.Errorf("%s llm: %w", label, err)
 		}
 		calls := resp.FunctionCalls()
 		if len(calls) == 0 {
-			text := strings.TrimSpace(resp.Text())
-			if text == "" {
-				return "", errors.New("agent dm: model không trả lời")
-			}
-			return truncateRunes(text, agentReplyMaxRune), nil
+			return strings.TrimSpace(resp.Text()), nil
 		}
 		if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
-			return "", errors.New("agent dm: model trả về rỗng")
+			return "", fmt.Errorf("%s: model trả về rỗng", label)
 		}
 		contents = append(contents, resp.Candidates[0].Content)
 		results := make([]*genai.Part, 0, len(calls))
 		for _, call := range calls {
-			out, err := a.runMemoryTool(ctx, uid, seq, &added, call, wall)
+			out, err := run(call)
 			if err != nil {
 				return "", err
 			}
@@ -248,7 +259,7 @@ func (a *AgentService) dmAnswer(ctx context.Context, uid string, seq int64, name
 		}
 		contents = append(contents, &genai.Content{Role: genai.RoleUser, Parts: results})
 	}
-	return "", fmt.Errorf("agent dm: model gọi tool quá %d vòng", agentToolRounds)
+	return "", fmt.Errorf("%s: model gọi tool quá %d vòng", label, agentToolRounds)
 }
 
 // runMemoryTool chạy một lệnh nhớ/sửa/quên. Lỗi nghiệp vụ (bộ nhớ đầy, mục

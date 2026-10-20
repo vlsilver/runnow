@@ -900,22 +900,32 @@ func (s *BotService) webSearch(ctx context.Context, args map[string]any) (any, e
 	if query == "" {
 		return map[string]any{"ok": false, "reason": "thiếu query"}, nil
 	}
-	resp, err := s.genai.Models.GenerateContent(ctx, s.model,
+	resp, err := googleSearch(ctx, s.genai, s.model, query)
+	if err != nil {
+		slog.WarnContext(ctx, "bot.web_search_failed", "error", err)
+		return map[string]any{"ok": false, "reason": "tra web hỏng, xin lỗi và bảo thử lại sau"}, nil
+	}
+	return groundedResult(resp), nil
+}
+
+// googleSearch gọi một lượt chỉ bật GoogleSearch.
+func googleSearch(ctx context.Context, client *genai.Client, model, query string) (*genai.GenerateContentResponse, error) {
+	return client.Models.GenerateContent(ctx, model,
 		[]*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: query}}}},
 		&genai.GenerateContentConfig{
 			Tools:             []*genai.Tool{{GoogleSearch: &genai.GoogleSearch{}}},
 			SystemInstruction: &genai.Content{Parts: []*genai.Part{{Text: "Tra Google và trả lời NGẮN GỌN, chính xác, ưu tiên thông tin mới nhất. Nếu kết quả không rõ ràng thì nói thẳng là không chắc."}}},
 		})
-	if err != nil {
-		slog.WarnContext(ctx, "bot.web_search_failed", "error", err)
-		return map[string]any{"ok": false, "reason": "tra web hỏng, xin lỗi và bảo thử lại sau"}, nil
-	}
+}
+
+// groundedResult đổi câu trả lời grounded thành kết quả tool cho model chính.
+func groundedResult(resp *genai.GenerateContentResponse) map[string]any {
 	answer := ""
 	if resp != nil {
 		answer = strings.TrimSpace(resp.Text())
 	}
 	if answer == "" {
-		return map[string]any{"ok": false, "reason": "không tìm được thông tin phù hợp"}, nil
+		return map[string]any{"ok": false, "reason": "không tìm được thông tin phù hợp"}
 	}
 	// Nguồn: chỉ lấy TÊN MIỀN (title) để bot dẫn gọn — URL grounding của Google
 	// là link redirect dài, dán vào chat rất xấu.
@@ -932,7 +942,7 @@ func (s *BotService) webSearch(ctx context.Context, args map[string]any) (any, e
 			}
 		}
 	}
-	return map[string]any{"ok": true, "answer": answer, "sources": sources}, nil
+	return map[string]any{"ok": true, "answer": answer, "sources": sources}
 }
 
 // generateImage vẽ 1 ảnh theo yêu cầu rồi gửi thẳng vào chat hiện tại. Đọc
