@@ -1,9 +1,11 @@
 package backend
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 )
 
 // Route của bot cá nhân. Api chỉ ghi và enqueue; việc gọi model chạy ở bot
@@ -164,6 +166,29 @@ func (s *Server) agentTurn(w http.ResponseWriter, r *http.Request) error {
 		return errors.New("agent-turn cần Gemini")
 	}
 	if err := s.deps.AgentBrain.RoomTurn(r.Context(), task.AfterSeq, s.now()); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// enqueueLearn hẹn task học ký ức của khung 30 phút hiện tại; việc học chạy ở
+// task riêng vì gọi model lâu hơn ngân sách của tick.
+func (s *Server) enqueueLearn(ctx context.Context, now time.Time) error {
+	publish := s.enqueueTask()
+	if publish == nil {
+		return errors.New("agent-learn: chưa cấu hình Cloud Tasks")
+	}
+	_, err := publish(ctx, agentLearnTaskFor(now))
+	return err
+}
+
+// agentLearn học một lô tin mới. Cờ đã tắt mà task còn trong queue thì 204.
+func (s *Server) agentLearn(w http.ResponseWriter, r *http.Request) error {
+	if s.deps.Learn == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return nil
+	}
+	if err := s.deps.Learn.Run(r.Context(), s.now()); err != nil {
 		return err
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})

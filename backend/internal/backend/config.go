@@ -40,8 +40,12 @@ type Config struct {
 	GeminiModel           string
 	// AgentModel là model của bot cá nhân. Mặc định Flash: phòng bot nói nhiều
 	// tin ngắn, Pro đắt mà không cần.
-	AgentModel     string
-	BotHourlyLimit int
+	AgentModel string
+	// AgentLearn bật task bot tự học ký ức từ tin trong phòng bot và group
+	// Telegram (agent_learn.go). Chỉ "on" mới bật.
+	AgentLearn      bool
+	AgentLearnModel string
+	BotHourlyLimit  int
 	// WebBaseURL là domain của app 3i Run bản web, không phải của API. Link
 	// chia sẻ trỏ về đây để mở đúng màn hình chi tiết trong app (hoặc bản
 	// web nếu chưa cài app), thay vì một trang HTML do backend tự dựng.
@@ -83,6 +87,8 @@ func LoadConfig() (Config, error) {
 	c.GeminiLocation = env("GEMINI_LOCATION", "global")
 	c.GeminiModel = env("GEMINI_MODEL", "gemini-3.8-flash")
 	c.AgentModel = env("AGENT_MODEL", "gemini-3.8-flash")
+	c.AgentLearn = env("AGENT_LEARN", "") == "on"
+	c.AgentLearnModel = env("AGENT_LEARN_MODEL", "gemini-3.8-flash")
 	if n, convErr := strconv.Atoi(env("BOT_HOURLY_LIMIT", "100")); convErr == nil && n > 0 {
 		c.BotHourlyLimit = n
 	} else {

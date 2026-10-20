@@ -34,6 +34,8 @@ type Dependencies struct {
 	Agents         *AgentStore
 	// AgentBrain chạy LLM của bot cá nhân; chỉ có trên service có Gemini (bot).
 	AgentBrain *AgentService
+	// Learn là task bot tự học ký ức; nil khi AGENT_LEARN chưa bật.
+	Learn *LearnService
 	// EnqueueTask thay Tasks.Publish khi khác nil; test gài để bắt task mà
 	// không cần Cloud Tasks.
 	EnqueueTask taskPublishFunc
@@ -107,6 +109,9 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 			d.Gemini = genaiClient
 			d.Memory = NewMemoryService(genaiClient, db, config.GeminiModel)
 			d.AgentBrain = NewAgentService(d.Agents, genaiAgentLLM{client: genaiClient, model: config.AgentModel}, tasks.Publish)
+			if config.AgentLearn {
+				d.Learn = NewLearnService(d.Agents, genaiLearnLLM{client: genaiClient, model: config.AgentLearnModel}, config.TelegramChatID)
+			}
 			// Client RIÊNG cho sinh ảnh: model ảnh nằm cố định ở location "global",
 			// không theo GEMINI_LOCATION. Hỏng thì chỉ tắt tính năng vẽ, không
 			// ảnh hưởng chat.
