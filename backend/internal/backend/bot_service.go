@@ -774,6 +774,15 @@ func (s *BotService) historyRef(chatID string) *firestore.CollectionRef {
 // sử phải mở đầu bằng lượt "user" — Gemini từ chối chuỗi bắt đầu bằng lượt
 // model — nên cắt các lượt model dư ở đầu.
 func (s *BotService) loadHistory(ctx context.Context, chatID string) ([]*genai.Content, error) {
+	rows, err := s.historyRows(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	return buildHistoryContents(rows), nil
+}
+
+// historyRows là botHistoryLimit tin gần nhất, mới nhất trước.
+func (s *BotService) historyRows(ctx context.Context, chatID string) ([]map[string]any, error) {
 	docs, err := s.historyRef(chatID).
 		OrderBy("createdAt", firestore.Desc).
 		Limit(botHistoryLimit).Documents(ctx).GetAll()
@@ -784,7 +793,7 @@ func (s *BotService) loadHistory(ctx context.Context, chatID string) ([]*genai.C
 	for i, d := range docs {
 		rows[i] = d.Data()
 	}
-	return buildHistoryContents(rows), nil
+	return rows, nil
 }
 
 // botDuplicateWindow: trong khoảng này, một tin user TRÙNG Y HỆT (cùng người +

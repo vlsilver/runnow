@@ -199,19 +199,23 @@ var agentForgetLearnedDecl = &genai.FunctionDeclaration{
 	}, Required: []string{"id"}},
 }
 
-// recallPerson chạy tool recall_person: tra tên trong thành viên phòng bot và
-// người trên group Telegram. Tên không khớp hay trùng thì báo cho model.
 func (a *AgentService) recallPerson(ctx context.Context, call *genai.FunctionCall, now time.Time) (map[string]any, error) {
-	name := strings.TrimSpace(stringValue(call.Args["name"]))
-	people, err := learnPeople(ctx, a.store, a.chatID)
+	return recallPerson(ctx, a.store, a.chatID, stringValue(call.Args["name"]), now)
+}
+
+// recallPerson chạy tool recall_person: tra tên trong thành viên phòng bot và
+// người trên group Telegram chatID. Tên không khớp hay trùng thì báo cho model.
+func recallPerson(ctx context.Context, store *AgentStore, chatID, name string, now time.Time) (map[string]any, error) {
+	name = strings.TrimSpace(name)
+	people, err := learnPeople(ctx, store, chatID)
 	if err != nil {
 		return nil, err
 	}
-	members, err := a.store.members(ctx)
+	members, err := store.members(ctx)
 	if err != nil {
 		return nil, err
 	}
-	names, err := a.store.displayNames(ctx, members)
+	names, err := store.displayNames(ctx, members)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +229,7 @@ func (a *AgentService) recallPerson(ctx context.Context, call *genai.FunctionCal
 		return map[string]any{"ok": false, "reason": note}, nil
 	}
 	// key tg-{id} không có telegramLinks nên learnedOf chỉ đọc đúng doc đó.
-	by, err := a.store.learnedOf(ctx, []string{key}, now)
+	by, err := store.learnedOf(ctx, []string{key}, now)
 	if err != nil {
 		return nil, err
 	}
