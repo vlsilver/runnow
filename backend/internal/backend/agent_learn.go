@@ -125,6 +125,8 @@ type learnedFact struct {
 	Text      string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	// Source rỗng là học từ tin; "migrated" là chuyển từ tóm tắt cũ của 3i.
+	Source string
 }
 
 type learnAction struct {
@@ -459,11 +461,7 @@ func (l *LearnService) apply(ctx context.Context, b *learnBatch, key string, act
 			return nil
 		}
 		res = applyLearnActions(liveFacts(doc["facts"], now), int64(number(doc["nextId"])), acts, now)
-		facts := make([]any, len(res.facts))
-		for i, f := range res.facts {
-			facts[i] = map[string]any{"id": f.ID, "text": f.Text, "createdAt": f.CreatedAt, "updatedAt": f.UpdatedAt}
-		}
-		if err := tx.Set(ref, map[string]any{"facts": facts, "nextId": res.nextID, "batch": b.ID, "updatedAt": now}); err != nil {
+		if err := tx.Set(ref, map[string]any{"facts": learnedFactMaps(res.facts), "nextId": res.nextID, "batch": b.ID, "updatedAt": now}); err != nil {
 			return err
 		}
 		for i, c := range res.changes {
@@ -534,10 +532,22 @@ func liveFacts(v any, now time.Time) []learnedFact {
 	var out []learnedFact
 	for _, item := range anyList(v) {
 		m, _ := item.(map[string]any)
-		f := learnedFact{ID: stringValue(m["id"]), Text: stringValue(m["text"]), CreatedAt: timeValue(m["createdAt"]), UpdatedAt: timeValue(m["updatedAt"])}
+		f := learnedFact{ID: stringValue(m["id"]), Text: stringValue(m["text"]), CreatedAt: timeValue(m["createdAt"]), UpdatedAt: timeValue(m["updatedAt"]), Source: stringValue(m["source"])}
 		if f.ID != "" && now.Sub(f.UpdatedAt) <= agentLearnedTTL {
 			out = append(out, f)
 		}
+	}
+	return out
+}
+
+func learnedFactMaps(facts []learnedFact) []any {
+	out := make([]any, len(facts))
+	for i, f := range facts {
+		m := map[string]any{"id": f.ID, "text": f.Text, "createdAt": f.CreatedAt, "updatedAt": f.UpdatedAt}
+		if f.Source != "" {
+			m["source"] = f.Source
+		}
+		out[i] = m
 	}
 	return out
 }
