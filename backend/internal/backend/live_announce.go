@@ -90,7 +90,7 @@ func (s *ActivityService) LiveAnnounce(ctx context.Context, uid, activityID, eve
 		if !claimed {
 			return nil
 		}
-		if err := s.broadcast.LivePhotoAnnouncement(ctx, displayName, photoPath, distanceMeters); err != nil {
+		if err := s.broadcast.LivePhotoAnnouncement(ctx, uid, displayName, photoPath, distanceMeters); err != nil {
 			slog.WarnContext(ctx, "live.photo_send_failed_after_claim", "error", err)
 			return nil
 		}
@@ -99,7 +99,7 @@ func (s *ActivityService) LiveAnnounce(ctx context.Context, uid, activityID, eve
 
 	text := ""
 	if hasBot {
-		text = s.broadcast.LiveAnnouncement(ctx, displayName, event, distanceMeters, movingTimeSeconds, milestoneKm)
+		text = s.broadcast.LiveAnnouncement(ctx, uid, displayName, event, distanceMeters, movingTimeSeconds, milestoneKm)
 	}
 	if text == "" {
 		text = liveAnnouncePlain(displayName, event, distanceMeters, movingTimeSeconds, milestoneKm)

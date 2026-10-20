@@ -45,7 +45,10 @@ type Config struct {
 	// Telegram (agent_learn.go). Chỉ "on" mới bật.
 	AgentLearn      bool
 	AgentLearnModel string
-	BotHourlyLimit  int
+	// BotGroupFacts cho 3i đọc trí nhớ về group club từ ký ức tự học thay cho
+	// tóm tắt botMemory. Chỉ "on" mới bật; tắt là quay về botMemory ngay.
+	BotGroupFacts  bool
+	BotHourlyLimit int
 	// WebBaseURL là domain của app 3i Run bản web, không phải của API. Link
 	// chia sẻ trỏ về đây để mở đúng màn hình chi tiết trong app (hoặc bản
 	// web nếu chưa cài app), thay vì một trang HTML do backend tự dựng.
@@ -89,6 +92,7 @@ func LoadConfig() (Config, error) {
 	c.AgentModel = env("AGENT_MODEL", "gemini-3.8-flash")
 	c.AgentLearn = env("AGENT_LEARN", "") == "on"
 	c.AgentLearnModel = env("AGENT_LEARN_MODEL", "gemini-3.8-flash")
+	c.BotGroupFacts = env("BOT_GROUP_FACTS", "") == "on"
 	if n, convErr := strconv.Atoi(env("BOT_HOURLY_LIMIT", "100")); convErr == nil && n > 0 {
 		c.BotHourlyLimit = n
 	} else {

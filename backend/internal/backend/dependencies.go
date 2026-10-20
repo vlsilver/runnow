@@ -126,6 +126,9 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 				imageClient = nil
 			}
 			d.Bot = NewBotService(genaiClient, telegram, NewBotTools(db), db, config.GeminiModel, config.BotHourlyLimit, d.Memory, NewScheduleStore(db), imageClient, geminiImageModel, bucket)
+			if config.BotGroupFacts {
+				d.Bot.learned = d.Agents
+			}
 			// Cho ActivityService ghi lại chính thông báo buổi chạy vào trí
 			// nhớ (Telegram không đẩy lại tin của bot).
 			d.Activities.SetBroadcastRecorder(d.Bot)

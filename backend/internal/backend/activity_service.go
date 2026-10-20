@@ -46,9 +46,9 @@ type ActivityService struct {
 // gửi thông báo bình thường, chỉ không lưu vào trí nhớ.
 type broadcastRecorder interface {
 	RecordBroadcast(ctx context.Context, chatID, text string) error
-	ActivityAnnouncement(ctx context.Context, displayName, activityName string, fact ActivityFact) string
-	LiveAnnouncement(ctx context.Context, displayName, event string, distanceMeters, movingTimeSeconds float64, milestoneKm int) string
-	LivePhotoAnnouncement(ctx context.Context, displayName, photoPath string, distanceMeters float64) error
+	ActivityAnnouncement(ctx context.Context, uid, displayName, activityName string, fact ActivityFact) string
+	LiveAnnouncement(ctx context.Context, uid, displayName, event string, distanceMeters, movingTimeSeconds float64, milestoneKm int) string
+	LivePhotoAnnouncement(ctx context.Context, uid, displayName, photoPath string, distanceMeters float64) error
 	ContractRoast(ctx context.Context, title, targetLabel string, failers []roastFailer) string
 	Enabled() bool
 }
@@ -769,7 +769,7 @@ func (s *ActivityService) NotifyTelegram(ctx context.Context, uid, activityID st
 	// thông báo.
 	announcement := ""
 	if hasBot {
-		announcement = s.broadcast.ActivityAnnouncement(ctx, displayName, activityName, fact)
+		announcement = s.broadcast.ActivityAnnouncement(ctx, uid, displayName, activityName, fact)
 	}
 
 	// Claim cờ TRƯỚC khi gửi để retry (hoặc giao song song) không bắn lặp: nếu

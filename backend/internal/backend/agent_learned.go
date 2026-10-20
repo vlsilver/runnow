@@ -129,6 +129,77 @@ type learnedPerson struct {
 	facts []learnedFact
 }
 
+// learnedSubject là một người cần đưa ký ức vào prompt 3i: uid khi biết tài
+// khoản app, không thì tg là id Telegram của người gửi.
+type learnedSubject struct{ uid, tg, name string }
+
+// learnedPeople là ký ức của các subject còn ký ức, giữ thứ tự đưa vào; hai
+// subject cùng một người thì lấy subject đầu.
+func (s *AgentStore) learnedPeople(ctx context.Context, subjects []learnedSubject, now time.Time) ([]learnedPerson, error) {
+	var linkRefs []*firestore.DocumentRef
+	for _, p := range subjects {
+		if p.uid == "" && p.tg != "" {
+			linkRefs = append(linkRefs, s.db.Collection("tgLinks").Doc(p.tg))
+		}
+	}
+	linked := map[string]string{}
+	if len(linkRefs) > 0 {
+		links, err := s.db.GetAll(ctx, linkRefs)
+		if err != nil {
+			return nil, err
+		}
+		for _, l := range links {
+			if l.Exists() {
+				linked[l.Ref.ID] = stringValue(l.Data()["uid"])
+			}
+		}
+	}
+	keys := make([]string, len(subjects))
+	for i, p := range subjects {
+		switch {
+		case p.uid != "":
+			keys[i] = p.uid
+		case linked[p.tg] != "":
+			keys[i] = linked[p.tg]
+		case p.tg != "":
+			keys[i] = learnTGScope(p.tg)
+		}
+	}
+	by, err := s.learnedOf(ctx, uniqueStrings(keys), now)
+	if err != nil {
+		return nil, err
+	}
+	var out []learnedPerson
+	seen := map[string]bool{}
+	for i, p := range subjects {
+		if k := keys[i]; k != "" && !seen[k] && len(by[k]) > 0 {
+			seen[k] = true
+			out = append(out, learnedPerson{name: p.name, facts: by[k]})
+		}
+	}
+	return out, nil
+}
+
+// ForgetTelegramFact xoá một ký ức tự học về người dùng Telegram tg theo id như
+// learnedPeople trả cho chính người đó, và ghi learnLog.
+func (s *AgentStore) ForgetTelegramFact(ctx context.Context, tg, id string, now time.Time) error {
+	if tg == "" {
+		return errLearnedNotFound
+	}
+	link, err := docMap(s.db.Collection("tgLinks").Doc(tg).Get(ctx))
+	if err != nil {
+		return err
+	}
+	key, factID := learnTGScope(tg), id
+	if uid := stringValue(link["uid"]); uid != "" {
+		key = uid
+		if rest, ok := strings.CutPrefix(id, learnedTGPrefix); ok {
+			key, factID = learnTGScope(tg), rest
+		}
+	}
+	return s.forgetLearnedIn(ctx, key, factID, "tg:"+tg, now)
+}
+
 // learnedBlock là phần ký ức tự học chèn vào prompt bot cá nhân. Rỗng khi
 // chưa học được gì, để prompt giữ nguyên như trước khi bật học. withID cho
 // chat riêng, nơi chủ bảo quên được.
@@ -142,13 +213,7 @@ func learnedBlock(owner []learnedFact, group []learnedFact, others []learnedPers
 		b.WriteString("\n\nBẠN BIẾT VỀ NHÓM (rút từ tin trong nhóm, có thể đã cũ):\n")
 		writeFacts(&b, group, false)
 	}
-	for i, p := range others {
-		if i == 0 {
-			b.WriteString("\n\nBẠN BIẾT VỀ NGƯỜI TRONG ĐOẠN CHAT (có thể đã cũ; người đó nói khác thì tin người đó):\n")
-		}
-		fmt.Fprintf(&b, "%s:\n", p.name)
-		writeFacts(&b, newestFacts(p.facts, agentLearnedPerPerson), false)
-	}
+	writePeople(&b, others)
 	if b.Len() == 0 {
 		return ""
 	}
@@ -157,6 +222,38 @@ func learnedBlock(owner []learnedFact, group []learnedFact, others []learnedPers
 	}
 	b.WriteString("\nCần biết về một người được nhắc tên mà không có ở trên thì gọi recall_person. Đừng tự kể chuyện riêng của người khác khi không ai hỏi.")
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// botLearnedBlock là phần ký ức tự học chèn vào prompt 3i thay cho tóm tắt
+// botMemory của group club. self là người đang chat riêng với 3i, có id để họ
+// bảo quên được.
+func botLearnedBlock(group []learnedFact, self *learnedPerson, others []learnedPerson) string {
+	var b strings.Builder
+	if len(group) > 0 {
+		b.WriteString("\n\nBẠN BIẾT VỀ GROUP CLUB (rút từ tin trong group, có thể đã cũ):\n")
+		writeFacts(&b, group, false)
+	}
+	if self != nil {
+		fmt.Fprintf(&b, "\n\nBẠN BIẾT VỀ %s, NGƯỜI ĐANG CHAT VỚI BẠN (có thể đã cũ; họ nói khác thì tin họ):\n", self.name)
+		writeFacts(&b, self.facts, true)
+		b.WriteString("Họ bảo quên điều gì về họ thì gọi forget_my_fact đúng id trong ngoặc vuông.\n")
+	}
+	writePeople(&b, others)
+	if b.Len() == 0 {
+		return ""
+	}
+	b.WriteString("\nCần biết về một người được nhắc tên mà không có ở trên thì gọi recall_person.")
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func writePeople(b *strings.Builder, people []learnedPerson) {
+	for i, p := range people {
+		if i == 0 {
+			b.WriteString("\n\nBẠN BIẾT VỀ NGƯỜI TRONG ĐOẠN CHAT (có thể đã cũ; người đó nói khác thì tin người đó):\n")
+		}
+		fmt.Fprintf(b, "%s:\n", p.name)
+		writeFacts(b, newestFacts(p.facts, agentLearnedPerPerson), false)
+	}
 }
 
 func writeFacts(b *strings.Builder, facts []learnedFact, withID bool) {
@@ -189,6 +286,14 @@ var agentRecallPersonDecl = &genai.FunctionDeclaration{
 	Parameters: &genai.Schema{Type: genai.TypeObject, Properties: map[string]*genai.Schema{
 		"name": {Type: genai.TypeString, Description: "Tên người, đúng như mọi người gọi trong nhóm."},
 	}, Required: []string{"name"}},
+}
+
+var botForgetMyFactDecl = &genai.FunctionDeclaration{
+	Name:        "forget_my_fact",
+	Description: "Xoá một điều bot biết về chính người đang chat riêng với bot.",
+	Parameters: &genai.Schema{Type: genai.TypeObject, Properties: map[string]*genai.Schema{
+		"id": {Type: genai.TypeString, Description: "id trong ngoặc vuông ở mục NGƯỜI ĐANG CHAT VỚI BẠN."},
+	}, Required: []string{"id"}},
 }
 
 var agentForgetLearnedDecl = &genai.FunctionDeclaration{

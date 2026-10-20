@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -133,6 +134,9 @@ type BotService struct {
 	// bucket lưu ảnh AI đã tạo vào Firebase Storage để xem lại lịch sử. nil =
 	// vẫn gửi ảnh bình thường, chỉ không lưu.
 	bucket *gcs.BucketHandle
+	// learned khác nil khi bật BOT_GROUP_FACTS: trí nhớ về group club đọc từ ký
+	// ức tự học (agent_learn.go) thay cho tóm tắt botMemory.
+	learned *AgentStore
 }
 
 func NewBotService(gc *genai.Client, telegram *TelegramService, tools *BotTools, db *firestore.Client, model string, hourlyLimit int, memory *MemoryService, schedules *ScheduleStore, imageGenai *genai.Client, imageModel string, bucket *gcs.BucketHandle) *BotService {
@@ -416,6 +420,12 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 			},
 		)
 	}
+	if s.learned != nil {
+		decls = append(decls, agentRecallPersonDecl)
+		if canPostToGroup {
+			decls = append(decls, botForgetMyFactDecl)
+		}
+	}
 	return []*genai.Tool{{FunctionDeclarations: decls}}
 }
 
@@ -443,6 +453,16 @@ func (s *BotService) dispatch(ctx context.Context, name string, args map[string]
 		return s.tools.GetRecentRun(ctx, args)
 	case "recall_group":
 		return s.recallGroup(ctx, args)
+	case agentRecallPersonDecl.Name:
+		if s.learned == nil {
+			break
+		}
+		return recallPerson(ctx, s.learned, s.telegram.ChatID(), stringValue(args["name"]), time.Now())
+	case botForgetMyFactDecl.Name:
+		if s.learned == nil || !canPostToGroup {
+			break
+		}
+		return s.forgetMyFact(ctx, stringValue(args["id"]))
 	case "web_search":
 		return s.webSearch(ctx, args)
 	case "generate_image":
@@ -483,7 +503,18 @@ func (s *BotService) recallGroup(ctx context.Context, args map[string]any) (any,
 	if groupID == "" {
 		return map[string]any{"error": "chưa cấu hình group"}, nil
 	}
-	summary := s.memory.Load(ctx, groupID)
+	summary := ""
+	if s.learned != nil {
+		group, err := s.learned.learnedGroup(ctx, time.Now())
+		if err != nil {
+			return nil, err
+		}
+		var b strings.Builder
+		writeFacts(&b, group, false)
+		summary = strings.TrimSpace(b.String())
+	} else {
+		summary = s.memory.Load(ctx, groupID)
+	}
 
 	// Cửa sổ raw nhỏ để bắt phần mới hơn mốc chưng cất gần nhất.
 	limit := int(number(args["limit"]))
@@ -524,6 +555,78 @@ func (s *BotService) recallGroup(ctx context.Context, args map[string]any) (any,
 		"recentMessages": recent,  // các tin mới nhất chưa vào tóm tắt
 		"note":           "groupSummary là bản tóm tắt toàn bộ lịch sử; recentMessages chỉ là các tin gần đây nhất để bổ sung phần mới.",
 	}, nil
+}
+
+// botLearnedPeople: trong group, 3i đưa vào prompt ký ức của chừng này người
+// vừa nói gần nhất, người đang nhắn tính trước.
+const botLearnedPeople = 8
+
+// groupMemory là phần trí nhớ về group club chèn vào system prompt 3i. Bật
+// BOT_GROUP_FACTS thì là ký ức tự học về group, về self (người đang chat riêng,
+// có id để quên) và people; không thì là tóm tắt botMemory như cũ, đặt dưới
+// heading.
+func (s *BotService) groupMemory(ctx context.Context, heading string, self *learnedSubject, people []learnedSubject) (string, error) {
+	if s.learned == nil {
+		if mem := s.memory.Load(ctx, s.telegram.ChatID()); mem != "" {
+			return "\n\n" + heading + "\n" + mem, nil
+		}
+		return "", nil
+	}
+	now := time.Now()
+	group, err := s.learned.learnedGroup(ctx, now)
+	if err != nil {
+		return "", err
+	}
+	var me *learnedPerson
+	if self != nil {
+		found, err := s.learned.learnedPeople(ctx, []learnedSubject{*self}, now)
+		if err != nil {
+			return "", err
+		}
+		if len(found) > 0 {
+			me = &found[0]
+		}
+	}
+	others, err := s.learned.learnedPeople(ctx, people, now)
+	if err != nil {
+		return "", err
+	}
+	return botLearnedBlock(group, me, others), nil
+}
+
+// botRecentPeople là người đang nhắn rồi tới người gửi các tin trong rows (mới
+// nhất trước), tối đa botLearnedPeople người. Tin chưa ghi tgUserId thì bỏ.
+func botRecentPeople(senderID, name string, rows []map[string]any) []learnedSubject {
+	var out []learnedSubject
+	seen := map[string]bool{}
+	add := func(tg, name string) {
+		if tg != "" && !seen[tg] && len(out) < botLearnedPeople {
+			seen[tg] = true
+			out = append(out, learnedSubject{tg: tg, name: name})
+		}
+	}
+	add(senderID, name)
+	for _, r := range rows {
+		if stringValue(r["role"]) == genai.RoleUser {
+			add(stringValue(r["tgUserId"]), stringValue(r["name"]))
+		}
+	}
+	return out
+}
+
+// forgetMyFact chạy tool forget_my_fact cho người đang chat riêng, xác định
+// bằng id Telegram của tin, nên không xoá được ký ức của ai khác.
+func (s *BotService) forgetMyFact(ctx context.Context, id string) (any, error) {
+	sender, _ := ctx.Value(ctxSenderID).(string)
+	err := s.learned.ForgetTelegramFact(ctx, sender, id, time.Now())
+	var he *HTTPError
+	if errors.As(err, &he) {
+		return map[string]any{"ok": false, "error": he.Message}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true}, nil
 }
 
 // postToGroup đăng một tin vào group chung thay cho người đang chat riêng.
@@ -1224,11 +1327,12 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID string, threadID 
 
 	// Lịch sử hỏng thì vẫn trả lời được, chỉ là mất ngữ cảnh — không đáng để
 	// chặn cả câu trả lời.
-	history, err := s.loadHistory(ctx, chatID)
+	rows, err := s.historyRows(ctx, chatID)
 	if err != nil {
 		slog.WarnContext(ctx, "bot.history_load_failed", "error", err)
-		history = nil
+		rows = nil
 	}
+	history := buildHistoryContents(rows)
 	currentText := question
 	if name != "" {
 		currentText = name + ": " + question
@@ -1245,7 +1349,13 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID string, threadID 
 	// Ghép trí nhớ dài hạn vào system prompt để bot "biết" mọi người mà
 	// không phải replay tin thô. Trống thì bỏ qua — bot vẫn chạy như cũ.
 	systemPrompt := botSystemPrompt
-	if mem := s.memory.Load(ctx, chatID); mem != "" {
+	if chatID == s.telegram.ChatID() {
+		mem, err := s.groupMemory(ctx, "TRÍ NHỚ VỀ NHÓM NÀY (điều bạn đã biết về các thành viên):", nil, botRecentPeople(senderID, name, rows))
+		if err != nil {
+			return err
+		}
+		systemPrompt += mem
+	} else if mem := s.memory.Load(ctx, chatID); mem != "" {
 		systemPrompt = botSystemPrompt + "\n\nTRÍ NHỚ VỀ NHÓM NÀY (điều bạn đã biết về các thành viên):\n" + mem
 	}
 	// Trong chat riêng, bot được phép đăng vào group (qua tool) và tự cân
@@ -1254,9 +1364,11 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID string, threadID 
 	// vẫn "biết" group (tin RIÊNG của người khác thì vẫn không đụng tới).
 	if private {
 		systemPrompt += dmSystemPromptSuffix
-		if groupMem := s.memory.Load(ctx, s.telegram.ChatID()); groupMem != "" {
-			systemPrompt += "\n\nTRÍ NHỚ VỀ GROUP CLUB (nội dung công khai đã bàn trong nhóm):\n" + groupMem
+		groupMem, err := s.groupMemory(ctx, "TRÍ NHỚ VỀ GROUP CLUB (nội dung công khai đã bàn trong nhóm):", &learnedSubject{tg: senderID, name: name}, nil)
+		if err != nil {
+			return err
 		}
+		systemPrompt += groupMem
 		if s.schedules != nil {
 			now := time.Now().In(vietnam)
 			systemPrompt += "\n\nGIỜ HIỆN TẠI (VN, dùng để tính runAtISO): " +
@@ -1347,19 +1459,22 @@ func (s *BotService) maybeProactiveReply(ctx context.Context, chatID string, thr
 	if !s.proactiveGate(ctx, chatID) {
 		return
 	}
-	history, err := s.loadHistory(ctx, chatID)
+	rows, err := s.historyRows(ctx, chatID)
 	if err != nil {
-		history = nil
+		rows = nil
 	}
+	history := buildHistoryContents(rows)
 	current := text
 	if name != "" {
 		current = name + ": " + text
 	}
 	contents := append(history, &genai.Content{Role: genai.RoleUser, Parts: []*genai.Part{{Text: current}}})
-	sys := botSystemPrompt + proactiveInstruction
-	if mem := s.memory.Load(ctx, chatID); mem != "" {
-		sys += "\n\nTRÍ NHỚ VỀ NHÓM NÀY:\n" + mem
+	mem, err := s.groupMemory(ctx, "TRÍ NHỚ VỀ NHÓM NÀY:", nil, botRecentPeople(senderID, name, rows))
+	if err != nil {
+		slog.ErrorContext(ctx, "bot.proactive_memory_failed", "error", err)
+		return
 	}
+	sys := botSystemPrompt + proactiveInstruction + mem
 	outcome := &imageOutcome{}
 	ctx = context.WithValue(ctx, ctxChatID, chatID)
 	ctx = context.WithValue(ctx, ctxThreadID, threadID)
@@ -1491,7 +1606,7 @@ func vietnamTimeOfDay(t time.Time) string {
 // VỀ (không tự gửi) — luồng thông báo gửi thẳng chuỗi này thay cho thẻ máy móc.
 // Best-effort: lỗi thì trả "" để luồng thông báo dùng thẻ tĩnh làm phương án dự
 // phòng, không bao giờ mất thông báo.
-func (s *BotService) ActivityAnnouncement(ctx context.Context, displayName, activityName string, fact ActivityFact) string {
+func (s *BotService) ActivityAnnouncement(ctx context.Context, uid, displayName, activityName string, fact ActivityFact) string {
 	if !s.Enabled() {
 		return ""
 	}
@@ -1520,10 +1635,12 @@ func (s *BotService) ActivityAnnouncement(ctx context.Context, displayName, acti
 		fmt.Fprintf(&stats, "- Có dừng nghỉ kha khá giữa chừng\n")
 	}
 
-	systemPrompt := botSystemPrompt + activityAnnouncementInstruction
-	if mem := s.memory.Load(ctx, s.telegram.ChatID()); mem != "" {
-		systemPrompt += "\n\nTRÍ NHỚ VỀ NHÓM NÀY:\n" + mem
+	mem, err := s.groupMemory(ctx, "TRÍ NHỚ VỀ NHÓM NÀY:", nil, []learnedSubject{{uid: uid, name: strings.TrimSpace(displayName)}})
+	if err != nil {
+		slog.ErrorContext(ctx, "bot.activity_announcement_memory_failed", "error", err)
+		return ""
 	}
+	systemPrompt := botSystemPrompt + activityAnnouncementInstruction + mem
 	contents := []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: stats.String()}}}}
 	text, err := s.Answer(ctx, systemPrompt, contents, false)
 	if err != nil {
@@ -1574,10 +1691,16 @@ func (s *BotService) ContractRoast(ctx context.Context, title, targetLabel strin
 	for _, f := range failers {
 		fmt.Fprintf(&b, "  · %s — mới đạt %s\n", f.name, f.progress)
 	}
-	systemPrompt := botSystemPrompt + contractRoastInstruction
-	if mem := s.memory.Load(ctx, s.telegram.ChatID()); mem != "" {
-		systemPrompt += "\n\nTRÍ NHỚ VỀ NHÓM NÀY:\n" + mem
+	people := make([]learnedSubject, len(failers))
+	for i, f := range failers {
+		people[i] = learnedSubject{uid: f.uid, name: f.name}
 	}
+	mem, err := s.groupMemory(ctx, "TRÍ NHỚ VỀ NHÓM NÀY:", nil, people)
+	if err != nil {
+		slog.ErrorContext(ctx, "bot.contract_roast_memory_failed", "error", err)
+		return ""
+	}
+	systemPrompt := botSystemPrompt + contractRoastInstruction + mem
 	contents := []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: b.String()}}}}
 	text, err := s.Answer(ctx, systemPrompt, contents, false)
 	if err != nil {
@@ -1590,7 +1713,7 @@ func (s *BotService) ContractRoast(ctx context.Context, title, targetLabel strin
 // LiveAnnouncement để bot viết 1 câu tường thuật cho sự kiện live (app gọi khi
 // user bắt đầu/qua mốc/về đích). Rỗng nếu bot tắt hay model lỗi → caller rơi về
 // bản mẫu tĩnh, không bao giờ mất thông báo.
-func (s *BotService) LiveAnnouncement(ctx context.Context, displayName, event string, distanceMeters, movingTimeSeconds float64, milestoneKm int) string {
+func (s *BotService) LiveAnnouncement(ctx context.Context, uid, displayName, event string, distanceMeters, movingTimeSeconds float64, milestoneKm int) string {
 	if !s.Enabled() {
 		return ""
 	}
@@ -1609,10 +1732,12 @@ func (s *BotService) LiveAnnouncement(ctx context.Context, displayName, event st
 			fmt.Fprintf(&stats, "- Pace: %d:%02d /km\n", int64(pace)/60, int64(pace)%60)
 		}
 	}
-	systemPrompt := botSystemPrompt + liveAnnouncementInstruction
-	if mem := s.memory.Load(ctx, s.telegram.ChatID()); mem != "" {
-		systemPrompt += "\n\nTRÍ NHỚ VỀ NHÓM NÀY:\n" + mem
+	mem, err := s.groupMemory(ctx, "TRÍ NHỚ VỀ NHÓM NÀY:", nil, []learnedSubject{{uid: uid, name: strings.TrimSpace(displayName)}})
+	if err != nil {
+		slog.ErrorContext(ctx, "bot.live_announcement_memory_failed", "error", err)
+		return ""
 	}
+	systemPrompt := botSystemPrompt + liveAnnouncementInstruction + mem
 	// Nạp lịch sử group (gồm các thông báo live TRƯỚC của buổi này + tin nhắn mọi
 	// người) rồi đặt STATS làm tin cuối → tường thuật NỐI TIẾP, bắt được không khí
 	// nhóm, hết rời rạc. Chung cơ chế với chat reply (loadHistory).
@@ -1633,7 +1758,7 @@ func (s *BotService) LiveAnnouncement(ctx context.Context, displayName, event st
 // LivePhotoAnnouncement tải ảnh user vừa chụp giữa buổi chạy từ Storage rồi gửi
 // vào group kèm caption bot tự viết. Bot tắt / không có bucket / đọc lỗi thì bỏ
 // qua êm — mất tấm ảnh chứ không làm hỏng buổi chạy.
-func (s *BotService) LivePhotoAnnouncement(ctx context.Context, displayName, photoPath string, distanceMeters float64) error {
+func (s *BotService) LivePhotoAnnouncement(ctx context.Context, uid, displayName, photoPath string, distanceMeters float64) error {
 	if !s.Enabled() || s.bucket == nil || photoPath == "" {
 		return nil
 	}
@@ -1646,7 +1771,7 @@ func (s *BotService) LivePhotoAnnouncement(ctx context.Context, displayName, pho
 	if err != nil {
 		return err
 	}
-	caption := s.livePhotoCaption(ctx, displayName, distanceMeters)
+	caption := s.livePhotoCaption(ctx, uid, displayName, distanceMeters)
 	if caption == "" {
 		caption = fmt.Sprintf("📸 %s vừa khoe một tấm giữa buổi chạy (%s).", strings.TrimSpace(displayName), formatDistanceKm(distanceMeters))
 	}
@@ -1659,13 +1784,15 @@ func (s *BotService) LivePhotoAnnouncement(ctx context.Context, displayName, pho
 	return nil
 }
 
-func (s *BotService) livePhotoCaption(ctx context.Context, displayName string, distanceMeters float64) string {
+func (s *BotService) livePhotoCaption(ctx context.Context, uid, displayName string, distanceMeters float64) string {
 	prompt := fmt.Sprintf("BỐI CẢNH: %s vừa CHỤP một tấm ảnh giữa buổi chạy đang diễn ra (đã đi %s). Lịch sử phía trên là các thông báo/ảnh trước của chính buổi này + tin nhắn nhóm. Viết 1 câu caption ngắn cho ảnh này, NỐI TIẾP mạch buổi (đừng lặp câu đã đăng), theo đúng chất của bạn. Chỉ trả về caption.",
 		strings.TrimSpace(displayName), formatDistanceKm(distanceMeters))
-	systemPrompt := botSystemPrompt
-	if mem := s.memory.Load(ctx, s.telegram.ChatID()); mem != "" {
-		systemPrompt += "\n\nTRÍ NHỚ VỀ NHÓM NÀY:\n" + mem
+	mem, err := s.groupMemory(ctx, "TRÍ NHỚ VỀ NHÓM NÀY:", nil, []learnedSubject{{uid: uid, name: strings.TrimSpace(displayName)}})
+	if err != nil {
+		slog.ErrorContext(ctx, "bot.live_photo_memory_failed", "error", err)
+		return ""
 	}
+	systemPrompt := botSystemPrompt + mem
 	history, herr := s.loadHistory(ctx, s.telegram.ChatID())
 	if herr != nil {
 		slog.WarnContext(ctx, "bot.live_photo_history_load_failed", "error", herr)

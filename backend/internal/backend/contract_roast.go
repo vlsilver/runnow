@@ -17,6 +17,7 @@ import (
 // (đánh dấu roastedAt trên chính doc kèo).
 
 type roastFailer struct {
+	uid      string
 	name     string
 	progress string // tiến độ đạt được, đã format theo metric
 }
@@ -105,6 +106,7 @@ func (s *ActivityService) AnnounceContractResult(ctx context.Context, callerUID,
 			}
 		}
 		failers = append(failers, roastFailer{
+			uid:      uid,
 			name:     name,
 			progress: formatContractMetricValue(metric, progress),
 		})
