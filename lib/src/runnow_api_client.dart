@@ -4,10 +4,12 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:myrun/src/agents/agent_models.dart';
 import 'package:myrun/src/config.dart';
 import 'package:myrun/src/games/game_models.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+export 'package:myrun/src/agents/agent_models.dart';
 export 'package:myrun/src/games/game_models.dart';
 
 typedef IdTokenProvider = Future<String> Function({required bool forceRefresh});
@@ -302,6 +304,82 @@ class RunNowApiClient {
   }
 
   Future<void> unlinkTelegram() => _send('DELETE', '/v1/telegram/link');
+
+  // ---- Bot cá nhân (/v1/agents*, thử nghiệm) ----
+
+  Future<AgentMe> getAgentMe() async {
+    final response = await _send('GET', '/v1/agents/me');
+    return AgentMe.fromJson(_jsonObject(response));
+  }
+
+  /// Tạo bot (lần đầu) hoặc sửa tên, tính cách.
+  Future<AgentProfile> saveAgentProfile({
+    required String name,
+    required String persona,
+  }) async {
+    final response = await _send(
+      'POST',
+      '/v1/agents/me',
+      body: {'name': name, 'persona': persona},
+    );
+    return AgentProfile.fromJson(_jsonObject(response));
+  }
+
+  /// Lỗi `memory_full`, `invalid_memory` có message đọc được.
+  Future<AgentMemory> addAgentMemory(String text) async {
+    final response = await _send(
+      'POST',
+      '/v1/agents/me/memories',
+      body: {'text': text},
+    );
+    return AgentMemory.fromJson(_jsonObject(response));
+  }
+
+  Future<AgentMemory> updateAgentMemory(String id, String text) async {
+    final response = await _send(
+      'POST',
+      '/v1/agents/me/memories/${Uri.encodeComponent(id)}',
+      body: {'text': text},
+    );
+    return AgentMemory.fromJson(_jsonObject(response));
+  }
+
+  Future<void> deleteAgentMemory(String id) =>
+      _send('DELETE', '/v1/agents/me/memories/${Uri.encodeComponent(id)}');
+
+  Future<AgentChatPage<AgentMessage>> getAgentDM({
+    String? cursor,
+    int? after,
+  }) async {
+    final response = await _send(
+      'GET',
+      '/v1/agents/me/dm${_seqQuery(cursor, after)}',
+    );
+    return AgentChatPage.dmFromJson(_jsonObject(response));
+  }
+
+  Future<void> postAgentDM(String text) =>
+      _send('POST', '/v1/agents/me/dm', body: {'text': text});
+
+  Future<AgentChatPage<AgentRoomMessage>> getAgentRoom({
+    String? cursor,
+    int? after,
+  }) async {
+    final response = await _send(
+      'GET',
+      '/v1/agents/room${_seqQuery(cursor, after)}',
+    );
+    return AgentChatPage.roomFromJson(_jsonObject(response));
+  }
+
+  Future<void> postAgentRoom(String text) =>
+      _send('POST', '/v1/agents/room', body: {'text': text});
+
+  String _seqQuery(String? cursor, int? after) => cursor != null
+      ? '?cursor=${Uri.encodeQueryComponent(cursor)}'
+      : after != null
+      ? '?after=$after'
+      : '';
 
   Future<StravaConnectionStatus> getStravaStatus() async {
     final response = await _send('GET', '/v1/strava/status');

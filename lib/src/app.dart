@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/agents/agent_chat_screen.dart';
+import 'package:myrun/src/agents/agent_screen.dart';
 import 'package:myrun/src/app_update.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_chat_screen.dart';
@@ -211,6 +213,15 @@ final _router = GoRouter(
       path: '/games/:id',
       builder: (context, state) =>
           GameDetailScreen(gameId: state.pathParameters['id']!),
+    ),
+    GoRoute(path: '/agent', builder: (context, state) => const AgentScreen()),
+    GoRoute(
+      path: '/agent/dm',
+      builder: (context, state) => const AgentDMScreen(),
+    ),
+    GoRoute(
+      path: '/agent/room',
+      builder: (context, state) => const AgentRoomScreen(),
     ),
     GoRoute(
       path: '/games/:id/chat/:key',

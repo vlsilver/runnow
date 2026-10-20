@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/config.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/telegram_link_controller.dart';
@@ -28,6 +29,8 @@ class SettingsScreen extends ConsumerWidget {
     final stravaEnabled = ref.watch(stravaEnabledProvider).value ?? false;
     final health = ref.watch(healthSyncProvider);
     final googleAuth = ref.watch(authControllerProvider);
+    // Lỗi hay chưa tải xong thì ẩn mục bot, không chặn Cài đặt.
+    final agentEnabled = ref.watch(agentMeProvider).value?.enabled ?? false;
     return Scaffold(
       appBar: AppBar(title: const Text('Cài đặt')),
       body: Align(
@@ -200,6 +203,20 @@ class SettingsScreen extends ConsumerWidget {
                   const TelegramLinkSettings(),
                 ],
               ),
+              if (agentEnabled) ...[
+                const SizedBox(height: 18),
+                _SettingsSection(
+                  title: 'Thử nghiệm',
+                  children: [
+                    _SettingsRow(
+                      icon: Icons.smart_toy_outlined,
+                      title: 'Bot của tôi',
+                      subtitle: 'Dạy bot, chat riêng, phòng bot',
+                      onTap: () => context.push('/agent'),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 18),
               _SettingsSection(
                 title: 'Hiển thị',
