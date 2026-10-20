@@ -145,7 +145,7 @@ func (l *LearnService) PlanMigration(ctx context.Context, chats []string) (*Lear
 	if err := json.Unmarshal([]byte(resp.Text()), &out); err != nil {
 		return nil, fmt.Errorf("agent learn migrate: model trả JSON hỏng: %w", err)
 	}
-	people, err := l.learnPeople(ctx)
+	people, err := learnPeople(ctx, l.store, l.chatID)
 	if err != nil {
 		return nil, err
 	}
@@ -217,13 +217,14 @@ func (p learnPeopleIndex) resolve(name string) (target, note string) {
 	return "", "trùng tên: " + strings.Join(keys, ", ")
 }
 
-// learnPeople chỉ lấy người có mặt trên Telegram: tóm tắt cũ rút từ group, nên
-// tên app của người chưa từng liên kết Telegram dễ trùng nhầm hơn là đúng.
-// Người đã liên kết thì theo uid, với tên lúc liên kết, username, tên app và
-// tên trong tin; người chưa liên kết thì theo tg id, với tên trong tin.
-func (l *LearnService) learnPeople(ctx context.Context) (learnPeopleIndex, error) {
+// learnPeople chỉ lấy người có mặt trên group Telegram chatID: tóm tắt cũ rút
+// từ group, nên tên app của người chưa từng liên kết Telegram dễ trùng nhầm
+// hơn là đúng. Người đã liên kết thì theo uid, với tên lúc liên kết, username,
+// tên app và tên trong tin; người chưa liên kết thì theo tg id, với tên trong
+// tin.
+func learnPeople(ctx context.Context, store *AgentStore, chatID string) (learnPeopleIndex, error) {
 	people := learnPeopleIndex{}
-	links, err := l.db.Collection("tgLinks").Documents(ctx).GetAll()
+	links, err := store.db.Collection("tgLinks").Documents(ctx).GetAll()
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +241,7 @@ func (l *LearnService) learnPeople(ctx context.Context) (learnPeopleIndex, error
 		people.add(stringValue(m["displayName"]), uid)
 		people.add(stringValue(m["username"]), uid)
 	}
-	names, err := l.store.displayNames(ctx, uniqueStrings(uids))
+	names, err := store.displayNames(ctx, uniqueStrings(uids))
 	if err != nil {
 		return nil, err
 	}
@@ -249,10 +250,10 @@ func (l *LearnService) learnPeople(ctx context.Context) (learnPeopleIndex, error
 			people.add(name, uid)
 		}
 	}
-	if l.chatID == "" {
+	if chatID == "" {
 		return people, nil
 	}
-	msgs, err := l.db.Collection("botConversations").Doc(l.chatID).Collection("botMessages").
+	msgs, err := store.db.Collection("botConversations").Doc(chatID).Collection("botMessages").
 		Where("role", "==", string(genai.RoleUser)).Select("name", "tgUserId").Documents(ctx).GetAll()
 	if err != nil {
 		return nil, err

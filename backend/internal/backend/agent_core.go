@@ -62,6 +62,9 @@ type AgentService struct {
 	store   *AgentStore
 	llm     agentLLM
 	enqueue taskPublishFunc
+	// chatID là group Telegram của club, để recall_person tra cả người chỉ có
+	// trên Telegram; rỗng thì chỉ tra thành viên phòng bot.
+	chatID string
 }
 
 func NewAgentService(store *AgentStore, llm agentLLM, enqueue taskPublishFunc) *AgentService {
@@ -94,7 +97,7 @@ TÍNH CÁCH (chủ viết):
 %s
 
 BỘ NHỚ (mỗi dòng: [id] nội dung):
-%s
+%s%s
 
 CÁCH LÀM:
 - Chủ kể điều đáng nhớ lâu dài về họ, về cách bạn nên nói, hay kiến thức họ muốn bạn biết thì gọi remember. Mỗi mục một ý, viết gọn ở ngôi thứ ba ("Chủ thích..."), không chép nguyên cả đoạn.
@@ -110,7 +113,7 @@ TÍNH CÁCH (chủ viết):
 %s
 
 ĐIỀU BẠN BIẾT VỀ CHỦ VÀ KIẾN THỨC CỦA BẠN:
-%s
+%s%s
 
 THÀNH VIÊN TRONG PHÒNG:
 %s
@@ -229,7 +232,20 @@ func (a *AgentService) dmAnswer(ctx context.Context, uid string, seq int64, name
 	if err != nil {
 		return "", err
 	}
-	system := fmt.Sprintf(agentDMPrompt, name, names[uid], personaText(persona), memoryLines(mems, true))
+	owner, err := a.store.learnedOf(ctx, []string{uid}, wall)
+	if err != nil {
+		return "", err
+	}
+	group, err := a.store.learnedGroup(ctx, wall)
+	if err != nil {
+		return "", err
+	}
+	learned := learnedBlock(owner[uid], group, nil, true)
+	system := fmt.Sprintf(agentDMPrompt, name, names[uid], personaText(persona), memoryLines(mems, true), learned)
+	tools := agentDMTools()
+	if learned != "" {
+		tools[0].FunctionDeclarations = append(tools[0].FunctionDeclarations, agentRecallPersonDecl, agentForgetLearnedDecl)
+	}
 	contents := make([]*genai.Content, 0, len(history))
 	for _, m := range history {
 		// Gemini cần lượt đầu là user; cửa sổ 20 tin có thể cắt ngay tin bot.
@@ -243,9 +259,12 @@ func (a *AgentService) dmAnswer(ctx context.Context, uid string, seq int64, name
 		contents = append(contents, &genai.Content{Role: role, Parts: []*genai.Part{{Text: m.Text}}})
 	}
 	added := 0
-	text, err := a.toolLoop(ctx, "agent dm", system, contents, agentDMTools(), func(call *genai.FunctionCall) (map[string]any, error) {
-		if call.Name == agentWebSearchDecl.Name {
+	text, err := a.toolLoop(ctx, "agent dm", system, contents, tools, func(call *genai.FunctionCall) (map[string]any, error) {
+		switch call.Name {
+		case agentWebSearchDecl.Name:
 			return a.webSearch(ctx, call), nil
+		case agentRecallPersonDecl.Name:
+			return a.recallPerson(ctx, call, wall)
 		}
 		return a.runMemoryTool(ctx, uid, seq, &added, call, wall)
 	})
@@ -304,6 +323,8 @@ func (a *AgentService) runMemoryTool(ctx context.Context, uid string, seq int64,
 		_, err = a.store.UpdateMemory(ctx, uid, arg("id"), arg("text"), wall)
 	case "forget":
 		err = a.store.DeleteMemory(ctx, uid, arg("id"))
+	case agentForgetLearnedDecl.Name:
+		err = a.store.ForgetLearnedFact(ctx, uid, arg("id"), wall)
 	default:
 		return map[string]any{"error": "không có tool " + call.Name}, nil
 	}
@@ -385,7 +406,7 @@ func (a *AgentService) RoomTurn(ctx context.Context, afterSeq int64, wall time.T
 	if !ok {
 		return nil
 	}
-	text, err := a.roomReply(ctx, speaker, agents, members, transcript)
+	text, err := a.roomReply(ctx, speaker, agents, members, transcript, wall)
 	if err != nil {
 		return err
 	}
@@ -450,11 +471,14 @@ func pickSpeaker(agents []roomAgent, room map[string]any, last map[string]any) (
 	return *best, true
 }
 
-func (a *AgentService) roomReply(ctx context.Context, speaker roomAgent, agents []roomAgent, members []string, transcript []map[string]any) (string, error) {
+func (a *AgentService) roomReply(ctx context.Context, speaker roomAgent, agents []roomAgent, members []string, transcript []map[string]any, wall time.Time) (string, error) {
 	uids := append([]string(nil), members...)
+	present := []string{speaker.uid}
 	for _, m := range transcript {
 		uids = append(uids, stringValue(m["uid"]))
+		present = append(present, stringValue(m["uid"]))
 	}
+	present = uniqueStrings(present)
 	names, err := a.store.displayNames(ctx, uniqueStrings(uids))
 	if err != nil {
 		return "", err
@@ -462,6 +486,25 @@ func (a *AgentService) roomReply(ctx context.Context, speaker roomAgent, agents 
 	mems, err := a.store.Memories(ctx, speaker.uid)
 	if err != nil {
 		return "", err
+	}
+	learned, err := a.store.learnedOf(ctx, present, wall)
+	if err != nil {
+		return "", err
+	}
+	group, err := a.store.learnedGroup(ctx, wall)
+	if err != nil {
+		return "", err
+	}
+	var others []learnedPerson
+	for _, uid := range present[1:] {
+		if len(learned[uid]) > 0 {
+			others = append(others, learnedPerson{name: names[uid], facts: learned[uid]})
+		}
+	}
+	learnedText := learnedBlock(learned[speaker.uid], group, others, false)
+	tools := agentRoomTools()
+	if learnedText != "" {
+		tools[0].FunctionDeclarations = append(tools[0].FunctionDeclarations, agentRecallPersonDecl)
 	}
 	bots := map[string]string{}
 	for _, ag := range agents {
@@ -474,7 +517,7 @@ func (a *AgentService) roomReply(ctx context.Context, speaker roomAgent, agents 
 			fmt.Fprintf(&roster, "- %s (bot của %s)\n", b, names[uid])
 		}
 	}
-	system := fmt.Sprintf(agentRoomPrompt, speaker.name, names[speaker.uid], personaText(speaker.persona), memoryLines(mems, false), strings.TrimRight(roster.String(), "\n"))
+	system := fmt.Sprintf(agentRoomPrompt, speaker.name, names[speaker.uid], personaText(speaker.persona), memoryLines(mems, false), learnedText, strings.TrimRight(roster.String(), "\n"))
 	var chat strings.Builder
 	chat.WriteString("ĐOẠN CHAT GẦN ĐÂY:\n")
 	for _, m := range transcript {
@@ -485,9 +528,12 @@ func (a *AgentService) roomReply(ctx context.Context, speaker roomAgent, agents 
 		}
 	}
 	fmt.Fprintf(&chat, "\nViết tin tiếp theo của %s.", speaker.name)
-	text, err := a.toolLoop(ctx, "agent room", system, []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: chat.String()}}}}, agentRoomTools(), func(call *genai.FunctionCall) (map[string]any, error) {
-		if call.Name == agentWebSearchDecl.Name {
+	text, err := a.toolLoop(ctx, "agent room", system, []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: chat.String()}}}}, tools, func(call *genai.FunctionCall) (map[string]any, error) {
+		switch call.Name {
+		case agentWebSearchDecl.Name:
 			return a.webSearch(ctx, call), nil
+		case agentRecallPersonDecl.Name:
+			return a.recallPerson(ctx, call, wall)
 		}
 		return map[string]any{"error": "không có tool " + call.Name}, nil
 	})

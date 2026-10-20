@@ -96,6 +96,21 @@ func TestApplyLearnActionsFull(t *testing.T) {
 	}
 }
 
+func TestNewestFactsKeepsOrder(t *testing.T) {
+	at := func(h int) time.Time { return time.Date(2026, 10, 20, h, 0, 0, 0, time.UTC) }
+	facts := []learnedFact{{ID: "f1", UpdatedAt: at(5)}, {ID: "f2", UpdatedAt: at(1)}, {ID: "f3", UpdatedAt: at(9)}, {ID: "f4", UpdatedAt: at(3)}}
+	var got []string
+	for _, f := range newestFacts(facts, 2) {
+		got = append(got, f.ID)
+	}
+	if strings.Join(got, ",") != "f1,f3" {
+		t.Fatalf("newestFacts = %v, muốn f1,f3", got)
+	}
+	if len(newestFacts(facts, 4)) != 4 || facts[1].ID != "f2" {
+		t.Fatal("newestFacts đổi slice gốc hoặc bỏ mục khi chưa vượt giới hạn")
+	}
+}
+
 func TestLiveFactsDropsExpired(t *testing.T) {
 	now := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
 	got := liveFacts([]any{

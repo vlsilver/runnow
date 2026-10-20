@@ -34,10 +34,11 @@ type fakeLLM struct {
 type fakeCall struct {
 	system   string
 	contents []*genai.Content
+	tools    []*genai.Tool
 }
 
-func (f *fakeLLM) Generate(_ context.Context, system string, contents []*genai.Content, _ []*genai.Tool) (*genai.GenerateContentResponse, error) {
-	f.calls = append(f.calls, fakeCall{system: system, contents: contents})
+func (f *fakeLLM) Generate(_ context.Context, system string, contents []*genai.Content, tools []*genai.Tool) (*genai.GenerateContentResponse, error) {
+	f.calls = append(f.calls, fakeCall{system: system, contents: contents, tools: tools})
 	if f.onCall != nil {
 		f.onCall()
 	}
@@ -91,6 +92,7 @@ func llmCall(name string, args map[string]any) *genai.GenerateContentResponse {
 type agentEnv struct {
 	*apiHarness
 	llm   *fakeLLM
+	brain *AgentService
 	bot   http.Handler
 	clock time.Time
 	tasks []PublishTask
@@ -106,8 +108,9 @@ func newAgentEnv(t *testing.T) *agentEnv {
 	store := NewAgentStore(db)
 	now := func() time.Time { return e.clock }
 	h.deps.Agents, h.deps.EnqueueTask, h.deps.Now = store, e.publish, now
+	e.brain = NewAgentService(store, e.llm, e.publish)
 	e.bot = NewBotServer(Config{}, &Dependencies{
-		Firestore: db, Agents: store, AgentBrain: NewAgentService(store, e.llm, e.publish), EnqueueTask: e.publish, Now: now,
+		Firestore: db, Agents: store, AgentBrain: e.brain, EnqueueTask: e.publish, Now: now,
 	})
 	seed(t, db, "gameState/config", map[string]any{"adminUids": []any{"an", "binh"}})
 	seed(t, db, "agentState/config", map[string]any{"memberUids": []any{"cuong"}})
