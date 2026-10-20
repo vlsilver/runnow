@@ -126,6 +126,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 				imageClient = nil
 			}
 			d.Bot = NewBotService(genaiClient, telegram, NewBotTools(db), db, config.GeminiModel, config.BotHourlyLimit, d.Memory, NewScheduleStore(db), imageClient, geminiImageModel, bucket)
+			d.Bot.thinking = config.GeminiThinkingLevel
 			if config.BotGroupFacts {
 				d.Bot.learned = d.Agents
 			}

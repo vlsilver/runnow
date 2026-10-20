@@ -38,6 +38,9 @@ type Config struct {
 	TelegramWebhookSecret string
 	GeminiLocation        string
 	GeminiModel           string
+	// GeminiThinkingLevel là mức thinking của 3i. "default" để model tự chọn,
+	// dùng khi đổi GEMINI_MODEL sang model không nhận thinkingLevel.
+	GeminiThinkingLevel string
 	// AgentModel là model của bot cá nhân. Mặc định Flash: phòng bot nói nhiều
 	// tin ngắn, Pro đắt mà không cần.
 	AgentModel string
@@ -89,6 +92,7 @@ func LoadConfig() (Config, error) {
 	// Google ghi 3.8-flash là model thay cho 2.5-pro.
 	c.GeminiLocation = env("GEMINI_LOCATION", "global")
 	c.GeminiModel = env("GEMINI_MODEL", "gemini-3.8-flash")
+	c.GeminiThinkingLevel = env("GEMINI_THINKING_LEVEL", "LOW")
 	c.AgentModel = env("AGENT_MODEL", "gemini-3.8-flash")
 	c.AgentLearn = env("AGENT_LEARN", "") == "on"
 	c.AgentLearnModel = env("AGENT_LEARN_MODEL", "gemini-3.8-flash")

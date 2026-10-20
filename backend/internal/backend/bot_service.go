@@ -137,6 +137,11 @@ type BotService struct {
 	// learned khác nil khi bật BOT_GROUP_FACTS: trí nhớ về group club đọc từ ký
 	// ức tự học (agent_learn.go) thay cho tóm tắt botMemory.
 	learned *AgentStore
+	// thinking là GEMINI_THINKING_LEVEL ("LOW", "HIGH"...). "default" hoặc rỗng
+	// thì để model tự chọn.
+	thinking string
+	// attemptTimeout là trần của một lần gọi model, 0 = botGenerateAttemptTimeout.
+	attemptTimeout time.Duration
 }
 
 func NewBotService(gc *genai.Client, telegram *TelegramService, tools *BotTools, db *firestore.Client, model string, hourlyLimit int, memory *MemoryService, schedules *ScheduleStore, imageGenai *genai.Client, imageModel string, bucket *gcs.BucketHandle) *BotService {
@@ -700,6 +705,7 @@ func (s *BotService) Answer(ctx context.Context, systemPrompt string, contents [
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: &genai.Content{Parts: []*genai.Part{{Text: systemPrompt}}},
 		Tools:             s.toolDeclarations(canPostToGroup),
+		ThinkingConfig:    s.thinkingConfig(),
 	}
 
 	for round := 0; round < maxToolRounds; round++ {
@@ -746,16 +752,39 @@ func (s *BotService) Answer(ctx context.Context, systemPrompt string, contents [
 	return "", fmt.Errorf("model gọi tool quá %d vòng mà chưa trả lời", maxToolRounds)
 }
 
-// generateWithRetry thử lại khi Vertex trả 429.
+// thinkingConfig: để thinking mặc định thì gemini-3.8-flash có lúc giữ một vòng
+// hơn một phút, có khi tới lúc Vertex cắt 504, dù chỉ nghĩ vài trăm token. LOW
+// thì vòng nào cũng vài giây mà câu trả lời vẫn đủ ý.
+func (s *BotService) thinkingConfig() *genai.ThinkingConfig {
+	if s.thinking == "" || strings.EqualFold(s.thinking, "default") {
+		return nil
+	}
+	return &genai.ThinkingConfig{ThinkingLevel: genai.ThinkingLevel(strings.ToUpper(s.thinking))}
+}
+
+// botGenerateAttemptTimeout đủ rộng cho một vòng bình thường kèm ảnh, và đủ
+// ngắn để còn thời gian gọi lại trong 240s của task bot-message.
+const botGenerateAttemptTimeout = 45 * time.Second
+
+// generateWithRetry thử lại khi Vertex trả 429/503 hoặc một lần gọi quá
+// attemptTimeout.
 //
 // Vertex chạy trên capacity dùng chung (`ON_DEMAND`), thỉnh thoảng hết chỗ
 // dù mình chưa vượt quota — đã gặp khi test tay. Không retry thì bot im
-// lặng không rõ lý do.
+// lặng không rõ lý do. Lần gọi treo thì cắt riêng lần đó: SDK gửi thời gian
+// còn lại của ctx lên Vertex (x-server-timeout), nên không có trần riêng thì
+// một lần treo ăn hết giờ của cả câu trả lời.
 func (s *BotService) generateWithRetry(ctx context.Context, contents []*genai.Content, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
+	timeout := s.attemptTimeout
+	if timeout == 0 {
+		timeout = botGenerateAttemptTimeout
+	}
 	delay := 400 * time.Millisecond
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
-		resp, err := s.genai.Models.GenerateContent(ctx, s.model, contents, config)
+		attemptCtx, cancel := context.WithTimeout(ctx, timeout)
+		resp, err := s.genai.Models.GenerateContent(attemptCtx, s.model, contents, config)
+		cancel()
 		if err == nil {
 			return resp, nil
 		}
@@ -775,8 +804,13 @@ func (s *BotService) generateWithRetry(ctx context.Context, contents []*genai.Co
 }
 
 func isRetryableGenAIError(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
 	msg := err.Error()
-	return strings.Contains(msg, "429") ||
+	return strings.Contains(msg, "504") ||
+		strings.Contains(msg, "DEADLINE_EXCEEDED") ||
+		strings.Contains(msg, "429") ||
 		strings.Contains(msg, "RESOURCE_EXHAUSTED") ||
 		strings.Contains(msg, "503") ||
 		strings.Contains(msg, "UNAVAILABLE")
