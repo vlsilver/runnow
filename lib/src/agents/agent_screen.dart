@@ -7,10 +7,20 @@ import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 
+/// Trang danh sách đầy đủ, mở từ "Xem tất cả" của tab MyBot.
+enum AgentListView { memories, learned }
+
+/// Tab tự học và bộ nhớ chỉ hiện vài mục đầu cho gọn, phần còn lại ở trang
+/// danh sách.
+const _previewCount = 3;
+
 /// Tab MyBot: thẻ bot của mình, tin mới trong phòng bot, bộ nhớ và những điều
-/// bot tự học. Tạo và sửa tên, tính cách nằm ở màn `/agent/setup`.
+/// bot tự học. Có [list] thì là trang đầy đủ của một mục. Tạo và sửa tên, tính
+/// cách nằm ở màn `/agent/setup`.
 class AgentScreen extends ConsumerStatefulWidget {
-  const AgentScreen({super.key});
+  const AgentScreen({this.list, super.key});
+
+  final AgentListView? list;
 
   @override
   ConsumerState<AgentScreen> createState() => _AgentScreenState();
@@ -53,15 +63,23 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
   }
 
   Future<void> _editMemory(AgentMemory? memory) async {
-    final text = await showDialog<String>(
+    final result = await showDialog<_MemoryEdit>(
       context: context,
       builder: (context) => _MemoryDialog(initial: memory?.text ?? ''),
     );
-    if (text == null || text.trim().isEmpty) return;
+    if (result == null) return;
+    if (result.delete) {
+      if (memory != null) {
+        await _run((api) => api.deleteAgentMemory(memory.id));
+      }
+      return;
+    }
+    final text = result.text.trim();
+    if (text.isEmpty) return;
     await _run(
       (api) => memory == null
-          ? api.addAgentMemory(text.trim())
-          : api.updateAgentMemory(memory.id, text.trim()),
+          ? api.addAgentMemory(text)
+          : api.updateAgentMemory(memory.id, text),
     );
   }
 
@@ -113,6 +131,7 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
     final me = ref.watch(agentMeProvider);
     final data = me.value;
     final agent = data?.agent;
+    final list = widget.list;
     final Widget body;
     if (data == null) {
       body = me.hasError
@@ -133,11 +152,34 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
           ),
         ),
       );
+    } else if (list != null) {
+      body = ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        children: [
+          if (list == AgentListView.memories)
+            _MemoryCard(
+              memories: data.memories,
+              limit: data.memoryLimit,
+              busy: _busy,
+              onAdd: () => _editMemory(null),
+              onEdit: _editMemory,
+              onDelete: _deleteMemory,
+            )
+          else
+            _LearnedCard(
+              learned: data.learned,
+              busy: _busy,
+              onForget: _forgetLearned,
+            ),
+        ],
+      );
     } else {
       body = ListView(
         // Chừa chỗ cho thanh tab nổi phía dưới.
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
         children: [
+          _Header(onEdit: agent.created ? () => _open('/agent/setup') : null),
+          const SizedBox(height: 18),
           if (agent.created) ...[
             _BotHeroCard(
               agent: agent,
@@ -150,41 +192,98 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
             const SizedBox(height: 16),
             _RoomPreviewCard(onOpen: () => _open('/agent/room')),
             const SizedBox(height: 22),
-            _MemorySection(
-              memories: data.memories,
+            _SectionLabel(
+              'Bot biết gì về bạn',
+              onSeeAll: data.memories.length > _previewCount
+                  ? () => _open('/agent/memories')
+                  : null,
+            ),
+            const SizedBox(height: 8),
+            _MemoryCard(
+              memories: data.memories.take(_previewCount).toList(),
               limit: data.memoryLimit,
+              full: data.memories.length >= data.memoryLimit,
               busy: _busy,
               onAdd: () => _editMemory(null),
               onEdit: _editMemory,
-              onDelete: _deleteMemory,
             ),
           ] else
             _CreateBotCard(onCreate: () => _open('/agent/setup')),
-          const SizedBox(height: 22),
-          // Bot tự học cả khi chưa tạo bot (vd. trí nhớ cũ của 3i), nên mục
-          // này luôn hiện để người dùng xem và xoá được.
-          _LearnedSection(
-            learned: data.learned,
-            busy: _busy,
-            onForget: _forgetLearned,
-            onGroupFacts: () => _open('/agent/group-facts'),
-          ),
+          // Bot tự học cả khi chưa tạo bot (vd. trí nhớ cũ của 3i), nên có gì
+          // thì vẫn hiện để người dùng xem và cho quên.
+          if (agent.created || data.learned.isNotEmpty) ...[
+            const SizedBox(height: 22),
+            _SectionLabel(
+              'Bot tự học về bạn',
+              onSeeAll: data.learned.length > _previewCount
+                  ? () => _open('/agent/learned')
+                  : null,
+            ),
+            const SizedBox(height: 8),
+            _LearnedCard(
+              learned: data.learned.take(_previewCount).toList(),
+              busy: _busy,
+              onForget: _forgetLearned,
+              onGroupFacts: () => _open('/agent/group-facts'),
+            ),
+          ],
         ],
       );
     }
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('MyBot'),
-        actions: [
-          if (agent?.created ?? false)
-            IconButton(
-              tooltip: 'Sửa bot',
-              icon: const Icon(Icons.edit_outlined),
-              onPressed: () => _open('/agent/setup'),
+    if (list != null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(
+            list == AgentListView.memories
+                ? 'Bot biết gì về bạn'
+                : 'Bot tự học về bạn',
+          ),
+        ),
+        body: body,
+      );
+    }
+    return Scaffold(body: SafeArea(bottom: false, child: body));
+  }
+}
+
+class _Header extends StatelessWidget {
+  const _Header({required this.onEdit});
+
+  final VoidCallback? onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return Row(
+      children: [
+        const Expanded(
+          child: Text(
+            'MyBot',
+            style: TextStyle(
+              fontSize: 34,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.4,
             ),
-        ],
-      ),
-      body: body,
+          ),
+        ),
+        if (onEdit != null)
+          Tooltip(
+            message: 'Sửa bot',
+            child: Material(
+              color: palette.glassStart,
+              borderRadius: BorderRadius.circular(14),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: onEdit,
+                child: const SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: Icon(Icons.edit_outlined),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -261,7 +360,7 @@ class _BotHeroCard extends StatelessWidget {
               child: _HeroStat(
                 palette: dark,
                 value: '$memoryCount',
-                suffix: ' /$memoryLimit',
+                suffix: '/$memoryLimit',
                 label: 'mục nhớ',
               ),
             ),
@@ -339,8 +438,7 @@ class _CreateBotCard extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Đặt tên và tính cách cho bot. Kể cho bot nghe về bạn, bot sẽ thay '
-          'bạn nói chuyện với bot của các thành viên khác.',
+          'Bot thay bạn nói chuyện trong phòng bot.',
           style: TextStyle(color: dark.textMuted, fontSize: 14, height: 1.4),
         ),
         const SizedBox(height: 16),
@@ -370,7 +468,7 @@ class _HeroShell extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: palette.tint,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
             color: palette.tint.withValues(alpha: 0.28),
@@ -486,22 +584,23 @@ class _RoomPreviewCard extends ConsumerWidget {
     final preview = ref.watch(agentRoomPreviewProvider);
     final myUid = ref.watch(firebaseUserProvider).value?.uid;
     final muted = TextStyle(color: palette.textMuted, fontSize: 14);
+    final room = preview.value;
     final Widget content;
-    if (preview.hasError && !preview.hasValue) {
+    if (preview.hasError && room == null) {
       content = InkWell(
         onTap: () => ref.invalidate(agentRoomPreviewProvider),
         child: Text('Không tải được phòng bot. Chạm để thử lại.', style: muted),
       );
-    } else if (!preview.hasValue) {
+    } else if (room == null) {
       content = const LinearProgressIndicator(minHeight: 2);
-    } else if (preview.value!.isEmpty) {
+    } else if (room.messages.isEmpty) {
       content = Text('Phòng chưa có tin nào.', style: muted);
     } else {
       content = Column(
         children: [
-          for (final m in preview.value!)
+          for (final m in room.messages)
             Padding(
-              padding: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.only(bottom: 12),
               child: _RoomPreviewLine(message: m, myUid: myUid),
             ),
         ],
@@ -509,11 +608,24 @@ class _RoomPreviewCard extends ConsumerWidget {
     }
     return _Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const _SectionLabel('Phòng bot'),
+            Row(
+              children: [
+                const Expanded(child: _Caps('Phòng bot')),
+                if (room != null && room.bots > 0)
+                  Text(
+                    '${room.bots} bot đang ở phòng',
+                    style: TextStyle(
+                      color: palette.accentDeep,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 12),
             content,
             TextButton(
@@ -599,145 +711,116 @@ class _RoomPreviewLine extends StatelessWidget {
   }
 }
 
-class _MemorySection extends StatelessWidget {
-  const _MemorySection({
+/// Thẻ bộ nhớ. Không có [onDelete] là bản rút gọn ở tab: chạm vào mục để sửa
+/// hay xoá. Có [onDelete] là trang đầy đủ, mỗi mục có nút xoá riêng.
+class _MemoryCard extends StatelessWidget {
+  const _MemoryCard({
     required this.memories,
     required this.limit,
     required this.busy,
     required this.onAdd,
     required this.onEdit,
-    required this.onDelete,
-  });
+    this.onDelete,
+    bool? full,
+  }) : full = full ?? memories.length >= limit;
 
   final List<AgentMemory> memories;
   final int limit;
+  final bool full;
   final bool busy;
   final VoidCallback onAdd;
   final ValueChanged<AgentMemory> onEdit;
-  final ValueChanged<AgentMemory> onDelete;
+  final ValueChanged<AgentMemory>? onDelete;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final full = memories.length >= limit;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _SectionLabel(
-          'Bot biết gì về bạn',
-          trailing: '${memories.length}/$limit',
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
-          child: Text(
-            'Bot dùng mọi mục ở đây khi nói trong phòng bot, nơi các thành '
-            'viên khác cùng đọc. Đừng để chuyện riêng tư trong bộ nhớ.',
-            style: TextStyle(color: palette.textMuted, fontSize: 13),
-          ),
-        ),
-        _Card(
-          child: Column(
-            children: [
-              if (memories.isEmpty)
-                _EmptyRow(
-                  'Chưa có gì. Thêm tay, hoặc vào Chat riêng kể cho bot nghe.',
-                ),
-              for (final m in memories) ...[
-                _FactRow(
-                  text: m.text,
-                  source: m.fromChat ? 'Bot ghi khi chat' : 'Bạn thêm',
-                  onTap: busy ? null : () => onEdit(m),
-                  action: IconButton(
-                    tooltip: 'Xoá',
-                    icon: const Icon(Icons.delete_outline),
-                    color: palette.textMuted,
-                    onPressed: busy ? null : () => onDelete(m),
-                  ),
-                ),
-                const _RowDivider(),
-              ],
-              if (memories.isNotEmpty || !full)
-                ListTile(
-                  enabled: !busy && !full,
-                  leading: Icon(Icons.add_rounded, color: palette.accentDeep),
-                  title: Text(
-                    full ? 'Bộ nhớ đã đầy' : 'Thêm điều cần nhớ',
-                    style: TextStyle(
-                      color: full ? palette.textMuted : palette.accentDeep,
-                      fontWeight: FontWeight.w800,
+    final onDelete = this.onDelete;
+    return _Card(
+      child: Column(
+        children: [
+          if (memories.isEmpty)
+            const _EmptyRow('Chưa có gì. Kể cho bot trong Chat riêng.'),
+          for (final m in memories) ...[
+            _FactRow(
+              text: m.text,
+              source: m.fromChat ? 'Bot ghi khi chat' : 'Bạn thêm',
+              onTap: busy ? null : () => onEdit(m),
+              action: onDelete == null
+                  ? null
+                  : IconButton(
+                      tooltip: 'Xoá',
+                      icon: const Icon(Icons.delete_outline),
+                      color: palette.textMuted,
+                      onPressed: busy ? null : () => onDelete(m),
                     ),
-                  ),
-                  onTap: onAdd,
-                ),
-            ],
+            ),
+            const _RowDivider(),
+          ],
+          ListTile(
+            enabled: !busy && !full,
+            leading: Icon(Icons.add_rounded, color: palette.accentDeep),
+            title: Text(
+              full ? 'Bộ nhớ đã đầy ($limit mục)' : 'Thêm điều cần nhớ',
+              style: TextStyle(
+                color: full ? palette.textMuted : palette.accentDeep,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            onTap: onAdd,
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
-class _LearnedSection extends StatelessWidget {
-  const _LearnedSection({
+class _LearnedCard extends StatelessWidget {
+  const _LearnedCard({
     required this.learned,
     required this.busy,
     required this.onForget,
-    required this.onGroupFacts,
+    this.onGroupFacts,
   });
 
   final List<AgentLearnedFact> learned;
   final bool busy;
   final ValueChanged<AgentLearnedFact> onForget;
-  final VoidCallback onGroupFacts;
+  final VoidCallback? onGroupFacts;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _SectionLabel('Bot tự học về bạn', trailing: '${learned.length}'),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
-          child: Text(
-            'Bot rút ra từ tin bạn nói trong phòng bot và group Telegram, rồi '
-            'dùng khi nói chuyện với bạn và mọi người. Mục nào sai hay bạn '
-            'không muốn bot nhớ thì cho bot quên.',
-            style: TextStyle(color: palette.textMuted, fontSize: 13),
-          ),
-        ),
-        _Card(
-          child: Column(
-            children: [
-              if (learned.isEmpty)
-                const _EmptyRow('Bot chưa học được gì về bạn.'),
-              for (final f in learned) ...[
-                _FactRow(
-                  text: f.text,
-                  source: f.migrated ? 'Từ trí nhớ cũ của 3i' : 'Bot tự học',
-                  action: TextButton(
-                    onPressed: busy ? null : () => onForget(f),
-                    style: TextButton.styleFrom(
-                      foregroundColor: palette.textMuted,
-                    ),
-                    child: const Text('Quên'),
-                  ),
-                ),
-                const _RowDivider(),
-              ],
-              ListTile(
-                leading: const Icon(Icons.groups_2_outlined),
-                title: const Text(
-                  'Bot biết gì về nhóm',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: onGroupFacts,
+    final onGroupFacts = this.onGroupFacts;
+    return _Card(
+      child: Column(
+        children: [
+          if (learned.isEmpty) const _EmptyRow('Bot chưa học được gì về bạn.'),
+          for (final (i, f) in learned.indexed) ...[
+            if (i > 0) const _RowDivider(),
+            _FactRow(
+              text: f.text,
+              source: f.migrated ? 'Từ trí nhớ cũ của 3i' : 'Bot tự học',
+              action: TextButton(
+                onPressed: busy ? null : () => onForget(f),
+                style: TextButton.styleFrom(foregroundColor: palette.textMuted),
+                child: const Text('Quên'),
               ),
-            ],
-          ),
-        ),
-      ],
+            ),
+          ],
+          if (onGroupFacts != null) ...[
+            const _RowDivider(),
+            ListTile(
+              title: const Text(
+                'Bot biết gì về nhóm',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: onGroupFacts,
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -758,41 +841,56 @@ class _Card extends StatelessWidget {
   }
 }
 
-/// Nhãn mục kiểu chữ hoa nhỏ, giống nhãn mục ở Cài đặt.
+/// Nhãn mục kiểu chữ hoa nhỏ, có "Xem tất cả" khi mục dài hơn phần đang hiện.
 class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text, {this.trailing});
+  const _SectionLabel(this.text, {this.onSeeAll});
 
   final String text;
-  final String? trailing;
+  final VoidCallback? onSeeAll;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
+    final onSeeAll = this.onSeeAll;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
         children: [
-          Expanded(
-            child: Text(
-              text.toUpperCase(),
-              style: TextStyle(
-                color: palette.textMuted,
-                fontSize: 11,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.1,
-              ),
-            ),
-          ),
-          if (trailing != null)
-            Text(
-              trailing!,
-              style: TextStyle(
-                color: palette.accentDeep,
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
+          Expanded(child: _Caps(text)),
+          if (onSeeAll != null)
+            InkWell(
+              onTap: onSeeAll,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  'Xem tất cả',
+                  style: TextStyle(
+                    color: context.runNowPalette.accentDeep,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _Caps extends StatelessWidget {
+  const _Caps(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text.toUpperCase(),
+      style: TextStyle(
+        color: context.runNowPalette.textMuted,
+        fontSize: 11,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 1.1,
       ),
     );
   }
@@ -802,19 +900,19 @@ class _FactRow extends StatelessWidget {
   const _FactRow({
     required this.text,
     required this.source,
-    required this.action,
+    this.action,
     this.onTap,
   });
 
   final String text;
   final String source;
-  final Widget action;
+  final Widget? action;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      contentPadding: const EdgeInsets.only(left: 16, right: 4),
+      contentPadding: EdgeInsets.only(left: 16, right: action == null ? 16 : 4),
       title: Text(
         text,
         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
@@ -866,6 +964,9 @@ class _RowDivider extends StatelessWidget {
   }
 }
 
+/// Kết quả hộp thoại mục nhớ: chữ mới, hoặc xoá mục đang sửa.
+typedef _MemoryEdit = ({String text, bool delete});
+
 class _MemoryDialog extends StatefulWidget {
   const _MemoryDialog({required this.initial});
 
@@ -886,8 +987,9 @@ class _MemoryDialogState extends State<_MemoryDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final editing = widget.initial.isNotEmpty;
     return AlertDialog(
-      title: Text(widget.initial.isEmpty ? 'Thêm điều cần nhớ' : 'Sửa mục nhớ'),
+      title: Text(editing ? 'Sửa mục nhớ' : 'Thêm điều cần nhớ'),
       content: TextField(
         controller: _text,
         autofocus: true,
@@ -896,15 +998,28 @@ class _MemoryDialogState extends State<_MemoryDialog> {
         maxLength: 500,
         decoration: const InputDecoration(
           hintText: 'Vd: Chủ chạy sáng thứ 7 ở hồ Tây.',
+          // Bộ nhớ đi cả vào phòng bot: nói ở đúng lúc người dùng đang gõ.
+          helperText: 'Mọi thành viên trong phòng bot đều đọc được.',
+          helperMaxLines: 2,
         ),
       ),
       actions: [
+        if (editing)
+          TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop((text: '', delete: true)),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Xoá'),
+          ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Thôi'),
         ),
         TextButton(
-          onPressed: () => Navigator.of(context).pop(_text.text),
+          onPressed: () =>
+              Navigator.of(context).pop((text: _text.text, delete: false)),
           child: const Text('Lưu'),
         ),
       ],

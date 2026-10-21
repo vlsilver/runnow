@@ -50,7 +50,9 @@ void main() {
             (ref) => ThemeController(loadFromStorage: false),
           ),
           agentMeProvider.overrideWith((ref) async => agent),
-          agentRoomPreviewProvider.overrideWith((ref) async => const []),
+          agentRoomPreviewProvider.overrideWith(
+            (ref) async => (messages: const <AgentRoomMessage>[], bots: 0),
+          ),
           firebaseUserProvider.overrideWith((ref) => Stream.value(null)),
         ],
         child: const RunNowApp(requireAuthentication: false),

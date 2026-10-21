@@ -256,6 +256,16 @@ final _router = GoRouter(
       builder: (context, state) => const AgentGroupFactsScreen(),
     ),
     GoRoute(
+      path: '/agent/memories',
+      builder: (context, state) =>
+          const AgentScreen(list: AgentListView.memories),
+    ),
+    GoRoute(
+      path: '/agent/learned',
+      builder: (context, state) =>
+          const AgentScreen(list: AgentListView.learned),
+    ),
+    GoRoute(
       path: '/games/:id/chat/:key',
       builder: (context, state) => GameChatScreen(
         gameId: state.pathParameters['id']!,

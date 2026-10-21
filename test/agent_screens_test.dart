@@ -141,6 +141,10 @@ void main() {
           path: '/agent/setup',
           builder: (_, _) => const AgentSetupScreen(),
         ),
+        GoRoute(
+          path: '/agent/memories',
+          builder: (_, _) => const AgentScreen(list: AgentListView.memories),
+        ),
       ],
     );
     addTearDown(router.dispose);
@@ -184,11 +188,14 @@ void main() {
     expect(find.text('Chat riêng'), findsOneWidget);
     expect(find.text('BOT BIẾT GÌ VỀ BẠN'), findsOneWidget);
     expect(find.text('0/50'), findsOneWidget);
-    // Bộ nhớ được dùng trong phòng: phải nói rõ cho chủ.
-    expect(find.textContaining('các thành viên khác cùng đọc'), findsOneWidget);
 
     await tester.tap(find.text('Thêm điều cần nhớ'));
     await tester.pumpAndSettle();
+    // Bộ nhớ đi cả vào phòng: nói rõ lúc chủ đang gõ.
+    expect(
+      find.text('Mọi thành viên trong phòng bot đều đọc được.'),
+      findsOneWidget,
+    );
     await tester.enterText(find.byType(TextField).last, '  Chạy sáng thứ 7  ');
     await tester.tap(find.text('Lưu').last);
     await tester.pumpAndSettle();
@@ -196,12 +203,38 @@ void main() {
     expect(find.text('Chạy sáng thứ 7'), findsOneWidget);
     expect(find.text('1/50'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Xoá'));
+    // Ở tab không có nút xoá từng mục: chạm vào mục để sửa hoặc xoá.
+    expect(find.byTooltip('Xoá'), findsNothing);
+    await tester.tap(find.text('Chạy sáng thứ 7'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Xoá').last);
+    expect(find.text('Sửa mục nhớ'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Xoá'));
     await tester.pumpAndSettle();
     expect(backend.calls, contains('DELETE /v1/agents/me/memories/m1'));
     expect(find.text('0/50'), findsOneWidget);
+  });
+
+  testWidgets('tab shows three memories, the full list shows all', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    for (var i = 1; i <= 4; i++) {
+      backend.memories.add({'id': 'm$i', 'text': 'Mục $i', 'source': 'manual'});
+    }
+    await pumpMyBot(tester);
+    expect(find.text('Mục 3'), findsOneWidget);
+    expect(find.text('Mục 4'), findsNothing);
+
+    await tester.tap(find.text('Xem tất cả'));
+    await tester.pumpAndSettle();
+    expect(find.text('Mục 4'), findsOneWidget);
+    expect(find.byTooltip('Xoá'), findsNWidgets(4));
+    await tester.tap(find.byTooltip('Xoá').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Xoá').last);
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('DELETE /v1/agents/me/memories/m4'));
+    expect(find.text('Mục 4'), findsNothing);
   });
 
   testWidgets('edits the bot and previews the two newest room messages', (
@@ -239,10 +272,15 @@ void main() {
           'at': at,
         },
       ],
-      'members': [],
+      'members': [
+        {'uid': 'an', 'name': 'An', 'botName': 'Sóc'},
+        {'uid': 'me', 'name': 'Tôi', 'botName': 'Cú'},
+        {'uid': 'dung', 'name': 'Dũng'},
+      ],
     };
     await pumpMyBot(tester);
     expect(find.text('Nói ngắn'), findsOneWidget);
+    expect(find.text('2 bot đang ở phòng'), findsOneWidget);
     expect(find.text('chào cả nhà'), findsNothing);
     final older = tester.getTopLeft(find.text('Sóc · bot của An'));
     final newer = tester.getTopLeft(find.text('Cú · bot của bạn'));
