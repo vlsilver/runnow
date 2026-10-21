@@ -101,6 +101,21 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
     if (yes) await _run((api) => api.deleteAgentLearned(fact.id));
   }
 
+  Future<void> _setLearning(bool learn, int learnedCount) async {
+    // Tắt tự học thì backend xoá luôn điều đã học, nên hỏi lại trước.
+    if (!learn) {
+      final yes = await _confirm(
+        title: 'Tắt tự học?',
+        content: learnedCount > 0
+            ? 'Bot xoá $learnedCount điều đã học về bạn và không học thêm.'
+            : 'Bot sẽ không học thêm về bạn.',
+        action: 'Tắt',
+      );
+      if (!yes) return;
+    }
+    await _run((api) => api.setAgentNoLearn(!learn));
+  }
+
   Future<bool> _confirm({
     required String title,
     required String content,
@@ -210,8 +225,9 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
           ] else
             _CreateBotCard(onCreate: () => _open('/agent/setup')),
           // Bot tự học cả khi chưa tạo bot (vd. trí nhớ cũ của 3i), nên có gì
-          // thì vẫn hiện để người dùng xem và cho quên.
-          if (agent.created || data.learned.isNotEmpty) ...[
+          // thì vẫn hiện để người dùng xem và cho quên. Đã tắt tự học thì vẫn
+          // hiện để bật lại được.
+          if (agent.created || data.learned.isNotEmpty || data.noLearn) ...[
             const SizedBox(height: 22),
             _SectionLabel(
               'Bot tự học về bạn',
@@ -224,6 +240,8 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
               learned: data.learned.take(_previewCount).toList(),
               busy: _busy,
               onForget: _forgetLearned,
+              learning: !data.noLearn,
+              onLearning: (learn) => _setLearning(learn, data.learned.length),
               onGroupFacts: () => _open('/agent/group-facts'),
             ),
           ],
@@ -780,22 +798,45 @@ class _LearnedCard extends StatelessWidget {
     required this.learned,
     required this.busy,
     required this.onForget,
+    this.learning = true,
+    this.onLearning,
     this.onGroupFacts,
   });
 
   final List<AgentLearnedFact> learned;
   final bool busy;
   final ValueChanged<AgentLearnedFact> onForget;
+  final bool learning;
+
+  /// Có thì hiện công tắc tự học ở đầu thẻ (chỉ ở tab, không ở trang đầy đủ).
+  final ValueChanged<bool>? onLearning;
   final VoidCallback? onGroupFacts;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final onGroupFacts = this.onGroupFacts;
+    final onLearning = this.onLearning;
     return _Card(
       child: Column(
         children: [
-          if (learned.isEmpty) const _EmptyRow('Bot chưa học được gì về bạn.'),
+          if (onLearning != null) ...[
+            SwitchListTile(
+              value: learning,
+              onChanged: busy ? null : onLearning,
+              title: const Text(
+                'Cho bot tự học về bạn',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+            const _RowDivider(),
+          ],
+          if (learned.isEmpty)
+            _EmptyRow(
+              learning
+                  ? 'Bot chưa học được gì về bạn.'
+                  : 'Bot không tự học về bạn.',
+            ),
           for (final (i, f) in learned.indexed) ...[
             if (i > 0) const _RowDivider(),
             _FactRow(

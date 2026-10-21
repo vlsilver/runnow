@@ -33,6 +33,7 @@ class _AgentBackend {
   final learned = <Map<String, dynamic>>[];
   final groupFacts = <Map<String, dynamic>>[];
   var admin = false;
+  var noLearn = false;
   Map<String, dynamic> dm = {'messages': [], 'waiting': false};
   Map<String, dynamic> room = {'messages': [], 'members': []};
   final requests = <http.Request>[];
@@ -62,9 +63,14 @@ class _AgentBackend {
             'memories': memories,
             'memoryLimit': 50,
             'learned': learned,
+            'noLearn': noLearn,
           };
         case ('DELETE', final p) when p.startsWith('/v1/agents/me/learned/'):
           learned.removeWhere((f) => p.endsWith('/${f['id']}'));
+        case ('POST', '/v1/agents/me/no-learn'):
+          noLearn = body['on'] == true;
+          if (noLearn) learned.clear();
+          out = {'noLearn': noLearn};
         case ('GET', '/v1/agents/group-facts'):
           out = {'facts': groupFacts, 'canDelete': admin};
         case ('DELETE', final p) when p.startsWith('/v1/agents/group-facts/'):
@@ -330,6 +336,42 @@ void main() {
     expect(backend.calls, contains('DELETE /v1/agents/me/learned/tg-f2'));
     expect(find.text('Đi giày Pegasus'), findsNothing);
     expect(find.text('Mê chạy trail'), findsOneWidget);
+  });
+
+  testWidgets('turning learning off asks first, on again does not', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    backend.learned.addAll([
+      {'id': 'f1', 'text': 'Mê chạy trail', 'source': 'learned'},
+      {'id': 'f2', 'text': 'Đi giày Pegasus', 'source': 'learned'},
+    ]);
+    await pumpMyBot(tester);
+    bool switchOn() =>
+        tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value;
+    expect(switchOn(), isTrue);
+
+    await tester.tap(find.text('Cho bot tự học về bạn'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Bot xoá 2 điều đã học về bạn và không học thêm.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Tắt'));
+    await tester.pumpAndSettle();
+    final off = backend.requests.lastWhere((r) => r.method == 'POST');
+    expect(off.url.path, '/v1/agents/me/no-learn');
+    expect(jsonDecode(off.body), {'on': true});
+    expect(switchOn(), isFalse);
+    expect(find.text('Mê chạy trail'), findsNothing);
+    expect(find.text('Bot không tự học về bạn.'), findsOneWidget);
+
+    await tester.tap(find.text('Cho bot tự học về bạn'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tắt tự học?'), findsNothing);
+    final on = backend.requests.lastWhere((r) => r.method == 'POST');
+    expect(jsonDecode(on.body), {'on': false});
+    expect(switchOn(), isTrue);
   });
 
   testWidgets('only admins can make the bot forget group facts', (

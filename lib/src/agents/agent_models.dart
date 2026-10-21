@@ -110,6 +110,7 @@ class AgentMe {
     required this.memories,
     required this.memoryLimit,
     required this.learned,
+    this.noLearn = false,
   });
 
   factory AgentMe.fromJson(Map<String, dynamic> json) {
@@ -122,6 +123,7 @@ class AgentMe {
       memories: _list(json['memories'], AgentMemory.fromJson),
       memoryLimit: _int(json['memoryLimit']),
       learned: _list(json['learned'], AgentLearnedFact.fromJson),
+      noLearn: json['noLearn'] == true,
     );
   }
 
@@ -133,6 +135,9 @@ class AgentMe {
 
   /// Điều bot tự học về người này, có cả khi chưa tạo bot.
   final List<AgentLearnedFact> learned;
+
+  /// Đã tắt "Cho bot tự học về bạn". Backend cũ chưa có field thì là false.
+  final bool noLearn;
 }
 
 /// Tin có seq, để một controller dùng chung cho chat riêng và phòng bot.

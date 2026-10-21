@@ -352,6 +352,10 @@ class RunNowApiClient {
   Future<void> deleteAgentLearned(String id) =>
       _send('DELETE', '/v1/agents/me/learned/${Uri.encodeComponent(id)}');
 
+  /// Bật thì bot thôi tự học về mình và xoá những gì đã học.
+  Future<void> setAgentNoLearn(bool on) =>
+      _send('POST', '/v1/agents/me/no-learn', body: {'on': on});
+
   Future<AgentGroupFacts> getAgentGroupFacts() async {
     final response = await _send('GET', '/v1/agents/group-facts');
     return AgentGroupFacts.fromJson(_jsonObject(response));
