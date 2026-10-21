@@ -32,6 +32,7 @@ func TestEmulatorAgentOpenFlag(t *testing.T) {
 	if r.status != 200 || r.body["enabled"] != true || agent["name"] != "Bot của Dũng" || agent["created"] != false {
 		t.Fatalf("cờ bật, người ngoài allowlist: %d %s", r.status, r.raw)
 	}
+	e.consent("dung")
 	e.createBot("dung", "Dế", "")
 	if e.doc("agents/dung")["inRoom"] != true {
 		t.Fatalf("bot mới tạo phải vào phòng: %v", e.doc("agents/dung"))
@@ -103,6 +104,7 @@ func TestEmulatorAgentRoomBounded(t *testing.T) {
 		seed(t, e.store.db, fmt.Sprintf("agents/u%02d", i), map[string]any{"name": fmt.Sprintf("Bot%02d", i), "inRoom": i >= 5})
 	}
 	// Người nhắn có uid đứng sau cả 30 bot kia.
+	e.consent("zz")
 	e.createBot("zz", "Ngựa Vằn", "")
 
 	agents, err := e.deps.Agents.roomAgents(context.Background(), agentAccess{open: true}, "zz")

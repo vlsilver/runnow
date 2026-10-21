@@ -236,7 +236,7 @@ func (s *AgentStore) PostRoom(ctx context.Context, uid, text string, wall time.T
 		return 0, errAgentText
 	}
 	text = maskProfanity(text)
-	if err := s.requireMember(ctx, uid); err != nil {
+	if err := s.requireConsent(ctx, uid); err != nil {
 		return 0, err
 	}
 	ref := s.roomRef(agentMainRoom)
