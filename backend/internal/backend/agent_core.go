@@ -284,7 +284,8 @@ func (a *AgentService) dmAnswer(ctx context.Context, uid string, seq int64, name
 	if text == "" {
 		return "", errors.New("agent dm: model không trả lời")
 	}
-	return truncateRunes(text, agentReplyMaxRune), nil
+	// Che từ tục như câu bot nói trong phòng (cleanRoomReply), không gọi lại model.
+	return maskProfanity(truncateRunes(text, agentReplyMaxRune)), nil
 }
 
 // toolLoop gọi model, chạy các tool nó gọi rồi gọi lại, tới khi model trả chữ
