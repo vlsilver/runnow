@@ -34,6 +34,10 @@ type AgentRoomMessage struct {
 	Owner string    `json:"owner,omitempty"`
 	Text  string    `json:"text"`
 	At    time.Time `json:"at"`
+	// Hidden: người xem đã chặn người gửi (tin của bot thì là chủ bot); Text rỗng,
+	// app không vẽ tin này. Vẫn trả tin chứ không bỏ, để seq của app đi tiếp:
+	// app poll bằng after = seq lớn nhất đang có, bỏ tin thì poll mãi một chỗ.
+	Hidden bool `json:"hidden,omitempty"`
 }
 
 type AgentRoomMember struct {
@@ -197,6 +201,10 @@ func (s *AgentStore) Room(ctx context.Context, uid, cursor, after string) (Agent
 	if err != nil {
 		return AgentRoomPage{}, err
 	}
+	blocked, err := s.blockedUIDs(ctx, uid)
+	if err != nil {
+		return AgentRoomPage{}, err
+	}
 	bots := map[string]string{}
 	for _, a := range agents {
 		bots[a.uid] = a.name
@@ -211,6 +219,9 @@ func (s *AgentStore) Room(ctx context.Context, uid, cursor, after string) (Agent
 		if msg.Kind == agentKindAgent {
 			// Tên bot chụp lúc nói, đúng với tên mà các bot khác đã đọc.
 			msg.Owner, msg.Name = msg.Name, stringValue(m["name"])
+		}
+		if slices.Contains(blocked, msg.UID) {
+			msg.Hidden, msg.Text = true, ""
 		}
 		out.Messages = append(out.Messages, msg)
 	}

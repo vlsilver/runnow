@@ -83,6 +83,9 @@ func (s *AccountService) Delete(ctx context.Context, uid string) error {
 	if err := s.removeLearnOptOut(ctx, uid); err != nil {
 		return fmt.Errorf("remove learn opt-out: %w", err)
 	}
+	if err := s.deleteAgentReports(ctx, uid); err != nil {
+		return fmt.Errorf("delete agent reports: %w", err)
+	}
 
 	if err := s.auth.DeleteUser(ctx, uid); err != nil && !auth.IsUserNotFound(err) {
 		return fmt.Errorf("delete auth user: %w", err)

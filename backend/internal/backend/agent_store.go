@@ -454,6 +454,8 @@ func (s *AgentStore) PostDM(ctx context.Context, uid, text, channel string, wall
 	if text == "" || utf8.RuneCountInString(text) > agentTextMaxRunes {
 		return AgentMessage{}, errAgentText
 	}
+	// Che từ tục như phòng bot và chat phe Ma Sói, kể cả tin từ Telegram sau này.
+	text = maskProfanity(text)
 	if err := s.requireMember(ctx, uid); err != nil {
 		return AgentMessage{}, err
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -169,6 +170,42 @@ func (s *Server) agentRoutes() {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"seq": seq})
+	}))
+	s.route("POST /v1/agents/room/messages/{seq}/report", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		var body struct {
+			Block bool `json:"block"`
+		}
+		if decodeJSON(r, &body) != nil {
+			return invalidRequest()
+		}
+		seq, err := strconv.ParseInt(r.PathValue("seq"), 10, 64)
+		if err != nil {
+			return invalidRequest()
+		}
+		text, err := s.deps.Agents.ReportRoom(r.Context(), uid, seq, body.Block, s.now())
+		if err != nil {
+			return err
+		}
+		// Admin có thể chưa liên kết Telegram, khi đó DM không tới ai: log để
+		// vẫn tra được báo cáo mà không phải mở Firestore.
+		slog.InfoContext(r.Context(), "agent.report", "seq", seq, "reporter", uid, "block", body.Block)
+		if err := s.alertChatReport(r.Context(), text); err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true})
+	}))
+	s.route("GET /v1/agents/blocks", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		blocks, err := s.deps.Agents.Blocks(r.Context(), uid)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"blocks": blocks})
+	}))
+	s.route("DELETE /v1/agents/blocks/{uid}", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		if err := s.deps.Agents.Unblock(r.Context(), uid, r.PathValue("uid"), s.now()); err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true})
 	}))
 }
 
