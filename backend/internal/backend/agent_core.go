@@ -16,8 +16,9 @@ import (
 )
 
 // Lõi của bot cá nhân: dựng prompt từ persona và bộ nhớ, gọi LLM, chạy tool
-// nhớ/quên và tra web. Lõi không biết tin đến từ kênh nào; kênh app gọi qua task
-// agent-dm và agent-turn, kênh Telegram sau này cũng gọi đúng hai hàm này.
+// nhớ/quên và tra web. Kênh app và Telegram cùng đi qua task agent-dm (kèm
+// channel) và agent-turn (kèm roomID); lõi chỉ dùng kênh để chọn chỗ đọc lịch
+// sử và chỗ ghi câu trả lời.
 
 const (
 	agentDMHistory    = 20
@@ -75,27 +76,58 @@ type AgentService struct {
 	// chatID là group Telegram của club, để recall_person tra cả người chỉ có
 	// trên Telegram; rỗng thì chỉ tra thành viên phòng bot.
 	chatID string
+	// channelReply gửi câu trả lời chat riêng ra kênh ngoài app; nil thì chỉ
+	// ghi Firestore. Xem SetChannelReply.
+	channelReply AgentReplyFunc
 }
+
+// AgentReplyFunc nhận câu trả lời chat riêng của bot ở kênh không phải app
+// (Telegram) để gửi ra kênh đó. reply.Seq là seq của câu trả lời trong chat
+// riêng của kênh. Hàm có thể bị gọi nhiều lần cho cùng một câu (task chạy lại,
+// Cloud Tasks giao trùng), nên phải idempotent theo (uid, channel, reply.Seq),
+// ví dụ ghi outbox với doc ID cố định. Trả lỗi thì task agent-dm chạy lại và
+// gọi lại hàm với đúng câu đó.
+type AgentReplyFunc func(ctx context.Context, uid, channel string, reply AgentMessage) error
 
 func NewAgentService(store *AgentStore, llm agentLLM, enqueue taskPublishFunc) *AgentService {
 	return &AgentService{store: store, llm: llm, enqueue: enqueue}
 }
 
+// SetChannelReply gắn hàm gửi câu trả lời ra kênh ngoài app. Gọi lúc dựng
+// dependencies, trước khi nhận task.
+func (a *AgentService) SetChannelReply(fn AgentReplyFunc) { a.channelReply = fn }
+
+// Channel và RoomID bỏ trống khi là app và main, để payload của kênh app giữ
+// đúng dạng cũ: bot bản trước giải mã payload với DisallowUnknownFields, gặp
+// field lạ là bỏ task. Nhờ vậy api và bot deploy trước sau thế nào cũng được.
 type agentDMTask struct {
-	UID string `json:"uid"`
-	Seq int64  `json:"seq"`
+	UID     string `json:"uid"`
+	Seq     int64  `json:"seq"`
+	Channel string `json:"channel,omitempty"`
 }
 
 type agentTurnTask struct {
-	AfterSeq int64 `json:"afterSeq"`
+	AfterSeq int64  `json:"afterSeq"`
+	RoomID   string `json:"roomID,omitempty"`
 }
 
-func agentDMTaskFor(uid string, seq int64) PublishTask {
-	return PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/agent-dm", Payload: agentDMTask{UID: uid, Seq: seq}, TaskID: StableTaskID("agent-dm", []any{uid, seq})}
+// TaskID của kênh app và phòng main giữ công thức cũ, để task bản trước đã
+// enqueue và task bản này cho cùng một tin vẫn khử trùng với nhau. Kênh và
+// phòng khác thêm tên vào identity nên seq trùng nhau không đụng ID.
+func agentDMTaskFor(uid, channel string, seq int64) PublishTask {
+	task, identity := agentDMTask{UID: uid, Seq: seq}, []any{uid, seq}
+	if channel != agentChannelApp {
+		task.Channel, identity = channel, []any{uid, channel, seq}
+	}
+	return PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/agent-dm", Payload: task, TaskID: StableTaskID("agent-dm", identity)}
 }
 
-func agentTurnTaskFor(afterSeq int64, at time.Time) PublishTask {
-	return PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/agent-turn", Payload: agentTurnTask{AfterSeq: afterSeq}, TaskID: StableTaskID("agent-turn", afterSeq), ScheduleTime: &at}
+func agentTurnTaskFor(roomID string, afterSeq int64, at time.Time) PublishTask {
+	task, identity := agentTurnTask{AfterSeq: afterSeq}, any(afterSeq)
+	if roomID != agentMainRoom {
+		task.RoomID, identity = roomID, []any{roomID, afterSeq}
+	}
+	return PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/agent-turn", Payload: task, TaskID: StableTaskID("agent-turn", identity), ScheduleTime: &at}
 }
 
 func vnDay(t time.Time) string { return t.In(vietnam).Format("20060102") }
@@ -179,10 +211,16 @@ func agentDMTools() []*genai.Tool {
 	}}}
 }
 
-// ReplyDM trả lời tin seq của chủ trong chat riêng. Chạy lại an toàn: tin đã
-// trả lời thì bỏ; mục nhớ thêm bằng tool có id cố định theo seq nên không nhân
-// đôi. Chủ đã gửi tin mới hơn thì bỏ, task của tin mới trả lời gộp.
-func (a *AgentService) ReplyDM(ctx context.Context, uid string, seq int64, wall time.Time) error {
+// ReplyDM trả lời tin seq của chủ trong chat riêng của kênh channel. Chạy lại
+// an toàn: tin đã trả lời thì bỏ; mục nhớ thêm bằng tool có id cố định theo
+// kênh và seq nên không nhân đôi. Chủ đã gửi tin mới hơn thì bỏ, task của tin
+// mới trả lời gộp. Kênh ngoài app thì câu trả lời đi tiếp qua channelReply,
+// kể cả khi task chạy lại sau khi đã ghi, để lần gửi trước lỗi được gửi lại.
+func (a *AgentService) ReplyDM(ctx context.Context, uid, channel string, seq int64, wall time.Time) error {
+	ch, ok := agentDMChannels[channel]
+	if !ok {
+		return fmt.Errorf("agent dm: không có kênh %q", channel)
+	}
 	ref := a.store.agentRef(uid)
 	doc, err := ref.Get(ctx)
 	if status.Code(err) == codes.NotFound {
@@ -192,16 +230,20 @@ func (a *AgentService) ReplyDM(ctx context.Context, uid string, seq int64, wall 
 		return err
 	}
 	d := doc.Data()
-	if int64(number(d["answeredSeq"])) >= seq || int64(number(d["dmUserSeq"])) != seq {
+	if answered := int64(number(d[ch.answeredField])); answered >= seq || int64(number(d[ch.userSeqField])) != seq {
+		if answered == seq {
+			return a.redeliverDMReply(ctx, uid, ch, seq)
+		}
 		return nil
 	}
+	// Trần câu trả lời mỗi ngày đếm chung mọi kênh, vì chi phí tính theo người.
 	allowed, err := a.consumeDMBudget(ctx, ref, wall)
 	if err != nil {
 		return err
 	}
 	reply := agentBudgetReply
 	if allowed {
-		reply, err = a.dmAnswer(ctx, uid, seq, stringValue(d["name"]), stringValue(d["persona"]), wall)
+		reply, err = a.dmAnswer(ctx, uid, ch, seq, stringValue(d["name"]), stringValue(d["persona"]), wall)
 		// Chạm trần chi phí giữa chừng (kể cả sau vòng tool đầu) thì vẫn trả câu
 		// nghỉ, để tin của chủ không treo ở "đang gõ" tới ngày mai.
 		if errors.Is(err, errAgentOverBudget) {
@@ -211,8 +253,38 @@ func (a *AgentService) ReplyDM(ctx context.Context, uid string, seq int64, wall 
 			return err
 		}
 	}
-	_, err = a.store.AppendDMReply(ctx, uid, seq, reply, wall)
-	return err
+	msg, written, err := a.store.AppendDMReply(ctx, uid, ch, seq, reply, wall)
+	if err != nil || !written {
+		return err
+	}
+	return a.deliverDMReply(ctx, uid, ch, msg)
+}
+
+func (a *AgentService) deliverDMReply(ctx context.Context, uid string, ch agentDMChannel, reply AgentMessage) error {
+	if ch.name == agentChannelApp || a.channelReply == nil {
+		return nil // app đọc thẳng Firestore
+	}
+	return a.channelReply(ctx, uid, ch.name, reply)
+}
+
+// redeliverDMReply gửi lại câu trả lời đã ghi cho tin seq (luôn ở seq+1, xem
+// AppendDMReply), cho trường hợp lần chạy trước ghi xong mà gửi lỗi.
+func (a *AgentService) redeliverDMReply(ctx context.Context, uid string, ch agentDMChannel, seq int64) error {
+	if ch.name == agentChannelApp || a.channelReply == nil {
+		return nil
+	}
+	doc, err := a.store.agentRef(uid).Collection(ch.collection).Doc(seqDocID(seq + 1)).Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	reply := dmMessage(doc.Data())
+	if reply.Role != agentRoleAgent {
+		return nil
+	}
+	return a.deliverDMReply(ctx, uid, ch, reply)
 }
 
 // consumeDMBudget đếm câu trả lời chat riêng trong ngày (giờ VN) trên doc bot.
@@ -239,7 +311,7 @@ func (a *AgentService) consumeDMBudget(ctx context.Context, ref *firestore.Docum
 	return allowed, err
 }
 
-func (a *AgentService) dmAnswer(ctx context.Context, uid string, seq int64, name, persona string, wall time.Time) (string, error) {
+func (a *AgentService) dmAnswer(ctx context.Context, uid string, ch agentDMChannel, seq int64, name, persona string, wall time.Time) (string, error) {
 	names, err := a.store.displayNames(ctx, []string{uid})
 	if err != nil {
 		return "", err
@@ -248,7 +320,7 @@ func (a *AgentService) dmAnswer(ctx context.Context, uid string, seq int64, name
 	if err != nil {
 		return "", err
 	}
-	history, err := a.store.dmHistory(ctx, uid, seq, agentDMHistory)
+	history, err := a.store.dmHistory(ctx, uid, ch, seq, agentDMHistory)
 	if err != nil {
 		return "", err
 	}
@@ -288,7 +360,7 @@ func (a *AgentService) dmAnswer(ctx context.Context, uid string, seq int64, name
 		case agentRecallPersonDecl.Name:
 			return a.recallPerson(ctx, call, wall)
 		}
-		return a.runMemoryTool(ctx, uid, seq, &added, call, wall)
+		return a.runMemoryTool(ctx, uid, fmt.Sprintf("%s%d", ch.memoryPrefix, seq), &added, call, wall)
 	})
 	if err != nil {
 		return "", err
@@ -329,10 +401,12 @@ func (a *AgentService) toolLoop(ctx context.Context, label, system string, conte
 	return "", fmt.Errorf("%s: model gọi tool quá %d vòng", label, agentToolRounds)
 }
 
-// runMemoryTool chạy một lệnh nhớ/sửa/quên. Lỗi nghiệp vụ (bộ nhớ đầy, mục
-// không còn, nội dung sai) trả vào cho model để nó báo chủ; lỗi Firestore thì
-// dừng để task chạy lại.
-func (a *AgentService) runMemoryTool(ctx context.Context, uid string, seq int64, added *int, call *genai.FunctionCall, wall time.Time) (map[string]any, error) {
+// runMemoryTool chạy một lệnh nhớ/sửa/quên. Mục thêm mới có id msgKey-n theo
+// tin đang trả lời (msgKey như "dm5", "tg5"), để task chạy lại ghi đè chứ không
+// nhân đôi, và seq trùng nhau ở hai kênh không ghi đè mục của nhau. Lỗi nghiệp
+// vụ (bộ nhớ đầy, mục không còn, nội dung sai) trả vào cho model để nó báo chủ;
+// lỗi Firestore thì dừng để task chạy lại.
+func (a *AgentService) runMemoryTool(ctx context.Context, uid, msgKey string, added *int, call *genai.FunctionCall, wall time.Time) (map[string]any, error) {
 	arg := func(k string) string { return strings.TrimSpace(stringValue(call.Args[k])) }
 	var err error
 	out := map[string]any{"ok": true}
@@ -340,7 +414,7 @@ func (a *AgentService) runMemoryTool(ctx context.Context, uid string, seq int64,
 	case "remember":
 		*added++
 		var m AgentMemory
-		m, err = a.store.AddMemory(ctx, uid, fmt.Sprintf("dm%d-%d", seq, *added), arg("text"), agentSourceChat, wall)
+		m, err = a.store.AddMemory(ctx, uid, fmt.Sprintf("%s-%d", msgKey, *added), arg("text"), agentSourceChat, wall)
 		out["id"] = m.ID
 	case "update_memory":
 		_, err = a.store.UpdateMemory(ctx, uid, arg("id"), arg("text"), wall)
@@ -386,12 +460,16 @@ func truncateRunes(s string, max int) string {
 	return strings.TrimSpace(string(r[:max]))
 }
 
-// RoomTurn cho một bot nói tiếp sau tin afterSeq. Task cũ (đã có tin mới hơn)
-// thì bỏ, vì tin mới có task riêng. Ghi xong thì hẹn lượt kế nếu chuỗi bot
-// chưa chạm chainMax. Chạy lại an toàn: turnOf cho biết lượt này đã ghi,
-// khi đó chỉ hẹn lại lượt kế.
-func (a *AgentService) RoomTurn(ctx context.Context, afterSeq int64, wall time.Time) error {
-	ref := a.store.roomRef(agentMainRoom)
+// RoomTurn cho một bot nói tiếp sau tin afterSeq trong phòng roomID. Task cũ
+// (đã có tin mới hơn) thì bỏ, vì tin mới có task riêng. Ghi xong thì hẹn lượt
+// kế nếu chuỗi bot chưa chạm chainMax. Chạy lại an toàn: turnOf cho biết lượt
+// này đã ghi, khi đó chỉ hẹn lại lượt kế. Seq, chuỗi và trần ngày nằm trên doc
+// của từng phòng, nên chainMax và roomDailyMax tính riêng cho mỗi phòng.
+func (a *AgentService) RoomTurn(ctx context.Context, roomID string, afterSeq int64, wall time.Time) error {
+	if _, ok := agentRoomChannels[roomID]; !ok {
+		return fmt.Errorf("agent room: không có phòng %q", roomID)
+	}
+	ref := a.store.roomRef(roomID)
 	doc, err := ref.Get(ctx)
 	if status.Code(err) == codes.NotFound {
 		return nil
@@ -407,7 +485,7 @@ func (a *AgentService) RoomTurn(ctx context.Context, afterSeq int64, wall time.T
 	seq := int64(number(room["seq"]))
 	if turnOf, ok := room["turnOf"]; ok && int64(number(turnOf)) == afterSeq {
 		if seq == afterSeq+1 {
-			return a.scheduleNext(ctx, lim, room, seq, wall)
+			return a.scheduleNext(ctx, lim, roomID, room, seq, wall)
 		}
 		return nil
 	}
@@ -418,7 +496,7 @@ func (a *AgentService) RoomTurn(ctx context.Context, afterSeq int64, wall time.T
 	if err != nil {
 		return err
 	}
-	transcript, err := a.store.roomTranscript(ctx, afterSeq, agentRoomHistory)
+	transcript, err := a.store.roomTranscript(ctx, roomID, afterSeq, agentRoomHistory)
 	if err != nil {
 		return err
 	}
@@ -442,29 +520,29 @@ func (a *AgentService) RoomTurn(ctx context.Context, afterSeq int64, wall time.T
 		if last := transcript[len(transcript)-1]; stringValue(last["kind"]) == agentKindAgent && stringValue(last["text"]) == agentBudgetReply {
 			return nil
 		}
-		_, err = a.store.appendRoomTurn(ctx, lim, afterSeq, speaker, agentBudgetReply, wall)
+		_, err = a.store.appendRoomTurn(ctx, lim, roomID, afterSeq, speaker, agentBudgetReply, wall)
 		return err
 	}
 	if err != nil {
 		return err
 	}
 	if text == "" {
-		slog.InfoContext(ctx, "agent.room_pass", "afterSeq", afterSeq, "speaker", speaker.uid)
+		slog.InfoContext(ctx, "agent.room_pass", "room", roomID, "afterSeq", afterSeq, "speaker", speaker.uid)
 		return nil
 	}
-	written, err := a.store.appendRoomTurn(ctx, lim, afterSeq, speaker, text, wall)
+	written, err := a.store.appendRoomTurn(ctx, lim, roomID, afterSeq, speaker, text, wall)
 	if err != nil || !written {
 		return err
 	}
 	room["chain"] = number(room["chain"]) + 1
-	return a.scheduleNext(ctx, lim, room, afterSeq+1, wall)
+	return a.scheduleNext(ctx, lim, roomID, room, afterSeq+1, wall)
 }
 
-func (a *AgentService) scheduleNext(ctx context.Context, lim agentLimits, room map[string]any, seq int64, wall time.Time) error {
+func (a *AgentService) scheduleNext(ctx context.Context, lim agentLimits, roomID string, room map[string]any, seq int64, wall time.Time) error {
 	if int64(number(room["chain"])) >= lim.chainMax || a.enqueue == nil {
 		return nil
 	}
-	_, err := a.enqueue(ctx, agentTurnTaskFor(seq, wall.Add(agentTurnDelay)))
+	_, err := a.enqueue(ctx, agentTurnTaskFor(roomID, seq, wall.Add(agentTurnDelay)))
 	return err
 }
 
@@ -643,9 +721,9 @@ func uniqueStrings(in []string) []string {
 }
 
 // appendRoomTurn ghi tin của bot nếu phòng vẫn đứng ở afterSeq (không ai chen
-// vào lúc model đang viết) và còn ngân sách ngày.
-func (s *AgentStore) appendRoomTurn(ctx context.Context, lim agentLimits, afterSeq int64, speaker roomAgent, text string, wall time.Time) (bool, error) {
-	ref := s.roomRef(agentMainRoom)
+// vào lúc model đang viết) và còn ngân sách ngày của phòng.
+func (s *AgentStore) appendRoomTurn(ctx context.Context, lim agentLimits, roomID string, afterSeq int64, speaker roomAgent, text string, wall time.Time) (bool, error) {
+	ref := s.roomRef(roomID)
 	written := false
 	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		written = false
@@ -657,7 +735,7 @@ func (s *AgentStore) appendRoomTurn(ctx context.Context, lim agentLimits, afterS
 			return nil
 		}
 		seq := afterSeq + 1
-		if err := tx.Create(ref.Collection("messages").Doc(seqDocID(seq)), map[string]any{"seq": seq, "kind": agentKindAgent, "uid": speaker.uid, "name": speaker.name, "text": text, "channel": agentChannelApp, "at": wall}); err != nil {
+		if err := tx.Create(ref.Collection("messages").Doc(seqDocID(seq)), map[string]any{"seq": seq, "kind": agentKindAgent, "uid": speaker.uid, "name": speaker.name, "text": text, "channel": agentRoomChannels[roomID], "at": wall}); err != nil {
 			return err
 		}
 		day := vnDay(wall)

@@ -150,19 +150,14 @@ func (s *Server) agentRoutes() {
 		if decodeJSON(r, &body) != nil {
 			return invalidRequest()
 		}
-		msg, err := s.deps.Agents.PostDM(r.Context(), uid, body.Text, agentChannelApp, s.now())
+		msg, err := s.PostChannelDM(r.Context(), uid, agentChannelApp, body.Text)
 		if err != nil {
-			return err
-		}
-		// Tin đã ghi mà enqueue lỗi thì báo lỗi cho app: không có tick nào trả
-		// lời bù. Chủ gửi tin kế thì bot trả lời gộp cả hai.
-		if err := s.publishAgentTask(r, agentDMTaskFor(uid, msg.Seq)); err != nil {
 			return err
 		}
 		return writeJSON(w, 200, msg)
 	}))
 	s.route("GET /v1/agents/room", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
-		page, err := s.deps.Agents.Room(r.Context(), uid, r.URL.Query().Get("cursor"), r.URL.Query().Get("after"))
+		page, err := s.deps.Agents.Room(r.Context(), agentMainRoom, uid, r.URL.Query().Get("cursor"), r.URL.Query().Get("after"))
 		if err != nil {
 			return err
 		}
@@ -175,12 +170,8 @@ func (s *Server) agentRoutes() {
 		if decodeJSON(r, &body) != nil {
 			return invalidRequest()
 		}
-		wall := s.now()
-		seq, err := s.deps.Agents.PostRoom(r.Context(), uid, body.Text, wall)
+		seq, err := s.PostRoomMessage(r.Context(), agentMainRoom, uid, body.Text)
 		if err != nil {
-			return err
-		}
-		if err := s.publishAgentTask(r, agentTurnTaskFor(seq, wall.Add(agentFirstTurnDelay))); err != nil {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"seq": seq})
@@ -196,7 +187,7 @@ func (s *Server) agentRoutes() {
 		if err != nil {
 			return invalidRequest()
 		}
-		text, err := s.deps.Agents.ReportRoom(r.Context(), uid, seq, body.Block, s.now())
+		text, err := s.deps.Agents.ReportRoom(r.Context(), agentMainRoom, uid, seq, body.Block, s.now())
 		if err != nil {
 			return err
 		}
@@ -223,47 +214,90 @@ func (s *Server) agentRoutes() {
 	}))
 }
 
-func (s *Server) publishAgentTask(r *http.Request, task PublishTask) error {
+// PostChannelDM ghi tin của chủ vào chat riêng của kênh channel (app hoặc
+// telegram) rồi hẹn task agent-dm để bot trả lời. Route app gọi hàm này với
+// kênh app; webhook Telegram gọi với kênh telegram. Lỗi trả ra giữ nguyên
+// HTTPError của PostDM (agent_disabled, consent_required, agent_not_found,
+// invalid_text, too_fast) để kênh gọi tự chọn câu báo người dùng.
+func (s *Server) PostChannelDM(ctx context.Context, uid, channel, text string) (AgentMessage, error) {
+	msg, err := s.deps.Agents.PostDM(ctx, uid, text, channel, s.now())
+	if err != nil {
+		return AgentMessage{}, err
+	}
+	// Tin đã ghi mà enqueue lỗi thì báo lỗi cho kênh gọi: không có tick nào
+	// trả lời bù. Chủ gửi tin kế thì bot trả lời gộp cả hai.
+	if err := s.publishAgentTask(ctx, agentDMTaskFor(uid, channel, msg.Seq)); err != nil {
+		return AgentMessage{}, err
+	}
+	return msg, nil
+}
+
+// PostRoomMessage ghi tin của người vào phòng roomID rồi hẹn lượt bot đầu
+// tiên của phòng đó. Route app gọi với phòng main; webhook Telegram gọi với
+// phòng tg-psc.
+func (s *Server) PostRoomMessage(ctx context.Context, roomID, uid, text string) (int64, error) {
+	wall := s.now()
+	seq, err := s.deps.Agents.PostRoom(ctx, roomID, uid, text, wall)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.publishAgentTask(ctx, agentTurnTaskFor(roomID, seq, wall.Add(agentFirstTurnDelay))); err != nil {
+		return 0, err
+	}
+	return seq, nil
+}
+
+func (s *Server) publishAgentTask(ctx context.Context, task PublishTask) error {
 	publish := s.enqueueTask()
 	if publish == nil {
 		return errors.New("agent: chưa cấu hình Cloud Tasks")
 	}
-	if _, err := publish(r.Context(), task); err != nil {
-		slog.ErrorContext(r.Context(), "agent.enqueue_failed", "path", task.HandlerPath, "error", err)
+	if _, err := publish(ctx, task); err != nil {
+		slog.ErrorContext(ctx, "agent.enqueue_failed", "path", task.HandlerPath, "error", err)
 		return err
 	}
 	return nil
 }
 
 // agentDM là chặng của bot: trả lời tin chat riêng. Payload hỏng thì 204 cho
-// task thôi retry; model hay Firestore lỗi thì trả lỗi để task chạy lại.
+// task thôi retry; model hay Firestore lỗi thì trả lỗi để task chạy lại. Task
+// không có channel là của bản trước, khi chỉ có kênh app.
 func (s *Server) agentDM(w http.ResponseWriter, r *http.Request) error {
 	var task agentDMTask
-	if err := decodeJSON(r, &task); err != nil || task.UID == "" || task.Seq < 1 {
-		slog.WarnContext(r.Context(), "agent.dm_bad_payload")
+	err := decodeJSON(r, &task)
+	if task.Channel == "" {
+		task.Channel = agentChannelApp
+	}
+	if _, ok := agentDMChannels[task.Channel]; err != nil || !ok || task.UID == "" || task.Seq < 1 {
+		slog.WarnContext(r.Context(), "agent.dm_bad_payload", "channel", task.Channel)
 		w.WriteHeader(http.StatusNoContent)
 		return nil
 	}
 	if s.deps.AgentBrain == nil {
 		return errors.New("agent-dm cần Gemini")
 	}
-	if err := s.deps.AgentBrain.ReplyDM(r.Context(), task.UID, task.Seq, s.now()); err != nil {
+	if err := s.deps.AgentBrain.ReplyDM(r.Context(), task.UID, task.Channel, task.Seq, s.now()); err != nil {
 		return err
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})
 }
 
+// agentTurn: task không có roomID là của bản trước, khi chỉ có phòng main.
 func (s *Server) agentTurn(w http.ResponseWriter, r *http.Request) error {
 	var task agentTurnTask
-	if err := decodeJSON(r, &task); err != nil || task.AfterSeq < 1 {
-		slog.WarnContext(r.Context(), "agent.turn_bad_payload")
+	err := decodeJSON(r, &task)
+	if task.RoomID == "" {
+		task.RoomID = agentMainRoom
+	}
+	if _, ok := agentRoomChannels[task.RoomID]; err != nil || !ok || task.AfterSeq < 1 {
+		slog.WarnContext(r.Context(), "agent.turn_bad_payload", "room", task.RoomID)
 		w.WriteHeader(http.StatusNoContent)
 		return nil
 	}
 	if s.deps.AgentBrain == nil {
 		return errors.New("agent-turn cần Gemini")
 	}
-	if err := s.deps.AgentBrain.RoomTurn(r.Context(), task.AfterSeq, s.now()); err != nil {
+	if err := s.deps.AgentBrain.RoomTurn(r.Context(), task.RoomID, task.AfterSeq, s.now()); err != nil {
 		return err
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})

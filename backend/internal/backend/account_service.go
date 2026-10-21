@@ -78,7 +78,7 @@ func (s *AccountService) Delete(ctx context.Context, uid string) error {
 	if err := s.deleteDocumentTree(ctx, s.db.Collection("users").Doc(uid)); err != nil {
 		return fmt.Errorf("delete user tree: %w", err)
 	}
-	// Bot cá nhân: hồ sơ, bộ nhớ và chat riêng.
+	// Bot cá nhân: hồ sơ, bộ nhớ và chat riêng của mọi kênh (dm, tgdm).
 	if err := s.deleteDocumentTree(ctx, s.db.Collection("agents").Doc(uid)); err != nil {
 		return fmt.Errorf("delete agent tree: %w", err)
 	}
@@ -204,11 +204,18 @@ func (s *AccountService) deleteOwnedDocuments(ctx context.Context, uid, athleteI
 		// tính là đã rời PSC ở mốc chốt kế tiếp (R33).
 		s.db.Collection("tgLinks").Where("uid", "==", uid),
 		s.db.Collection("linkCodes").Where("uid", "==", uid),
-		// Phòng bot: tin của người lẫn tin bot của họ đều mang uid chủ.
-		s.db.Collection("agentRooms").Doc(agentMainRoom).Collection("messages").Where("uid", "==", uid),
 	}
 	if athleteID != "" {
 		queries = append(queries, s.db.Collection("integrationEvents").Where("ownerId", "==", athleteID))
+	}
+	// Phòng bot, mọi phòng (main, tg-psc): tin của người lẫn tin bot của họ đều
+	// mang uid chủ.
+	rooms, err := s.agentRoomRefs(ctx)
+	if err != nil {
+		return err
+	}
+	for _, room := range rooms {
+		queries = append(queries, room.Collection("messages").Where("uid", "==", uid))
 	}
 	for _, query := range queries {
 		if err := s.deleteQuery(ctx, query); err != nil {

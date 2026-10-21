@@ -13,9 +13,11 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Phòng bot: một phòng chung cho mọi thành viên thử nghiệm và bot của họ.
-// Người gửi tin qua api; bot nói theo lượt do task agent-turn chạy trên bot
-// service (agent_core.go). Doc phòng giữ seq và state lượt nói:
+// Phòng bot: phòng chung cho mọi thành viên và bot của họ. Có hai phòng không
+// nối với nhau: main trong app và tg-psc là topic "Phòng bot" của PSC trên
+// Telegram (agentRoomChannels). Người gửi tin qua api; bot nói theo lượt do
+// task agent-turn chạy trên bot service (agent_core.go). Doc agentRooms/{room}
+// giữ seq và state lượt nói của riêng phòng đó:
 //
 //	seq         seq của tin mới nhất
 //	chain       số tin bot liên tiếp kể từ tin người gần nhất
@@ -169,7 +171,7 @@ func (a agentAccess) roster(agents []roomAgent) []string {
 	return out
 }
 
-func (s *AgentStore) Room(ctx context.Context, uid, cursor, after string) (AgentRoomPage, error) {
+func (s *AgentStore) Room(ctx context.Context, roomID, uid, cursor, after string) (AgentRoomPage, error) {
 	acc, err := s.access(ctx)
 	if err != nil {
 		return AgentRoomPage{}, err
@@ -177,7 +179,7 @@ func (s *AgentStore) Room(ctx context.Context, uid, cursor, after string) (Agent
 	if !acc.allows(uid) {
 		return AgentRoomPage{}, errAgentDisabled
 	}
-	docs, next, hasNewer, err := pageBySeq(ctx, s.roomRef(agentMainRoom).Collection("messages"), cursor, after)
+	docs, next, hasNewer, err := pageBySeq(ctx, s.roomRef(roomID).Collection("messages"), cursor, after)
 	if err != nil {
 		return AgentRoomPage{}, err
 	}
@@ -228,9 +230,14 @@ func (s *AgentStore) Room(ctx context.Context, uid, cursor, after string) (Agent
 	return out, nil
 }
 
-// PostRoom ghi tin của người vào phòng và trả seq. Tin người reset chuỗi bot,
-// nên sau mỗi tin người các bot lại được nói tối đa chainMax tin.
-func (s *AgentStore) PostRoom(ctx context.Context, uid, text string, wall time.Time) (int64, error) {
+// PostRoom ghi tin của người vào phòng roomID và trả seq của phòng đó. Tin người
+// reset chuỗi bot của phòng, nên sau mỗi tin người các bot lại được nói tối đa
+// chainMax tin.
+func (s *AgentStore) PostRoom(ctx context.Context, roomID, uid, text string, wall time.Time) (int64, error) {
+	channel, ok := agentRoomChannels[roomID]
+	if !ok {
+		return 0, fmt.Errorf("agent room: không có phòng %q", roomID)
+	}
 	text = strings.TrimSpace(text)
 	if text == "" || utf8.RuneCountInString(text) > agentTextMaxRunes {
 		return 0, errAgentText
@@ -239,7 +246,7 @@ func (s *AgentStore) PostRoom(ctx context.Context, uid, text string, wall time.T
 	if err := s.requireConsent(ctx, uid); err != nil {
 		return 0, err
 	}
-	ref := s.roomRef(agentMainRoom)
+	ref := s.roomRef(roomID)
 	var seq int64
 	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		room, err := readRoom(tx, ref)
@@ -250,7 +257,7 @@ func (s *AgentStore) PostRoom(ctx context.Context, uid, text string, wall time.T
 			return errAgentTooFast
 		}
 		seq = int64(number(room["seq"])) + 1
-		if err := tx.Create(ref.Collection("messages").Doc(seqDocID(seq)), map[string]any{"seq": seq, "kind": agentKindHuman, "uid": uid, "text": text, "channel": agentChannelApp, "at": wall}); err != nil {
+		if err := tx.Create(ref.Collection("messages").Doc(seqDocID(seq)), map[string]any{"seq": seq, "kind": agentKindHuman, "uid": uid, "text": text, "channel": channel, "at": wall}); err != nil {
 			return err
 		}
 		return tx.Set(ref, map[string]any{"seq": seq, "chain": 0, "lastSpeaker": "", "lastSentAt": map[string]any{uid: wall}, "updatedAt": wall}, firestore.MergeAll)
@@ -270,8 +277,8 @@ func readRoom(tx *firestore.Transaction, ref *firestore.DocumentRef) (map[string
 }
 
 // roomTranscript là tối đa limit tin gần nhất tới seq upTo, cũ trước.
-func (s *AgentStore) roomTranscript(ctx context.Context, upTo int64, limit int) ([]map[string]any, error) {
-	docs, err := s.roomRef(agentMainRoom).Collection("messages").Where("seq", "<=", upTo).OrderBy("seq", firestore.Desc).Limit(limit).Documents(ctx).GetAll()
+func (s *AgentStore) roomTranscript(ctx context.Context, roomID string, upTo int64, limit int) ([]map[string]any, error) {
+	docs, err := s.roomRef(roomID).Collection("messages").Where("seq", "<=", upTo).OrderBy("seq", firestore.Desc).Limit(limit).Documents(ctx).GetAll()
 	if err != nil {
 		return nil, err
 	}

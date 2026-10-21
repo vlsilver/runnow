@@ -14,7 +14,7 @@ import (
 // Báo cáo và chặn trong phòng bot (App Store 1.2), cùng khuôn với chat phe Ma
 // Sói (game_chat_report.go):
 //
-//	agentRooms/main/reports/{seq}_{reporter}  báo cáo, bấm lại thì ghi đè
+//	agentRooms/{room}/reports/{seq}_{reporter}  báo cáo, bấm lại thì ghi đè
 //	agentBlocks/{uid}.uids                    những người uid đã chặn
 //
 // Danh sách chặn tách khỏi gameBlocks vì hai chỗ khác nhau về cách gỡ: phòng
@@ -58,18 +58,18 @@ func (s *AgentStore) blockedUIDs(ctx context.Context, uid string) ([]string, err
 	return out, nil
 }
 
-// ReportRoom ghi báo cáo tin seq trong phòng và, nếu block, chặn người gửi.
+// ReportRoom ghi báo cáo tin seq trong phòng roomID và, nếu block, chặn người gửi.
 // Tin của bot thì người bị báo cáo là chủ bot, vì uid trên tin là uid chủ; chặn
 // thì ẩn cả người lẫn bot của họ. Trả chữ DM cho admin. Gọi lại với cùng tin
 // thì ghi đè báo cáo cũ, nên bấm lại sau lỗi mạng không sinh báo cáo trùng.
-func (s *AgentStore) ReportRoom(ctx context.Context, uid string, seq int64, block bool, wall time.Time) (string, error) {
+func (s *AgentStore) ReportRoom(ctx context.Context, roomID, uid string, seq int64, block bool, wall time.Time) (string, error) {
 	if seq < 1 {
 		return "", invalidRequest()
 	}
 	if err := s.requireMember(ctx, uid); err != nil {
 		return "", err
 	}
-	room := s.roomRef(agentMainRoom)
+	room := s.roomRef(roomID)
 	d, err := room.Collection("messages").Doc(seqDocID(seq)).Get(ctx)
 	if status.Code(err) == codes.NotFound {
 		return "", errAgentNoMessage
