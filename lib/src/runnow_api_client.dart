@@ -409,6 +409,22 @@ class RunNowApiClient {
   Future<void> postAgentRoom(String text) =>
       _send('POST', '/v1/agents/room', body: {'text': text});
 
+  /// Báo cáo tin [seq] trong phòng bot; [block] chặn luôn người gửi (tin của
+  /// bot thì chặn chủ bot). Tin của mình hay bot mình thì `invalid_request`.
+  Future<void> reportAgentRoomMessage(int seq, {required bool block}) => _send(
+    'POST',
+    '/v1/agents/room/messages/$seq/report',
+    body: {'block': block},
+  );
+
+  Future<List<AgentBlocked>> getAgentBlocks() async {
+    final response = await _send('GET', '/v1/agents/blocks');
+    return AgentBlocked.listFromJson(_jsonObject(response));
+  }
+
+  Future<void> unblockAgentRoomUser(String uid) =>
+      _send('DELETE', '/v1/agents/blocks/${Uri.encodeComponent(uid)}');
+
   String _seqQuery(String? cursor, int? after) => cursor != null
       ? '?cursor=${Uri.encodeQueryComponent(cursor)}'
       : after != null

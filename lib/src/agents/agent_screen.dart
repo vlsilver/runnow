@@ -245,6 +245,21 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
               onGroupFacts: () => _open('/agent/group-facts'),
             ),
           ],
+          // Chặn chỉ làm được trong phòng bot, mà phòng chỉ mở được khi đã có
+          // bot, nên mục bỏ chặn cũng chỉ hiện lúc đó.
+          if (agent.created) ...[
+            const SizedBox(height: 22),
+            _Card(
+              child: ListTile(
+                title: const Text(
+                  'Người đã chặn',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => _open('/agent/blocks'),
+              ),
+            ),
+          ],
         ],
       );
     }

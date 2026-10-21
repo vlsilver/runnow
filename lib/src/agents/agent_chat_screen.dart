@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/agents/agent_chat_controller.dart';
@@ -121,7 +122,68 @@ class _AgentRoomScreenState
       bot: m.fromAgent,
       text: m.text,
       at: m.at,
+      // Tin của bot mình cũng là của mình (uid là chủ bot): backend không cho
+      // báo cáo, nên không mở menu.
+      onLongPress: m.uid == myUid ? null : () => _onLongPress(m),
     );
+  }
+
+  /// Nhấn giữ tin của người khác: sao chép, báo cáo, hoặc báo cáo và chặn.
+  /// Chặn từ tin của bot là chặn chủ bot, nên ẩn cả người lẫn bot của họ.
+  Future<void> _onLongPress(AgentRoomMessage m) async {
+    final who = m.fromAgent ? (m.owner ?? 'thành viên') : m.name;
+    final action = await showModalBottomSheet<_RoomAction>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.copy_rounded),
+              title: const Text('Sao chép'),
+              onTap: () => Navigator.pop(context, _RoomAction.copy),
+            ),
+            ListTile(
+              leading: const Icon(Icons.flag_outlined),
+              title: const Text('Báo cáo tin này'),
+              onTap: () => Navigator.pop(context, _RoomAction.report),
+            ),
+            ListTile(
+              leading: const Icon(Icons.block),
+              title: Text('Báo cáo và chặn $who'),
+              subtitle: Text(
+                'Ẩn tin của $who và bot của họ. $who không được báo.',
+              ),
+              onTap: () => Navigator.pop(context, _RoomAction.block),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (action == null || !mounted) return;
+    if (action == _RoomAction.copy) {
+      await Clipboard.setData(ClipboardData(text: m.text));
+      return;
+    }
+    final block = action == _RoomAction.block;
+    try {
+      await ref
+          .read(runNowApiClientProvider)
+          .reportAgentRoomMessage(m.seq, block: block);
+      if (block) {
+        // Chờ lượt poll đang chạy (có thể mang tin đọc trước lúc chặn) rồi mới
+        // ẩn, để không còn tin nào của người vừa chặn lọt lại trên màn.
+        await controller.refresh();
+        controller.update((x) => x.uid == m.uid ? x.asHidden() : x);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(block ? 'Đã báo cáo và chặn' : 'Đã báo cáo')),
+      );
+    } catch (error) {
+      _showError(error, 'Không báo cáo được, thử lại sau.');
+    }
   }
 
   void _showMembers(BuildContext context) {
@@ -154,6 +216,8 @@ class _AgentRoomScreenState
     );
   }
 }
+
+enum _RoomAction { copy, report, block }
 
 /// Phần chung của hai màn chat: vòng đời poll, ô nhập, danh sách tin.
 abstract class _AgentChatState<
@@ -254,7 +318,7 @@ abstract class _AgentChatState<
                     child: Text(_errorText(controller.error!)),
                   ),
                 );
-        } else if (messages.isEmpty) {
+        } else if (messages.isEmpty && !controller.hasOlder) {
           body = empty(context);
         } else {
           body = ListView.builder(
@@ -317,6 +381,7 @@ class _Bubble extends StatelessWidget {
     required this.bot,
     required this.text,
     required this.at,
+    this.onLongPress,
   });
 
   final bool mine;
@@ -327,56 +392,65 @@ class _Bubble extends StatelessWidget {
   final String text;
   final DateTime? at;
 
+  /// Có thì nhấn giữ để mở menu báo cáo, và chữ không chọn được nữa (sao chép
+  /// nằm trong menu).
+  final VoidCallback? onLongPress;
+
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final time = at == null ? '' : DateFormat('HH:mm').format(at!.toLocal());
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.sizeOf(context).width * 0.78,
-        ),
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: mine ? palette.accent.withValues(alpha: 0.38) : palette.tint,
-            borderRadius: BorderRadius.circular(14),
+      child: GestureDetector(
+        onLongPress: onLongPress,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.sizeOf(context).width * 0.78,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (label != null)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (bot) ...[
-                      Icon(
-                        Icons.smart_toy_outlined,
-                        size: 14,
-                        color: palette.textMuted,
-                      ),
-                      const SizedBox(width: 4),
-                    ],
-                    Flexible(
-                      child: Text(
-                        label!,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: palette.ink,
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: mine
+                  ? palette.accent.withValues(alpha: 0.38)
+                  : palette.tint,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (label != null)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (bot) ...[
+                        Icon(
+                          Icons.smart_toy_outlined,
+                          size: 14,
+                          color: palette.textMuted,
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      Flexible(
+                        child: Text(
+                          label!,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: palette.ink,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              SelectableText(text),
-              if (time.isNotEmpty)
-                Text(
-                  time,
-                  style: TextStyle(fontSize: 11, color: palette.textMuted),
-                ),
-            ],
+                    ],
+                  ),
+                if (onLongPress == null) SelectableText(text) else Text(text),
+                if (time.isNotEmpty)
+                  Text(
+                    time,
+                    style: TextStyle(fontSize: 11, color: palette.textMuted),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:go_router/go_router.dart';
 import 'package:http/testing.dart';
+import 'package:myrun/src/agents/agent_blocks_screen.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
 import 'package:myrun/src/agents/agent_group_facts_screen.dart';
 import 'package:myrun/src/agents/agent_screen.dart';
@@ -36,6 +37,9 @@ class _AgentBackend {
   var noLearn = false;
   Map<String, dynamic> dm = {'messages': [], 'waiting': false};
   Map<String, dynamic> room = {'messages': [], 'members': []};
+
+  /// Người mình đã chặn: tin của họ (và bot của họ) trả về hidden, text rỗng.
+  final blocks = <Map<String, dynamic>>[];
   final requests = <http.Request>[];
   var _ids = 0;
 
@@ -93,9 +97,32 @@ class _AgentBackend {
               ? {'messages': [], 'waiting': dm['waiting']}
               : dm;
         case ('GET', '/v1/agents/room'):
+          final blocked = {for (final b in blocks) b['uid']};
           out = request.url.queryParameters.containsKey('after')
               ? {'messages': [], 'members': []}
-              : room;
+              : {
+                  ...room,
+                  'messages': [
+                    for (final m in room['messages'] as List)
+                      blocked.contains(m['uid'])
+                          ? {...m, 'hidden': true, 'text': ''}
+                          : m,
+                  ],
+                };
+        case ('POST', final p)
+            when p.startsWith('/v1/agents/room/messages/') &&
+                p.endsWith('/report'):
+          if (body['block'] == true) {
+            final seq = int.parse(p.split('/')[5]);
+            final m = (room['messages'] as List).firstWhere(
+              (m) => m['seq'] == seq,
+            );
+            blocks.add({'uid': m['uid'], 'name': m['owner'] ?? m['name']});
+          }
+        case ('GET', '/v1/agents/blocks'):
+          out = {'blocks': blocks};
+        case ('DELETE', final p) when p.startsWith('/v1/agents/blocks/'):
+          blocks.removeWhere((b) => p.endsWith('/${b['uid']}'));
         case ('POST', '/v1/agents/me/dm' || '/v1/agents/room'):
           break;
         default:
@@ -150,6 +177,10 @@ void main() {
         GoRoute(
           path: '/agent/memories',
           builder: (_, _) => const AgentScreen(list: AgentListView.memories),
+        ),
+        GoRoute(
+          path: '/agent/blocks',
+          builder: (_, _) => const AgentBlocksScreen(),
         ),
       ],
     );
@@ -248,9 +279,18 @@ void main() {
   ) async {
     backend.agent = {'name': 'Cú', 'persona': 'Nói ngắn', 'created': true};
     final at = DateTime.utc(2026, 10, 20, 8).toIso8601String();
-    // Phòng trả tin mới trước.
+    // Phòng trả tin mới trước. Tin mới nhất là của người đã chặn: bỏ qua.
     backend.room = {
       'messages': [
+        {
+          'seq': 4,
+          'kind': 'human',
+          'uid': 'binh',
+          'name': 'Bình',
+          'text': '',
+          'hidden': true,
+          'at': at,
+        },
         {
           'seq': 3,
           'kind': 'agent',
@@ -486,5 +526,117 @@ void main() {
     expect(find.text('Bot: Sóc'), findsOneWidget);
     expect(find.text('Chưa tạo bot'), findsOneWidget);
     await close(tester);
+  });
+
+  testWidgets('room hides blocked senders and reports others, not mine', (
+    tester,
+  ) async {
+    final at = DateTime.utc(2026, 10, 20, 8).toIso8601String();
+    backend.room = {
+      'messages': [
+        {
+          'seq': 5,
+          'kind': 'human',
+          'uid': 'binh',
+          'name': 'Bình',
+          'text': '',
+          'hidden': true,
+          'at': at,
+        },
+        {
+          'seq': 4,
+          'kind': 'agent',
+          'uid': 'me',
+          'name': 'Cú',
+          'owner': 'Tôi',
+          'text': 'ok luôn',
+          'at': at,
+        },
+        {
+          'seq': 3,
+          'kind': 'agent',
+          'uid': 'an',
+          'name': 'Sóc',
+          'owner': 'An',
+          'text': 'chạy không',
+          'at': at,
+        },
+        {
+          'seq': 2,
+          'kind': 'human',
+          'uid': 'an',
+          'name': 'An',
+          'text': 'chào cả nhà',
+          'at': at,
+        },
+        {
+          'seq': 1,
+          'kind': 'human',
+          'uid': 'me',
+          'name': 'Tôi',
+          'text': 'chào',
+          'at': at,
+        },
+      ],
+      'members': [
+        {'uid': 'an', 'name': 'An', 'botName': 'Sóc'},
+        {'uid': 'me', 'name': 'Tôi', 'botName': 'Cú'},
+      ],
+    };
+    await pump(tester, const AgentRoomScreen());
+    // Tin ẩn vẫn nằm trong trang nhưng không vẽ.
+    expect(find.text('Bình'), findsNothing);
+    expect(find.text('ok luôn'), findsOneWidget);
+
+    // Tin của mình và của bot mình: không có menu báo cáo.
+    for (final mine in ['chào', 'ok luôn']) {
+      await tester.longPress(find.text(mine));
+      await tester.pumpAndSettle();
+      expect(find.text('Báo cáo tin này'), findsNothing);
+    }
+
+    await tester.longPress(find.text('chạy không'));
+    await tester.pumpAndSettle();
+    // Tin của bot: chặn là chặn chủ bot.
+    expect(find.text('Báo cáo và chặn An'), findsOneWidget);
+    await tester.tap(find.text('Báo cáo tin này'));
+    await tester.pumpAndSettle();
+    var report = backend.requests.lastWhere((r) => r.method == 'POST');
+    expect(report.url.path, '/v1/agents/room/messages/3/report');
+    expect(jsonDecode(report.body), {'block': false});
+    expect(find.text('Đã báo cáo'), findsOneWidget);
+    expect(find.text('chạy không'), findsOneWidget);
+    // Chờ snackbar trước tắt, snackbar sau mới hiện.
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('chạy không'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Báo cáo và chặn An'));
+    await tester.pumpAndSettle();
+    report = backend.requests.lastWhere((r) => r.method == 'POST');
+    expect(report.url.path, '/v1/agents/room/messages/3/report');
+    expect(jsonDecode(report.body), {'block': true});
+    expect(find.text('Đã báo cáo và chặn'), findsOneWidget);
+    // Ẩn ngay cả tin của An lẫn bot của An, không chờ mở lại phòng.
+    expect(find.text('chạy không'), findsNothing);
+    expect(find.text('chào cả nhà'), findsNothing);
+    expect(find.text('ok luôn'), findsOneWidget);
+    await close(tester);
+  });
+
+  testWidgets('blocked list from the MyBot tab unblocks', (tester) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    backend.blocks.add({'uid': 'an', 'name': 'An'});
+    await pumpMyBot(tester);
+    await tester.tap(find.text('Người đã chặn'));
+    await tester.pumpAndSettle();
+    expect(find.text('An'), findsOneWidget);
+
+    await tester.tap(find.text('Bỏ chặn'));
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('DELETE /v1/agents/blocks/an'));
+    expect(find.text('An'), findsNothing);
+    expect(find.text('Bạn chưa chặn ai.'), findsOneWidget);
   });
 }

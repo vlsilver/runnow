@@ -143,6 +143,9 @@ class AgentMe {
 /// Tin có seq, để một controller dùng chung cho chat riêng và phòng bot.
 abstract interface class AgentSeqMessage {
   int get seq;
+
+  /// Giữ trong danh sách để poll đi tiếp theo seq, nhưng không vẽ.
+  bool get hidden;
 }
 
 class AgentMessage implements AgentSeqMessage {
@@ -163,6 +166,10 @@ class AgentMessage implements AgentSeqMessage {
   @override
   final int seq;
 
+  /// Chat riêng chỉ có chủ và bot của mình, không có gì để ẩn.
+  @override
+  bool get hidden => false;
+
   /// true là bot nói, false là chủ.
   final bool fromAgent;
   final String text;
@@ -178,6 +185,7 @@ class AgentRoomMessage implements AgentSeqMessage {
     required this.owner,
     required this.text,
     this.at,
+    this.hidden = false,
   });
 
   factory AgentRoomMessage.fromJson(Map<String, dynamic> json) =>
@@ -189,7 +197,19 @@ class AgentRoomMessage implements AgentSeqMessage {
         owner: _optString(json['owner']),
         text: _string(json['text']),
         at: _date(json['at']),
+        hidden: json['hidden'] == true,
       );
+
+  AgentRoomMessage asHidden() => AgentRoomMessage(
+    seq: seq,
+    fromAgent: fromAgent,
+    uid: uid,
+    name: name,
+    owner: owner,
+    text: '',
+    at: at,
+    hidden: true,
+  );
 
   @override
   final int seq;
@@ -205,6 +225,24 @@ class AgentRoomMessage implements AgentSeqMessage {
   final String? owner;
   final String text;
   final DateTime? at;
+
+  /// Người xem đã chặn người gửi (tin của bot thì là chủ bot); [text] rỗng.
+  @override
+  final bool hidden;
+}
+
+/// Một người trong danh sách chặn của phòng bot.
+class AgentBlocked {
+  const AgentBlocked({required this.uid, required this.name});
+
+  factory AgentBlocked.fromJson(Map<String, dynamic> json) =>
+      AgentBlocked(uid: _string(json['uid']), name: _string(json['name']));
+
+  static List<AgentBlocked> listFromJson(Map<String, dynamic> json) =>
+      _list(json['blocks'], AgentBlocked.fromJson);
+
+  final String uid;
+  final String name;
 }
 
 class AgentRoomMember {

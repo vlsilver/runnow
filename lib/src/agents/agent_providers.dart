@@ -27,8 +27,8 @@ final agentMeProvider = FutureProvider.autoDispose<AgentMe?>(
 bool myBotTabVisible(WidgetRef ref) =>
     ref.watch(agentMeProvider).value?.enabled ?? false;
 
-/// Phòng bot nhìn từ tab MyBot: hai tin mới nhất (cũ trước mới sau) và số bot
-/// trong phòng.
+/// Phòng bot nhìn từ tab MyBot: hai tin mới nhất không bị ẩn (cũ trước mới
+/// sau) và số bot trong phòng.
 typedef AgentRoomPreview = ({List<AgentRoomMessage> messages, int bots});
 
 /// Đọc một lần mỗi lần mở tab, không poll; muốn xem tiếp thì vào phòng.
@@ -37,8 +37,19 @@ final agentRoomPreviewProvider = FutureProvider.autoDispose<AgentRoomPreview>(
   (ref) async {
     final page = await ref.watch(runNowApiClientProvider).getAgentRoom();
     return (
-      messages: page.messages.take(2).toList().reversed.toList(),
+      messages: page.messages
+          .where((m) => !m.hidden)
+          .take(2)
+          .toList()
+          .reversed
+          .toList(),
       bots: page.members.where((m) => m.botName != null).length,
     );
   },
+);
+
+/// Người mình đã chặn trong phòng bot, cho màn bỏ chặn.
+final agentBlocksProvider = FutureProvider.autoDispose<List<AgentBlocked>>(
+  retry: (_, _) => null,
+  (ref) => ref.watch(runNowApiClientProvider).getAgentBlocks(),
 );

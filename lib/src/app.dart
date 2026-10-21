@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/admin/admin_screen.dart';
+import 'package:myrun/src/agents/agent_blocks_screen.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
 import 'package:myrun/src/agents/agent_group_facts_screen.dart';
 import 'package:myrun/src/agents/agent_providers.dart';
@@ -254,6 +255,10 @@ final _router = GoRouter(
     GoRoute(
       path: '/agent/group-facts',
       builder: (context, state) => const AgentGroupFactsScreen(),
+    ),
+    GoRoute(
+      path: '/agent/blocks',
+      builder: (context, state) => const AgentBlocksScreen(),
     ),
     GoRoute(
       path: '/agent/memories',
