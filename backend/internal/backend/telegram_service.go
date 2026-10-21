@@ -34,6 +34,13 @@ func NewTelegramService(botToken, chatID string) *TelegramService {
 	}
 }
 
+// withToken trả client cho một bot khác (bot con của bot quản lý MyBot), dùng
+// chung http.Client và apiBaseURL. Không có chat mặc định: chỉ gọi được các hàm
+// nhận chatID (callAPI, SendText), còn Enabled() của nó luôn false.
+func (s *TelegramService) withToken(token string) *TelegramService {
+	return &TelegramService{botToken: token, client: s.client, apiBaseURL: s.apiBaseURL}
+}
+
 // Enabled reports whether both the bot token and target chat are configured.
 // Callers should skip all Telegram work entirely when this is false, so
 // deployments that never set up Telegram behave exactly as before.

@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -46,5 +47,29 @@ func TestFakeTelegramRejectsWrongToken(t *testing.T) {
 	}
 	if n := len(tg.Calls("")); n != 0 {
 		t.Fatalf("call sai token vẫn được ghi: %d", n)
+	}
+}
+
+// withToken phải gọi bằng token của bot con, không phải token gốc; token đã bị
+// thay thì fake trả 401 như Telegram, để test bỏ cache token bắt được.
+func TestTelegramWithTokenCallsAsChildBot(t *testing.T) {
+	tg := newFakeTelegram(t)
+	old := tg.addManaged(77)
+	child := tg.service("").withToken(old)
+	ctx := context.Background()
+	if _, err := child.SendText(ctx, TelegramText{ChatID: "5", Text: "chào"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := tg.CallsBy(old, "sendMessage"); len(got) != 1 || got[0].Params["chat_id"] != "5" {
+		t.Fatalf("call của bot con = %+v", tg.Calls(""))
+	}
+	if n := len(tg.CallsBy(fakeTelegramToken, "")); n != 0 {
+		t.Fatalf("token gốc bị dùng %d lần", n)
+	}
+	tg.addManaged(77)
+	_, err := child.SendText(ctx, TelegramText{ChatID: "5", Text: "chào"})
+	var te *TelegramAPIError
+	if !errors.As(err, &te) || te.Status != 401 {
+		t.Fatalf("token cũ: lỗi = %v", err)
 	}
 }
