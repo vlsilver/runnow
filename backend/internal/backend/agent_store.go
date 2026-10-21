@@ -95,6 +95,8 @@ type AgentMe struct {
 	// Learned là ký ức bot tự học về chính người gọi, kể cả khi chưa tạo bot.
 	Learned      []AgentLearnedFact `json:"learned"`
 	LearnedLimit int                `json:"learnedLimit"`
+	// NoLearn: đã bật "Đừng học về tôi", bot không tự học từ tin của người này.
+	NoLearn bool `json:"noLearn"`
 }
 
 type AgentMessage struct {
@@ -223,6 +225,11 @@ func (s *AgentStore) Me(ctx context.Context, uid string, wall time.Time) (AgentM
 	if out.Learned, err = s.LearnedAbout(ctx, uid, wall); err != nil {
 		return AgentMe{}, err
 	}
+	optOut, err := learnOptOut(ctx, s.db)
+	if err != nil {
+		return AgentMe{}, err
+	}
+	out.NoLearn = optOut[uid]
 	doc, err := s.agentRef(uid).Get(ctx)
 	switch {
 	case status.Code(err) == codes.NotFound:

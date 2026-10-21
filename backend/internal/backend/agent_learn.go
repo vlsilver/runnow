@@ -27,6 +27,7 @@ import (
 //	agentRooms/main/learned/_group  ký ức chung của nhóm, rút từ tin của mọi người
 //	agentRooms/main/learnLog/{id}   mỗi lần model sửa hay xoá một ký ức, giữ 90 ngày
 //	agentState/learn                đã học tới đâu (cursor) và lô đang học dở (pending)
+//	agentState/learnOptOut          uids: người bật "Đừng học về tôi"
 //
 // Tin của bot (3i lẫn bot cá nhân) không bao giờ là nguồn: bot hay bịa, học lại
 // thì lời bịa thành ký ức. Tin Telegram của tài khoản đã liên kết app vào ký ức
@@ -178,6 +179,27 @@ func learnStateRef(db *firestore.Client) *firestore.DocumentRef {
 	return db.Collection("agentState").Doc("learn")
 }
 
+// learnOptOutRef giữ mọi uid đã bật "Đừng học về tôi" trong một doc, để mỗi
+// lượt học chỉ tốn một lần đọc. Doc nằm ở agentState nên client không đọc ghi
+// được (rules không mở), chỉ đổi qua API của chính người đó.
+func learnOptOutRef(db *firestore.Client) *firestore.DocumentRef {
+	return db.Collection("agentState").Doc("learnOptOut")
+}
+
+func learnOptOut(ctx context.Context, db *firestore.Client) (map[string]bool, error) {
+	doc, err := docMap(learnOptOutRef(db).Get(ctx))
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for _, v := range anyList(doc["uids"]) {
+		if uid := stringValue(v); uid != "" {
+			out[uid] = true
+		}
+	}
+	return out, nil
+}
+
 // Run học một lô tin mới. Không có tin mới thì không ghi gì. Lỗi model hay
 // Firestore thì trả ra để task chạy lại; lô vẫn nằm ở pending.
 func (l *LearnService) Run(ctx context.Context, now time.Time) error {
@@ -309,6 +331,14 @@ func (l *LearnService) batchLines(ctx context.Context, b *learnBatch) ([]learnLi
 			}
 		}
 	}
+	// Bỏ hẳn tin của người đã bật "Đừng học về tôi", khỏi cả ký ức nhóm: tin
+	// Telegram đã đổi sang uid ở trên, nên tài khoản Telegram đã liên kết cũng
+	// bị bỏ.
+	optOut, err := learnOptOut(ctx, l.db)
+	if err != nil {
+		return nil, err
+	}
+	lines = slices.DeleteFunc(lines, func(ln learnLine) bool { return optOut[ln.uid] })
 	var uids []string
 	for _, ln := range lines {
 		uids = append(uids, ln.uid)

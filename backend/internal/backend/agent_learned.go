@@ -98,6 +98,25 @@ func (s *AgentStore) ForgetLearnedFact(ctx context.Context, uid, id string, now 
 	return s.forgetLearnedIn(ctx, key, factID, "owner:"+uid, now)
 }
 
+// SetNoLearn bật hay tắt "Đừng học về tôi" cho uid. Bật thì ghi cờ trước rồi
+// mới xoá ký ức đã học (forgetLearned): xoá lỗi giữa chừng thì cờ đã có nên
+// lượt học sau không học thêm, app bấm lại thì xoá tiếp. Tắt thì chỉ học lại từ
+// tin mới, ký ức đã xoá không quay về.
+func (s *AgentStore) SetNoLearn(ctx context.Context, uid string, on bool, now time.Time) error {
+	var op any = firestore.ArrayRemove(uid)
+	if on {
+		op = firestore.ArrayUnion(uid)
+	}
+	if _, err := learnOptOutRef(s.db).Set(ctx, map[string]any{"uids": op, "updatedAt": now}, firestore.MergeAll); err != nil {
+		return err
+	}
+	slog.InfoContext(ctx, "agent.no_learn", "uid", uid, "on", on)
+	if !on {
+		return nil
+	}
+	return forgetLearned(ctx, s.db, uid)
+}
+
 // forgetLearnedIn xoá ký ức factID khỏi doc key. by ghi vào learnLog.
 func (s *AgentStore) forgetLearnedIn(ctx context.Context, key, factID, by string, now time.Time) error {
 	ref := learnedCol(s.db).Doc(key)

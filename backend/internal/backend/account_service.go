@@ -79,12 +79,24 @@ func (s *AccountService) Delete(ctx context.Context, uid string) error {
 	if err := s.deleteDocumentTree(ctx, s.db.Collection("agents").Doc(uid)); err != nil {
 		return fmt.Errorf("delete agent tree: %w", err)
 	}
+	// Cờ "Đừng học về tôi" nằm chung một doc với người khác, nên gỡ riêng uid.
+	if err := s.removeLearnOptOut(ctx, uid); err != nil {
+		return fmt.Errorf("remove learn opt-out: %w", err)
+	}
 
 	if err := s.auth.DeleteUser(ctx, uid); err != nil && !auth.IsUserNotFound(err) {
 		return fmt.Errorf("delete auth user: %w", err)
 	}
 	slog.InfoContext(ctx, "account.delete.completed", "uid", uid)
 	return nil
+}
+
+func (s *AccountService) removeLearnOptOut(ctx context.Context, uid string) error {
+	_, err := learnOptOutRef(s.db).Update(ctx, []firestore.Update{{Path: "uids", Value: firestore.ArrayRemove(uid)}})
+	if status.Code(err) == codes.NotFound {
+		return nil
+	}
+	return err
 }
 
 func (s *AccountService) stravaAthleteID(ctx context.Context, uid string) string {
