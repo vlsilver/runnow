@@ -84,6 +84,23 @@ func (s *Server) agentRoutes() {
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
 	}))
+	// "Đừng học về tôi". Bật lần hai vẫn 200 và chạy lại phần xoá, để app bấm
+	// lại được khi lần trước lỗi giữa chừng.
+	s.route("POST /v1/agents/me/no-learn", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		var body struct {
+			On *bool `json:"on"`
+		}
+		if decodeJSON(r, &body) != nil || body.On == nil {
+			return invalidRequest()
+		}
+		if err := s.deps.Agents.requireMember(r.Context(), uid); err != nil {
+			return err
+		}
+		if err := s.deps.Agents.SetNoLearn(r.Context(), uid, *body.On, s.now()); err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"noLearn": *body.On})
+	}))
 	s.route("GET /v1/agents/group-facts", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		facts, err := s.deps.Agents.GroupFacts(r.Context(), uid, s.now())
 		if err != nil {
