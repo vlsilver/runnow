@@ -57,6 +57,9 @@ func (s *AccountService) Delete(ctx context.Context, uid string) error {
 	if err := s.leaveRunContracts(ctx, uid); err != nil {
 		return fmt.Errorf("leave run contracts: %w", err)
 	}
+	if err := s.deleteGameData(ctx, uid); err != nil {
+		return fmt.Errorf("delete game data: %w", err)
+	}
 	// Trước deleteTelegramHistory và deleteOwnedDocuments: tên và tg id để gỡ
 	// khỏi ký ức tự học lấy từ publicProfiles, tgLinks và tin Telegram.
 	if err := forgetLearned(ctx, s.db, uid); err != nil {
