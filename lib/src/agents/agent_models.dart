@@ -114,11 +114,13 @@ class AgentMe {
     this.consentRequired = false,
     this.consentVersion = 0,
     this.today,
+    this.telegram,
   });
 
   factory AgentMe.fromJson(Map<String, dynamic> json) {
     final agent = json['agent'];
     final today = json['today'];
+    final telegram = json['telegram'];
     return AgentMe(
       enabled: json['enabled'] == true,
       agent: agent is Map<String, dynamic>
@@ -131,6 +133,9 @@ class AgentMe {
       consentRequired: json['consentRequired'] == true,
       consentVersion: _int(json['consentVersion']),
       today: today is Map<String, dynamic> ? AgentToday.fromJson(today) : null,
+      telegram: telegram is Map<String, dynamic>
+          ? AgentTelegram.fromJson(telegram)
+          : null,
     );
   }
 
@@ -155,6 +160,41 @@ class AgentMe {
 
   /// Lượt đã dùng hôm nay. Backend cũ chưa có field thì null, app ẩn phần này.
   final AgentToday? today;
+
+  /// Bot trên Telegram. Chỉ có khi backend bật tính năng và chủ đã tạo bot;
+  /// null thì app ẩn cả mục.
+  final AgentTelegram? telegram;
+}
+
+/// MyBot thành bot Telegram thật của chủ. Telegram tạo bot qua [createUrl],
+/// rồi báo backend; backend nối bot với chủ vài giây sau đó.
+class AgentTelegram {
+  const AgentTelegram({
+    required this.createUrl,
+    required this.linked,
+    this.botUsername,
+    this.setupError,
+  });
+
+  factory AgentTelegram.fromJson(Map<String, dynamic> json) => AgentTelegram(
+    createUrl: _string(json['createUrl']),
+    linked: json['linked'] == true,
+    botUsername: _optString(json['botUsername']),
+    setupError: _optString(json['setupError']),
+  );
+
+  /// Màn tạo bot của Telegram, điền sẵn username và tên.
+  final String createUrl;
+
+  /// Backend đã nối một bot Telegram với chủ.
+  final bool linked;
+  final String? botUsername;
+
+  /// Bot có rồi mà cài không được, thường do chủ đã xoá bot bên Telegram.
+  final String? setupError;
+
+  /// Bot đang chạy trên Telegram, không còn gì phải đợi.
+  bool get running => linked && setupError == null;
 }
 
 /// Vì sao bot đang trả câu nghỉ thay cho câu trả lời thật.

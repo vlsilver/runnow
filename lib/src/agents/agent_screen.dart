@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
 import 'package:myrun/src/agents/agent_providers.dart';
+import 'package:myrun/src/games/telegram_link_controller.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Trang danh sách đầy đủ, mở từ "Xem tất cả" của tab MyBot.
 enum AgentListView { memories, learned }
@@ -14,20 +18,124 @@ enum AgentListView { memories, learned }
 /// danh sách.
 const _previewCount = 3;
 
+/// Telegram báo backend tạo bot xong rồi backend mới nối bot với chủ (một task
+/// chạy vài giây), nên quay về app có thể còn sớm: đọc lại thêm một lần nữa.
+const _telegramRecheckAfter = Duration(seconds: 5);
+
 /// Tab MyBot: thẻ bot của mình, tin mới trong phòng bot, bộ nhớ và những điều
 /// bot tự học. Có [list] thì là trang đầy đủ của một mục. Tạo và sửa tên, tính
 /// cách nằm ở màn `/agent/setup`.
 class AgentScreen extends ConsumerStatefulWidget {
-  const AgentScreen({this.list, super.key});
+  const AgentScreen({this.list, this.openUrl, super.key});
 
   final AgentListView? list;
+
+  /// Thay cho launchUrl trong test.
+  final UrlOpener? openUrl;
 
   @override
   ConsumerState<AgentScreen> createState() => _AgentScreenState();
 }
 
-class _AgentScreenState extends ConsumerState<AgentScreen> {
+class _AgentScreenState extends ConsumerState<AgentScreen>
+    with WidgetsBindingObserver {
   bool _busy = false;
+
+  /// Liên kết tài khoản 3i với Telegram, dùng lại luồng của Cài đặt. Backend
+  /// chỉ nối được bot khi chủ đã liên kết, nên phải biết trước khi mở Telegram.
+  late final TelegramLinkController _telegramLink;
+  bool _telegramBusy = false;
+  Timer? _telegramRecheck;
+
+  @override
+  void initState() {
+    super.initState();
+    _telegramLink = TelegramLinkController(
+      api: ref.read(runNowApiClientProvider),
+      openUrl: widget.openUrl,
+    );
+    if (widget.list != null) return;
+    WidgetsBinding.instance.addObserver(this);
+    // Chỉ hỏi trạng thái liên kết khi mục Telegram cần, để backend cũ và cờ
+    // tắt không tốn thêm request nào.
+    ref.listenManual(agentMeProvider, (_, next) {
+      final telegram = next.value?.telegram;
+      if (telegram != null &&
+          !telegram.linked &&
+          _telegramLink.status == null) {
+        unawaited(_telegramLink.load());
+      }
+    }, fireImmediately: true);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    final telegram = ref.read(agentMeProvider).value?.telegram;
+    if (telegram == null || telegram.running) return;
+    // Bấm Start bên Telegram rồi quay lại.
+    if (!telegram.linked) _telegramLink.onResume();
+    // Vừa tạo bot bên Telegram: đọc lại ngay, rồi một lần nữa sau ít giây vì
+    // backend nối bot chậm hơn. Không poll tiếp; lần quay lại sau lại đọc.
+    ref.invalidate(agentMeProvider);
+    _telegramRecheck?.cancel();
+    _telegramRecheck = Timer(
+      _telegramRecheckAfter,
+      () => ref.invalidate(agentMeProvider),
+    );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _telegramRecheck?.cancel();
+    _telegramLink.dispose();
+    super.dispose();
+  }
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _openExternal(String url) async {
+    final uri = Uri.tryParse(url);
+    final open =
+        widget.openUrl ??
+        (uri) => launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (uri == null || !await open(uri)) _toast('Không mở được Telegram.');
+  }
+
+  /// Chưa liên kết Telegram thì chạy luồng liên kết trước; liên kết xong thì
+  /// bấm lại để mở màn tạo bot. Đọc lại trạng thái lúc bấm, vì có thể vừa
+  /// liên kết ở Cài đặt.
+  Future<void> _putOnTelegram(AgentTelegram telegram) async {
+    if (_telegramBusy) return;
+    setState(() => _telegramBusy = true);
+    try {
+      if (_telegramLink.status?.linked != true) await _telegramLink.load();
+      final status = _telegramLink.status;
+      if (status == null) {
+        _toast('Chưa đọc được trạng thái Telegram, thử lại sau.');
+      } else if (status.linked) {
+        await _openExternal(telegram.createUrl);
+      } else {
+        await _telegramLink.link();
+      }
+    } catch (error) {
+      _toast(
+        error is RunNowApiException
+            ? error.message
+            : error is StateError
+            ? error.message
+            : 'Không kết nối được, thử lại sau.',
+      );
+    } finally {
+      if (mounted) setState(() => _telegramBusy = false);
+    }
+  }
 
   /// Chạy một thao tác ghi, báo lỗi nếu có, rồi đọc lại hồ sơ.
   Future<void> _run(Future<void> Function(RunNowApiClient api) action) async {
@@ -208,6 +316,22 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
             if (data.today case final today? when today.resting != null) ...[
               const SizedBox(height: 12),
               _RestingBanner(botName: agent.name, today: today),
+            ],
+            if (data.telegram case final telegram?) ...[
+              const SizedBox(height: 12),
+              ListenableBuilder(
+                listenable: _telegramLink,
+                builder: (context, _) => _TelegramCard(
+                  botName: agent.name,
+                  telegram: telegram,
+                  accountLinked: _telegramLink.status?.linked,
+                  waitingStart: _telegramLink.waiting,
+                  busy: _telegramBusy || _telegramLink.busy,
+                  onOpen: (username) => _openExternal('https://t.me/$username'),
+                  onCreate: () => _openExternal(telegram.createUrl),
+                  onPut: () => _putOnTelegram(telegram),
+                ),
+              ),
             ],
             const SizedBox(height: 16),
             _RoomPreviewCard(onOpen: () => _open('/agent/room')),
@@ -517,6 +641,133 @@ class _RestingBanner extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Mục MyBot trên Telegram: bot đang chạy, bot hỏng cần tạo lại, hoặc chưa
+/// có bot. Chat trên Telegram là một kênh riêng của cùng một bot.
+class _TelegramCard extends StatelessWidget {
+  const _TelegramCard({
+    required this.botName,
+    required this.telegram,
+    required this.accountLinked,
+    required this.waitingStart,
+    required this.busy,
+    required this.onOpen,
+    required this.onCreate,
+    required this.onPut,
+  });
+
+  final String botName;
+  final AgentTelegram telegram;
+
+  /// Tài khoản 3i đã liên kết Telegram chưa; null là chưa đọc được.
+  final bool? accountLinked;
+
+  /// Đang chờ chủ bấm Start bên Telegram để liên kết tài khoản.
+  final bool waitingStart;
+  final bool busy;
+  final ValueChanged<String> onOpen;
+  final VoidCallback onCreate;
+  final VoidCallback onPut;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final username = telegram.botUsername;
+    final String title;
+    final String detail;
+    final String action;
+    final VoidCallback? onPressed;
+    if (telegram.running) {
+      title = username == null
+          ? 'Đã có bot trên Telegram'
+          : 'Trên Telegram: @$username';
+      detail =
+          'Chat trên Telegram tách riêng với chat trong app. Bộ nhớ và lượt '
+          'mỗi ngày thì dùng chung.';
+      action = 'Mở trên Telegram';
+      onPressed = username == null ? null : () => onOpen(username);
+    } else if (telegram.linked) {
+      title = 'Bot trên Telegram chưa chạy được';
+      detail = 'Có thể bot đã bị xoá bên Telegram. Bot mới sẽ thay bot cũ.';
+      action = 'Tạo lại bot';
+      onPressed = busy ? null : onCreate;
+    } else {
+      title = 'MyBot trên Telegram';
+      detail = waitingStart
+          ? 'Bấm Start trong Telegram rồi quay lại đây.'
+          : accountLinked == false
+          ? 'Liên kết Telegram với 3i trước, xong thì bấm lại để tạo bot '
+                'mang tên $botName. Bạn là chủ bot.'
+          : 'Telegram sẽ tạo một bot mang tên $botName. Bạn là chủ bot.';
+      action = 'Đưa bot lên Telegram';
+      onPressed = busy ? null : onPut;
+    }
+    return _Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: palette.accent.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    telegram.linked && !telegram.running
+                        ? Icons.error_outline_rounded
+                        : Icons.send_rounded,
+                    size: 20,
+                    color: palette.accentDeep,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        detail,
+                        style: TextStyle(
+                          color: palette.textMuted,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            FilledButton.tonalIcon(
+              onPressed: onPressed,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(46),
+              ),
+              icon: const Icon(Icons.send_rounded),
+              label: Text(action),
             ),
           ],
         ),

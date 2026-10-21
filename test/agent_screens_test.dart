@@ -41,6 +41,12 @@ class _AgentBackend {
   /// Field today của GET me; null là backend cũ chưa có field.
   Map<String, dynamic>? today;
 
+  /// Field telegram của GET me; null là backend cũ hoặc cờ tắt.
+  Map<String, dynamic>? telegram;
+
+  /// GET /v1/telegram/link: tài khoản 3i đã liên kết Telegram chưa.
+  Map<String, dynamic> telegramLink = {'linked': false};
+
   /// Người mình đã chặn: tin của họ (và bot của họ) trả về hidden, text rỗng.
   final blocks = <Map<String, dynamic>>[];
 
@@ -91,6 +97,15 @@ class _AgentBackend {
             'consentRequired': consentRequired,
             'consentVersion': consentVersion,
             'today': ?today,
+            'telegram': ?telegram,
+          };
+        case ('GET', '/v1/telegram/link'):
+          out = telegramLink;
+        case ('POST', '/v1/telegram/link-code'):
+          out = {
+            'code': 'K7Q2',
+            'deepLink': 'https://t.me/runnow3i_bot?start=K7Q2',
+            'expiresAt': '2026-10-22T10:00:00Z',
           };
         case ('POST', '/v1/agents/me/consent'):
           if (body['version'] != consentVersion) {
@@ -187,7 +202,13 @@ void main() {
   Future<void> close(WidgetTester tester) =>
       tester.pumpWidget(const SizedBox());
 
-  setUp(() => backend = _AgentBackend());
+  /// Link màn MyBot đã mở ra ngoài app.
+  late List<Uri> opened;
+
+  setUp(() {
+    backend = _AgentBackend();
+    opened = [];
+  });
 
   /// Màn MyBot cùng màn tạo/sửa bot, đủ để đi qua lại bằng go_router.
   Future<void> pumpMyBot(WidgetTester tester) async {
@@ -198,7 +219,15 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final router = GoRouter(
       routes: [
-        GoRoute(path: '/', builder: (_, _) => const AgentScreen()),
+        GoRoute(
+          path: '/',
+          builder: (_, _) => AgentScreen(
+            openUrl: (uri) async {
+              opened.add(uri);
+              return true;
+            },
+          ),
+        ),
         GoRoute(
           path: '/agent/setup',
           builder: (_, _) => const AgentSetupScreen(),
@@ -355,6 +384,144 @@ void main() {
     expect(find.text('tin hôm nay'), findsNothing);
     expect(find.byIcon(Icons.bedtime_outlined), findsNothing);
     expect(find.byIcon(Icons.schedule_rounded), findsNothing);
+  });
+
+  const createUrl = 'https://t.me/newbot/Run3IBot/cu_42_bot?name=C%C3%BA';
+  Map<String, dynamic> botOnTelegram() => {
+    'createUrl': createUrl,
+    'botUsername': 'cu_42_bot',
+    'linked': true,
+  };
+  int meReads() => backend.calls.where((c) => c == 'GET /v1/agents/me').length;
+  void resumeApp(WidgetTester tester) {
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  }
+
+  testWidgets('no telegram field: no Telegram section, no link lookup', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    await pumpMyBot(tester);
+    expect(find.text('Chat riêng'), findsOneWidget);
+    expect(find.textContaining('Telegram'), findsNothing);
+    expect(backend.calls, isNot(contains('GET /v1/telegram/link')));
+
+    // Quay về app cũng không đọc thêm gì.
+    final reads = meReads();
+    resumeApp(tester);
+    await tester.pump(const Duration(seconds: 10));
+    expect(meReads(), reads);
+  });
+
+  testWidgets('bot running on Telegram opens t.me/<username>', (tester) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    backend.telegram = botOnTelegram();
+    await pumpMyBot(tester);
+    expect(find.text('Trên Telegram: @cu_42_bot'), findsOneWidget);
+    expect(
+      find.text(
+        'Chat trên Telegram tách riêng với chat trong app. Bộ nhớ và lượt '
+        'mỗi ngày thì dùng chung.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Mở trên Telegram'));
+    await tester.pump();
+    expect(opened, [Uri.parse('https://t.me/cu_42_bot')]);
+  });
+
+  testWidgets('broken bot offers to recreate it through createUrl', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    backend.telegram = {
+      ...botOnTelegram(),
+      'setupError': 'Forbidden: bot was deleted',
+    };
+    await pumpMyBot(tester);
+    expect(find.text('Bot trên Telegram chưa chạy được'), findsOneWidget);
+    expect(find.text('Mở trên Telegram'), findsNothing);
+
+    await tester.tap(find.text('Tạo lại bot'));
+    await tester.pump();
+    expect(opened, [Uri.parse(createUrl)]);
+  });
+
+  testWidgets('no bot yet, Telegram linked: opens createUrl', (tester) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    backend.telegram = {'createUrl': createUrl, 'linked': false};
+    backend.telegramLink = {'linked': true, 'tgUsername': 'an'};
+    await pumpMyBot(tester);
+    expect(
+      find.text('Telegram sẽ tạo một bot mang tên Cú. Bạn là chủ bot.'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Đưa bot lên Telegram'));
+    await tester.pumpAndSettle();
+    expect(opened, [Uri.parse(createUrl)]);
+    expect(backend.calls, isNot(contains('POST /v1/telegram/link-code')));
+  });
+
+  testWidgets('no bot yet, Telegram not linked: links first, then creates', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    backend.telegram = {'createUrl': createUrl, 'linked': false};
+    await pumpMyBot(tester);
+    expect(
+      find.textContaining('Liên kết Telegram với 3i trước'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Đưa bot lên Telegram'));
+    await tester.pump();
+    await tester.pump();
+    expect(opened, [Uri.parse('https://t.me/runnow3i_bot?start=K7Q2')]);
+    expect(
+      find.text('Bấm Start trong Telegram rồi quay lại đây.'),
+      findsOneWidget,
+    );
+
+    // Bấm Start bên Telegram rồi quay lại; bấm lần nữa thì mới tạo bot.
+    backend.telegramLink = {'linked': true, 'tgUsername': 'an'};
+    resumeApp(tester);
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('Đưa bot lên Telegram'));
+    await tester.pump();
+    expect(opened.last, Uri.parse(createUrl));
+    await close(tester);
+  });
+
+  testWidgets('returning from Telegram rereads me, once more after a delay', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    backend.telegram = {'createUrl': createUrl, 'linked': false};
+    backend.telegramLink = {'linked': true, 'tgUsername': 'an'};
+    await pumpMyBot(tester);
+    final reads = meReads();
+
+    // Quay về lúc backend chưa nối xong bot: vẫn chưa có bot.
+    resumeApp(tester);
+    await tester.pump();
+    await tester.pump();
+    expect(meReads(), reads + 1);
+    expect(find.text('Đưa bot lên Telegram'), findsOneWidget);
+
+    backend.telegram = botOnTelegram();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(meReads(), reads + 2);
+    expect(find.text('Trên Telegram: @cu_42_bot'), findsOneWidget);
+
+    // Không poll tiếp, kể cả khi quay về lần nữa lúc bot đã chạy.
+    resumeApp(tester);
+    await tester.pump(const Duration(minutes: 1));
+    expect(meReads(), reads + 2);
   });
 
   testWidgets('tab shows three memories, the full list shows all', (
