@@ -5,13 +5,18 @@ import 'package:myrun/src/dashboard_analytics.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/screens/journal_screen.dart' show StepTimelineRow;
+import 'package:myrun/src/screens/step_day_detail_screen.dart';
+import 'package:myrun/src/screens/journey_hub_screen.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/training_power.dart';
+import 'package:myrun/src/web_layout.dart';
 import 'package:myrun/src/widgets/activity_records_card.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
+import 'package:myrun/src/widgets/cached_avatar.dart';
+import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:myrun/src/widgets/discipline_card.dart';
 import 'package:myrun/src/widgets/glass.dart';
-import 'package:myrun/src/widgets/nav_filter.dart';
 import 'package:myrun/src/widgets/personal_power_card.dart';
 import 'package:myrun/src/widgets/training_volume_chart.dart';
 
@@ -27,7 +32,7 @@ class MemberProfileScreen extends ConsumerWidget {
         .maybeWhen(data: (user) => user?.uid, orElse: () => null);
     if (currentUid == uid) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) context.go('/');
+        if (context.mounted) context.go('/profile');
       });
       return const Scaffold(body: SizedBox.shrink());
     }
@@ -37,30 +42,18 @@ class MemberProfileScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Tổng quan')),
       body: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
+          constraints: const BoxConstraints(maxWidth: 1180),
           child: profile.when(
             data: (member) {
               if (member == null) {
                 return const Center(child: Text('Không tìm thấy thành viên.'));
               }
               if (!member.isPublic) return _PrivateMember(member: member);
-              return ref
-                  .watch(memberActivitiesProvider(uid))
-                  .when(
-                    data: (activities) => _MemberDashboard(
-                      uid: uid,
-                      member: member,
-                      activities: activities,
-                    ),
-                    error: (error, stack) =>
-                        Center(child: Text('Không thể tải hoạt động: $error')),
-                    loading: () =>
-                        const Center(child: CircularProgressIndicator()),
-                  );
+              return JourneyHubScreen(memberUid: uid, member: member);
             },
             error: (error, stack) =>
                 Center(child: Text('Không thể tải hồ sơ: $error')),
-            loading: () => const Center(child: CircularProgressIndicator()),
+            loading: () => const RunNowLoading(label: 'Đang tải cá nhân'),
           ),
         ),
       ),
@@ -68,7 +61,110 @@ class MemberProfileScreen extends ConsumerWidget {
   }
 }
 
-enum _MemberFilterSection { power, volume }
+class MemberJournalScreen extends ConsumerWidget {
+  const MemberJournalScreen({required this.uid, super.key});
+
+  final String uid;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentUid = ref
+        .watch(firebaseUserProvider)
+        .maybeWhen(data: (user) => user?.uid, orElse: () => null);
+    if (currentUid == uid) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) context.go('/profile/journal');
+      });
+      return const Scaffold(body: SizedBox.shrink());
+    }
+
+    final profileState = ref.watch(memberProfileProvider(uid));
+    final activitiesState = ref.watch(memberActivitiesProvider(uid));
+    final memberStepDays =
+        ref.watch(memberStepDaysProvider(uid)).asData?.value ??
+        const <StepDay>[];
+    return Scaffold(
+      appBar: AppBar(title: const Text('Nhật ký')),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 860),
+          child: profileState.when(
+            data: (member) {
+              if (member == null) {
+                return const Center(child: Text('Không tìm thấy thành viên.'));
+              }
+              if (!member.isPublic) return _PrivateMember(member: member);
+              return activitiesState.when(
+                data: (activities) {
+                  if (activities.isEmpty && memberStepDays.isEmpty) {
+                    return const Center(
+                      child: Text('Thành viên này chưa có hoạt động public.'),
+                    );
+                  }
+                  // Trộn buổi chạy + thẻ bước thành 1 timeline giảm dần — GIỐNG
+                  // nhật ký của mình, chỉ đổi nguồn sang member đang xem.
+                  final rows =
+                      <_MemberJournalRow>[
+                        for (final a in activities) _MemberJournalRow.activity(a),
+                        for (final d in memberStepDays) _MemberJournalRow.step(d),
+                      ]..sort((x, y) => y.sortAt.compareTo(x.sortAt));
+                  return ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(0, 12, 0, 110),
+                    itemCount: rows.length,
+                    itemBuilder: (context, index) {
+                      final act = rows[index].activity;
+                      return RepaintBoundary(
+                        child: act != null
+                            ? ActivityTile(activity: act, ownerUid: uid)
+                            // Member: mở chi tiết theo giờ ĐÃ LƯU (controller null
+                            // → không đọc live Health máy này; ngày chưa lưu thì
+                            // biểu đồ rỗng). recentDays = các thẻ bước đang xem.
+                            : StepTimelineRow(
+                                day: rows[index].step!,
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => StepDayDetailScreen(
+                                      day: rows[index].step!,
+                                      recentDays: memberStepDays,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                      );
+                    },
+                  );
+                },
+                error: (error, stack) =>
+                    Center(child: Text('Không thể tải nhật ký: $error')),
+                loading: () => const RunNowLoading(label: 'Đang tải nhật ký'),
+              );
+            },
+            error: (error, stack) =>
+                Center(child: Text('Không thể tải hồ sơ: $error')),
+            loading: () => const RunNowLoading(label: 'Đang tải nhật ký'),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 1 dòng trong nhật ký member: hoặc buổi CHẠY, hoặc thẻ BƯỚC của 1 ngày.
+class _MemberJournalRow {
+  _MemberJournalRow.activity(this.activity) : step = null;
+  _MemberJournalRow.step(this.step) : activity = null;
+  final ActivitySummary? activity;
+  final StepDay? step;
+
+  /// Mốc xếp: buổi chạy = lúc bắt đầu; thẻ bước = CUỐI ngày (nổi lên đầu ngày đó).
+  DateTime get sortAt {
+    final a = activity;
+    if (a != null) return a.startedAt;
+    final d = DateTime.tryParse(step!.date);
+    if (d == null) return DateTime.fromMillisecondsSinceEpoch(0);
+    return DateTime(d.year, d.month, d.day, 23, 59, 59);
+  }
+}
 
 class _MemberDashboard extends StatefulWidget {
   const _MemberDashboard({
@@ -86,216 +182,184 @@ class _MemberDashboard extends StatefulWidget {
 }
 
 class _MemberDashboardState extends State<_MemberDashboard> {
-  final _scrollKey = GlobalKey();
-  final _powerKey = GlobalKey();
-  final _volumeKey = GlobalKey();
   var _powerRange = PersonalPowerRange.rollingSevenDays;
-  var _volumePeriod = TrainingVolumePeriod.month;
-  var _volumeMode = TrainingVolumeChartMode.bar;
-  _MemberFilterSection? _activeFilter;
+  final _volumePeriod = TrainingVolumePeriod.month;
+  final _volumeMode = TrainingVolumeChartMode.bar;
+  late TrainingComparison _comparison;
+  late List<DailyDistance> _dailyDistances;
+  late TrainingSummary _month;
+  late DisciplineStats _discipline;
+  late List<ActivitySummary> _recent;
+  late DateTime _analyticsDay;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _updateActiveFilter());
+    _recomputeAnalytics();
   }
 
-  void _updateActiveFilter() {
-    if (!mounted) return;
-    final listBox = _scrollKey.currentContext?.findRenderObject() as RenderBox?;
-    if (listBox == null) return;
-    final threshold =
-        listBox.localToGlobal(Offset.zero).dy + listBox.size.height * 0.28;
-    _MemberFilterSection? active;
-    for (final section in <(GlobalKey, _MemberFilterSection)>[
-      (_powerKey, _MemberFilterSection.power),
-      (_volumeKey, _MemberFilterSection.volume),
-    ]) {
-      final box = section.$1.currentContext?.findRenderObject() as RenderBox?;
-      if (box == null) continue;
-      final top = box.localToGlobal(Offset.zero).dy;
-      if (top <= threshold && top + box.size.height > threshold) {
-        active = section.$2;
-        break;
-      }
+  @override
+  void didUpdateWidget(covariant _MemberDashboard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.activities, widget.activities)) {
+      _recomputeAnalytics();
     }
-    if (_activeFilter != active) setState(() => _activeFilter = active);
+  }
+
+  void _recomputeAnalytics() {
+    final now = DateTime.now();
+    _analyticsDay = DateTime(now.year, now.month, now.day);
+    _comparison = rollingSevenDayComparison(widget.activities, now);
+    _dailyDistances = rollingSevenDayDistances(widget.activities, now);
+    _month = currentMonthSummary(widget.activities, now);
+    _discipline = personalDisciplineStats(widget.activities, now);
+    _recent = [...widget.activities]
+      ..sort((left, right) => right.startedAt.compareTo(left.startedAt));
+  }
+
+  void _refreshAnalyticsAfterDateChange() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (today != _analyticsDay) _recomputeAnalytics();
   }
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final comparison = rollingSevenDayComparison(widget.activities, now);
-    final dailyDistances = rollingSevenDayDistances(widget.activities, now);
-    final month = currentMonthSummary(widget.activities, now);
-    final discipline = personalDisciplineStats(widget.activities, now);
-    final recent = [...widget.activities]
-      ..sort((left, right) => right.startedAt.compareTo(left.startedAt));
-    final wide = MediaQuery.sizeOf(context).width >= 900;
-    final list = NotificationListener<ScrollNotification>(
-      onNotification: (_) {
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => _updateActiveFilter(),
-        );
-        return false;
-      },
-      child: ListView(
-        key: _scrollKey,
-        padding: EdgeInsets.fromLTRB(0, 8, 0, wide ? 40 : 132),
+    _refreshAnalyticsAfterDateChange();
+    final comparison = _comparison;
+    final dailyDistances = _dailyDistances;
+    final month = _month;
+    final discipline = _discipline;
+    final recent = _recent;
+    final wide = RunNowWebLayout.isDesktop(context);
+    if (wide) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(0, 8, 0, 40),
         children: [
           _MemberHeader(member: widget.member),
-          const SizedBox(height: 14),
-          _MemberSummaryCard(
-            comparison: comparison,
-            dailyDistances: dailyDistances,
-            month: month,
-          ),
           const SizedBox(height: 20),
-          KeyedSubtree(
-            key: _powerKey,
-            child: PersonalPowerCard(
-              activities: widget.activities,
-              range: _powerRange,
-              onRangeChanged: (value) => setState(() => _powerRange = value),
-              showControls: wide,
-            ),
-          ),
-          const SizedBox(height: 20),
-          DisciplineCard(stats: discipline, activities: widget.activities),
-          const SizedBox(height: 20),
-          KeyedSubtree(
-            key: _volumeKey,
-            child: TrainingVolumeChart(
-              activities: widget.activities,
-              period: _volumePeriod,
-              mode: _volumeMode,
-              showControls: wide,
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text('Gần đây', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
-          if (recent.isEmpty)
-            const Text('Thành viên này chưa có hoạt động public.')
-          else ...[
-            ActivityRecordsCard(
-              title: 'BEST BOARD',
-              entries: [
-                for (final activity in widget.activities)
-                  ActivityRecordEntry(activity: activity, ownerUid: widget.uid),
-              ],
-            ),
-            const SizedBox(height: 16),
-            for (var index = 0; index < recent.take(10).length; index++)
-              ActivityTile(
-                activity: recent[index],
-                sequence: index + 1,
-                ownerUid: widget.uid,
-              ),
-          ],
-        ],
-      ),
-    );
-    if (wide) return list;
-    return Stack(
-      children: [
-        Positioned.fill(child: list),
-        Positioned(
-          left: 14,
-          right: 14,
-          bottom: 12,
-          child: SafeArea(
-            top: false,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              child: _MemberPinnedFilter(
-                key: ValueKey(_activeFilter),
-                section: _activeFilter,
-                powerRange: _powerRange,
-                volumePeriod: _volumePeriod,
-                volumeMode: _volumeMode,
-                onPowerRangeChanged: (value) =>
-                    setState(() => _powerRange = value),
-                onVolumePeriodChanged: (value) =>
-                    setState(() => _volumePeriod = value),
-                onVolumeModeChanged: (value) =>
-                    setState(() => _volumeMode = value),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MemberPinnedFilter extends StatelessWidget {
-  const _MemberPinnedFilter({
-    required this.section,
-    required this.powerRange,
-    required this.volumePeriod,
-    required this.volumeMode,
-    required this.onPowerRangeChanged,
-    required this.onVolumePeriodChanged,
-    required this.onVolumeModeChanged,
-    super.key,
-  });
-
-  final _MemberFilterSection? section;
-  final PersonalPowerRange powerRange;
-  final TrainingVolumePeriod volumePeriod;
-  final TrainingVolumeChartMode volumeMode;
-  final ValueChanged<PersonalPowerRange> onPowerRangeChanged;
-  final ValueChanged<TrainingVolumePeriod> onVolumePeriodChanged;
-  final ValueChanged<TrainingVolumeChartMode> onVolumeModeChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    if (section == null) return const SizedBox.shrink();
-    return GlassPanel(
-      borderRadius: 12,
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-      child: NavFilterShell(
-        child: switch (section!) {
-          _MemberFilterSection.power => NavPillToggle<PersonalPowerRange>(
-            value: powerRange,
-            items: const {
-              PersonalPowerRange.currentWeek: 'Tuần',
-              PersonalPowerRange.rollingSevenDays: '7 ngày',
-              PersonalPowerRange.currentMonth: 'Tháng',
-            },
-            onChanged: onPowerRangeChanged,
-          ),
-          _MemberFilterSection.volume => Row(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: NavDropdown<TrainingVolumeChartMode>(
-                  icon: Icons.show_chart_rounded,
-                  value: volumeMode,
-                  items: const {
-                    TrainingVolumeChartMode.bar: 'Cột',
-                    TrainingVolumeChartMode.line: 'Line',
-                  },
-                  onChanged: onVolumeModeChanged,
+                child: Column(
+                  children: [
+                    _MemberSummaryCard(
+                      comparison: comparison,
+                      dailyDistances: dailyDistances,
+                      month: month,
+                    ),
+                    const SizedBox(height: 20),
+                    PersonalPowerCard(
+                      activities: widget.activities,
+                      range: _powerRange,
+                      onRangeChanged: (value) =>
+                          setState(() => _powerRange = value),
+                      showControls: true,
+                    ),
+                    const SizedBox(height: 20),
+                    DisciplineCard(
+                      stats: discipline,
+                      activities: widget.activities,
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 22),
               Expanded(
-                child: NavDropdown<TrainingVolumePeriod>(
-                  icon: Icons.date_range_outlined,
-                  value: volumePeriod,
-                  items: const {
-                    TrainingVolumePeriod.month: 'Tháng',
-                    TrainingVolumePeriod.quarter: 'Quý',
-                    TrainingVolumePeriod.year: 'Năm',
-                  },
-                  onChanged: onVolumePeriodChanged,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TrainingVolumeChart(
+                      uid: widget.uid,
+                      period: _volumePeriod,
+                      mode: _volumeMode,
+                      showControls: true,
+                    ),
+                    const SizedBox(height: 20),
+                    ActivityRecordsCard(
+                      title: 'BEST BOARD',
+                      entries: [
+                        for (final activity in widget.activities)
+                          ActivityRecordEntry(
+                            activity: activity,
+                            ownerUid: widget.uid,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Gần đây',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 8),
+                    if (recent.isEmpty)
+                      const Text('Thành viên này chưa có hoạt động public.')
+                    else
+                      for (
+                        var index = 0;
+                        index < recent.take(6).length;
+                        index++
+                      )
+                        ActivityTile(
+                          activity: recent[index],
+                          ownerUid: widget.uid,
+                        ),
+                  ],
                 ),
               ),
             ],
           ),
-        },
-      ),
+        ],
+      );
+    }
+    // Control range/period nằm INLINE trong card (showControls: true) — bỏ thanh
+    // filter PIN ở đáy (nhìn như nav-filter dính lại khi mở từ Club). Giống hệt
+    // layout desktop bên trên.
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 40),
+      children: [
+        _MemberHeader(member: widget.member),
+        const SizedBox(height: 14),
+        _MemberSummaryCard(
+          comparison: comparison,
+          dailyDistances: dailyDistances,
+          month: month,
+        ),
+        const SizedBox(height: 20),
+        PersonalPowerCard(
+          activities: widget.activities,
+          range: _powerRange,
+          onRangeChanged: (value) => setState(() => _powerRange = value),
+          showControls: true,
+        ),
+        const SizedBox(height: 20),
+        DisciplineCard(stats: discipline, activities: widget.activities),
+        const SizedBox(height: 20),
+        TrainingVolumeChart(
+          uid: widget.uid,
+          period: _volumePeriod,
+          mode: _volumeMode,
+          showControls: true,
+        ),
+        const SizedBox(height: 20),
+        Text('Gần đây', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 8),
+        if (recent.isEmpty)
+          const Text('Thành viên này chưa có hoạt động public.')
+        else ...[
+          ActivityRecordsCard(
+            title: 'BEST BOARD',
+            entries: [
+              for (final activity in widget.activities)
+                ActivityRecordEntry(activity: activity, ownerUid: widget.uid),
+            ],
+          ),
+          const SizedBox(height: 16),
+          for (var index = 0; index < recent.take(10).length; index++)
+            ActivityTile(activity: recent[index], ownerUid: widget.uid),
+        ],
+      ],
     );
   }
 }
@@ -339,7 +403,9 @@ class _MemberHeader extends StatelessWidget {
           CircleAvatar(
             radius: 30,
             backgroundColor: palette.secondary.withValues(alpha: 0.18),
-            backgroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl),
+            backgroundImage: avatarUrl == null
+                ? null
+                : cachedAvatarImage(context, avatarUrl, 60),
             child: avatarUrl == null
                 ? Text(
                     member.displayName.characters.first.toUpperCase(),

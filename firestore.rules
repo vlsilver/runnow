@@ -27,12 +27,246 @@ service cloud.firestore {
 
       match /activities/{activityId} {
         allow read: if owns(userId) || isPublicProfile(userId);
-        allow write: if owns(userId);
+        allow write: if false;
+
+        // Track chunks: app ĐẨY DẦN (mỗi ~10s) đoạn điểm/streams trong lúc chạy
+        // để không mất buổi. Append-only từ phía client (chỉ tạo, không sửa/xoá);
+        // backend gộp thành activity rồi dọn bằng Admin SDK (bỏ qua rules).
+        match /track/{chunkId} {
+          allow read: if owns(userId) || isPublicProfile(userId);
+          allow create: if owns(userId);
+          allow update, delete: if false;
+        }
       }
 
       match /trainingGoalHistory/{historyId} {
         allow read, write: if owns(userId);
       }
+
+      // AI Coach: giáo án đang chạy (current) và bản nháp chờ xác nhận (draft).
+      // Backend (bot) ghi qua admin SDK; app đọc, tick done, xoá/đổi. Chỉ chủ
+      // mới đụng được.
+      match /coach/{doc} {
+        allow read, write: if owns(userId);
+      }
+
+      // Hội thoại hỏi đáp với coach. Rule ngay trên KHÔNG phủ subcollection —
+      // phải khai riêng. App chỉ ĐỌC: cho ghi thì user tự dựng được tin nhắn
+      // mang danh coach trong lịch sử của chính mình. Backend ghi qua admin
+      // SDK nên không vướng rule này.
+      match /coach/chat/messages/{messageId} {
+        allow read: if owns(userId);
+        allow write: if false;
+      }
+
+      // Chat coach RIÊNG theo từng giáo án: mỗi giáo án (planId) một kênh. App
+      // chỉ đọc; backend (bot) ghi qua admin SDK.
+      match /coachChats/{planId}/messages/{messageId} {
+        allow read: if owns(userId);
+        allow write: if false;
+      }
+
+      match /stats/{statsId} {
+        allow read: if owns(userId) || isPublicProfile(userId);
+        allow write: if false;
+      }
+
+      // Số bước theo ngày (Apple Health) — backend ghi qua Admin SDK.
+      match /stepDays/{dayId} {
+        allow read: if owns(userId) || isPublicProfile(userId);
+        allow write: if false;
+      }
+
+      match /periodStats/{periodId} {
+        allow read: if owns(userId) || isPublicProfile(userId);
+        allow write: if false;
+      }
+
+      match /runContractActivityClaims/{activityId} {
+        allow read: if owns(userId);
+        allow create, update: if owns(userId)
+          && request.resource.data.uid == userId
+          && request.resource.data.activityId == activityId
+          && request.resource.data.contractId is string;
+        allow delete: if owns(userId);
+      }
+    }
+
+    match /runContracts/{contractId} {
+      allow read: if signedIn()
+        && (
+          resource.data.visibility == 'club'
+          || resource.data.creatorUid == request.auth.uid
+          || (
+            'participantUids' in resource.data
+            && request.auth.uid in resource.data.participantUids
+          )
+        );
+
+      allow create: if signedIn()
+        && request.resource.data.creatorUid == request.auth.uid
+        && request.resource.data.id == contractId
+        && request.resource.data.type == 'group'
+        && request.resource.data.status == 'active'
+        && request.resource.data.sourcePolicy in ['strava_only', 'official_activity']
+        && request.resource.data.targetValue is number
+        && request.resource.data.targetValue > 0
+        && request.resource.data.progressValue is number
+        && request.resource.data.progressValue >= 0
+        && request.resource.data.participants is map
+        && request.resource.data.participants.keys().hasOnly([request.auth.uid])
+        && request.resource.data.participants[request.auth.uid].uid == request.auth.uid
+        && request.resource.data.participants[request.auth.uid].progressValue == request.resource.data.progressValue
+        && request.resource.data.participants[request.auth.uid].joinedAt == request.time
+        && request.resource.data.participants[request.auth.uid].updatedAt == request.time
+        && request.resource.data.participantUids == [request.auth.uid]
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if signedIn() && (
+        (
+          resource.data.creatorUid == request.auth.uid
+          && request.resource.data.creatorUid == resource.data.creatorUid
+          && request.resource.data.id == resource.data.id
+          && request.resource.data.type == resource.data.type
+          && request.resource.data.templateId == resource.data.templateId
+          && request.resource.data.metric == resource.data.metric
+          && request.resource.data.targetValue == resource.data.targetValue
+          && request.resource.data.periodType == resource.data.periodType
+          && request.resource.data.startAt == resource.data.startAt
+          && request.resource.data.endAtExclusive == resource.data.endAtExclusive
+          && request.resource.data.finalizeAt == resource.data.finalizeAt
+          && request.resource.data.visibility == resource.data.visibility
+          && request.resource.data.sourcePolicy == resource.data.sourcePolicy
+          && (
+            !('route' in resource.data)
+            || request.resource.data.route == resource.data.route
+          )
+          && request.resource.data.progressValue is number
+          && request.resource.data.progressValue >= 0
+          && request.resource.data.updatedAt == request.time
+          && resource.data.status == 'active'
+          && request.resource.data.status in ['active', 'completed', 'failed']
+        )
+        || (
+          resource.data.visibility == 'club'
+          && resource.data.status == 'active'
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participants', 'participantUids', 'updatedAt'])
+          && request.resource.data.updatedAt == request.time
+          && (
+            !('participantUids' in request.resource.data)
+            || request.auth.uid in request.resource.data.participantUids
+          )
+          && request.resource.data.participants is map
+          && request.resource.data.participants[request.auth.uid].uid == request.auth.uid
+          && request.resource.data.participants[request.auth.uid].progressValue is number
+          && request.resource.data.participants[request.auth.uid].progressValue >= 0
+          && request.resource.data.participants[request.auth.uid].updatedAt == request.time
+          && (
+            (
+              resource.data.participants is map
+              && request.resource.data.participants.diff(resource.data.participants).affectedKeys().hasOnly([request.auth.uid])
+              && (
+                (
+                  !(request.auth.uid in resource.data.participants)
+                  && request.resource.data.participants[request.auth.uid].joinedAt == request.time
+                )
+                || (
+                  request.auth.uid in resource.data.participants
+                  && request.resource.data.participants[request.auth.uid].joinedAt == resource.data.participants[request.auth.uid].joinedAt
+                )
+              )
+            )
+            || (
+              !('participants' in resource.data)
+              && request.resource.data.participants.keys().hasOnly([resource.data.creatorUid, request.auth.uid])
+              && request.resource.data.participants.keys().hasAll([resource.data.creatorUid, request.auth.uid])
+              && request.resource.data.participants[resource.data.creatorUid].progressValue == resource.data.progressValue
+              && request.resource.data.participants[request.auth.uid].joinedAt == request.time
+            )
+          )
+        )
+      );
+
+      allow delete: if signedIn()
+        && resource.data.creatorUid == request.auth.uid
+        && (
+          !('participants' in resource.data)
+          || resource.data.participants.size() <= 1
+        );
+    }
+
+    // Tuyến ĐẦY ĐỦ (polyline) của kèo "Theo tuyến", tách khỏi doc kèo để danh
+    // sách kèo khỏi cõng polyline nặng. Tuyến tham khảo không nhạy cảm → ai đăng
+    // nhập cũng đọc được; chỉ NGƯỜI TẠO kèo (creatorUid nhúng trong doc) mới
+    // ghi/sửa/xoá. Migration dùng Admin SDK (bỏ qua rule).
+    match /runContractRoutes/{contractId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.creatorUid == request.auth.uid
+        && request.resource.data.points is list;
+      allow update: if signedIn()
+        && resource.data.creatorUid == request.auth.uid
+        && request.resource.data.creatorUid == resource.data.creatorUid;
+      allow delete: if signedIn()
+        && resource.data.creatorUid == request.auth.uid;
+    }
+
+    // Giáo án AI Coach chia sẻ được (coachPlans/{ownerUid}). Doc do backend
+    // (Admin SDK) tạo qua confirmCoachDraft — client KHÔNG tự tạo. Chủ giáo án
+    // (ownerUid = trưởng nhóm) sửa được lịch; người khác chỉ đọc nếu public và
+    // ghi tiến độ RIÊNG của mình (participants.{uid}).
+    match /coachPlans/{planId} {
+      allow read: if signedIn()
+        && (
+          // Doc chưa tồn tại → cho đọc (trả null): tạo giáo án mới / sau khi xoá
+          // đều điều hướng tới coachPlans/{uid} rỗng, phải đọc được để vào màn tạo.
+          resource == null
+          || resource.data.visibility == 'club'
+          || resource.data.ownerUid == request.auth.uid
+          || (
+            'participantUids' in resource.data
+            && request.auth.uid in resource.data.participantUids
+          )
+        );
+
+      // Chỉ backend tạo — client không tạo giáo án trực tiếp.
+      allow create: if false;
+
+      allow update: if signedIn() && (
+        // A) Chủ giáo án: toàn quyền sửa plan của mình (đổi lịch, tick tiến độ),
+        //    miễn giữ nguyên chủ. NGOẠI TRỪ: không được chuyển Công khai →
+        //    Riêng tư khi còn người khác đang theo (họ sẽ bị kẹt: rule B đòi
+        //    visibility == 'club' mới tick/rời được).
+        (
+          resource.data.ownerUid == request.auth.uid
+          && request.resource.data.ownerUid == request.auth.uid
+          && !(
+            resource.data.visibility == 'club'
+            && request.resource.data.visibility == 'private'
+            && resource.data.participants.size() > 1
+          )
+        )
+        // B) Người tham gia giáo án public: chỉ đụng participants / participantUids
+        //    / updatedAt, và chỉ subtree uid của mình (join + tick tiến độ riêng).
+        || (
+          resource.data.ownerUid != request.auth.uid
+          && resource.data.visibility == 'club'
+          && request.resource.data.ownerUid == resource.data.ownerUid
+          && request.resource.data.visibility == resource.data.visibility
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participants', 'participantUids', 'updatedAt'])
+          && request.resource.data.participants is map
+          // Chỉ được đụng subtree tiến độ của CHÍNH MÌNH (join / tick / rời).
+          // participantUids là index phụ; không cho sửa participants của người khác
+          // đã đủ bảo vệ dữ liệu tiến độ.
+          && request.resource.data.participants.diff(resource.data.participants).affectedKeys().hasOnly([request.auth.uid])
+        )
+      );
+
+      // Chủ giáo án xoá được (kể cả khi có người tham gia — "đổi coach").
+      allow delete: if signedIn()
+        && resource.data.ownerUid == request.auth.uid;
     }
 
     match /feedPosts/{postId} {
@@ -44,14 +278,7 @@ service cloud.firestore {
     }
 
     match /stravaLinks/{athleteId} {
-      allow read: if signedIn();
-      allow create: if signedIn()
-        && request.resource.data.uid == request.auth.uid;
-      allow update: if signedIn()
-        && resource.data.uid == request.auth.uid
-        && request.resource.data.uid == request.auth.uid;
-      allow delete: if signedIn()
-        && resource.data.uid == request.auth.uid;
+      allow read, write: if false;
     }
 
     match /publicProfiles/{userId} {
@@ -61,14 +288,37 @@ service cloud.firestore {
 
     match /leaderboardEntries/{userId} {
       allow read: if signedIn();
-      allow create, update: if owns(userId)
-        && request.resource.data.uid == request.auth.uid;
-      allow delete: if owns(userId);
+      allow write: if false;
+    }
+
+    // Bảng xếp hạng SỐ BƯỚC (Apple Health) — công khai đọc, chỉ backend ghi.
+    match /stepLeaderboardEntries/{userId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Dữ liệu tĩnh "Hành Trình" (route/milestone) — nội dung tham khảo
+    // chung, không thuộc user nào, chỉ ghi qua Admin SDK (script migrate).
+    match /journeyRoutes/{routeId} {
+      allow read: if signedIn();
+      allow write: if false;
+
+      match /detail/{document=**} {
+        allow read: if signedIn();
+        allow write: if false;
+      }
     }
 
     match /liveSessions/{sessionId} {
       allow read: if signedIn()
-        && resource.data.visibility == 'club';
+        && (
+          resource.data.visibility == 'club'
+          || (
+            'contractId' in resource.data
+            && request.auth.uid in
+               get(/databases/$(database)/documents/runContracts/$(resource.data.contractId)).data.participantUids
+          )
+        );
       allow create: if signedIn()
         && request.resource.data.ownerUid == request.auth.uid;
       allow update: if signedIn()
@@ -76,6 +326,53 @@ service cloud.firestore {
         && request.resource.data.ownerUid == request.auth.uid;
       allow delete: if signedIn()
         && resource.data.ownerUid == request.auth.uid;
+    }
+
+    // Backend-owned integration state. Firebase Admin bypasses these rules;
+    // Flutter clients must never read tokens, OAuth state, or event payloads.
+    // Cấu hình tích hợp (cap Strava + số đang kết nối). Client ĐỌC để gate nút
+    // connect; số đếm do backend ghi, cap do admin đặt trên console.
+    match /appConfig/{doc} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /stravaConnections/{document=**} {
+      allow read, write: if false;
+    }
+    match /stravaAthleteLinks/{document=**} {
+      allow read, write: if false;
+    }
+    match /oauthStates/{document=**} {
+      allow read, write: if false;
+    }
+    match /integrationEvents/{document=**} {
+      allow read, write: if false;
+    }
+    match /activityTombstones/{document=**} {
+      allow read, write: if false;
+    }
+    match /syncRuns/{document=**} {
+      allow read, write: if false;
+    }
+
+    // Backend-owned bot state (Telegram bot). Admin SDK bypasses these rules;
+    // Flutter clients must never read conversations, memory, rate counters, or
+    // the bot's self-scheduled tasks.
+    match /botConversations/{document=**} {
+      allow read, write: if false;
+    }
+    match /botMemory/{document=**} {
+      allow read, write: if false;
+    }
+    match /botRateLimits/{document=**} {
+      allow read, write: if false;
+    }
+    match /botSchedules/{document=**} {
+      allow read, write: if false;
+    }
+    match /botImages/{document=**} {
+      allow read, write: if false;
     }
   }
 }

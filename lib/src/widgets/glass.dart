@@ -15,7 +15,15 @@ class RunNowBackdrop extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          IgnorePointer(child: CustomPaint(painter: _TechGridPainter(palette))),
+          RepaintBoundary(
+            child: IgnorePointer(
+              child: CustomPaint(
+                isComplex: true,
+                willChange: false,
+                painter: _TechGridPainter(palette),
+              ),
+            ),
+          ),
           child,
         ],
       ),
@@ -30,10 +38,12 @@ class GlassPanel extends StatelessWidget {
     this.margin,
     this.borderRadius = 18,
     this.gradient,
+    this.border,
     super.key,
   });
 
   final Widget child;
+  final BoxBorder? border; // viền vẽ ĐÚNG bán kính đã kẹp (không lệch góc)
   final EdgeInsetsGeometry? padding;
   final EdgeInsetsGeometry? margin;
   final double borderRadius;
@@ -47,6 +57,12 @@ class GlassPanel extends StatelessWidget {
         : math.min(borderRadius, 12).toDouble();
     return Container(
       margin: margin,
+      decoration: border == null
+          ? null
+          : BoxDecoration(
+              border: border,
+              borderRadius: BorderRadius.circular(effectiveRadius),
+            ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(effectiveRadius),
         clipBehavior: Clip.antiAlias,

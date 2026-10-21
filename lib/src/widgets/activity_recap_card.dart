@@ -69,7 +69,7 @@ class ActivityRecapCard extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'RUNNOW',
+                          '3I',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 23,

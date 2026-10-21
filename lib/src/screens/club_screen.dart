@@ -1,146 +1,42 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
-import 'package:myrun/src/dashboard_analytics.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
-import 'package:myrun/src/training_power.dart';
-import 'package:myrun/src/widgets/activity_records_card.dart';
-import 'package:myrun/src/widgets/activity_tile.dart';
+import 'package:myrun/src/web_layout.dart';
+import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/nav_filter.dart';
-import 'package:myrun/src/widgets/power_radar_card.dart';
-import 'package:myrun/src/widgets/route_map.dart';
+import 'package:myrun/src/widgets/run_now_loading.dart';
 
-const _rankingTabIndex = 0;
-const _recapTabIndex = 1;
-const _clubRailBreakpoint = 760.0;
 
-const _clubSections = <_ClubSection>[
-  _ClubSection(
-    label: 'Xếp hạng',
-    icon: Icons.emoji_events_outlined,
-    selectedIcon: Icons.emoji_events_rounded,
-  ),
-  _ClubSection(
-    label: 'Tổng kết',
-    icon: Icons.donut_large_outlined,
-    selectedIcon: Icons.donut_large_rounded,
-  ),
-  _ClubSection(
-    label: 'Đang chạy',
-    icon: Icons.sensors_outlined,
-    selectedIcon: Icons.sensors_rounded,
-  ),
-  _ClubSection(
-    label: 'Nhật ký',
-    icon: Icons.timeline_outlined,
-    selectedIcon: Icons.timeline_rounded,
-  ),
-  _ClubSection(
-    label: 'Thành viên',
-    icon: Icons.groups_2_outlined,
-    selectedIcon: Icons.groups_2_rounded,
-  ),
-];
-
-class _ClubSection {
-  const _ClubSection({
-    required this.label,
-    required this.icon,
-    required this.selectedIcon,
-  });
-
-  final String label;
-  final IconData icon;
-  final IconData selectedIcon;
-}
-
-class ClubScreen extends ConsumerStatefulWidget {
+class ClubScreen extends ConsumerWidget {
   const ClubScreen({super.key});
 
   @override
-  ConsumerState<ClubScreen> createState() => _ClubScreenState();
-}
-
-class _ClubScreenState extends ConsumerState<ClubScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
-  var _activeTabIndex = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 5, vsync: this)
-      ..addListener(_syncActiveSubTab);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _syncActiveSubTab();
-      unawaited(_ensureCurrentLeaderboardEntry());
-    });
-  }
-
-  @override
-  void dispose() {
-    _tabController
-      ..removeListener(_syncActiveSubTab)
-      ..dispose();
-    super.dispose();
-  }
-
-  void _syncActiveSubTab() {
-    final index = _tabController.index;
-    if (mounted && _activeTabIndex != index) {
-      setState(() => _activeTabIndex = index);
-    }
-    if (ref.read(clubActiveSubTabProvider) != index) {
-      ref.read(clubActiveSubTabProvider.notifier).state = index;
-    }
-  }
-
-  Future<void> _ensureCurrentLeaderboardEntry() async {
-    try {
-      await ref.read(memberRepositoryProvider).ensureCurrentLeaderboardEntry();
-    } catch (error) {
-      if (kDebugMode) {
-        debugPrint('[ClubScreen] Could not refresh leaderboard: $error');
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final members = ref.watch(membersProvider);
-    final showSideRail =
-        MediaQuery.sizeOf(context).width >= _clubRailBreakpoint;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final desktopWeb = RunNowWebLayout.isDesktop(context);
     return Scaffold(
       appBar: AppBar(title: const Text('Câu lạc bộ')),
-      body: members.when(
-        data: (items) => items.isEmpty
-            ? const _EmptyClub()
-            : _ClubSectionLayout(
-                showSideRail: showSideRail,
-                selectedIndex: _activeTabIndex,
-                controller: _tabController,
-                onSelect: _tabController.animateTo,
-                children: [
-                  _RankingTab(currentUid: _currentUid(ref)),
-                  const _ClubRecapTab(),
-                  const _ClubLiveTab(),
-                  const _ClubJournalTab(),
-                  _MembersTab(members: items, currentUid: _currentUid(ref)),
-                ],
+      body: Column(
+        children: [
+          if (desktopWeb)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: SizedBox(
+                height: 42,
+                child: ClubNavFilter(branchActive: true),
               ),
-        error: (error, stack) =>
-            Center(child: Text('Không thể tải thành viên: $error')),
-        loading: () => const Center(child: CircularProgressIndicator()),
+            ),
+          Expanded(child: _RankingTab(currentUid: _currentUid(ref))),
+        ],
       ),
     );
   }
@@ -149,776 +45,6 @@ class _ClubScreenState extends ConsumerState<ClubScreen>
     return ref
         .watch(firebaseUserProvider)
         .maybeWhen(data: (user) => user?.uid, orElse: () => null);
-  }
-}
-
-class _ClubBottomTabBar extends StatelessWidget {
-  const _ClubBottomTabBar({required this.controller});
-
-  final TabController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.82),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: TabBar(
-            controller: controller,
-            dividerColor: Colors.transparent,
-            indicatorSize: TabBarIndicatorSize.tab,
-            indicator: BoxDecoration(
-              color: accent.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            tabs: [
-              for (final section in _clubSections)
-                Tab(
-                  height: 50,
-                  icon: Tooltip(
-                    message: section.label,
-                    child: Semantics(
-                      label: section.label,
-                      button: true,
-                      child: Icon(section.icon, size: 24),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ClubSectionLayout extends StatelessWidget {
-  const _ClubSectionLayout({
-    required this.showSideRail,
-    required this.selectedIndex,
-    required this.controller,
-    required this.onSelect,
-    required this.children,
-  });
-
-  final bool showSideRail;
-  final int selectedIndex;
-  final TabController controller;
-  final ValueChanged<int> onSelect;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    final content = TabBarView(controller: controller, children: children);
-    if (!showSideRail) {
-      return Column(
-        children: [
-          Expanded(child: content),
-          _ClubBottomTabBar(controller: controller),
-        ],
-      );
-    }
-    return Row(
-      children: [
-        _ClubSideRail(selectedIndex: selectedIndex, onSelect: onSelect),
-        Expanded(child: content),
-      ],
-    );
-  }
-}
-
-class _ClubSideRail extends StatelessWidget {
-  const _ClubSideRail({required this.selectedIndex, required this.onSelect});
-
-  final int selectedIndex;
-  final ValueChanged<int> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    final accent = Theme.of(context).colorScheme.primary;
-    return Container(
-      width: 72,
-      margin: const EdgeInsets.fromLTRB(12, 8, 8, 12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.48),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: NavigationRail(
-        selectedIndex: selectedIndex,
-        onDestinationSelected: onSelect,
-        minWidth: 72,
-        groupAlignment: -0.72,
-        labelType: NavigationRailLabelType.none,
-        backgroundColor: Colors.transparent,
-        useIndicator: true,
-        indicatorColor: accent.withValues(alpha: 0.2),
-        selectedIconTheme: IconThemeData(color: accent, size: 25),
-        unselectedIconTheme: IconThemeData(
-          color: onSurface.withValues(alpha: 0.58),
-          size: 23,
-        ),
-        destinations: [
-          for (final section in _clubSections)
-            NavigationRailDestination(
-              icon: Icon(section.icon),
-              selectedIcon: Icon(section.selectedIcon),
-              label: Text(section.label),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MembersTab extends StatelessWidget {
-  const _MembersTab({required this.members, required this.currentUid});
-
-  final List<MemberProfile> members;
-  final String? currentUid;
-
-  @override
-  Widget build(BuildContext context) {
-    final publicMembers = members.where((member) => member.isPublic).toList();
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
-      children: publicMembers.isEmpty
-          ? const [
-              GlassPanel(
-                borderRadius: 0,
-                padding: EdgeInsets.all(18),
-                child: Text('Chưa có thành viên public.'),
-              ),
-            ]
-          : [
-              for (final member in publicMembers)
-                _MemberCard(member: member, currentUid: currentUid),
-            ],
-    );
-  }
-}
-
-class _ClubLiveTab extends ConsumerStatefulWidget {
-  const _ClubLiveTab();
-
-  @override
-  ConsumerState<_ClubLiveTab> createState() => _ClubLiveTabState();
-}
-
-class _ClubLiveTabState extends ConsumerState<_ClubLiveTab> {
-  Timer? _freshnessTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _freshnessTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _freshnessTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final sessions = ref.watch(clubLiveSessionsProvider);
-    return sessions.when(
-      data: (items) {
-        final now = DateTime.now();
-        final activeItems = items
-            .where((session) => !session.isExpired(now))
-            .toList();
-        if (activeItems.isEmpty) {
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
-            children: const [
-              GlassPanel(
-                borderRadius: 0,
-                padding: EdgeInsets.all(18),
-                child: Text('Chưa có thành viên nào đang chạy live.'),
-              ),
-            ],
-          );
-        }
-        final wide = MediaQuery.sizeOf(context).width >= 980;
-        if (!wide) {
-          return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
-            itemBuilder: (context, index) => _LiveSessionCard(
-              session: activeItems[index],
-              onTap: () => _openLiveSession(context, activeItems[index]),
-            ),
-            separatorBuilder: (_, _) => const SizedBox(height: 12),
-            itemCount: activeItems.length,
-          );
-        }
-        return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 22),
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 520,
-            mainAxisExtent: 178,
-            crossAxisSpacing: 14,
-            mainAxisSpacing: 14,
-          ),
-          itemCount: activeItems.length,
-          itemBuilder: (context, index) => _LiveSessionCard(
-            session: activeItems[index],
-            onTap: () => _openLiveSession(context, activeItems[index]),
-          ),
-        );
-      },
-      error: (error, stack) =>
-          Center(child: Text('Không thể tải live tracking: $error')),
-      loading: () => const Center(child: CircularProgressIndicator()),
-    );
-  }
-
-  Future<void> _openLiveSession(
-    BuildContext context,
-    LiveTrackingSession session,
-  ) {
-    final now = DateTime.now();
-    return showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(16),
-        child: GlassPanel(
-          borderRadius: 26,
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  _LiveAvatar(session: session, size: 42),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          session.ownerName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        Text(
-                          _liveFreshnessLabel(session, now),
-                          style: TextStyle(
-                            color: context.runNowPalette.secondary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (session.routePreview.length >= 2)
-                RouteMap.fromRoutePoints(
-                  points: session.routePreview,
-                  height: MediaQuery.sizeOf(context).height * 0.52,
-                )
-              else
-                const GlassPanel(
-                  borderRadius: 18,
-                  padding: EdgeInsets.all(18),
-                  child: Text('Đang chờ route preview đủ điểm.'),
-                ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _LiveMetric(
-                      label: 'KM',
-                      value: formatDistance(session.distanceMeters),
-                    ),
-                  ),
-                  Expanded(
-                    child: _LiveMetric(
-                      label: 'TIME',
-                      value: formatDuration(session.movingTimeSeconds),
-                    ),
-                  ),
-                  Expanded(
-                    child: _LiveMetric(
-                      label: 'PACE',
-                      value: formatPace(session.averagePaceSecondsPerKm),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LiveSessionCard extends StatelessWidget {
-  const _LiveSessionCard({required this.session, required this.onTap});
-
-  final LiveTrackingSession session;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final stale = session.isStale(now);
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    final palette = context.runNowPalette;
-    return InkWell(
-      borderRadius: BorderRadius.circular(24),
-      onTap: onTap,
-      child: GlassPanel(
-        borderRadius: 24,
-        padding: const EdgeInsets.all(16),
-        gradient: LinearGradient(
-          colors: [palette.glassStart, palette.glassEnd],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                _LiveAvatar(session: session, size: 48),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        session.ownerName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: onSurface,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      Text(
-                        _liveFreshnessLabel(session, now),
-                        style: TextStyle(
-                          color: stale ? palette.tertiary : palette.secondary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(
-                  session.status == LiveTrackingStatus.paused
-                      ? Icons.pause_circle_filled_rounded
-                      : Icons.sensors_rounded,
-                  color: stale ? palette.tertiary : palette.secondary,
-                ),
-              ],
-            ),
-            const Spacer(),
-            Row(
-              children: [
-                Expanded(
-                  child: _LiveMetric(
-                    label: 'KM',
-                    value: formatDistance(session.distanceMeters),
-                  ),
-                ),
-                Expanded(
-                  child: _LiveMetric(
-                    label: 'TIME',
-                    value: formatDuration(session.movingTimeSeconds),
-                  ),
-                ),
-                Expanded(
-                  child: _LiveMetric(
-                    label: 'PACE',
-                    value: formatPace(session.averagePaceSecondsPerKm),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LiveAvatar extends StatelessWidget {
-  const _LiveAvatar({required this.session, required this.size});
-
-  final LiveTrackingSession session;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    final avatarUrl = session.ownerAvatarUrl;
-    final palette = context.runNowPalette;
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: palette.secondary, width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: palette.secondary.withValues(alpha: 0.28),
-            blurRadius: 14,
-          ),
-        ],
-      ),
-      child: CircleAvatar(
-        backgroundColor: palette.accentDeep,
-        backgroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl),
-        child: avatarUrl == null
-            ? Text(
-                session.ownerName.trim().isEmpty
-                    ? '?'
-                    : session.ownerName.trim().substring(0, 1).toUpperCase(),
-                style: const TextStyle(fontWeight: FontWeight.w900),
-              )
-            : null,
-      ),
-    );
-  }
-}
-
-class _LiveMetric extends StatelessWidget {
-  const _LiveMetric({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: palette.glassEnd,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: onSurface.withValues(alpha: 0.54),
-                fontSize: 10,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: onSurface,
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-String _liveFreshnessLabel(LiveTrackingSession session, DateTime now) {
-  final age = now.difference(session.updatedAt);
-  final status = session.status == LiveTrackingStatus.paused
-      ? 'PAUSED'
-      : session.isStale(now)
-      ? 'STALE'
-      : 'LIVE';
-  final seconds = age.inSeconds.clamp(0, 999);
-  return '$status · ${seconds}s trước';
-}
-
-class _ClubJournalTab extends ConsumerWidget {
-  const _ClubJournalTab();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final log = ref.watch(clubActivityLogProvider);
-    return log.when(
-      data: (items) {
-        if (items.isEmpty) {
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
-            children: [
-              GlassPanel(
-                borderRadius: 0,
-                padding: EdgeInsets.all(18),
-                child: Text('Chưa có hoạt động public trong club.'),
-              ),
-            ],
-          );
-        }
-        final wide = MediaQuery.sizeOf(context).width >= 980;
-        if (!wide) {
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
-            children: [
-              for (var index = 0; index < items.length; index++)
-                ActivityTile(
-                  activity: items[index].activity,
-                  sequence: index + 1,
-                  ownerUid: items[index].member.uid,
-                  memberName: items[index].member.displayName,
-                  memberAvatarUrl: items[index].member.avatarUrl,
-                ),
-            ],
-          );
-        }
-        return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 22),
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 560,
-            mainAxisExtent: 178,
-            crossAxisSpacing: 14,
-            mainAxisSpacing: 14,
-          ),
-          itemCount: items.length,
-          itemBuilder: (context, index) => ActivityTile(
-            activity: items[index].activity,
-            sequence: index + 1,
-            ownerUid: items[index].member.uid,
-            memberName: items[index].member.displayName,
-            memberAvatarUrl: items[index].member.avatarUrl,
-          ),
-        );
-      },
-      error: (error, stack) =>
-          Center(child: Text('Không thể tải nhật ký club: $error')),
-      loading: () => const Center(child: CircularProgressIndicator()),
-    );
-  }
-}
-
-class _ClubRecapTab extends ConsumerWidget {
-  const _ClubRecapTab();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final range = ref.watch(clubRecapRangeProvider);
-    final leaderboard = ref.watch(leaderboardEntriesProvider);
-    return leaderboard.when(
-      data: (items) {
-        final entries = items.where((entry) => entry.isPublic).toList();
-        if (entries.isEmpty) return const _EmptyRanking();
-        final stats = entries
-            .map(
-              (entry) => switch (range) {
-                ClubRecapRange.currentWeek => entry.currentWeek,
-                ClubRecapRange.currentMonth => entry.currentMonth,
-              },
-            )
-            .toList();
-        final period = switch (range) {
-          ClubRecapRange.currentWeek => 'tuần',
-          ClubRecapRange.currentMonth => 'tháng',
-        };
-        final periodTitle = switch (range) {
-          ClubRecapRange.currentWeek => 'TUẦN',
-          ClubRecapRange.currentMonth => 'THÁNG',
-        };
-        final totalDistance = stats.fold<double>(
-          0,
-          (sum, item) => sum + item.distanceMeters,
-        );
-        final totalTime = stats.fold<int>(
-          0,
-          (sum, item) => sum + item.movingTimeSeconds,
-        );
-        final totalActivities = stats.fold<int>(
-          0,
-          (sum, item) => sum + item.activityCount,
-        );
-        final activeMembers = stats
-            .where((item) => item.distanceMeters > 0)
-            .length;
-        final activeRate = entries.isEmpty
-            ? 0.0
-            : activeMembers / entries.length;
-        final fastestPace = _fastestPace(stats);
-        final powerMetrics = _clubPowerMetrics(
-          range: range,
-          memberCount: entries.length,
-          totalDistanceMeters: totalDistance,
-          totalMovingTimeSeconds: totalTime,
-          totalActivities: totalActivities,
-          activeRate: activeRate,
-          fastestPaceSecondsPerKm: fastestPace,
-        );
-        final summaryCard = _ClubSummaryCard(
-          title: 'TỔNG KẾT $periodTitle',
-          totalDistanceMeters: totalDistance,
-          totalMovingTimeSeconds: totalTime,
-          totalActivities: totalActivities,
-          activeMembers: activeMembers,
-          memberCount: entries.length,
-        );
-        final powerCard = PowerRadarCard(
-          title: 'CLUB POWER $periodTitle',
-          metrics: powerMetrics,
-          powerScore: averagePowerScore(powerMetrics),
-        );
-        final recordsCard = _ClubRecordsCard(
-          range: range,
-          periodTitle: periodTitle,
-        );
-        final inactiveCard = _InactiveMembersCard(
-          entries: [
-            for (var index = 0; index < entries.length; index++)
-              if (stats[index].distanceMeters <= 0) entries[index],
-          ],
-          period: period,
-        );
-        final wide = MediaQuery.sizeOf(context).width >= 980;
-        if (wide) {
-          return _ClubWebGrid(
-            columns: [
-              _ClubWebColumn(children: [summaryCard, recordsCard]),
-              _ClubWebColumn(children: [powerCard, inactiveCard]),
-            ],
-          );
-        }
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(0, 8, 0, 16),
-          children: [
-            summaryCard,
-            const SizedBox(height: 14),
-            powerCard,
-            const SizedBox(height: 14),
-            recordsCard,
-            inactiveCard,
-          ],
-        );
-      },
-      error: (error, stack) =>
-          Center(child: Text('Không thể tải tổng kết: $error')),
-      loading: () => const Center(child: CircularProgressIndicator()),
-    );
-  }
-}
-
-class _ClubRecordsCard extends ConsumerWidget {
-  const _ClubRecordsCard({required this.range, required this.periodTitle});
-
-  final ClubRecapRange range;
-  final String periodTitle;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final log = ref.watch(clubActivityLogProvider);
-    return log.maybeWhen(
-      data: (items) {
-        final now = DateTime.now();
-        final (start, end) = switch (range) {
-          ClubRecapRange.currentWeek => (
-            startOfCurrentWeek(now),
-            startOfCurrentWeek(now).add(const Duration(days: 7)),
-          ),
-          ClubRecapRange.currentMonth => (
-            DateTime(now.year, now.month),
-            DateTime(now.year, now.month + 1),
-          ),
-        };
-        final entries = [
-          for (final item in items)
-            if (!item.activity.startedAt.isBefore(start) &&
-                item.activity.startedAt.isBefore(end))
-              ActivityRecordEntry(
-                activity: item.activity,
-                ownerUid: item.member.uid,
-                ownerName: item.member.displayName,
-                ownerAvatarUrl: item.member.avatarUrl,
-              ),
-        ];
-        if (entries.isEmpty) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 14),
-          child: ActivityRecordsCard(
-            title: 'KỶ LỤC CLUB $periodTitle',
-            showOwner: true,
-            entries: entries,
-          ),
-        );
-      },
-      orElse: () => const SizedBox.shrink(),
-    );
-  }
-}
-
-class _ClubWebGrid extends StatelessWidget {
-  const _ClubWebGrid({required this.columns});
-
-  final List<Widget> columns;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 22),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (var index = 0; index < columns.length; index++) ...[
-            Expanded(child: columns[index]),
-            if (index != columns.length - 1) const SizedBox(width: 16),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _ClubWebColumn extends StatelessWidget {
-  const _ClubWebColumn({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        for (var index = 0; index < children.length; index++) ...[
-          children[index],
-          if (index != children.length - 1) const SizedBox(height: 16),
-        ],
-      ],
-    );
   }
 }
 
@@ -931,35 +57,58 @@ class _RankingTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final metric = ref.watch(clubRankingMetricProvider);
     final range = ref.watch(clubRankingRangeProvider);
-    final leaderboard = ref.watch(leaderboardEntriesProvider);
+    // Watch CẢ 3 nguồn → chuyển metric (Km↔Bước↔chạy) TỨC THÌ, không get lại.
+    // Provider keepAlive + được prefetch lúc khởi động app (xem coordinator) nên
+    // mở tab Club là có sẵn, khỏi chờ round-trip. Số vẫn tươi (fetch từ server);
+    // pull-to-refresh để lấy mới. Bước = bảng RIÊNG; Km = TỔNG (chạy+đi bộ) gộp.
+    final runBoard = ref.watch(leaderboardEntriesProvider);
+    final stepBoard = ref.watch(stepLeaderboardProvider);
+    final totalBoard = ref.watch(totalKmLeaderboardProvider);
+    final swimBoard = ref.watch(swimLeaderboardProvider);
+    final gymBoard = ref.watch(gymLeaderboardProvider);
+    final bikeBoard = ref.watch(bikeLeaderboardProvider);
+    final motorbikeBoard = ref.watch(motorbikeLeaderboardProvider);
+    final leaderboard = switch (metric) {
+      ClubRankingMetric.steps => stepBoard,
+      ClubRankingMetric.distance => totalBoard,
+      ClubRankingMetric.swim => swimBoard,
+      ClubRankingMetric.gym => gymBoard,
+      ClubRankingMetric.bike => bikeBoard,
+      ClubRankingMetric.motorbike => motorbikeBoard,
+      _ => runBoard,
+    };
+
+    // Toggle Tổng km ↔ Bước chân giờ nằm TRONG card, ngay dưới tiêu đề BXH.
+    // Card luôn render (kể cả rỗng) để toggle luôn hiện — switch lại được khi
+    // bảng đang xem trống. Các metric chạy khác (pace/dài nhất/buổi…) ở dropdown.
     return leaderboard.when(
       data: (items) {
-        final entries =
-            items
-                .where((entry) => entry.isPublic)
-                .map(
-                  (entry) =>
-                      _RankingEntry.fromLeaderboard(entry, metric, range),
-                )
-                .toList()
-              ..sort((left, right) {
-                final byScore = metric == ClubRankingMetric.pace
-                    ? left.score.compareTo(right.score)
-                    : right.score.compareTo(left.score);
-                if (byScore != 0) return byScore;
-                return right.stats.distanceMeters.compareTo(
-                  left.stats.distanceMeters,
-                );
-              });
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(0, 8, 0, 16),
-          children: [
-            if (entries.isEmpty)
-              const _EmptyRanking()
-            else
+        final entries = _sortedRankingEntries(items, metric, range);
+        return RefreshIndicator(
+          // Get 1 lần (không live) → KÉO-để-làm-mới: nạp lại + đợi nguồn đang xem.
+          onRefresh: () async {
+            // Invalidate nguồn ĐỌC gốc: leaderboardEntries (chạy) + docs bước
+            // (chia sẻ cho Bước & Tổng km) → cả 3 bảng tự tính lại từ server.
+            ref.invalidate(leaderboardEntriesProvider);
+            ref.invalidate(stepLeaderboardDocsProvider);
+            ref.invalidate(leaderboardDocsProvider); // Bơi + Gym
+            await ref.read(switch (metric) {
+              ClubRankingMetric.steps => stepLeaderboardProvider.future,
+              ClubRankingMetric.distance => totalKmLeaderboardProvider.future,
+              ClubRankingMetric.swim => swimLeaderboardProvider.future,
+              ClubRankingMetric.gym => gymLeaderboardProvider.future,
+              ClubRankingMetric.bike => bikeLeaderboardProvider.future,
+              ClubRankingMetric.motorbike => motorbikeLeaderboardProvider.future,
+              _ => leaderboardEntriesProvider.future,
+            });
+          },
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(0, 4, 0, 16),
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
               _ShareableClubCard(
                 title:
-                    'RunNow bảng xếp hạng ${_rankingMetricLabel(metric)} ${_rankingRangeLabel(range)}',
+                    '3i bảng xếp hạng ${_rankingMetricLabel(metric)} ${_rankingRangeLabel(range)}',
                 child: _RankingBoardCard(
                   entries: entries,
                   metric: metric,
@@ -967,19 +116,124 @@ class _RankingTab extends ConsumerWidget {
                   currentUid: currentUid,
                 ),
               ),
-          ],
+            ],
+          ),
         );
       },
       error: (error, stack) =>
           Center(child: Text('Không thể tải bảng xếp hạng: $error')),
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => const RunNowLoading(label: 'Đang tải tổng kết'),
     );
   }
+}
+
+/// Toggle NHỎ GỌN switch nhanh Tổng km ↔ Bước chân (2 BXH chính) — đặt ngay dưới
+/// tiêu đề "BẢNG XẾP HẠNG". "Bước" = metric steps; còn lại (km/pace/dài nhất…) coi
+/// là phía "Tổng km". Co theo nội dung (không kéo full-width) cho gọn.
+class _LeaderboardTypeToggle extends ConsumerWidget {
+  const _LeaderboardTypeToggle();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final metric = ref.watch(clubRankingMetricProvider);
+    final palette = context.runNowPalette;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final onAccent = dark ? RunNowDataColors.coachOnAccentDark : Colors.white;
+
+    // "Tổng km" đại diện phía CHẠY (gồm pace/dài nhất/buổi… ở dropdown) → sáng khi
+    // metric KHÔNG phải steps/swim/gym. Các nút còn lại sáng khi trúng đúng metric.
+    Widget seg(ClubRankingMetric target, IconData icon, String label) {
+      final highlighted = target == ClubRankingMetric.distance
+          ? (metric != ClubRankingMetric.steps &&
+                metric != ClubRankingMetric.swim &&
+                metric != ClubRankingMetric.gym &&
+                metric != ClubRankingMetric.bike &&
+                metric != ClubRankingMetric.motorbike)
+          : metric == target;
+      return GestureDetector(
+        onTap: metric == target
+            ? null
+            : () => ref.read(clubRankingMetricProvider.notifier).state = target,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+          decoration: BoxDecoration(
+            color: highlighted ? palette.accent : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 13,
+                color: highlighted ? onAccent : palette.textMuted,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: highlighted ? onAccent : palette.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: palette.glassStart,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: palette.border),
+      ),
+      // 6 segment → dùng Wrap: máy rộng nằm 1 hàng, máy hẹp TỰ XUỐNG 2 hàng,
+      // hiện đủ cả 6 nút, không cuộn ngang, không tràn màn hình.
+      child: Wrap(
+        spacing: 2,
+        runSpacing: 2,
+        children: [
+          seg(ClubRankingMetric.distance, Icons.directions_run_rounded, 'Km'),
+          seg(ClubRankingMetric.steps, Icons.directions_walk_rounded, 'Bước'),
+          seg(ClubRankingMetric.swim, Icons.pool_rounded, 'Bơi'),
+          seg(ClubRankingMetric.gym, Icons.fitness_center_rounded, 'Gym'),
+          seg(ClubRankingMetric.bike, Icons.directions_bike_rounded, 'Đạp'),
+          seg(ClubRankingMetric.motorbike, Icons.two_wheeler_rounded, 'Xe máy'),
+        ],
+      ),
+    );
+  }
+}
+
+List<_RankingEntry> _sortedRankingEntries(
+  List<LeaderboardEntry> items,
+  ClubRankingMetric metric,
+  ClubRankingRange range,
+) {
+  return items
+      .where((entry) => entry.isPublic)
+      .map((entry) => _RankingEntry.fromLeaderboard(entry, metric, range))
+      .toList()
+    ..sort((left, right) {
+      final byScore = metric == ClubRankingMetric.pace
+          ? left.score.compareTo(right.score)
+          : right.score.compareTo(left.score);
+      if (byScore != 0) return byScore;
+      return right.stats.distanceMeters.compareTo(left.stats.distanceMeters);
+    });
 }
 
 /// Filter của club render gộp chung trong navigation bar (cùng [GlassPanel]).
 /// Tuỳ tab con đang chọn mà hiện bộ lọc phù hợp: Xếp hạng (dropdown metric +
 /// range) hoặc Tổng kết (toggle Tuần/Tháng).
+
+/// Filter của club render gộp chung trong navigation bar (cùng [GlassPanel]).
+/// Chỉ còn đúng 1 tab (Xếp hạng) nên luôn hiện bộ lọc metric + khoảng thời
+/// gian, không cần switch theo tab con nữa.
 class ClubNavFilter extends ConsumerWidget {
   const ClubNavFilter({required this.branchActive, super.key});
 
@@ -987,18 +241,8 @@ class ClubNavFilter extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tab = branchActive ? ref.watch(clubActiveSubTabProvider) : -1;
-    final Widget child = switch (tab) {
-      _rankingTabIndex => const _RankingNavControls(),
-      _recapTabIndex => const _RecapToggle(),
-      _ => const SizedBox(width: double.infinity),
-    };
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      alignment: Alignment.topCenter,
-      child: child,
-    );
+    if (!branchActive) return const SizedBox.shrink();
+    return const SizedBox(height: 42, child: _RankingNavControls());
   }
 }
 
@@ -1017,12 +261,13 @@ class _RankingNavControls extends ConsumerWidget {
               icon: Icons.leaderboard_outlined,
               value: metric,
               items: const {
-                ClubRankingMetric.distance: 'Km',
+                ClubRankingMetric.distance: 'Tổng km',
                 ClubRankingMetric.time: 'Thời gian',
                 ClubRankingMetric.consistency: 'Đều',
                 ClubRankingMetric.pace: 'Pace',
                 ClubRankingMetric.longestRun: 'Dài nhất',
                 ClubRankingMetric.activityCount: 'Buổi',
+                ClubRankingMetric.steps: 'Bước chân',
               },
               onChanged: (value) =>
                   ref.read(clubRankingMetricProvider.notifier).state = value,
@@ -1034,7 +279,6 @@ class _RankingNavControls extends ConsumerWidget {
               icon: Icons.date_range_outlined,
               value: range,
               items: const {
-                ClubRankingRange.rollingSevenDays: '7 ngày',
                 ClubRankingRange.currentWeek: 'Tuần này',
                 ClubRankingRange.currentMonth: 'Tháng này',
               },
@@ -1048,25 +292,6 @@ class _RankingNavControls extends ConsumerWidget {
   }
 }
 
-class _RecapToggle extends ConsumerWidget {
-  const _RecapToggle();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final range = ref.watch(clubRecapRangeProvider);
-    return NavFilterShell(
-      child: NavPillToggle<ClubRecapRange>(
-        value: range,
-        items: const {
-          ClubRecapRange.currentWeek: 'Tuần',
-          ClubRecapRange.currentMonth: 'Tháng',
-        },
-        onChanged: (value) =>
-            ref.read(clubRecapRangeProvider.notifier).state = value,
-      ),
-    );
-  }
-}
 
 class _ShareableClubCard extends StatefulWidget {
   const _ShareableClubCard({required this.title, required this.child});
@@ -1129,6 +354,9 @@ class _RankingBoardCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
+    final podium = entries.take(3).toList();
+    final rest = entries.skip(3).toList();
+    final topScore = entries.isEmpty ? 0.0 : entries.first.score;
     return GlassPanel(
       borderRadius: 0,
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 6),
@@ -1142,109 +370,179 @@ class _RankingBoardCard extends StatelessWidget {
                 '${_rankingMetricLabel(metric)} · ${_rankingRangeLabel(range)}',
             color: palette.tertiary,
           ),
+          const SizedBox(height: 10),
+          // Toggle nhỏ gọn Tổng km ↔ Bước chân, canh trái ngay dưới tiêu đề BXH.
+          const _LeaderboardTypeToggle(),
           const SizedBox(height: 12),
-          for (var index = 0; index < entries.length; index++)
-            _RankingCard(
-              rank: index + 1,
-              entry: entries[index],
-              metric: metric,
-              currentUid: currentUid,
-            ),
+          if (entries.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 22),
+              child: Text(
+                'Chưa có thành viên public để xếp hạng.',
+                style: TextStyle(color: palette.textMuted),
+              ),
+            )
+          else ...[
+            if (podium.isNotEmpty)
+              _RankingPodium(
+                entries: podium,
+                metric: metric,
+                range: range,
+                currentUid: currentUid,
+              ),
+            for (var index = 0; index < rest.length; index++)
+              _RankingCard(
+                rank: index + 4,
+                entry: rest[index],
+                metric: metric,
+                currentUid: currentUid,
+                topScore: topScore,
+              ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _ClubSummaryCard extends StatelessWidget {
-  const _ClubSummaryCard({
-    required this.title,
-    required this.totalDistanceMeters,
-    required this.totalMovingTimeSeconds,
-    required this.totalActivities,
-    required this.activeMembers,
-    required this.memberCount,
+/// Bục top 3: hạng nhì bên trái, hạng nhất giữa (avatar to nhất), hạng ba bên
+/// phải — thay cho danh sách phẳng cũ để làm nổi bật 3 vị trí đầu. Bấm vào
+/// một slot mở profile của thành viên đó (trừ khi đó là chính mình).
+class _RankingPodium extends StatelessWidget {
+  const _RankingPodium({
+    required this.entries,
+    required this.metric,
+    required this.range,
+    required this.currentUid,
   });
 
-  final String title;
-  final double totalDistanceMeters;
-  final int totalMovingTimeSeconds;
-  final int totalActivities;
-  final int activeMembers;
-  final int memberCount;
+  final List<_RankingEntry> entries;
+  final ClubRankingMetric metric;
+  final ClubRankingRange range;
+  final String? currentUid;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    return GlassPanel(
-      borderRadius: 0,
-      padding: const EdgeInsets.all(18),
-      gradient: LinearGradient(
-        colors: [palette.glassStart, palette.glassEnd],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
+    final first = entries.isNotEmpty ? entries[0] : null;
+    final second = entries.length > 1 ? entries[1] : null;
+    final third = entries.length > 2 ? entries[2] : null;
+    // Bấm vào 1 slot podium đi thẳng vào profile thành viên đó — không còn
+    // mở popup chúc mừng ở đây nữa (popup chúc mừng giờ tự hiện riêng cho
+    // đúng người đạt hạng, xem `ref.listen` trong `_RankingTab`).
+    // Bấm 1 người trên BXH → THẲNG nhật ký (list buổi chạy) của họ. Chính mình
+    // → nhật ký của mình.
+    void onTap(_RankingEntry entry) {
+      final uid = entry.entry.uid;
+      context.push(
+        uid == currentUid ? '/profile/journal' : '/club/$uid/journal',
+      );
+    }
+
+    // Mỗi cột bọc trong SizedBox cùng chiều cao cố định + Align bottomCenter —
+    // ép tên/điểm số (hàng trên) và đáy bệ (hàng dưới) luôn thẳng hàng tuyệt
+    // đối giữa 3 cột, không phụ thuộc vào cách Row tự tính cross-axis khi 3
+    // cột có nội dung cao thấp khác nhau (nguồn gốc lỗi lệch trước đó).
+    const figureZoneHeight = 182.0;
+    const standZoneHeight = 66.0;
+    Widget zone(double height, Widget? child) => SizedBox(
+      height: height,
+      child: child == null
+          ? null
+          : Align(alignment: Alignment.bottomCenter, child: child),
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 20),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Hình đại diện/tên/điểm số căn theo cỡ avatar (chỉ hạng 1 to hơn) —
+          // tách riêng khỏi bệ phía dưới để tên/điểm số luôn ngang hàng nhau,
+          // không bị lệch theo chiều cao bệ (vốn khác nhau giữa các hạng).
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Icon(Icons.groups_2, color: palette.accent, size: 20),
-              const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: onSurface.withValues(alpha: 0.66),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.1,
-                  ),
+                child: zone(
+                  figureZoneHeight,
+                  second == null
+                      ? null
+                      : _PodiumFigure(
+                          rank: 2,
+                          entry: second,
+                          metric: metric,
+                          avatarSize: 66,
+                          onTap: () => onTap(second),
+                        ),
                 ),
               ),
-              Text(
-                '$activeMembers/$memberCount active',
-                style: TextStyle(
-                  color: palette.secondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
+              Expanded(
+                child: zone(
+                  figureZoneHeight,
+                  first == null
+                      ? null
+                      : _PodiumFigure(
+                          rank: 1,
+                          entry: first,
+                          metric: metric,
+                          avatarSize: 88,
+                          onTap: () => onTap(first),
+                        ),
+                ),
+              ),
+              Expanded(
+                child: zone(
+                  figureZoneHeight,
+                  third == null
+                      ? null
+                      : _PodiumFigure(
+                          rank: 3,
+                          entry: third,
+                          metric: metric,
+                          avatarSize: 66,
+                          onTap: () => onTap(third),
+                        ),
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            formatDistance(totalDistanceMeters),
-            style: TextStyle(
-              color: palette.accent,
-              fontSize: 42,
-              fontWeight: FontWeight.w900,
-              height: 0.95,
-              shadows: [
-                Shadow(
-                  color: palette.secondary.withValues(alpha: 0.38),
-                  blurRadius: 18,
-                ),
-              ],
-            ),
           ),
           const SizedBox(height: 14),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: _RecapStat(
-                  label: 'THỜI GIAN',
-                  value: formatDuration(totalMovingTimeSeconds),
-                  color: palette.accent,
+                child: zone(
+                  standZoneHeight,
+                  second == null
+                      ? null
+                      : _PodiumStand(
+                          rank: 2,
+                          rankColor: palette.secondary,
+                          onTap: () => onTap(second),
+                        ),
                 ),
               ),
-              const SizedBox(width: 12),
               Expanded(
-                child: _RecapStat(
-                  label: 'SỐ BUỔI',
-                  value: '$totalActivities',
-                  color: palette.accent,
+                child: zone(
+                  standZoneHeight,
+                  first == null
+                      ? null
+                      : _PodiumStand(
+                          rank: 1,
+                          rankColor: palette.tertiary,
+                          onTap: () => onTap(first),
+                        ),
+                ),
+              ),
+              Expanded(
+                child: zone(
+                  standZoneHeight,
+                  third == null
+                      ? null
+                      : _PodiumStand(
+                          rank: 3,
+                          rankColor: palette.accent,
+                          onTap: () => onTap(third),
+                        ),
                 ),
               ),
             ],
@@ -1255,135 +553,80 @@ class _ClubSummaryCard extends StatelessWidget {
   }
 }
 
-class _RecapStat extends StatelessWidget {
-  const _RecapStat({
-    required this.label,
-    required this.value,
-    required this.color,
+class _PodiumFigure extends StatelessWidget {
+  const _PodiumFigure({
+    required this.rank,
+    required this.entry,
+    required this.metric,
+    required this.avatarSize,
+    required this.onTap,
   });
 
-  final String label;
-  final String value;
-  final Color color;
+  final int rank;
+  final _RankingEntry entry;
+  final ClubRankingMetric metric;
+  final double avatarSize;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
-      decoration: BoxDecoration(
-        border: Border(
-          left: BorderSide(color: color.withValues(alpha: 0.72), width: 2),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: onSurface.withValues(alpha: 0.52),
-              fontSize: 9,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: color,
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-              height: 1,
-              shadows: [
-                Shadow(color: color.withValues(alpha: 0.28), blurRadius: 10),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InactiveMembersCard extends StatelessWidget {
-  const _InactiveMembersCard({required this.entries, required this.period});
-
-  final List<LeaderboardEntry> entries;
-  final String period;
-
-  @override
-  Widget build(BuildContext context) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
     final palette = context.runNowPalette;
-    return GlassPanel(
-      borderRadius: 0,
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _ClubSectionHeader(
-            icon: Icons.person_off_outlined,
-            title: 'CHƯA ACTIVE',
-            trailing: '${entries.length} member',
-            color: palette.tertiary,
-          ),
-          const SizedBox(height: 12),
-          if (entries.isEmpty)
-            Text(
-              'Tất cả thành viên public đã có hoạt động trong $period.',
-              style: TextStyle(
-                color: onSurface.withValues(alpha: 0.64),
-                fontWeight: FontWeight.w800,
-              ),
-            )
-          else
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                for (final entry in entries) _InactiveMemberPill(entry: entry),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InactiveMemberPill extends StatelessWidget {
-  const _InactiveMemberPill({required this.entry});
-
-  final LeaderboardEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 220),
-      padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
-      decoration: BoxDecoration(
-        color: onSurface.withValues(alpha: 0.055),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
+    final rankColor = switch (rank) {
+      1 => palette.tertiary,
+      2 => palette.secondary,
+      _ => palette.accent,
+    };
+    final member = entry.entry;
+    final (value, unit) = _splitScoreLabel(_scoreLabel(entry, metric));
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _LeaderboardAvatar(entry: entry, size: 30),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              entry.displayName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: onSurface.withValues(alpha: 0.82),
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-              ),
+          if (rank == 1)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 2),
+              child: Text('👑', style: TextStyle(fontSize: 20)),
+            ),
+          Container(
+            width: avatarSize,
+            height: avatarSize,
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: rankColor),
+            child: _LeaderboardAvatar(entry: member, size: avatarSize - 6),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            member.displayName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+          ),
+          const SizedBox(height: 2),
+          Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: value,
+                  style: TextStyle(
+                    color: rank == 1 ? rankColor : onSurface,
+                    fontWeight: FontWeight.w900,
+                    fontSize: rank == 1 ? 18 : 15,
+                  ),
+                ),
+                if (unit.isNotEmpty)
+                  TextSpan(
+                    text: ' $unit',
+                    style: TextStyle(
+                      color: onSurface.withValues(alpha: 0.5),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11,
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
@@ -1391,6 +634,88 @@ class _InactiveMemberPill extends StatelessWidget {
     );
   }
 }
+
+/// Bệ podium bên dưới mỗi slot — cao thấp theo hạng (nhất cao nhất) để tạo
+/// đúng hiệu ứng bục 3 bậc, huy hiệu hạng (dạng huy chương + ru-băng) nằm
+/// ngay trong bệ. Bấm vào cũng mở popup chúc mừng như bấm vào hình đại diện.
+class _PodiumStand extends StatelessWidget {
+  const _PodiumStand({
+    required this.rank,
+    required this.rankColor,
+    required this.onTap,
+  });
+
+  final int rank;
+  final Color rankColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final standHeight = switch (rank) {
+      1 => 66.0,
+      2 => 48.0,
+      _ => 38.0,
+    };
+    // Chiều rộng huy chương phải chừa đủ margin so với chiều cao bệ (huy
+    // chương có tỉ lệ cố định 220:300 theo file SVG gốc) — hạng càng thấp bệ
+    // càng ngắn nên huy chương phải nhỏ dần theo, tránh tràn khung như bản
+    // vẽ tay (CustomPainter) trước đây.
+    final medalWidth = switch (rank) {
+      1 => 38.0,
+      2 => 26.0,
+      _ => 19.0,
+    };
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        height: standHeight,
+        alignment: Alignment.topCenter,
+        clipBehavior: Clip.antiAlias,
+        padding: const EdgeInsets.only(top: 6),
+        decoration: BoxDecoration(
+          color: Color.alphaBlend(
+            rankColor.withValues(alpha: 0.16),
+            palette.glassStart,
+          ),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          border: Border(
+            top: BorderSide(color: rankColor.withValues(alpha: 0.5), width: 2),
+          ),
+        ),
+        child: _Medal(rank: rank, width: medalWidth),
+      ),
+    );
+  }
+}
+
+/// Huy chương thật (vàng/bạc/đồng) từ `assets/medals/` — thay hoàn toàn cho
+/// bản vẽ tay bằng CustomPainter trước đó.
+class _Medal extends StatelessWidget {
+  const _Medal({required this.rank, required this.width});
+
+  final int rank;
+  final double width;
+
+  static const _assetByRank = {
+    1: 'assets/medals/medal-gold.svg',
+    2: 'assets/medals/medal-silver.svg',
+    3: 'assets/medals/medal-bronze.svg',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    // Tỉ lệ gốc của file SVG là 220:300 (rộng:cao).
+    return SvgPicture.asset(
+      _assetByRank[rank] ?? _assetByRank[3]!,
+      width: width,
+      height: width * 300 / 220,
+    );
+  }
+}
+
 
 class _ClubSectionHeader extends StatelessWidget {
   const _ClubSectionHeader({
@@ -1438,65 +763,6 @@ class _ClubSectionHeader extends StatelessWidget {
   }
 }
 
-List<PowerRadarMetric> _clubPowerMetrics({
-  required ClubRecapRange range,
-  required int memberCount,
-  required double totalDistanceMeters,
-  required int totalMovingTimeSeconds,
-  required int totalActivities,
-  required double activeRate,
-  required double? fastestPaceSecondsPerKm,
-}) {
-  final safeMemberCount = memberCount <= 0 ? 1 : memberCount;
-  final weekly = range == ClubRecapRange.currentWeek;
-  final volumeTargetKm = safeMemberCount * (weekly ? 15.0 : 60.0);
-  final loadTargetSeconds = safeMemberCount * (weekly ? 3 * 3600 : 12 * 3600);
-  final averageDistanceMeters = totalActivities == 0
-      ? 0.0
-      : totalDistanceMeters / totalActivities;
-
-  return [
-    PowerRadarMetric(
-      label: 'VOLUME',
-      value: formatDistance(totalDistanceMeters),
-      score: powerScoreRatio(totalDistanceMeters / 1000, volumeTargetKm),
-    ),
-    PowerRadarMetric(
-      label: 'ACTIVE',
-      value: '${(activeRate * 100).round()}%',
-      score: activeRate.clamp(0.0, 1.0).toDouble(),
-    ),
-    PowerRadarMetric(
-      label: 'LOAD',
-      value: formatDuration(totalMovingTimeSeconds),
-      score: powerScoreRatio(
-        totalMovingTimeSeconds.toDouble(),
-        loadTargetSeconds.toDouble(),
-      ),
-    ),
-    PowerRadarMetric(
-      label: 'AVG',
-      value: formatDistance(averageDistanceMeters),
-      score: powerScoreRatio(averageDistanceMeters / 1000, 5),
-    ),
-    PowerRadarMetric(
-      label: 'TỐC',
-      value: formatPace(fastestPaceSecondsPerKm),
-      score: powerSpeedScore(fastestPaceSecondsPerKm),
-    ),
-  ];
-}
-
-double? _fastestPace(List<LeaderboardStats> stats) {
-  double? fastest;
-  for (final item in stats) {
-    final pace = item.fastestPaceSecondsPerKm;
-    if (pace == null || !pace.isFinite || pace <= 0) continue;
-    if (fastest == null || pace < fastest) fastest = pace;
-  }
-  return fastest;
-}
-
 class _RankingEntry {
   const _RankingEntry({
     required this.entry,
@@ -1510,7 +776,6 @@ class _RankingEntry {
     ClubRankingRange range,
   ) {
     final stats = switch (range) {
-      ClubRankingRange.rollingSevenDays => entry.rollingSevenDays,
       ClubRankingRange.currentWeek => entry.currentWeek,
       ClubRankingRange.currentMonth => entry.currentMonth,
     };
@@ -1522,6 +787,11 @@ class _RankingEntry {
         stats.averagePaceSecondsPerKm ?? double.infinity,
       ClubRankingMetric.longestRun => stats.longestDistanceMeters,
       ClubRankingMetric.activityCount => stats.activityCount.toDouble(),
+      ClubRankingMetric.steps => stats.steps.toDouble(),
+      ClubRankingMetric.swim => stats.distanceMeters, // km bơi
+      ClubRankingMetric.gym => stats.movingTimeSeconds.toDouble(), // phút gym
+      ClubRankingMetric.bike => stats.distanceMeters, // km đạp xe
+      ClubRankingMetric.motorbike => stats.distanceMeters, // km xe máy
     };
     return _RankingEntry(entry: entry, stats: stats, score: score);
   }
@@ -1537,227 +807,203 @@ class _RankingCard extends StatelessWidget {
     required this.entry,
     required this.metric,
     required this.currentUid,
+    required this.topScore,
   });
 
   final int rank;
   final _RankingEntry entry;
   final ClubRankingMetric metric;
   final String? currentUid;
+  final double topScore;
 
   @override
   Widget build(BuildContext context) {
     final member = entry.entry;
+    final isMe = member.uid == currentUid;
+    final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    return GlassPanel(
-      margin: const EdgeInsets.only(bottom: 8),
-      borderRadius: 18,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: () {
-          if (member.uid == currentUid) {
-            context.go('/');
-            return;
-          }
-          context.push('/club/${member.uid}');
-        },
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
-          child: Row(
-            children: [
-              _RankBadge(rank: rank),
-              const SizedBox(width: 9),
-              _LeaderboardAvatar(entry: member, size: 40),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      member.displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                _scoreLabel(entry, metric),
-                style: TextStyle(
-                  color: onSurface,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RankBadge extends StatelessWidget {
-  const _RankBadge({required this.rank});
-
-  final int rank;
-
-  @override
-  Widget build(BuildContext context) {
-    final muted = Theme.of(
-      context,
-    ).colorScheme.onSurface.withValues(alpha: 0.42);
-    final palette = context.runNowPalette;
-    final color = switch (rank) {
-      1 => palette.tertiary,
-      2 => palette.secondary,
-      3 => palette.accent,
-      _ => muted,
-    };
-    final icon = switch (rank) {
-      1 => Icons.emoji_events,
-      2 => Icons.military_tech,
-      3 => Icons.workspace_premium,
-      _ => null,
-    };
+    final ratio = _relativeRatio(entry.score, topScore, metric);
+    final (value, unit) = _splitScoreLabel(_scoreLabel(entry, metric));
+    final barColor = isMe ? palette.accent : _flatMemberColor(member.uid);
     return Container(
-      width: 30,
-      height: 30,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(11),
-      ),
-      child: icon == null
-          ? Center(
-              child: Text(
-                '$rank',
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 14,
-                ),
-              ),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: isMe
+          ? BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: palette.accent.withValues(alpha: 0.45)),
             )
-          : Icon(icon, color: color, size: 18),
-    );
-  }
-}
-
-class _EmptyClub extends StatelessWidget {
-  const _EmptyClub();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: GlassPanel(
-          borderRadius: 24,
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.groups_2_outlined, size: 42),
-              const SizedBox(height: 12),
-              Text(
-                'Chưa có thành viên',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'Khi có người đăng nhập Google, hồ sơ câu lạc bộ sẽ xuất hiện ở đây.',
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MemberCard extends StatelessWidget {
-  const _MemberCard({required this.member, required this.currentUid});
-
-  final MemberProfile member;
-  final String? currentUid;
-
-  @override
-  Widget build(BuildContext context) {
-    final isMe = currentUid == member.uid;
-    final palette = context.runNowPalette;
-    return GlassPanel(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      borderRadius: 18,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: member.isPublic
-            ? () {
-                if (isMe) {
-                  context.go('/');
-                  return;
-                }
-                context.push('/club/${member.uid}');
-              }
+          : null,
+      child: GlassPanel(
+        borderRadius: 16,
+        gradient: isMe
+            ? LinearGradient(
+                colors: [
+                  Color.alphaBlend(
+                    palette.accent.withValues(alpha: 0.14),
+                    palette.glassStart,
+                  ),
+                  Color.alphaBlend(
+                    palette.accent.withValues(alpha: 0.14),
+                    palette.glassEnd,
+                  ),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
             : null,
-        child: Row(
-          children: [
-            _MemberAvatar(member: member, size: 48),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => context.push(
+            isMe ? '/profile/journal' : '/club/${member.uid}/journal',
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 10, 12, 10),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 22,
+                  child: Text(
+                    '$rank',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: onSurface.withValues(alpha: 0.5),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                _FlatMemberAvatar(member: member, size: 36),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Flexible(
-                        child: Text(
-                          member.displayName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              member.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          if (isMe) ...[
+                            const SizedBox(width: 6),
+                            _MiniChip(label: 'Bạn', color: palette.secondary),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: LinearProgressIndicator(
+                          value: ratio,
+                          minHeight: 4,
+                          backgroundColor: onSurface.withValues(alpha: 0.09),
+                          color: barColor,
                         ),
                       ),
-                      if (isMe) ...[
-                        const SizedBox(width: 8),
-                        _MiniChip(label: 'Bạn', color: palette.secondary),
-                      ],
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  _VisibilityPill(isPublic: member.isPublic),
-                ],
-              ),
+                ),
+                const SizedBox(width: 10),
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: value,
+                        style: TextStyle(
+                          color: onSurface,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      if (unit.isNotEmpty)
+                        TextSpan(
+                          text: ' $unit',
+                          style: TextStyle(
+                            color: onSurface.withValues(alpha: 0.5),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            if (member.isPublic)
-              Icon(
-                Icons.chevron_right,
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurface.withValues(alpha: 0.42),
-              ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _EmptyRanking extends StatelessWidget {
-  const _EmptyRanking();
+class _FlatMemberAvatar extends StatelessWidget {
+  const _FlatMemberAvatar({required this.member, required this.size});
+
+  final LeaderboardEntry member;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
-    return const GlassPanel(
-      borderRadius: 0,
-      padding: EdgeInsets.all(18),
-      child: Text('Chưa có thành viên public để xếp hạng.'),
+    final avatarUrl = member.avatarUrl;
+    final color = _flatMemberColor(member.uid);
+    return CircleAvatar(
+      radius: size / 2,
+      backgroundColor: color,
+      backgroundImage: avatarUrl == null
+          ? null
+          : cachedAvatarImage(context, avatarUrl, size),
+      child: avatarUrl == null
+          ? Text(
+              member.displayName.characters.first.toUpperCase(),
+              style: const TextStyle(
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            )
+          : null,
     );
   }
+}
+
+/// Màu phẳng ổn định theo uid — dùng chung cho avatar và thanh progress của
+/// cùng 1 thành viên trong danh sách xếp hạng (hạng 4+).
+const _flatMemberPalette = [
+  RunNowDataColors.cadence,
+  RunNowDataColors.energy,
+  RunNowDataColors.pace,
+  RunNowDataColors.elevation,
+  RunNowDataColors.zone3,
+  RunNowDataColors.zone4,
+  RunNowDataColors.heart,
+];
+
+Color _flatMemberColor(String uid) =>
+    _flatMemberPalette[uid.hashCode.abs() % _flatMemberPalette.length];
+
+/// Tách "giá trị" và "đơn vị" từ chuỗi đã format sẵn (vd "19.41 km" ->
+/// ("19.41", "km")) để hiện đậm/nhạt khác nhau như trên bục xếp hạng.
+(String, String) _splitScoreLabel(String label) {
+  final index = label.lastIndexOf(' ');
+  if (index <= 0) return (label, '');
+  return (label.substring(0, index), label.substring(index + 1));
+}
+
+/// Tỉ lệ so với người dẫn đầu, dùng cho thanh progress trong danh sách xếp
+/// hạng. Với pace (thấp hơn là tốt hơn) tỉ lệ được đảo ngược so với các
+/// metric còn lại (cao hơn là tốt hơn).
+double _relativeRatio(double score, double topScore, ClubRankingMetric metric) {
+  if (metric == ClubRankingMetric.pace) {
+    if (score <= 0 || !score.isFinite || topScore <= 0) return 0;
+    return (topScore / score).clamp(0.0, 1.0);
+  }
+  if (topScore <= 0 || !topScore.isFinite) return 0;
+  return (score / topScore).clamp(0.0, 1.0);
 }
 
 String _scoreLabel(_RankingEntry entry, ClubRankingMetric metric) {
@@ -1773,23 +1019,33 @@ String _scoreLabel(_RankingEntry entry, ClubRankingMetric metric) {
       entry.stats.longestDistanceMeters,
     ),
     ClubRankingMetric.activityCount => '${entry.stats.activityCount} buổi',
+    ClubRankingMetric.steps =>
+      '${entry.stats.steps.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]}.')} bước',
+    ClubRankingMetric.swim => formatDistance(entry.stats.distanceMeters),
+    ClubRankingMetric.gym => formatDuration(entry.stats.movingTimeSeconds),
+    ClubRankingMetric.bike => formatDistance(entry.stats.distanceMeters),
+    ClubRankingMetric.motorbike => formatDistance(entry.stats.distanceMeters),
   };
 }
 
 String _rankingMetricLabel(ClubRankingMetric metric) {
   return switch (metric) {
-    ClubRankingMetric.distance => 'Km',
+    ClubRankingMetric.distance => 'Tổng km',
     ClubRankingMetric.time => 'Thời gian',
     ClubRankingMetric.consistency => 'Đều',
     ClubRankingMetric.pace => 'Pace',
     ClubRankingMetric.longestRun => 'Dài nhất',
     ClubRankingMetric.activityCount => 'Buổi',
+    ClubRankingMetric.steps => 'Bước chân',
+    ClubRankingMetric.swim => 'Bơi',
+    ClubRankingMetric.gym => 'Gym',
+    ClubRankingMetric.bike => 'Đạp xe',
+    ClubRankingMetric.motorbike => 'Xe máy',
   };
 }
 
 String _rankingRangeLabel(ClubRankingRange range) {
   return switch (range) {
-    ClubRankingRange.rollingSevenDays => '7 ngày',
     ClubRankingRange.currentWeek => 'Tuần này',
     ClubRankingRange.currentMonth => 'Tháng này',
   };
@@ -1826,7 +1082,9 @@ class _LeaderboardAvatar extends StatelessWidget {
       padding: const EdgeInsets.all(2),
       child: CircleAvatar(
         backgroundColor: Colors.black,
-        backgroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl),
+        backgroundImage: avatarUrl == null
+            ? null
+            : cachedAvatarImage(context, avatarUrl, size),
         child: avatarUrl == null
             ? Text(
                 entry.displayName.characters.first.toUpperCase(),
@@ -1838,48 +1096,6 @@ class _LeaderboardAvatar extends StatelessWidget {
   }
 }
 
-class _MemberAvatar extends StatelessWidget {
-  const _MemberAvatar({required this.member, this.size = 58});
-
-  final MemberProfile member;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    final avatarUrl = member.avatarUrl;
-    final palette = context.runNowPalette;
-    return Container(
-      height: size,
-      width: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          colors: [palette.secondary, palette.accent],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 10,
-            offset: Offset(0, 3),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(2),
-      child: CircleAvatar(
-        backgroundColor: Colors.black,
-        backgroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl),
-        child: avatarUrl == null
-            ? Text(
-                member.displayName.characters.first.toUpperCase(),
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              )
-            : null,
-      ),
-    );
-  }
-}
 
 class _MiniChip extends StatelessWidget {
   const _MiniChip({required this.label, required this.color});
@@ -1910,34 +1126,3 @@ class _MiniChip extends StatelessWidget {
   }
 }
 
-class _VisibilityPill extends StatelessWidget {
-  const _VisibilityPill({required this.isPublic});
-
-  final bool isPublic;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isPublic
-        ? context.runNowPalette.secondary
-        : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.36);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          isPublic ? Icons.public : Icons.lock_outline,
-          color: color,
-          size: 16,
-        ),
-        const SizedBox(width: 6),
-        Container(
-          width: 42,
-          height: 4,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: isPublic ? 0.7 : 0.45),
-            borderRadius: BorderRadius.circular(999),
-          ),
-        ),
-      ],
-    );
-  }
-}

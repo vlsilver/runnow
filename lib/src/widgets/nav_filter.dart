@@ -78,7 +78,9 @@ class _NavSegment extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color: selected ? Colors.white : onSurface.withValues(alpha: 0.6),
+            color: selected
+                ? context.runNowPalette.glassStart
+                : onSurface.withValues(alpha: 0.6),
             fontSize: 12.5,
             fontWeight: FontWeight.w800,
           ),

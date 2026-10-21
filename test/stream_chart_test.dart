@@ -82,6 +82,39 @@ void main() {
     expect(find.textContaining('2:00'), findsWidgets);
   });
 
+  testWidgets('reports chart distance while dragging telemetry', (
+    tester,
+  ) async {
+    double? selectedDistance;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 420,
+            child: StreamChart(
+              streams: const {
+                'distance': [0, 1000, 2000],
+                'velocity_smooth': [2.5, 3.0, 3.5],
+              },
+              onDistanceSelected: (value) => selectedDistance = value,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final chart = find.byType(BarChart);
+    expect(chart, findsOneWidget);
+    final rect = tester.getRect(chart);
+    final gesture = await tester.startGesture(rect.center);
+    await gesture.moveBy(const Offset(20, 0));
+    await tester.pump();
+    await gesture.up();
+
+    expect(selectedDistance, isNotNull);
+    expect(selectedDistance, inInclusiveRange(0, 2000));
+  });
+
   test('calculates heart rate zone durations from stream samples', () {
     final zones = heartRateZoneDurations(
       times: const [0, 60, 180, 300, 420],

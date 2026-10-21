@@ -1,14 +1,16 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/app.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/repository.dart';
+import 'package:myrun/src/run_contracts/run_contract_models.dart';
+import 'package:myrun/src/run_contracts/run_contract_repository.dart';
 import 'package:myrun/src/theme_controller.dart';
 
 void main() {
-  testWidgets('renders dashboard in demo mode', (tester) async {
+  testWidgets('renders contract home in demo mode', (tester) async {
     // Ép kích thước điện thoại để dùng bottom nav (layout web rộng có rail
     // riêng làm thay đổi cây widget/scroll).
     tester.view.physicalSize = const Size(420, 1400);
@@ -33,6 +35,14 @@ void main() {
             (ref) => Stream.value(UserProfile.demo),
           ),
           stravaConnectionProvider.overrideWithValue(true),
+          stravaConnectionLoadingProvider.overrideWithValue(false),
+          myActiveContractsProvider.overrideWith(
+            (ref) => Stream.value(const []),
+          ),
+          runContractRepositoryProvider.overrideWithValue(
+            _EmptyRunContractRepository(),
+          ),
+          membersProvider.overrideWith((ref) => Stream.value(const [])),
           themeControllerProvider.overrideWith(
             (ref) => ThemeController(loadFromStorage: false),
           ),
@@ -41,37 +51,85 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Tổng quan'), findsNWidgets(2));
-    expect(find.text('Nhịp luyện tập từ dữ liệu đã đồng bộ'), findsNothing);
-    expect(find.textContaining('Đồng bộ Strava hoàn tất'), findsNothing);
-    final dashboardScroll = find.byType(Scrollable).first;
-    expect(find.text('TIẾN ĐỘ TUẦN'), findsOneWidget);
-    // Filter Tuần/7 ngày của card "tiến độ tuần" giờ nằm trong navigation bar.
-    expect(find.text('7 ngày'), findsWidgets);
-    expect(find.text('Tuần này'), findsWidgets);
-    expect(find.text('Quãng đường'), findsOneWidget);
-    // Default tổng quan giờ là "Tuần này" nên nhãn mục tiêu hiển thị theo tuần
-    // hiện tại thay vì "Mục tiêu tuần" (chế độ 7 ngày gần nhất).
-    expect(find.text('Mục tiêu tuần'), findsNothing);
-    expect(find.text('MỤC TIÊU'), findsNothing);
-    await tester.scrollUntilVisible(
-      find.text('KỶ LUẬT & CONSISTENCY'),
-      300,
-      scrollable: dashboardScroll,
-    );
-    expect(find.text('KỶ LUẬT & CONSISTENCY'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('CONSISTENCY'),
-      300,
-      scrollable: dashboardScroll,
-    );
-    expect(find.text('CONSISTENCY'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('GẦN ĐÂY'),
-      300,
-      scrollable: dashboardScroll,
-    );
-    expect(find.text('GẦN ĐÂY'), findsOneWidget);
-    expect(find.text('Feed'), findsNothing);
+    expect(find.text('Kèo'), findsNWidgets(2));
+    expect(find.byIcon(Icons.add_rounded), findsOneWidget);
+    expect(find.text('Chưa có kèo đang diễn ra'), findsOneWidget);
+    expect(find.text('Tổng quan'), findsNothing);
   });
+}
+
+class _EmptyRunContractRepository implements RunContractRepository {
+  @override
+  Future<RunContractPage> fetchClubContractsPage({
+    int limit = 20,
+    Object? cursor,
+    bool fromCache = false,
+  }) async => const RunContractPage(contracts: [], hasMore: false);
+
+  @override
+  Future<RunContractPage> fetchMyContractHistoryPage({
+    required RunContractStatus status,
+    int limit = 20,
+    Object? cursor,
+    bool fromCache = false,
+  }) async => const RunContractPage(contracts: [], hasMore: false);
+
+  @override
+  Stream<List<RunContract>> watchMyActiveContracts() => Stream.value(const []);
+
+  @override
+  Stream<RunContract?> watchContract(String contractId) => Stream.value(null);
+
+  @override
+  Future<RunContractRoute?> fetchContractRoute(String contractId) async => null;
+
+  @override
+  Future<String> create({
+    required RunContractDraft draft,
+    required RunContractPeriod period,
+    required double initialProgress,
+    List<String> countedActivityIds = const [],
+  }) async => 'unused';
+
+  @override
+  Future<void> updateProgress(
+    String contractId,
+    double progressValue, {
+    List<String> countedActivityIds = const [],
+  }) async {}
+
+  @override
+  Future<void> join(
+    String contractId,
+    double initialProgress, {
+    List<String> countedActivityIds = const [],
+  }) async {}
+
+  @override
+  Future<void> updateParticipantProgress(
+    String contractId,
+    double progressValue, {
+    List<String> countedActivityIds = const [],
+  }) async {}
+
+  @override
+  Future<Map<String, String>> activityAssignments() async => const {};
+
+  @override
+  Future<void> replaceActivityAssignments(
+    String contractId, {
+    required List<String> activityIds,
+    required double progressValue,
+  }) async {}
+
+  @override
+  Future<RunContractStatus> finalize(
+    String contractId, {
+    required double finalProgress,
+    required bool targetMet,
+    List<String> countedActivityIds = const [],
+  }) async => RunContractStatus.completed;
+
+  @override
+  Future<void> delete(String contractId) async {}
 }

@@ -1,27 +1,83 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:myrun/src/widgets/map_attribution.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/live_route_view.dart';
+import 'package:myrun/src/widgets/photo_pin_marker.dart';
 
+const _lightTileTemplate =
+    'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 const _darkTileTemplate =
     'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-const _tileAttribution = '© OpenStreetMap contributors · CARTO';
+const _photoClusterThresholdMeters = 15.0;
+const _photoClusterDistance = Distance();
+
+class _PhotoCluster {
+  _PhotoCluster(this.anchor, this.photos);
+
+  final LatLng anchor;
+  final List<ActivityPhoto> photos; // sắp mới nhất trước.
+}
+
+/// Gộp các ảnh chụp gần nhau (cùng ngưỡng với `LiveRouteView`) thành 1 marker
+/// kèm badge "+N", để bản đồ nhỏ ở màn chi tiết kèo nhất quán với màn live
+/// thay vì chồng nhiều marker rời rạc lên nhau.
+List<_PhotoCluster> _clusterPhotos(List<ActivityPhoto> photos) {
+  final sorted = [...photos]
+    ..sort((a, b) => b.capturedAt.compareTo(a.capturedAt));
+  final clusters = <_PhotoCluster>[];
+  for (final photo in sorted) {
+    final point = LatLng(photo.latitude, photo.longitude);
+    final existing = clusters
+        .where(
+          (cluster) =>
+              _photoClusterDistance.distance(cluster.anchor, point) <=
+              _photoClusterThresholdMeters,
+        )
+        .firstOrNull;
+    if (existing != null) {
+      existing.photos.add(photo);
+    } else {
+      clusters.add(_PhotoCluster(point, [photo]));
+    }
+  }
+  return clusters;
+}
 
 class RouteMap extends StatelessWidget {
   const RouteMap({
     required this.encodedPolyline,
     this.routePoints,
+    this.photos = const [],
+    this.onPhotoTap,
+    this.highlightedDistanceMeters,
+    this.totalDistanceMeters,
+    this.liveRunners = const [],
+    this.liveRunnersStream,
+    this.liveRoutePhotos = const [],
     this.height = 330,
+    this.follow = false,
     super.key,
   });
 
   const RouteMap.fromRoutePoints({
     required List<RoutePoint> points,
     this.height = 330,
+    this.photos = const [],
+    this.onPhotoTap,
+    this.highlightedDistanceMeters,
+    this.totalDistanceMeters,
+    this.liveRunners = const [],
+    this.liveRunnersStream,
+    this.liveRoutePhotos = const [],
+    this.follow = false,
     super.key,
   }) : encodedPolyline = null,
        routePoints = points;
@@ -30,10 +86,34 @@ class RouteMap extends StatelessWidget {
   final List<RoutePoint>? routePoints;
   final double height;
 
+  /// Chế độ theo dõi live: camera bám vị trí hiện tại (điểm cuối) + xoay theo
+  /// hướng di chuyển, thay vì fit cả tuyến. Kéo/zoom tay → tạm chuyển thủ công,
+  /// có nút định vị để quay lại bám. Chỉ dùng cho map lúc đang chạy.
+  final bool follow;
+  final List<ActivityPhoto> photos;
+  final ValueChanged<ActivityPhoto>? onPhotoTap;
+  final double? highlightedDistanceMeters;
+  final double? totalDistanceMeters;
+  final List<LiveTrackingSession> liveRunners;
+
+  /// Nguồn live tiếp tục cập nhật vị trí/ảnh trong lúc màn full màn hình
+  /// đang mở — [liveRunners] chỉ là snapshot tại thời điểm bấm mở, còn
+  /// stream này (nếu có) mới giữ cho màn full màn hình sống động thay vì
+  /// đứng yên suốt lúc xem. Không bắt buộc — null thì full màn hình chỉ
+  /// hiện đúng snapshot lúc mở, như trước. Khác null còn quyết định mở
+  /// [LiveRouteView] (bản đồ live có overlay số liệu) thay vì
+  /// `_FullscreenRouteMap` thường (xem [_openFullscreen]).
+  final Stream<List<LiveTrackingSession>>? liveRunnersStream;
+
+  /// Ảnh kèm định danh người chụp, chỉ dùng khi mở [LiveRouteView] (cần
+  /// hiện avatar/tên đúng người trong caption ảnh) — [photos] (phẳng, không
+  /// chủ ảnh) vẫn dùng cho bản đồ preview nhỏ + `_FullscreenRouteMap` như
+  /// cũ, không đổi.
+  final List<LiveRoutePhoto> liveRoutePhotos;
+
   @override
   Widget build(BuildContext context) {
     final points = _mapPoints();
-    final palette = context.runNowPalette;
     if (points.isEmpty) {
       return const GlassPanel(
         borderRadius: 0,
@@ -48,35 +128,66 @@ class RouteMap extends StatelessWidget {
         height: height,
         child: Stack(
           children: [
-            Positioned.fill(child: _FlutterRouteMap(points: points)),
-            const Positioned.fill(child: _MapVignette()),
-            Positioned(
-              left: 10,
-              right: 10,
-              bottom: 10,
-              child: Row(
-                children: [
-                  _RoutePill(label: 'START', color: palette.secondary),
-                  const SizedBox(width: 6),
-                  _RoutePill(label: 'FINISH', color: palette.accent),
-                  const Spacer(),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.48),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      child: Text(
-                        _tileAttribution,
-                        style: TextStyle(color: Colors.white70, fontSize: 9),
-                      ),
-                    ),
-                  ),
-                ],
+            Positioned.fill(
+              child: _FlutterRouteMap(
+                points: points,
+                photos: photos,
+                onPhotoTap: onPhotoTap,
+                highlightedDistanceMeters: highlightedDistanceMeters,
+                totalDistanceMeters: totalDistanceMeters,
+                liveRunners: liveRunners,
+                follow: follow,
               ),
             ),
+            // Map tracking (follow) đã tràn viền toàn màn → không cần nút
+            // phóng-to-toàn-màn (gây rối ở góc trên).
+            if (!follow)
+              Positioned(
+                top: 10,
+                right: 10,
+                child: liveRunnersStream != null
+                    ? _ViewLiveButton(
+                        onTap: () => _openFullscreen(context, points),
+                      )
+                    : _MapExpandButton(
+                        onTap: () => _openFullscreen(context, points),
+                      ),
+              ),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _openFullscreen(BuildContext context, List<LatLng> points) {
+    final liveStream = liveRunnersStream;
+    if (liveStream != null) {
+      Navigator.of(context).push(
+        PageRouteBuilder<void>(
+          fullscreenDialog: true,
+          opaque: true,
+          pageBuilder: (context, _, _) => LiveRouteView(
+            points: points,
+            liveRunners: liveRunners,
+            liveRunnersStream: liveStream,
+            claimedPhotos: liveRoutePhotos,
+          ),
+        ),
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        fullscreenDialog: true,
+        opaque: true,
+        pageBuilder: (context, _, _) => _FullscreenRouteMap(
+          points: points,
+          photos: photos,
+          onPhotoTap: onPhotoTap,
+          highlightedDistanceMeters: highlightedDistanceMeters,
+          totalDistanceMeters: totalDistanceMeters,
+          liveRunners: liveRunners,
+          liveRunnersStream: liveRunnersStream,
         ),
       ),
     );
@@ -95,23 +206,369 @@ class RouteMap extends StatelessWidget {
   }
 }
 
-class _FlutterRouteMap extends StatelessWidget {
-  const _FlutterRouteMap({required this.points});
+class _MapExpandButton extends StatelessWidget {
+  const _MapExpandButton({required this.onTap});
 
-  final List<LatLng> points;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    return FlutterMap(
-      options: MapOptions(
-        initialCameraFit: CameraFit.bounds(
-          bounds: routeBounds(points),
+    return Semantics(
+      button: true,
+      label: 'Phóng to bản đồ toàn màn hình',
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.55),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            ),
+            child: const Icon(
+              Icons.open_in_full_rounded,
+              color: Colors.white,
+              size: 18,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Thay [_MapExpandButton] ở bất kỳ đâu caller có truyền [liveRunnersStream]
+/// (hiện chỉ kèo theo tuyến) — hiện luôn, bất kể tại thời điểm đó có ai
+/// đang chạy live hay chưa, vì bấm vào vẫn luôn mở đúng full màn hình có
+/// khả năng hiện live (vị trí + ảnh cập nhật liên tục ngay khi có người bắt
+/// đầu chạy), cùng kiểu chấm đỏ nhấp nháy đã dùng cho nút "LIVE NOW".
+class _ViewLiveButton extends StatefulWidget {
+  const _ViewLiveButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_ViewLiveButton> createState() => _ViewLiveButtonState();
+}
+
+class _ViewLiveButtonState extends State<_ViewLiveButton>
+    with SingleTickerProviderStateMixin {
+  late final _pulseController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Xem live vị trí và ảnh đang chạy',
+      child: RepaintBoundary(
+        child: Material(
+          color: Colors.transparent,
+          shape: const StadiumBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: widget.onTap,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: RunNowSemanticColors.danger,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FadeTransition(
+                      opacity: Tween<double>(
+                        begin: 0.4,
+                        end: 1,
+                      ).animate(_pulseController),
+                      child: Container(
+                        width: 7,
+                        height: 7,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Xem live',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bản đồ route phóng to toàn màn hình, khóa xoay ngang trong lúc mở — dùng
+/// chung cho mọi nơi hiển thị [RouteMap] (chi tiết hoạt động, chi tiết kèo,
+/// tracking, club, xác nhận tuyến) vì đều đi qua đúng 1 điểm mở duy nhất
+/// này thay vì tự cài đặt riêng lẻ ở từng màn.
+class _FullscreenRouteMap extends StatefulWidget {
+  const _FullscreenRouteMap({
+    required this.points,
+    required this.photos,
+    required this.onPhotoTap,
+    required this.highlightedDistanceMeters,
+    required this.totalDistanceMeters,
+    required this.liveRunners,
+    required this.liveRunnersStream,
+  });
+
+  final List<LatLng> points;
+  final List<ActivityPhoto> photos;
+  final ValueChanged<ActivityPhoto>? onPhotoTap;
+  final double? highlightedDistanceMeters;
+  final double? totalDistanceMeters;
+  final List<LiveTrackingSession> liveRunners;
+  final Stream<List<LiveTrackingSession>>? liveRunnersStream;
+
+  @override
+  State<_FullscreenRouteMap> createState() => _FullscreenRouteMapState();
+}
+
+class _FullscreenRouteMapState extends State<_FullscreenRouteMap> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: widget.liveRunnersStream == null
+                ? _FlutterRouteMap(
+                    points: widget.points,
+                    photos: widget.photos,
+                    onPhotoTap: widget.onPhotoTap,
+                    highlightedDistanceMeters: widget.highlightedDistanceMeters,
+                    totalDistanceMeters: widget.totalDistanceMeters,
+                    liveRunners: widget.liveRunners,
+                  )
+                : StreamBuilder<List<LiveTrackingSession>>(
+                    stream: widget.liveRunnersStream,
+                    initialData: widget.liveRunners,
+                    builder: (context, snapshot) {
+                      final sessions = snapshot.data ?? widget.liveRunners;
+                      final displayPhotos = {
+                        for (final photo in widget.photos) photo.id: photo,
+                        for (final session in sessions)
+                          for (final photo in session.livePhotos)
+                            photo.id: photo,
+                      }.values.toList();
+                      return _FlutterRouteMap(
+                        points: widget.points,
+                        photos: displayPhotos,
+                        onPhotoTap: widget.onPhotoTap,
+                        highlightedDistanceMeters:
+                            widget.highlightedDistanceMeters,
+                        totalDistanceMeters: widget.totalDistanceMeters,
+                        liveRunners: sessions,
+                      );
+                    },
+                  ),
+          ),
+          Positioned(
+            top: 12,
+            left: 12,
+            child: SafeArea(
+              child: IconButton.filledTonal(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FlutterRouteMap extends StatefulWidget {
+  const _FlutterRouteMap({
+    required this.points,
+    required this.photos,
+    required this.onPhotoTap,
+    required this.highlightedDistanceMeters,
+    required this.totalDistanceMeters,
+    required this.liveRunners,
+    this.follow = false,
+  });
+
+  final List<LatLng> points;
+  final List<ActivityPhoto> photos;
+  final ValueChanged<ActivityPhoto>? onPhotoTap;
+  final double? highlightedDistanceMeters;
+  final double? totalDistanceMeters;
+  final List<LiveTrackingSession> liveRunners;
+  final bool follow;
+
+  @override
+  State<_FlutterRouteMap> createState() => _FlutterRouteMapState();
+}
+
+class _FlutterRouteMapState extends State<_FlutterRouteMap> {
+  final _mapController = MapController();
+
+  // Tile chỉ nạp khi tile layer nhận được sự kiện camera. Nếu chưa từng fit
+  // sau khi map ready thì sự kiện đầu tiên không phát ra và nền bản đồ đen
+  // tới khi người dùng zoom/pan tay. Cờ này để fit đúng một lần trong
+  // onMapReady — thời điểm map chắc chắn đã sẵn sàng, khác với postFrame
+  // callback (có thể chạy trước khi controller gắn vào map đã render).
+  var _fittedOnce = false;
+  // Chế độ follow: user đã kéo/zoom tay → tạm ngừng bám cho tới khi bấm định vị.
+  var _manual = false;
+  static const _followZoom = 17.0;
+
+  // Hướng di chuyển (độ, 0=Bắc) tính từ 2 điểm cuối để xoay map cho "trước mặt"
+  // lên trên. Ít điểm thì giữ 0 (Bắc lên trên).
+  double _bearingDeg() {
+    final pts = widget.points;
+    if (pts.length < 2) return 0;
+    final a = pts[pts.length - 2];
+    final b = pts.last;
+    final dLon = (b.longitude - a.longitude) * math.pi / 180;
+    final lat1 = a.latitude * math.pi / 180;
+    final lat2 = b.latitude * math.pi / 180;
+    final y = math.sin(dLon) * math.cos(lat2);
+    final x =
+        math.cos(lat1) * math.sin(lat2) -
+        math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
+    return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
+  }
+
+  void _followCurrent() {
+    if (widget.points.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Xoay map -bearing để hướng chạy hướng lên trên.
+      _mapController.moveAndRotate(
+        widget.points.last,
+        _followZoom,
+        -_bearingDeg(),
+      );
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _FlutterRouteMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.follow) {
+      // Bám vị trí mới mỗi khi có điểm mới, trừ khi user đang xem thủ công.
+      if (!_manual && !listEquals(oldWidget.points, widget.points)) {
+        _followCurrent();
+      }
+      return;
+    }
+    // `MapOptions.initialCameraFit` chỉ được flutter_map áp dụng đúng 1 lần
+    // lúc tạo controller — nếu widget này build lần đầu trước khi `points`
+    // load xong (dễ xảy ra hơn trên web do thứ tự tải dữ liệu khác app gốc),
+    // camera bị kẹt ở lần fit đầu tiên dù `points` sau đó đã đủ, khiến bản
+    // đồ hiện đúng tile nhưng không zoom vào tuyến đường. Chủ động fit lại
+    // mỗi khi `points` thực sự đổi để không phụ thuộc thời điểm build đầu.
+    if (!listEquals(oldWidget.points, widget.points)) {
+      _scheduleFitBounds();
+    }
+  }
+
+  void _scheduleFitBounds() {
+    if (widget.points.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _mapController.fitCamera(
+        CameraFit.bounds(
+          bounds: routeBounds(widget.points),
           padding: const EdgeInsets.all(28),
           maxZoom: 16,
         ),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final points = widget.points;
+    final photos = widget.photos;
+    final onPhotoTap = widget.onPhotoTap;
+    final highlightedDistanceMeters = widget.highlightedDistanceMeters;
+    final totalDistanceMeters = widget.totalDistanceMeters;
+    final liveRunners = widget.liveRunners;
+    final palette = context.runNowPalette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tileTemplate = isDark ? _darkTileTemplate : _lightTileTemplate;
+    final routeOutline = isDark
+        ? Colors.black.withValues(alpha: 0.5)
+        : Colors.white.withValues(alpha: 0.88);
+    final map = FlutterMap(
+      mapController: _mapController,
+      options: MapOptions(
+        // Follow: khởi đầu bám vị trí hiện tại + xoay theo hướng; ngược lại fit
+        // cả tuyến như cũ.
+        initialCameraFit: widget.follow
+            ? null
+            : CameraFit.bounds(
+                bounds: routeBounds(points),
+                padding: const EdgeInsets.all(28),
+                maxZoom: 16,
+              ),
+        initialCenter: widget.follow ? points.last : points.first,
+        initialZoom: widget.follow ? _followZoom : 14,
+        initialRotation: widget.follow ? -_bearingDeg() : 0,
         minZoom: 3,
         maxZoom: 18,
+        onMapReady: () {
+          // Fit ngay khi map sẵn sàng để phát sự kiện camera đầu tiên —
+          // đây là thứ kích hoạt tile nạp, tránh nền đen tới khi zoom tay.
+          if (!_fittedOnce) {
+            _fittedOnce = true;
+            if (widget.follow) {
+              _followCurrent();
+            } else {
+              _scheduleFitBounds();
+            }
+          }
+        },
+        onPositionChanged: (camera, hasGesture) {
+          // User tự kéo/zoom → chuyển thủ công, ngừng bám tới khi bấm định vị.
+          if (widget.follow && hasGesture && !_manual) {
+            setState(() => _manual = true);
+          }
+        },
         backgroundColor: palette.backgroundDeep,
         interactionOptions: const InteractionOptions(
           flags:
@@ -119,20 +576,23 @@ class _FlutterRouteMap extends StatelessWidget {
               InteractiveFlag.flingAnimation |
               InteractiveFlag.pinchMove |
               InteractiveFlag.pinchZoom |
-              InteractiveFlag.doubleTapZoom,
+              InteractiveFlag.doubleTapZoom |
+              InteractiveFlag.rotate,
         ),
       ),
       children: [
         TileLayer(
-          urlTemplate: _darkTileTemplate,
-          userAgentPackageName: 'com.threeaeidiot.runnow',
+          key: ValueKey(tileTemplate),
+          urlTemplate: tileTemplate,
+          userAgentPackageName: 'com.threei.run',
           retinaMode: RetinaMode.isHighDensity(context),
         ),
+        MapAttribution(top: widget.follow),
         PolylineLayer(
           polylines: [
             Polyline(
               points: points,
-              color: Colors.black.withValues(alpha: 0.5),
+              color: routeOutline,
               strokeWidth: 6.5,
               borderStrokeWidth: 0,
             ),
@@ -140,101 +600,319 @@ class _FlutterRouteMap extends StatelessWidget {
               points: points,
               color: palette.secondary,
               strokeWidth: 3.5,
-              borderColor: palette.backgroundDeep,
+              borderColor: isDark ? palette.backgroundDeep : Colors.white,
               borderStrokeWidth: 1.5,
             ),
           ],
         ),
         MarkerLayer(
           markers: [
-            _routeMarker(points.first, palette.secondary),
-            _routeMarker(points.last, palette.accent),
+            _routeMarker(
+              point: points.first,
+              // Xanh lá/đỏ tương phản mạnh, không phụ thuộc ramp màu theme —
+              // trước đó dùng secondary/accent (2 bậc liền kề trong ramp)
+              // nhìn gần như cùng màu, khó phân biệt bắt đầu/kết thúc.
+              color: RunNowSemanticColors.success,
+              icon: Icons.play_arrow_rounded,
+              semanticLabel: 'Điểm bắt đầu',
+            ),
+            // Đang chạy (follow): điểm cuối là VỊ TRÍ HIỆN TẠI → chấm định vị,
+            // KHÔNG phải cờ đích. Cờ đích chỉ cho buổi đã xong.
+            if (widget.follow)
+              _currentPositionMarker(points.last)
+            else
+              _routeMarker(
+                point: points.last,
+                color: RunNowSemanticColors.danger,
+                icon: Icons.sports_score_rounded,
+                semanticLabel: 'Điểm kết thúc',
+              ),
+            for (final cluster in _clusterPhotos(photos))
+              Marker(
+                point: cluster.anchor,
+                width: 40,
+                height: photoPinVisibleHeight,
+                alignment: Alignment.topCenter,
+                child: GestureDetector(
+                  onTap: onPhotoTap == null
+                      ? null
+                      : () => onPhotoTap(cluster.photos.first),
+                  child: PhotoPinMarker(
+                    storagePath: cluster.photos.first.storagePath,
+                    extraCount: cluster.photos.length - 1,
+                  ),
+                ),
+              ),
+            if (highlightedDistanceMeters case final distance?)
+              Marker(
+                point: routePointAtActivityDistance(
+                  points,
+                  selectedDistanceMeters: distance,
+                  activityDistanceMeters: totalDistanceMeters,
+                ),
+                width: 38,
+                height: 38,
+                child: _TelemetryMapMarker(color: palette.accent),
+              ),
+            for (final runner in liveRunners)
+              if (runner.lastLocation case final location?)
+                Marker(
+                  point: LatLng(location.latitude, location.longitude),
+                  width: 42,
+                  height: 42,
+                  child: _LiveRunnerMarker(session: runner),
+                ),
           ],
         ),
+      ],
+    );
+    if (!widget.follow) return map;
+    // Follow: nút định vị hiện khi user đã xem thủ công → bấm để bám lại.
+    return Stack(
+      children: [
+        Positioned.fill(child: map),
+        if (_manual)
+          Positioned(
+            top: 0,
+            right: 0,
+            child: SafeArea(
+              // Xếp DƯỚI nút ℹ️ (cũng SafeArea) theo offset, không dùng số tuyệt
+              // đối — để không đè nhau trên máy có notch/Dynamic Island.
+              child: Padding(
+                padding: const EdgeInsets.only(top: 54, right: 12),
+                child: _MapCircleButton(
+                  icon: Icons.my_location,
+                  onTap: () {
+                    setState(() => _manual = false);
+                    _followCurrent();
+                  },
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
 }
 
-Marker _routeMarker(LatLng point, Color color) {
+/// Nút tròn nổi trên map — nền sáng, bóng nhẹ, icon trung tính. Dùng chung để
+/// các nút (recenter, nguồn bản đồ) đồng bộ, sạch, không chói.
+class _MapCircleButton extends StatelessWidget {
+  const _MapCircleButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surface.withValues(alpha: 0.92),
+      elevation: 3,
+      shadowColor: Colors.black.withValues(alpha: 0.3),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Icon(
+            icon,
+            size: 20,
+            color: scheme.onSurface.withValues(alpha: 0.75),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TelemetryMapMarker extends StatelessWidget {
+  const _TelemetryMapMarker({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Vị trí đang chọn trên biểu đồ',
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.2),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2),
+          boxShadow: [
+            BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 12),
+          ],
+        ),
+        child: Center(
+          child: Container(
+            width: 13,
+            height: 13,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LiveRunnerMarker extends StatefulWidget {
+  const _LiveRunnerMarker({required this.session});
+
+  final LiveTrackingSession session;
+
+  @override
+  State<_LiveRunnerMarker> createState() => _LiveRunnerMarkerState();
+}
+
+class _LiveRunnerMarkerState extends State<_LiveRunnerMarker>
+    with SingleTickerProviderStateMixin {
+  late final _pulseController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final avatarUrl = widget.session.ownerAvatarUrl;
+    final ownerName = widget.session.ownerName;
+    return Semantics(
+      label: '$ownerName đang chạy live',
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: RunNowSemanticColors.info, width: 2.5),
+              boxShadow: [
+                BoxShadow(
+                  color: RunNowSemanticColors.info.withValues(alpha: 0.45),
+                  blurRadius: 10,
+                ),
+              ],
+            ),
+            child: ClipOval(
+              child: avatarUrl == null || avatarUrl.isEmpty
+                  ? ColoredBox(
+                      color: RunNowSemanticColors.info,
+                      child: SizedBox(
+                        width: 38,
+                        height: 38,
+                        child: Center(
+                          child: Text(
+                            ownerName.isEmpty
+                                ? '?'
+                                : ownerName[0].toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  : Image(
+                      image: cachedAvatarImage(context, avatarUrl, 38),
+                      width: 38,
+                      height: 38,
+                      fit: BoxFit.cover,
+                    ),
+            ),
+          ),
+          Positioned(
+            right: -1,
+            bottom: -1,
+            child: RepaintBoundary(
+              child: FadeTransition(
+                opacity: Tween<double>(
+                  begin: 0.35,
+                  end: 1,
+                ).animate(_pulseController),
+                child: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: RunNowSemanticColors.info,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// "Vị trí hiện tại" cho map đang chạy (follow): icon người chạy 🏃, không phải
+// cờ đích. rotate:true để icon luôn thẳng đứng dù map xoay theo hướng chạy.
+Marker _currentPositionMarker(LatLng point) {
+  const color = RunNowSemanticColors.info;
   return Marker(
     point: point,
-    width: 26,
-    height: 26,
-    child: DecoratedBox(
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 3),
-        boxShadow: [
-          BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: 14),
-        ],
+    width: 36,
+    height: 36,
+    rotate: true,
+    child: Semantics(
+      label: 'Vị trí hiện tại',
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2.5),
+          boxShadow: [
+            BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 10),
+          ],
+        ),
+        child: const Icon(
+          Icons.directions_run_rounded,
+          color: Colors.white,
+          size: 21,
+        ),
       ),
     ),
   );
 }
 
-class _RoutePill extends StatelessWidget {
-  const _RoutePill({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.46),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              child: const SizedBox.square(dimension: 7),
-            ),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 9,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.8,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MapVignette extends StatelessWidget {
-  const _MapVignette();
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    return IgnorePointer(
+Marker _routeMarker({
+  required LatLng point,
+  required Color color,
+  required IconData icon,
+  required String semanticLabel,
+}) {
+  final foreground = color.computeLuminance() > 0.55
+      ? Colors.black87
+      : Colors.white;
+  return Marker(
+    point: point,
+    width: 32,
+    height: 32,
+    child: Semantics(
+      label: semanticLabel,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.transparent,
-              palette.backgroundDeep.withValues(alpha: 0.22),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(22),
+          color: color,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.white, width: 2),
+          boxShadow: [
+            BoxShadow(color: color.withValues(alpha: 0.42), blurRadius: 10),
+          ],
         ),
+        child: Icon(icon, color: foreground, size: 18),
       ),
-    );
-  }
+    ),
+  );
 }
 
 RouteCamera routeCameraPosition(List<LatLng> points) {
@@ -248,6 +926,66 @@ RouteCamera routeCameraPosition(List<LatLng> points) {
   return RouteCamera(center: bounds.simpleCenter, zoom: zoom);
 }
 
+LatLng routePointAtDistance(List<LatLng> points, double distanceMeters) {
+  if (points.isEmpty) throw ArgumentError.value(points, 'points');
+  if (points.length == 1 || distanceMeters <= 0) return points.first;
+  var traversed = 0.0;
+  for (var index = 1; index < points.length; index++) {
+    final start = points[index - 1];
+    final end = points[index];
+    final segment = _distanceMeters(start, end);
+    if (traversed + segment >= distanceMeters) {
+      if (segment <= 0) return end;
+      final progress = ((distanceMeters - traversed) / segment).clamp(0.0, 1.0);
+      return LatLng(
+        start.latitude + (end.latitude - start.latitude) * progress,
+        start.longitude + (end.longitude - start.longitude) * progress,
+      );
+    }
+    traversed += segment;
+  }
+  return points.last;
+}
+
+LatLng routePointAtActivityDistance(
+  List<LatLng> points, {
+  required double selectedDistanceMeters,
+  required double? activityDistanceMeters,
+}) {
+  if (activityDistanceMeters == null || activityDistanceMeters <= 0) {
+    return routePointAtDistance(points, selectedDistanceMeters);
+  }
+  final routeDistance = routeLengthMeters(points);
+  final progress = (selectedDistanceMeters / activityDistanceMeters).clamp(
+    0.0,
+    1.0,
+  );
+  return routePointAtDistance(points, routeDistance * progress);
+}
+
+double routeLengthMeters(List<LatLng> points) {
+  var total = 0.0;
+  for (var index = 1; index < points.length; index++) {
+    total += _distanceMeters(points[index - 1], points[index]);
+  }
+  return total;
+}
+
+double _distanceMeters(LatLng start, LatLng end) {
+  const earthRadiusMeters = 6371000.0;
+  final latitudeDelta = (end.latitude - start.latitude) * math.pi / 180;
+  final longitudeDelta = (end.longitude - start.longitude) * math.pi / 180;
+  final startLatitude = start.latitude * math.pi / 180;
+  final endLatitude = end.latitude * math.pi / 180;
+  final a =
+      math.sin(latitudeDelta / 2) * math.sin(latitudeDelta / 2) +
+      math.cos(startLatitude) *
+          math.cos(endLatitude) *
+          math.sin(longitudeDelta / 2) *
+          math.sin(longitudeDelta / 2);
+  return earthRadiusMeters * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+}
+
 class RouteCamera {
   const RouteCamera({required this.center, required this.zoom});
 
@@ -256,6 +994,12 @@ class RouteCamera {
 }
 
 LatLngBounds routeBounds(List<LatLng> points) {
+  // `LatLngBounds.fromPoints` ném lỗi với danh sách rỗng. Bản đồ có thể build
+  // trước khi points tải xong (nhất là trên web), nên trả về một khung mặc
+  // định thay vì để crash — camera sẽ được fit lại đúng khi points về.
+  if (points.isEmpty) {
+    return LatLngBounds(const LatLng(21.0, 105.8), const LatLng(10.8, 106.7));
+  }
   return LatLngBounds.fromPoints(points);
 }
 

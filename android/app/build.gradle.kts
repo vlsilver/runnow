@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("com.google.gms.google-services")
@@ -5,8 +7,18 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Upload keystore cho release build (Play App Signing).
+// Xem android/key.properties.example — copy thành android/key.properties (đã gitignore)
+// và điền thông tin keystore thật trước khi build release/appbundle.
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+val hasReleaseKeystore = keystorePropertiesFile.exists()
+if (hasReleaseKeystore) {
+    keystoreProperties.load(keystorePropertiesFile.inputStream())
+}
+
 android {
-    namespace = "com.threeaeidiot.runnow"
+    namespace = "com.threei.run"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
@@ -16,7 +28,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.threeaeidiot.runnow"
+        applicationId = "com.threei.run"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -25,11 +37,26 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Android release signing is added during the Android rollout phase.
-            // Debug signing keeps local release runs available until then.
-            signingConfig = signingConfigs.getByName("debug")
+            // Dùng keystore thật khi android/key.properties tồn tại (build để nộp
+            // Play Console); nếu chưa thiết lập thì fallback debug key cho build cục bộ.
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

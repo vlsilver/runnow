@@ -12,6 +12,7 @@ enum TrackingRejectReason {
   nonMonotonicTime,
   unrealisticSpeed,
   stationaryNoise,
+  subSampled,
 }
 
 class TrackingConfig {
@@ -19,6 +20,7 @@ class TrackingConfig {
     this.maxAccuracyMeters = 25,
     this.maxRunningSpeedMetersPerSecond = 10,
     this.minSegmentDistanceMeters = 2,
+    this.minSampleIntervalSeconds = 15,
     this.splitDistanceMeters = 1000,
     this.currentPaceWindow = const Duration(seconds: 12),
   });
@@ -26,8 +28,27 @@ class TrackingConfig {
   final double maxAccuracyMeters;
   final double maxRunningSpeedMetersPerSecond;
   final double minSegmentDistanceMeters;
+
+  /// GIÃN MẪU chống zigzag: chỉ cộng quãng đường giữa 2 điểm cách nhau >= ngưỡng
+  /// GIÂY này (điểm đến sớm hơn bị bỏ qua khỏi tính distance). GPS Android bắn dày
+  /// + lượn hai bên → đoạn ngắn nuốt jitter, đoạn dài hơn (theo thời gian) làm
+  /// jitter thành tỷ lệ nhỏ → giảm phồng km. Đọc từ appConfig/tracking (đổi được
+  /// không cần build lại). 0 = tắt (cộng mọi điểm như cũ).
+  final double minSampleIntervalSeconds;
   final double splitDistanceMeters;
   final Duration currentPaceWindow;
+
+  TrackingConfig copyWith({double? maxRunningSpeedMetersPerSecond}) {
+    return TrackingConfig(
+      maxAccuracyMeters: maxAccuracyMeters,
+      maxRunningSpeedMetersPerSecond:
+          maxRunningSpeedMetersPerSecond ?? this.maxRunningSpeedMetersPerSecond,
+      minSegmentDistanceMeters: minSegmentDistanceMeters,
+      minSampleIntervalSeconds: minSampleIntervalSeconds,
+      splitDistanceMeters: splitDistanceMeters,
+      currentPaceWindow: currentPaceWindow,
+    );
+  }
 }
 
 class TrackingLocationSample {
@@ -176,6 +197,64 @@ class TrackingSplit {
   }
 }
 
+class TrackingPhotoDraft {
+  const TrackingPhotoDraft({
+    required this.id,
+    required this.capturedAt,
+    required this.latitude,
+    required this.longitude,
+    required this.distanceMeters,
+    required this.localPath,
+    this.storagePath,
+  });
+
+  factory TrackingPhotoDraft.fromMap(Map<String, dynamic> map) {
+    return TrackingPhotoDraft(
+      id: map['id'] as String,
+      capturedAt: DateTime.parse(map['capturedAt'] as String).toLocal(),
+      latitude: (map['latitude'] as num).toDouble(),
+      longitude: (map['longitude'] as num).toDouble(),
+      distanceMeters: (map['distanceMeters'] as num?)?.toDouble() ?? 0,
+      localPath: map['localPath'] as String,
+      storagePath: map['storagePath'] as String?,
+    );
+  }
+
+  final String id;
+  final DateTime capturedAt;
+  final double latitude;
+  final double longitude;
+  final double distanceMeters;
+  final String localPath;
+  final String? storagePath;
+
+  bool get isUploaded => storagePath != null;
+
+  TrackingPhotoDraft uploaded(String path) {
+    return TrackingPhotoDraft(
+      id: id,
+      capturedAt: capturedAt,
+      latitude: latitude,
+      longitude: longitude,
+      distanceMeters: distanceMeters,
+      localPath: localPath,
+      storagePath: path,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'capturedAt': capturedAt.toUtc().toIso8601String(),
+      'latitude': latitude,
+      'longitude': longitude,
+      'distanceMeters': distanceMeters,
+      'localPath': localPath,
+      'storagePath': storagePath,
+    }..removeWhere((key, value) => value == null);
+  }
+}
+
 class TrackingSessionSnapshot {
   const TrackingSessionSnapshot({
     required this.id,
@@ -188,6 +267,7 @@ class TrackingSessionSnapshot {
     required this.routePoints,
     required this.pointLogs,
     required this.splits,
+    this.photos = const [],
     this.currentPaceSecondsPerKm,
   });
 
@@ -201,13 +281,14 @@ class TrackingSessionSnapshot {
   final List<RoutePoint> routePoints;
   final List<TrackingPointLog> pointLogs;
   final List<TrackingSplit> splits;
+  final List<TrackingPhotoDraft> photos;
   final double? currentPaceSecondsPerKm;
 
   double? get averagePaceSecondsPerKm =>
       distanceMeters <= 0 ? null : movingTimeSeconds / (distanceMeters / 1000);
 
   ActivitySummary toActivitySummary({
-    String name = 'RunNow Run',
+    String name = '3i Run',
     ActivityKind kind = ActivityKind.run,
     String? recordingDevice,
   }) {
@@ -228,7 +309,7 @@ class TrackingSessionSnapshot {
   }
 
   ActivityDetail toActivityDetail({
-    String name = 'RunNow Run',
+    String name = '3i Run',
     ActivityKind kind = ActivityKind.run,
     String? recordingDevice,
   }) {
@@ -240,6 +321,19 @@ class TrackingSessionSnapshot {
       ),
       splits: splits.map((split) => split.toMap()).toList(),
       streams: _streamsFromPointLogs(),
+      photos: photos
+          .where((photo) => photo.storagePath != null)
+          .map(
+            (photo) => ActivityPhoto(
+              id: photo.id,
+              capturedAt: photo.capturedAt,
+              latitude: photo.latitude,
+              longitude: photo.longitude,
+              distanceMeters: photo.distanceMeters,
+              storagePath: photo.storagePath!,
+            ),
+          )
+          .toList(),
     );
   }
 
@@ -257,6 +351,7 @@ class TrackingSessionSnapshot {
       'routePoints': routePoints.map((point) => point.toMap()).toList(),
       'splits': splits.map((split) => split.toMap()).toList(),
       'pointLogs': pointLogs.map((log) => log.toMap()).toList(),
+      'photos': photos.map((photo) => photo.toMap()).toList(),
     }..removeWhere((key, value) => value == null);
   }
 
@@ -342,6 +437,11 @@ class TrackingSession {
           .whereType<Map<String, dynamic>>()
           .map(TrackingSplit.fromMap),
     );
+    session._photos.addAll(
+      (map['photos'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(TrackingPhotoDraft.fromMap),
+    );
     return session;
   }
 
@@ -361,8 +461,25 @@ class TrackingSession {
   final List<TrackingPointLog> _pointLogs = [];
   final List<_AcceptedSegment> _segments = [];
   final List<TrackingSplit> _splits = [];
+  final List<TrackingPhotoDraft> _photos = [];
 
   TrackingSessionStatus get status => _status;
+
+  TrackingSessionSnapshot addPhoto(TrackingPhotoDraft photo) {
+    if (_status != TrackingSessionStatus.running &&
+        _status != TrackingSessionStatus.paused) {
+      throw StateError('Chỉ chụp ảnh trong một buổi chạy đang hoạt động.');
+    }
+    _photos.add(photo);
+    _updatedAt = photo.capturedAt;
+    return snapshot();
+  }
+
+  TrackingSessionSnapshot markPhotoUploaded(String photoId, String path) {
+    final index = _photos.indexWhere((photo) => photo.id == photoId);
+    if (index >= 0) _photos[index] = _photos[index].uploaded(path);
+    return snapshot();
+  }
 
   TrackingSessionSnapshot start(DateTime startedAt) {
     if (_status != TrackingSessionStatus.idle) {
@@ -404,6 +521,16 @@ class TrackingSession {
         .inSeconds;
     if (deltaSeconds <= 0) {
       _pointLogs.add(_rejected(sample, TrackingRejectReason.nonMonotonicTime));
+      return snapshot();
+    }
+
+    // GIÃN MẪU chống zigzag GPS (đặc biệt Android): chưa đủ ngưỡng giây kể từ điểm
+    // đã nhận trước → BỎ QUA khỏi tính distance (giữ anchor cũ). Khi đủ ngưỡng,
+    // đoạn haversine là chord dài hơn nên jitter ngang thành tỷ lệ nhỏ → bớt phồng.
+    // Ngưỡng lấy từ config (DB đổi được); 0 = tắt.
+    if (config.minSampleIntervalSeconds > 0 &&
+        deltaSeconds < config.minSampleIntervalSeconds) {
+      _pointLogs.add(_rejected(sample, TrackingRejectReason.subSampled));
       return snapshot();
     }
 
@@ -470,6 +597,17 @@ class TrackingSession {
     return snapshot();
   }
 
+  TrackingSessionSnapshot continueAfterRestore(DateTime restoredAt) {
+    _ensureStarted();
+    if (_status != TrackingSessionStatus.running) return snapshot();
+    final updatedAt = _updatedAt!;
+    _accumulatedMovingTimeSeconds = _currentMovingTimeSeconds(updatedAt);
+    _movingStartedAt = restoredAt;
+    _updatedAt = restoredAt;
+    _needsAnchorAfterPause = true;
+    return snapshot();
+  }
+
   TrackingSessionSnapshot finish(DateTime finishedAt) {
     _ensureStarted();
     if (_status == TrackingSessionStatus.running) {
@@ -501,6 +639,7 @@ class TrackingSession {
       routePoints: List.unmodifiable(_routePoints),
       pointLogs: List.unmodifiable(_pointLogs),
       splits: List.unmodifiable(_splits),
+      photos: List.unmodifiable(_photos),
       currentPaceSecondsPerKm: _currentPaceSecondsPerKm(updatedAt),
     );
   }
@@ -522,6 +661,7 @@ class TrackingSession {
       'pointLogs': _pointLogs.map((log) => log.toMap()).toList(),
       'segments': _segments.map((segment) => segment.toMap()).toList(),
       'splits': _splits.map((split) => split.toMap()).toList(),
+      'photos': _photos.map((photo) => photo.toMap()).toList(),
     }..removeWhere((key, value) => value == null);
   }
 

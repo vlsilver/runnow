@@ -6,7 +6,14 @@ void main() {
   test('accepts only supported activity kinds', () {
     expect(parseActivityKind('Run'), ActivityKind.run);
     expect(parseActivityKind('Hike'), ActivityKind.hike);
-    expect(parseActivityKind('Ride'), isNull);
+    // Đa môn: đạp xe, bơi, gym, xe máy đều được nhận (mỗi môn có BXH riêng;
+    // đạp/xe máy KHÔNG cộng vào km chạy/kèo — xem selectOfficialActivities).
+    expect(parseActivityKind('Ride'), ActivityKind.ride);
+    expect(parseActivityKind('Swim'), ActivityKind.swim);
+    expect(parseActivityKind('Gym'), ActivityKind.gym);
+    expect(parseActivityKind('Motorbike'), ActivityKind.motorbike);
+    // Chuỗi lạ vẫn trả null (không đoán bừa thành run).
+    expect(parseActivityKind('Kayak'), isNull);
   });
 
   test('calculates pace from moving time and distance', () {
@@ -79,9 +86,21 @@ void main() {
       'streams': {
         'heartrate': [140, 145],
       },
+      'photos': [
+        {
+          'id': 'photo-1',
+          'capturedAt': '2026-05-30T00:10:00Z',
+          'latitude': 10.1,
+          'longitude': 106.2,
+          'distanceMeters': 1800,
+          'storagePath': 'users/u/activities/42/photos/photo-1.jpg',
+        },
+      ],
     });
     expect(detail.laps, hasLength(1));
     expect(detail.streams['heartrate'], [140.0, 145.0]);
+    expect(detail.photos.single.distanceMeters, 1800);
+    expect(detail.photos.single.latitude, 10.1);
   });
 
   test(
@@ -113,55 +132,34 @@ void main() {
     },
   );
 
-  test('builds leaderboard aggregate for common ranking windows', () {
-    final now = DateTime(2026, 6, 4, 12);
-    final entry = leaderboardEntryToMap(
-      uid: 'runner-1',
-      profile: {
-        'nickname': 'Linh',
-        'profileVisibility': 'public',
-        'avatarUrl': 'https://example.com/a.png',
-      },
-      activities: [
-        ActivitySummary(
-          id: 'recent',
-          name: 'Recent run',
-          kind: ActivityKind.run,
-          startedAt: DateTime(2026, 6, 3, 6),
-          distanceMeters: 5000,
-          movingTimeSeconds: 1800,
-          elapsedTimeSeconds: 1900,
-        ),
-        ActivitySummary(
-          id: 'old',
-          name: 'Old run',
-          kind: ActivityKind.run,
-          startedAt: DateTime(2026, 5, 1, 6),
-          distanceMeters: 10000,
-          movingTimeSeconds: 3600,
-          elapsedTimeSeconds: 3700,
-        ),
-      ],
-      now: now,
-    );
-    expect(entry['uid'], 'runner-1');
-    expect(entry['displayName'], 'Linh');
-    expect(entry['profileVisibility'], 'public');
+  test('hides leaderboard stats that belong to an expired period', () {
+    final normalized = normalizeLeaderboardEntryPeriods({
+      'updatedAt': DateTime(2026, 6, 24),
+      'currentWeek': {'distanceMeters': 4000},
+      'currentMonth': {'distanceMeters': 12000},
+    }, DateTime(2026, 7, 3));
+
+    expect(normalized['currentWeek'], isEmpty);
+    expect(normalized['currentMonth'], isEmpty);
+  });
+
+  test('keeps leaderboard stats tagged for the current period', () {
+    final normalized = normalizeLeaderboardEntryPeriods({
+      'updatedAt': DateTime(2026, 6, 24),
+      'currentWeekStart': '2026-06-29',
+      'currentMonthStart': '2026-07-01',
+      'currentWeek': {'distanceMeters': 5000},
+      'currentMonth': {'distanceMeters': 5000},
+    }, DateTime(2026, 7, 3));
+
     expect(
-      (entry['rollingSevenDays'] as Map<String, dynamic>)['distanceMeters'],
+      (normalized['currentWeek'] as Map<String, dynamic>)['distanceMeters'],
       5000,
     );
     expect(
-      (entry['rollingSevenDays']
-          as Map<String, dynamic>?)?['longestDistanceMeters'],
+      (normalized['currentMonth'] as Map<String, dynamic>)['distanceMeters'],
       5000,
     );
-    expect(
-      (entry['rollingSevenDays']
-          as Map<String, dynamic>?)?['fastestPaceSecondsPerKm'],
-      360,
-    );
-    expect((entry['currentMonth'] as Map<String, dynamic>)['activeDays'], 1);
   });
 
   test('LeaderboardStats computes average pace correctly', () {

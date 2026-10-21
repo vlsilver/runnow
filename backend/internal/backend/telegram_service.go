@@ -1,0 +1,489 @@
+package backend
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"html"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// TelegramService pushes an activity alert to a single configured chat via the
+// Telegram Bot API whenever a new Strava run activity syncs in. Purely
+// outbound: no bot commands, no webhook receiver needed on our side.
+type TelegramService struct {
+	botToken, chatID string
+	client           *http.Client
+	apiBaseURL       string
+}
+
+func NewTelegramService(botToken, chatID string) *TelegramService {
+	return &TelegramService{
+		botToken:   botToken,
+		chatID:     chatID,
+		client:     &http.Client{Timeout: 10 * time.Second},
+		apiBaseURL: "https://api.telegram.org",
+	}
+}
+
+// Enabled reports whether both the bot token and target chat are configured.
+// Callers should skip all Telegram work entirely when this is false, so
+// deployments that never set up Telegram behave exactly as before.
+func (s *TelegramService) Enabled() bool {
+	return s.botToken != "" && s.chatID != ""
+}
+
+// do gửi request và che token trong lỗi transport: *url.Error của net/http chứa
+// nguyên URL /bot<token>/..., mà lỗi này đi thẳng lên log và vào cả context của
+// model (tool trả err.Error()).
+func (s *TelegramService) do(req *http.Request) (*http.Response, error) {
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, s.redact(err)
+	}
+	return resp, nil
+}
+
+// redact thay token trong lỗi bằng "<token>". Giữ *url.Error (chỉ đổi URL) để
+// errors.Is(err, context.DeadlineExceeded) vẫn chạy được.
+func (s *TelegramService) redact(err error) error {
+	if err == nil || s.botToken == "" || !strings.Contains(err.Error(), s.botToken) {
+		return err
+	}
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return &url.Error{Op: ue.Op, URL: strings.ReplaceAll(ue.URL, s.botToken, "<token>"), Err: ue.Err}
+	}
+	return errors.New(strings.ReplaceAll(err.Error(), s.botToken, "<token>"))
+}
+
+// ChatID là group đích của các thông báo — cũng là khoá lịch sử/trí nhớ để
+// ghi lại chính những thông báo đó.
+func (s *TelegramService) ChatID() string { return s.chatID }
+
+// SendActivityAlert posts the alert as an HTML text message.
+//
+// An earlier version rendered a PNG card server-side, but Go's standard
+// bitmap face (basicfont) covers ASCII only, so every Vietnamese diacritic
+// was stripped ("hoàn thành" came out "hoan thanh") and the text was
+// aliased. Telegram renders HTML natively with the reader's own font and
+// theme, which handles Unicode correctly and stays sharp at any zoom.
+func (s *TelegramService) SendActivityAlert(ctx context.Context, displayName, activityName string, fact ActivityFact, detailURL, comment string) error {
+	if !s.Enabled() {
+		return nil
+	}
+	replyMarkup, err := json.Marshal(map[string]any{
+		"inline_keyboard": [][]map[string]any{{{"text": "Xem chi tiết", "url": detailURL}}},
+	})
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(map[string]any{
+		"chat_id":    s.chatID,
+		"text":       telegramActivityMessage(displayName, activityName, fact, comment),
+		"parse_mode": "HTML",
+		// Link trỏ về app; Telegram xem trước sẽ chỉ lôi về được màn hình
+		// đăng nhập, vừa xấu vừa vô nghĩa.
+		"link_preview_options": map[string]any{"is_disabled": true},
+		"reply_markup":         json.RawMessage(replyMarkup),
+	})
+	if err != nil {
+		return err
+	}
+	url := s.apiBaseURL + "/bot" + s.botToken + "/sendMessage"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	if err != nil {
+		return s.redact(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("telegram sendMessage failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+	return nil
+}
+
+// SendActivityAnnouncement gửi lời thông báo buổi chạy do BOT tự viết — text
+// thô (KHÔNG parse_mode vì model sinh, tránh vỡ HTML), kèm nút "Xem chi tiết".
+func (s *TelegramService) SendActivityAnnouncement(ctx context.Context, text, detailURL string) error {
+	if !s.Enabled() {
+		return nil
+	}
+	replyMarkup, err := json.Marshal(map[string]any{
+		"inline_keyboard": [][]map[string]any{{{"text": "Xem chi tiết", "url": detailURL}}},
+	})
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(map[string]any{
+		"chat_id":              s.chatID,
+		"text":                 text,
+		"link_preview_options": map[string]any{"is_disabled": true},
+		"reply_markup":         json.RawMessage(replyMarkup),
+	})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.apiBaseURL+"/bot"+s.botToken+"/sendMessage", bytes.NewReader(payload))
+	if err != nil {
+		return s.redact(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("telegram sendMessage failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+// SendChatMessage gửi một tin nhắn thuần văn bản tới một chat bất kỳ.
+//
+// Cố tình KHÔNG đặt parse_mode: nội dung do model sinh ra, chứa một dấu `<`
+// hay `&` lạc là Telegram từ chối cả tin nhắn. Bot im lặng vì lỗi cú pháp
+// khó lần ra hơn nhiều so với việc mất mấy chữ in đậm.
+func (s *TelegramService) SendChatMessage(ctx context.Context, chatID, text string) error {
+	return s.SendChatMessageInThread(ctx, chatID, 0, text)
+}
+
+// SendChatMessageInThread như SendChatMessage nhưng gửi vào một topic của forum.
+// threadID 0 = General / group không có Topics.
+func (s *TelegramService) SendChatMessageInThread(ctx context.Context, chatID string, threadID int64, text string) error {
+	if !s.Enabled() {
+		return nil
+	}
+	body := map[string]any{
+		"chat_id":              chatID,
+		"text":                 text,
+		"link_preview_options": map[string]any{"is_disabled": true},
+	}
+	if threadID != 0 {
+		body["message_thread_id"] = threadID
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.apiBaseURL+"/bot"+s.botToken+"/sendMessage", bytes.NewReader(payload))
+	if err != nil {
+		return s.redact(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("telegram sendMessage failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+// SendPhoto tải một ảnh (bytes) lên chat kèm caption, qua multipart/form-data.
+// Caption không đặt parse_mode (cùng lý do SendChatMessage): text do model sinh.
+func (s *TelegramService) SendPhoto(ctx context.Context, chatID string, image []byte, caption string) error {
+	return s.SendPhotoInThread(ctx, chatID, 0, image, caption)
+}
+
+// SendPhotoInThread như SendPhoto nhưng gửi vào một topic (0 = General).
+func (s *TelegramService) SendPhotoInThread(ctx context.Context, chatID string, threadID int64, image []byte, caption string) error {
+	if !s.Enabled() {
+		return nil
+	}
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	_ = w.WriteField("chat_id", chatID)
+	if threadID != 0 {
+		_ = w.WriteField("message_thread_id", strconv.FormatInt(threadID, 10))
+	}
+	if strings.TrimSpace(caption) != "" {
+		_ = w.WriteField("caption", caption)
+	}
+	part, err := w.CreateFormFile("photo", "image.png")
+	if err != nil {
+		return err
+	}
+	if _, err := part.Write(image); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.apiBaseURL+"/bot"+s.botToken+"/sendPhoto", &buf)
+	if err != nil {
+		return s.redact(err)
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	resp, err := s.do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("telegram sendPhoto failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+// TelegramChatMember là phần cần dùng của ChatMember mà getChatMember trả về.
+type TelegramChatMember struct {
+	Status   string `json:"status"`
+	IsMember bool   `json:"is_member"`
+	User     struct {
+		Username string `json:"username"`
+	} `json:"user"`
+}
+
+// InChat: creator/administrator/member là đang ở trong chat. restricted thì
+// tuỳ is_member (bị hạn chế mà vẫn ở lại, hay đã rời khi còn bị hạn chế).
+func (m TelegramChatMember) InChat() bool {
+	switch m.Status {
+	case "creator", "administrator", "member":
+		return true
+	case "restricted":
+		return m.IsMember
+	}
+	return false
+}
+
+// GetChatMember hỏi trạng thái của userID trong chatID. Lỗi gì cũng trả ra để
+// task retry, kể cả 400: không đoán một lỗi lạ là "đã rời nhóm".
+func (s *TelegramService) GetChatMember(ctx context.Context, chatID string, userID int64) (TelegramChatMember, error) {
+	if !s.Enabled() {
+		return TelegramChatMember{}, errors.New("telegram chưa cấu hình")
+	}
+	payload, err := json.Marshal(map[string]any{"chat_id": chatID, "user_id": userID})
+	if err != nil {
+		return TelegramChatMember{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.apiBaseURL+"/bot"+s.botToken+"/getChatMember", bytes.NewReader(payload))
+	if err != nil {
+		return TelegramChatMember{}, s.redact(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.do(req)
+	if err != nil {
+		return TelegramChatMember{}, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if err != nil {
+		return TelegramChatMember{}, err
+	}
+	var out struct {
+		OK     bool               `json:"ok"`
+		Result TelegramChatMember `json:"result"`
+	}
+	if resp.StatusCode >= 300 || json.Unmarshal(body, &out) != nil || !out.OK || out.Result.Status == "" {
+		return TelegramChatMember{}, fmt.Errorf("telegram getChatMember failed: status=%d body=%.512s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return out.Result, nil
+}
+
+// DownloadFile tải nội dung một file Telegram (vd ảnh người dùng gửi) theo
+// file_id: getFile để lấy file_path rồi tải từ endpoint /file/bot<token>/...
+// Trần 8MB để không nuốt file khổng lồ vào bộ nhớ.
+func (s *TelegramService) DownloadFile(ctx context.Context, fileID string) ([]byte, error) {
+	if !s.Enabled() || strings.TrimSpace(fileID) == "" {
+		return nil, nil
+	}
+	metaURL := s.apiBaseURL + "/bot" + s.botToken + "/getFile?file_id=" + url.QueryEscape(fileID)
+	metaReq, err := http.NewRequestWithContext(ctx, http.MethodGet, metaURL, nil)
+	if err != nil {
+		return nil, s.redact(err)
+	}
+	metaResp, err := s.do(metaReq)
+	if err != nil {
+		return nil, err
+	}
+	defer metaResp.Body.Close()
+	var meta struct {
+		OK     bool `json:"ok"`
+		Result struct {
+			FilePath string `json:"file_path"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(io.LimitReader(metaResp.Body, 1<<16)).Decode(&meta); err != nil {
+		return nil, err
+	}
+	if !meta.OK || meta.Result.FilePath == "" {
+		return nil, fmt.Errorf("getFile không trả file_path (status=%d)", metaResp.StatusCode)
+	}
+	dlReq, err := http.NewRequestWithContext(ctx, http.MethodGet, s.apiBaseURL+"/file/bot"+s.botToken+"/"+meta.Result.FilePath, nil)
+	if err != nil {
+		return nil, s.redact(err)
+	}
+	dlResp, err := s.do(dlReq)
+	if err != nil {
+		return nil, err
+	}
+	defer dlResp.Body.Close()
+	if dlResp.StatusCode >= 300 {
+		return nil, fmt.Errorf("tải file lỗi status=%d", dlResp.StatusCode)
+	}
+	return io.ReadAll(io.LimitReader(dlResp.Body, 8<<20))
+}
+
+// telegramActivityMessage builds the HTML body.
+//
+// Telegram only supports a small tag set (b, i, u, s, code, pre, a,
+// blockquote) — no tables, no <br>, no CSS — so layout is done with newlines
+// and emoji labels. Every interpolated value is user-controlled and escaped.
+func telegramActivityMessage(displayName, activityName string, fact ActivityFact, comment string) string {
+	disp := sportDisplayFor(fact.SportType)
+	if strings.TrimSpace(activityName) == "" {
+		activityName = disp.defaultName
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s <b>%s</b> vừa hoàn thành\n", disp.emoji, html.EscapeString(strings.TrimSpace(displayName)))
+	fmt.Fprintf(&b, "<b>%s</b>\n\n", html.EscapeString(strings.TrimSpace(activityName)))
+	// Nhãn dùng dấu hai chấm chứ không căn cột bằng dấu cách: Telegram
+	// render bằng font tỉ lệ nên khoảng trắng không bao giờ thẳng hàng.
+	fmt.Fprintf(&b, "📏 Quãng đường: <b>%s</b>\n", formatDistanceKm(fact.DistanceMeters))
+	fmt.Fprintf(&b, "⏱ Thời gian: <b>%s</b>\n", formatDurationHMS(fact.MovingTimeSeconds))
+	paceLabel, paceVal := paceOrSpeed(fact)
+	fmt.Fprintf(&b, "⚡ %s: <b>%s</b>\n", paceLabel, paceVal)
+	if fact.ElevationGainMeters >= 1 {
+		fmt.Fprintf(&b, "⛰ Độ cao: <b>%s</b>\n", formatElevationM(fact.ElevationGainMeters))
+	}
+	if !fact.StartedAt.IsZero() {
+		fmt.Fprintf(&b, "\n<i>%s</i>", telegramActivityTime(fact.StartedAt))
+	}
+	// Câu bình luận tuỳ hứng của bot, đính ngay dưới thẻ. Model sinh ra text
+	// thô nên PHẢI escape trước khi nhét vào body parse_mode=HTML.
+	if c := strings.TrimSpace(comment); c != "" {
+		fmt.Fprintf(&b, "\n\n💬 <i>%s</i>", html.EscapeString(c))
+	}
+	return b.String()
+}
+
+// telegramActivityPlain dựng bản một dòng, không HTML, của thông báo buổi
+// chạy — để LƯU vào trí nhớ (transcript cần chữ đọc được, không phải thẻ
+// HTML). Giữ tên, cự ly, thời gian, pace: đủ để bot nắm ai chạy và thói quen;
+// con số nhất thời thì bước chưng cất sẽ tự loại.
+func telegramActivityPlain(displayName, activityName string, fact ActivityFact) string {
+	disp := sportDisplayFor(fact.SportType)
+	if strings.TrimSpace(activityName) == "" {
+		activityName = disp.defaultName
+	}
+	paceLabel, paceVal := paceOrSpeed(fact)
+	s := fmt.Sprintf("%s %s vừa hoàn thành %s — %s, %s, %s %s",
+		disp.emoji, strings.TrimSpace(displayName), strings.TrimSpace(activityName),
+		formatDistanceKm(fact.DistanceMeters), formatDurationHMS(fact.MovingTimeSeconds),
+		strings.ToLower(paceLabel), paceVal)
+	if !fact.StartedAt.IsZero() {
+		s += " (" + telegramActivityTime(fact.StartedAt) + ")"
+	}
+	return s
+}
+
+// telegramActivityTime renders the start time in Vietnam local time — the
+// Firestore value is UTC, and every reader of the chat runs in Vietnam.
+func telegramActivityTime(startedAt time.Time) string {
+	return startedAt.In(vietnam).Format("15:04 · 02/01/2006")
+}
+
+// formatDistanceKm/formatDurationHMS/formatPacePerKm mirror the exact display
+// conventions in lib/src/formatters.dart so the Telegram message reads
+// identically to the app.
+func formatDistanceKm(meters float64) string {
+	return fmt.Sprintf("%.2f km", meters/1000)
+}
+
+func formatDurationHMS(totalSeconds int64) string {
+	if totalSeconds < 0 {
+		totalSeconds = 0
+	}
+	hours := totalSeconds / 3600
+	minutes := (totalSeconds % 3600) / 60
+	seconds := totalSeconds % 60
+	if hours > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", hours, minutes, seconds)
+	}
+	return fmt.Sprintf("%02d:%02d", minutes, seconds)
+}
+
+func formatElevationM(meters float64) string {
+	return fmt.Sprintf("%.0f m", meters)
+}
+
+func formatPacePerKm(fact ActivityFact) string {
+	if fact.DistanceMeters <= 0 || fact.MovingTimeSeconds <= 0 {
+		return "--"
+	}
+	secondsPerKm := int64(float64(fact.MovingTimeSeconds) / (fact.DistanceMeters / 1000))
+	return fmt.Sprintf("%d:%02d /km", secondsPerKm/60, secondsPerKm%60)
+}
+
+// formatSpeedKmh dùng cho đạp xe — km/h là quy ước tự nhiên, không phải pace /km.
+func formatSpeedKmh(fact ActivityFact) string {
+	if fact.DistanceMeters <= 0 || fact.MovingTimeSeconds <= 0 {
+		return "--"
+	}
+	kmh := (fact.DistanceMeters / 1000) / (float64(fact.MovingTimeSeconds) / 3600)
+	return fmt.Sprintf("%.1f km/h", kmh)
+}
+
+// paceOrSpeed trả (nhãn, giá trị): pace /km cho chạy & đi bộ, tốc độ km/h cho xe đạp.
+func paceOrSpeed(fact ActivityFact) (string, string) {
+	if sportDisplayFor(fact.SportType).usesSpeed {
+		return "Tốc độ", formatSpeedKmh(fact)
+	}
+	return "Pace", formatPacePerKm(fact)
+}
+
+// notifySportTypes là các loại hoạt động được THÔNG BÁO vào group. Cố ý RỘNG
+// hơn runSportTypes (thứ định nghĩa cái gì tính vào leaderboard chạy bộ): đi bộ
+// và đạp xe được khoe lên group nhưng KHÔNG được cộng vào leaderboard — nên hai
+// tập này tách riêng, sửa cái này không đụng cái kia.
+var notifySportTypes = map[string]bool{
+	"Run": true, "TrailRun": true, "VirtualRun": true, // chạy bộ
+	"Walk": true, "Hike": true, // đi bộ
+	"Ride": true, "VirtualRide": true, "MountainBikeRide": true, "GravelRide": true, "EBikeRide": true, // đạp xe
+}
+
+// sportDisplay gom cách hiển thị một loại hoạt động để thông báo mô tả ĐÚNG:
+// không gọi buổi đạp xe là "chạy", không hiện pace phút/km cho xe đạp.
+type sportDisplay struct {
+	emoji       string
+	verb        string // "chạy bộ" | "đi bộ" | "đạp xe"
+	defaultName string
+	usesSpeed   bool // true → km/h thay vì pace /km
+}
+
+func sportDisplayFor(sportType string) sportDisplay {
+	switch sportType {
+	case "Walk", "Hike":
+		return sportDisplay{"🚶", "đi bộ", "Buổi đi bộ", false}
+	case "Ride", "VirtualRide", "MountainBikeRide", "GravelRide", "EBikeRide":
+		return sportDisplay{"🚴", "đạp xe", "Buổi đạp xe", true}
+	case "Motorbike", "Motorcycle":
+		return sportDisplay{"🏍️", "chạy xe máy", "Buổi chạy xe máy", false}
+	case "Swim":
+		return sportDisplay{"🏊", "bơi", "Buổi bơi", false}
+	case "Gym", "Workout", "WeightTraining", "Crossfit":
+		return sportDisplay{"🏋️", "tập gym", "Buổi gym", false}
+	default:
+		return sportDisplay{"🏃", "chạy bộ", "Buổi chạy", false}
+	}
+}

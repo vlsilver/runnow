@@ -32,12 +32,18 @@ enum _DistanceRange {
 }
 
 class StreamChart extends StatelessWidget {
-  const StreamChart({required this.streams, super.key});
+  const StreamChart({
+    required this.streams,
+    this.onDistanceSelected,
+    super.key,
+  });
 
   final Map<String, List<double>> streams;
+  final ValueChanged<double>? onDistanceSelected;
 
   @override
   Widget build(BuildContext context) {
+    final chartColor = context.runNowPalette.accent;
     final distances = streams['distance'];
     final energyKilojoules = cumulativeEnergyKilojoules(
       watts: streams['watts'],
@@ -45,15 +51,15 @@ class StreamChart extends StatelessWidget {
     );
     final series = <_ChartSeries>[
       if (streams['velocity_smooth']?.isNotEmpty == true)
-        _ChartSeries.pace(streams['velocity_smooth']!, distances),
+        _ChartSeries.pace(streams['velocity_smooth']!, distances, chartColor),
       if (streams['heartrate']?.isNotEmpty == true)
-        _ChartSeries.heartRate(streams['heartrate']!, distances),
+        _ChartSeries.heartRate(streams['heartrate']!, distances, chartColor),
       if (streams['altitude']?.isNotEmpty == true)
-        _ChartSeries.altitude(streams['altitude']!, distances),
+        _ChartSeries.altitude(streams['altitude']!, distances, chartColor),
       if (streams['cadence']?.isNotEmpty == true)
-        _ChartSeries.cadence(streams['cadence']!, distances),
+        _ChartSeries.cadence(streams['cadence']!, distances, chartColor),
       if (energyKilojoules.length > 1)
-        _ChartSeries.energy(energyKilojoules, distances),
+        _ChartSeries.energy(energyKilojoules, distances, chartColor),
     ];
     if (series.isEmpty) {
       return const Text('Không có dữ liệu biểu đồ cho hoạt động này.');
@@ -62,9 +68,12 @@ class StreamChart extends StatelessWidget {
       children: [
         for (final item in series) ...[
           _ShareableTelemetryCard(
-            title: 'RunNow ${item.label}',
-            builder: (sharing) =>
-                _TrainingChartCard(series: item, shareMode: sharing),
+            title: '3i ${item.label}',
+            builder: (sharing) => _TrainingChartCard(
+              series: item,
+              shareMode: sharing,
+              onDistanceSelected: sharing ? null : onDistanceSelected,
+            ),
           ),
           if (item != series.last) const SizedBox(height: 12),
         ],
@@ -104,7 +113,7 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
       (max, item) => item.seconds > max ? item.seconds : max,
     );
     return _ShareableTelemetryCard(
-      title: 'RunNow heart zones',
+      title: '3i heart zones',
       builder: (sharing) => GlassPanel(
         borderRadius: 0,
         padding: const EdgeInsets.all(16),
@@ -123,11 +132,7 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Row(
                   children: [
-                    const Icon(
-                      Icons.favorite,
-                      color: RunNowDataColors.heart,
-                      size: 18,
-                    ),
+                    Icon(Icons.favorite, color: palette.accent, size: 18),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -142,8 +147,8 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
                     ),
                     Text(
                       formatDuration(totalSeconds.round()),
-                      style: const TextStyle(
-                        color: RunNowDataColors.heart,
+                      style: TextStyle(
+                        color: palette.accent,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -323,10 +328,15 @@ class _HeartRateZoneRow extends StatelessWidget {
 }
 
 class _TrainingChartCard extends StatefulWidget {
-  const _TrainingChartCard({required this.series, required this.shareMode});
+  const _TrainingChartCard({
+    required this.series,
+    required this.shareMode,
+    required this.onDistanceSelected,
+  });
 
   final _ChartSeries series;
   final bool shareMode;
+  final ValueChanged<double>? onDistanceSelected;
 
   @override
   State<_TrainingChartCard> createState() => _TrainingChartCardState();
@@ -488,6 +498,7 @@ class _TrainingChartCardState extends State<_TrainingChartCard> {
                                 chartMax: chartMax,
                                 yInterval: yInterval,
                                 xInterval: xInterval,
+                                onDistanceSelected: widget.onDistanceSelected,
                               )
                             : _BarTrainingChart(
                                 series: series,
@@ -496,6 +507,7 @@ class _TrainingChartCardState extends State<_TrainingChartCard> {
                                 chartMax: chartMax,
                                 yInterval: yInterval,
                                 xInterval: xInterval,
+                                onDistanceSelected: widget.onDistanceSelected,
                               ),
                       ),
                       Padding(
@@ -526,6 +538,7 @@ class _LineTrainingChart extends StatelessWidget {
     required this.chartMax,
     required this.yInterval,
     required this.xInterval,
+    required this.onDistanceSelected,
   });
 
   final _ChartSeries series;
@@ -534,6 +547,7 @@ class _LineTrainingChart extends StatelessWidget {
   final double chartMax;
   final double yInterval;
   final double xInterval;
+  final ValueChanged<double>? onDistanceSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -557,6 +571,11 @@ class _LineTrainingChart extends StatelessWidget {
           xInterval: xInterval,
         ),
         lineTouchData: LineTouchData(
+          touchCallback: (event, response) {
+            if (!event.isInterestedForInteractions) return;
+            final spot = response?.lineBarSpots?.firstOrNull;
+            if (spot != null) onDistanceSelected?.call(spot.x * 1000);
+          },
           touchTooltipData: LineTouchTooltipData(
             fitInsideHorizontally: true,
             fitInsideVertically: true,
@@ -609,6 +628,7 @@ class _BarTrainingChart extends StatelessWidget {
     required this.chartMax,
     required this.yInterval,
     required this.xInterval,
+    required this.onDistanceSelected,
   });
 
   final _ChartSeries series;
@@ -617,6 +637,7 @@ class _BarTrainingChart extends StatelessWidget {
   final double chartMax;
   final double yInterval;
   final double xInterval;
+  final ValueChanged<double>? onDistanceSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -640,6 +661,13 @@ class _BarTrainingChart extends StatelessWidget {
           barPoints: points,
         ),
         barTouchData: BarTouchData(
+          touchCallback: (event, response) {
+            if (!event.isInterestedForInteractions) return;
+            final index = response?.spot?.touchedBarGroupIndex;
+            if (index != null && index >= 0 && index < points.length) {
+              onDistanceSelected?.call(points[index].x * 1000);
+            }
+          },
           touchTooltipData: BarTouchTooltipData(
             getTooltipColor: (_) => palette.backgroundDeep,
             getTooltipItem: (group, groupIndex, rod, rodIndex) {
@@ -803,12 +831,16 @@ class _ChartSeries {
     this.defaultExpanded = false,
   });
 
-  factory _ChartSeries.pace(List<double> speeds, List<double>? distances) {
+  factory _ChartSeries.pace(
+    List<double> speeds,
+    List<double>? distances,
+    Color color,
+  ) {
     return _ChartSeries(
       label: 'Pace',
       unit: 'PHÚT / KM',
       icon: Icons.speed_rounded,
-      color: RunNowDataColors.pace,
+      color: color,
       values: speeds,
       distances: distances,
       normalize: (speed) => 1000 / speed,
@@ -819,12 +851,16 @@ class _ChartSeries {
     );
   }
 
-  factory _ChartSeries.heartRate(List<double> values, List<double>? distances) {
+  factory _ChartSeries.heartRate(
+    List<double> values,
+    List<double>? distances,
+    Color color,
+  ) {
     return _ChartSeries(
       label: 'Nhịp tim',
       unit: 'BPM',
       icon: Icons.favorite_rounded,
-      color: RunNowDataColors.heart,
+      color: color,
       values: values,
       distances: distances,
       normalize: (value) => value,
@@ -834,12 +870,16 @@ class _ChartSeries {
     );
   }
 
-  factory _ChartSeries.altitude(List<double> values, List<double>? distances) {
+  factory _ChartSeries.altitude(
+    List<double> values,
+    List<double>? distances,
+    Color color,
+  ) {
     return _ChartSeries(
       label: 'Cao độ',
       unit: 'MÉT',
       icon: Icons.terrain_rounded,
-      color: RunNowDataColors.elevation,
+      color: color,
       values: values,
       distances: distances,
       normalize: (value) => value,
@@ -849,12 +889,16 @@ class _ChartSeries {
     );
   }
 
-  factory _ChartSeries.cadence(List<double> values, List<double>? distances) {
+  factory _ChartSeries.cadence(
+    List<double> values,
+    List<double>? distances,
+    Color color,
+  ) {
     return _ChartSeries(
       label: 'Cadence',
       unit: 'RPM',
       icon: Icons.directions_walk_rounded,
-      color: RunNowDataColors.cadence,
+      color: color,
       values: values,
       distances: distances,
       normalize: (value) => value,
@@ -864,12 +908,16 @@ class _ChartSeries {
     );
   }
 
-  factory _ChartSeries.energy(List<double> values, List<double>? distances) {
+  factory _ChartSeries.energy(
+    List<double> values,
+    List<double>? distances,
+    Color color,
+  ) {
     return _ChartSeries(
       label: 'Năng lượng',
       unit: 'KJ',
       icon: Icons.bolt_rounded,
-      color: RunNowDataColors.energy,
+      color: color,
       values: values,
       distances: distances,
       normalize: (value) => value,

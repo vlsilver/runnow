@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -7,9 +8,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/repository.dart';
+import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/tracking_draft_store.dart';
 import 'package:myrun/src/tracking_session.dart';
@@ -18,15 +23,14 @@ import 'package:myrun/src/widgets/route_map.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 class TrackingScreen extends ConsumerStatefulWidget {
-  const TrackingScreen({super.key, this.autoLock = true});
+  const TrackingScreen({super.key, this.autoLock = true, this.contractId});
 
   final bool autoLock;
+  final String? contractId;
 
   @override
   ConsumerState<TrackingScreen> createState() => _TrackingScreenState();
 }
-
-enum _GpsSignal { idle, locking, weak, fair, ready }
 
 class _TrackingScreenState extends ConsumerState<TrackingScreen>
     with WidgetsBindingObserver {
@@ -37,46 +41,111 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   static const _gpsWarmupFairAccuracyMeters = 40.0;
   static const _gpsWarmupMaxWindowDriftMeters = 45.0;
   static const _gpsWarmupMaxReportedSpeedMetersPerSecond = 3.0;
-  static const _livePublishMinInterval = Duration(seconds: 10);
+  static const _livePublishMinInterval = Duration(seconds: 5);
   static const _liveHeartbeatInterval = Duration(seconds: 30);
-  static const _livePublishMinDistanceMeters = 50.0;
+  static const _livePublishMinDistanceMeters = 20.0;
   static const _liveRoutePreviewStepMeters = 100.0;
 
   TrackingSession? _session;
   TrackingSessionSnapshot? _snapshot;
   TrackingLocationSample? _gpsReadyAnchor;
+  // Vị trí GPS mới nhất (kể cả lúc đang dò, chưa khoá) để map có tâm hiển thị
+  // NGAY, không phải chờ khoá xong.
+  TrackingLocationSample? _lastGpsSample;
   StreamSubscription<TrackingLocationSample>? _positionSubscription;
   Timer? _ticker;
   var _checkingPermission = false;
   var _saving = false;
-  String? _message;
+  var _capturingPhoto = false;
+  // Thông báo dưới đáy TỰ TẮT sau vài giây — không để dính panel "show mãi".
+  // Mọi chỗ vẫn gán `_message = ...` như thường; setter tự hẹn giờ xoá.
+  String? _messageValue;
+  Timer? _messageTimer;
+  String? get _message => _messageValue;
+  set _message(String? value) {
+    _messageValue = value;
+    _messageTimer?.cancel();
+    if (value != null) {
+      _messageTimer = Timer(const Duration(seconds: 4), () {
+        if (mounted) setState(() => _messageValue = null);
+      });
+    }
+  }
+
+  // Kèm theo _message khi cách khắc phục nằm ở Settings của máy. Null nghĩa
+  // là không hiện nút, tránh mời user vào Settings khi chẳng có gì để sửa.
+  VoidCallback? _settingsAction;
   Map<String, dynamic>? _lastWarmupDebug;
-  var _gpsSignal = _GpsSignal.idle;
-  var _gpsStableSamples = 0;
-  var _gpsElapsedSeconds = 0;
   var _autoLockStarted = false;
   var _persistingDraft = false;
-  var _backgroundLocationGranted = false;
+  String? _contractId;
   Future<void> _livePublishQueue = Future<void>.value();
+  Future<void> _photoUploadQueue = Future<void>.value();
   DateTime? _lastDraftSavedAt;
   DateTime? _lastLivePublishedAt;
   double _lastLivePublishedDistanceMeters = 0;
+  // Sync route theo chunk (~10s/lần) để không mất buổi khi crash/hết pin.
+  // `_trackChunkSeq` = seq chunk kế tiếp; `_flushedRoutePointCount` = số điểm
+  // đã đẩy (đẩy tiếp từ đây). Serialize bằng queue để không đua ghi.
+  int _trackChunkSeq = 0;
+  int _flushedRoutePointCount = 0;
+  DateTime? _lastTrackChunkAt;
+  Future<void> _trackChunkQueue = Future<void>.value();
+  bool _trackChunkResumed = false;
+  static const _trackChunkInterval = Duration(seconds: 10);
+  // Tường thuật LIVE lên group qua bot: báo start khi đủ ngưỡng, mốc mỗi 5km,
+  // và finish. Gọi API fire-and-forget, không chặn tracking.
+  // User bật/tắt "Live" trước khi chạy. BẬT = tự báo mốc km + ảnh lên group
+  // trong lúc chạy. Mặc định BẬT nếu hồ sơ công khai (private thì Live vô nghĩa
+  // vì backend không khoe), áp dụng 1 lần khi biết visibility.
+  bool _liveEnabled = false;
+  bool _liveDefaultApplied = false;
+  bool _liveAnnouncedStart = false;
+  int _liveAnnouncedKm = 0;
+  // User tự chỉnh trong nút cài đặt Live: báo mỗi mấy km, và có đăng ảnh không.
+  int _liveMilestoneKm = 2;
+  bool _livePhotoEnabled = true;
+  static const List<int> _liveMilestoneOptions = [1, 2, 3, 5];
+
+  // Môn của buổi đang ghi. Chọn TRƯỚC khi bắt đầu; chốt khi bấm Bắt đầu. Chạy
+  // bộ là mặc định. Đạp xe/xe máy KHÔNG cộng vào km chạy/kèo — có BXH riêng.
+  ActivityKind _selectedKind = ActivityKind.run;
+
+  // Ngưỡng tốc độ chống-nhảy-GPS theo môn (m/s). Chạy giữ mặc định từ DB; đạp
+  // ~90km/h, xe máy ~162km/h — nếu vẫn 36km/h như chạy sẽ cắt nhầm điểm thật.
+  double? _maxSpeedOverrideFor(ActivityKind kind) => switch (kind) {
+    ActivityKind.ride => 25, // ~90 km/h
+    ActivityKind.motorbike => 45, // ~162 km/h
+    _ => null, // chạy/khác: dùng cấu hình DB (mặc định 10 m/s)
+  };
+
+  // Bước báo mốc km khi Live. Chạy = user chọn; đạp = mỗi 10km; xe máy = mỗi
+  // 20km (quãng đường đạp/xe máy dài, mốc nhỏ sẽ spam group).
+  int get _effectiveMilestoneKm => switch (_selectedKind) {
+    ActivityKind.ride => 10,
+    ActivityKind.motorbike => 20,
+    _ => _liveMilestoneKm,
+  };
+
+  String _activityNameFor(ActivityKind kind) => switch (kind) {
+    ActivityKind.ride => '3I Ride',
+    ActivityKind.motorbike => '3I Moto',
+    _ => '3I Run',
+  };
+  Future<void> _liveAnnounceQueue = Future<void>.value();
+  static const double _liveStartMinMeters = 300;
 
   bool get _running => _snapshot?.status == TrackingSessionStatus.running;
   bool get _paused => _snapshot?.status == TrackingSessionStatus.paused;
   bool get _finished => _snapshot?.status == TrackingSessionStatus.finished;
   bool get _hasSession => _snapshot != null;
   bool get _gpsReady => _gpsReadyAnchor != null;
-  String get _distanceSubtitle {
-    if (_running) return 'TRACKING ACTIVE';
-    if (_gpsReady) return 'GPS LOCKED · READY TO START';
-    if (_checkingPermission) return 'SCANNING GPS SIGNAL';
-    return '';
-  }
+
 
   @override
   void initState() {
     super.initState();
+    _contractId = widget.contractId;
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _autoLockStarted) return;
@@ -90,6 +159,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     WidgetsBinding.instance.removeObserver(this);
     _positionSubscription?.cancel();
     _ticker?.cancel();
+    _messageTimer?.cancel();
     _setWakelock(false);
     super.dispose();
   }
@@ -104,99 +174,279 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       unawaited(_persistDraft());
+      return;
+    }
+    if (state == AppLifecycleState.resumed && _running) {
+      unawaited(_startRunningLocationStream());
+      _startTicker();
+      _setWakelock(true);
+      unawaited(_publishLiveSnapshot(force: true));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Giữ subscribe cấu hình tracking từ DB để lúc bấm Bắt đầu đã có giá trị mới
+    // nhất (appConfig/tracking) thay vì mặc định.
+    ref.watch(trackingConfigProvider);
     final snapshot = _snapshot;
-    final palette = context.runNowPalette;
+    final isPublic =
+        ref.watch(userProfileProvider).value?.visibility ==
+        ProfileVisibility.public;
+    // Mặc định BẬT Live cho hồ sơ công khai — nhưng CHỈ với chạy bộ. Đạp xe/xe
+    // máy mặc định TẮT Live (user bật tay nếu muốn). Áp 1 lần khi biết visibility.
+    if (isPublic && !_liveDefaultApplied) {
+      _liveDefaultApplied = true;
+      _liveEnabled = _selectedKind == ActivityKind.run;
+    }
+    final distance = formatDistance(snapshot?.distanceMeters ?? 0);
+    final time = formatDuration(snapshot?.movingTimeSeconds ?? 0);
+    final pace = formatPace(snapshot?.averagePaceSecondsPerKm);
+    final livePace = formatPace(snapshot?.currentPaceSecondsPerKm);
+    final mapPoints = _liveMapPoints(snapshot);
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Chạy thử'),
-            Text(
-              'TRACKING LAB',
-              style: TextStyle(
-                color: palette.secondary,
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.6,
-              ),
-            ),
-          ],
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      // Map TRÀN VIỀN toàn màn; số liệu + điều khiển nổi lên trên (kiểu app dẫn
+      // đường), không card/padding/bo góc bọc map nữa.
+      body: Stack(
         children: [
-          GlassPanel(
-            borderRadius: 28,
-            padding: const EdgeInsets.all(22),
-            gradient: LinearGradient(
-              colors: [palette.glassStart, palette.glassEnd],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _RunConsoleHeader(
-                  status: _statusLabel(snapshot),
-                  active: _running,
-                  signal: _gpsSignal,
-                ),
-                const SizedBox(height: 18),
-                _TrackingCockpit(
-                  snapshot: snapshot,
-                  signal: _gpsSignal,
-                  elapsedSeconds: _gpsElapsedSeconds,
-                  stableSamples: _gpsStableSamples,
-                  minSeconds: 0,
-                  minSamples: _gpsWarmupMinGoodSamples,
-                  subtitle: _distanceSubtitle,
-                  onMap: snapshot == null || snapshot.routePoints.length < 2
-                      ? null
-                      : () => _openLiveMap(snapshot),
-                ),
-                const SizedBox(height: 24),
-                _Controls(
-                  running: _running,
-                  paused: _paused,
-                  finished: _finished,
-                  hasSession: _hasSession,
-                  gpsReady: _gpsReady,
-                  busy: _checkingPermission || _saving,
-                  onLockGps: _lockGps,
-                  onStart: _startFromLockedGps,
-                  onPause: _pause,
-                  onResume: _resume,
-                  onStop: _stopAndSave,
-                  onDiscard: _discard,
-                ),
-              ],
-            ),
+          Positioned.fill(
+            child: mapPoints.isNotEmpty
+                ? LayoutBuilder(
+                    builder: (context, c) => RouteMap.fromRoutePoints(
+                      points: mapPoints,
+                      follow: true,
+                      height: c.maxHeight,
+                    ),
+                  )
+                : Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 34,
+                          height: 34,
+                          child: CircularProgressIndicator(strokeWidth: 3),
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          'Đang lấy vị trí GPS…',
+                          style: TextStyle(
+                            color: onSurface.withValues(alpha: 0.7),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
           ),
-          const SizedBox(height: 16),
-          if (_message != null && !_checkingPermission && !_running)
-            GlassPanel(
-              borderRadius: 18,
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                _message!,
-                style: Theme.of(context).textTheme.bodyMedium,
+          if (!_running && !_paused)
+            Positioned(
+              top: 0,
+              left: 0,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 8, left: 12),
+                  child: Material(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surface.withValues(alpha: 0.92),
+                    elevation: 3,
+                    shadowColor: Colors.black.withValues(alpha: 0.3),
+                    shape: const CircleBorder(),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () => context.go('/'),
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 20,
+                          color: onSurface.withValues(alpha: 0.75),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
-          if (!_checkingPermission && !_running && _hasSession) ...[
-            const SizedBox(height: 16),
-            _TrialNoteCard(snapshot: snapshot),
-            const SizedBox(height: 20),
-          ] else
-            const SizedBox(height: 16),
-          _TrialSessionList(
-            activities: ref.watch(trackedTrialActivitiesProvider),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: SafeArea(
+              top: false,
+              minimum: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_message != null && !_checkingPermission && !_running)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: GlassPanel(
+                        borderRadius: 18,
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _message!,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            if (_settingsAction != null) ...[
+                              const SizedBox(height: 8),
+                              TextButton(
+                                onPressed: _settingsAction,
+                                child: const Text('Mở Cài đặt'),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  GlassPanel(
+                    borderRadius: 24,
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _DistanceReadout(distance: distance),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SizedBox(
+                                height: 74,
+                                child: _MetricCard(
+                                  label: 'THỜI GIAN',
+                                  value: time,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: SizedBox(
+                                height: 74,
+                                child: _MetricCard(label: 'PACE TB', value: pace),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: SizedBox(
+                                height: 74,
+                                child: _MetricCard(
+                                  label: 'PACE TỨC THỜI',
+                                  value: livePace,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        // Live gom vào cùng card cho liền khối, không trôi nổi.
+                        if (isPublic && !_finished) ...[
+                          const SizedBox(height: 10),
+                          Divider(
+                            height: 1,
+                            color: onSurface.withValues(alpha: 0.08),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Icon(
+                                _liveEnabled
+                                    ? Icons.sensors
+                                    : Icons.sensors_off,
+                                size: 19,
+                                color: _liveEnabled
+                                    ? RunNowSemanticColors.danger
+                                    : onSurface.withValues(alpha: 0.5),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text(
+                                      'Live lên group',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    if (_liveEnabled)
+                                      Text(
+                                        'Báo mỗi ${_effectiveMilestoneKm}km'
+                                        '${_livePhotoEnabled ? ' · kèm ảnh' : ''}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: onSurface.withValues(
+                                            alpha: 0.55,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              // Nút cài đặt: chỉ hiện khi Live bật (có gì để chỉnh).
+                              if (_liveEnabled)
+                                IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  icon: const Icon(Icons.tune_rounded, size: 20),
+                                  tooltip: 'Cài đặt Live',
+                                  onPressed: _openLiveSettings,
+                                ),
+                              Switch(
+                                value: _liveEnabled,
+                                onChanged: (value) =>
+                                    setState(() => _liveEnabled = value),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  // Chọn môn — chỉ trước khi bắt đầu (chưa có phiên). Khi đã ghi
+                  // thì môn đã chốt, không đổi giữa chừng.
+                  if (!_running && !_paused && !_finished && !_hasSession) ...[
+                    const SizedBox(height: 10),
+                    _SportPicker(
+                      selected: _selectedKind,
+                      onChanged: (kind) {
+                        setState(() {
+                          _selectedKind = kind;
+                          // Đạp/xe máy: Live mặc định TẮT. Chạy: bật lại nếu công
+                          // khai (đúng mặc định của chạy bộ).
+                          _liveEnabled =
+                              kind == ActivityKind.run ? isPublic : false;
+                        });
+                      },
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  _Controls(
+                    running: _running,
+                    paused: _paused,
+                    finished: _finished,
+                    hasSession: _hasSession,
+                    gpsReady: _gpsReady,
+                    busy: _checkingPermission || _saving,
+                    capturingPhoto: _capturingPhoto,
+                    canTakePhoto:
+                        (_running || _paused) &&
+                        (snapshot?.routePoints.isNotEmpty ?? false),
+                    onLockGps: _lockGps,
+                    onStart: _startFromLockedGps,
+                    onPause: _pause,
+                    onResume: _resume,
+                    onStop: _stopAndSave,
+                    onDiscard: _discard,
+                    onPhoto: _capturePhoto,
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -208,18 +458,32 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     if (!mounted) return;
     if (draft != null) {
       final session = draft.session;
-      final snapshot = session.status == TrackingSessionStatus.running
-          ? session.interruptForRestore()
+      final wasRunning = session.status == TrackingSessionStatus.running;
+      final snapshot = wasRunning
+          ? session.continueAfterRestore(DateTime.now())
           : session.snapshot();
       setState(() {
         _session = session;
         _snapshot = snapshot;
         _lastWarmupDebug = draft.gpsWarmup;
-        _gpsSignal = _GpsSignal.idle;
-        _message =
-            'Đã khôi phục phiên chạy bị gián đoạn. Bấm RESUME để tiếp tục từ GPS point mới.';
+        _contractId = draft.contractId ?? widget.contractId;
+        _message = snapshot.status == TrackingSessionStatus.finished
+            ? 'Đang hoàn tất upload ảnh của buổi chạy.'
+            : wasRunning
+            ? 'Đã khôi phục phiên chạy và tiếp tục ghi. GPS point tiếp theo sẽ làm anchor mới.'
+            : 'Đã khôi phục phiên chạy bị tạm dừng. Bấm TIẾP TỤC để chạy tiếp.';
       });
       await _persistDraft();
+      if (wasRunning) {
+        await _startRunningLocationStream();
+        _startTicker();
+        _setWakelock(true);
+        unawaited(_publishLiveSnapshot(force: true));
+      }
+      if (snapshot.status == TrackingSessionStatus.finished) {
+        final uploaded = await _uploadPendingPhotos();
+        if (uploaded) await ref.read(trackingDraftStoreProvider).clear();
+      }
       return;
     }
     if (widget.autoLock) {
@@ -230,38 +494,29 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   Future<void> _lockGps() async {
     if (_running || _checkingPermission || _saving) return;
     if (_finished) {
+      if (!await _uploadPendingPhotos()) return;
+      await ref.read(trackingDraftStoreProvider).clear();
       await _resetSession(message: null);
     }
+    if (!await _ensureContractWindowAllowsRun()) return;
     setState(() {
       _checkingPermission = true;
       _gpsReadyAnchor = null;
       _lastWarmupDebug = null;
-      _gpsSignal = _GpsSignal.locking;
-      _gpsStableSamples = 0;
-      _gpsElapsedSeconds = 0;
       _message = null;
+      _settingsAction = null;
     });
     try {
       final ready = await _ensureLocationReady();
       if (!ready) {
-        if (mounted) setState(() => _gpsSignal = _GpsSignal.weak);
         return;
       }
-      setState(() {
-        _message = 'Đứng yên vài giây để khóa GPS...';
-      });
       final anchor = await _waitForStableGps();
       if (anchor == null) return;
       if (!mounted) return;
-      final backgroundHint = _backgroundLocationGranted
-          ? ''
-          : ' Bật "Luôn cho phép" vị trí để vẫn tracking khi khóa màn hình.';
-      setState(() {
-        _gpsReadyAnchor = anchor;
-        _gpsSignal = _GpsSignal.ready;
-        _message =
-            'GPS READY (${(anchor.accuracyMeters ?? 0).toStringAsFixed(0)}m). Bấm START NOW để bắt đầu tính distance.$backgroundHint';
-      });
+      // Sẵn sàng rồi: nút đổi thành START + map đã hiện vị trí — không cần báo
+      // chữ "GPS READY" gây rối.
+      setState(() => _gpsReadyAnchor = anchor);
       HapticFeedback.selectionClick();
     } finally {
       if (mounted) setState(() => _checkingPermission = false);
@@ -270,6 +525,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
 
   Future<void> _startFromLockedGps() async {
     if (_running || _checkingPermission || _saving) return;
+    if (!await _ensureContractWindowAllowsRun()) return;
     final anchor = _gpsReadyAnchor;
     if (anchor == null) {
       await _lockGps();
@@ -277,16 +533,25 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     }
     try {
       final now = DateTime.now();
+      var config =
+          ref.read(trackingConfigProvider).value ?? const TrackingConfig();
+      // Đạp/xe máy đi nhanh hơn ngưỡng chống-nhảy-GPS của chạy (36km/h) → nâng
+      // ngưỡng theo môn, không thì điểm thật bị cắt, quãng đường hụt.
+      final maxSpeed = _maxSpeedOverrideFor(_selectedKind);
+      if (maxSpeed != null) {
+        config = config.copyWith(maxRunningSpeedMetersPerSecond: maxSpeed);
+      }
       final session = TrackingSession(
         id: 'runnow-${now.toUtc().millisecondsSinceEpoch}',
+        // Cấu hình từ DB (appConfig/tracking) — giãn mẫu chống zigzag GPS. Chưa
+        // tải kịp thì dùng mặc định (đã có minSampleIntervalSeconds=15).
+        config: config,
       )..start(now);
+      _resetTrackChunkState();
       setState(() {
         _session = session;
         _snapshot = session.snapshot();
         _gpsReadyAnchor = null;
-        _gpsSignal = _GpsSignal.ready;
-        _message =
-            'Đã bắt đầu tracking. Điểm GPS đầu tiên sau START NOW sẽ làm anchor.';
       });
       await _startRunningLocationStream();
       _startTicker();
@@ -334,9 +599,263 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     unawaited(_publishLiveSnapshot(force: true));
   }
 
+  Future<void> _capturePhoto() async {
+    final session = _session;
+    final snapshot = _snapshot;
+    if (session == null ||
+        snapshot == null ||
+        _capturingPhoto ||
+        (!_running && !_paused)) {
+      return;
+    }
+    if (snapshot.routePoints.isEmpty) {
+      setState(() => _message = 'Chờ GPS ghi được vị trí trước khi chụp ảnh.');
+      return;
+    }
+    final anchor = snapshot.routePoints.last;
+    final capturedAt = DateTime.now();
+    final photoId = 'photo-${capturedAt.toUtc().millisecondsSinceEpoch}';
+    setState(() => _capturingPhoto = true);
+    try {
+      final path = await ref
+          .read(trackingPhotoCaptureProvider)
+          .capture(sessionId: session.id, photoId: photoId);
+      if (path == null || !mounted) return;
+      // Review trước khi giữ: xấu thì bỏ luôn — không lưu vào buổi, không đăng
+      // group. Chỉ khi bấm "giữ" ảnh mới được neo + upload (+ share nếu Live).
+      final keep = await _reviewPhoto(path);
+      if (!keep) {
+        await ref.read(trackingPhotoCaptureProvider).deleteLocal(path);
+        if (mounted) setState(() => _message = 'Đã bỏ ảnh vừa chụp.');
+        return;
+      }
+      final draft = TrackingPhotoDraft(
+        id: photoId,
+        capturedAt: capturedAt,
+        latitude: anchor.latitude,
+        longitude: anchor.longitude,
+        distanceMeters: snapshot.distanceMeters,
+        localPath: path,
+      );
+      final next = session.addPhoto(draft);
+      setState(() {
+        _snapshot = next;
+        _message = 'Đã neo ảnh tại ${formatDistance(snapshot.distanceMeters)}.';
+      });
+      await _persistDraft();
+      HapticFeedback.selectionClick();
+      unawaited(_uploadPhotoLive(draft));
+    } catch (error) {
+      if (mounted) setState(() => _message = 'Không chụp được ảnh: $error');
+    } finally {
+      if (mounted) setState(() => _capturingPhoto = false);
+    }
+  }
+
+  /// Xem lại ảnh vừa chụp trước khi giữ. Trả true = giữ (lưu vào buổi, + đăng
+  /// group nếu Live), false = bỏ hẳn.
+  Future<bool> _reviewPhoto(String path) async {
+    final willPost = _liveEnabled && _livePhotoEnabled;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => Dialog(
+        clipBehavior: Clip.antiAlias,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Ảnh giữ ĐÚNG tỉ lệ (contain) trên nền tối — không bóp méo, gọn.
+            ColoredBox(
+              color: Colors.black,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.5,
+                ),
+                child: Center(
+                  child: Image.file(
+                    File(path),
+                    fit: BoxFit.contain,
+                    width: double.infinity,
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    willPost ? 'Đăng ảnh này lên group?' : 'Dùng ảnh này?',
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  if (willPost) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.sensors,
+                          size: 16,
+                          color: RunNowSemanticColors.danger,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Live đang bật — ảnh sẽ lên group ngay.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: onSurface.withValues(alpha: 0.6),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Bỏ'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () => Navigator.pop(context, true),
+                          icon: Icon(
+                            willPost ? Icons.send_rounded : Icons.check_rounded,
+                            size: 18,
+                          ),
+                          label: Text(willPost ? 'Đăng' : 'Lưu'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Future<bool> _uploadPendingPhotos() async {
+    final session = _session;
+    if (session == null) return true;
+    final pending = session
+        .snapshot()
+        .photos
+        .where((photo) => !photo.isUploaded)
+        .toList();
+    if (pending.isEmpty) return true;
+    for (final photo in pending) {
+      try {
+        final uploaded = await ref
+            .read(trackingPhotoRepositoryProvider)
+            .upload(activityId: session.id, draft: photo);
+        final next = session.markPhotoUploaded(photo.id, uploaded.storagePath);
+        if (mounted) setState(() => _snapshot = next);
+        await _persistDraft();
+        await ref
+            .read(trackingPhotoCaptureProvider)
+            .deleteLocal(photo.localPath);
+      } catch (error) {
+        if (mounted) {
+          setState(() {
+            _message =
+                'Buổi chạy đã lưu nhưng còn ảnh chưa upload. Mở lại màn Chạy để thử lại: $error';
+          });
+        }
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<void> _uploadPhotoLive(TrackingPhotoDraft draft) {
+    final operation = _photoUploadQueue.then((_) => _uploadPhotoLiveNow(draft));
+    _photoUploadQueue = operation.catchError((Object _) {});
+    return operation;
+  }
+
+  Future<void> _uploadPhotoLiveNow(TrackingPhotoDraft draft) async {
+    final session = _session;
+    if (session == null) return;
+    try {
+      final uploaded = await ref
+          .read(trackingPhotoRepositoryProvider)
+          .upload(activityId: session.id, draft: draft);
+      final next = session.markPhotoUploaded(draft.id, uploaded.storagePath);
+      if (mounted) setState(() => _snapshot = next);
+      await _persistDraft();
+      await ref.read(trackingPhotoCaptureProvider).deleteLocal(draft.localPath);
+      final contractId = _contractId;
+      if (contractId != null) {
+        await ref
+            .read(liveTrackingRepositoryProvider)
+            .publishPhoto(sessionId: session.id, photo: uploaded);
+      }
+      if (_liveEnabled && _livePhotoEnabled) {
+        // Live + cho đăng ảnh → khoe tấm vừa chụp lên group. Fire-and-forget.
+        unawaited(
+          ref
+              .read(runNowApiClientProvider)
+              .announceLive(
+                activityId: session.id,
+                event: 'photo',
+                distanceMeters: next.distanceMeters,
+                movingTimeSeconds: next.movingTimeSeconds.toDouble(),
+                photoPath: uploaded.storagePath,
+              )
+              .catchError((_) {}),
+        );
+      }
+    } catch (_) {
+      // Bỏ qua — `_uploadPendingPhotos()` lúc dừng buổi chạy sẽ tự thử lại
+      // (photo vẫn `!isUploaded` nên không mất dữ liệu, chỉ mất tính "live").
+    }
+  }
+
   Future<void> _stopAndSave() async {
     final session = _session;
     if (session == null || _saving) return;
+    final current = _snapshot ?? session.snapshot();
+    if (current.distanceMeters < minimumOfficialRunNowDistanceMeters) {
+      final shouldStop = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Buổi chạy chưa đủ 500 m'),
+          content: Text(
+            'Bạn mới chạy ${formatDistance(current.distanceMeters)}. '
+            'Session vẫn được lưu để xem lại nhưng sẽ không tính vào thành tích.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Tiếp tục chạy'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Dừng và lưu'),
+            ),
+          ],
+        ),
+      );
+      if (shouldStop != true || !mounted) return;
+    }
     setState(() => _saving = true);
     try {
       await _positionSubscription?.cancel();
@@ -345,32 +864,68 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _setWakelock(false);
       final snapshot = session.finish(DateTime.now());
       setState(() => _snapshot = snapshot);
+      await _persistDraft();
       await _publishLiveSnapshot(
         force: true,
         status: LiveTrackingStatus.finished,
       );
-      final detail = snapshot.toActivityDetail(
-        name: 'RunNow Trial',
-        recordingDevice: 'RunNow app',
+      final photosUploaded = await _uploadPendingPhotos();
+      final finalSnapshot = session.snapshot();
+      final detail = finalSnapshot.toActivityDetail(
+        name: _activityNameFor(_selectedKind),
+        kind: _selectedKind,
+        recordingDevice: '3I app',
       );
-      final debug = {
-        ...snapshot.toDebugMap(),
-        if (_lastWarmupDebug != null) 'gpsWarmup': _lastWarmupDebug,
-      };
-      await ref
-          .read(activityRepositoryProvider)
-          .saveTrackedActivity(detail, trackingDebug: debug);
-      await ref.read(trackingDraftStoreProvider).clear();
+      // Route đã được sync DẦN theo chunk (~10s/lần) trong lúc chạy. Đẩy nốt
+      // đoạn cuối kể từ lần flush trước, rồi finalize chỉ gửi SUMMARY nhẹ
+      // (stats/splits/streams, KHÔNG routePoints) — backend ghép chunk thành
+      // route đầy đủ. Không còn "cú dump khổng lồ" ở cuối buổi (đúng ca buổi
+      // race 10.4km từng vượt trần decode 2MB → mất buổi). trackingDebug cũng
+      // đã bỏ hẳn (bản NHÂN ĐÔI ~695KB/buổi, backend không lưu).
+      await _flushTrackChunk();
+      final repository = ref.read(activityRepositoryProvider);
+      // An toàn: chỉ finalize (nhẹ) khi TẤT CẢ điểm đã nằm trong chunk. Nếu lần
+      // flush cuối lỗi mạng (chunk còn thiếu đuôi), degrade về full-save cũ để
+      // KHÔNG mất phần route cuối — buổi vẫn đầy đủ như trước.
+      final allChunked =
+          _trackChunkResumed &&
+          _flushedRoutePointCount >= finalSnapshot.routePoints.length;
+      final result = allChunked
+          ? await repository.finalizeTrackedActivity(detail)
+          : await repository.saveTrackedActivity(detail);
+      if (_liveEnabled && _liveAnnouncedStart) {
+        // Buổi đã tường thuật live → chốt bằng tin "về đích". Fire-and-forget.
+        unawaited(
+          ref
+              .read(runNowApiClientProvider)
+              .announceLive(
+                activityId: session.id,
+                event: 'finish',
+                distanceMeters: finalSnapshot.distanceMeters,
+                movingTimeSeconds: finalSnapshot.movingTimeSeconds.toDouble(),
+              )
+              .catchError((_) {}),
+        );
+      }
+      if (photosUploaded) await ref.read(trackingDraftStoreProvider).clear();
       if (!mounted) return;
       setState(() {
-        _snapshot = snapshot;
-        _message =
-            'Đã lưu buổi chạy thử. Activity này chưa cộng vào stats/leaderboard.';
+        _snapshot = finalSnapshot;
+        _message = !photosUploaded
+            ? _message
+            : switch (result.status) {
+                TrackedActivitySaveStatus.counted =>
+                  'Đã lưu và tính buổi chạy vào thành tích.',
+                TrackedActivitySaveStatus.belowMinimumDistance =>
+                  'Đã lưu để xem lại nhưng không tính vì chưa đủ 500 m.',
+                TrackedActivitySaveStatus.duplicateOfStrava =>
+                  'Đã lưu route 3I nhưng thành tích ưu tiên buổi Strava trùng thời gian.',
+              };
       });
       HapticFeedback.heavyImpact();
     } catch (error) {
       if (!mounted) return;
-      setState(() => _message = 'Không lưu được tracking trial: $error');
+      setState(() => _message = 'Không lưu được buổi chạy: $error');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -378,6 +933,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
 
   Future<void> _discard() async {
     final sessionId = _session?.id;
+    final localPhotos = _session?.snapshot().photos ?? const [];
     if (sessionId != null) {
       unawaited(
         ref
@@ -386,56 +942,12 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       );
     }
     await ref.read(trackingDraftStoreProvider).clear();
-    await _resetSession(message: 'Đã bỏ phiên tracking thử.');
+    for (final photo in localPhotos) {
+      await ref.read(trackingPhotoCaptureProvider).deleteLocal(photo.localPath);
+    }
+    await _resetSession(message: 'Đã bỏ phiên tracking.');
   }
 
-  Future<void> _openLiveMap(TrackingSessionSnapshot snapshot) {
-    return showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(16),
-        child: GlassPanel(
-          borderRadius: 26,
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.map_outlined,
-                    color: context.runNowPalette.secondary,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'LIVE ROUTE',
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: context.runNowPalette.secondary,
-                      letterSpacing: 1.4,
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              RouteMap.fromRoutePoints(
-                points: snapshot.routePoints,
-                height: MediaQuery.sizeOf(context).height * 0.52,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   Future<void> _resetSession({required String? message}) async {
     await _positionSubscription?.cancel();
@@ -448,11 +960,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _snapshot = null;
       _gpsReadyAnchor = null;
       _lastWarmupDebug = null;
-      _gpsSignal = _GpsSignal.idle;
-      _gpsStableSamples = 0;
-      _gpsElapsedSeconds = 0;
       _lastLivePublishedAt = null;
       _lastLivePublishedDistanceMeters = 0;
+      _contractId = widget.contractId;
       _message = message;
     });
   }
@@ -467,15 +977,53 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
 
   Future<void> _persistDraft() async {
     final session = _session;
-    if (session == null || _finished || _persistingDraft) return;
+    if (session == null || _persistingDraft) return;
     _persistingDraft = true;
     try {
       await ref
           .read(trackingDraftStoreProvider)
-          .save(TrackingDraft(session: session, gpsWarmup: _lastWarmupDebug));
+          .save(
+            TrackingDraft(
+              session: session,
+              gpsWarmup: _lastWarmupDebug,
+              contractId: _contractId,
+            ),
+          );
       _lastDraftSavedAt = DateTime.now();
     } finally {
       _persistingDraft = false;
+    }
+  }
+
+  Future<bool> _ensureContractWindowAllowsRun() async {
+    final contractId = _contractId;
+    if (contractId == null) return true;
+    try {
+      final contract = await ref
+          .read(runContractRepositoryProvider)
+          .watchContract(contractId)
+          .first;
+      if (contract == null) {
+        if (mounted) setState(() => _message = 'Không tìm thấy kèo tuyến.');
+        return false;
+      }
+      final lifecycle = contractLifecycle(contract, DateTime.now());
+      if (lifecycle == RunContractLifecycle.running) return true;
+      final message = switch (lifecycle) {
+        RunContractLifecycle.scheduled =>
+          'Kèo này chưa tới giờ chạy. Chỉ bắt đầu được từ ${DateFormat('dd/MM · HH:mm').format(contract.startAt)}.',
+        RunContractLifecycle.syncGrace ||
+        RunContractLifecycle.awaitingFinalize ||
+        RunContractLifecycle.completed ||
+        RunContractLifecycle.failed => 'Kèo này đã hết thời gian chạy.',
+        RunContractLifecycle.cancelled => 'Kèo này đã bị hủy.',
+        RunContractLifecycle.running => '',
+      };
+      if (mounted) setState(() => _message = message);
+      return false;
+    } catch (error) {
+      if (mounted) setState(() => _message = 'Không kiểm tra được kèo: $error');
+      return false;
     }
   }
 
@@ -494,13 +1042,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     final session = _session;
     if (session == null || !_running) return;
     final snapshot = session.addLocation(sample);
-    final latestLog = snapshot.pointLogs.isEmpty
-        ? null
-        : snapshot.pointLogs.last;
-    setState(() {
-      _snapshot = snapshot;
-      _gpsSignal = _runningGpsSignal(sample, latestLog);
-    });
+    setState(() => _snapshot = snapshot);
     unawaited(_persistDraftThrottled());
     unawaited(_publishLiveSnapshot());
   }
@@ -538,13 +1080,12 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             snapshot: snapshot,
             status: status ?? _liveStatusForSnapshot(snapshot),
             routePreview: _downsampleLiveRoute(snapshot.routePoints),
+            contractId: _contractId,
           );
       _lastLivePublishedAt = now;
       _lastLivePublishedDistanceMeters = snapshot.distanceMeters;
-    } catch (error) {
-      if (kDebugMode) {
-        debugPrint('[LiveTracking] publish failed: $error');
-      }
+    } catch (_) {
+      // Bỏ qua — lần publish tiếp theo (throttle ~10s/50m) sẽ tự thử lại.
     }
   }
 
@@ -576,30 +1117,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     return preview;
   }
 
-  _GpsSignal _runningGpsSignal(
-    TrackingLocationSample sample,
-    TrackingPointLog? log,
-  ) {
-    final accuracy = sample.accuracyMeters ?? double.infinity;
-    if (log?.decision == TrackingPointDecision.rejected) {
-      return switch (log?.rejectReason) {
-        TrackingRejectReason.lowAccuracy ||
-        TrackingRejectReason.unrealisticSpeed ||
-        TrackingRejectReason.nonMonotonicTime => _GpsSignal.weak,
-        TrackingRejectReason.paused => _GpsSignal.fair,
-        TrackingRejectReason.stationaryNoise =>
-          accuracy <= 12 ? _GpsSignal.ready : _GpsSignal.fair,
-        null => _GpsSignal.fair,
-      };
-    }
-
-    final sampleSpeed = sample.speedMetersPerSecond ?? 0.0;
-    final reportedSpeed = sampleSpeed.isFinite ? sampleSpeed : 0.0;
-    if (accuracy <= 12 && reportedSpeed <= 7.5) return _GpsSignal.ready;
-    if (accuracy <= 25 && reportedSpeed <= 9) return _GpsSignal.fair;
-    return _GpsSignal.weak;
-  }
-
   void _startTicker() {
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -613,7 +1130,237 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
           now.difference(lastPublishedAt) >= _liveHeartbeatInterval) {
         unawaited(_publishLiveSnapshot());
       }
+      final lastChunkAt = _lastTrackChunkAt;
+      if (lastChunkAt == null ||
+          now.difference(lastChunkAt) >= _trackChunkInterval) {
+        unawaited(_flushTrackChunk());
+      }
+      _maybeAnnounceLive(session);
     });
+  }
+
+  /// Điểm để vẽ map trong cockpit: ưu tiên route đang chạy; chưa có thì lấy
+  /// anchor GPS vừa khoá (1 điểm) để map center chỗ đó ngay khi vào màn.
+  List<RoutePoint> _liveMapPoints(TrackingSessionSnapshot? snapshot) {
+    final route = snapshot?.routePoints ?? const <RoutePoint>[];
+    if (route.isNotEmpty) return route;
+    final here = _gpsReadyAnchor ?? _lastGpsSample;
+    if (here != null) {
+      return [
+        RoutePoint(
+          latitude: here.latitude,
+          longitude: here.longitude,
+          timestamp: DateTime.now(),
+        ),
+      ];
+    }
+    return const <RoutePoint>[];
+  }
+
+  /// Kiểm mốc live trong lúc chạy: báo start khi vượt ngưỡng, và mỗi khi qua
+  /// bội số 5km mới. Bắn API fire-and-forget (không chặn tracking).
+  void _maybeAnnounceLive(TrackingSession session) {
+    if (!_liveEnabled) return;
+    final distance = session.snapshot().distanceMeters;
+    if (!_liveAnnouncedStart) {
+      if (distance >= _liveStartMinMeters) {
+        _liveAnnouncedStart = true;
+        _liveAnnounceQueue = _liveAnnounceQueue
+            .then((_) => _announceLive(session, 'start'))
+            .catchError((_) {});
+      }
+      return;
+    }
+    final milestoneKm = _milestoneReachedKm(distance);
+    if (milestoneKm > _liveAnnouncedKm) {
+      _liveAnnouncedKm = milestoneKm;
+      _liveAnnounceQueue = _liveAnnounceQueue
+          .then(
+            (_) => _announceLive(session, 'milestone', milestoneKm: milestoneKm),
+          )
+          .catchError((_) {});
+    }
+  }
+
+  /// Mốc km đã đạt để thông báo, theo bước _liveMilestoneKm user chọn (vd mỗi
+  /// 2km → 2,4,6…). Đã có tin start riêng ở 300m + tin finish lúc Stop.
+  int _milestoneReachedKm(double distanceMeters) {
+    final step = _effectiveMilestoneKm;
+    return (distanceMeters / 1000 / step).floor() * step;
+  }
+
+  /// Sheet cài đặt Live: bật/tắt Live + (khi bật) chọn mốc km báo + có đăng ảnh
+  /// không. update() ghi cả state màn (để logic + card đổi) lẫn state sheet.
+  void _openLiveSettings() {
+    // Theo đúng style sheet nhà: nền trong suốt + GlassPanel(22), tiêu đề section
+    // UPPERCASE nhỏ, chọn bằng SegmentedButton (xem settings_screen).
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheet) {
+          void update(VoidCallback fn) {
+            setState(fn);
+            setSheet(() {});
+          }
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              14,
+              0,
+              14,
+              MediaQuery.viewInsetsOf(context).bottom + 12,
+            ),
+            child: GlassPanel(
+              borderRadius: 22,
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'CÀI ĐẶT LIVE',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.4,
+                    ),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: _liveEnabled,
+                    onChanged: (v) => update(() => _liveEnabled = v),
+                    title: const Text('Live lên group'),
+                    subtitle: const Text(
+                      'Bot tự báo mốc km lên group khi bạn chạy',
+                    ),
+                  ),
+                  if (_liveEnabled) ...[
+                    const SizedBox(height: 6),
+                    const Text(
+                      'BÁO MỖI MỐC',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Chạy: user chọn mốc. Đạp/xe máy: mốc CỐ ĐỊNH (10/20km) vì
+                    // quãng đường dài, mốc nhỏ sẽ spam group.
+                    if (_selectedKind == ActivityKind.run)
+                      SegmentedButton<int>(
+                        showSelectedIcon: false,
+                        segments: [
+                          for (final km in _liveMilestoneOptions)
+                            ButtonSegment(value: km, label: Text('${km}km')),
+                        ],
+                        selected: {_liveMilestoneKm},
+                        onSelectionChanged: (s) =>
+                            update(() => _liveMilestoneKm = s.first),
+                      )
+                    else
+                      Text(
+                        'Cố định mỗi ${_effectiveMilestoneKm}km',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: _livePhotoEnabled,
+                      onChanged: (v) => update(() => _livePhotoEnabled = v),
+                      title: const Text('Đăng ảnh lên group'),
+                      subtitle: const Text(
+                        'Ảnh bạn chụp lúc chạy sẽ được đăng vào group',
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _announceLive(
+    TrackingSession session,
+    String event, {
+    int milestoneKm = 0,
+  }) async {
+    final snapshot = session.snapshot();
+    await ref
+        .read(runNowApiClientProvider)
+        .announceLive(
+          activityId: session.id,
+          event: event,
+          distanceMeters: snapshot.distanceMeters,
+          movingTimeSeconds: snapshot.movingTimeSeconds.toDouble(),
+          milestoneKm: milestoneKm,
+        );
+  }
+
+  /// Đẩy đoạn điểm route MỚI (kể từ lần đẩy trước) thành 1 chunk append-only.
+  /// Serialize qua queue để 2 lần tick không đua ghi cùng seq. Lỗi mạng nuốt
+  /// êm — tick sau tự thử lại (seq/điểm chưa đổi vì chỉ nhích khi ghi thành
+  /// công), Stop vẫn chốt bằng finalize.
+  Future<void> _flushTrackChunk() {
+    _trackChunkQueue = _trackChunkQueue
+        .then((_) => _flushTrackChunkNow())
+        .catchError((_) {});
+    return _trackChunkQueue;
+  }
+
+  Future<void> _flushTrackChunkNow() async {
+    final session = _session;
+    if (session == null) return;
+    // Buổi khôi phục sau khi app bị kill: dò chunk đã ghi để đẩy tiếp không đè.
+    if (!_trackChunkResumed) {
+      final state = await ref
+          .read(activityRepositoryProvider)
+          .trackChunkState(session.id);
+      _trackChunkSeq = state.nextSeq;
+      _flushedRoutePointCount = state.flushedPoints;
+      _trackChunkResumed = true;
+    }
+    final points = session.snapshot().routePoints;
+    if (_flushedRoutePointCount >= points.length) {
+      _lastTrackChunkAt = DateTime.now();
+      return;
+    }
+    final segment = points.sublist(_flushedRoutePointCount);
+    final lean = segment
+        .map(
+          (point) => <String, dynamic>{
+            'latitude': point.latitude,
+            'longitude': point.longitude,
+            'timestamp': point.timestamp.toUtc().toIso8601String(),
+          },
+        )
+        .toList();
+    final seq = _trackChunkSeq;
+    await ref
+        .read(activityRepositoryProvider)
+        .appendTrackChunk(activityId: session.id, seq: seq, points: lean);
+    _trackChunkSeq = seq + 1;
+    _flushedRoutePointCount = points.length;
+    _lastTrackChunkAt = DateTime.now();
+  }
+
+  void _resetTrackChunkState() {
+    _trackChunkSeq = 0;
+    _flushedRoutePointCount = 0;
+    _lastTrackChunkAt = null;
+    _trackChunkResumed = true; // buổi mới: bắt đầu sạch từ seq 0, khỏi dò.
+    _liveAnnouncedStart = false;
+    _liveAnnouncedKm = 0;
   }
 
   Future<TrackingLocationSample?> _waitForStableGps() async {
@@ -663,10 +1410,21 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         return;
       }
       setState(() {
-        _gpsSignal = _GpsSignal.weak;
-        _message =
-            'GPS chưa ổn định. Đứng yên ở nơi thoáng hơn rồi bấm LOCK GPS lại.';
+        _message = null;
       });
+      // Báo 1 lần rồi tự tắt, không để dính panel liên tục. Trạng thái GPS yếu
+      // vẫn hiện ở chỉ báo tín hiệu trên header.
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 4),
+            content: Text(
+              'GPS chưa ổn định. Đứng yên nơi thoáng hơn rồi bấm LOCK GPS lại.',
+            ),
+          ),
+        );
       complete(null);
     });
 
@@ -710,7 +1468,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                 ? double.infinity
                 : accuracySum / finiteAccuracyCount;
             windowDriftMeters = _windowDriftMeters(window);
-            final elapsed = DateTime.now().difference(startedAt);
             final hasEnoughSamples = window.length >= _gpsWarmupWindowSamples;
             final hasEnoughGoodSamples =
                 goodSamples >= _gpsWarmupMinGoodSamples;
@@ -720,16 +1477,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                 hasEnoughSamples && hasEnoughGoodSamples && hasAcceptableDrift;
             if (mounted) {
               setState(() {
-                _gpsElapsedSeconds = elapsed.inSeconds;
-                _gpsStableSamples = goodSamples;
-                _gpsSignal = ready
-                    ? _GpsSignal.ready
-                    : fairSamples >= _gpsWarmupMinGoodSamples &&
-                          windowDriftMeters <= _gpsWarmupMaxWindowDriftMeters
-                    ? _GpsSignal.fair
-                    : _GpsSignal.weak;
-                _message =
-                    'Đang khóa GPS... good $goodSamples/$_gpsWarmupWindowSamples · acc ${accuracy.toStringAsFixed(0)}m';
+                _lastGpsSample = position;
+                // Không hiện chuỗi kỹ thuật lúc dò; map đã có "Đang lấy vị trí".
+                _message = null;
               });
             }
             if (ready) {
@@ -739,7 +1489,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
           onError: (Object error) {
             if (mounted) {
               setState(() {
-                _gpsSignal = _GpsSignal.weak;
                 _message = 'Không đọc được GPS: $error';
               });
             }
@@ -777,10 +1526,12 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     final locationProvider = ref.read(trackingLocationProvider);
     final serviceEnabled = await locationProvider.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      setState(
-        () => _message = 'Location Service đang tắt. Hãy bật GPS để chạy thử.',
-      );
-      await locationProvider.openLocationSettings();
+      setState(() {
+        _message =
+            'Dịch vụ vị trí đang tắt. Bật GPS để ghi lại tuyến đường và pace '
+            'của buổi chạy.';
+        _settingsAction = locationProvider.openLocationSettings;
+      });
       return false;
     }
 
@@ -789,38 +1540,106 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       permission = await locationProvider.requestPermission();
     }
 
-    if (permission == LocationPermission.denied) {
-      setState(
-        () => _message = 'RunNow cần quyền vị trí để tracking route và pace.',
-      );
+    // denied và deniedForever đều là "user đã từ chối" — trên iOS lần bấm
+    // "Don't Allow" đầu tiên đã cho ra deniedForever vì hệ thống không hỏi
+    // lại. Cả hai trường hợp chỉ giải thích tính năng cần gì rồi dừng; mở
+    // Settings hay không là quyền của user.
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      setState(() {
+        _message =
+            'Ghi buổi chạy cần quyền vị trí để vẽ tuyến đường và tính '
+            'quãng đường, pace. Các phần khác của app vẫn dùng bình thường.';
+        _settingsAction = permission == LocationPermission.deniedForever
+            ? locationProvider.openAppSettings
+            : null;
+      });
       return false;
     }
 
-    if (permission == LocationPermission.deniedForever) {
-      setState(
-        () => _message =
-            'Quyền vị trí đang bị chặn. Mở Settings để cấp lại quyền.',
-      );
-      await locationProvider.openAppSettings();
-      return false;
-    }
-
-    // Foreground đã được cấp (whileInUse hoặc always). Cố gắng nâng lên quyền
-    // nền "Always" để tracking tiếp tục khi khóa màn hình / chuyển app khác.
-    if (permission == LocationPermission.whileInUse) {
+    // Foreground đã được cấp (whileInUse hoặc always).
+    //
+    // Android: foreground service (loại location, có notification) đã đủ để
+    // tracking tiếp tục khi khóa màn hình / chuyển app khác, nên KHÔNG cần quyền
+    // nền "Always" — app cũng không khai ACCESS_BACKGROUND_LOCATION nữa.
+    //
+    // iOS: giữ nguyên hành vi bản đang chạy trên App Store — thử nâng lên
+    // "Always" để tracking nền mượt hơn.
+    if (defaultTargetPlatform == TargetPlatform.iOS &&
+        permission == LocationPermission.whileInUse) {
       permission = await locationProvider.requestPermission();
     }
-    _backgroundLocationGranted = permission == LocationPermission.always;
     return true;
   }
 
-  String _statusLabel(TrackingSessionSnapshot? snapshot) {
-    return switch (snapshot?.status) {
-      TrackingSessionStatus.running => 'RECORDING',
-      TrackingSessionStatus.paused => 'PAUSED',
-      TrackingSessionStatus.finished => 'SAVED TRIAL',
-      TrackingSessionStatus.idle || null => _gpsReady ? 'GPS LOCKED' : 'READY',
-    };
+}
+
+/// Chọn môn trước khi bắt đầu: Chạy / Đạp / Xe máy. Đạp & xe máy có BXH riêng,
+/// KHÔNG cộng vào km chạy hay kèo.
+class _SportPicker extends StatelessWidget {
+  const _SportPicker({required this.selected, required this.onChanged});
+
+  final ActivityKind selected;
+  final ValueChanged<ActivityKind> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final onAccent = dark ? RunNowDataColors.coachOnAccentDark : Colors.white;
+
+    Widget seg(ActivityKind kind, IconData icon, String label) {
+      final on = selected == kind;
+      return Expanded(
+        child: GestureDetector(
+          onTap: on ? null : () => onChanged(kind),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: on ? palette.accent : Colors.transparent,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 16,
+                  color: on ? onAccent : onSurface.withValues(alpha: 0.6),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: on ? onAccent : onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: palette.glassStart,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: palette.border),
+      ),
+      child: Row(
+        children: [
+          seg(ActivityKind.run, Icons.directions_run_rounded, 'Chạy'),
+          seg(ActivityKind.ride, Icons.directions_bike_rounded, 'Đạp'),
+          seg(ActivityKind.motorbike, Icons.two_wheeler_rounded, 'Xe máy'),
+        ],
+      ),
+    );
   }
 }
 
@@ -832,12 +1651,15 @@ class _Controls extends StatelessWidget {
     required this.hasSession,
     required this.gpsReady,
     required this.busy,
+    required this.capturingPhoto,
+    required this.canTakePhoto,
     required this.onLockGps,
     required this.onStart,
     required this.onPause,
     required this.onResume,
     required this.onStop,
     required this.onDiscard,
+    required this.onPhoto,
   });
 
   final bool running;
@@ -846,50 +1668,53 @@ class _Controls extends StatelessWidget {
   final bool hasSession;
   final bool gpsReady;
   final bool busy;
+  final bool capturingPhoto;
+  final bool canTakePhoto;
   final VoidCallback onLockGps;
   final VoidCallback onStart;
   final VoidCallback onPause;
   final VoidCallback onResume;
   final VoidCallback onStop;
   final VoidCallback onDiscard;
+  final VoidCallback onPhoto;
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     if (!hasSession || finished) {
       final label = switch ((finished, gpsReady)) {
-        (true, _) => 'SCAN GPS AGAIN',
-        (false, true) => 'START RUN',
-        (false, false) => 'SCAN GPS',
+        (true, true) => 'BẮT ĐẦU BUỔI MỚI',
+        (true, false) => 'QUÉT GPS CHO BUỔI MỚI',
+        (false, true) => 'BẮT ĐẦU CHẠY',
+        (false, false) => 'QUÉT GPS',
       };
       final icon = switch ((finished, gpsReady)) {
-        (true, _) => Icons.gps_fixed_rounded,
+        (true, true) => Icons.play_arrow_rounded,
+        (true, false) => Icons.gps_fixed_rounded,
         (false, true) => Icons.play_arrow_rounded,
         (false, false) => Icons.gps_not_fixed_rounded,
       };
-      final enabledColor = gpsReady
-          ? RunNowSemanticColors.gpsGood
-          : RunNowSemanticColors.gpsWeak;
+      final enabledColor = gpsReady ? palette.accent : palette.accentDeep;
       return DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
-              color: enabledColor.withValues(alpha: 0.34),
-              blurRadius: 30,
-              spreadRadius: 1,
+              color: enabledColor.withValues(alpha: 0.25),
+              blurRadius: 24,
             ),
           ],
         ),
         child: SizedBox(
           width: double.infinity,
-          height: 68,
+          height: 66,
           child: FilledButton.icon(
             onPressed: busy ? null : (gpsReady ? onStart : onLockGps),
             style: FilledButton.styleFrom(
               backgroundColor: enabledColor,
               foregroundColor: gpsReady ? Colors.black : Colors.white,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(18),
               ),
             ),
             icon: busy
@@ -913,137 +1738,89 @@ class _Controls extends StatelessWidget {
         ),
       );
     }
-    return Column(
-      children: [
-        Row(
+    if (running) {
+      return SizedBox(
+        height: 66,
+        child: Row(
           children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: busy ? null : (running ? onPause : onResume),
-                icon: Icon(
-                  running ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                ),
-                label: Text(running ? 'PAUSE' : 'RESUME'),
-              ),
+            _PhotoButton(
+              enabled: canTakePhoto && !busy,
+              loading: capturingPhoto,
+              onPressed: onPhoto,
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: FilledButton.icon(
-                onPressed: busy ? null : onStop,
-                icon: const Icon(Icons.stop_rounded),
-                label: const Text('STOP & SAVE'),
+                onPressed: busy ? null : onPause,
+                style: FilledButton.styleFrom(
+                  backgroundColor: RunNowSemanticColors.danger,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+                icon: const Icon(Icons.pause_rounded, size: 28),
+                label: const Text(
+                  'TẠM DỪNG',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.1,
+                  ),
+                ),
               ),
             ),
           ],
         ),
-        if (!running) ...[
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: busy ? null : onDiscard,
-            child: const Text('Bỏ phiên thử'),
-          ),
-        ],
-      ],
-    );
-  }
-}
+      );
+    }
 
-class _TrackingCockpit extends StatelessWidget {
-  const _TrackingCockpit({
-    required this.snapshot,
-    required this.signal,
-    required this.elapsedSeconds,
-    required this.stableSamples,
-    required this.minSeconds,
-    required this.minSamples,
-    required this.subtitle,
-    required this.onMap,
-  });
-
-  final TrackingSessionSnapshot? snapshot;
-  final _GpsSignal signal;
-  final int elapsedSeconds;
-  final int stableSamples;
-  final int minSeconds;
-  final int minSamples;
-  final String subtitle;
-  final VoidCallback? onMap;
-
-  @override
-  Widget build(BuildContext context) {
-    final distance = formatDistance(snapshot?.distanceMeters ?? 0);
-    final time = formatDuration(snapshot?.movingTimeSeconds ?? 0);
-    final pace = formatPace(snapshot?.averagePaceSecondsPerKm);
-    final livePace = formatPace(snapshot?.currentPaceSecondsPerKm);
     return SizedBox(
-      height: 405,
-      child: Stack(
-        alignment: Alignment.center,
+      height: 66,
+      child: Row(
         children: [
-          Positioned(
-            top: 0,
-            left: 0,
-            child: _CornerMetric(label: 'TIME', value: time),
+          _PhotoButton(
+            enabled: canTakePhoto && !busy,
+            loading: capturingPhoto,
+            onPressed: onPhoto,
           ),
-          Positioned(
-            top: 0,
-            right: 0,
-            child: _CornerMetric(label: 'PACE TB', value: pace, alignEnd: true),
-          ),
-          Positioned(
-            bottom: 10,
-            left: 0,
-            child: _CornerMetric(label: 'PACE LIVE', value: livePace),
-          ),
-          Positioned(
-            bottom: 10,
-            right: 0,
-            child: _CornerMapMetric(
-              enabled: onMap != null,
-              pointCount: snapshot?.routePoints.length ?? 0,
-              onTap: onMap,
+          const SizedBox(width: 8),
+          Expanded(
+            child: FilledButton(
+              onPressed: busy ? null : onResume,
+              style: FilledButton.styleFrom(
+                backgroundColor: palette.accent,
+                foregroundColor: palette.ink,
+                minimumSize: const Size.fromHeight(58),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+              ),
+              child: const Text('TIẾP TỤC'),
             ),
           ),
-          Positioned(
-            top: 62,
-            child: _GpsRadar(
-              signal: signal,
-              elapsedSeconds: elapsedSeconds,
-              stableSamples: stableSamples,
-              minSeconds: minSeconds,
-              minSamples: minSamples,
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton(
+              onPressed: busy ? null : onStop,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: RunNowSemanticColors.danger,
+                minimumSize: const Size.fromHeight(58),
+                side: const BorderSide(color: RunNowSemanticColors.danger),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+              ),
+              child: const Text('KẾT THÚC'),
             ),
           ),
-          Positioned(
-            bottom: 96,
-            child: Column(
-              children: [
-                Text(
-                  distance,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontSize: 56,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                if (subtitle.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.onSurface.withValues(alpha: 0.56),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.1,
-                    ),
-                  ),
-                ],
-              ],
+          const SizedBox(width: 6),
+          IconButton.outlined(
+            tooltip: 'Bỏ phiên',
+            onPressed: busy ? null : onDiscard,
+            style: IconButton.styleFrom(
+              foregroundColor: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.62),
+              minimumSize: const Size.square(48),
             ),
+            icon: const Icon(Icons.delete_outline_rounded),
           ),
         ],
       ),
@@ -1051,16 +1828,38 @@ class _TrackingCockpit extends StatelessWidget {
   }
 }
 
-class _CornerMetric extends StatelessWidget {
-  const _CornerMetric({
-    required this.label,
-    required this.value,
-    this.alignEnd = false,
+class _PhotoButton extends StatelessWidget {
+  const _PhotoButton({
+    required this.enabled,
+    required this.loading,
+    required this.onPressed,
   });
+
+  final bool enabled;
+  final bool loading;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton.filledTonal(
+      tooltip: 'Chụp ảnh và neo lên route',
+      onPressed: enabled && !loading ? onPressed : null,
+      style: IconButton.styleFrom(minimumSize: const Size.square(58)),
+      icon: loading
+          ? const SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.add_a_photo_outlined, size: 25),
+    );
+  }
+}
+
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({required this.label, required this.value});
 
   final String label;
   final String value;
-  final bool alignEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -1068,543 +1867,41 @@ class _CornerMetric extends StatelessWidget {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: palette.glassEnd,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: palette.border),
+        color: palette.glassStart,
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: SizedBox(
-        width: 126,
-        child: Padding(
-          padding: const EdgeInsets.all(13),
-          child: Column(
-            crossAxisAlignment: alignEnd
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                textAlign: alignEnd ? TextAlign.end : TextAlign.start,
-                style: TextStyle(
-                  color: onSurface.withValues(alpha: 0.54),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.5,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: alignEnd ? TextAlign.end : TextAlign.start,
-                style: TextStyle(
-                  color: onSurface,
-                  fontSize: 21,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CornerMapMetric extends StatelessWidget {
-  const _CornerMapMetric({
-    required this.enabled,
-    required this.pointCount,
-    required this.onTap,
-  });
-
-  final bool enabled;
-  final int pointCount;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    final color = enabled
-        ? palette.secondary
-        : palette.foreground.withValues(alpha: 0.3);
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: enabled ? onTap : null,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: palette.glassEnd,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: color.withValues(alpha: 0.4)),
-        ),
-        child: SizedBox(
-          width: 126,
-          child: Padding(
-            padding: const EdgeInsets.all(13),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  'MAP',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: 22,
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: Text(
+                  label,
+                  maxLines: 2,
                   style: TextStyle(
-                    color: color.withValues(alpha: enabled ? 0.85 : 0.7),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      enabled ? '$pointCount pts' : 'WAIT',
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Icon(Icons.map_outlined, color: color, size: 22),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StatusDot extends StatelessWidget {
-  const _StatusDot({required this.active});
-
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    final color = active ? palette.accent : palette.tertiary;
-    return Container(
-      width: 12,
-      height: 12,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: 16),
-        ],
-      ),
-    );
-  }
-}
-
-Color _gpsSignalColor(_GpsSignal signal) {
-  return switch (signal) {
-    _GpsSignal.ready => RunNowSemanticColors.gpsGood,
-    _GpsSignal.fair => RunNowSemanticColors.gpsFair,
-    _GpsSignal.weak => RunNowSemanticColors.gpsWeak,
-    _GpsSignal.locking => RunNowSemanticColors.gpsLocking,
-    _GpsSignal.idle => RunNowSemanticColors.inactive,
-  };
-}
-
-String _gpsSignalLabel(_GpsSignal signal) {
-  return switch (signal) {
-    _GpsSignal.ready => 'GPS GOOD',
-    _GpsSignal.fair => 'GPS FAIR',
-    _GpsSignal.weak => 'GPS WEAK',
-    _GpsSignal.locking => 'SCANNING',
-    _GpsSignal.idle => 'STANDBY',
-  };
-}
-
-class _RunConsoleHeader extends StatelessWidget {
-  const _RunConsoleHeader({
-    required this.status,
-    required this.active,
-    required this.signal,
-  });
-
-  final String status;
-  final bool active;
-  final _GpsSignal signal;
-
-  @override
-  Widget build(BuildContext context) {
-    final signalColor = _gpsSignalColor(signal);
-    return Row(
-      children: [
-        _StatusDot(active: active),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            status,
-            style: TextStyle(
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurface.withValues(alpha: 0.7),
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.4,
-            ),
-          ),
-        ),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: signalColor.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: signalColor.withValues(alpha: 0.5)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: signalColor,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: signalColor.withValues(alpha: 0.5),
-                        blurRadius: 14,
-                      ),
-                    ],
-                  ),
-                  child: const SizedBox.square(dimension: 8),
-                ),
-                const SizedBox(width: 7),
-                Text(
-                  _gpsSignalLabel(signal),
-                  style: TextStyle(
-                    color: signalColor,
-                    fontSize: 11,
+                    color: onSurface.withValues(alpha: 0.54),
+                    fontSize: 9,
+                    height: 1.15,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 1.1,
                   ),
                 ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _GpsRadar extends StatelessWidget {
-  const _GpsRadar({
-    required this.signal,
-    required this.elapsedSeconds,
-    required this.stableSamples,
-    required this.minSeconds,
-    required this.minSamples,
-  });
-
-  final _GpsSignal signal;
-  final int elapsedSeconds;
-  final int stableSamples;
-  final int minSeconds;
-  final int minSamples;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _gpsSignalColor(signal);
-    final sampleProgress = minSamples <= 0
-        ? 0.0
-        : (stableSamples / minSamples).clamp(0.0, 1.0);
-    final timeProgress = minSeconds <= 0
-        ? null
-        : (elapsedSeconds / minSeconds).clamp(0.0, 1.0);
-    final progress = timeProgress == null
-        ? sampleProgress
-        : (timeProgress + sampleProgress) / 2;
-    return SizedBox(
-      width: 238,
-      height: 238,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          CustomPaint(
-            size: const Size.square(238),
-            painter: _GpsRadarPainter(
-              color: color,
-              gridColor: context.runNowPalette.foreground.withValues(
-                alpha: 0.09,
-              ),
-              progress: progress,
-            ),
-          ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-              border: Border.all(color: color.withValues(alpha: 0.58)),
-              boxShadow: [
-                BoxShadow(color: color.withValues(alpha: 0.25), blurRadius: 22),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Icon(
-                signal == _GpsSignal.ready
-                    ? Icons.gps_fixed_rounded
-                    : Icons.gps_not_fixed_rounded,
-                color: color,
-                size: 34,
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _GpsRadarPainter extends CustomPainter {
-  const _GpsRadarPainter({
-    required this.color,
-    required this.gridColor,
-    required this.progress,
-  });
-
-  final Color color;
-  final Color gridColor;
-  final double progress;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = size.center(Offset.zero);
-    final radius = size.shortestSide / 2;
-    final gridPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = gridColor;
-    final glowPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 8
-      ..strokeCap = StrokeCap.round
-      ..color = color.withValues(alpha: 0.18);
-    final activePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5
-      ..strokeCap = StrokeCap.round
-      ..color = color;
-
-    for (final scale in [0.34, 0.56, 0.78, 1.0]) {
-      canvas.drawCircle(center, radius * scale, gridPaint);
-    }
-    for (var i = 0; i < 8; i++) {
-      final angle = math.pi * 2 * i / 8;
-      final start = Offset(
-        center.dx + math.cos(angle) * radius * 0.34,
-        center.dy + math.sin(angle) * radius * 0.34,
-      );
-      final end = Offset(
-        center.dx + math.cos(angle) * radius,
-        center.dy + math.sin(angle) * radius,
-      );
-      canvas.drawLine(start, end, gridPaint);
-    }
-    final rect = Rect.fromCircle(center: center, radius: radius * 0.92);
-    canvas.drawArc(
-      rect,
-      -math.pi / 2,
-      math.pi * 2 * progress,
-      false,
-      glowPaint,
-    );
-    canvas.drawArc(
-      rect,
-      -math.pi / 2,
-      math.pi * 2 * progress,
-      false,
-      activePaint,
-    );
-    final dotAngle = -math.pi / 2 + math.pi * 2 * progress;
-    final dot = Offset(
-      center.dx + math.cos(dotAngle) * radius * 0.92,
-      center.dy + math.sin(dotAngle) * radius * 0.92,
-    );
-    canvas.drawCircle(dot, 7, Paint()..color = color);
-  }
-
-  @override
-  bool shouldRepaint(covariant _GpsRadarPainter oldDelegate) {
-    return oldDelegate.color != color ||
-        oldDelegate.gridColor != gridColor ||
-        oldDelegate.progress != progress;
-  }
-}
-
-class _TrialNoteCard extends StatelessWidget {
-  const _TrialNoteCard({required this.snapshot});
-
-  final TrackingSessionSnapshot? snapshot;
-
-  @override
-  Widget build(BuildContext context) {
-    final logs = snapshot?.pointLogs ?? const <TrackingPointLog>[];
-    final rejected = logs
-        .where((log) => log.decision == TrackingPointDecision.rejected)
-        .length;
-    return GlassPanel(
-      borderRadius: 20,
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'TRIAL MODE',
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: Theme.of(context).colorScheme.secondary,
-              letterSpacing: 1.4,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Buổi chạy thử được lưu để tuning thuật toán. Chưa cộng vào Tổng quan, Club hoặc Leaderboard.',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _SmallStat(
-                  label: 'Accepted',
-                  value: '${logs.length - rejected}',
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _SmallStat(label: 'Rejected', value: '$rejected'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TrialSessionList extends StatelessWidget {
-  const _TrialSessionList({required this.activities});
-
-  final AsyncValue<List<ActivitySummary>> activities;
-
-  @override
-  Widget build(BuildContext context) {
-    return activities.when(
-      data: (items) => GlassPanel(
-        borderRadius: 22,
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+            const SizedBox(height: 4),
             Text(
-              'SESSION ĐÃ TEST',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: Theme.of(context).colorScheme.secondary,
-                letterSpacing: 1.3,
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: onSurface,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
               ),
-            ),
-            const SizedBox(height: 12),
-            if (items.isEmpty)
-              Text(
-                'Chưa có session thử nào được lưu.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              )
-            else
-              for (final activity in items.take(8)) ...[
-                _TrialSessionRow(activity: activity),
-                if (activity != items.take(8).last)
-                  Divider(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.onSurface.withValues(alpha: 0.08),
-                  ),
-              ],
-          ],
-        ),
-      ),
-      error: (error, stack) => GlassPanel(
-        borderRadius: 18,
-        padding: const EdgeInsets.all(16),
-        child: Text('Không tải được session test: $error'),
-      ),
-      loading: () => const Center(child: CircularProgressIndicator()),
-    );
-  }
-}
-
-class _TrialSessionRow extends StatelessWidget {
-  const _TrialSessionRow({required this.activity});
-
-  final ActivitySummary activity;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () => context.push('/tracking/session/${activity.id}'),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: palette.accent.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(Icons.science_outlined, color: palette.accent),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    activity.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  Text(
-                    formatDate(activity.startedAt),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  formatDistance(activity.distanceMeters),
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.secondary,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                Text(
-                  formatPace(activity.paceSecondsPerKm),
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ),
-            const SizedBox(width: 8),
-            Icon(
-              Icons.map_outlined,
-              size: 18,
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurface.withValues(alpha: 0.5),
             ),
           ],
         ),
@@ -1613,26 +1910,43 @@ class _TrialSessionRow extends StatelessWidget {
   }
 }
 
-class _SmallStat extends StatelessWidget {
-  const _SmallStat({required this.label, required this.value});
+class _DistanceReadout extends StatelessWidget {
+  const _DistanceReadout({required this.distance});
 
-  final String label;
-  final String value;
+  final String distance;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: Theme.of(context).textTheme.bodySmall),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            color: Theme.of(context).colorScheme.tertiary,
-            fontWeight: FontWeight.w900,
+    final split = distance.lastIndexOf(' ');
+    final value = split < 0 ? distance : distance.substring(0, split);
+    final unit = split < 0 ? '' : distance.substring(split + 1);
+    final textColor = Theme.of(context).colorScheme.onSurface;
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: value,
+            style: TextStyle(
+              color: textColor,
+              fontSize: 64,
+              height: 1,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -2,
+            ),
           ),
-        ),
-      ],
+          if (unit.isNotEmpty)
+            TextSpan(
+              text: ' $unit',
+              style: TextStyle(
+                color: context.runNowPalette.accent,
+                fontSize: 25,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+        ],
+      ),
+      textAlign: TextAlign.center,
     );
   }
 }
+

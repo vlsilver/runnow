@@ -5,6 +5,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/prc_brand_mark.dart';
+import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:myrun/src/widgets/strava_activity_link.dart';
 
 class FeedScreen extends ConsumerWidget {
@@ -34,7 +35,7 @@ class FeedScreen extends ConsumerWidget {
               ),
         error: (error, stack) =>
             Center(child: Text('Không thể tải feed: $error')),
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const RunNowLoading(label: 'Đang tải feed'),
       ),
     );
   }

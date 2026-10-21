@@ -11,7 +11,7 @@ String buildShareCaption(ActivitySummary activity) {
   return [
     activity.name,
     '${formatDistance(activity.distanceMeters)} • ${formatDuration(activity.movingTimeSeconds)} • ${formatPace(activity.paceSecondsPerKm)}',
-    'Chia sẻ từ RunNow',
+    'Chia sẻ từ 3i',
   ].join('\n');
 }
 
@@ -31,7 +31,7 @@ Future<ShareResult> shareActivityRecap({
     ShareParams(
       text: buildShareCaption(activity),
       files: [XFile.fromData(png, mimeType: 'image/png')],
-      fileNameOverrides: ['runnow-${activity.id}.png'],
+      fileNameOverrides: ['3i-${activity.id}.png'],
       sharePositionOrigin: sharePositionOrigin,
     ),
   );
@@ -51,9 +51,34 @@ Future<ShareResult> shareDashboardCard({
   final png = await captureRecapPng(boundary);
   return SharePlus.instance.share(
     ShareParams(
-      text: '$title\nChia sẻ từ RunNow',
+      text: '$title\nChia sẻ từ 3i',
       files: [XFile.fromData(png, mimeType: 'image/png')],
-      fileNameOverrides: ['runnow-${_shareFileName(title)}.png'],
+      fileNameOverrides: ['3i-${_shareFileName(title)}.png'],
+      sharePositionOrigin: sharePositionOrigin,
+    ),
+  );
+}
+
+Future<ShareResult> shareJourneyCompletion({
+  required GlobalKey cardKey,
+  required BuildContext shareOriginContext,
+  required String campaignName,
+  required String routeName,
+}) async {
+  final boundary =
+      cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+  final renderBox = shareOriginContext.findRenderObject() as RenderBox?;
+  final sharePositionOrigin = renderBox == null
+      ? null
+      : renderBox.localToGlobal(Offset.zero) & renderBox.size;
+  final png = await captureRecapPng(boundary);
+  return SharePlus.instance.share(
+    ShareParams(
+      text:
+          'Tôi vừa hoàn thành $campaignName ($routeName) trên 3i — cộng dồn '
+          'từng buổi chạy thật, không hệ số!',
+      files: [XFile.fromData(png, mimeType: 'image/png')],
+      fileNameOverrides: ['3i-${_shareFileName(campaignName)}.png'],
       sharePositionOrigin: sharePositionOrigin,
     ),
   );

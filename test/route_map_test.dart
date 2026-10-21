@@ -22,4 +22,29 @@ void main() {
     expect(camera.center.longitude, closeTo(-123.3265, 0.00001));
     expect(camera.zoom, inInclusiveRange(8, 16));
   });
+
+  test('maps chart distance proportionally onto a downsampled route', () {
+    final points = decodePolyline('_p~iF~ps|U_ulLnnqC_mqNvxq`@');
+
+    final start = routePointAtActivityDistance(
+      points,
+      selectedDistanceMeters: 0,
+      activityDistanceMeters: 10000,
+    );
+    final middle = routePointAtActivityDistance(
+      points,
+      selectedDistanceMeters: 5000,
+      activityDistanceMeters: 10000,
+    );
+    final finish = routePointAtActivityDistance(
+      points,
+      selectedDistanceMeters: 10000,
+      activityDistanceMeters: 10000,
+    );
+
+    expect(start, points.first);
+    expect(finish, points.last);
+    expect(middle, isNot(points.first));
+    expect(middle, isNot(points.last));
+  });
 }

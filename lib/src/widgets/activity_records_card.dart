@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/cached_avatar.dart';
 
 class ActivityRecordEntry {
   const ActivityRecordEntry({
@@ -367,7 +368,7 @@ class _OwnerLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = record.ownerName ?? 'RunNow member';
+    final name = record.ownerName ?? '3i member';
     final avatarUrl = record.ownerAvatarUrl;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final palette = context.runNowPalette;
@@ -376,7 +377,9 @@ class _OwnerLine extends StatelessWidget {
         CircleAvatar(
           radius: 8,
           backgroundColor: palette.secondary.withValues(alpha: 0.18),
-          backgroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl),
+          backgroundImage: avatarUrl == null
+              ? null
+              : cachedAvatarImage(context, avatarUrl, 16),
           child: avatarUrl == null
               ? Text(
                   name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(),
