@@ -199,7 +199,13 @@ func (a *AgentService) ReplyDM(ctx context.Context, uid string, seq int64, wall 
 	}
 	reply := agentBudgetReply
 	if allowed {
-		if reply, err = a.dmAnswer(ctx, uid, seq, stringValue(d["name"]), stringValue(d["persona"]), wall); err != nil {
+		reply, err = a.dmAnswer(ctx, uid, seq, stringValue(d["name"]), stringValue(d["persona"]), wall)
+		// Chạm trần chi phí giữa chừng (kể cả sau vòng tool đầu) thì vẫn trả câu
+		// nghỉ, để tin của chủ không treo ở "đang gõ" tới ngày mai.
+		if errors.Is(err, errAgentOverBudget) {
+			reply, err = agentBudgetReply, nil
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -418,6 +424,17 @@ func (a *AgentService) RoomTurn(ctx context.Context, afterSeq int64, wall time.T
 		return nil
 	}
 	text, err := a.roomReply(ctx, speaker, agents, acc.roster(agents), transcript, wall)
+	if errors.Is(err, errAgentOverBudget) {
+		// Chạm trần chi phí: một bot báo nghỉ rồi dừng chuỗi, không hẹn lượt kế,
+		// để mỗi tin người chỉ nhận một câu nghỉ chứ không phải agentChainMax câu.
+		// Task chạy lại sau khi đã ghi thì vẫn hẹn lượt kế (nhánh turnOf ở trên),
+		// nên lượt kế thấy câu nghỉ đứng cuối thì thôi.
+		if last := transcript[len(transcript)-1]; stringValue(last["kind"]) == agentKindAgent && stringValue(last["text"]) == agentBudgetReply {
+			return nil
+		}
+		_, err = a.store.appendRoomTurn(ctx, afterSeq, speaker, agentBudgetReply, wall)
+		return err
+	}
 	if err != nil {
 		return err
 	}

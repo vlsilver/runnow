@@ -108,10 +108,13 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 		} else {
 			d.Gemini = genaiClient
 			d.Memory = NewMemoryService(genaiClient, db, config.GeminiModel)
-			d.AgentBrain = NewAgentService(d.Agents, genaiAgentLLM{client: genaiClient, model: config.AgentModel, thinking: config.GeminiThinkingLevel}, tasks.Publish)
+			// Mọi lượt gọi model của bot cá nhân đi qua trần chi phí ngày; chưa đặt
+			// agentState/config.dailyBudgetUsd thì chỉ cộng số, không chặn gì.
+			budget := NewAgentBudget(db, adminNotifier(d.Games, telegram))
+			d.AgentBrain = NewAgentService(d.Agents, budgetAgentLLM{inner: genaiAgentLLM{client: genaiClient, model: config.AgentModel, thinking: config.GeminiThinkingLevel}, model: config.AgentModel, budget: budget}, tasks.Publish)
 			d.AgentBrain.chatID = config.TelegramChatID
 			if config.AgentLearn {
-				d.Learn = NewLearnService(d.Agents, genaiLearnLLM{client: genaiClient, model: config.AgentLearnModel}, config.TelegramChatID)
+				d.Learn = NewLearnService(d.Agents, budgetLearnLLM{inner: genaiLearnLLM{client: genaiClient, model: config.AgentLearnModel}, model: config.AgentLearnModel, budget: budget}, config.TelegramChatID)
 			}
 			// Client RIÊNG cho sinh ảnh: model ảnh nằm cố định ở location "global",
 			// không theo GEMINI_LOCATION. Hỏng thì chỉ tắt tính năng vẽ, không
