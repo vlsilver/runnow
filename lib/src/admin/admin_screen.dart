@@ -34,7 +34,7 @@ const _roles = [
     id: 'bot',
     title: 'Bot cá nhân trong app',
     hint:
-        'Có bot riêng ở mục "Bot của tôi" và vào phòng bot trong app, không '
+        'Có tab MyBot với bot riêng và vào phòng bot trong app, không '
         'liên quan bot Telegram. Admin luôn có quyền này.',
   ),
 ];

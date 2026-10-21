@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/app.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/repository.dart';
+import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_repository.dart';
 import 'package:myrun/src/theme_controller.dart';
 
 void main() {
-  testWidgets('renders contract home in demo mode', (tester) async {
-    // Ép kích thước điện thoại để dùng bottom nav (layout web rộng có rail
-    // riêng làm thay đổi cây widget/scroll).
+  /// Bật app ở cỡ điện thoại để dùng bottom nav (layout web rộng có rail
+  /// riêng làm thay đổi cây widget/scroll). [agent] null là chưa tải được hồ
+  /// sơ bot, như khi chưa đăng nhập.
+  Future<void> pumpApp(WidgetTester tester, {AgentMe? agent}) async {
     tester.view.physicalSize = const Size(420, 1400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -46,15 +49,57 @@ void main() {
           themeControllerProvider.overrideWith(
             (ref) => ThemeController(loadFromStorage: false),
           ),
+          agentMeProvider.overrideWith((ref) async => agent),
+          agentRoomPreviewProvider.overrideWith((ref) async => const []),
+          firebaseUserProvider.overrideWith((ref) => Stream.value(null)),
         ],
         child: const RunNowApp(requireAuthentication: false),
       ),
     );
     await tester.pumpAndSettle();
+  }
+
+  AgentMe agentMe({required bool enabled}) => AgentMe(
+    enabled: enabled,
+    agent: const AgentProfile(name: 'Sóc', persona: '', created: true),
+    memories: const [],
+    memoryLimit: 50,
+    learned: const [],
+  );
+
+  testWidgets('renders contract home in demo mode', (tester) async {
+    await pumpApp(tester);
     expect(find.text('Kèo'), findsNWidgets(2));
     expect(find.byIcon(Icons.add_rounded), findsOneWidget);
     expect(find.text('Chưa có kèo đang diễn ra'), findsOneWidget);
     expect(find.text('Tổng quan'), findsNothing);
+  });
+
+  testWidgets('people without the bot keep the run tab in the middle', (
+    tester,
+  ) async {
+    await pumpApp(tester, agent: agentMe(enabled: false));
+    expect(find.text('MyBot'), findsNothing);
+    // Chỉ có nút Chạy giữa thanh tab, đầu tab Kèo không có nút Chạy.
+    expect(find.text('Chạy'), findsOneWidget);
+    expect(find.byTooltip('Bắt đầu chạy'), findsNothing);
+  });
+
+  testWidgets('bot users get MyBot in the middle and run from the Kèo header', (
+    tester,
+  ) async {
+    await pumpApp(tester, agent: agentMe(enabled: true));
+    expect(find.text('MyBot'), findsOneWidget);
+    expect(find.byTooltip('Bắt đầu chạy'), findsOneWidget);
+    // Thanh tab không còn nút Chạy, chữ "Chạy" duy nhất là nút trên đầu Kèo.
+    expect(find.text('Chạy'), findsOneWidget);
+
+    await tester.tap(find.text('MyBot'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sóc'), findsOneWidget);
+    expect(find.text('Chat riêng'), findsOneWidget);
+    // Vẫn ở trong shell: thanh tab còn đó.
+    expect(find.text('Hành Trình'), findsOneWidget);
   });
 }
 

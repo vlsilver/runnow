@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:go_router/go_router.dart';
 import 'package:http/testing.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
 import 'package:myrun/src/agents/agent_group_facts_screen.dart';
 import 'package:myrun/src/agents/agent_screen.dart';
+import 'package:myrun/src/agents/agent_setup_screen.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 
@@ -125,47 +127,148 @@ void main() {
 
   setUp(() => backend = _AgentBackend());
 
-  testWidgets('creates the bot, then adds and deletes a memory', (
+  /// Màn MyBot cùng màn tạo/sửa bot, đủ để đi qua lại bằng go_router.
+  Future<void> pumpMyBot(WidgetTester tester) async {
+    // Cao như điện thoại để ListView dựng hết các mục.
+    tester.view.physicalSize = const Size(420, 1800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final router = GoRouter(
+      routes: [
+        GoRoute(path: '/', builder: (_, _) => const AgentScreen()),
+        GoRoute(
+          path: '/agent/setup',
+          builder: (_, _) => const AgentSetupScreen(),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          runNowApiClientProvider.overrideWithValue(backend.client()),
+          firebaseUserProvider.overrideWith((ref) => Stream.value(_FakeUser())),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('creates the bot from a preset, then adds and deletes a memory', (
     tester,
   ) async {
-    await pump(tester, const AgentScreen());
+    await pumpMyBot(tester);
     // Chưa tạo: chưa có nút vào chat, chưa có bộ nhớ.
+    expect(find.text('Tạo bot của riêng bạn'), findsOneWidget);
     expect(find.text('Chat riêng'), findsNothing);
-    expect(find.textContaining('Bộ nhớ'), findsNothing);
+    expect(find.text('BOT BIẾT GÌ VỀ BẠN'), findsNothing);
 
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Tính cách'),
-      'Hay đùa',
-    );
     await tester.tap(find.text('Tạo bot'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bot của bạn là ai?'), findsOneWidget);
+    await tester.tap(find.text('Cây hài'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Tạo bot'));
     await tester.pumpAndSettle();
     final create = backend.requests.firstWhere(
       (r) => r.method == 'POST' && r.url.path == '/v1/agents/me',
     );
     expect(jsonDecode(create.body), {
       'name': 'Bot của Tôi',
-      'persona': 'Hay đùa',
+      'persona': 'Hay đùa, cà khịa vừa phải. Nói ngắn, xưng "tui".',
     });
+
+    // Lưu xong quay về MyBot, giờ đã có bot.
     expect(find.text('Chat riêng'), findsOneWidget);
-    expect(find.text('Bộ nhớ (0/50)'), findsOneWidget);
+    expect(find.text('BOT BIẾT GÌ VỀ BẠN'), findsOneWidget);
+    expect(find.text('0/50'), findsOneWidget);
     // Bộ nhớ được dùng trong phòng: phải nói rõ cho chủ.
     expect(find.textContaining('các thành viên khác cùng đọc'), findsOneWidget);
 
-    await tester.tap(find.text('Thêm'));
+    await tester.tap(find.text('Thêm điều cần nhớ'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '  Chạy sáng thứ 7  ');
     await tester.tap(find.text('Lưu').last);
     await tester.pumpAndSettle();
     expect(backend.memories.single['text'], 'Chạy sáng thứ 7');
     expect(find.text('Chạy sáng thứ 7'), findsOneWidget);
-    expect(find.text('Bộ nhớ (1/50)'), findsOneWidget);
+    expect(find.text('1/50'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Xoá'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Xoá').last);
     await tester.pumpAndSettle();
     expect(backend.calls, contains('DELETE /v1/agents/me/memories/m1'));
-    expect(find.text('Bộ nhớ (0/50)'), findsOneWidget);
+    expect(find.text('0/50'), findsOneWidget);
+  });
+
+  testWidgets('edits the bot and previews the two newest room messages', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Cú', 'persona': 'Nói ngắn', 'created': true};
+    final at = DateTime.utc(2026, 10, 20, 8).toIso8601String();
+    // Phòng trả tin mới trước.
+    backend.room = {
+      'messages': [
+        {
+          'seq': 3,
+          'kind': 'agent',
+          'uid': 'me',
+          'name': 'Cú',
+          'owner': 'Tôi',
+          'text': 'ok luôn',
+          'at': at,
+        },
+        {
+          'seq': 2,
+          'kind': 'agent',
+          'uid': 'an',
+          'name': 'Sóc',
+          'owner': 'An',
+          'text': 'chạy không',
+          'at': at,
+        },
+        {
+          'seq': 1,
+          'kind': 'human',
+          'uid': 'an',
+          'name': 'An',
+          'text': 'chào cả nhà',
+          'at': at,
+        },
+      ],
+      'members': [],
+    };
+    await pumpMyBot(tester);
+    expect(find.text('Nói ngắn'), findsOneWidget);
+    expect(find.text('chào cả nhà'), findsNothing);
+    final older = tester.getTopLeft(find.text('Sóc · bot của An'));
+    final newer = tester.getTopLeft(find.text('Cú · bot của bạn'));
+    expect(older.dy, lessThan(newer.dy));
+
+    await tester.tap(find.byTooltip('Sửa bot'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sửa bot'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Cú'), findsOneWidget);
+    final name = find.byType(TextField).first;
+    await tester.enterText(name, '   ');
+    await tester.pump();
+    // Tên trống thì không cho lưu, backend cũng từ chối.
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Lưu'))
+          .onPressed,
+      isNull,
+    );
+    await tester.enterText(name, 'Cú Mèo');
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Lưu'));
+    await tester.pumpAndSettle();
+    final save = backend.requests.lastWhere((r) => r.method == 'POST');
+    expect(jsonDecode(save.body), {'name': 'Cú Mèo', 'persona': 'Nói ngắn'});
+    expect(find.text('Cú Mèo'), findsOneWidget);
   });
 
   testWidgets('shows what the bot learned and forgets on request', (
@@ -176,22 +279,19 @@ void main() {
       {'id': 'tg-f2', 'text': 'Đi giày Pegasus', 'source': 'migrated'},
     ]);
     // Chưa tạo bot vẫn thấy điều bot học được từ group Telegram.
-    await pump(tester, const AgentScreen());
-    await tester.scrollUntilVisible(
-      find.text('Bot biết gì về nhóm'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('Bot tự học về bạn (2)'), findsOneWidget);
+    await pumpMyBot(tester);
+    expect(find.text('BOT TỰ HỌC VỀ BẠN'), findsOneWidget);
     expect(find.text('Từ trí nhớ cũ của 3i'), findsOneWidget);
+    expect(find.text('Bot biết gì về nhóm'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Quên').last);
+    await tester.tap(find.widgetWithText(TextButton, 'Quên').last);
     await tester.pumpAndSettle();
+    expect(find.text('Cho bot quên điều này?'), findsOneWidget);
     await tester.tap(find.text('Quên').last);
     await tester.pumpAndSettle();
     expect(backend.calls, contains('DELETE /v1/agents/me/learned/tg-f2'));
     expect(find.text('Đi giày Pegasus'), findsNothing);
-    expect(find.text('Bot tự học về bạn (1)'), findsOneWidget);
+    expect(find.text('Mê chạy trail'), findsOneWidget);
   });
 
   testWidgets('only admins can make the bot forget group facts', (

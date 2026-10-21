@@ -5,7 +5,9 @@ import 'package:go_router/go_router.dart';
 import 'package:myrun/src/admin/admin_screen.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
 import 'package:myrun/src/agents/agent_group_facts_screen.dart';
+import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/agents/agent_screen.dart';
+import 'package:myrun/src/agents/agent_setup_screen.dart';
 import 'package:myrun/src/app_update.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_chat_screen.dart';
@@ -126,6 +128,16 @@ final _router = GoRouter(
             ),
           ],
         ),
+        // Tab MyBot thay nút Chạy giữa thanh tab khi user được bật bot
+        // (myBotTabVisible). Branch thêm ở cuối nên index các tab cũ giữ nguyên.
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/mybot',
+              builder: (context, state) => const AgentScreen(),
+            ),
+          ],
+        ),
       ],
     ),
     GoRoute(path: '/journal', redirect: (context, state) => '/profile/journal'),
@@ -226,7 +238,11 @@ final _router = GoRouter(
       builder: (context, state) =>
           GameDetailScreen(gameId: state.pathParameters['id']!),
     ),
-    GoRoute(path: '/agent', builder: (context, state) => const AgentScreen()),
+    GoRoute(path: '/agent', redirect: (context, state) => '/mybot'),
+    GoRoute(
+      path: '/agent/setup',
+      builder: (context, state) => const AgentSetupScreen(),
+    ),
     GoRoute(
       path: '/agent/dm',
       builder: (context, state) => const AgentDMScreen(),
@@ -840,6 +856,7 @@ class _Scaffold extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final admin = _showAdminTab(ref);
+    final myBot = myBotTabVisible(ref);
     final width = MediaQuery.sizeOf(context).width;
     // Ở tab Chạy (index 2) → ẩn nav dưới cho màn chạy chiếm trọn, tập trung.
     // Thoát bằng nút X trên màn Chạy (khi chưa bắt đầu) hoặc Stop/Discard.
@@ -851,7 +868,7 @@ class _Scaffold extends ConsumerWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _DesktopNavRail(shell: shell, admin: admin),
+              _DesktopNavRail(shell: shell, admin: admin, myBot: myBot),
               Expanded(
                 child: Align(
                   alignment: Alignment.topCenter,
@@ -919,7 +936,17 @@ class _Scaffold extends ConsumerWidget {
                       onTap: () => shell.goBranch(1),
                     ),
                   ),
-                  if (!kIsWeb)
+                  // Có bot thì giữa là MyBot, nút Chạy lên đầu tab Kèo.
+                  if (myBot)
+                    Expanded(
+                      child: _OrbNavItem(
+                        selected: shell.currentIndex == 6,
+                        icon: Icons.smart_toy_rounded,
+                        label: 'MyBot',
+                        onTap: () => shell.goBranch(6),
+                      ),
+                    )
+                  else if (!kIsWeb)
                     Expanded(
                       child: _OrbNavItem(
                         selected: shell.currentIndex == 2,
@@ -967,10 +994,15 @@ class _Scaffold extends ConsumerWidget {
 }
 
 class _DesktopNavRail extends StatelessWidget {
-  const _DesktopNavRail({required this.shell, required this.admin});
+  const _DesktopNavRail({
+    required this.shell,
+    required this.admin,
+    required this.myBot,
+  });
 
   final StatefulNavigationShell shell;
   final bool admin;
+  final bool myBot;
 
   @override
   Widget build(BuildContext context) {
@@ -978,7 +1010,14 @@ class _DesktopNavRail extends StatelessWidget {
     final extended = width >= 1240;
     final scheme = Theme.of(context).colorScheme;
     final onSurface = scheme.onSurface;
-    final branches = <int>[0, 1, if (!kIsWeb) 2, 3, 4, if (admin) 5];
+    final branches = <int>[
+      0,
+      1,
+      if (myBot) 6 else if (!kIsWeb) 2,
+      3,
+      4,
+      if (admin) 5,
+    ];
     final destinations = <NavigationRailDestination>[
       const NavigationRailDestination(
         icon: Icon(Icons.flag_outlined),
@@ -990,7 +1029,13 @@ class _DesktopNavRail extends StatelessWidget {
         selectedIcon: Icon(Icons.groups_2),
         label: Text('Club'),
       ),
-      if (!kIsWeb)
+      if (myBot)
+        const NavigationRailDestination(
+          icon: Icon(Icons.smart_toy_outlined),
+          selectedIcon: Icon(Icons.smart_toy_rounded),
+          label: Text('MyBot'),
+        )
+      else if (!kIsWeb)
         const NavigationRailDestination(
           icon: Icon(Icons.directions_run_rounded),
           selectedIcon: Icon(Icons.directions_run_rounded),

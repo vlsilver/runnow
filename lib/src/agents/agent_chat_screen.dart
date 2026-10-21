@@ -51,7 +51,7 @@ class _AgentDMScreenState extends _AgentChatState<AgentDMScreen, AgentMessage> {
     text:
         'Kể cho bot nghe về bạn: bạn chạy thế nào, thích gì, nói chuyện ra '
         'sao, kiến thức bạn muốn bot biết. Bot tự ghi điều đáng nhớ vào bộ '
-        'nhớ, bạn xem và sửa ở màn Bot của tôi.',
+        'nhớ, bạn xem và sửa ở tab MyBot.',
   );
 
   @override
