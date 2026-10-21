@@ -921,8 +921,10 @@ class _Scaffold extends ConsumerWidget {
                   ),
                   if (!kIsWeb)
                     Expanded(
-                      child: _RunNavItem(
+                      child: _OrbNavItem(
                         selected: shell.currentIndex == 2,
+                        icon: Icons.directions_run_rounded,
+                        label: 'Chạy',
                         onTap: () => shell.goBranch(2),
                       ),
                     ),
@@ -1150,10 +1152,18 @@ class _NavItem extends StatelessWidget {
   }
 }
 
-class _RunNavItem extends StatelessWidget {
-  const _RunNavItem({required this.selected, required this.onTap});
+/// Nút tròn nổi ở giữa thanh tab.
+class _OrbNavItem extends StatelessWidget {
+  const _OrbNavItem({
+    required this.selected,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   final bool selected;
+  final IconData icon;
+  final String label;
   final VoidCallback onTap;
 
   @override
@@ -1192,15 +1202,11 @@ class _RunNavItem extends StatelessWidget {
                 ),
               ),
             ),
-            child: Icon(
-              Icons.directions_run_rounded,
-              color: palette.glassStart,
-              size: 30,
-            ),
+            child: Icon(icon, color: palette.glassStart, size: 30),
           ),
           const SizedBox(height: 2),
           Text(
-            'Chạy',
+            label,
             style: TextStyle(
               color: selected
                   ? palette.secondary

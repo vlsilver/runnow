@@ -11,6 +11,14 @@ import 'package:myrun/src/theme.dart';
 /// lời đã hết lượt chạy lại, chủ nhắn tin mới thì bot trả lời gộp.
 const agentReplyTimeout = Duration(minutes: 2);
 
+/// Tên người gửi một tin trong phòng bot, dùng ở phòng và ở tab MyBot.
+String agentRoomSenderLabel(AgentRoomMessage m, String? myUid) {
+  if (!m.fromAgent) return m.name;
+  return m.uid == myUid
+      ? '${m.name} · bot của bạn'
+      : '${m.name} · bot của ${m.owner ?? 'thành viên'}';
+}
+
 /// Chat riêng giữa chủ và bot của mình.
 class AgentDMScreen extends ConsumerStatefulWidget {
   const AgentDMScreen({super.key, this.now = DateTime.now});
@@ -107,17 +115,9 @@ class _AgentRoomScreenState
   @override
   _Bubble bubble(AgentRoomMessage m, String? myUid) {
     final mine = !m.fromAgent && m.uid == myUid;
-    final String label;
-    if (m.fromAgent) {
-      label = m.uid == myUid
-          ? '${m.name} · bot của bạn'
-          : '${m.name} · bot của ${m.owner ?? 'thành viên'}';
-    } else {
-      label = m.name;
-    }
     return _Bubble(
       mine: mine,
-      label: mine ? null : label,
+      label: mine ? null : agentRoomSenderLabel(m, myUid),
       bot: m.fromAgent,
       text: m.text,
       at: m.at,
