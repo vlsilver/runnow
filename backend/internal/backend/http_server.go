@@ -1047,9 +1047,9 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 			// X-App-*: Ma Sói đọc bản app để báo "cần cập nhật" (3.8). DELETE:
-			// huỷ liên kết Telegram, rời ván.
+			// huỷ liên kết Telegram, rời ván. PATCH: admin sửa config bot trên web.
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-App-Version, X-App-Platform")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(204)

@@ -2,6 +2,9 @@ package backend
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -30,5 +33,19 @@ func TestAgentModelUses(t *testing.T) {
 	s.config.AgentLearnModel = "n"
 	if uses := s.agentModelUses(); len(uses) != 2 || uses[1].Model != "n" {
 		t.Fatalf("hai model: %+v", uses)
+	}
+}
+
+// Trang Admin chạy trên web: trình duyệt hỏi preflight trước PATCH, CORS không
+// cho PATCH thì không lưu được gì.
+func TestCORSPreflightAllowsPatch(t *testing.T) {
+	srv := NewAPIServer(Config{AllowedWebOrigins: map[string]struct{}{"https://threei.run": {}}}, &Dependencies{})
+	r := httptest.NewRequest(http.MethodOptions, "/v1/admin/agent-config", nil)
+	r.Header.Set("Origin", "https://threei.run")
+	r.Header.Set("Access-Control-Request-Method", "PATCH")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, r)
+	if w.Code != 204 || !strings.Contains(w.Header().Get("Access-Control-Allow-Methods"), "PATCH") {
+		t.Fatalf("preflight: %d %v", w.Code, w.Header())
 	}
 }
