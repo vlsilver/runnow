@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -190,7 +191,15 @@ func (l *LearnService) Run(ctx context.Context, now time.Time) error {
 		return err
 	}
 	for _, sc := range learnScopes(lines) {
-		if err := l.learnScope(ctx, b, sc, now); err != nil {
+		err := l.learnScope(ctx, b, sc, now)
+		if errors.Is(err, errAgentOverBudget) {
+			// Chạm trần chi phí: bỏ lượt học này mà không trả lỗi, để task không
+			// chạy lại vô ích. Lô vẫn ở pending, task của khung sau học tiếp các
+			// scope chưa xong.
+			slog.InfoContext(ctx, "agent.learn_budget_skip", "batch", b.ID, "scope", sc.key)
+			return nil
+		}
+		if err != nil {
 			return err
 		}
 	}
