@@ -33,6 +33,20 @@ func (s *Server) agentRoutes() {
 		}
 		return writeJSON(w, 200, p)
 	}))
+	// Đồng ý gửi dữ liệu cho AI, version là consentVersion của GET /v1/agents/me.
+	s.route("POST /v1/agents/me/consent", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		var body struct {
+			Version int `json:"version"`
+		}
+		if decodeJSON(r, &body) != nil {
+			return invalidRequest()
+		}
+		c, err := s.deps.Agents.RecordConsent(r.Context(), uid, body.Version, s.now())
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, c)
+	}))
 	s.route("POST /v1/agents/me/memories", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		var body struct {
 			Text string `json:"text"`

@@ -23,6 +23,7 @@ import (
 //	agents/{uid}                    tên, persona, inRoom, dmSeq, dmUserSeq, answeredSeq
 //	agents/{uid}/memories/{id}      từng mục bộ nhớ
 //	agents/{uid}/dm/{seq}           chat riêng giữa chủ và bot
+//	agents/{uid}/consent/ai         đồng ý gửi dữ liệu cho AI (agent_consent.go)
 //	agentRooms/main                 seq và state lượt nói của các bot
 //	agentRooms/main/messages/{seq}  tin trong phòng, của người lẫn bot
 //
@@ -95,6 +96,7 @@ type AgentMe struct {
 	// Learned là ký ức bot tự học về chính người gọi, kể cả khi chưa tạo bot.
 	Learned      []AgentLearnedFact `json:"learned"`
 	LearnedLimit int                `json:"learnedLimit"`
+	AgentConsent
 }
 
 type AgentMessage struct {
@@ -211,15 +213,18 @@ func defaultAgentName(owner string) string {
 // Me trả hồ sơ bot và bộ nhớ của uid. Người chưa có quyền nhận enabled false
 // chứ không phải lỗi, để app chỉ cần ẩn mục bot.
 func (s *AgentStore) Me(ctx context.Context, uid string, wall time.Time) (AgentMe, error) {
-	ok, err := s.allowed(ctx, uid)
+	acc, err := s.access(ctx)
 	if err != nil {
 		return AgentMe{}, err
 	}
-	out := AgentMe{Memories: []AgentMemory{}, MemoryLimit: agentMemoryLimit, Learned: []AgentLearnedFact{}, LearnedLimit: agentLearnedLimit}
-	if !ok {
+	out := AgentMe{Memories: []AgentMemory{}, MemoryLimit: agentMemoryLimit, Learned: []AgentLearnedFact{}, LearnedLimit: agentLearnedLimit, AgentConsent: AgentConsent{ConsentVersion: agentAIConsentVersion}}
+	if !acc.allows(uid) {
 		return out, nil
 	}
 	out.Enabled = true
+	if out.ConsentRequired, err = s.consentRequired(ctx, acc, uid); err != nil {
+		return AgentMe{}, err
+	}
 	if out.Learned, err = s.LearnedAbout(ctx, uid, wall); err != nil {
 		return AgentMe{}, err
 	}
@@ -244,7 +249,9 @@ func (s *AgentStore) Me(ctx context.Context, uid string, wall time.Time) (AgentM
 
 // SaveProfile tạo hoặc sửa tên và persona. Lần lưu đầu là lúc bot ra đời, và
 // bot vào phòng luôn như trước giờ; sửa sau đó không đụng inRoom, để chủ đã cho
-// bot ra khỏi phòng thì lưu lại hồ sơ cũng không kéo bot vào lại.
+// bot ra khỏi phòng thì lưu lại hồ sơ cũng không kéo bot vào lại. Phải đồng ý
+// AI trước, vì bot vào phòng là persona và bộ nhớ của chủ tới model ở lượt nói
+// do người khác gọi.
 func (s *AgentStore) SaveProfile(ctx context.Context, uid, name, persona string, wall time.Time) (AgentProfile, error) {
 	name, persona = strings.TrimSpace(name), strings.TrimSpace(persona)
 	if name == "" || utf8.RuneCountInString(name) > agentNameMaxRunes {
@@ -253,7 +260,7 @@ func (s *AgentStore) SaveProfile(ctx context.Context, uid, name, persona string,
 	if utf8.RuneCountInString(persona) > agentPersonaMaxRunes {
 		return AgentProfile{}, errAgentPersona
 	}
-	if err := s.requireMember(ctx, uid); err != nil {
+	if err := s.requireConsent(ctx, uid); err != nil {
 		return AgentProfile{}, err
 	}
 	ref := s.agentRef(uid)
@@ -447,7 +454,7 @@ func (s *AgentStore) PostDM(ctx context.Context, uid, text, channel string, wall
 	if text == "" || utf8.RuneCountInString(text) > agentTextMaxRunes {
 		return AgentMessage{}, errAgentText
 	}
-	if err := s.requireMember(ctx, uid); err != nil {
+	if err := s.requireConsent(ctx, uid); err != nil {
 		return AgentMessage{}, err
 	}
 	ref := s.agentRef(uid)
