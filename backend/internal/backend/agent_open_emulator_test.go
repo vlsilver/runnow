@@ -166,3 +166,26 @@ func TestEmulatorAgentBackfillInRoom(t *testing.T) {
 		}
 	}
 }
+
+// Cờ tắt: bot tạo bằng bản cũ, chưa có field inRoom, vẫn nói như trước. Nhờ vậy
+// deploy bản này không phụ thuộc việc đã chạy backfill.
+func TestEmulatorAgentRoomKeepsBotsWithoutInRoom(t *testing.T) {
+	e := newAgentEnv(t)
+	seed(t, e.store.db, "agents/an", map[string]any{"name": "Sóc"})
+
+	e.want(e.call("cuong", "POST", "/v1/agents/room", map[string]any{"text": "Sóc ơi chạy không"}, ""), 200, "")
+	e.llm.script = []*genai.GenerateContentResponse{llmText("Chạy!")}
+	e.mustRun("/tasks/agent-turn", agentTurnTask{AfterSeq: 1})
+	if msgs := messages(t, e.call("cuong", "GET", "/v1/agents/room?after=1", nil, "")); len(msgs) != 1 || msgs[0]["name"] != "Sóc" {
+		t.Fatalf("bot chưa có inRoom phải nói được: %v", msgs)
+	}
+	var botName any
+	for _, m := range anyList(e.call("cuong", "GET", "/v1/agents/room", nil, "").body["members"]) {
+		if m.(map[string]any)["uid"] == "an" {
+			botName = m.(map[string]any)["botName"]
+		}
+	}
+	if botName != "Sóc" {
+		t.Fatalf("danh sách phòng phải có bot của An, được %v", botName)
+	}
+}

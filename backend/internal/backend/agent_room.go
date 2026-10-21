@@ -61,7 +61,9 @@ const agentRoomMax = 20
 // roomAgents là bot được nói trong phòng, theo thứ tự uid: bot đã tạo, đang
 // inRoom, và chủ có quyền dùng bot.
 //   - Cờ open tắt: chỉ đọc bot của allowlist như trước giờ. Nhờ vậy tắt cờ thì
-//     bot của người ngoài allowlist im ngay, dù vẫn còn inRoom.
+//     bot của người ngoài allowlist im ngay, dù vẫn còn inRoom. Bot chưa có
+//     field inRoom (tạo trước khi có field) vẫn tính là ở phòng, để deploy bản
+//     này không phụ thuộc việc đã chạy backfill hay chưa.
 //   - Cờ open bật: query theo inRoom, tối đa agentRoomMax bot. Bot của prefer
 //     (người vừa nhắn) luôn có mặt nếu đang ở phòng, để người đó không bị cắt
 //     chỉ vì uid đứng sau 20 bot đầu.
@@ -103,7 +105,7 @@ func (s *AgentStore) roomAgents(ctx context.Context, acc agentAccess, prefer str
 	}
 	var out []roomAgent
 	for _, d := range docs {
-		if d.Data()["inRoom"] == true {
+		if inRoom, ok := d.Data()["inRoom"]; !ok || inRoom == true {
 			out = append(out, roomAgent{uid: d.Ref.ID, name: stringValue(d.Data()["name"]), persona: stringValue(d.Data()["persona"])})
 		}
 	}
@@ -112,9 +114,9 @@ func (s *AgentStore) roomAgents(ctx context.Context, acc agentAccess, prefer str
 }
 
 // BackfillInRoom cho bot đã tạo của allowlist hiện tại vào phòng (inRoom =
-// true), chạy một lần trước khi deploy bản đọc inRoom, để phòng giữ đúng những
-// bot đang nói. Chạy lại an toàn: bot đã có inRoom, kể cả false do chủ tự tắt,
-// thì để nguyên. Trả uid vừa được ghi.
+// true). Phải chạy trước khi bật cờ open: lúc đó phòng query theo inRoom ==
+// true, bot chưa có field sẽ im. Cờ còn tắt thì chưa cần. Chạy lại an toàn: bot
+// đã có inRoom, kể cả false do chủ tự tắt, thì để nguyên. Trả uid vừa được ghi.
 func (s *AgentStore) BackfillInRoom(ctx context.Context) ([]string, error) {
 	acc, err := s.access(ctx)
 	if err != nil {

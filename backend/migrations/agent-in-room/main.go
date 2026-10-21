@@ -2,11 +2,11 @@
 // allowlist hiện tại (gameState/config.adminUids cộng
 // agentState/config.memberUids), xem backend.AgentStore.BackfillInRoom.
 //
-// Từ bản có cờ agentState/config.open, phòng bot chỉ cho bot có inRoom nói.
-// Bot tạo trước đó chưa có field này, nên phải chạy migration này trước khi
-// deploy bot service bản mới, không thì phòng im. Chạy lại sau khi deploy api
-// để bắt bot tạo bằng bản api cũ trong lúc deploy. Chạy lại bao nhiêu lần cũng
-// vậy: bot đã có inRoom thì để nguyên.
+// Cờ open bật thì phòng bot chỉ lấy bot có inRoom == true. Bot tạo trước khi có
+// field này chưa có nó, nên phải chạy migration này trước khi bật cờ, không thì
+// các bot đó im. Cờ còn tắt thì bot thiếu field vẫn được nói, nên deploy không
+// cần chờ migration. Chạy lại bao nhiêu lần cũng vậy: bot đã có inRoom thì để
+// nguyên.
 //
 // Chỉ cần Firestore (Application Default Credentials):
 //
