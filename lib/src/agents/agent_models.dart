@@ -113,10 +113,12 @@ class AgentMe {
     this.noLearn = false,
     this.consentRequired = false,
     this.consentVersion = 0,
+    this.today,
   });
 
   factory AgentMe.fromJson(Map<String, dynamic> json) {
     final agent = json['agent'];
+    final today = json['today'];
     return AgentMe(
       enabled: json['enabled'] == true,
       agent: agent is Map<String, dynamic>
@@ -128,6 +130,7 @@ class AgentMe {
       noLearn: json['noLearn'] == true,
       consentRequired: json['consentRequired'] == true,
       consentVersion: _int(json['consentVersion']),
+      today: today is Map<String, dynamic> ? AgentToday.fromJson(today) : null,
     );
   }
 
@@ -149,6 +152,51 @@ class AgentMe {
 
   /// Bản điều khoản AI đang bắt buộc, gửi lại khi đồng ý.
   final int consentVersion;
+
+  /// Lượt đã dùng hôm nay. Backend cũ chưa có field thì null, app ẩn phần này.
+  final AgentToday? today;
+}
+
+/// Vì sao bot đang trả câu nghỉ thay cho câu trả lời thật.
+enum AgentResting {
+  /// Cả hệ thống chạm trần tiền AI hôm nay, mọi bot cùng nghỉ.
+  budget,
+
+  /// Người này hết lượt chat riêng hôm nay.
+  dmLimit,
+}
+
+/// Lượt chat riêng và tin phòng bot đã dùng hôm nay (giờ VN), 0h đếm lại.
+class AgentToday {
+  const AgentToday({
+    required this.dmUsed,
+    required this.dmMax,
+    required this.roomUsed,
+    required this.roomMax,
+    this.resting,
+  });
+
+  factory AgentToday.fromJson(Map<String, dynamic> json) => AgentToday(
+    dmUsed: _int(json['dmUsed']),
+    dmMax: _int(json['dmMax']),
+    roomUsed: _int(json['roomUsed']),
+    roomMax: _int(json['roomMax']),
+    // Lý do lạ (backend mới hơn app) thì coi như không nghỉ, để không hiện
+    // câu sai; bot vẫn trả câu nghỉ trong chat.
+    resting: switch (json['resting']) {
+      'budget' => AgentResting.budget,
+      'dm_limit' => AgentResting.dmLimit,
+      _ => null,
+    },
+  );
+
+  final int dmUsed;
+  final int dmMax;
+  final int roomUsed;
+  final int roomMax;
+
+  /// null là bot đang trả lời bình thường.
+  final AgentResting? resting;
 }
 
 /// Tin có seq, để một controller dùng chung cho chat riêng và phòng bot.

@@ -201,9 +201,14 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
               memoryCount: data.memories.length,
               memoryLimit: data.memoryLimit,
               learnedCount: data.learned.length,
+              today: data.today,
               onChat: () => _open('/agent/dm'),
               onRoom: () => _open('/agent/room'),
             ),
+            if (data.today case final today? when today.resting != null) ...[
+              const SizedBox(height: 12),
+              _RestingBanner(botName: agent.name, today: today),
+            ],
             const SizedBox(height: 16),
             _RoomPreviewCard(onOpen: () => _open('/agent/room')),
             const SizedBox(height: 22),
@@ -328,6 +333,7 @@ class _BotHeroCard extends StatelessWidget {
     required this.memoryCount,
     required this.memoryLimit,
     required this.learnedCount,
+    required this.today,
     required this.onChat,
     required this.onRoom,
   });
@@ -336,6 +342,7 @@ class _BotHeroCard extends StatelessWidget {
   final int memoryCount;
   final int memoryLimit;
   final int learnedCount;
+  final AgentToday? today;
   final VoidCallback onChat;
   final VoidCallback onRoom;
 
@@ -404,6 +411,15 @@ class _BotHeroCard extends StatelessWidget {
                 label: 'điều tự học',
               ),
             ),
+            if (today case final today?)
+              Expanded(
+                child: _HeroStat(
+                  palette: dark,
+                  value: '${today.dmUsed}',
+                  suffix: '/${today.dmMax}',
+                  label: 'tin hôm nay',
+                ),
+              ),
           ],
         ),
         const SizedBox(height: 16),
@@ -440,6 +456,71 @@ class _BotHeroCard extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// Báo bot đang trả câu nghỉ, để chủ biết trước khi nhắn. Nút chat riêng vẫn
+/// mở được để đọc lại tin cũ.
+class _RestingBanner extends StatelessWidget {
+  const _RestingBanner({required this.botName, required this.today});
+
+  final String botName;
+  final AgentToday today;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final budget = today.resting == AgentResting.budget;
+    return _Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: palette.accent.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                budget ? Icons.bedtime_outlined : Icons.schedule_rounded,
+                size: 20,
+                color: palette.accentDeep,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    budget
+                        ? '$botName đang nghỉ tới 0h'
+                        : 'Hết ${today.dmMax} tin hôm nay',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    budget
+                        ? 'Hôm nay MyBot đã chạm trần chi phí.'
+                        : 'Chat riêng lại được lúc 0h.',
+                    style: TextStyle(
+                      color: palette.textMuted,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

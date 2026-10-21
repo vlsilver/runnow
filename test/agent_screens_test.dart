@@ -38,6 +38,9 @@ class _AgentBackend {
   Map<String, dynamic> dm = {'messages': [], 'waiting': false};
   Map<String, dynamic> room = {'messages': [], 'members': []};
 
+  /// Field today của GET me; null là backend cũ chưa có field.
+  Map<String, dynamic>? today;
+
   /// Người mình đã chặn: tin của họ (và bot của họ) trả về hidden, text rỗng.
   final blocks = <Map<String, dynamic>>[];
 
@@ -87,6 +90,7 @@ class _AgentBackend {
             'noLearn': noLearn,
             'consentRequired': consentRequired,
             'consentVersion': consentVersion,
+            'today': ?today,
           };
         case ('POST', '/v1/agents/me/consent'):
           if (body['version'] != consentVersion) {
@@ -207,6 +211,7 @@ void main() {
           path: '/agent/blocks',
           builder: (_, _) => const AgentBlocksScreen(),
         ),
+        GoRoute(path: '/agent/dm', builder: (_, _) => const AgentDMScreen()),
       ],
     );
     addTearDown(router.dispose);
@@ -276,6 +281,80 @@ void main() {
     await tester.pumpAndSettle();
     expect(backend.calls, contains('DELETE /v1/agents/me/memories/m1'));
     expect(find.text('0/50'), findsOneWidget);
+  });
+
+  testWidgets('tab shows the DM count of today, rereads it after chatting', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    backend.today = {
+      'dmUsed': 3,
+      'dmMax': 100,
+      'roomUsed': 12,
+      'roomMax': 300,
+      'resting': null,
+    };
+    await pumpMyBot(tester);
+    expect(find.text('3/100'), findsOneWidget);
+    expect(find.text('tin hôm nay'), findsOneWidget);
+    expect(find.byIcon(Icons.bedtime_outlined), findsNothing);
+    expect(find.byIcon(Icons.schedule_rounded), findsNothing);
+
+    // Bot trả lời một câu trong lúc chủ ở màn chat: quay về thấy số mới.
+    await tester.tap(find.text('Chat riêng'));
+    await tester.pumpAndSettle();
+    backend.today = {...?backend.today, 'dmUsed': 4};
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('4/100'), findsOneWidget);
+  });
+
+  testWidgets('budget resting shows the rest banner, chat still opens', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    // Cả hai cùng chạm thì backend báo budget; app hiện đúng một banner.
+    backend.today = {
+      'dmUsed': 100,
+      'dmMax': 100,
+      'roomUsed': 0,
+      'roomMax': 300,
+      'resting': 'budget',
+    };
+    await pumpMyBot(tester);
+    expect(find.text('Cú đang nghỉ tới 0h'), findsOneWidget);
+    expect(find.text('Hôm nay MyBot đã chạm trần chi phí.'), findsOneWidget);
+    expect(find.text('Hết 100 tin hôm nay'), findsNothing);
+
+    await tester.tap(find.text('Chat riêng'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AgentDMScreen), findsOneWidget);
+    await close(tester);
+  });
+
+  testWidgets('dm_limit resting says chat reopens at midnight', (tester) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    backend.today = {
+      'dmUsed': 30,
+      'dmMax': 30,
+      'roomUsed': 0,
+      'roomMax': 300,
+      'resting': 'dm_limit',
+    };
+    await pumpMyBot(tester);
+    expect(find.text('30/30'), findsOneWidget);
+    expect(find.text('Hết 30 tin hôm nay'), findsOneWidget);
+    expect(find.text('Chat riêng lại được lúc 0h.'), findsOneWidget);
+    expect(find.text('Cú đang nghỉ tới 0h'), findsNothing);
+  });
+
+  testWidgets('old backend without today: no quota, no banner', (tester) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    await pumpMyBot(tester);
+    expect(find.text('Chat riêng'), findsOneWidget);
+    expect(find.text('tin hôm nay'), findsNothing);
+    expect(find.byIcon(Icons.bedtime_outlined), findsNothing);
+    expect(find.byIcon(Icons.schedule_rounded), findsNothing);
   });
 
   testWidgets('tab shows three memories, the full list shows all', (
