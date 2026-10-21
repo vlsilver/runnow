@@ -129,11 +129,31 @@ type AgentMe struct {
 	LearnedLimit int                `json:"learnedLimit"`
 	// NoLearn: đã bật "Đừng học về tôi", bot không tự học từ tin của người này.
 	NoLearn bool `json:"noLearn"`
+	// Today chỉ có khi enabled, để GET me của người chưa được mời vẫn rẻ.
+	Today *AgentToday `json:"today,omitempty"`
 	AgentConsent
 	// Telegram chỉ có khi MyBot trên Telegram bật và chủ đã tạo bot; app cũ bỏ
 	// qua field lạ.
 	Telegram *AgentTelegram `json:"telegram,omitempty"`
 }
+
+// AgentToday là lượt đã dùng hôm nay (giờ VN) để app hiện "tin hôm nay" và báo
+// bot đang nghỉ trước khi người dùng nhắn rồi mới nhận câu nghỉ.
+type AgentToday struct {
+	DMUsed   int64 `json:"dmUsed"`
+	DMMax    int64 `json:"dmMax"`
+	RoomUsed int64 `json:"roomUsed"`
+	RoomMax  int64 `json:"roomMax"`
+	// Resting là lý do bot đang trả câu nghỉ: "budget" (cả hệ thống chạm trần
+	// tiền AI) hay "dm_limit" (người này hết lượt chat riêng); null là không nghỉ.
+	// Budget đứng trước vì nó chặn mọi bot, nâng lượt chat riêng cũng không mở lại.
+	Resting *string `json:"resting"`
+}
+
+const (
+	agentRestingBudget  = "budget"
+	agentRestingDMLimit = "dm_limit"
+)
 
 type AgentMessage struct {
 	Seq  int64     `json:"seq"`
@@ -163,6 +183,8 @@ type agentAccess struct {
 	open bool
 	// members là allowlist, sort để thứ tự tất định.
 	members []string
+	// cfg là doc agentState/config đã đọc, để Me lấy giới hạn mà không đọc lại.
+	cfg map[string]any
 }
 
 func (a agentAccess) allows(uid string) bool { return a.open || slices.Contains(a.members, uid) }
@@ -183,7 +205,7 @@ func (s *AgentStore) access(ctx context.Context) (agentAccess, error) {
 			set[uid] = true
 		}
 	}
-	out := agentAccess{open: cfg["open"] == true, members: make([]string, 0, len(set))}
+	out := agentAccess{open: cfg["open"] == true, members: make([]string, 0, len(set)), cfg: cfg}
 	for uid := range set {
 		out.members = append(out.members, uid)
 	}
@@ -277,6 +299,9 @@ func (s *AgentStore) Me(ctx context.Context, uid string, wall time.Time) (AgentM
 			return AgentMe{}, err
 		}
 		out.Agent = &AgentProfile{Name: defaultAgentName(names[uid])}
+		if out.Today, err = s.today(ctx, acc.cfg, nil, wall); err != nil {
+			return AgentMe{}, err
+		}
 		return out, nil
 	case err != nil:
 		return AgentMe{}, err
@@ -284,6 +309,37 @@ func (s *AgentStore) Me(ctx context.Context, uid string, wall time.Time) (AgentM
 	out.Agent = &AgentProfile{Name: stringValue(doc.Data()["name"]), Persona: stringValue(doc.Data()["persona"]), Created: true}
 	if out.Memories, err = s.Memories(ctx, uid); err != nil {
 		return AgentMe{}, err
+	}
+	if out.Today, err = s.today(ctx, acc.cfg, doc.Data(), wall); err != nil {
+		return AgentMe{}, err
+	}
+	return out, nil
+}
+
+// today đọc cùng các bộ đếm mà consumeDMBudget, roomBudgetLeft và
+// AgentBudget.admit dùng để chặn, nên app báo nghỉ đúng lúc bot thật sự nghỉ.
+// agent là doc bot, nil khi chưa tạo bot. Doc usage chỉ đọc khi có trần tiền.
+func (s *AgentStore) today(ctx context.Context, cfg, agent map[string]any, wall time.Time) (*AgentToday, error) {
+	lim := parseAgentLimits(ctx, cfg)
+	budget := parseAgentBudgetConfig(cfg).dailyUsd
+	refs := []*firestore.DocumentRef{s.roomRef(agentMainRoom)}
+	if budget > 0 {
+		refs = append(refs, s.db.Collection("agentState").Doc("usage").Collection("days").Doc(agentUsageDay(wall)))
+	}
+	docs, err := s.db.GetAll(ctx, refs)
+	if err != nil {
+		return nil, err
+	}
+	// GetAll không lỗi khi doc chưa có; Data() của doc đó là nil, đếm là 0.
+	out := &AgentToday{DMMax: lim.dmDailyMax, RoomUsed: roomUsedToday(docs[0].Data(), wall), RoomMax: lim.roomDailyMax}
+	if stringValue(agent["dmDay"]) == vnDay(wall) {
+		out.DMUsed = int64(number(agent["dmDayCount"]))
+	}
+	switch {
+	case budget > 0 && number(docs[1].Data()["costUsd"]) >= budget:
+		out.Resting = new(agentRestingBudget)
+	case out.DMUsed >= out.DMMax:
+		out.Resting = new(agentRestingDMLimit)
 	}
 	return out, nil
 }
