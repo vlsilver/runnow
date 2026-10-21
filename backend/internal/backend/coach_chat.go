@@ -60,11 +60,13 @@ func (s *BotService) AskCoach(ctx context.Context, uid, planId, question string)
 	history := s.coachChatHistory(ctx, uid, planId)
 
 	prompt := fmt.Sprintf(coachChatPrompt, planCtx, formatCoachHistory(history, question))
+	started := time.Now()
 	resp, err := s.genai.Models.GenerateContent(ctx, s.model,
 		[]*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: prompt}}}}, nil)
 	if err != nil {
 		return "", fmt.Errorf("gemini: %w", err)
 	}
+	logLLMUsage(ctx, llmLabel{feature: "coach.chat", uid: uid}, s.model, resp, started, 0)
 	answer := strings.TrimSpace(resp.Text())
 	if answer == "" {
 		return "", fmt.Errorf("coach không trả lời được")

@@ -243,6 +243,7 @@ func (s *BotService) GenerateTrainingPlan(ctx context.Context, uid, goal, visibi
 	prompt := fmt.Sprintf(trainingPlanPrompt, goal, goalConstraintLines(spec),
 		kmLabel(h.weekKm), kmLabel(h.monthKm), kmLabel(h.longestKm), pace, h.activeDays)
 
+	started := time.Now()
 	resp, err := s.genai.Models.GenerateContent(ctx, s.model,
 		[]*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: prompt}}}},
 		&genai.GenerateContentConfig{
@@ -252,6 +253,7 @@ func (s *BotService) GenerateTrainingPlan(ctx context.Context, uid, goal, visibi
 	if err != nil {
 		return fmt.Errorf("gemini: %w", err)
 	}
+	logLLMUsage(ctx, llmLabel{feature: "coach.training_plan", uid: uid}, s.model, resp, started, 0)
 	var plan genPlan
 	if err := json.Unmarshal([]byte(resp.Text()), &plan); err != nil {
 		return fmt.Errorf("parse plan: %w", err)

@@ -98,7 +98,12 @@ func (g genaiLearnLLM) Learn(ctx context.Context, system, input string, schema *
 		ResponseMIMEType:  "application/json",
 		ResponseSchema:    schema,
 	}
-	return g.client.Models.GenerateContent(ctx, g.model, []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: input}}}}, cfg)
+	started := time.Now()
+	resp, err := g.client.Models.GenerateContent(ctx, g.model, []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: input}}}}, cfg)
+	if err == nil {
+		logLLMUsage(ctx, llmLabelOf(ctx), g.model, resp, started, 0)
+	}
+	return resp, err
 }
 
 type LearnService struct {
@@ -385,6 +390,15 @@ func learnScopes(lines []learnLine) []learnScope {
 // learnTGScope là doc ký ức của người Telegram chưa liên kết app.
 func learnTGScope(tg string) string { return "tg-" + tg }
 
+// learnScopeUID là uid để ghi log chi phí: scope của người dùng app chính là uid,
+// còn scope nhóm và người chỉ có trên Telegram thì không có uid.
+func learnScopeUID(key string) string {
+	if key == agentGroupScope || strings.HasPrefix(key, learnTGScope("")) {
+		return ""
+	}
+	return key
+}
+
 func (l *LearnService) learnScope(ctx context.Context, b *learnBatch, sc learnScope, now time.Time) error {
 	doc, err := docMap(learnedCol(l.db).Doc(sc.key).Get(ctx))
 	if err != nil {
@@ -394,7 +408,7 @@ func (l *LearnService) learnScope(ctx context.Context, b *learnBatch, sc learnSc
 		return nil
 	}
 	system, input := learnPrompt(sc, liveFacts(doc["facts"], now))
-	resp, err := l.llm.Learn(ctx, system, input, learnActionSchema)
+	resp, err := l.llm.Learn(withLLMLabel(ctx, "agent.learn", learnScopeUID(sc.key)), system, input, learnActionSchema)
 	if err != nil {
 		return fmt.Errorf("agent learn %s: %w", sc.key, err)
 	}

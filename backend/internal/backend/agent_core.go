@@ -267,6 +267,8 @@ func (a *AgentService) dmAnswer(ctx context.Context, uid string, seq int64, name
 		contents = append(contents, &genai.Content{Role: role, Parts: []*genai.Part{{Text: m.Text}}})
 	}
 	added := 0
+	// Gán lại ctx để lượt web_search trong closure cũng mang nhãn agent.dm.
+	ctx = withLLMLabel(ctx, "agent.dm", uid)
 	text, err := a.toolLoop(ctx, "agent dm", system, contents, tools, func(call *genai.FunctionCall) (map[string]any, error) {
 		switch call.Name {
 		case agentWebSearchDecl.Name:
@@ -536,6 +538,7 @@ func (a *AgentService) roomReply(ctx context.Context, speaker roomAgent, agents 
 		}
 	}
 	fmt.Fprintf(&chat, "\nViết tin tiếp theo của %s.", speaker.name)
+	ctx = withLLMLabel(ctx, "agent.room_turn", speaker.uid)
 	text, err := a.toolLoop(ctx, "agent room", system, []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: chat.String()}}}}, tools, func(call *genai.FunctionCall) (map[string]any, error) {
 		switch call.Name {
 		case agentWebSearchDecl.Name:
