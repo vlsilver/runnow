@@ -18,6 +18,11 @@ func (s *Server) agentRoutes() {
 		if err != nil {
 			return err
 		}
+		if m := s.deps.ManagedBots; m != nil && me.Agent != nil && me.Agent.Created {
+			if me.Telegram, err = m.Status(r.Context(), uid, me.Agent.Name); err != nil {
+				return err
+			}
+		}
 		return writeJSON(w, 200, me)
 	}))
 	s.route("POST /v1/agents/me", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
@@ -31,6 +36,9 @@ func (s *Server) agentRoutes() {
 		p, err := s.deps.Agents.SaveProfile(r.Context(), uid, body.Name, body.Persona, s.now())
 		if err != nil {
 			return err
+		}
+		if m := s.deps.ManagedBots; m != nil {
+			m.ProfileChanged(r.Context(), uid)
 		}
 		return writeJSON(w, 200, p)
 	}))

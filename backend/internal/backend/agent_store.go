@@ -130,6 +130,9 @@ type AgentMe struct {
 	// NoLearn: đã bật "Đừng học về tôi", bot không tự học từ tin của người này.
 	NoLearn bool `json:"noLearn"`
 	AgentConsent
+	// Telegram chỉ có khi MyBot trên Telegram bật và chủ đã tạo bot; app cũ bỏ
+	// qua field lạ.
+	Telegram *AgentTelegram `json:"telegram,omitempty"`
 }
 
 type AgentMessage struct {

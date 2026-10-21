@@ -49,6 +49,9 @@ type Config struct {
 	// Telegram (agent_learn.go). Chỉ "on" mới bật.
 	AgentLearn      bool
 	AgentLearnModel string
+	// AgentTelegramBots bật MyBot trên Telegram (Pha T): 3i làm bot quản lý
+	// Managed Bots, mỗi MyBot là một bot Telegram thật. Chỉ "on" mới bật.
+	AgentTelegramBots bool
 	// BotGroupFacts cho 3i đọc trí nhớ về group club từ ký ức tự học thay cho
 	// tóm tắt botMemory. Chỉ "on" mới bật; tắt là quay về botMemory ngay.
 	BotGroupFacts  bool
@@ -96,6 +99,7 @@ func LoadConfig() (Config, error) {
 	c.GeminiThinkingLevel = env("GEMINI_THINKING_LEVEL", "LOW")
 	c.AgentModel = env("AGENT_MODEL", "gemini-3.8-flash")
 	c.AgentLearn = env("AGENT_LEARN", "") == "on"
+	c.AgentTelegramBots = env("AGENT_TELEGRAM_BOTS", "") == "on"
 	c.AgentLearnModel = env("AGENT_LEARN_MODEL", "gemini-3.8-flash")
 	c.BotGroupFacts = env("BOT_GROUP_FACTS", "") == "on"
 	if n, convErr := strconv.Atoi(env("BOT_HOURLY_LIMIT", "100")); convErr == nil && n > 0 {
@@ -131,6 +135,14 @@ func LoadConfig() (Config, error) {
 		}
 	}
 	return c, nil
+}
+
+// MybotEnabled: cờ bật và đủ cấu hình để chạy MyBot trên Telegram. Secret
+// webhook của bot con là HMAC của TelegramWebhookSecret, link tạo bot cần
+// username của 3i, nên thiếu một trong hai cũng tắt. Không đòi token 3i: api
+// không có token, mọi lời gọi Telegram của bot con chạy trong task trên bot.
+func (c Config) MybotEnabled() bool {
+	return c.AgentTelegramBots && c.TelegramBotUsername != "" && c.TelegramWebhookSecret != ""
 }
 
 func env(name, fallback string) string {

@@ -138,6 +138,7 @@ GEMINI_LOCATION: '${GEMINI_LOCATION:-global}'
 GEMINI_MODEL: '${GEMINI_MODEL:-gemini-3.8-flash}'
 GEMINI_THINKING_LEVEL: '${GEMINI_THINKING_LEVEL:-LOW}'
 AGENT_LEARN: '${AGENT_LEARN:-off}'
+AGENT_TELEGRAM_BOTS: '${AGENT_TELEGRAM_BOTS:-off}'
 BOT_GROUP_FACTS: '${BOT_GROUP_FACTS:-off}'
 BOT_HOURLY_LIMIT: '${BOT_HOURLY_LIMIT:-100}'
 EOF
@@ -262,7 +263,7 @@ if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
 fi
 
 if is_full_deploy; then
-  for ttl_collection in oauthStates integrationEvents activityTombstones botRateLimits botMessages linkCodes chatMessages learnLog; do
+  for ttl_collection in oauthStates integrationEvents activityTombstones botRateLimits botMessages linkCodes chatMessages learnLog tgUpdates tgOutbox; do
     gcloud firestore fields ttls update expiresAt \
       --collection-group "$ttl_collection" \
       --enable-ttl \

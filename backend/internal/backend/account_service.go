@@ -25,6 +25,9 @@ type AccountService struct {
 	auth    *auth.Client
 	oauth   *OAuthService
 	storage *gcs.BucketHandle
+	// managed hẹn gỡ webhook bot con khi xoá tài khoản; nil khi MyBot trên
+	// Telegram tắt, lúc đó chỉ xoá bản ghi.
+	managed *ManagedBotService
 }
 
 func NewAccountService(db *firestore.Client, authClient *auth.Client, oauth *OAuthService, bucket *gcs.BucketHandle) *AccountService {
@@ -94,6 +97,31 @@ func (s *AccountService) Delete(ctx context.Context, uid string) error {
 		return fmt.Errorf("delete auth user: %w", err)
 	}
 	slog.InfoContext(ctx, "account.delete.completed", "uid", uid)
+	return nil
+}
+
+// deleteManagedBots gỡ mọi bot con Telegram của uid (T6): xoá managedBots/{botId}
+// cùng outbox, rồi hẹn task Sync trên bot. Sync thấy bản ghi mất thì gọi
+// deleteWebhook, vì api không có token 3i để tự gọi. Hẹn task lỗi thì chỉ log,
+// như thu hồi Strava: bot còn sót webhook thì update đầu tiên tới sẽ hẹn lại
+// (routeChildUpdate). Bot vẫn thuộc người dùng trên Telegram, vì Bot API không
+// có hàm xoá bot.
+func (s *AccountService) deleteManagedBots(ctx context.Context, uid string) error {
+	docs, err := s.db.Collection("managedBots").Where("uid", "==", uid).Documents(ctx).GetAll()
+	if err != nil {
+		return err
+	}
+	for _, doc := range docs {
+		if err := s.deleteDocumentTree(ctx, doc.Ref); err != nil {
+			return err
+		}
+		if s.managed == nil {
+			continue
+		}
+		if _, err := s.managed.publish(ctx, managedSyncTaskFor(doc.Ref.ID, "deleted")); err != nil {
+			slog.WarnContext(ctx, "account.delete.mybot_webhook_failed", "uid", uid, "botId", doc.Ref.ID, "error", err)
+		}
+	}
 	return nil
 }
 

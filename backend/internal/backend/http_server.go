@@ -68,6 +68,8 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/agent-dm", s.agentDM)
 	s.route("POST /tasks/agent-turn", s.agentTurn)
 	s.route("POST /tasks/agent-learn", s.agentLearn)
+	s.route("POST /tasks/managed-bot-sync", s.managedBotSync)
+	s.route("POST /tasks/managed-send", s.managedSend)
 }
 
 // tickJob là một việc của schedule-tick, với timeout riêng.
@@ -539,6 +541,7 @@ func (s *Server) apiRoutes() {
 	// method để service bot dùng chung — dời webhook sang bot chỉ là đổi chỗ
 	// mount, không nhân đôi code.
 	s.route("POST /v1/telegram/webhook", s.telegramWebhook)
+	s.mybotRoutes()
 	s.gameRoutes()
 	s.agentRoutes()
 	s.adminRoutes()

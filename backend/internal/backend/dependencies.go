@@ -34,6 +34,9 @@ type Dependencies struct {
 	Agents         *AgentStore
 	// AgentBrain chạy LLM của bot cá nhân; chỉ có trên service có Gemini (bot).
 	AgentBrain *AgentService
+	// ManagedBots là MyBot trên Telegram; nil khi chưa cấu hình bot quản lý
+	// (Config.MybotEnabled).
+	ManagedBots *ManagedBotService
 	// Learn là task bot tự học ký ức; nil khi AGENT_LEARN chưa bật.
 	Learn *LearnService
 	// EnqueueTask thay Tasks.Publish khi khác nil; test gài để bắt task mà
@@ -91,6 +94,14 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 		slog.WarnContext(ctx, "dependencies.storage_unavailable", "error", storageErr)
 	}
 	d.Accounts = NewAccountService(db, authClient, d.OAuth, bucket)
+	// 3i là bot quản lý của mọi MyBot trên Telegram. Trên api telegram không
+	// có token: api chỉ ghi Firestore và hẹn task, task chạy trên bot.
+	if config.MybotEnabled() {
+		d.ManagedBots = NewManagedBotService(db, telegram, config.TelegramBotUsername, config.TelegramWebhookSecret, config.PublicBaseURL, tasks.Publish)
+		d.Accounts.managed = d.ManagedBots
+	} else if config.AgentTelegramBots {
+		slog.WarnContext(ctx, "dependencies.mybot_partial_config", "hasUsername", config.TelegramBotUsername != "", "hasWebhookSecret", config.TelegramWebhookSecret != "")
+	}
 	// Bot chỉ bật khi có đủ Telegram lẫn Vertex AI. Thiếu một trong hai thì
 	// mọi luồng cũ vẫn chạy y như trước, chỉ không có bot.
 	//
@@ -113,6 +124,9 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 			budget := NewAgentBudget(db, adminNotifier(d.Games, telegram))
 			d.AgentBrain = NewAgentService(d.Agents, budgetAgentLLM{inner: genaiAgentLLM{client: genaiClient, model: config.AgentModel, thinking: config.GeminiThinkingLevel}, model: config.AgentModel, budget: budget}, tasks.Publish)
 			d.AgentBrain.chatID = config.TelegramChatID
+			if d.ManagedBots != nil {
+				d.AgentBrain.SetChannelReply(d.ManagedBots.channelReply)
+			}
 			if config.AgentLearn {
 				d.Learn = NewLearnService(d.Agents, budgetLearnLLM{inner: genaiLearnLLM{client: genaiClient, model: config.AgentLearnModel}, model: config.AgentLearnModel, budget: budget}, config.TelegramChatID)
 			}

@@ -74,6 +74,9 @@ func (s *Server) routeTelegramUpdate(ctx context.Context, update TelegramUpdate,
 	if update.CallbackQuery != nil {
 		return s.callbackReply(ctx, update)
 	}
+	if reply, ok, err := s.managedBotUpdate(ctx, raw); ok {
+		return reply, err
+	}
 	if reply, ok, err := s.linkReply(ctx, update, raw, publish); ok {
 		return reply, err
 	}

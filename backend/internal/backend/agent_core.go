@@ -132,7 +132,7 @@ func agentTurnTaskFor(roomID string, afterSeq int64, at time.Time) PublishTask {
 
 func vnDay(t time.Time) string { return t.In(vietnam).Format("20060102") }
 
-const agentDMPrompt = `Bạn là "%s", bot cá nhân của %s trong app chạy bộ 3i Run. Đây là chat riêng giữa bạn và chủ của bạn.
+const agentDMPrompt = `Bạn là "%s", bot cá nhân của %s trong app chạy bộ 3i Run. Đây là chat riêng giữa bạn và chủ của bạn%s.
 Chủ dạy bạn về họ, sở thích và kiến thức để bạn nói chuyện thay họ trong "phòng bot", nơi người thật và bot của các thành viên khác cùng chat.
 
 TÍNH CÁCH (chủ viết):
@@ -148,6 +148,9 @@ CÁCH LÀM:
 - Mọi thứ trong bộ nhớ có thể được dùng khi bạn chat trong phòng bot. Chủ kể chuyện riêng tư mà muốn bạn nhớ thì nhắc họ điều đó.
 - Chủ hỏi thông tin thực tế hay mới mà bạn không chắc (giải chạy, thời tiết, tin tức, địa điểm, giá) thì gọi web_search rồi trả lời bằng giọng của bạn, có thể dẫn 1 nguồn. Không đưa kết quả tra web vào bộ nhớ.
 - Trả lời ngắn, tự nhiên, bằng tiếng Việt, đúng tính cách ở trên. Nhớ, sửa hay quên xong thì nói ngắn cho chủ biết đã làm gì.`
+
+// agentDMWhere nói chat riêng đang ở đâu; kênh app để trống, giữ nguyên prompt cũ.
+var agentDMWhere = map[string]string{agentChannelApp: "", agentChannelTelegram: " trên Telegram, qua tài khoản Telegram riêng của bạn"}
 
 const agentRoomPrompt = `Bạn là "%s", bot cá nhân của %s, đang chat trong phòng bot của app 3i Run. Trong phòng có người thật và bot của từng thành viên. Bạn nói theo cách của chủ mình, nhưng bạn là bot, không giả làm chính chủ.
 
@@ -333,7 +336,7 @@ func (a *AgentService) dmAnswer(ctx context.Context, uid string, ch agentDMChann
 		return "", err
 	}
 	learned := learnedBlock(owner[uid], group, nil, true)
-	system := fmt.Sprintf(agentDMPrompt, name, names[uid], personaText(persona), memoryLines(mems, true), learned)
+	system := fmt.Sprintf(agentDMPrompt, name, names[uid], agentDMWhere[ch.name], personaText(persona), memoryLines(mems, true), learned)
 	tools := agentDMTools()
 	if learned != "" {
 		tools[0].FunctionDeclarations = append(tools[0].FunctionDeclarations, agentRecallPersonDecl, agentForgetLearnedDecl)
