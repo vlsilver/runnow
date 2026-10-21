@@ -397,11 +397,7 @@ func (a *AgentService) RoomTurn(ctx context.Context, afterSeq int64, wall time.T
 	if seq != afterSeq || int64(number(room["chain"])) >= agentChainMax || roomBudgetLeft(room, wall) <= 0 {
 		return nil
 	}
-	members, err := a.store.members(ctx)
-	if err != nil {
-		return err
-	}
-	agents, err := a.store.roomAgents(ctx, members)
+	acc, err := a.store.access(ctx)
 	if err != nil {
 		return err
 	}
@@ -412,11 +408,15 @@ func (a *AgentService) RoomTurn(ctx context.Context, afterSeq int64, wall time.T
 	if len(transcript) == 0 {
 		return nil
 	}
+	agents, err := a.store.roomAgents(ctx, acc, lastHuman(transcript))
+	if err != nil {
+		return err
+	}
 	speaker, ok := pickSpeaker(agents, room, transcript[len(transcript)-1])
 	if !ok {
 		return nil
 	}
-	text, err := a.roomReply(ctx, speaker, agents, members, transcript, wall)
+	text, err := a.roomReply(ctx, speaker, agents, acc.roster(agents), transcript, wall)
 	if err != nil {
 		return err
 	}
@@ -450,6 +450,16 @@ func roomUsedToday(room map[string]any, wall time.Time) int64 {
 
 func roomBudgetLeft(room map[string]any, wall time.Time) int64 {
 	return agentRoomDailyMax - roomUsedToday(room, wall)
+}
+
+// lastHuman là uid của người nhắn gần nhất trong transcript, rỗng nếu không có.
+func lastHuman(transcript []map[string]any) string {
+	for i := len(transcript) - 1; i >= 0; i-- {
+		if stringValue(transcript[i]["kind"]) == agentKindHuman {
+			return stringValue(transcript[i]["uid"])
+		}
+	}
+	return ""
 }
 
 // pickSpeaker chọn bot nói tiếp: không phải bot vừa nói; bot được gọi tên trong

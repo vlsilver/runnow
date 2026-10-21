@@ -355,19 +355,29 @@ func (a *AgentService) recallPerson(ctx context.Context, call *genai.FunctionCal
 	return recallPerson(ctx, a.store, a.chatID, stringValue(call.Args["name"]), now)
 }
 
-// recallPerson chạy tool recall_person: tra tên trong thành viên phòng bot và
-// người trên group Telegram chatID. Tên không khớp hay trùng thì báo cho model.
+// recallPerson chạy tool recall_person: tra tên trong người trên group
+// Telegram chatID và người đã có ký ức theo uid (người chỉ dùng app, chưa liên
+// kết Telegram). Tên không khớp hay trùng thì báo cho model.
 func recallPerson(ctx context.Context, store *AgentStore, chatID, name string, now time.Time) (map[string]any, error) {
 	name = strings.TrimSpace(name)
 	people, err := learnPeople(ctx, store, chatID)
 	if err != nil {
 		return nil, err
 	}
-	members, err := store.members(ctx)
+	// Không lấy allowlist bot như trước: mở cho mọi người thì allowlist không
+	// còn là danh sách người trong phòng. Tra theo doc ký ức thì đủ, vì người
+	// chưa có doc nào thì tra ra cũng không có gì để trả.
+	docs, err := learnedCol(store.db).Select().Documents(ctx).GetAll()
 	if err != nil {
 		return nil, err
 	}
-	names, err := store.displayNames(ctx, members)
+	var uids []string
+	for _, d := range docs {
+		if id := d.Ref.ID; id != agentGroupScope && !strings.HasPrefix(id, learnTGScope("")) {
+			uids = append(uids, id)
+		}
+	}
+	names, err := store.displayNames(ctx, uids)
 	if err != nil {
 		return nil, err
 	}

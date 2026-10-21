@@ -10,7 +10,7 @@ import (
 )
 
 // Mỗi quyền là một mảng uid trong doc config sẵn có. Admin sửa trên web thì
-// ghi đúng mảng đó, nên RequireAdmin, isTester và AgentStore.members vẫn đọc
+// ghi đúng mảng đó, nên RequireAdmin, isTester và AgentStore.access vẫn đọc
 // như cũ, đổi xong có hiệu lực ngay ở request kế.
 type adminRole struct{ col, doc, field string }
 

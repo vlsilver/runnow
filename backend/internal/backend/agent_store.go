@@ -20,14 +20,16 @@ import (
 // bot) và sau này Telegram chỉ là kênh giao tiếp, nên mỗi tin ghi kèm channel
 // và mọi kênh dùng chung một lịch sử, một bộ nhớ.
 //
-//	agents/{uid}                    tên, persona, dmSeq, dmUserSeq, answeredSeq
+//	agents/{uid}                    tên, persona, inRoom, dmSeq, dmUserSeq, answeredSeq
 //	agents/{uid}/memories/{id}      từng mục bộ nhớ
 //	agents/{uid}/dm/{seq}           chat riêng giữa chủ và bot
 //	agentRooms/main                 seq và state lượt nói của các bot
 //	agentRooms/main/messages/{seq}  tin trong phòng, của người lẫn bot
 //
-// Ai được dùng: gameState/config.adminUids cộng agentState/config.memberUids.
-// Chủ repo ghi tay, đọc mỗi request nên sửa là có hiệu lực ngay.
+// Ai được dùng: agentState/config.open bật thì mọi tài khoản đăng nhập; tắt thì
+// chỉ allowlist gameState/config.adminUids cộng agentState/config.memberUids.
+// Allowlist vẫn giữ khi đã mở, để tắt cờ là quay về như cũ mà không cần deploy.
+// Đọc mỗi request nên sửa là có hiệu lực ngay.
 
 const (
 	agentNameMaxRunes    = 40
@@ -118,44 +120,54 @@ func (s *AgentStore) roomRef(room string) *firestore.DocumentRef {
 	return s.db.Collection("agentRooms").Doc(room)
 }
 
-// members là uid được dùng bot thử nghiệm, sort để thứ tự tất định.
-func (s *AgentStore) members(ctx context.Context) ([]string, error) {
-	sources := []struct {
-		ref   *firestore.DocumentRef
-		field string
-	}{
-		{s.db.Collection("gameState").Doc("config"), "adminUids"},
-		{s.db.Collection("agentState").Doc("config"), "memberUids"},
+// agentAccess là quyền dùng bot đọc một lần cho cả request.
+type agentAccess struct {
+	open bool
+	// members là allowlist, sort để thứ tự tất định.
+	members []string
+}
+
+func (a agentAccess) allows(uid string) bool { return a.open || slices.Contains(a.members, uid) }
+
+// access đọc cờ open và allowlist.
+func (s *AgentStore) access(ctx context.Context) (agentAccess, error) {
+	game, err := getData(ctx, s.db.Collection("gameState").Doc("config"))
+	if err != nil {
+		return agentAccess{}, err
+	}
+	cfg, err := getData(ctx, s.db.Collection("agentState").Doc("config"))
+	if err != nil {
+		return agentAccess{}, err
 	}
 	set := map[string]bool{}
-	for _, src := range sources {
-		doc, err := src.ref.Get(ctx)
-		if status.Code(err) == codes.NotFound {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		for _, v := range anyList(doc.Data()[src.field]) {
-			if uid := stringValue(v); uid != "" {
-				set[uid] = true
-			}
+	for _, v := range append(anyList(game["adminUids"]), anyList(cfg["memberUids"])...) {
+		if uid := stringValue(v); uid != "" {
+			set[uid] = true
 		}
 	}
-	out := make([]string, 0, len(set))
+	out := agentAccess{open: cfg["open"] == true, members: make([]string, 0, len(set))}
 	for uid := range set {
-		out = append(out, uid)
+		out.members = append(out.members, uid)
 	}
-	slices.Sort(out)
+	slices.Sort(out.members)
 	return out, nil
 }
 
+// allowed: uid dùng được bot, vì cờ open đang bật hoặc uid nằm trong allowlist.
+func (s *AgentStore) allowed(ctx context.Context, uid string) (bool, error) {
+	acc, err := s.access(ctx)
+	if err != nil {
+		return false, err
+	}
+	return acc.allows(uid), nil
+}
+
 func (s *AgentStore) requireMember(ctx context.Context, uid string) error {
-	members, err := s.members(ctx)
+	ok, err := s.allowed(ctx, uid)
 	if err != nil {
 		return err
 	}
-	if !slices.Contains(members, uid) {
+	if !ok {
 		return errAgentDisabled
 	}
 	return nil
@@ -196,15 +208,15 @@ func defaultAgentName(owner string) string {
 	return string(name)
 }
 
-// Me trả hồ sơ bot và bộ nhớ của uid. Người ngoài danh sách nhận enabled false
+// Me trả hồ sơ bot và bộ nhớ của uid. Người chưa có quyền nhận enabled false
 // chứ không phải lỗi, để app chỉ cần ẩn mục bot.
 func (s *AgentStore) Me(ctx context.Context, uid string, wall time.Time) (AgentMe, error) {
-	members, err := s.members(ctx)
+	ok, err := s.allowed(ctx, uid)
 	if err != nil {
 		return AgentMe{}, err
 	}
 	out := AgentMe{Memories: []AgentMemory{}, MemoryLimit: agentMemoryLimit, Learned: []AgentLearnedFact{}, LearnedLimit: agentLearnedLimit}
-	if !slices.Contains(members, uid) {
+	if !ok {
 		return out, nil
 	}
 	out.Enabled = true
@@ -230,7 +242,9 @@ func (s *AgentStore) Me(ctx context.Context, uid string, wall time.Time) (AgentM
 	return out, nil
 }
 
-// SaveProfile tạo hoặc sửa tên và persona. Lần lưu đầu là lúc bot ra đời.
+// SaveProfile tạo hoặc sửa tên và persona. Lần lưu đầu là lúc bot ra đời, và
+// bot vào phòng luôn như trước giờ; sửa sau đó không đụng inRoom, để chủ đã cho
+// bot ra khỏi phòng thì lưu lại hồ sơ cũng không kéo bot vào lại.
 func (s *AgentStore) SaveProfile(ctx context.Context, uid, name, persona string, wall time.Time) (AgentProfile, error) {
 	name, persona = strings.TrimSpace(name), strings.TrimSpace(persona)
 	if name == "" || utf8.RuneCountInString(name) > agentNameMaxRunes {
@@ -248,6 +262,7 @@ func (s *AgentStore) SaveProfile(ctx context.Context, uid, name, persona string,
 		update := map[string]any{"name": name, "persona": persona, "updatedAt": wall}
 		if status.Code(err) == codes.NotFound {
 			update["createdAt"] = wall
+			update["inRoom"] = true
 		} else if err != nil {
 			return err
 		}

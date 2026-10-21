@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -53,34 +54,121 @@ type roomAgent struct {
 	uid, name, persona string
 }
 
-// roomAgents là bot của các thành viên đã tạo bot, theo thứ tự uid.
-func (s *AgentStore) roomAgents(ctx context.Context, members []string) ([]roomAgent, error) {
-	if len(members) == 0 {
-		return nil, nil
-	}
-	refs := make([]*firestore.DocumentRef, len(members))
-	for i, uid := range members {
-		refs[i] = s.agentRef(uid)
-	}
-	docs, err := s.db.GetAll(ctx, refs)
-	if err != nil {
-		return nil, err
-	}
-	var out []roomAgent
-	for i, d := range docs {
-		if d.Exists() {
-			out = append(out, roomAgent{uid: members[i], name: stringValue(d.Data()["name"]), persona: stringValue(d.Data()["persona"])})
+// agentRoomMax là số bot tối đa được đọc vào một lượt nói khi đã mở cho mọi
+// người, để số lần đọc hồ sơ bot mỗi lượt không tăng theo số người dùng.
+const agentRoomMax = 20
+
+// roomAgents là bot được nói trong phòng, theo thứ tự uid: bot đã tạo, đang
+// inRoom, và chủ có quyền dùng bot.
+//   - Cờ open tắt: chỉ đọc bot của allowlist như trước giờ. Nhờ vậy tắt cờ thì
+//     bot của người ngoài allowlist im ngay, dù vẫn còn inRoom.
+//   - Cờ open bật: query theo inRoom, tối đa agentRoomMax bot. Bot của prefer
+//     (người vừa nhắn) luôn có mặt nếu đang ở phòng, để người đó không bị cắt
+//     chỉ vì uid đứng sau 20 bot đầu.
+func (s *AgentStore) roomAgents(ctx context.Context, acc agentAccess, prefer string) ([]roomAgent, error) {
+	var docs []*firestore.DocumentSnapshot
+	if !acc.open {
+		if len(acc.members) == 0 {
+			return nil, nil
+		}
+		refs := make([]*firestore.DocumentRef, len(acc.members))
+		for i, uid := range acc.members {
+			refs[i] = s.agentRef(uid)
+		}
+		all, err := s.db.GetAll(ctx, refs)
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range all {
+			if d.Exists() {
+				docs = append(docs, d)
+			}
+		}
+	} else {
+		var err error
+		docs, err = s.db.Collection("agents").Where("inRoom", "==", true).Limit(agentRoomMax).Documents(ctx).GetAll()
+		if err != nil {
+			return nil, err
+		}
+		if prefer != "" && len(docs) == agentRoomMax && !slices.ContainsFunc(docs, func(d *firestore.DocumentSnapshot) bool { return d.Ref.ID == prefer }) {
+			d, err := s.agentRef(prefer).Get(ctx)
+			switch {
+			case status.Code(err) == codes.NotFound:
+			case err != nil:
+				return nil, err
+			case d.Data()["inRoom"] == true:
+				docs = append(docs[:agentRoomMax-1], d)
+			}
 		}
 	}
+	var out []roomAgent
+	for _, d := range docs {
+		if d.Data()["inRoom"] == true {
+			out = append(out, roomAgent{uid: d.Ref.ID, name: stringValue(d.Data()["name"]), persona: stringValue(d.Data()["persona"])})
+		}
+	}
+	slices.SortFunc(out, func(a, b roomAgent) int { return strings.Compare(a.uid, b.uid) })
 	return out, nil
 }
 
+// BackfillInRoom cho bot đã tạo của allowlist hiện tại vào phòng (inRoom =
+// true), chạy một lần trước khi deploy bản đọc inRoom, để phòng giữ đúng những
+// bot đang nói. Chạy lại an toàn: bot đã có inRoom, kể cả false do chủ tự tắt,
+// thì để nguyên. Trả uid vừa được ghi.
+func (s *AgentStore) BackfillInRoom(ctx context.Context) ([]string, error) {
+	acc, err := s.access(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var set []string
+	for _, uid := range acc.members {
+		ref := s.agentRef(uid)
+		wrote := false
+		err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+			wrote = false
+			doc, err := tx.Get(ref)
+			if status.Code(err) == codes.NotFound {
+				return nil // chưa tạo bot
+			}
+			if err != nil {
+				return err
+			}
+			if _, ok := doc.Data()["inRoom"]; ok {
+				return nil
+			}
+			wrote = true
+			return tx.Update(ref, []firestore.Update{{Path: "inRoom", Value: true}})
+		})
+		if err != nil {
+			return set, fmt.Errorf("agents/%s: %w", uid, err)
+		}
+		if wrote {
+			set = append(set, uid)
+		}
+	}
+	return set, nil
+}
+
+// roster là người trong phòng, theo thứ tự uid. Cờ open tắt thì là allowlist
+// như trước giờ, kể cả người chưa tạo bot. Cờ bật thì là chủ của các bot đang
+// ở phòng, để danh sách không dài theo số người dùng.
+func (a agentAccess) roster(agents []roomAgent) []string {
+	if !a.open {
+		return a.members
+	}
+	out := make([]string, len(agents))
+	for i, ag := range agents {
+		out[i] = ag.uid
+	}
+	return out
+}
+
 func (s *AgentStore) Room(ctx context.Context, uid, cursor, after string) (AgentRoomPage, error) {
-	members, err := s.members(ctx)
+	acc, err := s.access(ctx)
 	if err != nil {
 		return AgentRoomPage{}, err
 	}
-	if !slices.Contains(members, uid) {
+	if !acc.allows(uid) {
 		return AgentRoomPage{}, errAgentDisabled
 	}
 	docs, next, hasNewer, err := pageBySeq(ctx, s.roomRef(agentMainRoom).Collection("messages"), cursor, after)
@@ -92,6 +180,11 @@ func (s *AgentStore) Room(ctx context.Context, uid, cursor, after string) (Agent
 	if after != "" && len(docs) == 0 {
 		return out, nil
 	}
+	agents, err := s.roomAgents(ctx, acc, uid)
+	if err != nil {
+		return AgentRoomPage{}, err
+	}
+	members := acc.roster(agents)
 	uids := slices.Clone(members)
 	for _, d := range docs {
 		if u := stringValue(d.Data()["uid"]); !slices.Contains(uids, u) {
@@ -99,10 +192,6 @@ func (s *AgentStore) Room(ctx context.Context, uid, cursor, after string) (Agent
 		}
 	}
 	names, err := s.displayNames(ctx, uids)
-	if err != nil {
-		return AgentRoomPage{}, err
-	}
-	agents, err := s.roomAgents(ctx, members)
 	if err != nil {
 		return AgentRoomPage{}, err
 	}
