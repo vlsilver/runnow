@@ -227,11 +227,13 @@ func (m *MemoryService) distill(ctx context.Context, existing, transcript string
 		existing = "(chưa có)"
 	}
 	prompt := fmt.Sprintf(memoryDistillPrompt, existing, transcript)
+	started := time.Now()
 	resp, err := m.genai.Models.GenerateContent(ctx, m.model,
 		[]*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: prompt}}}}, nil)
 	if err != nil {
 		return "", err
 	}
+	logLLMUsage(ctx, llmLabel{feature: "bot.memory_distill"}, m.model, resp, started, 0)
 	if resp == nil || len(resp.Candidates) == 0 {
 		return "", fmt.Errorf("model trả về rỗng khi chưng cất")
 	}

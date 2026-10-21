@@ -237,7 +237,7 @@ func (s *BotService) generateScheduledPost(ctx context.Context, sch botSchedule)
 		systemPrompt += "\n\nCÁC LỊCH KHÁC ĐANG ĐẶT (để không dẫm chân nhau):\n" + sched
 	}
 	contents := []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: desc}}}}
-	text, err := s.Answer(ctx, systemPrompt, contents, false)
+	text, err := s.Answer(withLLMLabel(ctx, "bot.scheduled_post", ""), systemPrompt, contents, false)
 	if err != nil {
 		slog.WarnContext(ctx, "schedule.generate_failed", "id", sch.ID, "error", err)
 		return ""

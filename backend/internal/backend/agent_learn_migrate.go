@@ -134,7 +134,7 @@ func (l *LearnService) PlanMigration(ctx context.Context, chats []string) (*Lear
 		}
 		in.WriteString("\n")
 	}
-	resp, err := l.llm.Learn(ctx, learnMigratePrompt, in.String(), learnMigrateSchema)
+	resp, err := l.llm.Learn(withLLMLabel(ctx, "agent.learn_migrate", ""), learnMigratePrompt, in.String(), learnMigrateSchema)
 	if err != nil {
 		return nil, fmt.Errorf("agent learn migrate: %w", err)
 	}

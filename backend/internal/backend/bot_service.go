@@ -783,9 +783,11 @@ func generateWithRetry(ctx context.Context, client *genai.Client, model string, 
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
 		attemptCtx, cancel := context.WithTimeout(ctx, timeout)
+		started := time.Now()
 		resp, err := client.Models.GenerateContent(attemptCtx, model, contents, config)
 		cancel()
 		if err == nil {
+			logLLMUsage(ctx, llmLabelOf(ctx), model, resp, started, attempt)
 			return resp, nil
 		}
 		lastErr = err
@@ -1069,12 +1071,17 @@ func (s *BotService) webSearch(ctx context.Context, args map[string]any) (any, e
 
 // googleSearch gọi một lượt chỉ bật GoogleSearch.
 func googleSearch(ctx context.Context, client *genai.Client, model, query string) (*genai.GenerateContentResponse, error) {
-	return client.Models.GenerateContent(ctx, model,
+	started := time.Now()
+	resp, err := client.Models.GenerateContent(ctx, model,
 		[]*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: query}}}},
 		&genai.GenerateContentConfig{
 			Tools:             []*genai.Tool{{GoogleSearch: &genai.GoogleSearch{}}},
 			SystemInstruction: &genai.Content{Parts: []*genai.Part{{Text: "Tra Google và trả lời NGẮN GỌN, chính xác, ưu tiên thông tin mới nhất. Nếu kết quả không rõ ràng thì nói thẳng là không chắc."}}},
 		})
+	if err == nil {
+		logLLMUsage(ctx, llmLabelOf(ctx).sub("web_search"), model, resp, started, 0)
+	}
+	return resp, err
 }
 
 // groundedResult đổi câu trả lời grounded thành kết quả tool cho model chính.
@@ -1255,6 +1262,7 @@ func (s *BotService) generateFunImage(ctx context.Context, prompt, style string,
 			styleFrag + ". " + quality
 	}
 	parts = append(parts, &genai.Part{Text: full})
+	started := time.Now()
 	resp, err := s.imageGenai.Models.GenerateContent(ctx, s.imageModel,
 		[]*genai.Content{{Role: genai.RoleUser, Parts: parts}},
 		&genai.GenerateContentConfig{ResponseModalities: []string{"TEXT", "IMAGE"}},
@@ -1262,6 +1270,7 @@ func (s *BotService) generateFunImage(ctx context.Context, prompt, style string,
 	if err != nil {
 		return nil, err
 	}
+	logLLMUsage(ctx, llmLabelOf(ctx).sub("image"), s.imageModel, resp, started, 0)
 	if resp == nil {
 		return nil, nil
 	}
@@ -1292,7 +1301,7 @@ func (s *BotService) readImageMemo(ctx context.Context, img []byte) string {
 		{Text: prompt},
 		{InlineData: &genai.Blob{MIMEType: "image/jpeg", Data: img}},
 	}}
-	text, err := s.Answer(ctx, "Bạn là công cụ đọc ảnh, chỉ trả về mô tả ngắn gọn khách quan.", []*genai.Content{content}, false)
+	text, err := s.Answer(withLLMLabel(ctx, "bot.image_memo", ""), "Bạn là công cụ đọc ảnh, chỉ trả về mô tả ngắn gọn khách quan.", []*genai.Content{content}, false)
 	if err != nil {
 		slog.WarnContext(ctx, "bot.image_memo_failed", "error", err)
 		return ""
@@ -1413,7 +1422,11 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID string, threadID 
 		}
 	}
 
-	answer, err := s.Answer(ctx, systemPrompt, contents, private)
+	feature := "bot.group_reply"
+	if private {
+		feature = "bot.dm"
+	}
+	answer, err := s.Answer(withLLMLabel(ctx, feature, ""), systemPrompt, contents, private)
 	// Có ảnh → đọc MỘT LẦN rồi đính mô tả vào tin lưu history, để lần sau bot nhớ
 	// nội dung (số liệu) qua chữ mà không phải đọc lại ảnh.
 	if hasImage {
@@ -1515,7 +1528,7 @@ func (s *BotService) maybeProactiveReply(ctx context.Context, chatID string, thr
 	ctx = context.WithValue(ctx, ctxSenderID, senderID)
 	ctx = context.WithValue(ctx, ctxSenderName, name)
 	ctx = context.WithValue(ctx, ctxImageOutcome, outcome)
-	reply, err := s.Answer(ctx, sys, contents, false)
+	reply, err := s.Answer(withLLMLabel(ctx, "bot.proactive_reply", ""), sys, contents, false)
 	if err != nil {
 		return
 	}
@@ -1676,7 +1689,7 @@ func (s *BotService) ActivityAnnouncement(ctx context.Context, uid, displayName,
 	}
 	systemPrompt := botSystemPrompt + activityAnnouncementInstruction + mem
 	contents := []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: stats.String()}}}}
-	text, err := s.Answer(ctx, systemPrompt, contents, false)
+	text, err := s.Answer(withLLMLabel(ctx, "bot.activity_announce", uid), systemPrompt, contents, false)
 	if err != nil {
 		slog.WarnContext(ctx, "bot.activity_announcement_failed", "error", err)
 		return ""
@@ -1736,7 +1749,7 @@ func (s *BotService) ContractRoast(ctx context.Context, title, targetLabel strin
 	}
 	systemPrompt := botSystemPrompt + contractRoastInstruction + mem
 	contents := []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: b.String()}}}}
-	text, err := s.Answer(ctx, systemPrompt, contents, false)
+	text, err := s.Answer(withLLMLabel(ctx, "bot.contract_roast", ""), systemPrompt, contents, false)
 	if err != nil {
 		slog.WarnContext(ctx, "bot.contract_roast_failed", "error", err)
 		return ""
@@ -1781,7 +1794,7 @@ func (s *BotService) LiveAnnouncement(ctx context.Context, uid, displayName, eve
 		history = nil
 	}
 	contents := append(history, &genai.Content{Role: genai.RoleUser, Parts: []*genai.Part{{Text: stats.String()}}})
-	text, err := s.Answer(ctx, systemPrompt, contents, false)
+	text, err := s.Answer(withLLMLabel(ctx, "bot.live_announce", uid), systemPrompt, contents, false)
 	if err != nil {
 		slog.WarnContext(ctx, "bot.live_announcement_failed", "error", err)
 		return ""
@@ -1833,7 +1846,7 @@ func (s *BotService) livePhotoCaption(ctx context.Context, uid, displayName stri
 		history = nil
 	}
 	contents := append(history, &genai.Content{Role: genai.RoleUser, Parts: []*genai.Part{{Text: prompt}}})
-	text, err := s.Answer(ctx, systemPrompt, contents, false)
+	text, err := s.Answer(withLLMLabel(ctx, "bot.live_photo_caption", uid), systemPrompt, contents, false)
 	if err != nil {
 		slog.WarnContext(ctx, "bot.live_photo_caption_failed", "error", err)
 		return ""
