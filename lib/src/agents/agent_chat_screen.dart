@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/agents/agent_chat_controller.dart';
+import 'package:myrun/src/agents/agent_consent_screen.dart';
 import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -271,7 +272,7 @@ abstract class _AgentChatState<
     if (text.isEmpty || _sending) return;
     setState(() => _sending = true);
     try {
-      await controller.send(text);
+      await withAgentConsent(context, ref, () => controller.send(text));
       if (mounted && _input.text.trim() == text) _input.clear();
     } catch (error) {
       _showError(error, 'Không gửi được, thử lại sau.');

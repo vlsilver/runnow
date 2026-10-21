@@ -327,6 +327,11 @@ class RunNowApiClient {
     return AgentProfile.fromJson(_jsonObject(response));
   }
 
+  /// Đồng ý gửi dữ liệu cho AI, [version] là `consentVersion` backend trả.
+  /// Bản cũ thì `consent_version_mismatch`. Gọi lại vẫn 200.
+  Future<void> recordAgentConsent(int version) =>
+      _send('POST', '/v1/agents/me/consent', body: {'version': version});
+
   /// Lỗi `memory_full`, `invalid_memory` có message đọc được.
   Future<AgentMemory> addAgentMemory(String text) async {
     final response = await _send(

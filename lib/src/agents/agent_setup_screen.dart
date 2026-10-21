@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:myrun/src/agents/agent_consent_screen.dart';
 import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -92,12 +93,28 @@ class _AgentSetupScreenState extends ConsumerState<AgentSetupScreen> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      await ref
-          .read(runNowApiClientProvider)
-          .saveAgentProfile(
-            name: _name.text.trim(),
-            persona: _persona.text.trim(),
-          );
+      final me = ref.read(agentMeProvider).value;
+      final name = _name.text.trim();
+      // Backend đòi đồng ý AI trước khi lưu bot: hỏi luôn ở đây thay vì chờ
+      // lỗi. Hồ sơ đọc từ trước mà backend vừa đòi thì withAgentConsent hỏi.
+      if (me != null && me.consentRequired) {
+        final created = me.agent?.created ?? false;
+        final agreed = await openAgentConsent(
+          context,
+          version: me.consentVersion,
+          botName: name,
+          title: created ? 'Sửa bot' : 'Tạo bot',
+          action: created ? 'Đồng ý và lưu' : 'Đồng ý và tạo bot',
+        );
+        if (!agreed || !mounted) return;
+      }
+      await withAgentConsent(
+        context,
+        ref,
+        () => ref
+            .read(runNowApiClientProvider)
+            .saveAgentProfile(name: name, persona: _persona.text.trim()),
+      );
       ref.invalidate(agentMeProvider);
       if (mounted) Navigator.of(context).pop();
     } catch (error) {

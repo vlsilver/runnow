@@ -40,6 +40,10 @@ class _AgentBackend {
 
   /// Người mình đã chặn: tin của họ (và bot của họ) trả về hidden, text rỗng.
   final blocks = <Map<String, dynamic>>[];
+
+  /// Còn phải đồng ý AI thì lưu bot, chat riêng, nhắn phòng trả 403.
+  var consentRequired = false;
+  var consentVersion = 1;
   final requests = <http.Request>[];
   var _ids = 0;
 
@@ -59,6 +63,19 @@ class _AgentBackend {
           ? <String, dynamic>{}
           : jsonDecode(request.body) as Map<String, dynamic>;
       Object out = {'ok': true};
+      http.Response error(int status, String code) => http.Response(
+        jsonEncode({
+          'error': code,
+          'message': code,
+          'consentVersion': consentVersion,
+        }),
+        status,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+      const gated = {'/v1/agents/me', '/v1/agents/me/dm', '/v1/agents/room'};
+      if (consentRequired && request.method == 'POST' && gated.contains(path)) {
+        return error(403, 'consent_required');
+      }
       switch ((request.method, path)) {
         case ('GET', '/v1/agents/me'):
           out = {
@@ -68,7 +85,15 @@ class _AgentBackend {
             'memoryLimit': 50,
             'learned': learned,
             'noLearn': noLearn,
+            'consentRequired': consentRequired,
+            'consentVersion': consentVersion,
           };
+        case ('POST', '/v1/agents/me/consent'):
+          if (body['version'] != consentVersion) {
+            return error(409, 'consent_version_mismatch');
+          }
+          consentRequired = false;
+          out = {'consentRequired': false, 'consentVersion': consentVersion};
         case ('DELETE', final p) when p.startsWith('/v1/agents/me/learned/'):
           learned.removeWhere((f) => p.endsWith('/${f['id']}'));
         case ('POST', '/v1/agents/me/no-learn'):
@@ -220,6 +245,8 @@ void main() {
       'name': 'Bot của Tôi',
       'persona': 'Hay đùa, cà khịa vừa phải. Nói ngắn, xưng "tui".',
     });
+    // Không bị đòi đồng ý AI (allowlist): không có bước xin phép.
+    expect(backend.calls, isNot(contains('POST /v1/agents/me/consent')));
 
     // Lưu xong quay về MyBot, giờ đã có bot.
     expect(find.text('Chat riêng'), findsOneWidget);
@@ -638,5 +665,96 @@ void main() {
     expect(backend.calls, contains('DELETE /v1/agents/blocks/an'));
     expect(find.text('An'), findsNothing);
     expect(find.text('Bạn chưa chặn ai.'), findsOneWidget);
+  });
+
+  testWidgets('asks for AI consent with the server version before creating', (
+    tester,
+  ) async {
+    backend.consentRequired = true;
+    backend.consentVersion = 3;
+    await pumpMyBot(tester);
+    await tester.tap(find.text('Tạo bot'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cây hài'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Tạo bot'));
+    await tester.pumpAndSettle();
+    expect(find.text('Trước khi bắt đầu'), findsOneWidget);
+    expect(find.text('Bot của Tôi chạy bằng AI.'), findsOneWidget);
+
+    // Để sau: về màn tạo bot, chưa tạo gì.
+    await tester.tap(find.text('Để sau'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bot của bạn là ai?'), findsOneWidget);
+    expect(backend.calls, isNot(contains('POST /v1/agents/me')));
+    expect(backend.calls, isNot(contains('POST /v1/agents/me/consent')));
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Tạo bot'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cho bot tự học về tôi'));
+    await tester.pump();
+    await tester.tap(find.text('Đồng ý và tạo bot'));
+    await tester.pumpAndSettle();
+    final posts = [
+      for (final r in backend.requests)
+        if (r.method == 'POST') [r.url.path, jsonDecode(r.body)],
+    ];
+    // Đồng ý trước rồi mới tạo bot, đúng thứ tự backend đòi.
+    expect(posts, [
+      [
+        '/v1/agents/me/consent',
+        {'version': 3},
+      ],
+      [
+        '/v1/agents/me/no-learn',
+        {'on': true},
+      ],
+      [
+        '/v1/agents/me',
+        {
+          'name': 'Bot của Tôi',
+          'persona': 'Hay đùa, cà khịa vừa phải. Nói ngắn, xưng "tui".',
+        },
+      ],
+    ]);
+    expect(find.text('Chat riêng'), findsOneWidget);
+  });
+
+  testWidgets('a gated send asks for consent, rereads a new version, retries', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Sóc', 'persona': '', 'created': true};
+    backend.consentRequired = true;
+    await pump(tester, const AgentDMScreen());
+    await tester.enterText(find.byType(TextField), 'chào');
+    await tester.tap(find.byTooltip('Gửi'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sóc chạy bằng AI.'), findsOneWidget);
+
+    // Điều khoản lên bản mới trong lúc màn đang mở.
+    backend.consentVersion = 2;
+    await tester.tap(find.text('Đồng ý'));
+    await tester.pumpAndSettle();
+    expect(find.text('Trước khi bắt đầu'), findsOneWidget);
+    await tester.tap(find.text('Đồng ý'));
+    await tester.pumpAndSettle();
+
+    final consents = [
+      for (final r in backend.requests)
+        if (r.url.path == '/v1/agents/me/consent') jsonDecode(r.body),
+    ];
+    expect(consents, [
+      {'version': 1},
+      {'version': 2},
+    ]);
+    expect(find.text('Trước khi bắt đầu'), findsNothing);
+    // Gửi lại đúng một lần sau khi đồng ý.
+    final sends = backend.requests.where(
+      (r) => r.method == 'POST' && r.url.path == '/v1/agents/me/dm',
+    );
+    expect(sends.length, 2);
+    expect(jsonDecode(sends.last.body), {'text': 'chào'});
+    expect(find.widgetWithText(TextField, 'chào'), findsNothing);
+    await close(tester);
   });
 }

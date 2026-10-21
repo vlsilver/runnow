@@ -111,6 +111,8 @@ class AgentMe {
     required this.memoryLimit,
     required this.learned,
     this.noLearn = false,
+    this.consentRequired = false,
+    this.consentVersion = 0,
   });
 
   factory AgentMe.fromJson(Map<String, dynamic> json) {
@@ -124,6 +126,8 @@ class AgentMe {
       memoryLimit: _int(json['memoryLimit']),
       learned: _list(json['learned'], AgentLearnedFact.fromJson),
       noLearn: json['noLearn'] == true,
+      consentRequired: json['consentRequired'] == true,
+      consentVersion: _int(json['consentVersion']),
     );
   }
 
@@ -138,6 +142,13 @@ class AgentMe {
 
   /// Đã tắt "Cho bot tự học về bạn". Backend cũ chưa có field thì là false.
   final bool noLearn;
+
+  /// Phải đồng ý gửi dữ liệu cho AI trước khi tạo bot, chat riêng hay nhắn
+  /// phòng. Người trong allowlist và backend cũ luôn là false.
+  final bool consentRequired;
+
+  /// Bản điều khoản AI đang bắt buộc, gửi lại khi đồng ý.
+  final int consentVersion;
 }
 
 /// Tin có seq, để một controller dùng chung cho chat riêng và phòng bot.
