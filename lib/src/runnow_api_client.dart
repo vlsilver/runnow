@@ -386,6 +386,32 @@ class RunNowApiClient {
   String _rolePath(String role, String uid) =>
       '/v1/admin/roles/${Uri.encodeComponent(role)}/${Uri.encodeComponent(uid)}';
 
+  /// Chỉ admin: trần, giá model và chi phí hôm nay của bot cá nhân.
+  Future<AgentConfig> getAgentConfig() async {
+    final response = await _send('GET', '/v1/admin/agent-config');
+    return AgentConfig.fromJson(_jsonObject(response));
+  }
+
+  /// [version] lấy từ lần đọc gần nhất; admin khác lưu trước thì
+  /// `config_changed`. [values] chỉ chứa key đổi, null là về mặc định.
+  /// [prices] là cả bảng giá, backend thay nguyên bảng.
+  Future<AgentConfig> updateAgentConfig({
+    required String version,
+    Map<String, num?>? values,
+    List<AgentModelPrice>? prices,
+  }) async {
+    final response = await _send(
+      'PATCH',
+      '/v1/admin/agent-config',
+      body: {
+        'version': version,
+        'values': ?values,
+        if (prices != null) 'prices': [for (final p in prices) p.toJson()],
+      },
+    );
+    return AgentConfig.fromJson(_jsonObject(response));
+  }
+
   Future<AgentChatPage<AgentMessage>> getAgentDM({
     String? cursor,
     int? after,

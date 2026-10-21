@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:myrun/src/admin/agent_config_screen.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -181,6 +182,20 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
               ),
             const SizedBox(height: 24),
           ],
+          Text('Bot cá nhân', style: heading),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Trần và giá'),
+            subtitle: const Text('Chi phí hôm nay, trần, số câu, giá model'),
+            trailing: const Icon(Icons.chevron_right),
+            // Push trong nhánh /admin, khỏi thêm route chỉ admin web dùng.
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const AgentConfigScreen(),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
           Text('Telegram', style: heading),
           ListTile(
             contentPadding: EdgeInsets.zero,
