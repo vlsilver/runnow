@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/games/game_card.dart';
 import 'package:myrun/src/games/game_providers.dart';
 import 'package:myrun/src/models.dart';
@@ -231,15 +230,6 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
       appBar: AppBar(
         title: const Text('Kèo'),
         actions: [
-          // Người có MyBot không còn nút Chạy giữa thanh tab, nên chạy từ đây.
-          if (!kIsWeb && myBotTabVisible(ref))
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: _StartRunAction(
-                onPressed: () =>
-                    StatefulNavigationShell.of(context).goBranch(2),
-              ),
-            ),
           if (connected)
             Padding(
               padding: const EdgeInsets.only(right: 10),
@@ -315,36 +305,6 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
 }
 
 enum _ContractFilter { active, completed, failed }
-
-class _StartRunAction extends StatelessWidget {
-  const _StartRunAction({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    return Tooltip(
-      message: 'Bắt đầu chạy',
-      child: FilledButton.icon(
-        onPressed: onPressed,
-        style: FilledButton.styleFrom(
-          backgroundColor: palette.ink,
-          foregroundColor: palette.accent,
-          minimumSize: const Size(0, 40),
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          shape: const StadiumBorder(),
-          textStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        icon: const Icon(Icons.directions_run_rounded, size: 20),
-        label: const Text('Chạy'),
-      ),
-    );
-  }
-}
 
 class _ContractSyncAction extends StatefulWidget {
   const _ContractSyncAction({

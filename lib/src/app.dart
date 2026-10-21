@@ -128,8 +128,8 @@ final _router = GoRouter(
             ),
           ],
         ),
-        // Tab MyBot thay nút Chạy giữa thanh tab khi user được bật bot
-        // (myBotTabVisible). Branch thêm ở cuối nên index các tab cũ giữ nguyên.
+        // Tab MyBot thế chỗ Hành Trình khi user được bật bot (myBotTabVisible).
+        // Branch thêm ở cuối nên index các tab cũ giữ nguyên.
         StatefulShellBranch(
           routes: [
             GoRoute(
@@ -946,17 +946,7 @@ class _Scaffold extends ConsumerWidget {
                       onTap: () => shell.goBranch(1),
                     ),
                   ),
-                  // Có bot thì giữa là MyBot, nút Chạy lên đầu tab Kèo.
-                  if (myBot)
-                    Expanded(
-                      child: _OrbNavItem(
-                        selected: shell.currentIndex == 6,
-                        icon: Icons.smart_toy_rounded,
-                        label: 'MyBot',
-                        onTap: () => shell.goBranch(6),
-                      ),
-                    )
-                  else if (!kIsWeb)
+                  if (!kIsWeb)
                     Expanded(
                       child: _OrbNavItem(
                         selected: shell.currentIndex == 2,
@@ -965,15 +955,28 @@ class _Scaffold extends ConsumerWidget {
                         onTap: () => shell.goBranch(2),
                       ),
                     ),
-                  Expanded(
-                    child: _NavItem(
-                      selected: shell.currentIndex == 3,
-                      icon: Icons.map_outlined,
-                      selectedIcon: Icons.map_rounded,
-                      label: 'Hành Trình',
-                      onTap: () => shell.goBranch(3),
+                  // Có bot thì MyBot thế chỗ Hành Trình; Hành Trình vẫn mở được
+                  // từ "Hồ sơ & thành tích" ở Cài đặt.
+                  if (myBot)
+                    Expanded(
+                      child: _NavItem(
+                        selected: shell.currentIndex == 6,
+                        icon: Icons.smart_toy_outlined,
+                        selectedIcon: Icons.smart_toy_rounded,
+                        label: 'MyBot',
+                        onTap: () => shell.goBranch(6),
+                      ),
+                    )
+                  else
+                    Expanded(
+                      child: _NavItem(
+                        selected: shell.currentIndex == 3,
+                        icon: Icons.map_outlined,
+                        selectedIcon: Icons.map_rounded,
+                        label: 'Hành Trình',
+                        onTap: () => shell.goBranch(3),
+                      ),
                     ),
-                  ),
                   Expanded(
                     child: _NavItem(
                       selected: shell.currentIndex == 4,
@@ -1023,8 +1026,8 @@ class _DesktopNavRail extends StatelessWidget {
     final branches = <int>[
       0,
       1,
-      if (myBot) 6 else if (!kIsWeb) 2,
-      3,
+      if (!kIsWeb) 2,
+      if (myBot) 6 else 3,
       4,
       if (admin) 5,
     ];
@@ -1039,23 +1042,24 @@ class _DesktopNavRail extends StatelessWidget {
         selectedIcon: Icon(Icons.groups_2),
         label: Text('Club'),
       ),
+      if (!kIsWeb)
+        const NavigationRailDestination(
+          icon: Icon(Icons.directions_run_rounded),
+          selectedIcon: Icon(Icons.directions_run_rounded),
+          label: Text('Chạy'),
+        ),
       if (myBot)
         const NavigationRailDestination(
           icon: Icon(Icons.smart_toy_outlined),
           selectedIcon: Icon(Icons.smart_toy_rounded),
           label: Text('MyBot'),
         )
-      else if (!kIsWeb)
+      else
         const NavigationRailDestination(
-          icon: Icon(Icons.directions_run_rounded),
-          selectedIcon: Icon(Icons.directions_run_rounded),
-          label: Text('Chạy'),
+          icon: Icon(Icons.map_outlined),
+          selectedIcon: Icon(Icons.map_rounded),
+          label: Text('Hành Trình'),
         ),
-      const NavigationRailDestination(
-        icon: Icon(Icons.map_outlined),
-        selectedIcon: Icon(Icons.map_rounded),
-        label: Text('Hành Trình'),
-      ),
       const NavigationRailDestination(
         icon: Icon(Icons.settings_outlined),
         selectedIcon: Icon(Icons.settings),

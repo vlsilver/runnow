@@ -77,31 +77,29 @@ void main() {
     expect(find.text('Tổng quan'), findsNothing);
   });
 
-  testWidgets('people without the bot keep the run tab in the middle', (
-    tester,
-  ) async {
+  testWidgets('people without the bot keep the journey tab', (tester) async {
     await pumpApp(tester, agent: agentMe(enabled: false));
     expect(find.text('MyBot'), findsNothing);
-    // Chỉ có nút Chạy giữa thanh tab, đầu tab Kèo không có nút Chạy.
+    expect(find.text('Hành Trình'), findsOneWidget);
     expect(find.text('Chạy'), findsOneWidget);
-    expect(find.byTooltip('Bắt đầu chạy'), findsNothing);
   });
 
-  testWidgets('bot users get MyBot in the middle and run from the Kèo header', (
+  testWidgets('bot users get MyBot in place of the journey tab', (
     tester,
   ) async {
     await pumpApp(tester, agent: agentMe(enabled: true));
     expect(find.text('MyBot'), findsOneWidget);
-    expect(find.byTooltip('Bắt đầu chạy'), findsOneWidget);
-    // Thanh tab không còn nút Chạy, chữ "Chạy" duy nhất là nút trên đầu Kèo.
+    expect(find.text('Hành Trình'), findsNothing);
+    // Nút Chạy vẫn ở giữa thanh tab, đầu tab Kèo không có nút Chạy riêng.
     expect(find.text('Chạy'), findsOneWidget);
+    expect(find.byTooltip('Bắt đầu chạy'), findsNothing);
 
     await tester.tap(find.text('MyBot'));
     await tester.pumpAndSettle();
     expect(find.text('Sóc'), findsOneWidget);
     expect(find.text('Chat riêng'), findsOneWidget);
     // Vẫn ở trong shell: thanh tab còn đó.
-    expect(find.text('Hành Trình'), findsOneWidget);
+    expect(find.text('Chạy'), findsOneWidget);
   });
 }
 
