@@ -50,6 +50,16 @@ func (c *channelEnv) tgDM(uid, text string) int64 {
 	return msg.Seq
 }
 
+// inPsc gắn bot con đang ở PSC cho uid: ở tg-psc chỉ những bot này được nói
+// (telegramRoomAgents).
+func (c *channelEnv) inPsc(uid, botID string) {
+	c.t.Helper()
+	tg := map[string]any{"botId": botID, "username": "bot_" + uid, "inPsc": true}
+	if _, err := c.store.db.Doc("agents/"+uid).Update(context.Background(), []firestore.Update{{Path: "telegram", Value: tg}}); err != nil {
+		c.t.Fatal(err)
+	}
+}
+
 func (c *channelEnv) lastTask(path string) PublishTask {
 	c.t.Helper()
 	tasks := c.tasksTo(path)
@@ -263,6 +273,8 @@ func TestEmulatorAgentTelegramRoom(t *testing.T) {
 	c.createBot("an", "Sóc", "")
 	c.createBot("binh", "Mèo", "")
 	ctx := context.Background()
+	c.inPsc("an", "9001")
+	c.inPsc("binh", "9002")
 
 	c.want(c.call("cuong", "POST", "/v1/agents/room", map[string]any{"text": "Chào app"}, ""), 200, "")
 	mainTask := c.lastTask("/tasks/agent-turn")
@@ -351,6 +363,7 @@ func TestEmulatorAgentAccountDeleteChannels(t *testing.T) {
 	c := newChannelEnv(t)
 	c.createBot("cuong", "Cú", "")
 	c.createBot("an", "Sóc", "")
+	c.inPsc("cuong", "9001")
 	ctx := context.Background()
 
 	c.want(c.call("cuong", "POST", "/v1/agents/room", map[string]any{"text": "main của Cường"}, ""), 200, "")

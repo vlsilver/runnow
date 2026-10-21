@@ -149,11 +149,8 @@ func (s *Server) telegramWebhook(w http.ResponseWriter, r *http.Request) error {
 	}
 	// Chỉ cần Tasks để enqueue — webhook KHÔNG cần Bot/Gemini (xử lý ở
 	// runnow-bot). Nhờ vậy api có thể bỏ token Telegram mà webhook vẫn chạy.
-	var publish taskPublishFunc
-	if s.deps.Tasks != nil {
-		publish = s.deps.Tasks.Publish
-	}
-	s.serveTelegramUpdate(r.Context(), w, body, publish)
+	// enqueueTask là Tasks.Publish trên prod; test gài EnqueueTask để bắt task.
+	s.serveTelegramUpdate(r.Context(), w, body, s.enqueueTask())
 	return nil
 }
 

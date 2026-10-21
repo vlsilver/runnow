@@ -70,6 +70,9 @@ type ManagedBotService struct {
 	publicBaseURL string
 	publish       taskPublishFunc
 	now           func() time.Time
+	// chatID là group PSC, nơi có topic Phòng bot; rỗng thì bot con không gửi
+	// tin phòng ra Telegram.
+	chatID string
 
 	mu     sync.Mutex
 	tokens map[string]string // botId → token đang cache
@@ -327,6 +330,12 @@ func (m *ManagedBotService) Link(ctx context.Context, ownerTg, botID int64, user
 			if t, ok := tgField["linkedAt"].(time.Time); ok {
 				link["linkedAt"] = t
 			}
+			// Đổi token hay username không đưa bot ra khỏi PSC.
+			for _, k := range []string{"inPsc", "pscAt"} {
+				if v, ok := tgField[k]; ok {
+					link[k] = v
+				}
+			}
 		}
 		return tx.Update(agent.Ref, []firestore.Update{{Path: "telegram", Value: link}})
 	})
@@ -548,21 +557,27 @@ func (m *ManagedBotService) outboxRef(botID, key string) *firestore.DocumentRef 
 // enqueueManagedSend xếp tin text gửi từ bot con botID tới chatID. key khoá
 // chống gửi đôi: cùng key thì chỉ một tin.
 func (m *ManagedBotService) enqueueManagedSend(ctx context.Context, botID, chatID, text, key string) error {
-	return m.enqueueOp(ctx, botID, chatID, managedOpSend, text, key)
+	return m.enqueueOp(ctx, botID, chatID, 0, managedOpSend, text, key)
 }
 
 // enqueueManagedLeave xếp việc cho bot con rời chatID.
 func (m *ManagedBotService) enqueueManagedLeave(ctx context.Context, botID, chatID, key string) error {
-	return m.enqueueOp(ctx, botID, chatID, managedOpLeave, "", key)
+	return m.enqueueOp(ctx, botID, chatID, 0, managedOpLeave, "", key)
 }
 
-func (m *ManagedBotService) enqueueOp(ctx context.Context, botID, chatID, op, text, key string) error {
+// enqueueOp ghi một việc vào outbox của bot con. threadID là topic của group
+// (0 là General hay chat không có topic).
+func (m *ManagedBotService) enqueueOp(ctx context.Context, botID, chatID string, threadID int64, op, text, key string) error {
 	wall := m.now()
 	ref := m.outboxRef(botID, key)
-	_, err := ref.Create(ctx, map[string]any{
+	doc := map[string]any{
 		"chatId": chatID, "op": op, "text": text, "status": outboxPending,
 		"createdAt": wall, "expiresAt": wall.Add(managedOutboxTTL),
-	})
+	}
+	if threadID != 0 {
+		doc["threadId"] = threadID
+	}
+	_, err := ref.Create(ctx, doc)
 	if status.Code(err) == codes.AlreadyExists {
 		// Lần trước có thể đã ghi doc mà enqueue lỗi: còn pending thì enqueue
 		// lại, TaskID cố định nên không ra task thứ hai.
@@ -619,7 +634,7 @@ func (m *ManagedBotService) Deliver(ctx context.Context, botID, key string) erro
 		if stringValue(msg["op"]) == managedOpLeave {
 			return tg.callAPI(ctx, "leaveChat", map[string]any{"chat_id": chatID}, nil)
 		}
-		id, err := tg.SendText(ctx, TelegramText{ChatID: chatID, Text: stringValue(msg["text"])})
+		id, err := tg.SendText(ctx, TelegramText{ChatID: chatID, ThreadID: int64(number(msg["threadId"])), Text: stringValue(msg["text"])})
 		messageID = id
 		return err
 	})
@@ -681,6 +696,70 @@ func (m *ManagedBotService) channelReply(ctx context.Context, uid, channel strin
 	return m.enqueueManagedSend(ctx, botID, strconv.FormatInt(info.OwnerTgID, 10), reply.Text, "dm-"+uid+"-"+strconv.FormatInt(reply.Seq, 10))
 }
 
+// ---- Phòng bot trên Telegram ----
+
+// setInPsc ghi bot con botID đang ở PSC hay không (agents/{uid}.telegram.inPsc),
+// theo my_chat_member của chính bot đó. Chỉ ghi khi bot vẫn là bot hiện tại của
+// uid, để bot cũ đã bị thay không kéo MyBot vào hay ra khỏi Phòng bot.
+func (m *ManagedBotService) setInPsc(ctx context.Context, uid, botID string, in bool) error {
+	ref := m.agentRef(uid)
+	wall := m.now()
+	return m.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		d, err := getOptional(tx, ref)
+		if err != nil || !d.Exists() {
+			return err
+		}
+		tg, _ := d.Data()["telegram"].(map[string]any)
+		if stringValue(tg["botId"]) != botID || (tg["inPsc"] == true) == in {
+			return nil
+		}
+		return tx.Update(ref, []firestore.Update{
+			{FieldPath: firestore.FieldPath{"telegram", "inPsc"}, Value: in},
+			{FieldPath: firestore.FieldPath{"telegram", "pscAt"}, Value: wall},
+		})
+	})
+}
+
+// roomOut gắn vào AgentService.SetRoomOut: gửi tin của bot trong phòng tg-psc ra
+// topic Phòng bot của PSC bằng chính bot con của chủ. Doc outbox có ID theo seq
+// của phòng, nên RoomTurn gọi lại bao nhiêu lần cũng chỉ một tin. Topic đã tắt,
+// bot đã rời PSC hay bị thay thì log rồi thôi: tin vẫn nằm trong phòng, chỉ
+// không hiện trên Telegram, và task không chạy lại mãi.
+func (m *ManagedBotService) roomOut(ctx context.Context, roomID string, seq int64, uid, text string) error {
+	if roomID != agentTelegramRoom {
+		slog.WarnContext(ctx, "mybot.room_unknown", "room", roomID, "seq", seq)
+		return nil
+	}
+	cfg, err := getData(ctx, m.db.Collection("agentState").Doc("config"))
+	if err != nil {
+		return err
+	}
+	thread := telegramRoomThread(cfg)
+	if thread == 0 || m.chatID == "" {
+		slog.WarnContext(ctx, "mybot.room_no_topic", "seq", seq)
+		return nil
+	}
+	agent, err := getData(ctx, m.agentRef(uid))
+	if err != nil {
+		return err
+	}
+	tg, _ := agent["telegram"].(map[string]any)
+	botID := stringValue(tg["botId"])
+	if botID == "" || tg["inPsc"] != true {
+		slog.WarnContext(ctx, "mybot.room_bot_not_in_psc", "uid", uid, "botId", botID, "seq", seq)
+		return nil
+	}
+	info, ok, err := m.bot(ctx, botID)
+	if err != nil {
+		return err
+	}
+	if !ok || info.Retired || info.UID != uid {
+		slog.WarnContext(ctx, "mybot.room_bot_gone", "uid", uid, "botId", botID, "seq", seq)
+		return nil
+	}
+	return m.enqueueOp(ctx, botID, m.chatID, thread, managedOpSend, text, "room-"+roomID+"-"+strconv.FormatInt(seq, 10))
+}
+
 // ---- Chống xử lý trùng update của bot con ----
 
 func (m *ManagedBotService) updateRef(botID string, updateID int64) *firestore.DocumentRef {
@@ -714,6 +793,11 @@ type AgentTelegram struct {
 	BotUsername string `json:"botUsername,omitempty"`
 	Linked      bool   `json:"linked"`
 	SetupError  string `json:"setupError,omitempty"`
+	// PscJoinURL mở màn chọn group của Telegram để chủ thêm bot con vào PSC: Bot
+	// API không có hàm nào cho 3i tự thêm bot. InPsc: bot đang ở PSC, nên được
+	// nói trong topic Phòng bot.
+	PscJoinURL string `json:"pscJoinUrl,omitempty"`
+	InPsc      bool   `json:"inPsc"`
 }
 
 func (m *ManagedBotService) Status(ctx context.Context, uid, agentName string) (*AgentTelegram, error) {
@@ -722,12 +806,17 @@ func (m *ManagedBotService) Status(ctx context.Context, uid, agentName string) (
 		return nil, err
 	}
 	tg, _ := agent["telegram"].(map[string]any)
-	return &AgentTelegram{
+	out := &AgentTelegram{
 		CreateURL:   managedCreateURL(m.username, suggestBotUsername(agentName, uid), agentName),
 		BotUsername: stringValue(tg["username"]),
 		Linked:      stringValue(tg["botId"]) != "",
 		SetupError:  stringValue(tg["setupError"]),
-	}, nil
+		InPsc:       tg["inPsc"] == true,
+	}
+	if out.BotUsername != "" {
+		out.PscJoinURL = "https://t.me/" + out.BotUsername + "?startgroup=psc"
+	}
+	return out, nil
 }
 
 // managedCreateURL là link tạo bot con của Telegram. Tên đi qua query nên

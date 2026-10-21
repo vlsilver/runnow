@@ -217,7 +217,7 @@ func (s *Server) routeChildUpdate(ctx context.Context, m *ManagedBotService, bot
 		return err
 	}
 	if mc := u.MyChatMember; mc != nil {
-		return s.childMembership(ctx, m, botID, u.UpdateID, mc.Chat.ID, mc.Chat.Type, mc.Chat.Title, mc.From.ID, mc.NewChatMember.Status)
+		return s.childMembership(ctx, m, info, u.UpdateID, mc.Chat.ID, mc.Chat.Type, mc.Chat.Title, mc.From.ID, mc.NewChatMember.Status)
 	}
 	msg := u.Message
 	if msg == nil || msg.From == nil || msg.From.IsBot || msg.Chat.Type != "private" {
@@ -273,15 +273,21 @@ func (s *Server) agentTelegramDM(ctx context.Context, m *ManagedBotService, uid,
 	return m.enqueueManagedSend(ctx, botID, chatID, reply, key)
 }
 
-// childMembership: bot con bị thêm vào group. Bản 1 chưa có bước chủ xác nhận
-// (T7), nên bot không nói gì và rời ngay mọi group trừ PSC.
-func (s *Server) childMembership(ctx context.Context, m *ManagedBotService, botID string, updateID, chatID int64, chatType, title string, by int64, newStatus string) error {
-	if chatType == "private" || (newStatus != "member" && newStatus != "administrator") {
+// childMembership: bot con vào hay ra một group. PSC duyệt sẵn: vào thì được
+// nói trong topic Phòng bot, ra (rời, bị kick) thì thôi. Group khác thì bản này
+// chưa có bước chủ xác nhận (T7), nên bot không nói gì và rời ngay.
+func (s *Server) childMembership(ctx context.Context, m *ManagedBotService, info managedBotInfo, updateID, chatID int64, chatType, title string, by int64, newStatus string) error {
+	if chatType == "private" {
 		return nil
 	}
+	botID := info.ID
+	joined := newStatus == "member" || newStatus == "administrator"
 	chat := strconv.FormatInt(chatID, 10)
 	if chat == s.config.TelegramChatID {
-		slog.InfoContext(ctx, "mybot.joined_psc", "botId", botID, "chatId", chatID)
+		slog.InfoContext(ctx, "mybot.psc_membership", "botId", botID, "uid", info.UID, "status", newStatus, "addedBy", by)
+		return m.setInPsc(ctx, info.UID, botID, joined)
+	}
+	if !joined {
 		return nil
 	}
 	slog.WarnContext(ctx, "mybot.group_left_v1", "botId", botID, "chatId", chatID, "title", title, "addedBy", by)

@@ -79,6 +79,9 @@ type AgentService struct {
 	// channelReply gửi câu trả lời chat riêng ra kênh ngoài app; nil thì chỉ
 	// ghi Firestore. Xem SetChannelReply.
 	channelReply AgentReplyFunc
+	// roomOut gửi tin của bot trong phòng ngoài app (tg-psc) ra kênh đó; nil
+	// thì chỉ ghi Firestore. Xem SetRoomOut.
+	roomOut AgentRoomOutFunc
 }
 
 // AgentReplyFunc nhận câu trả lời chat riêng của bot ở kênh không phải app
@@ -89,6 +92,12 @@ type AgentService struct {
 // gọi lại hàm với đúng câu đó.
 type AgentReplyFunc func(ctx context.Context, uid, channel string, reply AgentMessage) error
 
+// AgentRoomOutFunc nhận tin seq của bot (chủ uid) trong phòng roomID không phải
+// main để gửi ra kênh của phòng đó. Như AgentReplyFunc, hàm có thể bị gọi nhiều
+// lần cho cùng một tin nên phải idempotent theo (roomID, seq); trả lỗi thì task
+// agent-turn chạy lại và gọi lại với đúng tin đó.
+type AgentRoomOutFunc func(ctx context.Context, roomID string, seq int64, uid, text string) error
+
 func NewAgentService(store *AgentStore, llm agentLLM, enqueue taskPublishFunc) *AgentService {
 	return &AgentService{store: store, llm: llm, enqueue: enqueue}
 }
@@ -96,6 +105,10 @@ func NewAgentService(store *AgentStore, llm agentLLM, enqueue taskPublishFunc) *
 // SetChannelReply gắn hàm gửi câu trả lời ra kênh ngoài app. Gọi lúc dựng
 // dependencies, trước khi nhận task.
 func (a *AgentService) SetChannelReply(fn AgentReplyFunc) { a.channelReply = fn }
+
+// SetRoomOut gắn hàm gửi tin của bot ra phòng ngoài app. Gọi lúc dựng
+// dependencies, trước khi nhận task.
+func (a *AgentService) SetRoomOut(fn AgentRoomOutFunc) { a.roomOut = fn }
 
 // Channel và RoomID bỏ trống khi là app và main, để payload của kênh app giữ
 // đúng dạng cũ: bot bản trước giải mã payload với DisallowUnknownFields, gặp
@@ -464,9 +477,10 @@ func truncateRunes(s string, max int) string {
 }
 
 // RoomTurn cho một bot nói tiếp sau tin afterSeq trong phòng roomID. Task cũ
-// (đã có tin mới hơn) thì bỏ, vì tin mới có task riêng. Ghi xong thì hẹn lượt
-// kế nếu chuỗi bot chưa chạm chainMax. Chạy lại an toàn: turnOf cho biết lượt
-// này đã ghi, khi đó chỉ hẹn lại lượt kế. Seq, chuỗi và trần ngày nằm trên doc
+// (đã có tin mới hơn) thì bỏ, vì tin mới có task riêng. Ghi xong thì gửi tin ra
+// kênh của phòng (phòng ngoài app) rồi hẹn lượt kế nếu chuỗi bot chưa chạm
+// chainMax. Chạy lại an toàn: turnOf cho biết lượt này đã ghi, khi đó chỉ gửi
+// lại tin đã ghi và hẹn lại lượt kế. Seq, chuỗi và trần ngày nằm trên doc
 // của từng phòng, nên chainMax và roomDailyMax tính riêng cho mỗi phòng.
 func (a *AgentService) RoomTurn(ctx context.Context, roomID string, afterSeq int64, wall time.Time) error {
 	if _, ok := agentRoomChannels[roomID]; !ok {
@@ -487,6 +501,11 @@ func (a *AgentService) RoomTurn(ctx context.Context, roomID string, afterSeq int
 	}
 	seq := int64(number(room["seq"]))
 	if turnOf, ok := room["turnOf"]; ok && int64(number(turnOf)) == afterSeq {
+		// Lần trước có thể đã ghi mà gửi lỗi; gửi lại kể cả khi đã có tin mới
+		// hơn, vì tin của bot vẫn đứng ở afterSeq+1.
+		if err := a.redeliverRoomTurn(ctx, roomID, afterSeq+1); err != nil {
+			return err
+		}
 		if seq == afterSeq+1 {
 			return a.scheduleNext(ctx, lim, roomID, room, seq, wall)
 		}
@@ -506,7 +525,7 @@ func (a *AgentService) RoomTurn(ctx context.Context, roomID string, afterSeq int
 	if len(transcript) == 0 {
 		return nil
 	}
-	agents, err := a.store.roomAgents(ctx, acc, lastHuman(transcript))
+	agents, err := a.store.roomSpeakers(ctx, roomID, acc, lastHuman(transcript))
 	if err != nil {
 		return err
 	}
@@ -523,8 +542,11 @@ func (a *AgentService) RoomTurn(ctx context.Context, roomID string, afterSeq int
 		if last := transcript[len(transcript)-1]; stringValue(last["kind"]) == agentKindAgent && stringValue(last["text"]) == agentBudgetReply {
 			return nil
 		}
-		_, err = a.store.appendRoomTurn(ctx, lim, roomID, afterSeq, speaker, agentBudgetReply, wall)
-		return err
+		written, err := a.store.appendRoomTurn(ctx, lim, roomID, afterSeq, speaker, agentBudgetReply, wall)
+		if err != nil || !written {
+			return err
+		}
+		return a.deliverRoomTurn(ctx, roomID, afterSeq+1, speaker.uid, agentBudgetReply)
 	}
 	if err != nil {
 		return err
@@ -537,8 +559,39 @@ func (a *AgentService) RoomTurn(ctx context.Context, roomID string, afterSeq int
 	if err != nil || !written {
 		return err
 	}
+	if err := a.deliverRoomTurn(ctx, roomID, afterSeq+1, speaker.uid, text); err != nil {
+		return err
+	}
 	room["chain"] = number(room["chain"]) + 1
 	return a.scheduleNext(ctx, lim, roomID, room, afterSeq+1, wall)
+}
+
+// deliverRoomTurn gửi tin seq của bot ra kênh của phòng. Phòng main thì app
+// đọc thẳng Firestore.
+func (a *AgentService) deliverRoomTurn(ctx context.Context, roomID string, seq int64, uid, text string) error {
+	if roomID == agentMainRoom || a.roomOut == nil {
+		return nil
+	}
+	return a.roomOut(ctx, roomID, seq, uid, text)
+}
+
+// redeliverRoomTurn gửi lại tin seq đã ghi, nếu đó là tin của bot.
+func (a *AgentService) redeliverRoomTurn(ctx context.Context, roomID string, seq int64) error {
+	if roomID == agentMainRoom || a.roomOut == nil {
+		return nil
+	}
+	doc, err := a.store.roomRef(roomID).Collection("messages").Doc(seqDocID(seq)).Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	m := doc.Data()
+	if stringValue(m["kind"]) != agentKindAgent {
+		return nil
+	}
+	return a.roomOut(ctx, roomID, seq, stringValue(m["uid"]), stringValue(m["text"]))
 }
 
 func (a *AgentService) scheduleNext(ctx context.Context, lim agentLimits, roomID string, room map[string]any, seq int64, wall time.Time) error {
@@ -571,9 +624,13 @@ func lastHuman(transcript []map[string]any) string {
 	return ""
 }
 
-// pickSpeaker chọn bot nói tiếp: không phải bot vừa nói; bot được gọi tên trong
-// tin cuối đi trước; còn lại là bot lâu chưa nói nhất, hoà thì theo uid.
+// pickSpeaker chọn bot nói tiếp: không phải bot vừa nói; bot mà tin cuối reply
+// hay @nhắc trên Telegram đi trước, rồi tới bot được gọi tên trong tin cuối;
+// còn lại là bot lâu chưa nói nhất, hoà thì theo uid.
 func pickSpeaker(agents []roomAgent, room map[string]any, last map[string]any) (roomAgent, bool) {
+	if ag, ok := addressedBot(agents, last); ok {
+		return ag, true
+	}
 	exclude := ""
 	if stringValue(last["kind"]) == agentKindAgent {
 		exclude = stringValue(last["uid"])
@@ -598,6 +655,50 @@ func pickSpeaker(agents []roomAgent, room map[string]any, last map[string]any) (
 		return roomAgent{}, false
 	}
 	return *best, true
+}
+
+// addressedBot là bot con mà tin người last reply tới, hay được @username trong
+// tin đó. Chỉ có ở phòng tg-psc, nơi roomAgent mang botID và username.
+func addressedBot(agents []roomAgent, last map[string]any) (roomAgent, bool) {
+	if stringValue(last["kind"]) != agentKindHuman {
+		return roomAgent{}, false
+	}
+	if to := stringValue(last["replyToBot"]); to != "" {
+		for _, ag := range agents {
+			if ag.botID == to {
+				return ag, true
+			}
+		}
+	}
+	text := strings.ToLower(stringValue(last["text"]))
+	for _, ag := range agents {
+		if ag.username != "" && mentions(text, strings.ToLower(ag.username)) {
+			return ag, true
+		}
+	}
+	return roomAgent{}, false
+}
+
+// mentions: text có "@username" đứng riêng, không phải phần đầu của username
+// dài hơn (@a_bot không khớp @a_bot2). Username Telegram chỉ có [a-z0-9_].
+func mentions(text, username string) bool {
+	tag := "@" + username
+	for i := strings.Index(text, tag); i >= 0; {
+		end := i + len(tag)
+		if end == len(text) || !isUsernameByte(text[end]) {
+			return true
+		}
+		j := strings.Index(text[end:], tag)
+		if j < 0 {
+			return false
+		}
+		i = end + j
+	}
+	return false
+}
+
+func isUsernameByte(c byte) bool {
+	return c == '_' || ('a' <= c && c <= 'z') || ('0' <= c && c <= '9')
 }
 
 func (a *AgentService) roomReply(ctx context.Context, speaker roomAgent, agents []roomAgent, members []string, transcript []map[string]any, wall time.Time) (string, error) {

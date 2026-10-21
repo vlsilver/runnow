@@ -34,7 +34,7 @@ type mybotEnv struct {
 
 const mybotRoot = "root-secret"
 
-var mybotTaskPaths = map[string]bool{"/tasks/managed-bot-sync": true, "/tasks/managed-send": true, "/tasks/agent-dm": true}
+var mybotTaskPaths = map[string]bool{"/tasks/managed-bot-sync": true, "/tasks/managed-send": true, "/tasks/agent-dm": true, "/tasks/agent-turn": true}
 
 // mybotConfig là cấu hình webhook 3i như prod, cờ AGENT_TELEGRAM_BOTS tắt.
 func mybotConfig(base Config) Config {
@@ -53,9 +53,11 @@ func newMybotEnv(t *testing.T) *mybotEnv {
 	}
 	e.m = NewManagedBotService(e.store.db, e.tg.service(""), cfg.TelegramBotUsername, mybotRoot, cfg.PublicBaseURL, e.publish)
 	e.m.now = func() time.Time { return e.clock }
+	e.m.chatID = cfg.TelegramChatID
 	e.deps.ManagedBots = e.m
 	e.srv = NewAPIServer(cfg, e.deps)
 	e.brain.SetChannelReply(e.m.channelReply)
+	e.brain.SetRoomOut(e.m.roomOut)
 	e.bot = NewBotServer(cfg, &Dependencies{Firestore: e.store.db, Agents: e.deps.Agents, AgentBrain: e.brain, EnqueueTask: e.publish, Now: e.deps.Now, ManagedBots: e.m})
 	return e
 }

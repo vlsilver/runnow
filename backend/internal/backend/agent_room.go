@@ -55,9 +55,11 @@ type AgentRoomPage struct {
 	HasNewer bool               `json:"hasNewer"`
 }
 
-// roomAgent là một bot trong phòng: chủ, tên, persona.
+// roomAgent là một bot trong phòng: chủ, tên, persona. botID và username là bot
+// con trên Telegram, chỉ có ở phòng tg-psc.
 type roomAgent struct {
 	uid, name, persona string
+	botID, username    string
 }
 
 // agentRoomMax là số bot tối đa được đọc vào một lượt nói khi đã mở cho mọi
@@ -114,6 +116,41 @@ func (s *AgentStore) roomAgents(ctx context.Context, acc agentAccess, prefer str
 		if inRoom, ok := d.Data()["inRoom"]; !ok || inRoom == true {
 			out = append(out, roomAgent{uid: d.Ref.ID, name: stringValue(d.Data()["name"]), persona: stringValue(d.Data()["persona"])})
 		}
+	}
+	slices.SortFunc(out, func(a, b roomAgent) int { return strings.Compare(a.uid, b.uid) })
+	return out, nil
+}
+
+// roomSpeakers là bot được nói trong phòng roomID: phòng main theo roomAgents,
+// phòng tg-psc theo telegramRoomAgents.
+func (s *AgentStore) roomSpeakers(ctx context.Context, roomID string, acc agentAccess, prefer string) ([]roomAgent, error) {
+	if roomID == agentTelegramRoom {
+		return s.telegramRoomAgents(ctx, acc)
+	}
+	return s.roomAgents(ctx, acc, prefer)
+}
+
+// telegramRoomAgents là bot được nói trong topic Phòng bot của PSC, theo thứ tự
+// uid: bot con đang ở PSC (telegram.inPsc, ghi theo my_chat_member của chính bot
+// con), chủ có quyền dùng bot và không tắt "Cho bot vào phòng". Bot chưa vào
+// PSC thì không gửi được tin ra topic, nên không được chọn nói. Query theo
+// inPsc chứ không theo allowlist, vì số bot ở PSC nhỏ hơn nhiều số người dùng.
+func (s *AgentStore) telegramRoomAgents(ctx context.Context, acc agentAccess) ([]roomAgent, error) {
+	docs, err := s.db.Collection("agents").Where("telegram.inPsc", "==", true).Limit(agentRoomMax).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	var out []roomAgent
+	for _, d := range docs {
+		data := d.Data()
+		tg, _ := data["telegram"].(map[string]any)
+		if !acc.allows(d.Ref.ID) || data["inRoom"] == false || stringValue(tg["botId"]) == "" {
+			continue
+		}
+		out = append(out, roomAgent{
+			uid: d.Ref.ID, name: stringValue(data["name"]), persona: stringValue(data["persona"]),
+			botID: stringValue(tg["botId"]), username: stringValue(tg["username"]),
+		})
 	}
 	slices.SortFunc(out, func(a, b roomAgent) int { return strings.Compare(a.uid, b.uid) })
 	return out, nil
@@ -230,10 +267,24 @@ func (s *AgentStore) Room(ctx context.Context, roomID, uid, cursor, after string
 	return out, nil
 }
 
+// roomSource là nguồn của tin người đến từ Telegram. key khoá chống ghi đôi
+// (update_id: webhook lỗi thì Telegram gửi lại update); replyToBot là id bot
+// con mà tin đó reply, để bot đó nói trước.
+type roomSource struct {
+	key, replyToBot string
+}
+
 // PostRoom ghi tin của người vào phòng roomID và trả seq của phòng đó. Tin người
 // reset chuỗi bot của phòng, nên sau mỗi tin người các bot lại được nói tối đa
 // chainMax tin.
 func (s *AgentStore) PostRoom(ctx context.Context, roomID, uid, text string, wall time.Time) (int64, error) {
+	return s.PostRoomFrom(ctx, roomID, uid, text, roomSource{}, wall)
+}
+
+// PostRoomFrom như PostRoom cho tin có nguồn. Cùng src.key thì chỉ ghi một lần
+// và trả lại seq đã ghi, để lần gửi lại hẹn đúng task agent-turn của lần đầu
+// (TaskID theo seq) thay vì thành một tin mới.
+func (s *AgentStore) PostRoomFrom(ctx context.Context, roomID, uid, text string, src roomSource, wall time.Time) (int64, error) {
 	channel, ok := agentRoomChannels[roomID]
 	if !ok {
 		return 0, fmt.Errorf("agent room: không có phòng %q", roomID)
@@ -247,18 +298,42 @@ func (s *AgentStore) PostRoom(ctx context.Context, roomID, uid, text string, wal
 		return 0, err
 	}
 	ref := s.roomRef(roomID)
+	var srcRef *firestore.DocumentRef
+	if src.key != "" {
+		srcRef = ref.Collection("tgUpdates").Doc(src.key)
+	}
 	var seq int64
 	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		room, err := readRoom(tx, ref)
 		if err != nil {
 			return err
 		}
+		if srcRef != nil {
+			done, err := getOptional(tx, srcRef)
+			if err != nil {
+				return err
+			}
+			if done.Exists() {
+				seq = int64(number(done.Data()["seq"]))
+				return nil
+			}
+		}
 		if last := timeValue(nested(room, "lastSentAt", uid)); !last.IsZero() && wall.Sub(last) < agentMinGap {
 			return errAgentTooFast
 		}
 		seq = int64(number(room["seq"])) + 1
-		if err := tx.Create(ref.Collection("messages").Doc(seqDocID(seq)), map[string]any{"seq": seq, "kind": agentKindHuman, "uid": uid, "text": text, "channel": channel, "at": wall}); err != nil {
+		msg := map[string]any{"seq": seq, "kind": agentKindHuman, "uid": uid, "text": text, "channel": channel, "at": wall}
+		if src.replyToBot != "" {
+			msg["replyToBot"] = src.replyToBot
+		}
+		if err := tx.Create(ref.Collection("messages").Doc(seqDocID(seq)), msg); err != nil {
 			return err
+		}
+		if srcRef != nil {
+			// TTL của collection group tgUpdates (deploy.sh) xoá doc sau hạn.
+			if err := tx.Create(srcRef, map[string]any{"seq": seq, "at": wall, "expiresAt": wall.Add(managedUpdateTTL)}); err != nil {
+				return err
+			}
 		}
 		return tx.Set(ref, map[string]any{"seq": seq, "chain": 0, "lastSpeaker": "", "lastSentAt": map[string]any{uid: wall}, "updatedAt": wall}, firestore.MergeAll)
 	})

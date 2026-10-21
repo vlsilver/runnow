@@ -244,8 +244,15 @@ func (s *Server) PostChannelDM(ctx context.Context, uid, channel, text string) (
 // tiên của phòng đó. Route app gọi với phòng main; webhook Telegram gọi với
 // phòng tg-psc.
 func (s *Server) PostRoomMessage(ctx context.Context, roomID, uid, text string) (int64, error) {
+	return s.postRoomMessage(ctx, roomID, uid, text, roomSource{})
+}
+
+// postRoomMessage như PostRoomMessage cho tin có nguồn (Telegram). Tin đã ghi
+// mà enqueue lỗi thì trả lỗi để webhook trả 5xx: lần Telegram gửi lại thấy
+// key đã ghi, lấy lại seq cũ và enqueue lại đúng task đó.
+func (s *Server) postRoomMessage(ctx context.Context, roomID, uid, text string, src roomSource) (int64, error) {
 	wall := s.now()
-	seq, err := s.deps.Agents.PostRoom(ctx, roomID, uid, text, wall)
+	seq, err := s.deps.Agents.PostRoomFrom(ctx, roomID, uid, text, src, wall)
 	if err != nil {
 		return 0, err
 	}

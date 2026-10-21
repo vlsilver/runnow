@@ -98,6 +98,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 	// có token: api chỉ ghi Firestore và hẹn task, task chạy trên bot.
 	if config.MybotEnabled() {
 		d.ManagedBots = NewManagedBotService(db, telegram, config.TelegramBotUsername, config.TelegramWebhookSecret, config.PublicBaseURL, tasks.Publish)
+		d.ManagedBots.chatID = config.TelegramChatID
 		d.Accounts.managed = d.ManagedBots
 	} else if config.AgentTelegramBots {
 		slog.WarnContext(ctx, "dependencies.mybot_partial_config", "hasUsername", config.TelegramBotUsername != "", "hasWebhookSecret", config.TelegramWebhookSecret != "")
@@ -126,6 +127,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 			d.AgentBrain.chatID = config.TelegramChatID
 			if d.ManagedBots != nil {
 				d.AgentBrain.SetChannelReply(d.ManagedBots.channelReply)
+				d.AgentBrain.SetRoomOut(d.ManagedBots.roomOut)
 			}
 			if config.AgentLearn {
 				d.Learn = NewLearnService(d.Agents, budgetLearnLLM{inner: genaiLearnLLM{client: genaiClient, model: config.AgentLearnModel}, model: config.AgentLearnModel, budget: budget}, config.TelegramChatID)

@@ -70,6 +70,7 @@ type TelegramUpdate struct {
 		MigrateFromChatID int64           `json:"migrate_from_chat_id"`
 		From              *struct {
 			ID        int64  `json:"id"`
+			IsBot     bool   `json:"is_bot"`
 			Username  string `json:"username"`
 			FirstName string `json:"first_name"`
 		} `json:"from"`
@@ -78,6 +79,7 @@ type TelegramUpdate struct {
 		ReplyToMessage  *struct {
 			MessageID int64 `json:"message_id"`
 			From      *struct {
+				ID       int64  `json:"id"`
 				IsBot    bool   `json:"is_bot"`
 				Username string `json:"username"`
 			} `json:"from"`
