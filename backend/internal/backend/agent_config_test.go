@@ -1,0 +1,34 @@
+package backend
+
+import (
+	"context"
+	"testing"
+)
+
+// Giá trị sửa tay trong Firestore mà sai kiểu hay ra ngoài khoảng thì dùng mặc
+// định, chứ không thành 0 (tắt bot) hay bỏ hẳn giới hạn.
+func TestParseAgentLimits(t *testing.T) {
+	ctx := context.Background()
+	if got := parseAgentLimits(ctx, nil); got != (agentLimits{100, 300, 6}) {
+		t.Fatalf("doc trống: %+v", got)
+	}
+	got := parseAgentLimits(ctx, map[string]any{"dmDailyMax": int64(20), "roomDailyMax": 50.0, "chainMax": 2.0})
+	if got != (agentLimits{20, 50, 2}) {
+		t.Fatalf("giá trị hợp lệ: %+v", got)
+	}
+	got = parseAgentLimits(ctx, map[string]any{"dmDailyMax": "20", "roomDailyMax": -5.0, "chainMax": 0.0})
+	if got != (agentLimits{100, 300, 6}) {
+		t.Fatalf("giá trị sai phải về mặc định: %+v", got)
+	}
+}
+
+func TestAgentModelUses(t *testing.T) {
+	s := &Server{config: Config{AgentModel: "m", AgentLearnModel: "m"}}
+	if uses := s.agentModelUses(); len(uses) != 1 || uses[0].Model != "m" {
+		t.Fatalf("cùng model phải gộp một dòng: %+v", uses)
+	}
+	s.config.AgentLearnModel = "n"
+	if uses := s.agentModelUses(); len(uses) != 2 || uses[1].Model != "n" {
+		t.Fatalf("hai model: %+v", uses)
+	}
+}

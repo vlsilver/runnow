@@ -542,6 +542,7 @@ func (s *Server) apiRoutes() {
 	s.gameRoutes()
 	s.agentRoutes()
 	s.adminRoutes()
+	s.agentConfigRoutes()
 	// Liên kết Telegram cho Ma Sói (L1). App lấy mã, mở t.me/<bot>?start=<mã>,
 	// rồi poll GET cho tới khi linked.
 	s.route("POST /v1/telegram/link-code", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {

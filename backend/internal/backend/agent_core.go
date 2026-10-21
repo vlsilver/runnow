@@ -24,6 +24,8 @@ const (
 	agentRoomHistory  = 40
 	agentToolRounds   = 3
 	agentReplyMaxRune = 600
+	// Ba giới hạn dưới là mặc định; admin sửa được ở agentState/config (xem
+	// agentConfigFields).
 	agentDMDailyMax   = 100 // câu trả lời chat riêng mỗi người mỗi ngày
 	agentRoomDailyMax = 300 // tin bot trong phòng mỗi ngày
 	// agentChainMax: sau mỗi tin người, các bot nói với nhau tối đa chừng này tin
@@ -215,8 +217,12 @@ func (a *AgentService) ReplyDM(ctx context.Context, uid string, seq int64, wall 
 
 // consumeDMBudget đếm câu trả lời chat riêng trong ngày (giờ VN) trên doc bot.
 func (a *AgentService) consumeDMBudget(ctx context.Context, ref *firestore.DocumentRef, wall time.Time) (bool, error) {
+	lim, err := a.store.limits(ctx)
+	if err != nil {
+		return false, err
+	}
 	allowed := false
-	err := a.store.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+	err = a.store.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		doc, err := tx.Get(ref)
 		if err != nil {
 			return err
@@ -225,7 +231,7 @@ func (a *AgentService) consumeDMBudget(ctx context.Context, ref *firestore.Docum
 		if stringValue(doc.Data()["dmDay"]) == day {
 			count = int64(number(doc.Data()["dmDayCount"]))
 		}
-		if allowed = count < agentDMDailyMax; !allowed {
+		if allowed = count < lim.dmDailyMax; !allowed {
 			return nil
 		}
 		return tx.Update(ref, []firestore.Update{{Path: "dmDay", Value: day}, {Path: "dmDayCount", Value: count + 1}})
@@ -382,7 +388,7 @@ func truncateRunes(s string, max int) string {
 
 // RoomTurn cho một bot nói tiếp sau tin afterSeq. Task cũ (đã có tin mới hơn)
 // thì bỏ, vì tin mới có task riêng. Ghi xong thì hẹn lượt kế nếu chuỗi bot
-// chưa chạm agentChainMax. Chạy lại an toàn: turnOf cho biết lượt này đã ghi,
+// chưa chạm chainMax. Chạy lại an toàn: turnOf cho biết lượt này đã ghi,
 // khi đó chỉ hẹn lại lượt kế.
 func (a *AgentService) RoomTurn(ctx context.Context, afterSeq int64, wall time.Time) error {
 	ref := a.store.roomRef(agentMainRoom)
@@ -394,14 +400,18 @@ func (a *AgentService) RoomTurn(ctx context.Context, afterSeq int64, wall time.T
 		return err
 	}
 	room := doc.Data()
+	lim, err := a.store.limits(ctx)
+	if err != nil {
+		return err
+	}
 	seq := int64(number(room["seq"]))
 	if turnOf, ok := room["turnOf"]; ok && int64(number(turnOf)) == afterSeq {
 		if seq == afterSeq+1 {
-			return a.scheduleNext(ctx, room, seq, wall)
+			return a.scheduleNext(ctx, lim, room, seq, wall)
 		}
 		return nil
 	}
-	if seq != afterSeq || int64(number(room["chain"])) >= agentChainMax || roomBudgetLeft(room, wall) <= 0 {
+	if seq != afterSeq || int64(number(room["chain"])) >= lim.chainMax || roomBudgetLeft(lim, room, wall) <= 0 {
 		return nil
 	}
 	acc, err := a.store.access(ctx)
@@ -426,13 +436,13 @@ func (a *AgentService) RoomTurn(ctx context.Context, afterSeq int64, wall time.T
 	text, err := a.roomReply(ctx, speaker, agents, acc.roster(agents), transcript, wall)
 	if errors.Is(err, errAgentOverBudget) {
 		// Chạm trần chi phí: một bot báo nghỉ rồi dừng chuỗi, không hẹn lượt kế,
-		// để mỗi tin người chỉ nhận một câu nghỉ chứ không phải agentChainMax câu.
+		// để mỗi tin người chỉ nhận một câu nghỉ chứ không phải chainMax câu.
 		// Task chạy lại sau khi đã ghi thì vẫn hẹn lượt kế (nhánh turnOf ở trên),
 		// nên lượt kế thấy câu nghỉ đứng cuối thì thôi.
 		if last := transcript[len(transcript)-1]; stringValue(last["kind"]) == agentKindAgent && stringValue(last["text"]) == agentBudgetReply {
 			return nil
 		}
-		_, err = a.store.appendRoomTurn(ctx, afterSeq, speaker, agentBudgetReply, wall)
+		_, err = a.store.appendRoomTurn(ctx, lim, afterSeq, speaker, agentBudgetReply, wall)
 		return err
 	}
 	if err != nil {
@@ -442,16 +452,16 @@ func (a *AgentService) RoomTurn(ctx context.Context, afterSeq int64, wall time.T
 		slog.InfoContext(ctx, "agent.room_pass", "afterSeq", afterSeq, "speaker", speaker.uid)
 		return nil
 	}
-	written, err := a.store.appendRoomTurn(ctx, afterSeq, speaker, text, wall)
+	written, err := a.store.appendRoomTurn(ctx, lim, afterSeq, speaker, text, wall)
 	if err != nil || !written {
 		return err
 	}
 	room["chain"] = number(room["chain"]) + 1
-	return a.scheduleNext(ctx, room, afterSeq+1, wall)
+	return a.scheduleNext(ctx, lim, room, afterSeq+1, wall)
 }
 
-func (a *AgentService) scheduleNext(ctx context.Context, room map[string]any, seq int64, wall time.Time) error {
-	if int64(number(room["chain"])) >= agentChainMax || a.enqueue == nil {
+func (a *AgentService) scheduleNext(ctx context.Context, lim agentLimits, room map[string]any, seq int64, wall time.Time) error {
+	if int64(number(room["chain"])) >= lim.chainMax || a.enqueue == nil {
 		return nil
 	}
 	_, err := a.enqueue(ctx, agentTurnTaskFor(seq, wall.Add(agentTurnDelay)))
@@ -466,8 +476,8 @@ func roomUsedToday(room map[string]any, wall time.Time) int64 {
 	return int64(number(room["dayCount"]))
 }
 
-func roomBudgetLeft(room map[string]any, wall time.Time) int64 {
-	return agentRoomDailyMax - roomUsedToday(room, wall)
+func roomBudgetLeft(lim agentLimits, room map[string]any, wall time.Time) int64 {
+	return lim.roomDailyMax - roomUsedToday(room, wall)
 }
 
 // lastHuman là uid của người nhắn gần nhất trong transcript, rỗng nếu không có.
@@ -634,7 +644,7 @@ func uniqueStrings(in []string) []string {
 
 // appendRoomTurn ghi tin của bot nếu phòng vẫn đứng ở afterSeq (không ai chen
 // vào lúc model đang viết) và còn ngân sách ngày.
-func (s *AgentStore) appendRoomTurn(ctx context.Context, afterSeq int64, speaker roomAgent, text string, wall time.Time) (bool, error) {
+func (s *AgentStore) appendRoomTurn(ctx context.Context, lim agentLimits, afterSeq int64, speaker roomAgent, text string, wall time.Time) (bool, error) {
 	ref := s.roomRef(agentMainRoom)
 	written := false
 	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
@@ -643,7 +653,7 @@ func (s *AgentStore) appendRoomTurn(ctx context.Context, afterSeq int64, speaker
 		if err != nil {
 			return err
 		}
-		if int64(number(room["seq"])) != afterSeq || int64(number(room["chain"])) >= agentChainMax || roomBudgetLeft(room, wall) <= 0 {
+		if int64(number(room["seq"])) != afterSeq || int64(number(room["chain"])) >= lim.chainMax || roomBudgetLeft(lim, room, wall) <= 0 {
 			return nil
 		}
 		seq := afterSeq + 1

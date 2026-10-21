@@ -229,7 +229,7 @@ func (s *AgentStore) Room(ctx context.Context, uid, cursor, after string) (Agent
 }
 
 // PostRoom ghi tin của người vào phòng và trả seq. Tin người reset chuỗi bot,
-// nên sau mỗi tin người các bot lại được nói tối đa agentChainMax tin.
+// nên sau mỗi tin người các bot lại được nói tối đa chainMax tin.
 func (s *AgentStore) PostRoom(ctx context.Context, uid, text string, wall time.Time) (int64, error) {
 	text = strings.TrimSpace(text)
 	if text == "" || utf8.RuneCountInString(text) > agentTextMaxRunes {
