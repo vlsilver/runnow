@@ -263,8 +263,7 @@ func (a *AgentService) ImagesToday(ctx context.Context, uid string, wall time.Ti
 
 // imageQuota đọc km chủ chạy hôm nay và số ảnh bot đã vẽ hôm nay.
 func (a *AgentService) imageQuota(ctx context.Context, uid string, wall time.Time) (agentImageQuota, error) {
-	now := wall.In(vietnam)
-	day, err := NewBotTools(a.store.db).memberDay(ctx, uid, time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, vietnam))
+	runKm, err := a.store.todayRunKm(ctx, uid, wall)
 	if err != nil {
 		return agentImageQuota{}, err
 	}
@@ -272,7 +271,7 @@ func (a *AgentService) imageQuota(ctx context.Context, uid string, wall time.Tim
 	if err != nil {
 		return agentImageQuota{}, err
 	}
-	return agentImageQuota{runKm: day.RunKm, used: imagesUsedToday(agent, wall), limit: agentImageLimit(day.RunKm)}, nil
+	return agentImageQuota{runKm: runKm, used: imagesUsedToday(agent, wall), limit: agentImageLimit(runKm)}, nil
 }
 
 // commit ghi ảnh của tin và tăng số ảnh trong ngày trong cùng transaction, nên

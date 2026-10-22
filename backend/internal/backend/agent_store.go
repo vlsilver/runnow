@@ -360,6 +360,14 @@ func (s *AgentStore) today(ctx context.Context, cfg, agent map[string]any, wall 
 	return out, nil
 }
 
+// todayRunKm là km uid chạy hôm nay (giờ VN), tính như get_member_today của
+// 3i. Các hạn mức theo km của bot cá nhân cùng đọc ở đây, để app hiện một số km.
+func (s *AgentStore) todayRunKm(ctx context.Context, uid string, wall time.Time) (float64, error) {
+	now := wall.In(vietnam)
+	day, err := NewBotTools(s.db).memberDay(ctx, uid, time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, vietnam))
+	return day.RunKm, err
+}
+
 // SaveProfile tạo hoặc sửa tên và persona. Lần lưu đầu là lúc bot ra đời, và
 // bot vào phòng luôn như trước giờ; sửa sau đó không đụng inRoom, để chủ đã cho
 // bot ra khỏi phòng thì lưu lại hồ sơ cũng không kéo bot vào lại. Phải đồng ý
