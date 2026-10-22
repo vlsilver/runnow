@@ -249,6 +249,53 @@ func (t *agentImageTurn) draw(ctx context.Context, call *genai.FunctionCall) (ma
 	return map[string]any{"ok": true, "note": done, "usedToday": used, "limitToday": q.limit}, nil
 }
 
+// AgentImage là một ảnh bot đã vẽ; Path là file trên Firebase Storage, app tải
+// bằng getDownloadURL.
+type AgentImage struct {
+	Path string    `json:"path"`
+	At   time.Time `json:"at"`
+}
+
+type AgentImagePage struct {
+	Images []AgentImage `json:"images"`
+	Cursor string       `json:"cursor,omitempty"`
+}
+
+const agentImagePageMax = 30
+
+// Images là ảnh bot của uid đã vẽ, mới trước, mỗi trang limit ảnh. cursor là
+// giờ vẽ của ảnh cuối trang trước. Một bot không vẽ hai ảnh cùng một thời
+// điểm, nên cắt trang theo giờ không sót ảnh.
+func (s *AgentStore) Images(ctx context.Context, uid, cursor string, limit int) (AgentImagePage, error) {
+	if limit < 1 || limit > agentImagePageMax {
+		return AgentImagePage{}, invalidRequest()
+	}
+	if err := s.requireMember(ctx, uid); err != nil {
+		return AgentImagePage{}, err
+	}
+	q := s.agentRef(uid).Collection("images").OrderBy("at", firestore.Desc).Limit(limit)
+	if cursor != "" {
+		before, err := time.Parse(time.RFC3339Nano, cursor)
+		if err != nil {
+			return AgentImagePage{}, invalidRequest()
+		}
+		q = s.agentRef(uid).Collection("images").Where("at", "<", before).OrderBy("at", firestore.Desc).Limit(limit)
+	}
+	docs, err := q.Documents(ctx).GetAll()
+	if err != nil {
+		return AgentImagePage{}, err
+	}
+	out := AgentImagePage{Images: make([]AgentImage, 0, len(docs))}
+	for _, d := range docs {
+		m := d.Data()
+		out.Images = append(out.Images, AgentImage{Path: stringValue(m["storagePath"]), At: timeValue(m["at"]).UTC()})
+	}
+	if len(docs) == limit {
+		out.Cursor = out.Images[len(out.Images)-1].At.Format(time.RFC3339Nano)
+	}
+	return out, nil
+}
+
 // agentImageQuota là hạn mức ảnh hôm nay (giờ VN) của một bot.
 type agentImageQuota struct {
 	runKm       float64

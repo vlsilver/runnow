@@ -29,6 +29,13 @@ service firebase.storage {
       allow delete: if owns(userId);
     }
 
+    // Ảnh bot cá nhân vẽ: chỉ chủ bot xem lại trong app. Backend ghi bằng
+    // admin SDK nên client không ghi được.
+    match /users/{userId}/agentImages/{fileName} {
+      allow read: if owns(userId);
+      allow write: if false;
+    }
+
     // Ảnh minh hoạ mốc "Hành Trình" — nội dung tĩnh do 3i quản lý (upload
     // qua CLI khi dựng dữ liệu route), không phải nội dung user tạo nên
     // không có client write nào.

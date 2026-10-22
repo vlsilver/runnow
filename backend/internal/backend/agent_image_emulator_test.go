@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"reflect"
 	"slices"
 	"strings"
@@ -294,6 +295,49 @@ func TestEmulatorAgentImageTelegramRoom(t *testing.T) {
 	if len(gen.prompts) != 1 {
 		t.Fatalf("hết lượt mà vẫn vẽ: %d", len(gen.prompts))
 	}
+}
+
+// Chủ xem lại ảnh bot mình đã vẽ: mới trước, theo trang, chỉ ảnh của bot mình.
+func TestEmulatorAgentMeImageList(t *testing.T) {
+	e := newAgentEnv(t)
+	e.createBot("an", "Sóc", "")
+	for i, key := range []string{"tg1", "room-tg-psc-4", "tg9"} {
+		seed(t, e.store.db, "agents/an/images/"+key, map[string]any{
+			"storagePath": "users/an/agentImages/" + key + ".png", "prompt": "p", "day": "2026-10-20",
+			"at": agentClock.Add(time.Duration(i-3) * time.Hour),
+		})
+	}
+	seed(t, e.store.db, "agents/binh/images/tg1", map[string]any{"storagePath": "users/binh/agentImages/tg1.png", "at": agentClock})
+	paths := func(r apiResp) string {
+		t.Helper()
+		e.want(r, 200, "")
+		var out []string
+		for _, img := range r.body["images"].([]any) {
+			out = append(out, img.(map[string]any)["path"].(string))
+		}
+		return strings.Join(out, " ")
+	}
+
+	first := e.call("an", "GET", "/v1/agents/me/images?limit=2", nil, "")
+	if got := paths(first); got != "users/an/agentImages/tg9.png users/an/agentImages/room-tg-psc-4.png" {
+		t.Fatalf("trang đầu = %s", got)
+	}
+	cursor, _ := first.body["cursor"].(string)
+	if cursor == "" {
+		t.Fatalf("còn ảnh mà không có cursor: %s", first.raw)
+	}
+	next := e.call("an", "GET", "/v1/agents/me/images?limit=2&cursor="+url.QueryEscape(cursor), nil, "")
+	if got := paths(next); got != "users/an/agentImages/tg1.png" || next.body["cursor"] != nil {
+		t.Fatalf("trang sau = %s, cursor %v", got, next.body["cursor"])
+	}
+	if at := next.body["images"].([]any)[0].(map[string]any)["at"]; at != agentClock.Add(-3*time.Hour).UTC().Format(time.RFC3339Nano) {
+		t.Fatalf("at = %v", at)
+	}
+	if got := paths(e.call("cuong", "GET", "/v1/agents/me/images", nil, "")); got != "" {
+		t.Fatalf("chưa có bot mà có ảnh: %s", got)
+	}
+	e.want(e.call("an", "GET", "/v1/agents/me/images?limit=0", nil, ""), 400, "")
+	e.want(e.call("an", "GET", "/v1/agents/me/images?cursor=abc", nil, ""), 400, "")
 }
 
 func topicPhoto(updateID, from, thread int64, caption, fileID string) map[string]any {

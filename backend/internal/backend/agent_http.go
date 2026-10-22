@@ -149,6 +149,21 @@ func (s *Server) agentRoutes() {
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
 	}))
+	s.route("GET /v1/agents/me/images", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		limit := agentImagePageMax
+		if v := r.URL.Query().Get("limit"); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return invalidRequest()
+			}
+			limit = n
+		}
+		page, err := s.deps.Agents.Images(r.Context(), uid, r.URL.Query().Get("cursor"), limit)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, page)
+	}))
 	s.route("GET /v1/agents/me/dm", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		page, err := s.deps.Agents.DM(r.Context(), uid, r.URL.Query().Get("cursor"), r.URL.Query().Get("after"))
 		if err != nil {
