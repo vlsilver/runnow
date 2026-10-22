@@ -273,7 +273,8 @@ class AgentToday {
   final AgentImagesToday? images;
 }
 
-/// dmMax = min(trần, [base] + [perKm] × số km chạy trọn hôm nay, giờ VN).
+/// dmMax = min(trần, [base] + [perKm] × số km trọn chạy và đi bộ hôm nay, giờ VN,
+/// gồm cả quãng đường Apple Health tự đồng bộ).
 class AgentDMByKm {
   const AgentDMByKm({
     required this.base,

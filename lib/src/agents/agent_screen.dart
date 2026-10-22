@@ -648,7 +648,7 @@ class _HeroChip extends StatelessWidget {
   }
 }
 
-/// Km chạy hôm nay mở được bao nhiêu tin chat và ảnh, chạy thêm bao nhiêu thì
+/// Km chạy và đi bộ hôm nay mở được bao nhiêu tin chat và ảnh, chạy thêm bao nhiêu thì
 /// mở tiếp. Số và mốc đều lấy từ backend (dmByKm, images), app không giữ bảng
 /// mốc, để đổi mốc chỉ cần sửa backend.
 class _KmTodayCard extends StatelessWidget {
@@ -758,7 +758,7 @@ class _KmTodayCard extends StatelessWidget {
 
   String _imageDetail(AgentImagesToday images) => switch (images) {
     AgentImagesToday(limit: 0, :final nextKm?) =>
-      'Chạy đủ ${formatAgentKm(nextKm)} km để mở',
+      'Chạy hay đi bộ đủ ${formatAgentKm(nextKm)} km để mở',
     AgentImagesToday(nextKm: null) => 'Mốc cao nhất',
     _ => 'đã vẽ ${images.used}',
   };
@@ -917,7 +917,7 @@ class _KmTile extends StatelessWidget {
   }
 }
 
-/// "Chạy thêm X km để …", hoặc một dòng có dấu tích khi đã mở hết.
+/// "Chạy hay đi bộ thêm X km để …", hoặc một dòng có dấu tích khi đã mở hết.
 class _KmHint extends StatelessWidget {
   const _KmHint({
     required double this.runKm,
@@ -960,7 +960,7 @@ class _KmHint extends StatelessWidget {
                       children: [
                         TextSpan(
                           text:
-                              'Chạy thêm ${formatAgentKm(agentKmLeft(nextKm!, runKm!))} km',
+                              'Chạy hay đi bộ thêm ${formatAgentKm(agentKmLeft(nextKm!, runKm!))} km',
                           style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
                         TextSpan(text: rest),

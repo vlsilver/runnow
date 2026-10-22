@@ -110,7 +110,7 @@ class _AgentDMScreenState extends _AgentChatState<AgentDMScreen, AgentMessage> {
         icon: Icons.trending_up_rounded,
         title: 'Hết $dmMax tin hôm nay',
         detail:
-            'Chạy thêm ${formatAgentKm(agentKmLeft(nextKm, runKm))} km để có '
+            'Chạy hay đi bộ thêm ${formatAgentKm(agentKmLeft(nextKm, runKm))} km để có '
             'thêm ${nextMax - dmMax} tin. Không thì 0h mở lại.',
       ),
     AgentToday(resting: AgentResting.dmLimit, :final dmMax, :final dmByKm) =>

@@ -426,7 +426,7 @@ void main() {
       expect(find.text('đã vẽ 1'), findsOneWidget);
       expect(
         find.text(
-          'Chạy thêm 0,9 km để có thêm 10 tin và 2 ảnh.',
+          'Chạy hay đi bộ thêm 0,9 km để có thêm 10 tin và 2 ảnh.',
           findRichText: true,
         ),
         findsOneWidget,
@@ -437,9 +437,9 @@ void main() {
   // Số km còn thiếu tính tay: 5 − 2,6 = 2,4; 5 − 4,1 = 0,9; 1 − 0 = 1. Ảnh
   // thêm: 5 − 3 = 2, 3 − 0 = 3.
   for (final (runKm, nextKm, nextLimit, used, limit, progress) in [
-    (2.6, 5, 5, 1, 3, 'Chạy thêm 2,4 km để vẽ thêm 2 ảnh.'),
-    (4.1, 5, 5, 3, 3, 'Chạy thêm 0,9 km để vẽ thêm 2 ảnh.'),
-    (0.0, 1, 3, 0, 0, 'Chạy thêm 1 km để vẽ thêm 3 ảnh.'),
+    (2.6, 5, 5, 1, 3, 'Chạy hay đi bộ thêm 2,4 km để vẽ thêm 2 ảnh.'),
+    (4.1, 5, 5, 3, 3, 'Chạy hay đi bộ thêm 0,9 km để vẽ thêm 2 ảnh.'),
+    (0.0, 1, 3, 0, 0, 'Chạy hay đi bộ thêm 1 km để vẽ thêm 3 ảnh.'),
   ]) {
     testWidgets('ran $runKm km: shows $used/$limit images and "$progress"', (
       tester,
@@ -494,8 +494,8 @@ void main() {
         '10 tin chat',
         '10 sẵn mỗi ngày',
         '0 ảnh vẽ',
-        'Chạy đủ 1 km để mở',
-        'Chạy thêm 1 km để có thêm 10 tin và 3 ảnh.',
+        'Chạy hay đi bộ đủ 1 km để mở',
+        'Chạy hay đi bộ thêm 1 km để có thêm 10 tin và 3 ảnh.',
       ],
     ),
     (
@@ -522,7 +522,7 @@ void main() {
         '100 tin chat',
         'Đã đủ tối đa 100 tin',
         '5 ảnh vẽ',
-        'Chạy thêm 0,5 km để vẽ thêm 5 ảnh.',
+        'Chạy hay đi bộ thêm 0,5 km để vẽ thêm 5 ảnh.',
       ],
     ),
     (
@@ -565,7 +565,7 @@ void main() {
           'nextLimit': 5,
         },
       },
-      ['3', '3 ảnh vẽ', 'Chạy thêm 2 km để vẽ thêm 2 ảnh.'],
+      ['3', '3 ảnh vẽ', 'Chạy hay đi bộ thêm 2 km để vẽ thêm 2 ảnh.'],
     ),
     (
       '4,96 km, tắt vẽ ảnh',
@@ -583,7 +583,7 @@ void main() {
         '4,9',
         '50 tin chat',
         '10 sẵn + 40 từ 4 km',
-        'Chạy thêm 0,1 km để có thêm 10 tin.',
+        'Chạy hay đi bộ thêm 0,1 km để có thêm 10 tin.',
       ],
     ),
   ]) {
@@ -640,7 +640,7 @@ void main() {
     };
     await pumpMyBot(tester);
     expect(find.text('4/10'), findsOneWidget);
-    expect(find.textContaining('Chạy thêm'), findsNothing);
+    expect(find.textContaining('đi bộ thêm'), findsNothing);
     expect(
       find.text('Đã mở hết ảnh hôm nay.', findRichText: true),
       findsOneWidget,
@@ -1130,7 +1130,7 @@ void main() {
       'still a km milestone',
       {'base': 10, 'perKm': 10, 'runKm': 4.1, 'nextKm': 5, 'nextMax': 60},
       'Hết 50 tin hôm nay',
-      'Chạy thêm 0,9 km để có thêm 10 tin. Không thì 0h mở lại.',
+      'Chạy hay đi bộ thêm 0,9 km để có thêm 10 tin. Không thì 0h mở lại.',
     ),
     (
       'already at the cap',
