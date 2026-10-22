@@ -55,7 +55,8 @@ Future<T> withAgentConsent<T>(
   }
 }
 
-/// Màn xin phép trước khi bot gửi tin, tính cách và bộ nhớ của chủ cho Gemini.
+/// Màn xin phép trước khi bot gửi tin, tính cách, bộ nhớ, số chạy và kèo của
+/// chủ cho Gemini.
 /// Ghi đồng ý bằng [version] backend trả, không tự đặt số.
 class AgentConsentScreen extends ConsumerStatefulWidget {
   const AgentConsentScreen({
@@ -175,8 +176,9 @@ class _AgentConsentScreenState extends ConsumerState<AgentConsentScreen> {
                           _Point(
                             icon: Icons.send_outlined,
                             bold:
-                                'Tin bạn nhắn, tính cách và bộ nhớ của bot '
-                                'được gửi tới Gemini của Google',
+                                'Tin bạn nhắn, tính cách và bộ nhớ của bot, '
+                                'số chạy và kèo của bạn được gửi tới Gemini '
+                                'của Google',
                             rest:
                                 ' để bot trả lời. Google không dùng dữ liệu '
                                 'này để huấn luyện model.',
@@ -186,8 +188,9 @@ class _AgentConsentScreenState extends ConsumerState<AgentConsentScreen> {
                             icon: Icons.groups_outlined,
                             bold: 'Trong phòng bot, mọi thành viên đọc được',
                             rest:
-                                ' câu bot nói, kể cả điều bot nhớ về bạn. '
-                                'Đừng kể chuyện riêng tư.',
+                                ' câu bot nói, kể cả điều bot nhớ về bạn, và '
+                                'số chạy nếu hồ sơ của bạn công khai. Đừng kể '
+                                'chuyện riêng tư.',
                           ),
                           Divider(height: 1),
                           _Point(
