@@ -522,6 +522,41 @@ void main() {
     resumeApp(tester);
     await tester.pump(const Duration(minutes: 1));
     expect(meReads(), reads + 2);
+    expect(find.text('Đưa bot vào group PSC'), findsNothing);
+  });
+
+  testWidgets('Phòng bot on: adds the bot to PSC, rereads me on return', (
+    tester,
+  ) async {
+    const join = 'https://t.me/cu_42_bot?startgroup=psc';
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    backend.telegram = {...botOnTelegram(), 'pscJoinUrl': join, 'inPsc': false};
+    await pumpMyBot(tester);
+    final button = find.text('Đưa bot vào group PSC');
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pump();
+    expect(opened, [Uri.parse(join)]);
+
+    // Thêm bot vào PSC bên Telegram rồi quay lại.
+    final reads = meReads();
+    backend.telegram = {...botOnTelegram(), 'pscJoinUrl': join, 'inPsc': true};
+    resumeApp(tester);
+    await tester.pump();
+    await tester.pump();
+    expect(meReads(), reads + 1);
+    expect(find.text('Đưa bot vào group PSC'), findsNothing);
+    expect(
+      find.text('Bot đang ở group PSC, trò chuyện trong topic Phòng bot.'),
+      findsOneWidget,
+    );
+
+    // Đã ở PSC: quay về không đọc thêm.
+    await tester.pump(const Duration(seconds: 5));
+    final after = meReads();
+    resumeApp(tester);
+    await tester.pump(const Duration(minutes: 1));
+    expect(meReads(), after);
   });
 
   testWidgets('tab shows three memories, the full list shows all', (

@@ -72,11 +72,12 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
     final telegram = ref.read(agentMeProvider).value?.telegram;
-    if (telegram == null || telegram.running) return;
+    if (telegram == null || (telegram.running && !telegram.canJoinPsc)) return;
     // Bấm Start bên Telegram rồi quay lại.
     if (!telegram.linked) _telegramLink.onResume();
-    // Vừa tạo bot bên Telegram: đọc lại ngay, rồi một lần nữa sau ít giây vì
-    // backend nối bot chậm hơn. Không poll tiếp; lần quay lại sau lại đọc.
+    // Vừa tạo bot hay vừa thêm bot vào PSC bên Telegram: đọc lại ngay, rồi một
+    // lần nữa sau ít giây vì backend ghi chậm hơn. Không poll tiếp; lần quay
+    // lại sau lại đọc.
     ref.invalidate(agentMeProvider);
     _telegramRecheck?.cancel();
     _telegramRecheck = Timer(
@@ -330,6 +331,7 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
                   onOpen: (username) => _openExternal('https://t.me/$username'),
                   onCreate: () => _openExternal(telegram.createUrl),
                   onPut: () => _putOnTelegram(telegram),
+                  onJoinPsc: _openExternal,
                 ),
               ),
             ],
@@ -661,6 +663,7 @@ class _TelegramCard extends StatelessWidget {
     required this.onOpen,
     required this.onCreate,
     required this.onPut,
+    required this.onJoinPsc,
   });
 
   final String botName;
@@ -676,10 +679,14 @@ class _TelegramCard extends StatelessWidget {
   final VoidCallback onCreate;
   final VoidCallback onPut;
 
+  /// Mở link chọn group để thêm bot vào PSC.
+  final ValueChanged<String> onJoinPsc;
+
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final username = telegram.botUsername;
+    final pscJoinUrl = telegram.pscJoinUrl;
     final String title;
     final String detail;
     final String action;
@@ -769,6 +776,28 @@ class _TelegramCard extends StatelessWidget {
               icon: const Icon(Icons.send_rounded),
               label: Text(action),
             ),
+            // Bot API không cho 3i tự thêm bot vào group, nên chủ tự thêm.
+            if (telegram.running && pscJoinUrl != null) ...[
+              const SizedBox(height: 10),
+              if (telegram.inPsc)
+                Text(
+                  'Bot đang ở group PSC, trò chuyện trong topic Phòng bot.',
+                  style: TextStyle(
+                    color: palette.textMuted,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: () => onJoinPsc(pscJoinUrl),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(46),
+                  ),
+                  icon: const Icon(Icons.group_add_rounded),
+                  label: const Text('Đưa bot vào group PSC'),
+                ),
+            ],
           ],
         ),
       ),

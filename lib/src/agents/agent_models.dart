@@ -174,6 +174,8 @@ class AgentTelegram {
     required this.linked,
     this.botUsername,
     this.setupError,
+    this.pscJoinUrl,
+    this.inPsc = false,
   });
 
   factory AgentTelegram.fromJson(Map<String, dynamic> json) => AgentTelegram(
@@ -181,6 +183,8 @@ class AgentTelegram {
     linked: json['linked'] == true,
     botUsername: _optString(json['botUsername']),
     setupError: _optString(json['setupError']),
+    pscJoinUrl: _optString(json['pscJoinUrl']),
+    inPsc: json['inPsc'] == true,
   );
 
   /// Màn tạo bot của Telegram, điền sẵn username và tên.
@@ -193,8 +197,18 @@ class AgentTelegram {
   /// Bot có rồi mà cài không được, thường do chủ đã xoá bot bên Telegram.
   final String? setupError;
 
+  /// Màn chọn group của Telegram để thêm bot vào PSC. Backend chỉ trả khi
+  /// Phòng bot (một topic của PSC) đang bật.
+  final String? pscJoinUrl;
+
+  /// Bot đang ở group PSC nên được nói trong topic Phòng bot.
+  final bool inPsc;
+
   /// Bot đang chạy trên Telegram, không còn gì phải đợi.
   bool get running => linked && setupError == null;
+
+  /// Bot chạy rồi, Phòng bot đang bật mà bot chưa vào PSC.
+  bool get canJoinPsc => running && pscJoinUrl != null && !inPsc;
 }
 
 /// Vì sao bot đang trả câu nghỉ thay cho câu trả lời thật.
