@@ -412,8 +412,12 @@ func (t *BotTools) GetRecentRun(ctx context.Context, args map[string]any) (any, 
 		}
 		return map[string]any{"found": false, "reason": "tên trùng nhiều người", "candidates": names}, nil
 	}
-	member := matches[0]
+	return t.recentRun(ctx, matches[0], int(number(args["offset"])))
+}
 
+// recentRun là phần của GetRecentRun sau khi đã biết là ai. Bot cá nhân gọi
+// thẳng bằng uid của chủ, không qua bước khớp tên.
+func (t *BotTools) recentRun(ctx context.Context, member memberRow, offset int) (any, error) {
 	// startedAt lưu dạng chuỗi RFC3339; OrderBy chuỗi ~ theo thời gian, nhưng
 	// vẫn sort lại trong Go phòng lệch timezone. Lấy dư một ít rồi cắt.
 	docs, err := t.db.Collection("users").Doc(member.uid).Collection("activities").
@@ -441,7 +445,6 @@ func (t *BotTools) GetRecentRun(ctx context.Context, args map[string]any) (any, 
 	if len(runs) == 0 {
 		return map[string]any{"found": false, "member": member.Name, "reason": "chưa có buổi chạy nào"}, nil
 	}
-	offset := int(number(args["offset"]))
 	if offset < 0 {
 		offset = 0
 	}
@@ -870,6 +873,11 @@ func (t *BotTools) GetMemberContracts(ctx context.Context, args map[string]any) 
 	if err != nil || resp != nil {
 		return resp, err
 	}
+	return t.memberContracts(ctx, uid, name)
+}
+
+// memberContracts là phần của GetMemberContracts sau khi đã biết là ai.
+func (t *BotTools) memberContracts(ctx context.Context, uid, name string) (any, error) {
 	cIter := t.db.Collection("runContracts").
 		Where("participantUids", "array-contains", uid).
 		Where("status", "==", "active").Documents(ctx)
