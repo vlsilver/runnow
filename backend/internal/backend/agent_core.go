@@ -262,7 +262,7 @@ func (a *AgentService) ReplyDM(ctx context.Context, uid, channel string, seq int
 		return nil
 	}
 	// Trần câu trả lời mỗi ngày đếm chung mọi kênh, vì chi phí tính theo người.
-	allowed, quota, err := a.consumeDMBudget(ctx, uid, wall)
+	allowed, quota, err := a.consumeDMBudget(ctx, uid, ch, seq, wall)
 	if err != nil {
 		return err
 	}
@@ -312,11 +312,13 @@ func (a *AgentService) redeliverDMReply(ctx context.Context, uid string, ch agen
 	return a.deliverDMReply(ctx, uid, ch, reply)
 }
 
-// consumeDMBudget đếm câu trả lời chat riêng trong ngày (giờ VN) trên doc bot,
-// chặn ở hạn mức theo km hôm nay. Km đọc ngoài transaction: hai tin cùng lúc
-// vẫn bị transaction chặn ở cùng một max, còn km đổi giữa chừng (buổi chạy mới
-// đồng bộ, buổi trùng bị bỏ) chỉ lệch mốc ở đúng tin đó.
-func (a *AgentService) consumeDMBudget(ctx context.Context, uid string, wall time.Time) (bool, agentDMQuota, error) {
+// consumeDMBudget đếm tin seq của kênh ch vào số câu trả lời chat riêng trong
+// ngày (giờ VN) trên doc bot, chặn ở hạn mức theo km hôm nay. Tin đã đếm rồi
+// (task chạy lại sau lỗi model) thì cho qua mà không đếm nữa, kể cả khi lần đếm
+// đó đã chạm hạn mức. Km đọc ngoài transaction: hai tin cùng lúc vẫn bị
+// transaction chặn ở cùng một max, còn km đổi giữa chừng (buổi chạy mới đồng
+// bộ, buổi trùng bị bỏ) chỉ lệch mốc ở đúng tin đó.
+func (a *AgentService) consumeDMBudget(ctx context.Context, uid string, ch agentDMChannel, seq int64, wall time.Time) (bool, agentDMQuota, error) {
 	lim, err := a.store.limits(ctx)
 	if err != nil {
 		return false, agentDMQuota{}, err
@@ -331,6 +333,9 @@ func (a *AgentService) consumeDMBudget(ctx context.Context, uid string, wall tim
 		if err != nil {
 			return err
 		}
+		if allowed = int64(number(doc.Data()[ch.countedField])) >= seq; allowed {
+			return nil
+		}
 		day, count := vnDay(wall), int64(0)
 		if stringValue(doc.Data()["dmDay"]) == day {
 			count = int64(number(doc.Data()["dmDayCount"]))
@@ -338,7 +343,7 @@ func (a *AgentService) consumeDMBudget(ctx context.Context, uid string, wall tim
 		if allowed = count < q.max; !allowed {
 			return nil
 		}
-		return tx.Update(ref, []firestore.Update{{Path: "dmDay", Value: day}, {Path: "dmDayCount", Value: count + 1}})
+		return tx.Update(ref, []firestore.Update{{Path: "dmDay", Value: day}, {Path: "dmDayCount", Value: count + 1}, {Path: ch.countedField, Value: seq}})
 	})
 	return allowed, q, err
 }

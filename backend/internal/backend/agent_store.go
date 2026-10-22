@@ -71,14 +71,17 @@ type agentDMChannel struct {
 	// answeredField là seq tin của chủ đã được trả lời; userAtField là lúc chủ
 	// gửi tin gần nhất, để chặn gửi dồn.
 	seqField, userSeqField, answeredField, userAtField string
+	// countedField là seq tin của chủ đã được đếm vào hạn mức chat riêng, để
+	// task chạy lại sau lỗi không đếm cùng một tin lần nữa.
+	countedField string
 	// memoryPrefix đứng đầu id mục nhớ bot thêm từ tin seq của kênh này, để
 	// cùng một seq ở hai kênh không ghi đè mục nhớ của nhau.
 	memoryPrefix string
 }
 
 var agentDMChannels = map[string]agentDMChannel{
-	agentChannelApp:      {name: agentChannelApp, collection: "dm", seqField: "dmSeq", userSeqField: "dmUserSeq", answeredField: "answeredSeq", userAtField: "dmUserAt", memoryPrefix: "dm"},
-	agentChannelTelegram: {name: agentChannelTelegram, collection: "tgdm", seqField: "tgSeq", userSeqField: "tgUserSeq", answeredField: "tgAnsweredSeq", userAtField: "tgUserAt", memoryPrefix: "tg"},
+	agentChannelApp:      {name: agentChannelApp, collection: "dm", seqField: "dmSeq", userSeqField: "dmUserSeq", answeredField: "answeredSeq", userAtField: "dmUserAt", countedField: "dmCountedSeq", memoryPrefix: "dm"},
+	agentChannelTelegram: {name: agentChannelTelegram, collection: "tgdm", seqField: "tgSeq", userSeqField: "tgUserSeq", answeredField: "tgAnsweredSeq", userAtField: "tgUserAt", countedField: "tgCountedSeq", memoryPrefix: "tg"},
 }
 
 // agentRoomChannels là các phòng bot đang có và kênh của tin trong phòng đó.

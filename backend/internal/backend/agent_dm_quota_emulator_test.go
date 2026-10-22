@@ -3,6 +3,7 @@
 package backend
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -64,5 +65,27 @@ func TestEmulatorAgentDMByKm(t *testing.T) {
 	// Người chưa tạo bot: dmMax là số câu sẵn, không đọc km, không có dmByKm.
 	if got := e.meToday("cuong"); got["dmMax"] != 10.0 || got["dmByKm"] != nil {
 		t.Fatalf("chưa tạo bot: %v", got)
+	}
+}
+
+// Task agent-dm chạy lại khi model lỗi thì tin đó chỉ đếm một lần, kể cả khi
+// lần đếm đầu đã chạm hạn mức: tin đã được nhận thì lần chạy lại vẫn trả lời.
+func TestEmulatorAgentDMRetryCountsOnce(t *testing.T) {
+	e := newAgentEnv(t)
+	e.createBot("an", "Sóc", "")
+	e.merge("agents/an", map[string]any{"dmDay": vnDay(e.clock), "dmDayCount": 9})
+	e.want(e.call("an", "POST", "/v1/agents/me/dm", map[string]any{"text": "chào"}, ""), 200, "")
+
+	e.llm.err = errors.New("Error 504, DEADLINE_EXCEEDED")
+	for i := range 2 {
+		if code := e.runTask("/tasks/agent-dm", agentDMTask{UID: "an", Seq: 1}); code == 200 {
+			t.Fatalf("lần chạy %d: model lỗi mà task trả 200, tin bị đếm lại thành hết lượt? %v", i+1, messages(t, e.call("an", "GET", "/v1/agents/me/dm", nil, ""))[0]["text"])
+		}
+	}
+	e.llm.err = nil
+	e.llm.script = []*genai.GenerateContentResponse{llmText("Chào bạn")}
+	e.mustRun("/tasks/agent-dm", agentDMTask{UID: "an", Seq: 1})
+	if msgs := messages(t, e.call("an", "GET", "/v1/agents/me/dm", nil, "")); msgs[0]["text"] != "Chào bạn" || e.doc("agents/an")["dmDayCount"] != int64(10) {
+		t.Fatalf("chạy lại sau lỗi: trả %q, dmDayCount %v; muốn \"Chào bạn\", 10", msgs[0]["text"], e.doc("agents/an")["dmDayCount"])
 	}
 }
