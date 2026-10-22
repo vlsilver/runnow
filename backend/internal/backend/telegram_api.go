@@ -110,6 +110,12 @@ func (s *TelegramService) callAPI(ctx context.Context, method string, body map[s
 		return s.redact(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	return s.doAPI(method, req, out)
+}
+
+// doAPI gửi req tới method rồi đọc kết quả như callAPI, cho cả request không
+// phải JSON (multipart của sendPhoto).
+func (s *TelegramService) doAPI(method string, req *http.Request, out any) error {
 	resp, err := s.do(req)
 	if err != nil {
 		return err
