@@ -1503,6 +1503,18 @@ func (s *BotService) maybeProactiveReply(ctx context.Context, chatID string, thr
 	if len([]rune(strings.TrimSpace(text))) < 6 {
 		return
 	}
+	// Topic Phòng bot là của bot con: 3i chỉ ghi tin, không tự chen. Kiểm trước
+	// cổng để tin trong phòng không ăn lượt cooldown của cả group.
+	if threadID != 0 {
+		cfg, err := getData(ctx, s.db.Collection("agentState").Doc("config"))
+		if err != nil {
+			slog.WarnContext(ctx, "bot.proactive_room_check_failed", "error", err)
+			return
+		}
+		if telegramRoomThread(cfg) == threadID {
+			return
+		}
+	}
 	if !s.proactiveGate(ctx, chatID) {
 		return
 	}

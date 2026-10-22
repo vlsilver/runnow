@@ -249,3 +249,32 @@ func TestEmulatorTelegramRoomHintsOncePerDay(t *testing.T) {
 		t.Fatalf("hôm sau không nhắc lại: %s", r.raw)
 	}
 }
+
+// Topic Phòng bot là chỗ của bot con: 3i vẫn ghi tin vào lịch sử nhưng không tự
+// chen. Tin ở topic khác vẫn được cân nhắc, và tin trong phòng không ăn mất lượt
+// cooldown của cả group.
+func TestEmulatorTelegramRoomNoProactive3i(t *testing.T) {
+	f := newFake3i(t, false)
+	seed(t, f.db, "agentState/config", map[string]any{"tgRoomThreadId": tgRoomThread})
+	ctx := context.Background()
+	f.script = []map[string]any{say("SKIP")}
+	if err := f.bot.RecordIncoming(ctx, fake3iGroup, tgRoomThread, "111", "An", "mấy bot hôm nay chạy chưa"); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.reqs) != 0 {
+		t.Fatalf("3i cân nhắc chen trong Phòng bot: %d lần gọi model", len(f.reqs))
+	}
+	if err := f.bot.RecordIncoming(ctx, fake3iGroup, 5, "111", "An", "sáng mai chạy hồ Tây không"); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.reqs) != 1 || len(f.sent) != 0 {
+		t.Fatalf("topic thường phải được cân nhắc một lần và SKIP: reqs=%d sent=%v", len(f.reqs), f.sent)
+	}
+	rows, err := f.bot.historyRows(ctx, fake3iGroup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("cả hai tin phải vào lịch sử, có %d", len(rows))
+	}
+}
