@@ -338,11 +338,11 @@ void main() {
     expect(find.text('4/100'), findsOneWidget);
   });
 
-  testWidgets('budget resting shows the rest banner, chat still opens', (
+  testWidgets('budget resting puts the bot to sleep, chat still opens', (
     tester,
   ) async {
     backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
-    // Cả hai cùng chạm thì backend báo budget; app hiện đúng một banner.
+    // Cả hai cùng chạm thì backend báo budget; app chỉ báo nghỉ vì budget.
     backend.today = {
       'dmUsed': 100,
       'dmMax': 100,
@@ -351,9 +351,11 @@ void main() {
       'resting': 'budget',
     };
     await pumpMyBot(tester);
-    expect(find.text('Cú đang nghỉ tới 0h'), findsOneWidget);
-    expect(find.text('Hôm nay MyBot đã chạm trần chi phí.'), findsOneWidget);
-    expect(find.text('Hết 100 tin hôm nay'), findsNothing);
+    expect(find.text('Cú đang nghỉ'), findsOneWidget);
+    expect(find.text('MyBot chạm trần chi phí hôm nay.'), findsOneWidget);
+    expect(find.text('QUAY LẠI LÚC 0H'), findsOneWidget);
+    expect(find.byIcon(Icons.bedtime_outlined), findsOneWidget);
+    expect(find.text('HẾT TIN · MỞ LẠI 0H'), findsNothing);
 
     await tester.tap(find.text('Chat riêng'));
     await tester.pumpAndSettle();
@@ -372,9 +374,76 @@ void main() {
     };
     await pumpMyBot(tester);
     expect(find.text('30/30'), findsOneWidget);
-    expect(find.text('Hết 30 tin hôm nay'), findsOneWidget);
-    expect(find.text('Chat riêng lại được lúc 0h.'), findsOneWidget);
-    expect(find.text('Cú đang nghỉ tới 0h'), findsNothing);
+    expect(find.text('HẾT TIN · MỞ LẠI 0H'), findsOneWidget);
+    // Hết tin chat riêng thì bot vẫn nói trong phòng, nên không ngủ.
+    expect(find.text('Cú'), findsOneWidget);
+    expect(find.text('Cú đang nghỉ'), findsNothing);
+  });
+
+  // Số km còn thiếu tính tay: 5 − 2,6 = 2,4; 5 − 4,1 = 0,9; 1 − 0 = 1.
+  for (final (runKm, nextKm, nextLimit, used, limit, progress) in [
+    (2.6, 5, 5, 1, 3, 'Chạy thêm 2,4 km để vẽ được 5 ảnh hôm nay'),
+    (4.1, 5, 5, 3, 3, 'Chạy thêm 0,9 km để vẽ được 5 ảnh hôm nay'),
+    (0.0, 1, 3, 0, 0, 'Chạy thêm 1 km để vẽ được 3 ảnh hôm nay'),
+  ]) {
+    testWidgets('ran $runKm km: shows $used/$limit images and "$progress"', (
+      tester,
+    ) async {
+      backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+      backend.today = {
+        'dmUsed': 0,
+        'dmMax': 100,
+        'roomUsed': 0,
+        'roomMax': 300,
+        'resting': null,
+        'images': {
+          'used': used,
+          'limit': limit,
+          'runKm': runKm,
+          'nextKm': nextKm,
+          'nextLimit': nextLimit,
+        },
+      };
+      await pumpMyBot(tester);
+      expect(find.text('$used/$limit'), findsOneWidget);
+      expect(find.text('ảnh hôm nay'), findsOneWidget);
+      expect(find.text(progress), findsOneWidget);
+    });
+  }
+
+  testWidgets('top image tier: no km to go, old backend: no image stat', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    final today = {
+      'dmUsed': 0,
+      'dmMax': 100,
+      'roomUsed': 0,
+      'roomMax': 300,
+      'resting': null,
+    };
+    backend.today = {
+      ...today,
+      'images': {
+        'used': 4,
+        'limit': 10,
+        'runKm': 12.3,
+        'nextKm': null,
+        'nextLimit': null,
+      },
+    };
+    await pumpMyBot(tester);
+    expect(find.text('4/10'), findsOneWidget);
+    expect(find.textContaining('Chạy thêm'), findsNothing);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+
+    backend.today = today;
+    await tester.tap(find.text('Chat riêng'));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('ảnh hôm nay'), findsNothing);
+    expect(find.text('0/100'), findsOneWidget);
   });
 
   testWidgets('old backend without today: no quota, no banner', (tester) async {
@@ -418,16 +487,10 @@ void main() {
     backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
     backend.telegram = botOnTelegram();
     await pumpMyBot(tester);
-    expect(find.text('Trên Telegram: @cu_42_bot'), findsOneWidget);
-    expect(
-      find.text(
-        'Chat trên Telegram tách riêng với chat trong app. Bộ nhớ và lượt '
-        'mỗi ngày thì dùng chung.',
-      ),
-      findsOneWidget,
-    );
+    expect(find.text('@cu_42_bot'), findsOneWidget);
+    expect(find.text('Chat và vẽ ảnh trên Telegram'), findsOneWidget);
 
-    await tester.tap(find.text('Mở trên Telegram'));
+    await tester.tap(find.text('Mở'));
     await tester.pump();
     expect(opened, [Uri.parse('https://t.me/cu_42_bot')]);
   });
@@ -441,10 +504,10 @@ void main() {
       'setupError': 'Forbidden: bot was deleted',
     };
     await pumpMyBot(tester);
-    expect(find.text('Bot trên Telegram chưa chạy được'), findsOneWidget);
-    expect(find.text('Mở trên Telegram'), findsNothing);
+    expect(find.text('Bot Telegram bị lỗi'), findsOneWidget);
+    expect(find.text('Mở'), findsNothing);
 
-    await tester.tap(find.text('Tạo lại bot'));
+    await tester.tap(find.text('Tạo lại'));
     await tester.pump();
     expect(opened, [Uri.parse(createUrl)]);
   });
@@ -454,10 +517,7 @@ void main() {
     backend.telegram = {'createUrl': createUrl, 'linked': false};
     backend.telegramLink = {'linked': true, 'tgUsername': 'an'};
     await pumpMyBot(tester);
-    expect(
-      find.text('Telegram sẽ tạo một bot mang tên Cú. Bạn là chủ bot.'),
-      findsOneWidget,
-    );
+    expect(find.text('Chat và vẽ ảnh trên Telegram'), findsOneWidget);
 
     await tester.tap(find.text('Đưa bot lên Telegram'));
     await tester.pumpAndSettle();
@@ -471,17 +531,14 @@ void main() {
     backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
     backend.telegram = {'createUrl': createUrl, 'linked': false};
     await pumpMyBot(tester);
-    expect(
-      find.textContaining('Liên kết Telegram với 3i trước'),
-      findsOneWidget,
-    );
+    expect(find.text('Liên kết Telegram trước, rồi bấm lại'), findsOneWidget);
 
     await tester.tap(find.text('Đưa bot lên Telegram'));
     await tester.pump();
     await tester.pump();
     expect(opened, [Uri.parse('https://t.me/runnow3i_bot?start=K7Q2')]);
     expect(
-      find.text('Bấm Start trong Telegram rồi quay lại đây.'),
+      find.text('Bấm Start trong Telegram rồi quay lại'),
       findsOneWidget,
     );
 
@@ -516,7 +573,7 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     await tester.pump();
     expect(meReads(), reads + 2);
-    expect(find.text('Trên Telegram: @cu_42_bot'), findsOneWidget);
+    expect(find.text('@cu_42_bot'), findsOneWidget);
 
     // Không poll tiếp, kể cả khi quay về lần nữa lúc bot đã chạy.
     resumeApp(tester);
@@ -546,10 +603,7 @@ void main() {
     await tester.pump();
     expect(meReads(), reads + 1);
     expect(find.text('Đưa bot vào group PSC'), findsNothing);
-    expect(
-      find.text('Bot đang ở group PSC, trò chuyện trong topic Phòng bot.'),
-      findsOneWidget,
-    );
+    expect(find.text('Ở GROUP PSC'), findsOneWidget);
 
     // Đã ở PSC: quay về không đọc thêm.
     await tester.pump(const Duration(seconds: 5));
@@ -698,6 +752,7 @@ void main() {
     bool switchOn() =>
         tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value;
     expect(switchOn(), isTrue);
+    expect(find.text('ĐANG TỰ HỌC'), findsOneWidget);
 
     await tester.tap(find.text('Cho bot tự học về bạn'));
     await tester.pumpAndSettle();
@@ -713,6 +768,7 @@ void main() {
     expect(switchOn(), isFalse);
     expect(find.text('Mê chạy trail'), findsNothing);
     expect(find.text('Bot không tự học về bạn.'), findsOneWidget);
+    expect(find.text('ĐANG TỰ HỌC'), findsNothing);
 
     await tester.tap(find.text('Cho bot tự học về bạn'));
     await tester.pumpAndSettle();

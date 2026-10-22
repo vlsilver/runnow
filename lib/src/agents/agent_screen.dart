@@ -265,7 +265,7 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
                 child: const Text('Không tải được bot. Chạm để thử lại.'),
               ),
             )
-          : const Center(child: CircularProgressIndicator());
+          : const _LoadingSkeleton();
     } else if (!data.enabled || agent == null) {
       body = const Center(
         child: Padding(
@@ -309,21 +309,17 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
               agent: agent,
               memoryCount: data.memories.length,
               memoryLimit: data.memoryLimit,
-              learnedCount: data.learned.length,
               today: data.today,
+              learning: !data.noLearn,
+              inPsc: data.telegram?.inPsc ?? false,
               onChat: () => _open('/agent/dm'),
               onRoom: () => _open('/agent/room'),
             ),
-            if (data.today case final today? when today.resting != null) ...[
-              const SizedBox(height: 12),
-              _RestingBanner(botName: agent.name, today: today),
-            ],
             if (data.telegram case final telegram?) ...[
               const SizedBox(height: 12),
               ListenableBuilder(
                 listenable: _telegramLink,
                 builder: (context, _) => _TelegramCard(
-                  botName: agent.name,
                   telegram: telegram,
                   accountLinked: _telegramLink.status?.linked,
                   waitingStart: _telegramLink.waiting,
@@ -452,14 +448,16 @@ class _Header extends StatelessWidget {
   }
 }
 
-/// Thẻ tối đầu tab, cùng cách tô màu với thẻ điểm sức mạnh ở Hành Trình.
+/// Thẻ tối đầu tab, cùng cách tô màu với thẻ điểm sức mạnh ở Hành Trình. Gom
+/// trạng thái của bot (nghỉ, ở PSC, tự học) thành chip để tab bớt chữ.
 class _BotHeroCard extends StatelessWidget {
   const _BotHeroCard({
     required this.agent,
     required this.memoryCount,
     required this.memoryLimit,
-    required this.learnedCount,
     required this.today,
+    required this.learning,
+    required this.inPsc,
     required this.onChat,
     required this.onRoom,
   });
@@ -467,8 +465,9 @@ class _BotHeroCard extends StatelessWidget {
   final AgentProfile agent;
   final int memoryCount;
   final int memoryLimit;
-  final int learnedCount;
   final AgentToday? today;
+  final bool learning;
+  final bool inPsc;
   final VoidCallback onChat;
   final VoidCallback onRoom;
 
@@ -478,19 +477,35 @@ class _BotHeroCard extends StatelessWidget {
       context.runNowPalette.element,
       appearance: RunNowAppearance.dark,
     );
+    final today = this.today;
+    final images = today?.images;
+    // Chạm trần chi phí thì mọi bot cùng nghỉ: nói ngay ở tên bot. Hết tin
+    // chat riêng thì bot vẫn nói trong phòng, nên chỉ là một chip.
+    final budget = today?.resting == AgentResting.budget;
+    final chips = [
+      if (budget)
+        'Quay lại lúc 0h'
+      else if (today?.resting == AgentResting.dmLimit)
+        'Hết tin · mở lại 0h',
+      if (inPsc) 'Ở group PSC',
+      if (learning) 'Đang tự học',
+    ];
+    final subtitle = budget
+        ? 'MyBot chạm trần chi phí hôm nay.'
+        : agent.persona;
     return _HeroShell(
       palette: dark,
       children: [
         Row(
           children: [
-            _BotOrb(palette: dark, size: 64),
+            _BotOrb(palette: dark, size: 64, resting: budget),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    agent.name,
+                    budget ? '${agent.name} đang nghỉ' : agent.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -499,10 +514,10 @@ class _BotHeroCard extends StatelessWidget {
                       fontWeight: FontWeight.w900,
                     ),
                   ),
-                  if (agent.persona.isNotEmpty) ...[
+                  if (subtitle.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Text(
-                      agent.persona,
+                      subtitle,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -517,27 +532,22 @@ class _BotHeroCard extends StatelessWidget {
             ),
           ],
         ),
+        if (chips.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final chip in chips) _HeroChip(palette: dark, text: chip),
+            ],
+          ),
+        ],
         const SizedBox(height: 16),
         Divider(height: 1, color: dark.ink.withValues(alpha: 0.12)),
         const SizedBox(height: 14),
         Row(
           children: [
-            Expanded(
-              child: _HeroStat(
-                palette: dark,
-                value: '$memoryCount',
-                suffix: '/$memoryLimit',
-                label: 'mục nhớ',
-              ),
-            ),
-            Expanded(
-              child: _HeroStat(
-                palette: dark,
-                value: '$learnedCount',
-                label: 'điều tự học',
-              ),
-            ),
-            if (today case final today?)
+            if (today != null)
               Expanded(
                 child: _HeroStat(
                   palette: dark,
@@ -546,8 +556,37 @@ class _BotHeroCard extends StatelessWidget {
                   label: 'tin hôm nay',
                 ),
               ),
+            if (images != null)
+              Expanded(
+                child: _HeroStat(
+                  palette: dark,
+                  value: '${images.used}',
+                  suffix: '/${images.limit}',
+                  label: 'ảnh hôm nay',
+                ),
+              ),
+            Expanded(
+              child: _HeroStat(
+                palette: dark,
+                value: '$memoryCount',
+                suffix: '/$memoryLimit',
+                label: 'mục nhớ',
+              ),
+            ),
           ],
         ),
+        if (images case AgentImagesToday(
+          :final nextKm?,
+          :final nextLimit?,
+        )) ...[
+          const SizedBox(height: 14),
+          _ImageProgress(
+            palette: dark,
+            runKm: images.runKm,
+            nextKm: nextKm,
+            nextLimit: nextLimit,
+          ),
+        ],
         const SizedBox(height: 16),
         Row(
           children: [
@@ -586,76 +625,92 @@ class _BotHeroCard extends StatelessWidget {
   }
 }
 
-/// Báo bot đang trả câu nghỉ, để chủ biết trước khi nhắn. Nút chat riêng vẫn
-/// mở được để đọc lại tin cũ.
-class _RestingBanner extends StatelessWidget {
-  const _RestingBanner({required this.botName, required this.today});
+class _HeroChip extends StatelessWidget {
+  const _HeroChip({required this.palette, required this.text});
 
-  final String botName;
-  final AgentToday today;
+  final RunNowPalette palette;
+  final String text;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    final budget = today.resting == AgentResting.budget;
-    return _Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: palette.accent.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                budget ? Icons.bedtime_outlined : Icons.schedule_rounded,
-                size: 20,
-                color: palette.accentDeep,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    budget
-                        ? '$botName đang nghỉ tới 0h'
-                        : 'Hết ${today.dmMax} tin hôm nay',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    budget
-                        ? 'Hôm nay MyBot đã chạm trần chi phí.'
-                        : 'Chat riêng lại được lúc 0h.',
-                    style: TextStyle(
-                      color: palette.textMuted,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: palette.ink.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text.toUpperCase(),
+        style: TextStyle(
+          color: palette.ink,
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.7,
         ),
       ),
     );
   }
 }
 
-/// Mục MyBot trên Telegram: bot đang chạy, bot hỏng cần tạo lại, hoặc chưa
-/// có bot. Chat trên Telegram là một kênh riêng của cùng một bot.
+/// Thanh km tới mốc ảnh kế tiếp: bot chỉ vẽ khi chủ chạy, nên cho thấy chạy
+/// thêm bao nhiêu thì được vẽ thêm.
+class _ImageProgress extends StatelessWidget {
+  const _ImageProgress({
+    required this.palette,
+    required this.runKm,
+    required this.nextKm,
+    required this.nextLimit,
+  });
+
+  final RunNowPalette palette;
+  final double runKm;
+  final double nextKm;
+  final int nextLimit;
+
+  @override
+  Widget build(BuildContext context) {
+    // Làm tròn lên một chữ số, để "chạy thêm" không bao giờ thành 0 km. Trừ
+    // epsilon vì 5 − 4,1 ra 0,9000000000000004 và ceil sẽ đẩy lên 1.
+    final left = ((nextKm - runKm) * 10 - 1e-9).ceil() / 10;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Chạy thêm ${_formatKm(left)} km để vẽ được $nextLimit ảnh hôm nay',
+          style: TextStyle(
+            color: palette.textMuted,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: nextKm > 0 ? (runKm / nextKm).clamp(0, 1) : 0,
+            minHeight: 6,
+            backgroundColor: palette.ink.withValues(alpha: 0.12),
+            color: palette.accent,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 2.4 → "2,4", 1.0 → "1".
+String _formatKm(double km) {
+  final text = km == km.roundToDouble()
+      ? km.toInt().toString()
+      : km.toStringAsFixed(1);
+  return text.replaceAll('.', ',');
+}
+
+/// Mục MyBot trên Telegram, một dòng cho mỗi việc: bot đang chạy, bot hỏng
+/// cần tạo lại, hoặc chưa có bot; thêm một dòng đưa bot vào PSC khi được. Chat
+/// trên Telegram là một kênh riêng của cùng một bot, và ảnh chỉ vẽ ở đó.
 class _TelegramCard extends StatelessWidget {
   const _TelegramCard({
-    required this.botName,
     required this.telegram,
     required this.accountLinked,
     required this.waitingStart,
@@ -666,7 +721,6 @@ class _TelegramCard extends StatelessWidget {
     required this.onJoinPsc,
   });
 
-  final String botName;
   final AgentTelegram telegram;
 
   /// Tài khoản 3i đã liên kết Telegram chưa; null là chưa đọc được.
@@ -684,122 +738,217 @@ class _TelegramCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
     final username = telegram.botUsername;
     final pscJoinUrl = telegram.pscJoinUrl;
-    final String title;
-    final String detail;
-    final String action;
-    final VoidCallback? onPressed;
+    final _TelegramRow main;
     if (telegram.running) {
-      title = username == null
-          ? 'Đã có bot trên Telegram'
-          : 'Trên Telegram: @$username';
-      detail =
-          'Chat trên Telegram tách riêng với chat trong app. Bộ nhớ và lượt '
-          'mỗi ngày thì dùng chung.';
-      action = 'Mở trên Telegram';
-      onPressed = username == null ? null : () => onOpen(username);
+      main = _TelegramRow(
+        icon: Icons.send_rounded,
+        title: username == null ? 'Telegram' : '@$username',
+        detail: 'Chat và vẽ ảnh trên Telegram',
+        action: 'Mở',
+        onPressed: username == null ? null : () => onOpen(username),
+      );
     } else if (telegram.linked) {
-      title = 'Bot trên Telegram chưa chạy được';
-      detail = 'Có thể bot đã bị xoá bên Telegram. Bot mới sẽ thay bot cũ.';
-      action = 'Tạo lại bot';
-      onPressed = busy ? null : onCreate;
+      main = _TelegramRow(
+        icon: Icons.error_outline_rounded,
+        title: 'Bot Telegram bị lỗi',
+        detail: 'Bot mới sẽ thay bot cũ',
+        action: 'Tạo lại',
+        onPressed: busy ? null : onCreate,
+      );
     } else {
-      title = 'MyBot trên Telegram';
-      detail = waitingStart
-          ? 'Bấm Start trong Telegram rồi quay lại đây.'
-          : accountLinked == false
-          ? 'Liên kết Telegram với 3i trước, xong thì bấm lại để tạo bot '
-                'mang tên $botName. Bạn là chủ bot.'
-          : 'Telegram sẽ tạo một bot mang tên $botName. Bạn là chủ bot.';
-      action = 'Đưa bot lên Telegram';
-      onPressed = busy ? null : onPut;
+      main = _TelegramRow(
+        icon: Icons.send_rounded,
+        title: 'Đưa bot lên Telegram',
+        detail: waitingStart
+            ? 'Bấm Start trong Telegram rồi quay lại'
+            : accountLinked == false
+            ? 'Liên kết Telegram trước, rồi bấm lại'
+            : 'Chat và vẽ ảnh trên Telegram',
+        action: 'Đưa lên',
+        onPressed: busy ? null : onPut,
+      );
     }
     return _Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: palette.accent.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    telegram.linked && !telegram.running
-                        ? Icons.error_outline_rounded
-                        : Icons.send_rounded,
-                    size: 20,
-                    color: palette.accentDeep,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        detail,
-                        style: TextStyle(
-                          color: palette.textMuted,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+      child: Column(
+        children: [
+          main,
+          // Bot API không cho 3i tự thêm bot vào group, nên chủ tự thêm. Bot
+          // đã ở PSC thì thẻ bot có chip, không cần dòng này.
+          if (telegram.canJoinPsc && pscJoinUrl != null) ...[
+            const _RowDivider(),
+            _TelegramRow(
+              icon: Icons.group_add_rounded,
+              title: 'Đưa bot vào group PSC',
+              action: 'Thêm',
+              onPressed: () => onJoinPsc(pscJoinUrl),
             ),
-            const SizedBox(height: 12),
-            FilledButton.tonalIcon(
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TelegramRow extends StatelessWidget {
+  const _TelegramRow({
+    required this.icon,
+    required this.title,
+    required this.action,
+    required this.onPressed,
+    this.detail,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? detail;
+  final String action;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final detail = this.detail;
+    return InkWell(
+      onTap: onPressed,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: palette.accent.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, size: 20, color: palette.accentDeep),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  if (detail != null)
+                    Text(
+                      detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: palette.textMuted,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.tonal(
               onPressed: onPressed,
               style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(46),
+                minimumSize: const Size(64, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
               ),
-              icon: const Icon(Icons.send_rounded),
-              label: Text(action),
+              child: Text(action),
             ),
-            // Bot API không cho 3i tự thêm bot vào group, nên chủ tự thêm.
-            if (telegram.running && pscJoinUrl != null) ...[
-              const SizedBox(height: 10),
-              if (telegram.inPsc)
-                Text(
-                  'Bot đang ở group PSC, trò chuyện trong topic Phòng bot.',
-                  style: TextStyle(
-                    color: palette.textMuted,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w500,
-                  ),
-                )
-              else
-                OutlinedButton.icon(
-                  onPressed: () => onJoinPsc(pscJoinUrl),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(46),
-                  ),
-                  icon: const Icon(Icons.group_add_rounded),
-                  label: const Text('Đưa bot vào group PSC'),
-                ),
-            ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Khung xương lúc đang tải hồ sơ bot, cùng bố cục với tab để không giật.
+class _LoadingSkeleton extends StatelessWidget {
+  const _LoadingSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final dark = RunNowPalette.forSelection(
+      palette.element,
+      appearance: RunNowAppearance.dark,
+    );
+    Widget bar(Color color, double width, double height) =>
+        FractionallySizedBox(
+          alignment: Alignment.centerLeft,
+          widthFactor: width,
+          child: Container(
+            height: height,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(6),
+            ),
+          ),
+        );
+    final heroBlock = dark.ink.withValues(alpha: 0.12);
+    final cardBlock = palette.border.withValues(alpha: 0.5);
+    return Semantics(
+      label: 'Đang tải bot',
+      child: ListView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+        children: [
+          const _Header(onEdit: null),
+          const SizedBox(height: 18),
+          _HeroShell(
+            palette: dark,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: heroBlock,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        bar(heroBlock, 0.6, 18),
+                        const SizedBox(height: 8),
+                        bar(heroBlock, 0.85, 12),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              bar(heroBlock, 1, 50),
+            ],
+          ),
+          for (final lines in [2, 3]) ...[
+            const SizedBox(height: 16),
+            _Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    bar(cardBlock, 0.35, 10),
+                    for (var i = 0; i < lines; i++) ...[
+                      const SizedBox(height: 12),
+                      bar(cardBlock, i.isEven ? 0.9 : 0.7, 14),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -880,10 +1029,17 @@ class _HeroShell extends StatelessWidget {
 }
 
 class _BotOrb extends StatelessWidget {
-  const _BotOrb({required this.palette, required this.size});
+  const _BotOrb({
+    required this.palette,
+    required this.size,
+    this.resting = false,
+  });
 
   final RunNowPalette palette;
   final double size;
+
+  /// Bot đang nghỉ: tắt màu và đổi sang mặt trăng.
+  final bool resting;
 
   @override
   Widget build(BuildContext context) {
@@ -892,22 +1048,27 @@ class _BotOrb extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(size * 0.31),
-        gradient: LinearGradient(
-          colors: [palette.tertiary, palette.accentDeep],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: palette.accent.withValues(alpha: 0.35),
-            blurRadius: 20,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        color: resting ? palette.ink.withValues(alpha: 0.14) : null,
+        gradient: resting
+            ? null
+            : LinearGradient(
+                colors: [palette.tertiary, palette.accentDeep],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+        boxShadow: resting
+            ? null
+            : [
+                BoxShadow(
+                  color: palette.accent.withValues(alpha: 0.35),
+                  blurRadius: 20,
+                  offset: const Offset(0, 6),
+                ),
+              ],
       ),
       child: Icon(
-        Icons.smart_toy_rounded,
-        color: Colors.white,
+        resting ? Icons.bedtime_outlined : Icons.smart_toy_rounded,
+        color: resting ? palette.textMuted : Colors.white,
         size: size * 0.5,
       ),
     );

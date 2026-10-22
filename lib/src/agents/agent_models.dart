@@ -8,6 +8,8 @@ String? _optString(Object? value) =>
 
 int _int(Object? value) => value is num ? value.toInt() : 0;
 
+double _double(Object? value) => value is num ? value.toDouble() : 0;
+
 DateTime? _date(Object? value) =>
     value is String ? DateTime.tryParse(value) : null;
 
@@ -228,21 +230,28 @@ class AgentToday {
     required this.roomUsed,
     required this.roomMax,
     this.resting,
+    this.images,
   });
 
-  factory AgentToday.fromJson(Map<String, dynamic> json) => AgentToday(
-    dmUsed: _int(json['dmUsed']),
-    dmMax: _int(json['dmMax']),
-    roomUsed: _int(json['roomUsed']),
-    roomMax: _int(json['roomMax']),
-    // Lý do lạ (backend mới hơn app) thì coi như không nghỉ, để không hiện
-    // câu sai; bot vẫn trả câu nghỉ trong chat.
-    resting: switch (json['resting']) {
-      'budget' => AgentResting.budget,
-      'dm_limit' => AgentResting.dmLimit,
-      _ => null,
-    },
-  );
+  factory AgentToday.fromJson(Map<String, dynamic> json) {
+    final images = json['images'];
+    return AgentToday(
+      dmUsed: _int(json['dmUsed']),
+      dmMax: _int(json['dmMax']),
+      roomUsed: _int(json['roomUsed']),
+      roomMax: _int(json['roomMax']),
+      // Lý do lạ (backend mới hơn app) thì coi như không nghỉ, để không hiện
+      // câu sai; bot vẫn trả câu nghỉ trong chat.
+      resting: switch (json['resting']) {
+        'budget' => AgentResting.budget,
+        'dm_limit' => AgentResting.dmLimit,
+        _ => null,
+      },
+      images: images is Map<String, dynamic>
+          ? AgentImagesToday.fromJson(images)
+          : null,
+    );
+  }
 
   final int dmUsed;
   final int dmMax;
@@ -251,6 +260,38 @@ class AgentToday {
 
   /// null là bot đang trả lời bình thường.
   final AgentResting? resting;
+
+  /// Lượt vẽ ảnh hôm nay. null khi backend chưa bật vẽ ảnh hay chưa tạo bot.
+  final AgentImagesToday? images;
+}
+
+/// Lượt vẽ ảnh hôm nay theo km chủ đã chạy (giờ VN), 0h đếm lại.
+class AgentImagesToday {
+  const AgentImagesToday({
+    required this.used,
+    required this.limit,
+    required this.runKm,
+    this.nextKm,
+    this.nextLimit,
+  });
+
+  factory AgentImagesToday.fromJson(Map<String, dynamic> json) =>
+      AgentImagesToday(
+        used: _int(json['used']),
+        limit: _int(json['limit']),
+        runKm: _double(json['runKm']),
+        nextKm: json['nextKm'] is num ? _double(json['nextKm']) : null,
+        nextLimit: json['nextLimit'] is num ? _int(json['nextLimit']) : null,
+      );
+
+  final int used;
+  final int limit;
+  final double runKm;
+
+  /// Mốc kế tiếp: chạy đủ [nextKm] km thì được [nextLimit] ảnh. null khi đã
+  /// ở mốc cao nhất.
+  final double? nextKm;
+  final int? nextLimit;
 }
 
 /// Tin có seq, để một controller dùng chung cho chat riêng và phòng bot.
