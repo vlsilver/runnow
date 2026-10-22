@@ -148,6 +148,19 @@ type AgentToday struct {
 	// tiền AI) hay "dm_limit" (người này hết lượt chat riêng); null là không nghỉ.
 	// Budget đứng trước vì nó chặn mọi bot, nâng lượt chat riêng cũng không mở lại.
 	Resting *string `json:"resting"`
+	// Images chỉ có khi bật vẽ ảnh và đã tạo bot; app cũ bỏ qua field lạ.
+	Images *AgentImagesToday `json:"images,omitempty"`
+}
+
+// AgentImagesToday là lượt vẽ ảnh hôm nay (giờ VN) theo km chủ đã chạy, để app
+// hiện còn mấy ảnh và chạy thêm bao nhiêu thì mở mốc kế tiếp.
+type AgentImagesToday struct {
+	Used  int64   `json:"used"`
+	Limit int64   `json:"limit"`
+	RunKm float64 `json:"runKm"`
+	// NextKm và NextLimit là mốc kế tiếp; null khi đã ở mốc cao nhất.
+	NextKm    *float64 `json:"nextKm"`
+	NextLimit *int64   `json:"nextLimit"`
 }
 
 const (

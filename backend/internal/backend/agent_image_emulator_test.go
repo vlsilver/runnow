@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -284,4 +285,34 @@ func TestEmulatorAgentImageTelegramRoom(t *testing.T) {
 	if len(gen.prompts) != 1 {
 		t.Fatalf("hết lượt mà vẫn vẽ: %d", len(gen.prompts))
 	}
+}
+
+// GET me báo lượt vẽ ảnh hôm nay và mốc km kế tiếp, đọc cùng bộ đếm mà lượt vẽ
+// dùng để chặn. Chưa bật vẽ ảnh hay chưa tạo bot thì không có images.
+func TestEmulatorAgentMeImages(t *testing.T) {
+	e := newAgentEnv(t)
+	e.deps.AgentBrain = e.brain
+	e.createBot("an", "Sóc", "")
+	if got := e.meToday("an")["images"]; got != nil {
+		t.Fatalf("chưa bật vẽ ảnh mà có images: %v", got)
+	}
+	e.enableImages()
+	if got := e.meToday("cuong")["images"]; got != nil {
+		t.Fatalf("chưa tạo bot mà có images: %v", got)
+	}
+	wantImages := func(step string, want map[string]any) {
+		t.Helper()
+		if got := e.meToday("an")["images"]; !reflect.DeepEqual(got, want) {
+			t.Fatalf("%s: images = %v, muốn %v", step, got, want)
+		}
+	}
+	wantImages("chưa chạy", map[string]any{"used": 0.0, "limit": 0.0, "runKm": 0.0, "nextKm": 1.0, "nextLimit": 3.0})
+	e.seedRunKm("an", 5.2)
+	e.setImagesUsed("an", 2)
+	wantImages("chạy 5,2 km, vẽ 2 ảnh", map[string]any{"used": 2.0, "limit": 5.0, "runKm": 5.2, "nextKm": 10.0, "nextLimit": 10.0})
+	e.seedRunKm("an", 12)
+	wantImages("mốc cao nhất", map[string]any{"used": 2.0, "limit": 10.0, "runKm": 12.0, "nextKm": nil, "nextLimit": nil})
+	// Qua 0h giờ VN: buổi chạy và số ảnh của hôm qua không tính.
+	e.tick(16 * time.Hour)
+	wantImages("ngày mới", map[string]any{"used": 0.0, "limit": 0.0, "runKm": 0.0, "nextKm": 1.0, "nextLimit": 3.0})
 }

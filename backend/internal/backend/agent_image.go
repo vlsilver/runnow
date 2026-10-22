@@ -244,6 +244,23 @@ type agentImageQuota struct {
 	used, limit int64
 }
 
+// ImagesToday là lượt vẽ ảnh hôm nay của bot uid cho GET me; nil khi chưa bật
+// vẽ ảnh. Nhận a nil vì api dựng AgentService chỉ khi có Vertex AI.
+func (a *AgentService) ImagesToday(ctx context.Context, uid string, wall time.Time) (*AgentImagesToday, error) {
+	if a == nil || a.imageGen == nil || a.imageStore == nil {
+		return nil, nil
+	}
+	q, err := a.imageQuota(ctx, uid, wall)
+	if err != nil {
+		return nil, err
+	}
+	out := &AgentImagesToday{Used: q.used, Limit: q.limit, RunKm: q.runKm}
+	if km, images, ok := agentImageNextTier(q.runKm); ok {
+		out.NextKm, out.NextLimit = &km, &images
+	}
+	return out, nil
+}
+
 // imageQuota đọc km chủ chạy hôm nay và số ảnh bot đã vẽ hôm nay.
 func (a *AgentService) imageQuota(ctx context.Context, uid string, wall time.Time) (agentImageQuota, error) {
 	now := wall.In(vietnam)

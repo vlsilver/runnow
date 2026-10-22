@@ -23,6 +23,11 @@ func (s *Server) agentRoutes() {
 				return err
 			}
 		}
+		if me.Today != nil && me.Agent != nil && me.Agent.Created {
+			if me.Today.Images, err = s.deps.AgentBrain.ImagesToday(r.Context(), uid, s.now()); err != nil {
+				return err
+			}
+		}
 		return writeJSON(w, 200, me)
 	}))
 	s.route("POST /v1/agents/me", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
