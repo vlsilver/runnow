@@ -10,8 +10,8 @@ import (
 )
 
 // agentDMQuota là số câu trả lời chat riêng một người được nhận hôm nay (giờ
-// VN): dmBaseDaily câu sẵn, cộng dmPerKm câu cho mỗi km chạy trọn hôm nay,
-// không quá dmDailyMax. Km lấy từ todayRunKm, cùng chỗ với lượt vẽ ảnh.
+// VN): dmBaseDaily câu sẵn, cộng dmPerKm câu cho mỗi km trọn chạy hay đi bộ
+// hôm nay, không quá dmDailyMax. Km lấy từ todayKm, cùng chỗ với lượt vẽ ảnh.
 type agentDMQuota struct {
 	runKm float64
 	max   int64
@@ -33,7 +33,7 @@ func newAgentDMQuota(lim agentLimits, runKm float64) agentDMQuota {
 }
 
 func (s *AgentStore) dmQuota(ctx context.Context, lim agentLimits, uid string, wall time.Time) (agentDMQuota, error) {
-	runKm, err := s.todayRunKm(ctx, uid, wall)
+	runKm, err := s.todayKm(ctx, uid, wall)
 	if err != nil {
 		return agentDMQuota{}, err
 	}
@@ -46,7 +46,7 @@ func dmLimitReply(q agentDMQuota) string {
 	if q.nextKm == nil {
 		return agentBudgetReply
 	}
-	return fmt.Sprintf("Hôm nay mình hết lượt chat riêng rồi. Bạn chạy thêm %s km là mình nói tiếp được %d câu nữa, không thì qua 0h mình nói tiếp nhé.",
+	return fmt.Sprintf("Hôm nay mình hết lượt chat riêng rồi. Bạn chạy hay đi bộ thêm %s km là mình nói tiếp được %d câu nữa, không thì qua 0h mình nói tiếp nhé.",
 		viKmLeft(*q.nextKm-q.runKm), *q.nextMax-q.max)
 }
 

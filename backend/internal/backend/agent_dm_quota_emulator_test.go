@@ -13,7 +13,7 @@ import (
 
 // noRunDMLimitReply là câu nghỉ khi chủ chưa chạy hôm nay và đã dùng hết 10
 // câu sẵn, với config mặc định.
-const noRunDMLimitReply = "Hôm nay mình hết lượt chat riêng rồi. Bạn chạy thêm 1 km là mình nói tiếp được 10 câu nữa, không thì qua 0h mình nói tiếp nhé."
+const noRunDMLimitReply = "Hôm nay mình hết lượt chat riêng rồi. Bạn chạy hay đi bộ thêm 1 km là mình nói tiếp được 10 câu nữa, không thì qua 0h mình nói tiếp nhé."
 
 func (e *agentEnv) wantDMByKm(uid string, dmMax float64, byKm map[string]any) {
 	e.t.Helper()
@@ -41,7 +41,7 @@ func TestEmulatorAgentDMByKm(t *testing.T) {
 	}
 	e.want(e.call("an", "POST", "/v1/agents/me/dm", map[string]any{"text": "còn nói được không"}, ""), 200, "")
 	e.mustRun("/tasks/agent-dm", agentDMTask{UID: "an", Seq: 1})
-	want := "Hôm nay mình hết lượt chat riêng rồi. Bạn chạy thêm 0,9 km là mình nói tiếp được 10 câu nữa, không thì qua 0h mình nói tiếp nhé."
+	want := "Hôm nay mình hết lượt chat riêng rồi. Bạn chạy hay đi bộ thêm 0,9 km là mình nói tiếp được 10 câu nữa, không thì qua 0h mình nói tiếp nhé."
 	if msgs := messages(t, e.call("an", "GET", "/v1/agents/me/dm", nil, "")); len(e.llm.calls) != 0 || msgs[0]["text"] != want {
 		t.Fatalf("câu nghỉ khi hết lượt: %v (gọi model %d lần)", msgs[0]["text"], len(e.llm.calls))
 	}
@@ -66,6 +66,31 @@ func TestEmulatorAgentDMByKm(t *testing.T) {
 	if got := e.meToday("cuong"); got["dmMax"] != 10.0 || got["dmByKm"] != nil {
 		t.Fatalf("chưa tạo bot: %v", got)
 	}
+}
+
+// Km hôm nay tính cả quãng đường Apple Health tự đồng bộ (đi bộ không bấm
+// chạy): lấy số lớn hơn giữa buổi chính thức và Health, không cộng hai bên vì
+// cùng một buổi chạy có mặt ở cả hai. Lượt vẽ ảnh đọc cùng số km đó.
+func TestEmulatorAgentDMKmCountsHealth(t *testing.T) {
+	e := newAgentEnv(t)
+	e.deps.AgentBrain = e.brain
+	e.createBot("an", "Sóc", "")
+	e.enableImages()
+	stepDay := func(km float64) {
+		seed(t, e.store.db, "users/an/stepDays/"+dateKey(e.clock), map[string]any{"steps": 3006, "distanceMeters": km * 1000})
+	}
+
+	stepDay(1.66)
+	e.wantDMByKm("an", 20, map[string]any{"base": 10.0, "perKm": 10.0, "runKm": 1.66, "nextKm": 2.0, "nextMax": 30.0})
+	if images := e.meToday("an")["images"].(map[string]any); images["limit"] != 3.0 || images["runKm"] != 1.66 {
+		t.Fatalf("đi bộ 1,66 km mà lượt vẽ ảnh: %v", images)
+	}
+
+	e.seedRunKm("an", 5)
+	stepDay(6)
+	e.wantDMByKm("an", 70, map[string]any{"base": 10.0, "perKm": 10.0, "runKm": 6.0, "nextKm": 7.0, "nextMax": 80.0})
+	stepDay(3)
+	e.wantDMByKm("an", 60, map[string]any{"base": 10.0, "perKm": 10.0, "runKm": 5.0, "nextKm": 6.0, "nextMax": 70.0})
 }
 
 // Task agent-dm chạy lại khi model lỗi thì tin đó chỉ đếm một lần, kể cả khi

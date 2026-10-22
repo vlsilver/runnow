@@ -158,7 +158,7 @@ type AgentToday struct {
 	Images *AgentImagesToday `json:"images,omitempty"`
 }
 
-// AgentDMByKm: DMMax = min(trần, Base + PerKm × số km chạy trọn hôm nay), để
+// AgentDMByKm: DMMax = min(trần, Base + PerKm × số km trọn chạy và đi bộ hôm nay), để
 // app hiện km hôm nay mở được bao nhiêu câu và chạy thêm bao nhiêu thì mở tiếp.
 type AgentDMByKm struct {
 	Base  int64   `json:"base"`
@@ -387,12 +387,13 @@ func (s *AgentStore) today(ctx context.Context, cfg map[string]any, uid string, 
 	return out, nil
 }
 
-// todayRunKm là km uid chạy hôm nay (giờ VN), tính như get_member_today của
-// 3i. Các hạn mức theo km của bot cá nhân cùng đọc ở đây, để app hiện một số km.
-func (s *AgentStore) todayRunKm(ctx context.Context, uid string, wall time.Time) (float64, error) {
+// todayKm là km uid chạy và đi bộ hôm nay (giờ VN), gồm cả quãng đường Apple
+// Health tự đồng bộ (xem memberDayStats.DayKm). Các hạn mức theo km của bot cá
+// nhân cùng đọc ở đây, để app hiện một số km. JSON vẫn gọi số này là runKm.
+func (s *AgentStore) todayKm(ctx context.Context, uid string, wall time.Time) (float64, error) {
 	now := wall.In(vietnam)
 	day, err := NewBotTools(s.db).memberDay(ctx, uid, time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, vietnam))
-	return day.RunKm, err
+	return day.DayKm, err
 }
 
 // SaveProfile tạo hoặc sửa tên và persona. Lần lưu đầu là lúc bot ra đời, và

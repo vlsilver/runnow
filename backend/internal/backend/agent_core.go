@@ -29,7 +29,7 @@ const (
 	// agentConfigFields).
 	agentDMDailyMax   = 100 // trần câu trả lời chat riêng mỗi người mỗi ngày
 	agentDMBaseDaily  = 10  // câu trả lời chat riêng có sẵn mỗi ngày
-	agentDMPerKm      = 10  // câu trả lời thêm cho mỗi km chạy trọn hôm nay
+	agentDMPerKm      = 10  // câu trả lời thêm cho mỗi km trọn chạy hay đi bộ hôm nay
 	agentRoomDailyMax = 300 // tin bot trong phòng mỗi ngày
 	// agentChainMax: sau mỗi tin người, các bot nói với nhau tối đa chừng này tin
 	// rồi dừng, chờ người nói tiếp. Chặn vòng lặp bot-bot đốt quota.

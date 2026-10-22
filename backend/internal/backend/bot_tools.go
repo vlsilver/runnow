@@ -639,6 +639,10 @@ type memberDayStats struct {
 	WalkKm   float64
 	Steps    int64
 	TotalKm  float64
+	// DayKm là km trong ngày cho hạn mức của bot cá nhân: số lớn hơn giữa buổi
+	// chính thức và quãng đường Apple Health, như khung km Ma Sói. Khác TotalKm
+	// ở chỗ buổi đi bộ Strava vẫn được tính.
+	DayKm float64
 }
 
 // memberDay tính số của uid trong ngày VN bắt đầu từ start (0h VN).
@@ -675,7 +679,7 @@ func (t *BotTools) memberDay(ctx context.Context, uid string, start time.Time) (
 	}
 
 	// stepDay hôm nay → đi-bộ-thuần (Apple − official) + số bước.
-	var walkMeters float64
+	var walkMeters, healthMeters float64
 	var steps int64
 	sdoc, err := t.db.Collection("users").Doc(uid).Collection("stepDays").Doc(today).Get(ctx)
 	if err != nil && status.Code(err) != codes.NotFound {
@@ -684,7 +688,8 @@ func (t *BotTools) memberDay(ctx context.Context, uid string, start time.Time) (
 	if err == nil && sdoc.Exists() {
 		m := sdoc.Data()
 		steps = int64(number(m["steps"]))
-		if w := number(m["distanceMeters"]) - officialMeters; w > 0 {
+		healthMeters = number(m["distanceMeters"])
+		if w := healthMeters - officialMeters; w > 0 {
 			walkMeters = w
 		}
 	}
@@ -693,6 +698,7 @@ func (t *BotTools) memberDay(ctx context.Context, uid string, start time.Time) (
 		RunKm: round2(runMeters / 1000), RunCount: runCount,
 		WalkKm: round2(walkMeters / 1000), Steps: steps,
 		TotalKm: round2((runMeters + walkMeters) / 1000),
+		DayKm:   round2(max(officialMeters, healthMeters) / 1000),
 	}, nil
 }
 

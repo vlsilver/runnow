@@ -51,7 +51,7 @@ var agentConfigFields = []agentConfigField{
 	},
 	{
 		Key: "dmPerKm", Label: "Câu trả lời thêm cho mỗi km chạy", Kind: "int", Unit: "câu/km", Min: 0, Max: 1000, Default: agentDMPerKm,
-		Help: "Mỗi km chạy trọn trong ngày (giờ VN) mở thêm chừng này câu: 4,1 km tính 4 km. Km tính theo buổi chạy đã đồng bộ, cùng số km với lượt vẽ ảnh. " +
+		Help: "Mỗi km trọn chạy hay đi bộ trong ngày (giờ VN) mở thêm chừng này câu: 4,1 km tính 4 km. Km gồm buổi chạy đã đồng bộ và quãng đường Apple Health tự đồng bộ (lấy số lớn hơn), cùng số km với lượt vẽ ảnh. " +
 			"Hết lượt mà còn mốc km thì câu nghỉ của bot chỉ chủ chạy thêm bao nhiêu. 0 là không thưởng theo km.",
 	},
 	{

@@ -120,7 +120,7 @@ func (a *AgentService) SetImages(gen agentImageLLM, store agentImageStore) {
 
 var agentImageDecl = &genai.FunctionDeclaration{
 	Name:        "generate_image",
-	Description: "Vẽ một ảnh gửi kèm câu trả lời của bạn; mỗi tin tối đa một ảnh. Số ảnh mỗi ngày tuỳ số km chủ bạn chạy hôm nay, hết lượt thì tool báo lý do.",
+	Description: "Vẽ một ảnh gửi kèm câu trả lời của bạn; mỗi tin tối đa một ảnh. Số ảnh mỗi ngày tuỳ số km chủ bạn chạy và đi bộ hôm nay, hết lượt thì tool báo lý do.",
 	Parameters: &genai.Schema{Type: genai.TypeObject, Properties: map[string]*genai.Schema{
 		"imagePrompt": {Type: genai.TypeString, Description: "Mô tả ảnh bằng tiếng Anh, cụ thể: chủ thể, hành động, bối cảnh."},
 		"style":       {Type: genai.TypeString, Enum: []string{"realistic", "anime", "cyberpunk", "cinematic", "3d", "watercolor", "comic", "pixel", "sticker"}, Description: "Phong cách. Bỏ trống là cinematic."},
@@ -261,9 +261,9 @@ func (a *AgentService) ImagesToday(ctx context.Context, uid string, wall time.Ti
 	return out, nil
 }
 
-// imageQuota đọc km chủ chạy hôm nay và số ảnh bot đã vẽ hôm nay.
+// imageQuota đọc km chủ chạy và đi bộ hôm nay và số ảnh bot đã vẽ hôm nay.
 func (a *AgentService) imageQuota(ctx context.Context, uid string, wall time.Time) (agentImageQuota, error) {
-	runKm, err := a.store.todayRunKm(ctx, uid, wall)
+	runKm, err := a.store.todayKm(ctx, uid, wall)
 	if err != nil {
 		return agentImageQuota{}, err
 	}
@@ -312,17 +312,17 @@ func (t *agentImageTurn) commit(ctx context.Context, limit int64, path, prompt s
 // over là kết quả hết lượt vẽ: lý do kèm mốc km kế tiếp để bot giục chủ chạy.
 // Không được nói số của chủ thì bỏ số km đã chạy.
 func (t *agentImageTurn) over(runKm float64, used, limit int64) map[string]any {
-	ran := fmt.Sprintf("chủ hôm nay mới chạy %.1f km", runKm)
+	ran := fmt.Sprintf("chủ hôm nay mới chạy và đi bộ %.1f km", runKm)
 	if !t.showKm {
-		ran = "chủ chạy hôm nay chưa đủ"
+		ran = "km chạy và đi bộ hôm nay của chủ chưa đủ"
 	}
 	nextKm, nextImages, more := agentImageNextTier(runKm)
 	var reason string
 	switch {
 	case limit == 0:
-		reason = fmt.Sprintf("Chưa được vẽ: %s. Chạy đủ %.0f km thì mở %d ảnh hôm nay.", ran, nextKm, nextImages)
+		reason = fmt.Sprintf("Chưa được vẽ: %s. Chạy hay đi bộ đủ %.0f km thì mở %d ảnh hôm nay.", ran, nextKm, nextImages)
 	case more:
-		reason = fmt.Sprintf("Hôm nay đã vẽ đủ %d ảnh. Chạy đủ %.0f km thì được %d ảnh.", used, nextKm, nextImages)
+		reason = fmt.Sprintf("Hôm nay đã vẽ đủ %d ảnh. Chạy hay đi bộ đủ %.0f km thì được %d ảnh.", used, nextKm, nextImages)
 		if t.showKm {
 			reason += fmt.Sprintf(" Hiện %s.", ran)
 		}
