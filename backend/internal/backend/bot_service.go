@@ -1231,6 +1231,24 @@ func (s *BotService) bumpImageQuota(ctx context.Context, userID string) error {
 // generateFunImage gọi model ảnh (gemini-2.5-flash-image) sinh 1 ảnh sticker
 // hài. Trả về bytes PNG; rỗng nếu model không trả ảnh (vd bị lọc nội dung).
 func (s *BotService) generateFunImage(ctx context.Context, prompt, style string, ref []byte) ([]byte, error) {
+	started := time.Now()
+	resp, err := s.imageGenai.Models.GenerateContent(ctx, s.imageModel,
+		[]*genai.Content{{Role: genai.RoleUser, Parts: funImageParts(prompt, style, ref)}},
+		funImageConfig(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	logLLMUsage(ctx, llmLabelOf(ctx).sub("image"), s.imageModel, resp, started, 0)
+	return imageFromResponse(resp), nil
+}
+
+func funImageConfig() *genai.GenerateContentConfig {
+	return &genai.GenerateContentConfig{ResponseModalities: []string{"TEXT", "IMAGE"}}
+}
+
+// funImageParts dựng request cho model ảnh: prompt theo style, kèm ảnh gốc nếu có.
+func funImageParts(prompt, style string, ref []byte) []*genai.Part {
 	styleKey, styleFrag := resolveImageStyle(style, len(ref) > 0)
 	const quality = "High quality, detailed, well composed. Keep it wholesome; no " +
 		"offensive or demeaning content."
@@ -1262,17 +1280,14 @@ func (s *BotService) generateFunImage(ctx context.Context, prompt, style string,
 			styleFrag + ". " + quality
 	}
 	parts = append(parts, &genai.Part{Text: full})
-	started := time.Now()
-	resp, err := s.imageGenai.Models.GenerateContent(ctx, s.imageModel,
-		[]*genai.Content{{Role: genai.RoleUser, Parts: parts}},
-		&genai.GenerateContentConfig{ResponseModalities: []string{"TEXT", "IMAGE"}},
-	)
-	if err != nil {
-		return nil, err
-	}
-	logLLMUsage(ctx, llmLabelOf(ctx).sub("image"), s.imageModel, resp, started, 0)
+	return parts
+}
+
+// imageFromResponse lấy ảnh đầu tiên model trả; rỗng nếu không có ảnh (vd bị
+// lọc nội dung).
+func imageFromResponse(resp *genai.GenerateContentResponse) []byte {
 	if resp == nil {
-		return nil, nil
+		return nil
 	}
 	for _, c := range resp.Candidates {
 		if c.Content == nil {
@@ -1280,11 +1295,11 @@ func (s *BotService) generateFunImage(ctx context.Context, prompt, style string,
 		}
 		for _, p := range c.Content.Parts {
 			if p.InlineData != nil && len(p.InlineData.Data) > 0 {
-				return p.InlineData.Data, nil
+				return p.InlineData.Data
 			}
 		}
 	}
-	return nil, nil
+	return nil
 }
 
 // readImageMemo đọc ảnh MỘT LẦN rồi trích mô tả ngắn (số liệu chạy nếu có) để
