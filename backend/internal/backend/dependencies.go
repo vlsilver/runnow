@@ -125,6 +125,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 			budget := NewAgentBudget(db, adminNotifier(d.Games, telegram))
 			d.AgentBrain = NewAgentService(d.Agents, budgetAgentLLM{inner: genaiAgentLLM{client: genaiClient, model: config.AgentModel, thinking: config.GeminiThinkingLevel}, model: config.AgentModel, budget: budget}, tasks.Publish)
 			d.AgentBrain.chatID = config.TelegramChatID
+			d.AgentBrain.SetPhotos(telegram.DownloadFile)
 			if d.ManagedBots != nil {
 				d.AgentBrain.SetChannelReply(d.ManagedBots.channelReply)
 				d.AgentBrain.SetRoomOut(d.ManagedBots.roomOut)

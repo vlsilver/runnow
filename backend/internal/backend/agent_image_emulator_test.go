@@ -20,11 +20,20 @@ import (
 // fakeImageLLM trả một ảnh cố định và ghi prompt của từng lần vẽ.
 type fakeImageLLM struct {
 	prompts []string
-	err     error
+	// refs là ảnh gốc gửi kèm từng lần vẽ; nil là vẽ không có ảnh gốc.
+	refs [][]byte
+	err  error
 }
 
 func (f *fakeImageLLM) Image(_ context.Context, parts []*genai.Part) (*genai.GenerateContentResponse, error) {
 	f.prompts = append(f.prompts, parts[len(parts)-1].Text)
+	var ref []byte
+	for _, p := range parts {
+		if p.InlineData != nil {
+			ref = p.InlineData.Data
+		}
+	}
+	f.refs = append(f.refs, ref)
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -284,6 +293,73 @@ func TestEmulatorAgentImageTelegramRoom(t *testing.T) {
 	}
 	if len(gen.prompts) != 1 {
 		t.Fatalf("hết lượt mà vẫn vẽ: %d", len(gen.prompts))
+	}
+}
+
+func topicPhoto(updateID, from, thread int64, caption, fileID string) map[string]any {
+	u := topicMsg(updateID, from, thread, "")
+	msg := u["message"].(map[string]any)
+	delete(msg, "text")
+	msg["photo"] = []any{map[string]any{"file_id": fileID + "-nho"}, map[string]any{"file_id": fileID}}
+	if caption != "" {
+		msg["caption"] = caption
+	}
+	return u
+}
+
+// hasInlineImage: tin cuối gửi model chat có kèm ảnh data.
+func hasInlineImage(call fakeCall, data string) bool {
+	last := call.contents[len(call.contents)-1]
+	for _, p := range last.Parts {
+		if p.InlineData != nil && string(p.InlineData.Data) == data {
+			return true
+		}
+	}
+	return false
+}
+
+// Người gửi ảnh kèm chú thích trong Phòng bot thì bot nhìn thấy ảnh và vẽ lại
+// từ chính ảnh đó, như 3i. Ảnh lấy bản lớn nhất. Ảnh không chú thích thì vẫn
+// không vào phòng.
+func TestEmulatorAgentImageTelegramRoomPhoto(t *testing.T) {
+	e := newMybotEnv(t)
+	gen, store := e.enableImages()
+	e.m.images = store
+	e.brain.SetPhotos(func(_ context.Context, fileID string) ([]byte, error) {
+		return []byte("jpeg-" + fileID), nil
+	})
+	cuongTok := e.linkBot("cuong", "5001", 8001, "Cú Mèo", 10)
+	e.linkBot("an", "5002", 8002, "Sóc", 11)
+	if _, err := e.store.db.Doc("agentState/config").Set(context.Background(), map[string]any{"tgRoomThreadId": tgRoomThread}, firestore.MergeAll); err != nil {
+		t.Fatal(err)
+	}
+	e.child(8001, pscMemberUpd(200, 8001, "member"))
+	e.drain()
+	e.seedRunKm("cuong", 1.5)
+
+	e.tick(time.Minute)
+	e.llm.calls, e.llm.script = nil, []*genai.GenerateContentResponse{drawCall("everyone as xianxia cultivators"), llmText("Tu tiên hết rồi nhé")}
+	e.manager(topicPhoto(300, 5002, tgRoomThread, "Cú Mèo biến đám này thành tu tiên giả hết cho tao", "anh"))
+	e.drain()
+	msgs := e.roomMessages(agentTelegramRoom)
+	if len(msgs) != 2 || msgs[0]["text"] != "Cú Mèo biến đám này thành tu tiên giả hết cho tao" || msgs[0]["photoFileId"] != "anh" {
+		t.Fatalf("phòng tg-psc = %v", msgs)
+	}
+	if !hasInlineImage(e.llm.calls[0], "jpeg-anh") {
+		t.Fatalf("model chat không thấy ảnh: %+v", e.llm.calls[0].contents)
+	}
+	if len(gen.refs) != 1 || string(gen.refs[0]) != "jpeg-anh" {
+		t.Fatalf("vẽ không theo ảnh gốc: %q", gen.refs)
+	}
+	if photos := e.tg.CallsBy(cuongTok, "sendPhoto"); len(photos) != 1 || photos[0].Params["caption"] != "Tu tiên hết rồi nhé" {
+		t.Fatalf("sendPhoto = %+v", photos)
+	}
+
+	e.tick(time.Minute)
+	e.manager(topicPhoto(301, 5002, tgRoomThread, "", "anh2"))
+	e.drain()
+	if n := len(e.roomMessages(agentTelegramRoom)); n != 2 {
+		t.Fatalf("ảnh không chú thích vào phòng: %d tin", n)
 	}
 }
 

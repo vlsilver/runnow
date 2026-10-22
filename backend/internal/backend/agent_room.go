@@ -269,9 +269,11 @@ func (s *AgentStore) Room(ctx context.Context, roomID, uid, cursor, after string
 
 // roomSource là nguồn của tin người đến từ Telegram. key khoá chống ghi đôi
 // (update_id: webhook lỗi thì Telegram gửi lại update); replyToBot là id bot
-// con mà tin đó reply, để bot đó nói trước.
+// con mà tin đó reply, để bot đó nói trước. photo là file_id Telegram của ảnh
+// gửi kèm, của bot 3i vì 3i nhận update của PSC; chỉ service bot (có token
+// 3i) tải được, nên lưu file_id rồi tới lượt nói mới tải.
 type roomSource struct {
-	key, replyToBot string
+	key, replyToBot, photo string
 }
 
 // PostRoom ghi tin của người vào phòng roomID và trả seq của phòng đó. Tin người
@@ -325,6 +327,9 @@ func (s *AgentStore) PostRoomFrom(ctx context.Context, roomID, uid, text string,
 		msg := map[string]any{"seq": seq, "kind": agentKindHuman, "uid": uid, "text": text, "channel": channel, "at": wall}
 		if src.replyToBot != "" {
 			msg["replyToBot"] = src.replyToBot
+		}
+		if src.photo != "" {
+			msg["photoFileId"] = src.photo
 		}
 		if err := tx.Create(ref.Collection("messages").Doc(seqDocID(seq)), msg); err != nil {
 			return err

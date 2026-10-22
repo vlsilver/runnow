@@ -98,9 +98,13 @@ func (s *Server) telegramRoomMessage(ctx context.Context, update TelegramUpdate)
 	if room != thread {
 		return nil, false, nil
 	}
+	// Ảnh kèm chữ thì chữ nằm ở caption; bot nhìn ảnh lúc tới lượt nói.
 	text := strings.TrimSpace(msg.Text)
+	if text == "" {
+		text = strings.TrimSpace(msg.Caption)
+	}
 	if msg.From.IsBot || text == "" {
-		return nil, true, nil // ảnh, sticker: bot chỉ đọc chữ
+		return nil, true, nil // sticker, ảnh không chú thích: không có gì để đáp
 	}
 	uid, err := s.deps.TelegramLinks.UIDForTelegram(ctx, msg.From.ID)
 	if err != nil {
@@ -108,7 +112,7 @@ func (s *Server) telegramRoomMessage(ctx context.Context, update TelegramUpdate)
 	}
 	hint := tgRoomNoLinkHint
 	if uid != "" {
-		src := roomSource{key: strconv.FormatInt(update.UpdateID, 10)}
+		src := roomSource{key: strconv.FormatInt(update.UpdateID, 10), photo: photoFileID(update)}
 		if r := msg.ReplyToMessage; r != nil && r.From != nil && r.From.IsBot {
 			src.replyToBot = strconv.FormatInt(r.From.ID, 10)
 		}

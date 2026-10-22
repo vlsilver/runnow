@@ -88,6 +88,9 @@ type AgentService struct {
 	// SetImages.
 	imageGen   agentImageLLM
 	imageStore agentImageStore
+	// photos tải ảnh người gửi trong Phòng bot; nil thì bot chỉ đọc chữ. Xem
+	// SetPhotos.
+	photos agentPhotoFunc
 }
 
 // AgentReplyFunc nhận câu trả lời chat riêng của bot ở kênh không phải app
@@ -787,6 +790,13 @@ func (a *AgentService) roomReply(ctx context.Context, roomID string, speaker roo
 		// cùng tin không đụng nhau.
 		images = a.imageTurn(speaker.uid, fmt.Sprintf("room-%s-%d", roomID, int64(number(transcript[len(transcript)-1]["seq"]))), runData.ownerOK, wall)
 	}
+	photo, err := a.roomPhoto(ctx, transcript)
+	if err != nil {
+		return "", "", err
+	}
+	if images != nil {
+		images.photo = photo
+	}
 	tools := agentRoomTools()
 	if learnedText != "" {
 		tools[0].FunctionDeclarations = append(tools[0].FunctionDeclarations, agentRecallPersonDecl)
@@ -814,12 +824,24 @@ func (a *AgentService) roomReply(ctx context.Context, roomID string, speaker roo
 		if stringValue(m["kind"]) == agentKindAgent {
 			fmt.Fprintf(&chat, "%s (bot của %s): %s\n", stringValue(m["name"]), names[stringValue(m["uid"])], withImageNote(stringValue(m["text"]), stringValue(m["imagePath"])))
 		} else {
-			fmt.Fprintf(&chat, "%s (người): %s\n", names[stringValue(m["uid"])], stringValue(m["text"]))
+			text := stringValue(m["text"])
+			if stringValue(m["photoFileId"]) != "" {
+				text += " " + agentPhotoNote
+			}
+			fmt.Fprintf(&chat, "%s (người): %s\n", names[stringValue(m["uid"])], text)
 		}
 	}
+	if photo != nil {
+		chat.WriteString(agentPhotoSeen)
+	}
 	fmt.Fprintf(&chat, "\nViết tin tiếp theo của %s.", speaker.name)
+	parts := []*genai.Part{{Text: chat.String()}}
+	if photo != nil {
+		// Ảnh Telegram gửi lên luôn là JPEG.
+		parts = append(parts, &genai.Part{InlineData: &genai.Blob{MIMEType: "image/jpeg", Data: photo}})
+	}
 	ctx = withLLMLabel(ctx, "agent.room_turn", speaker.uid)
-	text, err := a.toolLoop(ctx, "agent room", system, []*genai.Content{{Role: genai.RoleUser, Parts: []*genai.Part{{Text: chat.String()}}}}, tools, func(call *genai.FunctionCall) (map[string]any, error) {
+	text, err := a.toolLoop(ctx, "agent room", system, []*genai.Content{{Role: genai.RoleUser, Parts: parts}}, tools, func(call *genai.FunctionCall) (map[string]any, error) {
 		switch call.Name {
 		case agentWebSearchDecl.Name:
 			return a.webSearch(ctx, call), nil
@@ -838,6 +860,38 @@ func (a *AgentService) roomReply(ctx context.Context, roomID string, speaker roo
 		return "", "", err
 	}
 	return cleanRoomReply(text, speaker.name), images.imagePath(), nil
+}
+
+const (
+	// agentPhotoNote đánh dấu tin người có kèm ảnh trong đoạn chat.
+	agentPhotoNote = "(kèm một ảnh)"
+	agentPhotoSeen = "\nẢnh kèm tin người gần nhất nằm ngay sau đoạn chat này và bạn nhìn thấy nó. Ảnh có số liệu chạy thì đọc đúng số trong ảnh, số nào không rõ thì nói không rõ. Được nhờ vẽ lại hay biến đổi ảnh thì gọi generate_image, ảnh này làm ảnh gốc.\n"
+)
+
+// roomPhoto tải ảnh kèm tin người gần nhất trong transcript; nil khi tin đó
+// không kèm ảnh hoặc bot chưa được đọc ảnh. Ảnh cũ hơn thì thôi, vì bot chỉ
+// đáp tin người mới nhất. Tải lỗi thì trả lỗi để task chạy lại.
+func (a *AgentService) roomPhoto(ctx context.Context, transcript []map[string]any) ([]byte, error) {
+	if a.photos == nil {
+		return nil, nil
+	}
+	for i := len(transcript) - 1; i >= 0; i-- {
+		if m := transcript[i]; stringValue(m["kind"]) == agentKindHuman {
+			id := stringValue(m["photoFileId"])
+			if id == "" {
+				return nil, nil
+			}
+			photo, err := a.photos(ctx, id)
+			if err != nil {
+				return nil, fmt.Errorf("agent room: tải ảnh: %w", err)
+			}
+			if len(photo) == 0 {
+				return nil, nil
+			}
+			return photo, nil
+		}
+	}
+	return nil, nil
 }
 
 // cleanRoomReply bỏ phần model hay tự thêm (tên mình ở đầu, ngoặc kép), cắt

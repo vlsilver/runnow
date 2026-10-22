@@ -118,6 +118,15 @@ func (a *AgentService) SetImages(gen agentImageLLM, store agentImageStore) {
 	a.imageGen, a.imageStore = gen, store
 }
 
+// agentPhotoFunc tải ảnh Telegram theo file_id.
+type agentPhotoFunc func(ctx context.Context, fileID string) ([]byte, error)
+
+// SetPhotos cho bot nhìn ảnh người gửi trong Phòng bot và vẽ lại từ ảnh đó.
+// fetch phải dùng token của 3i, vì file_id trong update của PSC là của 3i.
+func (a *AgentService) SetPhotos(fetch agentPhotoFunc) {
+	a.photos = fetch
+}
+
 var agentImageDecl = &genai.FunctionDeclaration{
 	Name:        "generate_image",
 	Description: "Vẽ một ảnh gửi kèm câu trả lời của bạn; mỗi tin tối đa một ảnh. Số ảnh mỗi ngày tuỳ số km chủ bạn chạy và đi bộ hôm nay, hết lượt thì tool báo lý do.",
@@ -145,6 +154,8 @@ type agentImageTurn struct {
 	wall   time.Time
 	// path là ảnh đã vẽ trong lượt này; rỗng là chưa vẽ.
 	path string
+	// photo là ảnh người gửi kèm tin đang đáp; có thì vẽ lại từ ảnh này.
+	photo []byte
 }
 
 // imageTurn trả nil khi chưa bật vẽ ảnh.
@@ -209,7 +220,7 @@ func (t *agentImageTurn) draw(ctx context.Context, call *genai.FunctionCall) (ma
 	if q.used >= q.limit {
 		return t.over(q.runKm, q.used, q.limit), nil
 	}
-	resp, err := t.a.imageGen.Image(ctx, funImageParts(prompt, stringValue(call.Args["style"]), nil))
+	resp, err := t.a.imageGen.Image(ctx, funImageParts(prompt, stringValue(call.Args["style"]), t.photo))
 	if errors.Is(err, errAgentOverBudget) {
 		return nil, err
 	}
