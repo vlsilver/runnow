@@ -70,6 +70,15 @@ func (s *AgentStore) claimRoomHint(ctx context.Context, key string, wall time.Ti
 	return err == nil, err
 }
 
+// telegramRoomOn: Phòng bot đang bật trên PSC, nên đáng mời chủ đưa bot vào.
+func (s *Server) telegramRoomOn(ctx context.Context) (bool, error) {
+	if s.deps == nil || s.deps.Agents == nil || s.config.TelegramChatID == "" {
+		return false, nil
+	}
+	thread, err := s.deps.Agents.TelegramRoomThread(ctx)
+	return thread != 0, err
+}
+
 // telegramRoomMessage đưa tin của người trong topic Phòng bot vào phòng tg-psc.
 // inRoom true là tin nằm trong topic đó, kể cả khi không vào phòng được, để 3i
 // không tự trả lời ở đây. reply là câu 3i nhắc người chưa đủ điều kiện (chưa

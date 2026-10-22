@@ -227,6 +227,9 @@ type linkResult struct {
 	UID     string
 	Changed bool
 	Retired []string
+	// InPsc: sau lần nối này bot vẫn đang ở PSC (cùng bot, chỉ đổi token hay
+	// username).
+	InPsc bool
 }
 
 // Link xử lý update managed_bot: ownerTg vừa tạo bot botID, đổi token, hoặc
@@ -337,6 +340,7 @@ func (m *ManagedBotService) Link(ctx context.Context, ownerTg, botID int64, user
 				}
 			}
 		}
+		res.InPsc = link["inPsc"] == true
 		return tx.Update(agent.Ref, []firestore.Update{{Path: "telegram", Value: link}})
 	})
 	if err == nil && uid == "" {
@@ -794,8 +798,8 @@ type AgentTelegram struct {
 	Linked      bool   `json:"linked"`
 	SetupError  string `json:"setupError,omitempty"`
 	// PscJoinURL mở màn chọn group của Telegram để chủ thêm bot con vào PSC: Bot
-	// API không có hàm nào cho 3i tự thêm bot. InPsc: bot đang ở PSC, nên được
-	// nói trong topic Phòng bot.
+	// API không có hàm nào cho 3i tự thêm bot. Chỉ có khi Phòng bot đang bật.
+	// InPsc: bot đang ở PSC, nên được nói trong topic Phòng bot.
 	PscJoinURL string `json:"pscJoinUrl,omitempty"`
 	InPsc      bool   `json:"inPsc"`
 }
@@ -813,10 +817,25 @@ func (m *ManagedBotService) Status(ctx context.Context, uid, agentName string) (
 		SetupError:  stringValue(tg["setupError"]),
 		InPsc:       tg["inPsc"] == true,
 	}
-	if out.BotUsername != "" {
-		out.PscJoinURL = "https://t.me/" + out.BotUsername + "?startgroup=psc"
+	if out.BotUsername == "" || m.chatID == "" {
+		return out, nil
+	}
+	// Link chỉ có khi Phòng bot đang bật: app thấy link thì hiện nút, nên admin
+	// bật tắt /phongbot là đủ, không phải ra bản app mới.
+	cfg, err := getData(ctx, m.db.Collection("agentState").Doc("config"))
+	if err != nil {
+		return nil, err
+	}
+	if telegramRoomThread(cfg) != 0 {
+		out.PscJoinURL = pscJoinURL(out.BotUsername)
 	}
 	return out, nil
+}
+
+// pscJoinURL mở màn chọn group của Telegram để thêm bot vào; bot nhận
+// "/start@<bot> psc" trong group, webhook bot con bỏ qua tin group đó.
+func pscJoinURL(username string) string {
+	return "https://t.me/" + username + "?startgroup=psc"
 }
 
 // managedCreateURL là link tạo bot con của Telegram. Tên đi qua query nên

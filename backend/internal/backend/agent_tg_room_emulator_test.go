@@ -175,6 +175,47 @@ func TestEmulatorTelegramRoomEndToEnd(t *testing.T) {
 	}
 }
 
+// Phòng bot đang bật thì lúc bot con nối xong, 3i gửi chủ link đưa bot vào PSC
+// ngay trong DM. Phòng tắt, update gửi lại, hay bot đã ở PSC thì không mời.
+func TestEmulatorTelegramRoomInvitesNewBot(t *testing.T) {
+	e := newMybotEnv(t)
+	e.linkBot("an", "5002", 8002, "Sóc", 10) // phòng tắt: linkExisting đòi body rỗng
+	if me := e.call("an", "GET", "/v1/agents/me", nil, ""); strings.Contains(string(me.raw), "pscJoinUrl") {
+		t.Fatalf("phòng tắt mà app có link vào PSC: %s", me.raw)
+	}
+	ctx := context.Background()
+	if _, err := e.store.db.Doc("agentState/config").Set(ctx, map[string]any{"tgRoomThreadId": tgRoomThread}, firestore.MergeAll); err != nil {
+		t.Fatal(err)
+	}
+
+	e.createBot("cuong", "Cú Mèo", "")
+	linkUser(t, e.apiHarness, "cuong", "5001", true)
+	e.tg.addManaged(8001)
+	invite := func(id int64, bot int64, username string) apiResp {
+		t.Helper()
+		r := e.manager(managedUpd(id, 5001, bot, username))
+		e.drain()
+		return r
+	}
+	r := invite(20, 8001, "bot_cuong")
+	if r.body["text"] != managedPscInvite+"https://t.me/bot_cuong?startgroup=psc" || r.body["chat_id"] != float64(5001) || r.body["method"] != "sendMessage" {
+		t.Fatalf("lời mời: %s", r.raw)
+	}
+	if r := invite(20, 8001, "bot_cuong"); r.body != nil {
+		t.Fatalf("update gửi lại vẫn mời: %s", r.raw)
+	}
+	// Đã ở PSC thì đổi username không mời nữa.
+	e.child(8001, pscMemberUpd(30, 8001, "member"))
+	if r := invite(21, 8001, "bot_cuong_moi"); r.body != nil {
+		t.Fatalf("bot đã ở PSC vẫn mời: %s", r.raw)
+	}
+	// Chủ thay bot khác: bot mới chưa ở PSC nên mời lại.
+	e.tg.addManaged(8003)
+	if r := invite(22, 8003, "bot_cuong_hai"); r.body["text"] != managedPscInvite+"https://t.me/bot_cuong_hai?startgroup=psc" {
+		t.Fatalf("bot mới không được mời: %s", r.raw)
+	}
+}
+
 // Người chưa đủ điều kiện nhắn trong topic: tin không vào phòng, 3i nhắc một
 // lần mỗi ngày (reply đúng tin, đúng topic), hôm sau nhắc lại.
 func TestEmulatorTelegramRoomHintsOncePerDay(t *testing.T) {

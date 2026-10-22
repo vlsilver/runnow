@@ -23,6 +23,7 @@ const (
 	managedTextReply     = "Mình chỉ đọc được tin chữ, dài tối đa 1000 ký tự."
 	managedNoLinkReply   = "Bạn liên kết Telegram trong app 3i Run trước, rồi bấm Kết nối lại."
 	managedNoAgentReply  = "Bạn tạo MyBot trong app 3i Run trước, rồi bấm Kết nối lại."
+	managedPscInvite     = "Bot đã kết nối xong. Muốn bot trò chuyện trong topic Phòng bot của PSC thì bấm link này rồi chọn group PSC:\n"
 )
 
 func (s *Server) mybotRoutes() {
@@ -113,6 +114,12 @@ func (s *Server) managedBotUpdate(ctx context.Context, raw []byte) (map[string]a
 	if mb.Bot.ID == 0 || mb.User.ID == 0 {
 		return nil, true, nil
 	}
+	// Đọc trước Link: lỗi thì Telegram gửi lại update, còn đọc sau thì lần gửi
+	// lại Link không đổi gì nữa và mất lời mời.
+	roomOn, err := s.telegramRoomOn(ctx)
+	if err != nil {
+		return nil, true, err
+	}
 	res, err := m.Link(ctx, mb.User.ID, mb.Bot.ID, mb.Bot.Username, s.deps.TelegramLinks)
 	var reply map[string]any
 	switch {
@@ -129,6 +136,12 @@ func (s *Server) managedBotUpdate(ctx context.Context, raw []byte) (map[string]a
 		return nil, true, err
 	default:
 		slog.InfoContext(ctx, "mybot.linked", "uid", res.UID, "botId", mb.Bot.ID, "changed", res.Changed, "retired", res.Retired)
+		// Bot API không có hàm cho 3i tự thêm bot vào group, nên đưa link cho
+		// chủ ngay lúc đang ở DM với 3i. Update gửi lại (Changed false) thì thôi.
+		if roomOn && res.Changed && !res.InPsc && mb.Bot.Username != "" {
+			slog.InfoContext(ctx, "mybot.psc_invite", "uid", res.UID, "botId", mb.Bot.ID)
+			reply = map[string]any{"method": "sendMessage", "chat_id": mb.User.ID, "text": managedPscInvite + pscJoinURL(mb.Bot.Username)}
+		}
 	}
 	// Bot cũ gỡ webhook trước: enqueue lỗi giữa chừng thì Telegram gửi lại,
 	// mà lần đó Link không còn thấy bot cũ nữa. Bot cũ còn sót webhook thì
