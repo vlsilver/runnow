@@ -82,6 +82,10 @@ type AgentService struct {
 	// roomOut gửi tin của bot trong phòng ngoài app (tg-psc) ra kênh đó; nil
 	// thì chỉ ghi Firestore. Xem SetRoomOut.
 	roomOut AgentRoomOutFunc
+	// imageGen và imageStore bật tool generate_image; nil thì không vẽ. Xem
+	// SetImages.
+	imageGen   agentImageLLM
+	imageStore agentImageStore
 }
 
 // AgentReplyFunc nhận câu trả lời chat riêng của bot ở kênh không phải app
@@ -93,10 +97,11 @@ type AgentService struct {
 type AgentReplyFunc func(ctx context.Context, uid, channel string, reply AgentMessage) error
 
 // AgentRoomOutFunc nhận tin seq của bot (chủ uid) trong phòng roomID không phải
-// main để gửi ra kênh của phòng đó. Như AgentReplyFunc, hàm có thể bị gọi nhiều
-// lần cho cùng một tin nên phải idempotent theo (roomID, seq); trả lỗi thì task
-// agent-turn chạy lại và gọi lại với đúng tin đó.
-type AgentRoomOutFunc func(ctx context.Context, roomID string, seq int64, uid, text string) error
+// main để gửi ra kênh của phòng đó; imagePath khác rỗng là tin kèm ảnh bot vẽ.
+// Như AgentReplyFunc, hàm có thể bị gọi nhiều lần cho cùng một tin nên phải
+// idempotent theo (roomID, seq); trả lỗi thì task agent-turn chạy lại và gọi lại
+// với đúng tin đó.
+type AgentRoomOutFunc func(ctx context.Context, roomID string, seq int64, uid, text, imagePath string) error
 
 func NewAgentService(store *AgentStore, llm agentLLM, enqueue taskPublishFunc) *AgentService {
 	return &AgentService{store: store, llm: llm, enqueue: enqueue}
@@ -259,19 +264,19 @@ func (a *AgentService) ReplyDM(ctx context.Context, uid, channel string, seq int
 	if err != nil {
 		return err
 	}
-	reply := agentBudgetReply
+	reply, image := agentBudgetReply, ""
 	if allowed {
-		reply, err = a.dmAnswer(ctx, uid, ch, seq, stringValue(d["name"]), stringValue(d["persona"]), wall)
+		reply, image, err = a.dmAnswer(ctx, uid, ch, seq, stringValue(d["name"]), stringValue(d["persona"]), wall)
 		// Chạm trần chi phí giữa chừng (kể cả sau vòng tool đầu) thì vẫn trả câu
 		// nghỉ, để tin của chủ không treo ở "đang gõ" tới ngày mai.
 		if errors.Is(err, errAgentOverBudget) {
-			reply, err = agentBudgetReply, nil
+			reply, image, err = agentBudgetReply, "", nil
 		}
 		if err != nil {
 			return err
 		}
 	}
-	msg, written, err := a.store.AppendDMReply(ctx, uid, ch, seq, reply, wall)
+	msg, written, err := a.store.AppendDMReply(ctx, uid, ch, seq, reply, image, wall)
 	if err != nil || !written {
 		return err
 	}
@@ -329,38 +334,49 @@ func (a *AgentService) consumeDMBudget(ctx context.Context, ref *firestore.Docum
 	return allowed, err
 }
 
-func (a *AgentService) dmAnswer(ctx context.Context, uid string, ch agentDMChannel, seq int64, name, persona string, wall time.Time) (string, error) {
+// dmAnswer trả câu trả lời và đường dẫn ảnh bot vẽ cho tin này (rỗng là không
+// có ảnh).
+func (a *AgentService) dmAnswer(ctx context.Context, uid string, ch agentDMChannel, seq int64, name, persona string, wall time.Time) (string, string, error) {
 	names, err := a.store.displayNames(ctx, []string{uid})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	mems, err := a.store.Memories(ctx, uid)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	history, err := a.store.dmHistory(ctx, uid, ch, seq, agentDMHistory)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	owner, err := a.store.learnedOf(ctx, []string{uid}, wall)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	group, err := a.store.learnedGroup(ctx, wall)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	learned := learnedBlock(owner[uid], group, nil, true)
 	system := fmt.Sprintf(agentDMPrompt, name, names[uid], agentDMWhere[ch.name], personaText(persona), memoryLines(mems, true), learned)
 	runData, err := a.runData(ctx, uid, names[uid], false, wall)
 	if err != nil {
-		return "", err
+		return "", "", err
+	}
+	msgKey := fmt.Sprintf("%s%d", ch.memoryPrefix, seq)
+	var images *agentImageTurn
+	if ch.name == agentChannelTelegram {
+		images = a.imageTurn(uid, msgKey, true, wall)
+	}
+	if images != nil {
+		system += agentDMImageRule
 	}
 	tools := agentDMTools()
 	if learned != "" {
 		tools[0].FunctionDeclarations = append(tools[0].FunctionDeclarations, agentRecallPersonDecl, agentForgetLearnedDecl)
 	}
 	tools[0].FunctionDeclarations = append(tools[0].FunctionDeclarations, runData.decls()...)
+	tools[0].FunctionDeclarations = append(tools[0].FunctionDeclarations, images.decls()...)
 	contents := make([]*genai.Content, 0, len(history))
 	for _, m := range history {
 		// Gemini cần lượt đầu là user; cửa sổ 20 tin có thể cắt ngay tin bot.
@@ -371,7 +387,7 @@ func (a *AgentService) dmAnswer(ctx context.Context, uid string, ch agentDMChann
 		if m.Role == agentRoleAgent {
 			role = string(genai.RoleModel)
 		}
-		contents = append(contents, &genai.Content{Role: role, Parts: []*genai.Part{{Text: m.Text}}})
+		contents = append(contents, &genai.Content{Role: role, Parts: []*genai.Part{{Text: withImageNote(m.Text, m.ImagePath)}}})
 	}
 	added := 0
 	// Gán lại ctx để lượt web_search trong closure cũng mang nhãn agent.dm.
@@ -386,16 +402,19 @@ func (a *AgentService) dmAnswer(ctx context.Context, uid string, ch agentDMChann
 		if out, ok, err := runData.run(ctx, call); ok {
 			return out, err
 		}
-		return a.runMemoryTool(ctx, uid, fmt.Sprintf("%s%d", ch.memoryPrefix, seq), &added, call, wall)
+		if out, ok, err := images.run(ctx, call); ok {
+			return out, err
+		}
+		return a.runMemoryTool(ctx, uid, msgKey, &added, call, wall)
 	})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	if text == "" {
-		return "", errors.New("agent dm: model không trả lời")
+	if text == "" && images.imagePath() == "" {
+		return "", "", errors.New("agent dm: model không trả lời")
 	}
 	// Che từ tục như câu bot nói trong phòng (cleanRoomReply), không gọi lại model.
-	return maskProfanity(truncateRunes(text, agentReplyMaxRune)), nil
+	return maskProfanity(truncateRunes(text, agentReplyMaxRune)), images.imagePath(), nil
 }
 
 // toolLoop gọi model, chạy các tool nó gọi rồi gọi lại, tới khi model trả chữ
@@ -543,7 +562,7 @@ func (a *AgentService) RoomTurn(ctx context.Context, roomID string, afterSeq int
 	if !ok {
 		return nil
 	}
-	text, err := a.roomReply(ctx, speaker, agents, acc.roster(agents), transcript, wall)
+	text, image, err := a.roomReply(ctx, roomID, speaker, agents, acc.roster(agents), transcript, wall)
 	if errors.Is(err, errAgentOverBudget) {
 		// Chạm trần chi phí: một bot báo nghỉ rồi dừng chuỗi, không hẹn lượt kế,
 		// để mỗi tin người chỉ nhận một câu nghỉ chứ không phải chainMax câu.
@@ -552,24 +571,24 @@ func (a *AgentService) RoomTurn(ctx context.Context, roomID string, afterSeq int
 		if last := transcript[len(transcript)-1]; stringValue(last["kind"]) == agentKindAgent && stringValue(last["text"]) == agentBudgetReply {
 			return nil
 		}
-		written, err := a.store.appendRoomTurn(ctx, lim, roomID, afterSeq, speaker, agentBudgetReply, wall)
+		written, err := a.store.appendRoomTurn(ctx, lim, roomID, afterSeq, speaker, agentBudgetReply, "", wall)
 		if err != nil || !written {
 			return err
 		}
-		return a.deliverRoomTurn(ctx, roomID, afterSeq+1, speaker.uid, agentBudgetReply)
+		return a.deliverRoomTurn(ctx, roomID, afterSeq+1, speaker.uid, agentBudgetReply, "")
 	}
 	if err != nil {
 		return err
 	}
-	if text == "" {
+	if text == "" && image == "" {
 		slog.InfoContext(ctx, "agent.room_pass", "room", roomID, "afterSeq", afterSeq, "speaker", speaker.uid)
 		return nil
 	}
-	written, err := a.store.appendRoomTurn(ctx, lim, roomID, afterSeq, speaker, text, wall)
+	written, err := a.store.appendRoomTurn(ctx, lim, roomID, afterSeq, speaker, text, image, wall)
 	if err != nil || !written {
 		return err
 	}
-	if err := a.deliverRoomTurn(ctx, roomID, afterSeq+1, speaker.uid, text); err != nil {
+	if err := a.deliverRoomTurn(ctx, roomID, afterSeq+1, speaker.uid, text, image); err != nil {
 		return err
 	}
 	room["chain"] = number(room["chain"]) + 1
@@ -578,11 +597,11 @@ func (a *AgentService) RoomTurn(ctx context.Context, roomID string, afterSeq int
 
 // deliverRoomTurn gửi tin seq của bot ra kênh của phòng. Phòng main thì app
 // đọc thẳng Firestore.
-func (a *AgentService) deliverRoomTurn(ctx context.Context, roomID string, seq int64, uid, text string) error {
+func (a *AgentService) deliverRoomTurn(ctx context.Context, roomID string, seq int64, uid, text, imagePath string) error {
 	if roomID == agentMainRoom || a.roomOut == nil {
 		return nil
 	}
-	return a.roomOut(ctx, roomID, seq, uid, text)
+	return a.roomOut(ctx, roomID, seq, uid, text, imagePath)
 }
 
 // redeliverRoomTurn gửi lại tin seq đã ghi, nếu đó là tin của bot.
@@ -601,7 +620,7 @@ func (a *AgentService) redeliverRoomTurn(ctx context.Context, roomID string, seq
 	if stringValue(m["kind"]) != agentKindAgent {
 		return nil
 	}
-	return a.roomOut(ctx, roomID, seq, stringValue(m["uid"]), stringValue(m["text"]))
+	return a.roomOut(ctx, roomID, seq, stringValue(m["uid"]), stringValue(m["text"]), stringValue(m["imagePath"]))
 }
 
 func (a *AgentService) scheduleNext(ctx context.Context, lim agentLimits, roomID string, room map[string]any, seq int64, wall time.Time) error {
@@ -711,7 +730,9 @@ func isUsernameByte(c byte) bool {
 	return c == '_' || ('a' <= c && c <= 'z') || ('0' <= c && c <= '9')
 }
 
-func (a *AgentService) roomReply(ctx context.Context, speaker roomAgent, agents []roomAgent, members []string, transcript []map[string]any, wall time.Time) (string, error) {
+// roomReply trả tin tiếp theo của speaker và đường dẫn ảnh nó vẽ (rỗng là không
+// có ảnh). Tin rỗng mà không có ảnh là bot nhường lượt.
+func (a *AgentService) roomReply(ctx context.Context, roomID string, speaker roomAgent, agents []roomAgent, members []string, transcript []map[string]any, wall time.Time) (string, string, error) {
 	uids := append([]string(nil), members...)
 	present := []string{speaker.uid}
 	for _, m := range transcript {
@@ -721,19 +742,19 @@ func (a *AgentService) roomReply(ctx context.Context, speaker roomAgent, agents 
 	present = uniqueStrings(present)
 	names, err := a.store.displayNames(ctx, uniqueStrings(uids))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	mems, err := a.store.Memories(ctx, speaker.uid)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	learned, err := a.store.learnedOf(ctx, present, wall)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	group, err := a.store.learnedGroup(ctx, wall)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	var others []learnedPerson
 	for _, uid := range present[1:] {
@@ -744,13 +765,20 @@ func (a *AgentService) roomReply(ctx context.Context, speaker roomAgent, agents 
 	learnedText := learnedBlock(learned[speaker.uid], group, others, false)
 	runData, err := a.runData(ctx, speaker.uid, names[speaker.uid], true, wall)
 	if err != nil {
-		return "", err
+		return "", "", err
+	}
+	var images *agentImageTurn
+	if roomID == agentTelegramRoom {
+		// Key theo tin đang đáp; ảnh nằm dưới doc của chủ bot nên bot khác đáp
+		// cùng tin không đụng nhau.
+		images = a.imageTurn(speaker.uid, fmt.Sprintf("room-%s-%d", roomID, int64(number(transcript[len(transcript)-1]["seq"]))), runData.ownerOK, wall)
 	}
 	tools := agentRoomTools()
 	if learnedText != "" {
 		tools[0].FunctionDeclarations = append(tools[0].FunctionDeclarations, agentRecallPersonDecl)
 	}
 	tools[0].FunctionDeclarations = append(tools[0].FunctionDeclarations, runData.decls()...)
+	tools[0].FunctionDeclarations = append(tools[0].FunctionDeclarations, images.decls()...)
 	bots := map[string]string{}
 	for _, ag := range agents {
 		bots[ag.uid] = ag.name
@@ -763,11 +791,14 @@ func (a *AgentService) roomReply(ctx context.Context, speaker roomAgent, agents 
 		}
 	}
 	system := fmt.Sprintf(agentRoomPrompt, speaker.name, names[speaker.uid], personaText(speaker.persona), memoryLines(mems, false), learnedText, strings.TrimRight(roster.String(), "\n"))
+	if images != nil {
+		system += agentRoomImageRule
+	}
 	var chat strings.Builder
 	chat.WriteString("ĐOẠN CHAT GẦN ĐÂY:\n")
 	for _, m := range transcript {
 		if stringValue(m["kind"]) == agentKindAgent {
-			fmt.Fprintf(&chat, "%s (bot của %s): %s\n", stringValue(m["name"]), names[stringValue(m["uid"])], stringValue(m["text"]))
+			fmt.Fprintf(&chat, "%s (bot của %s): %s\n", stringValue(m["name"]), names[stringValue(m["uid"])], withImageNote(stringValue(m["text"]), stringValue(m["imagePath"])))
 		} else {
 			fmt.Fprintf(&chat, "%s (người): %s\n", names[stringValue(m["uid"])], stringValue(m["text"]))
 		}
@@ -784,12 +815,15 @@ func (a *AgentService) roomReply(ctx context.Context, speaker roomAgent, agents 
 		if out, ok, err := runData.run(ctx, call); ok {
 			return out, err
 		}
+		if out, ok, err := images.run(ctx, call); ok {
+			return out, err
+		}
 		return map[string]any{"error": "không có tool " + call.Name}, nil
 	})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return cleanRoomReply(text, speaker.name), nil
+	return cleanRoomReply(text, speaker.name), images.imagePath(), nil
 }
 
 // cleanRoomReply bỏ phần model hay tự thêm (tên mình ở đầu, ngoặc kép), cắt
@@ -844,7 +878,7 @@ func uniqueStrings(in []string) []string {
 
 // appendRoomTurn ghi tin của bot nếu phòng vẫn đứng ở afterSeq (không ai chen
 // vào lúc model đang viết) và còn ngân sách ngày của phòng.
-func (s *AgentStore) appendRoomTurn(ctx context.Context, lim agentLimits, roomID string, afterSeq int64, speaker roomAgent, text string, wall time.Time) (bool, error) {
+func (s *AgentStore) appendRoomTurn(ctx context.Context, lim agentLimits, roomID string, afterSeq int64, speaker roomAgent, text, imagePath string, wall time.Time) (bool, error) {
 	ref := s.roomRef(roomID)
 	written := false
 	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
@@ -857,7 +891,11 @@ func (s *AgentStore) appendRoomTurn(ctx context.Context, lim agentLimits, roomID
 			return nil
 		}
 		seq := afterSeq + 1
-		if err := tx.Create(ref.Collection("messages").Doc(seqDocID(seq)), map[string]any{"seq": seq, "kind": agentKindAgent, "uid": speaker.uid, "name": speaker.name, "text": text, "channel": agentRoomChannels[roomID], "at": wall}); err != nil {
+		msg := map[string]any{"seq": seq, "kind": agentKindAgent, "uid": speaker.uid, "name": speaker.name, "text": text, "channel": agentRoomChannels[roomID], "at": wall}
+		if imagePath != "" {
+			msg["imagePath"] = imagePath
+		}
+		if err := tx.Create(ref.Collection("messages").Doc(seqDocID(seq)), msg); err != nil {
 			return err
 		}
 		day := vnDay(wall)

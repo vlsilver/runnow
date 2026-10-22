@@ -160,6 +160,9 @@ type AgentMessage struct {
 	Role string    `json:"role"`
 	Text string    `json:"text"`
 	At   time.Time `json:"at"`
+	// ImagePath là ảnh bot vẽ kèm tin, chỉ có ở kênh Telegram. Không ra API của
+	// app, vì app chưa hiện ảnh trong chat.
+	ImagePath string `json:"-"`
 }
 
 type AgentDMPage struct {
@@ -604,14 +607,15 @@ func (s *AgentStore) dmHistory(ctx context.Context, uid string, ch agentDMChanne
 }
 
 func dmMessage(m map[string]any) AgentMessage {
-	return AgentMessage{Seq: int64(number(m["seq"])), Role: stringValue(m["role"]), Text: stringValue(m["text"]), At: timeValue(m["at"])}
+	return AgentMessage{Seq: int64(number(m["seq"])), Role: stringValue(m["role"]), Text: stringValue(m["text"]), At: timeValue(m["at"]), ImagePath: stringValue(m["imagePath"])}
 }
 
-// AppendDMReply ghi câu trả lời cho tin seq của chủ vào chat riêng của kênh ch.
-// Trả false khi không ghi: đã trả lời rồi (task chạy lại) hoặc chủ đã gửi tin
-// mới hơn, tin mới đó có task riêng và sẽ được trả lời gộp. Câu trả lời luôn ở
-// seq+1: chỉ ghi khi tin cuối của kênh là tin seq của chủ.
-func (s *AgentStore) AppendDMReply(ctx context.Context, uid string, ch agentDMChannel, seq int64, text string, wall time.Time) (AgentMessage, bool, error) {
+// AppendDMReply ghi câu trả lời cho tin seq của chủ vào chat riêng của kênh ch,
+// kèm ảnh bot vẽ nếu imagePath khác rỗng. Trả false khi không ghi: đã trả lời
+// rồi (task chạy lại) hoặc chủ đã gửi tin mới hơn, tin mới đó có task riêng và
+// sẽ được trả lời gộp. Câu trả lời luôn ở seq+1: chỉ ghi khi tin cuối của kênh
+// là tin seq của chủ.
+func (s *AgentStore) AppendDMReply(ctx context.Context, uid string, ch agentDMChannel, seq int64, text, imagePath string, wall time.Time) (AgentMessage, bool, error) {
 	ref := s.agentRef(uid)
 	var msg AgentMessage
 	written := false
@@ -626,8 +630,12 @@ func (s *AgentStore) AppendDMReply(ctx context.Context, uid string, ch agentDMCh
 			return nil
 		}
 		next := int64(number(d[ch.seqField])) + 1
-		msg = AgentMessage{Seq: next, Role: agentRoleAgent, Text: text, At: wall}
-		if err := tx.Create(ref.Collection(ch.collection).Doc(seqDocID(next)), map[string]any{"seq": next, "role": agentRoleAgent, "text": text, "channel": ch.name, "at": wall}); err != nil {
+		msg = AgentMessage{Seq: next, Role: agentRoleAgent, Text: text, At: wall, ImagePath: imagePath}
+		row := map[string]any{"seq": next, "role": agentRoleAgent, "text": text, "channel": ch.name, "at": wall}
+		if imagePath != "" {
+			row["imagePath"] = imagePath
+		}
+		if err := tx.Create(ref.Collection(ch.collection).Doc(seqDocID(next)), row); err != nil {
 			return err
 		}
 		written = true

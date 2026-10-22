@@ -144,6 +144,16 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 				slog.WarnContext(ctx, "dependencies.image_genai_unavailable", "error", imgErr)
 				imageClient = nil
 			}
+			// Bot cá nhân vẽ ảnh bằng cùng model ảnh, qua trần chi phí của nó, và
+			// gửi ảnh từ Storage qua outbox của bot con; thiếu client hay bucket
+			// thì bot không có tool vẽ.
+			if imageClient != nil && bucket != nil {
+				images := gcsImageStore{bucket: bucket}
+				d.AgentBrain.SetImages(budgetImageLLM{inner: genaiImageLLM{client: imageClient, model: geminiImageModel}, model: geminiImageModel, budget: budget}, images)
+				if d.ManagedBots != nil {
+					d.ManagedBots.images = images
+				}
+			}
 			d.Bot = NewBotService(genaiClient, telegram, NewBotTools(db), db, config.GeminiModel, config.BotHourlyLimit, d.Memory, NewScheduleStore(db), imageClient, geminiImageModel, bucket)
 			d.Bot.thinking = config.GeminiThinkingLevel
 			if config.BotGroupFacts {
