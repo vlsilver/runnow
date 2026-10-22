@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
+import 'package:myrun/src/agents/agent_images_screen.dart';
 import 'package:myrun/src/agents/agent_km.dart';
 import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/games/telegram_link_controller.dart';
@@ -172,6 +173,7 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
     if (!mounted) return;
     ref.invalidate(agentMeProvider);
     ref.invalidate(agentRoomPreviewProvider);
+    ref.invalidate(agentImagesPreviewProvider);
   }
 
   Future<void> _editMemory(AgentMemory? memory) async {
@@ -341,6 +343,7 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
             ],
             const SizedBox(height: 16),
             _RoomPreviewCard(onOpen: () => _open('/agent/room')),
+            _ImagesPreview(onOpen: () => _open('/agent/images')),
             const SizedBox(height: 22),
             _SectionLabel(
               'Bot biết gì về bạn',
@@ -1472,6 +1475,44 @@ class _RoomPreviewCard extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Vài ảnh mới nhất bot đã vẽ; chạm vào đâu cũng mở trang đủ ảnh. Bot chưa vẽ
+/// gì, hay tải lỗi, thì không hiện mục này: ảnh là phần phụ của tab.
+class _ImagesPreview extends ConsumerWidget {
+  const _ImagesPreview({required this.onOpen});
+
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final images = ref.watch(agentImagesPreviewProvider).value;
+    if (images == null || images.isEmpty) return const SizedBox.shrink();
+    final image = ref.watch(agentImageBuilderProvider);
+    final content = GridView.count(
+      crossAxisCount: 3,
+      mainAxisSpacing: 6,
+      crossAxisSpacing: 6,
+      shrinkWrap: true,
+      padding: EdgeInsets.zero,
+      physics: const NeverScrollableScrollPhysics(),
+      children: [
+        for (final img in images)
+          AgentImageTile(onTap: onOpen, child: image(img.path, full: false)),
+      ],
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _SectionLabel('Ảnh bot đã vẽ', onSeeAll: onOpen),
+          const SizedBox(height: 8),
+          content,
+        ],
       ),
     );
   }

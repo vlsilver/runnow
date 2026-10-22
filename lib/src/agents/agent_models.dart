@@ -499,3 +499,29 @@ class AgentChatPage<M extends AgentSeqMessage> {
   /// Phòng bot: thành viên và bot của họ. Rỗng khi poll không có tin mới.
   final List<AgentRoomMember> members;
 }
+
+/// Một ảnh bot đã vẽ; [path] là file trên Firebase Storage.
+class AgentImage {
+  const AgentImage({required this.path, this.at});
+
+  factory AgentImage.fromJson(Map<String, dynamic> json) =>
+      AgentImage(path: _string(json['path']), at: _date(json['at']));
+
+  final String path;
+  final DateTime? at;
+}
+
+/// Một trang ảnh bot đã vẽ, mới trước.
+class AgentImagePage {
+  const AgentImagePage({required this.images, this.cursor});
+
+  factory AgentImagePage.fromJson(Map<String, dynamic> json) => AgentImagePage(
+    images: _list(json['images'], AgentImage.fromJson),
+    cursor: _optString(json['cursor']),
+  );
+
+  final List<AgentImage> images;
+
+  /// Có khi còn ảnh cũ hơn; null là đã hết.
+  final String? cursor;
+}

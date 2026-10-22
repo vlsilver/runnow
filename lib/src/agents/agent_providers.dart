@@ -1,7 +1,8 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
+import 'package:myrun/src/widgets/photo_viewer.dart';
 
 /// Hồ sơ và bộ nhớ bot của người đang đăng nhập; null khi chưa đăng nhập.
 /// Thanh tab chỉ đọc `.value` để biết có hiện tab MyBot không, nên lỗi thì giữ
@@ -53,3 +54,33 @@ final agentBlocksProvider = FutureProvider.autoDispose<List<AgentBlocked>>(
   retry: (_, _) => null,
   (ref) => ref.watch(runNowApiClientProvider).getAgentBlocks(),
 );
+
+/// Số ảnh bot đã vẽ hiện trên tab MyBot.
+const agentImagePreviewCount = 6;
+
+/// Ảnh mới nhất bot đã vẽ cho tab MyBot; đọc một lần mỗi lần mở tab. Lỗi
+/// (kể cả backend cũ chưa có API này) thì tab ẩn mục ảnh, không chặn gì.
+final agentImagesPreviewProvider = FutureProvider.autoDispose<List<AgentImage>>(
+  retry: (_, _) => null,
+  (ref) async {
+    try {
+      final page = await ref
+          .watch(runNowApiClientProvider)
+          .getAgentImages(limit: agentImagePreviewCount);
+      return page.images;
+    } catch (error) {
+      debugPrint('Bot: tải ảnh bot vẽ lỗi: $error');
+      rethrow;
+    }
+  },
+);
+
+/// Dựng ảnh bot vẽ theo đường dẫn Storage: ô nhỏ thì giải mã thu nhỏ, [full]
+/// là xem cả màn hình, phóng to được. Test thay để khỏi gọi Firebase.
+final agentImageBuilderProvider =
+    Provider<Widget Function(String path, {required bool full})>(
+      (ref) =>
+          (path, {required full}) => full
+          ? StoragePhoto(path: path, fit: BoxFit.contain, interactive: true)
+          : StoragePhoto(path: path, cacheWidth: 400),
+    );

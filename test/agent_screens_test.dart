@@ -11,6 +11,8 @@ import 'package:myrun/src/agents/agent_blocks_screen.dart';
 import 'package:myrun/src/agents/agent_chat_controller.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
 import 'package:myrun/src/agents/agent_group_facts_screen.dart';
+import 'package:myrun/src/agents/agent_images_screen.dart';
+import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/agents/agent_screen.dart';
 import 'package:myrun/src/agents/agent_setup_screen.dart';
 import 'package:myrun/src/providers.dart';
@@ -34,6 +36,12 @@ class _AgentBackend {
   final memories = <Map<String, dynamic>>[];
   final learned = <Map<String, dynamic>>[];
   final groupFacts = <Map<String, dynamic>>[];
+
+  /// Ảnh bot đã vẽ, mới trước; GET images cắt trang theo limit, cursor là vị trí.
+  final images = <Map<String, dynamic>>[];
+
+  /// Backend cũ chưa có GET images: trả 404.
+  var imagesApi = true;
   var admin = false;
   var noLearn = false;
   Map<String, dynamic> dm = {'messages': [], 'waiting': false};
@@ -99,6 +107,19 @@ class _AgentBackend {
             'consentVersion': consentVersion,
             'today': ?today,
             'telegram': ?telegram,
+          };
+        case ('GET', '/v1/agents/me/images') when !imagesApi:
+          return http.Response('{"error":"not_found"}', 404);
+        case ('GET', '/v1/agents/me/images'):
+          final q = request.url.queryParameters;
+          final start = int.parse(q['cursor'] ?? '0');
+          final end = (start + int.parse(q['limit'] ?? '30')).clamp(
+            0,
+            images.length,
+          );
+          out = {
+            'images': images.sublist(start, end),
+            if (end < images.length) 'cursor': '$end',
           };
         case ('GET', '/v1/telegram/link'):
           out = telegramLink;
@@ -200,6 +221,10 @@ void main() {
         overrides: [
           runNowApiClientProvider.overrideWithValue(backend.client()),
           firebaseUserProvider.overrideWith((ref) => Stream.value(_FakeUser())),
+          agentImageBuilderProvider.overrideWithValue(
+            (path, {required full}) =>
+                Text(path, style: const TextStyle(fontSize: 8)),
+          ),
         ],
         child: MaterialApp(home: home),
       ),
@@ -251,6 +276,10 @@ void main() {
           builder: (_, _) => const AgentBlocksScreen(),
         ),
         GoRoute(path: '/agent/dm', builder: (_, _) => const AgentDMScreen()),
+        GoRoute(
+          path: '/agent/images',
+          builder: (_, _) => const AgentImagesScreen(),
+        ),
       ],
     );
     addTearDown(router.dispose);
@@ -259,6 +288,10 @@ void main() {
         overrides: [
           runNowApiClientProvider.overrideWithValue(backend.client()),
           firebaseUserProvider.overrideWith((ref) => Stream.value(_FakeUser())),
+          agentImageBuilderProvider.overrideWithValue(
+            (path, {required full}) =>
+                Text(path, style: const TextStyle(fontSize: 8)),
+          ),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -852,6 +885,72 @@ void main() {
     await tester.pump(const Duration(minutes: 1));
     expect(meReads(), after + 1);
   });
+
+  testWidgets('no images yet: no gallery on the tab', (tester) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    await pumpMyBot(tester);
+    expect(backend.calls, contains('GET /v1/agents/me/images'));
+    expect(find.text('ẢNH BOT ĐÃ VẼ'), findsNothing);
+  });
+
+  testWidgets('old backend without the images API: tab hides the gallery', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    backend.imagesApi = false;
+    backend.images.add({'path': 'users/me/agentImages/tg1.png'});
+    await pumpMyBot(tester);
+    expect(find.text('ẢNH BOT ĐÃ VẼ'), findsNothing);
+    expect(find.textContaining('Không tải được'), findsNothing);
+    expect(find.text('BOT BIẾT GÌ VỀ BẠN'), findsOneWidget);
+  });
+
+  testWidgets(
+    'tab shows the six newest images, the gallery pages through all',
+    (tester) async {
+      backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+      String path(int i) => 'users/me/agentImages/tg$i.png';
+      for (var i = 1; i <= 35; i++) {
+        backend.images.add({
+          'path': path(i),
+          'at': DateTime.utc(
+            2026,
+            10,
+            22,
+            12,
+          ).subtract(Duration(hours: i)).toIso8601String(),
+        });
+      }
+      await pumpMyBot(tester);
+      expect(find.text('ẢNH BOT ĐÃ VẼ'), findsOneWidget);
+      expect(find.text(path(6)), findsOneWidget);
+      expect(find.text(path(7)), findsNothing);
+      final preview = backend.requests.lastWhere(
+        (r) => r.url.path == '/v1/agents/me/images',
+      );
+      expect(preview.url.queryParameters['limit'], '6');
+
+      await tester.tap(find.text(path(1)));
+      await tester.pumpAndSettle();
+      expect(find.text('Ảnh bot đã vẽ'), findsOneWidget);
+      expect(find.text(path(7)), findsOneWidget);
+      await tester.scrollUntilVisible(find.text(path(35)), 300);
+      await tester.pumpAndSettle();
+      expect(find.text(path(35)), findsOneWidget);
+      expect(
+        backend.requests
+            .where((r) => r.url.path == '/v1/agents/me/images')
+            .map((r) => r.url.queryParameters['cursor'])
+            .toList(),
+        [null, null, '30'],
+      );
+
+      await tester.tap(find.text(path(35)));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.close_rounded), findsOneWidget);
+      expect(find.text(path(35)), findsNWidgets(2));
+    },
+  );
 
   testWidgets('tab shows three memories, the full list shows all', (
     tester,

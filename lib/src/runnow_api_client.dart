@@ -426,6 +426,19 @@ class RunNowApiClient {
   Future<void> postAgentDM(String text) =>
       _send('POST', '/v1/agents/me/dm', body: {'text': text});
 
+  /// Ảnh bot đã vẽ, mới trước; [limit] tối đa 30, bỏ trống là 30.
+  Future<AgentImagePage> getAgentImages({String? cursor, int? limit}) async {
+    final query = [
+      if (cursor != null) 'cursor=${Uri.encodeQueryComponent(cursor)}',
+      if (limit != null) 'limit=$limit',
+    ];
+    final response = await _send(
+      'GET',
+      '/v1/agents/me/images${query.isEmpty ? '' : '?${query.join('&')}'}',
+    );
+    return AgentImagePage.fromJson(_jsonObject(response));
+  }
+
   Future<AgentChatPage<AgentRoomMessage>> getAgentRoom({
     String? cursor,
     int? after,
