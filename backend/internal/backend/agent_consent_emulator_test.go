@@ -14,14 +14,14 @@ import (
 // consent: người vào bằng cờ open bấm đồng ý AI.
 func (e *agentEnv) consent(uid string) {
 	e.t.Helper()
-	e.want(e.call(uid, "POST", "/v1/agents/me/consent", map[string]any{"version": 1}, ""), 200, "")
+	e.want(e.call(uid, "POST", "/v1/agents/me/consent", map[string]any{"version": 2}, ""), 200, "")
 }
 
 // wantConsentRequired: API trả consent_required kèm bản cần đồng ý.
 func (e *agentEnv) wantConsentRequired(r apiResp) {
 	e.t.Helper()
 	e.want(r, 403, "consent_required")
-	if r.body["consentVersion"] != float64(1) {
+	if r.body["consentVersion"] != float64(2) {
 		e.t.Fatalf("consent_required thiếu consentVersion: %s", r.raw)
 	}
 }
@@ -29,7 +29,7 @@ func (e *agentEnv) wantConsentRequired(r apiResp) {
 func (e *agentEnv) wantConsentState(uid string, required bool) {
 	e.t.Helper()
 	r := e.call(uid, "GET", "/v1/agents/me", nil, "")
-	if r.status != 200 || r.body["consentRequired"] != required || r.body["consentVersion"] != float64(1) {
+	if r.status != 200 || r.body["consentRequired"] != required || r.body["consentVersion"] != float64(2) {
 		e.t.Fatalf("GET me của %s: muốn consentRequired=%v, được %d %s", uid, required, r.status, r.raw)
 	}
 }
@@ -59,14 +59,14 @@ func TestEmulatorAgentConsentOpenUser(t *testing.T) {
 	e.want(e.call("dung", "GET", "/v1/agents/room", nil, ""), 200, "")
 	e.want(e.call("dung", "DELETE", "/v1/agents/me/learned/x", nil, ""), 200, "")
 
-	e.want(e.call("dung", "POST", "/v1/agents/me/consent", map[string]any{"version": 2}, ""), 409, "consent_version_mismatch")
+	e.want(e.call("dung", "POST", "/v1/agents/me/consent", map[string]any{"version": 3}, ""), 409, "consent_version_mismatch")
 	e.want(e.call("dung", "POST", "/v1/agents/me/consent", map[string]any{}, ""), 409, "consent_version_mismatch")
-	r := e.call("dung", "POST", "/v1/agents/me/consent", map[string]any{"version": 1}, "")
-	if r.status != 200 || r.body["consentRequired"] != false || r.body["consentVersion"] != float64(1) {
+	r := e.call("dung", "POST", "/v1/agents/me/consent", map[string]any{"version": 2}, "")
+	if r.status != 200 || r.body["consentRequired"] != false || r.body["consentVersion"] != float64(2) {
 		t.Fatalf("đồng ý: %d %s", r.status, r.raw)
 	}
 	consent := e.doc("agents/dung/consent/ai")
-	if consent["version"] != int64(1) || consent["source"] != "app" || !consent["at"].(time.Time).Equal(agentClock) {
+	if consent["version"] != int64(2) || consent["source"] != "app" || !consent["at"].(time.Time).Equal(agentClock) {
 		t.Fatalf("bản ghi đồng ý: %v", consent)
 	}
 	// Đồng ý mà chưa tạo bot thì không được đẻ ra bot rỗng.
@@ -101,7 +101,7 @@ func TestEmulatorAgentConsentOutdated(t *testing.T) {
 	e := newAgentEnv(t)
 	e.setOpen(true)
 	seed(t, e.store.db, "agents/dung", map[string]any{"name": "Dế", "inRoom": true})
-	seed(t, e.store.db, "agents/dung/consent/ai", map[string]any{"version": 0, "at": agentClock, "source": "app"})
+	seed(t, e.store.db, "agents/dung/consent/ai", map[string]any{"version": 1, "at": agentClock, "source": "app"})
 
 	e.wantConsentState("dung", true)
 	e.wantConsentRequired(e.call("dung", "POST", "/v1/agents/me", map[string]any{"name": "Dế"}, ""))
@@ -112,8 +112,8 @@ func TestEmulatorAgentConsentOutdated(t *testing.T) {
 	}
 
 	e.tick(time.Minute)
-	e.want(e.call("dung", "POST", "/v1/agents/me/consent", map[string]any{"version": 1}, ""), 200, "")
-	if c := e.doc("agents/dung/consent/ai"); c["version"] != int64(1) || !c["at"].(time.Time).Equal(agentClock.Add(time.Minute)) {
+	e.want(e.call("dung", "POST", "/v1/agents/me/consent", map[string]any{"version": 2}, ""), 200, "")
+	if c := e.doc("agents/dung/consent/ai"); c["version"] != int64(2) || !c["at"].(time.Time).Equal(agentClock.Add(time.Minute)) {
 		t.Fatalf("đồng ý bản mới không ghi đè bản cũ: %v", c)
 	}
 	e.wantConsentState("dung", false)
@@ -139,7 +139,7 @@ func TestEmulatorAgentConsentAllowlistExempt(t *testing.T) {
 	// consent_required, kể cả khi gửi đồng ý.
 	e.setOpen(false)
 	e.want(e.call("dung", "POST", "/v1/agents/me/dm", map[string]any{"text": "chào"}, ""), 403, "agent_disabled")
-	e.want(e.call("dung", "POST", "/v1/agents/me/consent", map[string]any{"version": 1}, ""), 403, "agent_disabled")
+	e.want(e.call("dung", "POST", "/v1/agents/me/consent", map[string]any{"version": 2}, ""), 403, "agent_disabled")
 	if r := e.call("dung", "GET", "/v1/agents/me", nil, ""); r.body["enabled"] != false || r.body["consentRequired"] != false {
 		t.Fatalf("GET me người không có quyền: %s", r.raw)
 	}
@@ -161,7 +161,7 @@ func TestEmulatorAgentBackfillAIConsent(t *testing.T) {
 		}
 		for _, uid := range []string{"an", "cuong"} {
 			c := e.doc("agents/" + uid + "/consent/ai")
-			if c["version"] != int64(1) || c["source"] != "backfill" || !c["at"].(time.Time).Equal(wall) {
+			if c["version"] != int64(2) || c["source"] != "backfill" || !c["at"].(time.Time).Equal(wall) {
 				t.Fatalf("lần %d: đồng ý của %s: %v", run+1, uid, c)
 			}
 		}

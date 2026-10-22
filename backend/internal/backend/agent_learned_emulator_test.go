@@ -60,7 +60,7 @@ func TestEmulatorAgentDMLearned(t *testing.T) {
 	if sys := e.llm.calls[0].system; strings.Contains(sys, "TỰ HỌC") || strings.Contains(sys, "BẠN BIẾT VỀ NHÓM") {
 		t.Fatalf("chưa học mà prompt có ký ức tự học:\n%s", sys)
 	}
-	wantList(t, "tool khi chưa học", toolNames(e.llm.calls[0]), "web_search", "remember", "update_memory", "forget")
+	wantList(t, "tool khi chưa học", toolNames(e.llm.calls[0]), "web_search", "remember", "update_memory", "forget", "get_owner_today", "get_owner_recent_run", "get_owner_contracts", "get_club_contracts")
 
 	seed(t, e.store.db, "telegramLinks/an", map[string]any{"tgUserId": int64(111)})
 	e.seedLearned("an", map[string]string{"f1": "An chạy hồ Tây"})
@@ -84,7 +84,7 @@ func TestEmulatorAgentDMLearned(t *testing.T) {
 			t.Errorf("prompt chat riêng có %q", leak)
 		}
 	}
-	wantList(t, "tool khi đã học", toolNames(e.llm.calls[0]), "web_search", "remember", "update_memory", "forget", "recall_person", "forget_learned")
+	wantList(t, "tool khi đã học", toolNames(e.llm.calls[0]), "web_search", "remember", "update_memory", "forget", "recall_person", "forget_learned", "get_owner_today", "get_owner_recent_run", "get_owner_contracts", "get_club_contracts")
 	if r := toolResult(t, e.llm.calls[1]); r["ok"] != true {
 		t.Fatalf("forget_learned: %v", r)
 	}
@@ -141,7 +141,7 @@ func TestEmulatorAgentRoomLearned(t *testing.T) {
 	if strings.Contains(sys, "Dũng đau gối") || strings.Contains(sys, "An:\n") || strings.Contains(sys, "[f1]") || strings.Contains(sys, "forget_learned") {
 		t.Errorf("prompt phòng:\n%s", sys)
 	}
-	wantList(t, "tool phòng", toolNames(e.llm.calls[0]), "web_search", "recall_person")
+	wantList(t, "tool phòng", toolNames(e.llm.calls[0]), "web_search", "recall_person", "get_club_contracts")
 	got := []string{}
 	for _, c := range e.llm.calls[1:] {
 		r := toolResult(t, c)

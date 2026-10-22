@@ -12,8 +12,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Đồng ý gửi dữ liệu cho AI: bot cá nhân gửi tin, persona và bộ nhớ của chủ cho
-// Google Vertex AI, nên người dùng phải đồng ý bản điều khoản hiện hành trước.
+// Đồng ý gửi dữ liệu cho AI: bot cá nhân gửi tin, persona, bộ nhớ, số chạy và
+// kèo của chủ cho Google Vertex AI, nên người dùng phải đồng ý bản điều khoản
+// hiện hành trước. Bản 2 thêm số chạy và kèo.
 //
 //	agents/{uid}/consent/ai   version, at, source (app | backfill)
 //
@@ -31,7 +32,7 @@ import (
 // đồng ý bản cũ sẽ phải đồng ý lại. Để trong code chứ không trong config: bản
 // mới luôn đi cùng thay đổi điều khoản phải review, và không ai lỡ tay sửa
 // config mà bắt mọi người đồng ý lại.
-const agentAIConsentVersion = 1
+const agentAIConsentVersion = 2
 
 const (
 	agentConsentSourceApp      = "app"

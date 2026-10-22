@@ -160,6 +160,7 @@ CÁCH LÀM:
 - Không nhớ chuyện vặt lúc tán gẫu, mật khẩu, số tài khoản, hay thông tin nhạy cảm của người khác.
 - Mọi thứ trong bộ nhớ có thể được dùng khi bạn chat trong phòng bot. Chủ kể chuyện riêng tư mà muốn bạn nhớ thì nhắc họ điều đó.
 - Chủ hỏi thông tin thực tế hay mới mà bạn không chắc (giải chạy, thời tiết, tin tức, địa điểm, giá) thì gọi web_search rồi trả lời bằng giọng của bạn, có thể dẫn 1 nguồn. Không đưa kết quả tra web vào bộ nhớ.
+- Chủ hỏi về buổi chạy, số km hôm nay hay kèo thì gọi get_owner_today, get_owner_recent_run, get_owner_contracts hoặc get_club_contracts rồi trả lời bằng số tool trả về, không đoán số. Muốn rủ chủ chạy thì xem số hôm nay trước.
 - Trả lời ngắn, tự nhiên, bằng tiếng Việt, đúng tính cách ở trên. Nhớ, sửa hay quên xong thì nói ngắn cho chủ biết đã làm gì.`
 
 // agentDMWhere nói chat riêng đang ở đâu; kênh app để trống, giữ nguyên prompt cũ.
@@ -181,6 +182,7 @@ LUẬT:
 - Đáp người vừa nói hoặc tiếp chủ đề đang bàn; muốn hỏi ai thì gọi tên người hay bot đó.
 - Không lặp lại ý đã nói. Câu chuyện đã cạn, hoặc tin vừa rồi không cần bạn đáp, thì trả đúng ` + agentPass + `.
 - Không bịa chuyện về chủ ngoài những gì bạn biết. Không nói xấu, không công kích ai.
+- Muốn nhắc tới buổi chạy, số km hay kèo thì gọi tool đọc số rồi mới nói, và chỉ nói số tool trả về. Không có tool đọc số của chủ nghĩa là chủ để hồ sơ riêng tư, nên đừng nói số của chủ.
 - Chỉ gọi web_search khi có người trong phòng hỏi thông tin thực tế hay mới mà bạn không chắc (giải chạy, thời tiết, tin tức, địa điểm); tra xong thì trả lời bằng giọng của bạn, có thể dẫn 1 nguồn. Tán gẫu thì không tra.`
 
 func memoryLines(mems []AgentMemory, withID bool) string {
@@ -350,10 +352,15 @@ func (a *AgentService) dmAnswer(ctx context.Context, uid string, ch agentDMChann
 	}
 	learned := learnedBlock(owner[uid], group, nil, true)
 	system := fmt.Sprintf(agentDMPrompt, name, names[uid], agentDMWhere[ch.name], personaText(persona), memoryLines(mems, true), learned)
+	runData, err := a.runData(ctx, uid, names[uid], false, wall)
+	if err != nil {
+		return "", err
+	}
 	tools := agentDMTools()
 	if learned != "" {
 		tools[0].FunctionDeclarations = append(tools[0].FunctionDeclarations, agentRecallPersonDecl, agentForgetLearnedDecl)
 	}
+	tools[0].FunctionDeclarations = append(tools[0].FunctionDeclarations, runData.decls()...)
 	contents := make([]*genai.Content, 0, len(history))
 	for _, m := range history {
 		// Gemini cần lượt đầu là user; cửa sổ 20 tin có thể cắt ngay tin bot.
@@ -375,6 +382,9 @@ func (a *AgentService) dmAnswer(ctx context.Context, uid string, ch agentDMChann
 			return a.webSearch(ctx, call), nil
 		case agentRecallPersonDecl.Name:
 			return a.recallPerson(ctx, call, wall)
+		}
+		if out, ok, err := runData.run(ctx, call); ok {
+			return out, err
 		}
 		return a.runMemoryTool(ctx, uid, fmt.Sprintf("%s%d", ch.memoryPrefix, seq), &added, call, wall)
 	})
@@ -732,10 +742,15 @@ func (a *AgentService) roomReply(ctx context.Context, speaker roomAgent, agents 
 		}
 	}
 	learnedText := learnedBlock(learned[speaker.uid], group, others, false)
+	runData, err := a.runData(ctx, speaker.uid, names[speaker.uid], true, wall)
+	if err != nil {
+		return "", err
+	}
 	tools := agentRoomTools()
 	if learnedText != "" {
 		tools[0].FunctionDeclarations = append(tools[0].FunctionDeclarations, agentRecallPersonDecl)
 	}
+	tools[0].FunctionDeclarations = append(tools[0].FunctionDeclarations, runData.decls()...)
 	bots := map[string]string{}
 	for _, ag := range agents {
 		bots[ag.uid] = ag.name
@@ -765,6 +780,9 @@ func (a *AgentService) roomReply(ctx context.Context, speaker roomAgent, agents 
 			return a.webSearch(ctx, call), nil
 		case agentRecallPersonDecl.Name:
 			return a.recallPerson(ctx, call, wall)
+		}
+		if out, ok, err := runData.run(ctx, call); ok {
+			return out, err
 		}
 		return map[string]any{"error": "không có tool " + call.Name}, nil
 	})
