@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
+import 'package:myrun/src/agents/agent_km.dart';
 import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/games/telegram_link_controller.dart';
 import 'package:myrun/src/providers.dart';
@@ -669,14 +670,12 @@ class _ImageProgress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Làm tròn lên một chữ số, để "chạy thêm" không bao giờ thành 0 km. Trừ
-    // epsilon vì 5 − 4,1 ra 0,9000000000000004 và ceil sẽ đẩy lên 1.
-    final left = ((nextKm - runKm) * 10 - 1e-9).ceil() / 10;
+    final left = agentKmLeft(nextKm, runKm);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Chạy thêm ${_formatKm(left)} km để vẽ được $nextLimit ảnh hôm nay',
+          'Chạy thêm ${formatAgentKm(left)} km để vẽ được $nextLimit ảnh hôm nay',
           style: TextStyle(
             color: palette.textMuted,
             fontSize: 12.5,
@@ -696,14 +695,6 @@ class _ImageProgress extends StatelessWidget {
       ],
     );
   }
-}
-
-/// 2.4 → "2,4", 1.0 → "1".
-String _formatKm(double km) {
-  final text = km == km.roundToDouble()
-      ? km.toInt().toString()
-      : km.toStringAsFixed(1);
-  return text.replaceAll('.', ',');
 }
 
 /// Mục MyBot trên Telegram, một dòng cho mỗi việc: bot đang chạy, bot hỏng
