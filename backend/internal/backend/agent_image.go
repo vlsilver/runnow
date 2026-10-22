@@ -202,18 +202,12 @@ func (t *agentImageTurn) draw(ctx context.Context, call *genai.FunctionCall) (ma
 		t.path = path
 		return map[string]any{"ok": true, "note": done}, nil
 	}
-	now := t.wall.In(vietnam)
-	day, err := NewBotTools(t.a.store.db).memberDay(ctx, t.uid, time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, vietnam))
+	q, err := t.a.imageQuota(ctx, t.uid, t.wall)
 	if err != nil {
 		return nil, err
 	}
-	agent, err := getData(ctx, t.a.store.agentRef(t.uid))
-	if err != nil {
-		return nil, err
-	}
-	limit := agentImageLimit(day.RunKm)
-	if used := imagesUsedToday(agent, t.wall); used >= limit {
-		return t.over(day.RunKm, used, limit), nil
+	if q.used >= q.limit {
+		return t.over(q.runKm, q.used, q.limit), nil
 	}
 	resp, err := t.a.imageGen.Image(ctx, funImageParts(prompt, stringValue(call.Args["style"]), nil))
 	if errors.Is(err, errAgentOverBudget) {
@@ -232,16 +226,36 @@ func (t *agentImageTurn) draw(ctx context.Context, call *genai.FunctionCall) (ma
 	if err := t.a.imageStore.Put(ctx, path, img); err != nil {
 		return nil, err
 	}
-	used, ok, err := t.commit(ctx, limit, path, prompt)
+	used, ok, err := t.commit(ctx, q.limit, path, prompt)
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
 		// Lượt khác của cùng bot vừa dùng hết hạn mức trong lúc vẽ.
-		return t.over(day.RunKm, used, limit), nil
+		return t.over(q.runKm, used, q.limit), nil
 	}
-	slog.InfoContext(ctx, "agent.image", "uid", t.uid, "key", t.key, "used", used, "limit", limit)
-	return map[string]any{"ok": true, "note": done, "usedToday": used, "limitToday": limit}, nil
+	slog.InfoContext(ctx, "agent.image", "uid", t.uid, "key", t.key, "used", used, "limit", q.limit)
+	return map[string]any{"ok": true, "note": done, "usedToday": used, "limitToday": q.limit}, nil
+}
+
+// agentImageQuota là hạn mức ảnh hôm nay (giờ VN) của một bot.
+type agentImageQuota struct {
+	runKm       float64
+	used, limit int64
+}
+
+// imageQuota đọc km chủ chạy hôm nay và số ảnh bot đã vẽ hôm nay.
+func (a *AgentService) imageQuota(ctx context.Context, uid string, wall time.Time) (agentImageQuota, error) {
+	now := wall.In(vietnam)
+	day, err := NewBotTools(a.store.db).memberDay(ctx, uid, time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, vietnam))
+	if err != nil {
+		return agentImageQuota{}, err
+	}
+	agent, err := getData(ctx, a.store.agentRef(uid))
+	if err != nil {
+		return agentImageQuota{}, err
+	}
+	return agentImageQuota{runKm: day.RunKm, used: imagesUsedToday(agent, wall), limit: agentImageLimit(day.RunKm)}, nil
 }
 
 // commit ghi ảnh của tin và tăng số ảnh trong ngày trong cùng transaction, nên
