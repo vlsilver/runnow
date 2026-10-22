@@ -914,7 +914,52 @@ func (t *BotTools) memberContracts(ctx context.Context, uid, name string) (any, 
 			"progress": round2(progress),
 		})
 	}
-	return map[string]any{"found": true, "name": name, "contractCount": len(contracts), "contracts": contracts}, nil
+	plans, err := t.memberCoachPlans(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"found": true, "name": name, "contractCount": len(contracts), "contracts": contracts, "coachPlans": plans}, nil
+}
+
+// memberCoachPlans là các giáo án HLV uid đang theo. App xếp giáo án chung danh
+// sách với kèo nên người dùng gọi nó là kèo, nhưng nó nằm ở collection riêng
+// và tiến độ tính theo buổi tập chứ không theo chỉ tiêu. Chủ giáo án luôn có
+// trong participantUids nên một query lấy được cả giáo án mình lập lẫn giáo
+// án mình tham gia.
+func (t *BotTools) memberCoachPlans(ctx context.Context, uid string) ([]map[string]any, error) {
+	docs, err := t.db.Collection("coachPlans").Where("participantUids", "array-contains", uid).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	plans := []map[string]any{}
+	for _, doc := range docs {
+		d := doc.Data()
+		if stringValue(d["status"]) != "active" {
+			continue
+		}
+		sessions := 0
+		for _, day := range toAnySlice(d["days"]) {
+			if dm, ok := day.(map[string]any); ok && stringValue(dm["type"]) != "rest" {
+				sessions++
+			}
+		}
+		var done int
+		if parts, ok := d["participants"].(map[string]any); ok {
+			if pm, ok := parts[uid].(map[string]any); ok {
+				done = len(toAnySlice(pm["doneIndices"]))
+			}
+		}
+		plans = append(plans, map[string]any{
+			"goal":         stringValue(d["goal"]),
+			"goalKm":       number(d["goalDistanceKm"]),
+			"startDate":    stringValue(d["startDate"]),
+			"targetDate":   stringValue(d["targetDate"]),
+			"sessions":     sessions,
+			"doneSessions": done,
+			"mine":         stringValue(d["ownerUid"]) == uid,
+		})
+	}
+	return plans, nil
 }
 
 func toAnySlice(v any) []any {

@@ -308,7 +308,7 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 		},
 		{
 			Name:        "get_member_contracts",
-			Description: "Các KÈO đang diễn ra mà MỘT thành viên tham gia + tiến độ của chính họ. Dùng khi hỏi 'kèo của X tới đâu rồi', 'X đang chạy kèo gì'.",
+			Description: "Các KÈO đang diễn ra mà MỘT thành viên tham gia + tiến độ của chính họ, kèm giáo án HLV (coachPlans: số buổi đã tập/tổng buổi). Dùng khi hỏi 'kèo của X tới đâu rồi', 'X đang chạy kèo gì', 'giáo án của X'.",
 			Parameters: &genai.Schema{
 				Type: genai.TypeObject,
 				Properties: map[string]*genai.Schema{

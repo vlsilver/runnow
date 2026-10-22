@@ -27,7 +27,7 @@ var (
 	}
 	agentOwnerContractsDecl = &genai.FunctionDeclaration{
 		Name:        "get_owner_contracts",
-		Description: "Các kèo chủ bạn đang tham gia và tiến độ của chủ trong từng kèo.",
+		Description: "Các kèo chủ bạn đang tham gia và tiến độ của chủ trong từng kèo, kèm giáo án HLV chủ đang theo (coachPlans: số buổi đã tập trên tổng buổi). Trên app giáo án HLV nằm chung danh sách kèo.",
 		Parameters:  &genai.Schema{Type: genai.TypeObject, Properties: map[string]*genai.Schema{}},
 	}
 	agentClubContractsDecl = &genai.FunctionDeclaration{

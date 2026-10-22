@@ -90,3 +90,45 @@ func TestEmulatorAgentRoomOwnerRunDataPublicOnly(t *testing.T) {
 		t.Fatalf("hồ sơ công khai: %v", out)
 	}
 }
+
+// App gộp giáo án HLV (coachPlans) vào danh sách kèo, nên chủ hỏi kèo thì bot
+// phải kể cả giáo án chủ lập lẫn giáo án chủ tham gia. Giáo án chủ không tham
+// gia thì không phải của chủ.
+func TestEmulatorAgentOwnerContractsIncludeCoachPlans(t *testing.T) {
+	e := newAgentEnv(t)
+	e.createBot("an", "Sóc", "")
+	e.seedOwnerRun()
+	days := []any{
+		map[string]any{"type": "easy"}, map[string]any{"type": "rest"}, map[string]any{"type": "long"},
+	}
+	seed(t, e.store.db, "coachPlans/an", map[string]any{
+		"ownerUid": "an", "status": "active", "visibility": "private", "goal": "Sub 30 5K",
+		"goalDistanceKm": 5.0, "weeks": 1, "startDate": "2026-10-19", "targetDate": "2026-10-25", "days": days,
+		"participantUids": []any{"an"},
+		"participants":    map[string]any{"an": map[string]any{"doneIndices": []any{0}}},
+	})
+	seed(t, e.store.db, "coachPlans/binh", map[string]any{
+		"ownerUid": "binh", "status": "active", "visibility": "club", "goal": "HM đầu tiên",
+		"goalDistanceKm": 21.1, "weeks": 1, "startDate": "2026-10-12", "targetDate": "2026-12-20", "days": days,
+		"participantUids": []any{"binh", "an"},
+		"participants":    map[string]any{"binh": map[string]any{"doneIndices": []any{0, 2}}, "an": map[string]any{"doneIndices": []any{}}},
+	})
+	seed(t, e.store.db, "coachPlans/cuong", map[string]any{
+		"ownerUid": "cuong", "status": "active", "visibility": "club", "goal": "10K",
+		"participantUids": []any{"cuong"}, "days": days,
+	})
+
+	e.llm.script = []*genai.GenerateContentResponse{llmCall("get_owner_contracts", nil), llmText("ok")}
+	e.want(e.call("an", "POST", "/v1/agents/me/dm", map[string]any{"text": "mình đang chạy kèo gì"}, ""), 200, "")
+	tasks := e.tasksTo("/tasks/agent-dm")
+	e.mustRun("/tasks/agent-dm", tasks[len(tasks)-1].Payload)
+	out := toolResult(t, e.llm.calls[1])
+	if got := fmt.Sprint(out["contractCount"]); got != "1" {
+		t.Fatalf("contractCount = %s, muốn 1 (giáo án không phải kèo)", got)
+	}
+	want := "[map[doneSessions:1 goal:Sub 30 5K goalKm:5 mine:true sessions:2 startDate:2026-10-19 targetDate:2026-10-25] " +
+		"map[doneSessions:0 goal:HM đầu tiên goalKm:21.1 mine:false sessions:2 startDate:2026-10-12 targetDate:2026-12-20]]"
+	if got := fmt.Sprint(out["coachPlans"]); got != want {
+		t.Fatalf("coachPlans = %s\nmuốn %s", got, want)
+	}
+}
