@@ -202,7 +202,7 @@ func (t *agentImageTurn) draw(ctx context.Context, call *genai.FunctionCall) (ma
 		t.path = path
 		return map[string]any{"ok": true, "note": done}, nil
 	}
-	q, err := t.a.imageQuota(ctx, t.uid, t.wall)
+	q, err := t.a.store.imageQuota(ctx, t.uid, t.wall)
 	if err != nil {
 		return nil, err
 	}
@@ -244,13 +244,11 @@ type agentImageQuota struct {
 	used, limit int64
 }
 
-// ImagesToday là lượt vẽ ảnh hôm nay của bot uid cho GET me; nil khi chưa bật
-// vẽ ảnh. Nhận a nil vì api dựng AgentService chỉ khi có Vertex AI.
-func (a *AgentService) ImagesToday(ctx context.Context, uid string, wall time.Time) (*AgentImagesToday, error) {
-	if a == nil || a.imageGen == nil || a.imageStore == nil {
-		return nil, nil
-	}
-	q, err := a.imageQuota(ctx, uid, wall)
+// ImagesToday là lượt vẽ ảnh hôm nay của bot uid cho GET me. Chỉ đọc
+// Firestore, vì api không dựng AgentService (không có Vertex AI); việc vẽ thật
+// chạy trên service bot.
+func (s *AgentStore) ImagesToday(ctx context.Context, uid string, wall time.Time) (*AgentImagesToday, error) {
+	q, err := s.imageQuota(ctx, uid, wall)
 	if err != nil {
 		return nil, err
 	}
@@ -262,12 +260,12 @@ func (a *AgentService) ImagesToday(ctx context.Context, uid string, wall time.Ti
 }
 
 // imageQuota đọc km chủ chạy và đi bộ hôm nay và số ảnh bot đã vẽ hôm nay.
-func (a *AgentService) imageQuota(ctx context.Context, uid string, wall time.Time) (agentImageQuota, error) {
-	runKm, err := a.store.todayKm(ctx, uid, wall)
+func (s *AgentStore) imageQuota(ctx context.Context, uid string, wall time.Time) (agentImageQuota, error) {
+	runKm, err := s.todayKm(ctx, uid, wall)
 	if err != nil {
 		return agentImageQuota{}, err
 	}
-	agent, err := getData(ctx, a.store.agentRef(uid))
+	agent, err := getData(ctx, s.agentRef(uid))
 	if err != nil {
 		return agentImageQuota{}, err
 	}

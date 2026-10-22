@@ -288,15 +288,12 @@ func TestEmulatorAgentImageTelegramRoom(t *testing.T) {
 }
 
 // GET me báo lượt vẽ ảnh hôm nay và mốc km kế tiếp, đọc cùng bộ đếm mà lượt vẽ
-// dùng để chặn. Chưa bật vẽ ảnh hay chưa tạo bot thì không có images.
+// dùng để chặn. Api không dựng AgentService (không có Vertex AI), nên số này
+// chỉ đọc Firestore. Chưa tạo bot thì không có images.
 func TestEmulatorAgentMeImages(t *testing.T) {
 	e := newAgentEnv(t)
-	e.deps.AgentBrain = e.brain
+	e.deps.AgentBrain = nil
 	e.createBot("an", "Sóc", "")
-	if got := e.meToday("an")["images"]; got != nil {
-		t.Fatalf("chưa bật vẽ ảnh mà có images: %v", got)
-	}
-	e.enableImages()
 	if got := e.meToday("cuong")["images"]; got != nil {
 		t.Fatalf("chưa tạo bot mà có images: %v", got)
 	}

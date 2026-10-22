@@ -24,7 +24,7 @@ func (s *Server) agentRoutes() {
 			}
 		}
 		if me.Today != nil && me.Agent != nil && me.Agent.Created {
-			if me.Today.Images, err = s.deps.AgentBrain.ImagesToday(r.Context(), uid, s.now()); err != nil {
+			if me.Today.Images, err = s.deps.Agents.ImagesToday(r.Context(), uid, s.now()); err != nil {
 				return err
 			}
 		}
