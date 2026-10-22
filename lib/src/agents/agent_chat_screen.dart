@@ -40,10 +40,82 @@ class _AgentDMScreenState extends _AgentChatState<AgentDMScreen, AgentMessage> {
         label: 'chat riêng',
       );
 
+  /// Seq tin mới nhất của bot đã thấy; null là chưa tải xong lần đầu.
+  int? _lastBotSeq;
+
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_rereadTodayOnReply);
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_rereadTodayOnReply);
+    super.dispose();
+  }
+
+  /// Backend đếm lượt khi bot trả lời, nên có tin mới của bot thì đọc lại hồ
+  /// sơ để "Còn N tin" và trạng thái hết lượt theo kịp. Tin cũ tải thêm không
+  /// đổi tin mới nhất nên không đọc lại.
+  void _rereadTodayOnReply() {
+    if (!controller.loaded) return;
+    final seq =
+        controller.messages.where((m) => m.fromAgent).firstOrNull?.seq ?? 0;
+    final last = _lastBotSeq;
+    _lastBotSeq = seq;
+    if (last != null && seq > last) ref.invalidate(agentMeProvider);
+  }
+
   String get _botName => ref.watch(agentMeProvider).value?.agent?.name ?? 'Bot';
+
+  AgentToday? get _today => ref.watch(agentMeProvider).value?.today;
 
   @override
   String get title => _botName;
+
+  @override
+  Widget titleWidget(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(_botName),
+      Text(
+        'Chat riêng · chỉ bạn thấy',
+        style: TextStyle(
+          color: context.runNowPalette.textMuted,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    ],
+  );
+
+  @override
+  List<Widget> actions(BuildContext context) {
+    final today = _today;
+    if (today == null || today.resting != null) return const [];
+    final left = today.dmMax - today.dmUsed;
+    return [_QuotaChip(text: 'Còn ${left < 0 ? 0 : left} tin')];
+  }
+
+  @override
+  Widget? notice(BuildContext context) => switch (_today) {
+    AgentToday(resting: AgentResting.dmLimit, :final dmMax) => _RestNotice(
+      icon: Icons.schedule_rounded,
+      title: 'Hết $dmMax tin hôm nay',
+      detail: 'Chat lại được lúc 0h. Bot vẫn nói trong phòng bot.',
+    ),
+    AgentToday(resting: AgentResting.budget) => _RestNotice(
+      icon: Icons.bedtime_outlined,
+      title: '$_botName đang nghỉ tới 0h',
+      detail: 'MyBot chạm trần chi phí hôm nay.',
+    ),
+    _ => null,
+  };
+
+  /// Đang nghỉ thì bot chỉ trả câu nghỉ, nên khoá ô nhập cho khỏi tốn lượt.
+  @override
+  bool get canSend => _today?.resting == null;
 
   @override
   String get hint => 'Kể cho bot nghe…';
@@ -51,9 +123,8 @@ class _AgentDMScreenState extends _AgentChatState<AgentDMScreen, AgentMessage> {
   @override
   Widget empty(BuildContext context) => const _EmptyHint(
     text:
-        'Kể cho bot nghe về bạn: bạn chạy thế nào, thích gì, nói chuyện ra '
-        'sao, kiến thức bạn muốn bot biết. Bot tự ghi điều đáng nhớ vào bộ '
-        'nhớ, bạn xem và sửa ở tab MyBot.',
+        'Kể cho bot nghe về bạn. Bot tự ghi điều đáng nhớ, bạn xem và sửa ở '
+        'tab MyBot.',
   );
 
   @override
@@ -235,6 +306,15 @@ abstract class _AgentChatState<
   String get title;
   String get hint;
   List<Widget> actions(BuildContext context) => const [];
+
+  /// Tiêu đề trên thanh trên cùng; mặc định là [title].
+  Widget titleWidget(BuildContext context) => Text(title);
+
+  /// Thẻ báo ngay trên ô nhập, vd. bot hết lượt hôm nay.
+  Widget? notice(BuildContext context) => null;
+
+  /// false thì khoá ô nhập, vẫn đọc được tin cũ.
+  bool get canSend => true;
   Widget empty(BuildContext context);
   _Bubble bubble(M message, String? myUid);
   bool typing(List<M> messages) => false;
@@ -346,7 +426,7 @@ abstract class _AgentChatState<
         return Scaffold(
           backgroundColor: palette.background,
           appBar: AppBar(
-            title: Text(title),
+            title: titleWidget(context),
             backgroundColor: palette.background,
             elevation: 0,
             actions: actions(context),
@@ -356,13 +436,16 @@ abstract class _AgentChatState<
               if (controller.loaded && controller.error != null)
                 const _Banner(text: 'Chưa tải được tin mới, đang thử lại.'),
               Expanded(child: body),
-              if (controller.loaded)
+              if (controller.loaded) ...[
+                ?notice(context),
                 _Composer(
                   controller: _input,
                   hint: hint,
+                  enabled: canSend,
                   sending: _sending,
                   onSend: _send,
                 ),
+              ],
             ],
           ),
         );
@@ -501,12 +584,14 @@ class _Composer extends StatelessWidget {
   const _Composer({
     required this.controller,
     required this.hint,
+    required this.enabled,
     required this.sending,
     required this.onSend,
   });
 
   final TextEditingController controller;
   final String hint;
+  final bool enabled;
   final bool sending;
   final VoidCallback onSend;
 
@@ -521,17 +606,21 @@ class _Composer extends StatelessWidget {
             Expanded(
               child: TextField(
                 controller: controller,
+                enabled: enabled,
                 minLines: 1,
                 maxLines: 4,
                 maxLength: 1000,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => onSend(),
-                decoration: InputDecoration(hintText: hint, counterText: ''),
+                decoration: InputDecoration(
+                  hintText: enabled ? hint : 'Hết lượt hôm nay',
+                  counterText: '',
+                ),
               ),
             ),
             IconButton(
               tooltip: 'Gửi',
-              onPressed: sending ? null : onSend,
+              onPressed: sending || !enabled ? null : onSend,
               icon: const Icon(Icons.send_rounded),
             ),
           ],
@@ -557,6 +646,99 @@ class _Banner extends StatelessWidget {
         text,
         textAlign: TextAlign.center,
         style: TextStyle(color: palette.textMuted),
+      ),
+    );
+  }
+}
+
+class _QuotaChip extends StatelessWidget {
+  const _QuotaChip({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.only(right: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: palette.accent.withValues(alpha: 0.16),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: palette.accentDeep,
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.4,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Thẻ báo bot đang nghỉ, nằm ngay trên ô nhập đã khoá.
+class _RestNotice extends StatelessWidget {
+  const _RestNotice({
+    required this.icon,
+    required this.title,
+    required this.detail,
+  });
+
+  final IconData icon;
+  final String title;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: palette.glassStart,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: palette.accent.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 20, color: palette.accentDeep),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  detail,
+                  style: TextStyle(
+                    color: palette.textMuted,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

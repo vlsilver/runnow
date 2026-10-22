@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:go_router/go_router.dart';
 import 'package:http/testing.dart';
 import 'package:myrun/src/agents/agent_blocks_screen.dart';
+import 'package:myrun/src/agents/agent_chat_controller.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
 import 'package:myrun/src/agents/agent_group_facts_screen.dart';
 import 'package:myrun/src/agents/agent_screen.dart';
@@ -137,9 +138,18 @@ class _AgentBackend {
         case ('DELETE', final p) when p.startsWith('/v1/agents/me/memories/'):
           memories.removeWhere((m) => p.endsWith('/${m['id']}'));
         case ('GET', '/v1/agents/me/dm'):
-          out = request.url.queryParameters.containsKey('after')
-              ? {'messages': [], 'waiting': dm['waiting']}
-              : dm;
+          final after = int.tryParse(
+            request.url.queryParameters['after'] ?? '',
+          );
+          out = after == null
+              ? dm
+              : {
+                  'messages': [
+                    for (final m in dm['messages'] as List)
+                      if ((m['seq'] as int) > after) m,
+                  ],
+                  'waiting': dm['waiting'],
+                };
         case ('GET', '/v1/agents/room'):
           final blocked = {for (final b in blocks) b['uid']};
           out = request.url.queryParameters.containsKey('after')
@@ -537,10 +547,7 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(opened, [Uri.parse('https://t.me/runnow3i_bot?start=K7Q2')]);
-    expect(
-      find.text('Bấm Start trong Telegram rồi quay lại'),
-      findsOneWidget,
-    );
+    expect(find.text('Bấm Start trong Telegram rồi quay lại'), findsOneWidget);
 
     // Bấm Start bên Telegram rồi quay lại; bấm lần nữa thì mới tạo bot.
     backend.telegramLink = {'linked': true, 'tgUsername': 'an'};
@@ -837,6 +844,72 @@ void main() {
     final post = backend.requests.lastWhere((r) => r.method == 'POST');
     expect(post.url.path, '/v1/agents/me/dm');
     expect(jsonDecode(post.body), {'text': 'nhớ giúp mình'});
+    await close(tester);
+  });
+
+  testWidgets('DM shows messages left today, rereads it when the bot replies', (
+    tester,
+  ) async {
+    final now = DateTime.utc(2026, 10, 20, 8);
+    Map<String, dynamic> message(int seq, String role, String text) => {
+      'seq': seq,
+      'role': role,
+      'text': text,
+      'at': now.toIso8601String(),
+    };
+    backend.agent = {'name': 'Sóc', 'persona': '', 'created': true};
+    backend.today = {
+      'dmUsed': 82,
+      'dmMax': 100,
+      'roomUsed': 0,
+      'roomMax': 300,
+      'resting': null,
+    };
+    backend.dm = {
+      'messages': [message(1, 'agent', 'chào chủ')],
+      'waiting': false,
+    };
+    await pump(tester, AgentDMScreen(now: () => now));
+    expect(find.text('Chat riêng · chỉ bạn thấy'), findsOneWidget);
+    expect(find.text('Còn 18 tin'), findsOneWidget);
+
+    // Bot trả lời một câu: backend đếm thêm một lượt.
+    backend.dm = {
+      'messages': [
+        message(3, 'agent', 'nhớ rồi'),
+        message(2, 'user', 'nhớ giúp mình'),
+        message(1, 'agent', 'chào chủ'),
+      ],
+      'waiting': false,
+    };
+    backend.today = {...?backend.today, 'dmUsed': 83};
+    await tester.pump(AgentChatController.pollEvery);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('nhớ rồi'), findsOneWidget);
+    expect(find.text('Còn 17 tin'), findsOneWidget);
+    await close(tester);
+  });
+
+  testWidgets('DM at the daily limit locks the composer until midnight', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Sóc', 'persona': '', 'created': true};
+    backend.today = {
+      'dmUsed': 30,
+      'dmMax': 30,
+      'roomUsed': 0,
+      'roomMax': 300,
+      'resting': 'dm_limit',
+    };
+    backend.dm = {'messages': [], 'waiting': false};
+    await pump(tester, const AgentDMScreen());
+    expect(find.text('Hết 30 tin hôm nay'), findsOneWidget);
+    expect(find.textContaining('Còn '), findsNothing);
+    expect(tester.widget<TextField>(find.byType(TextField)).enabled, isFalse);
+    await tester.tap(find.byTooltip('Gửi'));
+    await tester.pump();
+    expect(backend.calls, isNot(contains('POST /v1/agents/me/dm')));
     await close(tester);
   });
 
