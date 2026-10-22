@@ -140,7 +140,8 @@ type AgentMe struct {
 // AgentToday là lượt đã dùng hôm nay (giờ VN) để app hiện "tin hôm nay" và báo
 // bot đang nghỉ trước khi người dùng nhắn rồi mới nhận câu nghỉ.
 type AgentToday struct {
-	DMUsed   int64 `json:"dmUsed"`
+	DMUsed int64 `json:"dmUsed"`
+	// DMMax là hạn mức chat riêng hôm nay đã tính theo km (xem DMByKm).
 	DMMax    int64 `json:"dmMax"`
 	RoomUsed int64 `json:"roomUsed"`
 	RoomMax  int64 `json:"roomMax"`
@@ -148,8 +149,22 @@ type AgentToday struct {
 	// tiền AI) hay "dm_limit" (người này hết lượt chat riêng); null là không nghỉ.
 	// Budget đứng trước vì nó chặn mọi bot, nâng lượt chat riêng cũng không mở lại.
 	Resting *string `json:"resting"`
+	// DMByKm là cách tính DMMax, chỉ có khi đã tạo bot.
+	DMByKm *AgentDMByKm `json:"dmByKm,omitempty"`
 	// Images chỉ có khi bật vẽ ảnh và đã tạo bot; app cũ bỏ qua field lạ.
 	Images *AgentImagesToday `json:"images,omitempty"`
+}
+
+// AgentDMByKm: DMMax = min(trần, Base + PerKm × số km chạy trọn hôm nay), để
+// app hiện km hôm nay mở được bao nhiêu câu và chạy thêm bao nhiêu thì mở tiếp.
+type AgentDMByKm struct {
+	Base  int64   `json:"base"`
+	PerKm int64   `json:"perKm"`
+	RunKm float64 `json:"runKm"`
+	// NextKm và NextMax là mốc km trọn kế tiếp và DMMax ở mốc đó; null khi chạy
+	// thêm cũng không mở thêm câu nào.
+	NextKm  *float64 `json:"nextKm"`
+	NextMax *int64   `json:"nextMax"`
 }
 
 // AgentImagesToday là lượt vẽ ảnh hôm nay (giờ VN) theo km chủ đã chạy, để app
@@ -315,7 +330,7 @@ func (s *AgentStore) Me(ctx context.Context, uid string, wall time.Time) (AgentM
 			return AgentMe{}, err
 		}
 		out.Agent = &AgentProfile{Name: defaultAgentName(names[uid])}
-		if out.Today, err = s.today(ctx, acc.cfg, nil, wall); err != nil {
+		if out.Today, err = s.today(ctx, acc.cfg, uid, nil, wall); err != nil {
 			return AgentMe{}, err
 		}
 		return out, nil
@@ -326,7 +341,7 @@ func (s *AgentStore) Me(ctx context.Context, uid string, wall time.Time) (AgentM
 	if out.Memories, err = s.Memories(ctx, uid); err != nil {
 		return AgentMe{}, err
 	}
-	if out.Today, err = s.today(ctx, acc.cfg, doc.Data(), wall); err != nil {
+	if out.Today, err = s.today(ctx, acc.cfg, uid, doc.Data(), wall); err != nil {
 		return AgentMe{}, err
 	}
 	return out, nil
@@ -334,8 +349,9 @@ func (s *AgentStore) Me(ctx context.Context, uid string, wall time.Time) (AgentM
 
 // today đọc cùng các bộ đếm mà consumeDMBudget, roomBudgetLeft và
 // AgentBudget.admit dùng để chặn, nên app báo nghỉ đúng lúc bot thật sự nghỉ.
-// agent là doc bot, nil khi chưa tạo bot. Doc usage chỉ đọc khi có trần tiền.
-func (s *AgentStore) today(ctx context.Context, cfg, agent map[string]any, wall time.Time) (*AgentToday, error) {
+// agent là doc bot, nil khi chưa tạo bot. Doc usage chỉ đọc khi có trần tiền,
+// km chỉ đọc khi đã tạo bot.
+func (s *AgentStore) today(ctx context.Context, cfg map[string]any, uid string, agent map[string]any, wall time.Time) (*AgentToday, error) {
 	lim := parseAgentLimits(ctx, cfg)
 	budget := parseAgentBudgetConfig(cfg).dailyUsd
 	refs := []*firestore.DocumentRef{s.roomRef(agentMainRoom)}
@@ -347,7 +363,15 @@ func (s *AgentStore) today(ctx context.Context, cfg, agent map[string]any, wall 
 		return nil, err
 	}
 	// GetAll không lỗi khi doc chưa có; Data() của doc đó là nil, đếm là 0.
-	out := &AgentToday{DMMax: lim.dmDailyMax, RoomUsed: roomUsedToday(docs[0].Data(), wall), RoomMax: lim.roomDailyMax}
+	out := &AgentToday{DMMax: newAgentDMQuota(lim, 0).max, RoomUsed: roomUsedToday(docs[0].Data(), wall), RoomMax: lim.roomDailyMax}
+	if agent != nil {
+		q, err := s.dmQuota(ctx, lim, uid, wall)
+		if err != nil {
+			return nil, err
+		}
+		out.DMMax = q.max
+		out.DMByKm = &AgentDMByKm{Base: lim.dmBase, PerKm: lim.dmPerKm, RunKm: q.runKm, NextKm: q.nextKm, NextMax: q.nextMax}
+	}
 	if stringValue(agent["dmDay"]) == vnDay(wall) {
 		out.DMUsed = int64(number(agent["dmDayCount"]))
 	}

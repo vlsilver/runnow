@@ -12,15 +12,15 @@ import (
 // định, chứ không thành 0 (tắt bot) hay bỏ hẳn giới hạn.
 func TestParseAgentLimits(t *testing.T) {
 	ctx := context.Background()
-	if got := parseAgentLimits(ctx, nil); got != (agentLimits{100, 300, 6}) {
+	if got := parseAgentLimits(ctx, nil); got != (agentLimits{100, 300, 6, 10, 10}) {
 		t.Fatalf("doc trống: %+v", got)
 	}
-	got := parseAgentLimits(ctx, map[string]any{"dmDailyMax": int64(20), "roomDailyMax": 50.0, "chainMax": 2.0})
-	if got != (agentLimits{20, 50, 2}) {
+	got := parseAgentLimits(ctx, map[string]any{"dmDailyMax": int64(20), "roomDailyMax": 50.0, "chainMax": 2.0, "dmBaseDaily": 5.0, "dmPerKm": int64(3)})
+	if got != (agentLimits{20, 50, 2, 5, 3}) {
 		t.Fatalf("giá trị hợp lệ: %+v", got)
 	}
-	got = parseAgentLimits(ctx, map[string]any{"dmDailyMax": "20", "roomDailyMax": -5.0, "chainMax": 0.0})
-	if got != (agentLimits{100, 300, 6}) {
+	got = parseAgentLimits(ctx, map[string]any{"dmDailyMax": "20", "roomDailyMax": -5.0, "chainMax": 0.0, "dmBaseDaily": 1.5, "dmPerKm": -1.0})
+	if got != (agentLimits{100, 300, 6, 10, 10}) {
 		t.Fatalf("giá trị sai phải về mặc định: %+v", got)
 	}
 }

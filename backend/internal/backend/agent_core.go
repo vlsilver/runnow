@@ -25,9 +25,11 @@ const (
 	agentRoomHistory  = 40
 	agentToolRounds   = 3
 	agentReplyMaxRune = 600
-	// Ba giới hạn dưới là mặc định; admin sửa được ở agentState/config (xem
+	// Các giới hạn dưới là mặc định; admin sửa được ở agentState/config (xem
 	// agentConfigFields).
-	agentDMDailyMax   = 100 // câu trả lời chat riêng mỗi người mỗi ngày
+	agentDMDailyMax   = 100 // trần câu trả lời chat riêng mỗi người mỗi ngày
+	agentDMBaseDaily  = 10  // câu trả lời chat riêng có sẵn mỗi ngày
+	agentDMPerKm      = 10  // câu trả lời thêm cho mỗi km chạy trọn hôm nay
 	agentRoomDailyMax = 300 // tin bot trong phòng mỗi ngày
 	// agentChainMax: sau mỗi tin người, các bot nói với nhau tối đa chừng này tin
 	// rồi dừng, chờ người nói tiếp. Chặn vòng lặp bot-bot đốt quota.
@@ -260,11 +262,11 @@ func (a *AgentService) ReplyDM(ctx context.Context, uid, channel string, seq int
 		return nil
 	}
 	// Trần câu trả lời mỗi ngày đếm chung mọi kênh, vì chi phí tính theo người.
-	allowed, err := a.consumeDMBudget(ctx, ref, wall)
+	allowed, quota, err := a.consumeDMBudget(ctx, uid, wall)
 	if err != nil {
 		return err
 	}
-	reply, image := agentBudgetReply, ""
+	reply, image := dmLimitReply(quota), ""
 	if allowed {
 		reply, image, err = a.dmAnswer(ctx, uid, ch, seq, stringValue(d["name"]), stringValue(d["persona"]), wall)
 		// Chạm trần chi phí giữa chừng (kể cả sau vòng tool đầu) thì vẫn trả câu
@@ -310,13 +312,20 @@ func (a *AgentService) redeliverDMReply(ctx context.Context, uid string, ch agen
 	return a.deliverDMReply(ctx, uid, ch, reply)
 }
 
-// consumeDMBudget đếm câu trả lời chat riêng trong ngày (giờ VN) trên doc bot.
-func (a *AgentService) consumeDMBudget(ctx context.Context, ref *firestore.DocumentRef, wall time.Time) (bool, error) {
+// consumeDMBudget đếm câu trả lời chat riêng trong ngày (giờ VN) trên doc bot,
+// chặn ở hạn mức theo km hôm nay. Km đọc ngoài transaction: hai tin cùng lúc
+// vẫn bị transaction chặn ở cùng một max, còn km đổi giữa chừng (buổi chạy mới
+// đồng bộ, buổi trùng bị bỏ) chỉ lệch mốc ở đúng tin đó.
+func (a *AgentService) consumeDMBudget(ctx context.Context, uid string, wall time.Time) (bool, agentDMQuota, error) {
 	lim, err := a.store.limits(ctx)
 	if err != nil {
-		return false, err
+		return false, agentDMQuota{}, err
 	}
-	allowed := false
+	q, err := a.store.dmQuota(ctx, lim, uid, wall)
+	if err != nil {
+		return false, agentDMQuota{}, err
+	}
+	ref, allowed := a.store.agentRef(uid), false
 	err = a.store.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		doc, err := tx.Get(ref)
 		if err != nil {
@@ -326,12 +335,12 @@ func (a *AgentService) consumeDMBudget(ctx context.Context, ref *firestore.Docum
 		if stringValue(doc.Data()["dmDay"]) == day {
 			count = int64(number(doc.Data()["dmDayCount"]))
 		}
-		if allowed = count < lim.dmDailyMax; !allowed {
+		if allowed = count < q.max; !allowed {
 			return nil
 		}
 		return tx.Update(ref, []firestore.Update{{Path: "dmDay", Value: day}, {Path: "dmDayCount", Value: count + 1}})
 	})
-	return allowed, err
+	return allowed, q, err
 }
 
 // dmAnswer trả câu trả lời và đường dẫn ảnh bot vẽ cho tin này (rỗng là không

@@ -201,13 +201,13 @@ func TestEmulatorAgentTelegramDMChannel(t *testing.T) {
 func TestEmulatorAgentDMDailyCapShared(t *testing.T) {
 	c := newChannelEnv(t)
 	c.createBot("an", "Sóc", "")
-	if _, err := c.store.db.Doc("agents/an").Update(context.Background(), []firestore.Update{{Path: "dmDay", Value: vnDay(c.clock)}, {Path: "dmDayCount", Value: agentDMDailyMax - 1}}); err != nil {
+	if _, err := c.store.db.Doc("agents/an").Update(context.Background(), []firestore.Update{{Path: "dmDay", Value: vnDay(c.clock)}, {Path: "dmDayCount", Value: agentDMBaseDaily - 1}}); err != nil {
 		t.Fatal(err)
 	}
 	c.tgDM("an", "câu cuối hôm nay")
 	c.llm.script = []*genai.GenerateContentResponse{llmText("ok")}
 	c.mustRun("/tasks/agent-dm", c.lastTask("/tasks/agent-dm").Payload)
-	if got := int64(number(c.doc("agents/an")["dmDayCount"])); got != agentDMDailyMax {
+	if got := int64(number(c.doc("agents/an")["dmDayCount"])); got != agentDMBaseDaily {
 		t.Fatalf("Telegram phải đếm vào trần chung: dmDayCount %d", got)
 	}
 
@@ -215,7 +215,7 @@ func TestEmulatorAgentDMDailyCapShared(t *testing.T) {
 	c.want(c.call("an", "POST", "/v1/agents/me/dm", map[string]any{"text": "còn nói được không"}, ""), 200, "")
 	calls := len(c.llm.calls)
 	c.mustRun("/tasks/agent-dm", c.lastTask("/tasks/agent-dm").Payload)
-	if msgs := messages(t, c.call("an", "GET", "/v1/agents/me/dm", nil, "")); len(c.llm.calls) != calls || msgs[0]["text"] != agentBudgetReply {
+	if msgs := messages(t, c.call("an", "GET", "/v1/agents/me/dm", nil, "")); len(c.llm.calls) != calls || msgs[0]["text"] != noRunDMLimitReply {
 		t.Fatalf("app phải hết trần sau khi Telegram dùng câu cuối: %v", msgs[0])
 	}
 
@@ -223,7 +223,7 @@ func TestEmulatorAgentDMDailyCapShared(t *testing.T) {
 	c.tick(time.Second)
 	c.tgDM("an", "thế còn đây")
 	c.mustRun("/tasks/agent-dm", c.lastTask("/tasks/agent-dm").Payload)
-	if last := c.sent[len(c.sent)-1]; len(c.llm.calls) != calls || last.reply.Text != agentBudgetReply {
+	if last := c.sent[len(c.sent)-1]; len(c.llm.calls) != calls || last.reply.Text != noRunDMLimitReply {
 		t.Fatalf("Telegram khi hết trần: %+v", last)
 	}
 }

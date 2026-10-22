@@ -41,9 +41,18 @@ var agentConfigFields = []agentConfigField{
 			"0 là không giới hạn. Không tính 3i trong group Telegram và coach. Tiền tính theo bảng giá model bên dưới.",
 	},
 	{
-		Key: "dmDailyMax", Label: "Câu trả lời chat riêng mỗi người mỗi ngày", Kind: "int", Unit: "câu/người/ngày", Min: 0, Max: 1000, Default: agentDMDailyMax,
-		Help: "Mỗi người nhận tối đa chừng này câu trả lời từ bot của mình trong chat riêng mỗi ngày (giờ VN). Hết lượt thì bot trả câu nghỉ, 0h đếm lại. " +
+		Key: "dmDailyMax", Label: "Trần câu trả lời chat riêng mỗi người mỗi ngày", Kind: "int", Unit: "câu/người/ngày", Min: 0, Max: 1000, Default: agentDMDailyMax,
+		Help: "Câu sẵn cộng câu thưởng theo km (hai dòng dưới) không vượt quá số này, chạy bao xa cũng vậy. Hết lượt thì bot trả câu nghỉ, 0h giờ VN đếm lại. " +
 			"Một câu trả lời gọi AI tối đa 3 lần (khi bot cần nhớ, quên hay tra web), nên đây là chỗ chặn một người tiêu quá nhiều. 0 thì bot chỉ trả câu nghỉ, không gọi AI.",
+	},
+	{
+		Key: "dmBaseDaily", Label: "Câu trả lời chat riêng có sẵn mỗi ngày", Kind: "int", Unit: "câu/người/ngày", Min: 0, Max: 1000, Default: agentDMBaseDaily,
+		Help: "Mỗi người có sẵn chừng này câu trả lời trong chat riêng mỗi ngày (giờ VN), chưa cần chạy. App và Telegram đếm chung.",
+	},
+	{
+		Key: "dmPerKm", Label: "Câu trả lời thêm cho mỗi km chạy", Kind: "int", Unit: "câu/km", Min: 0, Max: 1000, Default: agentDMPerKm,
+		Help: "Mỗi km chạy trọn trong ngày (giờ VN) mở thêm chừng này câu: 4,1 km tính 4 km. Km tính theo buổi chạy đã đồng bộ, cùng số km với lượt vẽ ảnh. " +
+			"Hết lượt mà còn mốc km thì câu nghỉ của bot chỉ chủ chạy thêm bao nhiêu. 0 là không thưởng theo km.",
 	},
 	{
 		Key: "roomDailyMax", Label: "Tin bot trong phòng mỗi ngày", Kind: "int", Unit: "tin/ngày, cả phòng", Min: 0, Max: 5000, Default: agentRoomDailyMax,
@@ -81,10 +90,13 @@ func agentConfigInvalid(format string, args ...any) error {
 // agentLimits là các giới hạn đếm theo tin, đọc một lần cho cả task.
 type agentLimits struct {
 	dmDailyMax, roomDailyMax, chainMax int64
+	// dmBase và dmPerKm cùng dmDailyMax tính hạn mức chat riêng theo km (xem
+	// agentDMQuota).
+	dmBase, dmPerKm int64
 }
 
 func defaultAgentLimits() agentLimits {
-	return agentLimits{dmDailyMax: agentDMDailyMax, roomDailyMax: agentRoomDailyMax, chainMax: agentChainMax}
+	return agentLimits{dmDailyMax: agentDMDailyMax, roomDailyMax: agentRoomDailyMax, chainMax: agentChainMax, dmBase: agentDMBaseDaily, dmPerKm: agentDMPerKm}
 }
 
 // agentConfigNumber là giá trị đang hiệu lực của field: giá trị đã lưu nếu hợp
@@ -129,7 +141,7 @@ func parseAgentLimits(ctx context.Context, cfg map[string]any) agentLimits {
 		f, _ := agentConfigFieldByKey(key)
 		return int64(agentConfigNumber(ctx, cfg, f))
 	}
-	return agentLimits{dmDailyMax: get("dmDailyMax"), roomDailyMax: get("roomDailyMax"), chainMax: get("chainMax")}
+	return agentLimits{dmDailyMax: get("dmDailyMax"), roomDailyMax: get("roomDailyMax"), chainMax: get("chainMax"), dmBase: get("dmBaseDaily"), dmPerKm: get("dmPerKm")}
 }
 
 func (s *AgentStore) configRef() *firestore.DocumentRef {

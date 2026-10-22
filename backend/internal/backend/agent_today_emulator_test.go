@@ -44,19 +44,19 @@ func TestEmulatorAgentMeToday(t *testing.T) {
 	if got := e.meToday("dung"); got != nil {
 		t.Fatalf("người chưa được mời mà có today: %v", got)
 	}
-	e.wantToday("cuong", 0, 100, 0, 300, nil)
+	e.wantToday("cuong", 0, 10, 0, 300, nil)
 
 	// Một câu trả lời thật làm dmUsed lên 1.
 	e.createBot("an", "Sóc", "")
 	e.want(e.call("an", "POST", "/v1/agents/me/dm", map[string]any{"text": "chào"}, ""), 200, "")
 	e.llm.script = []*genai.GenerateContentResponse{llmText("Chào An")}
 	e.mustRun("/tasks/agent-dm", agentDMTask{UID: "an", Seq: 1})
-	e.wantToday("an", 1, 100, 0, 300, nil)
+	e.wantToday("an", 1, 10, 0, 300, nil)
 
 	today := vnDay(e.clock)
 	e.merge("agents/an", map[string]any{"dmDay": today, "dmDayCount": 3})
 	e.merge("agentRooms/main", map[string]any{"day": today, "dayCount": 12})
-	e.wantToday("an", 3, 100, 12, 300, nil)
+	e.wantToday("an", 3, 10, 12, 300, nil)
 
 	// Admin hạ dmDailyMax về 3: dmMax theo config, đủ lượt là dm_limit.
 	e.merge("agentState/config", map[string]any{"dmDailyMax": 3, "roomDailyMax": 50})
