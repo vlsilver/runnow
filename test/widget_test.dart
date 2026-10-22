@@ -14,6 +14,8 @@ import 'package:myrun/src/run_contracts/run_contract_repository.dart';
 import 'package:myrun/src/theme_controller.dart';
 
 void main() {
+  var meReads = 0;
+
   /// Bật app ở cỡ điện thoại để dùng bottom nav (layout web rộng có rail
   /// riêng làm thay đổi cây widget/scroll). [agent] null là chưa tải được hồ
   /// sơ bot, như khi chưa đăng nhập.
@@ -51,7 +53,10 @@ void main() {
           themeControllerProvider.overrideWith(
             (ref) => ThemeController(loadFromStorage: false),
           ),
-          agentMeProvider.overrideWith((ref) async => agent),
+          agentMeProvider.overrideWith((ref) async {
+            meReads++;
+            return agent;
+          }),
           agentRoomPreviewProvider.overrideWith(
             (ref) async => (messages: const <AgentRoomMessage>[], bots: 0),
           ),
@@ -107,8 +112,11 @@ void main() {
     expect(find.text('Chạy'), findsOneWidget);
     expect(find.byTooltip('Bắt đầu chạy'), findsNothing);
 
+    // Bấm tab là đọc lại hồ sơ bot: chạy trong app xong mở tab thấy km mới.
+    final reads = meReads;
     await tester.tap(find.text('MyBot'));
     await tester.pumpAndSettle();
+    expect(meReads, reads + 1);
     expect(find.text('Sóc'), findsOneWidget);
     expect(find.text('Chat riêng'), findsOneWidget);
     // Vẫn ở trong shell: thanh tab còn đó.

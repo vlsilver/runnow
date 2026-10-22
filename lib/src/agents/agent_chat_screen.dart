@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/agents/agent_chat_controller.dart';
 import 'package:myrun/src/agents/agent_consent_screen.dart';
+import 'package:myrun/src/agents/agent_km.dart';
 import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -100,11 +101,27 @@ class _AgentDMScreenState extends _AgentChatState<AgentDMScreen, AgentMessage> {
 
   @override
   Widget? notice(BuildContext context) => switch (_today) {
-    AgentToday(resting: AgentResting.dmLimit, :final dmMax) => _RestNotice(
-      icon: Icons.schedule_rounded,
-      title: 'Hết $dmMax tin hôm nay',
-      detail: 'Chat lại được lúc 0h. Bot vẫn nói trong phòng bot.',
-    ),
+    AgentToday(
+      resting: AgentResting.dmLimit,
+      :final dmMax,
+      dmByKm: AgentDMByKm(:final runKm, :final nextKm?, :final nextMax?),
+    ) =>
+      _RestNotice(
+        icon: Icons.trending_up_rounded,
+        title: 'Hết $dmMax tin hôm nay',
+        detail:
+            'Chạy thêm ${formatAgentKm(agentKmLeft(nextKm, runKm))} km để có '
+            'thêm ${nextMax - dmMax} tin. Không thì 0h mở lại.',
+      ),
+    AgentToday(resting: AgentResting.dmLimit, :final dmMax, :final dmByKm) =>
+      _RestNotice(
+        icon: Icons.schedule_rounded,
+        title: 'Hết $dmMax tin hôm nay',
+        // Có dmByKm mà hết mốc là đã chạm trần; backend cũ thì không biết.
+        detail: dmByKm != null
+            ? 'Đã mở tối đa. Chat lại được lúc 0h, bot vẫn nói trong phòng bot.'
+            : 'Chat lại được lúc 0h. Bot vẫn nói trong phòng bot.',
+      ),
     AgentToday(resting: AgentResting.budget) => _RestNotice(
       icon: Icons.bedtime_outlined,
       title: '$_botName đang nghỉ tới 0h',

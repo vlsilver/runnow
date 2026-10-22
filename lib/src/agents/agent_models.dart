@@ -230,10 +230,12 @@ class AgentToday {
     required this.roomUsed,
     required this.roomMax,
     this.resting,
+    this.dmByKm,
     this.images,
   });
 
   factory AgentToday.fromJson(Map<String, dynamic> json) {
+    final dmByKm = json['dmByKm'];
     final images = json['images'];
     return AgentToday(
       dmUsed: _int(json['dmUsed']),
@@ -247,6 +249,9 @@ class AgentToday {
         'dm_limit' => AgentResting.dmLimit,
         _ => null,
       },
+      dmByKm: dmByKm is Map<String, dynamic>
+          ? AgentDMByKm.fromJson(dmByKm)
+          : null,
       images: images is Map<String, dynamic>
           ? AgentImagesToday.fromJson(images)
           : null,
@@ -261,8 +266,39 @@ class AgentToday {
   /// null là bot đang trả lời bình thường.
   final AgentResting? resting;
 
+  /// Cách tính [dmMax] theo km hôm nay. null khi backend cũ hay chưa tạo bot.
+  final AgentDMByKm? dmByKm;
+
   /// Lượt vẽ ảnh hôm nay. null khi backend chưa bật vẽ ảnh hay chưa tạo bot.
   final AgentImagesToday? images;
+}
+
+/// dmMax = min(trần, [base] + [perKm] × số km chạy trọn hôm nay, giờ VN).
+class AgentDMByKm {
+  const AgentDMByKm({
+    required this.base,
+    required this.perKm,
+    required this.runKm,
+    this.nextKm,
+    this.nextMax,
+  });
+
+  factory AgentDMByKm.fromJson(Map<String, dynamic> json) => AgentDMByKm(
+    base: _int(json['base']),
+    perKm: _int(json['perKm']),
+    runKm: _double(json['runKm']),
+    nextKm: json['nextKm'] is num ? _double(json['nextKm']) : null,
+    nextMax: json['nextMax'] is num ? _int(json['nextMax']) : null,
+  );
+
+  final int base;
+  final int perKm;
+  final double runKm;
+
+  /// Mốc kế tiếp: chạy đủ [nextKm] km thì dmMax thành [nextMax]. null khi chạy
+  /// thêm cũng không mở thêm tin (đã chạm trần).
+  final double? nextKm;
+  final int? nextMax;
 }
 
 /// Lượt vẽ ảnh hôm nay theo km chủ đã chạy (giờ VN), 0h đếm lại.

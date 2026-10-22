@@ -390,11 +390,56 @@ void main() {
     expect(find.text('Cú đang nghỉ'), findsNothing);
   });
 
-  // Số km còn thiếu tính tay: 5 − 2,6 = 2,4; 5 − 4,1 = 0,9; 1 − 0 = 1.
+  // 4,1 km: 10 câu sẵn + 4 km × 10 = 50 tin; mốc 1 km = 3 ảnh. Mốc kế tiếp
+  // của tin và ảnh cùng ở 5 km: 60 − 50 = 10 tin, 5 − 3 = 2 ảnh, 5 − 4,1 = 0,9.
+  testWidgets(
+    'km card: 4,1 km opens 50 messages and 3 images, says what is next',
+    (tester) async {
+      backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+      backend.today = {
+        'dmUsed': 0,
+        'dmMax': 50,
+        'roomUsed': 0,
+        'roomMax': 300,
+        'resting': null,
+        'dmByKm': {
+          'base': 10,
+          'perKm': 10,
+          'runKm': 4.1,
+          'nextKm': 5,
+          'nextMax': 60,
+        },
+        'images': {
+          'used': 1,
+          'limit': 3,
+          'runKm': 4.1,
+          'nextKm': 5,
+          'nextLimit': 5,
+        },
+      };
+      await pumpMyBot(tester);
+      expect(find.text('KM HÔM NAY'), findsOneWidget);
+      expect(find.text('4,1'), findsOneWidget);
+      expect(find.text('50 tin chat'), findsOneWidget);
+      expect(find.text('10 sẵn + 40 từ 4 km'), findsOneWidget);
+      expect(find.text('3 ảnh vẽ'), findsOneWidget);
+      expect(find.text('đã vẽ 1'), findsOneWidget);
+      expect(
+        find.text(
+          'Chạy thêm 0,9 km để có thêm 10 tin và 2 ảnh.',
+          findRichText: true,
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  // Số km còn thiếu tính tay: 5 − 2,6 = 2,4; 5 − 4,1 = 0,9; 1 − 0 = 1. Ảnh
+  // thêm: 5 − 3 = 2, 3 − 0 = 3.
   for (final (runKm, nextKm, nextLimit, used, limit, progress) in [
-    (2.6, 5, 5, 1, 3, 'Chạy thêm 2,4 km để vẽ được 5 ảnh hôm nay'),
-    (4.1, 5, 5, 3, 3, 'Chạy thêm 0,9 km để vẽ được 5 ảnh hôm nay'),
-    (0.0, 1, 3, 0, 0, 'Chạy thêm 1 km để vẽ được 3 ảnh hôm nay'),
+    (2.6, 5, 5, 1, 3, 'Chạy thêm 2,4 km để vẽ thêm 2 ảnh.'),
+    (4.1, 5, 5, 3, 3, 'Chạy thêm 0,9 km để vẽ thêm 2 ảnh.'),
+    (0.0, 1, 3, 0, 0, 'Chạy thêm 1 km để vẽ thêm 3 ảnh.'),
   ]) {
     testWidgets('ran $runKm km: shows $used/$limit images and "$progress"', (
       tester,
@@ -417,7 +462,158 @@ void main() {
       await pumpMyBot(tester);
       expect(find.text('$used/$limit'), findsOneWidget);
       expect(find.text('ảnh hôm nay'), findsOneWidget);
-      expect(find.text(progress), findsOneWidget);
+      expect(find.text(progress, findRichText: true), findsOneWidget);
+      // Backend chưa trả dmByKm thì không đoán số tin theo km.
+      expect(find.textContaining('tin chat'), findsNothing);
+    });
+  }
+
+  // Số tính tay theo 10 câu sẵn + 10 câu mỗi km, mốc ảnh 1 km → 3, 5 → 5,
+  // 10 → 10. 4,96 km hiện 4,9 (làm tròn xuống) mà còn thiếu 0,1 (làm tròn lên).
+  for (final (name, today, texts) in [
+    (
+      '0 km',
+      {
+        'dmMax': 10,
+        'dmByKm': {
+          'base': 10,
+          'perKm': 10,
+          'runKm': 0,
+          'nextKm': 1,
+          'nextMax': 20,
+        },
+        'images': {
+          'used': 0,
+          'limit': 0,
+          'runKm': 0,
+          'nextKm': 1,
+          'nextLimit': 3,
+        },
+      },
+      [
+        '10 tin chat',
+        '10 sẵn mỗi ngày',
+        '0 ảnh vẽ',
+        'Chạy đủ 1 km để mở',
+        'Chạy thêm 1 km để có thêm 10 tin và 3 ảnh.',
+      ],
+    ),
+    (
+      '9,5 km, tin chạm trần',
+      {
+        'dmMax': 100,
+        'dmByKm': {
+          'base': 10,
+          'perKm': 10,
+          'runKm': 9.5,
+          'nextKm': null,
+          'nextMax': null,
+        },
+        'images': {
+          'used': 2,
+          'limit': 5,
+          'runKm': 9.5,
+          'nextKm': 10,
+          'nextLimit': 10,
+        },
+      },
+      [
+        '9,5',
+        '100 tin chat',
+        'Đã đủ tối đa 100 tin',
+        '5 ảnh vẽ',
+        'Chạy thêm 0,5 km để vẽ thêm 5 ảnh.',
+      ],
+    ),
+    (
+      '12,3 km, hết mốc',
+      {
+        'dmMax': 100,
+        'dmByKm': {
+          'base': 10,
+          'perKm': 10,
+          'runKm': 12.3,
+          'nextKm': null,
+          'nextMax': null,
+        },
+        'images': {
+          'used': 4,
+          'limit': 10,
+          'runKm': 12.3,
+          'nextKm': null,
+          'nextLimit': null,
+        },
+      },
+      ['12,3', 'Mốc cao nhất', 'Đã mở hết tin và ảnh hôm nay.'],
+    ),
+    (
+      'admin tắt thưởng km',
+      {
+        'dmMax': 10,
+        'dmByKm': {
+          'base': 10,
+          'perKm': 0,
+          'runKm': 3.0,
+          'nextKm': null,
+          'nextMax': null,
+        },
+        'images': {
+          'used': 0,
+          'limit': 3,
+          'runKm': 3.0,
+          'nextKm': 5,
+          'nextLimit': 5,
+        },
+      },
+      ['3', '3 ảnh vẽ', 'Chạy thêm 2 km để vẽ thêm 2 ảnh.'],
+    ),
+    (
+      '4,96 km, tắt vẽ ảnh',
+      {
+        'dmMax': 50,
+        'dmByKm': {
+          'base': 10,
+          'perKm': 10,
+          'runKm': 4.96,
+          'nextKm': 5,
+          'nextMax': 60,
+        },
+      },
+      [
+        '4,9',
+        '50 tin chat',
+        '10 sẵn + 40 từ 4 km',
+        'Chạy thêm 0,1 km để có thêm 10 tin.',
+      ],
+    ),
+  ]) {
+    testWidgets('km card $name', (tester) async {
+      backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+      backend.today = {
+        'dmUsed': 0,
+        'roomUsed': 0,
+        'roomMax': 300,
+        'resting': null,
+        ...today,
+      };
+      await pumpMyBot(tester);
+      expect(find.text('KM HÔM NAY'), findsOneWidget);
+      for (final text in texts) {
+        expect(
+          find.text(text, findRichText: true),
+          findsOneWidget,
+          reason: text,
+        );
+      }
+      if (!today.containsKey('images')) {
+        expect(find.textContaining('ảnh vẽ'), findsNothing);
+      }
+      if (name == 'admin tắt thưởng km') {
+        expect(find.textContaining('tin chat'), findsNothing);
+      }
+      if (name == '9,5 km, tin chạm trần') {
+        expect(find.textContaining('thêm 0,5 km để có thêm'), findsNothing);
+      }
     });
   }
 
@@ -445,7 +641,10 @@ void main() {
     await pumpMyBot(tester);
     expect(find.text('4/10'), findsOneWidget);
     expect(find.textContaining('Chạy thêm'), findsNothing);
-    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(
+      find.text('Đã mở hết ảnh hôm nay.', findRichText: true),
+      findsOneWidget,
+    );
 
     backend.today = today;
     await tester.tap(find.text('Chat riêng'));
@@ -454,6 +653,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('ảnh hôm nay'), findsNothing);
     expect(find.text('0/100'), findsOneWidget);
+    expect(find.text('KM HÔM NAY'), findsNothing);
   });
 
   testWidgets('old backend without today: no quota, no banner', (tester) async {
@@ -486,11 +686,13 @@ void main() {
     expect(find.textContaining('Telegram'), findsNothing);
     expect(backend.calls, isNot(contains('GET /v1/telegram/link')));
 
-    // Quay về app cũng không đọc thêm gì.
+    // Quay về app: đọc lại hồ sơ một lần cho km và số tin, không hỏi liên
+    // kết Telegram, không đọc lần hai.
     final reads = meReads();
     resumeApp(tester);
     await tester.pump(const Duration(seconds: 10));
-    expect(meReads(), reads);
+    expect(meReads(), reads + 1);
+    expect(backend.calls, isNot(contains('GET /v1/telegram/link')));
   });
 
   testWidgets('bot running on Telegram opens t.me/<username>', (tester) async {
@@ -560,6 +762,36 @@ void main() {
     await close(tester);
   });
 
+  // Chạy xong (Strava đồng bộ) rồi quay lại app: thẻ km và số tin theo kịp.
+  testWidgets('back in the app, the km card is read again', (tester) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    Map<String, dynamic> today(double runKm, int dmMax, int nextMax) => {
+      'dmUsed': 10,
+      'dmMax': dmMax,
+      'roomUsed': 0,
+      'roomMax': 300,
+      'resting': null,
+      'dmByKm': {
+        'base': 10,
+        'perKm': 10,
+        'runKm': runKm,
+        'nextKm': runKm.floor() + 1,
+        'nextMax': nextMax,
+      },
+    };
+    backend.today = today(0, 10, 20);
+    await pumpMyBot(tester);
+    expect(find.text('10 tin chat'), findsOneWidget);
+
+    backend.today = today(3.2, 40, 50);
+    resumeApp(tester);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('3,2'), findsOneWidget);
+    expect(find.text('40 tin chat'), findsOneWidget);
+    expect(find.text('10/40'), findsOneWidget);
+  });
+
   testWidgets('returning from Telegram rereads me, once more after a delay', (
     tester,
   ) async {
@@ -582,10 +814,11 @@ void main() {
     expect(meReads(), reads + 2);
     expect(find.text('@cu_42_bot'), findsOneWidget);
 
-    // Không poll tiếp, kể cả khi quay về lần nữa lúc bot đã chạy.
+    // Quay về lần nữa lúc bot đã chạy: đọc lại một lần vì km và số tin có thể
+    // đã đổi, nhưng không đọc lần hai sau ít giây.
     resumeApp(tester);
     await tester.pump(const Duration(minutes: 1));
-    expect(meReads(), reads + 2);
+    expect(meReads(), reads + 3);
     expect(find.text('Đưa bot vào group PSC'), findsNothing);
   });
 
@@ -612,12 +845,12 @@ void main() {
     expect(find.text('Đưa bot vào group PSC'), findsNothing);
     expect(find.text('Ở GROUP PSC'), findsOneWidget);
 
-    // Đã ở PSC: quay về không đọc thêm.
+    // Đã ở PSC: quay về chỉ đọc lại một lần, không đọc lần hai.
     await tester.pump(const Duration(seconds: 5));
     final after = meReads();
     resumeApp(tester);
     await tester.pump(const Duration(minutes: 1));
-    expect(meReads(), after);
+    expect(meReads(), after + 1);
   });
 
   testWidgets('tab shows three memories, the full list shows all', (
@@ -890,6 +1123,49 @@ void main() {
     expect(find.text('Còn 17 tin'), findsOneWidget);
     await close(tester);
   });
+
+  // 5 − 4,1 = 0,9 km; 60 − 50 = 10 tin.
+  for (final (name, dmByKm, title, detail) in [
+    (
+      'still a km milestone',
+      {'base': 10, 'perKm': 10, 'runKm': 4.1, 'nextKm': 5, 'nextMax': 60},
+      'Hết 50 tin hôm nay',
+      'Chạy thêm 0,9 km để có thêm 10 tin. Không thì 0h mở lại.',
+    ),
+    (
+      'already at the cap',
+      {'base': 10, 'perKm': 10, 'runKm': 12.0, 'nextKm': null, 'nextMax': null},
+      'Hết 50 tin hôm nay',
+      'Đã mở tối đa. Chat lại được lúc 0h, bot vẫn nói trong phòng bot.',
+    ),
+    (
+      'old backend',
+      null,
+      'Hết 50 tin hôm nay',
+      'Chat lại được lúc 0h. Bot vẫn nói trong phòng bot.',
+    ),
+  ]) {
+    testWidgets('DM out of messages, $name: "$detail"', (tester) async {
+      backend.agent = {'name': 'Sóc', 'persona': '', 'created': true};
+      backend.today = {
+        'dmUsed': 50,
+        'dmMax': 50,
+        'roomUsed': 0,
+        'roomMax': 300,
+        'resting': 'dm_limit',
+        'dmByKm': ?dmByKm,
+      };
+      backend.dm = {'messages': [], 'waiting': false};
+      await pump(tester, const AgentDMScreen());
+      expect(find.text(title), findsOneWidget);
+      expect(find.text(detail), findsOneWidget);
+      expect(
+        find.byIcon(Icons.trending_up_rounded),
+        name == 'still a km milestone' ? findsOneWidget : findsNothing,
+      );
+      await close(tester);
+    });
+  }
 
   testWidgets('DM at the daily limit locks the composer until midnight', (
     tester,

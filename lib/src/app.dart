@@ -969,7 +969,12 @@ class _Scaffold extends ConsumerWidget {
                         icon: Icons.smart_toy_outlined,
                         selectedIcon: Icons.smart_toy_rounded,
                         label: 'MyBot',
-                        onTap: () => shell.goBranch(6),
+                        // Tab luôn sống trong IndexedStack: đọc lại để chạy
+                        // xong mở tab là thấy km và số tin mới.
+                        onTap: () {
+                          ref.invalidate(agentMeProvider);
+                          shell.goBranch(6);
+                        },
                       ),
                     )
                   else

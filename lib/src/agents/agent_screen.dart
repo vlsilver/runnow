@@ -73,13 +73,15 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
     final telegram = ref.read(agentMeProvider).value?.telegram;
+    // Chạy xong (Strava đồng bộ) rồi quay lại: km, số tin và lượt ảnh đã đổi.
+    // Màn chat riêng mở đè lên tab này nên cũng theo kịp.
+    ref.invalidate(agentMeProvider);
     if (telegram == null || (telegram.running && !telegram.canJoinPsc)) return;
     // Bấm Start bên Telegram rồi quay lại.
     if (!telegram.linked) _telegramLink.onResume();
-    // Vừa tạo bot hay vừa thêm bot vào PSC bên Telegram: đọc lại ngay, rồi một
-    // lần nữa sau ít giây vì backend ghi chậm hơn. Không poll tiếp; lần quay
-    // lại sau lại đọc.
-    ref.invalidate(agentMeProvider);
+    // Vừa tạo bot hay vừa thêm bot vào PSC bên Telegram: đọc thêm một lần sau
+    // ít giây vì backend ghi chậm hơn. Không poll tiếp; lần quay lại sau lại
+    // đọc.
     _telegramRecheck?.cancel();
     _telegramRecheck = Timer(
       _telegramRecheckAfter,
@@ -316,6 +318,11 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
               onChat: () => _open('/agent/dm'),
               onRoom: () => _open('/agent/room'),
             ),
+            if (data.today case final today?
+                when today.dmByKm != null || today.images != null) ...[
+              const SizedBox(height: 12),
+              _KmTodayCard(today: today),
+            ],
             if (data.telegram case final telegram?) ...[
               const SizedBox(height: 12),
               ListenableBuilder(
@@ -576,18 +583,6 @@ class _BotHeroCard extends StatelessWidget {
             ),
           ],
         ),
-        if (images case AgentImagesToday(
-          :final nextKm?,
-          :final nextLimit?,
-        )) ...[
-          const SizedBox(height: 14),
-          _ImageProgress(
-            palette: dark,
-            runKm: images.runKm,
-            nextKm: nextKm,
-            nextLimit: nextLimit,
-          ),
-        ],
         const SizedBox(height: 16),
         Row(
           children: [
@@ -653,46 +648,329 @@ class _HeroChip extends StatelessWidget {
   }
 }
 
-/// Thanh km tới mốc ảnh kế tiếp: bot chỉ vẽ khi chủ chạy, nên cho thấy chạy
-/// thêm bao nhiêu thì được vẽ thêm.
-class _ImageProgress extends StatelessWidget {
-  const _ImageProgress({
+/// Km chạy hôm nay mở được bao nhiêu tin chat và ảnh, chạy thêm bao nhiêu thì
+/// mở tiếp. Số và mốc đều lấy từ backend (dmByKm, images), app không giữ bảng
+/// mốc, để đổi mốc chỉ cần sửa backend.
+class _KmTodayCard extends StatelessWidget {
+  const _KmTodayCard({required this.today});
+
+  final AgentToday today;
+
+  /// Thước vẽ tới 10 km; chạy xa hơn thì thước đầy.
+  static const _rulerKm = 10;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final images = today.images;
+    // perKm 0 là admin tắt thưởng theo km: số tin không đổi theo km nên bỏ ô.
+    final dm = switch (today.dmByKm) {
+      final byKm? when byKm.perKm > 0 => byKm,
+      _ => null,
+    };
+    final runKm = today.dmByKm?.runKm ?? images?.runKm ?? 0;
+    // Làm tròn xuống, để 4,96 km không hiện thành 5 km khi chưa mở mốc 5.
+    final shownKm = (runKm * 10 + 1e-9).floor() / 10;
+    return _Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Expanded(child: _Caps('Km hôm nay')),
+                Text(
+                  'Đếm lại lúc 0h',
+                  style: TextStyle(
+                    color: palette.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  formatAgentKm(shownKm),
+                  style: const TextStyle(
+                    fontSize: 46,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'km',
+                  style: TextStyle(
+                    color: palette.textMuted,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _KmRuler(palette: palette, runKm: runKm, maxKm: _rulerKm),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (dm != null)
+                  Expanded(
+                    child: _KmTile(
+                      palette: palette,
+                      value: '${today.dmMax} tin chat',
+                      detail: _dmDetail(dm),
+                    ),
+                  ),
+                if (dm != null && images != null) const SizedBox(width: 10),
+                if (images != null)
+                  Expanded(
+                    child: _KmTile(
+                      palette: palette,
+                      value: '${images.limit} ảnh vẽ',
+                      detail: _imageDetail(images),
+                    ),
+                  ),
+              ],
+            ),
+            for (final hint in _hints(dm, images)) ...[
+              const SizedBox(height: 10),
+              hint,
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _dmDetail(AgentDMByKm dm) {
+    final fullKm = (dm.runKm + 1e-9).floor();
+    if (dm.nextKm == null) return 'Đã đủ tối đa ${today.dmMax} tin';
+    if (fullKm == 0) return '${dm.base} sẵn mỗi ngày';
+    return '${dm.base} sẵn + ${today.dmMax - dm.base} từ $fullKm km';
+  }
+
+  String _imageDetail(AgentImagesToday images) => switch (images) {
+    AgentImagesToday(limit: 0, :final nextKm?) =>
+      'Chạy đủ ${formatAgentKm(nextKm)} km để mở',
+    AgentImagesToday(nextKm: null) => 'Mốc cao nhất',
+    _ => 'đã vẽ ${images.used}',
+  };
+
+  /// Mốc tin và mốc ảnh cùng km thì gộp một dòng; hết cả hai thì một dòng báo
+  /// đã mở hết.
+  List<Widget> _hints(AgentDMByKm? dm, AgentImagesToday? images) {
+    final dmNext = dm?.nextKm;
+    final moreDm = (dm?.nextMax ?? 0) - today.dmMax;
+    final imageNext = images?.nextKm;
+    final moreImages = (images?.nextLimit ?? 0) - (images?.limit ?? 0);
+    if (dmNext != null && dmNext == imageNext) {
+      return [
+        _KmHint(
+          runKm: dm!.runKm,
+          nextKm: dmNext,
+          rest: ' để có thêm $moreDm tin và $moreImages ảnh.',
+        ),
+      ];
+    }
+    final hints = [
+      if (dmNext != null)
+        _KmHint(
+          runKm: dm!.runKm,
+          nextKm: dmNext,
+          rest: ' để có thêm $moreDm tin.',
+        ),
+      if (imageNext != null)
+        _KmHint(
+          runKm: images!.runKm,
+          nextKm: imageNext,
+          rest: ' để vẽ thêm $moreImages ảnh.',
+        ),
+    ];
+    if (hints.isNotEmpty) return hints;
+    return [
+      _KmHint.done(
+        dm != null && images != null
+            ? 'Đã mở hết tin và ảnh hôm nay.'
+            : dm != null
+            ? 'Đã mở hết tin hôm nay.'
+            : 'Đã mở hết ảnh hôm nay.',
+      ),
+    ];
+  }
+}
+
+/// Thước km hôm nay, mỗi vạch là một km.
+class _KmRuler extends StatelessWidget {
+  const _KmRuler({
     required this.palette,
     required this.runKm,
-    required this.nextKm,
-    required this.nextLimit,
+    required this.maxKm,
   });
 
   final RunNowPalette palette;
   final double runKm;
-  final double nextKm;
-  final int nextLimit;
+  final int maxKm;
 
   @override
   Widget build(BuildContext context) {
-    final left = agentKmLeft(nextKm, runKm);
+    final label = TextStyle(
+      color: palette.textMuted,
+      fontSize: 11,
+      fontWeight: FontWeight.w700,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Chạy thêm ${formatAgentKm(left)} km để vẽ được $nextLimit ảnh hôm nay',
-          style: TextStyle(
-            color: palette.textMuted,
-            fontSize: 12.5,
-            fontWeight: FontWeight.w700,
+        SizedBox(
+          height: 10,
+          child: LayoutBuilder(
+            builder: (context, box) => ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: ColoredBox(
+                      color: palette.ink.withValues(alpha: 0.08),
+                    ),
+                  ),
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: box.maxWidth * (runKm / maxKm).clamp(0, 1),
+                    child: ColoredBox(color: palette.accent),
+                  ),
+                  for (var km = 1; km < maxKm; km++)
+                    Positioned(
+                      left: box.maxWidth * km / maxKm - 1,
+                      top: 0,
+                      bottom: 0,
+                      width: 2,
+                      child: ColoredBox(color: palette.glassStart),
+                    ),
+                ],
+              ),
+            ),
           ),
         ),
-        const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(999),
-          child: LinearProgressIndicator(
-            value: nextKm > 0 ? (runKm / nextKm).clamp(0, 1) : 0,
-            minHeight: 6,
-            backgroundColor: palette.ink.withValues(alpha: 0.12),
-            color: palette.accent,
-          ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Text('0', style: label),
+            const Spacer(),
+            Text('${maxKm ~/ 2}', style: label),
+            const Spacer(),
+            Text('$maxKm km', style: label),
+          ],
         ),
       ],
+    );
+  }
+}
+
+class _KmTile extends StatelessWidget {
+  const _KmTile({
+    required this.palette,
+    required this.value,
+    required this.detail,
+  });
+
+  final RunNowPalette palette;
+  final String value;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: palette.ink.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            detail,
+            style: TextStyle(
+              color: palette.textMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              height: 1.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Chạy thêm X km để …", hoặc một dòng có dấu tích khi đã mở hết.
+class _KmHint extends StatelessWidget {
+  const _KmHint({
+    required double this.runKm,
+    required double this.nextKm,
+    required this.rest,
+  }) : done = null;
+
+  const _KmHint.done(String this.done) : runKm = null, nextKm = null, rest = '';
+
+  final double? runKm;
+  final double? nextKm;
+  final String rest;
+  final String? done;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final (runKm, nextKm, done) = (this.runKm, this.nextKm, this.done);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: palette.accent.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            done != null
+                ? Icons.check_circle_outline_rounded
+                : Icons.trending_up_rounded,
+            size: 18,
+            color: palette.accentDeep,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              done != null
+                  ? TextSpan(text: done)
+                  : TextSpan(
+                      children: [
+                        TextSpan(
+                          text:
+                              'Chạy thêm ${formatAgentKm(agentKmLeft(nextKm!, runKm!))} km',
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                        TextSpan(text: rest),
+                      ],
+                    ),
+              style: const TextStyle(fontSize: 13, height: 1.35),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -972,7 +1250,8 @@ class _CreateBotCard extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Bot thay bạn nói chuyện trong phòng bot.',
+          'Bot thay bạn nói chuyện trong phòng bot. Mỗi km bạn chạy mở thêm '
+          'tin chat và lượt vẽ ảnh cho bot.',
           style: TextStyle(color: dark.textMuted, fontSize: 14, height: 1.4),
         ),
         const SizedBox(height: 16),
