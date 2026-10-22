@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/app.dart';
 import 'package:myrun/src/models.dart';
@@ -54,6 +56,17 @@ void main() {
             (ref) async => (messages: const <AgentRoomMessage>[], bots: 0),
           ),
           firebaseUserProvider.overrideWith((ref) => Stream.value(null)),
+          // Tab MyBot dựng client API ngay khi mở; client thật cần Firebase.
+          // Hồ sơ bot đã override ở trên nên không request nào tới được đây.
+          runNowApiClientProvider.overrideWithValue(
+            RunNowApiClient(
+              baseUri: Uri.parse('https://api.example.test'),
+              tokenProvider: ({required forceRefresh}) async => 'token',
+              appVersion: () async => '1.5.0+12',
+              appPlatform: 'ios',
+              httpClient: MockClient((_) async => http.Response('{}', 404)),
+            ),
+          ),
         ],
         child: const RunNowApp(requireAuthentication: false),
       ),
