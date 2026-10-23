@@ -58,7 +58,7 @@ void main() {
             return agent;
           }),
           agentRoomPreviewProvider.overrideWith(
-            (ref) async => (messages: const <AgentRoomMessage>[], bots: 0),
+            (ref) async => (messages: const <AgentRoomMessage>[], bots: const <String>[]),
           ),
           firebaseUserProvider.overrideWith((ref) => Stream.value(null)),
           // Tab MyBot dựng client API ngay khi mở; client thật cần Firebase.

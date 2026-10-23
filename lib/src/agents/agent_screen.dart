@@ -312,8 +312,6 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
           if (agent.created) ...[
             _BotHeroCard(
               agent: agent,
-              memoryCount: data.memories.length,
-              memoryLimit: data.memoryLimit,
               today: data.today,
               learning: !data.noLearn,
               inPsc: data.telegram?.inPsc ?? false,
@@ -347,6 +345,8 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
             const SizedBox(height: 22),
             _SectionLabel(
               'Bot biết gì về bạn',
+              icon: Icons.psychology_outlined,
+              count: '${data.memories.length}/${data.memoryLimit}',
               onSeeAll: data.memories.length > _previewCount
                   ? () => _open('/agent/memories')
                   : null,
@@ -369,6 +369,7 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
             const SizedBox(height: 22),
             _SectionLabel(
               'Bot tự học về bạn',
+              icon: Icons.auto_awesome_outlined,
               onSeeAll: data.learned.length > _previewCount
                   ? () => _open('/agent/learned')
                   : null,
@@ -388,12 +389,9 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
           if (agent.created) ...[
             const SizedBox(height: 22),
             _Card(
-              child: ListTile(
-                title: const Text(
-                  'Người đã chặn',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                trailing: const Icon(Icons.chevron_right_rounded),
+              child: _LinkRow(
+                icon: Icons.block_rounded,
+                text: 'Người đã chặn',
                 onTap: () => _open('/agent/blocks'),
               ),
             ),
@@ -464,8 +462,6 @@ class _Header extends StatelessWidget {
 class _BotHeroCard extends StatelessWidget {
   const _BotHeroCard({
     required this.agent,
-    required this.memoryCount,
-    required this.memoryLimit,
     required this.today,
     required this.learning,
     required this.inPsc,
@@ -474,8 +470,6 @@ class _BotHeroCard extends StatelessWidget {
   });
 
   final AgentProfile agent;
-  final int memoryCount;
-  final int memoryLimit;
   final AgentToday? today;
   final bool learning;
   final bool inPsc;
@@ -495,22 +489,25 @@ class _BotHeroCard extends StatelessWidget {
     final budget = today?.resting == AgentResting.budget;
     final chips = [
       if (budget)
-        'Quay lại lúc 0h'
+        (Icons.bedtime_rounded, 'Quay lại lúc 0h')
       else if (today?.resting == AgentResting.dmLimit)
-        'Hết tin · mở lại 0h',
-      if (inPsc) 'Ở group PSC',
-      if (learning) 'Đang tự học',
+        (Icons.schedule_rounded, 'Hết tin · mở lại 0h'),
+      if (inPsc) (Icons.groups_rounded, 'Ở group PSC'),
+      if (learning) (Icons.auto_awesome_rounded, 'Đang tự học'),
     ];
     final subtitle = budget
         ? 'MyBot chạm trần chi phí hôm nay.'
         : agent.persona;
+    final buttonText = Theme.of(
+      context,
+    ).textTheme.labelLarge?.copyWith(fontSize: 15, fontWeight: FontWeight.w800);
     return _HeroShell(
       palette: dark,
       children: [
         Row(
           children: [
-            _BotOrb(palette: dark, size: 64, resting: budget),
-            const SizedBox(width: 14),
+            _BotOrb(palette: dark, size: 76, name: agent.name, resting: budget),
+            const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -521,12 +518,13 @@ class _BotHeroCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: dark.ink,
-                      fontSize: 22,
+                      fontSize: 24,
                       fontWeight: FontWeight.w900,
+                      height: 1.1,
                     ),
                   ),
                   if (subtitle.isNotEmpty) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Text(
                       subtitle,
                       maxLines: 2,
@@ -534,7 +532,7 @@ class _BotHeroCard extends StatelessWidget {
                       style: TextStyle(
                         color: dark.textMuted,
                         fontSize: 13,
-                        height: 1.35,
+                        height: 1.4,
                       ),
                     ),
                   ],
@@ -544,48 +542,56 @@ class _BotHeroCard extends StatelessWidget {
           ],
         ),
         if (chips.isNotEmpty) ...[
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final chip in chips) _HeroChip(palette: dark, text: chip),
+              for (final (icon, text) in chips)
+                _HeroChip(palette: dark, icon: icon, text: text),
             ],
           ),
         ],
-        const SizedBox(height: 16),
-        Divider(height: 1, color: dark.ink.withValues(alpha: 0.12)),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            if (today != null)
-              Expanded(
-                child: _HeroStat(
-                  palette: dark,
-                  value: '${today.dmUsed}',
-                  suffix: '/${today.dmMax}',
-                  label: 'tin hôm nay',
-                ),
-              ),
-            if (images != null)
-              Expanded(
-                child: _HeroStat(
-                  palette: dark,
-                  value: '${images.used}',
-                  suffix: '/${images.limit}',
-                  label: 'ảnh hôm nay',
-                ),
-              ),
-            Expanded(
-              child: _HeroStat(
-                palette: dark,
-                value: '$memoryCount',
-                suffix: '/$memoryLimit',
-                label: 'mục nhớ',
-              ),
+        if (today != null) ...[
+          const SizedBox(height: 18),
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+            decoration: BoxDecoration(
+              color: dark.ink.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: dark.ink.withValues(alpha: 0.08)),
             ),
-          ],
-        ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _HeroStat(
+                    palette: dark,
+                    icon: Icons.chat_bubble_outline_rounded,
+                    value: '${today.dmUsed}',
+                    suffix: '/${today.dmMax}',
+                    label: 'tin hôm nay',
+                    used: today.dmUsed,
+                    max: today.dmMax,
+                  ),
+                ),
+                if (images != null) ...[
+                  const SizedBox(width: 18),
+                  Expanded(
+                    child: _HeroStat(
+                      palette: dark,
+                      icon: Icons.palette_outlined,
+                      value: '${images.used}',
+                      suffix: '/${images.limit}',
+                      label: 'ảnh hôm nay',
+                      used: images.used,
+                      max: images.limit,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         Row(
           children: [
@@ -595,25 +601,30 @@ class _BotHeroCard extends StatelessWidget {
                 style: FilledButton.styleFrom(
                   backgroundColor: dark.accent,
                   foregroundColor: RunNowThemeTokens.lightInk,
-                  minimumSize: const Size.fromHeight(50),
+                  minimumSize: const Size.fromHeight(52),
+                  textStyle: buttonText,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
-                icon: const Icon(Icons.chat_bubble_outline_rounded),
+                icon: const Icon(Icons.chat_bubble_rounded, size: 19),
                 label: const Text('Chat riêng'),
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: OutlinedButton.icon(
+              child: FilledButton.icon(
                 onPressed: onRoom,
-                style: OutlinedButton.styleFrom(
+                style: FilledButton.styleFrom(
+                  backgroundColor: dark.ink.withValues(alpha: 0.1),
                   foregroundColor: dark.ink,
-                  side: BorderSide(color: dark.ink.withValues(alpha: 0.28)),
-                  minimumSize: const Size.fromHeight(50),
+                  minimumSize: const Size.fromHeight(52),
+                  textStyle: buttonText,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                icon: const Icon(Icons.forum_outlined),
+                icon: const Icon(Icons.forum_outlined, size: 19),
                 label: const Text('Phòng bot'),
               ),
             ),
@@ -625,27 +636,40 @@ class _BotHeroCard extends StatelessWidget {
 }
 
 class _HeroChip extends StatelessWidget {
-  const _HeroChip({required this.palette, required this.text});
+  const _HeroChip({
+    required this.palette,
+    required this.icon,
+    required this.text,
+  });
 
   final RunNowPalette palette;
+  final IconData icon;
   final String text;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.fromLTRB(8, 5, 10, 5),
       decoration: BoxDecoration(
-        color: palette.ink.withValues(alpha: 0.10),
+        color: palette.accent.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.accent.withValues(alpha: 0.28)),
       ),
-      child: Text(
-        text.toUpperCase(),
-        style: TextStyle(
-          color: palette.ink,
-          fontSize: 10,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.7,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: palette.accent),
+          const SizedBox(width: 5),
+          Text(
+            text.toUpperCase(),
+            style: TextStyle(
+              color: palette.ink,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.7,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -682,6 +706,12 @@ class _KmTodayCard extends StatelessWidget {
           children: [
             Row(
               children: [
+                Icon(
+                  Icons.directions_run_rounded,
+                  size: 15,
+                  color: palette.accentDeep,
+                ),
+                const SizedBox(width: 6),
                 const Expanded(child: _Caps('Km hôm nay')),
                 Text(
                   'Đếm lại lúc 0h',
@@ -718,7 +748,12 @@ class _KmTodayCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 14),
-            _KmRuler(palette: palette, runKm: runKm, maxKm: _rulerKm),
+            _KmRuler(
+              palette: palette,
+              runKm: runKm,
+              maxKm: _rulerKm,
+              nextKm: dm?.nextKm ?? images?.nextKm,
+            ),
             const SizedBox(height: 14),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -727,6 +762,7 @@ class _KmTodayCard extends StatelessWidget {
                   Expanded(
                     child: _KmTile(
                       palette: palette,
+                      icon: Icons.chat_bubble_outline_rounded,
                       value: '${today.dmMax} tin chat',
                       detail: _dmDetail(dm),
                     ),
@@ -736,6 +772,7 @@ class _KmTodayCard extends StatelessWidget {
                   Expanded(
                     child: _KmTile(
                       palette: palette,
+                      icon: Icons.palette_outlined,
                       value: '${images.limit} ảnh vẽ',
                       detail: _imageDetail(images),
                     ),
@@ -815,11 +852,15 @@ class _KmRuler extends StatelessWidget {
     required this.palette,
     required this.runKm,
     required this.maxKm,
+    this.nextKm,
   });
 
   final RunNowPalette palette;
   final double runKm;
   final int maxKm;
+
+  /// Mốc mở thêm kế tiếp (backend trả); có thì vạch đó sáng lên.
+  final double? nextKm;
 
   @override
   Widget build(BuildContext context) {
@@ -848,7 +889,13 @@ class _KmRuler extends StatelessWidget {
                     top: 0,
                     bottom: 0,
                     width: box.maxWidth * (runKm / maxKm).clamp(0, 1),
-                    child: ColoredBox(color: palette.accent),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [palette.tertiary, palette.accent],
+                        ),
+                      ),
+                    ),
                   ),
                   for (var km = 1; km < maxKm; km++)
                     Positioned(
@@ -856,7 +903,11 @@ class _KmRuler extends StatelessWidget {
                       top: 0,
                       bottom: 0,
                       width: 2,
-                      child: ColoredBox(color: palette.glassStart),
+                      child: ColoredBox(
+                        color: km == nextKm
+                            ? palette.accentDeep
+                            : palette.glassStart,
+                      ),
                     ),
                 ],
               ),
@@ -881,11 +932,13 @@ class _KmRuler extends StatelessWidget {
 class _KmTile extends StatelessWidget {
   const _KmTile({
     required this.palette,
+    required this.icon,
     required this.value,
     required this.detail,
   });
 
   final RunNowPalette palette;
+  final IconData icon;
   final String value;
   final String detail;
 
@@ -900,6 +953,8 @@ class _KmTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Icon(icon, size: 18, color: palette.accentDeep),
+          const SizedBox(height: 6),
           Text(
             value,
             style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
@@ -1281,91 +1336,209 @@ class _HeroShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: palette.tint,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(24),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.lerp(palette.tint, palette.accentDeep, 0.18)!,
+            palette.tint,
+            Color.lerp(palette.tint, palette.background, 0.5)!,
+          ],
+          stops: const [0, 0.55, 1],
+        ),
+        border: Border.all(color: palette.ink.withValues(alpha: 0.08)),
         boxShadow: [
           BoxShadow(
-            color: palette.tint.withValues(alpha: 0.28),
-            blurRadius: 26,
-            offset: const Offset(0, 10),
+            color: Colors.black.withValues(alpha: 0.14),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: children,
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          // Quầng sáng góc trên phải, cho thẻ có chiều sâu mà không thêm ảnh.
+          Positioned(
+            top: -90,
+            right: -70,
+            child: IgnorePointer(
+              child: Container(
+                width: 240,
+                height: 240,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      palette.accent.withValues(alpha: 0.26),
+                      palette.accent.withValues(alpha: 0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: children,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
+/// Mặt bot: chữ cái đầu tên bot trong quả cầu màu nhấn, vòng sáng quanh và
+/// chấm trạng thái. Chưa có tên (thẻ tạo bot) thì vẽ robot.
 class _BotOrb extends StatelessWidget {
   const _BotOrb({
     required this.palette,
     required this.size,
+    this.name,
     this.resting = false,
   });
 
   final RunNowPalette palette;
   final double size;
+  final String? name;
 
   /// Bot đang nghỉ: tắt màu và đổi sang mặt trăng.
   final bool resting;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final name = this.name?.trim() ?? '';
+    final Widget face = resting
+        ? Icon(
+            Icons.bedtime_outlined,
+            color: palette.textMuted,
+            size: size * 0.42,
+          )
+        : name.isEmpty
+        ? Icon(Icons.smart_toy_rounded, color: Colors.white, size: size * 0.5)
+        : Text(
+            name.characters.first.toUpperCase(),
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: size * 0.44,
+              fontWeight: FontWeight.w900,
+              height: 1,
+            ),
+          );
+    final ring = size * 0.06;
+    return SizedBox(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(size * 0.31),
-        color: resting ? palette.ink.withValues(alpha: 0.14) : null,
-        gradient: resting
-            ? null
-            : LinearGradient(
-                colors: [palette.tertiary, palette.accentDeep],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+      child: Stack(
+        children: [
+          Container(
+            padding: EdgeInsets.all(ring),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: resting
+                  ? null
+                  : SweepGradient(
+                      colors: [
+                        palette.accent,
+                        palette.tertiary.withValues(alpha: 0.2),
+                        palette.accent,
+                      ],
+                    ),
+              color: resting ? palette.ink.withValues(alpha: 0.12) : null,
+              boxShadow: resting
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: palette.accent.withValues(alpha: 0.4),
+                        blurRadius: 24,
+                      ),
+                    ],
+            ),
+            child: Container(
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: resting ? palette.tint : null,
+                gradient: resting
+                    ? null
+                    : LinearGradient(
+                        colors: [palette.tertiary, palette.accentDeep],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                border: Border.all(color: palette.tint, width: ring * 0.8),
               ),
-        boxShadow: resting
-            ? null
-            : [
-                BoxShadow(
-                  color: palette.accent.withValues(alpha: 0.35),
-                  blurRadius: 20,
-                  offset: const Offset(0, 6),
+              child: face,
+            ),
+          ),
+          if (this.name != null)
+            Positioned(
+              right: size * 0.04,
+              bottom: size * 0.04,
+              child: Container(
+                width: size * 0.2,
+                height: size * 0.2,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: resting
+                      ? RunNowSemanticColors.inactive
+                      : RunNowSemanticColors.success,
+                  border: Border.all(color: palette.tint, width: 3),
                 ),
-              ],
-      ),
-      child: Icon(
-        resting ? Icons.bedtime_outlined : Icons.smart_toy_rounded,
-        color: resting ? palette.textMuted : Colors.white,
-        size: size * 0.5,
+              ),
+            ),
+        ],
       ),
     );
   }
 }
 
+/// Một chỉ số trong thẻ bot: số đã dùng trên trần, kèm thanh đầy dần.
 class _HeroStat extends StatelessWidget {
   const _HeroStat({
     required this.palette,
+    required this.icon,
     required this.value,
     required this.label,
+    required this.used,
+    required this.max,
     this.suffix,
   });
 
   final RunNowPalette palette;
+  final IconData icon;
   final String value;
   final String? suffix;
   final String label;
+  final int used;
+  final int max;
 
   @override
   Widget build(BuildContext context) {
+    final fraction = max <= 0 ? 0.0 : (used / max).clamp(0.0, 1.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Row(
+          children: [
+            Icon(icon, size: 14, color: palette.textMuted),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                color: palette.textMuted,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
         Text.rich(
           TextSpan(
             text: value,
@@ -1387,12 +1560,28 @@ class _HeroStat extends StatelessWidget {
             fontWeight: FontWeight.w900,
           ),
         ),
-        Text(
-          label,
-          style: TextStyle(
-            color: palette.textMuted,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: SizedBox(
+            height: 5,
+            child: ColoredBox(
+              color: palette.ink.withValues(alpha: 0.1),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: FractionallySizedBox(
+                  widthFactor: fraction,
+                  heightFactor: 1,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [palette.tertiary, palette.accent],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ],
@@ -1428,42 +1617,53 @@ class _RoomPreviewCard extends ConsumerWidget {
         children: [
           for (final m in room.messages)
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(bottom: 10),
               child: _RoomPreviewLine(message: m, myUid: myUid),
             ),
         ],
       );
     }
+    final bots = room?.bots ?? const <String>[];
     return _Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
+                Icon(Icons.forum_outlined, size: 15, color: palette.accentDeep),
+                const SizedBox(width: 6),
                 const Expanded(child: _Caps('Phòng bot')),
-                if (room != null && room.bots > 0)
+                if (bots.isNotEmpty) ...[
+                  _AvatarStack(names: bots),
+                  const SizedBox(width: 8),
                   Text(
-                    '${room.bots} bot đang ở phòng',
+                    '${bots.length} bot đang ở phòng',
                     style: TextStyle(
                       color: palette.accentDeep,
                       fontSize: 12,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
+                ],
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             content,
-            TextButton(
+            const SizedBox(height: 4),
+            FilledButton.tonal(
               onPressed: onOpen,
-              style: TextButton.styleFrom(
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(44),
+                backgroundColor: palette.accent.withValues(alpha: 0.14),
                 foregroundColor: palette.accentDeep,
-                padding: EdgeInsets.zero,
-                textStyle: const TextStyle(
+                textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
               child: const Row(
@@ -1475,6 +1675,55 @@ class _RoomPreviewCard extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Tối đa ba avatar bot chồng lên nhau, như nhóm chat.
+class _AvatarStack extends StatelessWidget {
+  const _AvatarStack({required this.names});
+
+  final List<String> names;
+
+  static const _size = 22.0;
+  static const _step = 14.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final shown = names.take(3).toList();
+    final tones = [palette.accentDeep, palette.tertiary, palette.secondary];
+    return SizedBox(
+      width: _size + _step * (shown.length - 1),
+      height: _size,
+      child: Stack(
+        children: [
+          for (final (i, name) in shown.indexed)
+            Positioned(
+              left: _step * i,
+              child: Container(
+                width: _size,
+                height: _size,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: tones[i % tones.length],
+                  shape: BoxShape.circle,
+                  border: Border.all(color: palette.glassStart, width: 2),
+                ),
+                child: Text(
+                  name.trim().isEmpty
+                      ? '?'
+                      : name.trim().characters.first.toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1492,25 +1741,68 @@ class _ImagesPreview extends ConsumerWidget {
     final images = ref.watch(agentImagesPreviewProvider).value;
     if (images == null || images.isEmpty) return const SizedBox.shrink();
     final image = ref.watch(agentImageBuilderProvider);
-    final content = GridView.count(
-      crossAxisCount: 3,
-      mainAxisSpacing: 6,
-      crossAxisSpacing: 6,
-      shrinkWrap: true,
-      padding: EdgeInsets.zero,
-      physics: const NeverScrollableScrollPhysics(),
-      children: [
-        for (final img in images)
-          AgentImageTile(onTap: onOpen, child: image(img.path, full: false)),
-      ],
+    Widget tile(int i) => AgentImageTile(
+      onTap: onOpen,
+      child: image(images[i].path, full: false),
+    );
+    const gap = 6.0;
+    // Đủ ba ảnh thì ảnh mới nhất to gấp đôi, bên phải hai ảnh, hàng dưới ba
+    // ảnh còn lại; ít hơn thì một hàng.
+    final content = LayoutBuilder(
+      builder: (context, box) {
+        final cell = (box.maxWidth - gap * 2) / 3;
+        if (images.length < 3) {
+          return Row(
+            children: [
+              for (var i = 0; i < images.length; i++) ...[
+                if (i > 0) const SizedBox(width: gap),
+                SizedBox(width: cell, height: cell, child: tile(i)),
+              ],
+            ],
+          );
+        }
+        final big = cell * 2 + gap;
+        return Column(
+          children: [
+            Row(
+              children: [
+                SizedBox(width: big, height: big, child: tile(0)),
+                const SizedBox(width: gap),
+                Column(
+                  children: [
+                    SizedBox(width: cell, height: cell, child: tile(1)),
+                    const SizedBox(height: gap),
+                    SizedBox(width: cell, height: cell, child: tile(2)),
+                  ],
+                ),
+              ],
+            ),
+            if (images.length > 3) ...[
+              const SizedBox(height: gap),
+              Row(
+                children: [
+                  for (var i = 3; i < images.length && i < 6; i++) ...[
+                    if (i > 3) const SizedBox(width: gap),
+                    SizedBox(width: cell, height: cell, child: tile(i)),
+                  ],
+                ],
+              ),
+            ],
+          ],
+        );
+      },
     );
     return Padding(
       padding: const EdgeInsets.only(top: 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _SectionLabel('Ảnh bot đã vẽ', onSeeAll: onOpen),
-          const SizedBox(height: 8),
+          _SectionLabel(
+            'Ảnh bot đã vẽ',
+            icon: Icons.palette_outlined,
+            onSeeAll: onOpen,
+          ),
+          const SizedBox(height: 10),
           content,
         ],
       ),
@@ -1518,6 +1810,8 @@ class _ImagesPreview extends ConsumerWidget {
   }
 }
 
+/// Một tin trong phòng, dạng bong bóng: bot thì avatar vuông bo góc, người
+/// thì tròn, như trong phòng; bot của mình tô màu nhấn.
 class _RoomPreviewLine extends StatelessWidget {
   const _RoomPreviewLine({required this.message, required this.myUid});
 
@@ -1528,22 +1822,33 @@ class _RoomPreviewLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final name = message.name.trim();
+    final mine = message.fromAgent && message.uid == myUid;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 30,
-          height: 30,
+          width: 32,
+          height: 32,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: message.fromAgent ? palette.ink : palette.accentDeep,
-            // Bot thì vuông bo góc, người thì tròn, như trong phòng.
-            borderRadius: BorderRadius.circular(message.fromAgent ? 10 : 15),
+            color: mine
+                ? null
+                : message.fromAgent
+                ? palette.ink
+                : palette.accentDeep,
+            gradient: mine
+                ? LinearGradient(
+                    colors: [palette.tertiary, palette.accentDeep],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : null,
+            borderRadius: BorderRadius.circular(message.fromAgent ? 10 : 16),
           ),
           child: Text(
             name.isEmpty ? '?' : name.characters.first.toUpperCase(),
             style: TextStyle(
-              color: palette.background,
+              color: mine ? Colors.white : palette.background,
               fontSize: 13,
               fontWeight: FontWeight.w900,
             ),
@@ -1551,25 +1856,41 @@ class _RoomPreviewLine extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                agentRoomSenderLabel(message, myUid),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+            decoration: BoxDecoration(
+              color: mine
+                  ? palette.accent.withValues(alpha: 0.12)
+                  : palette.ink.withValues(alpha: 0.05),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(4),
+                topRight: Radius.circular(14),
+                bottomLeft: Radius.circular(14),
+                bottomRight: Radius.circular(14),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  agentRoomSenderLabel(message, myUid),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: mine ? palette.accentDeep : palette.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
-              Text(
-                message.text,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 14),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  message.text,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14, height: 1.35),
+                ),
+              ],
+            ),
           ),
         ),
       ],
@@ -1609,6 +1930,9 @@ class _MemoryCard extends StatelessWidget {
             const _EmptyRow('Chưa có gì. Kể cho bot trong Chat riêng.'),
           for (final m in memories) ...[
             _FactRow(
+              icon: m.fromChat
+                  ? Icons.chat_bubble_outline_rounded
+                  : Icons.push_pin_outlined,
               text: m.text,
               source: m.fromChat ? 'Bot ghi khi chat' : 'Bạn thêm',
               onTap: busy ? null : () => onEdit(m),
@@ -1623,16 +1947,11 @@ class _MemoryCard extends StatelessWidget {
             ),
             const _RowDivider(),
           ],
-          ListTile(
+          _LinkRow(
             enabled: !busy && !full,
-            leading: Icon(Icons.add_rounded, color: palette.accentDeep),
-            title: Text(
-              full ? 'Bộ nhớ đã đầy ($limit mục)' : 'Thêm điều cần nhớ',
-              style: TextStyle(
-                color: full ? palette.textMuted : palette.accentDeep,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
+            accent: true,
+            icon: Icons.add_rounded,
+            text: full ? 'Bộ nhớ đã đầy ($limit mục)' : 'Thêm điều cần nhớ',
             onTap: onAdd,
           ),
         ],
@@ -1672,9 +1991,19 @@ class _LearnedCard extends StatelessWidget {
             SwitchListTile(
               value: learning,
               onChanged: busy ? null : onLearning,
+              contentPadding: const EdgeInsets.only(left: 14, right: 12),
+              secondary: const _RowIcon(Icons.auto_awesome_rounded),
               title: const Text(
                 'Cho bot tự học về bạn',
-                style: TextStyle(fontWeight: FontWeight.w700),
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+              ),
+              subtitle: Text(
+                learning ? 'Đang bật' : 'Đang tắt',
+                style: TextStyle(
+                  color: palette.textMuted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
             const _RowDivider(),
@@ -1688,6 +2017,9 @@ class _LearnedCard extends StatelessWidget {
           for (final (i, f) in learned.indexed) ...[
             if (i > 0) const _RowDivider(),
             _FactRow(
+              icon: f.migrated
+                  ? Icons.history_rounded
+                  : Icons.lightbulb_outline_rounded,
               text: f.text,
               source: f.migrated ? 'Từ trí nhớ cũ của 3i' : 'Bot tự học',
               action: TextButton(
@@ -1699,12 +2031,9 @@ class _LearnedCard extends StatelessWidget {
           ],
           if (onGroupFacts != null) ...[
             const _RowDivider(),
-            ListTile(
-              title: const Text(
-                'Bot biết gì về nhóm',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-              trailing: const Icon(Icons.chevron_right_rounded),
+            _LinkRow(
+              icon: Icons.groups_2_outlined,
+              text: 'Bot biết gì về nhóm',
               onTap: onGroupFacts,
             ),
           ],
@@ -1721,9 +2050,13 @@ class _Card extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     return Material(
-      color: context.runNowPalette.glassStart,
-      borderRadius: BorderRadius.circular(16),
+      color: palette.glassStart,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: palette.border.withValues(alpha: 0.55)),
+      ),
       clipBehavior: Clip.antiAlias,
       child: child,
     );
@@ -1732,20 +2065,51 @@ class _Card extends StatelessWidget {
 
 /// Nhãn mục kiểu chữ hoa nhỏ, có "Xem tất cả" khi mục dài hơn phần đang hiện.
 class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text, {this.onSeeAll});
+  const _SectionLabel(this.text, {this.icon, this.count, this.onSeeAll});
 
   final String text;
+  final IconData? icon;
+
+  /// Số đếm cạnh nhãn, như "3/50" mục nhớ.
+  final String? count;
   final VoidCallback? onSeeAll;
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     final onSeeAll = this.onSeeAll;
+    final icon = this.icon;
+    final count = this.count;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
         children: [
-          Expanded(child: _Caps(text)),
-          if (onSeeAll != null)
+          if (icon != null) ...[
+            Icon(icon, size: 15, color: palette.accentDeep),
+            const SizedBox(width: 6),
+          ],
+          Flexible(child: _Caps(text)),
+          if (count != null) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: palette.ink.withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                count,
+                style: TextStyle(
+                  color: palette.textMuted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+          const Spacer(),
+          if (onSeeAll != null) ...[
+            const SizedBox(width: 8),
             InkWell(
               onTap: onSeeAll,
               child: Padding(
@@ -1760,6 +2124,7 @@ class _SectionLabel extends StatelessWidget {
                 ),
               ),
             ),
+          ],
         ],
       ),
     );
@@ -1775,6 +2140,8 @@ class _Caps extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text.toUpperCase(),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
       style: TextStyle(
         color: context.runNowPalette.textMuted,
         fontSize: 11,
@@ -1787,12 +2154,14 @@ class _Caps extends StatelessWidget {
 
 class _FactRow extends StatelessWidget {
   const _FactRow({
+    required this.icon,
     required this.text,
     required this.source,
     this.action,
     this.onTap,
   });
 
+  final IconData icon;
   final String text;
   final String source;
   final Widget? action;
@@ -1801,7 +2170,10 @@ class _FactRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      contentPadding: EdgeInsets.only(left: 16, right: action == null ? 16 : 4),
+      contentPadding: EdgeInsets.only(left: 14, right: action == null ? 16 : 4),
+      leading: _RowIcon(icon),
+      minLeadingWidth: 0,
+      horizontalTitleGap: 12,
       title: Text(
         text,
         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
@@ -1816,6 +2188,78 @@ class _FactRow extends StatelessWidget {
       ),
       onTap: onTap,
       trailing: action,
+    );
+  }
+}
+
+/// Ô icon đầu dòng của các thẻ danh sách, cùng cỡ để chữ thẳng hàng.
+class _RowIcon extends StatelessWidget {
+  const _RowIcon(this.icon, {this.color});
+
+  final IconData icon;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final color = this.color ?? palette.accentDeep;
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(11),
+      ),
+      child: Icon(icon, size: 18, color: color),
+    );
+  }
+}
+
+/// Dòng bấm được cuối thẻ (thêm mục, mở trang con), chữ cùng cỡ với dòng mục
+/// thay vì cỡ mặc định to của ListTile.
+class _LinkRow extends StatelessWidget {
+  const _LinkRow({
+    required this.icon,
+    required this.text,
+    required this.onTap,
+    this.accent = false,
+    this.enabled = true,
+  });
+
+  final IconData icon;
+  final String text;
+  final VoidCallback? onTap;
+
+  /// Tô màu nhấn cho việc chính của thẻ (thêm mục nhớ).
+  final bool accent;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final color = !enabled
+        ? palette.textMuted
+        : accent
+        ? palette.accentDeep
+        : palette.ink;
+    return ListTile(
+      enabled: enabled,
+      contentPadding: const EdgeInsets.only(left: 14, right: 12),
+      leading: _RowIcon(icon, color: enabled ? null : palette.textMuted),
+      minLeadingWidth: 0,
+      horizontalTitleGap: 12,
+      title: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontSize: 15,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      trailing: accent
+          ? null
+          : Icon(Icons.chevron_right_rounded, color: palette.textMuted),
+      onTap: onTap,
     );
   }
 }
@@ -1847,7 +2291,8 @@ class _RowDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     return Divider(
       height: 1,
-      indent: 16,
+      // Thẳng mép chữ, sau ô icon đầu dòng.
+      indent: 60,
       color: context.runNowPalette.border.withValues(alpha: 0.6),
     );
   }

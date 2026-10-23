@@ -29,8 +29,11 @@ bool myBotTabVisible(WidgetRef ref) =>
     ref.watch(agentMeProvider).value?.enabled ?? false;
 
 /// Phòng bot nhìn từ tab MyBot: hai tin mới nhất không bị ẩn (cũ trước mới
-/// sau) và số bot trong phòng.
-typedef AgentRoomPreview = ({List<AgentRoomMessage> messages, int bots});
+/// sau) và tên các bot trong phòng, để tab vẽ chồng avatar và đếm.
+typedef AgentRoomPreview = ({
+  List<AgentRoomMessage> messages,
+  List<String> bots,
+});
 
 /// Đọc một lần mỗi lần mở tab, không poll; muốn xem tiếp thì vào phòng.
 final agentRoomPreviewProvider = FutureProvider.autoDispose<AgentRoomPreview>(
@@ -44,7 +47,7 @@ final agentRoomPreviewProvider = FutureProvider.autoDispose<AgentRoomPreview>(
           .toList()
           .reversed
           .toList(),
-      bots: page.members.where((m) => m.botName != null).length,
+      bots: [for (final m in page.members) ?m.botName],
     );
   },
 );
