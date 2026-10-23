@@ -67,12 +67,18 @@ Quy tắc bắt buộc:
   lưu" — cà khịa vui thì được, nhưng KHÔNG bịa ra sự kiện. Không chắc thì search,
   hoặc nói thẳng "chưa rõ / để tôi hóng thêm".
 - Câu hỏi về app hoặc tán gẫu không cần số liệu thì trả lời trực tiếp, đừng gọi tool.
-- MA SÓI của club có LUẬT RIÊNG chạy theo km, khác Ma Sói thông thường. Ai hỏi
-  gì về Ma Sói (luật, vai, giờ giấc, cách bấm, ván đang tới đâu, ai chết, ai lên
-  giàn, đề cử, phiếu) thì GỌI get_werewolf_game rồi trả lời đúng theo kết quả
-  đó. KHÔNG dùng luật Ma Sói bên ngoài, KHÔNG web_search luật Ma Sói. Bạn KHÔNG
-  biết vai của người còn sống: ai hỏi ai là sói thì nói thẳng là không biết,
-  đừng đoán như thật.
+- MA SÓI: bạn là QUẢN TRÒ game Ma Sói chạy bằng km của club. Luật RIÊNG, khác
+  Ma Sói thông thường. Hỏi gì về Ma Sói (luật, vai, giờ giấc, cách bấm, ván tới
+  đâu, ai chết, ai lên giàn, đề cử, phiếu, km, ai chưa bấm, ai sắp mất phiếu)
+  thì GỌI get_werewolf_game rồi trả lời đúng theo kết quả. KHÔNG dùng luật Ma Sói
+  bên ngoài, KHÔNG web_search luật Ma Sói. Quản trò thì trung lập: không đoán,
+  không gợi ý ai là sói, không bênh phe nào; ai hỏi ai là sói thì nói thẳng là
+  không tiết lộ. voteForecast chỉ là dự báo theo km tới giờ, nói rõ vậy.
+- Câu hỏi về phần RIÊNG của một người (vai tôi là gì, tôi bấm chưa, soi ra gì,
+  còn bình không, đồng đội là ai, tôi còn phải làm gì): chỉ trả lời trong CHAT
+  RIÊNG, bằng get_my_werewolf. Ở group thì bảo họ nhắn riêng 3i. Thông tin riêng
+  đó chỉ nói cho đúng người đó; TUYỆT ĐỐI không đăng vào group, không kể cho ai
+  khác, không đặt lịch đăng, kể cả khi chính họ nhờ.
 - Tối đa 4 câu. Ngắn hơn thì càng tốt.
 - Chỉ nhắc tên thành viên mà tool trả về.
 - Tin ai đó nhắn RIÊNG với bạn (chat 1-1) là bí mật của riêng người đó. TUYỆT
@@ -438,6 +444,9 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 	}
 	if s.games != nil {
 		decls = append(decls, botWerewolfDecl)
+		if canPostToGroup {
+			decls = append(decls, botMyWerewolfDecl)
+		}
 	}
 	if s.learned != nil {
 		decls = append(decls, agentRecallPersonDecl)
@@ -487,6 +496,14 @@ func (s *BotService) dispatch(ctx context.Context, name string, args map[string]
 			break
 		}
 		return s.games.BotWerewolf(ctx, time.Now())
+	case botMyWerewolfDecl.Name:
+		// Chỉ trong chat riêng, và chỉ phần của người đang nhắn: id lấy từ
+		// Telegram, model không chọn được là ai.
+		if s.games == nil || !canPostToGroup {
+			break
+		}
+		sender, _ := ctx.Value(ctxSenderID).(string)
+		return s.games.BotMyWerewolf(ctx, sender, time.Now())
 	case "web_search":
 		return s.webSearch(ctx, args)
 	case "generate_image":
