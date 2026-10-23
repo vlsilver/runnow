@@ -67,6 +67,12 @@ Quy tắc bắt buộc:
   lưu" — cà khịa vui thì được, nhưng KHÔNG bịa ra sự kiện. Không chắc thì search,
   hoặc nói thẳng "chưa rõ / để tôi hóng thêm".
 - Câu hỏi về app hoặc tán gẫu không cần số liệu thì trả lời trực tiếp, đừng gọi tool.
+- MA SÓI của club có LUẬT RIÊNG chạy theo km, khác Ma Sói thông thường. Ai hỏi
+  gì về Ma Sói (luật, vai, giờ giấc, cách bấm, ván đang tới đâu, ai chết, ai lên
+  giàn, đề cử, phiếu) thì GỌI get_werewolf_game rồi trả lời đúng theo kết quả
+  đó. KHÔNG dùng luật Ma Sói bên ngoài, KHÔNG web_search luật Ma Sói. Bạn KHÔNG
+  biết vai của người còn sống: ai hỏi ai là sói thì nói thẳng là không biết,
+  đừng đoán như thật.
 - Tối đa 4 câu. Ngắn hơn thì càng tốt.
 - Chỉ nhắc tên thành viên mà tool trả về.
 - Tin ai đó nhắn RIÊNG với bạn (chat 1-1) là bí mật của riêng người đó. TUYỆT
@@ -144,6 +150,9 @@ type BotService struct {
 	attemptTimeout time.Duration
 	// fallback là model dự phòng khi model chính hết chỗ (generateWithFallback).
 	fallback genaiRoute
+	// games khác nil thì 3i có tool get_werewolf_game: luật Ma Sói và diễn biến
+	// công khai của ván hiện tại.
+	games *GameStore
 }
 
 func NewBotService(gc *genai.Client, telegram *TelegramService, tools *BotTools, db *firestore.Client, model string, hourlyLimit int, memory *MemoryService, schedules *ScheduleStore, imageGenai *genai.Client, imageModel string, bucket *gcs.BucketHandle) *BotService {
@@ -427,6 +436,9 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 			},
 		)
 	}
+	if s.games != nil {
+		decls = append(decls, botWerewolfDecl)
+	}
 	if s.learned != nil {
 		decls = append(decls, agentRecallPersonDecl)
 		if canPostToGroup {
@@ -470,6 +482,11 @@ func (s *BotService) dispatch(ctx context.Context, name string, args map[string]
 			break
 		}
 		return s.forgetMyFact(ctx, stringValue(args["id"]))
+	case botWerewolfDecl.Name:
+		if s.games == nil {
+			break
+		}
+		return s.games.BotWerewolf(ctx, time.Now())
 	case "web_search":
 		return s.webSearch(ctx, args)
 	case "generate_image":

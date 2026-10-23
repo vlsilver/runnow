@@ -172,6 +172,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 			d.Bot = NewBotService(genaiClient, telegram, NewBotTools(db), db, config.GeminiModel, config.BotHourlyLimit, d.Memory, NewScheduleStore(db), imageClient, geminiImageModel, bucket)
 			d.Bot.thinking = config.GeminiThinkingLevel
 			d.Bot.fallback = fallback
+			d.Bot.games = d.Games
 			if config.BotGroupFacts {
 				d.Bot.learned = d.Agents
 			}
