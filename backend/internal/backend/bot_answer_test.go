@@ -150,8 +150,10 @@ func writeGeminiError(w http.ResponseWriter, code int, status string) {
 	_, _ = io.WriteString(w, `{"error":{"code":`+strconv.Itoa(code)+`,"message":"x","status":"`+status+`"}}`)
 }
 
-// Pool dùng chung của model chính hết chỗ cả loạt retry thì 3i vẫn phải trả
-// lời, bằng model dự phòng ở location khác.
+// Pool dùng chung của model chính hết chỗ thì 3i chuyển ngay sang model dự
+// phòng ở location khác, không retry model chính: mỗi lần thử có thể tốn trọn
+// attemptTimeout. Trong primaryCooldown sau đó đi thẳng dự phòng, hết cooldown
+// thì thử lại model chính.
 func TestAnswerFallsBackWhenPrimaryExhausted(t *testing.T) {
 	primary := &fakeGemini{reply: func(n int, w http.ResponseWriter, r *http.Request) {
 		writeGeminiError(w, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED")
@@ -169,8 +171,23 @@ func TestAnswerFallsBackWhenPrimaryExhausted(t *testing.T) {
 	if err != nil || got != "giãn cơ đi" {
 		t.Fatalf("got %q, %v; want the fallback's reply", got, err)
 	}
-	if p, b := len(primary.requests()), len(backup.requests()); p != 3 || b != 1 {
-		t.Fatalf("primary %d, fallback %d requests; want 3 then 1", p, b)
+	if p, b := len(primary.requests()), len(backup.requests()); p != 1 || b != 1 {
+		t.Fatalf("primary %d, fallback %d requests; want 1 then 1", p, b)
+	}
+
+	if _, err := bot.Answer(context.Background(), "sys", askOnce(), false); err != nil {
+		t.Fatal(err)
+	}
+	if p, b := len(primary.requests()), len(backup.requests()); p != 1 || b != 2 {
+		t.Fatalf("in cooldown: primary %d, fallback %d requests; want 1 and 2", p, b)
+	}
+
+	primaryDownUntil.Store(genaiRoute{client: bot.genai, model: bot.model}, time.Now().Add(-time.Second))
+	if _, err := bot.Answer(context.Background(), "sys", askOnce(), false); err != nil {
+		t.Fatal(err)
+	}
+	if p, b := len(primary.requests()), len(backup.requests()); p != 2 || b != 3 {
+		t.Fatalf("after cooldown: primary %d, fallback %d requests; want 2 and 3", p, b)
 	}
 }
 

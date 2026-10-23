@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -812,12 +813,17 @@ const botGenerateAttemptTimeout = 45 * time.Second
 // một lần treo ăn hết giờ của cả câu trả lời.
 // timeout 0 = botGenerateAttemptTimeout.
 func generateWithRetry(ctx context.Context, client *genai.Client, model string, contents []*genai.Content, config *genai.GenerateContentConfig, timeout time.Duration) (*genai.GenerateContentResponse, error) {
+	return generateAttempts(ctx, client, model, contents, config, timeout, 3)
+}
+
+// generateAttempts là generateWithRetry với số lần gọi tối đa cho trước.
+func generateAttempts(ctx context.Context, client *genai.Client, model string, contents []*genai.Content, config *genai.GenerateContentConfig, timeout time.Duration, attempts int) (*genai.GenerateContentResponse, error) {
 	if timeout == 0 {
 		timeout = botGenerateAttemptTimeout
 	}
 	delay := 400 * time.Millisecond
 	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := 0; attempt < attempts; attempt++ {
 		attemptCtx, cancel := context.WithTimeout(ctx, timeout)
 		started := time.Now()
 		resp, err := client.Models.GenerateContent(attemptCtx, model, contents, config)
@@ -831,6 +837,9 @@ func generateWithRetry(ctx context.Context, client *genai.Client, model string, 
 			return nil, err
 		}
 		slog.WarnContext(ctx, "bot.genai_retry", "attempt", attempt, "error", err)
+		if attempt == attempts-1 {
+			break
+		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -848,20 +857,38 @@ type genaiRoute struct {
 	model  string
 }
 
-// generateWithFallback gọi model chính qua generateWithRetry. Hết lượt retry mà
-// lỗi vẫn là lỗi chỗ (429/503/504, quá giờ) thì gọi model dự phòng một loạt
-// retry nữa.
+// primaryCooldown: model chính vừa hỏng vì hết chỗ thì trong khoảng này mọi
+// lần gọi đi thẳng model dự phòng. Đợt quá tải của Vertex kéo dài nhiều phút,
+// mà mỗi lần thử model chính tốn trọn attemptTimeout: một câu trả lời hai vòng
+// tool từng ăn hết 240s của task rồi không gửi được.
+const primaryCooldown = 3 * time.Minute
+
+// primaryDownUntil: genaiRoute của model chính → time.Time hết cooldown.
+var primaryDownUntil sync.Map
+
+// generateWithFallback gọi model chính, không có dự phòng thì qua
+// generateWithRetry như cũ. Có dự phòng thì model chính chỉ được một lần: lỗi
+// chỗ (429/503/504, quá giờ) thì chuyển ngay sang dự phòng với đủ lượt retry,
+// và bỏ qua model chính trong primaryCooldown.
 //
 // Model chính chạy ở location global, capacity dùng chung của Google: có lúc
-// cả loạt retry đều 429 hay treo tới 504 dù mình gọi rất ít, và 3i im luôn.
-// Dự phòng là model khác ở location khác nên không chung pool với model chính.
-// Lỗi khác (request hỏng, bị chặn) thì model nào cũng vậy, không gọi dự phòng.
+// 429 hay treo tới 504 hàng loạt dù mình gọi rất ít. Dự phòng là model khác ở
+// location khác nên không chung pool. Lỗi khác (request hỏng, bị chặn) thì
+// model nào cũng vậy, không gọi dự phòng.
 func generateWithFallback(ctx context.Context, primary, fallback genaiRoute, contents []*genai.Content, config *genai.GenerateContentConfig, timeout time.Duration) (*genai.GenerateContentResponse, error) {
-	resp, err := generateWithRetry(ctx, primary.client, primary.model, contents, config, timeout)
-	if err == nil || fallback.client == nil || !isRetryableGenAIError(err) || ctx.Err() != nil {
-		return resp, err
+	if fallback.client == nil {
+		return generateWithRetry(ctx, primary.client, primary.model, contents, config, timeout)
 	}
-	slog.WarnContext(ctx, "bot.genai_fallback", "model", fallback.model, "error", err)
+	if until, ok := primaryDownUntil.Load(primary); ok && time.Now().Before(until.(time.Time)) {
+		slog.InfoContext(ctx, "bot.genai_primary_cooldown", "model", fallback.model)
+	} else {
+		resp, err := generateAttempts(ctx, primary.client, primary.model, contents, config, timeout, 1)
+		if err == nil || !isRetryableGenAIError(err) || ctx.Err() != nil {
+			return resp, err
+		}
+		primaryDownUntil.Store(primary, time.Now().Add(primaryCooldown))
+		slog.WarnContext(ctx, "bot.genai_fallback", "model", fallback.model, "error", err)
+	}
 	return generateWithRetry(ctx, fallback.client, fallback.model, contents, config, timeout)
 }
 
