@@ -84,6 +84,28 @@ Future<ShareResult> shareJourneyCompletion({
   );
 }
 
+Future<ShareResult> shareGameCard({
+  required GlobalKey cardKey,
+  required BuildContext shareOriginContext,
+  required String player,
+}) async {
+  final boundary =
+      cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+  final renderBox = shareOriginContext.findRenderObject() as RenderBox?;
+  final sharePositionOrigin = renderBox == null
+      ? null
+      : renderBox.localToGlobal(Offset.zero) & renderBox.size;
+  final png = await captureRecapPng(boundary);
+  return SharePlus.instance.share(
+    ShareParams(
+      text: 'Lá bài Ma Sói của $player trên 3i',
+      files: [XFile.fromData(png, mimeType: 'image/png')],
+      fileNameOverrides: ['3i-ma-soi.png'],
+      sharePositionOrigin: sharePositionOrigin,
+    ),
+  );
+}
+
 Future<Uint8List> captureRecapPng(RenderRepaintBoundary? boundary) async {
   if (boundary == null) {
     throw StateError('Recap card chưa sẵn sàng.');

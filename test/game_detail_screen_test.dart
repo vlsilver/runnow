@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_detail_screen.dart';
+import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/providers.dart';
 
 import 'support/fake_game_backend.dart';
@@ -496,6 +498,92 @@ void main() {
       await tester.tap(find.text('Chạm để úp lại.'));
       await tester.pumpAndSettle();
       expect(find.text('Mỗi đêm soi một người.'), findsNothing);
+      await close(tester);
+    });
+
+    // Lá xem to có hoạt ảnh lặp nên không pumpAndSettle được.
+    Future<void> openBigCard(WidgetTester tester) async {
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(GameRoleCard));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    testWidgets('locks bragging while the game runs and the viewer lives', (
+      tester,
+    ) async {
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await openBigCard(tester);
+
+      expect(find.textContaining('khoe thẻ lúc này là lộ vai'), findsOneWidget);
+      expect(find.text('Khoe thẻ'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('closes the secret big card when the app leaves the screen', (
+      tester,
+    ) async {
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await openBigCard(tester);
+
+      final binding = tester.binding;
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.pump();
+      // Frame chụp app switcher đã không còn lá ngửa.
+      expect(
+        find.descendant(
+          of: find.byType(GameCardViewer),
+          matching: find.byType(GameRoleCard),
+        ),
+        findsNothing,
+      );
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      // App nền không vẽ frame; route chạy hết hiệu ứng đóng sau khi quay lại.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.textContaining('lộ vai'), findsNothing);
+      // Chỉ đóng lá to, màn ván vẫn còn và lá đã úp lại.
+      expect(find.text(faceDown), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('unlocks bragging once the viewer is out', (tester) async {
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': false,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await openBigCard(tester);
+
+      expect(find.text('Khoe thẻ'), findsOneWidget);
+      expect(find.textContaining('lộ vai'), findsNothing);
       await close(tester);
     });
 

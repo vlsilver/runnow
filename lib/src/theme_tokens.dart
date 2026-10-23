@@ -173,3 +173,73 @@ abstract final class RunNowBrandColors {
 // Màn "Hành Trình" dùng thẳng theme sáng/tối + 5 hành chung của app
 // (`context.runNowPalette`, xem `journey_hub_screen.dart`) nên không còn
 // bảng màu riêng ở đây nữa.
+
+/// Bàn chơi Ma Sói: tông đêm của màn ván và chất liệu lá bài khoe. Không
+/// theo hành hay sáng/tối của app, vì màn ván là một bàn chơi riêng.
+class RunNowGameTokens {
+  const RunNowGameTokens._();
+
+  static const nightBackground = Color(0xFF0B0B10);
+  static const nightSurface = Color(0xFF15151C);
+  static const nightGlow = Color(0xFF2A1A3E);
+  static const wolfGlow = Color(0xFF2E1416);
+  static const nightInk = Color(0xFFF4F2EC);
+  static const nightInkSoft = Color(0xFFE6E3DC);
+  static const nightMuted = Color(0xFFB9B5AD);
+  static const nightDanger = Color(0xFFFFB3A3);
+  static const gold = Color(0xFFF5D77A);
+  static const goldDeep = Color(0xFFE9C45A);
+  static const goldPale = Color(0xFFFFF1B8);
+  static const goldShade = Color(0xFFD8AE3C);
+  static const onGold = Color(0xFF1F1606);
+  static const heroTop = Color(0xFF1C1B3A);
+  static const heroMid = Color(0xFF120F1C);
+  static const heroBottom = Color(0xFF0D0C12);
+  static const heroBorder = Color(0x4DC7B8FF);
+  static const cardFieldTop = Color(0xFF26272F);
+  static const cardFieldBottom = Color(0xFF121318);
+  static const cardArt = Color(0xFF0D0E14);
+  static const cardHills = Color(0xA605050A);
+  static const cardShadow = Color(0x80000000);
+  static const cardTextShadow = Color(0x73000000);
+  static const gemOutline = Color(0x59000000);
+  static const roleWolf = Color(0xFFE07A68);
+  static const roleVillager = Color(0xFFC4C9A4);
+  static const roleSeer = Color(0xFFB9ADDB);
+  static const roleGuard = Color(0xFFA3B9D4);
+  static const roleWitch = Color(0xFF9CC7C2);
+  static const roleHunter = Color(0xFFD6AE80);
+  static const roleCupid = Color(0xFFDBA3B6);
+  static const graphiteEdge = Color(0xFF3A3C44);
+  static const graphiteCore = Color(0xFF1E2027);
+  static const gemGraphite = Color(0xFF8D8980);
+  static const silverEdge = Color(0xFF7D828B);
+  static const silverLight = Color(0xFFDCDFE4);
+  static const silverDeep = Color(0xFF6F747D);
+  static const silverBright = Color(0xFFE4E7EC);
+  static const gemSilver = Color(0xFFD4D8DE);
+  static const goldEdge = Color(0xFF9C7C30);
+  static const goldMid = Color(0xFFA8873A);
+  static const foilDark = Color(0xFF7E5A12);
+  static const foilMid = Color(0xFFA8801E);
+  static const foilDeep = Color(0xFF8A6416);
+  static const backEdge = Color(0xFF3A3D48);
+  static const backLight = Color(0xFFA9ADB6);
+  static const backDeep = Color(0xFF2C2E36);
+  static const backBright = Color(0xFFC7CAD1);
+  static const backFieldTop = Color(0xFF1E2A4A);
+  static const backFieldBottom = Color(0xFF0C0F1C);
+  static const backRing = Color(0xFF8CC0FF);
+  static const backLineStrong = Color(0xCCE9C45A);
+  static const backLine = Color(0x80E9C45A);
+  static const backLineSoft = Color(0x40E9C45A);
+  static const moonLight = Color(0xFFFFFBE8);
+  static const moonMid = Color(0xFFE8DFC0);
+  static const moonShade = Color(0xFFB9AE8A);
+  static const moonGlow = Color(0xFFFFF8D6);
+  static const holoClear = Color(0x00FFF0DC);
+  static const holoCream = Color(0xFFFFE2C4);
+  static const holoIce = Color(0xFFD6ECF0);
+  static const holoLilac = Color(0xFFE6D6F5);
+  static const sparkleWarm = Color(0xFFFFF6C8);
+}
