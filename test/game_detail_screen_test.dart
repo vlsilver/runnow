@@ -269,7 +269,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(starts(), ['dryRun=true', '']);
-      expect(find.text('Đang chia bài'), findsOneWidget);
+      expect(find.text('ĐANG CHIA BÀI'), findsOneWidget);
       expect(find.text('Bắt đầu ván'), findsNothing);
       await close(tester);
     });
@@ -448,8 +448,7 @@ void main() {
     });
   });
 
-  const faceDown =
-      'Lá bài của bạn đang úp. Chạm để xem vai, việc cần làm và chat phe.';
+  const faceDown = 'Đang úp. Chạm để xem vai, việc cần làm và chat phe.';
 
   group('my card', () {
     Map<String, dynamic> running({bool registered = true}) => {
@@ -495,7 +494,7 @@ void main() {
       await tester.pump();
       expect(opened, [Uri.parse('https://t.me/+wolves')]);
 
-      await tester.tap(find.text('Chạm để úp lại.'));
+      await tester.tap(find.text('Chạm ra ngoài lá bài để úp lại.'));
       await tester.pumpAndSettle();
       expect(find.text('Mỗi đêm soi một người.'), findsNothing);
       await close(tester);
@@ -711,6 +710,88 @@ void main() {
       await close(tester);
     });
 
+    testWidgets('the face says whether now is your turn, on server time', (
+      tester,
+    ) async {
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'wolf',
+        'roleLabel': 'Sói',
+        'actions': [
+          {
+            'kind': 'wolf_bite',
+            'label': 'Cắn',
+            'help': '',
+            'input': 'single_target',
+            'enabled': true,
+            'opensAt': '2026-10-17T13:00:00Z',
+            'closesAt': '2026-10-17T15:05:00Z',
+            'options': [
+              {'id': 'u2', 'label': 'Bình'},
+            ],
+          },
+        ],
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      expect(find.text('Tới giờ của bạn'), findsNothing);
+
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+      expect(find.text('Tới giờ của bạn'), findsOneWidget);
+      expect(
+        find.textContaining('Còn 1 giờ 5 phút · khoá lúc'),
+        findsOneWidget,
+      );
+
+      await elapse(tester, const Duration(hours: 1, minutes: 10));
+      expect(find.text('Tới giờ của bạn'), findsNothing);
+      expect(find.text('Giờ này bạn nghỉ'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('the face says when your turn opens, or that you are out', (
+      tester,
+    ) async {
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'villager',
+        'roleLabel': 'Dân',
+        'actions': [
+          {
+            'kind': 'vote',
+            'label': 'Biểu quyết',
+            'help': '',
+            'input': 'choice',
+            'enabled': false,
+            'opensAt': '2026-10-17T17:00:00Z',
+            'closesAt': '2026-10-17T19:00:00Z',
+          },
+        ],
+      };
+      await pumpScreen(tester);
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+      expect(find.text('Chưa tới giờ của bạn'), findsOneWidget);
+      await close(tester);
+
+      backend.me = {
+        'status': 'running',
+        'alive': false,
+        'role': 'villager',
+        'roleLabel': 'Dân',
+      };
+      await pumpScreen(tester);
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+      expect(find.text('Bạn đã bị loại'), findsOneWidget);
+      await close(tester);
+    });
+
     testWidgets('shows the witch her potions', (tester) async {
       backend.game = running();
       backend.me = {
@@ -846,6 +927,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Việc của bạn'), findsOneWidget);
 
+      await tester.ensureVisible(find.text('Bình'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Bình'));
       await tester.pump();
       await tester.pump();
@@ -870,6 +953,8 @@ void main() {
       await tester.tap(find.text(faceDown));
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(find.text('Bình'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Bình'));
       await tester.pump();
       await tester.pump();
@@ -896,6 +981,57 @@ void main() {
       'kmTable': table,
       'players': players,
     };
+
+    testWidgets('ranks the living by today km, then 22h km, the dead last', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(2400, 9000);
+      addTearDown(tester.view.reset);
+      backend.game = game([
+        {'uid': 'a', 'name': 'An', 'alive': true, 'lastKm': 5, 'todayKm': 0.4},
+        {'uid': 'b', 'name': 'Bình', 'alive': false, 'deathRound': 1},
+        {
+          'uid': 'c',
+          'name': 'Chi',
+          'alive': true,
+          'lastKm': 0.4,
+          'todayKm': 3.1,
+        },
+        {
+          'uid': 'd',
+          'name': 'Dũng',
+          'alive': true,
+          'lastKm': 7.3,
+          'todayKm': 2,
+        },
+        {'uid': 'h', 'name': 'Hà', 'alive': true, 'lastKm': 2, 'todayKm': 2},
+      ]);
+      await pumpScreen(tester);
+      await tester.pump();
+
+      double y(String name) => tester.getTopLeft(find.text(name)).dy;
+      final order = ['An', 'Bình', 'Chi', 'Dũng', 'Hà']
+        ..sort((a, b) => y(a).compareTo(y(b)));
+      expect(order, ['Chi', 'Dũng', 'Hà', 'An', 'Bình']);
+      await close(tester);
+    });
+
+    testWidgets('without the table ranks by 22h km', (tester) async {
+      tester.view.physicalSize = const Size(2400, 9000);
+      addTearDown(tester.view.reset);
+      backend.game = game([
+        {'uid': 'a', 'name': 'An', 'alive': true, 'lastKm': 1.2},
+        {'uid': 'c', 'name': 'Chi', 'alive': true, 'lastKm': 4},
+        {'uid': 'k', 'name': 'Khoa', 'alive': true},
+      ])..remove('kmTable');
+      await pumpScreen(tester);
+      await tester.pump();
+
+      double y(String name) => tester.getTopLeft(find.text(name)).dy;
+      final order = ['An', 'Chi', 'Khoa']..sort((a, b) => y(a).compareTo(y(b)));
+      expect(order, ['Chi', 'An', 'Khoa']);
+      await close(tester);
+    });
 
     testWidgets('shows your km against the mark and both columns per player', (
       tester,
@@ -946,9 +1082,7 @@ void main() {
       await close(tester);
     });
 
-    testWidgets('without the table keeps the 22h km under the name', (
-      tester,
-    ) async {
+    testWidgets('without the table keeps one column of 22h km', (tester) async {
       backend.game = game([
         {'uid': 'u2', 'name': 'Chi', 'alive': true, 'lastKm': 0.96},
       ])..remove('kmTable');
@@ -956,7 +1090,8 @@ void main() {
       await tester.pump();
 
       expect(find.text('Km của bạn'), findsNothing);
-      expect(find.text('0.9 km'), findsOneWidget);
+      expect(find.text('Km chốt'), findsOneWidget);
+      expect(find.text('0.9'), findsOneWidget);
       await close(tester);
     });
 

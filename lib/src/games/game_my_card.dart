@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:myrun/src/games/game_km_table.dart';
 import 'package:myrun/src/games/game_role_card.dart';
+import 'package:myrun/src/games/game_turn.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
@@ -18,11 +19,17 @@ class GameMyCard extends StatelessWidget {
     required this.onOpenChat,
     required this.card,
     required this.onOpenCard,
+    required this.running,
+    required this.serverNow,
     this.kmTable,
   });
 
   final GameMe me;
   final bool faceUp;
+
+  /// Ván đang chạy thì mặt lá có dải "tới giờ của bạn chưa".
+  final bool running;
+  final DateTime Function() serverNow;
 
   /// Lá vẽ trong mặt ngửa; chạm vào lá thì mở xem to ([onOpenCard]).
   final GameCardData card;
@@ -41,11 +48,14 @@ class GameMyCard extends StatelessWidget {
     final palette = context.runNowPalette;
     return GlassPanel(
       padding: EdgeInsets.zero,
+      // Ngửa thì viền vàng như artboard lật thẻ; úp thì viền kính thường.
+      border: Border.all(
+        color: faceUp ? palette.accent.withValues(alpha: 0.3) : palette.border,
+      ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(24),
         onTap: onFlip,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(faceUp ? 16 : 12),
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 250),
             child: faceUp
@@ -54,43 +64,66 @@ class GameMyCard extends StatelessWidget {
                     me: me,
                     card: card,
                     kmTable: kmTable,
+                    running: running,
+                    serverNow: serverNow,
                     onOpenCard: onOpenCard,
                     onOpenUrl: onOpenUrl,
                     onOpenChat: onOpenChat,
                   )
-                : Row(
-                    key: const ValueKey('back'),
-                    children: [
-                      const GameCardScaled(width: 72, child: GameCardBack()),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        // Ai có vai cũng thấy đúng câu này, nên câu chữ không
-                        // lộ ai có việc ban đêm hay có chat phe.
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Lá bài của bạn',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                color: palette.ink,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Lá bài của bạn đang úp. Chạm để xem vai, việc '
-                              'cần làm và chat phe.',
-                              style: TextStyle(color: palette.textMuted),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                : const _Back(key: ValueKey('back')),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _Back extends StatelessWidget {
+  const _Back({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return Row(
+      children: [
+        const GameCardScaled(width: 90, child: GameCardBack()),
+        const SizedBox(width: 14),
+        Expanded(
+          // Ai có vai cũng thấy đúng câu này, nên câu chữ không lộ ai có việc
+          // ban đêm hay có chat phe.
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Lá bài của bạn',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: palette.ink,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Đang úp. Chạm để xem vai, việc cần làm và chat phe.',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.45,
+                  color: palette.textMuted,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Chạm để lật',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: palette.accent,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -101,6 +134,8 @@ class _Face extends StatelessWidget {
     required this.me,
     required this.card,
     required this.kmTable,
+    required this.running,
+    required this.serverNow,
     required this.onOpenCard,
     required this.onOpenUrl,
     required this.onOpenChat,
@@ -109,6 +144,8 @@ class _Face extends StatelessWidget {
   final GameMe me;
   final GameCardData card;
   final GameKmTable? kmTable;
+  final bool running;
+  final DateTime Function() serverNow;
   final VoidCallback onOpenCard;
   final ValueChanged<String> onOpenUrl;
   final ValueChanged<String> onOpenChat;
@@ -117,16 +154,21 @@ class _Face extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final potions = me.potions;
-    final muted = TextStyle(color: palette.textMuted);
+    final accent = gameRoleAccent(me.role ?? '');
+    const body = TextStyle(
+      fontSize: 13,
+      height: 1.45,
+      color: RunNowGameTokens.heroSub,
+    );
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             GestureDetector(
               onTap: onOpenCard,
-              child: GameCardScaled(width: 112, child: card.front()),
+              child: GameCardScaled(width: 140, child: card.front()),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -136,26 +178,26 @@ class _Face extends StatelessWidget {
                   Text(
                     me.roleLabel ?? '',
                     style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: palette.ink,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      color: accent,
                     ),
                   ),
                   if (me.roleRules != null) ...[
-                    const SizedBox(height: 4),
-                    Text(me.roleRules!, style: muted),
+                    const SizedBox(height: 6),
+                    Text(me.roleRules!, style: body),
                   ],
                   if (potions != null) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     Text(
                       'Bình cứu: ${potions.save ? 'còn' : 'đã dùng'} · '
                       'Bình độc: ${potions.poison ? 'còn' : 'đã dùng'}',
-                      style: TextStyle(color: palette.ink),
+                      style: body.copyWith(color: palette.ink),
                     ),
                   ],
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   Text(
-                    'Chạm lá bài để xem to, xoay 3D.',
+                    'Chạm thẻ để xem to, xoay 3D',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -167,18 +209,31 @@ class _Face extends StatelessWidget {
             ),
           ],
         ),
-        if (me.teamKm case final team?) ...[
-          const SizedBox(height: 16),
-          _TeamKm(team: team, table: kmTable),
+        if (running) ...[
+          const SizedBox(height: 14),
+          GameTurnBanner(
+            actions: me.actions,
+            alive: me.alive,
+            serverNow: serverNow,
+          ),
         ],
         for (final note in me.notes)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Text('Vòng ${note.round}: ${note.text}'),
+            child: Text(
+              'Vòng ${note.round}: ${note.text}',
+              style: body.copyWith(color: palette.ink),
+            ),
           ),
+        if (me.teamKm case final team?) ...[
+          const SizedBox(height: 14),
+          Divider(height: 1, color: palette.border),
+          const SizedBox(height: 12),
+          _TeamKm(team: team, table: kmTable),
+        ],
         for (final invite in me.inviteLinks)
           Padding(
-            padding: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.only(top: 12),
             child: OutlinedButton(
               onPressed: () => onOpenUrl(invite.url),
               child: Text(invite.label),
@@ -186,15 +241,29 @@ class _Face extends StatelessWidget {
           ),
         for (final chat in me.chats)
           Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: FilledButton.tonalIcon(
+            padding: const EdgeInsets.only(top: 12),
+            child: OutlinedButton.icon(
               onPressed: () => onOpenChat(chat.key),
-              icon: const Icon(Icons.forum_outlined),
+              // Nút chat phe tô theo màu vai, như nút Chat Phe Sói ở artboard.
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                backgroundColor: accent.withValues(alpha: 0.16),
+                foregroundColor: Color.lerp(accent, palette.ink, 0.55),
+                side: BorderSide(color: accent.withValues(alpha: 0.45)),
+                textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
               label: Text('Chat ${chat.label}'),
             ),
           ),
-        const SizedBox(height: 8),
-        Text('Chạm để úp lại.', style: muted),
+        const SizedBox(height: 10),
+        Text(
+          'Chạm ra ngoài lá bài để úp lại.',
+          style: TextStyle(fontSize: 12, color: palette.textMuted),
+        ),
       ],
     );
   }
@@ -217,12 +286,15 @@ class _TeamKm extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
           children: [
             Expanded(
               child: Text(
                 team.label,
                 style: TextStyle(
-                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
                   color: palette.ink,
                 ),
               ),
@@ -233,7 +305,7 @@ class _TeamKm extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         GameKmColumns(
           lastLabel: table?.lastLabel ?? 'Chốt 22h',
           todayLabel: table?.todayLabel ?? 'Tới giờ',

@@ -73,7 +73,7 @@ ThemeData gameNightTheme() {
       foregroundColor: gameNightInk,
       titleTextStyle: base.appBarTheme.titleTextStyle?.copyWith(
         color: gameNightInk,
-        fontSize: 22,
+        fontSize: 20,
         fontWeight: FontWeight.w800,
       ),
     ),
@@ -81,7 +81,10 @@ ThemeData gameNightTheme() {
       style: FilledButton.styleFrom(
         backgroundColor: gameNightGold,
         foregroundColor: _onGold,
-        textStyle: const TextStyle(fontWeight: FontWeight.w800),
+        // Giữ font của theme; TextStyle trần làm nút rơi về font hệ thống.
+        textStyle: base.textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.w800,
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),

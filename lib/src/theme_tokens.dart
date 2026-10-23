@@ -196,6 +196,16 @@ class RunNowGameTokens {
   static const heroMid = Color(0xFF120F1C);
   static const heroBottom = Color(0xFF0D0C12);
   static const heroBorder = Color(0x4DC7B8FF);
+  static const heroSub = Color(0xFFD9D2C0);
+  static const dayTop = Color(0xFF3B2A14);
+  static const dayMid = Color(0xFF1A1420);
+  static const dayBottom = Color(0xFF120F18);
+  static const dayBorder = Color(0x59E9C45A);
+  static const sunLight = Color(0xFFFFF7D6);
+  static const sunMid = Color(0xFFF0C75E);
+  static const sunShade = Color(0xFFB98A24);
+  static const kmOk = Color(0xFFB9D77A);
+  static const kmShort = Color(0x669C2418);
   static const cardFieldTop = Color(0xFF26272F);
   static const cardFieldBottom = Color(0xFF121318);
   static const cardArt = Color(0xFF0D0E14);

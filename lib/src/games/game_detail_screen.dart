@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -250,12 +252,18 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
           final detail = _controller.detail;
           final me = _controller.me;
           // Vai của cả ván chỉ có trong /me sau khi ván kết thúc.
-          final reveals = {for (final r in me?.allRoles ?? const []) r.uid: r};
+          final reveals = <String, GameRoleReveal>{
+            for (final r in me?.allRoles ?? const []) r.uid: r,
+          };
           final kmTable = detail?.kmTable;
           final myPlayer = detail?.players
               .where((p) => p.uid == myUid)
               .firstOrNull;
           return GameNightBackdrop(
+            // Lá Sói đang ngửa thì quầng đỏ, như artboard lật thẻ Sói.
+            glow: _faceUp && me?.role == 'wolf'
+                ? RunNowGameTokens.wolfGlow
+                : null,
             child: Scaffold(
               backgroundColor: Colors.transparent,
               appBar: AppBar(
@@ -283,17 +291,16 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                           _Header(
                             detail: detail,
                             closing: _controller.phaseClosing,
+                            serverNow: _controller.serverNow,
                           ),
-                          if (kmTable != null && myPlayer != null) ...[
-                            const SizedBox(height: 12),
-                            GameMyKmCard(table: kmTable, player: myPlayer),
-                          ],
                           if (me != null && me.role != null) ...[
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 16),
                             GameMyCard(
                               me: me,
                               faceUp: _faceUp,
                               kmTable: kmTable,
+                              running: detail.status == 'running',
+                              serverNow: _controller.serverNow,
                               card: _cardFor(detail, me, myPlayer),
                               onOpenCard: () => _openCard(detail, me, myPlayer),
                               onFlip: () => setState(() => _faceUp = !_faceUp),
@@ -310,7 +317,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                           if (_faceUp &&
                               me != null &&
                               me.actions.isNotEmpty) ...[
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 16),
                             const _SectionTitle('Việc của bạn'),
                             for (final action in me.actions)
                               Padding(
@@ -333,8 +340,11 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                                 ),
                               ),
                           ],
-                          if (detail.status == 'registering' ||
-                              detail.isRegistered) ...[
+                          if (kmTable != null && myPlayer != null) ...[
+                            const SizedBox(height: 16),
+                            GameMyKmCard(table: kmTable, player: myPlayer),
+                          ],
+                          if (detail.status == 'registering') ...[
                             const SizedBox(height: 12),
                             TelegramLinkSection(
                               controller: _telegram,
@@ -361,27 +371,31 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                               ),
                             ),
                           ],
-                          if (detail.rulesText.isNotEmpty) ...[
+                          // Lúc mở đăng ký thì luật nằm ngay dưới nút đăng ký;
+                          // ván chạy rồi thì xuống cuối, nhường chỗ cho ván.
+                          if (detail.status == 'registering' &&
+                              detail.rulesText.isNotEmpty) ...[
                             const SizedBox(height: 12),
                             _Rules(text: detail.rulesText),
                           ],
                           if (detail.players.isNotEmpty) ...[
                             const SizedBox(height: 20),
                             _SectionTitle(
-                              'Người chơi (${detail.players.length})',
+                              'Người chơi',
+                              trailing: detail.status == 'registering'
+                                  ? '${detail.players.length} người'
+                                  : '${detail.players.where((p) => p.alive).length}'
+                                        ' còn sống / ${detail.players.length}',
+                            ),
+                            _Players(
+                              players: detail.players,
+                              reveals: reveals,
+                              kmTable: kmTable,
+                              myUid: myUid,
                             ),
                             if (kmTable != null)
-                              _PlayerKmHeader(table: kmTable),
-                            for (final player in detail.players)
-                              _PlayerRow(
-                                player: player,
-                                reveal: reveals[player.uid],
-                                kmTable: kmTable,
-                                isMe: player.uid == myUid,
-                              ),
-                            if (kmTable != null)
                               Padding(
-                                padding: const EdgeInsets.only(top: 4),
+                                padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
                                 child: Text(
                                   'Số nhạt là chưa tới mốc '
                                   '${gameKmUnitText(kmTable.unitKm)} km.',
@@ -400,6 +414,19 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                             loadingOlder: _controller.loadingOlder,
                             onLoadOlder: _loadOlder,
                           ),
+                          if (detail.status != 'registering' &&
+                              detail.rulesText.isNotEmpty) ...[
+                            const SizedBox(height: 20),
+                            _Rules(text: detail.rulesText),
+                          ],
+                          if (detail.status != 'registering' &&
+                              detail.isRegistered) ...[
+                            const SizedBox(height: 12),
+                            TelegramLinkSection(
+                              controller: _telegram,
+                              onError: _showError,
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -413,11 +440,31 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
 
 final _timeFormat = DateFormat('HH:mm dd/MM');
 
+/// Các bước trong một ngày của ván, theo phase của backend
+/// (`werewolf/state.go`): đêm 22h, rạng sáng 0h, đề cử 10h, biểu quyết 17h.
+const _phaseSteps = [
+  ('night', 'Đêm'),
+  ('dawn', 'Rạng sáng'),
+  ('day', 'Đề cử'),
+  ('trial', 'Biểu quyết'),
+];
+
+/// Tên phase trong key `r3/day` hay `r3/night/hunter`.
+String _phaseName(String key) {
+  final parts = key.split('/');
+  return parts.length > 1 ? parts[1] : key;
+}
+
 class _Header extends StatelessWidget {
-  const _Header({required this.detail, required this.closing});
+  const _Header({
+    required this.detail,
+    required this.closing,
+    required this.serverNow,
+  });
 
   final GameDetail detail;
   final bool closing;
+  final DateTime Function() serverNow;
 
   @override
   Widget build(BuildContext context) {
@@ -425,55 +472,77 @@ class _Header extends StatelessWidget {
     final phase = detail.phase;
     final deadline = phase?.deadline;
     final startError = detail.startError;
+    final step = phase == null
+        ? -1
+        : _phaseSteps.indexWhere((s) => s.$1 == _phaseName(phase.key));
+    // Đề cử và biểu quyết diễn ra ban ngày; còn lại (kể cả chưa chạy) là đêm.
+    final day = step >= 2;
     return GlassPanel(
-      gradient: const LinearGradient(
-        begin: Alignment(-0.4, -1),
-        end: Alignment(0.4, 1),
-        colors: [
-          RunNowGameTokens.heroTop,
-          RunNowGameTokens.heroMid,
-          RunNowGameTokens.heroBottom,
-        ],
-        stops: [0, 0.6, 1],
+      gradient: LinearGradient(
+        begin: const Alignment(-0.4, -1),
+        end: const Alignment(0.4, 1),
+        colors: day
+            ? const [
+                RunNowGameTokens.dayTop,
+                RunNowGameTokens.dayMid,
+                RunNowGameTokens.dayBottom,
+              ]
+            : const [
+                RunNowGameTokens.heroTop,
+                RunNowGameTokens.heroMid,
+                RunNowGameTokens.heroBottom,
+              ],
+        stops: day ? const [0, 0.55, 1] : const [0, 0.6, 1],
       ),
-      border: Border.all(color: RunNowGameTokens.heroBorder),
+      border: Border.all(
+        color: day ? RunNowGameTokens.dayBorder : RunNowGameTokens.heroBorder,
+      ),
       child: Stack(
         children: [
-          const Positioned(
+          Positioned(
             right: 18,
             top: 16,
-            child: GameMoon(size: 40, glow: 36),
+            child: day
+                ? const GameSun(size: 44, glow: 40)
+                : const GameMoon(size: 40, glow: 36),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 18, 72, 18),
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    _FoilChip(label: detail.statusLabel),
-                    if (detail.testMode)
-                      _Chip(label: 'Ván thử', color: palette.textMuted),
-                  ],
+                Padding(
+                  padding: const EdgeInsets.only(right: 56),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      _FoilChip(label: detail.statusLabel),
+                      if (detail.testMode)
+                        _Chip(label: 'Ván thử', color: palette.textMuted),
+                    ],
+                  ),
                 ),
                 if (phase != null) ...[
                   const SizedBox(height: 12),
                   // Qua hạn thì không hiện phase cũ như còn mở.
-                  Text(
-                    closing ? 'Đang chốt…' : phase.label,
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      color: palette.ink,
+                  Padding(
+                    padding: const EdgeInsets.only(right: 56),
+                    child: Text(
+                      closing ? 'Đang chốt…' : phase.label,
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: palette.ink,
+                      ),
                     ),
                   ),
                   if (!closing && deadline != null)
-                    Text(
-                      'Hạn ${_timeFormat.format(deadline.toLocal())}',
-                      style: TextStyle(color: palette.textMuted),
-                    ),
+                    _Deadline(deadline: deadline, serverNow: serverNow),
+                  if (step >= 0) ...[
+                    const SizedBox(height: 16),
+                    _PhaseSteps(current: step),
+                  ],
                 ],
                 if (detail.winnerLabel != null) ...[
                   const SizedBox(height: 12),
@@ -504,6 +573,117 @@ class _Header extends StatelessWidget {
   }
 }
 
+/// Hạn của phase kèm thời gian còn lại, đếm theo giờ server.
+class _Deadline extends StatefulWidget {
+  const _Deadline({required this.deadline, required this.serverNow});
+
+  final DateTime deadline;
+  final DateTime Function() serverNow;
+
+  @override
+  State<_Deadline> createState() => _DeadlineState();
+}
+
+class _DeadlineState extends State<_Deadline> {
+  late final Timer _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 20), (_) => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _tick.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final now = widget.serverNow();
+    final local = widget.deadline.toLocal();
+    final sameDay = DateUtils.isSameDay(local, now.toLocal());
+    final at = DateFormat(sameDay ? 'HH:mm' : 'HH:mm dd/MM').format(local);
+    final left = widget.deadline.difference(now);
+    final String remaining;
+    if (left.inMinutes >= 60) {
+      final minutes = left.inMinutes % 60;
+      remaining =
+          'còn ${left.inHours} giờ${minutes == 0 ? '' : ' $minutes phút'}';
+    } else if (left.inMinutes >= 1) {
+      remaining = 'còn ${left.inMinutes} phút';
+    } else {
+      remaining = 'sắp hết giờ';
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Text(
+        'Hạn $at · $remaining',
+        style: const TextStyle(fontSize: 14, color: RunNowGameTokens.heroSub),
+      ),
+    );
+  }
+}
+
+/// Thanh bước của một ngày: bước đã qua sáng nhạt, bước hiện tại vàng.
+class _PhaseSteps extends StatelessWidget {
+  const _PhaseSteps({required this.current});
+
+  final int current;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return Row(
+      children: [
+        for (var i = 0; i < _phaseSteps.length; i++) ...[
+          if (i > 0) const SizedBox(width: 4),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  height: 4,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(4),
+                    color: i == current
+                        ? null
+                        : Colors.white.withValues(
+                            alpha: i < current ? 0.35 : 0.12,
+                          ),
+                    gradient: i == current
+                        ? const LinearGradient(
+                            colors: [
+                              RunNowGameTokens.goldDeep,
+                              RunNowGameTokens.goldPale,
+                            ],
+                          )
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _phaseSteps[i].$2,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: i == current
+                        ? FontWeight.w800
+                        : FontWeight.w400,
+                    color: i == current ? palette.accent : palette.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 /// Chip trạng thái ván, nền vàng foil như viền lá bài.
 class _FoilChip extends StatelessWidget {
   const _FoilChip({required this.label});
@@ -519,11 +699,11 @@ class _FoilChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        label,
+        label.toUpperCase(),
         style: const TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w800,
-          letterSpacing: 0.4,
+          letterSpacing: 1.2,
           color: RunNowGameTokens.onGold,
         ),
       ),
@@ -551,6 +731,7 @@ class _Registration extends StatelessWidget {
     final ready = detail.requirements.every((r) => r.ok);
     return GlassPanel(
       padding: const EdgeInsets.all(16),
+      border: Border.all(color: palette.border),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -594,6 +775,7 @@ class _Rules extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GlassPanel(
+      border: Border.all(color: context.runNowPalette.border),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
@@ -607,61 +789,132 @@ class _Rules extends StatelessWidget {
   }
 }
 
-/// Đầu cột km của danh sách người chơi, thẳng hàng với [_PlayerKm].
-class _PlayerKmHeader extends StatelessWidget {
-  const _PlayerKmHeader({required this.table});
+/// Bảng người chơi trong một khung: cột tên và cột km. Có [kmTable] thì hai
+/// cột km (chốt 22h và tới giờ), chưa có thì một cột km chốt như cũ.
+class _Players extends StatelessWidget {
+  const _Players({
+    required this.players,
+    required this.reveals,
+    required this.kmTable,
+    required this.myUid,
+  });
 
-  final GameKmTable table;
+  final List<GamePlayer> players;
+  final Map<String, GameRoleReveal> reveals;
+  final GameKmTable? kmTable;
+  final String? myUid;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
+    final table = kmTable;
     // Đầu cột ngắn: chỉ phần trước " · " (Hôm qua, Hôm nay).
     String short(String label) => label.split(' · ').first;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(_kmRowInset, 0, _kmRowInset, 4),
-      child: Row(
+    return GlassPanel(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      border: Border.all(color: palette.border),
+      child: Column(
         children: [
-          const Spacer(),
-          SizedBox(
-            width: _kmColumnWidth,
-            child: Text(
-              short(table.lastLabel),
-              textAlign: TextAlign.right,
-              style: TextStyle(fontSize: 12, color: palette.textMuted),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(0, 10, 0, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Tên',
+                    style: TextStyle(fontSize: 12, color: palette.textMuted),
+                  ),
+                ),
+                if (table == null)
+                  _KmHead('Km chốt', width: _kmColumnWidth + 8)
+                else ...[
+                  _KmHead(short(table.lastLabel)),
+                  _KmHead(short(table.todayLabel), today: true),
+                ],
+              ],
             ),
           ),
-          SizedBox(
-            width: _kmColumnWidth,
-            child: Text(
-              short(table.todayLabel),
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: palette.accent,
-              ),
+          Divider(height: 1, color: palette.border),
+          const SizedBox(height: 4),
+          for (final player in _ranked(players, table != null))
+            _PlayerRow(
+              player: player,
+              reveal: reveals[player.uid],
+              kmTable: table,
+              isMe: player.uid == myUid,
             ),
-          ),
+          const SizedBox(height: 4),
         ],
       ),
     );
   }
 }
 
-const _kmColumnWidth = 64.0;
+/// Xếp người còn sống theo km từ cao xuống thấp, người chết xuống cuối. Có
+/// bảng km thì xếp theo km đang gom hôm nay, vì đó là số sẽ chốt lúc 22h cho
+/// biểu quyết và kỹ năng đêm; bằng nhau thì xét km chốt hôm qua. Chưa có bảng
+/// thì xếp theo km chốt. Cùng số thì giữ thứ tự backend gửi.
+List<GamePlayer> _ranked(List<GamePlayer> players, bool live) {
+  double km(double? value) => value ?? -1;
+  int byKm(GamePlayer a, GamePlayer b) {
+    if (a.alive != b.alive) return a.alive ? -1 : 1;
+    if (!a.alive) return 0;
+    final first = live
+        ? km(b.todayKm).compareTo(km(a.todayKm))
+        : km(b.lastKm).compareTo(km(a.lastKm));
+    if (first != 0 || !live) return first;
+    return km(b.lastKm).compareTo(km(a.lastKm));
+  }
 
-/// Lề trong của dòng người chơi khi có bảng km, để nền dòng "Bạn" không
-/// dính sát chữ.
-const _kmRowInset = 8.0;
+  // List.sort không giữ thứ tự cho phần tử bằng nhau, nên so thêm vị trí gốc.
+  final indexed = players.indexed.toList()
+    ..sort((a, b) {
+      final order = byKm(a.$2, b.$2);
+      return order != 0 ? order : a.$1.compareTo(b.$1);
+    });
+  return [for (final (_, player) in indexed) player];
+}
+
+class _KmHead extends StatelessWidget {
+  const _KmHead(this.text, {this.today = false, this.width = _kmColumnWidth});
+
+  final String text;
+  final bool today;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return SizedBox(
+      width: width,
+      child: Text(
+        text,
+        textAlign: TextAlign.right,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: today ? FontWeight.w800 : FontWeight.w400,
+          color: today ? palette.accent : palette.textMuted,
+        ),
+      ),
+    );
+  }
+}
+
+const _kmColumnWidth = 60.0;
 
 /// Một ô km của dòng người chơi: đậm khi đạt mốc, nhạt khi chưa.
 class _PlayerKm extends StatelessWidget {
-  const _PlayerKm({required this.km, required this.unitKm, this.today = false});
+  const _PlayerKm({
+    required this.km,
+    required this.unitKm,
+    this.today = false,
+    this.width = _kmColumnWidth,
+  });
 
   final double? km;
   final double unitKm;
   final bool today;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
@@ -669,12 +922,17 @@ class _PlayerKm extends StatelessWidget {
     final km = this.km;
     final reached = km != null && gameKmMissing(km, unitKm) == null;
     return SizedBox(
-      width: _kmColumnWidth,
+      width: width,
       child: Text(
         km == null ? '—' : gameKmText(km),
         textAlign: TextAlign.right,
         style: TextStyle(
-          fontWeight: reached ? FontWeight.w700 : FontWeight.w400,
+          fontSize: 14,
+          fontWeight: !reached
+              ? FontWeight.w400
+              : today
+              ? FontWeight.w800
+              : FontWeight.w700,
           color: !reached
               ? palette.textMuted
               : today
@@ -698,7 +956,7 @@ class _PlayerRow extends StatelessWidget {
   final GamePlayer player;
   final GameRoleReveal? reveal;
 
-  /// Có bảng km thì km nằm ở hai cột bên phải thay vì trong dòng chữ phụ.
+  /// Có bảng km thì hai cột km; chưa có thì một cột km chốt.
   final GameKmTable? kmTable;
   final bool isMe;
 
@@ -709,95 +967,132 @@ class _PlayerRow extends StatelessWidget {
     final roleLabel = player.revealedRoleLabel ?? reveal?.roleLabel;
     final cardUrl = player.revealedCardUrl ?? reveal?.cardUrl;
     final table = kmTable;
+    final danger = Theme.of(context).colorScheme.error;
     final details = [
-      if (isMe && table != null) 'Bạn',
+      if (isMe) 'Bạn',
+      if (player.onTrial) 'Lên giàn',
       if (!player.alive)
         player.deathRound == null
             ? 'Đã chết'
             : 'Chết vòng ${player.deathRound}',
       ?roleLabel,
-      if (table == null && player.lastKm != null)
-        '${gameKmText(player.lastKm!)} km',
     ];
     return Container(
-      padding: EdgeInsets.symmetric(
-        vertical: 6,
-        horizontal: table == null ? 0 : _kmRowInset,
-      ),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: isMe && table != null ? palette.tint : null,
-        borderRadius: BorderRadius.circular(8),
+        color: isMe ? palette.accent.withValues(alpha: 0.12) : null,
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
         children: [
-          Opacity(
-            opacity: player.alive ? 1 : 0.4,
-            child: CircleAvatar(
-              radius: 18,
-              // Mọi avatar một tông kính tối; riêng mình nhấn vàng.
-              backgroundColor: isMe
-                  ? palette.accent.withValues(alpha: 0.16)
-                  : Colors.white.withValues(alpha: 0.07),
-              foregroundColor: isMe ? palette.accent : palette.ink,
-              backgroundImage: avatar == null
-                  ? null
-                  : cachedAvatarImage(context, avatar, 36),
-              child: avatar == null
-                  ? Text(
-                      player.name.isEmpty ? '?' : player.name[0].toUpperCase(),
-                    )
-                  : null,
-            ),
-          ),
-          const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  player.name,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: palette.ink,
-                    decoration: player.alive
-                        ? null
-                        : TextDecoration.lineThrough,
+            child: Opacity(
+              opacity: player.alive ? 1 : 0.55,
+              child: Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: isMe
+                            ? palette.accent.withValues(alpha: 0.55)
+                            : Colors.white.withValues(alpha: 0.14),
+                      ),
+                    ),
+                    child: CircleAvatar(
+                      // Mọi avatar một tông kính tối; riêng mình nhấn vàng.
+                      backgroundColor: isMe
+                          ? palette.accent.withValues(alpha: 0.16)
+                          : Colors.white.withValues(alpha: 0.07),
+                      foregroundColor: isMe ? palette.accent : palette.ink,
+                      backgroundImage: avatar == null
+                          ? null
+                          : cachedAvatarImage(context, avatar, 34),
+                      child: avatar == null
+                          ? Text(
+                              player.name.isEmpty
+                                  ? '?'
+                                  : player.name[0].toUpperCase(),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            )
+                          : null,
+                    ),
                   ),
-                ),
-                if (details.isNotEmpty)
-                  Text(
-                    details.join(' · '),
-                    style: TextStyle(fontSize: 13, color: palette.textMuted),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          player.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: palette.ink,
+                            decoration: player.alive
+                                ? null
+                                : TextDecoration.lineThrough,
+                          ),
+                        ),
+                        if (details.isNotEmpty)
+                          Text(
+                            details.join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: player.onTrial
+                                  ? danger
+                                  : isMe
+                                  ? palette.accent
+                                  : palette.textMuted,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-              ],
-            ),
-          ),
-          if (cardUrl != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: Image.network(
-                  cardUrl,
-                  width: 28,
-                  height: 40,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                ),
+                  if (cardUrl != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: Image.network(
+                          cardUrl,
+                          width: 28,
+                          height: 39,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
-          if (player.onTrial)
-            _Chip(
-              label: 'Lên giàn',
-              color: Theme.of(context).colorScheme.error,
-            ),
-          if (table != null) ...[
-            // Người chết không còn tính km, kể cả km đã chốt.
+          ),
+          // Người chết không còn tính km, kể cả km đã chốt.
+          if (table == null)
+            _PlayerKm(
+              km: player.alive ? player.lastKm : null,
+              unitKm: 1,
+              width: _kmColumnWidth + 8,
+            )
+          else ...[
             _PlayerKm(
               km: player.alive ? player.lastKm : null,
               unitKm: table.unitKm,
             ),
-            _PlayerKm(km: player.todayKm, unitKm: table.unitKm, today: true),
+            _PlayerKm(
+              km: player.alive ? player.todayKm : null,
+              unitKm: table.unitKm,
+              today: true,
+            ),
           ],
         ],
       ),
@@ -825,27 +1120,41 @@ class _Feed extends StatelessWidget {
       return Text('Chưa có gì.', style: TextStyle(color: palette.textMuted));
     }
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final item in items)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 14),
+          GlassPanel(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            border: Border.all(color: palette.border),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   item.title,
                   style: TextStyle(
+                    fontSize: 15,
                     fontWeight: FontWeight.w800,
                     color: palette.ink,
                   ),
                 ),
                 if (item.at != null)
-                  Text(
-                    _timeFormat.format(item.at!.toLocal()),
-                    style: TextStyle(fontSize: 12, color: palette.textMuted),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2, bottom: 4),
+                    child: Text(
+                      _timeFormat.format(item.at!.toLocal()),
+                      style: TextStyle(fontSize: 12, color: palette.textMuted),
+                    ),
                   ),
-                for (final line in item.lines) Text(line),
+                for (final line in item.lines)
+                  Text(
+                    line,
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.45,
+                      color: palette.ink,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -862,15 +1171,37 @@ class _Feed extends StatelessWidget {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text);
+  const _SectionTitle(this.text, {this.trailing});
 
   final String text;
+  final String? trailing;
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(text, style: Theme.of(context).textTheme.titleMedium),
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: palette.ink,
+              ),
+            ),
+          ),
+          if (trailing != null)
+            Text(
+              trailing!,
+              style: TextStyle(fontSize: 12, color: palette.textMuted),
+            ),
+        ],
+      ),
     );
   }
 }

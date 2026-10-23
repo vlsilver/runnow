@@ -154,34 +154,28 @@ class GameKmStatusLabel extends StatelessWidget {
     if (km == null) {
       return Text('—', style: TextStyle(color: palette.textMuted));
     }
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    // Chỉ dùng trong màn ván, mà màn ván luôn tông đêm.
     final missing = gameKmMissing(km, unitKm);
     if (missing == null) {
-      return Text(
+      return const Text(
         'Đủ',
         style: TextStyle(
-          fontWeight: FontWeight.w700,
-          color: dark
-              ? RunNowThemeTokens.woodRamp[1]
-              : RunNowThemeTokens.woodRamp[4],
+          fontWeight: FontWeight.w800,
+          color: RunNowGameTokens.kmOk,
         ),
       );
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: dark
-            ? RunNowThemeTokens.fireRamp[4].withValues(alpha: 0.35)
-            : RunNowThemeTokens.fireTint,
+        color: RunNowGameTokens.kmShort,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         'Thiếu $missing',
-        style: TextStyle(
-          fontWeight: FontWeight.w700,
-          color: dark
-              ? RunNowThemeTokens.fireRamp[0]
-              : RunNowThemeTokens.fireRamp[4],
+        style: const TextStyle(
+          fontWeight: FontWeight.w800,
+          color: RunNowGameTokens.nightDanger,
         ),
       ),
     );
@@ -208,6 +202,7 @@ class GameMyKmCard extends StatelessWidget {
     final missing = today == null ? null : gameKmMissing(today, table.unitKm);
     return GlassPanel(
       padding: const EdgeInsets.all(16),
+      border: Border.all(color: palette.border),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -215,7 +210,7 @@ class GameMyKmCard extends StatelessWidget {
             'Km của bạn',
             style: TextStyle(
               fontSize: 16,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
               color: palette.ink,
             ),
           ),

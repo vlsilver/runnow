@@ -585,6 +585,43 @@ class GameMoon extends StatelessWidget {
   }
 }
 
+/// Mặt trời của header ban ngày, cùng dáng với [GameMoon].
+class GameSun extends StatelessWidget {
+  const GameSun({super.key, required this.size, required this.glow});
+
+  final double size;
+  final double glow;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const RadialGradient(
+          center: Alignment(-0.3, -0.3),
+          colors: [
+            RunNowGameTokens.sunLight,
+            RunNowGameTokens.sunMid,
+            RunNowGameTokens.sunShade,
+          ],
+          stops: [0, 0.55, 1],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: RunNowGameTokens.sunMid.withValues(alpha: 0.55),
+            blurRadius: glow,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Màu nhấn của vai, như trên lá bài; vai lạ thì vàng.
+Color gameRoleAccent(String role) => _roles[role]?.accent ?? _gold;
+
 class _StatBox extends StatelessWidget {
   const _StatBox({required this.stat});
 
