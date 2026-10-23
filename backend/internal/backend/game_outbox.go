@@ -697,12 +697,16 @@ func (r *outboxRenderer) startText(nightAt time.Time, wake []werewolf.Role) stri
 // wakeLines: quản trò gọi từng vai dậy, kèm việc và hạn của vai đó (bảng 1.3).
 // Hạn ghi theo lịch chuẩn; lúc gọi thì admin chưa dời hạn được lượt mới.
 var wakeLines = map[werewolf.Role]string{
-	werewolf.Cupid: "Cupid thức dậy, chọn hai người để ghép đôi, tới 0h đêm 1.",
-	werewolf.Wolf:  "Sói thức dậy, cả phe chọn một người để cắn, tới 0h.",
-	werewolf.Seer:  "Tiên tri thức dậy, chọn một người để soi, tới 10h sáng.",
+	werewolf.Cupid: "Cupid thức dậy, chọn hai người để ghép đôi, chốt lúc 0h đêm 1.",
+	werewolf.Wolf:  "Sói thức dậy, cả phe chọn một người để cắn, chốt lúc 0h.",
 	werewolf.Guard: "Bảo vệ thức dậy, chọn một người để che, tới 10h sáng.",
+	werewolf.Seer:  "Tiên tri thức dậy, chọn một người để soi, tới 10h sáng.",
 	werewolf.Witch: "Phù thuỷ thức dậy, chọn cứu người hay dùng bình độc, tới 10h sáng.",
 }
+
+// witchLater: lúc 22h phù thuỷ chưa dậy, nhưng vẫn có số thứ tự của mình để
+// group thấy cả lượt đêm.
+const witchLater = "Phù thuỷ: 0h sói chốt xong thì quản trò gọi."
 
 const gmHowTo = "Ai có vai thì bấm trong tin 3i nhắn riêng hoặc trong app RunNow."
 
@@ -712,16 +716,21 @@ func gmText(call string, round int, wake []werewolf.Role) []string {
 	var lines []string
 	switch call {
 	case callNight:
-		lines = append(lines, fmt.Sprintf("<b>Đêm %d buông xuống, cả làng đi ngủ.</b>", round))
+		lines = append(lines, fmt.Sprintf("<b>Đêm %d buông xuống, cả làng đi ngủ.</b>", round), "Quản trò gọi lần lượt:")
+		for i, role := range wake {
+			l := wakeLines[role]
+			if role == werewolf.Witch {
+				l = witchLater
+			}
+			lines = append(lines, fmt.Sprintf("%d. %s", i+1, l))
+		}
 	case callWitch:
 		lines = append(lines, "<b>Sói đã chốt, sói đi ngủ.</b>")
+		for _, role := range wake {
+			lines = append(lines, wakeLines[role])
+		}
 	default:
 		return nil
-	}
-	for _, role := range wake {
-		if l, ok := wakeLines[role]; ok {
-			lines = append(lines, l)
-		}
 	}
 	return append(lines, gmHowTo)
 }

@@ -9,8 +9,9 @@ import (
 	ww "github.com/vlsilver/runnow/backend/internal/werewolf"
 )
 
-// Quản trò gọi từng vai dậy theo giờ: 22h sói, tiên tri, bảo vệ; 0h phù thuỷ;
-// 10h cả làng. Vai không còn ai sống thì không gọi.
+// Quản trò gọi từng vai dậy theo thứ tự chốt đêm: 22h Cupid (đêm 1), sói, bảo
+// vệ, tiên tri, phù thuỷ (gọi lúc 0h); 10h cả làng. Vai không còn ai sống thì
+// không gọi.
 func TestStepMessagesGameMasterCalls(t *testing.T) {
 	call := func(m gameMsg) (any, any) { return m.Data["call"], m.Data["wake"] }
 	st := ww.NewState(ww.Seed{1}, ww.Config{}, msgRoles(), msgStart)
@@ -19,7 +20,7 @@ func TestStepMessagesGameMasterCalls(t *testing.T) {
 	}
 
 	night, evs := mustStep(t, st)
-	if c, w := call(stepMessages(st, night, evs)[0]); c != callNight || !reflect.DeepEqual(w, []string{"wolf", "seer", "guard"}) {
+	if c, w := call(stepMessages(st, night, evs)[0]); c != callNight || !reflect.DeepEqual(w, []string{"cupid", "wolf", "guard", "seer", "witch"}) {
 		t.Fatalf("22h đêm 1: %v %v", c, w)
 	}
 	dawn, evs := mustStep(t, night, act1(ww.KindWolfBite, "w1", "seer"))
@@ -63,12 +64,14 @@ func TestRenderGameMasterCalls(t *testing.T) {
 	// 22h đêm 1 không có gì công khai: trước đây không gửi, giờ có lời quản trò.
 	out := renderOne(t, r, chatGroup, tplDigest, map[string]any{
 		"phaseKey": "r1/setup", "round": 1, "phase": "night", "deadline": "2026-10-15T17:00:00Z",
-		"call": "night", "wake": []string{"wolf", "seer", "guard"},
+		"call": "night", "wake": []string{"cupid", "wolf", "guard", "seer", "witch"},
 	})
-	want := "<b>Đêm 1 buông xuống, cả làng đi ngủ.</b>\n" +
-		"Sói thức dậy, cả phe chọn một người để cắn, tới 0h.\n" +
-		"Tiên tri thức dậy, chọn một người để soi, tới 10h sáng.\n" +
-		"Bảo vệ thức dậy, chọn một người để che, tới 10h sáng.\n" + howTo
+	want := "<b>Đêm 1 buông xuống, cả làng đi ngủ.</b>\nQuản trò gọi lần lượt:\n" +
+		"1. Cupid thức dậy, chọn hai người để ghép đôi, chốt lúc 0h đêm 1.\n" +
+		"2. Sói thức dậy, cả phe chọn một người để cắn, chốt lúc 0h.\n" +
+		"3. Bảo vệ thức dậy, chọn một người để che, tới 10h sáng.\n" +
+		"4. Tiên tri thức dậy, chọn một người để soi, tới 10h sáng.\n" +
+		"5. Phù thuỷ: 0h sói chốt xong thì quản trò gọi.\n" + howTo
 	if len(out.parts) != 1 || out.parts[0] != want {
 		t.Fatalf("22h đêm 1 = %q", out.parts)
 	}
@@ -80,7 +83,7 @@ func TestRenderGameMasterCalls(t *testing.T) {
 		"call":   "night", "wake": []string{"wolf"},
 	})
 	want = "<b>Biểu quyết ngày 1</b>\nChi đã chết. Lá bài: Tiên tri.\n\n" +
-		"<b>Đêm 2 buông xuống, cả làng đi ngủ.</b>\nSói thức dậy, cả phe chọn một người để cắn, tới 0h.\n" + howTo
+		"<b>Đêm 2 buông xuống, cả làng đi ngủ.</b>\nQuản trò gọi lần lượt:\n1. Sói thức dậy, cả phe chọn một người để cắn, chốt lúc 0h.\n" + howTo
 	if out.parts[0] != want {
 		t.Fatalf("22h đêm 2 = %q", out.parts[0])
 	}
@@ -104,7 +107,7 @@ func TestRenderGameMasterCalls(t *testing.T) {
 	}
 
 	out = renderOne(t, r, chatGroup, tplStart, map[string]any{"nightAt": "2026-10-15T15:00:00Z", "wake": []string{"cupid"}})
-	if !strings.HasSuffix(out.parts[0], "\nCupid thức dậy, chọn hai người để ghép đôi, tới 0h đêm 1.\n"+howTo) {
+	if !strings.HasSuffix(out.parts[0], "\nCupid thức dậy, chọn hai người để ghép đôi, chốt lúc 0h đêm 1.\n"+howTo) {
 		t.Fatalf("mở ván có Cupid = %q", out.parts[0])
 	}
 }

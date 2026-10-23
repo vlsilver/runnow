@@ -158,7 +158,7 @@ func stepMessages(before, after *werewolf.State, evs []werewolf.Event) []gameMsg
 
 // Lời quản trò trong bản tin group, như quản trò gọi từng vai ở bàn chơi.
 const (
-	callNight   = "night"   // 22h: cả làng ngủ, gọi sói, tiên tri, bảo vệ
+	callNight   = "night"   // 22h: cả làng ngủ, gọi lần lượt các vai đêm
 	callWitch   = "witch"   // 0h: sói xong, gọi phù thuỷ
 	callMorning = "morning" // 10h: trời sáng, rồi tới bản tin đêm
 )
@@ -171,7 +171,13 @@ const (
 func gmCall(before, after *werewolf.State) (string, []string) {
 	switch {
 	case after.Phase == werewolf.PhaseNight && before.Phase != werewolf.PhaseNight:
-		return callNight, aliveRoles(after, werewolf.Wolf, werewolf.Seer, werewolf.Guard)
+		// Thứ tự gọi là thứ tự chốt đêm (R15): Cupid và sói chốt 0h, rồi bảo vệ
+		// đỡ, phù thuỷ cứu hay độc. Tiên tri xem ngay nên đứng cạnh bảo vệ.
+		order := []werewolf.Role{werewolf.Wolf, werewolf.Guard, werewolf.Seer, werewolf.Witch}
+		if after.Round == 1 {
+			order = append([]werewolf.Role{werewolf.Cupid}, order...)
+		}
+		return callNight, aliveRoles(after, order...)
 	case after.Phase == werewolf.PhaseDawn && before.Phase == werewolf.PhaseNight:
 		if wake := aliveRoles(after, werewolf.Witch); len(wake) > 0 {
 			return callWitch, wake
