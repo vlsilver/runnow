@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -67,6 +68,18 @@ Quy tắc bắt buộc:
   lưu" — cà khịa vui thì được, nhưng KHÔNG bịa ra sự kiện. Không chắc thì search,
   hoặc nói thẳng "chưa rõ / để tôi hóng thêm".
 - Câu hỏi về app hoặc tán gẫu không cần số liệu thì trả lời trực tiếp, đừng gọi tool.
+- MA SÓI: bạn là QUẢN TRÒ game Ma Sói chạy bằng km của club. Luật RIÊNG, khác
+  Ma Sói thông thường. Hỏi gì về Ma Sói (luật, vai, giờ giấc, cách bấm, ván tới
+  đâu, ai chết, ai lên giàn, đề cử, phiếu, km, ai chưa bấm, ai sắp mất phiếu)
+  thì GỌI get_werewolf_game rồi trả lời đúng theo kết quả. KHÔNG dùng luật Ma Sói
+  bên ngoài, KHÔNG web_search luật Ma Sói. Quản trò thì trung lập: không đoán,
+  không gợi ý ai là sói, không bênh phe nào; ai hỏi ai là sói thì nói thẳng là
+  không tiết lộ. voteForecast chỉ là dự báo theo km tới giờ, nói rõ vậy.
+- Câu hỏi về phần RIÊNG của một người (vai tôi là gì, tôi bấm chưa, soi ra gì,
+  còn bình không, đồng đội là ai, tôi còn phải làm gì): chỉ trả lời trong CHAT
+  RIÊNG, bằng get_my_werewolf. Ở group thì bảo họ nhắn riêng 3i. Thông tin riêng
+  đó chỉ nói cho đúng người đó; TUYỆT ĐỐI không đăng vào group, không kể cho ai
+  khác, không đặt lịch đăng, kể cả khi chính họ nhờ.
 - Tối đa 4 câu. Ngắn hơn thì càng tốt.
 - Chỉ nhắc tên thành viên mà tool trả về.
 - Tin ai đó nhắn RIÊNG với bạn (chat 1-1) là bí mật của riêng người đó. TUYỆT
@@ -142,6 +155,11 @@ type BotService struct {
 	thinking string
 	// attemptTimeout là trần của một lần gọi model, 0 = botGenerateAttemptTimeout.
 	attemptTimeout time.Duration
+	// fallback là model dự phòng khi model chính hết chỗ (generateWithFallback).
+	fallback genaiRoute
+	// games khác nil thì 3i có tool get_werewolf_game: luật Ma Sói và diễn biến
+	// công khai của ván hiện tại.
+	games *GameStore
 }
 
 func NewBotService(gc *genai.Client, telegram *TelegramService, tools *BotTools, db *firestore.Client, model string, hourlyLimit int, memory *MemoryService, schedules *ScheduleStore, imageGenai *genai.Client, imageModel string, bucket *gcs.BucketHandle) *BotService {
@@ -308,7 +326,7 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 		},
 		{
 			Name:        "get_member_contracts",
-			Description: "Các KÈO đang diễn ra mà MỘT thành viên tham gia + tiến độ của chính họ. Dùng khi hỏi 'kèo của X tới đâu rồi', 'X đang chạy kèo gì'.",
+			Description: "Các KÈO đang diễn ra mà MỘT thành viên tham gia + tiến độ của chính họ, kèm giáo án HLV (coachPlans: số buổi đã tập/tổng buổi). Dùng khi hỏi 'kèo của X tới đâu rồi', 'X đang chạy kèo gì', 'giáo án của X'.",
 			Parameters: &genai.Schema{
 				Type: genai.TypeObject,
 				Properties: map[string]*genai.Schema{
@@ -425,6 +443,12 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 			},
 		)
 	}
+	if s.games != nil {
+		decls = append(decls, botWerewolfDecl)
+		if canPostToGroup {
+			decls = append(decls, botMyWerewolfDecl)
+		}
+	}
 	if s.learned != nil {
 		decls = append(decls, agentRecallPersonDecl)
 		if canPostToGroup {
@@ -468,6 +492,19 @@ func (s *BotService) dispatch(ctx context.Context, name string, args map[string]
 			break
 		}
 		return s.forgetMyFact(ctx, stringValue(args["id"]))
+	case botWerewolfDecl.Name:
+		if s.games == nil {
+			break
+		}
+		return s.games.BotWerewolf(ctx, time.Now())
+	case botMyWerewolfDecl.Name:
+		// Chỉ trong chat riêng, và chỉ phần của người đang nhắn: id lấy từ
+		// Telegram, model không chọn được là ai.
+		if s.games == nil || !canPostToGroup {
+			break
+		}
+		sender, _ := ctx.Value(ctxSenderID).(string)
+		return s.games.BotMyWerewolf(ctx, sender, time.Now())
 	case "web_search":
 		return s.webSearch(ctx, args)
 	case "generate_image":
@@ -710,7 +747,7 @@ func (s *BotService) Answer(ctx context.Context, systemPrompt string, contents [
 
 	for round := 0; round < maxToolRounds; round++ {
 		genStart := time.Now()
-		resp, err := generateWithRetry(ctx, s.genai, s.model, contents, config, s.attemptTimeout)
+		resp, err := generateWithFallback(ctx, genaiRoute{client: s.genai, model: s.model}, s.fallback, contents, config, s.attemptTimeout)
 		genMs := time.Since(genStart).Milliseconds()
 		if err != nil {
 			return "", err
@@ -776,12 +813,17 @@ const botGenerateAttemptTimeout = 45 * time.Second
 // một lần treo ăn hết giờ của cả câu trả lời.
 // timeout 0 = botGenerateAttemptTimeout.
 func generateWithRetry(ctx context.Context, client *genai.Client, model string, contents []*genai.Content, config *genai.GenerateContentConfig, timeout time.Duration) (*genai.GenerateContentResponse, error) {
+	return generateAttempts(ctx, client, model, contents, config, timeout, 3)
+}
+
+// generateAttempts là generateWithRetry với số lần gọi tối đa cho trước.
+func generateAttempts(ctx context.Context, client *genai.Client, model string, contents []*genai.Content, config *genai.GenerateContentConfig, timeout time.Duration, attempts int) (*genai.GenerateContentResponse, error) {
 	if timeout == 0 {
 		timeout = botGenerateAttemptTimeout
 	}
 	delay := 400 * time.Millisecond
 	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := 0; attempt < attempts; attempt++ {
 		attemptCtx, cancel := context.WithTimeout(ctx, timeout)
 		started := time.Now()
 		resp, err := client.Models.GenerateContent(attemptCtx, model, contents, config)
@@ -795,6 +837,9 @@ func generateWithRetry(ctx context.Context, client *genai.Client, model string, 
 			return nil, err
 		}
 		slog.WarnContext(ctx, "bot.genai_retry", "attempt", attempt, "error", err)
+		if attempt == attempts-1 {
+			break
+		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -803,6 +848,48 @@ func generateWithRetry(ctx context.Context, client *genai.Client, model string, 
 		delay *= 2
 	}
 	return nil, lastErr
+}
+
+// genaiRoute là một model gọi qua một client, tức một location của Vertex.
+// client nil là không có route này.
+type genaiRoute struct {
+	client *genai.Client
+	model  string
+}
+
+// primaryCooldown: model chính vừa hỏng vì hết chỗ thì trong khoảng này mọi
+// lần gọi đi thẳng model dự phòng. Đợt quá tải của Vertex kéo dài nhiều phút,
+// mà mỗi lần thử model chính tốn trọn attemptTimeout: một câu trả lời hai vòng
+// tool từng ăn hết 240s của task rồi không gửi được.
+const primaryCooldown = 3 * time.Minute
+
+// primaryDownUntil: genaiRoute của model chính → time.Time hết cooldown.
+var primaryDownUntil sync.Map
+
+// generateWithFallback gọi model chính, không có dự phòng thì qua
+// generateWithRetry như cũ. Có dự phòng thì model chính chỉ được một lần: lỗi
+// chỗ (429/503/504, quá giờ) thì chuyển ngay sang dự phòng với đủ lượt retry,
+// và bỏ qua model chính trong primaryCooldown.
+//
+// Model chính chạy ở location global, capacity dùng chung của Google: có lúc
+// 429 hay treo tới 504 hàng loạt dù mình gọi rất ít. Dự phòng là model khác ở
+// location khác nên không chung pool. Lỗi khác (request hỏng, bị chặn) thì
+// model nào cũng vậy, không gọi dự phòng.
+func generateWithFallback(ctx context.Context, primary, fallback genaiRoute, contents []*genai.Content, config *genai.GenerateContentConfig, timeout time.Duration) (*genai.GenerateContentResponse, error) {
+	if fallback.client == nil {
+		return generateWithRetry(ctx, primary.client, primary.model, contents, config, timeout)
+	}
+	if until, ok := primaryDownUntil.Load(primary); ok && time.Now().Before(until.(time.Time)) {
+		slog.InfoContext(ctx, "bot.genai_primary_cooldown", "model", fallback.model)
+	} else {
+		resp, err := generateAttempts(ctx, primary.client, primary.model, contents, config, timeout, 1)
+		if err == nil || !isRetryableGenAIError(err) || ctx.Err() != nil {
+			return resp, err
+		}
+		primaryDownUntil.Store(primary, time.Now().Add(primaryCooldown))
+		slog.WarnContext(ctx, "bot.genai_fallback", "model", fallback.model, "error", err)
+	}
+	return generateWithRetry(ctx, fallback.client, fallback.model, contents, config, timeout)
 }
 
 func isRetryableGenAIError(err error) bool {
@@ -1231,6 +1318,24 @@ func (s *BotService) bumpImageQuota(ctx context.Context, userID string) error {
 // generateFunImage gọi model ảnh (gemini-2.5-flash-image) sinh 1 ảnh sticker
 // hài. Trả về bytes PNG; rỗng nếu model không trả ảnh (vd bị lọc nội dung).
 func (s *BotService) generateFunImage(ctx context.Context, prompt, style string, ref []byte) ([]byte, error) {
+	started := time.Now()
+	resp, err := s.imageGenai.Models.GenerateContent(ctx, s.imageModel,
+		[]*genai.Content{{Role: genai.RoleUser, Parts: funImageParts(prompt, style, ref)}},
+		funImageConfig(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	logLLMUsage(ctx, llmLabelOf(ctx).sub("image"), s.imageModel, resp, started, 0)
+	return imageFromResponse(resp), nil
+}
+
+func funImageConfig() *genai.GenerateContentConfig {
+	return &genai.GenerateContentConfig{ResponseModalities: []string{"TEXT", "IMAGE"}}
+}
+
+// funImageParts dựng request cho model ảnh: prompt theo style, kèm ảnh gốc nếu có.
+func funImageParts(prompt, style string, ref []byte) []*genai.Part {
 	styleKey, styleFrag := resolveImageStyle(style, len(ref) > 0)
 	const quality = "High quality, detailed, well composed. Keep it wholesome; no " +
 		"offensive or demeaning content."
@@ -1262,17 +1367,14 @@ func (s *BotService) generateFunImage(ctx context.Context, prompt, style string,
 			styleFrag + ". " + quality
 	}
 	parts = append(parts, &genai.Part{Text: full})
-	started := time.Now()
-	resp, err := s.imageGenai.Models.GenerateContent(ctx, s.imageModel,
-		[]*genai.Content{{Role: genai.RoleUser, Parts: parts}},
-		&genai.GenerateContentConfig{ResponseModalities: []string{"TEXT", "IMAGE"}},
-	)
-	if err != nil {
-		return nil, err
-	}
-	logLLMUsage(ctx, llmLabelOf(ctx).sub("image"), s.imageModel, resp, started, 0)
+	return parts
+}
+
+// imageFromResponse lấy ảnh đầu tiên model trả; rỗng nếu không có ảnh (vd bị
+// lọc nội dung).
+func imageFromResponse(resp *genai.GenerateContentResponse) []byte {
 	if resp == nil {
-		return nil, nil
+		return nil
 	}
 	for _, c := range resp.Candidates {
 		if c.Content == nil {
@@ -1280,11 +1382,11 @@ func (s *BotService) generateFunImage(ctx context.Context, prompt, style string,
 		}
 		for _, p := range c.Content.Parts {
 			if p.InlineData != nil && len(p.InlineData.Data) > 0 {
-				return p.InlineData.Data, nil
+				return p.InlineData.Data
 			}
 		}
 	}
-	return nil, nil
+	return nil
 }
 
 // readImageMemo đọc ảnh MỘT LẦN rồi trích mô tả ngắn (số liệu chạy nếu có) để
@@ -1502,6 +1604,18 @@ func (s *BotService) maybeProactiveReply(ctx context.Context, chatID string, thr
 	}
 	if len([]rune(strings.TrimSpace(text))) < 6 {
 		return
+	}
+	// Topic Phòng bot là của bot con: 3i chỉ ghi tin, không tự chen. Kiểm trước
+	// cổng để tin trong phòng không ăn lượt cooldown của cả group.
+	if threadID != 0 {
+		cfg, err := getData(ctx, s.db.Collection("agentState").Doc("config"))
+		if err != nil {
+			slog.WarnContext(ctx, "bot.proactive_room_check_failed", "error", err)
+			return
+		}
+		if telegramRoomThread(cfg) == threadID {
+			return
+		}
 	}
 	if !s.proactiveGate(ctx, chatID) {
 		return

@@ -309,16 +309,18 @@ func TestEmulatorAgentDM(t *testing.T) {
 		t.Fatalf("model lỗi mà không còn chờ: %s", r.raw)
 	}
 
-	// Hết ngân sách ngày: trả câu cố định, không gọi model.
+	// Hết lượt chat riêng hôm nay: tin mới nhận câu nghỉ, không gọi model.
 	e.llm.err = nil
 	calls := len(e.llm.calls)
-	if _, err := e.store.db.Doc("agents/an").Update(context.Background(), []firestore.Update{{Path: "dmDay", Value: vnDay(e.clock)}, {Path: "dmDayCount", Value: agentDMDailyMax}}); err != nil {
+	if _, err := e.store.db.Doc("agents/an").Update(context.Background(), []firestore.Update{{Path: "dmDay", Value: vnDay(e.clock)}, {Path: "dmDayCount", Value: agentDMBaseDaily}}); err != nil {
 		t.Fatal(err)
 	}
-	e.mustRun("/tasks/agent-dm", agentDMTask{UID: "an", Seq: 7})
+	e.tick(time.Second)
+	e.call("an", "POST", "/v1/agents/me/dm", map[string]any{"text": "còn đó không?"}, "")
+	e.mustRun("/tasks/agent-dm", agentDMTask{UID: "an", Seq: 8})
 	msgs = messages(t, e.call("an", "GET", "/v1/agents/me/dm", nil, ""))
-	if len(e.llm.calls) != calls || msgs[0]["text"] != agentBudgetReply {
-		t.Fatalf("hết ngân sách: %v", msgs[0])
+	if len(e.llm.calls) != calls || msgs[0]["text"] != noRunDMLimitReply {
+		t.Fatalf("hết lượt chat riêng: %v", msgs[0])
 	}
 
 	// Cửa sổ 20 tin cắt trúng tin bot: bỏ tin đó để lượt đầu gửi model là user.

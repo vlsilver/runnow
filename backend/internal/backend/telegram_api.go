@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -68,6 +70,64 @@ func (s *TelegramService) SendText(ctx context.Context, m TelegramText) (int64, 
 	return out.MessageID, nil
 }
 
+// TelegramPhoto là một tin ảnh PNG kèm chú thích chữ thường (không parse_mode).
+type TelegramPhoto struct {
+	ChatID   string
+	ThreadID int64 // 0 = General / chat không có Topics
+	Image    []byte
+	Caption  string
+}
+
+// telegramCaptionMax là độ dài tối đa của caption theo Bot API.
+const telegramCaptionMax = 1024
+
+// SendImage gửi ảnh và trả message_id. Caption dài quá thì cắt, vì Telegram từ
+// chối cả tin.
+func (s *TelegramService) SendImage(ctx context.Context, p TelegramPhoto) (int64, error) {
+	if s.botToken == "" {
+		return 0, errors.New("telegram chưa cấu hình token")
+	}
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	fields := map[string]string{"chat_id": p.ChatID}
+	if p.ThreadID != 0 {
+		fields["message_thread_id"] = strconv.FormatInt(p.ThreadID, 10)
+	}
+	if caption := strings.TrimSpace(p.Caption); caption != "" {
+		fields["caption"] = truncateRunes(caption, telegramCaptionMax)
+	}
+	for k, v := range fields {
+		if err := w.WriteField(k, v); err != nil {
+			return 0, err
+		}
+	}
+	part, err := w.CreateFormFile("photo", "image.png")
+	if err != nil {
+		return 0, err
+	}
+	if _, err := part.Write(p.Image); err != nil {
+		return 0, err
+	}
+	if err := w.Close(); err != nil {
+		return 0, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.apiBaseURL+"/bot"+s.botToken+"/sendPhoto", &buf)
+	if err != nil {
+		return 0, s.redact(err)
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	var out struct {
+		MessageID int64 `json:"message_id"`
+	}
+	if err := s.doAPI("sendPhoto", req, &out); err != nil {
+		return 0, err
+	}
+	if out.MessageID == 0 {
+		return 0, errors.New("telegram sendPhoto: kết quả thiếu message_id")
+	}
+	return out.MessageID, nil
+}
+
 // EditText sửa chữ (và nút) của tin đã gửi. Sửa mà nội dung không đổi thì
 // Telegram trả 400 "message is not modified"; người gọi tự quyết coi đó là gì.
 func (s *TelegramService) EditText(ctx context.Context, chatID string, messageID int64, text string, html bool, markup any) error {
@@ -110,6 +170,12 @@ func (s *TelegramService) callAPI(ctx context.Context, method string, body map[s
 		return s.redact(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	return s.doAPI(method, req, out)
+}
+
+// doAPI gửi req tới method rồi đọc kết quả như callAPI, cho cả request không
+// phải JSON (multipart của sendPhoto).
+func (s *TelegramService) doAPI(method string, req *http.Request, out any) error {
 	resp, err := s.do(req)
 	if err != nil {
 		return err

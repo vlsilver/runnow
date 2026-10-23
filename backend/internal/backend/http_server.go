@@ -68,6 +68,8 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/agent-dm", s.agentDM)
 	s.route("POST /tasks/agent-turn", s.agentTurn)
 	s.route("POST /tasks/agent-learn", s.agentLearn)
+	s.route("POST /tasks/managed-bot-sync", s.managedBotSync)
+	s.route("POST /tasks/managed-send", s.managedSend)
 }
 
 // tickJob là một việc của schedule-tick, với timeout riêng.
@@ -147,11 +149,8 @@ func (s *Server) telegramWebhook(w http.ResponseWriter, r *http.Request) error {
 	}
 	// Chỉ cần Tasks để enqueue — webhook KHÔNG cần Bot/Gemini (xử lý ở
 	// runnow-bot). Nhờ vậy api có thể bỏ token Telegram mà webhook vẫn chạy.
-	var publish taskPublishFunc
-	if s.deps.Tasks != nil {
-		publish = s.deps.Tasks.Publish
-	}
-	s.serveTelegramUpdate(r.Context(), w, body, publish)
+	// enqueueTask là Tasks.Publish trên prod; test gài EnqueueTask để bắt task.
+	s.serveTelegramUpdate(r.Context(), w, body, s.enqueueTask())
 	return nil
 }
 
@@ -539,9 +538,11 @@ func (s *Server) apiRoutes() {
 	// method để service bot dùng chung — dời webhook sang bot chỉ là đổi chỗ
 	// mount, không nhân đôi code.
 	s.route("POST /v1/telegram/webhook", s.telegramWebhook)
+	s.mybotRoutes()
 	s.gameRoutes()
 	s.agentRoutes()
 	s.adminRoutes()
+	s.agentConfigRoutes()
 	// Liên kết Telegram cho Ma Sói (L1). App lấy mã, mở t.me/<bot>?start=<mã>,
 	// rồi poll GET cho tới khi linked.
 	s.route("POST /v1/telegram/link-code", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
@@ -1046,9 +1047,9 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 			// X-App-*: Ma Sói đọc bản app để báo "cần cập nhật" (3.8). DELETE:
-			// huỷ liên kết Telegram, rời ván.
+			// huỷ liên kết Telegram, rời ván. PATCH: admin sửa config bot trên web.
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-App-Version, X-App-Platform")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(204)

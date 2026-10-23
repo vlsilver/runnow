@@ -34,6 +34,9 @@ type Dependencies struct {
 	Agents         *AgentStore
 	// AgentBrain chạy LLM của bot cá nhân; chỉ có trên service có Gemini (bot).
 	AgentBrain *AgentService
+	// ManagedBots là MyBot trên Telegram; nil khi chưa cấu hình bot quản lý
+	// (Config.MybotEnabled).
+	ManagedBots *ManagedBotService
 	// Learn là task bot tự học ký ức; nil khi AGENT_LEARN chưa bật.
 	Learn *LearnService
 	// EnqueueTask thay Tasks.Publish khi khác nil; test gài để bắt task mà
@@ -91,6 +94,15 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 		slog.WarnContext(ctx, "dependencies.storage_unavailable", "error", storageErr)
 	}
 	d.Accounts = NewAccountService(db, authClient, d.OAuth, bucket)
+	// 3i là bot quản lý của mọi MyBot trên Telegram. Trên api telegram không
+	// có token: api chỉ ghi Firestore và hẹn task, task chạy trên bot.
+	if config.MybotEnabled() {
+		d.ManagedBots = NewManagedBotService(db, telegram, config.TelegramBotUsername, config.TelegramWebhookSecret, config.PublicBaseURL, tasks.Publish)
+		d.ManagedBots.chatID = config.TelegramChatID
+		d.Accounts.managed = d.ManagedBots
+	} else if config.AgentTelegramBots {
+		slog.WarnContext(ctx, "dependencies.mybot_partial_config", "hasUsername", config.TelegramBotUsername != "", "hasWebhookSecret", config.TelegramWebhookSecret != "")
+	}
 	// Bot chỉ bật khi có đủ Telegram lẫn Vertex AI. Thiếu một trong hai thì
 	// mọi luồng cũ vẫn chạy y như trước, chỉ không có bot.
 	//
@@ -107,11 +119,33 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 			slog.WarnContext(ctx, "dependencies.genai_unavailable", "error", genErr)
 		} else {
 			d.Gemini = genaiClient
+			// Hỏng thì chỉ mất dự phòng, model chính vẫn chạy như trước.
+			var fallback genaiRoute
+			if config.GeminiFallbackModel != "" {
+				fbClient, fbErr := genai.NewClient(ctx, &genai.ClientConfig{
+					Project:  config.ProjectID,
+					Location: config.GeminiFallbackLocation,
+					Backend:  genai.BackendVertexAI,
+				})
+				if fbErr != nil {
+					slog.WarnContext(ctx, "dependencies.genai_fallback_unavailable", "error", fbErr)
+				} else {
+					fallback = genaiRoute{client: fbClient, model: config.GeminiFallbackModel}
+				}
+			}
 			d.Memory = NewMemoryService(genaiClient, db, config.GeminiModel)
-			d.AgentBrain = NewAgentService(d.Agents, genaiAgentLLM{client: genaiClient, model: config.AgentModel, thinking: config.GeminiThinkingLevel}, tasks.Publish)
+			// Mọi lượt gọi model của bot cá nhân đi qua trần chi phí ngày; chưa đặt
+			// agentState/config.dailyBudgetUsd thì chỉ cộng số, không chặn gì.
+			budget := NewAgentBudget(db, adminNotifier(d.Games, telegram))
+			d.AgentBrain = NewAgentService(d.Agents, budgetAgentLLM{inner: genaiAgentLLM{client: genaiClient, model: config.AgentModel, thinking: config.GeminiThinkingLevel, fallback: fallback}, model: config.AgentModel, budget: budget}, tasks.Publish)
 			d.AgentBrain.chatID = config.TelegramChatID
+			d.AgentBrain.SetPhotos(telegram.DownloadFile)
+			if d.ManagedBots != nil {
+				d.AgentBrain.SetChannelReply(d.ManagedBots.channelReply)
+				d.AgentBrain.SetRoomOut(d.ManagedBots.roomOut)
+			}
 			if config.AgentLearn {
-				d.Learn = NewLearnService(d.Agents, genaiLearnLLM{client: genaiClient, model: config.AgentLearnModel}, config.TelegramChatID)
+				d.Learn = NewLearnService(d.Agents, budgetLearnLLM{inner: genaiLearnLLM{client: genaiClient, model: config.AgentLearnModel}, model: config.AgentLearnModel, budget: budget}, config.TelegramChatID)
 			}
 			// Client RIÊNG cho sinh ảnh: model ảnh nằm cố định ở location "global",
 			// không theo GEMINI_LOCATION. Hỏng thì chỉ tắt tính năng vẽ, không
@@ -125,8 +159,20 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 				slog.WarnContext(ctx, "dependencies.image_genai_unavailable", "error", imgErr)
 				imageClient = nil
 			}
+			// Bot cá nhân vẽ ảnh bằng cùng model ảnh, qua trần chi phí của nó, và
+			// gửi ảnh từ Storage qua outbox của bot con; thiếu client hay bucket
+			// thì bot không có tool vẽ.
+			if imageClient != nil && bucket != nil {
+				images := gcsImageStore{bucket: bucket}
+				d.AgentBrain.SetImages(budgetImageLLM{inner: genaiImageLLM{client: imageClient, model: geminiImageModel}, model: geminiImageModel, budget: budget}, images)
+				if d.ManagedBots != nil {
+					d.ManagedBots.images = images
+				}
+			}
 			d.Bot = NewBotService(genaiClient, telegram, NewBotTools(db), db, config.GeminiModel, config.BotHourlyLimit, d.Memory, NewScheduleStore(db), imageClient, geminiImageModel, bucket)
 			d.Bot.thinking = config.GeminiThinkingLevel
+			d.Bot.fallback = fallback
+			d.Bot.games = d.Games
 			if config.BotGroupFacts {
 				d.Bot.learned = d.Agents
 			}

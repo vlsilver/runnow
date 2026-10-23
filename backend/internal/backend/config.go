@@ -38,6 +38,11 @@ type Config struct {
 	TelegramWebhookSecret string
 	GeminiLocation        string
 	GeminiModel           string
+	// GeminiFallbackModel ở GeminiFallbackLocation là model 3i và bot trong app
+	// gọi khi model chính hết chỗ (generateWithFallback). Rỗng là không có dự
+	// phòng; đặt GEMINI_FALLBACK_MODEL=off để tắt.
+	GeminiFallbackModel    string
+	GeminiFallbackLocation string
 	// GeminiThinkingLevel là mức thinking của 3i và bot trong app. "default"
 	// để model tự chọn, dùng khi đổi GEMINI_MODEL hay AGENT_MODEL sang model
 	// không nhận thinkingLevel.
@@ -49,6 +54,9 @@ type Config struct {
 	// Telegram (agent_learn.go). Chỉ "on" mới bật.
 	AgentLearn      bool
 	AgentLearnModel string
+	// AgentTelegramBots bật MyBot trên Telegram (Pha T): 3i làm bot quản lý
+	// Managed Bots, mỗi MyBot là một bot Telegram thật. Chỉ "on" mới bật.
+	AgentTelegramBots bool
 	// BotGroupFacts cho 3i đọc trí nhớ về group club từ ký ức tự học thay cho
 	// tóm tắt botMemory. Chỉ "on" mới bật; tắt là quay về botMemory ngay.
 	BotGroupFacts  bool
@@ -93,9 +101,17 @@ func LoadConfig() (Config, error) {
 	// Google ghi 3.8-flash là model thay cho 2.5-pro.
 	c.GeminiLocation = env("GEMINI_LOCATION", "global")
 	c.GeminiModel = env("GEMINI_MODEL", "gemini-3.8-flash")
+	// Dự phòng là 3.5-flash ở asia-southeast1: khác model và khác location nên
+	// không chung pool capacity với 3.8-flash ở global.
+	c.GeminiFallbackModel = env("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash")
+	if c.GeminiFallbackModel == "off" {
+		c.GeminiFallbackModel = ""
+	}
+	c.GeminiFallbackLocation = env("GEMINI_FALLBACK_LOCATION", "asia-southeast1")
 	c.GeminiThinkingLevel = env("GEMINI_THINKING_LEVEL", "LOW")
 	c.AgentModel = env("AGENT_MODEL", "gemini-3.8-flash")
 	c.AgentLearn = env("AGENT_LEARN", "") == "on"
+	c.AgentTelegramBots = env("AGENT_TELEGRAM_BOTS", "") == "on"
 	c.AgentLearnModel = env("AGENT_LEARN_MODEL", "gemini-3.8-flash")
 	c.BotGroupFacts = env("BOT_GROUP_FACTS", "") == "on"
 	if n, convErr := strconv.Atoi(env("BOT_HOURLY_LIMIT", "100")); convErr == nil && n > 0 {
@@ -131,6 +147,14 @@ func LoadConfig() (Config, error) {
 		}
 	}
 	return c, nil
+}
+
+// MybotEnabled: cờ bật và đủ cấu hình để chạy MyBot trên Telegram. Secret
+// webhook của bot con là HMAC của TelegramWebhookSecret, link tạo bot cần
+// username của 3i, nên thiếu một trong hai cũng tắt. Không đòi token 3i: api
+// không có token, mọi lời gọi Telegram của bot con chạy trong task trên bot.
+func (c Config) MybotEnabled() bool {
+	return c.AgentTelegramBots && c.TelegramBotUsername != "" && c.TelegramWebhookSecret != ""
 }
 
 func env(name, fallback string) string {

@@ -25,6 +25,9 @@ type AccountService struct {
 	auth    *auth.Client
 	oauth   *OAuthService
 	storage *gcs.BucketHandle
+	// managed hẹn gỡ webhook bot con khi xoá tài khoản; nil khi MyBot trên
+	// Telegram tắt, lúc đó chỉ xoá bản ghi.
+	managed *ManagedBotService
 }
 
 func NewAccountService(db *firestore.Client, authClient *auth.Client, oauth *OAuthService, bucket *gcs.BucketHandle) *AccountService {
@@ -78,9 +81,16 @@ func (s *AccountService) Delete(ctx context.Context, uid string) error {
 	if err := s.deleteDocumentTree(ctx, s.db.Collection("users").Doc(uid)); err != nil {
 		return fmt.Errorf("delete user tree: %w", err)
 	}
-	// Bot cá nhân: hồ sơ, bộ nhớ và chat riêng.
+	// Bot cá nhân: hồ sơ, bộ nhớ và chat riêng của mọi kênh (dm, tgdm).
 	if err := s.deleteDocumentTree(ctx, s.db.Collection("agents").Doc(uid)); err != nil {
 		return fmt.Errorf("delete agent tree: %w", err)
+	}
+	// Cờ "Đừng học về tôi" nằm chung một doc với người khác, nên gỡ riêng uid.
+	if err := s.removeLearnOptOut(ctx, uid); err != nil {
+		return fmt.Errorf("remove learn opt-out: %w", err)
+	}
+	if err := s.deleteAgentReports(ctx, uid); err != nil {
+		return fmt.Errorf("delete agent reports: %w", err)
 	}
 
 	if err := s.auth.DeleteUser(ctx, uid); err != nil && !auth.IsUserNotFound(err) {
@@ -88,6 +98,39 @@ func (s *AccountService) Delete(ctx context.Context, uid string) error {
 	}
 	slog.InfoContext(ctx, "account.delete.completed", "uid", uid)
 	return nil
+}
+
+// deleteManagedBots gỡ mọi bot con Telegram của uid (T6): xoá managedBots/{botId}
+// cùng outbox, rồi hẹn task Sync trên bot. Sync thấy bản ghi mất thì gọi
+// deleteWebhook, vì api không có token 3i để tự gọi. Hẹn task lỗi thì chỉ log,
+// như thu hồi Strava: bot còn sót webhook thì update đầu tiên tới sẽ hẹn lại
+// (routeChildUpdate). Bot vẫn thuộc người dùng trên Telegram, vì Bot API không
+// có hàm xoá bot.
+func (s *AccountService) deleteManagedBots(ctx context.Context, uid string) error {
+	docs, err := s.db.Collection("managedBots").Where("uid", "==", uid).Documents(ctx).GetAll()
+	if err != nil {
+		return err
+	}
+	for _, doc := range docs {
+		if err := s.deleteDocumentTree(ctx, doc.Ref); err != nil {
+			return err
+		}
+		if s.managed == nil {
+			continue
+		}
+		if _, err := s.managed.publish(ctx, managedSyncTaskFor(doc.Ref.ID, "deleted")); err != nil {
+			slog.WarnContext(ctx, "account.delete.mybot_webhook_failed", "uid", uid, "botId", doc.Ref.ID, "error", err)
+		}
+	}
+	return nil
+}
+
+func (s *AccountService) removeLearnOptOut(ctx context.Context, uid string) error {
+	_, err := learnOptOutRef(s.db).Update(ctx, []firestore.Update{{Path: "uids", Value: firestore.ArrayRemove(uid)}})
+	if status.Code(err) == codes.NotFound {
+		return nil
+	}
+	return err
 }
 
 func (s *AccountService) stravaAthleteID(ctx context.Context, uid string) string {
@@ -189,11 +232,18 @@ func (s *AccountService) deleteOwnedDocuments(ctx context.Context, uid, athleteI
 		// tính là đã rời PSC ở mốc chốt kế tiếp (R33).
 		s.db.Collection("tgLinks").Where("uid", "==", uid),
 		s.db.Collection("linkCodes").Where("uid", "==", uid),
-		// Phòng bot: tin của người lẫn tin bot của họ đều mang uid chủ.
-		s.db.Collection("agentRooms").Doc(agentMainRoom).Collection("messages").Where("uid", "==", uid),
 	}
 	if athleteID != "" {
 		queries = append(queries, s.db.Collection("integrationEvents").Where("ownerId", "==", athleteID))
+	}
+	// Phòng bot, mọi phòng (main, tg-psc): tin của người lẫn tin bot của họ đều
+	// mang uid chủ.
+	rooms, err := s.agentRoomRefs(ctx)
+	if err != nil {
+		return err
+	}
+	for _, room := range rooms {
+		queries = append(queries, room.Collection("messages").Where("uid", "==", uid))
 	}
 	for _, query := range queries {
 		if err := s.deleteQuery(ctx, query); err != nil {
