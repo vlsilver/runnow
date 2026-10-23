@@ -445,41 +445,58 @@ func (r *resolver) countVotes(nominee string) {
 	}
 }
 
-// voteCut chọn người mất phiếu (R30): được tính min(số người, floor(tổng km / X))
-// phiếu; người mất phiếu là người ít km nhất, kể cả người không bấm. Bằng km ở
-// đúng ngưỡng thì bốc thăm bằng hash(seed, phaseKey, "vote-cut").
+// voteCut chọn người mất phiếu (R30) theo PlanVoteCut. Bằng km ở đúng ngưỡng
+// thì bốc thăm bằng hash(seed, phaseKey, "vote-cut").
 func (r *resolver) voteCut(voters []string) (cut []string, draw bool) {
-	var total float64
-	for _, uid := range voters {
-		total += r.st.Km[uid]
-	}
-	// Cộng float có thể ra 2999.9999999 thay vì 3000; dung sai 1 µm không đổi được
-	// kết quả thật nào.
-	allowed := int(math.Floor(total/r.st.Config.unitMeters() + 1e-9))
-	n := len(voters) - min(len(voters), allowed)
-	if n == 0 {
-		return nil, false
-	}
-	sorted := append([]string(nil), voters...)
-	sort.SliceStable(sorted, func(i, j int) bool { return r.st.Km[sorted[i]] < r.st.Km[sorted[j]] })
-	edge := r.st.Km[sorted[n-1]]
-	var tied []string
-	for _, uid := range sorted {
-		switch km := r.st.Km[uid]; {
-		case km < edge:
-			cut = append(cut, uid)
-		case km == edge:
-			tied = append(tied, uid)
-		}
-	}
-	need := n - len(cut)
-	if need < len(tied) {
+	plan := PlanVoteCut(voters, r.st.Km, r.st.Config)
+	cut, tied := plan.Sure, plan.Tied
+	if plan.Need < len(tied) {
 		draw = true
 		r.stream("vote-cut").shuffle(len(tied), func(i, j int) { tied[i], tied[j] = tied[j], tied[i] })
 	}
-	cut = append(cut, tied[:need]...)
+	cut = append(cut, tied[:plan.Need]...)
 	sort.Strings(cut)
 	return cut, draw
+}
+
+// VoteCutPlan là kết quả R30 trước bước bốc thăm: Sure chắc chắn mất phiếu,
+// Need người trong Tied (bằng km ở ngưỡng) sẽ mất phiếu theo bốc thăm.
+type VoteCutPlan struct {
+	Allowed int
+	Sure    []string
+	Tied    []string
+	Need    int
+}
+
+// PlanVoteCut: được tính min(số người, floor(tổng km / X)) phiếu; người mất phiếu
+// là người ít km nhất, kể cả người không bấm. km theo mét. Bot dùng để báo trước
+// ai sẽ mất phiếu nếu chốt với km hiện tại.
+func PlanVoteCut(voters []string, km map[string]float64, cfg Config) VoteCutPlan {
+	var total float64
+	for _, uid := range voters {
+		total += km[uid]
+	}
+	// Cộng float có thể ra 2999.9999999 thay vì 3000; dung sai 1 µm không đổi được
+	// kết quả thật nào.
+	allowed := min(len(voters), int(math.Floor(total/cfg.unitMeters()+1e-9)))
+	plan := VoteCutPlan{Allowed: allowed}
+	n := len(voters) - allowed
+	if n == 0 {
+		return plan
+	}
+	sorted := append([]string(nil), voters...)
+	sort.SliceStable(sorted, func(i, j int) bool { return km[sorted[i]] < km[sorted[j]] })
+	edge := km[sorted[n-1]]
+	for _, uid := range sorted {
+		switch v := km[uid]; {
+		case v < edge:
+			plan.Sure = append(plan.Sure, uid)
+		case v == edge:
+			plan.Tied = append(plan.Tied, uid)
+		}
+	}
+	plan.Need = n - len(plan.Sure)
+	return plan
 }
 
 // resolveHunter: thợ săn bắn (hoặc hết khung mà không bắn). Người trúng đạn đang
