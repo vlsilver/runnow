@@ -691,6 +691,26 @@ type GameDetail struct {
 	TaskKey string `json:"taskKey,omitempty"`
 	// StartError chỉ trả cho admin: lần Start gần nhất bị bot trả về đăng ký.
 	StartError *GameStartError `json:"startError,omitempty"`
+	// KmTable là đầu cột của bảng km hai cột (players[].lastKm, players[].todayKm).
+	// Nil khi ván không chạy.
+	KmTable *GameKmTable `json:"kmTable,omitempty"`
+}
+
+type GameKmTable struct {
+	LastLabel  string     `json:"lastLabel"`
+	TodayLabel string     `json:"todayLabel"`
+	AsOf       *time.Time `json:"asOf,omitempty"` // lúc tính todayKm; nil ở ván thử
+	UnitKm     float64    `json:"unitKm"`         // mốc km cho một kỹ năng đêm, một phiếu
+	Note       string     `json:"note"`
+}
+
+// GameTeamKm là km của cả phe khi luật tính theo phe (phe Sói cắn).
+type GameTeamKm struct {
+	Label     string   `json:"label"`
+	Last      float64  `json:"last"`
+	Today     *float64 `json:"today,omitempty"`
+	Need      float64  `json:"need"`
+	NeedLabel string   `json:"needLabel"`
 }
 
 type GamePhase struct {
@@ -710,6 +730,8 @@ type GamePlayer struct {
 	DeathRound        int      `json:"deathRound,omitempty"`
 	OnTrial           bool     `json:"onTrial,omitempty"`
 	LastKm            *float64 `json:"lastKm,omitempty"`
+	// TodayKm là km đang gom tới mốc 22h kế tiếp của người còn sống (kmTable).
+	TodayKm *float64 `json:"todayKm,omitempty"`
 	Fake              bool     `json:"fake,omitempty"`
 }
 
@@ -792,6 +814,17 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 	if err != nil {
 		return out, err
 	}
+	var st *werewolf.State
+	if stringValue(data["status"]) == gameRunning {
+		if st, err = s.loadState(ctx, g.Ref); err != nil {
+			return out, err
+		}
+	}
+	live, err := s.liveKm(ctx, g.Ref, data, st, wall)
+	if err != nil {
+		return out, err
+	}
+	out.KmTable = kmTable(data, st, live, wall)
 	revealed, _ := data["revealed"].(map[string]any)
 	nominee := stringValue(data["nominee"])
 	out.Players = make([]GamePlayer, 0, len(players))
@@ -804,6 +837,10 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 		if m, ok := km[p.uid]; ok {
 			k := m / 1000
 			gp.LastKm = &k
+		}
+		if m, ok := live.metersOf(p.uid); ok && gp.Alive {
+			k := m / 1000
+			gp.TodayKm = &k
 		}
 		out.Players = append(out.Players, gp)
 	}
@@ -900,6 +937,7 @@ type GameMe struct {
 	Chats       []GameChatLink   `json:"chats"`
 	Actions     []GameAction     `json:"actions"`
 	AllRoles    []GameRoleReveal `json:"allRoles,omitempty"`
+	TeamKm      *GameTeamKm      `json:"teamKm,omitempty"` // chỉ sói còn sống
 }
 
 type GamePotions struct {
@@ -1021,6 +1059,11 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 		return out, err
 	}
 	out.Actions = meActions(st, v.UID, mine, raw, players, gameNow(data, wall), clockOffset(data))
+	if me.Role == werewolf.Wolf && me.Alive {
+		if out.TeamKm, err = s.wolfTeamKm(ctx, g.Ref, data, st, wall); err != nil {
+			return out, err
+		}
+	}
 	return out, nil
 }
 
