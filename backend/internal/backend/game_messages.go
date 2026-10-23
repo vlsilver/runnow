@@ -64,9 +64,13 @@ func publicEvents(evs []werewolf.Event) []werewolf.Event {
 // việc ngay (Cupid) nhận prompt.
 func startMessages(st *werewolf.State) []gameMsg {
 	uids := sortedPlayers(st)
-	msgs := []gameMsg{{ChatKey: chatGroup, Template: tplStart, Data: map[string]any{
+	start := map[string]any{
 		"phaseKey": st.PhaseKey(), "nightAt": st.NightAt.UTC().Format(time.RFC3339), "players": len(uids),
-	}}}
+	}
+	if wake := aliveRoles(st, werewolf.Cupid); len(wake) > 0 {
+		start["wake"] = wake
+	}
+	msgs := []gameMsg{{ChatKey: chatGroup, Template: tplStart, Data: start}}
 	var wolves []string
 	for _, uid := range uids {
 		if st.Players[uid].Role == werewolf.Wolf {
@@ -106,6 +110,12 @@ func stepMessages(before, after *werewolf.State, evs []werewolf.Event) []gameMsg
 	} else {
 		digest["deadline"] = after.Deadline().UTC().Format(time.RFC3339)
 	}
+	if call, wake := gmCall(before, after); call != "" {
+		digest["call"] = call
+		if len(wake) > 0 {
+			digest["wake"] = wake
+		}
+	}
 	msgs := []gameMsg{{ChatKey: chatGroup, Template: tplDigest, Data: digest}}
 
 	private := map[string][]werewolf.Event{}
@@ -144,6 +154,46 @@ func stepMessages(before, after *werewolf.State, evs []werewolf.Event) []gameMsg
 		msgs = append(msgs, nightMessages(after, msgs)...)
 	}
 	return msgs
+}
+
+// Lời quản trò trong bản tin group, như quản trò gọi từng vai ở bàn chơi.
+const (
+	callNight   = "night"   // 22h: cả làng ngủ, gọi sói, tiên tri, bảo vệ
+	callWitch   = "witch"   // 0h: sói xong, gọi phù thuỷ
+	callMorning = "morning" // 10h: trời sáng, rồi tới bản tin đêm
+)
+
+// gmCall trả lời quản trò cho lần chuyển phase này và các vai được gọi. Chỉ gọi
+// vai còn người sống: người chết đã lật bài nên group biết vai đó hết người,
+// còn bộ vai thì suy ra được từ số người và config. Không xét bình hay km, nên
+// phù thuỷ hết bình vẫn được gọi như thường. Phù thuỷ đã chết thì 0h không có
+// gì để gọi, bản tin 0h vẫn rỗng và không gửi.
+func gmCall(before, after *werewolf.State) (string, []string) {
+	switch {
+	case after.Phase == werewolf.PhaseNight && before.Phase != werewolf.PhaseNight:
+		return callNight, aliveRoles(after, werewolf.Wolf, werewolf.Seer, werewolf.Guard)
+	case after.Phase == werewolf.PhaseDawn && before.Phase == werewolf.PhaseNight:
+		if wake := aliveRoles(after, werewolf.Witch); len(wake) > 0 {
+			return callWitch, wake
+		}
+	case before.Phase == werewolf.PhaseDawn && after.Phase != werewolf.PhaseDawn:
+		return callMorning, nil
+	}
+	return "", nil
+}
+
+// aliveRoles trả các vai trong roles (giữ thứ tự) còn ít nhất một người sống.
+func aliveRoles(st *werewolf.State, roles ...werewolf.Role) []string {
+	var out []string
+	for _, role := range roles {
+		for _, p := range st.Players {
+			if p.Role == role && p.Alive {
+				out = append(out, string(role))
+				break
+			}
+		}
+	}
+	return out
 }
 
 // nightMessages: lúc vào đêm, ai còn sống mà chưa có DM nào trong msgs thì

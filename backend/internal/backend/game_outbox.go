@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html"
 	"log/slog"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -600,10 +601,11 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 	switch tpl {
 	case tplStart:
 		var d struct {
-			NightAt time.Time `json:"nightAt"`
+			NightAt time.Time       `json:"nightAt"`
+			Wake    []werewolf.Role `json:"wake"`
 		}
 		if err = json.Unmarshal([]byte(raw), &d); err == nil {
-			text = r.startText(d.NightAt)
+			text = r.startText(d.NightAt, d.Wake)
 		}
 	case tplCard:
 		var d struct {
@@ -679,13 +681,49 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 
 func vnTime(t time.Time) string { return t.In(vietnam).Format("15:04 02/01") }
 
-func (r *outboxRenderer) startText(nightAt time.Time) string {
+func (r *outboxRenderer) startText(nightAt time.Time, wake []werewolf.Role) string {
 	names := make([]string, 0, len(r.players))
 	for _, p := range r.players {
 		names = append(names, html.EscapeString(p.name))
 	}
-	return fmt.Sprintf("<b>Ma Sói bắt đầu</b>\n%d người chơi: %s.\nĐêm 1 bắt đầu lúc %s. Bot đã nhắn riêng lá bài cho từng người.",
+	text := fmt.Sprintf("<b>Ma Sói bắt đầu</b>\n%d người chơi: %s.\nĐêm 1 bắt đầu lúc %s. Bot đã nhắn riêng lá bài cho từng người.",
 		len(names), strings.Join(names, ", "), vnTime(nightAt))
+	if slices.Contains(wake, werewolf.Cupid) {
+		text += "\n" + wakeLines[werewolf.Cupid] + "\n" + gmHowTo
+	}
+	return text
+}
+
+// wakeLines: quản trò gọi từng vai dậy, kèm việc và hạn của vai đó (bảng 1.3).
+// Hạn ghi theo lịch chuẩn; lúc gọi thì admin chưa dời hạn được lượt mới.
+var wakeLines = map[werewolf.Role]string{
+	werewolf.Cupid: "Cupid thức dậy, chọn hai người để ghép đôi, tới 0h đêm 1.",
+	werewolf.Wolf:  "Sói thức dậy, cả phe chọn một người để cắn, tới 0h.",
+	werewolf.Seer:  "Tiên tri thức dậy, chọn một người để soi, tới 10h sáng.",
+	werewolf.Guard: "Bảo vệ thức dậy, chọn một người để che, tới 10h sáng.",
+	werewolf.Witch: "Phù thuỷ thức dậy, chọn cứu người hay dùng bình độc, tới 10h sáng.",
+}
+
+const gmHowTo = "Ai có vai thì bấm trong tin 3i nhắn riêng hoặc trong app RunNow."
+
+// gmText là lời quản trò cuối bản tin khi vào đêm (22h) và lúc sói xong (0h).
+// Nó thay dòng "Tiếp theo", vì đã nói từng vai làm gì tới mấy giờ.
+func gmText(call string, round int, wake []werewolf.Role) []string {
+	var lines []string
+	switch call {
+	case callNight:
+		lines = append(lines, fmt.Sprintf("<b>Đêm %d buông xuống, cả làng đi ngủ.</b>", round))
+	case callWitch:
+		lines = append(lines, "<b>Sói đã chốt, sói đi ngủ.</b>")
+	default:
+		return nil
+	}
+	for _, role := range wake {
+		if l, ok := wakeLines[role]; ok {
+			lines = append(lines, l)
+		}
+	}
+	return append(lines, gmHowTo)
 }
 
 // privateHeader mở mọi DM riêng của ván. Telegram hiện vài dòng đầu của tin
@@ -738,6 +776,8 @@ func (r *outboxRenderer) digestText(raw string) (string, error) {
 		Events   []werewolf.Event  `json:"events"`
 		Deadline time.Time         `json:"deadline"`
 		Roles    map[string]string `json:"roles"`
+		Call     string            `json:"call"`
+		Wake     []werewolf.Role   `json:"wake"`
 	}
 	if err := json.Unmarshal([]byte(raw), &d); err != nil {
 		return "", err
@@ -750,14 +790,26 @@ func (r *outboxRenderer) digestText(raw string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(item.Lines) == 0 {
+	gm := gmText(d.Call, d.Round, d.Wake)
+	if len(item.Lines) == 0 && gm == nil {
 		return "", nil
 	}
-	lines := []string{"<b>" + html.EscapeString(item.Title) + "</b>"}
-	for _, l := range item.Lines {
-		lines = append(lines, html.EscapeString(l))
+	var lines []string
+	if d.Call == callMorning {
+		lines = append(lines, "<b>Trời sáng, cả làng thức dậy.</b>")
+	}
+	if len(item.Lines) > 0 {
+		lines = append(lines, "<b>"+html.EscapeString(item.Title)+"</b>")
+		for _, l := range item.Lines {
+			lines = append(lines, html.EscapeString(l))
+		}
 	}
 	switch {
+	case gm != nil:
+		if len(lines) > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, gm...)
 	case d.Roles != nil:
 		lines = append(lines, "", "Lá bài:")
 		for _, p := range r.players {
