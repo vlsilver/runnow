@@ -1076,6 +1076,7 @@ func (r *outboxRenderer) renderAction(ctx context.Context, key, tpl, raw string,
 		Kind    werewolf.Kind `json:"kind"`
 		TurnKey string        `json:"turnKey"`
 		Pick    []string      `json:"pick"`
+		Close   *tallyClose   `json:"close"`
 	}
 	if err := json.Unmarshal([]byte(raw), &d); err != nil {
 		return out, fmt.Errorf("render %s: %w", tpl, err)
@@ -1089,17 +1090,24 @@ func (r *outboxRenderer) renderAction(ctx context.Context, key, tpl, raw string,
 		return outboxText{skip: "stale"}, nil
 	}
 	if tpl == tplChoice || tpl == tplTally {
+		match := turn
+		if d.Close != nil {
+			match = d.Close.TurnKey // 22h đã sang vòng mới, tin đóng thuộc vòng cũ
+		}
 		prompt := anyMap(anyMap(chat["prompts"])[string(d.Kind)])
 		id := int64(number(prompt["messageId"]))
 		switch {
 		case id == 0:
 			return outboxText{skip: "no_prompt"}, nil
-		case stringValue(prompt["turnKey"]) != turn:
+		case stringValue(prompt["turnKey"]) != match:
 			return outboxText{skip: "stale"}, nil
 		}
 		out.editID = id
 	}
 	if key == chatGroup {
+		if d.Close != nil {
+			st = closedState(st, *d.Close)
+		}
 		return r.renderTally(ctx, out, tpl, st, d.Kind, turn)
 	}
 	uid := strings.TrimPrefix(key, "dm:")
@@ -1157,6 +1165,21 @@ func (r *outboxRenderer) renderTally(ctx context.Context, out outboxText, tpl st
 		out.promptKind, out.turnKey = string(kind), turn
 	}
 	return out, nil
+}
+
+// closedState là bản sao st với vòng, người lên giàn và người còn sống của lúc
+// tin đếm đóng, để renderTally vẽ số cuối khớp với lúc chốt. Phase vẫn là phase
+// sau lúc đóng nên renderTally vẽ bản hết giờ, không nút.
+func closedState(st *werewolf.State, c tallyClose) *werewolf.State {
+	cs := *st
+	cs.Round, cs.Nominee = c.Round, c.Nominee
+	cs.Players = make(map[string]*werewolf.Player, len(st.Players))
+	for uid, p := range st.Players {
+		cp := *p
+		cp.Alive = slices.Contains(c.Alive, uid)
+		cs.Players[uid] = &cp
+	}
+	return &cs
 }
 
 // state đọc secret/state một lần cho cả lượt gửi.

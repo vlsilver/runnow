@@ -264,13 +264,39 @@ func promptMessages(before, after *werewolf.State) []gameMsg {
 		}
 	}
 	for _, k := range []werewolf.Kind{werewolf.KindNominate, werewolf.KindVote} {
-		if openForAnyone(after, k) && (before == nil || !openForAnyone(before, k)) {
+		wasOpen, isOpen := before != nil && openForAnyone(before, k), openForAnyone(after, k)
+		if wasOpen && !isOpen {
+			msgs = append(msgs, gameMsg{ChatKey: chatGroup, Template: tplTally, Data: map[string]any{
+				"kind": string(k), "close": closeOf(before),
+			}})
+		}
+		if isOpen && !wasOpen {
 			msgs = append(msgs, gameMsg{ChatKey: chatGroup, Template: tplPrompt, Data: map[string]any{
 				"kind": string(k), "turnKey": turnKey(after),
 			}})
 		}
 	}
 	return msgs
+}
+
+// tallyClose là lúc tin đếm đề cử hay biểu quyết đóng. Bước 22h tăng vòng, xoá
+// người lên giàn và giết người bị treo, nên tin đóng vẽ theo dữ liệu này chứ
+// không theo state lúc gửi.
+type tallyClose struct {
+	TurnKey string   `json:"turnKey"`
+	Round   int      `json:"round"`
+	Nominee string   `json:"nominee,omitempty"`
+	Alive   []string `json:"alive"`
+}
+
+func closeOf(st *werewolf.State) tallyClose {
+	c := tallyClose{TurnKey: turnKey(st), Round: st.Round, Nominee: st.Nominee}
+	for _, uid := range sortedPlayers(st) {
+		if st.Players[uid].Alive {
+			c.Alive = append(c.Alive, uid)
+		}
+	}
+	return c
 }
 
 func openForAnyone(st *werewolf.State, kind werewolf.Kind) bool {

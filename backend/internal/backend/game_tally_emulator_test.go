@@ -183,6 +183,24 @@ func TestEmulatorTopicNominateAndVote(t *testing.T) {
 	if a := e.data("games/" + e.id + "/rounds/1/actions/v2_vote"); a["choice"] != ww.ChoiceHang || a["source"] != "telegram" {
 		t.Fatalf("action của v2 = %v", a)
 	}
+
+	// 22h: tin biểu quyết thành bản đã đóng, hết nút, dù bước 22h đã sang vòng 2
+	// và xoá người lên giàn.
+	voteID := id
+	e.advanceTo(time.Date(2026, 10, 16, 22, 0, 0, 0, vietnam))
+	e.flush()
+	if e.state().Round != 2 {
+		t.Fatalf("chưa sang vòng 2: %s", e.state().PhaseKey())
+	}
+	last = tgCall{}
+	for _, c := range e.tg.Calls("editMessageText") {
+		if c.Params["message_id"] == voteID {
+			last = c
+		}
+	}
+	if text, _ := last.Params["text"].(string); text != "<b>Biểu quyết ngày 1: treo hay tha W1</b>\nĐã hết giờ.\n<b>Treo</b>: 1 (V2)\n<b>Tha</b>: 1 (V3)" || len(buttonsOf(last)) != 0 {
+		t.Fatalf("tin biểu quyết sau 22h = %v", last)
+	}
 }
 
 // Prompt đề cử ghi lúc 10h mà tới sau 17h mới gửi thì bỏ, không đăng nút của
@@ -201,12 +219,17 @@ func TestEmulatorTopicLatePromptIsSkipped(t *testing.T) {
 	for _, d := range docs {
 		m := d.Data()
 		if tpl := stringValue(m["template"]); tpl == tplPrompt || tpl == tplTally {
-			got[tpl+"/"+stringValue(m["data"])] = stringValue(m["status"]) + "/" + stringValue(m["skipReason"])
+			data := stringValue(m["data"])
+			if strings.Contains(data, `"close"`) {
+				data = "đóng"
+			}
+			got[tpl+"/"+data] = stringValue(m["status"]) + "/" + stringValue(m["skipReason"])
 		}
 	}
 	want := map[string]string{
 		`prompt/{"kind":"nominate","turnKey":"r1"}`: "skipped/closed",
 		`tally/{"kind":"nominate"}`:                 "skipped/no_prompt",
+		`tally/đóng`:                                "skipped/no_prompt",
 		`prompt/{"kind":"vote","turnKey":"r1"}`:     "sent/",
 	}
 	if !reflect.DeepEqual(got, want) {
