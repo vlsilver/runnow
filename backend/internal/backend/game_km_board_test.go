@@ -60,9 +60,49 @@ func TestWolfBiteDisabledReasonNamesTeamKm(t *testing.T) {
 	if len(acts) != 1 || acts[0].Kind != string(ww.KindWolfBite) || acts[0].Enabled {
 		t.Fatalf("w1 = %+v", acts)
 	}
-	want := "Phe Sói chưa đủ km. Sói tính chung cả phe: tổng km của sói còn sống phải đủ ngưỡng km cho mỗi sói, km riêng của bạn đủ thì vẫn chưa cắn được."
+	want := "Phe Sói chưa đủ km: cả phe có 1.2 km, cần 2 km (1 km cho mỗi sói còn sống). " +
+		"Sói tính chung cả phe nên km riêng của bạn đủ thì vẫn chưa cắn được. Km đã chốt lúc 22h, muốn cắn đêm sau thì cả phe chạy thêm trước 22h."
 	if acts[0].DisabledReason != want {
 		t.Fatalf("lý do = %q", acts[0].DisabledReason)
+	}
+}
+
+// 0h phe Sói thiếu km: tin riêng của từng sói chở km cả phe và mức cần, lúc
+// gửi ghi ra thành nguyên nhân. Tin cũ không có số thì giữ câu cũ.
+func TestWolvesShortOfKmPrivateDMNamesNumbers(t *testing.T) {
+	st := ww.NewState(ww.Seed{1}, ww.Config{}, msgRoles(), msgStart)
+	night, _, err := ww.Step(st, ww.Inputs{Km: map[string]float64{"w1": 1200}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dawn, evs, err := ww.Step(night, ww.Inputs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Đêm 1 Cupid không ghép thì bot ghép thay, nên cặp đôi cũng có tin riêng;
+	// chỉ tin của sói chở km phe.
+	wolfKm := map[string]any{}
+	for _, m := range stepMessages(night, dawn, evs) {
+		if m.Template == tplPrivate {
+			wolfKm[m.ChatKey] = m.Data["wolfKm"]
+		}
+	}
+	want := map[string]float64{"have": 1200, "need": 2000}
+	if !reflect.DeepEqual(wolfKm[dmChat("w1")], want) || !reflect.DeepEqual(wolfKm[dmChat("w2")], want) {
+		t.Fatalf("tin riêng của sói = %+v", wolfKm)
+	}
+	for key, v := range wolfKm {
+		if key != dmChat("w1") && key != dmChat("w2") && v != nil {
+			t.Fatalf("%s không phải sói mà nhận km phe: %v", key, v)
+		}
+	}
+
+	r := testRenderer() // ngưỡng 2,5 km
+	out := renderOne(t, r, dmChat("w1"), tplPrivate, map[string]any{
+		"events": []ww.Event{{Kind: ww.EventWolvesTarget, Reason: ww.VoidNoKm}}, "wolfKm": map[string]float64{"have": 2499, "need": 5000},
+	})
+	if out.parts[0] != dmText("Phe Sói chưa đủ km nên đêm nay không cắn được ai: cả phe có 2.4 km, cần 5 km (2.5 km cho mỗi sói còn sống). Muốn cắn đêm sau thì cả phe chạy thêm trước 22h.") {
+		t.Fatalf("0h = %q", out.parts[0])
 	}
 }
 

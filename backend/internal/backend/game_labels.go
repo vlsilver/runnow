@@ -2,6 +2,8 @@ package backend
 
 import (
 	"errors"
+	"fmt"
+	"math"
 	"net/http"
 
 	"github.com/vlsilver/runnow/backend/internal/werewolf"
@@ -98,6 +100,25 @@ func rejectText(kind werewolf.Kind, err error) string {
 		}
 	}
 	return "Chưa làm được lúc này."
+}
+
+// wolfKmShort là phe Sói thiếu km bao nhiêu: have, need theo mét (WolfKm), unit
+// theo km. Chỉ dùng trong thẻ và tin riêng của sói. Km phe cắt xuống 0,1 km như
+// bảng km, để thiếu vài chục mét không hiện thành đủ.
+func wolfKmShort(have, need, unit float64) string {
+	return fmt.Sprintf("cả phe có %s km, cần %s km (%s km cho mỗi sói còn sống)",
+		formatKm(math.Floor(have/100)/10), formatKm(need/1000), formatKm(unit))
+}
+
+// disabledReason là lý do khoá nút trên thẻ hành động. Có state nên nút Cắn
+// thiếu km ghi được số của phe; rejectText thì không có state.
+func disabledReason(st *werewolf.State, kind werewolf.Kind, err error) string {
+	if kind != werewolf.KindWolfBite || !errors.Is(err, werewolf.ErrKmInsufficient) {
+		return rejectText(kind, err)
+	}
+	have, need := werewolf.WolfKm(st)
+	return "Phe Sói chưa đủ km: " + wolfKmShort(have, need, kmPerUnit(st.Config)) + ". " +
+		"Sói tính chung cả phe nên km riêng của bạn đủ thì vẫn chưa cắn được. Km đã chốt lúc 22h, muốn cắn đêm sau thì cả phe chạy thêm trước 22h."
 }
 
 // rejectHTTP: lỗi luật trả 409/422, không bao giờ 5xx, để app không retry (3.8).

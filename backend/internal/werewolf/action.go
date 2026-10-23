@@ -212,15 +212,20 @@ func precheck(st *State, kind Kind, actor string, mine []Action, now time.Time) 
 
 // wolvesHaveKm: tổng km của sói còn sống ≥ X × số sói còn sống (R1).
 func wolvesHaveKm(st *State) bool {
-	var n int
-	var sum float64
+	have, need := WolfKm(st)
+	return need > 0 && have >= need
+}
+
+// WolfKm trả tổng km (mét) của sói còn sống và mức phe cần (X × số sói còn
+// sống), để tin riêng cho sói nói được phe thiếu bao nhiêu.
+func WolfKm(st *State) (have, need float64) {
 	for _, uid := range st.aliveUIDs() {
 		if st.role(uid) == Wolf {
-			n++
-			sum += st.Km[uid]
+			have += st.Km[uid]
+			need += st.Config.unitMeters()
 		}
 	}
-	return n > 0 && sum >= float64(n)*st.Config.unitMeters()
+	return have, need
 }
 
 // witchCanSave: có người bị cắn, và chỉ tự cứu được ở đêm 1 (R4).

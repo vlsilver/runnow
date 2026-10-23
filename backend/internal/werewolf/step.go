@@ -216,11 +216,15 @@ func (r *resolver) lockWolves() {
 			best = &a
 		}
 	}
+	// Xét km trước lựa chọn: phe thiếu km thì không sói nào bấm được, nên
+	// best rỗng mà lý do vẫn phải là thiếu km.
 	switch {
-	case best == nil:
 	case !wolvesHaveKm(r.st):
 		reason = VoidNoKm
-		r.void(*best, VoidNoKm)
+		if best != nil {
+			r.void(*best, VoidNoKm)
+		}
+	case best == nil:
 	default:
 		r.st.Bitten, reason = best.target(), ""
 	}

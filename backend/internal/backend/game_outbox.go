@@ -638,9 +638,17 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 	case tplPrivate:
 		var d struct {
 			Events []werewolf.Event `json:"events"`
+			WolfKm *struct {
+				Have float64 `json:"have"`
+				Need float64 `json:"need"`
+			} `json:"wolfKm"`
 		}
 		if err = json.Unmarshal([]byte(raw), &d); err == nil {
-			text = r.privateText(d.Events)
+			short := ""
+			if d.WolfKm != nil {
+				short = wolfKmShort(d.WolfKm.Have, d.WolfKm.Need, kmPerUnit(r.cfg))
+			}
+			text = r.privateText(d.Events, short)
 		}
 	case tplAdmin:
 		var d struct {
@@ -945,7 +953,9 @@ var causeTexts = map[werewolf.Cause]string{
 }
 
 // privateText: việc riêng của một người sau một lần chốt (stepMessages).
-func (r *outboxRenderer) privateText(evs []werewolf.Event) string {
+// privateText: wolfShort là phe Sói thiếu km bao nhiêu (wolfKmShort), rỗng ở
+// tin không phải của sói thiếu km và ở tin xếp hàng trước khi có số.
+func (r *outboxRenderer) privateText(evs []werewolf.Event, wolfShort string) string {
 	var lines []string
 	for _, e := range evs {
 		switch e.Kind {
@@ -971,6 +981,8 @@ func (r *outboxRenderer) privateText(evs []werewolf.Event) string {
 			switch {
 			case e.UID != "":
 				lines = append(lines, fmt.Sprintf("Phe Sói chốt cắn %s.", r.name(e.UID)))
+			case e.Reason == werewolf.VoidNoKm && wolfShort != "":
+				lines = append(lines, "Phe Sói chưa đủ km nên đêm nay không cắn được ai: "+wolfShort+". Muốn cắn đêm sau thì cả phe chạy thêm trước 22h.")
 			case e.Reason == werewolf.VoidNoKm:
 				lines = append(lines, "Phe Sói chưa đủ km nên đêm nay không cắn được ai.")
 			default:

@@ -1142,7 +1142,7 @@ func meActions(st *werewolf.State, uid string, mine []werewolf.Action, raw map[w
 			a.ClosesAt = &t
 		}
 		if err := werewolf.Precheck(st, kind, uid, mine, now); err != nil {
-			a.DisabledReason = rejectText(kind, err)
+			a.DisabledReason = disabledReason(st, kind, err)
 		} else {
 			a.Enabled = true
 		}

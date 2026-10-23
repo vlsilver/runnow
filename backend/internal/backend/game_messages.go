@@ -157,9 +157,16 @@ func stepMessages(before, after *werewolf.State, evs []werewolf.Event) []gameMsg
 	}
 	sort.Strings(uids)
 	for _, uid := range uids {
-		msgs = append(msgs, gameMsg{ChatKey: dmChat(uid), Template: tplPrivate, Data: map[string]any{
-			"phaseKey": before.PhaseKey(), "events": private[uid],
-		}})
+		data := map[string]any{"phaseKey": before.PhaseKey(), "events": private[uid]}
+		for _, e := range private[uid] {
+			if e.Kind == werewolf.EventWolvesTarget && e.Reason == werewolf.VoidNoKm {
+				// Bước 0h không đổi km và chưa giết người bị cắn, nên after là phe
+				// lúc xét km, kể cả người rời PSC vừa bị loại.
+				have, need := werewolf.WolfKm(after)
+				data["wolfKm"] = map[string]float64{"have": have, "need": need}
+			}
+		}
+		msgs = append(msgs, gameMsg{ChatKey: dmChat(uid), Template: tplPrivate, Data: data})
 	}
 	msgs = append(msgs, promptMessages(before, after)...)
 	if after.Phase == werewolf.PhaseNight && before.Phase != werewolf.PhaseNight {
