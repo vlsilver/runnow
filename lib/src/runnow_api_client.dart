@@ -327,6 +327,11 @@ class RunNowApiClient {
     return AgentProfile.fromJson(_jsonObject(response));
   }
 
+  /// Đồng ý gửi dữ liệu cho AI, [version] là `consentVersion` backend trả.
+  /// Bản cũ thì `consent_version_mismatch`. Gọi lại vẫn 200.
+  Future<void> recordAgentConsent(int version) =>
+      _send('POST', '/v1/agents/me/consent', body: {'version': version});
+
   /// Lỗi `memory_full`, `invalid_memory` có message đọc được.
   Future<AgentMemory> addAgentMemory(String text) async {
     final response = await _send(
@@ -351,6 +356,10 @@ class RunNowApiClient {
 
   Future<void> deleteAgentLearned(String id) =>
       _send('DELETE', '/v1/agents/me/learned/${Uri.encodeComponent(id)}');
+
+  /// Bật thì bot thôi tự học về mình và xoá những gì đã học.
+  Future<void> setAgentNoLearn(bool on) =>
+      _send('POST', '/v1/agents/me/no-learn', body: {'on': on});
 
   Future<AgentGroupFacts> getAgentGroupFacts() async {
     final response = await _send('GET', '/v1/agents/group-facts');
@@ -377,6 +386,32 @@ class RunNowApiClient {
   String _rolePath(String role, String uid) =>
       '/v1/admin/roles/${Uri.encodeComponent(role)}/${Uri.encodeComponent(uid)}';
 
+  /// Chỉ admin: trần, giá model và chi phí hôm nay của bot cá nhân.
+  Future<AgentConfig> getAgentConfig() async {
+    final response = await _send('GET', '/v1/admin/agent-config');
+    return AgentConfig.fromJson(_jsonObject(response));
+  }
+
+  /// [version] lấy từ lần đọc gần nhất; admin khác lưu trước thì
+  /// `config_changed`. [values] chỉ chứa key đổi, null là về mặc định.
+  /// [prices] là cả bảng giá, backend thay nguyên bảng.
+  Future<AgentConfig> updateAgentConfig({
+    required String version,
+    Map<String, num?>? values,
+    List<AgentModelPrice>? prices,
+  }) async {
+    final response = await _send(
+      'PATCH',
+      '/v1/admin/agent-config',
+      body: {
+        'version': version,
+        'values': ?values,
+        if (prices != null) 'prices': [for (final p in prices) p.toJson()],
+      },
+    );
+    return AgentConfig.fromJson(_jsonObject(response));
+  }
+
   Future<AgentChatPage<AgentMessage>> getAgentDM({
     String? cursor,
     int? after,
@@ -391,6 +426,19 @@ class RunNowApiClient {
   Future<void> postAgentDM(String text) =>
       _send('POST', '/v1/agents/me/dm', body: {'text': text});
 
+  /// Ảnh bot đã vẽ, mới trước; [limit] tối đa 30, bỏ trống là 30.
+  Future<AgentImagePage> getAgentImages({String? cursor, int? limit}) async {
+    final query = [
+      if (cursor != null) 'cursor=${Uri.encodeQueryComponent(cursor)}',
+      if (limit != null) 'limit=$limit',
+    ];
+    final response = await _send(
+      'GET',
+      '/v1/agents/me/images${query.isEmpty ? '' : '?${query.join('&')}'}',
+    );
+    return AgentImagePage.fromJson(_jsonObject(response));
+  }
+
   Future<AgentChatPage<AgentRoomMessage>> getAgentRoom({
     String? cursor,
     int? after,
@@ -404,6 +452,22 @@ class RunNowApiClient {
 
   Future<void> postAgentRoom(String text) =>
       _send('POST', '/v1/agents/room', body: {'text': text});
+
+  /// Báo cáo tin [seq] trong phòng bot; [block] chặn luôn người gửi (tin của
+  /// bot thì chặn chủ bot). Tin của mình hay bot mình thì `invalid_request`.
+  Future<void> reportAgentRoomMessage(int seq, {required bool block}) => _send(
+    'POST',
+    '/v1/agents/room/messages/$seq/report',
+    body: {'block': block},
+  );
+
+  Future<List<AgentBlocked>> getAgentBlocks() async {
+    final response = await _send('GET', '/v1/agents/blocks');
+    return AgentBlocked.listFromJson(_jsonObject(response));
+  }
+
+  Future<void> unblockAgentRoomUser(String uid) =>
+      _send('DELETE', '/v1/agents/blocks/${Uri.encodeComponent(uid)}');
 
   String _seqQuery(String? cursor, int? after) => cursor != null
       ? '?cursor=${Uri.encodeQueryComponent(cursor)}'

@@ -103,7 +103,7 @@
       <img src="icons/Icon-192.png" alt="3i" />
       <h1>Chính sách quyền riêng tư — 3i</h1>
     </header>
-    <p class="updated">Cập nhật lần cuối: 18/10/2026</p>
+    <p class="updated">Cập nhật lần cuối: 22/10/2026</p>
 
     <section>
       <h2>Giới thiệu</h2>
@@ -151,6 +151,14 @@
           gửi và thời điểm gửi.
         </li>
         <li>
+          <strong>Bot cá nhân (MyBot):</strong> tên và tính cách bạn đặt cho
+          bot, những điều bạn dạy bot, tin nhắn chat riêng giữa bạn và bot, và
+          tin bạn gửi trong phòng bot. Trừ khi bạn tắt "Cho bot tự học về bạn",
+          bot ghi lại vài điều ngắn về bạn rút ra từ tin nhắn của bạn trong
+          phòng bot và nhóm Telegram của câu lạc bộ. Chúng tôi cũng lưu thời
+          điểm bạn đồng ý cho bot gửi dữ liệu tới AI.
+        </li>
+        <li>
           <strong>Báo cáo và chặn:</strong> khi bạn báo cáo một tin nhắn,
           chúng tôi lưu bản sao nội dung tin bị báo cáo, người gửi và người
           báo cáo. Chúng tôi cũng lưu danh sách người bạn đã chặn.
@@ -180,6 +188,11 @@
         <li>
           <strong>Game Ma Sói:</strong> để vận hành ván chơi và tính điểm
           theo số km.
+        </li>
+        <li>
+          <strong>Bot cá nhân:</strong> để bot trả lời bạn trong chat riêng
+          và nói chuyện trong phòng bot theo tính cách và những điều bạn đã
+          dạy, và để bot trả lời về buổi chạy, số km và kèo của bạn.
         </li>
         <li>
           <strong>Báo cáo:</strong> để quản trị viên xem xét tin bị báo cáo.
@@ -212,6 +225,24 @@
           của câu lạc bộ không. Telegram là dịch vụ bên thứ ba và có chính
           sách quyền riêng tư riêng.
         </li>
+        <li>
+          <strong>Google Vertex AI (model Gemini):</strong> để bot cá nhân trả
+          lời và tự học. Để bot trả lời, chúng tôi gửi cho Google
+          tin nhắn trong cuộc trò chuyện, tính cách bot, những điều bạn dạy
+          bot và những điều bot đã học về người trong cuộc trò chuyện. Khi
+          người khác nói chuyện trong phòng bot, tính cách và những điều bạn
+          dạy bot cũng được gửi đi để bot của bạn trả lời. Khi bot cần trả
+          lời về chuyện chạy, chúng tôi gửi số liệu buổi chạy (ngày, km, pace,
+          nhịp tim, từng km), số km và số bước trong ngày, và tiến độ kèo của
+          bạn, cùng danh sách kèo đang chạy của câu lạc bộ. Trong phòng bot,
+          số của bạn chỉ được gửi khi hồ sơ của bạn để công khai. Để bot tự học, tin
+          nhắn trong phòng bot và nhóm Telegram của câu lạc bộ được gửi đi,
+          trừ tin của người đã tắt tự học. Theo điều khoản của
+          Google Cloud, Google không dùng dữ liệu này để huấn luyện model.
+          Google có thể lưu log để phát hiện lạm dụng. Khi bot tìm trên web,
+          câu tìm kiếm đi qua Google Search và Google lưu log đó tối đa 3
+          ngày.
+        </li>
       </ul>
       <p>
         Dữ liệu bạn đặt ở chế độ "Public trong Club" (ví dụ tiến độ Kèo Chạy,
@@ -221,6 +252,10 @@
       <p>
         Tin nhắn chat phe trong game Ma Sói chỉ người cùng phe trong ván đó
         đọc được.
+      </p>
+      <p>
+        Tin trong phòng bot và những điều bạn dạy bot thì mọi thành viên
+        phòng bot đọc được. Chat riêng với bot chỉ bạn đọc được.
       </p>
     </section>
 
@@ -235,12 +270,26 @@
       <p>
         Tin nhắn chat phe trong game Ma Sói tự xoá sau 90 ngày.
       </p>
+      <p>
+        Những điều bot tự học về bạn tự xoá nếu 90 ngày không được cập nhật.
+        Tin nhắn với bot và trong phòng bot được lưu tới khi bạn xoá tài
+        khoản.
+      </p>
     </section>
 
     <section>
       <h2>Quyền của bạn</h2>
       <ul>
         <li>Ngắt kết nối Strava bất cứ lúc nào trong phần Cài đặt của app.</li>
+        <li>
+          Tắt "Cho bot tự học về bạn" trong tab MyBot: bot xoá những điều đã
+          học về bạn và không học thêm. Bạn cũng xoá được từng điều đã dạy bot.
+        </li>
+        <li>
+          Xoá tài khoản trong app: chúng tôi xoá bot, chat riêng, tin của bạn
+          trong phòng bot, những điều bot đã học về bạn, báo cáo và danh sách
+          chặn của bạn.
+        </li>
         <li>
           Yêu cầu xem, chỉnh sửa hoặc xoá toàn bộ dữ liệu cá nhân bằng cách
           liên hệ email bên dưới.

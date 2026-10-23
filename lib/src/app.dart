@@ -3,9 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/admin/admin_screen.dart';
+import 'package:myrun/src/agents/agent_blocks_screen.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
 import 'package:myrun/src/agents/agent_group_facts_screen.dart';
+import 'package:myrun/src/agents/agent_images_screen.dart';
+import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/agents/agent_screen.dart';
+import 'package:myrun/src/agents/agent_setup_screen.dart';
 import 'package:myrun/src/app_update.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_chat_screen.dart';
@@ -126,6 +130,16 @@ final _router = GoRouter(
             ),
           ],
         ),
+        // Tab MyBot thế chỗ Hành Trình khi user được bật bot (myBotTabVisible).
+        // Branch thêm ở cuối nên index các tab cũ giữ nguyên.
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/mybot',
+              builder: (context, state) => const AgentScreen(),
+            ),
+          ],
+        ),
       ],
     ),
     GoRoute(path: '/journal', redirect: (context, state) => '/profile/journal'),
@@ -226,7 +240,11 @@ final _router = GoRouter(
       builder: (context, state) =>
           GameDetailScreen(gameId: state.pathParameters['id']!),
     ),
-    GoRoute(path: '/agent', builder: (context, state) => const AgentScreen()),
+    GoRoute(path: '/agent', redirect: (context, state) => '/mybot'),
+    GoRoute(
+      path: '/agent/setup',
+      builder: (context, state) => const AgentSetupScreen(),
+    ),
     GoRoute(
       path: '/agent/dm',
       builder: (context, state) => const AgentDMScreen(),
@@ -238,6 +256,24 @@ final _router = GoRouter(
     GoRoute(
       path: '/agent/group-facts',
       builder: (context, state) => const AgentGroupFactsScreen(),
+    ),
+    GoRoute(
+      path: '/agent/blocks',
+      builder: (context, state) => const AgentBlocksScreen(),
+    ),
+    GoRoute(
+      path: '/agent/images',
+      builder: (context, state) => const AgentImagesScreen(),
+    ),
+    GoRoute(
+      path: '/agent/memories',
+      builder: (context, state) =>
+          const AgentScreen(list: AgentListView.memories),
+    ),
+    GoRoute(
+      path: '/agent/learned',
+      builder: (context, state) =>
+          const AgentScreen(list: AgentListView.learned),
     ),
     GoRoute(
       path: '/games/:id/chat/:key',
@@ -840,6 +876,7 @@ class _Scaffold extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final admin = _showAdminTab(ref);
+    final myBot = myBotTabVisible(ref);
     final width = MediaQuery.sizeOf(context).width;
     // Ở tab Chạy (index 2) → ẩn nav dưới cho màn chạy chiếm trọn, tập trung.
     // Thoát bằng nút X trên màn Chạy (khi chưa bắt đầu) hoặc Stop/Discard.
@@ -851,7 +888,7 @@ class _Scaffold extends ConsumerWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _DesktopNavRail(shell: shell, admin: admin),
+              _DesktopNavRail(shell: shell, admin: admin, myBot: myBot),
               Expanded(
                 child: Align(
                   alignment: Alignment.topCenter,
@@ -921,20 +958,40 @@ class _Scaffold extends ConsumerWidget {
                   ),
                   if (!kIsWeb)
                     Expanded(
-                      child: _RunNavItem(
+                      child: _OrbNavItem(
                         selected: shell.currentIndex == 2,
+                        icon: Icons.directions_run_rounded,
+                        label: 'Chạy',
                         onTap: () => shell.goBranch(2),
                       ),
                     ),
-                  Expanded(
-                    child: _NavItem(
-                      selected: shell.currentIndex == 3,
-                      icon: Icons.map_outlined,
-                      selectedIcon: Icons.map_rounded,
-                      label: 'Hành Trình',
-                      onTap: () => shell.goBranch(3),
+                  // Có bot thì MyBot thế chỗ Hành Trình; Hành Trình vẫn mở được
+                  // từ "Hồ sơ & thành tích" ở Cài đặt.
+                  if (myBot)
+                    Expanded(
+                      child: _NavItem(
+                        selected: shell.currentIndex == 6,
+                        icon: Icons.smart_toy_outlined,
+                        selectedIcon: Icons.smart_toy_rounded,
+                        label: 'MyBot',
+                        // Tab luôn sống trong IndexedStack: đọc lại để chạy
+                        // xong mở tab là thấy km và số tin mới.
+                        onTap: () {
+                          ref.invalidate(agentMeProvider);
+                          shell.goBranch(6);
+                        },
+                      ),
+                    )
+                  else
+                    Expanded(
+                      child: _NavItem(
+                        selected: shell.currentIndex == 3,
+                        icon: Icons.map_outlined,
+                        selectedIcon: Icons.map_rounded,
+                        label: 'Hành Trình',
+                        onTap: () => shell.goBranch(3),
+                      ),
                     ),
-                  ),
                   Expanded(
                     child: _NavItem(
                       selected: shell.currentIndex == 4,
@@ -965,10 +1022,15 @@ class _Scaffold extends ConsumerWidget {
 }
 
 class _DesktopNavRail extends StatelessWidget {
-  const _DesktopNavRail({required this.shell, required this.admin});
+  const _DesktopNavRail({
+    required this.shell,
+    required this.admin,
+    required this.myBot,
+  });
 
   final StatefulNavigationShell shell;
   final bool admin;
+  final bool myBot;
 
   @override
   Widget build(BuildContext context) {
@@ -976,7 +1038,14 @@ class _DesktopNavRail extends StatelessWidget {
     final extended = width >= 1240;
     final scheme = Theme.of(context).colorScheme;
     final onSurface = scheme.onSurface;
-    final branches = <int>[0, 1, if (!kIsWeb) 2, 3, 4, if (admin) 5];
+    final branches = <int>[
+      0,
+      1,
+      if (!kIsWeb) 2,
+      if (myBot) 6 else 3,
+      4,
+      if (admin) 5,
+    ];
     final destinations = <NavigationRailDestination>[
       const NavigationRailDestination(
         icon: Icon(Icons.flag_outlined),
@@ -994,11 +1063,18 @@ class _DesktopNavRail extends StatelessWidget {
           selectedIcon: Icon(Icons.directions_run_rounded),
           label: Text('Chạy'),
         ),
-      const NavigationRailDestination(
-        icon: Icon(Icons.map_outlined),
-        selectedIcon: Icon(Icons.map_rounded),
-        label: Text('Hành Trình'),
-      ),
+      if (myBot)
+        const NavigationRailDestination(
+          icon: Icon(Icons.smart_toy_outlined),
+          selectedIcon: Icon(Icons.smart_toy_rounded),
+          label: Text('MyBot'),
+        )
+      else
+        const NavigationRailDestination(
+          icon: Icon(Icons.map_outlined),
+          selectedIcon: Icon(Icons.map_rounded),
+          label: Text('Hành Trình'),
+        ),
       const NavigationRailDestination(
         icon: Icon(Icons.settings_outlined),
         selectedIcon: Icon(Icons.settings),
@@ -1150,10 +1226,18 @@ class _NavItem extends StatelessWidget {
   }
 }
 
-class _RunNavItem extends StatelessWidget {
-  const _RunNavItem({required this.selected, required this.onTap});
+/// Nút tròn nổi ở giữa thanh tab.
+class _OrbNavItem extends StatelessWidget {
+  const _OrbNavItem({
+    required this.selected,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   final bool selected;
+  final IconData icon;
+  final String label;
   final VoidCallback onTap;
 
   @override
@@ -1192,15 +1276,11 @@ class _RunNavItem extends StatelessWidget {
                 ),
               ),
             ),
-            child: Icon(
-              Icons.directions_run_rounded,
-              color: palette.glassStart,
-              size: 30,
-            ),
+            child: Icon(icon, color: palette.glassStart, size: 30),
           ),
           const SizedBox(height: 2),
           Text(
-            'Chạy',
+            label,
             style: TextStyle(
               color: selected
                   ? palette.secondary
