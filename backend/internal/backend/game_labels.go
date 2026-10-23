@@ -86,6 +86,11 @@ func rejectText(kind werewolf.Kind, err error) string {
 	if kind == werewolf.KindVote && errors.Is(err, werewolf.ErrNotYourRole) {
 		return "Người lên giàn không bỏ phiếu."
 	}
+	// Cắn xét km chung của phe (wolvesHaveKm), còn app hiện km riêng từng người:
+	// chỉ ghi "Chưa đủ km" thì sói có km riêng đủ ngưỡng tưởng app lỗi.
+	if kind == werewolf.KindWolfBite && errors.Is(err, werewolf.ErrKmInsufficient) {
+		return "Phe Sói chưa đủ km. Sói tính chung cả phe: tổng km của sói còn sống phải đủ ngưỡng km cho mỗi sói, km riêng của bạn đủ thì vẫn chưa cắn được."
+	}
 	var r werewolf.Reject
 	if errors.As(err, &r) {
 		if t, ok := rejectTexts[r]; ok {

@@ -48,6 +48,24 @@ func TestRenderNightDigestKmBoard(t *testing.T) {
 	}
 }
 
+// Sói có km riêng đủ ngưỡng mà phe chưa đủ tổng km thì nút Cắn nói rõ là thiếu
+// km của cả phe, không để người chơi tưởng mình đã đủ mà app lỗi.
+func TestWolfBiteDisabledReasonNamesTeamKm(t *testing.T) {
+	st := ww.NewState(ww.Seed{1}, ww.Config{}, msgRoles(), msgStart)
+	night, _, err := ww.Step(st, ww.Inputs{Km: map[string]float64{"w1": 1200}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	acts := meActions(night, "w1", nil, nil, nil, night.NightAt.Add(time.Hour), 0)
+	if len(acts) != 1 || acts[0].Kind != string(ww.KindWolfBite) || acts[0].Enabled {
+		t.Fatalf("w1 = %+v", acts)
+	}
+	want := "Phe Sói chưa đủ km. Sói tính chung cả phe: tổng km của sói còn sống phải đủ ngưỡng km cho mỗi sói, km riêng của bạn đủ thì vẫn chưa cắn được."
+	if acts[0].DisabledReason != want {
+		t.Fatalf("lý do = %q", acts[0].DisabledReason)
+	}
+}
+
 // Tin nhắc 15h, 21h kèm km đang gom cho mốc 22h tới của người còn sống, tính
 // lúc gửi. Ván đã sang đêm (tin nhắc gửi trễ) hay ván thử thì chỉ còn lời nhắc.
 // Đọc km lỗi thì tin lỗi chứ không gửi bảng thiếu.
