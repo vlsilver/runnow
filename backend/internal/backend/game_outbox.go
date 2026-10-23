@@ -570,6 +570,14 @@ func (r *outboxRenderer) name(uid string) string {
 	return "Người chơi"
 }
 
+func (r *outboxRenderer) names(uids []string) string {
+	out := make([]string, len(uids))
+	for i, uid := range uids {
+		out[i] = r.name(uid)
+	}
+	return strings.Join(out, ", ")
+}
+
 // target chọn chat của key: DM tới tgUserId của người chơi hoặc topic Ma Sói
 // của group ván. Chat phe nằm trong app, không qua outbox. Key lạ thì lỗi,
 // không rơi về group chung, vì
@@ -947,7 +955,41 @@ func (r *outboxRenderer) liveKmLines(ctx context.Context) ([]string, error) {
 		km[uid] = fk.Meters
 	}
 	lines := append([]string{"<b>Km tới " + now.In(vietnam).Format("15:04") + ", chốt lúc 22h</b>"}, r.kmBoard(km)...)
+	if st.Phase == werewolf.PhaseTrial && st.Players[st.Nominee] != nil && st.Players[st.Nominee].Alive {
+		lines = append(lines, r.voteForecast(st, km))
+	}
 	return append(lines, "Km chốt 22h dùng cho biểu quyết tối nay và kỹ năng đêm nay. Chạy xong mở app cho km kịp đồng bộ."), nil
+}
+
+// voteForecast là R30 áp lên km tới giờ (km của người còn sống): nếu chốt bây
+// giờ thì bao nhiêu phiếu được tính, ai mất phiếu. Km còn tăng tới 22h nên chỉ
+// là dự báo; lúc chốt engine tính lại bằng km 22h.
+func (r *outboxRenderer) voteForecast(st *werewolf.State, km map[string]float64) string {
+	var voters []string
+	var total float64
+	for _, uid := range sortedPlayers(st) {
+		if _, alive := km[uid]; alive && uid != st.Nominee {
+			voters = append(voters, uid)
+			total += km[uid]
+		}
+	}
+	plan := werewolf.PlanVoteCut(voters, km, r.cfg)
+	text := fmt.Sprintf("Biểu quyết nếu chốt bây giờ: %d người bỏ phiếu có tổng %s km, ", len(voters), formatKm(math.Floor(total/100)/10))
+	if plan.Allowed == len(voters) {
+		return text + fmt.Sprintf("đủ cho cả %d phiếu.", len(voters))
+	}
+	text += fmt.Sprintf("được tính %d phiếu (%s km một phiếu).", plan.Allowed, formatKm(kmPerUnit(r.cfg)))
+	sure, tied := plan.Sure, plan.Tied
+	if plan.Need == len(tied) {
+		sure, tied = append(sure, tied...), nil
+	}
+	if len(sure) > 0 {
+		text += " Mất phiếu vì ít km nhất: " + r.names(sure) + "."
+	}
+	if len(tied) > 0 {
+		text += fmt.Sprintf(" Bốc thăm %d người mất phiếu trong: %s.", plan.Need, r.names(tied))
+	}
+	return text + " Ai chạy thêm trước 22h thì làng thêm phiếu."
 }
 
 func reminderText(reason string) (string, error) {

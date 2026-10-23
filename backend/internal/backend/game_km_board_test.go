@@ -192,6 +192,48 @@ func TestRenderReminderLiveKm(t *testing.T) {
 	}
 }
 
+// Tin nhắc 21h lúc có người lên giàn kèm dự báo R30 trên km tới giờ: bao
+// nhiêu phiếu được tính, ai mất phiếu (ít km nhất, kể cả người không bấm),
+// bằng km ở ngưỡng thì báo bốc thăm. Người lên giàn không bỏ phiếu nên không
+// tính. Đủ km thì nói đủ, chưa có ai lên giàn thì không dự báo.
+func TestRenderReminderVoteForecast(t *testing.T) {
+	r := testRenderer() // ngưỡng 2,5 km một phiếu
+	st := ww.NewState(ww.Seed{1}, r.cfg, map[string]ww.Role{"w1": ww.Wolf, "w2": ww.Villager, "s1": ww.Seer, "f1": ww.Villager}, msgStart)
+	st.Phase, st.Nominee = ww.PhaseTrial, "f1"
+	var live map[string]float64
+	r.st, r.now = st, func() time.Time { return time.Date(2026, 10, 24, 21, 0, 0, 0, vietnam) }
+	r.store = &GameStore{frameKm: func(_ context.Context, uid string, _ time.Time) (FrameKm, error) {
+		return FrameKm{Meters: live[uid]}, nil
+	}}
+	forecast := func() string {
+		out, err := r.renderReminder(context.Background(), chatGroup, `{"reason":"vote"}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.Split(strings.Join(out.parts, "\n"), "\n")
+		return lines[len(lines)-2] // dòng trước câu chân "Km chốt 22h dùng cho…"
+	}
+
+	live = map[string]float64{"w1": 900, "w2": 3100, "s1": 2600, "f1": 9000}
+	if got := forecast(); got != "Biểu quyết nếu chốt bây giờ: 3 người bỏ phiếu có tổng 6.6 km, được tính 2 phiếu (2.5 km một phiếu). "+
+		"Mất phiếu vì ít km nhất: An &lt;Sói&gt;. Ai chạy thêm trước 22h thì làng thêm phiếu." {
+		t.Fatalf("thiếu km = %q", got)
+	}
+	live = map[string]float64{"w1": 2000, "w2": 2000, "s1": 2600}
+	if got := forecast(); got != "Biểu quyết nếu chốt bây giờ: 3 người bỏ phiếu có tổng 6.6 km, được tính 2 phiếu (2.5 km một phiếu). "+
+		"Bốc thăm 1 người mất phiếu trong: An &lt;Sói&gt;, Bình &amp; Co. Ai chạy thêm trước 22h thì làng thêm phiếu." {
+		t.Fatalf("bằng km ở ngưỡng = %q", got)
+	}
+	live = map[string]float64{"w1": 2500, "w2": 2600, "s1": 2600}
+	if got := forecast(); got != "Biểu quyết nếu chốt bây giờ: 3 người bỏ phiếu có tổng 7.7 km, đủ cho cả 3 phiếu." {
+		t.Fatalf("đủ km = %q", got)
+	}
+	st.Nominee = ""
+	if got := forecast(); strings.HasPrefix(got, "Biểu quyết") {
+		t.Fatalf("chưa ai lên giàn mà vẫn dự báo: %q", got)
+	}
+}
+
 // Bấm "Xem km của tôi": người bấm thấy km đang gom tới mốc 22h kế tiếp, ngưỡng
 // và km chốt 22h gần nhất. Sói thấy thêm tổng km đang gom của phe (chỉ sói còn
 // sống). Người chết không còn km để xem. Đọc km lỗi thì trả lỗi.
