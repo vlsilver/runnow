@@ -112,7 +112,9 @@ func LoadConfig() (Config, error) {
 	c.AgentModel = env("AGENT_MODEL", "gemini-3.8-flash")
 	c.AgentLearn = env("AGENT_LEARN", "") == "on"
 	c.AgentTelegramBots = env("AGENT_TELEGRAM_BOTS", "") == "on"
-	c.AgentLearnModel = env("AGENT_LEARN_MODEL", "gemini-3.8-flash")
+	// Task học không có model dự phòng, nên đi theo GEMINI_MODEL: đổi model của
+	// 3i vì model cũ treo thì task học đổi theo, không bị bỏ lại trên model cũ.
+	c.AgentLearnModel = env("AGENT_LEARN_MODEL", c.GeminiModel)
 	c.BotGroupFacts = env("BOT_GROUP_FACTS", "") == "on"
 	if n, convErr := strconv.Atoi(env("BOT_HOURLY_LIMIT", "100")); convErr == nil && n > 0 {
 		c.BotHourlyLimit = n
