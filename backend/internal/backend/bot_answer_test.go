@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -140,5 +141,66 @@ func TestAnswerThinkingLevel(t *testing.T) {
 		} else if !strings.Contains(body, tc.want) {
 			t.Errorf("%s: body lacks %s", tc.level, tc.want)
 		}
+	}
+}
+
+func writeGeminiError(w http.ResponseWriter, code int, status string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_, _ = io.WriteString(w, `{"error":{"code":`+strconv.Itoa(code)+`,"message":"x","status":"`+status+`"}}`)
+}
+
+// Pool dùng chung của model chính hết chỗ cả loạt retry thì 3i vẫn phải trả
+// lời, bằng model dự phòng ở location khác.
+func TestAnswerFallsBackWhenPrimaryExhausted(t *testing.T) {
+	primary := &fakeGemini{reply: func(n int, w http.ResponseWriter, r *http.Request) {
+		writeGeminiError(w, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED")
+	}}
+	backup := &fakeGemini{reply: func(n int, w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "models/du-phong:") {
+			t.Errorf("fallback called %s, want model du-phong", r.URL.Path)
+		}
+		writeGeminiText(w, "giãn cơ đi")
+	}}
+	bot := newFakeGeminiBot(t, primary)
+	bot.fallback = genaiRoute{client: newFakeGeminiClient(t, backup), model: "du-phong"}
+
+	got, err := bot.Answer(context.Background(), "sys", askOnce(), false)
+	if err != nil || got != "giãn cơ đi" {
+		t.Fatalf("got %q, %v; want the fallback's reply", got, err)
+	}
+	if p, b := len(primary.requests()), len(backup.requests()); p != 3 || b != 1 {
+		t.Fatalf("primary %d, fallback %d requests; want 3 then 1", p, b)
+	}
+}
+
+// Request hỏng (400) thì model nào cũng hỏng như nhau: không gọi dự phòng.
+func TestAnswerNoFallbackOnBadRequest(t *testing.T) {
+	primary := &fakeGemini{reply: func(n int, w http.ResponseWriter, r *http.Request) {
+		writeGeminiError(w, http.StatusBadRequest, "INVALID_ARGUMENT")
+	}}
+	backup := &fakeGemini{reply: func(n int, w http.ResponseWriter, r *http.Request) { writeGeminiText(w, "ok") }}
+	bot := newFakeGeminiBot(t, primary)
+	bot.fallback = genaiRoute{client: newFakeGeminiClient(t, backup), model: "du-phong"}
+
+	if _, err := bot.Answer(context.Background(), "sys", askOnce(), false); err == nil {
+		t.Fatal("want the 400 error")
+	}
+	if n := len(backup.requests()); n != 0 {
+		t.Fatalf("fallback got %d requests, want 0", n)
+	}
+}
+
+// MyBot đi cùng đường gọi model với 3i nên cũng có dự phòng.
+func TestAgentLLMFallsBackWhenPrimaryExhausted(t *testing.T) {
+	primary := &fakeGemini{reply: func(n int, w http.ResponseWriter, r *http.Request) {
+		writeGeminiError(w, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED")
+	}}
+	backup := &fakeGemini{reply: func(n int, w http.ResponseWriter, r *http.Request) { writeGeminiText(w, "chào chủ") }}
+	llm := genaiAgentLLM{client: newFakeGeminiClient(t, primary), model: "m", fallback: genaiRoute{client: newFakeGeminiClient(t, backup), model: "du-phong"}}
+
+	resp, err := llm.Generate(context.Background(), "sys", askOnce(), nil)
+	if err != nil || resp.Text() != "chào chủ" {
+		t.Fatalf("got %v; want the fallback's reply", err)
 	}
 }

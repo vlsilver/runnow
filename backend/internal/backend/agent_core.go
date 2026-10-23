@@ -56,6 +56,7 @@ type genaiAgentLLM struct {
 	model          string
 	thinking       string
 	attemptTimeout time.Duration
+	fallback       genaiRoute
 }
 
 func (g genaiAgentLLM) Generate(ctx context.Context, system string, contents []*genai.Content, tools []*genai.Tool) (*genai.GenerateContentResponse, error) {
@@ -64,7 +65,7 @@ func (g genaiAgentLLM) Generate(ctx context.Context, system string, contents []*
 		Tools:             tools,
 		ThinkingConfig:    thinkingConfig(g.thinking),
 	}
-	return generateWithRetry(ctx, g.client, g.model, contents, cfg, g.attemptTimeout)
+	return generateWithFallback(ctx, genaiRoute{client: g.client, model: g.model}, g.fallback, contents, cfg, g.attemptTimeout)
 }
 
 func (g genaiAgentLLM) Search(ctx context.Context, query string) (*genai.GenerateContentResponse, error) {

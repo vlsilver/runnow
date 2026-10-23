@@ -142,6 +142,8 @@ type BotService struct {
 	thinking string
 	// attemptTimeout là trần của một lần gọi model, 0 = botGenerateAttemptTimeout.
 	attemptTimeout time.Duration
+	// fallback là model dự phòng khi model chính hết chỗ (generateWithFallback).
+	fallback genaiRoute
 }
 
 func NewBotService(gc *genai.Client, telegram *TelegramService, tools *BotTools, db *firestore.Client, model string, hourlyLimit int, memory *MemoryService, schedules *ScheduleStore, imageGenai *genai.Client, imageModel string, bucket *gcs.BucketHandle) *BotService {
@@ -710,7 +712,7 @@ func (s *BotService) Answer(ctx context.Context, systemPrompt string, contents [
 
 	for round := 0; round < maxToolRounds; round++ {
 		genStart := time.Now()
-		resp, err := generateWithRetry(ctx, s.genai, s.model, contents, config, s.attemptTimeout)
+		resp, err := generateWithFallback(ctx, genaiRoute{client: s.genai, model: s.model}, s.fallback, contents, config, s.attemptTimeout)
 		genMs := time.Since(genStart).Milliseconds()
 		if err != nil {
 			return "", err
@@ -803,6 +805,30 @@ func generateWithRetry(ctx context.Context, client *genai.Client, model string, 
 		delay *= 2
 	}
 	return nil, lastErr
+}
+
+// genaiRoute là một model gọi qua một client, tức một location của Vertex.
+// client nil là không có route này.
+type genaiRoute struct {
+	client *genai.Client
+	model  string
+}
+
+// generateWithFallback gọi model chính qua generateWithRetry. Hết lượt retry mà
+// lỗi vẫn là lỗi chỗ (429/503/504, quá giờ) thì gọi model dự phòng một loạt
+// retry nữa.
+//
+// Model chính chạy ở location global, capacity dùng chung của Google: có lúc
+// cả loạt retry đều 429 hay treo tới 504 dù mình gọi rất ít, và 3i im luôn.
+// Dự phòng là model khác ở location khác nên không chung pool với model chính.
+// Lỗi khác (request hỏng, bị chặn) thì model nào cũng vậy, không gọi dự phòng.
+func generateWithFallback(ctx context.Context, primary, fallback genaiRoute, contents []*genai.Content, config *genai.GenerateContentConfig, timeout time.Duration) (*genai.GenerateContentResponse, error) {
+	resp, err := generateWithRetry(ctx, primary.client, primary.model, contents, config, timeout)
+	if err == nil || fallback.client == nil || !isRetryableGenAIError(err) || ctx.Err() != nil {
+		return resp, err
+	}
+	slog.WarnContext(ctx, "bot.genai_fallback", "model", fallback.model, "error", err)
+	return generateWithRetry(ctx, fallback.client, fallback.model, contents, config, timeout)
 }
 
 func isRetryableGenAIError(err error) bool {

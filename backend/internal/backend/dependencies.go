@@ -119,11 +119,25 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 			slog.WarnContext(ctx, "dependencies.genai_unavailable", "error", genErr)
 		} else {
 			d.Gemini = genaiClient
+			// Hỏng thì chỉ mất dự phòng, model chính vẫn chạy như trước.
+			var fallback genaiRoute
+			if config.GeminiFallbackModel != "" {
+				fbClient, fbErr := genai.NewClient(ctx, &genai.ClientConfig{
+					Project:  config.ProjectID,
+					Location: config.GeminiFallbackLocation,
+					Backend:  genai.BackendVertexAI,
+				})
+				if fbErr != nil {
+					slog.WarnContext(ctx, "dependencies.genai_fallback_unavailable", "error", fbErr)
+				} else {
+					fallback = genaiRoute{client: fbClient, model: config.GeminiFallbackModel}
+				}
+			}
 			d.Memory = NewMemoryService(genaiClient, db, config.GeminiModel)
 			// Mọi lượt gọi model của bot cá nhân đi qua trần chi phí ngày; chưa đặt
 			// agentState/config.dailyBudgetUsd thì chỉ cộng số, không chặn gì.
 			budget := NewAgentBudget(db, adminNotifier(d.Games, telegram))
-			d.AgentBrain = NewAgentService(d.Agents, budgetAgentLLM{inner: genaiAgentLLM{client: genaiClient, model: config.AgentModel, thinking: config.GeminiThinkingLevel}, model: config.AgentModel, budget: budget}, tasks.Publish)
+			d.AgentBrain = NewAgentService(d.Agents, budgetAgentLLM{inner: genaiAgentLLM{client: genaiClient, model: config.AgentModel, thinking: config.GeminiThinkingLevel, fallback: fallback}, model: config.AgentModel, budget: budget}, tasks.Publish)
 			d.AgentBrain.chatID = config.TelegramChatID
 			d.AgentBrain.SetPhotos(telegram.DownloadFile)
 			if d.ManagedBots != nil {
@@ -157,6 +171,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 			}
 			d.Bot = NewBotService(genaiClient, telegram, NewBotTools(db), db, config.GeminiModel, config.BotHourlyLimit, d.Memory, NewScheduleStore(db), imageClient, geminiImageModel, bucket)
 			d.Bot.thinking = config.GeminiThinkingLevel
+			d.Bot.fallback = fallback
 			if config.BotGroupFacts {
 				d.Bot.learned = d.Agents
 			}

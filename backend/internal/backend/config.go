@@ -38,6 +38,11 @@ type Config struct {
 	TelegramWebhookSecret string
 	GeminiLocation        string
 	GeminiModel           string
+	// GeminiFallbackModel ở GeminiFallbackLocation là model 3i và bot trong app
+	// gọi khi model chính hết chỗ (generateWithFallback). Rỗng là không có dự
+	// phòng; đặt GEMINI_FALLBACK_MODEL=off để tắt.
+	GeminiFallbackModel    string
+	GeminiFallbackLocation string
 	// GeminiThinkingLevel là mức thinking của 3i và bot trong app. "default"
 	// để model tự chọn, dùng khi đổi GEMINI_MODEL hay AGENT_MODEL sang model
 	// không nhận thinkingLevel.
@@ -96,6 +101,13 @@ func LoadConfig() (Config, error) {
 	// Google ghi 3.8-flash là model thay cho 2.5-pro.
 	c.GeminiLocation = env("GEMINI_LOCATION", "global")
 	c.GeminiModel = env("GEMINI_MODEL", "gemini-3.8-flash")
+	// Dự phòng là 3.5-flash ở asia-southeast1: khác model và khác location nên
+	// không chung pool capacity với 3.8-flash ở global.
+	c.GeminiFallbackModel = env("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash")
+	if c.GeminiFallbackModel == "off" {
+		c.GeminiFallbackModel = ""
+	}
+	c.GeminiFallbackLocation = env("GEMINI_FALLBACK_LOCATION", "asia-southeast1")
 	c.GeminiThinkingLevel = env("GEMINI_THINKING_LEVEL", "LOW")
 	c.AgentModel = env("AGENT_MODEL", "gemini-3.8-flash")
 	c.AgentLearn = env("AGENT_LEARN", "") == "on"
