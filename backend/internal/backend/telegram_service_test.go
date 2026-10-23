@@ -191,7 +191,7 @@ func TestTelegramSendsThreadIDOnlyWhenInTopic(t *testing.T) {
 	}
 }
 
-// Topic đã bị xoá thì câu trả lời ra khung chat chính, không mất và không trả
+// Telegram báo không thấy topic thì câu trả lời ra khung chat chính, không mất và không trả
 // lỗi (trả lỗi là task retry, gọi lại model mà vẫn hỏng). 400 khác thì vẫn lỗi.
 func TestTelegramResendsOutsideMissingThread(t *testing.T) {
 	var sent []string // "path thread=<id hoặc rỗng>"

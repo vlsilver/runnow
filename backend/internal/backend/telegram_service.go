@@ -171,9 +171,10 @@ func (s *TelegramService) SendChatMessage(ctx context.Context, chatID, text stri
 	return s.SendChatMessageInThread(ctx, chatID, 0, text)
 }
 
-// threadMissing: Telegram từ chối vì topic không còn. 3i bật topic trong chat
-// riêng và cho người dùng tự xoá topic, nên người ta xoá topic trong lúc chờ
-// trả lời là gặp; group cũng vậy khi admin xoá topic.
+// threadMissing: Telegram từ chối gửi vào topic. Topic trong chat riêng với bot
+// thỉnh thoảng bị vậy dù topic vẫn còn và tin user gõ trong đó vẫn tới bot
+// đúng thread id: lỗi phía Telegram, có topic bị cả tiếng
+// (tdlib/telegram-bot-api#905). Group thì gặp khi admin xoá topic.
 func threadMissing(status int, body []byte) bool {
 	return status == http.StatusBadRequest && bytes.Contains(body, []byte("message thread not found"))
 }
