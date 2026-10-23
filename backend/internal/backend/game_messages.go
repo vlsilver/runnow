@@ -110,11 +110,23 @@ func stepMessages(before, after *werewolf.State, evs []werewolf.Event) []gameMsg
 	} else {
 		digest["deadline"] = after.Deadline().UTC().Format(time.RFC3339)
 	}
-	if call, wake := gmCall(before, after); call != "" {
+	call, wake := gmCall(before, after)
+	if call != "" {
 		digest["call"] = call
 		if len(wake) > 0 {
 			digest["wake"] = wake
 		}
+	}
+	if call == callNight {
+		// Km vừa chốt 22h là km của kỹ năng đêm nay; chở theo bản tin để group
+		// biết ai đủ km mà không phải mở app.
+		km := map[string]float64{}
+		for _, uid := range sortedPlayers(after) {
+			if after.Players[uid].Alive {
+				km[uid] = after.Km[uid]
+			}
+		}
+		digest["km"] = km
 	}
 	msgs := []gameMsg{{ChatKey: chatGroup, Template: tplDigest, Data: digest}}
 

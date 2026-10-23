@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"html"
 	"log/slog"
+	"maps"
+	"math"
 	"slices"
 	"sort"
 	"strconv"
@@ -323,9 +325,12 @@ func (f *chatFlusher) deliver(ctx context.Context, key string, seq int64, msg, c
 	tpl := stringValue(msg["template"])
 	var out outboxText
 	var err error
-	if tpl == tplPrompt || tpl == tplChoice || tpl == tplTally {
+	switch tpl {
+	case tplPrompt, tplChoice, tplTally:
 		out, err = f.r.renderAction(ctx, key, tpl, stringValue(msg["data"]), chat)
-	} else {
+	case tplReminder:
+		out, err = f.r.renderReminder(ctx, key, stringValue(msg["data"]))
+	default:
 		out, err = f.r.render(key, tpl, stringValue(msg["data"]))
 	}
 	if err != nil {
@@ -779,14 +784,15 @@ func (r *outboxRenderer) cardText(uid string, role werewolf.Role, wolves []strin
 // không có gì công khai (feed cũng bỏ) thì không gửi.
 func (r *outboxRenderer) digestText(raw string) (string, error) {
 	var d struct {
-		PhaseKey string            `json:"phaseKey"`
-		Round    int               `json:"round"`
-		Phase    werewolf.Phase    `json:"phase"`
-		Events   []werewolf.Event  `json:"events"`
-		Deadline time.Time         `json:"deadline"`
-		Roles    map[string]string `json:"roles"`
-		Call     string            `json:"call"`
-		Wake     []werewolf.Role   `json:"wake"`
+		PhaseKey string             `json:"phaseKey"`
+		Round    int                `json:"round"`
+		Phase    werewolf.Phase     `json:"phase"`
+		Events   []werewolf.Event   `json:"events"`
+		Deadline time.Time          `json:"deadline"`
+		Roles    map[string]string  `json:"roles"`
+		Call     string             `json:"call"`
+		Wake     []werewolf.Role    `json:"wake"`
+		Km       map[string]float64 `json:"km"`
 	}
 	if err := json.Unmarshal([]byte(raw), &d); err != nil {
 		return "", err
@@ -829,7 +835,86 @@ func (r *outboxRenderer) digestText(raw string) (string, error) {
 	case !d.Deadline.IsZero():
 		lines = append(lines, "", fmt.Sprintf("Tiếp theo: %s, tới %s.", phaseLabel(d.Round, d.Phase), vnTime(d.Deadline)))
 	}
+	if d.Km != nil {
+		lines = append(lines, "", fmt.Sprintf("<b>Km chốt 22h, dùng cho đêm %d</b>", d.Round))
+		lines = append(lines, r.kmBoard(d.Km)...)
+	}
 	return strings.Join(lines, "\n"), nil
+}
+
+// kmBoard chia người chơi trong km thành đủ và chưa đủ ngưỡng km của ván, nhiều
+// km đứng trước. Không nhắc vai ai. Số cắt xuống 0,1 km: làm tròn thì người
+// thiếu vài chục mét hiện thành đủ ngưỡng mà vẫn nằm ở dòng chưa đủ.
+func (r *outboxRenderer) kmBoard(km map[string]float64) []string {
+	uids := slices.Sorted(maps.Keys(km))
+	sort.SliceStable(uids, func(i, j int) bool { return km[uids[i]] > km[uids[j]] })
+	unit := kmPerUnit(r.cfg)
+	var enough, short []string
+	for _, uid := range uids {
+		s := r.name(uid) + " " + formatKm(math.Floor(km[uid]/100)/10)
+		if km[uid] >= unit*1000 {
+			enough = append(enough, s)
+		} else {
+			short = append(short, s)
+		}
+	}
+	u := formatKm(unit)
+	lines := []string{fmt.Sprintf("Có vai đêm thì cần đủ %s km mới dùng được kỹ năng. Sói tính chung cả phe: tổng km sói còn sống phải đủ %s km cho mỗi sói. Cupid không cần km.", u, u)}
+	if len(enough) > 0 {
+		lines = append(lines, "Đủ km: "+strings.Join(enough, " · "))
+	}
+	if len(short) > 0 {
+		lines = append(lines, "Chưa đủ: "+strings.Join(short, " · "))
+	}
+	return lines
+}
+
+// renderReminder là tin nhắc kèm km đang gom cho mốc 22h tới, để ai còn thiếu
+// km biết mà chạy trước khi chốt.
+func (r *outboxRenderer) renderReminder(ctx context.Context, key, raw string) (outboxText, error) {
+	out, err := r.render(key, tplReminder, raw)
+	if err != nil || out.skip != "" {
+		return out, err
+	}
+	km, err := r.liveKmLines(ctx)
+	if err != nil {
+		return out, fmt.Errorf("render %s: %w", tplReminder, err)
+	}
+	if km != nil {
+		out.parts = splitTelegramText(strings.Join(out.parts, "\n")+"\n\n"+strings.Join(km, "\n"), telegramTextLimit)
+	}
+	return out, nil
+}
+
+// liveKmLines tính km khung 22h tới của người còn sống lúc gửi. Rỗng khi khung
+// đã chốt (tin nhắc gửi trễ, ván đã sang đêm) hoặc ván thử, vì ván thử không
+// đọc buổi chạy thật (snapshotKmIfDue).
+func (r *outboxRenderer) liveKmLines(ctx context.Context) ([]string, error) {
+	if r.gameData["testMode"] == true {
+		return nil, nil
+	}
+	st, err := r.state(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if st.Phase != werewolf.PhaseDay && st.Phase != werewolf.PhaseTrial {
+		return nil, nil
+	}
+	now := gameNow(r.gameData, r.now())
+	end := nextKmFrameEnd(now)
+	km := map[string]float64{}
+	for _, uid := range sortedPlayers(st) {
+		if !st.Players[uid].Alive {
+			continue
+		}
+		fk, err := r.store.frameKm(ctx, uid, end)
+		if err != nil {
+			return nil, fmt.Errorf("km của %s: %w", uid, err)
+		}
+		km[uid] = fk.Meters
+	}
+	lines := append([]string{"<b>Km tới " + now.In(vietnam).Format("15:04") + ", chốt lúc 22h</b>"}, r.kmBoard(km)...)
+	return append(lines, "Km chốt 22h dùng cho biểu quyết tối nay và kỹ năng đêm nay. Chạy xong mở app cho km kịp đồng bộ."), nil
 }
 
 func reminderText(reason string) (string, error) {
