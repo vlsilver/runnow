@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,14 @@ import 'package:myrun/src/games/game_detail_screen.dart';
 import 'package:myrun/src/providers.dart';
 
 import 'support/fake_game_backend.dart';
+
+class _FakeUser implements User {
+  @override
+  String get uid => 'me';
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 void main() {
   late DateTime now;
@@ -20,6 +29,7 @@ void main() {
       ProviderScope(
         overrides: [
           runNowApiClientProvider.overrideWithValue(backend.client()),
+          firebaseUserProvider.overrideWith((ref) => Stream.value(_FakeUser())),
         ],
         child: MaterialApp(
           home: GameDetailScreen(
@@ -523,6 +533,9 @@ void main() {
         ProviderScope(
           overrides: [
             runNowApiClientProvider.overrideWithValue(backend.client()),
+            firebaseUserProvider.overrideWith(
+              (ref) => Stream.value(_FakeUser()),
+            ),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),
@@ -774,6 +787,128 @@ void main() {
       await tester.pump();
 
       expect(find.text('Đã quá giờ đề cử.'), findsOneWidget);
+      await close(tester);
+    });
+  });
+
+  group('km table', () {
+    const table = {
+      'lastLabel': 'Hôm qua · chốt 22h',
+      'todayLabel': 'Hôm nay · tới 15:40',
+      'unitKm': 1,
+      'note': 'Km chốt lúc 22h.',
+    };
+    Map<String, dynamic> game(List<Map<String, dynamic>> players) => {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'running',
+      'statusLabel': 'Đang chơi',
+      'refreshAfterSeconds': 300,
+      'isRegistered': true,
+      'kmTable': table,
+      'players': players,
+    };
+
+    testWidgets('shows your km against the mark and both columns per player', (
+      tester,
+    ) async {
+      // Danh sách người chơi nằm dưới card km; màn cao để ListView dựng đủ.
+      tester.view.physicalSize = const Size(2400, 9000);
+      addTearDown(tester.view.reset);
+      backend.game = game([
+        {
+          'uid': 'me',
+          'name': 'Nam',
+          'alive': true,
+          'lastKm': 3.2,
+          'todayKm': 0.4,
+        },
+        {
+          'uid': 'u2',
+          'name': 'Chi',
+          'alive': true,
+          'lastKm': 0.96,
+          'todayKm': 2.35,
+        },
+        {
+          'uid': 'u3',
+          'name': 'Minh',
+          'alive': false,
+          'deathRound': 1,
+          'lastKm': 5.0,
+        },
+      ]);
+      await pumpScreen(tester);
+      await tester.pump();
+
+      expect(find.text('Km của bạn'), findsOneWidget);
+      expect(find.text('Thiếu 0.6'), findsOneWidget);
+      expect(
+        find.text('Chạy thêm 0.6 km trước 22h để đủ mốc.'),
+        findsOneWidget,
+      );
+      expect(find.text('Km chốt lúc 22h.'), findsOneWidget);
+      // 0.96 km chưa đủ mốc 1 km nên không được hiện thành 1.0.
+      expect(find.text('0.9'), findsOneWidget);
+      expect(find.text('2.3'), findsOneWidget);
+      expect(find.text('Bạn'), findsOneWidget);
+      // Người chết không còn tính km, kể cả km đã chốt.
+      expect(find.text('5.0'), findsNothing);
+      expect(find.text('Chết vòng 1'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('without the table keeps the 22h km under the name', (
+      tester,
+    ) async {
+      backend.game = game([
+        {'uid': 'u2', 'name': 'Chi', 'alive': true, 'lastKm': 0.96},
+      ])..remove('kmTable');
+      await pumpScreen(tester);
+      await tester.pump();
+
+      expect(find.text('Km của bạn'), findsNothing);
+      expect(find.text('0.9 km'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('wolves see the team km only on the face-up card', (
+      tester,
+    ) async {
+      backend.game = game([
+        {
+          'uid': 'me',
+          'name': 'Nam',
+          'alive': true,
+          'lastKm': 3.2,
+          'todayKm': 1.4,
+        },
+      ]);
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'wolf',
+        'roleLabel': 'Sói',
+        'teamKm': {
+          'label': 'Km phe Sói',
+          'last': 2.6,
+          'today': 1.2,
+          'need': 2,
+          'needLabel': 'Cần 2 km để cắn',
+        },
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+
+      expect(find.text('Km phe Sói'), findsNothing);
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+      expect(find.text('Km phe Sói'), findsOneWidget);
+      expect(find.text('Thiếu 0.8'), findsOneWidget);
+      expect(
+        find.text('Phe cần thêm 0.8 km trước 22h thì đêm nay mới cắn được.'),
+        findsOneWidget,
+      );
       await close(tester);
     });
   });

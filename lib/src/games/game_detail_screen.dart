@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_action_card.dart';
 import 'package:myrun/src/games/game_detail_controller.dart';
+import 'package:myrun/src/games/game_km_table.dart';
 import 'package:myrun/src/games/game_my_card.dart';
 import 'package:myrun/src/games/telegram_link_controller.dart';
 import 'package:myrun/src/games/telegram_link_section.dart';
@@ -200,6 +201,9 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
+    final myUid = ref.watch(
+      firebaseUserProvider.select((user) => user.value?.uid),
+    );
     return ListenableBuilder(
       listenable: Listenable.merge([_controller, _telegram]),
       builder: (context, _) {
@@ -207,6 +211,10 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
         final me = _controller.me;
         // Vai của cả ván chỉ có trong /me sau khi ván kết thúc.
         final reveals = {for (final r in me?.allRoles ?? const []) r.uid: r};
+        final kmTable = detail?.kmTable;
+        final myPlayer = detail?.players
+            .where((p) => p.uid == myUid)
+            .firstOrNull;
         return Scaffold(
           backgroundColor: palette.background,
           appBar: AppBar(
@@ -235,11 +243,16 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                         detail: detail,
                         closing: _controller.phaseClosing,
                       ),
+                      if (kmTable != null && myPlayer != null) ...[
+                        const SizedBox(height: 12),
+                        GameMyKmCard(table: kmTable, player: myPlayer),
+                      ],
                       if (me != null && me.role != null) ...[
                         const SizedBox(height: 12),
                         GameMyCard(
                           me: me,
                           faceUp: _faceUp,
+                          kmTable: kmTable,
                           onFlip: () => setState(() => _faceUp = !_faceUp),
                           onOpenUrl: _openLink,
                           onOpenChat: (key) {
@@ -309,10 +322,25 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                       if (detail.players.isNotEmpty) ...[
                         const SizedBox(height: 20),
                         _SectionTitle('Người chơi (${detail.players.length})'),
+                        if (kmTable != null) _PlayerKmHeader(table: kmTable),
                         for (final player in detail.players)
                           _PlayerRow(
                             player: player,
                             reveal: reveals[player.uid],
+                            kmTable: kmTable,
+                            isMe: player.uid == myUid,
+                          ),
+                        if (kmTable != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              'Số nhạt là chưa tới mốc '
+                              '${gameKmUnitText(kmTable.unitKm)} km.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: palette.textMuted,
+                              ),
+                            ),
                           ),
                       ],
                       const SizedBox(height: 20),
@@ -477,11 +505,100 @@ class _Rules extends StatelessWidget {
   }
 }
 
+/// Đầu cột km của danh sách người chơi, thẳng hàng với [_PlayerKm].
+class _PlayerKmHeader extends StatelessWidget {
+  const _PlayerKmHeader({required this.table});
+
+  final GameKmTable table;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    // Đầu cột ngắn: chỉ phần trước " · " (Hôm qua, Hôm nay).
+    String short(String label) => label.split(' · ').first;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(_kmRowInset, 0, _kmRowInset, 4),
+      child: Row(
+        children: [
+          const Spacer(),
+          SizedBox(
+            width: _kmColumnWidth,
+            child: Text(
+              short(table.lastLabel),
+              textAlign: TextAlign.right,
+              style: TextStyle(fontSize: 12, color: palette.textMuted),
+            ),
+          ),
+          SizedBox(
+            width: _kmColumnWidth,
+            child: Text(
+              short(table.todayLabel),
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: palette.accent,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+const _kmColumnWidth = 64.0;
+
+/// Lề trong của dòng người chơi khi có bảng km, để nền dòng "Bạn" không
+/// dính sát chữ.
+const _kmRowInset = 8.0;
+
+/// Một ô km của dòng người chơi: đậm khi đạt mốc, nhạt khi chưa.
+class _PlayerKm extends StatelessWidget {
+  const _PlayerKm({required this.km, required this.unitKm, this.today = false});
+
+  final double? km;
+  final double unitKm;
+  final bool today;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final km = this.km;
+    final reached = km != null && gameKmMissing(km, unitKm) == null;
+    return SizedBox(
+      width: _kmColumnWidth,
+      child: Text(
+        km == null ? '—' : gameKmText(km),
+        textAlign: TextAlign.right,
+        style: TextStyle(
+          fontWeight: reached ? FontWeight.w700 : FontWeight.w400,
+          color: !reached
+              ? palette.textMuted
+              : today
+              ? palette.accent
+              : palette.ink,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
+    );
+  }
+}
+
 class _PlayerRow extends StatelessWidget {
-  const _PlayerRow({required this.player, required this.reveal});
+  const _PlayerRow({
+    required this.player,
+    required this.reveal,
+    this.kmTable,
+    this.isMe = false,
+  });
 
   final GamePlayer player;
   final GameRoleReveal? reveal;
+
+  /// Có bảng km thì km nằm ở hai cột bên phải thay vì trong dòng chữ phụ.
+  final GameKmTable? kmTable;
+  final bool isMe;
 
   @override
   Widget build(BuildContext context) {
@@ -489,16 +606,26 @@ class _PlayerRow extends StatelessWidget {
     final avatar = player.avatarUrl;
     final roleLabel = player.revealedRoleLabel ?? reveal?.roleLabel;
     final cardUrl = player.revealedCardUrl ?? reveal?.cardUrl;
+    final table = kmTable;
     final details = [
+      if (isMe && table != null) 'Bạn',
       if (!player.alive)
         player.deathRound == null
             ? 'Đã chết'
             : 'Chết vòng ${player.deathRound}',
       ?roleLabel,
-      if (player.lastKm != null) '${player.lastKm!.toStringAsFixed(1)} km',
+      if (table == null && player.lastKm != null)
+        '${gameKmText(player.lastKm!)} km',
     ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+    return Container(
+      padding: EdgeInsets.symmetric(
+        vertical: 6,
+        horizontal: table == null ? 0 : _kmRowInset,
+      ),
+      decoration: BoxDecoration(
+        color: isMe && table != null ? palette.tint : null,
+        borderRadius: BorderRadius.circular(8),
+      ),
       child: Row(
         children: [
           Opacity(
@@ -557,6 +684,14 @@ class _PlayerRow extends StatelessWidget {
               label: 'Lên giàn',
               color: Theme.of(context).colorScheme.error,
             ),
+          if (table != null) ...[
+            // Người chết không còn tính km, kể cả km đã chốt.
+            _PlayerKm(
+              km: player.alive ? player.lastKm : null,
+              unitKm: table.unitKm,
+            ),
+            _PlayerKm(km: player.todayKm, unitKm: table.unitKm, today: true),
+          ],
         ],
       ),
     );

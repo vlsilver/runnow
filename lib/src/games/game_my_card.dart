@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:myrun/src/games/game_km_table.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
@@ -14,10 +15,14 @@ class GameMyCard extends StatelessWidget {
     required this.onFlip,
     required this.onOpenUrl,
     required this.onOpenChat,
+    this.kmTable,
   });
 
   final GameMe me;
   final bool faceUp;
+
+  /// Đầu cột cho bảng km phe trong mặt lá (`me.teamKm`).
+  final GameKmTable? kmTable;
   final VoidCallback onFlip;
   final ValueChanged<String> onOpenUrl;
 
@@ -40,6 +45,7 @@ class GameMyCard extends StatelessWidget {
                 ? _Face(
                     key: const ValueKey('face'),
                     me: me,
+                    kmTable: kmTable,
                     onOpenUrl: onOpenUrl,
                     onOpenChat: onOpenChat,
                   )
@@ -70,11 +76,13 @@ class _Face extends StatelessWidget {
   const _Face({
     super.key,
     required this.me,
+    required this.kmTable,
     required this.onOpenUrl,
     required this.onOpenChat,
   });
 
   final GameMe me;
+  final GameKmTable? kmTable;
   final ValueChanged<String> onOpenUrl;
   final ValueChanged<String> onOpenChat;
 
@@ -120,6 +128,10 @@ class _Face extends StatelessWidget {
             ),
           ],
         ),
+        if (me.teamKm case final team?) ...[
+          const SizedBox(height: 16),
+          _TeamKm(team: team, table: kmTable),
+        ],
         for (final note in me.notes)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -144,6 +156,68 @@ class _Face extends StatelessWidget {
           ),
         const SizedBox(height: 8),
         Text('Chạm để úp lại.', style: muted),
+      ],
+    );
+  }
+}
+
+/// Km cả phe (phe Sói cắn theo tổng km phe), chỉ nằm trong mặt lá đã lật để
+/// người nhìn qua vai không đoán ra vai.
+class _TeamKm extends StatelessWidget {
+  const _TeamKm({required this.team, required this.table});
+
+  final GameTeamKm team;
+  final GameKmTable? table;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final today = team.today;
+    final missing = today == null ? null : gameKmMissing(today, team.need);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                team.label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: palette.ink,
+                ),
+              ),
+            ),
+            Text(
+              team.needLabel,
+              style: TextStyle(fontSize: 12, color: palette.textMuted),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        GameKmColumns(
+          lastLabel: table?.lastLabel ?? 'Chốt 22h',
+          todayLabel: table?.todayLabel ?? 'Tới giờ',
+          rows: [
+            GameKmRow(
+              label: 'Cả phe',
+              last: GameKmNumber(km: team.last),
+              today: GameKmNumber(km: today, highlight: true),
+            ),
+            GameKmRow(
+              label: 'Đủ để cắn',
+              last: GameKmStatusLabel(km: team.last, unitKm: team.need),
+              today: GameKmStatusLabel(km: today, unitKm: team.need),
+            ),
+          ],
+        ),
+        if (missing != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Phe cần thêm $missing km trước 22h thì đêm nay mới cắn được.',
+            style: TextStyle(fontSize: 13, color: palette.ink),
+          ),
+        ],
       ],
     );
   }

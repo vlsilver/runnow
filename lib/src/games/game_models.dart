@@ -125,6 +125,7 @@ class GameDetail {
     required this.winnerLabel,
     required this.taskKey,
     required this.startError,
+    this.kmTable,
   });
 
   factory GameDetail.fromJson(Map<String, dynamic> json) {
@@ -153,6 +154,7 @@ class GameDetail {
       winnerLabel: _optString(json['winnerLabel']),
       taskKey: _optString(json['taskKey']),
       startError: _obj(json['startError'], GameStartError.fromJson),
+      kmTable: _obj(json['kmTable'], GameKmTable.fromJson),
     );
   }
 
@@ -191,6 +193,70 @@ class GameDetail {
 
   /// Lần Start gần nhất bị trả về registering, kèm lý do.
   final GameStartError? startError;
+
+  /// Đầu cột bảng km hai cột (`lastKm`, `todayKm` của người chơi); null khi
+  /// ván không chạy, lúc đó app hiện km chốt như cũ.
+  final GameKmTable? kmTable;
+}
+
+class GameKmTable {
+  const GameKmTable({
+    required this.lastLabel,
+    required this.todayLabel,
+    required this.asOf,
+    required this.unitKm,
+    required this.note,
+  });
+
+  factory GameKmTable.fromJson(Map<String, dynamic> json) {
+    return GameKmTable(
+      lastLabel: _string(json['lastLabel']),
+      todayLabel: _string(json['todayLabel']),
+      asOf: _date(json['asOf']),
+      unitKm: (json['unitKm'] as num?)?.toDouble() ?? 1,
+      note: _string(json['note']),
+    );
+  }
+
+  /// Chữ đầu cột do server ghi, phần sau " · " xuống dòng.
+  final String lastLabel;
+  final String todayLabel;
+
+  /// Lúc server tính `todayKm`; null ở ván thử.
+  final DateTime? asOf;
+
+  /// Mốc km cho một kỹ năng đêm hay một phiếu.
+  final double unitKm;
+  final String note;
+}
+
+/// Km của cả phe khi luật tính theo phe (phe Sói cắn), chỉ có trong `/me`.
+class GameTeamKm {
+  const GameTeamKm({
+    required this.label,
+    required this.last,
+    required this.today,
+    required this.need,
+    required this.needLabel,
+  });
+
+  factory GameTeamKm.fromJson(Map<String, dynamic> json) {
+    return GameTeamKm(
+      label: _string(json['label']),
+      last: (json['last'] as num?)?.toDouble() ?? 0,
+      today: (json['today'] as num?)?.toDouble(),
+      need: (json['need'] as num?)?.toDouble() ?? 0,
+      needLabel: _string(json['needLabel']),
+    );
+  }
+
+  final String label;
+  final double last;
+
+  /// null ở ván thử.
+  final double? today;
+  final double need;
+  final String needLabel;
 }
 
 class GamePhase {
@@ -232,6 +298,7 @@ class GamePlayer {
     required this.onTrial,
     required this.lastKm,
     required this.fake,
+    this.todayKm,
   });
 
   factory GamePlayer.fromJson(Map<String, dynamic> json) {
@@ -247,6 +314,7 @@ class GamePlayer {
       onTrial: json['onTrial'] == true,
       lastKm: (json['lastKm'] as num?)?.toDouble(),
       fake: json['fake'] == true,
+      todayKm: (json['todayKm'] as num?)?.toDouble(),
     );
   }
 
@@ -262,6 +330,9 @@ class GamePlayer {
   /// Km của vòng gần nhất; null là chưa có số, khác với 0 km.
   final double? lastKm;
   final bool fake;
+
+  /// Km đang gom tới mốc 22h kế tiếp; null với người đã chết hay ván thử.
+  final double? todayKm;
 }
 
 class GameRequirement {
@@ -378,6 +449,7 @@ class GameMe {
     required this.chats,
     required this.actions,
     required this.allRoles,
+    this.teamKm,
   });
 
   factory GameMe.fromJson(Map<String, dynamic> json) {
@@ -395,6 +467,7 @@ class GameMe {
       chats: _list(json['chats'], GameChatLink.fromJson),
       actions: _list(json['actions'], GameAction.fromJson),
       allRoles: _list(json['allRoles'], GameRoleReveal.fromJson),
+      teamKm: _obj(json['teamKm'], GameTeamKm.fromJson),
     );
   }
 
@@ -420,6 +493,9 @@ class GameMe {
 
   /// Vai của cả ván, chỉ có sau khi ván kết thúc.
   final List<GameRoleReveal> allRoles;
+
+  /// Km của phe, chỉ sói còn sống mới có.
+  final GameTeamKm? teamKm;
 }
 
 class GamePotions {
