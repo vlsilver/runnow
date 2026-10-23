@@ -627,13 +627,24 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 			}
 		}
 	case tplDigest:
-		text, err = r.digestText(raw)
+		var d struct {
+			Roles map[string]string `json:"roles"`
+		}
+		if text, err = r.digestText(raw); err == nil {
+			err = json.Unmarshal([]byte(raw), &d)
+		}
+		if err == nil && d.Roles == nil { // hết ván thì bản tin lật bài, không còn km để xem
+			out.markup, err = r.kmButton()
+		}
 	case tplReminder:
 		var d struct {
 			Reason string `json:"reason"`
 		}
 		if err = json.Unmarshal([]byte(raw), &d); err == nil {
 			text, err = reminderText(d.Reason)
+		}
+		if err == nil {
+			out.markup, err = r.kmButton()
 		}
 	case tplPrivate:
 		var d struct {
@@ -875,6 +886,20 @@ func (r *outboxRenderer) kmBoard(km map[string]float64) []string {
 		lines = append(lines, "Chưa đủ: "+strings.Join(short, " · "))
 	}
 	return lines
+}
+
+// kmButton là nút "Xem km của tôi" dưới tin group: ai bấm thì thấy km của mình
+// trong hộp thoại chỉ người đó thấy (PressButton, opKm). Ván không có id (test
+// render) thì không có nút.
+func (r *outboxRenderer) kmButton() (any, error) {
+	if r.gameID == "" {
+		return nil, nil
+	}
+	data, err := (gameButton{GameID: r.gameID, Op: opKm}).data()
+	if err != nil {
+		return nil, err
+	}
+	return inlineKeyboard([][]map[string]any{{{"text": "Xem km của tôi", "callback_data": data}}}), nil
 }
 
 // renderReminder là tin nhắc kèm km đang gom cho mốc 22h tới, để ai còn thiếu

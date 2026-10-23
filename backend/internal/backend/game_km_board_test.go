@@ -48,6 +48,43 @@ func TestRenderNightDigestKmBoard(t *testing.T) {
 	}
 }
 
+// Tin nhắc và bản tin trong group có nút "Xem km của tôi" (m1|<ván>|m), trừ
+// bản tin kết thúc ván.
+func TestGroupMessagesCarryKmButton(t *testing.T) {
+	data, err := (gameButton{GameID: "g1", Op: opKm}).data()
+	if err != nil || data != "m1|g1|m" {
+		t.Fatalf("data = %q, %v", data, err)
+	}
+	if b, ok := parseGameButton(data); !ok || b.Op != opKm || b.GameID != "g1" {
+		t.Fatalf("đọc lại = %+v, %v", b, ok)
+	}
+
+	r := testRenderer()
+	r.gameID = "g1"
+	want := [][]string{{"Xem km của tôi=m1|g1|m"}}
+	for name, c := range map[string]struct {
+		tpl  string
+		data map[string]any
+	}{
+		"nhắc":    {tplReminder, map[string]any{"reason": "vote"}},
+		"vào đêm": {tplDigest, map[string]any{"phaseKey": "r1/setup", "round": 1, "phase": "night", "call": "night", "wake": []string{"wolf"}}},
+		"sáng":    {tplDigest, map[string]any{"phaseKey": "r1/dawn", "round": 1, "phase": "day", "call": "morning", "deadline": "2026-10-16T10:00:00Z"}},
+	} {
+		out := renderOne(t, r, chatGroup, c.tpl, c.data)
+		m, _ := out.markup.(map[string]any)
+		if m == nil || !reflect.DeepEqual(keyboard(t, m), want) {
+			t.Fatalf("%s: markup = %v", name, out.markup)
+		}
+	}
+	out := renderOne(t, r, chatGroup, tplDigest, map[string]any{
+		"phaseKey": "r2/trial", "round": 2, "phase": "ended",
+		"events": []ww.Event{{Kind: ww.EventWinner, Team: "village"}}, "roles": map[string]string{"w1": "wolf"},
+	})
+	if out.markup != nil {
+		t.Fatalf("hết ván vẫn có nút: %v", out.markup)
+	}
+}
+
 // Sói có km riêng đủ ngưỡng mà phe chưa đủ tổng km thì nút Cắn nói rõ là thiếu
 // km của cả phe, không để người chơi tưởng mình đã đủ mà app lỗi.
 func TestWolfBiteDisabledReasonNamesTeamKm(t *testing.T) {
@@ -152,5 +189,54 @@ func TestRenderReminderLiveKm(t *testing.T) {
 	r.gameData, readErr = nil, errors.New("firestore hỏng")
 	if _, err := render(); err == nil {
 		t.Fatal("đọc km lỗi mà tin vẫn gửi")
+	}
+}
+
+// Bấm "Xem km của tôi": người bấm thấy km đang gom tới mốc 22h kế tiếp, ngưỡng
+// và km chốt 22h gần nhất. Sói thấy thêm tổng km đang gom của phe (chỉ sói còn
+// sống). Người chết không còn km để xem. Đọc km lỗi thì trả lỗi.
+func TestKmAlert(t *testing.T) {
+	st := ww.NewState(ww.Seed{1}, ww.Config{KmPerUnit: 2.5}, map[string]ww.Role{"w1": ww.Wolf, "w2": ww.Wolf, "w3": ww.Wolf, "v1": ww.Villager}, msgStart)
+	st.Phase = ww.PhaseDay
+	st.Km = map[string]float64{"w1": 3100, "v1": 1990}
+	st.Players["w3"].Alive = false
+	live := map[string]float64{"w1": 1250, "w2": 2499, "w3": 9000, "v1": 2600}
+	var readErr error
+	var ends []time.Time
+	s := &GameStore{frameKm: func(_ context.Context, uid string, end time.Time) (FrameKm, error) {
+		ends = append(ends, end)
+		return FrameKm{Meters: live[uid]}, readErr
+	}}
+	wall := time.Date(2026, 10, 24, 15, 7, 0, 0, vietnam)
+
+	got, err := s.kmAlert(context.Background(), nil, st, "v1", wall)
+	want := "Tới 15:07 bạn có 2.6 km, chốt lúc 22h. Cần 2.5 km để dùng kỹ năng đêm.\nKm chốt 22h gần nhất: 1.9 km."
+	if err != nil || got != want {
+		t.Fatalf("dân = %q, %v", got, err)
+	}
+	if !ends[0].Equal(time.Date(2026, 10, 24, 22, 0, 0, 0, vietnam)) {
+		t.Fatalf("khung km = %v", ends[0])
+	}
+
+	got, err = s.kmAlert(context.Background(), nil, st, "w1", wall)
+	want = "Tới 15:07 bạn có 1.2 km, chốt lúc 22h. Cần 2.5 km để dùng kỹ năng đêm.\nKm chốt 22h gần nhất: 3.1 km.\n" +
+		"Phe Sói tới giờ: cả phe có 3.7 km, cần 5 km (2.5 km cho mỗi sói còn sống)."
+	if err != nil || got != want {
+		t.Fatalf("sói = %q, %v", got, err)
+	}
+
+	if got, err := s.kmAlert(context.Background(), nil, st, "w3", wall); err != nil || got != "Bạn đã chết nên km không còn tính trong ván." {
+		t.Fatalf("chết = %q, %v", got, err)
+	}
+
+	ends = nil
+	got, err = s.kmAlert(context.Background(), map[string]any{"testMode": true}, st, "v1", wall)
+	if err != nil || got != "Ván thử không tính km chạy thật. Km chốt 22h gần nhất: 1.9 km." || len(ends) != 0 {
+		t.Fatalf("ván thử = %q, %v, đọc km %d lần", got, err, len(ends))
+	}
+
+	readErr = errors.New("firestore hỏng")
+	if _, err := s.kmAlert(context.Background(), nil, st, "v1", wall); err == nil {
+		t.Fatal("đọc km lỗi mà vẫn trả lời")
 	}
 }
