@@ -1,9 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:myrun/src/config.dart';
-import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/telegram_link_controller.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
@@ -14,6 +13,15 @@ import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+/// Trạng thái liên kết Telegram cho dòng Telegram. Sheet liên kết có controller
+/// riêng (poll lúc chờ Start), nên đóng sheet thì đọc lại dòng này.
+final _telegramStatusProvider = FutureProvider.autoDispose<TelegramLinkStatus>(
+  retry: (_, _) => null,
+  (ref) => ref.watch(runNowApiClientProvider).getTelegramLink(),
+);
+
+/// Mỗi mục một dòng có trạng thái; bấm vào mở sheet chứa các thao tác của mục
+/// đó (kết nối, đồng bộ, ngắt).
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
   @override
@@ -27,8 +35,9 @@ class SettingsScreen extends ConsumerWidget {
     // Ẩn Strava khi RC strava_enabled=false (app Strava đang Inactive).
     final stravaEnabled = ref.watch(stravaEnabledProvider).value ?? false;
     final health = ref.watch(healthSyncProvider);
+    final telegram = ref.watch(_telegramStatusProvider);
     final googleAuth = ref.watch(authControllerProvider);
-    // Lỗi hay chưa tải xong thì ẩn mục bot, không chặn Cài đặt.
+    final lastSynced = profile.value?.lastSyncedAt;
     return Scaffold(
       appBar: AppBar(title: const Text('Cài đặt')),
       body: Align(
@@ -39,12 +48,21 @@ class SettingsScreen extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
             children: [
               profile.when(
-                data: (user) => _AccountHeader(
-                  profile: user,
-                  onEdit: user == null ? null : () => context.push('/profile'),
+                data: (user) => user == null
+                    ? const SizedBox.shrink()
+                    : _AccountSection(profile: user),
+                loading: () => const _SettingsSection(
+                  title: 'Tài khoản',
+                  children: [
+                    _SettingsRow(
+                      icon: Icons.badge_outlined,
+                      title: 'Tên hiển thị',
+                      value: 'Đang tải',
+                    ),
+                  ],
                 ),
-                loading: () => const _AccountHeader.loading(),
                 error: (error, stack) => _SettingsSection(
+                  title: 'Tài khoản',
                   children: [
                     _SettingsRow(
                       icon: Icons.error_outline,
@@ -56,149 +74,69 @@ class SettingsScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 18),
               _SettingsSection(
-                title: 'Tài khoản',
-                children: [
-                  profile.maybeWhen(
-                    data: (user) => _SettingsRow(
-                      icon: Icons.badge_outlined,
-                      title: 'Tên hiển thị',
-                      value: user?.nickname?.trim().isNotEmpty == true
-                          ? user!.nickname!.trim()
-                          : user?.displayName,
-                      onTap: user == null
-                          ? null
-                          : () => _editNickname(context, ref, user),
-                    ),
-                    orElse: () => const _SettingsRow(
-                      icon: Icons.badge_outlined,
-                      title: 'Tên hiển thị',
-                      value: 'Đang tải',
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              _SettingsSection(
                 title: 'Kết nối',
                 children: [
-                  // ── Strava (ẩn khi RC strava_enabled=false) ──────────────
-                  if (stravaEnabled) ...[
-                    // Chưa kết nối thì phải dùng đúng nút "Connect with Strava"
-                    // chính thức; đã kết nối rồi thì chỉ còn là dòng trạng thái.
-                    if (stravaConnected || strava.statusLoading)
-                      _SettingsRow(
-                        icon: stravaConnected
-                            ? Icons.link
-                            : Icons.link_off_outlined,
-                        title: 'Strava',
-                        value: strava.statusLoading
-                            ? 'Đang kiểm tra'
-                            : strava.loading
-                            ? 'Đang xử lý'
-                            : 'Đã kết nối',
-                      )
-                    else if (integrationConfig?.stravaFull ?? false)
-                      // Đủ chỗ (app chưa được Strava review) → không nhận kết nối mới.
-                      _SettingsRow(
-                        icon: Icons.lock_clock_outlined,
-                        title: 'Strava',
-                        subtitle:
-                            'Đã đủ ${integrationConfig!.stravaCount}/${integrationConfig.stravaMax} chỗ. '
-                            '3i đang chờ Strava duyệt để mở thêm — tạm thời chưa nhận kết nối mới.',
-                      )
-                    else
-                      _ConnectWithStravaButton(
-                        onTap: strava.loading ? null : strava.connect,
-                      ),
-                    if (stravaConnected) ...[
-                      _SettingsRow(
-                        icon: Icons.sync,
-                        title: 'Đồng bộ Strava',
-                        value: sync.syncing ? 'Đang chạy' : null,
-                        onTap: sync.syncing
-                            ? null
-                            : () => ref
-                                  .read(syncControllerProvider)
-                                  .startBackgroundSync(force: true),
-                      ),
-                      _SettingsRow(
-                        icon: Icons.history,
-                        title: 'Đồng bộ toàn bộ lịch sử',
-                        value: sync.syncing ? 'Đang chạy' : null,
-                        onTap: sync.syncing
-                            ? null
-                            : () => ref
-                                  .read(syncControllerProvider)
-                                  .startBackgroundSync(
-                                    force: true,
-                                    fullResync: true,
-                                  ),
-                      ),
-                      _SettingsRow(
-                        icon: Icons.link_off,
-                        title: 'Ngắt kết nối Strava',
-                        destructive: true,
-                        onTap: strava.loading ? null : strava.disconnect,
-                      ),
-                    ],
-                    if (strava.errorMessage != null)
-                      _SettingsMessage(message: strava.errorMessage!),
-                    if (sync.message != null)
-                      _SettingsMessage(message: sync.message!),
-                    const _PoweredByStrava(),
-                  ],
-
-                  // ── Sức khoẻ máy: Apple Health (iOS) / Health Connect (Android) ──
-                  if (health.available) ...[
-                    const SizedBox(height: 6),
-                    Divider(height: 1, color: context.runNowPalette.border),
-                    const SizedBox(height: 6),
-                    if (!health.connected)
-                      _SettingsRow(
-                        icon: Icons.favorite_rounded,
-                        title: 'Kết nối ${health.providerName}',
-                        subtitle: 'Đồng bộ buổi chạy từ app Sức khoẻ',
-                        value: health.busy ? 'Đang xử lý' : null,
-                        onTap: health.busy
-                            ? null
-                            : () => ref.read(healthSyncProvider).connect(),
-                      )
-                    else ...[
-                      _SettingsRow(
-                        icon: Icons.favorite_rounded,
-                        title: health.providerName,
-                        value: 'Đã kết nối',
-                      ),
-                      _SettingsRow(
-                        icon: Icons.sync,
-                        title: 'Đồng bộ ${health.providerName}',
-                        value: health.busy ? 'Đang chạy' : null,
-                        onTap: health.busy
-                            ? null
-                            : () => ref.read(healthSyncProvider).sync(),
-                      ),
-                      _SettingsRow(
-                        icon: Icons.link_off,
-                        title: 'Ngắt ${health.providerName}',
-                        destructive: true,
-                        onTap: health.busy
-                            ? null
-                            : () => ref.read(healthSyncProvider).disconnect(),
-                      ),
-                    ],
+                  if (stravaEnabled)
                     _SettingsRow(
-                      icon: Icons.help_outline_rounded,
-                      title: 'Hướng dẫn kết nối',
-                      subtitle: 'Các bước cấp quyền ${health.providerName}',
-                      onTap: () => _openWebDocument(
-                        'connect-health?platform='
-                        '${defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android'}',
+                      icon: Icons.link,
+                      title: 'Strava',
+                      subtitle: sync.message ?? strava.errorMessage,
+                      value: strava.statusLoading
+                          ? 'Đang kiểm tra'
+                          : sync.syncing
+                          ? 'Đang đồng bộ'
+                          : stravaConnected
+                          ? (lastSynced == null
+                                ? 'Đã kết nối'
+                                : 'Đồng bộ ${_syncedLabel(lastSynced)}')
+                          : (integrationConfig?.stravaFull ?? false)
+                          ? 'Hết chỗ'
+                          : 'Chưa kết nối',
+                      onTap: () => _showSettingsSheet(
+                        context,
+                        title: 'Strava',
+                        child: const _StravaSheet(),
                       ),
                     ),
-                    if (health.error != null)
-                      _SettingsMessage(message: health.error!),
-                  ],
-                  const TelegramLinkSettings(),
+                  if (health.available)
+                    _SettingsRow(
+                      icon: Icons.favorite_rounded,
+                      title: health.providerName,
+                      subtitle: health.error,
+                      value: health.busy
+                          ? 'Đang xử lý'
+                          : health.connected
+                          ? 'Đã kết nối'
+                          : 'Chưa kết nối',
+                      onTap: () => _showSettingsSheet(
+                        context,
+                        title: health.providerName,
+                        child: const _HealthSheet(),
+                      ),
+                    ),
+                  _SettingsRow(
+                    icon: Icons.send_rounded,
+                    title: 'Telegram',
+                    value: telegram.when(
+                      data: (status) => !status.linked
+                          ? 'Chưa liên kết'
+                          : status.tgUsername != null
+                          ? '@${status.tgUsername}'
+                          : status.displayName ?? 'Đã liên kết',
+                      loading: () => 'Đang kiểm tra',
+                      error: (error, stack) => 'Chưa đọc được',
+                    ),
+                    onTap: () async {
+                      await _showSettingsSheet(
+                        context,
+                        title: 'Telegram',
+                        child: const TelegramLinkSettings(),
+                      );
+                      if (context.mounted) {
+                        ref.invalidate(_telegramStatusProvider);
+                      }
+                    },
+                  ),
                 ],
               ),
               const SizedBox(height: 18),
@@ -208,10 +146,9 @@ class SettingsScreen extends ConsumerWidget {
                   _SettingsRow(
                     icon: Icons.auto_awesome_outlined,
                     title: 'Ngũ hành',
-                    subtitle:
-                        '${themeController.element.description} · '
+                    value:
+                        '${themeController.element.label} · '
                         '${themeController.appearance.label}',
-                    value: themeController.element.label,
                     onTap: () => _editElement(context, ref, themeController),
                   ),
                 ],
@@ -257,6 +194,177 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// `10:12` nếu là hôm nay, không thì `24/10`.
+String _syncedLabel(DateTime at) {
+  final now = DateTime.now();
+  final today =
+      at.year == now.year && at.month == now.month && at.day == now.day;
+  return today
+      ? DateFormat('HH:mm').format(at)
+      : DateFormat('dd/MM').format(at);
+}
+
+Future<void> _showSettingsSheet(
+  BuildContext context, {
+  required String title,
+  required Widget child,
+}) => showModalBottomSheet<void>(
+  context: context,
+  useSafeArea: true,
+  isScrollControlled: true,
+  backgroundColor: Colors.transparent,
+  builder: (context) => Padding(
+    padding: EdgeInsets.fromLTRB(
+      14,
+      0,
+      14,
+      MediaQuery.viewInsetsOf(context).bottom + 12,
+    ),
+    child: GlassPanel(
+      borderRadius: 22,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+              child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+            ),
+            child,
+          ],
+        ),
+      ),
+    ),
+  ),
+);
+
+/// Thao tác Strava. Chưa kết nối thì phải dùng đúng nút "Connect with Strava"
+/// chính thức; đã kết nối thì là đồng bộ và ngắt.
+class _StravaSheet extends ConsumerWidget {
+  const _StravaSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sync = ref.watch(syncControllerProvider);
+    final strava = ref.watch(stravaAuthProvider);
+    final connected = ref.watch(stravaConnectionProvider);
+    final config = ref.watch(integrationConfigProvider).value;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (strava.statusLoading)
+          const _SettingsRow(
+            icon: Icons.link,
+            title: 'Strava',
+            value: 'Đang kiểm tra',
+          )
+        else if (connected) ...[
+          _SettingsRow(
+            icon: Icons.sync,
+            title: 'Đồng bộ Strava',
+            value: sync.syncing ? 'Đang chạy' : null,
+            onTap: sync.syncing
+                ? null
+                : () => ref
+                      .read(syncControllerProvider)
+                      .startBackgroundSync(force: true),
+          ),
+          _SettingsRow(
+            icon: Icons.history,
+            title: 'Đồng bộ toàn bộ lịch sử',
+            value: sync.syncing ? 'Đang chạy' : null,
+            onTap: sync.syncing
+                ? null
+                : () => ref
+                      .read(syncControllerProvider)
+                      .startBackgroundSync(force: true, fullResync: true),
+          ),
+          _SettingsRow(
+            icon: Icons.link_off,
+            title: 'Ngắt kết nối Strava',
+            value: strava.loading ? 'Đang xử lý' : null,
+            destructive: true,
+            onTap: strava.loading ? null : strava.disconnect,
+          ),
+        ] else if (config?.stravaFull ?? false)
+          // Đủ chỗ (app chưa được Strava review) → không nhận kết nối mới.
+          _SettingsRow(
+            icon: Icons.lock_clock_outlined,
+            title: 'Strava',
+            subtitle:
+                'Đã đủ ${config!.stravaCount}/${config.stravaMax} chỗ. '
+                '3i đang chờ Strava duyệt để mở thêm — tạm thời chưa nhận kết nối mới.',
+          )
+        else
+          _ConnectWithStravaButton(
+            onTap: strava.loading ? null : strava.connect,
+          ),
+        if (strava.errorMessage != null)
+          _SettingsMessage(message: strava.errorMessage!),
+        if (sync.message != null) _SettingsMessage(message: sync.message!),
+        const _PoweredByStrava(),
+      ],
+    );
+  }
+}
+
+/// Thao tác Apple Health (iOS) / Health Connect (Android).
+class _HealthSheet extends ConsumerWidget {
+  const _HealthSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final health = ref.watch(healthSyncProvider);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!health.connected)
+          _SettingsRow(
+            icon: Icons.favorite_rounded,
+            title: 'Kết nối ${health.providerName}',
+            subtitle: 'Đồng bộ buổi chạy từ app Sức khoẻ',
+            value: health.busy ? 'Đang xử lý' : null,
+            onTap: health.busy
+                ? null
+                : () => ref.read(healthSyncProvider).connect(),
+          )
+        else ...[
+          _SettingsRow(
+            icon: Icons.sync,
+            title: 'Đồng bộ ${health.providerName}',
+            value: health.busy ? 'Đang chạy' : null,
+            onTap: health.busy
+                ? null
+                : () => ref.read(healthSyncProvider).sync(),
+          ),
+          _SettingsRow(
+            icon: Icons.link_off,
+            title: 'Ngắt ${health.providerName}',
+            destructive: true,
+            onTap: health.busy
+                ? null
+                : () => ref.read(healthSyncProvider).disconnect(),
+          ),
+        ],
+        _SettingsRow(
+          icon: Icons.help_outline_rounded,
+          title: 'Hướng dẫn kết nối',
+          subtitle: 'Các bước cấp quyền ${health.providerName}',
+          onTap: () => _openWebDocument(
+            'connect-health?platform='
+            '${defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android'}',
+          ),
+        ),
+        if (health.error != null) _SettingsMessage(message: health.error!),
+      ],
     );
   }
 }
@@ -486,24 +594,26 @@ class _NicknameEditorSheetState extends State<_NicknameEditorSheet> {
   }
 }
 
-class _AccountHeader extends ConsumerStatefulWidget {
-  const _AccountHeader({required this.profile, required this.onEdit});
-  const _AccountHeader.loading() : profile = null, onEdit = null;
+/// Tài khoản: tên, ảnh và có hiện hồ sơ trong Club không, mỗi mục một dòng.
+class _AccountSection extends ConsumerStatefulWidget {
+  const _AccountSection({required this.profile});
 
-  final UserProfile? profile;
-  final VoidCallback? onEdit;
+  final UserProfile profile;
 
   @override
-  ConsumerState<_AccountHeader> createState() => _AccountHeaderState();
+  ConsumerState<_AccountSection> createState() => _AccountSectionState();
 }
 
-class _AccountHeaderState extends ConsumerState<_AccountHeader> {
+class _AccountSectionState extends ConsumerState<_AccountSection> {
   bool _uploadingAvatar = false;
   bool _updatingVisibility = false;
 
+  String get _nickname => widget.profile.nickname?.trim().isNotEmpty == true
+      ? widget.profile.nickname!.trim()
+      : widget.profile.displayName;
+
   Future<void> _pickAvatar() async {
     final profile = widget.profile;
-    if (profile == null) return;
     setState(() => _uploadingAvatar = true);
     try {
       final url = await ref.read(avatarRepositoryProvider).pickAndUpload();
@@ -511,9 +621,7 @@ class _AccountHeaderState extends ConsumerState<_AccountHeader> {
       await ref
           .read(memberRepositoryProvider)
           .updateCurrentProfile(
-            nickname: profile.nickname?.trim().isNotEmpty == true
-                ? profile.nickname!.trim()
-                : profile.displayName,
+            nickname: _nickname,
             avatarUrl: url,
             visibility: profile.visibility,
           );
@@ -528,17 +636,15 @@ class _AccountHeaderState extends ConsumerState<_AccountHeader> {
     }
   }
 
-  Future<void> _toggleVisibility(ProfileVisibility visibility) async {
+  Future<void> _setVisibility(ProfileVisibility visibility) async {
     final profile = widget.profile;
-    if (profile == null || visibility == profile.visibility) return;
+    if (visibility == profile.visibility) return;
     setState(() => _updatingVisibility = true);
     try {
       await ref
           .read(memberRepositoryProvider)
           .updateCurrentProfile(
-            nickname: profile.nickname?.trim().isNotEmpty == true
-                ? profile.nickname!.trim()
-                : profile.displayName,
+            nickname: _nickname,
             avatarUrl: profile.avatarUrl,
             visibility: visibility,
           );
@@ -555,253 +661,71 @@ class _AccountHeaderState extends ConsumerState<_AccountHeader> {
 
   @override
   Widget build(BuildContext context) {
-    final user = widget.profile;
-    final avatarUrl = user?.avatarUrl;
+    final profile = widget.profile;
     final palette = context.runNowPalette;
-    return GlassPanel(
-      borderRadius: 28,
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              GestureDetector(
-                onTap: user == null || _uploadingAvatar ? null : _pickAvatar,
-                child: Stack(
-                  alignment: Alignment.bottomRight,
-                  children: [
-                    CircleAvatar(
-                      radius: 31,
-                      backgroundColor: palette.secondary.withValues(
-                        alpha: 0.18,
-                      ),
-                      backgroundImage: avatarUrl == null
-                          ? null
-                          : cachedAvatarImage(context, avatarUrl, 62),
-                      child: _uploadingAvatar
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : avatarUrl == null
-                          ? Icon(
-                              user == null
-                                  ? Icons.person_outline
-                                  : Icons.person,
-                              color: palette.secondary,
-                            )
-                          : null,
-                    ),
-                    if (user != null && !_uploadingAvatar)
-                      CircleAvatar(
-                        radius: 10,
-                        backgroundColor: palette.accent,
-                        child: const Icon(
-                          Icons.edit,
-                          size: 10,
-                          color: Colors.white,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      user?.displayName ?? 'Đang tải tài khoản',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                        color: palette.ink,
-                      ),
-                    ),
-                    if (user?.email != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        user!.email!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withValues(alpha: 0.55),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: 'Hồ sơ & thành tích',
-                onPressed: widget.onEdit,
-                icon: const Icon(Icons.chevron_right),
-              ),
-            ],
-          ),
-          if (user != null) ...[
-            const SizedBox(height: 16),
-            Divider(height: 1, color: palette.border),
-            const SizedBox(height: 16),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Hiển thị trong Club',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: palette.ink,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Ai xem được hồ sơ & hoạt động của bạn',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withValues(alpha: 0.55),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (_updatingVisibility) ...[
-                  const SizedBox(width: 12),
-                  const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 12),
-            _VisibilityToggle(
-              value: user.visibility,
-              enabled: !_updatingVisibility,
-              onChanged: _toggleVisibility,
-            ),
-            if (user.lastSyncedAt != null) ...[
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Icon(Icons.sync_rounded, size: 14, color: palette.textMuted),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Đồng bộ ${formatDate(user.lastSyncedAt!)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.onSurface.withValues(alpha: 0.5),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// Toggle Riêng tư ↔ Công khai kiểu pill 2 ô, khớp accent app (thay
-/// SegmentedButton mặc định trông generic).
-class _VisibilityToggle extends StatelessWidget {
-  const _VisibilityToggle({
-    required this.value,
-    required this.enabled,
-    required this.onChanged,
-  });
-
-  final ProfileVisibility value;
-  final bool enabled;
-  final ValueChanged<ProfileVisibility> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: palette.glassStart,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: palette.border),
-      ),
-      child: Row(
-        children: [
-          _seg(
-            context,
-            ProfileVisibility.private,
-            Icons.lock_outline_rounded,
-            'Riêng tư',
-          ),
-          _seg(
-            context,
-            ProfileVisibility.public,
-            Icons.public_rounded,
-            'Công khai',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _seg(
-    BuildContext context,
-    ProfileVisibility v,
-    IconData icon,
-    String label,
-  ) {
-    final palette = context.runNowPalette;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final selected = value == v;
-    final onAccent = dark ? RunNowDataColors.coachOnAccentDark : Colors.white;
-    return Expanded(
-      child: GestureDetector(
-        onTap: enabled && !selected ? () => onChanged(v) : null,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.symmetric(vertical: 9),
-          decoration: BoxDecoration(
-            color: selected ? palette.accent : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 15,
-                color: selected ? onAccent : palette.textMuted,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w700,
-                  color: selected ? onAccent : palette.ink,
-                ),
-              ),
-            ],
-          ),
+    final avatarUrl = profile.avatarUrl;
+    return _SettingsSection(
+      title: 'Tài khoản',
+      children: [
+        _SettingsRow(
+          icon: Icons.badge_outlined,
+          title: 'Tên hiển thị',
+          value: _nickname,
+          onTap: () => _editNickname(context, ref, profile),
         ),
-      ),
+        ListTile(
+          dense: true,
+          visualDensity: const VisualDensity(horizontal: -1, vertical: -1),
+          minLeadingWidth: 28,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 2,
+          ),
+          leading: CircleAvatar(
+            radius: 15,
+            backgroundColor: palette.secondary.withValues(alpha: 0.18),
+            backgroundImage: avatarUrl == null
+                ? null
+                : cachedAvatarImage(context, avatarUrl, 30),
+            child: avatarUrl == null
+                ? Icon(Icons.person, size: 16, color: palette.secondary)
+                : null,
+          ),
+          title: const Text('Ảnh đại diện'),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _uploadingAvatar ? 'Đang tải lên' : 'Đổi ảnh',
+                style: TextStyle(color: palette.textMuted, fontSize: 15),
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right, color: palette.textMuted),
+            ],
+          ),
+          onTap: _uploadingAvatar ? null : _pickAvatar,
+        ),
+        SwitchListTile(
+          dense: true,
+          visualDensity: const VisualDensity(horizontal: -1, vertical: -1),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 2,
+          ),
+          secondary: _SettingsIcon(
+            icon: Icons.public_rounded,
+            color: Theme.of(context).colorScheme.secondary,
+          ),
+          title: const Text('Hiện hồ sơ trong Club'),
+          subtitle: const Text('Tắt thì chỉ mình bạn xem được buổi chạy'),
+          value: profile.visibility == ProfileVisibility.public,
+          onChanged: _updatingVisibility
+              ? null
+              : (on) => _setVisibility(
+                  on ? ProfileVisibility.public : ProfileVisibility.private,
+                ),
+        ),
+      ],
     );
   }
 }
