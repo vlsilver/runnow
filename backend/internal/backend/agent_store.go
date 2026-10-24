@@ -113,6 +113,8 @@ type AgentProfile struct {
 	// Created: false là hồ sơ mặc định, chưa ghi; bot chưa vào phòng và chưa
 	// chat riêng được cho tới khi chủ lưu lần đầu.
 	Created bool `json:"created"`
+	// CreatedAt là lần chủ lưu hồ sơ đầu tiên; nil khi chưa tạo bot.
+	CreatedAt *time.Time `json:"createdAt,omitempty"`
 }
 
 type AgentMemory struct {
@@ -179,6 +181,14 @@ type AgentImagesToday struct {
 	// NextKm và NextLimit là mốc kế tiếp; null khi đã ở mốc cao nhất.
 	NextKm    *float64 `json:"nextKm"`
 	NextLimit *int64   `json:"nextLimit"`
+	// Tiers là cả bảng mốc, km tăng dần, để app vẽ đủ các bậc trong ngày mà
+	// không giữ bảng riêng.
+	Tiers []AgentImageTier `json:"tiers"`
+}
+
+type AgentImageTier struct {
+	Km    float64 `json:"km"`
+	Limit int64   `json:"limit"`
 }
 
 const (
@@ -341,6 +351,9 @@ func (s *AgentStore) Me(ctx context.Context, uid string, wall time.Time) (AgentM
 		return AgentMe{}, err
 	}
 	out.Agent = &AgentProfile{Name: stringValue(doc.Data()["name"]), Persona: stringValue(doc.Data()["persona"]), Created: true}
+	if at := timeValue(doc.Data()["createdAt"]); !at.IsZero() {
+		out.Agent.CreatedAt = &at
+	}
 	if out.Memories, err = s.Memories(ctx, uid); err != nil {
 		return AgentMe{}, err
 	}

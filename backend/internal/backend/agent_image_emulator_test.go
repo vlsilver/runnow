@@ -417,8 +417,15 @@ func TestEmulatorAgentMeImages(t *testing.T) {
 	if got := e.meToday("cuong")["images"]; got != nil {
 		t.Fatalf("chưa tạo bot mà có images: %v", got)
 	}
+	// Bảng mốc đi kèm để app vẽ đủ các bậc mà không giữ bảng riêng.
+	tiers := []any{
+		map[string]any{"km": 1.0, "limit": 3.0},
+		map[string]any{"km": 5.0, "limit": 5.0},
+		map[string]any{"km": 10.0, "limit": 10.0},
+	}
 	wantImages := func(step string, want map[string]any) {
 		t.Helper()
+		want["tiers"] = tiers
 		if got := e.meToday("an")["images"]; !reflect.DeepEqual(got, want) {
 			t.Fatalf("%s: images = %v, muốn %v", step, got, want)
 		}

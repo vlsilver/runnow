@@ -180,7 +180,7 @@ func TestEmulatorAgentProfileAndMemory(t *testing.T) {
 	// Thành viên qua agentState/config, chưa tạo bot: tên mặc định theo tên chủ.
 	r := e.call("cuong", "GET", "/v1/agents/me", nil, "")
 	agent, _ := r.body["agent"].(map[string]any)
-	if r.body["enabled"] != true || agent["name"] != "Bot của Cường" || agent["created"] != false || r.body["memoryLimit"] != float64(50) {
+	if _, has := agent["createdAt"]; r.body["enabled"] != true || agent["name"] != "Bot của Cường" || agent["created"] != false || has || r.body["memoryLimit"] != float64(50) {
 		t.Fatalf("chưa tạo bot: %s", r.raw)
 	}
 	e.want(e.call("cuong", "POST", "/v1/agents/me/memories", map[string]any{"text": "a"}, ""), 404, "agent_not_found")
@@ -191,9 +191,13 @@ func TestEmulatorAgentProfileAndMemory(t *testing.T) {
 	e.want(e.call("cuong", "POST", "/v1/agents/me", map[string]any{"name": "Cú", "persona": strings.Repeat("a", 1501)}, ""), 400, "invalid_persona")
 	e.want(e.call("cuong", "POST", "/v1/agents/me", map[string]any{"name": "Cú", "extra": 1}, ""), 400, "")
 	e.createBot("cuong", " Cú ", "Hay đùa")
+	// Ngày tạo bot là lần lưu đầu; lưu lại sau đó không dời ngày.
+	created := e.clock.UTC().Format(time.RFC3339)
+	e.tick(26 * time.Hour)
+	e.createBot("cuong", " Cú ", "Hay đùa")
 	r = e.call("cuong", "GET", "/v1/agents/me", nil, "")
 	agent, _ = r.body["agent"].(map[string]any)
-	if agent["name"] != "Cú" || agent["persona"] != "Hay đùa" || agent["created"] != true {
+	if agent["name"] != "Cú" || agent["persona"] != "Hay đùa" || agent["created"] != true || agent["createdAt"] != created {
 		t.Fatalf("sau khi tạo: %s", r.raw)
 	}
 

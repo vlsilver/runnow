@@ -311,6 +311,9 @@ func (s *AgentStore) ImagesToday(ctx context.Context, uid string, wall time.Time
 		return nil, err
 	}
 	out := &AgentImagesToday{Used: q.used, Limit: q.limit, RunKm: q.runKm}
+	for i := len(agentImageTiers) - 1; i >= 0; i-- {
+		out.Tiers = append(out.Tiers, AgentImageTier{Km: agentImageTiers[i].km, Limit: agentImageTiers[i].images})
+	}
 	if km, images, ok := agentImageNextTier(q.runKm); ok {
 		out.NextKm, out.NextLimit = &km, &images
 	}
