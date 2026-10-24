@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1026,9 +1028,12 @@ class _Scaffold extends ConsumerWidget {
                       selectedIcon: Icons.person,
                       label: 'Hồ sơ',
                       // Như MyBot: tab sống trong IndexedStack nên đọc lại số
-                      // liệu mỗi lần mở.
+                      // liệu và nhật ký mỗi lần mở.
                       onTap: () {
                         ref.invalidate(profileStatsProvider);
+                        unawaited(
+                          ref.read(journalControllerProvider).ensureLoaded(),
+                        );
                         shell.goBranch(4);
                       },
                     ),

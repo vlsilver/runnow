@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -9,6 +10,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/profile_stats.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
@@ -40,7 +42,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 860),
             child: RefreshIndicator(
-              onRefresh: () => ref.refresh(profileStatsProvider.future),
+              onRefresh: () {
+                unawaited(ref.read(journalControllerProvider).ensureLoaded());
+                return ref.refresh(profileStatsProvider.future);
+              },
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
                 children: [
@@ -125,16 +130,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         onMetric: (m) => setState(() => _metric = m),
       ),
       const SizedBox(height: 20),
+      const _JournalSection(),
+      const SizedBox(height: 20),
       const _JourneySection(),
       const SizedBox(height: 12),
       _LinkList(
         links: [
-          _Link(
-            icon: Icons.menu_book_outlined,
-            title: 'Nhật ký chạy',
-            value: '${profileInt(lifetime.activityCount)} buổi',
-            onTap: () => context.push('/journal'),
-          ),
           _Link(
             icon: Icons.tune,
             title: 'Cài đặt',
@@ -1079,12 +1080,17 @@ class _LinkList extends StatelessWidget {
                           ),
                         ),
                       ),
+                      // Chữ phụ co lại khi chữ to, đừng đẩy tràn hàng.
                       if (link.value != null)
-                        Text(
-                          link.value!,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: palette.textMuted,
+                        Flexible(
+                          child: Text(
+                            link.value!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: palette.textMuted,
+                            ),
                           ),
                         ),
                       const SizedBox(width: 4),
@@ -1101,6 +1107,80 @@ class _LinkList extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Số buổi gần nhất hiện trong Hồ sơ; xem hết thì mở trang Nhật ký.
+const profileRecentActivityCount = 5;
+
+/// Vài buổi chạy gần nhất, ngay trong Hồ sơ. Dùng chung cache với trang Nhật
+/// ký, nên mở trang đầy đủ thì có ngay, không phải tải lại.
+class _JournalSection extends ConsumerStatefulWidget {
+  const _JournalSection();
+
+  @override
+  ConsumerState<_JournalSection> createState() => _JournalSectionState();
+}
+
+class _JournalSectionState extends ConsumerState<_JournalSection> {
+  @override
+  void initState() {
+    super.initState();
+    // Controller báo đổi state ngay khi tải, không được chạy trong lúc build.
+    Future.microtask(() => ref.read(journalControllerProvider).ensureLoaded());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final journal = ref.watch(journalControllerProvider);
+    final recent = journal.items.take(profileRecentActivityCount);
+    final Widget body;
+    if (recent.isNotEmpty) {
+      body = Column(
+        children: [
+          for (final entry in recent)
+            ActivityTile(
+              activity: entry.activity,
+              preferredStravaActivityId: entry.preferredStravaActivityId,
+            ),
+        ],
+      );
+    } else if (journal.loadingInitial) {
+      body = const RunNowLoading(compact: true, label: 'Đang mở nhật ký');
+    } else if (journal.error != null) {
+      body = Row(
+        children: [
+          Expanded(child: _Muted('Không tải được nhật ký: ${journal.error}')),
+          TextButton(
+            onPressed: journal.loadFirstPage,
+            child: const Text('Thử lại'),
+          ),
+        ],
+      );
+    } else {
+      body = _Muted('Chưa có buổi chạy nào.');
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 4),
+          child: Row(
+            children: [
+              const Expanded(child: _Caption('Nhật ký chạy')),
+              IconButton(
+                tooltip: 'Tất cả buổi chạy',
+                visualDensity: VisualDensity.compact,
+                color: context.runNowPalette.accent,
+                onPressed: () => context.push('/journal'),
+                icon: const Icon(Icons.view_list_rounded),
+              ),
+            ],
+          ),
+        ),
+        body,
+      ],
     );
   }
 }
