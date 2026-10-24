@@ -403,18 +403,32 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
           _Header(onEdit: agent.created ? () => _open('/agent/setup') : null),
           const SizedBox(height: 18),
           if (agent.created) ...[
-            _BotCardSection(
-              data: _cardData(data, agent),
-              onChat: () => _open('/agent/dm'),
-              onRoom: () => _open('/agent/room'),
-            ),
+            _BotCardSection(data: _cardData(data, agent)),
             if (data.today case final today?
                 when today.dmByKm != null || today.images != null) ...[
               const SizedBox(height: 16),
               _KmTodayCard(today: today),
             ],
+            const SizedBox(height: 16),
+            _BotActions(
+              onChat: () => _open('/agent/dm'),
+              onRoom: () => _open('/agent/room'),
+            ),
+            const SizedBox(height: 16),
+            _RoomPreviewCard(onOpen: () => _open('/agent/room')),
+            _ImagesPreview(onOpen: () => _open('/agent/images')),
+            const SizedBox(height: 22),
+            _MemoryPreviewCard(
+              name: agent.name,
+              memories: data.memories,
+              limit: data.memoryLimit,
+              busy: _busy,
+              onAdd: () => _editMemory(null),
+              onEdit: _editMemory,
+              onSeeAll: () => _open('/agent/memories'),
+            ),
             if (data.telegram case final telegram?) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               ListenableBuilder(
                 listenable: _telegramLink,
                 builder: (context, _) => _TelegramCard(
@@ -429,27 +443,6 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
                 ),
               ),
             ],
-            const SizedBox(height: 16),
-            _RoomPreviewCard(onOpen: () => _open('/agent/room')),
-            _ImagesPreview(onOpen: () => _open('/agent/images')),
-            const SizedBox(height: 22),
-            _SectionLabel(
-              'Bot biết gì về bạn',
-              icon: Icons.psychology_outlined,
-              count: '${data.memories.length}/${data.memoryLimit}',
-              onSeeAll: data.memories.length > _previewCount
-                  ? () => _open('/agent/memories')
-                  : null,
-            ),
-            const SizedBox(height: 8),
-            _MemoryCard(
-              memories: data.memories.take(_previewCount).toList(),
-              limit: data.memoryLimit,
-              full: data.memories.length >= data.memoryLimit,
-              busy: _busy,
-              onAdd: () => _editMemory(null),
-              onEdit: _editMemory,
-            ),
           ] else
             _CreateBotCard(onCreate: () => _open('/agent/setup')),
           // Bot tự học cả khi chưa tạo bot (vd. trí nhớ cũ của 3i), nên có gì
@@ -457,33 +450,19 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
           // hiện để bật lại được.
           if (agent.created || data.learned.isNotEmpty || data.noLearn) ...[
             const SizedBox(height: 22),
-            _SectionLabel(
-              'Bot tự học về bạn',
-              icon: Icons.auto_awesome_outlined,
-              onSeeAll: data.learned.length > _previewCount
-                  ? () => _open('/agent/learned')
-                  : null,
-            ),
-            const SizedBox(height: 8),
             _LearnedCard(
               learned: data.learned.take(_previewCount).toList(),
               busy: _busy,
               onForget: _forgetLearned,
               learning: !data.noLearn,
               onLearning: (learn) => _setLearning(learn, data.learned.length),
+              onSeeAll: data.learned.length > _previewCount
+                  ? () => _open('/agent/learned')
+                  : null,
               onGroupFacts: () => _open('/agent/group-facts'),
-            ),
-          ],
-          // Chặn chỉ làm được trong phòng bot, mà phòng chỉ mở được khi đã có
-          // bot, nên mục bỏ chặn cũng chỉ hiện lúc đó.
-          if (agent.created) ...[
-            const SizedBox(height: 22),
-            _Card(
-              child: _LinkRow(
-                icon: Icons.block_rounded,
-                text: 'Người đã chặn',
-                onTap: () => _open('/agent/blocks'),
-              ),
+              // Chặn chỉ làm được trong phòng bot, mà phòng chỉ mở được khi
+              // đã có bot, nên mục bỏ chặn cũng chỉ hiện lúc đó.
+              onBlocks: agent.created ? () => _open('/agent/blocks') : null,
             ),
           ],
         ],
@@ -547,31 +526,21 @@ class _Header extends StatelessWidget {
   }
 }
 
-/// Đầu tab: thẻ bot của mình trên quầng sáng màu hành, rồi hai nút chat riêng
-/// và vào phòng.
+/// Đầu tab: thẻ bot của mình trên quầng sáng màu hành.
 class _BotCardSection extends StatelessWidget {
-  const _BotCardSection({
-    required this.data,
-    required this.onChat,
-    required this.onRoom,
-  });
+  const _BotCardSection({required this.data});
 
   final AgentBotCardData data;
-  final VoidCallback onChat;
-  final VoidCallback onRoom;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final buttonText = Theme.of(
-      context,
-    ).textTheme.labelLarge?.copyWith(fontSize: 15, fontWeight: FontWeight.w800);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         LayoutBuilder(
           builder: (context, box) {
-            final width = math.min(box.maxWidth - 40, 300.0);
+            final width = math.min(box.maxWidth - 40, 320.0);
             return Stack(
               alignment: Alignment.center,
               children: [
@@ -606,44 +575,60 @@ class _BotCardSection extends StatelessWidget {
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: onChat,
-                style: FilledButton.styleFrom(
-                  backgroundColor: palette.accent,
-                  foregroundColor: RunNowThemeTokens.lightInk,
-                  minimumSize: const Size.fromHeight(52),
-                  textStyle: buttonText,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                icon: const Icon(Icons.chat_bubble_rounded, size: 19),
-                label: const Text('Chat riêng'),
+      ],
+    );
+  }
+}
+
+/// Hai nút chat riêng và vào phòng, ngay dưới bậc thẻ: chạy xong xem thẻ lên
+/// bậc rồi đi nói chuyện luôn.
+class _BotActions extends StatelessWidget {
+  const _BotActions({required this.onChat, required this.onRoom});
+
+  final VoidCallback onChat;
+  final VoidCallback onRoom;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final buttonText = Theme.of(
+      context,
+    ).textTheme.labelLarge?.copyWith(fontSize: 15, fontWeight: FontWeight.w800);
+    return Row(
+      children: [
+        Expanded(
+          child: FilledButton.icon(
+            onPressed: onChat,
+            style: FilledButton.styleFrom(
+              backgroundColor: palette.accent,
+              foregroundColor: RunNowThemeTokens.lightInk,
+              minimumSize: const Size.fromHeight(52),
+              textStyle: buttonText,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
               ),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: onRoom,
-                style: FilledButton.styleFrom(
-                  backgroundColor: palette.glassStart,
-                  foregroundColor: palette.ink,
-                  minimumSize: const Size.fromHeight(52),
-                  textStyle: buttonText,
-                  side: BorderSide(color: palette.border),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                icon: const Icon(Icons.forum_outlined, size: 19),
-                label: const Text('Phòng bot'),
+            icon: const Icon(Icons.chat_bubble_rounded, size: 19),
+            label: const Text('Chat riêng'),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: FilledButton.icon(
+            onPressed: onRoom,
+            style: FilledButton.styleFrom(
+              backgroundColor: palette.glassStart,
+              foregroundColor: palette.ink,
+              minimumSize: const Size.fromHeight(52),
+              textStyle: buttonText,
+              side: BorderSide(color: palette.border),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
               ),
             ),
-          ],
+            icon: const Icon(Icons.forum_outlined, size: 19),
+            label: const Text('Phòng bot'),
+          ),
         ),
       ],
     );
@@ -665,14 +650,13 @@ class _KmTodayCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final images = today.images;
-    // perKm 0 là admin tắt thưởng theo km: số tin không đổi theo km nên bỏ ô.
+    // perKm 0 là admin tắt thưởng theo km: số tin không đổi theo km nên không
+    // nhắc tin.
     final dm = switch (today.dmByKm) {
       final byKm? when byKm.perKm > 0 => byKm,
       _ => null,
     };
     final runKm = today.dmByKm?.runKm ?? images?.runKm ?? 0;
-    // Làm tròn xuống, để 4,96 km không hiện thành 5 km khi chưa mở mốc 5.
-    final shownKm = (runKm * 10 + 1e-9).floor() / 10;
     final tier = agentCardTier(images);
     final tiers = images?.tiers ?? const [];
     // Mốc ảnh kế tiếp là bậc thẻ kế tiếp; backend cũ không có bảng mốc thì
@@ -707,49 +691,8 @@ class _KmTodayCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                // Máy hẹp hay chữ phóng to thì số km co lại, không đẩy
-                // badge bậc ra ngoài.
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          Text(
-                            formatAgentKm(shownKm),
-                            style: const TextStyle(
-                              fontSize: 46,
-                              fontWeight: FontWeight.w900,
-                              height: 1,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'km',
-                            style: TextStyle(
-                              color: palette.textMuted,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                if (images != null) ...[
-                  const SizedBox(width: 10),
-                  _TierBadge(tier: tier),
-                ],
-              ],
-            ),
+            // Số km, số tin và số ảnh đã ở mặt trước thẻ ngay trên; thẻ này
+            // chỉ nói bậc và chạy thêm bao nhiêu để lên bậc.
             const SizedBox(height: 14),
             if (images != null && tiers.isNotEmpty)
               _TierTrack(images: images)
@@ -760,31 +703,6 @@ class _KmTodayCard extends StatelessWidget {
                 maxKm: _rulerKm,
                 nextKm: dm?.nextKm ?? images?.nextKm,
               ),
-            const SizedBox(height: 14),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (dm != null)
-                  Expanded(
-                    child: _KmTile(
-                      palette: palette,
-                      icon: Icons.chat_bubble_outline_rounded,
-                      value: '${today.dmMax} tin chat',
-                      detail: _dmDetail(dm),
-                    ),
-                  ),
-                if (dm != null && images != null) const SizedBox(width: 10),
-                if (images != null)
-                  Expanded(
-                    child: _KmTile(
-                      palette: palette,
-                      icon: Icons.palette_outlined,
-                      value: '${images.limit} ảnh vẽ',
-                      detail: _imageDetail(images),
-                    ),
-                  ),
-              ],
-            ),
             for (final hint in _hints(dm, images, nextTier)) ...[
               const SizedBox(height: 10),
               hint,
@@ -794,20 +712,6 @@ class _KmTodayCard extends StatelessWidget {
       ),
     );
   }
-
-  String _dmDetail(AgentDMByKm dm) {
-    final fullKm = (dm.runKm + 1e-9).floor();
-    if (dm.nextKm == null) return 'Đã đủ tối đa ${today.dmMax} tin';
-    if (fullKm == 0) return '${dm.base} sẵn mỗi ngày';
-    return '${dm.base} sẵn + ${today.dmMax - dm.base} từ $fullKm km';
-  }
-
-  String _imageDetail(AgentImagesToday images) => switch (images) {
-    AgentImagesToday(limit: 0, :final nextKm?) =>
-      'Chạy hay đi bộ đủ ${formatAgentKm(nextKm)} km để mở',
-    AgentImagesToday(nextKm: null) => 'Mốc cao nhất',
-    _ => 'đã vẽ ${images.used}',
-  };
 
   /// Mốc tin và mốc ảnh cùng km thì gộp một dòng; hết cả hai thì một dòng báo
   /// đã mở hết.
@@ -826,7 +730,7 @@ class _KmTodayCard extends StatelessWidget {
         _KmHint(
           runKm: dm!.runKm,
           nextKm: dmNext,
-          rest: ' để$up có thêm $moreDm tin và $moreImages ảnh.',
+          rest: ' để$up mở thêm $moreDm tin và $moreImages ảnh.',
         ),
       ];
     }
@@ -835,7 +739,7 @@ class _KmTodayCard extends StatelessWidget {
         _KmHint(
           runKm: dm!.runKm,
           nextKm: dmNext,
-          rest: ' để có thêm $moreDm tin.',
+          rest: ' để mở thêm $moreDm tin.',
         ),
       if (imageNext != null)
         _KmHint(
@@ -857,59 +761,18 @@ class _KmTodayCard extends StatelessWidget {
   }
 }
 
-/// Bậc thẻ hiện tại: đá và tên bậc trong viền chất liệu thẻ.
-class _TierBadge extends StatelessWidget {
-  const _TierBadge({required this.tier});
-
-  final AgentCardTier tier;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    final t = gameCardTiers[tier.material]!;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        gradient: LinearGradient(colors: t.frame, stops: t.frameStops),
-      ),
-      child: Container(
-        margin: const EdgeInsets.all(2),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: palette.background,
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CustomPaint(
-              size: const Size(8, 10),
-              painter: GameCardGemPainter(t.gem),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              'Thẻ ${tier.label}',
-              style: TextStyle(
-                color: palette.ink,
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// Đường mốc trong ngày: 0 km rồi từng mốc backend gửi, mỗi nút là một bậc
-/// thẻ. Phần đã chạy tô màu, tới giữa hai mốc thì tô theo tỉ lệ km.
+/// thẻ, cách đều nhau (không theo tỉ lệ km) để tên bậc không chen nhau. Phần
+/// đã chạy tô màu, tới giữa hai mốc thì tô theo tỉ lệ km.
 class _TierTrack extends StatelessWidget {
   const _TierTrack({required this.images});
 
   final AgentImagesToday images;
 
-  static const _node = 18.0;
+  static const _node = 22.0;
+
+  /// Nút của bậc kế tiếp to hơn và có vòng sáng: đó là đích đang chạy tới.
+  static const _nextNode = 28.0;
 
   @override
   Widget build(BuildContext context) {
@@ -917,8 +780,9 @@ class _TierTrack extends StatelessWidget {
     final tiers = images.tiers;
     final kms = [0.0, for (final t in tiers) t.km];
     final reached = agentTiersReached(images);
+    final next = reached < tiers.length ? reached + 1 : null;
     // Vị trí đã chạy tính theo số nút: qua r mốc, đi thêm một phần đoạn kế.
-    final position = reached >= tiers.length
+    final position = next == null
         ? tiers.length.toDouble()
         : reached +
               ((images.runKm - kms[reached]) /
@@ -929,16 +793,17 @@ class _TierTrack extends StatelessWidget {
       builder: (context, box) {
         final cell = box.maxWidth / count;
         double x(double at) => cell * (at + 0.5);
+        double size(int i) => i == next ? _nextNode : _node;
         return Column(
           children: [
             SizedBox(
-              height: _node,
+              height: _nextNode,
               child: Stack(
                 children: [
                   Positioned(
                     left: x(0),
                     width: x(count - 1.0) - x(0),
-                    top: _node / 2 - 3,
+                    top: _nextNode / 2 - 3,
                     height: 6,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
@@ -950,7 +815,7 @@ class _TierTrack extends StatelessWidget {
                   Positioned(
                     left: x(0),
                     width: x(position) - x(0),
-                    top: _node / 2 - 3,
+                    top: _nextNode / 2 - 3,
                     height: 6,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
@@ -963,12 +828,11 @@ class _TierTrack extends StatelessWidget {
                   ),
                   for (var i = 0; i < count; i++)
                     Positioned(
-                      left: x(i.toDouble()) - _node / 2,
-                      top: 0,
+                      left: x(i.toDouble()) - size(i) / 2,
+                      top: (_nextNode - size(i)) / 2,
                       child: _TrackNode(
                         tier: agentCardTierAt(i, tiers.length),
-                        reached: i <= reached,
-                        current: i == reached,
+                        next: i == next,
                       ),
                     ),
                 ],
@@ -982,21 +846,42 @@ class _TierTrack extends StatelessWidget {
                     child: Column(
                       children: [
                         Text(
-                          agentCardTierAt(i, tiers.length).label,
-                          style: TextStyle(
-                            color: i <= reached
-                                ? palette.ink
-                                : palette.textMuted,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        Text(
                           '${formatAgentKm(kms[i])} km',
                           style: TextStyle(
                             color: palette.textMuted,
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text.rich(
+                          TextSpan(
+                            text: agentCardTierAt(i, tiers.length).label,
+                            children: [
+                              // Mốc đã qua có dấu tích; 0 km không phải mốc.
+                              // Vẽ bằng icon vì Exo 2 không có glyph ✓.
+                              if (i > 0 && i <= reached)
+                                WidgetSpan(
+                                  alignment: PlaceholderAlignment.middle,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(left: 2),
+                                    child: Icon(
+                                      Icons.check_rounded,
+                                      size: 13,
+                                      color: palette.ink,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          style: TextStyle(
+                            color: i == next
+                                ? _tierInk(
+                                    agentCardTierAt(i, tiers.length),
+                                    palette,
+                                  )
+                                : palette.ink,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
                       ],
@@ -1011,41 +896,66 @@ class _TierTrack extends StatelessWidget {
   }
 }
 
+/// Màu tên bậc: màu đá của bậc trên nền tối, bản đậm hơn trên nền sáng để
+/// còn đọc được.
+Color _tierInk(AgentCardTier tier, RunNowPalette palette) {
+  final light = palette.appearance == RunNowAppearance.light;
+  return switch (tier) {
+    AgentCardTier.common => palette.ink,
+    AgentCardTier.silver =>
+      light ? RunNowGameTokens.silverDeep : RunNowGameTokens.gemSilver,
+    AgentCardTier.gold =>
+      light ? RunNowGameTokens.goldEdge : RunNowGameTokens.sunMid,
+    AgentCardTier.foil =>
+      light ? RunNowBotCardTokens.foilInk : RunNowBotCardTokens.foilPink,
+  };
+}
+
+/// Nút mốc tô bằng chất liệu khung thẻ của bậc đó, để đường mốc đọc như dãy
+/// thẻ sẽ mở.
 class _TrackNode extends StatelessWidget {
-  const _TrackNode({
-    required this.tier,
-    required this.reached,
-    required this.current,
-  });
+  const _TrackNode({required this.tier, required this.next});
 
   final AgentCardTier tier;
-  final bool reached;
-  final bool current;
+  final bool next;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final t = gameCardTiers[tier.material]!;
+    final size = next ? _TierTrack._nextNode : _TierTrack._node;
+    final foil = tier == AgentCardTier.foil;
     return Container(
-      width: _TierTrack._node,
-      height: _TierTrack._node,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: reached
-            ? LinearGradient(
+        // Khung Foil là vàng, ánh cầu vồng nằm ở lớp holo phủ lên thẻ; nút
+        // nhỏ không có lớp đó nên vẽ thẳng cầu vồng.
+        gradient: foil
+            ? const SweepGradient(
+                colors: [
+                  RunNowGameTokens.gold,
+                  RunNowBotCardTokens.foilSky,
+                  RunNowBotCardTokens.foilPink,
+                  RunNowGameTokens.gold,
+                ],
+              )
+            : LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: t.frame,
                 stops: t.frameStops,
-              )
-            : null,
-        color: reached ? null : palette.glassStart,
-        border: Border.all(
-          color: reached ? palette.background : palette.border,
-          width: 2,
-        ),
-        boxShadow: current
-            ? [BoxShadow(color: t.gem.withValues(alpha: 0.7), blurRadius: 12)]
+              ),
+        border: Border.all(color: palette.glassStart, width: 2),
+        boxShadow: next
+            ? [
+                BoxShadow(
+                  color: (foil ? RunNowBotCardTokens.foilPink : t.gem)
+                      .withValues(alpha: 0.35),
+                  spreadRadius: 3,
+                ),
+              ]
             : null,
       ),
     );
@@ -1131,52 +1041,6 @@ class _KmRuler extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-}
-
-class _KmTile extends StatelessWidget {
-  const _KmTile({
-    required this.palette,
-    required this.icon,
-    required this.value,
-    required this.detail,
-  });
-
-  final RunNowPalette palette;
-  final IconData icon;
-  final String value;
-  final String detail;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: palette.ink.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: palette.accentDeep),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            detail,
-            style: TextStyle(
-              color: palette.textMuted,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              height: 1.3,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1695,12 +1559,12 @@ class _RoomPreviewCard extends ConsumerWidget {
               children: [
                 Icon(Icons.forum_outlined, size: 15, color: palette.accentDeep),
                 const SizedBox(width: 6),
-                const Expanded(child: _Caps('Phòng bot')),
+                const Expanded(child: _Caps('Phòng bot đang nói')),
                 if (bots.isNotEmpty) ...[
                   _AvatarStack(names: bots),
                   const SizedBox(width: 8),
                   Text(
-                    '${bots.length} bot đang ở phòng',
+                    '${bots.length} bot',
                     style: TextStyle(
                       color: palette.accentDeep,
                       fontSize: 12,
@@ -1729,7 +1593,7 @@ class _RoomPreviewCard extends ConsumerWidget {
               ),
               child: const Row(
                 children: [
-                  Expanded(child: Text('Vào phòng')),
+                  Expanded(child: Text('Vào phòng xem tiếp')),
                   Icon(Icons.chevron_right_rounded),
                 ],
               ),
@@ -1812,11 +1676,11 @@ class _ImagesPreview extends ConsumerWidget {
           for (var i = 0; i < images.length; i++) ...[
             if (i > 0) const SizedBox(width: 10),
             Container(
-              width: 132,
-              height: 176,
-              padding: const EdgeInsets.all(3),
+              width: 150,
+              height: 200,
+              padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(14),
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -1845,7 +1709,7 @@ class _ImagesPreview extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _SectionLabel(
-            'Ảnh bot đã vẽ',
+            'Bộ sưu tập ảnh',
             icon: Icons.palette_outlined,
             onSeeAll: onOpen,
           ),
@@ -1858,18 +1722,63 @@ class _ImagesPreview extends ConsumerWidget {
 }
 
 /// Một tin trong phòng, dạng bong bóng: bot thì avatar vuông bo góc, người
-/// thì tròn, như trong phòng; bot của mình tô màu nhấn.
+/// thì tròn, như trong phòng. Tin bot của mình nằm bên phải, không avatar, tô
+/// màu nhấn, như tin mình gửi trong app chat.
 class _RoomPreviewLine extends StatelessWidget {
   const _RoomPreviewLine({required this.message, required this.myUid});
 
   final AgentRoomMessage message;
   final String? myUid;
 
+  /// Avatar 32 cộng khoảng cách 10: bong bóng của mình không vượt quá mép
+  /// trái bong bóng người khác.
+  static const _indent = 42.0;
+
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final name = message.name.trim();
     final mine = message.fromAgent && message.uid == myUid;
+    final bubble = Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      decoration: BoxDecoration(
+        color: mine ? palette.tint : palette.ink.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(mine ? 14 : 4),
+          topRight: Radius.circular(mine ? 4 : 14),
+          bottomLeft: const Radius.circular(14),
+          bottomRight: const Radius.circular(14),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            agentRoomSenderLabel(message, myUid),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: mine ? palette.accentDeep : palette.textMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            message.text,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 14, height: 1.35),
+          ),
+        ],
+      ),
+    );
+    if (mine) {
+      return Padding(
+        padding: const EdgeInsets.only(left: _indent),
+        child: Align(alignment: Alignment.centerRight, child: bubble),
+      );
+    }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1878,75 +1787,212 @@ class _RoomPreviewLine extends StatelessWidget {
           height: 32,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: mine
-                ? null
-                : message.fromAgent
-                ? palette.ink
-                : palette.accentDeep,
-            gradient: mine
-                ? LinearGradient(
-                    colors: [palette.tertiary, palette.accentDeep],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  )
-                : null,
+            color: message.fromAgent ? palette.ink : palette.accentDeep,
             borderRadius: BorderRadius.circular(message.fromAgent ? 10 : 16),
           ),
           child: Text(
             name.isEmpty ? '?' : name.characters.first.toUpperCase(),
             style: TextStyle(
-              color: mine ? Colors.white : palette.background,
+              color: palette.background,
               fontSize: 13,
               fontWeight: FontWeight.w900,
             ),
           ),
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-            decoration: BoxDecoration(
-              color: mine
-                  ? palette.accent.withValues(alpha: 0.12)
-                  : palette.ink.withValues(alpha: 0.05),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(4),
-                topRight: Radius.circular(14),
-                bottomLeft: Radius.circular(14),
-                bottomRight: Radius.circular(14),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  agentRoomSenderLabel(message, myUid),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: mine ? palette.accentDeep : palette.textMuted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  message.text,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 14, height: 1.35),
-                ),
-              ],
-            ),
-          ),
-        ),
+        const SizedBox(width: _indent - 32),
+        Expanded(child: bubble),
       ],
     );
   }
 }
 
-/// Thẻ bộ nhớ. Không có [onDelete] là bản rút gọn ở tab: chạm vào mục để sửa
-/// hay xoá. Có [onDelete] là trang đầy đủ, mỗi mục có nút xoá riêng.
+/// Bộ nhớ ở tab: đếm mục so với trần, các mục thành chip, chạm chip để sửa
+/// hay xoá. Chỉ hiện vài mục đầu, còn lại ở trang đầy đủ.
+class _MemoryPreviewCard extends StatelessWidget {
+  const _MemoryPreviewCard({
+    required this.name,
+    required this.memories,
+    required this.limit,
+    required this.busy,
+    required this.onAdd,
+    required this.onEdit,
+    required this.onSeeAll,
+  });
+
+  /// Tên bot, cho tiêu đề "Cú Mèo biết về bạn".
+  final String name;
+  final List<AgentMemory> memories;
+  final int limit;
+  final bool busy;
+  final VoidCallback onAdd;
+  final ValueChanged<AgentMemory> onEdit;
+  final VoidCallback onSeeAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final full = memories.length >= limit;
+    final chipText = const TextStyle(fontSize: 13, fontWeight: FontWeight.w600);
+    return _Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(child: _Caps('$name biết về bạn')),
+                const SizedBox(width: 8),
+                Text(
+                  '${memories.length}/$limit',
+                  style: TextStyle(
+                    color: palette.accentDeep,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: limit <= 0 ? 0 : (memories.length / limit).clamp(0, 1),
+                minHeight: 5,
+                color: palette.accent,
+                backgroundColor: palette.ink.withValues(alpha: 0.08),
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (memories.isEmpty) ...[
+              Text(
+                'Chưa có gì. Kể cho bot trong Chat riêng.',
+                style: TextStyle(color: palette.textMuted),
+              ),
+              const SizedBox(height: 10),
+            ],
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final m in memories.take(_previewCount))
+                  _Chip(
+                    onTap: busy ? null : () => onEdit(m),
+                    color: palette.ink.withValues(alpha: 0.06),
+                    child: Text(
+                      m.text,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: chipText,
+                    ),
+                  ),
+                if (memories.length > _previewCount)
+                  _Chip(
+                    onTap: onSeeAll,
+                    color: palette.ink.withValues(alpha: 0.06),
+                    child: Text(
+                      'Xem tất cả',
+                      style: chipText.copyWith(
+                        color: palette.accentDeep,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                _Chip(
+                  onTap: busy || full ? null : onAdd,
+                  dashed: palette.accent,
+                  child: Text(
+                    full ? 'Bộ nhớ đã đầy ($limit mục)' : '+ Dạy thêm',
+                    style: chipText.copyWith(
+                      color: full ? palette.textMuted : palette.accentDeep,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Chip bấm được của thẻ bộ nhớ: nền đặc cho mục nhớ, viền nét đứt cho việc
+/// thêm mục.
+class _Chip extends StatelessWidget {
+  const _Chip({
+    required this.child,
+    required this.onTap,
+    this.color,
+    this.dashed,
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final Color? color;
+
+  /// Màu viền nét đứt; null là không viền.
+  final Color? dashed;
+
+  @override
+  Widget build(BuildContext context) {
+    final dashed = this.dashed;
+    final radius = BorderRadius.circular(12);
+    final chip = Material(
+      color: color ?? Colors.transparent,
+      borderRadius: radius,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+          child: child,
+        ),
+      ),
+    );
+    if (dashed == null) return chip;
+    return CustomPaint(
+      foregroundPainter: _DashedBorderPainter(color: dashed, radius: 12),
+      child: chip,
+    );
+  }
+}
+
+/// Viền nét đứt bo góc; Flutter không có sẵn kiểu viền này.
+class _DashedBorderPainter extends CustomPainter {
+  const _DashedBorderPainter({required this.color, required this.radius});
+
+  final Color color;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final border = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          (Offset.zero & size).deflate(0.5),
+          Radius.circular(radius),
+        ),
+      );
+    final dash = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = color;
+    for (final metric in border.computeMetrics()) {
+      for (var d = 0.0; d < metric.length; d += 7) {
+        canvas.drawPath(metric.extractPath(d, d + 4), dash);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedBorderPainter old) =>
+      old.color != color || old.radius != radius;
+}
+
+/// Bộ nhớ ở trang đầy đủ: mọi mục, mỗi mục có nút xoá riêng, chạm vào mục để
+/// sửa.
 class _MemoryCard extends StatelessWidget {
   const _MemoryCard({
     required this.memories,
@@ -1954,22 +2000,20 @@ class _MemoryCard extends StatelessWidget {
     required this.busy,
     required this.onAdd,
     required this.onEdit,
-    this.onDelete,
-    bool? full,
-  }) : full = full ?? memories.length >= limit;
+    required this.onDelete,
+  });
 
   final List<AgentMemory> memories;
   final int limit;
-  final bool full;
   final bool busy;
   final VoidCallback onAdd;
   final ValueChanged<AgentMemory> onEdit;
-  final ValueChanged<AgentMemory>? onDelete;
+  final ValueChanged<AgentMemory> onDelete;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final onDelete = this.onDelete;
+    final full = memories.length >= limit;
     return _Card(
       child: Column(
         children: [
@@ -1983,14 +2027,12 @@ class _MemoryCard extends StatelessWidget {
               text: m.text,
               source: m.fromChat ? 'Bot ghi khi chat' : 'Bạn thêm',
               onTap: busy ? null : () => onEdit(m),
-              action: onDelete == null
-                  ? null
-                  : IconButton(
-                      tooltip: 'Xoá',
-                      icon: const Icon(Icons.delete_outline),
-                      color: palette.textMuted,
-                      onPressed: busy ? null : () => onDelete(m),
-                    ),
+              action: IconButton(
+                tooltip: 'Xoá',
+                icon: const Icon(Icons.delete_outline),
+                color: palette.textMuted,
+                onPressed: busy ? null : () => onDelete(m),
+              ),
             ),
             const _RowDivider(),
           ],
@@ -2007,6 +2049,8 @@ class _MemoryCard extends StatelessWidget {
   }
 }
 
+/// Điều bot tự học về chủ, kèm nút Quên từng điều. Ở tab, thẻ này gom luôn các
+/// cài đặt của bot: công tắc tự học, bot biết gì về nhóm, người đã chặn.
 class _LearnedCard extends StatelessWidget {
   const _LearnedCard({
     required this.learned,
@@ -2014,7 +2058,9 @@ class _LearnedCard extends StatelessWidget {
     required this.onForget,
     this.learning = true,
     this.onLearning,
+    this.onSeeAll,
     this.onGroupFacts,
+    this.onBlocks,
   });
 
   final List<AgentLearnedFact> learned;
@@ -2024,12 +2070,18 @@ class _LearnedCard extends StatelessWidget {
 
   /// Có thì hiện công tắc tự học ở đầu thẻ (chỉ ở tab, không ở trang đầy đủ).
   final ValueChanged<bool>? onLearning;
+
+  /// Có khi tab chỉ hiện vài điều đầu: mở trang đủ điều đã học.
+  final VoidCallback? onSeeAll;
   final VoidCallback? onGroupFacts;
+  final VoidCallback? onBlocks;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
+    final onSeeAll = this.onSeeAll;
     final onGroupFacts = this.onGroupFacts;
+    final onBlocks = this.onBlocks;
     final onLearning = this.onLearning;
     return _Card(
       child: Column(
@@ -2076,12 +2128,28 @@ class _LearnedCard extends StatelessWidget {
               ),
             ),
           ],
+          if (onSeeAll != null) ...[
+            const _RowDivider(),
+            _LinkRow(
+              icon: Icons.list_rounded,
+              text: 'Xem tất cả điều bot đã học',
+              onTap: onSeeAll,
+            ),
+          ],
           if (onGroupFacts != null) ...[
             const _RowDivider(),
             _LinkRow(
               icon: Icons.groups_2_outlined,
               text: 'Bot biết gì về nhóm',
               onTap: onGroupFacts,
+            ),
+          ],
+          if (onBlocks != null) ...[
+            const _RowDivider(),
+            _LinkRow(
+              icon: Icons.block_rounded,
+              text: 'Người đã chặn',
+              onTap: onBlocks,
             ),
           ],
         ],
@@ -2112,13 +2180,10 @@ class _Card extends StatelessWidget {
 
 /// Nhãn mục kiểu chữ hoa nhỏ, có "Xem tất cả" khi mục dài hơn phần đang hiện.
 class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text, {this.icon, this.count, this.onSeeAll});
+  const _SectionLabel(this.text, {this.icon, this.onSeeAll});
 
   final String text;
   final IconData? icon;
-
-  /// Số đếm cạnh nhãn, như "3/50" mục nhớ.
-  final String? count;
   final VoidCallback? onSeeAll;
 
   @override
@@ -2126,7 +2191,6 @@ class _SectionLabel extends StatelessWidget {
     final palette = context.runNowPalette;
     final onSeeAll = this.onSeeAll;
     final icon = this.icon;
-    final count = this.count;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
@@ -2135,26 +2199,10 @@ class _SectionLabel extends StatelessWidget {
             Icon(icon, size: 15, color: palette.accentDeep),
             const SizedBox(width: 6),
           ],
-          Flexible(child: _Caps(text)),
-          if (count != null) ...[
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(
-                color: palette.ink.withValues(alpha: 0.07),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                count,
-                style: TextStyle(
-                  color: palette.textMuted,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ],
-          const Spacer(),
+          // Nhãn chiếm hết phần còn lại để "Xem tất cả" sát mép phải.
+          // Flexible cạnh Spacer thì hai bên chia đôi chỗ trống, phần
+          // Flexible không dùng bị bỏ thừa ở cuối hàng.
+          Expanded(child: _Caps(text)),
           if (onSeeAll != null) ...[
             const SizedBox(width: 8),
             InkWell(

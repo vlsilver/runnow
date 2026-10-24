@@ -207,7 +207,7 @@ class AgentBotCardFront extends StatelessWidget {
                 Text(
                   data.budgetResting
                       ? 'MyBot chạm trần chi phí hôm nay.'
-                      : data.persona,
+                      : _quote(data.persona),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -257,7 +257,7 @@ class AgentBotCardFront extends StatelessWidget {
                         createdAt == null
                             ? (runKm == null
                                   ? '3I RUN · MYBOT'
-                                  : '${formatAgentKm(runKm)} km hôm nay')
+                                  : '${formatAgentRunKm(runKm)} km hôm nay')
                             : _dayLine(createdAt),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -267,10 +267,13 @@ class AgentBotCardFront extends StatelessWidget {
                         ),
                       ),
                     ),
+                    // Expanded cạnh Expanded chia đôi hàng; chữ căn phải để
+                    // username nằm sát mép phải thay vì giữa thẻ.
                     if (data.username case final username?)
-                      Flexible(
+                      Expanded(
                         child: Text(
                           '@$username',
+                          textAlign: TextAlign.right,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -299,6 +302,15 @@ class AgentBotCardFront extends StatelessWidget {
   String _dayLine(DateTime createdAt) {
     final n = agentDayCount(createdAt, data.now ?? DateTime.now());
     return n <= 1 ? 'Ngày đầu bên bạn' : 'Ngày thứ $n bên bạn';
+  }
+
+  /// Mặt trước chỉ trích câu đầu của tính cách như lời thoại; đủ cả đoạn ở
+  /// mặt sau.
+  static String _quote(String persona) {
+    final text = persona.trim();
+    if (text.isEmpty) return '';
+    final end = RegExp(r'[.!?…](?=\s|$)').firstMatch(text)?.end;
+    return '“${end == null ? text : text.substring(0, end)}”';
   }
 }
 
@@ -352,22 +364,31 @@ class AgentBotCardBack extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 _CardCaps('Bot biết về bạn', color: muted),
-                const SizedBox(height: 4),
+                const SizedBox(height: 5),
                 if (data.memories.isEmpty)
                   Text('Chưa nhớ gì.', style: body.copyWith(color: muted))
                 else
                   for (final memory in data.memories.take(3))
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 3),
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 5.5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.07),
+                        borderRadius: BorderRadius.circular(7),
+                      ),
                       child: Text(
-                        '· $memory',
+                        memory,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: body,
+                        style: body.copyWith(fontSize: 10, height: 1.3),
                       ),
                     ),
                 if (places.isNotEmpty) ...[
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 6),
                   Wrap(
                     spacing: 5,
                     runSpacing: 5,
@@ -376,18 +397,18 @@ class AgentBotCardBack extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 7,
-                            vertical: 3,
+                            vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: p.accent.withValues(alpha: 0.16),
+                            color: p.accent.withValues(alpha: 0.22),
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
                             place,
                             style: TextStyle(
-                              fontSize: 9.5,
+                              fontSize: 8.6,
                               fontWeight: FontWeight.w800,
-                              color: ink,
+                              color: Color.lerp(p.accent, Colors.white, 0.7),
                             ),
                           ),
                         ),
@@ -395,21 +416,13 @@ class AgentBotCardBack extends StatelessWidget {
                   ),
                 ],
                 const Spacer(),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        createdAt == null
-                            ? '3I RUN · MYBOT'
-                            : 'Tạo ngày ${_date(createdAt)}',
-                        style: TextStyle(fontSize: 9, color: muted),
-                      ),
-                    ),
-                    Text(
-                      'Chạm để lật lại',
-                      style: TextStyle(fontSize: 9, color: muted),
-                    ),
-                  ],
+                Text(
+                  createdAt == null
+                      ? 'Chạm để lật lại'
+                      : 'Tạo ngày ${_date(createdAt)} · chạm để lật lại',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 8.6, color: muted),
                 ),
               ],
             ),
@@ -533,6 +546,9 @@ class _Scene extends StatelessWidget {
     final runKm = data.runKm;
     final status = data.status;
     final day = data.tier != AgentCardTier.common && !data.budgetResting;
+    // Từ Vàng trở lên trời chuyển hoàng hôn, mặt trời lớn mọc sau robot: lên
+    // bậc nhìn thấy ngay trên tranh, không chỉ ở khung.
+    final sunset = day && data.tier.index >= AgentCardTier.gold.index;
     return Container(
       height: 136,
       clipBehavior: Clip.antiAlias,
@@ -541,11 +557,22 @@ class _Scene extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Color.lerp(palette.accentDeep, Colors.black, day ? 0.45 : 0.72)!,
-            Color.lerp(palette.accentDeep, Colors.black, 0.78)!,
-            RunNowGameTokens.cardArt,
-          ],
+          colors: sunset
+              ? const [
+                  RunNowBotCardTokens.sunsetTop,
+                  RunNowBotCardTokens.sunsetMid,
+                  RunNowBotCardTokens.sunsetBottom,
+                ]
+              : [
+                  Color.lerp(
+                    palette.accentDeep,
+                    Colors.black,
+                    day ? 0.45 : 0.72,
+                  )!,
+                  Color.lerp(palette.accentDeep, Colors.black, 0.78)!,
+                  RunNowGameTokens.cardArt,
+                ],
+          stops: sunset ? const [0, 0.45, 1] : null,
         ),
         border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
       ),
@@ -553,7 +580,14 @@ class _Scene extends StatelessWidget {
         children: [
           // Có trạng thái thì pill trạng thái chiếm góc phải thay mặt trời,
           // để không đè lên ăng-ten bot ở giữa.
-          if (status == null)
+          if (status == null && sunset)
+            const Positioned(
+              left: 0,
+              right: 0,
+              top: 20,
+              child: Center(child: _SunsetSun(size: 62)),
+            )
+          else if (status == null)
             Positioned(
               right: 18,
               top: 12,
@@ -589,8 +623,8 @@ class _Scene extends StatelessWidget {
                 if (runKm != null)
                   _ScenePill(
                     text: status == null
-                        ? '${formatAgentKm(runKm)} km hôm nay'
-                        : '${formatAgentKm(runKm)} km',
+                        ? '${formatAgentRunKm(runKm)} km hôm nay'
+                        : '${formatAgentRunKm(runKm)} km',
                   ),
                 if (status != null) ...[
                   const SizedBox(width: 6),
@@ -676,6 +710,33 @@ class _Sun extends StatelessWidget {
   }
 }
 
+/// Mặt trời hoàng hôn của bậc Vàng trở lên: quầng tròn mờ dần ra mép, không
+/// có viền như mặt trời nhỏ.
+class _SunsetSun extends StatelessWidget {
+  const _SunsetSun({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: [
+            RunNowBotCardTokens.sunCore,
+            RunNowBotCardTokens.sunHalo,
+            RunNowBotCardTokens.sunHalo.withValues(alpha: 0),
+          ],
+          stops: const [0, 0.78, 1],
+        ),
+      ),
+    );
+  }
+}
+
 /// Robot của bot, vẽ theo khung 128×140 rồi thu theo [size]. Mắt theo tâm
 /// trạng: ngủ khi cả hệ thống nghỉ, lim dim khi chủ chưa chạy, mở khi đã qua
 /// mốc đầu, cười khi lên Vàng trở lên. Không có trạng thái buồn.
@@ -741,6 +802,12 @@ class _MascotPainter extends CustomPainter {
             line,
           );
         }
+        canvas.drawPath(
+          Path()
+            ..moveTo(54, 70)
+            ..quadraticBezierTo(64, 80, 74, 70),
+          line..strokeWidth = 3,
+        );
       case _Mood.awake:
         for (final x in [50.0, 78.0]) {
           canvas.drawOval(
@@ -782,7 +849,10 @@ class _MascotPainter extends CustomPainter {
     final letter = TextPainter(
       text: TextSpan(
         text: initial,
+        // TextPainter không đọc theme của app nên phải nêu font, không thì
+        // chữ rơi về font mặc định của máy.
         style: const TextStyle(
+          fontFamily: 'Exo 2',
           color: Colors.white,
           fontSize: 20,
           fontWeight: FontWeight.w900,
@@ -1056,6 +1126,22 @@ class _TierRevealState extends State<_TierReveal> {
       type: MaterialType.transparency,
       child: Stack(
         children: [
+          // Nền đặc: tab phía sau lộ ra qua lớp mờ thì rối mắt và tranh
+          // phần chú ý với thẻ.
+          const Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(0, -0.2),
+                  radius: 0.86,
+                  colors: [
+                    RunNowBotCardTokens.revealGlow,
+                    RunNowBotCardTokens.revealEdge,
+                  ],
+                ),
+              ),
+            ),
+          ),
           Positioned.fill(child: CustomPaint(painter: _RaysPainter(t.gem))),
           SafeArea(
             child: Padding(
@@ -1080,15 +1166,17 @@ class _TierRevealState extends State<_TierReveal> {
                     ),
                   ),
                   const SizedBox(height: 6),
+                  // Tên bot một dòng, bậc mới một dòng; tên dài thì còn một
+                  // dòng để xuống mà vẫn thấy bậc.
                   Text(
-                    'Thẻ ${widget.data.name} lên ${widget.data.tier.label}!',
+                    'Thẻ ${widget.data.name}\nlên ${widget.data.tier.label}!',
                     textAlign: TextAlign.center,
-                    maxLines: 2,
+                    maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: ink,
-                      fontSize: 30,
-                      height: 1.1,
+                      fontSize: 34,
+                      height: 1.05,
                       fontWeight: FontWeight.w900,
                     ),
                   ),

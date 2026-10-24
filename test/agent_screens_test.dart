@@ -335,7 +335,7 @@ void main() {
     // Chưa tạo: chưa có nút vào chat, chưa có bộ nhớ.
     expect(find.text('Tạo bot của riêng bạn'), findsOneWidget);
     expect(find.text('Chat riêng'), findsNothing);
-    expect(find.text('BOT BIẾT GÌ VỀ BẠN'), findsNothing);
+    expect(find.text('BOT CỦA TÔI BIẾT VỀ BẠN'), findsNothing);
 
     await tester.tap(find.text('Tạo bot'));
     await tester.pumpAndSettle();
@@ -356,10 +356,10 @@ void main() {
 
     // Lưu xong quay về MyBot, giờ đã có bot.
     expect(find.text('Chat riêng'), findsOneWidget);
-    expect(find.text('BOT BIẾT GÌ VỀ BẠN'), findsOneWidget);
+    expect(find.text('BOT CỦA TÔI BIẾT VỀ BẠN'), findsOneWidget);
     expect(find.text('0/50'), findsNWidgets(2));
 
-    await tester.tap(find.text('Thêm điều cần nhớ'));
+    await tester.tap(find.text('+ Dạy thêm'));
     await tester.pumpAndSettle();
     // Bộ nhớ đi cả vào phòng: nói rõ lúc chủ đang gõ.
     expect(
@@ -454,6 +454,7 @@ void main() {
 
   // 4,1 km: 10 câu sẵn + 4 km × 10 = 50 tin; mốc 1 km = 3 ảnh. Mốc kế tiếp
   // của tin và ảnh cùng ở 5 km: 60 − 50 = 10 tin, 5 − 3 = 2 ảnh, 5 − 4,1 = 0,9.
+  // Số km, tin và ảnh đã có ở mặt trước thẻ; thẻ bậc chỉ nói lên bậc kế ra sao.
   testWidgets(
     'km card: 4,1 km opens 50 messages and 3 images, says what is next',
     (tester) async {
@@ -481,14 +482,14 @@ void main() {
       };
       await pumpMyBot(tester);
       expect(find.text('BẬC THẺ HÔM NAY'), findsOneWidget);
-      expect(find.text('4,1'), findsOneWidget);
-      expect(find.text('50 tin chat'), findsOneWidget);
-      expect(find.text('10 sẵn + 40 từ 4 km'), findsOneWidget);
-      expect(find.text('3 ảnh vẽ'), findsOneWidget);
-      expect(find.text('đã vẽ 1'), findsOneWidget);
+      expect(find.text('4,1 km hôm nay'), findsWidgets);
+      expect(find.text('1/3'), findsOneWidget);
+      // Không lặp số đã có trên thẻ.
+      expect(find.text('50 tin chat'), findsNothing);
+      expect(find.text('3 ảnh vẽ'), findsNothing);
       expect(
         find.text(
-          'Chạy hay đi bộ thêm 0,9 km để có thêm 10 tin và 2 ảnh.',
+          'Chạy hay đi bộ thêm 0,9 km để mở thêm 10 tin và 2 ảnh.',
           findRichText: true,
         ),
         findsOneWidget,
@@ -532,6 +533,7 @@ void main() {
 
   // Số tính tay theo 10 câu sẵn + 10 câu mỗi km, mốc ảnh 1 km → 3, 5 → 5,
   // 10 → 10. 4,96 km hiện 4,9 (làm tròn xuống) mà còn thiếu 0,1 (làm tròn lên).
+  // Km, số tin và số ảnh đọc ở mặt trước thẻ, lời nhắc ở thẻ bậc.
   for (final (name, today, texts) in [
     (
       '0 km',
@@ -553,11 +555,10 @@ void main() {
         },
       },
       [
-        '10 tin chat',
-        '10 sẵn mỗi ngày',
-        '0 ảnh vẽ',
-        'Chạy hay đi bộ đủ 1 km để mở',
-        'Chạy hay đi bộ thêm 1 km để có thêm 10 tin và 3 ảnh.',
+        '0 km hôm nay',
+        '0/10',
+        '0/0',
+        'Chạy hay đi bộ thêm 1 km để mở thêm 10 tin và 3 ảnh.',
       ],
     ),
     (
@@ -580,10 +581,9 @@ void main() {
         },
       },
       [
-        '9,5',
-        '100 tin chat',
-        'Đã đủ tối đa 100 tin',
-        '5 ảnh vẽ',
+        '9,5 km hôm nay',
+        '0/100',
+        '2/5',
         'Chạy hay đi bộ thêm 0,5 km để vẽ thêm 5 ảnh.',
       ],
     ),
@@ -606,7 +606,7 @@ void main() {
           'nextLimit': null,
         },
       },
-      ['12,3', 'Mốc cao nhất', 'Đã mở hết tin và ảnh hôm nay.'],
+      ['12,3 km hôm nay', '4/10', 'Đã mở hết tin và ảnh hôm nay.'],
     ),
     (
       'admin tắt thưởng km',
@@ -627,7 +627,7 @@ void main() {
           'nextLimit': 5,
         },
       },
-      ['3', '3 ảnh vẽ', 'Chạy hay đi bộ thêm 2 km để vẽ thêm 2 ảnh.'],
+      ['3 km hôm nay', '0/3', 'Chạy hay đi bộ thêm 2 km để vẽ thêm 2 ảnh.'],
     ),
     (
       '4,96 km, tắt vẽ ảnh',
@@ -641,12 +641,7 @@ void main() {
           'nextMax': 60,
         },
       },
-      [
-        '4,9',
-        '50 tin chat',
-        '10 sẵn + 40 từ 4 km',
-        'Chạy hay đi bộ thêm 0,1 km để có thêm 10 tin.',
-      ],
+      ['4,9 km hôm nay', 'Chạy hay đi bộ thêm 0,1 km để mở thêm 10 tin.'],
     ),
   ]) {
     testWidgets('km card $name', (tester) async {
@@ -661,20 +656,21 @@ void main() {
       await pumpMyBot(tester);
       expect(find.text('BẬC THẺ HÔM NAY'), findsOneWidget);
       for (final text in texts) {
+        // Km hiện cả ở góc cảnh lẫn chân thẻ.
         expect(
           find.text(text, findRichText: true),
-          findsOneWidget,
+          text.endsWith('km hôm nay') ? findsWidgets : findsOneWidget,
           reason: text,
         );
       }
       if (!today.containsKey('images')) {
-        expect(find.textContaining('ảnh vẽ'), findsNothing);
+        expect(find.text('ẢNH'), findsNothing);
       }
       if (name == 'admin tắt thưởng km') {
         expect(find.textContaining('tin chat'), findsNothing);
       }
       if (name == '9,5 km, tin chạm trần') {
-        expect(find.textContaining('thêm 0,5 km để có thêm'), findsNothing);
+        expect(find.textContaining('thêm 0,5 km để mở thêm'), findsNothing);
       }
     });
   }
@@ -841,17 +837,31 @@ void main() {
         'nextMax': nextMax,
       },
     };
+    // Mốc kế 1 km: 20 − 10 = 10 tin; rồi mốc 4 km: 4 − 3,2 = 0,8 km, 50 − 40.
     backend.today = today(0, 10, 20);
     await pumpMyBot(tester);
-    expect(find.text('10 tin chat'), findsOneWidget);
+    expect(find.text('10/10'), findsOneWidget);
+    expect(
+      find.text(
+        'Chạy hay đi bộ thêm 1 km để mở thêm 10 tin.',
+        findRichText: true,
+      ),
+      findsOneWidget,
+    );
 
     backend.today = today(3.2, 40, 50);
     resumeApp(tester);
     await tester.pump();
     await tester.pump();
-    expect(find.text('3,2'), findsOneWidget);
-    expect(find.text('40 tin chat'), findsOneWidget);
+    expect(find.text('3,2 km hôm nay'), findsWidgets);
     expect(find.text('10/40'), findsOneWidget);
+    expect(
+      find.text(
+        'Chạy hay đi bộ thêm 0,8 km để mở thêm 10 tin.',
+        findRichText: true,
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('returning from Telegram rereads me, once more after a delay', (
@@ -920,7 +930,7 @@ void main() {
     backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
     await pumpMyBot(tester);
     expect(backend.calls, contains('GET /v1/agents/me/images'));
-    expect(find.text('ẢNH BOT ĐÃ VẼ'), findsNothing);
+    expect(find.text('BỘ SƯU TẬP ẢNH'), findsNothing);
   });
 
   testWidgets('old backend without the images API: tab hides the gallery', (
@@ -930,9 +940,9 @@ void main() {
     backend.imagesApi = false;
     backend.images.add({'path': 'users/me/agentImages/tg1.png'});
     await pumpMyBot(tester);
-    expect(find.text('ẢNH BOT ĐÃ VẼ'), findsNothing);
+    expect(find.text('BỘ SƯU TẬP ẢNH'), findsNothing);
     expect(find.textContaining('Không tải được'), findsNothing);
-    expect(find.text('BOT BIẾT GÌ VỀ BẠN'), findsOneWidget);
+    expect(find.text('CÚ BIẾT VỀ BẠN'), findsOneWidget);
   });
 
   testWidgets(
@@ -952,7 +962,7 @@ void main() {
         });
       }
       await pumpMyBot(tester);
-      expect(find.text('ẢNH BOT ĐÃ VẼ'), findsOneWidget);
+      expect(find.text('BỘ SƯU TẬP ẢNH'), findsOneWidget);
       expect(find.text(path(6)), findsOneWidget);
       expect(find.text(path(7)), findsNothing);
       final preview = backend.requests.lastWhere(
@@ -1056,8 +1066,8 @@ void main() {
       ],
     };
     await pumpMyBot(tester);
-    expect(find.text('Nói ngắn'), findsOneWidget);
-    expect(find.text('2 bot đang ở phòng'), findsOneWidget);
+    expect(find.text('“Nói ngắn”'), findsOneWidget);
+    expect(find.text('2 bot'), findsOneWidget);
     expect(find.text('chào cả nhà'), findsNothing);
     final older = tester.getTopLeft(find.text('Sóc · bot của An'));
     final newer = tester.getTopLeft(find.text('Cú · bot của bạn'));
@@ -1095,7 +1105,7 @@ void main() {
     ]);
     // Chưa tạo bot vẫn thấy điều bot học được từ group Telegram.
     await pumpMyBot(tester);
-    expect(find.text('BOT TỰ HỌC VỀ BẠN'), findsOneWidget);
+    expect(find.text('Cho bot tự học về bạn'), findsOneWidget);
     expect(find.text('Từ trí nhớ cũ của 3i'), findsOneWidget);
     expect(find.text('Bot biết gì về nhóm'), findsOneWidget);
 
@@ -1472,6 +1482,16 @@ void main() {
     backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
     backend.blocks.add({'uid': 'an', 'name': 'An'});
     await pumpMyBot(tester);
+    // Người đã chặn nằm chung thẻ cài đặt với công tắc tự học, không thẻ riêng.
+    Material cardOf(String text) => tester.widget<Material>(
+      find
+          .ancestor(of: find.text(text), matching: find.byType(Material))
+          .first,
+    );
+    expect(
+      cardOf('Người đã chặn'),
+      same(cardOf('Cho bot tự học về bạn')),
+    );
     await tester.tap(find.text('Người đã chặn'));
     await tester.pumpAndSettle();
     expect(find.text('An'), findsOneWidget);
@@ -1668,29 +1688,116 @@ void main() {
     },
   };
 
+  testWidgets('tab reads top to bottom: card, tier, actions, room, memory', (
+    tester,
+  ) async {
+    backend.agent = {
+      'name': 'Cú',
+      'persona': 'Nói ngắn, hay trêu. Thích gọi chủ là "sếp".',
+      'created': true,
+    };
+    // Chưa qua mốc 1 km nên không bật màn lên bậc che tab.
+    backend.today = tierToday(0.5, 0, 10, nextKm: 1);
+    backend.telegram = botOnTelegram();
+    backend.memories.add({'id': 'm1', 'text': 'Pace dễ 6:30', 'source': 'manual'});
+    backend.images.add({'path': 'users/me/agentImages/tg1.png'});
+    final at = DateTime.utc(2026, 10, 20, 8).toIso8601String();
+    backend.room = {
+      'messages': [
+        {
+          'seq': 1,
+          'kind': 'agent',
+          'uid': 'an',
+          'name': 'Sóc',
+          'owner': 'An',
+          'text': 'chạy không',
+          'at': at,
+        },
+      ],
+      'members': [
+        {'uid': 'an', 'name': 'An', 'botName': 'Sóc'},
+      ],
+    };
+    await pumpMyBot(tester);
+    // Cao đủ để ListView dựng hết các mục rồi mới so vị trí.
+    tester.view.physicalSize = const Size(420, 4000);
+    await tester.pumpAndSettle();
+
+    // Mặt trước chỉ trích câu đầu của tính cách.
+    expect(find.text('“Nói ngắn, hay trêu.”'), findsOneWidget);
+    // Tên bot và @username có cả trên thẻ: lấy chỗ xuất hiện cuối của @username
+    // là thẻ Telegram.
+    double top(String text) => tester.getTopLeft(find.text(text).last).dy;
+    final order = [
+      'BẬC THẺ HÔM NAY',
+      'Chat riêng',
+      'PHÒNG BOT ĐANG NÓI',
+      'BỘ SƯU TẬP ẢNH',
+      'CÚ BIẾT VỀ BẠN',
+      '@cu_42_bot',
+      'Cho bot tự học về bạn',
+      'Bot biết gì về nhóm',
+      'Người đã chặn',
+    ];
+    expect(
+      tester.getTopLeft(find.byType(AgentBotCardView)).dy,
+      lessThan(top(order.first)),
+    );
+    for (var i = 1; i < order.length; i++) {
+      expect(
+        top(order[i - 1]),
+        lessThan(top(order[i])),
+        reason: '${order[i - 1]} trước ${order[i]}',
+      );
+    }
+  });
+
+  testWidgets('memory chips: + Dạy thêm adds, a full memory turns it off', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    for (var i = 1; i <= 49; i++) {
+      backend.memories.add({'id': 'm$i', 'text': 'Mục $i', 'source': 'manual'});
+    }
+    await pumpMyBot(tester);
+    expect(find.text('49/50'), findsNWidgets(2));
+    await tester.tap(find.text('+ Dạy thêm'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Mục cuối');
+    await tester.tap(find.text('Lưu').last);
+    await tester.pumpAndSettle();
+    expect(backend.memories.last['text'], 'Mục cuối');
+    expect(find.text('50/50'), findsNWidgets(2));
+    // Đầy thì chip thêm tắt, không mở hộp thoại.
+    expect(find.text('+ Dạy thêm'), findsNothing);
+    await tester.tap(find.text('Bộ nhớ đã đầy (50 mục)'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNothing);
+  });
+
   testWidgets('a new tier shows once a day, a higher tier shows again', (
     tester,
   ) async {
     backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
     backend.today = tierToday(5.2, 5, 60, nextKm: 10);
     await pumpMyBot(tester);
-    expect(find.text('Thẻ Cú lên Vàng!'), findsOneWidget);
+    expect(find.text('Thẻ Cú\nlên Vàng!'), findsOneWidget);
     expect(find.text('BẠN VỪA QUA 5 KM'), findsOneWidget);
     expect(find.text('Thêm 4,8 km nữa là lên Foil.'), findsOneWidget);
     await tester.tap(find.byTooltip('Đóng'));
     await tester.pumpAndSettle();
-    expect(find.text('Thẻ Cú lên Vàng!'), findsNothing);
+    expect(find.text('Thẻ Cú\nlên Vàng!'), findsNothing);
 
     // Quay lại app cùng ngày, vẫn Vàng: không hiện lại.
     resumeApp(tester);
     await tester.pumpAndSettle();
-    expect(find.text('Thẻ Cú lên Vàng!'), findsNothing);
+    expect(find.text('Thẻ Cú\nlên Vàng!'), findsNothing);
 
     // Chạy thêm qua 10 km: lên Foil thì hiện.
     backend.today = tierToday(10.4, 10, 100);
     resumeApp(tester);
     await tester.pumpAndSettle();
-    expect(find.text('Thẻ Cú lên Foil!'), findsOneWidget);
+    expect(find.text('Thẻ Cú\nlên Foil!'), findsOneWidget);
     expect(find.text('Bậc cao nhất trong ngày.'), findsOneWidget);
   });
 
@@ -1701,7 +1808,7 @@ void main() {
     backend.today = tierToday(5.2, 5, 60, nextKm: 10);
     tierSeen.saved['me'] = '${agentVnDay(DateTime.now())}:2';
     await pumpMyBot(tester);
-    expect(find.text('Thẻ Cú lên Vàng!'), findsNothing);
-    expect(find.text('Thẻ Vàng'), findsOneWidget);
+    expect(find.text('Thẻ Cú\nlên Vàng!'), findsNothing);
+    expect(find.text('VÀNG'), findsOneWidget);
   });
 }

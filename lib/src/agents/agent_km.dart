@@ -4,6 +4,11 @@
 double agentKmLeft(double nextKm, double runKm) =>
     ((nextKm - runKm) * 10 - 1e-9).ceil() / 10;
 
+/// Km đã chạy để hiện, làm tròn xuống một chữ số: 4,96 km chưa mở mốc 5 thì
+/// không được hiện thành 5 km.
+String formatAgentRunKm(double km) =>
+    formatAgentKm((km * 10 + 1e-9).floor() / 10);
+
 /// 2.4 → "2,4", 1.0 → "1".
 String formatAgentKm(double km) {
   final text = km == km.roundToDouble()

@@ -265,6 +265,27 @@ class RunNowBotTokens {
   static const shadow = Color(0x73000000);
 }
 
+/// Thẻ MyBot ngoài con robot. Trời hoàng hôn và mặt trời lớn là phần thưởng
+/// của bậc Vàng trở lên nên giữ một màu ở mọi hành; nền màn lên bậc cũng vậy.
+class RunNowBotCardTokens {
+  const RunNowBotCardTokens._();
+
+  static const sunsetTop = Color(0xFFFF9A6B);
+  static const sunsetMid = Color(0xFFE2603D);
+  static const sunsetBottom = Color(0xFF6B2A22);
+  static const sunCore = Color(0xFFFFF3C4);
+  static const sunHalo = Color(0xFFFFC36B);
+
+  /// Ánh cầu vồng của bậc Foil, cùng vàng của lá bài.
+  static const foilSky = Color(0xFF8FE3F0);
+  static const foilPink = Color(0xFFE9A2FF);
+
+  /// Chữ tên bậc Foil trên nền sáng, nơi hồng nhạt không đọc được.
+  static const foilInk = Color(0xFF9B4FC4);
+  static const revealGlow = Color(0xFF2A2416);
+  static const revealEdge = Color(0xFF121116);
+}
+
 /// Thẻ thành tích: khung kim loại theo bậc, lớp holo cầu vồng và chữ phủ lên
 /// ảnh full-art. Tông đêm như lá Ma Sói, nhưng ảnh nền là ảnh thật nên chữ
 /// cần lớp tối phía dưới để đọc được trên mọi ảnh.
