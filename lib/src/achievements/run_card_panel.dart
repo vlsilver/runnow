@@ -147,7 +147,7 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
       button: true,
       label: 'Xem thẻ 3D',
       child: GestureDetector(
-        onTap: () => _openViewer(card, data),
+        onTap: () => showRunCardViewer(context, card, data),
         child: RepaintBoundary(
           key: _captureKey,
           child: _CardFrame(
@@ -291,21 +291,6 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
     }
   }
 
-  void _openViewer(RunCard card, AchievementCardData data) {
-    showCardViewer(
-      context,
-      front: (pose) => AchievementCard(data: data, pose: pose),
-      back: (pose) => AchievementCard(data: data, pose: pose, back: true),
-      chips: [gameCardTiers[card.tier]!.label, '${runCardKm(card.km)} km'],
-      cardSize: achievementCardSize,
-      onShare: (cardKey, origin) => shareRunCard(
-        cardKey: cardKey,
-        shareOriginContext: origin,
-        card: card,
-      ),
-    );
-  }
-
   Future<void> _share(BuildContext origin, RunCard card) async {
     setState(() => _sharing = true);
     try {
@@ -332,6 +317,21 @@ String runCardReasonText(String reason) => switch (reason) {
         'nên không lật thêm được.',
   _ => 'Chỉ buổi chạy bộ từ 500 m mới lật được thẻ.',
 };
+
+/// Xem thẻ 3D, lật hai mặt, khoe từ đó.
+void showRunCardViewer(
+  BuildContext context,
+  RunCard card,
+  AchievementCardData data,
+) => showCardViewer(
+  context,
+  front: (pose) => AchievementCard(data: data, pose: pose),
+  back: (pose) => AchievementCard(data: data, pose: pose, back: true),
+  chips: [gameCardTiers[card.tier]!.label, '${runCardKm(card.km)} km'],
+  cardSize: achievementCardSize,
+  onShare: (cardKey, origin) =>
+      shareRunCard(cardKey: cardKey, shareOriginContext: origin, card: card),
+);
 
 /// Câu cho người dùng ứng với lý do lần vẽ tranh hỏng.
 String runCardArtFailText(String? reason) => switch (reason) {
