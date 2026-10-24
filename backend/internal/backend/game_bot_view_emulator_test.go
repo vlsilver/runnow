@@ -98,8 +98,8 @@ func TestEmulatorBotWerewolfShowsOnlyPublicGame(t *testing.T) {
 		t.Fatalf("game = %s", raw)
 	}
 
-	// 17h V2 lên giàn. Người lên giàn và người chết bấm thì không tính.
-	g.advance(time.Date(2026, 10, 16, 17, 0, 0, 0, vietnam))
+	// 20h V2 lên giàn. Người lên giàn và người chết bấm thì không tính.
+	g.advance(time.Date(2026, 10, 16, 20, 0, 0, 0, vietnam))
 	at = time.Date(2026, 10, 16, 20, 30, 0, 0, vietnam)
 	for uid, choice := range map[string]string{"v1": ww.ChoiceHang, "w1": ww.ChoiceSpare, "v2": ww.ChoiceHang, "v4": ww.ChoiceHang} {
 		seed(t, g.db, "games/"+g.id+"/rounds/1/actions/"+uid+"_vote", map[string]any{"uid": uid, "kind": string(ww.KindVote), "choice": choice, "receivedAt": at})

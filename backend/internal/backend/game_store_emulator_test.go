@@ -182,7 +182,7 @@ func TestEmulatorConcurrentAdvanceRunsTheStepOnce(t *testing.T) {
 // người rời PSC từ tgLinks. Trước 10h: guard rời nhóm (lựa chọn bảo vệ bị huỷ),
 // v2 gỡ liên kết, tài khoản Telegram của v4 chuyển sang uid khác; v3 là người
 // chơi giả nên không rời được. Sói cắn v1; w2 cắn v2 rồi bỏ chọn nên không tính.
-// 15h có tin nhắc: thêm event và tin group, không thêm dòng feed. Cuối cùng
+// 18h có tin nhắc: thêm event và tin group, không thêm dòng feed. Cuối cùng
 // replay events ra đúng state đang lưu.
 func TestEmulatorNightThroughFirestoreAndReplay(t *testing.T) {
 	g := newStoreGame(t)
@@ -253,8 +253,8 @@ func TestEmulatorNightThroughFirestoreAndReplay(t *testing.T) {
 	}
 
 	before := g.count("outbox")
-	if res := g.advance(night.Add(17*time.Hour + time.Minute)); res.Steps != 1 {
-		t.Fatalf("15h: %+v", res)
+	if res := g.advance(night.Add(20*time.Hour + time.Minute)); res.Steps != 1 {
+		t.Fatalf("18h: %+v", res)
 	}
 	if n := g.count("feed"); n != 3 {
 		t.Fatalf("tin nhắc thêm dòng feed: %d", n)

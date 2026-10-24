@@ -124,7 +124,7 @@ func (r *resolver) kill(uid string, cause Cause) {
 
 // killLeavers: rời PSC hoặc xoá tài khoản thì chết ở lần chốt kế, đứng đầu thứ
 // tự chốt (R16, R33). Áp ở mốc 22h đêm 1, chốt đêm 10h và chốt ngày 22h; 0h và
-// 17h không xử (MĐ).
+// 20h không xử (MĐ).
 func (r *resolver) killLeavers() {
 	left := append([]string(nil), r.in.Left...)
 	sort.Strings(left)
@@ -350,7 +350,7 @@ func (r *resolver) witchChoices() (saved bool, poisoned string) {
 	return saved, poisoned
 }
 
-// pickNominee: 17h. Người có nhiều đề cử nhất lên giàn, một đề cử là đủ, hoà thì
+// pickNominee: 20h. Người có nhiều đề cử nhất lên giàn, một đề cử là đủ, hoà thì
 // bốc thăm; không ai đề cử thì hôm nay không treo. Đề cử của người đã chết hoặc
 // nhắm vào người đã chết bị huỷ (R19).
 func (r *resolver) pickNominee() {

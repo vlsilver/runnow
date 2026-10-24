@@ -29,7 +29,7 @@ func TestWindowFollowsScheduleTable(t *testing.T) {
 	check(KindWitchSave, at(16, 0, 0), at(16, 10, 0))
 	check(KindWitchPoison, at(16, 0, 0), at(16, 10, 0))
 	g.toPhase(PhaseDay)
-	check(KindNominate, at(16, 10, 0), at(16, 17, 0))
+	check(KindNominate, at(16, 10, 0), at(16, 20, 0))
 	g.toPhase(PhaseTrial)
 	check(KindVote, at(16, 20, 0), at(16, 22, 0))
 	check(KindHunterShoot, time.Time{}, time.Time{})

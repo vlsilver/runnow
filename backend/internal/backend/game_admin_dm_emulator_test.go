@@ -182,7 +182,7 @@ func TestEmulatorAdminDMSummary(t *testing.T) {
 	seed(t, e.db, "games/"+e.id+"/outbox/group_98", map[string]any{"status": outboxFailed, "retriedAs": "group_99"})
 	seed(t, e.db, "games/"+e.id+"/outbox/group_97", map[string]any{"status": outboxFailed})
 	seed(t, e.db, "games/"+e.id+"/outbox/group_96", map[string]any{"status": outboxSending})
-	want = "Trạng thái: Đang chơi\nLượt: Ngày 1, đề cử\nHạn: " + real(time.Date(2026, 10, 16, 17, 0, 0, 0, vietnam)) +
+	want = "Trạng thái: Đang chơi\nLượt: Ngày 1, đề cử\nHạn: " + real(time.Date(2026, 10, 16, 20, 0, 0, 0, vietnam)) +
 		"\nCòn sống: 9/10\nĐề cử: 1, phiếu: 0\nTin chờ gửi: 1, tin lỗi: 1 (gõ /retry để gửi lại)"
 	if got := e.adminSays("/xem"); got != want {
 		t.Fatalf("/xem ngày =\n%s\nmong đợi\n%s", got, want)

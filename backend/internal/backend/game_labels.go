@@ -27,13 +27,13 @@ var roleRules = map[werewolf.Role]string{
 	werewolf.Villager: "Thảo luận, đề cử và biểu quyết để tìm ra sói.",
 }
 
-const gameRulesText = "Mỗi vòng dài một ngày. 22h tới 10h là đêm: các vai có kỹ năng chọn người. 10h bản tin đêm, đề cử tới 17h; người nhiều đề cử nhất lên giàn. 20h tới 22h biểu quyết Treo hay Tha. 22h chốt phiếu và km.\n" +
+const gameRulesText = "Mỗi vòng dài một ngày. 22h tới 10h là đêm: các vai có kỹ năng chọn người. 10h bản tin đêm, đề cử tới 20h; người nhiều đề cử nhất lên giàn. 20h tới 22h biểu quyết Treo hay Tha. 22h chốt phiếu và km.\n" +
 	"km trong khung 22h hôm qua tới 22h hôm nay quyết định có được dùng kỹ năng và có được bỏ phiếu không.\n" +
 	"Dân thắng khi hết sói. Sói thắng khi số sói bằng số người còn lại. Cặp đôi Sói và Dân thắng khi chỉ còn hai người họ. Ván chạy tới khi có phe thắng, không giới hạn số vòng."
 
 // botVoteRulesText nói kỹ phần đề cử và đếm phiếu (step.go: pickNominee,
 // countVotes, voteCut) cho 3i, vì gameRulesText chỉ nói gọn cho màn hình app.
-const botVoteRulesText = "Đề cử: 17h người nhiều đề cử nhất lên giàn, một đề cử là đủ; hoà thì bốc thăm; không ai đề cử thì hôm đó không treo. Đề cử của người đã chết và đề cử nhắm vào người đã chết không tính.\n" +
+const botVoteRulesText = "Đề cử: 20h người nhiều đề cử nhất lên giàn, một đề cử là đủ; hoà thì bốc thăm; không ai đề cử thì hôm đó không treo. Đề cử của người đã chết và đề cử nhắm vào người đã chết không tính.\n" +
 	"Biểu quyết: người lên giàn không bỏ phiếu. Treo khi phiếu Treo được tính nhiều hơn phiếu Tha, hoà thì tha. Người yêu bấm Treo người yêu mình thì phiếu đó không tính.\n" +
 	"Phiếu theo km: 22h cộng km (22h hôm qua tới 22h hôm nay) của mọi người còn sống trừ người lên giàn. Số phiếu được tính bằng tổng km chia X km, làm tròn xuống, không quá số người. Thiếu thì người ít km nhất mất phiếu trước, kể cả người không bấm; bằng km thì bốc thăm."
 
@@ -63,7 +63,7 @@ var actionTexts = map[werewolf.Kind]actionText{
 	werewolf.KindWitchPoison: {"Bình độc", "Chọn một người để giết. Cả ván chỉ có một bình.", "single_target", ""},
 	werewolf.KindHunterShoot: {"Bắn", "Bạn đã chết. Chọn một người bắn theo.", "single_target", confirmOnce},
 	werewolf.KindCupidPair:   {"Ghép đôi", "Chọn hai người thành cặp đôi. Một người chết thì người kia chết theo.", "two_targets", confirmOnce},
-	werewolf.KindNominate:    {"Đề cử", "Chọn một người lên giàn. Đổi được tới 17h.", "single_target", ""},
+	werewolf.KindNominate:    {"Đề cử", "Chọn một người lên giàn. Đổi được tới 20h.", "single_target", ""},
 	werewolf.KindVote:        {"Biểu quyết", "Treo hay tha người đang lên giàn. Đổi được tới 22h.", "choice", ""},
 }
 

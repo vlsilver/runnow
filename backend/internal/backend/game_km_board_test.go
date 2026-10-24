@@ -143,7 +143,7 @@ func TestWolvesShortOfKmPrivateDMNamesNumbers(t *testing.T) {
 	}
 }
 
-// Tin nhắc 15h, 21h kèm km đang gom cho mốc 22h tới của người còn sống, tính
+// Tin nhắc 18h, 21h kèm km đang gom cho mốc 22h tới của người còn sống, tính
 // lúc gửi. Ván đã sang đêm (tin nhắc gửi trễ) hay ván thử thì chỉ còn lời nhắc.
 // Đọc km lỗi thì tin lỗi chứ không gửi bảng thiếu.
 func TestRenderReminderLiveKm(t *testing.T) {
@@ -154,7 +154,7 @@ func TestRenderReminderLiveKm(t *testing.T) {
 	live := map[string]float64{"w1": 900, "w2": 3100, "s1": 2600}
 	var ends []time.Time
 	var readErr error
-	r.st, r.now = st, func() time.Time { return time.Date(2026, 10, 16, 15, 0, 30, 0, vietnam) }
+	r.st, r.now = st, func() time.Time { return time.Date(2026, 10, 16, 18, 0, 30, 0, vietnam) }
 	r.store = &GameStore{frameKm: func(_ context.Context, uid string, end time.Time) (FrameKm, error) {
 		ends = append(ends, end)
 		return FrameKm{Meters: live[uid]}, readErr
@@ -164,14 +164,14 @@ func TestRenderReminderLiveKm(t *testing.T) {
 		return strings.Join(out.parts, "|"), err
 	}
 
-	nudge := "<b>Nhắc đề cử</b>\nĐề cử đóng lúc 17h. Ai chưa đề cử thì vào app RunNow để chọn."
-	want := nudge + "\n\n<b>Km tới 15:00, chốt lúc 22h</b>\n" +
+	nudge := "<b>Nhắc đề cử</b>\nĐề cử đóng lúc 20h. Ai chưa đề cử thì vào app RunNow để chọn."
+	want := nudge + "\n\n<b>Km tới 18:00, chốt lúc 22h</b>\n" +
 		"Có vai đêm thì cần đủ 2.5 km mới dùng được kỹ năng. Sói tính chung cả phe: tổng km sói còn sống phải đủ 2.5 km cho mỗi sói. Cupid không cần km.\n" +
 		"Đủ km: Bình &amp; Co 3.1 · Chi 2.6\n" +
 		"Chưa đủ: An &lt;Sói&gt; 0.9\n" +
 		"Km chốt 22h dùng cho biểu quyết tối nay và kỹ năng đêm nay. Chạy xong mở app cho km kịp đồng bộ."
 	if got, err := render(); err != nil || got != want {
-		t.Fatalf("15h = %q, %v", got, err)
+		t.Fatalf("18h = %q, %v", got, err)
 	}
 	frameEnd := time.Date(2026, 10, 16, 22, 0, 0, 0, vietnam)
 	if len(ends) != 3 || !ends[0].Equal(frameEnd) || !ends[2].Equal(frameEnd) {

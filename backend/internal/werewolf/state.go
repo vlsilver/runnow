@@ -15,8 +15,8 @@ const (
 	PhaseSetup Phase = "setup" // Start → 22h đêm 1: DM lá bài, Cupid ghép
 	PhaseNight Phase = "night" // 22h → 0h: sói chọn; tiên tri, bảo vệ; Cupid nếu là đêm 1
 	PhaseDawn  Phase = "dawn"  // 0h → 10h: phù thuỷ; tiên tri, bảo vệ
-	PhaseDay   Phase = "day"   // 10h → 17h: đề cử
-	PhaseTrial Phase = "trial" // 17h → 22h: bào chữa, biểu quyết
+	PhaseDay   Phase = "day"   // 10h → 20h: đề cử
+	PhaseTrial Phase = "trial" // 20h → 22h: biểu quyết
 	PhaseEnded Phase = "ended"
 )
 
@@ -69,7 +69,7 @@ type State struct {
 	// Extra là phần admin dời hạn (Extend) của lượt ExtraKey (một PhaseKey).
 	Extra    time.Duration `json:"extra,omitempty"`
 	ExtraKey string        `json:"extraKey,omitempty"`
-	// Reminded là PhaseKey đã gửi tin nhắc (15h, 21h), để chạy lại không nhắc hai lần.
+	// Reminded là PhaseKey đã gửi tin nhắc (18h, 21h), để chạy lại không nhắc hai lần.
 	Reminded string             `json:"reminded,omitempty"`
 	Players  map[string]*Player `json:"players"`
 
@@ -82,7 +82,7 @@ type State struct {
 	PoisonPotion bool     `json:"poisonPotion"`      // còn bình độc
 	LastGuarded  string   `json:"lastGuarded"`       // lần bảo vệ hợp lệ gần nhất đã chốt (R3)
 	Bitten       string   `json:"bitten,omitempty"`  // sói chốt lúc 0h; phù thuỷ thấy người này (R4)
-	Nominee      string   `json:"nominee,omitempty"` // người lên giàn lúc 17h
+	Nominee      string   `json:"nominee,omitempty"` // người lên giàn lúc 20h
 
 	Hunter *HunterTurn `json:"hunter,omitempty"`
 	Winner Team        `json:"winner,omitempty"`

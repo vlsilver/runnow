@@ -28,7 +28,7 @@ const (
 	tplStart    = "start"     // group: ván bắt đầu, đêm 1 lúc nào
 	tplCard     = "card"      // dm: lá bài; sói thấy đồng đội
 	tplDigest   = "digest"    // group: bản tin gộp của một lần chốt
-	tplReminder = "reminder"  // group: nhắc 15h, 21h
+	tplReminder = "reminder"  // group: nhắc 18h, 21h
 	tplPrivate  = "private"   // dm: việc riêng sau một lần chốt (bị huỷ, người yêu, bạn chết…)
 	tplPrompt   = "prompt"    // dm: tới lượt một loại hành động
 	tplChoice   = "choice"    // dm: sửa prompt cho khớp lựa chọn vừa đổi

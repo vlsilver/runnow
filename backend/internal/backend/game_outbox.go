@@ -995,7 +995,7 @@ func (r *outboxRenderer) voteForecast(st *werewolf.State, km map[string]float64)
 func reminderText(reason string) (string, error) {
 	switch reason {
 	case werewolf.ReminderNominate:
-		return "<b>Nhắc đề cử</b>\nĐề cử đóng lúc 17h. Ai chưa đề cử thì vào app RunNow để chọn.", nil
+		return "<b>Nhắc đề cử</b>\nĐề cử đóng lúc 20h. Ai chưa đề cử thì vào app RunNow để chọn.", nil
 	case werewolf.ReminderVote:
 		return "<b>Nhắc biểu quyết</b>\nBiểu quyết Treo hay Tha đóng lúc 22h. Ai chưa bỏ phiếu thì vào app RunNow.", nil
 	}

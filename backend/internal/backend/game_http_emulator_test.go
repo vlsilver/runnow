@@ -366,9 +366,9 @@ func TestEmulatorGameDetailHidesLivingRoles(t *testing.T) {
 		}
 	}
 
-	// 17h: V2 lên giàn với một đề cử.
+	// 20h: V2 lên giàn với một đề cử.
 	g.act(1, ww.KindNominate, "v1", time.Date(2026, 10, 16, 11, 0, 0, 0, vietnam), "v2")
-	g.advance(time.Date(2026, 10, 16, 17, 0, 0, 0, vietnam))
+	g.advance(time.Date(2026, 10, 16, 20, 0, 0, 0, vietnam))
 	d = h.call("v1", "GET", "/v1/games/"+g.id, nil, "")
 	for _, p := range d.body["players"].([]any) {
 		pm := p.(map[string]any)

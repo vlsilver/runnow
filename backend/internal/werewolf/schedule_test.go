@@ -43,7 +43,7 @@ func TestPhaseDeadlinesFollowDailySchedule(t *testing.T) {
 		deadline time.Time
 	}{
 		{PhaseSetup, at(15, 22, 0)}, {PhaseNight, at(16, 0, 0)}, {PhaseDawn, at(16, 10, 0)},
-		{PhaseDay, at(16, 17, 0)}, {PhaseTrial, at(16, 22, 0)}, {PhaseNight, at(17, 0, 0)},
+		{PhaseDay, at(16, 20, 0)}, {PhaseTrial, at(16, 22, 0)}, {PhaseNight, at(17, 0, 0)},
 	}
 	for i, w := range want {
 		if g.st.Phase != w.phase || !g.st.Deadline().Equal(w.deadline) {
@@ -116,19 +116,19 @@ func TestHunterWindowDependsOnHowHeDied(t *testing.T) {
 func TestAdvanceRepeatedIsNoop(t *testing.T) {
 	g := game13(t)
 	g.toPhase(PhaseDay)
-	now := at(16, 15, 0)
+	now := at(16, 18, 0)
 	a, evA, errA := Advance(g.st, Inputs{}, now)
 	b, evB, errB := Advance(g.st, Inputs{}, now)
 	if errA != nil || errB != nil || !reflect.DeepEqual(a, b) || !reflect.DeepEqual(evA, evB) {
 		t.Fatalf("hai lần chạy khác nhau: %v %v", errA, errB)
 	}
 	if len(evA) != 1 || evA[0].Kind != EventReminder || evA[0].Reason != ReminderNominate {
-		t.Fatalf("15h phải nhắc đề cử: %+v", evA)
+		t.Fatalf("18h phải nhắc đề cử: %+v", evA)
 	}
 	if _, _, err := Advance(a, Inputs{}, now); !errors.Is(err, ErrNotDue) {
 		t.Fatalf("chạy lại sau khi đã nhắc: %v", err)
 	}
-	if !a.NextAt().Equal(at(16, 17, 0)) {
+	if !a.NextAt().Equal(at(16, 20, 0)) {
 		t.Fatalf("NextAt sau khi nhắc = %s", a.NextAt())
 	}
 }
@@ -157,7 +157,7 @@ func TestAdvanceCatchesUpMissedMarksInOrder(t *testing.T) {
 	if find(all, EventReminder) != nil {
 		t.Fatal("không được gửi tin nhắc đã quá giờ")
 	}
-	if g.st.Phase != PhaseDay || !g.st.NextAt().Equal(at(17, 15, 0)) {
+	if g.st.Phase != PhaseDay || !g.st.NextAt().Equal(at(17, 18, 0)) {
 		t.Fatalf("sau chạy bù: %s NextAt %s", g.st.PhaseKey(), g.st.NextAt())
 	}
 }

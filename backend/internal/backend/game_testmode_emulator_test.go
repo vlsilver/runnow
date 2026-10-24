@@ -165,7 +165,7 @@ func aliveOf(st *ww.State) []string {
 }
 
 // Một ngày: mọi người còn sống đề cử target (target đề cử người khác), lên giàn
-// lúc 17h, 21h biểu quyết, ai cũng Treo trừ spare. Bấm advance: 15h, 17h, 21h, 22h.
+// lúc 20h, 21h biểu quyết, ai cũng Treo trừ spare. Bấm advance: 18h, 20h, 21h, 22h.
 func (g *testModeGame) hangDay(round int, target, spare, targetPick string) {
 	g.t.Helper()
 	for _, uid := range aliveOf(g.state()) {
@@ -175,8 +175,8 @@ func (g *testModeGame) hangDay(round int, target, spare, targetPick string) {
 		}
 		g.do(uid, ww.KindNominate, "", pick)
 	}
-	g.adv() // 15h nhắc đề cử
-	g.adv() // 17h lên giàn
+	g.adv() // 18h nhắc đề cử
+	g.adv() // 20h lên giàn
 	if st := g.state(); st.Nominee != target {
 		g.t.Fatalf("lên giàn %q, mong đợi %s", st.Nominee, target)
 	}
@@ -349,9 +349,9 @@ func TestEmulatorActAsOnlyForFakePlayersOfTestGame(t *testing.T) {
 	}
 }
 
-// CAS theo taskKey: key cũ thì 409, không chạy gì. Tin nhắc 15h không đổi
+// CAS theo taskKey: key cũ thì 409, không chạy gì. Tin nhắc 18h không đổi
 // phaseKey nhưng đổi taskKey, nên bấm lại với key trước tin nhắc cũng bị chặn,
-// không nhảy luôn qua 17h.
+// không nhảy luôn qua 20h.
 func TestEmulatorAdminAdvanceStaleKeyIs409(t *testing.T) {
 	g := newTestModeGame(t)
 	ctx := context.Background()
@@ -368,7 +368,7 @@ func TestEmulatorAdminAdvanceStaleKeyIs409(t *testing.T) {
 	g.adv() // 0h
 	g.adv() // 10h
 	beforeReminder := stringValue(g.public()["taskKey"])
-	g.adv() // 15h nhắc
+	g.adv() // 18h nhắc
 	if st := g.state(); st.PhaseKey() != "r1/day" || st.Reminded != "r1/day" {
 		t.Fatalf("sau tin nhắc: %s, reminded %q", st.PhaseKey(), st.Reminded)
 	}

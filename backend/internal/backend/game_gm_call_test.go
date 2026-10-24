@@ -36,7 +36,7 @@ func TestStepMessagesGameMasterCalls(t *testing.T) {
 	}
 	trial, evs := mustStep(t, day, act1(ww.KindNominate, "v1", "witch"))
 	if c, _ := call(stepMessages(day, trial, evs)[0]); c != nil {
-		t.Fatalf("17h mà quản trò gọi %v", c)
+		t.Fatalf("20h mà quản trò gọi %v", c)
 	}
 
 	// Phù thuỷ bị treo ngày 1: đêm 2 không gọi tiên tri (chết đêm 1), 0h không

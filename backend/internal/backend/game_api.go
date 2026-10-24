@@ -362,7 +362,7 @@ func phaseLabelOf(g map[string]any) string {
 }
 
 // nextDeadline là mốc khoá kế tiếp theo giờ thật: hạn đăng ký, hạn bắn của thợ
-// săn, hoặc hạn phase. Không lấy nextAt vì nó gồm cả giờ nhắc 15h, 21h.
+// săn, hoặc hạn phase. Không lấy nextAt vì nó gồm cả giờ nhắc 18h, 21h.
 func nextDeadline(g map[string]any) *time.Time {
 	var t time.Time
 	switch stringValue(g["status"]) {

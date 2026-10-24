@@ -108,14 +108,14 @@ func TestStepMessagesThroughANight(t *testing.T) {
 	if len(pub) != 1 || !reflect.DeepEqual(pub[0], ww.Event{Kind: ww.EventDeath, UID: "v2", Role: ww.Villager}) {
 		t.Fatalf("bản tin 10h = %+v", pub)
 	}
-	if got := msgs[0].Data["deadline"]; got != "2026-10-16T10:00:00Z" {
+	if got := msgs[0].Data["deadline"]; got != "2026-10-16T13:00:00Z" {
 		t.Fatalf("hạn đề cử = %v", got)
 	}
 	if got := msgs[2].Data; !reflect.DeepEqual(got, map[string]any{"kind": "nominate", "turnKey": "r1"}) {
 		t.Fatalf("prompt đề cử = %v", got)
 	}
 
-	// 17h đóng tin đề cử; có người lên giàn thì topic có prompt biểu quyết,
+	// 20h đóng tin đề cử; có người lên giàn thì topic có prompt biểu quyết,
 	// không ai được đề cử thì không.
 	trial, evs := mustStep(t, day, act1(ww.KindNominate, "v1", "w1"))
 	sameMsgs(t, stepMessages(day, trial, evs), "group/digest", "group/tally/nominate", "group/prompt/vote")
@@ -133,7 +133,7 @@ func TestStepMessagesThroughANight(t *testing.T) {
 	sameMsgs(t, stepMessages(day, empty, evs), "group/digest", "group/tally/nominate")
 }
 
-// Hết giờ đề cử (17h) hay biểu quyết (22h) thì sửa tin đếm trong topic thành
+// Hết giờ đề cử (20h) hay biểu quyết (22h) thì sửa tin đếm trong topic thành
 // bản đã đóng. Bước 22h tăng vòng, xoá người lên giàn và giết người bị treo,
 // nên tin đóng chở vòng, người lên giàn và người còn sống của lúc đóng.
 func TestStepMessagesCloseTally(t *testing.T) {

@@ -104,8 +104,8 @@ func TestEmulatorGameAdvanceSchedulesItself(t *testing.T) {
 	}{
 		{ww.PhaseNight, false, time.Date(2026, 10, 16, 0, 0, 30, 0, vietnam)}, // 22h mở đêm, hẹn 0h
 		{ww.PhaseDawn, false, time.Date(2026, 10, 16, 10, 0, 30, 0, vietnam)}, // 0h khoá sói, hẹn 10h
-		{ww.PhaseDay, false, time.Date(2026, 10, 16, 15, 0, 30, 0, vietnam)},  // 10h sang ngày, hẹn nhắc 15h
-		{ww.PhaseDay, true, time.Date(2026, 10, 16, 17, 0, 30, 0, vietnam)},   // 15h nhắc đề cử, hẹn 17h
+		{ww.PhaseDay, false, time.Date(2026, 10, 16, 18, 0, 30, 0, vietnam)},  // 10h sang ngày, hẹn nhắc 18h
+		{ww.PhaseDay, true, time.Date(2026, 10, 16, 20, 0, 30, 0, vietnam)},   // 18h nhắc đề cử, hẹn 20h
 	} {
 		flushes := len(e.tasksTo("/tasks/game-flush"))
 		e.clock = *task.ScheduleTime
