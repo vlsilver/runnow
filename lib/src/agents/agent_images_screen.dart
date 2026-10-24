@@ -1,8 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
+import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 
 /// Mọi ảnh bot đã vẽ, mới trước. Kéo gần cuối thì tải trang kế.
@@ -141,34 +144,94 @@ Future<void> showAgentImageViewer(
     barrierColor: Colors.black87,
     builder: (context) => Dialog.fullscreen(
       backgroundColor: Colors.black,
-      child: SafeArea(
-        child: Stack(
-          children: [
-            Positioned.fill(child: image(img.path, full: true)),
-            Positioned(
-              top: 8,
-              right: 8,
-              child: IconButton.filledTonal(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close_rounded),
-              ),
-            ),
-            if (at != null)
+      // Scaffold riêng để báo lỗi khoe ảnh hiện trên màn xem, không bị che.
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: Stack(
+            children: [
+              Positioned.fill(child: image(img.path, full: true)),
               Positioned(
-                left: 20,
-                bottom: 20,
-                child: Text(
-                  '${two(at.day)}/${two(at.month)} '
-                  '${two(at.hour)}:${two(at.minute)}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                  ),
+                top: 8,
+                right: 8,
+                child: Row(
+                  spacing: 8,
+                  children: [
+                    _ShareImageButton(
+                      load: () => ref.read(agentImageBytesProvider)(img.path),
+                    ),
+                    IconButton.filledTonal(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
                 ),
               ),
-          ],
+              if (at != null)
+                Positioned(
+                  left: 20,
+                  bottom: 20,
+                  child: Text(
+                    '${two(at.day)}/${two(at.month)} '
+                    '${two(at.hour)}:${two(at.minute)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     ),
   );
+}
+
+/// Khoe ảnh đang xem: tải file gốc rồi mở bảng chia sẻ của máy.
+class _ShareImageButton extends StatefulWidget {
+  const _ShareImageButton({required this.load});
+
+  final Future<Uint8List?> Function() load;
+
+  @override
+  State<_ShareImageButton> createState() => _ShareImageButtonState();
+}
+
+class _ShareImageButtonState extends State<_ShareImageButton> {
+  bool _sharing = false;
+
+  Future<void> _share() async {
+    setState(() => _sharing = true);
+    try {
+      final png = await widget.load();
+      if (png == null) throw StateError('Storage không trả ảnh.');
+      if (!mounted) return;
+      await shareAgentImage(png: png, shareOriginContext: context);
+    } catch (error) {
+      debugPrint('MyBot: khoe ảnh lỗi: $error');
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(content: Text('Chưa khoe được ảnh, thử lại sau.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton.filledTonal(
+      tooltip: 'Khoe ảnh',
+      onPressed: _sharing ? null : _share,
+      icon: _sharing
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.ios_share_rounded),
+    );
+  }
 }

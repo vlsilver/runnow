@@ -1,3 +1,5 @@
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/providers.dart';
@@ -78,6 +80,12 @@ final agentImagesPreviewProvider = FutureProvider.autoDispose<List<AgentImage>>(
       rethrow;
     }
   },
+);
+
+/// Tải bytes ảnh bot vẽ để khoe. Test thay để khỏi gọi Firebase.
+final agentImageBytesProvider = Provider<Future<Uint8List?> Function(String)>(
+  (ref) =>
+      (path) => FirebaseStorage.instance.ref(path).getData(10 * 1024 * 1024),
 );
 
 /// Dựng ảnh bot vẽ theo đường dẫn Storage: ô nhỏ thì giải mã thu nhỏ, [full]

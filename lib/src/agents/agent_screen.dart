@@ -13,6 +13,7 @@ import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/games/telegram_link_controller.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
+import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -495,13 +496,43 @@ class _Header extends StatelessWidget {
 }
 
 /// Đầu tab: thẻ bot của mình trên quầng sáng màu hành.
-class _BotCardSection extends StatelessWidget {
+class _BotCardSection extends StatefulWidget {
   const _BotCardSection({required this.data});
 
   final AgentBotCardData data;
 
   @override
+  State<_BotCardSection> createState() => _BotCardSectionState();
+}
+
+class _BotCardSectionState extends State<_BotCardSection> {
+  final _cardKey = GlobalKey();
+  final _shareKey = GlobalKey();
+  bool _sharing = false;
+
+  Future<void> _share() async {
+    setState(() => _sharing = true);
+    try {
+      await shareAgentCard(
+        cardKey: _cardKey,
+        shareOriginContext: _shareKey.currentContext ?? context,
+        botName: widget.data.name,
+      );
+    } catch (error) {
+      debugPrint('MyBot: khoe thẻ lỗi: $error');
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(content: Text('Chưa khoe được thẻ, thử lại sau.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final data = widget.data;
     final palette = context.runNowPalette;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -528,7 +559,11 @@ class _BotCardSection extends StatelessWidget {
                     ),
                   ),
                 ),
-                AgentBotCardView(data: data, width: width),
+                AgentBotCardView(
+                  data: data,
+                  width: width,
+                  captureKey: _cardKey,
+                ),
               ],
             );
           },
@@ -541,6 +576,15 @@ class _BotCardSection extends StatelessWidget {
             color: palette.textMuted,
             fontSize: 12,
             fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Center(
+          child: TextButton.icon(
+            key: _shareKey,
+            onPressed: _sharing ? null : _share,
+            icon: const Icon(Icons.ios_share_rounded, size: 18),
+            label: Text(_sharing ? 'Đang tạo ảnh…' : 'Khoe thẻ'),
           ),
         ),
       ],

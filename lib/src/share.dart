@@ -106,6 +106,26 @@ Future<ShareResult> shareAgentCard({
   fileName: '3i-mybot.png',
 );
 
+/// Ảnh bot vẽ: gửi đúng file PNG gốc trên Storage, không chụp lại màn xem
+/// (màn xem có viền đen và đang phóng to tuỳ tay người xem).
+Future<ShareResult> shareAgentImage({
+  required Uint8List png,
+  required BuildContext shareOriginContext,
+}) {
+  final renderBox = shareOriginContext.findRenderObject() as RenderBox?;
+  final sharePositionOrigin = renderBox == null
+      ? null
+      : renderBox.localToGlobal(Offset.zero) & renderBox.size;
+  return SharePlus.instance.share(
+    ShareParams(
+      text: 'MyBot vẽ cho mình trên 3i',
+      files: [XFile.fromData(png, mimeType: 'image/png')],
+      fileNameOverrides: ['3i-mybot-anh.png'],
+      sharePositionOrigin: sharePositionOrigin,
+    ),
+  );
+}
+
 Future<ShareResult> _shareCard({
   required GlobalKey cardKey,
   required BuildContext shareOriginContext,

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +19,18 @@ import 'package:myrun/src/agents/agent_screen.dart';
 import 'package:myrun/src/agents/agent_setup_screen.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
+import 'package:share_plus_platform_interface/share_plus_platform_interface.dart';
+
+/// Bảng chia sẻ của máy: ghi lại thứ được gửi đi.
+class _FakeShare extends SharePlatform {
+  final shared = <ShareParams>[];
+
+  @override
+  Future<ShareResult> share(ShareParams params) async {
+    shared.add(params);
+    return const ShareResult('ok', ShareResultStatus.success);
+  }
+}
 
 /// Bậc thẻ đã khoe, giữ trong bộ nhớ thay cho secure storage.
 class _MemTierSeen extends AgentTierSeen {
@@ -232,6 +245,10 @@ class _AgentBackend {
 void main() {
   late _AgentBackend backend;
   late _MemTierSeen tierSeen;
+  // SharePlus.instance giữ platform từ lần dùng đầu, nên gắn một lần cho cả file.
+  final share = _FakeShare();
+  setUpAll(() => SharePlatform.instance = share);
+  final imageReads = <String>[];
 
   Future<void> pump(WidgetTester tester, Widget home) async {
     await tester.pumpWidget(
@@ -244,6 +261,10 @@ void main() {
             (path, {required full}) =>
                 Text(path, style: const TextStyle(fontSize: 8)),
           ),
+          agentImageBytesProvider.overrideWithValue((path) async {
+            imageReads.add(path);
+            return Uint8List.fromList([137, 80, 78, 71]);
+          }),
         ],
         child: MaterialApp(home: home),
       ),
@@ -263,6 +284,8 @@ void main() {
     backend = _AgentBackend();
     tierSeen = _MemTierSeen();
     opened = [];
+    share.shared.clear();
+    imageReads.clear();
   });
 
   /// Chạm thẻ bot để lật sang mặt sau. Hai frame: frame đầu mới ghi mốc
@@ -321,6 +344,10 @@ void main() {
             (path, {required full}) =>
                 Text(path, style: const TextStyle(fontSize: 8)),
           ),
+          agentImageBytesProvider.overrideWithValue((path) async {
+            imageReads.add(path);
+            return Uint8List.fromList([137, 80, 78, 71]);
+          }),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -925,6 +952,48 @@ void main() {
     resumeApp(tester);
     await tester.pump(const Duration(minutes: 1));
     expect(meReads(), after + 1);
+  });
+
+  testWidgets('the image viewer shares the original file of that image', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    backend.images.add({'path': 'users/me/agentImages/tg1.png'});
+    backend.images.add({'path': 'users/me/agentImages/tg2.png'});
+    await pumpMyBot(tester);
+    // Ô ở tab mở bộ sưu tập, chạm ảnh trong đó mới mở màn xem.
+    await tester.tap(find.text('users/me/agentImages/tg2.png'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('users/me/agentImages/tg2.png'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Khoe ảnh'));
+    await tester.pumpAndSettle();
+    expect(imageReads, ['users/me/agentImages/tg2.png']);
+    expect(share.shared, hasLength(1));
+    final params = share.shared.single;
+    expect(params.fileNameOverrides, ['3i-mybot-anh.png']);
+    expect(await params.files!.single.readAsBytes(), [137, 80, 78, 71]);
+  });
+
+  testWidgets('Khoe thẻ on the tab shares the card face as a PNG', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    await pumpMyBot(tester);
+    await tester.tap(find.text('Khoe thẻ'));
+    // Chụp thẻ là việc của engine, phải cho chạy ngoài fake async.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(seconds: 1)),
+    );
+    await tester.pump();
+    expect(share.shared, hasLength(1));
+    final params = share.shared.single;
+    expect(params.text, 'Thẻ MyBot Cú của mình trên 3i');
+    expect(params.fileNameOverrides, ['3i-mybot.png']);
+    final png = await params.files!.single.readAsBytes();
+    expect(png.sublist(1, 4), 'PNG'.codeUnits);
+    await close(tester);
   });
 
   testWidgets('no images yet: no gallery on the tab', (tester) async {

@@ -57,6 +57,7 @@ dev_dependencies:
     sdk: flutter
   fake_cloud_firestore: ^4.2.0
   firebase_auth_mocks: ^0.15.2
+  share_plus_platform_interface: ^7.1.0
 
 flutter_launcher_icons:
   image_path: "features/Icon 3I Export/runow-3i-1024.png"

@@ -1428,10 +1428,19 @@ class AgentMascot extends StatelessWidget {
 /// Lần đầu hiện thì một vệt sáng quét qua thẻ, rồi đứng yên: không có
 /// animation chạy mãi.
 class AgentBotCardView extends StatefulWidget {
-  const AgentBotCardView({super.key, required this.data, required this.width});
+  const AgentBotCardView({
+    super.key,
+    required this.data,
+    required this.width,
+    this.captureKey,
+  });
 
   final AgentBotCardData data;
   final double width;
+
+  /// Gắn vào lớp vẽ mặt thẻ, nằm trong phép nghiêng/lật, nên chụp ra là mặt
+  /// thẻ phẳng đang hiện.
+  final GlobalKey? captureKey;
 
   @override
   State<AgentBotCardView> createState() => _AgentBotCardViewState();
@@ -1534,10 +1543,13 @@ class _AgentBotCardViewState extends State<AgentBotCardView>
               child: Transform(
                 alignment: Alignment.center,
                 transform: Matrix4.rotationY(back ? math.pi : 0),
-                child: SizedBox(
-                  width: widget.width,
-                  height: height,
-                  child: FittedBox(child: face),
+                child: RepaintBoundary(
+                  key: widget.captureKey,
+                  child: SizedBox(
+                    width: widget.width,
+                    height: height,
+                    child: FittedBox(child: face),
+                  ),
                 ),
               ),
             );
