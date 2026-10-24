@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:share_plus/share_plus.dart';
@@ -98,14 +99,14 @@ Future<ShareResult> shareGameCard({
 Future<ShareResult> shareRunCard({
   required GlobalKey cardKey,
   required BuildContext shareOriginContext,
-  required ActivitySummary activity,
+  required RunCard card,
 }) => _shareCard(
   cardKey: cardKey,
   shareOriginContext: shareOriginContext,
   text:
-      '${activity.name} · ${formatDistance(activity.distanceMeters)}\n'
+      '${card.snapshot.name} · ${formatDistance(card.snapshot.distanceMeters)}\n'
       'Chia sẻ từ 3i',
-  fileName: '3i-${activity.id}-the.png',
+  fileName: '3i-${card.id}-the.png',
 );
 
 Future<ShareResult> shareAgentCard({

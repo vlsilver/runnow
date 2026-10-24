@@ -4,14 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:myrun/src/theme.dart';
 
 /// Bậc của lá bài khoe. Bậc chỉ hiện ở chất liệu khung: than chì, bạc, vàng,
-/// vàng foil có ánh xà cừ.
-enum GameCardTier { common, rare, superRare, legendary }
+/// vàng foil có ánh xà cừ. Thần thoại (cực quang) hiện chỉ thẻ buổi chạy quay ra.
+enum GameCardTier { common, rare, superRare, legendary, mythic }
 
 extension GameCardTierParse on GameCardTier {
   static GameCardTier fromKey(String? key) => switch (key) {
     'rare' => GameCardTier.rare,
     'super' => GameCardTier.superRare,
     'legendary' => GameCardTier.legendary,
+    'mythic' => GameCardTier.mythic,
     _ => GameCardTier.common,
   };
 }
@@ -154,6 +155,22 @@ const gameCardTiers = {
     ],
     [0, 0.2, 0.42, 0.6, 0.8, 1],
     0.24,
+    true,
+  ),
+  GameCardTier.mythic: GameCardTierStyle(
+    'Thần thoại',
+    5,
+    RunNowAchievementTokens.auroraTeal,
+    [
+      RunNowAchievementTokens.auroraDeep,
+      RunNowAchievementTokens.auroraTeal,
+      RunNowAchievementTokens.auroraBlue,
+      RunNowAchievementTokens.auroraViolet,
+      RunNowAchievementTokens.auroraIce,
+      RunNowAchievementTokens.auroraDeep,
+    ],
+    [0, 0.2, 0.42, 0.6, 0.8, 1],
+    0.3,
     true,
   ),
 };

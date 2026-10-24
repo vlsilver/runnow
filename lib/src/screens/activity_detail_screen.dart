@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/achievements/run_card.dart';
+import 'package:myrun/src/achievements/run_card_panel.dart';
+import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/formatters.dart';
+import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
@@ -102,6 +105,14 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                             ),
                           ),
                         ),
+                      if (widget.ownerUid == null &&
+                          hasRunCard(item.summary)) ...[
+                        const SizedBox(height: 12),
+                        _RunCardEntry(
+                          activityId: item.summary.id,
+                          onOpen: () => _openShareComposer(item),
+                        ),
+                      ],
                       if (item.streams.isEmpty) ...[
                         const SizedBox(height: 16),
                         _CachedSummaryFallback(
@@ -1424,6 +1435,40 @@ class _FallbackMetric extends StatelessWidget {
   }
 }
 
+/// Lối vào thẻ buổi chạy ngay trên màn buổi chạy: chưa lật thì mời lật, lật
+/// rồi thì báo bậc. Chạm mở sheet Khoe ở chế độ Thẻ.
+class _RunCardEntry extends ConsumerWidget {
+  const _RunCardEntry({required this.activityId, required this.onOpen});
+
+  final String activityId;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = context.runNowPalette;
+    final card = ref.watch(runCardProvider(activityId)).value;
+    final subtitle = card == null
+        ? 'Lật để xem độ hiếm. Mỗi buổi một lần.'
+        : '${gameCardTiers[card.tier]!.label} · chạm để xem và khoe';
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: GlassPanel(
+        borderRadius: 14,
+        child: ListTile(
+          onTap: onOpen,
+          leading: Icon(
+            card == null ? Icons.style_outlined : Icons.style,
+            color: palette.secondary,
+          ),
+          title: const Text('Thẻ buổi chạy'),
+          subtitle: Text(subtitle),
+          trailing: const Icon(Icons.chevron_right_rounded),
+        ),
+      ),
+    );
+  }
+}
+
 enum _ShareMode { card, poster }
 
 class _ShareComposer extends ConsumerStatefulWidget {
@@ -1440,10 +1485,12 @@ class _ShareComposer extends ConsumerStatefulWidget {
 
 class _ShareComposerState extends ConsumerState<_ShareComposer> {
   final _recapKey = GlobalKey();
-  final _cardKey = GlobalKey();
-  late var _mode = hasRunCard(widget.detail.summary)
-      ? _ShareMode.card
-      : _ShareMode.poster;
+
+  /// Thẻ chỉ chủ buổi đọc được (rule Firestore), nên buổi của người khác chỉ
+  /// có poster.
+  late final _canCard =
+      widget.ownerUid == null && hasRunCard(widget.detail.summary);
+  late var _mode = _canCard ? _ShareMode.card : _ShareMode.poster;
   bool _sharing = false;
 
   /// Tên in trên thẻ là chủ buổi chạy, không phải người đang xem.
@@ -1503,7 +1550,7 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
             const SizedBox(height: 4),
             Text(
               card
-                  ? 'Thẻ buổi chạy, bậc thẻ theo số km.'
+                  ? 'Mỗi buổi lật một thẻ, độ hiếm do server quay.'
                   : 'Tạo poster thành tích để chia sẻ.',
               style: TextStyle(
                 color: Theme.of(
@@ -1512,7 +1559,7 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
               ),
             ),
             const SizedBox(height: 16),
-            if (hasRunCard(widget.detail.summary)) ...[
+            if (_canCard) ...[
               SegmentedButton<_ShareMode>(
                 segments: const [
                   ButtonSegment(
@@ -1534,38 +1581,32 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
               const SizedBox(height: 16),
             ],
             if (card)
-              Center(
-                child: RunShareCard(
-                  activity: widget.detail.summary,
-                  photos: widget.detail.photos,
-                  owner: _ownerName(),
-                  captureKey: _cardKey,
-                ),
+              RunCardPanel(
+                activity: widget.detail.summary,
+                owner: _ownerName(),
               )
-            else
+            else ...[
               ActivityRecapCard(
                 repaintBoundaryKey: _recapKey,
                 activity: widget.detail.summary,
                 streams: widget.detail.streams,
               ),
-            const SizedBox(height: 12),
-            Builder(
-              builder: (buttonContext) => FilledButton.icon(
-                onPressed: _sharing ? null : () => _share(buttonContext),
-                icon: _sharing
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.ios_share),
-                label: Text(switch ((card, _sharing)) {
-                  (true, true) => 'Đang tạo thẻ...',
-                  (true, false) => 'Khoe thẻ',
-                  (false, true) => 'Đang tạo poster...',
-                  (false, false) => 'Chia sẻ poster',
-                }),
+              const SizedBox(height: 12),
+              Builder(
+                builder: (buttonContext) => FilledButton.icon(
+                  onPressed: _sharing ? null : () => _share(buttonContext),
+                  icon: _sharing
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.ios_share),
+                  label: Text(
+                    _sharing ? 'Đang tạo poster...' : 'Chia sẻ poster',
+                  ),
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -1575,24 +1616,15 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
   Future<void> _share(BuildContext buttonContext) async {
     setState(() => _sharing = true);
     try {
-      if (_mode == _ShareMode.card) {
-        await shareRunCard(
-          cardKey: _cardKey,
-          shareOriginContext: buttonContext,
-          activity: widget.detail.summary,
-        );
-      } else {
-        await shareActivityRecap(
-          recapKey: _recapKey,
-          shareButtonContext: buttonContext,
-          activity: widget.detail.summary,
-        );
-      }
+      await shareActivityRecap(
+        recapKey: _recapKey,
+        shareButtonContext: buttonContext,
+        activity: widget.detail.summary,
+      );
     } catch (error) {
       if (!mounted) return;
-      final what = _mode == _ShareMode.card ? 'thẻ' : 'poster';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không thể chia sẻ $what: $error')),
+        SnackBar(content: Text('Không thể chia sẻ poster: $error')),
       );
     } finally {
       if (mounted) setState(() => _sharing = false);

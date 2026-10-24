@@ -39,9 +39,7 @@ AchievementCardData _data(
 );
 
 Future<void> _pump(WidgetTester tester, Widget card) {
-  return tester.pumpWidget(
-    MaterialApp(home: Center(child: card)),
-  );
+  return tester.pumpWidget(MaterialApp(home: Center(child: card)));
 }
 
 void main() {
@@ -51,6 +49,7 @@ void main() {
       (GameCardTier.rare, 'HIẾM'),
       (GameCardTier.superRare, 'SIÊU HIẾM'),
       (GameCardTier.legendary, 'HUYỀN THOẠI'),
+      (GameCardTier.mythic, 'THẦN THOẠI'),
     ]) {
       await _pump(tester, AchievementCard(data: _data(tier), animate: false));
       expect(find.text(label), findsOneWidget, reason: '$tier');
@@ -65,7 +64,8 @@ void main() {
         animate: false,
         data: _data(
           GameCardTier.legendary,
-          title: 'Hội Chạy Bộ Phường Phúc Xá Quyết Không Bỏ Cuộc Giữa Chừng '
+          title:
+              'Hội Chạy Bộ Phường Phúc Xá Quyết Không Bỏ Cuộc Giữa Chừng '
               'Dù Trời Mưa Hay Nắng',
           owner: 'NGUYỄN THỊ PHƯƠNG THẢO HOÀNG LÊ',
           desc: 'Một câu mô tả rất dài ' * 12,
@@ -132,7 +132,10 @@ void main() {
       final x = (achievementCardSize.width * fx).toInt();
       final y = (achievementCardSize.height * fy).toInt();
       final i = (y * width + x) * 4;
-      return (pixels.getUint8(i) + pixels.getUint8(i + 1) + pixels.getUint8(i + 2)) ~/ 3;
+      return (pixels.getUint8(i) +
+              pixels.getUint8(i + 1) +
+              pixels.getUint8(i + 2)) ~/
+          3;
     }
 
     // Góc nhãn bậc và chân thẻ phải tối, giữa thẻ vẫn là ảnh.
@@ -141,12 +144,16 @@ void main() {
     expect(luma(0.5, 0.42), greaterThan(200), reason: 'giữa ảnh');
   });
 
-  testWidgets('only a legendary card keeps animating', (tester) async {
+  testWidgets('only legendary and mythic cards keep animating', (tester) async {
     await _pump(tester, AchievementCard(data: _data(GameCardTier.superRare)));
     await tester.pump();
     expect(tester.binding.hasScheduledFrame, isFalse);
 
     await _pump(tester, AchievementCard(data: _data(GameCardTier.legendary)));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(tester.binding.hasScheduledFrame, isTrue);
+
+    await _pump(tester, AchievementCard(data: _data(GameCardTier.mythic)));
     await tester.pump(const Duration(milliseconds: 16));
     expect(tester.binding.hasScheduledFrame, isTrue);
 
@@ -173,5 +180,59 @@ void main() {
     expect(find.text('24.10.2026'), findsOneWidget);
     expect(find.text('SIÊU HIẾM'), findsOneWidget);
     expect(find.text('Bình Minh Long Biên'), findsNothing);
+  });
+
+  testWidgets('a custom back face replaces the 3I emblem', (tester) async {
+    final data = _data(GameCardTier.rare);
+    await _pump(
+      tester,
+      AchievementCard(
+        back: true,
+        animate: false,
+        data: AchievementCardData(
+          tier: data.tier,
+          art: data.art,
+          kind: data.kind,
+          hero: data.hero,
+          title: data.title,
+          owner: data.owner,
+          serial: data.serial,
+          desc: data.desc,
+          meta: data.meta,
+          date: data.date,
+          backFace: const Text('SỐ LIỆU'),
+        ),
+      ),
+    );
+    expect(find.text('SỐ LIỆU'), findsOneWidget);
+    expect(find.text('THẺ THÀNH TÍCH'), findsNothing);
+  });
+
+  testWidgets('a stamp sits on the front only when given', (tester) async {
+    const stamp = Key('stamp');
+    final data = _data(GameCardTier.rare);
+    await _pump(tester, AchievementCard(data: data, animate: false));
+    expect(find.byKey(stamp), findsNothing);
+
+    await _pump(
+      tester,
+      AchievementCard(
+        animate: false,
+        data: AchievementCardData(
+          tier: data.tier,
+          art: data.art,
+          kind: data.kind,
+          hero: data.hero,
+          title: data.title,
+          owner: data.owner,
+          serial: data.serial,
+          desc: data.desc,
+          meta: data.meta,
+          date: data.date,
+          stamp: const SizedBox(key: stamp),
+        ),
+      ),
+    );
+    expect(tester.getSize(find.byKey(stamp)), const Size(64, 64));
   });
 }

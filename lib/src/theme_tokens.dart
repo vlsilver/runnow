@@ -330,6 +330,7 @@ class RunNowAchievementTokens {
   static const accentRare = Color(0xFFE3E8EE);
   static const accentEpic = Color(0xFFF3D27A);
   static const accentLegendary = Color(0xFFEBCBFF);
+  static const accentMythic = Color(0xFFA6FFE4);
 
   static const graphite1 = Color(0xFF50545D);
   static const graphite2 = Color(0xFF2B2D33);
@@ -352,6 +353,20 @@ class RunNowAchievementTokens {
   static const prismMint = Color(0xFF8EF0C9);
   static const prismSky = Color(0xFF7CC8FF);
   static const prismViolet = Color(0xFFC39BFF);
+  // Cực quang của bậc Thần thoại: xanh ngọc, lam, tím, trắng băng.
+  static const auroraTeal = Color(0xFF5CF2C8);
+  static const auroraBlue = Color(0xFF2F7BFF);
+  static const auroraViolet = Color(0xFF9B6BFF);
+  static const auroraIce = Color(0xFFE0FFF6);
+  static const auroraDeep = Color(0xFF1FB89A);
+  static const auroraFlare = Color(0xE6FFFFFF);
+  static const auraMythic = Color(0x735CF2C8);
+  static const auraMythicOuter = Color(0x4D786EFF);
+  static const holoAuroraTeal = Color(0x525CF2C8);
+  static const holoAuroraSky = Color(0x388FB8FF);
+  static const holoAuroraViolet = Color(0x47B98CFF);
+  static const glitterAurora = Color(0x8796FFE1);
+  static const starAurora = Color(0xFFE6FFF8);
 
   static const auraRare = Color(0x29E1E8F0);
   static const auraEpic = Color(0x52F3C864);
@@ -391,6 +406,10 @@ class RunNowAchievementTokens {
   static const titleMint = Color(0xFFAEF7DA);
   static const titleSky = Color(0xFFA9DCFF);
   static const titleViolet = Color(0xFFDCC2FF);
+  static const titleIce = Color(0xFFD8FFF3);
+  static const titleTeal = Color(0xFF7FF3D1);
+  static const titleBlue = Color(0xFF8FB8FF);
+  static const titleLilac = Color(0xFFD4B6FF);
 
   static const backTop = Color(0xFF20244A);
   static const backBottom = Color(0xFF0B0C14);
@@ -410,7 +429,19 @@ class RunNowAchievementTokens {
   static const routeGlowRare = Color(0xFF7CC8FF);
   static const routeGlowEpic = Color(0xFFFFC65C);
   static const routeGlowLegendary = Color(0xFFD59BFF);
+  static const routeFieldMythic = Color(0xFF0E3B3F);
+  static const routeFieldMythicEdge = Color(0xFF04090F);
+  static const routeGlowMythic = Color(0xFF5CF2C8);
   static const routeContour = Color(0x0FFFFFFF);
   static const routeLine = Color(0xFFFFFFFF);
   static const routeStart = Color(0xFF0B0B10);
+
+  // Con dấu đường chạy trên ảnh và mặt sau dữ liệu của thẻ buổi chạy.
+  static const stamp = Color(0xB808090E);
+  static const stampDrop = Color(0x73000000);
+  static const dataBack = Color(0xFF0D0F15);
+  static const dataMapEdge = Color(0x24FFFFFF);
+  static const dataGrid = Color(0x14FFFFFF);
+  static const dataLabel = Color(0xB8F4F2EC);
+  static const dataCredit = Color(0x8CF4F2EC);
 }

@@ -4,12 +4,14 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/admin/admin_models.dart';
 import 'package:myrun/src/agents/agent_models.dart';
 import 'package:myrun/src/config.dart';
 import 'package:myrun/src/games/game_models.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+export 'package:myrun/src/achievements/run_card_models.dart';
 export 'package:myrun/src/admin/admin_models.dart';
 export 'package:myrun/src/agents/agent_models.dart';
 export 'package:myrun/src/games/game_models.dart';
@@ -527,6 +529,45 @@ class RunNowApiClient {
       cursor: json['cursor'] as String?,
     );
   }
+
+  /// Thẻ của buổi [activityId]: thẻ đã lật, hoặc tỉ lệ sẽ quay khi chưa lật.
+  Future<RunCardView> getRunCard(String activityId) async {
+    final response = await _send('GET', _runCardPath(activityId));
+    return RunCardView.fromJson(_jsonObject(response));
+  }
+
+  /// Lật thẻ: server quay bậc một lần rồi giữ, gọi lại trả đúng thẻ đó.
+  Future<RunCard> rollRunCard(String activityId) async {
+    final response = await _send('POST', _runCardPath(activityId));
+    return _runCard(response);
+  }
+
+  /// Nhờ backend vẽ tranh nền theo [style], từ [photoPath] nếu có. Tranh vẽ
+  /// chạy nền; app nghe doc thẻ để biết lúc xong.
+  Future<RunCard> requestRunCardArt(
+    String activityId, {
+    required String style,
+    String? photoPath,
+  }) async {
+    final response = await _send(
+      'POST',
+      '${_runCardPath(activityId)}/art',
+      body: {'style': style, 'photoPath': ?photoPath},
+    );
+    return _runCard(response);
+  }
+
+  /// Các phong cách vẽ đang bật cho thẻ buổi chạy.
+  Future<ArtStyleList> getRunCardStyles() async {
+    final response = await _send('GET', '/v1/art-styles?kind=run');
+    return ArtStyleList.fromJson(_jsonObject(response));
+  }
+
+  String _runCardPath(String activityId) =>
+      '/v1/activities/${Uri.encodeComponent(activityId)}/card';
+
+  RunCard _runCard(http.Response response) =>
+      RunCard.fromJson(_jsonObject(response)['card'] as Map<String, dynamic>);
 
   Future<void> hydrateActivity(String activityId) async {
     await _send(

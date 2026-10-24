@@ -29,6 +29,8 @@ class AchievementCardData {
     required this.meta,
     required this.date,
     this.heroUnit = 'KM',
+    this.stamp,
+    this.backFace,
   });
 
   final GameCardTier tier;
@@ -51,9 +53,18 @@ class AchievementCardData {
   final String desc;
   final String meta;
   final String date;
+
+  /// Huy hiệu tròn dưới số đá, ví dụ đường chạy thu nhỏ khi nền là tranh.
+  final Widget? stamp;
+
+  /// Ruột mặt sau thay cho huy hiệu 3I RUN; khung và vệt sáng vẫn do thẻ vẽ.
+  final Widget? backFace;
 }
 
-enum _Holo { none, sheen, prism }
+enum _Holo { none, sheen, prism, aurora }
+
+/// Ánh tự chạy của bậc cao: viền xoay, chữ ánh, kim tuyến và sao nhấp nháy.
+enum _Shine { none, rainbow, aurora }
 
 /// Chất liệu từng bậc. Bậc càng cao thì viền càng dày và càng nhiều lớp
 /// sáng, để nhìn thoáng là biết thẻ hiếm cỡ nào.
@@ -68,7 +79,7 @@ class _Look {
     this.corner,
     this.title,
     this.holoStrength = 0,
-    this.rainbow = false,
+    this.shine = _Shine.none,
   });
 
   final Color accent;
@@ -81,8 +92,8 @@ class _Look {
   final List<Color>? corner;
   final List<Color>? title;
 
-  /// Viền cầu vồng xoay, chữ ánh chạy: chỉ bậc Huyền thoại.
-  final bool rainbow;
+  /// Cầu vồng ở bậc Huyền thoại, cực quang ở bậc Thần thoại.
+  final _Shine shine;
 }
 
 const _prism = [
@@ -92,6 +103,16 @@ const _prism = [
   _T.prismSky,
   _T.prismViolet,
   _T.prismPink,
+];
+
+const _aurora = [
+  _T.auroraTeal,
+  _T.auroraBlue,
+  _T.auroraViolet,
+  _T.auroraIce,
+  _T.auroraTeal,
+  _T.auroraDeep,
+  _T.auroraTeal,
 ];
 
 const _looks = {
@@ -130,14 +151,27 @@ const _looks = {
     holo: _Holo.prism,
     holoStrength: 0.34,
     corner: [_T.cornerPrismLight, _T.cornerPrismDeep],
-    rainbow: true,
+    shine: _Shine.rainbow,
+  ),
+  GameCardTier.mythic: _Look(
+    accent: _T.accentMythic,
+    frameWidth: 10,
+    frame: _aurora,
+    frameStops: null,
+    holo: _Holo.aurora,
+    corner: [_T.cornerPrismLight, _T.auroraTeal],
+    shine: _Shine.aurora,
   ),
 };
 
+/// Màu nhấn của bậc, để phần riêng của từng loại thẻ (mặt sau, con dấu) cùng
+/// tông với khung.
+Color achievementAccent(GameCardTier tier) => _looks[tier]!.accent;
+
 /// Thẻ thành tích vẽ ở [achievementCardSize]. [pose] là độ nghiêng (-1..1 mỗi
-/// chiều) mà viền, holo, ảnh và vệt sáng chạy theo. Thẻ Huyền thoại tự chạy
-/// viền cầu vồng, chữ ánh và sao nhấp nháy khi [animate]; tắt đi thì vẽ một
-/// khung hình đứng yên, dùng cho test và ảnh tĩnh.
+/// chiều) mà viền, holo, ảnh và vệt sáng chạy theo. Thẻ Huyền thoại và Thần
+/// thoại tự chạy viền xoay, chữ ánh và sao nhấp nháy khi [animate]; tắt đi thì
+/// vẽ một khung hình đứng yên, dùng cho test và ảnh tĩnh.
 class AchievementCard extends StatefulWidget {
   const AchievementCard({
     super.key,
@@ -161,11 +195,11 @@ class _AchievementCardState extends State<AchievementCard>
   /// Chỉ tạo khi thẻ cần chạy, để thẻ đứng yên không giữ ticker.
   Ticker? _ticker;
 
-  /// Giây đã chạy, cho các lớp tự chuyển động của thẻ Huyền thoại.
+  /// Giây đã chạy, cho các lớp tự chuyển động của bậc có ánh.
   double _seconds = 0;
 
   bool get _animates =>
-      widget.animate && widget.data.tier == GameCardTier.legendary;
+      widget.animate && _looks[widget.data.tier]!.shine != _Shine.none;
 
   @override
   void initState() {
@@ -242,7 +276,8 @@ class _AchievementCardState extends State<AchievementCard>
 }
 
 /// Điểm sáng (0..1 mỗi chiều) theo độ nghiêng.
-Offset _lightAt(Offset pose) => Offset(0.5 + pose.dx * 0.5, 0.5 + pose.dy * 0.5);
+Offset _lightAt(Offset pose) =>
+    Offset(0.5 + pose.dx * 0.5, 0.5 + pose.dy * 0.5);
 
 double _deg(double d) => d * math.pi / 180;
 
@@ -257,11 +292,13 @@ class _Frame extends StatelessWidget {
   Widget build(BuildContext context) {
     // Nghiêng thẻ thì ánh kim trên viền trượt theo, như kim loại thật.
     final tiltDeg = pose.dx * 14;
-    final legendary = look.rainbow;
-    final Gradient gradient = legendary
+    final shine = look.shine;
+    // Cực quang xoay nhanh gần gấp đôi cầu vồng.
+    final spin = shine == _Shine.aurora ? 90 : 50;
+    final Gradient gradient = shine != _Shine.none
         ? SweepGradient(
             colors: look.frame,
-            transform: GradientRotation(_deg(seconds * 50 + tiltDeg * 6)),
+            transform: GradientRotation(_deg(seconds * spin + tiltDeg * 6)),
           )
         : LinearGradient(
             begin: Alignment.topLeft,
@@ -270,9 +307,19 @@ class _Frame extends StatelessWidget {
             stops: look.frameStops,
             transform: GradientRotation(_deg(tiltDeg * 4)),
           );
-    final aura = legendary
-        ? HSLColor.fromAHSL(0.42, (seconds * 40) % 360, 0.9, 0.72).toColor()
-        : look.aura;
+    final aura = switch (shine) {
+      _Shine.rainbow => HSLColor.fromAHSL(
+        0.42,
+        (seconds * 40) % 360,
+        0.9,
+        0.72,
+      ).toColor(),
+      // Quầng xanh ngọc thở theo nhịp 3 giây.
+      _Shine.aurora => _T.auraMythic.withValues(
+        alpha: 0.45 + math.sin(seconds * 2) * 0.15,
+      ),
+      _Shine.none => look.aura,
+    };
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -287,10 +334,36 @@ class _Frame extends StatelessWidget {
                 offset: Offset(0, 22),
               ),
               if (aura != null)
-                BoxShadow(color: aura, blurRadius: legendary ? 52 : 34),
+                BoxShadow(
+                  color: aura,
+                  blurRadius: switch (shine) {
+                    _Shine.rainbow => 52,
+                    _Shine.aurora => 46,
+                    _Shine.none => 34,
+                  },
+                ),
+              if (shine == _Shine.aurora)
+                const BoxShadow(color: _T.auraMythicOuter, blurRadius: 90),
             ],
           ),
         ),
+        if (shine == _Shine.aurora)
+          // Đốm sáng trắng chạy vòng quanh viền cực quang.
+          ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(
+                    math.sin(seconds * 1.3) * 0.8,
+                    math.cos(seconds * 1.1) * 0.8,
+                  ),
+                  radius: 0.3,
+                  colors: [_T.auroraFlare, _T.auroraFlare.withValues(alpha: 0)],
+                ),
+              ),
+            ),
+          ),
         if (look.holo == _Holo.sheen)
           // Vân xước của bạc: vạch sáng tối 3px lặp lại.
           ClipRRect(
@@ -375,7 +448,7 @@ class _Front extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final light = _lightAt(pose);
-    final legendary = data.tier == GameCardTier.legendary;
+    final shine = look.shine;
     final accent = look.accent;
     return Stack(
       fit: StackFit.expand,
@@ -395,8 +468,16 @@ class _Front extends StatelessWidget {
         if (look.holo == _Holo.sheen) _Sheen(light: light),
         if (look.holo == _Holo.prism)
           _Prism(light: light, strength: look.holoStrength),
-        if (legendary)
-          IgnorePointer(child: CustomPaint(painter: _GlitterPainter(light))),
+        if (look.holo == _Holo.aurora) _AuroraBand(seconds: seconds),
+        if (shine != _Shine.none)
+          IgnorePointer(
+            child: CustomPaint(
+              painter: _GlitterPainter(
+                light,
+                shine == _Shine.aurora ? _T.glitterAurora : _T.glitterWarm,
+              ),
+            ),
+          ),
         const _Shade(),
         Positioned(
           top: 12,
@@ -528,8 +609,40 @@ class _Front extends StatelessWidget {
             ],
           ),
         ),
-        if (legendary)
-          IgnorePointer(child: CustomPaint(painter: _StarPainter(seconds))),
+        if (data.stamp case final stamp?)
+          Positioned(
+            top: 58,
+            right: 12,
+            width: 64,
+            height: 64,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _T.stamp,
+                border: Border.all(
+                  color: accent,
+                  width: 1.5,
+                  strokeAlign: BorderSide.strokeAlignOutside,
+                ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: _T.stampDrop,
+                    blurRadius: 16,
+                    offset: Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: ClipOval(child: stamp),
+            ),
+          ),
+        if (shine != _Shine.none)
+          IgnorePointer(
+            child: CustomPaint(
+              painter: shine == _Shine.aurora
+                  ? _StarPainter(seconds, count: 8, color: _T.starAurora)
+                  : _StarPainter(seconds),
+            ),
+          ),
         GameCardGlare(at: light, strength: 0.38),
       ],
     );
@@ -617,9 +730,27 @@ class _Title extends StatelessWidget {
         Shadow(color: _T.textShadow, offset: Offset(0, 2), blurRadius: 6),
       ],
     );
-    final legendary = look.rainbow;
+    final running = switch (look.shine) {
+      _Shine.rainbow => const [
+        _T.titlePink,
+        _T.titleAmber,
+        _T.titleMint,
+        _T.titleSky,
+        _T.titleViolet,
+        _T.titlePink,
+      ],
+      _Shine.aurora => const [
+        _T.titleIce,
+        _T.titleTeal,
+        _T.titleBlue,
+        _T.titleLilac,
+        _T.titleTeal,
+        _T.titleIce,
+      ],
+      _Shine.none => null,
+    };
     final colors = look.title;
-    if (colors == null && !legendary) {
+    if (colors == null && running == null) {
       return Stack(children: [shadow, line(_ink)]);
     }
     return Stack(
@@ -628,21 +759,14 @@ class _Title extends StatelessWidget {
         ShaderMask(
           blendMode: BlendMode.srcIn,
           shaderCallback: (bounds) {
-            if (legendary) {
+            if (running != null) {
               // Dải màu dài 2,2 lần chữ, trượt hết một vòng sau 5 giây.
               final span = bounds.width * 2.2;
               final x = -(seconds / 5 % 1) * span;
               return ui.Gradient.linear(
                 Offset(x, 0),
                 Offset(x + span, 0),
-                const [
-                  _T.titlePink,
-                  _T.titleAmber,
-                  _T.titleMint,
-                  _T.titleSky,
-                  _T.titleViolet,
-                  _T.titlePink,
-                ],
+                running,
                 const [0, 0.2, 0.4, 0.6, 0.8, 1],
                 TileMode.repeated,
               );
@@ -813,11 +937,53 @@ class _Prism extends StatelessWidget {
   }
 }
 
+/// Thần thoại: dải xanh ngọc, lam, tím trôi chậm lên xuống như cực quang,
+/// blend screen lên ảnh.
+class _AuroraBand extends StatelessWidget {
+  const _AuroraBand({required this.seconds});
+
+  final double seconds;
+
+  @override
+  Widget build(BuildContext context) {
+    final angle = _deg(160 + math.sin(seconds * 0.7) * 25 - 90);
+    final dir = Offset(math.cos(angle), math.sin(angle));
+    // Dải cao gấp 2,6 lần thẻ, trượt theo trục dọc của nó.
+    final shift = math.sin(seconds * 0.9) * 0.8;
+    final center = dir * shift;
+    return IgnorePointer(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          backgroundBlendMode: BlendMode.screen,
+          gradient: LinearGradient(
+            begin: Alignment(
+              center.dx - dir.dx * 2.6,
+              center.dy - dir.dy * 2.6,
+            ),
+            end: Alignment(center.dx + dir.dx * 2.6, center.dy + dir.dy * 2.6),
+            colors: [
+              _T.holoAuroraTeal.withValues(alpha: 0),
+              _T.holoAuroraTeal,
+              _T.holoAuroraSky,
+              _T.holoAuroraViolet,
+              _T.holoAuroraViolet.withValues(alpha: 0),
+            ],
+            stops: const [0.18, 0.34, 0.48, 0.6, 0.78],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Kim tuyến: hai lưới chấm nhỏ trôi ngược chiều nhau theo điểm sáng.
 class _GlitterPainter extends CustomPainter {
-  const _GlitterPainter(this.light);
+  const _GlitterPainter(this.light, this.tint);
 
   final Offset light;
+
+  /// Màu lưới chấm thứ hai: vàng ấm ở Huyền thoại, xanh ngọc ở Thần thoại.
+  final Color tint;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -844,18 +1010,21 @@ class _GlitterPainter extends CustomPainter {
     }
 
     grid(17, 21, light.dx * 70, light.dy * 50, 0.9, _T.glitterWhite);
-    grid(29, 25, -light.dx * 50, light.dy * 80, 0.8, _T.glitterWarm);
+    grid(29, 25, -light.dx * 50, light.dy * 80, 0.8, tint);
   }
 
   @override
-  bool shouldRepaint(_GlitterPainter old) => old.light != light;
+  bool shouldRepaint(_GlitterPainter old) =>
+      old.light != light || old.tint != tint;
 }
 
-/// Sáu ngôi sao bốn cánh nhấp nháy lệch nhịp nhau, chu kỳ 2,4 giây.
+/// Sao bốn cánh nhấp nháy lệch nhịp nhau, chu kỳ 2,4 giây.
 class _StarPainter extends CustomPainter {
-  const _StarPainter(this.seconds);
+  const _StarPainter(this.seconds, {this.count = 6, this.color = _T.star});
 
   final double seconds;
+  final int count;
+  final Color color;
 
   static const _spots = [
     (0.18, 0.22, 0.0),
@@ -864,6 +1033,8 @@ class _StarPainter extends CustomPainter {
     (0.30, 0.58, 2.1),
     (0.86, 0.66, 0.35),
     (0.12, 0.40, 1.05),
+    (0.50, 0.30, 1.7),
+    (0.70, 0.60, 2.4),
   ];
 
   static final _star = Path()
@@ -879,7 +1050,7 @@ class _StarPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    for (final (x, y, delay) in _spots) {
+    for (final (x, y, delay) in _spots.take(count)) {
       final phase = ((seconds - delay) / 2.4) % 1;
       final k = 0.5 - 0.5 * math.cos(2 * math.pi * phase);
       if (k < 0.02) continue;
@@ -888,7 +1059,7 @@ class _StarPainter extends CustomPainter {
         ..translate(x * size.width, y * size.height)
         ..rotate(math.pi / 4 * k)
         ..scale(0.4 + 0.6 * k);
-      canvas.drawPath(_star, Paint()..color = _T.star.withValues(alpha: k));
+      canvas.drawPath(_star, Paint()..color = color.withValues(alpha: k));
       canvas.restore();
     }
   }
@@ -907,6 +1078,15 @@ class _Back extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (data.backFace case final face?) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          face,
+          GameCardGlare(at: _lightAt(pose), strength: 0.38),
+        ],
+      );
+    }
     final accent = look.accent;
     return Stack(
       fit: StackFit.expand,
