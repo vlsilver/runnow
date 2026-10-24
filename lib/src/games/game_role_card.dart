@@ -77,8 +77,8 @@ const _roles = {
   ),
 };
 
-class _TierStyle {
-  const _TierStyle(
+class GameCardTierStyle {
+  const GameCardTierStyle(
     this.label,
     this.gems,
     this.gem,
@@ -97,8 +97,8 @@ class _TierStyle {
   final bool sparkle;
 }
 
-const _tiers = {
-  GameCardTier.common: _TierStyle(
+const gameCardTiers = {
+  GameCardTier.common: GameCardTierStyle(
     'Thường',
     1,
     RunNowGameTokens.gemGraphite,
@@ -111,7 +111,7 @@ const _tiers = {
     0,
     false,
   ),
-  GameCardTier.rare: _TierStyle(
+  GameCardTier.rare: GameCardTierStyle(
     'Hiếm',
     2,
     RunNowGameTokens.gemSilver,
@@ -126,7 +126,7 @@ const _tiers = {
     0.08,
     false,
   ),
-  GameCardTier.superRare: _TierStyle(
+  GameCardTier.superRare: GameCardTierStyle(
     'Siêu hiếm',
     3,
     RunNowGameTokens.goldDeep,
@@ -140,7 +140,7 @@ const _tiers = {
     0.14,
     false,
   ),
-  GameCardTier.legendary: _TierStyle(
+  GameCardTier.legendary: GameCardTierStyle(
     'Huyền thoại',
     4,
     _gold,
@@ -241,9 +241,9 @@ class GameRoleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final r = _roles[role] ?? _roles['villager']!;
-    final t = _tiers[tier]!;
+    final t = gameCardTiers[tier]!;
     final accent = r.accent;
-    return _Frame(
+    return GameCardFrame(
       colors: t.frame,
       stops: t.frameStops,
       child: Stack(
@@ -285,7 +285,7 @@ class GameRoleCard extends StatelessWidget {
                         padding: const EdgeInsets.only(left: 3),
                         child: CustomPaint(
                           size: const Size(9, 11),
-                          painter: _GemPainter(t.gem),
+                          painter: GameCardGemPainter(t.gem),
                         ),
                       ),
                   ],
@@ -389,10 +389,12 @@ class GameRoleCard extends StatelessWidget {
               ],
             ),
           ),
-          if (t.holo > 0) _Holo(strength: t.holo, at: holo),
+          if (t.holo > 0) GameCardHolo(strength: t.holo, at: holo),
           if (t.sparkle)
-            IgnorePointer(child: CustomPaint(painter: _SparklePainter(holo))),
-          _Glare(at: holo, strength: 0.4),
+            IgnorePointer(
+              child: CustomPaint(painter: GameCardSparklePainter(holo)),
+            ),
+          GameCardGlare(at: holo, strength: 0.4),
         ],
       ),
     );
@@ -407,7 +409,7 @@ class GameCardBack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _Frame(
+    return GameCardFrame(
       colors: const [
         RunNowGameTokens.backEdge,
         RunNowGameTokens.backLight,
@@ -465,15 +467,20 @@ class GameCardBack extends StatelessWidget {
               ),
             ],
           ),
-          _Glare(at: holo, strength: 0.5),
+          GameCardGlare(at: holo, strength: 0.5),
         ],
       ),
     );
   }
 }
 
-class _Frame extends StatelessWidget {
-  const _Frame({required this.colors, required this.child, this.stops});
+class GameCardFrame extends StatelessWidget {
+  const GameCardFrame({
+    super.key,
+    required this.colors,
+    required this.child,
+    this.stops,
+  });
 
   final List<Color> colors;
   final List<double>? stops;
@@ -541,7 +548,9 @@ class _Art extends StatelessWidget {
             top: 12,
             child: GameMoon(size: 30, glow: 24),
           ),
-          Positioned.fill(child: CustomPaint(painter: _HillsPainter(accent))),
+          Positioned.fill(
+            child: CustomPaint(painter: GameCardHillsPainter(accent)),
+          ),
           CustomPaint(
             size: const Size(76, 76),
             painter: _RoleIconPainter(role, accent),
@@ -665,8 +674,8 @@ class _StatBox extends StatelessWidget {
 }
 
 /// Lớp xà cừ: dải kem, xanh băng, tím nhạt lặp lại, dời theo điểm sáng.
-class _Holo extends StatelessWidget {
-  const _Holo({required this.strength, required this.at});
+class GameCardHolo extends StatelessWidget {
+  const GameCardHolo({super.key, required this.strength, required this.at});
 
   final double strength;
   final Offset at;
@@ -699,8 +708,8 @@ class _Holo extends StatelessWidget {
   }
 }
 
-class _Glare extends StatelessWidget {
-  const _Glare({required this.at, required this.strength});
+class GameCardGlare extends StatelessWidget {
+  const GameCardGlare({super.key, required this.at, required this.strength});
 
   final Offset at;
   final double strength;
@@ -725,8 +734,8 @@ class _Glare extends StatelessWidget {
   }
 }
 
-class _GemPainter extends CustomPainter {
-  const _GemPainter(this.color);
+class GameCardGemPainter extends CustomPainter {
+  const GameCardGemPainter(this.color);
 
   final Color color;
 
@@ -749,11 +758,11 @@ class _GemPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_GemPainter old) => old.color != color;
+  bool shouldRepaint(GameCardGemPainter old) => old.color != color;
 }
 
-class _HillsPainter extends CustomPainter {
-  const _HillsPainter(this.accent);
+class GameCardHillsPainter extends CustomPainter {
+  const GameCardHillsPainter(this.accent);
 
   final Color accent;
 
@@ -808,7 +817,7 @@ class _HillsPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_HillsPainter old) => old.accent != accent;
+  bool shouldRepaint(GameCardHillsPainter old) => old.accent != accent;
 }
 
 /// Icon vai, vẽ lại từ SVG 64×64 của bản thiết kế.
@@ -925,8 +934,8 @@ class _RoleIconPainter extends CustomPainter {
       old.role != role || old.color != color;
 }
 
-class _SparklePainter extends CustomPainter {
-  const _SparklePainter(this.at);
+class GameCardSparklePainter extends CustomPainter {
+  const GameCardSparklePainter(this.at);
 
   final Offset at;
 
@@ -951,7 +960,7 @@ class _SparklePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_SparklePainter old) => old.at != at;
+  bool shouldRepaint(GameCardSparklePainter old) => old.at != at;
 }
 
 class _BackOrnamentPainter extends CustomPainter {

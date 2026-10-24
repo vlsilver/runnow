@@ -88,6 +88,29 @@ Future<ShareResult> shareGameCard({
   required GlobalKey cardKey,
   required BuildContext shareOriginContext,
   required String player,
+}) => _shareCard(
+  cardKey: cardKey,
+  shareOriginContext: shareOriginContext,
+  text: 'Lá bài Ma Sói của $player trên 3i',
+  fileName: '3i-ma-soi.png',
+);
+
+Future<ShareResult> shareAgentCard({
+  required GlobalKey cardKey,
+  required BuildContext shareOriginContext,
+  required String botName,
+}) => _shareCard(
+  cardKey: cardKey,
+  shareOriginContext: shareOriginContext,
+  text: 'Thẻ MyBot $botName của mình trên 3i',
+  fileName: '3i-mybot.png',
+);
+
+Future<ShareResult> _shareCard({
+  required GlobalKey cardKey,
+  required BuildContext shareOriginContext,
+  required String text,
+  required String fileName,
 }) async {
   final boundary =
       cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
@@ -98,9 +121,9 @@ Future<ShareResult> shareGameCard({
   final png = await captureRecapPng(boundary);
   return SharePlus.instance.share(
     ShareParams(
-      text: 'Lá bài Ma Sói của $player trên 3i',
+      text: text,
       files: [XFile.fromData(png, mimeType: 'image/png')],
-      fileNameOverrides: ['3i-ma-soi.png'],
+      fileNameOverrides: [fileName],
       sharePositionOrigin: sharePositionOrigin,
     ),
   );
