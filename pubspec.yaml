@@ -51,6 +51,10 @@ dev_dependencies:
   flutter_launcher_icons: ^0.14.4
   flutter_test:
     sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_driver:
+    sdk: flutter
   fake_cloud_firestore: ^4.2.0
   firebase_auth_mocks: ^0.15.2
 
@@ -89,3 +93,12 @@ flutter:
     - family: Exo 2
       fonts:
         - asset: assets/fonts/exo2/Exo2-Variable.ttf
+    # Số km và nhãn trên thẻ thành tích: nét hẹp, đậm như thẻ thể thao.
+    - family: Barlow Condensed
+      fonts:
+        - asset: assets/fonts/barlow_condensed/BarlowCondensed-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/barlow_condensed/BarlowCondensed-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/barlow_condensed/BarlowCondensed-ExtraBold.ttf
+          weight: 800

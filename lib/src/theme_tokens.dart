@@ -264,3 +264,81 @@ class RunNowBotTokens {
   static const visor = Color(0xFF10252B);
   static const shadow = Color(0x73000000);
 }
+
+/// Thẻ thành tích: khung kim loại theo bậc, lớp holo cầu vồng và chữ phủ lên
+/// ảnh full-art. Tông đêm như lá Ma Sói, nhưng ảnh nền là ảnh thật nên chữ
+/// cần lớp tối phía dưới để đọc được trên mọi ảnh.
+class RunNowAchievementTokens {
+  const RunNowAchievementTokens._();
+
+  static const accentCommon = Color(0xFFC3C8CF);
+  static const accentRare = Color(0xFFE3E8EE);
+  static const accentEpic = Color(0xFFF3D27A);
+  static const accentLegendary = Color(0xFFEBCBFF);
+
+  static const graphite1 = Color(0xFF50545D);
+  static const graphite2 = Color(0xFF2B2D33);
+  static const graphite3 = Color(0xFF454850);
+  static const graphite4 = Color(0xFF26282D);
+  static const silver1 = Color(0xFF7E8690);
+  static const silver2 = Color(0xFFF3F6F9);
+  static const silver3 = Color(0xFF8B929C);
+  static const silver4 = Color(0xFFE2E7EC);
+  static const silver5 = Color(0xFF737A84);
+  static const brushLight = Color(0x0FFFFFFF);
+  static const brushDark = Color(0x0D000000);
+  static const gold1 = Color(0xFF6F5016);
+  static const gold2 = Color(0xFFF8DF92);
+  static const gold3 = Color(0xFFA9781E);
+  static const gold4 = Color(0xFFFFF1BD);
+  static const gold5 = Color(0xFF86611C);
+  static const prismPink = Color(0xFFFF9AD5);
+  static const prismAmber = Color(0xFFFFD36E);
+  static const prismMint = Color(0xFF8EF0C9);
+  static const prismSky = Color(0xFF7CC8FF);
+  static const prismViolet = Color(0xFFC39BFF);
+
+  static const auraRare = Color(0x29E1E8F0);
+  static const auraEpic = Color(0x52F3C864);
+  static const drop = Color(0x99000000);
+  static const etch = Color(0x59FFFFFF);
+  static const cornerGoldLight = Color(0xFFFFF3C4);
+  static const cornerGoldDeep = Color(0xFFB9862A);
+  static const cornerPrismLight = Color(0xFFFFFFFF);
+  static const cornerPrismDeep = Color(0xFFD9C2FF);
+  static const cornerGlow = Color(0xB3FFF0C8);
+
+  static const holoPink = Color(0xFFFF77B7);
+  static const holoAmber = Color(0xFFFFD66E);
+  static const holoMint = Color(0xFF7EF0C9);
+  static const holoSky = Color(0xFF7CC8FF);
+  static const holoViolet = Color(0xFFC39BFF);
+  static const sheen = Color(0x57FFFFFF);
+  static const sheenTail = Color(0x0FFFFFFF);
+  static const glitterWhite = Color(0x8CFFFFFF);
+  static const glitterWarm = Color(0x87FFE296);
+  static const star = Color(0xFFFFF8E6);
+
+  static const field = Color(0xFF0D0E14);
+  static const shade = Color(0xFF08090E);
+  static const hairline = Color(0x29FFFFFF);
+  static const hero = Color(0xFFF7F5EF);
+  static const textShadow = Color(0x99000000);
+
+  static const titleSilver1 = Color(0xFFFFFFFF);
+  static const titleSilver2 = Color(0xFFE6EBF0);
+  static const titleSilver3 = Color(0xFFA2ABB6);
+  static const titleGold1 = Color(0xFFFFF6D2);
+  static const titleGold2 = Color(0xFFF6D77F);
+  static const titleGold3 = Color(0xFFC08D2E);
+  static const titlePink = Color(0xFFFFC2E6);
+  static const titleAmber = Color(0xFFFFE7A0);
+  static const titleMint = Color(0xFFAEF7DA);
+  static const titleSky = Color(0xFFA9DCFF);
+  static const titleViolet = Color(0xFFDCC2FF);
+
+  static const backTop = Color(0xFF20244A);
+  static const backBottom = Color(0xFF0B0C14);
+  static const backRay = Color(0x09FFFFFF);
+  static const emblemRing = Color(0x0AFFFFFF);
+}
