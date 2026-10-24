@@ -315,14 +315,16 @@ class RunNowApiClient {
   }
 
   /// Tạo bot (lần đầu) hoặc sửa tên, tính cách.
+  /// [look] null là không gửi, backend giữ kiểu đang có.
   Future<AgentProfile> saveAgentProfile({
     required String name,
     required String persona,
+    String? look,
   }) async {
     final response = await _send(
       'POST',
       '/v1/agents/me',
-      body: {'name': name, 'persona': persona},
+      body: {'name': name, 'persona': persona, 'look': ?look},
     );
     return AgentProfile.fromJson(_jsonObject(response));
   }

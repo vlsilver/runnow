@@ -25,17 +25,23 @@ class AgentProfile {
     required this.persona,
     required this.created,
     this.createdAt,
+    this.look,
   });
 
   factory AgentProfile.fromJson(Map<String, dynamic> json) => AgentProfile(
     name: _string(json['name']),
     persona: _string(json['persona']),
+    look: json.containsKey('look') ? _string(json['look']) : null,
     created: json['created'] == true,
     createdAt: _date(json['createdAt']),
   );
 
   final String name;
   final String persona;
+
+  /// Kiểu bot vẽ trên thẻ, rỗng là chưa chọn. null là backend cũ chưa có
+  /// field này: app không được gửi `look` vì backend cũ từ chối field lạ.
+  final String? look;
 
   /// false: hồ sơ mặc định, chủ chưa lưu lần nào nên bot chưa vào phòng.
   final bool created;

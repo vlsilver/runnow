@@ -263,16 +263,50 @@ class RunNowBotTokens {
   static const shellShade = Color(0xFFC3CCD3);
   static const visor = Color(0xFF10252B);
   static const shadow = Color(0x73000000);
+  static const leg = Color(0xFF5A616B);
+
+  /// Robot của thẻ chưa có tên: một bóng tối có dấu hỏi.
+  static const ghost = Color(0xFF2A2F37);
+  static const ghostVisor = Color(0xFF1A1E24);
+  static const ghostInk = Color(0xFF4A515C);
+
+  /// Đồ theo kiểu bot: nón tiệc, tai nghe, mũ và còi, khăn quàng.
+  static const partyHat = Color(0xFFF06292);
+  static const partyGold = Color(0xFFFFD166);
+  static const headband = Color(0xFF2B2F36);
+  static const cap = Color(0xFFE8553D);
+  static const capBrim = Color(0xFFB8402C);
+  static const lanyard = Color(0xFFCFD5DB);
+  static const whistle = Color(0xFFF0C75E);
+  static const scarf = Color(0xFFFF8A5B);
 }
 
-/// Thẻ MyBot ngoài con robot. Trời hoàng hôn và mặt trời lớn là phần thưởng
-/// của bậc Vàng trở lên nên giữ một màu ở mọi hành; nền màn lên bậc cũng vậy.
+/// Thẻ MyBot ngoài con robot. Trời từ bậc Bạc trở lên là phần thưởng của
+/// bậc nên giữ một màu ở mọi hành; nền màn lên bậc cũng vậy.
 class RunNowBotCardTokens {
   const RunNowBotCardTokens._();
 
-  static const sunsetTop = Color(0xFFFF9A6B);
-  static const sunsetMid = Color(0xFFE2603D);
-  static const sunsetBottom = Color(0xFF6B2A22);
+  /// Trời theo bậc: Bạc bình minh, Vàng hoàng hôn, Foil cực quang. Bậc
+  /// Thường là đêm theo màu hành.
+  static const dawnTop = Color(0xFF1D2F4D);
+  static const dawnMid = Color(0xFF3F6690);
+  static const dawnBottom = Color(0xFFA9C0D6);
+  static const duskTop = Color(0xFF2B1D3A);
+  static const duskMid = Color(0xFF9C3F52);
+  static const duskBottom = Color(0xFFF0A35A);
+  static const auroraTop = Color(0xFF0B0A24);
+  static const auroraMid = Color(0xFF24145A);
+  static const auroraBottom = Color(0xFF0E3A4E);
+  static const auroraGreen = Color(0xFF50FFBE);
+  static const auroraPink = Color(0xFFFF78DC);
+  static const auroraViolet = Color(0xFFA078FF);
+  static const auroraBlue = Color(0xFF50E6FF);
+
+  /// Nền dưới tranh và biển tên.
+  static const plaque = Color(0xFF151820);
+
+  /// Nền câu đầu của tính cách ở màn sửa bot: câu thẻ lấy làm lời thoại.
+  static const quoteHighlight = Color(0x40F0C75E);
   static const sunCore = Color(0xFFFFF3C4);
   static const sunHalo = Color(0xFFFFC36B);
 

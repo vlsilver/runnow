@@ -339,14 +339,15 @@ void main() {
 
     await tester.tap(find.text('Tạo bot'));
     await tester.pumpAndSettle();
-    expect(find.text('Bot của bạn là ai?'), findsOneWidget);
+    expect(find.text('Rèn thẻ bot của bạn'), findsOneWidget);
     await tester.tap(find.text('Cây hài'));
     await tester.pump();
-    await tester.tap(find.widgetWithText(FilledButton, 'Tạo bot'));
+    await tester.tap(find.text('Rèn thẻ bot'));
     await tester.pumpAndSettle();
     final create = backend.requests.firstWhere(
       (r) => r.method == 'POST' && r.url.path == '/v1/agents/me',
     );
+    // Backend cũ (GET me không có key look) thì không gửi kiểu bot.
     expect(jsonDecode(create.body), {
       'name': 'Bot của Tôi',
       'persona': 'Hay đùa, cà khịa vừa phải. Nói ngắn, xưng "tui".',
@@ -1083,17 +1084,85 @@ void main() {
     // Tên trống thì không cho lưu, backend cũng từ chối.
     expect(
       tester
-          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Lưu'))
-          .onPressed,
+          .widget<InkWell>(find.widgetWithText(InkWell, 'Đặt tên để rèn thẻ'))
+          .onTap,
       isNull,
     );
     await tester.enterText(name, 'Cú Mèo');
     await tester.pump();
-    await tester.tap(find.widgetWithText(FilledButton, 'Lưu'));
+    await tester.tap(find.text('Lưu thẻ'));
     await tester.pumpAndSettle();
     final save = backend.requests.lastWhere((r) => r.method == 'POST');
     expect(jsonDecode(save.body), {'name': 'Cú Mèo', 'persona': 'Nói ngắn'});
     expect(find.text('Cú Mèo'), findsOneWidget);
+  });
+
+  testWidgets('a backend that knows looks saves the look, own words stay', (
+    tester,
+  ) async {
+    backend.agent = {
+      'name': 'Cú',
+      'persona': 'Nói ngắn',
+      'created': true,
+      'look': 'funny',
+    };
+    await pumpMyBot(tester);
+    await tester.tap(find.byTooltip('Sửa bot'));
+    await tester.pumpAndSettle();
+    // Đổi kiểu chỉ đổi đồ trên thẻ, lời tự viết không bị mẫu đè.
+    await tester.ensureVisible(find.text('Coach khó tính'));
+    await tester.tap(find.text('Coach khó tính'));
+    await tester.pump();
+    expect(find.text('Nói ngắn'), findsOneWidget);
+    await tester.tap(find.text('Lưu thẻ'));
+    await tester.pumpAndSettle();
+    final save = backend.requests.lastWhere((r) => r.method == 'POST');
+    expect(jsonDecode(save.body), {
+      'name': 'Cú',
+      'persona': 'Nói ngắn',
+      'look': 'coach',
+    });
+  });
+
+  testWidgets('a nameless bot is a blank card, voice chips add a sentence', (
+    tester,
+  ) async {
+    backend.agent = {'name': '', 'persona': '', 'created': false, 'look': ''};
+    await pumpMyBot(tester);
+    await tester.tap(find.text('Tạo bot'));
+    await tester.pumpAndSettle();
+    // Chưa có tên: thẻ chưa rèn, nút tắt và nói cần làm gì.
+    expect(find.text('CHƯA RÈN'), findsOneWidget);
+    expect(
+      tester
+          .widget<InkWell>(find.widgetWithText(InkWell, 'Đặt tên để rèn thẻ'))
+          .onTap,
+      isNull,
+    );
+    await tester.enterText(find.byType(TextField).first, 'Bò Sữa');
+    await tester.pump();
+    expect(find.text('CHƯA RÈN'), findsNothing);
+
+    await tester.tap(find.text('Cây hài'));
+    await tester.pump();
+    await tester.ensureVisible(find.text('mê trail'));
+    await tester.tap(find.text('mê trail'));
+    await tester.pump();
+    // Lời đã có ý đó thì chip tắt, bấm lại không thêm câu thứ hai.
+    await tester.tap(find.text('mê trail'));
+    await tester.pump();
+    await tester.ensureVisible(find.text('Rèn thẻ bot'));
+    await tester.tap(find.text('Rèn thẻ bot'));
+    await tester.pumpAndSettle();
+    final create = backend.requests.lastWhere(
+      (r) => r.method == 'POST' && r.url.path == '/v1/agents/me',
+    );
+    expect(jsonDecode(create.body), {
+      'name': 'Bò Sữa',
+      'persona':
+          'Hay đùa, cà khịa vừa phải. Nói ngắn, xưng "tui". Mê chạy trail.',
+      'look': 'funny',
+    });
   });
 
   testWidgets('shows what the bot learned and forgets on request', (
@@ -1484,14 +1553,9 @@ void main() {
     await pumpMyBot(tester);
     // Người đã chặn nằm chung thẻ cài đặt với công tắc tự học, không thẻ riêng.
     Material cardOf(String text) => tester.widget<Material>(
-      find
-          .ancestor(of: find.text(text), matching: find.byType(Material))
-          .first,
+      find.ancestor(of: find.text(text), matching: find.byType(Material)).first,
     );
-    expect(
-      cardOf('Người đã chặn'),
-      same(cardOf('Cho bot tự học về bạn')),
-    );
+    expect(cardOf('Người đã chặn'), same(cardOf('Cho bot tự học về bạn')));
     await tester.tap(find.text('Người đã chặn'));
     await tester.pumpAndSettle();
     expect(find.text('An'), findsOneWidget);
@@ -1513,7 +1577,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cây hài'));
     await tester.pump();
-    await tester.tap(find.widgetWithText(FilledButton, 'Tạo bot'));
+    await tester.tap(find.text('Rèn thẻ bot'));
     await tester.pumpAndSettle();
     expect(find.text('Trước khi bắt đầu'), findsOneWidget);
     expect(find.text('Bot của Tôi chạy bằng AI.'), findsOneWidget);
@@ -1521,11 +1585,11 @@ void main() {
     // Để sau: về màn tạo bot, chưa tạo gì.
     await tester.tap(find.text('Để sau'));
     await tester.pumpAndSettle();
-    expect(find.text('Bot của bạn là ai?'), findsOneWidget);
+    expect(find.text('Rèn thẻ bot của bạn'), findsOneWidget);
     expect(backend.calls, isNot(contains('POST /v1/agents/me')));
     expect(backend.calls, isNot(contains('POST /v1/agents/me/consent')));
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Tạo bot'));
+    await tester.tap(find.text('Rèn thẻ bot'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cho bot tự học về tôi'));
     await tester.pump();
@@ -1602,7 +1666,9 @@ void main() {
           used: 0,
           limit: limit,
           runKm: km,
-          tiers: [for (final k in at ?? [1.0, 5.0, 10.0]) (km: k, limit: 1)],
+          tiers: [
+            for (final k in at ?? [1.0, 5.0, 10.0]) (km: k, limit: 1),
+          ],
         );
     for (final (km, want) in [
       (0.0, AgentCardTier.common),
@@ -1621,12 +1687,8 @@ void main() {
     expect(agentCardTier(images(2, at: [1, 2])), AgentCardTier.foil);
 
     // Backend cũ chưa gửi bảng mốc.
-    AgentImagesToday old(int limit, double? nextKm) => AgentImagesToday(
-      used: 0,
-      limit: limit,
-      runKm: 3,
-      nextKm: nextKm,
-    );
+    AgentImagesToday old(int limit, double? nextKm) =>
+        AgentImagesToday(used: 0, limit: limit, runKm: 3, nextKm: nextKm);
     expect(agentCardTier(old(0, 1)), AgentCardTier.common);
     expect(agentCardTier(old(3, 5)), AgentCardTier.silver);
     expect(agentCardTier(old(10, null)), AgentCardTier.foil);
@@ -1699,7 +1761,11 @@ void main() {
     // Chưa qua mốc 1 km nên không bật màn lên bậc che tab.
     backend.today = tierToday(0.5, 0, 10, nextKm: 1);
     backend.telegram = botOnTelegram();
-    backend.memories.add({'id': 'm1', 'text': 'Pace dễ 6:30', 'source': 'manual'});
+    backend.memories.add({
+      'id': 'm1',
+      'text': 'Pace dễ 6:30',
+      'source': 'manual',
+    });
     backend.images.add({'path': 'users/me/agentImages/tg1.png'});
     final at = DateTime.utc(2026, 10, 20, 8).toIso8601String();
     backend.room = {

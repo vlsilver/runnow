@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:myrun/src/agents/agent_km.dart';
+import 'package:myrun/src/agents/agent_look.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/share.dart';
@@ -86,6 +87,7 @@ class AgentBotCardData {
     this.inPsc = false,
     this.learning = false,
     this.now,
+    this.look = AgentLook.custom,
   });
 
   /// Thẻ của [agent] với lượt hôm nay trong [me]; tab MyBot và màn sửa bot
@@ -100,6 +102,7 @@ class AgentBotCardData {
     return AgentBotCardData(
       name: agent.name,
       persona: agent.persona,
+      look: AgentLook.of(agent.look, agent.persona),
       tier: agentCardTier(images),
       memoryCount: me.memories.length,
       memoryLimit: me.memoryLimit,
@@ -124,6 +127,9 @@ class AgentBotCardData {
 
   final String name;
   final String persona;
+
+  /// Đồ robot đeo trên thẻ.
+  final AgentLook look;
   final AgentCardTier tier;
   final int memoryCount;
   final int memoryLimit;
@@ -159,6 +165,9 @@ class AgentBotCardData {
           _ => _Mood.happy,
         };
 
+  /// Chưa có tên: thẻ "chưa rèn" ở màn tạo bot.
+  bool get draft => name.trim().isEmpty;
+
   String get initial =>
       name.trim().isEmpty ? '?' : name.trim().characters.first.toUpperCase();
 }
@@ -169,7 +178,9 @@ RunNowPalette _cardPalette(BuildContext context) => RunNowPalette.forSelection(
   appearance: RunNowAppearance.dark,
 );
 
-/// Mặt trước thẻ bot, vẽ ở [gameCardSize].
+/// Mặt trước thẻ bot, vẽ ở [gameCardSize]. Tranh chiếm nửa trên: trời theo
+/// bậc, robot đứng trên đường chạy, đồ đeo theo kiểu bot. Thẻ chưa có tên là
+/// thẻ "chưa rèn": robot chỉ là một bóng tối có dấu hỏi.
 class AgentBotCardFront extends StatelessWidget {
   const AgentBotCardFront({
     super.key,
@@ -180,150 +191,218 @@ class AgentBotCardFront extends StatelessWidget {
   final AgentBotCardData data;
   final Offset holo;
 
+  /// Mép dưới của tranh, tính trong lòng khung.
+  static const _artHeight = 222.0;
+
   @override
   Widget build(BuildContext context) {
     final p = _cardPalette(context);
     final t = gameCardTiers[data.tier.material]!;
     final ink = p.ink;
+    final muted = ink.withValues(alpha: 0.6);
+    final draft = data.draft;
     final createdAt = data.createdAt;
     final runKm = data.runKm;
+    final status = data.status;
+    final frame = draft
+        ? const [RunNowBotTokens.ghost, RunNowBotTokens.ghostVisor]
+        : t.frame;
+    final frameStops = draft ? null : t.frameStops;
+    final quote = data.budgetResting
+        ? 'MyBot chạm trần chi phí hôm nay.'
+        : draft && data.persona.trim().isEmpty
+        ? 'Chọn kiểu bot, thẻ hiện lời bot nói ở đây.'
+        : _quote(data.persona);
     return GameCardFrame(
-      colors: t.frame,
-      stops: t.frameStops,
+      colors: frame,
+      stops: frameStops,
       child: Stack(
         fit: StackFit.expand,
         children: [
           _Field(palette: p),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 9),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            height: _artHeight,
+            child: _Scene(data: data, palette: p, gem: t.gem),
+          ),
+          Positioned(
+            left: 9,
+            right: 9,
+            top: 8,
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(child: _CardCaps('MyBot', color: p.accent)),
-                    _CardCaps(data.tier.label, color: t.gem),
-                    for (var i = 0; i < t.gems; i++)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 3),
-                        child: CustomPaint(
-                          size: const Size(8, 10),
-                          painter: GameCardGemPainter(t.gem),
+                Expanded(
+                  child: Row(
+                    children: [
+                      if (runKm != null && !draft)
+                        Flexible(
+                          child: _ScenePill(
+                            text: status == null
+                                ? '${formatAgentRunKm(runKm)} km hôm nay'
+                                : '${formatAgentRunKm(runKm)} km',
+                          ),
                         ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  data.budgetResting ? '${data.name} đang nghỉ' : data.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 24,
-                    height: 1.05,
-                    fontWeight: FontWeight.w900,
-                    color: ink,
-                    shadows: [
-                      const Shadow(
-                        color: RunNowGameTokens.cardTextShadow,
-                        offset: Offset(0, 2),
-                      ),
-                      Shadow(
-                        color: p.accent.withValues(alpha: 0.45),
-                        blurRadius: 18,
-                      ),
+                      if (status != null) ...[
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: _ScenePill(
+                            text: status.text,
+                            icon: status.icon,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
-                const SizedBox(height: 7),
-                _Scene(data: data, palette: p, gem: t.gem),
-                const SizedBox(height: 7),
+                const SizedBox(width: 5),
+                _TierChip(
+                  label: draft ? 'Chưa rèn' : data.tier.label,
+                  gems: draft ? 0 : t.gems,
+                  color: draft ? muted : t.gem,
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 14,
+            right: 14,
+            top: _artHeight - 18,
+            child: Center(
+              child: _NamePlaque(
+                text: draft
+                    ? 'Tên bot'
+                    : data.budgetResting
+                    ? '${data.name} đang nghỉ'
+                    : data.name,
+                color: draft ? muted : ink,
+                glow: draft ? Colors.transparent : t.gem,
+                frame: frame,
+                stops: frameStops,
+              ),
+            ),
+          ),
+          Positioned(
+            left: 14,
+            right: 14,
+            top: _artHeight + 22,
+            child: Column(
+              children: [
+                if (!draft)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CustomPaint(
+                        size: const Size(6, 8),
+                        painter: GameCardGemPainter(t.gem),
+                      ),
+                      const SizedBox(width: 5),
+                      Flexible(child: _CardCaps(data.look.title, color: t.gem)),
+                      const SizedBox(width: 5),
+                      CustomPaint(
+                        size: const Size(6, 8),
+                        painter: GameCardGemPainter(t.gem),
+                      ),
+                    ],
+                  ),
+                const SizedBox(height: 4),
                 Text(
-                  data.budgetResting
-                      ? 'MyBot chạm trần chi phí hôm nay.'
-                      : _quote(data.persona),
+                  quote,
+                  textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 10.5,
                     height: 1.35,
                     fontStyle: FontStyle.italic,
-                    color: ink.withValues(alpha: 0.8),
+                    color: draft ? muted : ink.withValues(alpha: 0.82),
                   ),
-                ),
-                const Spacer(),
-                Row(
-                  children: [
-                    if (data.dm case final dm?) ...[
-                      Expanded(
-                        child: _CardStat(
-                          label: 'Tin',
-                          used: dm.used,
-                          max: dm.max,
-                        ),
-                      ),
-                      const SizedBox(width: 5),
-                    ],
-                    if (data.images case final images?) ...[
-                      Expanded(
-                        child: _CardStat(
-                          label: 'Ảnh',
-                          used: images.used,
-                          max: images.max,
-                        ),
-                      ),
-                      const SizedBox(width: 5),
-                    ],
-                    Expanded(
-                      child: _CardStat(
-                        label: 'Nhớ',
-                        used: data.memoryCount,
-                        max: data.memoryLimit,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 7),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        createdAt == null
-                            ? (runKm == null
-                                  ? '3I RUN · MYBOT'
-                                  : '${formatAgentRunKm(runKm)} km hôm nay')
-                            : _dayLine(createdAt),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: ink.withValues(alpha: 0.66),
-                        ),
-                      ),
-                    ),
-                    // Expanded cạnh Expanded chia đôi hàng; chữ căn phải để
-                    // username nằm sát mép phải thay vì giữa thẻ.
-                    if (data.username case final username?)
-                      Expanded(
-                        child: Text(
-                          '@$username',
-                          textAlign: TextAlign.right,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            color: p.accent,
-                          ),
-                        ),
-                      ),
-                  ],
                 ),
               ],
             ),
           ),
-          if (t.holo > 0) GameCardHolo(strength: t.holo, at: holo),
-          if (t.sparkle)
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 25,
+            child: Row(
+              children: [
+                if (data.dm case final dm?) ...[
+                  Expanded(
+                    child: _CardStat(
+                      label: 'Tin',
+                      used: dm.used,
+                      max: dm.max,
+                      color: t.gem,
+                    ),
+                  ),
+                  const SizedBox(width: 9),
+                ],
+                if (data.images case final images?) ...[
+                  Expanded(
+                    child: _CardStat(
+                      label: 'Ảnh',
+                      used: images.used,
+                      max: images.max,
+                      color: t.gem,
+                    ),
+                  ),
+                  const SizedBox(width: 9),
+                ],
+                Expanded(
+                  child: _CardStat(
+                    label: 'Nhớ',
+                    used: data.memoryCount,
+                    max: data.memoryLimit,
+                    color: t.gem,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 9,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    draft
+                        ? 'Bot mới'
+                        : createdAt == null
+                        ? '3I RUN · MYBOT'
+                        : _dayLine(createdAt),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: ink.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ),
+                // Expanded cạnh Expanded chia đôi hàng; chữ căn phải để
+                // username nằm sát mép phải thay vì giữa thẻ.
+                if (data.username case final username?)
+                  Expanded(
+                    child: Text(
+                      '@$username',
+                      textAlign: TextAlign.right,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        color: p.accent,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (!draft && t.holo > 0) GameCardHolo(strength: t.holo, at: holo),
+          if (!draft && t.sparkle)
             IgnorePointer(
               child: CustomPaint(painter: GameCardSparklePainter(holo)),
             ),
@@ -343,8 +422,108 @@ class AgentBotCardFront extends StatelessWidget {
   static String _quote(String persona) {
     final text = persona.trim();
     if (text.isEmpty) return '';
-    final end = RegExp(r'[.!?…](?=\s|$)').firstMatch(text)?.end;
-    return '“${end == null ? text : text.substring(0, end)}”';
+    return '“${text.substring(0, agentQuoteEnd(text))}”';
+  }
+}
+
+/// Độ dài câu đầu của [persona] (hết câu ở . ! ? …), cả đoạn khi không có dấu
+/// hết câu. Thẻ lấy câu này làm lời thoại; màn sửa bot tô sáng đúng câu đó.
+int agentQuoteEnd(String persona) =>
+    RegExp(r'[.!?…](?=\s|$)').firstMatch(persona)?.end ?? persona.length;
+
+/// Bậc thẻ trên tranh: tên bậc và số đá.
+class _TierChip extends StatelessWidget {
+  const _TierChip({
+    required this.label,
+    required this.gems,
+    required this.color,
+  });
+
+  final String label;
+  final int gems;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(7, 3, 6, 3),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _CardCaps(label, color: color),
+          for (var i = 0; i < gems; i++)
+            Padding(
+              padding: const EdgeInsets.only(left: 2),
+              child: CustomPaint(
+                size: const Size(7, 9),
+                painter: GameCardGemPainter(color),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Biển tên đè lên mép dưới tranh, viền cùng chất liệu với khung thẻ.
+class _NamePlaque extends StatelessWidget {
+  const _NamePlaque({
+    required this.text,
+    required this.color,
+    required this.glow,
+    required this.frame,
+    required this.stops,
+  });
+
+  final String text;
+  final Color color;
+  final Color glow;
+  final List<Color> frame;
+  final List<double>? stops;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 206),
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: frame,
+          stops: stops,
+        ),
+        boxShadow: const [
+          BoxShadow(color: RunNowBotTokens.shadow, blurRadius: 10),
+        ],
+      ),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 3, 14, 4),
+        decoration: BoxDecoration(
+          color: RunNowBotCardTokens.plaque,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 20,
+            height: 1.15,
+            fontWeight: FontWeight.w900,
+            color: color,
+            shadows: [
+              Shadow(color: glow.withValues(alpha: 0.45), blurRadius: 16),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -522,52 +701,76 @@ class _CardCaps extends StatelessWidget {
 }
 
 class _CardStat extends StatelessWidget {
-  const _CardStat({required this.label, required this.used, required this.max});
+  const _CardStat({
+    required this.label,
+    required this.used,
+    required this.max,
+    required this.color,
+  });
 
   final String label;
   final int used;
   final int max;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     const ink = RunNowGameTokens.nightInk;
     final muted = ink.withValues(alpha: 0.62);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(7, 5, 7, 5),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _CardCaps(label, color: muted),
-          const SizedBox(height: 1),
-          Text.rich(
-            TextSpan(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Expanded(child: _CardCaps(label, color: muted)),
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(text: '$used'),
+                  TextSpan(
+                    text: '/$max',
+                    style: TextStyle(fontSize: 8.5, color: muted),
+                  ),
+                ],
+              ),
+              maxLines: 1,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: ink,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 3),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: SizedBox(
+            height: 3,
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                TextSpan(text: '$used'),
-                TextSpan(
-                  text: '/$max',
-                  style: TextStyle(fontSize: 10, color: muted),
+                ColoredBox(color: Colors.white.withValues(alpha: 0.1)),
+                FractionallySizedBox(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: max <= 0 ? 0 : (used / max).clamp(0.0, 1.0),
+                  child: ColoredBox(color: color),
                 ),
               ],
             ),
-            maxLines: 1,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
-              color: ink,
-            ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-/// Tranh giữa thẻ: trời theo màu hành, mặt trời khi đã chạy (trăng khi chưa),
-/// đồi có đường chạy, robot đứng giữa.
+/// Tranh nửa trên thẻ: trời theo bậc (đêm theo màu hành, Bạc bình minh,
+/// Vàng hoàng hôn, Foil cực quang), đường chạy, robot đứng giữa. Bot nghỉ
+/// hay thẻ chưa rèn thì luôn là đêm.
 class _Scene extends StatelessWidget {
   const _Scene({required this.data, required this.palette, required this.gem});
 
@@ -577,102 +780,240 @@ class _Scene extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final runKm = data.runKm;
-    final status = data.status;
-    final day = data.tier != AgentCardTier.common && !data.budgetResting;
-    // Từ Vàng trở lên trời chuyển hoàng hôn, mặt trời lớn mọc sau robot: lên
-    // bậc nhìn thấy ngay trên tranh, không chỉ ở khung.
-    final sunset = day && data.tier.index >= AgentCardTier.gold.index;
-    return Container(
-      height: 136,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(9),
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: sunset
-              ? const [
-                  RunNowBotCardTokens.sunsetTop,
-                  RunNowBotCardTokens.sunsetMid,
-                  RunNowBotCardTokens.sunsetBottom,
-                ]
-              : [
-                  Color.lerp(
-                    palette.accentDeep,
-                    Colors.black,
-                    day ? 0.45 : 0.72,
-                  )!,
-                  Color.lerp(palette.accentDeep, Colors.black, 0.78)!,
-                  RunNowGameTokens.cardArt,
-                ],
-          stops: sunset ? const [0, 0.45, 1] : null,
+    final draft = data.draft;
+    final tier = draft || data.budgetResting ? AgentCardTier.common : data.tier;
+    final deep = palette.accentDeep;
+    final sky = switch (tier) {
+      _ when draft => [
+        Color.lerp(palette.background, Colors.black, 0.35)!,
+        Color.lerp(palette.background, Colors.white, 0.04)!,
+      ],
+      AgentCardTier.common => [
+        Color.lerp(deep, Colors.black, 0.82)!,
+        Color.lerp(deep, Colors.black, 0.62)!,
+        Color.lerp(deep, Colors.black, 0.55)!,
+      ],
+      AgentCardTier.silver => const [
+        RunNowBotCardTokens.dawnTop,
+        RunNowBotCardTokens.dawnMid,
+        RunNowBotCardTokens.dawnBottom,
+      ],
+      AgentCardTier.gold => const [
+        RunNowBotCardTokens.duskTop,
+        RunNowBotCardTokens.duskMid,
+        RunNowBotCardTokens.duskBottom,
+      ],
+      AgentCardTier.foil => const [
+        RunNowBotCardTokens.auroraTop,
+        RunNowBotCardTokens.auroraMid,
+        RunNowBotCardTokens.auroraBottom,
+      ],
+    };
+    final under = Color.lerp(palette.background, Colors.black, 0.2)!;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: sky,
+            ),
+          ),
         ),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-      ),
-      child: Stack(
-        children: [
-          // Có trạng thái thì pill trạng thái chiếm góc phải thay mặt trời,
-          // để không đè lên ăng-ten bot ở giữa.
-          if (status == null && sunset)
+        if (!draft) ...[
+          if (tier == AgentCardTier.foil)
+            const CustomPaint(painter: _AuroraPainter()),
+          if (tier != AgentCardTier.gold)
+            const CustomPaint(painter: _StarsPainter()),
+          if (tier == AgentCardTier.common)
+            const Positioned(
+              right: 24,
+              top: 36,
+              child: GameMoon(size: 20, glow: 16),
+            ),
+          if (tier == AgentCardTier.silver)
+            const Positioned(
+              right: 26,
+              top: 34,
+              child: GameMoon(size: 32, glow: 28),
+            ),
+          if (tier == AgentCardTier.gold)
             const Positioned(
               left: 0,
               right: 0,
-              top: 20,
-              child: Center(child: _SunsetSun(size: 62)),
-            )
-          else if (status == null)
-            Positioned(
-              right: 18,
-              top: 12,
-              child: day
-                  ? const _Sun(size: 22)
-                  : const GameMoon(size: 22, glow: 18),
+              top: 70,
+              child: Center(child: _SunsetSun(size: 150)),
             ),
-          Positioned.fill(
-            child: CustomPaint(painter: GameCardHillsPainter(palette.accent)),
+        ],
+        CustomPaint(
+          painter: _TrackPainter(
+            draft
+                ? Colors.white.withValues(alpha: 0.08)
+                : gem.withValues(alpha: 0.5),
           ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: CustomPaint(
-                size: const Size(80, 88),
-                painter: _MascotPainter(
-                  mood: data._mood,
-                  accent: palette.accent,
-                  gem: gem,
-                  initial: data.initial,
-                ),
+        ),
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 26),
+            child: CustomPaint(
+              size: _MascotPainter.sizeFor(112),
+              painter: _MascotPainter(
+                mood: data._mood,
+                look: data.look,
+                accent: palette.accent,
+                gem: gem,
+                initial: data.initial,
+                ghost: draft,
               ),
             ),
           ),
-          Positioned(
-            left: 8,
-            top: 8,
-            right: status == null ? 50 : 8,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                if (runKm != null)
-                  _ScenePill(
-                    text: status == null
-                        ? '${formatAgentRunKm(runKm)} km hôm nay'
-                        : '${formatAgentRunKm(runKm)} km',
-                  ),
-                if (status != null) ...[
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: _ScenePill(text: status.text, icon: status.icon),
-                  ),
-                ],
-              ],
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 44,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [under.withValues(alpha: 0), under],
+              ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
+}
+
+/// Sao bốn cánh rải cố định trên trời đêm, bình minh và cực quang.
+class _StarsPainter extends CustomPainter {
+  const _StarsPainter();
+
+  /// (x, y, cỡ, độ đậm), x và y theo tỉ lệ khung tranh.
+  static const _stars = [
+    (0.09, 0.17, 6.0, 0.8),
+    (0.22, 0.09, 4.0, 0.55),
+    (0.79, 0.12, 7.0, 0.85),
+    (0.88, 0.31, 4.0, 0.5),
+    (0.15, 0.40, 4.0, 0.45),
+    (0.66, 0.24, 3.0, 0.55),
+    (0.50, 0.06, 4.0, 0.6),
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final (fx, fy, s, alpha) in _stars) {
+      final c = Offset(size.width * fx, size.height * fy);
+      final r = s / 2;
+      final w = r * 0.22;
+      canvas.drawPath(
+        Path()
+          ..moveTo(c.dx, c.dy - r)
+          ..lineTo(c.dx + w, c.dy - w)
+          ..lineTo(c.dx + r, c.dy)
+          ..lineTo(c.dx + w, c.dy + w)
+          ..lineTo(c.dx, c.dy + r)
+          ..lineTo(c.dx - w, c.dy + w)
+          ..lineTo(c.dx - r, c.dy)
+          ..lineTo(c.dx - w, c.dy - w)
+          ..close(),
+        Paint()..color = Colors.white.withValues(alpha: alpha),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_StarsPainter old) => false;
+}
+
+/// Hai dải cực quang mờ vắt ngang trời của bậc Foil.
+class _AuroraPainter extends CustomPainter {
+  const _AuroraPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    void band(double top, double height, double turn, List<Color> colors) {
+      final rect = Rect.fromLTWH(-30, top, size.width + 60, height);
+      canvas.save();
+      canvas.translate(size.width / 2, top + height / 2);
+      canvas.rotate(turn);
+      canvas.translate(-size.width / 2, -(top + height / 2));
+      canvas.drawOval(
+        rect,
+        Paint()
+          ..shader = LinearGradient(colors: colors).createShader(rect)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+      );
+      canvas.restore();
+    }
+
+    band(14, 64, -0.14, [
+      RunNowBotCardTokens.auroraGreen.withValues(alpha: 0),
+      RunNowBotCardTokens.auroraGreen.withValues(alpha: 0.55),
+      RunNowBotCardTokens.auroraPink.withValues(alpha: 0.5),
+      RunNowBotCardTokens.auroraPink.withValues(alpha: 0),
+    ]);
+    band(58, 44, 0.1, [
+      RunNowBotCardTokens.auroraViolet.withValues(alpha: 0),
+      RunNowBotCardTokens.auroraViolet.withValues(alpha: 0.55),
+      RunNowBotCardTokens.auroraBlue.withValues(alpha: 0.45),
+      RunNowBotCardTokens.auroraBlue.withValues(alpha: 0),
+    ]);
+  }
+
+  @override
+  bool shouldRepaint(_AuroraPainter old) => false;
+}
+
+/// Đường chạy nhìn xa dần về chân trời, nằm ở đáy tranh dưới chân robot.
+class _TrackPainter extends CustomPainter {
+  const _TrackPainter(this.lane);
+
+  final Color lane;
+
+  static const _depth = 62.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final bottom = size.height;
+    final top = bottom - _depth;
+    final cx = w / 2;
+    canvas.drawPath(
+      Path()
+        ..moveTo(-w / 3, bottom)
+        ..lineTo(w * 4 / 3, bottom)
+        ..lineTo(cx + w * 0.06, top)
+        ..lineTo(cx - w * 0.06, top)
+        ..close(),
+      Paint()..color = Colors.black.withValues(alpha: 0.45),
+    );
+    final line = Paint()
+      ..color = lane
+      ..strokeWidth = 1.4;
+    for (final f in const [-0.25, 0.0, 0.25, 0.75, 1.0, 1.25]) {
+      final x = w * f;
+      canvas.drawLine(
+        Offset(x, bottom),
+        Offset(cx + (x - cx) * 0.12, top),
+        line,
+      );
+    }
+    canvas.drawLine(
+      Offset(0, top),
+      Offset(w, top),
+      Paint()..color = Colors.white.withValues(alpha: 0.1),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_TrackPainter old) => old.lane != lane;
 }
 
 class _ScenePill extends StatelessWidget {
@@ -716,34 +1057,6 @@ class _ScenePill extends StatelessWidget {
   }
 }
 
-class _Sun extends StatelessWidget {
-  const _Sun({required this.size});
-
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: const RadialGradient(
-          center: Alignment(-0.3, -0.3),
-          colors: [RunNowGameTokens.sunLight, RunNowGameTokens.sunMid],
-          stops: [0, 0.7],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: RunNowGameTokens.sunMid.withValues(alpha: 0.6),
-            blurRadius: 18,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Mặt trời hoàng hôn của bậc Vàng trở lên: quầng tròn mờ dần ra mép, không
 /// có viền như mặt trời nhỏ.
 class _SunsetSun extends StatelessWidget {
@@ -771,56 +1084,121 @@ class _SunsetSun extends StatelessWidget {
   }
 }
 
-/// Robot của bot, vẽ theo khung 128×140 rồi thu theo [size]. Mắt theo tâm
-/// trạng: ngủ khi cả hệ thống nghỉ, lim dim khi chủ chưa chạy, mở khi đã qua
-/// mốc đầu, cười khi lên Vàng trở lên. Không có trạng thái buồn.
+/// Robot của bot, vẽ theo khung 128×184 (chừa 24 phía trên cho nón) rồi thu
+/// theo size. Mắt theo tâm trạng: ngủ khi cả hệ thống nghỉ, lim dim khi chủ
+/// chưa chạy, mở khi đã qua mốc đầu, cười khi lên Vàng trở lên. Không có
+/// trạng thái buồn. Đồ đeo theo kiểu bot; [ghost] là thẻ chưa có tên.
 class _MascotPainter extends CustomPainter {
   const _MascotPainter({
     required this.mood,
+    required this.look,
     required this.accent,
     required this.gem,
     required this.initial,
+    this.ghost = false,
   });
 
   final _Mood mood;
+  final AgentLook look;
   final Color accent;
   final Color gem;
   final String initial;
+  final bool ghost;
+
+  static const _frame = Size(128, 184);
+
+  static Size sizeFor(double width) =>
+      Size(width, width * _frame.height / _frame.width);
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.save();
-    canvas.scale(size.width / 128, size.height / 140);
+    canvas.scale(size.width / _frame.width, size.height / _frame.height);
+    canvas.translate(0, 24);
+    final shell = ghost ? RunNowBotTokens.ghost : RunNowBotTokens.shell;
     final eye = Color.lerp(accent, Colors.white, 0.5)!;
-    canvas.drawRRect(
-      RRect.fromLTRBR(26, 106, 102, 140, const Radius.circular(17)),
+    canvas.drawOval(
+      Rect.fromCenter(center: const Offset(64, 152), width: 80, height: 12),
       Paint()
         ..color = RunNowBotTokens.shadow
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
     );
-    canvas.drawLine(
-      const Offset(64, 10),
-      const Offset(64, 26),
-      Paint()
-        ..color = accent
-        ..strokeWidth = 3
-        ..strokeCap = StrokeCap.round,
+    final leg = Paint()
+      ..color = ghost ? RunNowBotTokens.ghost : RunNowBotTokens.leg;
+    for (final x in [44.0, 68.0]) {
+      canvas.drawRRect(
+        RRect.fromLTRBR(x, 128, x + 16, 148, const Radius.circular(5)),
+        leg,
+      );
+    }
+    final arm = Paint()
+      ..color = shell
+      ..strokeWidth = 9
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(const Offset(42, 108), const Offset(26, 126), arm);
+    canvas.drawLine(const Offset(86, 108), const Offset(102, 126), arm);
+    const body = Rect.fromLTWH(38, 100, 52, 34);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(body, const Radius.circular(14)),
+      Paint()..color = ghost ? RunNowBotTokens.ghost : accent,
     );
-    canvas.drawCircle(const Offset(64, 8), 6, Paint()..color = gem);
+    if (!ghost) _letter(canvas, body.center);
+    final dressed = !ghost;
+    if (dressed && look == AgentLook.coach) _whistle(canvas);
+    if (ghost || (look != AgentLook.funny && look != AgentLook.coach)) {
+      canvas.drawLine(
+        const Offset(64, 10),
+        const Offset(64, 26),
+        Paint()
+          ..color = ghost ? RunNowBotTokens.ghostInk : accent
+          ..strokeWidth = 3
+          ..strokeCap = StrokeCap.round,
+      );
+      canvas.drawCircle(
+        const Offset(64, 8),
+        6,
+        Paint()..color = ghost ? RunNowBotTokens.ghostInk : gem,
+      );
+    }
+    if (dressed && look == AgentLook.chill) _headphones(canvas, back: true);
     const head = Rect.fromLTWH(18, 24, 92, 74);
     canvas.drawRRect(
       RRect.fromRectAndRadius(head, const Radius.circular(30)),
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [RunNowBotTokens.shell, RunNowBotTokens.shellShade],
-        ).createShader(head),
+      ghost
+          ? (Paint()..color = RunNowBotTokens.ghost)
+          : (Paint()
+              ..shader = const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [RunNowBotTokens.shell, RunNowBotTokens.shellShade],
+              ).createShader(head)),
     );
     canvas.drawRRect(
       RRect.fromLTRBR(28, 38, 100, 80, const Radius.circular(20)),
-      Paint()..color = RunNowBotTokens.visor,
+      Paint()
+        ..color = ghost ? RunNowBotTokens.ghostVisor : RunNowBotTokens.visor,
     );
+    if (ghost) {
+      _text(canvas, '?', const Offset(64, 59), RunNowBotTokens.ghostInk, 26);
+    } else {
+      _eyes(canvas, eye);
+    }
+    if (dressed) {
+      switch (look) {
+        case AgentLook.funny:
+          _partyHat(canvas);
+        case AgentLook.chill:
+          _headphones(canvas, back: false);
+        case AgentLook.coach:
+          _cap(canvas);
+        case AgentLook.custom:
+          _scarf(canvas);
+      }
+    }
+    canvas.restore();
+  }
+
+  void _eyes(Canvas canvas, Color eye) {
     final line = Paint()
       ..color = eye
       ..style = PaintingStyle.stroke
@@ -875,39 +1253,175 @@ class _MascotPainter extends CustomPainter {
           );
         }
     }
-    const body = Rect.fromLTWH(38, 100, 52, 34);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(body, const Radius.circular(14)),
-      Paint()..color = accent,
-    );
-    final letter = TextPainter(
+  }
+
+  void _letter(Canvas canvas, Offset center) =>
+      _text(canvas, initial, center, Colors.white, 20);
+
+  void _text(
+    Canvas canvas,
+    String text,
+    Offset center,
+    Color color,
+    double size,
+  ) {
+    final painter = TextPainter(
       text: TextSpan(
-        text: initial,
+        text: text,
         // TextPainter không đọc theme của app nên phải nêu font, không thì
         // chữ rơi về font mặc định của máy.
-        style: const TextStyle(
+        style: TextStyle(
           fontFamily: 'Exo 2',
-          color: Colors.white,
-          fontSize: 20,
+          color: color,
+          fontSize: size,
           fontWeight: FontWeight.w900,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    letter.paint(
+    painter.paint(
       canvas,
-      body.center - Offset(letter.width / 2, letter.height / 2),
+      center - Offset(painter.width / 2, painter.height / 2),
     );
-    letter.dispose();
+    painter.dispose();
+  }
+
+  void _partyHat(Canvas canvas) {
+    final hat = Path()
+      ..moveTo(40, 30)
+      ..lineTo(88, 30)
+      ..lineTo(64, -14)
+      ..close();
+    canvas.drawPath(hat, Paint()..color = RunNowBotTokens.partyHat);
+    canvas.save();
+    canvas.clipPath(hat);
+    final stripe = Paint()
+      ..color = RunNowBotTokens.partyGold
+      ..strokeWidth = 5;
+    canvas.drawLine(const Offset(40, 15), const Offset(88, 15), stripe);
+    canvas.drawLine(const Offset(40, 1), const Offset(88, 1), stripe);
     canvas.restore();
+    canvas.drawCircle(
+      const Offset(64, -15),
+      6,
+      Paint()..color = RunNowBotTokens.partyGold,
+    );
+  }
+
+  /// Quai vẽ sau đầu, hai tai nghe vẽ đè lên mép đầu.
+  void _headphones(Canvas canvas, {required bool back}) {
+    if (back) {
+      canvas.drawArc(
+        Rect.fromCircle(center: const Offset(64, 62), radius: 50),
+        math.pi,
+        math.pi,
+        false,
+        Paint()
+          ..color = RunNowBotTokens.headband
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 7,
+      );
+      return;
+    }
+    final cup = Paint()..color = accent;
+    canvas.drawRRect(
+      RRect.fromLTRBR(8, 46, 24, 78, const Radius.circular(7)),
+      cup,
+    );
+    canvas.drawRRect(
+      RRect.fromLTRBR(104, 46, 120, 78, const Radius.circular(7)),
+      cup,
+    );
+  }
+
+  void _cap(Canvas canvas) {
+    canvas.drawPath(
+      Path()
+        ..moveTo(20, 46)
+        ..quadraticBezierTo(64, -6, 108, 46)
+        ..close(),
+      Paint()..color = RunNowBotTokens.cap,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(center: const Offset(100, 44), width: 40, height: 10),
+      Paint()..color = RunNowBotTokens.capBrim,
+    );
+    canvas.drawCircle(
+      const Offset(64, 21),
+      3,
+      Paint()..color = RunNowBotTokens.capBrim,
+    );
+  }
+
+  /// Còi đeo lệch sang trái để không che chữ trên ngực.
+  void _whistle(Canvas canvas) {
+    canvas.drawPath(
+      Path()
+        ..moveTo(52, 100)
+        ..lineTo(40, 114),
+      Paint()
+        ..color = RunNowBotTokens.lanyard
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+    canvas.drawRRect(
+      RRect.fromLTRBR(30, 112, 46, 122, const Radius.circular(3)),
+      Paint()..color = RunNowBotTokens.whistle,
+    );
+  }
+
+  void _scarf(Canvas canvas) {
+    final scarf = Paint()..color = RunNowBotTokens.scarf;
+    canvas.drawPath(
+      Path()
+        ..moveTo(32, 93)
+        ..quadraticBezierTo(64, 107, 96, 93)
+        ..lineTo(96, 101)
+        ..quadraticBezierTo(64, 114, 32, 101)
+        ..close(),
+      scarf,
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(80, 102)
+        ..lineTo(92, 126)
+        ..lineTo(78, 122)
+        ..close(),
+      scarf,
+    );
   }
 
   @override
   bool shouldRepaint(_MascotPainter old) =>
       old.mood != mood ||
+      old.look != look ||
       old.accent != accent ||
       old.gem != gem ||
-      old.initial != initial;
+      old.initial != initial ||
+      old.ghost != ghost;
+}
+
+/// Robot ngoài thẻ, vd. ở ô chọn kiểu bot: mắt mở, đồ đeo theo [look].
+class AgentMascot extends StatelessWidget {
+  const AgentMascot({super.key, required this.look, required this.width});
+
+  final AgentLook look;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.runNowPalette.accent;
+    return CustomPaint(
+      size: _MascotPainter.sizeFor(width),
+      painter: _MascotPainter(
+        mood: _Mood.awake,
+        look: look,
+        accent: accent,
+        gem: accent,
+        initial: '',
+      ),
+    );
+  }
 }
 
 /// Thẻ bot trên tab: vuốt ngang để nghiêng (ánh thẻ chạy theo), chạm để lật.
