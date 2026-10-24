@@ -32,6 +32,7 @@ type Dependencies struct {
 	TelegramLinks  *TelegramLinkService
 	Games          *GameStore
 	Agents         *AgentStore
+	RunCards       *RunCardStore
 	// AgentBrain chạy LLM của bot cá nhân; chỉ có trên service có Gemini (bot).
 	AgentBrain *AgentService
 	// ManagedBots là MyBot trên Telegram; nil khi chưa cấu hình bot quản lý
@@ -74,6 +75,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 	d.TelegramLinks = NewTelegramLinkService(db, config.TelegramBotUsername)
 	d.Games = NewGameStore(db, config.TelegramChatID)
 	d.Agents = NewAgentStore(db)
+	d.RunCards = NewRunCardStore(db)
 	d.OAuth = NewOAuthService(db, gateway, tasks, config)
 	d.Webhook = NewWebhookService(db, tasks, config.WebhookVerifyToken, config.StravaSubscriptionID)
 	d.Activities = NewActivityService(db, gateway, tokens, tasks, telegram, config.PublicBaseURL, config.WebBaseURL)

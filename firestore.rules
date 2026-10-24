@@ -82,6 +82,12 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // Thẻ buổi chạy: backend quay bậc và vẽ tranh, client chỉ đọc.
+      match /runCards/{activityId} {
+        allow read: if owns(userId);
+        allow write: if false;
+      }
+
       match /runContractActivityClaims/{activityId} {
         allow read: if owns(userId);
         allow create, update: if owns(userId)

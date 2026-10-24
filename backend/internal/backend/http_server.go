@@ -764,6 +764,28 @@ func (s *Server) apiRoutes() {
 		}
 		return writeJSON(w, 200, page)
 	}))
+	s.route("GET /v1/activities/{activityId}/card", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		id, err := runCardActivityID(r)
+		if err != nil {
+			return err
+		}
+		view, err := s.deps.RunCards.Get(r.Context(), uid, id)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, view)
+	}))
+	s.route("POST /v1/activities/{activityId}/card", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		id, err := runCardActivityID(r)
+		if err != nil {
+			return err
+		}
+		card, err := s.deps.RunCards.Roll(r.Context(), uid, id)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"card": card})
+	}))
 	s.route("GET /v1/art-styles", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		kind, ok := parseArtKind(r.URL.Query().Get("kind"))
 		if !ok {
