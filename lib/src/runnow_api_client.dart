@@ -506,6 +506,28 @@ class RunNowApiClient {
     await _send('POST', '/v1/strava/repair', body: {'full': full});
   }
 
+  /// Một trang buổi chạy của mình, mới trước, chỉ các field để vẽ danh sách
+  /// (không có route, streams). [cursor] null là đã hết trang.
+  Future<({List<Map<String, dynamic>> activities, String? cursor})>
+  getActivities({String? cursor, int? limit}) async {
+    final query = [
+      if (cursor != null) 'cursor=${Uri.encodeQueryComponent(cursor)}',
+      if (limit != null) 'limit=$limit',
+    ];
+    final response = await _send(
+      'GET',
+      '/v1/activities${query.isEmpty ? '' : '?${query.join('&')}'}',
+    );
+    final json = _jsonObject(response);
+    return (
+      activities: [
+        for (final item in json['activities'] as List<dynamic>? ?? const [])
+          item as Map<String, dynamic>,
+      ],
+      cursor: json['cursor'] as String?,
+    );
+  }
+
   Future<void> hydrateActivity(String activityId) async {
     await _send(
       'POST',

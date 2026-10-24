@@ -277,24 +277,21 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
     int limit = 30,
     Object? cursor,
   }) async {
-    Query<Map<String, dynamic>> query = _activities.orderBy(
-      'startedAt',
-      descending: true,
+    // Qua backend chứ không đọc Firestore trực tiếp: doc activity mang cả
+    // route, streams (gần hết dung lượng, 20 doc có thể vài MB) mà SDK trên
+    // điện thoại không bỏ bớt field được. Backend chỉ trả field danh sách cần.
+    final page = await _api.getActivities(
+      cursor: cursor as String?,
+      limit: limit,
     );
-    final documentCursor = cursor;
-    if (documentCursor is DocumentSnapshot<Map<String, dynamic>>) {
-      query = query.startAfterDocument(documentCursor);
-    }
-    final snapshot = await query.limit(limit).get();
-    final activities = snapshot.docs
-        .map(
-          (document) => ActivitySummary.fromMap(
-            document.data(),
-            includeRoutePoints: false,
-            includePhotos: false,
-          ),
-        )
-        .toList();
+    final activities = [
+      for (final map in page.activities)
+        ActivitySummary.fromMap(
+          map,
+          includeRoutePoints: false,
+          includePhotos: false,
+        ),
+    ];
     // Backend đã tự stamp `duplicateOfActivityId` lên doc lúc sync (cả lúc
     // 3i activity được tạo lẫn lúc Strava activity trùng giờ sync về sau,
     // xem `markRunNowDuplicates`/`SaveTracked` trong `activity_service.go`)
@@ -314,8 +311,8 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
                   : null,
             ),
       ],
-      nextCursor: snapshot.docs.isEmpty ? cursor : snapshot.docs.last,
-      hasMore: snapshot.docs.length == limit,
+      nextCursor: page.cursor,
+      hasMore: page.cursor != null,
     );
   }
 
