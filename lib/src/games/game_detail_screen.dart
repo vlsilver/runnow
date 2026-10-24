@@ -441,7 +441,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
 final _timeFormat = DateFormat('HH:mm dd/MM');
 
 /// Các bước trong một ngày của ván, theo phase của backend
-/// (`werewolf/state.go`): đêm 22h, rạng sáng 0h, đề cử 10h, biểu quyết 17h.
+/// (`werewolf/state.go`): đêm 22h, rạng sáng 0h, đề cử 10h, biểu quyết 20h.
 const _phaseSteps = [
   ('night', 'Đêm'),
   ('dawn', 'Rạng sáng'),
