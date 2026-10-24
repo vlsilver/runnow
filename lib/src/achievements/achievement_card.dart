@@ -32,7 +32,10 @@ class AchievementCardData {
   });
 
   final GameCardTier tier;
-  final ImageProvider art;
+
+  /// Nền phủ cả thẻ: ảnh, hay hình vẽ như đường chạy. Thẻ tự cho nó tràn
+  /// viền và lệch theo độ nghiêng.
+  final Widget art;
 
   /// Loại thành tích, ví dụ "KÈO HOÀN THÀNH".
   final String kind;
@@ -386,13 +389,7 @@ class _Front extends StatelessWidget {
           bottom: -10,
           child: Transform.translate(
             offset: Offset(-pose.dx * 7, -pose.dy * 7),
-            child: Image(
-              image: data.art,
-              fit: BoxFit.cover,
-              gaplessPlayback: true,
-              filterQuality: FilterQuality.medium,
-              errorBuilder: (_, _, _) => const SizedBox.shrink(),
-            ),
+            child: data.art,
           ),
         ),
         if (look.holo == _Holo.sheen) _Sheen(light: light),

@@ -27,7 +27,7 @@ AchievementCardData _data(
   String meta = 'KÈO 50 KM · 14 NGÀY · 5 NGƯỜI',
 }) => AchievementCardData(
   tier: tier,
-  art: _pixel,
+  art: Image(image: _pixel, fit: BoxFit.cover),
   kind: 'KÈO HOÀN THÀNH',
   hero: '52,3',
   title: title,
@@ -102,7 +102,7 @@ void main() {
           animate: false,
           data: AchievementCardData(
             tier: data.tier,
-            art: white,
+            art: Image(image: white, fit: BoxFit.cover),
             kind: '',
             hero: '',
             title: '',

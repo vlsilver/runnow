@@ -236,7 +236,11 @@ class _Lab extends StatelessWidget {
 
   AchievementCardData _data(E2ECard c) => AchievementCardData(
     tier: GameCardTierParse.fromKey(c.tier),
-    art: arts[c.key]!,
+    art: Image(
+      image: arts[c.key]!,
+      fit: BoxFit.cover,
+      filterQuality: FilterQuality.medium,
+    ),
     kind: c.kind,
     hero: c.hero,
     title: c.title,
