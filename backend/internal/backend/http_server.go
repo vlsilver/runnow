@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -747,6 +748,21 @@ func (s *Server) apiRoutes() {
 			return err
 		}
 		return writeJSON(w, 202, map[string]any{"ok": true})
+	}))
+	s.route("GET /v1/activities", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		limit := 20
+		if v := r.URL.Query().Get("limit"); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return invalidRequest()
+			}
+			limit = n
+		}
+		page, err := s.deps.Activities.List(r.Context(), uid, r.URL.Query().Get("cursor"), limit)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, page)
 	}))
 	s.route("POST /v1/activities/tracked", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		var body struct {
