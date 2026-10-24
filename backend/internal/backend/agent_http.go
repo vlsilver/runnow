@@ -32,13 +32,14 @@ func (s *Server) agentRoutes() {
 	}))
 	s.route("POST /v1/agents/me", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		var body struct {
-			Name    string `json:"name"`
-			Persona string `json:"persona"`
+			Name    string  `json:"name"`
+			Persona string  `json:"persona"`
+			Look    *string `json:"look"`
 		}
 		if decodeJSON(r, &body) != nil {
 			return invalidRequest()
 		}
-		p, err := s.deps.Agents.SaveProfile(r.Context(), uid, body.Name, body.Persona, s.now())
+		p, err := s.deps.Agents.SaveProfile(r.Context(), uid, body.Name, body.Persona, body.Look, s.now())
 		if err != nil {
 			return err
 		}

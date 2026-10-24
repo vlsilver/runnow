@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -89,11 +90,15 @@ var agentDMChannels = map[string]agentDMChannel{
 // phòng rác.
 var agentRoomChannels = map[string]string{agentMainRoom: agentChannelApp, agentTelegramRoom: agentChannelTelegram}
 
+// agentLookPattern: kiểu bot là slug ngắn, rỗng là bỏ chọn.
+var agentLookPattern = regexp.MustCompile(`^([a-z][a-z0-9_]{0,23})?$`)
+
 var (
 	errAgentDisabled  = &HTTPError{Status: http.StatusForbidden, Code: "agent_disabled", Message: "Bạn chưa được mời dùng bot thử nghiệm."}
 	errAgentNotFound  = &HTTPError{Status: http.StatusNotFound, Code: "agent_not_found", Message: "Bạn chưa tạo bot."}
 	errAgentName      = &HTTPError{Status: http.StatusBadRequest, Code: "invalid_name", Message: fmt.Sprintf("Tên bot trống hoặc dài quá %d ký tự.", agentNameMaxRunes)}
 	errAgentPersona   = &HTTPError{Status: http.StatusBadRequest, Code: "invalid_persona", Message: fmt.Sprintf("Tính cách dài quá %d ký tự.", agentPersonaMaxRunes)}
+	errAgentLook      = &HTTPError{Status: http.StatusBadRequest, Code: "invalid_look", Message: "Kiểu bot không hợp lệ."}
 	errAgentMemory    = &HTTPError{Status: http.StatusBadRequest, Code: "invalid_memory", Message: fmt.Sprintf("Mục nhớ trống hoặc dài quá %d ký tự.", agentMemoryMaxRunes)}
 	errAgentMemoryMax = &HTTPError{Status: http.StatusConflict, Code: "memory_full", Message: fmt.Sprintf("Bộ nhớ đã đủ %d mục, xoá bớt rồi thêm.", agentMemoryLimit)}
 	errAgentNoMemory  = &HTTPError{Status: http.StatusNotFound, Code: "memory_not_found", Message: "Không còn mục nhớ này."}
@@ -110,6 +115,9 @@ func NewAgentStore(db *firestore.Client) *AgentStore { return &AgentStore{db: db
 type AgentProfile struct {
 	Name    string `json:"name"`
 	Persona string `json:"persona"`
+	// Look là kiểu bot app vẽ trên thẻ (vd. "coach"), rỗng là chưa chọn. Luôn
+	// có key để app biết backend nhận field này rồi mới gửi lên.
+	Look string `json:"look"`
 	// Created: false là hồ sơ mặc định, chưa ghi; bot chưa vào phòng và chưa
 	// chat riêng được cho tới khi chủ lưu lần đầu.
 	Created bool `json:"created"`
@@ -350,7 +358,7 @@ func (s *AgentStore) Me(ctx context.Context, uid string, wall time.Time) (AgentM
 	case err != nil:
 		return AgentMe{}, err
 	}
-	out.Agent = &AgentProfile{Name: stringValue(doc.Data()["name"]), Persona: stringValue(doc.Data()["persona"]), Created: true}
+	out.Agent = &AgentProfile{Name: stringValue(doc.Data()["name"]), Persona: stringValue(doc.Data()["persona"]), Look: stringValue(doc.Data()["look"]), Created: true}
 	if at := timeValue(doc.Data()["createdAt"]); !at.IsZero() {
 		out.Agent.CreatedAt = &at
 	}
@@ -414,7 +422,8 @@ func (s *AgentStore) todayKm(ctx context.Context, uid string, wall time.Time) (f
 // bot ra khỏi phòng thì lưu lại hồ sơ cũng không kéo bot vào lại. Phải đồng ý
 // AI trước, vì bot vào phòng là persona và bộ nhớ của chủ tới model ở lượt nói
 // do người khác gọi.
-func (s *AgentStore) SaveProfile(ctx context.Context, uid, name, persona string, wall time.Time) (AgentProfile, error) {
+// look nil là giữ kiểu đang có, để app cũ lưu tên và tính cách không xoá kiểu.
+func (s *AgentStore) SaveProfile(ctx context.Context, uid, name, persona string, look *string, wall time.Time) (AgentProfile, error) {
 	name, persona = strings.TrimSpace(name), strings.TrimSpace(persona)
 	if name == "" || utf8.RuneCountInString(name) > agentNameMaxRunes {
 		return AgentProfile{}, errAgentName
@@ -422,25 +431,39 @@ func (s *AgentStore) SaveProfile(ctx context.Context, uid, name, persona string,
 	if utf8.RuneCountInString(persona) > agentPersonaMaxRunes {
 		return AgentProfile{}, errAgentPersona
 	}
+	// Backend không giữ danh sách kiểu: app thêm kiểu mới không cần deploy,
+	// app gặp kiểu lạ thì vẽ kiểu mặc định.
+	if look != nil && !agentLookPattern.MatchString(*look) {
+		return AgentProfile{}, errAgentLook
+	}
 	if err := s.requireConsent(ctx, uid); err != nil {
 		return AgentProfile{}, err
 	}
 	ref := s.agentRef(uid)
+	var saved string
 	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
-		_, err := tx.Get(ref)
+		doc, err := tx.Get(ref)
 		update := map[string]any{"name": name, "persona": persona, "updatedAt": wall}
-		if status.Code(err) == codes.NotFound {
+		switch {
+		case status.Code(err) == codes.NotFound:
 			update["createdAt"] = wall
 			update["inRoom"] = true
-		} else if err != nil {
+			saved = ""
+		case err != nil:
 			return err
+		default:
+			saved = stringValue(doc.Data()["look"])
+		}
+		if look != nil {
+			update["look"] = *look
+			saved = *look
 		}
 		return tx.Set(ref, update, firestore.MergeAll)
 	})
 	if err != nil {
 		return AgentProfile{}, err
 	}
-	return AgentProfile{Name: name, Persona: persona, Created: true}, nil
+	return AgentProfile{Name: name, Persona: persona, Look: saved, Created: true}, nil
 }
 
 // requireAgent: uid trong danh sách và đã tạo bot.

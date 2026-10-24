@@ -183,6 +183,10 @@ func TestEmulatorAgentProfileAndMemory(t *testing.T) {
 	if _, has := agent["createdAt"]; r.body["enabled"] != true || agent["name"] != "Bot của Cường" || agent["created"] != false || has || r.body["memoryLimit"] != float64(50) {
 		t.Fatalf("chưa tạo bot: %s", r.raw)
 	}
+	// App chỉ gửi look khi thấy key này, nên bot chưa tạo cũng phải có.
+	if look, has := agent["look"]; !has || look != "" {
+		t.Fatalf("chưa tạo bot phải có look rỗng: %s", r.raw)
+	}
 	e.want(e.call("cuong", "POST", "/v1/agents/me/memories", map[string]any{"text": "a"}, ""), 404, "agent_not_found")
 	e.want(e.call("cuong", "POST", "/v1/agents/me/dm", map[string]any{"text": "a"}, ""), 404, "agent_not_found")
 
@@ -199,6 +203,27 @@ func TestEmulatorAgentProfileAndMemory(t *testing.T) {
 	agent, _ = r.body["agent"].(map[string]any)
 	if agent["name"] != "Cú" || agent["persona"] != "Hay đùa" || agent["created"] != true || agent["createdAt"] != created {
 		t.Fatalf("sau khi tạo: %s", r.raw)
+	}
+
+	// Kiểu bot: lưu được, lưu lại mà không gửi look (app cũ) thì giữ kiểu cũ,
+	// slug sai thì 400 và không đổi gì.
+	look := func() any {
+		agent, _ := e.call("cuong", "GET", "/v1/agents/me", nil, "").body["agent"].(map[string]any)
+		return agent["look"]
+	}
+	r = e.call("cuong", "POST", "/v1/agents/me", map[string]any{"name": "Cú", "persona": "Hay đùa", "look": "coach"}, "")
+	e.want(r, 200, "")
+	if r.body["look"] != "coach" || look() != "coach" {
+		t.Fatalf("lưu look: %s", r.raw)
+	}
+	r = e.call("cuong", "POST", "/v1/agents/me", map[string]any{"name": "Cú", "persona": "Hay đùa"}, "")
+	e.want(r, 200, "")
+	if r.body["look"] != "coach" || look() != "coach" {
+		t.Fatalf("không gửi look phải giữ kiểu cũ: %s", r.raw)
+	}
+	e.want(e.call("cuong", "POST", "/v1/agents/me", map[string]any{"name": "Cú", "look": "Coach!"}, ""), 400, "invalid_look")
+	if look() != "coach" {
+		t.Fatalf("look sai không được ghi")
 	}
 
 	// Thêm, sửa, xoá mục nhớ; xoá lần hai vẫn 200, sửa mục đã xoá thì 404.
