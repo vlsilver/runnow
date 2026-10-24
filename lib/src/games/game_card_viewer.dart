@@ -6,14 +6,52 @@ import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/share.dart';
 
-/// Mở lá bài toàn màn hình: kéo để nghiêng, chạm để lật. Khi [canShare] là
-/// false (ván còn chạy, người xem còn sống) thì khoá nút khoe, vì khoe lúc này
-/// là lộ vai.
+/// Vẽ một mặt lá theo độ nghiêng [pose] (-1..1 mỗi chiều).
+typedef CardFaceBuilder = Widget Function(Offset pose);
+
+/// Điểm sáng (0..1 mỗi chiều) chạy ngược hướng nghiêng như ánh đèn trên mặt
+/// thẻ thật.
+Offset gameCardHoloAt(Offset pose) =>
+    Offset(0.5 + pose.dx * 0.45, 0.35 + pose.dy * 0.35);
+
+/// Mở lá bài Ma Sói toàn màn hình. Khi [canShare] là false (ván còn chạy,
+/// người xem còn sống) thì khoá nút khoe, vì khoe lúc này là lộ vai.
 Future<void> showGameCardViewer(
   BuildContext context, {
   required GameCardData card,
   required bool canShare,
   required List<String> chips,
+}) {
+  return showCardViewer(
+    context,
+    front: (pose) => card.front(holo: gameCardHoloAt(pose)),
+    back: (pose) {
+      final holo = gameCardHoloAt(pose);
+      return GameCardBack(holo: Offset(1 - holo.dx, holo.dy));
+    },
+    chips: chips,
+    hideWhenInactive: !canShare,
+    onShare: canShare
+        ? (cardKey, origin) => shareGameCard(
+            cardKey: cardKey,
+            shareOriginContext: origin,
+            player: card.player,
+          )
+        : null,
+    locked: const _LockedNote(),
+  );
+}
+
+/// Mở một lá bài toàn màn hình: kéo để nghiêng, chạm để lật.
+Future<void> showCardViewer(
+  BuildContext context, {
+  required CardFaceBuilder front,
+  required CardFaceBuilder back,
+  required List<String> chips,
+  Size cardSize = gameCardSize,
+  bool hideWhenInactive = false,
+  Future<void> Function(GlobalKey cardKey, BuildContext origin)? onShare,
+  Widget? locked,
 }) {
   return Navigator.of(context).push(
     PageRouteBuilder<void>(
@@ -21,7 +59,15 @@ Future<void> showGameCardViewer(
       transitionDuration: const Duration(milliseconds: 250),
       pageBuilder: (_, _, _) => Theme(
         data: gameNightTheme(),
-        child: GameCardViewer(card: card, canShare: canShare, chips: chips),
+        child: GameCardViewer(
+          front: front,
+          back: back,
+          chips: chips,
+          cardSize: cardSize,
+          hideWhenInactive: hideWhenInactive,
+          onShare: onShare,
+          locked: locked,
+        ),
       ),
       transitionsBuilder: (_, animation, _, child) =>
           FadeTransition(opacity: animation, child: child),
@@ -32,14 +78,28 @@ Future<void> showGameCardViewer(
 class GameCardViewer extends StatefulWidget {
   const GameCardViewer({
     super.key,
-    required this.card,
-    required this.canShare,
+    required this.front,
+    required this.back,
     required this.chips,
+    this.cardSize = gameCardSize,
+    this.hideWhenInactive = false,
+    this.onShare,
+    this.locked,
   });
 
-  final GameCardData card;
-  final bool canShare;
+  final CardFaceBuilder front;
+  final CardFaceBuilder back;
   final List<String> chips;
+
+  /// Kích thước gốc của lá, giữ đúng tỉ lệ khi phóng to.
+  final Size cardSize;
+
+  /// Lá còn bí mật: rời app là đóng lá, để ảnh app switcher không lộ.
+  final bool hideWhenInactive;
+
+  /// Null thì không có nút khoe; khi đó hiện [locked] nếu có.
+  final Future<void> Function(GlobalKey cardKey, BuildContext origin)? onShare;
+  final Widget? locked;
 
   @override
   State<GameCardViewer> createState() => _GameCardViewerState();
@@ -79,12 +139,12 @@ class _GameCardViewerState extends State<GameCardViewer>
     WidgetsBinding.instance.addObserver(this);
   }
 
-  /// Vai còn bí mật thì rời app là đóng lá, như màn ván úp lá lại, để ảnh
-  /// app switcher không lộ vai. Khoe được rồi thì giữ nguyên, vì bảng chia
+  /// Lá còn bí mật thì rời app là đóng lá, như màn ván úp lá lại, để ảnh
+  /// app switcher không lộ vai. Lá không bí mật thì giữ nguyên, vì bảng chia
   /// sẻ của iOS cũng làm app inactive.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (widget.canShare || state == AppLifecycleState.resumed) return;
+    if (!widget.hideWhenInactive || state == AppLifecycleState.resumed) return;
     // inactive rồi paused tới liền nhau; chỉ đóng một lần, kẻo đóng luôn màn ván.
     if (_closed || !mounted) return;
     // iOS chụp ảnh app switcher ngay lúc inactive, khi route còn đang mờ dần,
@@ -136,13 +196,9 @@ class _GameCardViewerState extends State<GameCardViewer>
       // Mặt trước phải đang vẽ thì mới chụp được.
       if (_flip.value > 0) await _flip.reverse();
       if (!buttonContext.mounted) return;
-      await shareGameCard(
-        cardKey: _captureKey,
-        shareOriginContext: buttonContext,
-        player: widget.card.player,
-      );
+      await widget.onShare!(_captureKey, buttonContext);
     } catch (error) {
-      debugPrint('Ma Sói: khoe thẻ lỗi: $error');
+      debugPrint('Khoe thẻ lỗi: $error');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Chưa tạo được ảnh thẻ, thử lại sau.')),
@@ -223,7 +279,9 @@ class _GameCardViewerState extends State<GameCardViewer>
               const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: widget.canShare ? _shareButton() : const _LockedNote(),
+                child: widget.onShare != null
+                    ? _shareButton()
+                    : widget.locked ?? const SizedBox.shrink(),
               ),
             ],
           ),
@@ -238,10 +296,9 @@ class _GameCardViewerState extends State<GameCardViewer>
     final flip = Curves.easeInOutCubic.transform(_flip.value);
     final ry = pose.dx * gameCardMaxTilt + flip * math.pi;
     final rx = -pose.dy * gameCardMaxTilt;
-    // Điểm sáng chạy ngược hướng nghiêng như ánh đèn trên mặt thẻ thật.
-    final holo = Offset(0.5 + pose.dx * 0.45, 0.35 + pose.dy * 0.35);
     final showBack = math.cos(ry) < 0;
-    final size = Size(width, width * gameCardSize.height / gameCardSize.width);
+    final base = widget.cardSize;
+    final size = Size(width, width * base.height / base.width);
     return GestureDetector(
       onTap: _toggleFlip,
       onPanStart: (d) => _onDrag(d.localPosition, size),
@@ -260,14 +317,16 @@ class _GameCardViewerState extends State<GameCardViewer>
                 transform: Matrix4.rotationY(math.pi),
                 child: GameCardScaled(
                   width: width,
-                  child: GameCardBack(holo: Offset(1 - holo.dx, holo.dy)),
+                  size: base,
+                  child: widget.back(pose),
                 ),
               )
             : RepaintBoundary(
                 key: _captureKey,
                 child: GameCardScaled(
                   width: width,
-                  child: widget.card.front(holo: holo),
+                  size: base,
+                  child: widget.front(pose),
                 ),
               ),
       ),

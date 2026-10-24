@@ -196,18 +196,24 @@ class GameCardData {
   );
 }
 
-/// Lá bài vẽ ở [gameCardSize] rồi thu phóng theo bề ngang [width].
+/// Lá bài vẽ ở [size] rồi thu phóng theo bề ngang [width].
 class GameCardScaled extends StatelessWidget {
-  const GameCardScaled({super.key, required this.width, required this.child});
+  const GameCardScaled({
+    super.key,
+    required this.width,
+    required this.child,
+    this.size = gameCardSize,
+  });
 
   final double width;
   final Widget child;
+  final Size size;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: width,
-      height: width * gameCardSize.height / gameCardSize.width,
+      height: width * size.height / size.width,
       child: FittedBox(child: child),
     );
   }
