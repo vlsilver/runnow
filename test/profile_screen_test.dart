@@ -121,6 +121,9 @@ void main() {
       expect(find.text('Buổi $n'), findsOneWidget);
     }
     expect(find.text('Buổi 6'), findsNothing);
+    // Cài đặt chỉ mở từ nút bánh răng, cuối trang không còn dòng riêng.
+    expect(find.text('Cài đặt'), findsNothing);
+    expect(find.byTooltip('Cài đặt'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Tất cả buổi chạy'));
     await tester.pump();

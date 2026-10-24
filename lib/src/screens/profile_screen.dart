@@ -133,17 +133,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       const _JournalSection(),
       const SizedBox(height: 20),
       const _JourneySection(),
-      const SizedBox(height: 12),
-      _LinkList(
-        links: [
-          _Link(
-            icon: Icons.tune,
-            title: 'Cài đặt',
-            value: 'Strava · Health · Telegram',
-            onTap: () => context.push('/me/settings'),
-          ),
-        ],
-      ),
     ];
   }
 
@@ -1030,85 +1019,6 @@ class _PacePainter extends CustomPainter {
       old.line != line ||
       old.axis != axis ||
       old.background != background;
-}
-
-class _Link {
-  const _Link({
-    required this.icon,
-    required this.title,
-    required this.onTap,
-    this.value,
-  });
-
-  final IconData icon;
-  final String title;
-  final String? value;
-  final VoidCallback onTap;
-}
-
-class _LinkList extends StatelessWidget {
-  const _LinkList({required this.links});
-
-  final List<_Link> links;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    return GlassPanel(
-      borderRadius: 18,
-      child: Column(
-        children: [
-          for (final (i, link) in links.indexed) ...[
-            if (i > 0) Divider(height: 1, color: palette.border),
-            InkWell(
-              onTap: link.onTap,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 54),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Icon(link.icon, size: 20, color: palette.accent),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          link.title,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: palette.foreground,
-                          ),
-                        ),
-                      ),
-                      // Chữ phụ co lại khi chữ to, đừng đẩy tràn hàng.
-                      if (link.value != null)
-                        Flexible(
-                          child: Text(
-                            link.value!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: palette.textMuted,
-                            ),
-                          ),
-                        ),
-                      const SizedBox(width: 4),
-                      Icon(
-                        Icons.chevron_right,
-                        size: 18,
-                        color: palette.textMuted,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 }
 
 /// Số buổi gần nhất hiện trong Hồ sơ; xem hết thì mở trang Nhật ký.
