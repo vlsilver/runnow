@@ -116,7 +116,7 @@ void main() {
     expect(c.sub, 'Năm ngoái 10 ngày · trung bình 0,2 ngày/tuần');
   });
 
-  test('kỷ lục và số trọn đời lấy từ doc tháng', () {
+  test('số trọn đời lấy từ doc tháng', () {
     final d = data(
       months: {
         '2024-03': run(
@@ -140,8 +140,6 @@ void main() {
     expect(d.firstMonthKey, '2024-03');
     expect(d.lifetime.distanceMeters, 70000);
     expect(d.lifetime.activeDays, 14);
-    expect(d.longestRun, (meters: 21100.0, monthKey: '2024-03'));
-    expect(d.fastestRun, (secondsPerKm: 328.0, monthKey: '2026-10'));
     expect(profileHours(d.lifetime.movingTimeSeconds), '6h20');
     expect(profileInt(2248.4), '2.248');
   });

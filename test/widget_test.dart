@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/app.dart';
+import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/profile_stats.dart';
 import 'package:myrun/src/providers.dart';
@@ -54,6 +55,15 @@ void main() {
           membersProvider.overrideWith((ref) => Stream.value(const [])),
           themeControllerProvider.overrideWith(
             (ref) => ThemeController(loadFromStorage: false),
+          ),
+          journeyLifetimeDistanceProvider.overrideWith((ref) async => 12000),
+          journeyRouteSummaryProvider.overrideWith(
+            (ref, id) async => JourneyRouteSummary(
+              id: id.name,
+              name: id.name,
+              tagline: '',
+              totalLengthMeters: 42195,
+            ),
           ),
           profileStatsProvider.overrideWith((ref) async {
             profileReads++;
@@ -141,10 +151,20 @@ void main() {
     // Tab sống trong IndexedStack: bấm tab là đọc lại periodStats.
     final reads = profileReads;
     await tester.tap(find.text('Hồ sơ'));
-    await tester.pumpAndSettle();
+    // Chặng đang chạy nhấp nháy mãi, nên không chờ settle được.
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
     expect(profileReads, reads + 1);
     expect(find.text('Chưa có buổi chạy nào'), findsOneWidget);
     expect(find.byTooltip('Cài đặt'), findsOneWidget);
+    // Châm ngôn và các chặng hành trình nằm luôn trong Hồ sơ.
+    expect(find.text('CHÂM NGÔN HÔM NAY'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Marathon Athens'),
+      300,
+      maxScrolls: 20,
+    );
+    expect(find.text('Marathon Athens'), findsOneWidget);
   });
 }
 

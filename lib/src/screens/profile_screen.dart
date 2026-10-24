@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:myrun/src/formatters.dart';
+import 'package:myrun/src/journey/journey_timeline.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/profile_stats.dart';
 import 'package:myrun/src/providers.dart';
@@ -46,6 +46,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 children: [
                   _Header(onSettings: () => context.push('/me/settings')),
                   const SizedBox(height: 12),
+                  const _DailyQuoteCard(),
+                  const SizedBox(height: 14),
                   _Identity(
                     profile: profile,
                     subtitle: _identitySubtitle(element, stats),
@@ -84,8 +86,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   List<Widget> _content(ProfileStatsData stats) {
     final lifetime = stats.lifetime;
-    final longest = stats.longestRun;
-    final fastest = stats.fastestRun;
     return [
       Row(
         children: [
@@ -124,40 +124,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         metric: _metric,
         onMetric: (m) => setState(() => _metric = m),
       ),
-      const SizedBox(height: 12),
-      Row(
-        children: [
-          Expanded(
-            child: _StatTile(
-              label: 'Dài nhất',
-              value: longest == null
-                  ? '--'
-                  : '${profileDecimal(longest.meters / 1000)} km',
-              note: longest == null
-                  ? null
-                  : 'Tháng ${profileMonthLabel(longest.monthKey)}',
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _StatTile(
-              label: 'Pace nhanh nhất',
-              value: formatPace(fastest?.secondsPerKm),
-              note: fastest == null
-                  ? 'Buổi từ 1 km'
-                  : 'Tháng ${profileMonthLabel(fastest.monthKey)}',
-            ),
-          ),
-        ],
-      ),
+      const SizedBox(height: 20),
+      const _JourneySection(),
       const SizedBox(height: 12),
       _LinkList(
         links: [
-          _Link(
-            icon: Icons.map_outlined,
-            title: 'Hành trình',
-            onTap: () => context.push('/journey'),
-          ),
           _Link(
             icon: Icons.menu_book_outlined,
             title: 'Nhật ký chạy',
@@ -225,6 +196,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ],
         ],
       ),
+      const SizedBox(height: 20),
+      const _JourneySection(),
     ];
   }
 }
@@ -426,11 +399,10 @@ class _CardTitle extends StatelessWidget {
 }
 
 class _StatTile extends StatelessWidget {
-  const _StatTile({required this.label, required this.value, this.note});
+  const _StatTile({required this.label, required this.value});
 
   final String label;
   final String value;
-  final String? note;
 
   @override
   Widget build(BuildContext context) => GlassPanel(
@@ -446,7 +418,6 @@ class _StatTile extends StatelessWidget {
           alignment: Alignment.centerLeft,
           child: _Headline(value, size: 22),
         ),
-        if (note != null) ...[const SizedBox(height: 2), _Muted(note!)],
       ],
     ),
   );
@@ -1128,6 +1099,88 @@ class _LinkList extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Các chặng hành trình theo tổng km, ngay trong Hồ sơ.
+class _JourneySection extends StatelessWidget {
+  const _JourneySection();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.only(left: 4, bottom: 12),
+          child: _Caption('Hành trình'),
+        ),
+        JourneyTimeline(),
+      ],
+    );
+  }
+}
+
+/// Card "Châm ngôn hôm nay" — tách riêng, nền vàng nhạt, đúng nguyên bản
+/// thiết kế (không lồng vào trong card hero tối như bản trước).
+class _DailyQuoteCard extends StatelessWidget {
+  const _DailyQuoteCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+      decoration: BoxDecoration(
+        color: palette.accent.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '"',
+            style: TextStyle(
+              color: palette.accentDeep,
+              fontSize: 20,
+              height: 0.7,
+              fontFamily: 'Georgia',
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'CHÂM NGÔN HÔM NAY',
+                  style: TextStyle(
+                    color: palette.accentDeep,
+                    fontSize: 9,
+                    letterSpacing: 1.1,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Mỗi kilomet là một dấu chân đặt lên bản đồ. Đi đủ lâu, '
+                  'đường xa cũng thành câu chuyện của mình.',
+                  style: TextStyle(
+                    color: palette.ink.withValues(alpha: 0.82),
+                    fontSize: 12,
+                    height: 1.45,
+                    fontStyle: FontStyle.italic,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

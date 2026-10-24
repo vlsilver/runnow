@@ -98,30 +98,6 @@ class ProfileStatsData {
     return keys.isEmpty ? null : keys.first;
   }
 
-  /// Buổi dài nhất và tháng của nó.
-  ({double meters, String monthKey})? get longestRun {
-    ({double meters, String monthKey})? best;
-    for (final e in months.entries) {
-      final m = e.value.longestDistanceMeters;
-      if (m > 0 && (best == null || m > best.meters)) {
-        best = (meters: m, monthKey: e.key);
-      }
-    }
-    return best;
-  }
-
-  /// Pace nhanh nhất (buổi từ 1 km) và tháng của nó.
-  ({double secondsPerKm, String monthKey})? get fastestRun {
-    ({double secondsPerKm, String monthKey})? best;
-    for (final e in months.entries) {
-      final p = e.value.fastestPaceSecondsPerKm;
-      if (p != null && p > 0 && (best == null || p < best.secondsPerKm)) {
-        best = (secondsPerKm: p, monthKey: e.key);
-      }
-    }
-    return best;
-  }
-
   LeaderboardStats _day(DateTime d) => days[dayKey(d)] ?? _zero;
 
   LeaderboardStats _sumDays(DateTime from, DateTime toInclusive) {
