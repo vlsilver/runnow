@@ -95,6 +95,19 @@ Future<ShareResult> shareGameCard({
   fileName: '3i-ma-soi.png',
 );
 
+Future<ShareResult> shareRunCard({
+  required GlobalKey cardKey,
+  required BuildContext shareOriginContext,
+  required ActivitySummary activity,
+}) => _shareCard(
+  cardKey: cardKey,
+  shareOriginContext: shareOriginContext,
+  text:
+      '${activity.name} · ${formatDistance(activity.distanceMeters)}\n'
+      'Chia sẻ từ 3i',
+  fileName: '3i-${activity.id}-the.png',
+);
+
 Future<ShareResult> shareAgentCard({
   required GlobalKey cardKey,
   required BuildContext shareOriginContext,

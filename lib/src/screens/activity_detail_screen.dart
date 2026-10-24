@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/achievements/run_card.dart';
 import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
@@ -148,7 +149,8 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _ShareComposer(detail: detail),
+      builder: (context) =>
+          _ShareComposer(detail: detail, ownerUid: widget.ownerUid),
     );
   }
 
@@ -1422,10 +1424,15 @@ class _FallbackMetric extends StatelessWidget {
   }
 }
 
+enum _ShareMode { card, poster }
+
 class _ShareComposer extends ConsumerStatefulWidget {
-  const _ShareComposer({required this.detail});
+  const _ShareComposer({required this.detail, this.ownerUid});
 
   final ActivityDetail detail;
+
+  /// Null là buổi của chính mình; có uid là đang xem buổi của thành viên khác.
+  final String? ownerUid;
 
   @override
   ConsumerState<_ShareComposer> createState() => _ShareComposerState();
@@ -1433,11 +1440,25 @@ class _ShareComposer extends ConsumerStatefulWidget {
 
 class _ShareComposerState extends ConsumerState<_ShareComposer> {
   final _recapKey = GlobalKey();
+  final _cardKey = GlobalKey();
+  late var _mode = hasRunCard(widget.detail.summary)
+      ? _ShareMode.card
+      : _ShareMode.poster;
   bool _sharing = false;
+
+  /// Tên in trên thẻ là chủ buổi chạy, không phải người đang xem.
+  String _ownerName() {
+    final uid = widget.ownerUid;
+    final name = uid == null
+        ? ref.watch(userProfileProvider).asData?.value?.displayName
+        : ref.watch(memberProfileProvider(uid)).asData?.value?.displayName;
+    return name ?? '3i member';
+  }
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
+    final card = _mode == _ShareMode.card;
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.92,
@@ -1481,7 +1502,9 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Tạo poster thành tích để chia sẻ.',
+              card
+                  ? 'Thẻ buổi chạy, bậc thẻ theo số km.'
+                  : 'Tạo poster thành tích để chia sẻ.',
               style: TextStyle(
                 color: Theme.of(
                   context,
@@ -1489,11 +1512,42 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
               ),
             ),
             const SizedBox(height: 16),
-            ActivityRecapCard(
-              repaintBoundaryKey: _recapKey,
-              activity: widget.detail.summary,
-              streams: widget.detail.streams,
-            ),
+            if (hasRunCard(widget.detail.summary)) ...[
+              SegmentedButton<_ShareMode>(
+                segments: const [
+                  ButtonSegment(
+                    value: _ShareMode.card,
+                    icon: Icon(Icons.style_outlined),
+                    label: Text('Thẻ'),
+                  ),
+                  ButtonSegment(
+                    value: _ShareMode.poster,
+                    icon: Icon(Icons.image_outlined),
+                    label: Text('Poster'),
+                  ),
+                ],
+                selected: {_mode},
+                onSelectionChanged: _sharing
+                    ? null
+                    : (value) => setState(() => _mode = value.single),
+              ),
+              const SizedBox(height: 16),
+            ],
+            if (card)
+              Center(
+                child: RunShareCard(
+                  activity: widget.detail.summary,
+                  photos: widget.detail.photos,
+                  owner: _ownerName(),
+                  captureKey: _cardKey,
+                ),
+              )
+            else
+              ActivityRecapCard(
+                repaintBoundaryKey: _recapKey,
+                activity: widget.detail.summary,
+                streams: widget.detail.streams,
+              ),
             const SizedBox(height: 12),
             Builder(
               builder: (buttonContext) => FilledButton.icon(
@@ -1504,7 +1558,12 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.ios_share),
-                label: Text(_sharing ? 'Đang tạo poster...' : 'Chia sẻ poster'),
+                label: Text(switch ((card, _sharing)) {
+                  (true, true) => 'Đang tạo thẻ...',
+                  (true, false) => 'Khoe thẻ',
+                  (false, true) => 'Đang tạo poster...',
+                  (false, false) => 'Chia sẻ poster',
+                }),
               ),
             ),
           ],
@@ -1516,15 +1575,24 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
   Future<void> _share(BuildContext buttonContext) async {
     setState(() => _sharing = true);
     try {
-      await shareActivityRecap(
-        recapKey: _recapKey,
-        shareButtonContext: buttonContext,
-        activity: widget.detail.summary,
-      );
+      if (_mode == _ShareMode.card) {
+        await shareRunCard(
+          cardKey: _cardKey,
+          shareOriginContext: buttonContext,
+          activity: widget.detail.summary,
+        );
+      } else {
+        await shareActivityRecap(
+          recapKey: _recapKey,
+          shareButtonContext: buttonContext,
+          activity: widget.detail.summary,
+        );
+      }
     } catch (error) {
       if (!mounted) return;
+      final what = _mode == _ShareMode.card ? 'thẻ' : 'poster';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không thể chia sẻ poster: $error')),
+        SnackBar(content: Text('Không thể chia sẻ $what: $error')),
       );
     } finally {
       if (mounted) setState(() => _sharing = false);

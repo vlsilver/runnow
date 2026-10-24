@@ -396,4 +396,21 @@ class RunNowAchievementTokens {
   static const backBottom = Color(0xFF0B0C14);
   static const backRay = Color(0x09FFFFFF);
   static const emblemRing = Color(0x0AFFFFFF);
+
+  // Nền "đường chạy" của thẻ buổi chạy: nền tối theo bậc, đường sáng màu bậc.
+  static const routeFieldCommon = Color(0xFF2A2F38);
+  static const routeFieldCommonEdge = Color(0xFF101217);
+  static const routeFieldRare = Color(0xFF1F3346);
+  static const routeFieldRareEdge = Color(0xFF0C1219);
+  static const routeFieldEpic = Color(0xFF3D2C10);
+  static const routeFieldEpicEdge = Color(0xFF120D06);
+  static const routeFieldLegendary = Color(0xFF33204D);
+  static const routeFieldLegendaryEdge = Color(0xFF0B0A16);
+  static const routeGlowCommon = Color(0xFF9FB3C8);
+  static const routeGlowRare = Color(0xFF7CC8FF);
+  static const routeGlowEpic = Color(0xFFFFC65C);
+  static const routeGlowLegendary = Color(0xFFD59BFF);
+  static const routeContour = Color(0x0FFFFFFF);
+  static const routeLine = Color(0xFFFFFFFF);
+  static const routeStart = Color(0xFF0B0B10);
 }
