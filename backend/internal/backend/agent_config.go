@@ -364,13 +364,21 @@ func priceRowsForStore(rows []agentPriceRow) ([]any, error) {
 	return out, nil
 }
 
+// agentModelUses là các model tính tiền theo bảng llmPrices, để admin thấy model
+// nào chưa khai giá. Model vẽ thẻ có trần riêng nhưng dùng chung bảng giá, nên
+// cũng phải có mặt; thiếu giá thì trần tính theo giá dự phòng, thấp hơn giá ảnh.
 func (s *Server) agentModelUses() []agentModelUse {
 	out := []agentModelUse{{Model: s.config.AgentModel, Use: "Trả lời chat riêng, nói trong phòng bot và tra web"}}
 	if s.config.AgentLearnModel == s.config.AgentModel {
 		out[0].Use += ", tự học về người dùng"
-		return out
+	} else {
+		out = append(out, agentModelUse{Model: s.config.AgentLearnModel, Use: "Tự học về người dùng"})
 	}
-	return append(out, agentModelUse{Model: s.config.AgentLearnModel, Use: "Tự học về người dùng"})
+	art := s.config.RunCardArtModel
+	if art != "" && !slices.ContainsFunc(out, func(u agentModelUse) bool { return u.Model == art }) {
+		out = append(out, agentModelUse{Model: art, Use: "Vẽ tranh thẻ buổi chạy"})
+	}
+	return out
 }
 
 func (s *Server) agentConfigRoutes() {

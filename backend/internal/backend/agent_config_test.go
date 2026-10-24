@@ -34,6 +34,11 @@ func TestAgentModelUses(t *testing.T) {
 	if uses := s.agentModelUses(); len(uses) != 2 || uses[1].Model != "n" {
 		t.Fatalf("hai model: %+v", uses)
 	}
+	// Model vẽ thẻ cũng tính tiền theo bảng giá nên admin phải thấy để khai giá.
+	s.config.RunCardArtModel = "img"
+	if uses := s.agentModelUses(); len(uses) != 3 || uses[2] != (agentModelUse{Model: "img", Use: "Vẽ tranh thẻ buổi chạy"}) {
+		t.Fatalf("có model vẽ thẻ: %+v", uses)
+	}
 }
 
 // Trang Admin chạy trên web: trình duyệt hỏi preflight trước PATCH, CORS không
