@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/achievements/run_card_collection.dart';
+import 'package:myrun/src/achievements/run_card_models.dart';
+import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/profile_stats.dart';
@@ -56,8 +59,25 @@ const _month = LeaderboardStats(
   fastestPaceSecondsPerKm: 360,
 );
 
+/// Thẻ thứ [n] trong bộ, mới lật trước như runCardsProvider trả.
+RunCard _card(int n) => RunCard.fromJson({
+  'id': 'card-$n',
+  'tier': 'rare',
+  'km': 10.0,
+  'rolledAt': DateTime.utc(2026, 10, 24).subtract(Duration(days: n)),
+  'snapshot': {
+    'name': 'Thẻ $n',
+    'sportType': 'Run',
+    'distanceMeters': 10000,
+    'movingTimeSeconds': 3000,
+  },
+});
+
 void main() {
-  Future<_JournalRepository> pumpProfile(WidgetTester tester) async {
+  Future<_JournalRepository> pumpProfile(
+    WidgetTester tester, {
+    List<RunCard> cards = const [],
+  }) async {
     tester.view.physicalSize = const Size(420, 4000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -72,6 +92,10 @@ void main() {
           path: '/journal',
           builder: (_, _) => const Scaffold(body: Text('Trang nhật ký')),
         ),
+        GoRoute(
+          path: '/me/cards',
+          builder: (_, _) => const Scaffold(body: Text('Trang bộ thẻ')),
+        ),
       ],
     );
     addTearDown(router.dispose);
@@ -79,6 +103,7 @@ void main() {
       ProviderScope(
         overrides: [
           activityRepositoryProvider.overrideWithValue(repository),
+          runCardsProvider.overrideWith((ref) => Stream.value(cards)),
           userProfileProvider.overrideWith(
             (ref) => Stream.value(UserProfile.demo),
           ),
@@ -129,5 +154,40 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('Trang nhật ký'), findsOneWidget);
+  });
+
+  testWidgets('no cards yet says how to get one', (tester) async {
+    await pumpProfile(tester);
+    expect(find.text('BỘ THẺ'), findsOneWidget);
+    expect(
+      find.text(
+        'Chưa có thẻ nào. Mở một buổi chạy và lật thẻ để bắt đầu bộ sưu tập.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the shelf shows the ten newest cards and opens the rest', (
+    tester,
+  ) async {
+    await pumpProfile(tester, cards: [for (var n = 1; n <= 12; n++) _card(n)]);
+    expect(find.text('12 thẻ'), findsOneWidget);
+    List<String> shown() => [
+      for (final t in tester.widgetList<RunCardThumb>(
+        find.byType(RunCardThumb),
+      ))
+        t.card.id,
+    ];
+    expect(shown().first, 'card-1');
+
+    await tester.drag(find.byType(RunCardThumb).first, const Offset(-3000, 0));
+    await tester.pump();
+    expect(shown(), contains('card-10'));
+    expect(shown(), isNot(contains('card-11')));
+
+    await tester.tap(find.text('Xem tất cả'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Trang bộ thẻ'), findsOneWidget);
   });
 }

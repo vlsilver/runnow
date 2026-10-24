@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/achievements/run_card_collection.dart';
 import 'package:myrun/src/admin/admin_screen.dart';
 import 'package:myrun/src/agents/agent_blocks_screen.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
@@ -118,6 +119,10 @@ final _router = GoRouter(
                 GoRoute(
                   path: 'settings',
                   builder: (context, state) => const SettingsScreen(),
+                ),
+                GoRoute(
+                  path: 'cards',
+                  builder: (context, state) => const RunCardCollectionScreen(),
                 ),
               ],
             ),

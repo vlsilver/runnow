@@ -5,6 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/achievements/achievement_card.dart';
+import 'package:myrun/src/achievements/run_card_collection.dart';
+import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/journey/journey_timeline.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/profile_stats.dart';
@@ -131,6 +134,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ),
       const SizedBox(height: 20),
       const _JournalSection(),
+      const SizedBox(height: 20),
+      const _CardShelfSection(),
       const SizedBox(height: 20),
       const _JourneySection(),
     ];
@@ -1085,6 +1090,70 @@ class _JournalSectionState extends ConsumerState<_JournalSection> {
                 color: context.runNowPalette.accent,
                 onPressed: () => context.push('/journal'),
                 icon: const Icon(Icons.view_list_rounded),
+              ),
+            ],
+          ),
+        ),
+        body,
+      ],
+    );
+  }
+}
+
+/// Số thẻ hiện trong Hồ sơ; còn lại xem ở màn Bộ thẻ.
+const _shelfCardCount = 10;
+
+/// Bộ thẻ buổi chạy: hàng ngang các thẻ mới lật gần đây.
+class _CardShelfSection extends ConsumerWidget {
+  const _CardShelfSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cards = ref.watch(runCardsProvider);
+    final count = cards.value?.length ?? 0;
+    final Widget body = cards.when(
+      loading: () =>
+          const RunNowLoading(compact: true, label: 'Đang mở bộ thẻ'),
+      error: (error, _) => _Muted('Không tải được bộ thẻ: $error'),
+      data: (cards) {
+        if (cards.isEmpty) {
+          return _Muted(
+            'Chưa có thẻ nào. Mở một buổi chạy và lật thẻ để bắt đầu bộ sưu '
+            'tập.',
+          );
+        }
+        final owner = runCardOwnerName(ref);
+        return SizedBox(
+          height: 112 * achievementCardSize.height / achievementCardSize.width,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: math.min(cards.length, _shelfCardCount),
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (context, i) =>
+                RunCardThumb(card: cards[i], owner: owner, width: 112),
+          ),
+        );
+      },
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Row(
+            children: [
+              const Expanded(child: _Caption('Bộ thẻ')),
+              if (count > 0)
+                Text(
+                  '$count thẻ',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: context.runNowPalette.textMuted,
+                  ),
+                ),
+              TextButton(
+                onPressed: () => context.push('/me/cards'),
+                child: const Text('Xem tất cả'),
               ),
             ],
           ),
