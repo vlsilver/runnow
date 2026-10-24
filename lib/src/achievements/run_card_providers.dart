@@ -1,5 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 
@@ -62,3 +67,37 @@ final runCardsProvider = StreamProvider.autoDispose<List<RunCard>>((ref) {
 final runCardStylesProvider = FutureProvider.autoDispose<ArtStyleList>(
   (ref) => ref.watch(runNowApiClientProvider).getRunCardStyles(),
 );
+
+/// Ảnh gốc người dùng tải lên cho tranh thẻ.
+class RunCardPhotos {
+  const RunCardPhotos();
+
+  /// Ảnh từ thư viện, đã thu về cạnh dài 1600; null khi huỷ chọn.
+  Future<Uint8List?> pick() async {
+    final image = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1600,
+      maxHeight: 1600,
+      imageQuality: 85,
+    );
+    return image?.readAsBytes();
+  }
+
+  /// Ghi đè ảnh gốc của thẻ [activityId], trả đường dẫn gửi kèm lệnh vẽ. Tên
+  /// file cố định vì backend chỉ nhận đúng đường dẫn này.
+  Future<String> upload(
+    String activityId,
+    Uint8List bytes,
+    String contentType,
+  ) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) throw StateError('Bạn chưa đăng nhập Firebase.');
+    final path = 'users/$uid/runCards/$activityId/src.jpg';
+    await FirebaseStorage.instance
+        .ref(path)
+        .putData(bytes, SettableMetadata(contentType: contentType));
+    return path;
+  }
+}
+
+final runCardPhotosProvider = Provider((ref) => const RunCardPhotos());

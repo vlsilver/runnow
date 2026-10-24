@@ -12,6 +12,7 @@ import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card.dart';
+import 'package:myrun/src/achievements/run_card_art_sheet.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/games/game_role_card.dart';
@@ -87,15 +88,80 @@ const _done = {
   'path': 'users/u1/runCards/r1/art.png',
 };
 
-ActivitySummary _run() => ActivitySummary(
-  id: 'r1',
-  name: 'Dọc bờ sông Hồng',
-  kind: ActivityKind.run,
-  startedAt: DateTime(2026, 10, 24, 6, 12),
-  distanceMeters: 14960,
-  movingTimeSeconds: 4965,
-  elapsedTimeSeconds: 5100,
+ActivitySummary _run({List<ActivityPhoto> photos = const []}) =>
+    ActivitySummary(
+      id: 'r1',
+      name: 'Dọc bờ sông Hồng',
+      kind: ActivityKind.run,
+      startedAt: DateTime(2026, 10, 24, 6, 12),
+      distanceMeters: 14960,
+      movingTimeSeconds: 4965,
+      elapsedTimeSeconds: 5100,
+      photos: photos,
+    );
+
+const _runPhotoPath = 'users/u1/activities/r1/photos/p1.jpg';
+
+final _runPhoto = ActivityPhoto(
+  id: 'p1',
+  capturedAt: DateTime(2026, 10, 24, 6, 40),
+  latitude: 21,
+  longitude: 105.8,
+  distanceMeters: 5000,
+  storagePath: _runPhotoPath,
 );
+
+/// Ảnh PNG 1x1 thật, vì app đọc loại ảnh từ byte đầu.
+final _png = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+);
+
+/// Danh sách phong cách như GET /v1/art-styles; nhóm không có phong cách nào
+/// thì app ẩn.
+const _styles = {
+  'families': [
+    {'key': 'painting', 'label': 'Hội hoạ'},
+    {'key': 'anime', 'label': 'Anime'},
+    {'key': 'empty', 'label': 'Nhóm trống'},
+  ],
+  'styles': [
+    {
+      'key': 'oil',
+      'version': 1,
+      'name': 'Sơn dầu',
+      'family': 'painting',
+      'swatch': ['#7a4b2a', '#d9a441', '#2f4f6f'],
+    },
+    {
+      'key': 'anime_cel',
+      'version': 1,
+      'name': 'Anime cel',
+      'family': 'anime',
+      'swatch': ['#ff6fa8', '#6fd3ff'],
+    },
+  ],
+};
+
+/// Thư viện ảnh giả: trả [bytes] khi chọn, ghi lại mỗi lần tải lên.
+class _Photos extends RunCardPhotos {
+  _Photos([this.bytes]);
+
+  Uint8List? bytes;
+  final uploads = <String>[];
+
+  @override
+  Future<Uint8List?> pick() async => bytes;
+
+  @override
+  Future<String> upload(
+    String activityId,
+    Uint8List bytes,
+    String contentType,
+  ) async {
+    uploads.add('$activityId $contentType ${bytes.length}');
+    return 'users/u1/runCards/$activityId/src.jpg';
+  }
+}
 
 /// Độ sáng trung bình RGB tại điểm (fx, fy) tính theo tỉ lệ khung 300x420.
 Future<int Function(double, double)> _paintArt(
@@ -133,8 +199,12 @@ Future<int Function(double, double)> _paintArt(
 /// API giả: ghi lại lệnh gọi, POST lật thẻ đẩy thẻ vào stream như Firestore.
 class _Backend {
   final requests = <String>[];
+  final artBodies = <Map<String, dynamic>>[];
   final cards = StreamController<RunCard?>.broadcast();
   Map<String, dynamic> view = {'card': null, 'odds': _cardJson()['odds']};
+
+  /// Mã lỗi 409 trả cho lệnh vẽ; null thì nhận và đẩy thẻ đang vẽ.
+  String? artError;
 
   RunNowApiClient client() => RunNowApiClient(
     baseUri: Uri.parse('https://api.example.test'),
@@ -144,14 +214,35 @@ class _Backend {
     httpClient: MockClient((request) async {
       requests.add('${request.method} ${request.url.path}');
       Object out = view;
-      if (request.method == 'POST') {
+      var status = 200;
+      if (request.url.path == '/v1/art-styles') {
+        out = _styles;
+      } else if (request.url.path.endsWith('/art')) {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        artBodies.add(body);
+        if (artError case final code?) {
+          status = 409;
+          out = {'error': code, 'message': 'bị từ chối'};
+        } else {
+          final card = _cardJson(
+            art: {
+              'status': 'drawing',
+              'attempt': 1,
+              'requestedAt': DateTime.now().toUtc().toIso8601String(),
+              ...body,
+            },
+          );
+          cards.add(RunCard.fromJson(card));
+          out = {'card': card};
+        }
+      } else if (request.method == 'POST') {
         final card = _cardJson(tier: 'mythic');
         cards.add(RunCard.fromJson(card));
         out = {'card': card};
       }
       return http.Response(
         jsonEncode(out),
-        200,
+        status,
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     }),
@@ -162,11 +253,14 @@ Future<void> _pumpPanel(
   WidgetTester tester,
   _Backend backend, {
   RunCard? initial,
+  List<ActivityPhoto> photos = const [],
+  _Photos? picker,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         runNowApiClientProvider.overrideWithValue(backend.client()),
+        runCardPhotosProvider.overrideWithValue(picker ?? _Photos()),
         runCardProvider('r1').overrideWith((ref) async* {
           yield initial;
           yield* backend.cards.stream;
@@ -175,7 +269,10 @@ Future<void> _pumpPanel(
       child: MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
-            child: RunCardPanel(activity: _run(), owner: 'An'),
+            child: RunCardPanel(
+              activity: _run(photos: photos),
+              owner: 'An',
+            ),
           ),
         ),
       ),
@@ -183,6 +280,48 @@ Future<void> _pumpPanel(
   );
   await tester.pump();
   await tester.pump();
+}
+
+/// Cho sheet và dialog chạy xong hiệu ứng mở/đóng. Không dùng pumpAndSettle
+/// vì vòng xoay "đang vẽ" chạy mãi.
+Future<void> _settle(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 500));
+}
+
+/// Cuộn tới [text] rồi chạm. ensureVisible chỉ đặt vị trí cuộn, cần một frame
+/// để layout theo kịp.
+Future<void> _tapText(WidgetTester tester, String text) async {
+  await tester.ensureVisible(find.text(text));
+  await tester.pump();
+  await tester.tap(find.text(text));
+  await _settle(tester);
+}
+
+/// Nút Vẽ ở chân sheet có bật không.
+bool _drawEnabled(WidgetTester tester, String label) => tester
+    .widget<ButtonStyleButton>(
+      find.ancestor(
+        of: find.text(label),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      ),
+    )
+    .enabled;
+
+/// Đồng ý gửi ảnh, bấm Vẽ ở chân sheet rồi xác nhận trong dialog.
+Future<void> _consentAndDraw(WidgetTester tester, String label) async {
+  await tester.ensureVisible(find.byType(Checkbox));
+  await tester.pump();
+  await tester.tap(find.byType(Checkbox));
+  await tester.pump();
+  await _confirmDraw(tester, label);
+}
+
+Future<void> _confirmDraw(WidgetTester tester, String label) async {
+  await _tapText(tester, label);
+  expect(find.text('$label?'), findsOne);
+  await tester.tap(find.widgetWithText(FilledButton, 'Vẽ'));
+  await _settle(tester);
 }
 
 void main() {
@@ -402,5 +541,140 @@ void main() {
     await tester.tap(find.text('Mặt sau'));
     await tester.pump();
     expect(find.text('MẶT SAU · DỮ LIỆU'), findsOneWidget);
+  });
+
+  test('a picked photo is typed from its first bytes', () {
+    // Chữ ký file: JPEG bắt đầu FF D8, PNG bắt đầu 89 'PNG'.
+    expect(
+      runCardPhotoType(Uint8List.fromList([0xFF, 0xD8, 0xFF, 0xE0])),
+      'image/jpeg',
+    );
+    expect(runCardPhotoType(_png), 'image/png');
+    expect(runCardPhotoType(utf8.encode('GIF89a')), isNull);
+    expect(runCardPhotoType(Uint8List(0)), isNull);
+  });
+
+  testWidgets('a card without art draws with a style and a run photo', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    await _pumpPanel(tester, backend, initial: _card(), photos: [_runPhoto]);
+    await _tapText(tester, 'Vẽ tranh nền');
+
+    expect(find.text('Thẻ Siêu hiếm · vẽ một lần, xong là cố định'), findsOne);
+    expect(find.text('Hội hoạ'), findsOne);
+    expect(find.text('Nhóm trống'), findsNothing);
+    expect(find.text('Sơn dầu'), findsOne);
+    expect(find.text('Anime cel'), findsNothing, reason: 'khác nhóm đang mở');
+    expect(_drawEnabled(tester, 'Chọn một phong cách'), isFalse);
+
+    await _tapText(tester, 'Sơn dầu');
+    expect(_drawEnabled(tester, 'Vẽ bằng Sơn dầu'), isTrue);
+
+    await tester.tap(find.bySemanticsLabel('Ảnh buổi chạy'));
+    await tester.pump();
+    expect(
+      _drawEnabled(tester, 'Vẽ bằng Sơn dầu'),
+      isFalse,
+      reason: 'có ảnh thì phải đồng ý gửi ảnh trước',
+    );
+
+    await _consentAndDraw(tester, 'Vẽ bằng Sơn dầu');
+    expect(backend.artBodies, [
+      {'style': 'oil', 'photoPath': _runPhotoPath},
+    ]);
+    expect(find.text('Chọn phong cách'), findsNothing, reason: 'sheet đóng');
+    expect(find.text('Đang vẽ tranh nền'), findsOne);
+    expect(find.text('Vẽ lại'), findsNothing, reason: 'vừa gửi thì chưa kẹt');
+  });
+
+  testWidgets('an uploaded PNG goes up before the draw request', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    final picker = _Photos(utf8.encode('GIF89a....'));
+    await _pumpPanel(tester, backend, initial: _card(), picker: picker);
+    await _tapText(tester, 'Vẽ tranh nền');
+    await _tapText(tester, 'Anime');
+    await _tapText(tester, 'Anime cel');
+
+    await _tapText(tester, 'Tải ảnh');
+    expect(find.text('Chỉ dùng được ảnh JPEG hoặc PNG.'), findsOne);
+    expect(find.byType(Checkbox), findsNothing, reason: 'GIF không được nhận');
+
+    picker.bytes = _png;
+    await _tapText(tester, 'Tải ảnh');
+    await _consentAndDraw(tester, 'Vẽ bằng Anime cel');
+    expect(picker.uploads, ['r1 image/png ${_png.length}']);
+    expect(backend.artBodies, [
+      {'style': 'anime_cel', 'photoPath': 'users/u1/runCards/r1/src.jpg'},
+    ]);
+  });
+
+  testWidgets('a refused draw keeps the sheet open with the reason', (
+    tester,
+  ) async {
+    final backend = _Backend()..artError = 'art_fixed';
+    await _pumpPanel(tester, backend, initial: _card());
+    await _tapText(tester, 'Vẽ tranh nền');
+    await _tapText(tester, 'Sơn dầu');
+    await _confirmDraw(tester, 'Vẽ bằng Sơn dầu');
+
+    expect(backend.artBodies, [
+      {'style': 'oil'},
+    ]);
+    expect(find.text('Thẻ này đã có tranh, không vẽ lại được.'), findsOne);
+    expect(find.text('Chọn phong cách'), findsOne);
+  });
+
+  testWidgets('a failed draw says why and reopens with the old choice', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    await _pumpPanel(
+      tester,
+      backend,
+      initial: _card(
+        art: {
+          'status': 'failed',
+          'style': 'anime_cel',
+          'attempt': 1,
+          'reason': 'budget',
+        },
+      ),
+    );
+    expect(
+      find.text('Hôm nay 3i đã dùng hết hạn mức vẽ tranh. Mai thử lại nhé.'),
+      findsOne,
+    );
+    await _tapText(tester, 'Chọn lại và vẽ');
+    expect(find.text('Vẽ bằng Anime cel'), findsOne);
+  });
+
+  testWidgets('a stuck draw offers to send the same choice again', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    await _pumpPanel(
+      tester,
+      backend,
+      initial: _card(
+        art: {
+          'status': 'drawing',
+          'style': 'oil',
+          'attempt': 1,
+          'photoPath': _runPhotoPath,
+          'requestedAt': DateTime.now()
+              .toUtc()
+              .subtract(const Duration(minutes: 10))
+              .toIso8601String(),
+        },
+      ),
+    );
+    expect(find.text('Lâu quá chưa xong, có thể lần vẽ bị kẹt.'), findsOne);
+    await _tapText(tester, 'Vẽ lại');
+    expect(backend.artBodies, [
+      {'style': 'oil', 'photoPath': _runPhotoPath},
+    ]);
   });
 }

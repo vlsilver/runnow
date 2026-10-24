@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card.dart';
+import 'package:myrun/src/achievements/run_card_art_sheet.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
@@ -15,6 +16,10 @@ import 'package:myrun/src/theme.dart';
 
 typedef _T = RunNowAchievementTokens;
 const _condensed = 'Barlow Condensed';
+
+/// Backend coi khoá vẽ quá 3 phút là treo và cho khoá lại; app chờ thêm một
+/// phút cho lệch đồng hồ rồi mới mời vẽ lại.
+const _artStuckAfter = Duration(minutes: 4);
 
 /// Thẻ của một buổi chạy của chính mình: chưa lật thì úp thẻ kèm tỉ lệ và nút
 /// lật; lật rồi thì hiện thẻ, chọn mặt để khoe.
@@ -34,6 +39,7 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
   final _captureKey = GlobalKey();
   bool _rolling = false;
   bool _sharing = false;
+  bool _redrawing = false;
   bool _back = false;
 
   /// Thẻ vừa lật trong phiên này thì chạy hiệu ứng lật mặt; mở lại thẻ cũ thì
@@ -173,6 +179,7 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
           style: TextStyle(color: muted, fontSize: 12),
         ),
         const SizedBox(height: 14),
+        ..._artStatus(card, muted),
         SegmentedButton<bool>(
           segments: const [
             ButtonSegment(value: false, label: Text('Mặt trước')),
@@ -198,6 +205,90 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
         ),
       ],
     );
+  }
+
+  /// Phần tranh nền dưới thẻ: mời vẽ, đang vẽ, hay vẽ hỏng. Vẽ xong thì
+  /// không còn gì để làm nên không hiện.
+  List<Widget> _artStatus(RunCard card, Color muted) {
+    void choose() => showRunCardArtSheet(
+      context,
+      card: card,
+      photos: widget.activity.photos,
+    );
+    final hint = TextStyle(color: muted, fontSize: 12);
+    final art = card.art;
+    return switch (art?.status) {
+      null => [
+        OutlinedButton.icon(
+          onPressed: choose,
+          icon: const Icon(Icons.brush_outlined),
+          label: const Text('Vẽ tranh nền'),
+        ),
+        const SizedBox(height: 4),
+        Text('Chọn một phong cách. Vẽ xong thì cố định.', style: hint),
+        const SizedBox(height: 14),
+      ],
+      RunCardArtStatus.drawing => [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox.square(
+              dimension: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 8),
+            const Flexible(child: Text('Đang vẽ tranh nền')),
+          ],
+        ),
+        const SizedBox(height: 4),
+        if (_stuck(art!)) ...[
+          Text('Lâu quá chưa xong, có thể lần vẽ bị kẹt.', style: hint),
+          TextButton(
+            onPressed: _redrawing ? null : () => _redraw(art),
+            child: const Text('Vẽ lại'),
+          ),
+        ] else
+          Text(
+            'Thoát ra cũng được, vẽ xong thẻ tự cập nhật.',
+            textAlign: TextAlign.center,
+            style: hint,
+          ),
+        const SizedBox(height: 14),
+      ],
+      RunCardArtStatus.failed => [
+        _Message(runCardArtFailText(art!.reason)),
+        FilledButton.tonalIcon(
+          onPressed: choose,
+          icon: const Icon(Icons.brush_outlined),
+          label: const Text('Chọn lại và vẽ'),
+        ),
+        const SizedBox(height: 14),
+      ],
+      RunCardArtStatus.done => const [],
+    };
+  }
+
+  bool _stuck(RunCardArt art) => switch (art.requestedAt) {
+    final at? => DateTime.now().difference(at) > _artStuckAfter,
+    null => false,
+  };
+
+  /// Gửi lại đúng lựa chọn cũ; backend thấy khoá đã treo thì khoá lại và đẩy
+  /// task mới.
+  Future<void> _redraw(RunCardArt art) async {
+    setState(() => _redrawing = true);
+    try {
+      await ref
+          .read(runNowApiClientProvider)
+          .requestRunCardArt(_id, style: art.style, photoPath: art.photoPath);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Không vẽ lại được: $error')));
+    } finally {
+      if (mounted) setState(() => _redrawing = false);
+    }
   }
 
   void _openViewer(RunCard card, AchievementCardData data) {
@@ -240,6 +331,15 @@ String runCardReasonText(String reason) => switch (reason) {
     'Buổi này trùng một buổi khác đã có thẻ (cùng lần chạy ghi ở hai nguồn), '
         'nên không lật thêm được.',
   _ => 'Chỉ buổi chạy bộ từ 500 m mới lật được thẻ.',
+};
+
+/// Câu cho người dùng ứng với lý do lần vẽ tranh hỏng.
+String runCardArtFailText(String? reason) => switch (reason) {
+  'budget' => 'Hôm nay 3i đã dùng hết hạn mức vẽ tranh. Mai thử lại nhé.',
+  'blocked' => 'Model từ chối vẽ lần này. Thử phong cách khác hoặc bỏ ảnh gốc.',
+  'photo_missing' => 'Không tìm thấy ảnh gốc. Chọn lại ảnh rồi vẽ.',
+  'style_unavailable' => 'Phong cách này vừa bị tắt. Chọn phong cách khác.',
+  _ => 'Vẽ tranh bị lỗi. Thử lại sau ít phút.',
 };
 
 /// Thẻ vẽ ở kích thước gốc rồi thu theo bề ngang chỗ đặt, tối đa 300.
