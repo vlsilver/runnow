@@ -27,6 +27,12 @@ import (
 //	art.path         users/{uid}/runCards/{activityId}/art.png khi done
 //
 // Mọi lượt vẽ đi qua trần chi phí ngày riêng runCardArtDailyBudgetUsd.
+//
+// Số lần vẽ lại một thẻ hỏng không có giới hạn, theo thẻ hay theo người đều
+// không. Một người cứ vẽ lại ảnh bị model từ chối thì tiêu được hết trần chung,
+// và mọi người khác không vẽ được tới 0h. Chấp nhận vì lúc này ít người dùng, mỗi
+// lần vẽ phải qua hộp xác nhận, và mất nhiều nhất là trần một ngày. Muốn chặn
+// thì giới hạn art.attempt trong RequestArt.
 
 var runCardArtPool = budgetPool{
 	capKey: "runCardArtDailyBudgetUsd", capDefault: 10, usageDoc: "runCardArtUsage",
