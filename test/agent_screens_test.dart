@@ -251,6 +251,10 @@ void main() {
   final imageReads = <String>[];
 
   Future<void> pump(WidgetTester tester, Widget home) async {
+    // Thẻ bot tự lắc mãi; giảm chuyển động thì thẻ đứng yên, chờ settle được.
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -298,6 +302,10 @@ void main() {
 
   /// Màn MyBot cùng màn tạo/sửa bot, đủ để đi qua lại bằng go_router.
   Future<void> pumpMyBot(WidgetTester tester) async {
+    // Thẻ bot tự lắc mãi; giảm chuyển động thì thẻ đứng yên, chờ settle được.
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
     // Cao như điện thoại để ListView dựng hết các mục.
     tester.view.physicalSize = const Size(420, 1800);
     tester.view.devicePixelRatio = 1.0;
@@ -981,7 +989,11 @@ void main() {
   ) async {
     backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
     await pumpMyBot(tester);
-    await tester.tap(find.text('Khoe thẻ'));
+    // Chạm sát góc ngoài của nút: nút đè góc thẻ, phần nào lòi ra ngoài khung
+    // thì không bấm được.
+    await tester.tapAt(
+      tester.getBottomRight(find.byTooltip('Khoe thẻ')) - const Offset(6, 6),
+    );
     // Chụp thẻ là việc của engine, phải cho chạy ngoài fake async.
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(seconds: 1)),
@@ -1945,5 +1957,53 @@ void main() {
     await pumpMyBot(tester);
     expect(find.text('Thẻ Cú\nlên Vàng!'), findsNothing);
     expect(find.text('VÀNG'), findsOneWidget);
+  });
+
+  group('bot card on the tab', () {
+    const data = AgentBotCardData(
+      name: 'Cú',
+      persona: '',
+      tier: AgentCardTier.common,
+      memoryCount: 0,
+      memoryLimit: 20,
+    );
+    Future<void> pumpCard(WidgetTester tester) => tester.pumpWidget(
+      const MaterialApp(
+        home: Center(child: AgentBotCardView(data: data, width: 240)),
+      ),
+    );
+    Matrix4 tiltOf(WidgetTester tester) => tester
+        .widget<Transform>(
+          find
+              .descendant(
+                of: find.byType(AgentBotCardView),
+                matching: find.byType(Transform),
+              )
+              .first,
+        )
+        .transform;
+
+    testWidgets('sways by itself after the light sweep', (tester) async {
+      await pumpCard(tester);
+      // Hết vệt sáng quét (1,5 s) thì bắt đầu lắc.
+      await tester.pump(const Duration(milliseconds: 1600));
+      final before = tiltOf(tester).clone();
+      await tester.pump(const Duration(milliseconds: 1500));
+      expect(tiltOf(tester), isNot(equals(before)));
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('stays still when the phone reduces motion', (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(disableAnimations: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      await pumpCard(tester);
+      final before = tiltOf(tester).clone();
+      await tester.pump(const Duration(seconds: 3));
+      expect(tiltOf(tester), equals(before));
+      expect(tester.hasRunningAnimations, isFalse);
+    });
   });
 }

@@ -559,33 +559,43 @@ class _BotCardSectionState extends State<_BotCardSection> {
                     ),
                   ),
                 ),
-                AgentBotCardView(
-                  data: data,
-                  width: width,
-                  captureKey: _cardKey,
+                Stack(
+                  children: [
+                    // Đệm đều bốn phía cho nút đè góc thẻ vẫn nằm trong khung
+                    // Stack: phần lòi ra ngoài khung thì Flutter không nhận
+                    // chạm. Đệm đều để thẻ vẫn ở giữa.
+                    Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: AgentBotCardView(
+                        data: data,
+                        width: width,
+                        captureKey: _cardKey,
+                      ),
+                    ),
+                    // Nút nhỏ đè góc thẻ thay cho một hàng nút riêng.
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: IconButton.filled(
+                        key: _shareKey,
+                        tooltip: 'Khoe thẻ',
+                        onPressed: _sharing ? null : _share,
+                        icon: _sharing
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.ios_share_rounded, size: 20),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             );
           },
-        ),
-        const SizedBox(height: 18),
-        Text(
-          'Vuốt ngang để nghiêng thẻ · chạm để lật',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: palette.textMuted,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Center(
-          child: TextButton.icon(
-            key: _shareKey,
-            onPressed: _sharing ? null : _share,
-            icon: const Icon(Icons.ios_share_rounded, size: 18),
-            label: Text(_sharing ? 'Đang tạo ảnh…' : 'Khoe thẻ'),
-          ),
         ),
       ],
     );

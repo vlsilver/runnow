@@ -23,6 +23,10 @@ void main() {
   /// riêng làm thay đổi cây widget/scroll). [agent] null là chưa tải được hồ
   /// sơ bot, như khi chưa đăng nhập.
   Future<void> pumpApp(WidgetTester tester, {AgentMe? agent}) async {
+    // Thẻ bot tự lắc mãi; giảm chuyển động thì thẻ đứng yên, chờ settle được.
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
     tester.view.physicalSize = const Size(420, 1400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);

@@ -1425,8 +1425,9 @@ class AgentMascot extends StatelessWidget {
 }
 
 /// Thẻ bot trên tab: vuốt ngang để nghiêng (ánh thẻ chạy theo), chạm để lật.
-/// Lần đầu hiện thì một vệt sáng quét qua thẻ, rồi đứng yên: không có
-/// animation chạy mãi.
+/// Lần đầu hiện thì một vệt sáng quét qua thẻ, rồi thẻ tự lắc nhẹ qua lại để
+/// người xem thấy ánh thẻ chạy mà không phải tự vuốt. Máy bật giảm chuyển
+/// động thì thẻ đứng yên.
 class AgentBotCardView extends StatefulWidget {
   const AgentBotCardView({
     super.key,
@@ -1460,6 +1461,14 @@ class _AgentBotCardViewState extends State<AgentBotCardView>
     vsync: this,
     duration: const Duration(milliseconds: 1500),
   );
+  late final _idle = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 6),
+  );
+
+  /// Biên độ tự lắc, cùng thang với [_tilt]: khoảng 8° mỗi bên.
+  static const _idleSway = 0.45;
+  bool _dragging = false;
 
   /// Độ nghiêng -1..1 theo ngón tay; thả tay thì về 0.
   double _tilt = 0;
@@ -1474,6 +1483,21 @@ class _AgentBotCardViewState extends State<AgentBotCardView>
             _tiltAtRelease * (1 - Curves.easeOutBack.transform(_settle.value)),
       );
     });
+    _settle.addStatusListener((status) {
+      if (status == AnimationStatus.completed) _startIdle();
+    });
+    _idle.addListener(() {
+      setState(() => _tilt = math.sin(_idle.value * 2 * math.pi) * _idleSway);
+    });
+  }
+
+  /// Lắc từ giữa (sin 0) nên nối liền với thẻ vừa về thẳng.
+  void _startIdle() {
+    if (!mounted || _dragging || MediaQuery.disableAnimationsOf(context)) {
+      return;
+    }
+    _idle.value = 0;
+    unawaited(_idle.repeat());
   }
 
   @override
@@ -1483,7 +1507,7 @@ class _AgentBotCardViewState extends State<AgentBotCardView>
       if (MediaQuery.disableAnimationsOf(context)) {
         _sweep.value = 1;
       } else {
-        unawaited(_sweep.forward());
+        _sweep.forward().whenCompleteOrCancel(_startIdle);
       }
     }
   }
@@ -1493,6 +1517,7 @@ class _AgentBotCardViewState extends State<AgentBotCardView>
     _flip.dispose();
     _settle.dispose();
     _sweep.dispose();
+    _idle.dispose();
     super.dispose();
   }
 
@@ -1513,11 +1538,16 @@ class _AgentBotCardViewState extends State<AgentBotCardView>
       label: 'Lật thẻ bot',
       child: GestureDetector(
         onTap: _toggle,
-        onHorizontalDragStart: (_) => _settle.stop(),
+        onHorizontalDragStart: (_) {
+          _dragging = true;
+          _idle.stop();
+          _settle.stop();
+        },
         onHorizontalDragUpdate: (d) => setState(
           () => _tilt = (_tilt + d.delta.dx / (widget.width / 2)).clamp(-1, 1),
         ),
         onHorizontalDragEnd: (_) {
+          _dragging = false;
           _tiltAtRelease = _tilt;
           unawaited(_settle.forward(from: 0));
         },
