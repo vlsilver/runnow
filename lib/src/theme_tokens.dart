@@ -253,3 +253,14 @@ class RunNowGameTokens {
   static const holoLilac = Color(0xFFE6D6F5);
   static const sparkleWarm = Color(0xFFFFF6C8);
 }
+
+/// Robot trên thẻ MyBot. Thân và kính giữ một màu ở mọi hành để nhìn ra cùng
+/// một con robot; mắt, ăng-ten và ngực lấy màu của hành.
+class RunNowBotTokens {
+  const RunNowBotTokens._();
+
+  static const shell = Color(0xFFE9EEF0);
+  static const shellShade = Color(0xFFC3CCD3);
+  static const visor = Color(0xFF10252B);
+  static const shadow = Color(0x73000000);
+}

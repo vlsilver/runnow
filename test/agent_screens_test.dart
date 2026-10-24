@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:go_router/go_router.dart';
 import 'package:http/testing.dart';
 import 'package:myrun/src/agents/agent_blocks_screen.dart';
+import 'package:myrun/src/agents/agent_bot_card.dart';
 import 'package:myrun/src/agents/agent_chat_controller.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
 import 'package:myrun/src/agents/agent_group_facts_screen.dart';
@@ -17,6 +18,22 @@ import 'package:myrun/src/agents/agent_screen.dart';
 import 'package:myrun/src/agents/agent_setup_screen.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
+
+/// Bậc thẻ đã khoe, giữ trong bộ nhớ thay cho secure storage.
+class _MemTierSeen extends AgentTierSeen {
+  final saved = <String, String>{};
+
+  @override
+  Future<bool> shouldReveal(String uid, String day, int reached) async {
+    if (reached <= 0) return false;
+    final [savedDay, savedReached] = (saved[uid] ?? ':0').split(':');
+    return savedDay != day || int.parse(savedReached) < reached;
+  }
+
+  @override
+  Future<void> markSeen(String uid, String day, int reached) async =>
+      saved[uid] = '$day:$reached';
+}
 
 class _FakeUser implements User {
   @override
@@ -214,6 +231,7 @@ class _AgentBackend {
 
 void main() {
   late _AgentBackend backend;
+  late _MemTierSeen tierSeen;
 
   Future<void> pump(WidgetTester tester, Widget home) async {
     await tester.pumpWidget(
@@ -221,6 +239,7 @@ void main() {
         overrides: [
           runNowApiClientProvider.overrideWithValue(backend.client()),
           firebaseUserProvider.overrideWith((ref) => Stream.value(_FakeUser())),
+          agentTierSeenProvider.overrideWithValue(tierSeen),
           agentImageBuilderProvider.overrideWithValue(
             (path, {required full}) =>
                 Text(path, style: const TextStyle(fontSize: 8)),
@@ -242,8 +261,17 @@ void main() {
 
   setUp(() {
     backend = _AgentBackend();
+    tierSeen = _MemTierSeen();
     opened = [];
   });
+
+  /// Chạm thẻ bot để lật sang mặt sau. Hai frame: frame đầu mới ghi mốc
+  /// giờ cho animation.
+  Future<void> flipCard(WidgetTester tester) async {
+    await tester.tap(find.byType(AgentBotCardView));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+  }
 
   /// Màn MyBot cùng màn tạo/sửa bot, đủ để đi qua lại bằng go_router.
   Future<void> pumpMyBot(WidgetTester tester) async {
@@ -288,6 +316,7 @@ void main() {
         overrides: [
           runNowApiClientProvider.overrideWithValue(backend.client()),
           firebaseUserProvider.overrideWith((ref) => Stream.value(_FakeUser())),
+          agentTierSeenProvider.overrideWithValue(tierSeen),
           agentImageBuilderProvider.overrideWithValue(
             (path, {required full}) =>
                 Text(path, style: const TextStyle(fontSize: 8)),
@@ -328,7 +357,7 @@ void main() {
     // Lưu xong quay về MyBot, giờ đã có bot.
     expect(find.text('Chat riêng'), findsOneWidget);
     expect(find.text('BOT BIẾT GÌ VỀ BẠN'), findsOneWidget);
-    expect(find.text('0/50'), findsOneWidget);
+    expect(find.text('0/50'), findsNWidgets(2));
 
     await tester.tap(find.text('Thêm điều cần nhớ'));
     await tester.pumpAndSettle();
@@ -342,7 +371,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(backend.memories.single['text'], 'Chạy sáng thứ 7');
     expect(find.text('Chạy sáng thứ 7'), findsOneWidget);
-    expect(find.text('1/50'), findsOneWidget);
+    expect(find.text('1/50'), findsNWidgets(2));
 
     // Ở tab không có nút xoá từng mục: chạm vào mục để sửa hoặc xoá.
     expect(find.byTooltip('Xoá'), findsNothing);
@@ -352,7 +381,7 @@ void main() {
     await tester.tap(find.widgetWithText(TextButton, 'Xoá'));
     await tester.pumpAndSettle();
     expect(backend.calls, contains('DELETE /v1/agents/me/memories/m1'));
-    expect(find.text('0/50'), findsOneWidget);
+    expect(find.text('0/50'), findsNWidgets(2));
   });
 
   testWidgets('tab shows the DM count of today, rereads it after chatting', (
@@ -368,8 +397,8 @@ void main() {
     };
     await pumpMyBot(tester);
     expect(find.text('3/100'), findsOneWidget);
-    expect(find.text('tin hôm nay'), findsOneWidget);
-    expect(find.byIcon(Icons.bedtime_outlined), findsNothing);
+    expect(find.text('TIN'), findsOneWidget);
+    expect(find.byIcon(Icons.bedtime_rounded), findsNothing);
     expect(find.byIcon(Icons.schedule_rounded), findsNothing);
 
     // Bot trả lời một câu trong lúc chủ ở màn chat: quay về thấy số mới.
@@ -397,7 +426,7 @@ void main() {
     expect(find.text('Cú đang nghỉ'), findsOneWidget);
     expect(find.text('MyBot chạm trần chi phí hôm nay.'), findsOneWidget);
     expect(find.text('QUAY LẠI LÚC 0H'), findsOneWidget);
-    expect(find.byIcon(Icons.bedtime_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.bedtime_rounded), findsOneWidget);
     expect(find.text('HẾT TIN · MỞ LẠI 0H'), findsNothing);
 
     await tester.tap(find.text('Chat riêng'));
@@ -451,7 +480,7 @@ void main() {
         },
       };
       await pumpMyBot(tester);
-      expect(find.text('KM HÔM NAY'), findsOneWidget);
+      expect(find.text('BẬC THẺ HÔM NAY'), findsOneWidget);
       expect(find.text('4,1'), findsOneWidget);
       expect(find.text('50 tin chat'), findsOneWidget);
       expect(find.text('10 sẵn + 40 từ 4 km'), findsOneWidget);
@@ -494,7 +523,7 @@ void main() {
       };
       await pumpMyBot(tester);
       expect(find.text('$used/$limit'), findsOneWidget);
-      expect(find.text('ảnh hôm nay'), findsOneWidget);
+      expect(find.text('ẢNH'), findsOneWidget);
       expect(find.text(progress, findRichText: true), findsOneWidget);
       // Backend chưa trả dmByKm thì không đoán số tin theo km.
       expect(find.textContaining('tin chat'), findsNothing);
@@ -630,7 +659,7 @@ void main() {
         ...today,
       };
       await pumpMyBot(tester);
-      expect(find.text('KM HÔM NAY'), findsOneWidget);
+      expect(find.text('BẬC THẺ HÔM NAY'), findsOneWidget);
       for (final text in texts) {
         expect(
           find.text(text, findRichText: true),
@@ -684,17 +713,17 @@ void main() {
     await tester.pumpAndSettle();
     await tester.pageBack();
     await tester.pumpAndSettle();
-    expect(find.text('ảnh hôm nay'), findsNothing);
+    expect(find.text('ẢNH'), findsNothing);
     expect(find.text('0/100'), findsOneWidget);
-    expect(find.text('KM HÔM NAY'), findsNothing);
+    expect(find.text('BẬC THẺ HÔM NAY'), findsNothing);
   });
 
   testWidgets('old backend without today: no quota, no banner', (tester) async {
     backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
     await pumpMyBot(tester);
     expect(find.text('Chat riêng'), findsOneWidget);
-    expect(find.text('tin hôm nay'), findsNothing);
-    expect(find.byIcon(Icons.bedtime_outlined), findsNothing);
+    expect(find.text('TIN'), findsNothing);
+    expect(find.byIcon(Icons.bedtime_rounded), findsNothing);
     expect(find.byIcon(Icons.schedule_rounded), findsNothing);
   });
 
@@ -732,7 +761,7 @@ void main() {
     backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
     backend.telegram = botOnTelegram();
     await pumpMyBot(tester);
-    expect(find.text('@cu_42_bot'), findsOneWidget);
+    expect(find.text('@cu_42_bot'), findsNWidgets(2));
     expect(find.text('Chat và vẽ ảnh trên Telegram'), findsOneWidget);
 
     await tester.tap(find.text('Mở'));
@@ -845,7 +874,7 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     await tester.pump();
     expect(meReads(), reads + 2);
-    expect(find.text('@cu_42_bot'), findsOneWidget);
+    expect(find.text('@cu_42_bot'), findsNWidgets(2));
 
     // Quay về lần nữa lúc bot đã chạy: đọc lại một lần vì km và số tin có thể
     // đã đổi, nhưng không đọc lần hai sau ít giây.
@@ -876,7 +905,8 @@ void main() {
     await tester.pump();
     expect(meReads(), reads + 1);
     expect(find.text('Đưa bot vào group PSC'), findsNothing);
-    expect(find.text('Ở GROUP PSC'), findsOneWidget);
+    await flipCard(tester);
+    expect(find.text('Ở group PSC'), findsOneWidget);
 
     // Đã ở PSC: quay về chỉ đọc lại một lần, không đọc lần hai.
     await tester.pump(const Duration(seconds: 5));
@@ -1091,7 +1121,8 @@ void main() {
     bool switchOn() =>
         tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value;
     expect(switchOn(), isTrue);
-    expect(find.text('ĐANG TỰ HỌC'), findsOneWidget);
+    await flipCard(tester);
+    expect(find.text('Đang tự học'), findsOneWidget);
 
     await tester.tap(find.text('Cho bot tự học về bạn'));
     await tester.pumpAndSettle();
@@ -1107,7 +1138,7 @@ void main() {
     expect(switchOn(), isFalse);
     expect(find.text('Mê chạy trail'), findsNothing);
     expect(find.text('Bot không tự học về bạn.'), findsOneWidget);
-    expect(find.text('ĐANG TỰ HỌC'), findsNothing);
+    expect(find.text('Đang tự học'), findsNothing);
 
     await tester.tap(find.text('Cho bot tự học về bạn'));
     await tester.pumpAndSettle();
@@ -1541,5 +1572,136 @@ void main() {
     expect(jsonDecode(sends.last.body), {'text': 'chào'});
     expect(find.widgetWithText(TextField, 'chào'), findsNothing);
     await close(tester);
+  });
+
+  // Bảng mốc của backend hiện là 1, 5, 10 km. Bậc tính theo số mốc đã qua,
+  // không theo km cứng trong app.
+  test('card tier follows the tiers the backend sends', () {
+    AgentImagesToday images(double km, {List<double>? at, int limit = 0}) =>
+        AgentImagesToday(
+          used: 0,
+          limit: limit,
+          runKm: km,
+          tiers: [for (final k in at ?? [1.0, 5.0, 10.0]) (km: k, limit: 1)],
+        );
+    for (final (km, want) in [
+      (0.0, AgentCardTier.common),
+      (0.99, AgentCardTier.common),
+      (1.0, AgentCardTier.silver),
+      (4.9, AgentCardTier.silver),
+      (5.0, AgentCardTier.gold),
+      (9.99, AgentCardTier.gold),
+      (10.0, AgentCardTier.foil),
+      (12.0, AgentCardTier.foil),
+    ]) {
+      expect(agentCardTier(images(km)), want, reason: '$km km');
+    }
+    // Backend bớt còn hai mốc: qua mốc cuối là Foil, không có Vàng.
+    expect(agentCardTier(images(1, at: [1, 2])), AgentCardTier.silver);
+    expect(agentCardTier(images(2, at: [1, 2])), AgentCardTier.foil);
+
+    // Backend cũ chưa gửi bảng mốc.
+    AgentImagesToday old(int limit, double? nextKm) => AgentImagesToday(
+      used: 0,
+      limit: limit,
+      runKm: 3,
+      nextKm: nextKm,
+    );
+    expect(agentCardTier(old(0, 1)), AgentCardTier.common);
+    expect(agentCardTier(old(3, 5)), AgentCardTier.silver);
+    expect(agentCardTier(old(10, null)), AgentCardTier.foil);
+    expect(agentCardTier(null), AgentCardTier.common);
+  });
+
+  // 0h VN là 17h UTC hôm trước: tạo lúc 1h sáng 24/10 VN thì tới 23h59 vẫn là
+  // ngày đầu, sang 0h 25/10 là ngày thứ 2.
+  test('bot days count by VN calendar day, the first day is day 1', () {
+    final created = DateTime.utc(2026, 10, 23, 18);
+    expect(agentDayCount(created, DateTime.utc(2026, 10, 24, 16, 59)), 1);
+    expect(agentDayCount(created, DateTime.utc(2026, 10, 24, 17)), 2);
+    expect(agentVnDay(DateTime.utc(2026, 10, 24, 17)), '2026-10-25');
+  });
+
+  testWidgets('card says how many days the bot has been around', (
+    tester,
+  ) async {
+    backend.agent = {
+      'name': 'Cú',
+      'persona': '',
+      'created': true,
+      'createdAt': DateTime.now()
+          .toUtc()
+          .subtract(const Duration(days: 1))
+          .toIso8601String(),
+    };
+    await pumpMyBot(tester);
+    expect(find.text('Ngày thứ 2 bên bạn'), findsOneWidget);
+
+    await flipCard(tester);
+    expect(find.text('TÍNH CÁCH'), findsOneWidget);
+    expect(find.text('Ngày thứ 2 bên bạn'), findsNothing);
+  });
+
+  // Mốc 1, 5, 10 km. 5,2 km qua hai mốc là Vàng, 10,4 km qua cả ba là Foil.
+  Map<String, dynamic> tierToday(
+    double km,
+    int limit,
+    int dmMax, {
+    double? nextKm,
+  }) => {
+    'dmUsed': 0,
+    'dmMax': dmMax,
+    'roomUsed': 0,
+    'roomMax': 300,
+    'resting': null,
+    'images': {
+      'used': 0,
+      'limit': limit,
+      'runKm': km,
+      'nextKm': nextKm,
+      'nextLimit': nextKm == null ? null : 10,
+      'tiers': [
+        {'km': 1, 'limit': 3},
+        {'km': 5, 'limit': 5},
+        {'km': 10, 'limit': 10},
+      ],
+    },
+  };
+
+  testWidgets('a new tier shows once a day, a higher tier shows again', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    backend.today = tierToday(5.2, 5, 60, nextKm: 10);
+    await pumpMyBot(tester);
+    expect(find.text('Thẻ Cú lên Vàng!'), findsOneWidget);
+    expect(find.text('BẠN VỪA QUA 5 KM'), findsOneWidget);
+    expect(find.text('Thêm 4,8 km nữa là lên Foil.'), findsOneWidget);
+    await tester.tap(find.byTooltip('Đóng'));
+    await tester.pumpAndSettle();
+    expect(find.text('Thẻ Cú lên Vàng!'), findsNothing);
+
+    // Quay lại app cùng ngày, vẫn Vàng: không hiện lại.
+    resumeApp(tester);
+    await tester.pumpAndSettle();
+    expect(find.text('Thẻ Cú lên Vàng!'), findsNothing);
+
+    // Chạy thêm qua 10 km: lên Foil thì hiện.
+    backend.today = tierToday(10.4, 10, 100);
+    resumeApp(tester);
+    await tester.pumpAndSettle();
+    expect(find.text('Thẻ Cú lên Foil!'), findsOneWidget);
+    expect(find.text('Bậc cao nhất trong ngày.'), findsOneWidget);
+  });
+
+  testWidgets('a tier already seen today on this phone does not show', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    backend.today = tierToday(5.2, 5, 60, nextKm: 10);
+    tierSeen.saved['me'] = '${agentVnDay(DateTime.now())}:2';
+    await pumpMyBot(tester);
+    expect(find.text('Thẻ Cú lên Vàng!'), findsNothing);
+    expect(find.text('Thẻ Vàng'), findsOneWidget);
   });
 }

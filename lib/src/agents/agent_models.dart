@@ -24,12 +24,14 @@ class AgentProfile {
     required this.name,
     required this.persona,
     required this.created,
+    this.createdAt,
   });
 
   factory AgentProfile.fromJson(Map<String, dynamic> json) => AgentProfile(
     name: _string(json['name']),
     persona: _string(json['persona']),
     created: json['created'] == true,
+    createdAt: _date(json['createdAt']),
   );
 
   final String name;
@@ -37,6 +39,9 @@ class AgentProfile {
 
   /// false: hồ sơ mặc định, chủ chưa lưu lần nào nên bot chưa vào phòng.
   final bool created;
+
+  /// Lần chủ lưu hồ sơ đầu tiên; null khi chưa tạo bot hay backend cũ.
+  final DateTime? createdAt;
 }
 
 class AgentMemory {
@@ -310,6 +315,7 @@ class AgentImagesToday {
     required this.runKm,
     this.nextKm,
     this.nextLimit,
+    this.tiers = const [],
   });
 
   factory AgentImagesToday.fromJson(Map<String, dynamic> json) =>
@@ -319,6 +325,11 @@ class AgentImagesToday {
         runKm: _double(json['runKm']),
         nextKm: json['nextKm'] is num ? _double(json['nextKm']) : null,
         nextLimit: json['nextLimit'] is num ? _int(json['nextLimit']) : null,
+        tiers: [
+          for (final t in json['tiers'] as List? ?? const [])
+            if (t is Map<String, dynamic>)
+              (km: _double(t['km']), limit: _int(t['limit'])),
+        ],
       );
 
   final int used;
@@ -329,6 +340,9 @@ class AgentImagesToday {
   /// ở mốc cao nhất.
   final double? nextKm;
   final int? nextLimit;
+
+  /// Cả bảng mốc, km tăng dần; rỗng khi backend cũ chưa gửi.
+  final List<({double km, int limit})> tiers;
 }
 
 /// Tin có seq, để một controller dùng chung cho chat riêng và phòng bot.
