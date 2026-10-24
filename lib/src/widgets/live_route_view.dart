@@ -672,11 +672,7 @@ class _LiveMap extends StatelessWidget {
         },
       ),
       children: [
-        TileLayer(
-          urlTemplate: mapTileTemplate(dark: true),
-          userAgentPackageName: 'com.threei.run',
-          retinaMode: RetinaMode.isHighDensity(context),
-        ),
+        mapTileLayer(context, dark: true),
         const MapAttribution(),
         PolylineLayer(
           polylines: [

@@ -83,7 +83,6 @@ class _JourneyMapState extends State<JourneyMap> {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tileTemplate = mapTileTemplate(dark: isDark);
     final route = widget.progress.route;
     final points = route.points;
     final coveredPoints = _coveredPolyline(
@@ -134,12 +133,7 @@ class _JourneyMapState extends State<JourneyMap> {
               ),
             ),
             children: [
-              TileLayer(
-                key: ValueKey(tileTemplate),
-                urlTemplate: tileTemplate,
-                userAgentPackageName: 'com.threei.run',
-                retinaMode: RetinaMode.isHighDensity(context),
-              ),
+              mapTileLayer(context, dark: isDark),
               const MapAttribution(),
               PolylineLayer(
                 polylines: [

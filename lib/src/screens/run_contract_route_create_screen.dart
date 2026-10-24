@@ -930,7 +930,6 @@ class _RouteDrawingMap extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tileTemplate = mapTileTemplate(dark: isDark);
     return FlutterMap(
       mapController: controller,
       options: MapOptions(
@@ -942,12 +941,7 @@ class _RouteDrawingMap extends StatelessWidget {
         ),
       ),
       children: [
-        TileLayer(
-          key: ValueKey(tileTemplate),
-          urlTemplate: tileTemplate,
-          userAgentPackageName: 'com.threei.run',
-          retinaMode: RetinaMode.isHighDensity(context),
-        ),
+        mapTileLayer(context, dark: isDark),
         const MapAttribution(),
         if (points.length >= 2)
           PolylineLayer(

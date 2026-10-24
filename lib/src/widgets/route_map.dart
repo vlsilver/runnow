@@ -527,7 +527,6 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
     final liveRunners = widget.liveRunners;
     final palette = context.runNowPalette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tileTemplate = mapTileTemplate(dark: isDark);
     final routeOutline = isDark
         ? Colors.black.withValues(alpha: 0.5)
         : Colors.white.withValues(alpha: 0.88);
@@ -578,12 +577,7 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
         ),
       ),
       children: [
-        TileLayer(
-          key: ValueKey(tileTemplate),
-          urlTemplate: tileTemplate,
-          userAgentPackageName: 'com.threei.run',
-          retinaMode: RetinaMode.isHighDensity(context),
-        ),
+        mapTileLayer(context, dark: isDark),
         MapAttribution(top: widget.follow),
         PolylineLayer(
           polylines: [

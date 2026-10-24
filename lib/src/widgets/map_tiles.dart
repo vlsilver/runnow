@@ -1,4 +1,6 @@
 import 'package:firebase_remote_config/firebase_remote_config.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_map/flutter_map.dart';
 
 /// Mẫu URL tile nền cho mọi `FlutterMap` trong app. Đổi nguồn tile thì chỉ
 /// sửa ở đây (kèm [MapAttribution] nếu đổi nhà cung cấp).
@@ -11,6 +13,17 @@ const _lightTileTemplate =
     'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 const _darkTileTemplate =
     'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+
+/// Lớp tile nền dùng chung cho mọi bản đồ trong app.
+TileLayer mapTileLayer(BuildContext context, {required bool dark}) {
+  final template = mapTileTemplate(dark: dark);
+  return TileLayer(
+    key: ValueKey(template),
+    urlTemplate: template,
+    userAgentPackageName: 'com.threei.run',
+    retinaMode: RetinaMode.isHighDensity(context),
+  );
+}
 
 String mapTileTemplate({required bool dark}) => resolveMapTileTemplate(
   _remoteString(dark ? 'map_tile_url_dark' : 'map_tile_url_light'),
