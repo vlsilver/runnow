@@ -32,7 +32,7 @@ class DashboardScreen extends ConsumerStatefulWidget {
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   void _openJournal(BuildContext context) {
-    context.push('/profile/journal');
+    context.push('/journal');
   }
 
   @override
@@ -189,7 +189,7 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
     );
     final journalEntry = _JournalEntryCard(
       recent: _recent,
-      onTap: () => context.push('/profile/journal'),
+      onTap: () => context.push('/journal'),
     );
 
     if (wide) {
@@ -821,7 +821,7 @@ class _RecentActivitiesCard extends StatelessWidget {
                 ),
               ),
               TextButton(
-                onPressed: () => context.push('/profile/journal'),
+                onPressed: () => context.push('/journal'),
                 child: const Text('Xem nhật ký'),
               ),
             ],

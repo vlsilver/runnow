@@ -123,7 +123,7 @@ class _JourneyHubContent extends StatelessWidget {
                 title: title,
                 subtitle: subtitle,
                 onJournalTap: () => memberUid == null
-                    ? context.push('/profile/journal')
+                    ? context.push('/journal')
                     : context.push('/club/$memberUid/journal'),
               ),
               const SizedBox(height: 14),
@@ -958,7 +958,7 @@ class _LevelCard extends StatelessWidget {
     final uid = memberUid;
     context.push(
       uid == null
-          ? '/profile/journey/${state.campaign.value}'
+          ? '/journey/${state.campaign.value}'
           : '/club/$uid/journey/${state.campaign.value}',
     );
   }

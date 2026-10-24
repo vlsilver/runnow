@@ -50,7 +50,7 @@ class JourneyScreen extends ConsumerWidget {
             onPressed: () => context.push(
               _isViewingMember
                   ? '/club/${viewedMember!.uid}/journal'
-                  : '/profile/journal',
+                  : '/journal',
             ),
             icon: const Icon(Icons.list_alt_rounded),
           ),
@@ -503,7 +503,7 @@ class _JourneyInfoSheet extends StatelessWidget {
                   width: double.infinity,
                   child: FilledButton.icon(
                     onPressed: () =>
-                        context.push('/profile/journey/${nextCampaign.value}'),
+                        context.push('/journey/${nextCampaign.value}'),
                     icon: const Icon(Icons.lock_open_rounded),
                     label: const Text('Mở khoá hành trình tiếp theo'),
                   ),
@@ -569,7 +569,7 @@ class _CompletionBanner extends StatelessWidget {
             iconSize: 22,
             onTap: () => context.push(
               viewedMember == null
-                  ? '/profile/journey/${nextCampaign.value}'
+                  ? '/journey/${nextCampaign.value}'
                   : '/club/${viewedMember.uid}/journey/${nextCampaign.value}',
             ),
           ),

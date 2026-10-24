@@ -156,13 +156,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           _Link(
             icon: Icons.map_outlined,
             title: 'Hành trình',
-            onTap: () => context.push('/profile'),
+            onTap: () => context.push('/journey'),
           ),
           _Link(
             icon: Icons.menu_book_outlined,
             title: 'Nhật ký chạy',
             value: '${profileInt(lifetime.activityCount)} buổi',
-            onTap: () => context.push('/profile/journal'),
+            onTap: () => context.push('/journal'),
           ),
           _Link(
             icon: Icons.tune,

@@ -97,11 +97,11 @@ final _router = GoRouter(
                 ),
                 GoRoute(
                   path: 'journal',
-                  builder: (context, state) => const JournalScreen(),
+                  redirect: (context, state) => '/journal',
                 ),
                 GoRoute(
                   path: 'stats',
-                  redirect: (context, state) => '/profile/journal',
+                  redirect: (context, state) => '/journal',
                 ),
               ],
             ),
@@ -143,7 +143,27 @@ final _router = GoRouter(
         ),
       ],
     ),
-    GoRoute(path: '/journal', redirect: (context, state) => '/profile/journal'),
+    // Nhật ký và Hành trình của chính mình mở được từ nhiều tab (Hồ sơ, Club,
+    // Hành Trình), nên nằm ngoài shell: push đè lên tab đang đứng và luôn có
+    // nút back. Route con của /profile chỉ giữ cho link cũ.
+    GoRoute(
+      path: '/journal',
+      builder: (context, state) => const JournalScreen(),
+    ),
+    GoRoute(
+      path: '/journey',
+      builder: (context, state) => const JourneyHubScreen(),
+      routes: [
+        GoRoute(
+          path: ':campaignId',
+          builder: (context, state) => JourneyScreen(
+            campaignId:
+                parseJourneyCampaignId(state.pathParameters['campaignId']) ??
+                JourneyCampaignId.xuyenViet,
+          ),
+        ),
+      ],
+    ),
     // Cài đặt từng là tab riêng ở /settings, giờ nằm dưới tab Hồ sơ.
     GoRoute(path: '/settings', redirect: (context, state) => '/me/settings'),
     GoRoute(
@@ -603,7 +623,7 @@ class _SyncedActivitiesSheetState extends State<_SyncedActivitiesSheet> {
                   child: OutlinedButton(
                     onPressed: () {
                       Navigator.of(context).pop();
-                      context.push('/profile/journal');
+                      context.push('/journal');
                     },
                     child: const Text('Xem Nhật ký'),
                   ),

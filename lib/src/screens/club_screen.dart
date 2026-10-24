@@ -435,7 +435,7 @@ class _RankingPodium extends StatelessWidget {
     void onTap(_RankingEntry entry) {
       final uid = entry.entry.uid;
       context.push(
-        uid == currentUid ? '/profile/journal' : '/club/$uid/journal',
+        uid == currentUid ? '/journal' : '/club/$uid/journal',
       );
     }
 
@@ -854,7 +854,7 @@ class _RankingCard extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: () => context.push(
-            isMe ? '/profile/journal' : '/club/${member.uid}/journal',
+            isMe ? '/journal' : '/club/${member.uid}/journal',
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(10, 10, 12, 10),
