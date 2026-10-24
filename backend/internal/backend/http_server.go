@@ -764,6 +764,13 @@ func (s *Server) apiRoutes() {
 		}
 		return writeJSON(w, 200, page)
 	}))
+	s.route("GET /v1/art-styles", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		kind, ok := parseArtKind(r.URL.Query().Get("kind"))
+		if !ok {
+			return invalidRequest()
+		}
+		return writeJSON(w, 200, ArtStyles(kind))
+	}))
 	s.route("POST /v1/activities/tracked", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		var body struct {
 			Activity map[string]any `json:"activity"`
