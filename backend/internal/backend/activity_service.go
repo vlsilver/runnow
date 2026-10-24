@@ -407,7 +407,7 @@ func (s *ActivityService) preferredStravaDuplicate(ctx context.Context, uid stri
 			return "", nextErr
 		}
 		fact := activityFact(doc.Ref.ID, doc.Data())
-		if fact.Source == "strava" && (fact.SportType == "Run" || fact.SportType == "TrailRun" || fact.SportType == "VirtualRun") && overlapRatio(candidate, fact) > 0.3 {
+		if fact.Source == "strava" && (fact.SportType == "Run" || fact.SportType == "TrailRun" || fact.SportType == "VirtualRun") && sameRun(candidate, fact) {
 			return fact.ID, nil
 		}
 	}
@@ -442,7 +442,7 @@ func (s *ActivityService) markRunNowDuplicates(ctx context.Context, uid, stravaA
 			continue
 		}
 		fact := activityFact(doc.Ref.ID, data)
-		if overlapRatio(fact, stravaFact) > 0.3 {
+		if sameRun(fact, stravaFact) {
 			if _, err := doc.Ref.Set(ctx, map[string]any{"duplicateOfActivityId": stravaActivityID, "updatedAt": firestore.ServerTimestamp}, firestore.MergeAll); err != nil {
 				return err
 			}
