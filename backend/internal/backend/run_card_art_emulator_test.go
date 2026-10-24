@@ -18,19 +18,22 @@ import (
 type artLLM struct {
 	prompts []string
 	photos  [][]byte
+	mimes   []string
 	err     error
 	blocked bool
 }
 
 func (f *artLLM) Image(_ context.Context, parts []*genai.Part) (*genai.GenerateContentResponse, error) {
 	var photo []byte
+	var mime string
 	for _, p := range parts {
 		if p.InlineData != nil {
-			photo = p.InlineData.Data
+			photo, mime = p.InlineData.Data, p.InlineData.MIMEType
 		}
 	}
 	f.prompts = append(f.prompts, parts[len(parts)-1].Text)
 	f.photos = append(f.photos, photo)
+	f.mimes = append(f.mimes, mime)
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -259,7 +262,7 @@ func TestEmulatorRunCardArtPhoto(t *testing.T) {
 	}
 	e.want(e.ask("a1", "anime_cel", own), 200, "")
 	e.draw(e.lastTask())
-	if string(e.gen.photos[0]) != "run-photo" || !strings.HasPrefix(e.gen.prompts[0], "Transform the provided photograph") {
+	if string(e.gen.photos[0]) != "run-photo" || e.gen.mimes[0] != "image/jpeg" || !strings.HasPrefix(e.gen.prompts[0], "Transform the provided photograph") {
 		t.Fatalf("vẽ từ ảnh: ảnh %q prompt %q", e.gen.photos[0], e.gen.prompts[0])
 	}
 	if art := e.art("a1"); art["status"] != "done" || art["photoPath"] != own {
@@ -271,6 +274,15 @@ func TestEmulatorRunCardArtPhoto(t *testing.T) {
 	e.draw(e.lastTask())
 	if art := e.art("a2"); art["status"] != "failed" || art["reason"] != "photo_missing" || len(e.gen.prompts) != 1 {
 		t.Fatalf("art = %v, model gọi %d lần", art, len(e.gen.prompts))
+	}
+
+	// Ảnh chụp màn hình lên dưới dạng PNG thì model nhận đúng loại PNG.
+	png := append([]byte("\x89PNG\r\n\x1a\n"), "screenshot"...)
+	e.files.files["users/u1/runCards/a2/src.jpg"] = png
+	e.want(e.ask("a2", "anime_cel", "users/u1/runCards/a2/src.jpg"), 200, "")
+	e.draw(e.lastTask())
+	if art := e.art("a2"); art["status"] != "done" || e.gen.mimes[1] != "image/png" {
+		t.Fatalf("art = %v, mime %q", art, e.gen.mimes[1])
 	}
 }
 

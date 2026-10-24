@@ -43,7 +43,7 @@ service firebase.storage {
       allow create, update: if owns(userId)
         && fileName == 'src.jpg'
         && request.resource.size < 8 * 1024 * 1024
-        && request.resource.contentType.matches('image/jpeg');
+        && request.resource.contentType.matches('image/(jpeg|png)');
       allow delete: if false;
     }
 

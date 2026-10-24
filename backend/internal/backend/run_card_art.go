@@ -170,6 +170,15 @@ func (s *RunCardStore) RequestArt(ctx context.Context, uid, activityID string, r
 	return runCardJSON(activityID, card), nil
 }
 
+// photoMIME đoán loại ảnh gốc theo nội dung, vì máy chọn ảnh giữ nguyên PNG
+// (ảnh chụp màn hình) chứ không đổi hết sang JPEG.
+func photoMIME(b []byte) string {
+	if t := http.DetectContentType(b); t == "image/png" || t == "image/webp" {
+		return t
+	}
+	return "image/jpeg"
+}
+
 // runCardArtist vẽ tranh thẻ trên service bot.
 type runCardArtist struct {
 	store  *RunCardStore
@@ -219,7 +228,7 @@ func (s *RunCardStore) DrawArt(ctx context.Context, t runCardArtTask) error {
 	prompt := runCardArtPrompt(snapshot, style, len(photo) > 0)
 	parts := []*genai.Part{}
 	if len(photo) > 0 {
-		parts = append(parts, &genai.Part{InlineData: &genai.Blob{MIMEType: "image/jpeg", Data: photo}})
+		parts = append(parts, &genai.Part{InlineData: &genai.Blob{MIMEType: photoMIME(photo), Data: photo}})
 	}
 	parts = append(parts, genai.NewPartFromText(prompt))
 	drawCtx, cancel := context.WithTimeout(ctx, runCardArtTimeout)
