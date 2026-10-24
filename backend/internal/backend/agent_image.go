@@ -55,11 +55,17 @@ type agentImageLLM interface {
 type genaiImageLLM struct {
 	client *genai.Client
 	model  string
+	// aspect là tỉ lệ khung ảnh, vd "2:3"; rỗng thì model tự chọn.
+	aspect string
 }
 
 func (g genaiImageLLM) Image(ctx context.Context, parts []*genai.Part) (*genai.GenerateContentResponse, error) {
 	started := time.Now()
-	resp, err := g.client.Models.GenerateContent(ctx, g.model, []*genai.Content{{Role: genai.RoleUser, Parts: parts}}, funImageConfig())
+	cfg := funImageConfig()
+	if g.aspect != "" {
+		cfg.ImageConfig = &genai.ImageConfig{AspectRatio: g.aspect}
+	}
+	resp, err := g.client.Models.GenerateContent(ctx, g.model, []*genai.Content{{Role: genai.RoleUser, Parts: parts}}, cfg)
 	if err != nil {
 		return nil, err
 	}

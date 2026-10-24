@@ -50,6 +50,9 @@ type Config struct {
 	// AgentModel là model của bot cá nhân. Mặc định Flash: phòng bot nói nhiều
 	// tin ngắn, Pro đắt mà không cần.
 	AgentModel string
+	// RunCardArtModel là model ảnh vẽ tranh thẻ buổi chạy, gọi ở location
+	// global. Tách khỏi model ảnh của 3i để đổi riêng khi model cũ nghỉ.
+	RunCardArtModel string
 	// AgentLearn bật task bot tự học ký ức từ tin trong phòng bot và group
 	// Telegram (agent_learn.go). Chỉ "on" mới bật.
 	AgentLearn      bool
@@ -110,6 +113,7 @@ func LoadConfig() (Config, error) {
 	c.GeminiFallbackLocation = env("GEMINI_FALLBACK_LOCATION", "asia-southeast1")
 	c.GeminiThinkingLevel = env("GEMINI_THINKING_LEVEL", "LOW")
 	c.AgentModel = env("AGENT_MODEL", "gemini-3.8-flash")
+	c.RunCardArtModel = env("RUN_CARD_ART_MODEL", geminiImageModel)
 	c.AgentLearn = env("AGENT_LEARN", "") == "on"
 	c.AgentTelegramBots = env("AGENT_TELEGRAM_BOTS", "") == "on"
 	// Task học không có model dự phòng, nên đi theo GEMINI_MODEL: đổi model của

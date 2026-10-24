@@ -195,6 +195,8 @@ type RunCardStore struct {
 	db   *firestore.Client
 	roll func() (int64, error)
 	now  func() time.Time
+	// artist vẽ tranh thẻ; chỉ có trên service bot (xem SetArtist).
+	artist *runCardArtist
 }
 
 func NewRunCardStore(db *firestore.Client) *RunCardStore {
@@ -217,6 +219,9 @@ func runCardJSON(id string, data map[string]any) map[string]any {
 		if t, ok := data[k].(time.Time); ok {
 			out[k] = t.UTC().Format(time.RFC3339Nano)
 		}
+	}
+	if art, ok := data["art"].(map[string]any); ok {
+		out["art"] = runCardArtJSON(art)
 	}
 	return out
 }

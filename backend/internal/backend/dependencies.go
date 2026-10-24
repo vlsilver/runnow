@@ -167,6 +167,11 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 			if imageClient != nil && bucket != nil {
 				images := gcsImageStore{bucket: bucket}
 				d.AgentBrain.SetImages(budgetImageLLM{inner: genaiImageLLM{client: imageClient, model: geminiImageModel}, model: geminiImageModel, budget: budget}, images)
+				// Tranh thẻ buổi chạy có trần chi phí riêng, để bot cá nhân tiêu hết
+				// trần không chặn vẽ thẻ và ngược lại.
+				artModel := config.RunCardArtModel
+				artBudget := NewRunCardArtBudget(db, adminNotifier(d.Games, telegram))
+				d.RunCards.SetArtist(budgetImageLLM{inner: genaiImageLLM{client: imageClient, model: artModel, aspect: runCardArtAspect}, model: artModel, budget: artBudget}, images, artModel)
 				if d.ManagedBots != nil {
 					d.ManagedBots.images = images
 				}

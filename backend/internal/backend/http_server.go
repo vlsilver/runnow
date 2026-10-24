@@ -71,6 +71,20 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/agent-learn", s.agentLearn)
 	s.route("POST /tasks/managed-bot-sync", s.managedBotSync)
 	s.route("POST /tasks/managed-send", s.managedSend)
+	s.route("POST "+runCardArtQueuePath, s.runCardArt)
+}
+
+// runCardArt: task vẽ tranh thẻ buổi chạy (Gemini), đẩy từ POST .../card/art.
+func (s *Server) runCardArt(w http.ResponseWriter, r *http.Request) error {
+	var task runCardArtTask
+	if decodeJSON(r, &task) != nil || task.UID == "" || task.ActivityID == "" {
+		w.WriteHeader(204)
+		return nil
+	}
+	if err := s.deps.RunCards.DrawArt(r.Context(), task); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
 }
 
 // tickJob là một việc của schedule-tick, với timeout riêng.
@@ -781,6 +795,21 @@ func (s *Server) apiRoutes() {
 			return err
 		}
 		card, err := s.deps.RunCards.Roll(r.Context(), uid, id)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"card": card})
+	}))
+	s.route("POST /v1/activities/{activityId}/card/art", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		id, err := runCardActivityID(r)
+		if err != nil {
+			return err
+		}
+		var body RunCardArtRequest
+		if decodeJSON(r, &body) != nil {
+			return invalidRequest()
+		}
+		card, err := s.deps.RunCards.RequestArt(r.Context(), uid, id, body, s.enqueueTask())
 		if err != nil {
 			return err
 		}

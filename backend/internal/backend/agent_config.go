@@ -38,7 +38,14 @@ var agentConfigFields = []agentConfigField{
 		Help: "Tổng tiền gọi AI (Gemini) trong một ngày giờ VN của mọi bot cá nhân cộng lại: trả lời chat riêng, nói trong phòng bot, tra web và tự học. " +
 			"Chạm trần thì mọi bot trả một câu nghỉ tới 0h, admin đã liên kết Telegram nhận một tin báo. " +
 			"Tổng có thể vượt trần một chút, vì lượt đang chạy dở lúc chạm trần vẫn chạy xong. " +
-			"0 là không giới hạn. Không tính 3i trong group Telegram và coach. Tiền tính theo bảng giá model bên dưới.",
+			"0 là không giới hạn. Không tính 3i trong group Telegram, coach và vẽ thẻ buổi chạy (có trần riêng). Tiền tính theo bảng giá model bên dưới.",
+	},
+	{
+		Key: "runCardArtDailyBudgetUsd", Label: "Trần tiền vẽ thẻ buổi chạy mỗi ngày", Kind: "number", Unit: "USD/ngày", Min: 0, Max: 1000, Default: runCardArtPool.capDefault,
+		Help: "Tổng tiền gọi AI vẽ tranh cho thẻ buổi chạy trong một ngày giờ VN, mọi người cộng lại. Mỗi thẻ vẽ một lần. " +
+			"Chạm trần thì lượt vẽ mới báo hết lượt tới 0h, người dùng vẽ lại được hôm sau; admin đã liên kết Telegram nhận một tin báo. " +
+			"Tổng có thể vượt trần một chút, vì lượt đang vẽ dở vẫn chạy xong. 0 là không giới hạn. " +
+			"Tiền tính theo bảng giá model bên dưới: nhớ khai giá model ảnh, thiếu giá thì tính theo giá dự phòng, thấp hơn giá ảnh thật.",
 	},
 	{
 		Key: "dmDailyMax", Label: "Trần câu trả lời chat riêng mỗi người mỗi ngày", Kind: "int", Unit: "câu/người/ngày", Min: 0, Max: 1000, Default: agentDMDailyMax,
