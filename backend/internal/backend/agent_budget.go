@@ -43,13 +43,40 @@ type llmPrice struct {
 // không thành vô hiệu. Đây là lưới an toàn, không phải giá thật.
 var agentFallbackPrice = llmPrice{input: 2.5, output: 15, thinking: 15, cached: 0.625, search: 0.035}
 
+// budgetPool là một trần chi phí ngày với chỗ cộng tiền riêng. Mỗi tính năng
+// lớn theo số người dùng có pool riêng, để một tính năng tiêu hết trần không
+// làm tính năng khác ngừng theo. Bảng giá model dùng chung.
+type budgetPool struct {
+	// capKey là field trần (USD/ngày) trong agentState/config; thiếu field thì
+	// dùng capDefault. Trần <= 0 là không có trần.
+	capKey     string
+	capDefault float64
+	// usageDoc là doc dưới agentState giữ chi phí: agentState/{usageDoc}/days/{ngày}.
+	usageDoc string
+	// hitText là tin báo admin lần đầu chạm trần trong ngày, nhận ngày, số đã
+	// tiêu và trần.
+	hitText string
+}
+
+var agentBudgetPool = budgetPool{
+	capKey: "dailyBudgetUsd", usageDoc: "usage",
+	hitText: "Bot cá nhân chạm trần chi phí hôm nay (%s): đã tiêu %.2f USD, trần %.2f USD. Bot trả câu nghỉ tới 0h giờ VN. Muốn mở lại thì nâng agentState/config.dailyBudgetUsd.",
+}
+
 type agentBudgetConfig struct {
 	dailyUsd float64
 	prices   map[string]llmPrice
 }
 
 func parseAgentBudgetConfig(cfg map[string]any) agentBudgetConfig {
-	out := agentBudgetConfig{dailyUsd: number(cfg["dailyBudgetUsd"]), prices: map[string]llmPrice{}}
+	return parseBudgetConfig(cfg, agentBudgetPool)
+}
+
+func parseBudgetConfig(cfg map[string]any, pool budgetPool) agentBudgetConfig {
+	out := agentBudgetConfig{dailyUsd: pool.capDefault, prices: map[string]llmPrice{}}
+	if v, ok := cfg[pool.capKey]; ok {
+		out.dailyUsd = number(v)
+	}
 	for _, v := range anyList(cfg["llmPrices"]) {
 		m, _ := v.(map[string]any)
 		model := stringValue(m["model"])
@@ -100,11 +127,13 @@ type AgentBudget struct {
 	// notify DM admin lần đầu chạm trần trong ngày; nil thì chỉ log.
 	notify func(ctx context.Context, text string) error
 	// now thay time.Now trong test, để đổi ngày mà không phải chờ.
-	now func() time.Time
+	now  func() time.Time
+	pool budgetPool
 }
 
+// NewAgentBudget là trần chi phí của bot cá nhân.
 func NewAgentBudget(db *firestore.Client, notify func(ctx context.Context, text string) error) *AgentBudget {
-	return &AgentBudget{db: db, notify: notify}
+	return &AgentBudget{db: db, notify: notify, pool: agentBudgetPool}
 }
 
 func (b *AgentBudget) wall() time.Time {
@@ -118,7 +147,7 @@ func (b *AgentBudget) wall() time.Time {
 func agentUsageDay(t time.Time) string { return t.In(vietnam).Format("2006-01-02") }
 
 func (b *AgentBudget) usageRef(day string) *firestore.DocumentRef {
-	return b.db.Collection("agentState").Doc("usage").Collection("days").Doc(day)
+	return b.db.Collection("agentState").Doc(b.pool.usageDoc).Collection("days").Doc(day)
 }
 
 // admit đọc config và trả errAgentOverBudget khi hôm nay đã tiêu tới trần.
@@ -128,7 +157,7 @@ func (b *AgentBudget) admit(ctx context.Context, day string, wall time.Time) (ag
 	if err != nil {
 		return agentBudgetConfig{}, err
 	}
-	cfg := parseAgentBudgetConfig(raw)
+	cfg := parseBudgetConfig(raw, b.pool)
 	if cfg.dailyUsd <= 0 {
 		return cfg, nil
 	}
@@ -148,7 +177,7 @@ func (b *AgentBudget) admit(ctx context.Context, day string, wall time.Time) (ag
 		return cfg, err
 	}
 	if first && b.notify != nil {
-		text := fmt.Sprintf("Bot cá nhân chạm trần chi phí hôm nay (%s): đã tiêu %.2f USD, trần %.2f USD. Bot trả câu nghỉ tới 0h giờ VN. Muốn mở lại thì nâng agentState/config.dailyBudgetUsd.", day, spent, cfg.dailyUsd)
+		text := fmt.Sprintf(b.pool.hitText, day, spent, cfg.dailyUsd)
 		// Không trả lỗi: cờ đã đặt nên task chạy lại cũng không gửi lại, chỉ làm
 		// người dùng chờ thêm.
 		if err := b.notify(ctx, text); err != nil {
