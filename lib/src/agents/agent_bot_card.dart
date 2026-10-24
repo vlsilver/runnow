@@ -88,6 +88,40 @@ class AgentBotCardData {
     this.now,
   });
 
+  /// Thẻ của [agent] với lượt hôm nay trong [me]; tab MyBot và màn sửa bot
+  /// dựng cùng một thẻ.
+  factory AgentBotCardData.fromMe(AgentMe me, AgentProfile agent) {
+    final today = me.today;
+    final images = today?.images;
+    final telegram = me.telegram;
+    // Chạm trần chi phí thì mọi bot cùng nghỉ: nói ngay ở tên bot. Hết tin
+    // chat riêng thì bot vẫn nói trong phòng, nên chỉ là một chip.
+    final budget = today?.resting == AgentResting.budget;
+    return AgentBotCardData(
+      name: agent.name,
+      persona: agent.persona,
+      tier: agentCardTier(images),
+      memoryCount: me.memories.length,
+      memoryLimit: me.memoryLimit,
+      memories: [for (final m in me.memories.take(3)) m.text],
+      runKm: today?.dmByKm?.runKm ?? images?.runKm,
+      dm: today == null ? null : (used: today.dmUsed, max: today.dmMax),
+      images: images == null ? null : (used: images.used, max: images.limit),
+      budgetResting: budget,
+      status: budget
+          ? (icon: Icons.bedtime_rounded, text: 'Quay lại lúc 0h')
+          : today?.resting == AgentResting.dmLimit
+          ? (icon: Icons.schedule_rounded, text: 'Hết tin · mở lại 0h')
+          : null,
+      createdAt: agent.createdAt,
+      username: telegram != null && telegram.running
+          ? telegram.botUsername
+          : null,
+      inPsc: telegram?.inPsc ?? false,
+      learning: !me.noLearn,
+    );
+  }
+
   final String name;
   final String persona;
   final AgentCardTier tier;

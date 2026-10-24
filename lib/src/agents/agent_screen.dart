@@ -108,7 +108,7 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
       }
       await seen.markSeen(uid, day, reached);
       if (!mounted) return;
-      final data = _cardData(me, agent);
+      final data = AgentBotCardData.fromMe(me, agent);
       final next = images.nextKm;
       await showAgentTierReveal(
         context,
@@ -129,38 +129,6 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
     } finally {
       _revealing = false;
     }
-  }
-
-  AgentBotCardData _cardData(AgentMe me, AgentProfile agent) {
-    final today = me.today;
-    final images = today?.images;
-    final telegram = me.telegram;
-    // Chạm trần chi phí thì mọi bot cùng nghỉ: nói ngay ở tên bot. Hết tin
-    // chat riêng thì bot vẫn nói trong phòng, nên chỉ là một chip.
-    final budget = today?.resting == AgentResting.budget;
-    return AgentBotCardData(
-      name: agent.name,
-      persona: agent.persona,
-      tier: agentCardTier(images),
-      memoryCount: me.memories.length,
-      memoryLimit: me.memoryLimit,
-      memories: [for (final m in me.memories.take(3)) m.text],
-      runKm: today?.dmByKm?.runKm ?? images?.runKm,
-      dm: today == null ? null : (used: today.dmUsed, max: today.dmMax),
-      images: images == null ? null : (used: images.used, max: images.limit),
-      budgetResting: budget,
-      status: budget
-          ? (icon: Icons.bedtime_rounded, text: 'Quay lại lúc 0h')
-          : today?.resting == AgentResting.dmLimit
-          ? (icon: Icons.schedule_rounded, text: 'Hết tin · mở lại 0h')
-          : null,
-      createdAt: agent.createdAt,
-      username: telegram != null && telegram.running
-          ? telegram.botUsername
-          : null,
-      inPsc: telegram?.inPsc ?? false,
-      learning: !me.noLearn,
-    );
   }
 
   @override
@@ -403,7 +371,7 @@ class _AgentScreenState extends ConsumerState<AgentScreen>
           _Header(onEdit: agent.created ? () => _open('/agent/setup') : null),
           const SizedBox(height: 18),
           if (agent.created) ...[
-            _BotCardSection(data: _cardData(data, agent)),
+            _BotCardSection(data: AgentBotCardData.fromMe(data, agent)),
             if (data.today case final today?
                 when today.dmByKm != null || today.images != null) ...[
               const SizedBox(height: 16),
