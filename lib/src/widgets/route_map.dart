@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
+import 'package:myrun/src/widgets/map_tiles.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
@@ -12,10 +13,6 @@ import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/live_route_view.dart';
 import 'package:myrun/src/widgets/photo_pin_marker.dart';
 
-const _lightTileTemplate =
-    'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-const _darkTileTemplate =
-    'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const _photoClusterThresholdMeters = 15.0;
 const _photoClusterDistance = Distance();
 
@@ -530,7 +527,7 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
     final liveRunners = widget.liveRunners;
     final palette = context.runNowPalette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tileTemplate = isDark ? _darkTileTemplate : _lightTileTemplate;
+    final tileTemplate = mapTileTemplate(dark: isDark);
     final routeOutline = isDark
         ? Colors.black.withValues(alpha: 0.5)
         : Colors.white.withValues(alpha: 0.88);
