@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -135,8 +136,8 @@ func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, 
 	}
 	imported := 0
 	now := time.Now()
-	months := map[string]time.Time{} // tháng khác nhau bị đụng → rebuild period 1 lần/tháng
-	seen := map[string]bool{}        // activityID đã ghi lần này (để reconcile xoá stale)
+	var touched []time.Time   // startedAt của buổi ghi hoặc xoá, để rebuild periodStats
+	seen := map[string]bool{} // activityID đã ghi lần này (để reconcile xoá stale)
 	for _, w := range workouts {
 		if w.SourceID == "" || len(w.SourceID) > 100 || strings.ContainsAny(w.SourceID, "/ ") {
 			continue
@@ -186,7 +187,7 @@ func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, 
 		if _, err := ref.Set(ctx, next, firestore.MergeAll); err != nil {
 			return imported, err
 		}
-		months[started.Format("2006-01")] = started
+		touched = append(touched, started)
 		imported++
 	}
 	if imported == 0 {
@@ -224,22 +225,20 @@ func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, 
 					return imported, derr
 				}
 				if t, perr := time.Parse(time.RFC3339, stringValue(data["startedAt"])); perr == nil {
-					months[t.Format("2006-01")] = t
+					touched = append(touched, t)
 				}
 			}
 			iter.Stop()
 		}
 	}
-	// Gom việc rebuild: leaderboard hiện tại rebuild MỘT lần cho cả batch; stats
-	// theo tháng rebuild một lần cho MỖI tháng khác nhau bị đụng — thay vì bắn
-	// một task cho từng buổi (sync 90 ngày = ~90 task trùng).
+	// Gom việc rebuild: leaderboard hiện tại rebuild MỘT lần cho cả batch;
+	// periodStats một task cho cả lô, phủ mọi ngày/tuần/tháng bị đụng — thay vì
+	// bắn một task cho từng buổi (sync 90 ngày = ~90 task trùng).
 	if err := s.enqueueDerived(ctx, uid, "health-import"); err != nil {
 		return imported, err
 	}
-	for _, m := range months {
-		if err := s.enqueuePeriodStats(ctx, uid, m); err != nil {
-			return imported, err
-		}
+	if err := s.enqueuePeriodStatsBatch(ctx, uid, touched); err != nil {
+		return imported, err
 	}
 	return imported, nil
 }
@@ -529,6 +528,7 @@ func (s *ActivityService) BackfillPage(ctx context.Context, uid string, page int
 	batch := s.db.Batch()
 	changed := int64(0)
 	notifyActivityIDs := make([]string, 0, len(supported))
+	var touched []time.Time // startedAt mới và cũ của buổi đổi, để rebuild periodStats
 	now := time.Now()
 	for i, a := range supported {
 		existing := map[string]any(nil)
@@ -545,6 +545,11 @@ func (s *ActivityService) BackfillPage(ctx context.Context, uid string, page int
 		if shouldEnqueueTelegramActivity(existing, next, now) {
 			notifyActivityIDs = append(notifyActivityIDs, itoa64(a.ID))
 		}
+		for _, v := range []any{next["startedAt"], existing["startedAt"]} {
+			if t, perr := time.Parse(time.RFC3339, stringValue(v)); perr == nil {
+				touched = append(touched, t)
+			}
+		}
 		next["importedAt"] = firestore.ServerTimestamp
 		next["updatedAt"] = firestore.ServerTimestamp
 		batch.Set(refs[i], next, firestore.MergeAll)
@@ -552,6 +557,9 @@ func (s *ActivityService) BackfillPage(ctx context.Context, uid string, page int
 	}
 	if changed > 0 {
 		if _, err = batch.Commit(ctx); err != nil {
+			return err
+		}
+		if err = s.enqueuePeriodStatsBatch(ctx, uid, touched); err != nil {
 			return err
 		}
 		for _, activityID := range notifyActivityIDs {
@@ -880,6 +888,33 @@ func (s *ActivityService) enqueueNotify(ctx context.Context, uid, activityID str
 func (s *ActivityService) enqueuePeriodStats(ctx context.Context, uid string, startedAt time.Time) error {
 	payload := map[string]any{"uid": uid, "startedAt": startedAt.UTC().Format(time.RFC3339Nano)}
 	_, err := s.tasks.Publish(ctx, PublishTask{Queue: QueueDerived, HandlerPath: "/tasks/rebuild-period-stats", Payload: payload, TaskID: StableTaskID("period-stats", payload)})
+	return err
+}
+
+// enqueuePeriodStatsBatch gom các mốc của một lô vào MỘT task rebuild; worker
+// dựng mỗi doc ngày/tuần/tháng một lần. Một mốc mỗi ngày VN là đủ vì kỳ chỉ phụ
+// thuộc ngày. TaskID kèm lúc gọi: lần nhập sau với cùng tập ngày (sửa buổi
+// trong app Sức khoẻ) vẫn phải rebuild, còn retry trong Publish dùng lại ID.
+func (s *ActivityService) enqueuePeriodStatsBatch(ctx context.Context, uid string, instants []time.Time) error {
+	byDay := map[string]string{}
+	for _, t := range instants {
+		byDay[dateKey(t)] = t.UTC().Format(time.RFC3339Nano)
+	}
+	if len(byDay) == 0 {
+		return nil
+	}
+	days := make([]string, 0, len(byDay))
+	for day := range byDay {
+		days = append(days, day)
+	}
+	sort.Strings(days)
+	startedAts := make([]string, 0, len(days))
+	for _, day := range days {
+		startedAts = append(startedAts, byDay[day])
+	}
+	payload := map[string]any{"uid": uid, "startedAts": startedAts}
+	identity := map[string]any{"uid": uid, "startedAts": startedAts, "at": time.Now().UnixNano()}
+	_, err := s.tasks.Publish(ctx, PublishTask{Queue: QueueDerived, HandlerPath: "/tasks/rebuild-period-stats", Payload: payload, TaskID: StableTaskID("period-stats", identity)})
 	return err
 }
 func (s *ActivityService) failEvent(ctx context.Context, ref *firestore.DocumentRef, cause error) error {

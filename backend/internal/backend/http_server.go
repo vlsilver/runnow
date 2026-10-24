@@ -941,17 +941,26 @@ func (s *Server) workerRoutes() {
 		return writeJSON(w, 200, map[string]any{"ok": true, "cause": task.Cause})
 	})
 	s.route("POST /tasks/rebuild-period-stats", func(w http.ResponseWriter, r *http.Request) error {
-		var task struct{ UID, StartedAt string }
-		if decodeJSON(r, &task) != nil || task.UID == "" || task.StartedAt == "" {
+		// startedAt: một buổi; startedAts: cả lô (nhập Health, một trang backfill).
+		var task struct {
+			UID, StartedAt string
+			StartedAts     []string
+		}
+		if decodeJSON(r, &task) != nil || task.UID == "" {
 			w.WriteHeader(204)
 			return nil
 		}
-		startedAt, parseErr := time.Parse(time.RFC3339, task.StartedAt)
-		if parseErr != nil {
+		var instants []time.Time
+		for _, raw := range append(task.StartedAts, task.StartedAt) {
+			if t, err := time.Parse(time.RFC3339, raw); err == nil {
+				instants = append(instants, t)
+			}
+		}
+		if len(instants) == 0 {
 			w.WriteHeader(204)
 			return nil
 		}
-		if err := s.deps.PeriodStats.RebuildForInstant(r.Context(), task.UID, startedAt); err != nil {
+		if err := s.deps.PeriodStats.RebuildForInstants(r.Context(), task.UID, instants); err != nil {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
