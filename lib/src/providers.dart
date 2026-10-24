@@ -16,6 +16,7 @@ import 'package:myrun/src/journal_controller.dart';
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/period_keys.dart';
+import 'package:myrun/src/profile_stats.dart';
 import 'package:myrun/src/repository.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
@@ -856,6 +857,46 @@ final memberJourneyLifetimeDistanceProvider = FutureProvider.autoDispose
         (total, stat) => total + stat.stats.distanceMeters,
       );
     });
+
+/// periodStats trang Hồ sơ của user hiện tại: mọi doc tháng, 12 tuần gần nhất
+/// và các khoảng doc ngày [profileDayRanges] cần. Bốn query document-id range,
+/// chạy song song. Không autoDispose vì tab Hồ sơ sống trong IndexedStack; bấm
+/// tab thì app invalidate để đọc lại.
+final profileStatsProvider = FutureProvider<ProfileStatsData?>((ref) async {
+  final uid = ref.watch(firebaseUserProvider).value?.uid;
+  if (uid == null) return null;
+  final repo = ref.watch(memberRepositoryProvider);
+  final today = DateTime.now();
+  Future<Map<String, LeaderboardStats>> load(
+    String type,
+    String from,
+    String to,
+  ) async => {
+    for (final stat in await repo.listMemberPeriodStats(
+      uid,
+      periodType: type,
+      fromKey: from,
+      toKeyInclusive: to,
+    ))
+      stat.periodKey: stat.run,
+  };
+  final dayRanges = profileDayRanges(today);
+  final (months, weeks, days) = await (
+    load('month', '2000-01', monthKey(today)),
+    load(
+      'week',
+      weekKey(today.subtract(const Duration(days: 7 * 11))),
+      weekKey(today),
+    ),
+    Future.wait([for (final (from, to) in dayRanges) load('day', from, to)]),
+  ).wait;
+  return ProfileStatsData(
+    today: today,
+    days: {for (final part in days) ...part},
+    weeks: weeks,
+    months: months,
+  );
+});
 
 /// Số liệu gộp cho 1 trong 4 mốc Tuần/Tháng/Năm/Total của card hero Hành
 /// Trình. Tuần/Tháng đọc thẳng 1 doc `periodStats`; Năm/Total cộng nhiều

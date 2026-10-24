@@ -6,6 +6,7 @@ import 'package:http/testing.dart';
 import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/app.dart';
 import 'package:myrun/src/models.dart';
+import 'package:myrun/src/profile_stats.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/repository.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -15,6 +16,7 @@ import 'package:myrun/src/theme_controller.dart';
 
 void main() {
   var meReads = 0;
+  var profileReads = 0;
 
   /// Bật app ở cỡ điện thoại để dùng bottom nav (layout web rộng có rail
   /// riêng làm thay đổi cây widget/scroll). [agent] null là chưa tải được hồ
@@ -53,6 +55,15 @@ void main() {
           themeControllerProvider.overrideWith(
             (ref) => ThemeController(loadFromStorage: false),
           ),
+          profileStatsProvider.overrideWith((ref) async {
+            profileReads++;
+            return ProfileStatsData(
+              today: DateTime(2026, 10, 24),
+              days: const {},
+              weeks: const {},
+              months: const {},
+            );
+          }),
           agentMeProvider.overrideWith((ref) async {
             meReads++;
             return agent;
@@ -121,6 +132,19 @@ void main() {
     expect(find.text('Chat riêng'), findsOneWidget);
     // Vẫn ở trong shell: thanh tab còn đó.
     expect(find.text('Chạy'), findsOneWidget);
+  });
+
+  testWidgets('Hồ sơ tab replaces Cài đặt and reloads stats', (tester) async {
+    await pumpApp(tester);
+    expect(find.text('Cài đặt'), findsNothing);
+
+    // Tab sống trong IndexedStack: bấm tab là đọc lại periodStats.
+    final reads = profileReads;
+    await tester.tap(find.text('Hồ sơ'));
+    await tester.pumpAndSettle();
+    expect(profileReads, reads + 1);
+    expect(find.text('Chưa có buổi chạy nào'), findsOneWidget);
+    expect(find.byTooltip('Cài đặt'), findsOneWidget);
   });
 }
 

@@ -32,6 +32,7 @@ import 'package:myrun/src/screens/run_contract_detail_screen.dart';
 import 'package:myrun/src/training_plan/coach_detail_screen.dart';
 import 'package:myrun/src/screens/run_contract_home_screen.dart';
 import 'package:myrun/src/screens/run_contract_route_create_screen.dart';
+import 'package:myrun/src/screens/profile_screen.dart';
 import 'package:myrun/src/screens/settings_screen.dart';
 import 'package:myrun/src/screens/tracking_screen.dart';
 import 'package:myrun/src/theme.dart';
@@ -109,12 +110,12 @@ final _router = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: '/settings',
-              builder: (context, state) => const SettingsScreen(),
+              path: '/me',
+              builder: (context, state) => const ProfileScreen(),
               routes: [
                 GoRoute(
-                  path: 'profile',
-                  redirect: (context, state) => '/profile',
+                  path: 'settings',
+                  builder: (context, state) => const SettingsScreen(),
                 ),
               ],
             ),
@@ -143,6 +144,12 @@ final _router = GoRouter(
       ],
     ),
     GoRoute(path: '/journal', redirect: (context, state) => '/profile/journal'),
+    // Cài đặt từng là tab riêng ở /settings, giờ nằm dưới tab Hồ sơ.
+    GoRoute(path: '/settings', redirect: (context, state) => '/me/settings'),
+    GoRoute(
+      path: '/settings/profile',
+      redirect: (context, state) => '/profile',
+    ),
     GoRoute(
       path: '/activity/:id',
       builder: (context, state) =>
@@ -966,7 +973,7 @@ class _Scaffold extends ConsumerWidget {
                       ),
                     ),
                   // Có bot thì MyBot thế chỗ Hành Trình; Hành Trình vẫn mở được
-                  // từ "Hồ sơ & thành tích" ở Cài đặt.
+                  // từ tab Hồ sơ.
                   if (myBot)
                     Expanded(
                       child: _NavItem(
@@ -995,10 +1002,15 @@ class _Scaffold extends ConsumerWidget {
                   Expanded(
                     child: _NavItem(
                       selected: shell.currentIndex == 4,
-                      icon: Icons.settings_outlined,
-                      selectedIcon: Icons.settings,
-                      label: 'Cài đặt',
-                      onTap: () => shell.goBranch(4),
+                      icon: Icons.person_outline,
+                      selectedIcon: Icons.person,
+                      label: 'Hồ sơ',
+                      // Như MyBot: tab sống trong IndexedStack nên đọc lại số
+                      // liệu mỗi lần mở.
+                      onTap: () {
+                        ref.invalidate(profileStatsProvider);
+                        shell.goBranch(4);
+                      },
                     ),
                   ),
                   if (admin)
@@ -1076,9 +1088,9 @@ class _DesktopNavRail extends StatelessWidget {
           label: Text('Hành Trình'),
         ),
       const NavigationRailDestination(
-        icon: Icon(Icons.settings_outlined),
-        selectedIcon: Icon(Icons.settings),
-        label: Text('Cài đặt'),
+        icon: Icon(Icons.person_outline),
+        selectedIcon: Icon(Icons.person),
+        label: Text('Hồ sơ'),
       ),
       if (admin)
         const NavigationRailDestination(
