@@ -23,10 +23,12 @@ final agentMeProvider = FutureProvider.autoDispose<AgentMe?>(
   },
 );
 
-/// Có hiện tab MyBot không. Chỉ người được mời (`enabled`) mới thấy; chưa tải
-/// xong hay tải lỗi thì giữ bộ tab cũ, nên lỗi API không làm mất tab nào.
+/// Có hiện tab MyBot không. Bot đã mở cho mọi người nên mặc định là có, kể cả
+/// lúc chưa tải xong (tránh vẽ tab Hành Trình rồi đổi sang MyBot) hay tải lỗi
+/// (tab MyBot tự báo lỗi). Chỉ khi backend trả `enabled=false` mới quay về tab
+/// Hành Trình.
 bool myBotTabVisible(WidgetRef ref) =>
-    ref.watch(agentMeProvider).value?.enabled ?? false;
+    ref.watch(agentMeProvider).value?.enabled ?? true;
 
 /// Phòng bot nhìn từ tab MyBot: hai tin mới nhất không bị ẩn (cũ trước mới
 /// sau) và tên các bot trong phòng, để tab vẽ chồng avatar và đếm.
