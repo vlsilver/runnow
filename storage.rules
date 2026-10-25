@@ -47,6 +47,13 @@ service firebase.storage {
       allow delete: if false;
     }
 
+    // Ảnh mẫu của các phong cách vẽ thẻ: nội dung tĩnh 3i tự upload, đường
+    // dẫn khai trong art_styles.go. Client không ghi.
+    match /artStyles/examples/{fileName} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
     // Ảnh minh hoạ mốc "Hành Trình" — nội dung tĩnh do 3i quản lý (upload
     // qua CLI khi dựng dữ liệu route), không phải nội dung user tạo nên
     // không có client write nào.

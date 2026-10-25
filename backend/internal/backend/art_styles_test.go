@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -21,6 +22,10 @@ func TestArtStylesRegistryIsConsistent(t *testing.T) {
 		}
 		if s.Version < 1 || s.Name == "" || s.Medium == "" || s.Traits == "" || len(s.Fits) == 0 || len(s.Swatch) != 3 {
 			t.Errorf("%s: thiếu dữ liệu", s.Key)
+		}
+		// Rules Storage chỉ mở cho user đọc ảnh mẫu dưới thư mục này.
+		if s.Example != "" && !strings.HasPrefix(s.Example, artExampleDir) {
+			t.Errorf("%s: ảnh mẫu %q nằm ngoài %s", s.Key, s.Example, artExampleDir)
 		}
 		// Khối phong cách tự thêm dấu chấm cuối câu.
 		if strings.HasSuffix(s.Traits, ".") {
@@ -67,6 +72,24 @@ func TestArtStylesHidesStyleThatIsOff(t *testing.T) {
 	}
 	if _, ok := artStyleFor("b", artKindWerewolf); ok {
 		t.Fatal("phong cách không hợp loại thẻ vẫn nhận lượt vẽ")
+	}
+}
+
+func TestArtStylesSendExampleOnlyWhenThereIsOne(t *testing.T) {
+	saved := artStyles
+	t.Cleanup(func() { artStyles = saved })
+	artStyles = []artStyle{
+		{Key: "a", Version: 1, Family: "photo", Fits: []artKind{artKindRun}, Example: "artStyles/examples/a.jpg"},
+		{Key: "b", Version: 1, Family: "photo", Fits: []artKind{artKindRun}},
+	}
+	b, err := json.Marshal(ArtStyles(artKindRun).Styles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `[{"key":"a","version":1,"name":"","family":"photo","swatch":null,"example":"artStyles/examples/a.jpg"},` +
+		`{"key":"b","version":1,"name":"","family":"photo","swatch":null}]`
+	if string(b) != want {
+		t.Fatalf("view\n got %s\nwant %s", b, want)
 	}
 }
 
