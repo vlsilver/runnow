@@ -1,12 +1,17 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card.dart';
+import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/formatters.dart';
+import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
@@ -1433,8 +1438,8 @@ class _FallbackMetric extends StatelessWidget {
   }
 }
 
-/// Lối vào thẻ buổi chạy ngay trên màn buổi chạy: chưa lật thì mời lật, lật
-/// rồi thì báo bậc. Chạm mở sheet Khoe ở chế độ Thẻ.
+/// Thẻ buổi chạy ngay trên màn buổi chạy: chưa lật thì mời lật (mở sheet
+/// Khoe), lật rồi thì hiện luôn lá 3D, chạm để lật hai mặt.
 class _RunCardEntry extends ConsumerWidget {
   const _RunCardEntry({required this.activityId, required this.onOpen});
 
@@ -1445,22 +1450,91 @@ class _RunCardEntry extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.runNowPalette;
     final card = ref.watch(runCardProvider(activityId)).value;
-    final subtitle = card == null
-        ? 'Lật để xem độ hiếm. Mỗi buổi một lần.'
-        : '${gameCardTiers[card.tier]!.label} · chạm để xem và khoe';
+    if (card != null) {
+      final owner =
+          ref.watch(userProfileProvider).asData?.value?.displayName ??
+          '3i member';
+      return _RunCardSection(card: card, owner: owner, onOpen: onOpen);
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: GlassPanel(
         borderRadius: 14,
         child: ListTile(
           onTap: onOpen,
-          leading: Icon(
-            card == null ? Icons.style_outlined : Icons.style,
-            color: palette.secondary,
-          ),
+          leading: Icon(Icons.style_outlined, color: palette.secondary),
           title: const Text('Thẻ buổi chạy'),
-          subtitle: Text(subtitle),
+          subtitle: const Text('Lật để xem độ hiếm. Mỗi buổi một lần.'),
           trailing: const Icon(Icons.chevron_right_rounded),
+        ),
+      ),
+    );
+  }
+}
+
+class _RunCardSection extends StatelessWidget {
+  const _RunCardSection({
+    required this.card,
+    required this.owner,
+    required this.onOpen,
+  });
+
+  final RunCard card;
+  final String owner;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final muted = Theme.of(
+      context,
+    ).colorScheme.onSurface.withValues(alpha: 0.6);
+    final data = runCardData(card, owner: owner);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: GlassPanel(
+        borderRadius: 14,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Icon(Icons.style, size: 18, color: palette.secondary),
+                const SizedBox(width: 8),
+                const Expanded(child: Text('Thẻ buổi chạy')),
+                Text(
+                  '${gameCardTiers[card.tier]!.label} · '
+                  '${runCardKm(card.km)} km',
+                  style: TextStyle(color: muted, fontSize: 13),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            LayoutBuilder(
+              builder: (context, constraints) => TiltFlipCard(
+                front: (pose) => AchievementCard(data: data, pose: pose),
+                back: (pose) =>
+                    AchievementCard(data: data, pose: pose, back: true),
+                width: math.min(constraints.maxWidth * 0.72, 260),
+                cardSize: achievementCardSize,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Kéo để xoay · chạm để lật',
+              style: TextStyle(color: muted, fontSize: 12),
+            ),
+            const SizedBox(height: 6),
+            TextButton.icon(
+              onPressed: onOpen,
+              icon: const Icon(Icons.ios_share, size: 18),
+              label: Text(
+                card.art?.status == RunCardArtStatus.done
+                    ? 'Khoe thẻ'
+                    : 'Khoe · vẽ tranh nền',
+              ),
+            ),
+          ],
         ),
       ),
     );
