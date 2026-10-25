@@ -104,6 +104,10 @@ void main() {
     expect(find.text('Không ra thẻ'), findsOneWidget);
     expect(find.text('Chưa lật'), findsNothing);
     expect(find.textContaining('Chạm để lật'), findsNothing);
+    // Lá úp báo thẳng là trượt, không còn mời lật.
+    expect(find.text('LẬT THẤT BẠI'), findsOneWidget);
+    expect(find.text('LẬT ĐỂ XEM ĐỘ HIẾM'), findsNothing);
+    expect(find.text('?'), findsNothing);
   });
 
   testWidgets('a flipped card shows on the page and taps flip its faces', (

@@ -443,5 +443,9 @@ class RunNowAchievementTokens {
   static const dataMapEdge = Color(0x24FFFFFF);
   static const dataGrid = Color(0x14FFFFFF);
   static const dataLabel = Color(0xB8F4F2EC);
+
+  // Lá úp lật trượt: màn tối phủ cả mặt, chữ và icon đỏ nhạt.
+  static const failVeil = Color(0xB8070910);
+  static const failInk = Color(0xFFFF8A80);
   static const dataCredit = Color(0x8CF4F2EC);
 }

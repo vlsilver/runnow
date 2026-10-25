@@ -1466,15 +1466,13 @@ class _RunCardEntry extends ConsumerWidget {
         hint: hint,
         card: (width) => GestureDetector(
           onTap: onOpen,
-          child: Opacity(
-            opacity: reason == null ? 1 : 0.45,
-            child: GameCardScaled(
-              width: width,
-              size: achievementCardSize,
-              child: RunCardFaceDown(
-                km: (activity.distanceMeters / 100).round() / 10,
-                title: activity.name,
-              ),
+          child: GameCardScaled(
+            width: width,
+            size: achievementCardSize,
+            child: RunCardFaceDown(
+              km: (activity.distanceMeters / 100).round() / 10,
+              title: activity.name,
+              failure: reason == null ? null : runCardFailureLabel(reason),
             ),
           ),
         ),

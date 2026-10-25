@@ -620,6 +620,8 @@ void main() {
     ]);
     expect(find.textContaining('không ra thẻ'), findsOneWidget);
     expect(find.text('Lật thẻ'), findsNothing);
+    expect(find.text('LẬT THẤT BẠI'), findsOneWidget);
+    expect(find.text('LẬT ĐỂ XEM ĐỘ HIẾM'), findsNothing);
     // Trượt là kết quả, không báo như lỗi.
     expect(find.textContaining('Không lật được thẻ'), findsNothing);
   });
@@ -630,6 +632,7 @@ void main() {
     await _pumpPanel(tester, backend);
     expect(find.textContaining('trùng một buổi khác'), findsOneWidget);
     expect(find.text('Lật thẻ'), findsNothing);
+    expect(find.text('KHÔNG CÓ THẺ'), findsOneWidget);
   });
 
   testWidgets('Khoe thẻ reuses the saved files and shares the chosen one', (

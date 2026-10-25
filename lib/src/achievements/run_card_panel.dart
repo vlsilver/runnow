@@ -88,7 +88,16 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
         if (view.card != null) return faceDown;
         if (view.reason case final reason?) {
           return Column(
-            children: [faceDown, _Message(runCardReasonText(reason))],
+            children: [
+              _CardFrame(
+                child: RunCardFaceDown(
+                  km: km,
+                  title: widget.activity.name,
+                  failure: runCardFailureLabel(reason),
+                ),
+              ),
+              _Message(runCardReasonText(reason)),
+            ],
           );
         }
         return Column(
@@ -305,6 +314,11 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
   }
 }
 
+/// Chữ to trên lá úp khi buổi không ra thẻ: trượt là lật thất bại, còn lại
+/// (trùng buổi, không phải chạy bộ) là không có thẻ để lật.
+String runCardFailureLabel(String reason) =>
+    reason == 'card_missed' ? 'LẬT THẤT BẠI' : 'KHÔNG CÓ THẺ';
+
 /// Câu cho người dùng ứng với mã lý do backend trả khi không lật được.
 String runCardReasonText(String reason) => switch (reason) {
   'card_missed' =>
@@ -363,12 +377,20 @@ class _CardFrame extends StatelessWidget {
   }
 }
 
-/// Thẻ úp: chưa biết bậc nên khung than chì trơn, dấu hỏi ở giữa.
+/// Thẻ úp: chưa biết bậc nên khung than chì trơn, dấu hỏi ở giữa. Có
+/// [failure] thì buổi này không ra thẻ: phủ tối cả mặt, icon và [failure]
+/// to ở giữa thay cho lời mời lật.
 class RunCardFaceDown extends StatelessWidget {
-  const RunCardFaceDown({required this.km, required this.title, super.key});
+  const RunCardFaceDown({
+    required this.km,
+    required this.title,
+    this.failure,
+    super.key,
+  });
 
   final double km;
   final String title;
+  final String? failure;
 
   @override
   Widget build(BuildContext context) {
@@ -407,57 +429,99 @@ class RunCardFaceDown extends StatelessWidget {
                   stops: [0, 0.72],
                 ),
               ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('BUỔI CHẠY', style: label),
-                    const Spacer(),
-                    const Center(
-                      child: Text(
-                        '?',
-                        style: TextStyle(
-                          fontFamily: _condensed,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 120,
-                          height: 1,
-                          color: _T.accentCommon,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('BUỔI CHẠY', style: label),
+                        const Spacer(),
+                        if (failure == null) ...const [
+                          Center(
+                            child: Text(
+                              '?',
+                              style: TextStyle(
+                                fontFamily: _condensed,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 120,
+                                height: 1,
+                                color: _T.accentCommon,
+                              ),
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Center(
+                            child: Text('LẬT ĐỂ XEM ĐỘ HIẾM', style: label),
+                          ),
+                        ],
+                        const Spacer(),
+                        Text(
+                          '${runCardKm(km)} KM',
+                          style: const TextStyle(
+                            fontFamily: _condensed,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 30,
+                            height: 1,
+                            color: _T.hero,
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 4),
+                        Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: _T.hero,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 8),
-                    const Center(
-                      child: Text('LẬT ĐỂ XEM ĐỘ HIẾM', style: label),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '${runCardKm(km)} KM',
-                      style: const TextStyle(
-                        fontFamily: _condensed,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 30,
-                        height: 1,
-                        color: _T.hero,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: _T.hero,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                  if (failure case final failure?) _FailVeil(failure),
+                ],
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Màn tối phủ cả mặt lá úp khi buổi chạy không ra thẻ, icon và chữ to ở
+/// giữa để nhìn là biết, không phải đọc dòng nhỏ bên dưới.
+class _FailVeil extends StatelessWidget {
+  const _FailVeil(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: _T.failVeil,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.heart_broken_rounded, size: 84, color: _T.failInk),
+          const SizedBox(height: 12),
+          Text(
+            text,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontFamily: _condensed,
+              fontWeight: FontWeight.w800,
+              fontSize: 40,
+              height: 1,
+              letterSpacing: 1.2,
+              color: _T.failInk,
+            ),
+          ),
+        ],
       ),
     );
   }
