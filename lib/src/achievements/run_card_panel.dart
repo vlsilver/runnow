@@ -183,36 +183,64 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
         ),
         const SizedBox(height: 14),
         ..._artStatus(card, muted),
-        FilledButton.icon(
-          onPressed: () => showRunCardShare(context, card: card, data: data),
-          icon: const Icon(Icons.ios_share),
-          label: const Text('Khoe thẻ'),
+        // Nút vẽ và nút khoe chung một hàng cho đỡ tốn chỗ; đang vẽ hay vẽ
+        // xong thì chỉ còn nút khoe.
+        Row(
+          children: [
+            if (_drawButton(card) case final draw?) ...[
+              Expanded(child: draw),
+              const SizedBox(width: 10),
+            ],
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () =>
+                    showRunCardShare(context, card: card, data: data),
+                icon: const Icon(Icons.ios_share),
+                label: const Text('Khoe thẻ'),
+              ),
+            ),
+          ],
         ),
+        if (card.art == null) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Chọn một phong cách. Vẽ xong thì cố định.',
+            style: TextStyle(color: muted, fontSize: 12),
+          ),
+        ],
       ],
     );
   }
 
-  /// Phần tranh nền dưới thẻ: mời vẽ, đang vẽ, hay vẽ hỏng. Vẽ xong thì
-  /// không còn gì để làm nên không hiện.
-  List<Widget> _artStatus(RunCard card, Color muted) {
+  /// Nút mở sheet chọn phong cách: chưa vẽ hay vẽ hỏng mới có.
+  Widget? _drawButton(RunCard card) {
     void choose() => showRunCardArtSheet(
       context,
       card: card,
       photos: widget.activity.photos,
     );
+    return switch (card.art?.status) {
+      null => OutlinedButton.icon(
+        onPressed: choose,
+        icon: const Icon(Icons.brush_outlined),
+        label: const Text('Vẽ tranh nền'),
+      ),
+      RunCardArtStatus.failed => FilledButton.tonalIcon(
+        onPressed: choose,
+        icon: const Icon(Icons.brush_outlined),
+        label: const Text('Vẽ lại'),
+      ),
+      _ => null,
+    };
+  }
+
+  /// Trạng thái tranh nền dưới thẻ: đang vẽ hay vẽ hỏng. Chưa vẽ thì chỉ có
+  /// nút, vẽ xong thì không còn gì để báo.
+  List<Widget> _artStatus(RunCard card, Color muted) {
     final hint = TextStyle(color: muted, fontSize: 12);
     final art = card.art;
     return switch (art?.status) {
-      null => [
-        OutlinedButton.icon(
-          onPressed: choose,
-          icon: const Icon(Icons.brush_outlined),
-          label: const Text('Vẽ tranh nền'),
-        ),
-        const SizedBox(height: 4),
-        Text('Chọn một phong cách. Vẽ xong thì cố định.', style: hint),
-        const SizedBox(height: 14),
-      ],
+      null || RunCardArtStatus.done => const [],
       RunCardArtStatus.drawing => [
         Row(
           mainAxisSize: MainAxisSize.min,
@@ -242,14 +270,8 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
       ],
       RunCardArtStatus.failed => [
         _Message(runCardArtFailText(art!.reason)),
-        FilledButton.tonalIcon(
-          onPressed: choose,
-          icon: const Icon(Icons.brush_outlined),
-          label: const Text('Chọn lại và vẽ'),
-        ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
       ],
-      RunCardArtStatus.done => const [],
     };
   }
 

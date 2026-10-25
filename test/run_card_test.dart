@@ -567,6 +567,11 @@ void main() {
     expect(find.text('Lật thẻ'), findsNothing);
     expect(find.textContaining('Thần thoại · 15,0 km'), findsOneWidget);
     expect(find.text('Khoe thẻ'), findsOneWidget);
+    // Nút vẽ và nút khoe chung một hàng, vẽ bên trái.
+    final draw = tester.getCenter(find.text('Vẽ tranh nền'));
+    final share = tester.getCenter(find.text('Khoe thẻ'));
+    expect(draw.dy, share.dy);
+    expect(draw.dx, lessThan(share.dx));
   });
 
   testWidgets('a short run shows its chance and a miss is final', (
@@ -761,7 +766,7 @@ void main() {
       find.text('Hôm nay 3i đã dùng hết hạn mức vẽ tranh. Mai thử lại nhé.'),
       findsOne,
     );
-    await _tapText(tester, 'Chọn lại và vẽ');
+    await _tapText(tester, 'Vẽ lại');
     expect(find.text('Vẽ bằng Anime cel'), findsOne);
   });
 
