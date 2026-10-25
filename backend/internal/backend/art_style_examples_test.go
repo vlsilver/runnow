@@ -21,19 +21,23 @@ func (s *stubImageLLM) Image(_ context.Context, parts []*genai.Part) (*genai.Gen
 }
 
 func TestArtStylesMissingExampleListsRunStylesWithoutImage(t *testing.T) {
-	got := ArtStylesMissingExample()
-	if !slices.Contains(got, "anime_cel") || !slices.Contains(got, "synthwave") {
-		t.Fatalf("thiếu phong cách chưa có ảnh: %v", got)
+	styles := []artStyle{
+		{Key: "no_image", Fits: []artKind{artKindRun}},
+		{Key: "has_image", Fits: []artKind{artKindRun}, Example: artExampleDir + "has_image.jpg"},
+		{Key: "off", Off: true, Fits: []artKind{artKindRun}},
+		{Key: "werewolf_only", Fits: []artKind{artKindWerewolf}},
+		{Key: "also_no_image", Fits: []artKind{artKindWerewolf, artKindRun}},
 	}
-	if slices.Contains(got, "impressionist") {
-		t.Fatal("impressionist đã có ảnh public domain mà vẫn bị vẽ")
+	if got := artStylesMissingExample(styles); !slices.Equal(got, []string{"no_image", "also_no_image"}) {
+		t.Fatalf("thiếu ảnh = %v, muốn [no_image also_no_image]", got)
 	}
-	if slices.Contains(got, "manga_ink") {
-		t.Fatal("manga_ink không thuộc thẻ chạy mà vẫn bị vẽ")
-	}
-	// 39 phong cách thẻ chạy, 21 có ảnh public domain.
-	if len(got) != 18 {
-		t.Fatalf("có %d phong cách chưa có ảnh, muốn 18: %v", len(got), got)
+}
+
+// Ô chọn phong cách trên app dựa vào ảnh mẫu để user hình dung; phong cách thẻ
+// chạy mới thì vẽ ảnh mẫu bằng migrations/art-style-examples trước khi bật.
+func TestEveryRunArtStyleHasExample(t *testing.T) {
+	if got := ArtStylesMissingExample(); len(got) != 0 {
+		t.Fatalf("phong cách thẻ chạy chưa có ảnh mẫu: %v", got)
 	}
 }
 

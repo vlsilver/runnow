@@ -24,8 +24,12 @@ var artExampleSnapshot = map[string]any{
 // ArtStylesMissingExample là key các phong cách đang bật của thẻ buổi chạy mà
 // chưa có ảnh mẫu, theo thứ tự trong danh sách.
 func ArtStylesMissingExample() []string {
+	return artStylesMissingExample(artStyles)
+}
+
+func artStylesMissingExample(styles []artStyle) []string {
 	var keys []string
-	for _, s := range artStyles {
+	for _, s := range styles {
 		if !s.Off && s.fits(artKindRun) && s.Example == "" {
 			keys = append(keys, s.Key)
 		}
