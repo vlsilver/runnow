@@ -4,12 +4,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/card_share.dart';
+import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_detail_screen.dart';
+import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:share_plus_platform_interface/share_plus_platform_interface.dart';
 
@@ -550,6 +553,39 @@ void main() {
       await tester.tap(find.text('Chạm ra ngoài lá bài để úp lại.'));
       await tester.pumpAndSettle();
       expect(find.text('Mỗi đêm soi một người.'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('the face opens the skin sheet previewing this card', (
+      tester,
+    ) async {
+      FlutterSecureStorage.setMockInitialValues({});
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+        'cardTier': 'rare',
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+
+      final face = tester
+          .widget<AchievementCard>(find.byType(AchievementCard))
+          .data;
+      await tester.tap(find.text('Bộ màu thẻ'));
+      await tester.pumpAndSettle();
+      final sample = tester
+          .widget<RunCardSkinSheet>(find.byType(RunCardSkinSheet))
+          .sample;
+      expect(sample.tier, GameCardTier.rare);
+      expect(
+        [sample.title, sample.hero, sample.owner],
+        [face.title, face.hero, face.owner],
+      );
       await close(tester);
     });
 

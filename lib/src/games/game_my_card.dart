@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
+import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
 import 'package:myrun/src/games/game_km_table.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/games/game_turn.dart';
@@ -208,6 +209,16 @@ class _Face extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                       color: palette.accent,
                     ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () =>
+                        showRunCardSkinSheet(context, sample: card),
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(Icons.palette_outlined, size: 18),
+                    label: const Text('Bộ màu thẻ'),
                   ),
                 ],
               ),
