@@ -1,6 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/games/game_role_card.dart';
@@ -27,6 +26,11 @@ String? runCardPhotoType(Uint8List bytes) {
   }
   return null;
 }
+
+/// Số ký tự tối đa của mô tả thêm, đếm theo rune như runCardArtNoteMax ở
+/// backend. maxLength của TextField đếm theo grapheme nên chữ có dấu tổ hợp
+/// hay emoji sẽ lọt quá giới hạn của backend.
+const runCardArtNoteMax = 200;
 
 /// Câu cho người dùng khi gửi lệnh vẽ bị từ chối.
 String runCardArtErrorText(RunNowApiException error) => switch (error.code) {
@@ -82,6 +86,7 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
   bool _consent = false;
   bool _sending = false;
   String? _error;
+  final _note = TextEditingController();
 
   bool get _hasPhoto => _photoPath != null || _upload != null;
 
@@ -93,7 +98,14 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
     if (art?.status == RunCardArtStatus.failed) {
       _style = art!.style;
       if (art.reason != 'photo_missing') _photoPath = art.photoPath;
+      _note.text = art.note ?? '';
     }
+  }
+
+  @override
+  void dispose() {
+    _note.dispose();
+    super.dispose();
   }
 
   @override
@@ -102,22 +114,28 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
     // Cao cố định: co theo nội dung thì đổi nhóm phong cách là sheet nhảy.
     return SizedBox(
       height: MediaQuery.sizeOf(context).height * 0.88,
-      child: styles.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('Không tải được phong cách: $error'),
-              TextButton(
-                onPressed: () => ref.invalidate(runCardStylesProvider),
-                child: const Text('Thử lại'),
-              ),
-            ],
-          ),
+      // Bàn phím mở thì danh sách co lại, ô mô tả và nút Vẽ không bị che.
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
         ),
-        data: _body,
+        child: styles.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, _) => Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text('Không tải được phong cách: $error'),
+                TextButton(
+                  onPressed: () => ref.invalidate(runCardStylesProvider),
+                  child: const Text('Thử lại'),
+                ),
+              ],
+            ),
+          ),
+          data: _body,
+        ),
       ),
     );
   }
@@ -206,6 +224,23 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
                     'Ảnh được gửi cho Google Gemini để vẽ tranh.',
                   ),
                 ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: _note,
+                enabled: !_sending,
+                minLines: 1,
+                maxLines: 3,
+                textInputAction: TextInputAction.done,
+                inputFormatters: const [_RuneLimit(runCardArtNoteMax)],
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: 'Mô tả thêm',
+                  hintText: 'VD: áo đỏ, chạy cùng chú chó, trời mưa',
+                  helperText: 'Không bắt buộc. 3i vẽ thêm nếu hợp phong cách.',
+                  counterText: '${_note.text.runes.length}/$runCardArtNoteMax',
+                  border: const OutlineInputBorder(),
+                ),
+              ),
             ],
           ),
         ),
@@ -361,9 +396,15 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
             .read(runCardPhotosProvider)
             .upload(widget.card.id, bytes, _uploadType!);
       }
+      final note = _note.text.trim();
       await ref
           .read(runNowApiClientProvider)
-          .requestRunCardArt(widget.card.id, style: style.key, photoPath: path);
+          .requestRunCardArt(
+            widget.card.id,
+            style: style.key,
+            photoPath: path,
+            note: note.isEmpty ? null : note,
+          );
       if (mounted) Navigator.pop(context);
     } on RunNowApiException catch (error) {
       if (mounted) setState(() => _error = runCardArtErrorText(error));
@@ -377,6 +418,31 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
 
 /// Lưới phong cách ba cột: ô dáng thẻ 2:3 (ảnh mẫu, chưa có thì màu đại
 /// diện) và tên.
+/// Cắt chữ gõ vào ở [max] rune. Đang gõ dở (IME tiếng Việt còn vùng
+/// composing) thì để yên, gõ xong mới cắt.
+class _RuneLimit extends TextInputFormatter {
+  const _RuneLimit(this.max);
+
+  final int max;
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (newValue.composing.isValid || newValue.text.runes.length <= max) {
+      return newValue;
+    }
+    // Đã đầy mà gõ thêm thì giữ nguyên, không cắt mất đuôi chữ cũ.
+    if (oldValue.text.runes.length >= max) return oldValue;
+    final text = String.fromCharCodes(newValue.text.runes.take(max));
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+}
+
 class _StyleGrid extends StatelessWidget {
   const _StyleGrid({
     required this.styles,

@@ -130,6 +130,7 @@ class RunCardArt {
     this.path,
     this.reason,
     this.photoPath,
+    this.note,
     this.requestedAt,
   });
 
@@ -144,6 +145,7 @@ class RunCardArt {
     path: _optString(json['path']),
     reason: _optString(json['reason']),
     photoPath: _optString(json['photoPath']),
+    note: _optString(json['note']),
     requestedAt: _date(json['requestedAt']),
   );
 
@@ -158,6 +160,9 @@ class RunCardArt {
   /// style_unavailable.
   final String? reason;
   final String? photoPath;
+
+  /// Mô tả thêm chủ thẻ gõ khi chọn vẽ, cố định cùng tranh.
+  final String? note;
   final DateTime? requestedAt;
 }
 

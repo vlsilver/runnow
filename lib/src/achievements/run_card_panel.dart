@@ -287,7 +287,13 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
     try {
       await ref
           .read(runNowApiClientProvider)
-          .requestRunCardArt(_id, style: art.style, photoPath: art.photoPath);
+          .requestRunCardArt(
+            _id,
+            style: art.style,
+            photoPath: art.photoPath,
+            // Gửi lại đúng lựa chọn cũ, khác note là backend coi như đổi ý.
+            note: art.note,
+          );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(

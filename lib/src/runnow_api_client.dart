@@ -548,11 +548,13 @@ class RunNowApiClient {
     String activityId, {
     required String style,
     String? photoPath,
+    String? note,
   }) async {
     final response = await _send(
       'POST',
       '${_runCardPath(activityId)}/art',
-      body: {'style': style, 'photoPath': ?photoPath},
+      // Backend cũ chặn field lạ, nên chỉ gửi note khi có.
+      body: {'style': style, 'photoPath': ?photoPath, 'note': ?note},
     );
     return _runCard(response);
   }

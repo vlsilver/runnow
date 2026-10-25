@@ -351,6 +351,24 @@ Future<void> _tapText(WidgetTester tester, String text) async {
   await _settle(tester);
 }
 
+/// Ô mô tả thêm của sheet vẽ, cuộn tới cho nó được dựng.
+Future<Finder> _noteField(WidgetTester tester) async {
+  final field = find.widgetWithText(TextField, 'Mô tả thêm');
+  await tester.scrollUntilVisible(
+    field,
+    200,
+    scrollable: find
+        .descendant(
+          of: find.byType(RunCardArtSheet),
+          matching: find.byWidgetPredicate(
+            (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+          ),
+        )
+        .first,
+  );
+  return field;
+}
+
 /// Nút Vẽ ở chân sheet có bật không.
 bool _drawEnabled(WidgetTester tester, String label) => tester
     .widget<ButtonStyleButton>(
@@ -770,6 +788,31 @@ void main() {
     expect(find.text('Vẽ lại'), findsNothing, reason: 'vừa gửi thì chưa kẹt');
   });
 
+  testWidgets('a note goes with the draw, trimmed and capped at 200 runes', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    await _pumpPanel(tester, backend, initial: _card());
+    await _tapText(tester, 'Vẽ tranh nền');
+    await _tapText(tester, 'Sơn dầu');
+    final note = await _noteField(tester);
+
+    await tester.enterText(note, 'ệ' * 201);
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(note).controller!.text.runes.length,
+      200,
+      reason: 'cùng cách đếm rune với backend',
+    );
+    expect(find.text('200/200'), findsOne);
+
+    await tester.enterText(note, '  áo đỏ, chạy cùng chú chó  ');
+    await _confirmDraw(tester, 'Vẽ bằng Sơn dầu');
+    expect(backend.artBodies, [
+      {'style': 'oil', 'note': 'áo đỏ, chạy cùng chú chó'},
+    ]);
+  });
+
   testWidgets('the style sheet keeps one height whichever group is open', (
     tester,
   ) async {
@@ -840,6 +883,7 @@ void main() {
           'style': 'anime_cel',
           'attempt': 1,
           'reason': 'budget',
+          'note': 'áo đỏ',
         },
       ),
     );
@@ -849,6 +893,8 @@ void main() {
     );
     await _tapText(tester, 'Vẽ lại');
     expect(find.text('Vẽ bằng Anime cel'), findsOne);
+    final note = await _noteField(tester);
+    expect(tester.widget<TextField>(note).controller!.text, 'áo đỏ');
   });
 
   testWidgets('a stuck draw offers to send the same choice again', (
@@ -864,6 +910,7 @@ void main() {
           'style': 'oil',
           'attempt': 1,
           'photoPath': _runPhotoPath,
+          'note': 'áo đỏ',
           'requestedAt': DateTime.now()
               .toUtc()
               .subtract(const Duration(minutes: 10))
@@ -873,8 +920,9 @@ void main() {
     );
     expect(find.text('Lâu quá chưa xong, có thể lần vẽ bị kẹt.'), findsOne);
     await _tapText(tester, 'Vẽ lại');
+    // Thiếu note thì backend coi là lựa chọn khác và báo đang vẽ.
     expect(backend.artBodies, [
-      {'style': 'oil', 'photoPath': _runPhotoPath},
+      {'style': 'oil', 'photoPath': _runPhotoPath, 'note': 'áo đỏ'},
     ]);
   });
 }
