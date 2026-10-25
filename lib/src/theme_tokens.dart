@@ -448,4 +448,54 @@ class RunNowAchievementTokens {
   static const failVeil = Color(0xB8070910);
   static const failInk = Color(0xFFFF8A80);
   static const dataCredit = Color(0x8CF4F2EC);
+
+  // Bộ màu thẻ sáng: ruột giấy, chữ mực. Màu bậc và chữ ánh lấy tông đậm để
+  // đọc được trên nền sáng; khung và holo của bậc dùng chung với bản tối.
+  static const paperShadow = Color(0x66FFFFFF);
+  static const paperHairline = Color(0x1F000000);
+  static const paperRay = Color(0x0A000000);
+  static const paperRing = Color(0x0F000000);
+  static const paperMapEdge = Color(0x24000000);
+  static const paperGrid = Color(0x14000000);
+  static const paperLabel = Color(0xB816160F);
+  static const paperCredit = Color(0x8C16160F);
+  static const paperContour = Color(0x0F000000);
+  static const paperStamp = Color(0xB8F4F2EC);
+  static const paperVeil = Color(0xC7F4F2EC);
+  static const paperFailInk = Color(0xFFD9452F);
+  static const paperAccentCommon = Color(0xFF59606B);
+  static const paperAccentRare = Color(0xFF3F6C8E);
+  static const paperAccentEpic = Color(0xFF9A6A10);
+  static const paperAccentLegendary = Color(0xFF7B3FC4);
+  static const paperAccentMythic = Color(0xFF0E8C73);
+  static const paperSilver1 = Color(0xFF3A434F);
+  static const paperSilver2 = Color(0xFF6B7684);
+  static const paperSilver3 = Color(0xFF2E3540);
+  static const paperGold1 = Color(0xFF6F4A0C);
+  static const paperGold2 = Color(0xFFA9781E);
+  static const paperGold3 = Color(0xFF5E400C);
+  static const paperPink = Color(0xFFC2306F);
+  static const paperAmber = Color(0xFFB76A00);
+  static const paperMint = Color(0xFF0E8A5F);
+  static const paperSky = Color(0xFF1F6FC0);
+  static const paperViolet = Color(0xFF6B3FC8);
+  static const paperTeal = Color(0xFF0E8C73);
+  static const paperCyan = Color(0xFF0F9C8A);
+  static const paperBlue = Color(0xFF2155C8);
+  static const paperLilac = Color(0xFF6A3FD0);
+  static const paperRouteCommon = Color(0xFFECEAE4);
+  static const paperRouteCommonEdge = Color(0xFFD6D2C8);
+  static const paperGlowCommon = Color(0xFF7C8896);
+  static const paperRouteRare = Color(0xFFE3EDF5);
+  static const paperRouteRareEdge = Color(0xFFC9D9E6);
+  static const paperGlowRare = Color(0xFF3F8FD0);
+  static const paperRouteEpic = Color(0xFFF6EBD2);
+  static const paperRouteEpicEdge = Color(0xFFE3CFA2);
+  static const paperGlowEpic = Color(0xFFC98A12);
+  static const paperRouteLegendary = Color(0xFFEEE3F8);
+  static const paperRouteLegendaryEdge = Color(0xFFD7C4EE);
+  static const paperGlowLegendary = Color(0xFF9B55E0);
+  static const paperRouteMythic = Color(0xFFDDF3EC);
+  static const paperRouteMythicEdge = Color(0xFFBFE3D8);
+  static const paperGlowMythic = Color(0xFF12A889);
 }

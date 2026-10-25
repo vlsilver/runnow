@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/achievements/run_card_collection.dart';
+import 'package:myrun/src/achievements/run_card_providers.dart';
+import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/admin/admin_screen.dart';
 import 'package:myrun/src/agents/agent_blocks_screen.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
@@ -332,6 +334,7 @@ class RunNowApp extends ConsumerWidget {
       appearance: themeController.appearance,
       darkTone: themeController.darkTone,
     );
+    final cardSkin = ref.watch(runCardSkinProvider);
     return MaterialApp.router(
       title: '3i Run',
       debugShowCheckedModeBanner: false,
@@ -347,7 +350,10 @@ class RunNowApp extends ConsumerWidget {
             : child!;
         // Nền phủ toàn màn; ràng buộc bề rộng do từng màn xử lý (shell có rail
         // riêng khi rộng, các màn nội dung tự gò cột giữa).
-        return RunNowBackdrop(child: content);
+        return RunCardSkinScope(
+          skin: cardSkin,
+          child: RunNowBackdrop(child: content),
+        );
       },
     );
   }

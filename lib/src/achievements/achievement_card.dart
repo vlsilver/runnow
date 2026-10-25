@@ -475,7 +475,7 @@ class _Front extends StatelessWidget {
           left: 0,
           right: 0,
           child: _Scrim.top(
-            color: skin.shade,
+            skin: skin,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(13, 12, 12, 0),
               // Khối km quyết định lớp phủ cao bao nhiêu; nhãn bậc nằm đè góc
@@ -560,7 +560,7 @@ class _Front extends StatelessWidget {
           right: 0,
           bottom: 0,
           child: _Scrim.bottom(
-            color: skin.shade,
+            skin: skin,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(13, 0, 13, 11),
               child: Column(
@@ -842,23 +842,25 @@ class _Gem extends StatelessWidget {
 /// mép thẻ, nhạt dần qua vùng chữ, rồi tan hết ngay ngoài chữ. Cao theo khối
 /// chữ (tên hai dòng thì phủ cao hơn), phần tranh không có chữ để nguyên.
 class _Scrim extends StatelessWidget {
-  const _Scrim.top({required this.color, required this.child})
+  _Scrim.top({required RunCardSkin skin, required this.child})
     : _fromTop = true,
-      _edge = 0.66,
-      _inner = 0.34,
+      color = skin.shade,
+      _edge = skin.scrimTop.$1,
+      _inner = skin.scrimTop.$2,
       _fade = 40;
 
-  const _Scrim.bottom({required this.color, required this.child})
+  _Scrim.bottom({required RunCardSkin skin, required this.child})
     : _fromTop = false,
-      _edge = 0.96,
-      _inner = 0.62,
+      color = skin.shade,
+      _edge = skin.scrimBottom.$1,
+      _inner = skin.scrimBottom.$2,
       _fade = 48;
 
   final Color color;
   final Widget child;
   final bool _fromTop;
 
-  /// Độ tối ở mép thẻ và ở mép trong của khối chữ.
+  /// Độ đậm ở mép thẻ và ở mép trong của khối chữ.
   final double _edge;
   final double _inner;
 

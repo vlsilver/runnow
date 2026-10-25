@@ -4,7 +4,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:myrun/src/achievements/run_card_skin.dart';
+import 'package:myrun/src/achievements/run_card_skin_choice.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 
@@ -102,3 +105,19 @@ class RunCardPhotos {
 }
 
 final runCardPhotosProvider = Provider((ref) => const RunCardPhotos());
+
+/// Lựa chọn bộ màu thẻ của máy này.
+final runCardSkinControllerProvider =
+    ChangeNotifierProvider<RunCardSkinController>(
+      (ref) => RunCardSkinController(),
+    );
+
+/// Bộ màu thẻ đang dùng: lựa chọn riêng nếu có, không thì theo theme app.
+final runCardSkinProvider = Provider<RunCardSkin>((ref) {
+  final app = ref.watch(themeControllerProvider);
+  return resolveRunCardSkin(
+    appAppearance: app.appearance,
+    appElement: app.element,
+    choice: ref.watch(runCardSkinControllerProvider).choice,
+  );
+});

@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
+import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_role_card.dart';
@@ -70,13 +71,19 @@ class RunCardShareFiles {
   final String motionType;
 }
 
-/// Khoá cache: đổi khi những gì in trên thẻ đổi (bậc, tranh nền, tên chủ).
-String runCardShareKey(RunCard card, String owner) {
+/// Khoá cache: đổi khi những gì in trên thẻ đổi (bậc, tranh nền, tên chủ,
+/// bộ màu thẻ).
+String runCardShareKey(
+  RunCard card,
+  String owner, {
+  required RunCardSkin skin,
+}) {
   // FNV-1a 32 bit: ổn định giữa các lần mở app, khác String.hashCode.
   var hash = 0x811c9dc5;
-  for (final unit
-      in '${card.tier.name}|${card.artPath ?? ''}|$owner|$_shareVersion'
-          .codeUnits) {
+  final printed =
+      '${card.tier.name}|${card.artPath ?? ''}|$owner|${skin.id}|'
+      '$_shareVersion';
+  for (final unit in printed.codeUnits) {
     hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
   }
   return hash.toRadixString(16);
@@ -279,26 +286,38 @@ extension on _Choice {
   };
 }
 
+/// Màn khoe giữ bộ màu thẻ lúc mở: đổi bộ màu giữa chừng thì ba file vẫn
+/// khớp nhau và khớp khoá cache.
 Future<void> showRunCardShare(
   BuildContext context, {
   required RunCard card,
   required AchievementCardData data,
 }) {
+  final skin = RunCardSkin.of(context);
   return Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) => Theme(
-        data: gameNightTheme(),
-        child: RunCardShareScreen(card: card, data: data),
+      builder: (_) => RunCardSkinScope(
+        skin: skin,
+        child: Theme(
+          data: gameNightTheme(),
+          child: RunCardShareScreen(card: card, data: data, skin: skin),
+        ),
       ),
     ),
   );
 }
 
 class RunCardShareScreen extends ConsumerStatefulWidget {
-  const RunCardShareScreen({super.key, required this.card, required this.data});
+  const RunCardShareScreen({
+    super.key,
+    required this.card,
+    required this.data,
+    required this.skin,
+  });
 
   final RunCard card;
   final AchievementCardData data;
+  final RunCardSkin skin;
 
   @override
   ConsumerState<RunCardShareScreen> createState() => _RunCardShareScreenState();
@@ -315,7 +334,8 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
   ({double turn, Offset pose}) _at = _motionPose(0);
   _Choice _choice = _Choice.motion;
 
-  String get _key => runCardShareKey(widget.card, widget.data.owner);
+  String get _key =>
+      runCardShareKey(widget.card, widget.data.owner, skin: widget.skin);
 
   @override
   void initState() {

@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:myrun/src/achievements/run_card_providers.dart';
+import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
 import 'package:myrun/src/config.dart';
 import 'package:myrun/src/games/telegram_link_controller.dart';
 import 'package:myrun/src/models.dart';
@@ -150,6 +152,14 @@ class SettingsScreen extends ConsumerWidget {
                         '${themeController.element.label} · '
                         '${themeController.appearance.label}',
                     onTap: () => _editElement(context, ref, themeController),
+                  ),
+                  _SettingsRow(
+                    icon: Icons.palette_outlined,
+                    title: 'Bộ màu thẻ',
+                    value: runCardSkinLabel(
+                      ref.watch(runCardSkinControllerProvider).choice,
+                    ),
+                    onTap: () => showRunCardSkinSheet(context),
                   ),
                 ],
               ),
@@ -449,7 +459,7 @@ Future<void> _editElement(
                       element: element,
                       appearance: selectedAppearance,
                       darkTone: RunNowDarkTone.elemental,
-                      icon: _elementIcon(element),
+                      icon: element.icon,
                       selected: selectedElement == element,
                       onTap: () =>
                           setModalState(() => selectedElement = element),
@@ -1033,14 +1043,6 @@ class _ThemeSelection {
   final RunNowAppearance appearance;
   final RunNowDarkTone darkTone;
 }
-
-IconData _elementIcon(RunNowElement element) => switch (element) {
-  RunNowElement.metal => Icons.diamond_outlined,
-  RunNowElement.wood => Icons.park_outlined,
-  RunNowElement.water => Icons.water_drop_outlined,
-  RunNowElement.fire => Icons.local_fire_department_outlined,
-  RunNowElement.earth => Icons.landscape_outlined,
-};
 
 /// Logo "Powered by Strava" chính thức, lấy nguyên từ bộ brand asset của
 /// Strava (`assets/strava/`). Guideline cấm vẽ lại hay chỉnh sửa logo, nên

@@ -46,6 +46,14 @@ extension RunNowElementLabel on RunNowElement {
     RunNowElement.earth => 'Hỏa sinh Thổ · Earth',
   };
 
+  IconData get icon => switch (this) {
+    RunNowElement.metal => Icons.diamond_outlined,
+    RunNowElement.wood => Icons.park_outlined,
+    RunNowElement.water => Icons.water_drop_outlined,
+    RunNowElement.fire => Icons.local_fire_department_outlined,
+    RunNowElement.earth => Icons.landscape_outlined,
+  };
+
   RunNowElement get supporting => switch (this) {
     RunNowElement.metal => RunNowElement.earth,
     RunNowElement.water => RunNowElement.metal,

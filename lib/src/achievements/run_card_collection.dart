@@ -4,6 +4,7 @@ import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
+import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -66,7 +67,22 @@ class _RunCardCollectionScreenState
     final cards = ref.watch(runCardsProvider);
     final owner = runCardOwnerName(ref);
     return Scaffold(
-      appBar: AppBar(title: const Text('Bộ thẻ')),
+      appBar: AppBar(
+        title: const Text('Bộ thẻ'),
+        actions: [
+          IconButton(
+            tooltip: 'Bộ màu thẻ',
+            onPressed: () => showRunCardSkinSheet(
+              context,
+              sample: switch (cards.value) {
+                [final first, ...] => runCardData(first, owner: owner),
+                _ => null,
+              },
+            ),
+            icon: const Icon(Icons.palette_outlined),
+          ),
+        ],
+      ),
       body: cards.when(
         loading: () => const Center(child: RunNowLoading()),
         error: (error, _) => _Note('Không tải được bộ thẻ: $error'),

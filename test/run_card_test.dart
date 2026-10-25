@@ -16,10 +16,12 @@ import 'package:myrun/src/achievements/run_card_art_sheet.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/achievements/run_card_share.dart';
+import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
+import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/photo_viewer.dart';
 import 'package:myrun/src/widgets/storage_image.dart';
 import 'package:share_plus_platform_interface/share_plus_platform_interface.dart';
@@ -644,7 +646,7 @@ void main() {
     final video = Uint8List.fromList([0, 0, 0, 24, 102, 116, 121, 112]);
     // Đã khoe một lần: ba file nằm trong máy theo khoá của thẻ này.
     final store = _MemoryShareStore()
-      ..saved['r1/${runCardShareKey(card, runCardData(card, owner: 'An').owner)}'] =
+      ..saved['r1/${runCardShareKey(card, runCardData(card, owner: 'An').owner, skin: RunCardSkin.classic)}'] =
           RunCardShareFiles(
             front: _png,
             back: _png,
@@ -681,12 +683,26 @@ void main() {
   test('the share cache key follows what the card shows', () {
     final plain = _card();
     final drawn = _card(art: {'status': 'done', 'path': 'u/a/r1.png'});
-    expect(runCardShareKey(plain, 'An'), runCardShareKey(_card(), 'An'));
-    expect(runCardShareKey(plain, 'An'), isNot(runCardShareKey(drawn, 'An')));
-    expect(runCardShareKey(plain, 'An'), isNot(runCardShareKey(plain, 'Bình')));
+    String key(RunCard card, String owner, [RunCardSkin? skin]) =>
+        runCardShareKey(card, owner, skin: skin ?? RunCardSkin.classic);
+    expect(key(plain, 'An'), key(_card(), 'An'));
+    expect(key(plain, 'An'), isNot(key(drawn, 'An')));
+    expect(key(plain, 'An'), isNot(key(plain, 'Bình')));
+    expect(key(plain, 'An'), isNot(key(_card(tier: 'rare'), 'An')));
+    final paperFire = RunCardSkin.forTheme(
+      RunNowAppearance.light,
+      RunNowElement.fire,
+    );
+    expect(key(plain, 'An'), isNot(key(plain, 'An', paperFire)));
     expect(
-      runCardShareKey(plain, 'An'),
-      isNot(runCardShareKey(_card(tier: 'rare'), 'An')),
+      key(plain, 'An', paperFire),
+      isNot(
+        key(
+          plain,
+          'An',
+          RunCardSkin.forTheme(RunNowAppearance.light, RunNowElement.water),
+        ),
+      ),
     );
   });
 

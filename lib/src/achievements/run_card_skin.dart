@@ -11,6 +11,7 @@ typedef _T = RunNowAchievementTokens;
 @immutable
 class RunCardSkin {
   const RunCardSkin({
+    required this.id,
     required this.field,
     required this.shade,
     required this.hero,
@@ -38,7 +39,12 @@ class RunCardSkin {
     required this.rainbow,
     required this.aurora,
     required this.routes,
+    this.scrimTop = (0.66, 0.34),
+    this.scrimBottom = (0.96, 0.62),
   });
+
+  /// Tên ổn định của bộ màu, vào khoá cache ảnh khoe.
+  final String id;
 
   /// Nền dưới tranh, lộ ra khi tranh chưa tải xong.
   final Color field;
@@ -93,11 +99,17 @@ class RunCardSkin {
   /// Tranh đường chạy từng bậc: nền giữa, nền mép, màu phát sáng.
   final Map<GameCardTier, (Color, Color, Color)> routes;
 
+  /// Độ đậm lớp phủ sau khối chữ trên và dưới: ở mép thẻ, ở mép trong khối
+  /// chữ. Chữ mực trên lớp phủ sáng cần phủ dày hơn chữ trắng trên lớp tối.
+  final (double, double) scrimTop;
+  final (double, double) scrimBottom;
+
   Color accent(GameCardTier tier) => accents[tier]!;
   Color glow(GameCardTier tier) => routes[tier]!.$3;
 
   /// Bộ màu thẻ có từ đầu: ruột tối trung tính.
   static const classic = RunCardSkin(
+    id: 'classic',
     field: _T.field,
     shade: _T.shade,
     hero: _T.hero,
@@ -175,6 +187,145 @@ class RunCardSkin {
       ),
     },
   );
+
+  static final _themed = <(RunNowAppearance, RunNowElement), RunCardSkin>{};
+
+  /// Bộ màu thẻ theo một theme app: nền sáng hay tối, sắc nhấn theo hành.
+  /// Cùng lựa chọn thì trả cùng một object để thẻ không vẽ lại thừa.
+  static RunCardSkin forTheme(
+    RunNowAppearance appearance,
+    RunNowElement element,
+  ) => _themed.putIfAbsent(
+    (appearance, element),
+    () => appearance == RunNowAppearance.light
+        ? _paper(element)
+        : _night(element),
+  );
+
+  /// Ruột tối như [classic], nền nhuốm hành và đường chạy màu hành.
+  static RunCardSkin _night(RunNowElement element) {
+    final ramp = element.ramp;
+    Color tint(Color base, Color hue, double amount) =>
+        Color.alphaBlend(hue.withValues(alpha: amount), base);
+    return RunCardSkin(
+      id: 'dark.${element.name}',
+      field: tint(classic.field, ramp[4], 0.18),
+      shade: tint(classic.shade, ramp[4], 0.22),
+      hero: classic.hero,
+      ink: classic.ink,
+      textShadow: classic.textShadow,
+      hairline: classic.hairline,
+      backTop: tint(classic.backBottom, ramp[3], 0.32),
+      backBottom: classic.backBottom,
+      backRay: classic.backRay,
+      emblemRing: classic.emblemRing,
+      dataBack: tint(classic.dataBack, ramp[4], 0.14),
+      dataMapEdge: classic.dataMapEdge,
+      dataGrid: classic.dataGrid,
+      dataLabel: classic.dataLabel,
+      dataCredit: classic.dataCredit,
+      darkMap: true,
+      routeLine: ramp[0],
+      routeStart: classic.routeStart,
+      routeContour: classic.routeContour,
+      stamp: tint(classic.shade, ramp[4], 0.22).withValues(alpha: 0.72),
+      failVeil: classic.failVeil,
+      failInk: classic.failInk,
+      accents: classic.accents,
+      titles: classic.titles,
+      rainbow: classic.rainbow,
+      aurora: classic.aurora,
+      routes: classic.routes,
+    );
+  }
+
+  /// Ruột giấy, chữ mực; màu bậc tông đậm, đường chạy màu hành.
+  static RunCardSkin _paper(RunNowElement element) {
+    final ramp = element.ramp;
+    final paper = RunNowThemeTokens.lightNeutral[0];
+    const ink = RunNowThemeTokens.lightInk;
+    return RunCardSkin(
+      id: 'light.${element.name}',
+      field: element.tint,
+      shade: element.tint,
+      hero: ink,
+      ink: ink,
+      textShadow: _T.paperShadow,
+      hairline: _T.paperHairline,
+      backTop: Color.alphaBlend(ramp[1].withValues(alpha: 0.3), paper),
+      backBottom: paper,
+      backRay: _T.paperRay,
+      emblemRing: _T.paperRing,
+      dataBack: Color.lerp(element.tint, paper, 0.5)!,
+      dataMapEdge: _T.paperMapEdge,
+      dataGrid: _T.paperGrid,
+      dataLabel: _T.paperLabel,
+      dataCredit: _T.paperCredit,
+      darkMap: false,
+      routeLine: ramp[3],
+      routeStart: paper,
+      routeContour: _T.paperContour,
+      stamp: _T.paperStamp,
+      failVeil: _T.paperVeil,
+      failInk: _T.paperFailInk,
+      accents: const {
+        GameCardTier.common: _T.paperAccentCommon,
+        GameCardTier.rare: _T.paperAccentRare,
+        GameCardTier.superRare: _T.paperAccentEpic,
+        GameCardTier.legendary: _T.paperAccentLegendary,
+        GameCardTier.mythic: _T.paperAccentMythic,
+      },
+      titles: const {
+        GameCardTier.rare: [_T.paperSilver1, _T.paperSilver2, _T.paperSilver3],
+        GameCardTier.superRare: [_T.paperGold1, _T.paperGold2, _T.paperGold3],
+      },
+      rainbow: const [
+        _T.paperPink,
+        _T.paperAmber,
+        _T.paperMint,
+        _T.paperSky,
+        _T.paperViolet,
+        _T.paperPink,
+      ],
+      aurora: const [
+        _T.paperTeal,
+        _T.paperCyan,
+        _T.paperBlue,
+        _T.paperLilac,
+        _T.paperCyan,
+        _T.paperTeal,
+      ],
+      routes: const {
+        GameCardTier.common: (
+          _T.paperRouteCommon,
+          _T.paperRouteCommonEdge,
+          _T.paperGlowCommon,
+        ),
+        GameCardTier.rare: (
+          _T.paperRouteRare,
+          _T.paperRouteRareEdge,
+          _T.paperGlowRare,
+        ),
+        GameCardTier.superRare: (
+          _T.paperRouteEpic,
+          _T.paperRouteEpicEdge,
+          _T.paperGlowEpic,
+        ),
+        GameCardTier.legendary: (
+          _T.paperRouteLegendary,
+          _T.paperRouteLegendaryEdge,
+          _T.paperGlowLegendary,
+        ),
+        GameCardTier.mythic: (
+          _T.paperRouteMythic,
+          _T.paperRouteMythicEdge,
+          _T.paperGlowMythic,
+        ),
+      },
+      scrimTop: (0.86, 0.6),
+      scrimBottom: (0.96, 0.8),
+    );
+  }
 
   /// Bộ màu thẻ đang dùng ở [context]; ngoài [RunCardSkinScope] thì là
   /// [classic].
