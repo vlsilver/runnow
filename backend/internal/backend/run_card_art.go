@@ -7,7 +7,9 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"cloud.google.com/go/firestore"
 	"google.golang.org/genai"
@@ -60,6 +62,7 @@ var (
 	errRunCardBadPhoto   = &HTTPError{Status: http.StatusBadRequest, Code: "invalid_photo", Message: "Chỉ dùng được ảnh của buổi chạy này hoặc ảnh bạn vừa tải lên cho thẻ."}
 	errRunCardArtFixed   = &HTTPError{Status: http.StatusConflict, Code: "art_fixed", Message: "Thẻ đã có tranh, không vẽ lại được."}
 	errRunCardArtDrawing = &HTTPError{Status: http.StatusConflict, Code: "art_drawing", Message: "Thẻ đang được vẽ."}
+	errRunCardLongNote   = &HTTPError{Status: http.StatusBadRequest, Code: "note_too_long", Message: fmt.Sprintf("Mô tả thêm tối đa %d ký tự.", runCardArtNoteMax)}
 )
 
 func runCardArtPath(uid, activityID, file string) string {
@@ -69,6 +72,22 @@ func runCardArtPath(uid, activityID, file string) string {
 type RunCardArtRequest struct {
 	Style     string `json:"style"`
 	PhotoPath string `json:"photoPath"`
+	// Note là mô tả thêm của chủ thẻ, tuỳ chọn; xem runCardArtNote.
+	Note string `json:"note"`
+}
+
+// runCardArtNoteMax là số ký tự (rune) tối đa của mô tả thêm; app đếm cùng cách.
+const runCardArtNoteMax = 200
+
+// runCardArtNote gộp mọi khoảng trắng, kể cả xuống dòng, thành một dấu cách để
+// mô tả nằm gọn một câu trong prompt. Dài quá thì từ chối chứ không cắt, vì cắt
+// giữa chừng làm sai ý người viết.
+func runCardArtNote(raw string) (string, error) {
+	note := strings.Join(strings.Fields(raw), " ")
+	if utf8.RuneCountInString(note) > runCardArtNoteMax {
+		return "", errRunCardLongNote
+	}
+	return note, nil
 }
 
 type runCardArtTask struct {
@@ -119,13 +138,17 @@ func (s *RunCardStore) RequestArt(ctx context.Context, uid, activityID string, r
 	if !ok {
 		return nil, errRunCardBadStyle
 	}
+	note, err := runCardArtNote(req.Note)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.checkPhoto(ctx, uid, activityID, req.PhotoPath); err != nil {
 		return nil, err
 	}
 	ref := s.cardRef(uid, activityID)
 	var card map[string]any
 	var task *runCardArtTask
-	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+	err = s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		task = nil
 		snap, err := getOptional(tx, ref)
 		if err != nil {
@@ -137,7 +160,7 @@ func (s *RunCardStore) RequestArt(ctx context.Context, uid, activityID string, r
 		card = snap.Data()
 		art, _ := card["art"].(map[string]any)
 		attempt := int64(number(art["attempt"]))
-		same := stringValue(art["style"]) == style.Key && stringValue(art["photoPath"]) == req.PhotoPath
+		same := stringValue(art["style"]) == style.Key && stringValue(art["photoPath"]) == req.PhotoPath && stringValue(art["note"]) == note
 		now := s.now()
 		switch stringValue(art["status"]) {
 		case "done":
@@ -157,6 +180,9 @@ func (s *RunCardStore) RequestArt(ctx context.Context, uid, activityID string, r
 		lock := map[string]any{"status": "drawing", "style": style.Key, "styleVersion": style.Version, "attempt": attempt + 1, "requestedAt": now}
 		if req.PhotoPath != "" {
 			lock["photoPath"] = req.PhotoPath
+		}
+		if note != "" {
+			lock["note"] = note
 		}
 		card["art"] = lock
 		task = &runCardArtTask{UID: uid, ActivityID: activityID, Attempt: attempt + 1}
@@ -231,7 +257,7 @@ func (s *RunCardStore) DrawArt(ctx context.Context, t runCardArtTask) error {
 		}
 	}
 	snapshot, _ := card["snapshot"].(map[string]any)
-	prompt := runCardArtPrompt(snapshot, style, len(photo) > 0)
+	prompt := runCardArtPrompt(snapshot, style, len(photo) > 0, stringValue(art["note"]))
 	parts := []*genai.Part{}
 	if len(photo) > 0 {
 		parts = append(parts, &genai.Part{InlineData: &genai.Blob{MIMEType: photoMIME(photo), Data: photo}})
@@ -303,12 +329,14 @@ func imageRefusal(resp *genai.GenerateContentResponse) (finish, block string) {
 // runCardArtPrompt ráp prompt vẽ nền thẻ. Không có ảnh thì vẽ cảnh buổi chạy:
 // giờ trong ngày lấy từ giờ bắt đầu, quãng đường thành cảm giác chứ không thành
 // số. Có ảnh thì vẽ lại ảnh theo phong cách, giữ người trong ảnh nhận ra được.
-// Không đưa tên buổi chạy hay bậc thẻ vào prompt.
-func runCardArtPrompt(snapshot map[string]any, style artStyle, photo bool) string {
+// Không đưa tên buổi chạy hay bậc thẻ vào prompt. note là mô tả thêm của chủ
+// thẻ (đã qua runCardArtNote), nằm trước phong cách, bố cục và luật cấm chữ để
+// mấy phần đó vẫn thắng khi mô tả đòi khác.
+func runCardArtPrompt(snapshot map[string]any, style artStyle, photo bool, note string) string {
 	if photo {
-		return artPrompt("Transform the provided photograph into the art style described below. "+
+		return artPrompt(withRunnerNote("Transform the provided photograph into the art style described below. "+
 			"Keep every person in it recognizable, with the same pose, body proportions, face, hairstyle and clothing colors; "+
-			"if there is no person, keep the main subject and layout.", style,
+			"if there is no person, keep the main subject and layout.", note), style,
 			"Vertical composition. Keep the main subject in the middle of the frame; the top fifth and the bottom quarter stay calm and low-detail.")
 	}
 	started, _ := time.Parse(time.RFC3339, stringValue(snapshot["startedAt"]))
@@ -316,7 +344,16 @@ func runCardArtPrompt(snapshot map[string]any, style artStyle, photo bool) strin
 	// cách ảnh chụp, 3D, hologram về tranh minh hoạ; chất liệu để "Render it as" quyết.
 	task := fmt.Sprintf("Create an image: a single full-bleed scene of a lone runner in mid-stride %s %s, capturing the feeling of %s.",
 		runCardPlace(stringValue(snapshot["sportType"])), runCardTimeOfDay(started), runCardFeel(number(snapshot["distanceMeters"])))
-	return artPrompt(task, style, "Vertical composition. The runner fills the middle of the frame; the top fifth is calm, open background and the bottom quarter is quiet, low-detail ground.")
+	return artPrompt(withRunnerNote(task, note), style, "Vertical composition. The runner fills the middle of the frame; the top fifth is calm, open background and the bottom quarter is quiet, low-detail ground.")
+}
+
+// withRunnerNote nối mô tả thêm vào sau phần việc cần vẽ. Dấu " đổi thành ' để
+// mô tả không đóng được đoạn trích.
+func withRunnerNote(task, note string) string {
+	if note == "" {
+		return task
+	}
+	return task + ` Extra details from the runner, used only where they fit the art style below: "` + strings.ReplaceAll(note, `"`, "'") + `".`
 }
 
 func runCardPlace(sport string) string {

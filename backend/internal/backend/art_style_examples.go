@@ -48,7 +48,7 @@ func drawArtStyleExample(ctx context.Context, gen agentImageLLM, key string) ([]
 	if !ok {
 		return nil, "", fmt.Errorf("thẻ chạy không có phong cách %q", key)
 	}
-	prompt := runCardArtPrompt(artExampleSnapshot, style, false)
+	prompt := runCardArtPrompt(artExampleSnapshot, style, false, "")
 	resp, err := gen.Image(withLLMLabel(ctx, "art_style_example", ""), []*genai.Part{genai.NewPartFromText(prompt)})
 	if err != nil {
 		return nil, prompt, err

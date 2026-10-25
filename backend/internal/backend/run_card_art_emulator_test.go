@@ -286,6 +286,40 @@ func TestEmulatorRunCardArtPhoto(t *testing.T) {
 	}
 }
 
+func TestEmulatorRunCardArtNote(t *testing.T) {
+	e := newArtEnv(t, map[string]any{})
+	e.card("a1", nil)
+	art := func(note string) map[string]any {
+		return map[string]any{"style": "anime_cel", "note": note}
+	}
+
+	// 200 ký tự có dấu là 200 rune, 600 byte: vẫn nhận; 201 thì từ chối.
+	e.want(e.call("u1", "POST", "/v1/activities/a1/card/art", art(strings.Repeat("ệ", 201)), ""), 400, "note_too_long")
+	if len(e.tasks) != 0 {
+		t.Fatalf("mô tả quá dài không được đẩy task: %d", len(e.tasks))
+	}
+	e.want(e.call("u1", "POST", "/v1/activities/a1/card/art", art("  mặc áo đỏ,\n  chạy cạnh   biển "), ""), 200, "")
+	if a := e.art("a1"); a["note"] != "mặc áo đỏ, chạy cạnh biển" {
+		t.Fatalf("note = %q, muốn đã gộp khoảng trắng", a["note"])
+	}
+	// Đang vẽ: cùng mô tả thì đẩy lại task, mô tả khác thì báo đang vẽ.
+	e.want(e.call("u1", "POST", "/v1/activities/a1/card/art", art("mặc áo đỏ, chạy cạnh biển"), ""), 200, "")
+	e.want(e.call("u1", "POST", "/v1/activities/a1/card/art", art("áo xanh"), ""), 409, "art_drawing")
+
+	e.draw(e.lastTask())
+	if !strings.Contains(e.gen.prompts[0], `used only where they fit the art style below: "mặc áo đỏ, chạy cạnh biển". Render it as`) {
+		t.Fatalf("prompt = %q", e.gen.prompts[0])
+	}
+
+	e.card("a2", map[string]any{"startedAt": "2026-10-25T10:00:00Z"})
+	e.want(e.call("u1", "POST", "/v1/activities/a2/card/art", art(strings.Repeat("ệ", 200)), ""), 200, "")
+	e.card("a3", map[string]any{"startedAt": "2026-10-25T14:00:00Z"})
+	e.want(e.call("u1", "POST", "/v1/activities/a3/card/art", map[string]any{"style": "anime_cel", "note": " \n "}, ""), 200, "")
+	if a := e.art("a3"); a["note"] != nil {
+		t.Fatalf("mô tả toàn khoảng trắng thì không lưu note: %v", a)
+	}
+}
+
 func TestEmulatorRunCardArtRejects(t *testing.T) {
 	e := newArtEnv(t, map[string]any{})
 	seedRun(t, e.apiHarness, "u1", "a1", nil)
