@@ -680,6 +680,41 @@ void main() {
     expect(second.files!.single.mimeType, 'image/png');
   });
 
+  testWidgets('picking a skin on the share screen shares that skin\'s files', (
+    tester,
+  ) async {
+    final card = _card();
+    final owner = runCardData(card, owner: 'An').owner;
+    RunCardShareFiles files(int mark) => RunCardShareFiles(
+      front: _png,
+      back: _png,
+      motion: Uint8List.fromList([0, 0, 0, 24, 102, 116, 121, mark]),
+      motionType: 'video/mp4',
+    );
+    final fire = RunCardSkin.forTheme(
+      RunNowAppearance.dark,
+      RunNowElement.fire,
+    );
+    final store = _MemoryShareStore()
+      ..saved['r1/${runCardShareKey(card, owner, skin: RunCardSkin.classic)}'] =
+          files(1)
+      ..saved['r1/${runCardShareKey(card, owner, skin: fire)}'] = files(2);
+    await _pumpPanel(tester, _Backend(), initial: card, shareStore: store);
+
+    await _tapText(tester, 'Khoe thẻ');
+    await _settle(tester);
+    await tester.tap(find.byTooltip('Hỏa'));
+    await _settle(tester);
+    expect(store.saves, 0, reason: 'bộ màu đã có file thì không ghi lại');
+
+    await tester.tap(find.text('Khoe video 3d'));
+    await tester.pump();
+    expect(
+      await share.shared.last.files!.single.readAsBytes(),
+      files(2).motion,
+    );
+  });
+
   test('the share cache key follows what the card shows', () {
     final plain = _card();
     final drawn = _card(art: {'status': 'done', 'path': 'u/a/r1.png'});

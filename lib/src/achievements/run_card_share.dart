@@ -11,11 +11,12 @@ import 'package:image/image.dart' as img;
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
+import 'package:myrun/src/achievements/run_card_skin_choice.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/share.dart';
-import 'package:myrun/src/theme_tokens.dart';
+import 'package:myrun/src/theme.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Khoe thẻ buổi chạy bằng ảnh mặt trước, ảnh mặt sau hoặc lá xoay 3D. Ba file
@@ -286,8 +287,8 @@ extension on _Choice {
   };
 }
 
-/// Màn khoe giữ bộ màu thẻ lúc mở: đổi bộ màu giữa chừng thì ba file vẫn
-/// khớp nhau và khớp khoá cache.
+/// Màn khoe mở với bộ màu thẻ đang xem rồi tự giữ bộ màu riêng: đổi bộ màu
+/// chung giữa chừng thì ba file vẫn khớp nhau và khớp khoá cache.
 Future<void> showRunCardShare(
   BuildContext context, {
   required RunCard card,
@@ -296,12 +297,9 @@ Future<void> showRunCardShare(
   final skin = RunCardSkin.of(context);
   return Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) => RunCardSkinScope(
-        skin: skin,
-        child: Theme(
-          data: gameNightTheme(),
-          child: RunCardShareScreen(card: card, data: data, skin: skin),
-        ),
+      builder: (_) => Theme(
+        data: gameNightTheme(),
+        child: RunCardShareScreen(card: card, data: data, skin: skin),
       ),
     ),
   );
@@ -317,6 +315,9 @@ class RunCardShareScreen extends ConsumerStatefulWidget {
 
   final RunCard card;
   final AchievementCardData data;
+
+  /// Bộ màu lúc mở. Chọn màu khác trên màn khoe chỉ đổi file khoe lần này,
+  /// không đổi bộ màu chung của máy.
   final RunCardSkin skin;
 
   @override
@@ -333,13 +334,23 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
   int _steps = 0;
   ({double turn, Offset pose}) _at = _motionPose(0);
   _Choice _choice = _Choice.motion;
+  late RunCardSkin _skin = widget.skin;
 
   String get _key =>
-      runCardShareKey(widget.card, widget.data.owner, skin: widget.skin);
+      runCardShareKey(widget.card, widget.data.owner, skin: _skin);
 
   @override
   void initState() {
     super.initState();
+    _start();
+  }
+
+  /// Bộ màu nào đã khoe với thẻ này trong phiên thì store còn giữ trong bộ
+  /// nhớ, chọn lại là có ngay; bộ mới thì ghi lại ba file.
+  void _pickSkin(RunCardSkinChoice pick) {
+    final skin = RunCardSkin.forTheme(pick.$1, pick.$2);
+    if (identical(skin, _skin)) return;
+    setState(() => _skin = skin);
     _start();
   }
 
@@ -542,6 +553,10 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
   @override
   Widget build(BuildContext context) {
     final files = _files;
+    return RunCardSkinScope(skin: _skin, child: _screen(files));
+  }
+
+  Widget _screen(RunCardShareFiles? files) {
     return Scaffold(
       backgroundColor: RunNowGameTokens.nightBackground,
       appBar: AppBar(
@@ -590,6 +605,9 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
                     ],
                   ],
                 ),
+                const SizedBox(height: 12),
+                // Đang ghi thì ẩn: hai lượt ghi cùng chụp một sân khấu.
+                _SkinPicker(skin: _skin, onPick: _pickSkin),
               ],
               const SizedBox(height: 16),
               SizedBox(
@@ -824,6 +842,87 @@ class _ChoiceTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Nền sáng/tối và năm hành, chọn ngay trên màn khoe.
+class _SkinPicker extends StatelessWidget {
+  const _SkinPicker({required this.skin, required this.onPick});
+
+  final RunCardSkin skin;
+  final ValueChanged<RunCardSkinChoice> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    // Bộ màu cũ (không theo theme nào) thì chưa ô nào được chọn.
+    final RunCardSkinChoice? pick =
+        [
+              for (final a in RunNowAppearance.values)
+                for (final e in RunNowElement.values) (a, e),
+            ]
+            .where((c) => identical(RunCardSkin.forTheme(c.$1, c.$2), skin))
+            .firstOrNull;
+    final appearance = pick?.$1 ?? RunNowAppearance.dark;
+    final element = pick?.$2 ?? RunNowElement.metal;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      spacing: 6,
+      children: [
+        for (final a in RunNowAppearance.values)
+          _SkinDot(
+            tooltip: 'Nền ${a.label.toLowerCase()}',
+            icon: a == RunNowAppearance.light
+                ? Icons.light_mode_outlined
+                : Icons.dark_mode_outlined,
+            color: gameNightInk,
+            selected: pick?.$1 == a,
+            onTap: () => onPick((a, element)),
+          ),
+        const SizedBox(width: 8),
+        for (final e in RunNowElement.values)
+          _SkinDot(
+            tooltip: e.label,
+            icon: e.icon,
+            color: e.ramp[2],
+            selected: pick?.$2 == e,
+            onTap: () => onPick((appearance, e)),
+          ),
+      ],
+    );
+  }
+}
+
+class _SkinDot extends StatelessWidget {
+  const _SkinDot({
+    required this.tooltip,
+    required this.icon,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return IconButton(
+      tooltip: tooltip,
+      isSelected: selected,
+      onPressed: onTap,
+      visualDensity: VisualDensity.compact,
+      style: IconButton.styleFrom(
+        side: BorderSide(
+          color: selected ? accent : Colors.white.withValues(alpha: 0.12),
+          width: selected ? 2 : 1,
+        ),
+      ),
+      icon: Icon(icon, color: color, size: 20),
     );
   }
 }
