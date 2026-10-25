@@ -29,12 +29,24 @@ class StorageImage extends StatefulWidget {
   /// Thay ô xám có vòng quay hay icon ảnh hỏng, lúc đang lấy link hoặc lỗi.
   final Widget? placeholder;
 
+  /// Cho test đặt sẵn link tải của [path] như đã lấy xong trong phiên.
+  @visibleForTesting
+  static void debugPutDownloadUrl(String path, String url) {
+    _StorageImageState._downloadUrlCache[path] = Future.value(url);
+    _StorageImageState._resolvedUrls[path] = url;
+  }
+
   @override
   State<StorageImage> createState() => _StorageImageState();
 }
 
 class _StorageImageState extends State<StorageImage> {
   static final Map<String, Future<String>> _downloadUrlCache = {};
+
+  /// Link đã lấy xong, đọc được ngay: FutureBuilder luôn dựng một khung chưa
+  /// có data dù future đã xong, nên thiếu cái này thì mở lại màn nào cũng
+  /// thấy placeholder chớp lên trước khi ảnh hiện.
+  static final Map<String, String> _resolvedUrls = {};
 
   late Future<String> _downloadUrl;
 
@@ -53,7 +65,11 @@ class _StorageImageState extends State<StorageImage> {
   Future<String> _loadDownloadUrl() async {
     return _downloadUrlCache.putIfAbsent(widget.path, () async {
       try {
-        return await FirebaseStorage.instance.ref(widget.path).getDownloadURL();
+        final url = await FirebaseStorage.instance
+            .ref(widget.path)
+            .getDownloadURL();
+        _resolvedUrls[widget.path] = url;
+        return url;
       } catch (error) {
         _downloadUrlCache.remove(widget.path);
         rethrow;
@@ -65,6 +81,7 @@ class _StorageImageState extends State<StorageImage> {
   Widget build(BuildContext context) {
     return FutureBuilder<String>(
       future: _downloadUrl,
+      initialData: _resolvedUrls[widget.path],
       builder: (context, snapshot) {
         final url = snapshot.data;
         if (url == null) {

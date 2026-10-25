@@ -62,9 +62,10 @@ final runCardsProvider = StreamProvider.autoDispose<List<RunCard>>((ref) {
       .map((snap) => [for (final doc in snap.docs) _cardFrom(doc)]);
 });
 
-/// Phong cách vẽ đang bật. Đọc mỗi lần mở bảng chọn, không cache lâu, để
-/// backend tắt một phong cách thì app thôi hiện ngay.
-final runCardStylesProvider = FutureProvider.autoDispose<ArtStyleList>(
+/// Phong cách vẽ đang bật, giữ suốt phiên để mở lại bảng chọn là hiện ngay.
+/// Bảng chọn tải lại ngầm mỗi lần mở, để backend tắt một phong cách thì app
+/// thôi hiện sau lần tải đó.
+final runCardStylesProvider = FutureProvider<ArtStyleList>(
   (ref) => ref.watch(runNowApiClientProvider).getRunCardStyles(),
 );
 

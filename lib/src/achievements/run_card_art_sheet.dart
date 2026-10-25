@@ -42,13 +42,21 @@ Future<void> showRunCardArtSheet(
   BuildContext context, {
   required RunCard card,
   required List<ActivityPhoto> photos,
-}) => showModalBottomSheet<void>(
-  context: context,
-  isScrollControlled: true,
-  useSafeArea: true,
-  showDragHandle: true,
-  builder: (_) => RunCardArtSheet(card: card, photos: photos),
-);
+}) {
+  // Lần mở trước đã tải thì sheet hiện bản đó ngay và tải lại ngầm: when()
+  // giữ data lúc đang refresh nên không hiện vòng quay.
+  ProviderScope.containerOf(
+    context,
+    listen: false,
+  ).invalidate(runCardStylesProvider);
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    showDragHandle: true,
+    builder: (_) => RunCardArtSheet(card: card, photos: photos),
+  );
+}
 
 class RunCardArtSheet extends ConsumerStatefulWidget {
   const RunCardArtSheet({super.key, required this.card, required this.photos});

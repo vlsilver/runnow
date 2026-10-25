@@ -243,6 +243,10 @@ class _Backend {
   /// Mã lỗi 409 trả cho lệnh vẽ; null thì nhận và đẩy thẻ đang vẽ.
   String? artError;
 
+  /// Danh sách GET /v1/art-styles trả về; có [stylesGate] thì đợi nó xong mới trả.
+  Map<String, dynamic> styles = _styles;
+  Completer<void>? stylesGate;
+
   /// Lật thì trượt như buổi ngắn quay hụt: 409 card_missed, view báo trượt.
   bool missRoll = false;
 
@@ -256,7 +260,8 @@ class _Backend {
       Object out = view;
       var status = 200;
       if (request.url.path == '/v1/art-styles') {
-        out = _styles;
+        await stylesGate?.future;
+        out = styles;
       } else if (request.url.path.endsWith('/art')) {
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         artBodies.add(body);
@@ -674,6 +679,55 @@ void main() {
     expect(runCardPhotoType(utf8.encode('GIF89a')), isNull);
     expect(runCardPhotoType(Uint8List(0)), isNull);
   });
+
+  testWidgets(
+    'reopening the style sheet shows the last styles at once and refreshes them',
+    (tester) async {
+      final backend = _Backend();
+      await _pumpPanel(tester, backend, initial: _card());
+      await _tapText(tester, 'Vẽ tranh nền');
+      expect(find.text('Sơn dầu'), findsOne);
+      Navigator.of(tester.element(find.text('Sơn dầu'))).pop();
+      await _settle(tester);
+
+      backend.stylesGate = Completer<void>();
+      backend.styles = {
+        ..._styles,
+        'styles': [
+          ...(_styles['styles']! as List),
+          {
+            'key': 'ink',
+            'version': 1,
+            'name': 'Thuỷ mặc',
+            'family': 'painting',
+            'swatch': ['#222222', '#f4f1ea'],
+          },
+        ],
+      };
+      await _tapText(tester, 'Vẽ tranh nền');
+      expect(find.text('Sơn dầu'), findsOne, reason: 'hiện ngay bản lần trước');
+      expect(
+        find.descendant(
+          of: find.byType(RunCardArtSheet),
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsNothing,
+      );
+      expect(find.text('Thuỷ mặc'), findsNothing);
+
+      backend.stylesGate!.complete();
+      await _settle(tester);
+      expect(
+        find.text('Thuỷ mặc'),
+        findsOne,
+        reason: 'tải ngầm xong thì cập nhật',
+      );
+      expect(
+        backend.requests.where((r) => r == 'GET /v1/art-styles'),
+        hasLength(2),
+      );
+    },
+  );
 
   testWidgets('a card without art draws with a style and a run photo', (
     tester,
