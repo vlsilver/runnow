@@ -316,8 +316,8 @@ func TestEmulatorTestModeGameRunsToEndByAdvance(t *testing.T) {
 			t.Fatalf("thẻ của %s: deathRound khi alive = %v", uid, st.Players[uid].Alive)
 		}
 	}
-	if me, err := g.store.Me(ctx, g.id, GameViewer{UID: "r2"}, g.wall); err != nil || !me.CardOwned || me.CardTier != wantTier(st, "r2") {
-		t.Fatalf("/me của r2 lúc kết thúc: owned %v, tier %q, err %v", me.CardOwned, me.CardTier, err)
+	if me, err := g.store.Me(ctx, g.id, GameViewer{UID: "r2"}, g.wall); err != nil || !me.CardOwned || me.CardTier != wantTier(st, "r2") || me.CardRounds != st.Round {
+		t.Fatalf("/me của r2 lúc kết thúc: owned %v, tier %q, rounds %d (muốn %d), err %v", me.CardOwned, me.CardTier, me.CardRounds, st.Round, err)
 	}
 	replayMatches(t, g.storeGame)
 

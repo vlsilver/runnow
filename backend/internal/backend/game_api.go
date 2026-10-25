@@ -941,9 +941,11 @@ type GameMe struct {
 	TeamKm      *GameTeamKm      `json:"teamKm,omitempty"` // chỉ sói còn sống
 	// CardTier là bậc thẻ người gọi bốc được, có từ lúc chia bài. CardOwned true
 	// khi ván đã kết thúc và người gọi thuộc phe thắng: thẻ đã nằm trong
-	// users/{uid}/gameCards.
-	CardTier  string `json:"cardTier,omitempty"`
-	CardOwned bool   `json:"cardOwned"`
+	// users/{uid}/gameCards. CardRounds là số vòng đã chơi, chỉ có khi ván đã
+	// kết thúc (lúc đó ván không còn gửi phase): đúng số in trên thẻ.
+	CardTier   string `json:"cardTier,omitempty"`
+	CardOwned  bool   `json:"cardOwned"`
+	CardRounds int    `json:"cardRounds,omitempty"`
 }
 
 type GamePotions struct {
@@ -1056,6 +1058,7 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 	}
 	if st.Phase == werewolf.PhaseEnded {
 		out.CardOwned = slices.Contains(st.Winners(), v.UID)
+		out.CardRounds = st.Round
 		for _, uid := range sortedPlayers(st) {
 			r := st.Players[uid].Role
 			out.AllRoles = append(out.AllRoles, GameRoleReveal{UID: uid, Name: name(uid), Role: string(r), RoleLabel: roleLabels[r], CardURL: cfg.cards[string(r)]})
