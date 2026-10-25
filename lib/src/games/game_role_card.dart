@@ -23,8 +23,8 @@ const gameCardSize = Size(250, 350);
 const _ink = RunNowGameTokens.nightInk;
 const _gold = RunNowGameTokens.gold;
 
-class _RoleStyle {
-  const _RoleStyle(this.label, this.team, this.accent, this.flavor);
+class GameRoleStyle {
+  const GameRoleStyle(this.label, this.team, this.accent, this.flavor);
 
   final String label;
   final String team;
@@ -34,43 +34,43 @@ class _RoleStyle {
 
 // Mọi vai chung nền mực; vai chỉ khác nhau ở một màu nhấn dịu cho icon và nhãn.
 const _roles = {
-  'wolf': _RoleStyle(
+  'wolf': GameRoleStyle(
     'Sói',
     'Phe Sói',
     RunNowGameTokens.roleWolf,
     'Trăng lên thì cả đàn xỏ giày. Sáng ra lại là đồng nghiệp hiền lành.',
   ),
-  'villager': _RoleStyle(
+  'villager': GameRoleStyle(
     'Dân làng',
     'Phe Dân',
     RunNowGameTokens.roleVillager,
     'Không phép thuật, chỉ có đôi giày và lá phiếu.',
   ),
-  'seer': _RoleStyle(
+  'seer': GameRoleStyle(
     'Tiên tri',
     'Phe Dân',
     RunNowGameTokens.roleSeer,
     'Mỗi đêm nhìn thấu một người. Giữ được bí mật mới khó.',
   ),
-  'guard': _RoleStyle(
+  'guard': GameRoleStyle(
     'Bảo vệ',
     'Phe Dân',
     RunNowGameTokens.roleGuard,
     'Đứng gác cổng làng tới sáng, không ngủ, không than.',
   ),
-  'witch': _RoleStyle(
+  'witch': GameRoleStyle(
     'Phù thuỷ',
     'Phe Dân',
     RunNowGameTokens.roleWitch,
     'Một lọ cứu, một lọ độc. Dùng lúc nào mới là nghề.',
   ),
-  'hunter': _RoleStyle(
+  'hunter': GameRoleStyle(
     'Thợ săn',
     'Phe Dân',
     RunNowGameTokens.roleHunter,
     'Có ngã xuống thì cũng không ngã một mình.',
   ),
-  'cupid': _RoleStyle(
+  'cupid': GameRoleStyle(
     'Cupid',
     'Phe Dân',
     RunNowGameTokens.roleCupid,
@@ -263,7 +263,7 @@ class GameRoleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final r = _roles[role] ?? _roles['villager']!;
+    final r = gameRoleStyle(role);
     final t = gameCardTiers[tier]!;
     final accent = r.accent;
     return GameCardFrame(
@@ -576,7 +576,7 @@ class _Art extends StatelessWidget {
           ),
           CustomPaint(
             size: const Size(76, 76),
-            painter: _RoleIconPainter(role, accent),
+            painter: GameRoleIconPainter(role, accent),
           ),
         ],
       ),
@@ -650,6 +650,9 @@ class GameSun extends StatelessWidget {
     );
   }
 }
+
+/// Tên, phe, màu nhấn và lời dẫn của vai; vai lạ thì như Dân làng.
+GameRoleStyle gameRoleStyle(String role) => _roles[role] ?? _roles['villager']!;
 
 /// Màu nhấn của vai, như trên lá bài; vai lạ thì vàng.
 Color gameRoleAccent(String role) => _roles[role]?.accent ?? _gold;
@@ -844,8 +847,8 @@ class GameCardHillsPainter extends CustomPainter {
 }
 
 /// Icon vai, vẽ lại từ SVG 64×64 của bản thiết kế.
-class _RoleIconPainter extends CustomPainter {
-  const _RoleIconPainter(this.role, this.color);
+class GameRoleIconPainter extends CustomPainter {
+  const GameRoleIconPainter(this.role, this.color);
 
   final String role;
   final Color color;
@@ -953,7 +956,7 @@ class _RoleIconPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_RoleIconPainter old) =>
+  bool shouldRepaint(GameRoleIconPainter old) =>
       old.role != role || old.color != color;
 }
 
