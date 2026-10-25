@@ -1,9 +1,11 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 
 /// Hiển thị ảnh lưu trên Firebase Storage qua `getDownloadURL()` +
-/// `Image.network` — không dùng `Reference.getData()` vì phương thức đó
-/// không được hỗ trợ trên Flutter Web.
+/// `CachedNetworkImage` — không dùng `Reference.getData()` vì phương thức đó
+/// không được hỗ trợ trên Flutter Web. Ảnh lưu xuống máy theo Cache-Control
+/// của object, nên mở lại app không tải lại.
 class StorageImage extends StatefulWidget {
   const StorageImage({
     required this.path,
@@ -95,15 +97,18 @@ class _StorageImageState extends State<StorageImage> {
             ),
           );
         }
-        return Image.network(
-          url,
+        return CachedNetworkImage(
+          imageUrl: url,
           fit: widget.fit,
           width: double.infinity,
           height: double.infinity,
           // Chỉ dùng 1 chiều để decode giữ đúng tỉ lệ (không bóp méo).
-          cacheWidth: widget.cacheWidth,
-          cacheHeight: widget.cacheWidth == null ? widget.cacheHeight : null,
-          errorBuilder: (context, error, stack) =>
+          memCacheWidth: widget.cacheWidth,
+          memCacheHeight: widget.cacheWidth == null ? widget.cacheHeight : null,
+          // Ảnh hiện thẳng như Image.network trước đây, không mờ dần.
+          fadeInDuration: Duration.zero,
+          fadeOutDuration: Duration.zero,
+          errorWidget: (context, url, error) =>
               widget.placeholder ??
               ColoredBox(
                 color: Theme.of(context).colorScheme.surfaceContainerHighest,

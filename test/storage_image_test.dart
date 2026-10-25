@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/widgets/storage_image.dart';
@@ -20,12 +21,12 @@ void main() {
       );
 
       expect(find.text('placeholder'), findsNothing);
-      final image = tester.widget<Image>(find.byType(Image));
+      // Qua cache đĩa: tắt app mở lại thì ảnh đọc từ máy, không tải lại.
       expect(
-        image.image,
-        isA<NetworkImage>().having(
-          (p) => p.url,
-          'url',
+        tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage)),
+        isA<CachedNetworkImage>().having(
+          (w) => w.imageUrl,
+          'imageUrl',
           'https://storage.example.test/oil.jpg',
         ),
       );
