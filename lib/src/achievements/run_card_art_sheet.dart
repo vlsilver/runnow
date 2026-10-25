@@ -91,19 +91,15 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
   @override
   Widget build(BuildContext context) {
     final styles = ref.watch(runCardStylesProvider);
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.88,
-      ),
+    // Cao cố định: co theo nội dung thì đổi nhóm phong cách là sheet nhảy.
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * 0.88,
       child: styles.when(
-        loading: () => const Padding(
-          padding: EdgeInsets.all(40),
-          child: Center(child: CircularProgressIndicator()),
-        ),
+        loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text('Không tải được phong cách: $error'),
               TextButton(
@@ -134,7 +130,6 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
     ];
     final ready = selected != null && (!_hasPhoto || _consent) && !_sending;
     return Column(
-      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
@@ -171,9 +166,8 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
             ],
           ),
         ),
-        Flexible(
+        Expanded(
           child: ListView(
-            shrinkWrap: true,
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
             children: [
               _StyleGrid(

@@ -716,6 +716,24 @@ void main() {
     expect(find.text('Vẽ lại'), findsNothing, reason: 'vừa gửi thì chưa kẹt');
   });
 
+  testWidgets('the style sheet keeps one height whichever group is open', (
+    tester,
+  ) async {
+    // Màn cao để nhóm một phong cách không tự lấp đầy sheet.
+    tester.view.physicalSize = const Size(400, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await _pumpPanel(tester, _Backend(), initial: _card());
+    await _tapText(tester, 'Vẽ tranh nền');
+    final sheet = find.byType(RunCardArtSheet);
+    expect(tester.getSize(sheet).height, 1600 * 0.88);
+
+    await _tapText(tester, 'Anime');
+    expect(find.text('Anime cel'), findsOne);
+    expect(tester.getSize(sheet).height, 1600 * 0.88);
+  });
+
   testWidgets('an uploaded PNG goes up before the draw request', (
     tester,
   ) async {
