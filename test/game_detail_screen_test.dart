@@ -12,8 +12,10 @@ import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_detail_screen.dart';
+import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/theme.dart';
 import 'package:share_plus_platform_interface/share_plus_platform_interface.dart';
 
 import 'support/fake_game_backend.dart';
@@ -585,6 +587,27 @@ void main() {
       expect(
         [sample.title, sample.hero, sample.owner],
         [face.title, face.hero, face.owner],
+      );
+
+      // Sheet mặc theme app, không mượn kính gần trong suốt của theme đêm.
+      final sheetContext = tester.element(find.byType(RunCardSkinSheet));
+      final app = ProviderScope.containerOf(
+        sheetContext,
+      ).read(themeControllerProvider);
+      final glass = Theme.of(
+        sheetContext,
+      ).extension<RunNowPalette>()!.glassStart;
+      expect(
+        glass,
+        buildRunNowTheme(
+          app.element,
+          appearance: app.appearance,
+          darkTone: app.darkTone,
+        ).extension<RunNowPalette>()!.glassStart,
+      );
+      expect(
+        glass,
+        isNot(gameNightTheme().extension<RunNowPalette>()!.glassStart),
       );
       await close(tester);
     });

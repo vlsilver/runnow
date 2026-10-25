@@ -24,8 +24,31 @@ Future<void> showRunCardSkinSheet(
   useSafeArea: true,
   isScrollControlled: true,
   backgroundColor: Colors.transparent,
-  builder: (_) => RunCardSkinSheet(sample: sample ?? _sample()),
+  builder: (_) =>
+      _AppTheme(child: RunCardSkinSheet(sample: sample ?? _sample())),
 );
+
+/// Sheet là cài đặt của app nên luôn mặc theme app, kể cả khi mở từ màn có
+/// theme riêng: kính của theme đêm Ma Sói gần trong suốt, sheet đè lên màn
+/// ván sẽ không đọc được.
+class _AppTheme extends ConsumerWidget {
+  const _AppTheme({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final app = ref.watch(themeControllerProvider);
+    return Theme(
+      data: buildRunNowTheme(
+        app.element,
+        appearance: app.appearance,
+        darkTone: app.darkTone,
+      ),
+      child: child,
+    );
+  }
+}
 
 /// Nhãn ngắn của lựa chọn đã lưu cho dòng cài đặt.
 String runCardSkinLabel(RunCardSkinChoice? choice) => switch (choice) {
