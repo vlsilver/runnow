@@ -5,6 +5,8 @@ import 'package:myrun/src/achievements/run_card.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
+import 'package:myrun/src/games/game_card_viewer.dart';
+import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -17,27 +19,134 @@ String runCardOwnerName(WidgetRef ref) =>
     ) ??
     '3i member';
 
+/// Một thẻ trong bộ: thẻ buổi chạy, hay thẻ Ma Sói của ván phe mình thắng.
+sealed class CollectedCard {
+  const CollectedCard();
+
+  String get id;
+  GameCardTier get tier;
+
+  /// Lúc có thẻ: lật thẻ buổi chạy, hay ván Ma Sói kết thúc.
+  DateTime? get at;
+
+  /// Tên thẻ và dòng phụ cạnh thẻ mới nhất ở Hồ sơ.
+  String get title;
+  String get subtitle;
+
+  /// Nhãn đọc màn hình của thẻ thu nhỏ.
+  String get label;
+
+  AchievementCardData data(String owner);
+
+  /// Xem 3D, khoe từ đó.
+  void open(BuildContext context, AchievementCardData data);
+}
+
+class CollectedRunCard extends CollectedCard {
+  const CollectedRunCard(this.card);
+
+  final RunCard card;
+
+  @override
+  String get id => card.id;
+  @override
+  GameCardTier get tier => card.tier;
+  @override
+  DateTime? get at => card.rolledAt;
+  @override
+  String get title => card.snapshot.name;
+  @override
+  String get subtitle =>
+      '${gameCardTiers[tier]!.label} · ${runCardKm(card.km)} km';
+  @override
+  String get label =>
+      'Thẻ ${gameCardTiers[tier]!.label} ${runCardKm(card.km)} km';
+  @override
+  AchievementCardData data(String owner) => runCardData(card, owner: owner);
+  @override
+  void open(BuildContext context, AchievementCardData data) =>
+      showRunCardViewer(context, card, data);
+}
+
+class CollectedGameCard extends CollectedCard {
+  const CollectedGameCard(this.card);
+
+  final GamePlayerCard card;
+
+  @override
+  String get id => 'masoi-${card.gameId}';
+  @override
+  GameCardTier get tier => card.tier;
+  @override
+  DateTime? get at => card.endedAt;
+  @override
+  String get title => 'Ma Sói · ${card.label}';
+  @override
+  String get subtitle =>
+      '${gameCardTiers[tier]!.label} · ${card.teamLabel} thắng';
+  @override
+  String get label => 'Thẻ Ma Sói ${gameCardTiers[tier]!.label} ${card.label}';
+  @override
+  AchievementCardData data(String owner) => gameCardData(card, owner: owner);
+  @override
+  void open(BuildContext context, AchievementCardData data) =>
+      showGameCardViewer(
+        context,
+        card: card,
+        data: data,
+        secret: false,
+        chips: [gameCardTiers[tier]!.label, 'Ma Sói'],
+      );
+}
+
+/// Cả bộ thẻ, mới có trước. Một nguồn lỗi thì cả bộ báo lỗi chứ không hiện
+/// thiếu.
+final collectedCardsProvider =
+    Provider.autoDispose<AsyncValue<List<CollectedCard>>>((ref) {
+      final runs = ref.watch(runCardsProvider);
+      final games = ref.watch(gameCardsProvider);
+      for (final source in [runs, games]) {
+        if (source case AsyncError(:final error, :final stackTrace)) {
+          return AsyncError(error, stackTrace);
+        }
+      }
+      if (!runs.hasValue || !games.hasValue) return const AsyncLoading();
+      final cards = <CollectedCard>[
+        for (final card in runs.requireValue) CollectedRunCard(card),
+        for (final card in games.requireValue) CollectedGameCard(card),
+      ];
+      // Thẻ thiếu mốc thời gian xếp cuối.
+      final never = DateTime.fromMillisecondsSinceEpoch(0);
+      cards.sort((a, b) => (b.at ?? never).compareTo(a.at ?? never));
+      return AsyncData(cards);
+    });
+
+/// Câu khi bộ thẻ còn trống.
+const collectedCardsEmpty =
+    'Chưa có thẻ nào. Lật thẻ sau buổi chạy, hoặc thắng một ván Ma Sói để có '
+    'thẻ đầu tiên.';
+
 /// Thẻ thu nhỏ theo bề ngang [width]; chạm để xem 3D.
-class RunCardThumb extends StatelessWidget {
-  const RunCardThumb({
+class CollectedCardThumb extends StatelessWidget {
+  const CollectedCardThumb({
     super.key,
     required this.card,
     required this.owner,
     required this.width,
   });
 
-  final RunCard card;
+  final CollectedCard card;
   final String owner;
   final double width;
 
   @override
   Widget build(BuildContext context) {
-    final data = runCardData(card, owner: owner);
+    final data = card.data(owner);
     return Semantics(
       button: true,
-      label: 'Thẻ ${gameCardTiers[card.tier]!.label} ${runCardKm(card.km)} km',
+      label: card.label,
       child: GestureDetector(
-        onTap: () => showRunCardViewer(context, card, data),
+        onTap: () => card.open(context, data),
         child: GameCardScaled(
           width: width,
           size: achievementCardSize,
@@ -48,7 +157,7 @@ class RunCardThumb extends StatelessWidget {
   }
 }
 
-/// Mọi thẻ đã lật, mới nhất trước, lọc theo bậc.
+/// Mọi thẻ đã có, mới nhất trước, lọc theo bậc.
 class RunCardCollectionScreen extends ConsumerStatefulWidget {
   const RunCardCollectionScreen({super.key});
 
@@ -64,7 +173,7 @@ class _RunCardCollectionScreenState
 
   @override
   Widget build(BuildContext context) {
-    final cards = ref.watch(runCardsProvider);
+    final cards = ref.watch(collectedCardsProvider);
     final owner = runCardOwnerName(ref);
     return Scaffold(
       appBar: AppBar(
@@ -75,7 +184,7 @@ class _RunCardCollectionScreenState
             onPressed: () => showRunCardSkinSheet(
               context,
               sample: switch (cards.value) {
-                [final first, ...] => runCardData(first, owner: owner),
+                [final first, ...] => first.data(owner),
                 _ => null,
               },
             ),
@@ -87,16 +196,13 @@ class _RunCardCollectionScreenState
         loading: () => const Center(child: RunNowLoading()),
         error: (error, _) => _Note('Không tải được bộ thẻ: $error'),
         data: (cards) => cards.isEmpty
-            ? const _Note(
-                'Chưa có thẻ nào. Mở một buổi chạy và lật thẻ để bắt đầu bộ '
-                'sưu tập.',
-              )
+            ? const _Note(collectedCardsEmpty)
             : _grid(cards, owner),
       ),
     );
   }
 
-  Widget _grid(List<RunCard> cards, String owner) {
+  Widget _grid(List<CollectedCard> cards, String owner) {
     final muted = Theme.of(
       context,
     ).colorScheme.onSurface.withValues(alpha: 0.6);
@@ -145,7 +251,7 @@ class _RunCardCollectionScreenState
               runSpacing: gap,
               children: [
                 for (final card in shown)
-                  RunCardThumb(card: card, owner: owner, width: width),
+                  CollectedCardThumb(card: card, owner: owner, width: width),
               ],
             );
           },

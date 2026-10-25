@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:myrun/src/achievements/run_card_collection.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
+import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
@@ -78,6 +79,7 @@ void main() {
   Future<_JournalRepository> pumpProfile(
     WidgetTester tester, {
     List<RunCard> cards = const [],
+    List<GamePlayerCard> games = const [],
   }) async {
     tester.view.physicalSize = const Size(420, 4000);
     tester.view.devicePixelRatio = 1.0;
@@ -105,6 +107,7 @@ void main() {
         overrides: [
           activityRepositoryProvider.overrideWithValue(repository),
           runCardsProvider.overrideWith((ref) => Stream.value(cards)),
+          gameCardsProvider.overrideWith((ref) => Stream.value(games)),
           userProfileProvider.overrideWith(
             (ref) => Stream.value(UserProfile.demo),
           ),
@@ -160,12 +163,7 @@ void main() {
   testWidgets('no cards yet says how to get one', (tester) async {
     await pumpProfile(tester);
     expect(find.text('BỘ THẺ'), findsOneWidget);
-    expect(
-      find.text(
-        'Chưa có thẻ nào. Mở một buổi chạy và lật thẻ để bắt đầu bộ sưu tập.',
-      ),
-      findsOneWidget,
-    );
+    expect(find.text(collectedCardsEmpty), findsOneWidget);
   });
 
   testWidgets('the shelf leads the profile with the newest card in 3D', (
@@ -192,21 +190,46 @@ void main() {
     );
   });
 
+  testWidgets('a newer Ma Sói card leads the shelf', (tester) async {
+    await pumpProfile(
+      tester,
+      cards: [_card(2)],
+      games: [
+        GamePlayerCard.fromJson('g1', {
+          'tier': 'epic',
+          'role': 'seer',
+          'team': 'village',
+          'winner': 'village',
+          'alive': true,
+          'rounds': 3,
+          'playerCount': 10,
+          'endedAt': DateTime.utc(2026, 10, 23, 12),
+        }),
+      ],
+    );
+    expect(find.text('2 thẻ'), findsOneWidget);
+    expect(find.text('Ma Sói · Tiên tri'), findsOneWidget);
+    expect(find.text('Siêu hiếm · Phe Dân thắng'), findsOneWidget);
+  });
+
   testWidgets('the shelf shows the ten newest cards and opens the rest', (
     tester,
   ) async {
     await pumpProfile(tester, cards: [for (var n = 1; n <= 12; n++) _card(n)]);
     expect(find.text('12 thẻ'), findsOneWidget);
     List<String> shown() => [
-      for (final t in tester.widgetList<RunCardThumb>(
-        find.byType(RunCardThumb),
+      for (final t in tester.widgetList<CollectedCardThumb>(
+        find.byType(CollectedCardThumb),
       ))
         t.card.id,
     ];
     // Thẻ 1 đứng riêng to ở trên, hàng ngang bắt đầu từ thẻ 2.
     expect(shown().first, 'card-2');
 
-    await tester.drag(find.byType(RunCardThumb).first, const Offset(-3000, 0));
+    await tester.drag(
+      find.byType(CollectedCardThumb).first,
+      const Offset(-3000, 0),
+    );
     await tester.pump();
     expect(shown(), contains('card-10'));
     expect(shown(), isNot(contains('card-11')));

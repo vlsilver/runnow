@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/achievements/run_card_skin_choice.dart';
+import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 
@@ -63,6 +64,30 @@ final runCardsProvider = StreamProvider.autoDispose<List<RunCard>>((ref) {
       .orderBy('rolledAt', descending: true)
       .snapshots()
       .map((snap) => [for (final doc in snap.docs) _cardFrom(doc)]);
+});
+
+/// Thẻ Ma Sói của các ván phe mình thắng, ván mới kết thúc trước. Backend ghi
+/// lúc ván kết thúc, app chỉ đọc.
+final gameCardsProvider = StreamProvider.autoDispose<List<GamePlayerCard>>((
+  ref,
+) {
+  final uid = ref.watch(firebaseUserProvider.select((user) => user.value?.uid));
+  if (uid == null) return Stream.value(const []);
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('gameCards')
+      .orderBy('endedAt', descending: true)
+      .snapshots()
+      .map(
+        (snap) => [
+          for (final doc in snap.docs)
+            GamePlayerCard.fromJson(
+              doc.id,
+              _plain(doc.data()) as Map<String, dynamic>,
+            ),
+        ],
+      );
 });
 
 /// Phong cách vẽ đang bật, giữ suốt phiên để mở lại bảng chọn là hiện ngay.

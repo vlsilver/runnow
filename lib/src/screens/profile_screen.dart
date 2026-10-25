@@ -6,10 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
-import 'package:myrun/src/achievements/run_card.dart';
 import 'package:myrun/src/achievements/run_card_collection.dart';
-import 'package:myrun/src/achievements/run_card_models.dart';
-import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/journey/journey_timeline.dart';
@@ -1107,26 +1104,21 @@ class _JournalSectionState extends ConsumerState<_JournalSection> {
 /// Số thẻ hiện trong Hồ sơ, kể cả thẻ mới nhất; còn lại xem ở màn Bộ thẻ.
 const _shelfCardCount = 10;
 
-/// Bộ thẻ buổi chạy, đặt đầu Hồ sơ: thẻ mới nhất to và 3D, kèm số thẻ theo
+/// Bộ thẻ (buổi chạy và Ma Sói), đặt đầu Hồ sơ: thẻ mới nhất to và 3D, kèm số thẻ theo
 /// bậc, rồi hàng ngang các thẻ trước đó.
 class _CardShelfSection extends ConsumerWidget {
   const _CardShelfSection();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final cards = ref.watch(runCardsProvider);
+    final cards = ref.watch(collectedCardsProvider);
     final count = cards.value?.length ?? 0;
     final Widget body = cards.when(
       loading: () =>
           const RunNowLoading(compact: true, label: 'Đang mở bộ thẻ'),
       error: (error, _) => _Muted('Không tải được bộ thẻ: $error'),
       data: (cards) {
-        if (cards.isEmpty) {
-          return _Muted(
-            'Chưa có thẻ nào. Mở một buổi chạy và lật thẻ để bắt đầu bộ sưu '
-            'tập.',
-          );
-        }
+        if (cards.isEmpty) return _Muted(collectedCardsEmpty);
         final owner = runCardOwnerName(ref);
         final rest = cards.skip(1).take(_shelfCardCount - 1).toList();
         return Column(
@@ -1142,8 +1134,11 @@ class _CardShelfSection extends ConsumerWidget {
                   scrollDirection: Axis.horizontal,
                   itemCount: rest.length,
                   separatorBuilder: (_, _) => const SizedBox(width: 10),
-                  itemBuilder: (context, i) =>
-                      RunCardThumb(card: rest[i], owner: owner, width: 96),
+                  itemBuilder: (context, i) => CollectedCardThumb(
+                    card: rest[i],
+                    owner: owner,
+                    width: 96,
+                  ),
                 ),
               ),
             ],
@@ -1185,14 +1180,14 @@ class _FeaturedCard extends StatelessWidget {
     required this.all,
   });
 
-  final RunCard card;
+  final CollectedCard card;
   final String owner;
-  final List<RunCard> all;
+  final List<CollectedCard> all;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final data = runCardData(card, owner: owner);
+    final data = card.data(owner);
     final counts = <GameCardTier, int>{};
     for (final c in all) {
       counts[c.tier] = (counts[c.tier] ?? 0) + 1;
@@ -1221,7 +1216,7 @@ class _FeaturedCard extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                card.snapshot.name,
+                card.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -1230,8 +1225,7 @@ class _FeaturedCard extends StatelessWidget {
                 ),
               ),
               Text(
-                '${gameCardTiers[card.tier]!.label} · '
-                '${runCardKm(card.km)} km',
+                card.subtitle,
                 style: TextStyle(fontSize: 13, color: palette.textMuted),
               ),
               const SizedBox(height: 14),

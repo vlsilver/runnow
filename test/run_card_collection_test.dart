@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/achievements/run_card_collection.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
+import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/providers.dart';
 
 RunCard _card(String id, String tier, int daysAgo) => RunCard.fromJson({
@@ -19,11 +20,16 @@ RunCard _card(String id, String tier, int daysAgo) => RunCard.fromJson({
   },
 });
 
-Future<void> _pump(WidgetTester tester, List<RunCard> cards) async {
+Future<void> _pump(
+  WidgetTester tester,
+  List<RunCard> cards, {
+  List<GamePlayerCard> games = const [],
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         runCardsProvider.overrideWith((ref) => Stream.value(cards)),
+        gameCardsProvider.overrideWith((ref) => Stream.value(games)),
         userProfileProvider.overrideWith((ref) => Stream.value(null)),
       ],
       child: const MaterialApp(home: RunCardCollectionScreen()),
@@ -34,8 +40,23 @@ Future<void> _pump(WidgetTester tester, List<RunCard> cards) async {
   await tester.pump();
 }
 
+/// Thẻ Ma Sói của ván kết thúc [daysAgo] ngày trước, như doc gameCards.
+GamePlayerCard _game(String id, String tier, int daysAgo) =>
+    GamePlayerCard.fromJson(id, {
+      'tier': tier,
+      'role': 'seer',
+      'team': 'village',
+      'winner': 'village',
+      'alive': true,
+      'rounds': 3,
+      'playerCount': 10,
+      'endedAt': DateTime.utc(2026, 10, 24).subtract(Duration(days: daysAgo)),
+    });
+
 List<String> _shown(WidgetTester tester) => [
-  for (final t in tester.widgetList<RunCardThumb>(find.byType(RunCardThumb)))
+  for (final t in tester.widgetList<CollectedCardThumb>(
+    find.byType(CollectedCardThumb),
+  ))
     t.card.id,
 ];
 
@@ -68,14 +89,54 @@ void main() {
     expect(_shown(tester), ['a', 'b', 'c']);
   });
 
+  testWidgets('Ma Sói cards join the collection by time and can be shown off', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      [_card('a', 'rare', 1), _card('c', 'rare', 3)],
+      games: [_game('g', 'epic', 2)],
+    );
+    expect(_shown(tester), ['a', 'masoi-g', 'c']);
+    expect(find.text('Tất cả · 3'), findsOneWidget);
+    expect(find.text('Siêu hiếm · 1'), findsOneWidget);
+
+    await tester.tap(
+      find.byWidgetPredicate(
+        (w) => w is CollectedCardThumb && w.card.id == 'masoi-g',
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Khoe thẻ'), findsOneWidget);
+  });
+
+  testWidgets('a failing source shows the error, not half the collection', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          runCardsProvider.overrideWith(
+            (ref) => Stream.value([_card('a', 'rare', 1)]),
+          ),
+          gameCardsProvider.overrideWith(
+            (ref) => Stream.error(StateError('permission-denied')),
+          ),
+          userProfileProvider.overrideWith((ref) => Stream.value(null)),
+        ],
+        child: const MaterialApp(home: RunCardCollectionScreen()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(CollectedCardThumb), findsNothing);
+    expect(find.textContaining('Không tải được bộ thẻ'), findsOneWidget);
+  });
+
   testWidgets('an empty collection says how to get a card', (tester) async {
     await _pump(tester, const []);
-    expect(find.byType(RunCardThumb), findsNothing);
-    expect(
-      find.text(
-        'Chưa có thẻ nào. Mở một buổi chạy và lật thẻ để bắt đầu bộ sưu tập.',
-      ),
-      findsOneWidget,
-    );
+    expect(find.byType(CollectedCardThumb), findsNothing);
+    expect(find.text(collectedCardsEmpty), findsOneWidget);
   });
 }
