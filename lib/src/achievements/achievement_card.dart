@@ -491,21 +491,31 @@ class _Front extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.baseline,
                         textBaseline: TextBaseline.alphabetic,
                         children: [
-                          Text(
-                            data.hero,
-                            style: TextStyle(
-                              fontFamily: _condensed,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 38,
-                              height: 0.9,
-                              color: skin.hero,
-                              shadows: [
-                                Shadow(
-                                  color: skin.textShadow,
-                                  offset: Offset(0, 2),
-                                  blurRadius: 10,
+                          // Hero có thể là tên vai backend gửi, dài bao nhiêu
+                          // không biết trước: quá bề ngang thì thu nhỏ chứ không
+                          // tràn.
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                data.hero,
+                                maxLines: 1,
+                                style: TextStyle(
+                                  fontFamily: _condensed,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 38,
+                                  height: 0.9,
+                                  color: skin.hero,
+                                  shadows: [
+                                    Shadow(
+                                      color: skin.textShadow,
+                                      offset: Offset(0, 2),
+                                      blurRadius: 10,
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                           const SizedBox(width: 3),
