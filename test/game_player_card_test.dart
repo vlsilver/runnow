@@ -66,28 +66,26 @@ void main() {
   });
 
   group('GamePlayerCard.fromMe', () {
-    GameDetail detail({
-      String status = 'running',
-      String phase = 'r2/day',
-      String? winner,
-    }) => GameDetail.fromJson({
+    // Backend chỉ gửi phase khi ván đang chạy.
+    GameDetail detail({String? phase, String? winner}) => GameDetail.fromJson({
       'id': 'g1',
-      'status': status,
+      'status': phase == null ? 'ended' : 'running',
       'playerCount': 9,
-      'phase': {'key': phase},
+      if (phase != null) 'phase': {'key': phase},
       'winner': ?winner,
     });
 
     test('a winner owns the card and sits on the winning side', () {
       // Sói trong cặp đôi phe ba: thắng thì phe là cặp đôi, không phải phe Sói.
       final card = GamePlayerCard.fromMe(
-        detail: detail(status: 'ended', phase: 'r5/day', winner: 'lovers'),
+        detail: detail(winner: 'lovers'),
         me: GameMe.fromJson({
           'status': 'ended',
           'alive': true,
           'role': 'wolf',
           'cardTier': 'mythic',
           'cardOwned': true,
+          'cardRounds': 5,
         }),
       );
 
@@ -102,25 +100,27 @@ void main() {
 
     test('a loser does not own the card and keeps the side of the role', () {
       final card = GamePlayerCard.fromMe(
-        detail: detail(status: 'ended', phase: 'r4/night', winner: 'village'),
+        detail: detail(winner: 'village'),
         me: GameMe.fromJson({
           'status': 'ended',
           'alive': false,
           'role': 'wolf',
           'cardTier': 'rare',
           'cardOwned': false,
+          'cardRounds': 4,
         }),
       );
 
       expect(card.owned, isFalse);
       expect(card.team, 'wolves');
       expect(card.winner, 'village');
+      expect(card.round, 4);
       expect(card.result, 'Thua');
     });
 
     test('a running game shows no winner even if one is sent', () {
       final card = GamePlayerCard.fromMe(
-        detail: detail(winner: 'village'),
+        detail: detail(phase: 'r2/day', winner: 'village'),
         me: GameMe.fromJson({
           'status': 'running',
           'alive': true,

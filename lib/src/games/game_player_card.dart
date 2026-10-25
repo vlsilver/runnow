@@ -82,7 +82,7 @@ class GamePlayerCard {
           : 'village',
       winner: ended ? detail.winner : null,
       alive: me.alive,
-      round: gameRoundOf(detail.phase?.key),
+      round: ended ? me.cardRounds : gameRoundOf(detail.phase?.key),
       playerCount: detail.playerCount,
       deathRound: player?.deathRound,
       testMode: detail.testMode,

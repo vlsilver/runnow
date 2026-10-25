@@ -452,6 +452,7 @@ class GameMe {
     this.teamKm,
     this.cardTier,
     this.cardOwned = false,
+    this.cardRounds = 0,
   });
 
   factory GameMe.fromJson(Map<String, dynamic> json) {
@@ -472,6 +473,7 @@ class GameMe {
       teamKm: _obj(json['teamKm'], GameTeamKm.fromJson),
       cardTier: _optString(json['cardTier']),
       cardOwned: json['cardOwned'] == true,
+      cardRounds: _int(json['cardRounds']),
     );
   }
 
@@ -508,6 +510,9 @@ class GameMe {
   /// Ván đã kết thúc và người xem ở phe thắng: thẻ đã nằm trong
   /// users/{uid}/gameCards, được khoe.
   final bool cardOwned;
+
+  /// Số vòng ván đã đi, chỉ có khi ván đã kết thúc (lúc đó không còn phase).
+  final int cardRounds;
 }
 
 class GamePotions {
