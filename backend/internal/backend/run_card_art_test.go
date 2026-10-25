@@ -26,7 +26,7 @@ func TestRunCardArtBudgetFieldDefaultsToTenUsd(t *testing.T) {
 func TestRunCardArtPromptWithoutPhoto(t *testing.T) {
 	s, _ := artStyleFor("linocut", artKindRun)
 	got := runCardArtPrompt(map[string]any{"sportType": "TrailRun", "startedAt": "2026-10-24T11:30:00Z", "distanceMeters": 2500.0, "name": "Chạy với crush"}, s, false)
-	want := "Create an image: a single full-bleed illustration of a lone runner in mid-stride on a winding forest trail at dusk, capturing the feeling of a short, brisk run. " +
+	want := "Create an image: a single full-bleed scene of a lone runner in mid-stride on a winding forest trail at dusk, capturing the feeling of a short, brisk run. " +
 		"Render it as a linocut print: bold carved black lines, white gouge marks, high contrast and one accent color. " +
 		"Vertical composition. The runner fills the middle of the frame; the top fifth is calm, open background and the bottom quarter is quiet, low-detail ground. " + artConstraintsBlock
 	if got != want {

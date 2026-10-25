@@ -312,7 +312,9 @@ func runCardArtPrompt(snapshot map[string]any, style artStyle, photo bool) strin
 			"Vertical composition. Keep the main subject in the middle of the frame; the top fifth and the bottom quarter stay calm and low-detail.")
 	}
 	started, _ := time.Parse(time.RFC3339, stringValue(snapshot["startedAt"]))
-	task := fmt.Sprintf("Create an image: a single full-bleed illustration of a lone runner in mid-stride %s %s, capturing the feeling of %s.",
+	// "scene" chứ không "illustration": chữ chỉ chất liệu ở đây kéo các phong
+	// cách ảnh chụp, 3D, hologram về tranh minh hoạ; chất liệu để "Render it as" quyết.
+	task := fmt.Sprintf("Create an image: a single full-bleed scene of a lone runner in mid-stride %s %s, capturing the feeling of %s.",
 		runCardPlace(stringValue(snapshot["sportType"])), runCardTimeOfDay(started), runCardFeel(number(snapshot["distanceMeters"])))
 	return artPrompt(task, style, "Vertical composition. The runner fills the middle of the frame; the top fifth is calm, open background and the bottom quarter is quiet, low-detail ground.")
 }

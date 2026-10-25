@@ -49,7 +49,7 @@ func TestDrawArtStyleExampleUsesTheRunCardPromptWithoutPhoto(t *testing.T) {
 		t.Fatalf("ảnh = %q", img)
 	}
 	// Buổi dựng sẵn: chạy đường vắng, 6h30 sáng giờ VN, 10 km.
-	want := "Create an image: a single full-bleed illustration of a lone runner in mid-stride along a quiet open road in the early morning light, capturing the feeling of a long run."
+	want := "Create an image: a single full-bleed scene of a lone runner in mid-stride along a quiet open road in the early morning light, capturing the feeling of a long run."
 	if !strings.HasPrefix(prompt, want) || !strings.Contains(prompt, "a cel-shaded anime illustration") {
 		t.Fatalf("prompt = %q", prompt)
 	}
