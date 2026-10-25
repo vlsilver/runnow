@@ -478,135 +478,155 @@ class _Front extends StatelessWidget {
               ),
             ),
           ),
-        const _Shade(),
         Positioned(
-          top: 12,
-          left: 13,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(data.kind, style: _label(accent, 11)),
-              const SizedBox(height: 3),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
+          top: 0,
+          left: 0,
+          right: 0,
+          child: _Scrim.top(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(13, 12, 12, 0),
+              // Khối km quyết định lớp phủ cao bao nhiêu; nhãn bậc nằm đè góc
+              // phải như trước, chữ dài không đẩy nhau.
+              child: Stack(
                 children: [
-                  Text(
-                    data.hero,
-                    style: const TextStyle(
-                      fontFamily: _condensed,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 38,
-                      height: 0.9,
-                      color: _T.hero,
-                      shadows: [
-                        Shadow(
-                          color: _T.textShadow,
-                          offset: Offset(0, 2),
-                          blurRadius: 10,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(data.kind, style: _label(accent, 11)),
+                      const SizedBox(height: 3),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            data.hero,
+                            style: const TextStyle(
+                              fontFamily: _condensed,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 38,
+                              height: 0.9,
+                              color: _T.hero,
+                              shadows: [
+                                Shadow(
+                                  color: _T.textShadow,
+                                  offset: Offset(0, 2),
+                                  blurRadius: 10,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            data.heroUnit,
+                            style: TextStyle(
+                              fontFamily: _condensed,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              letterSpacing: 1.04,
+                              color: _T.hero.withValues(alpha: 0.85),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  Positioned(
+                    top: 1,
+                    right: 0,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Row(
+                          children: [
+                            for (
+                              var i = 0;
+                              i < gameCardTiers[data.tier]!.gems;
+                              i++
+                            )
+                              Padding(
+                                padding: const EdgeInsets.only(left: 5),
+                                child: _Gem(color: accent),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          gameCardTiers[data.tier]!.label.toUpperCase(),
+                          style: _label(accent, 9.5),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 3),
-                  Text(
-                    data.heroUnit,
-                    style: TextStyle(
+                ],
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: _Scrim.bottom(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(13, 0, 13, 11),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: data.owner,
+                          style: TextStyle(color: accent),
+                        ),
+                        TextSpan(
+                          text: ' · ${data.serial}',
+                          style: TextStyle(color: _ink.withValues(alpha: 0.62)),
+                        ),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
                       fontFamily: _condensed,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                      letterSpacing: 1.04,
-                      color: _T.hero.withValues(alpha: 0.85),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11,
+                      letterSpacing: 1.54,
                     ),
                   ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        Positioned(
-          top: 13,
-          right: 12,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Row(
-                children: [
-                  for (var i = 0; i < gameCardTiers[data.tier]!.gems; i++)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 5),
-                      child: _Gem(color: accent),
+                  const SizedBox(height: 3),
+                  _Title(text: data.title, look: look, seconds: seconds),
+                  const SizedBox(height: 4),
+                  Text(
+                    data.desc,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      height: 1.38,
+                      fontStyle: FontStyle.italic,
+                      color: _ink.withValues(alpha: 0.84),
                     ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                gameCardTiers[data.tier]!.label.toUpperCase(),
-                style: _label(accent, 9.5),
-              ),
-            ],
-          ),
-        ),
-        Positioned(
-          left: 13,
-          right: 13,
-          bottom: 11,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(
-                      text: data.owner,
-                      style: TextStyle(color: accent),
-                    ),
-                    TextSpan(
-                      text: ' · ${data.serial}',
-                      style: TextStyle(color: _ink.withValues(alpha: 0.62)),
-                    ),
-                  ],
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontFamily: _condensed,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 11,
-                  letterSpacing: 1.54,
-                ),
-              ),
-              const SizedBox(height: 3),
-              _Title(text: data.title, look: look, seconds: seconds),
-              const SizedBox(height: 4),
-              Text(
-                data.desc,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 10.5,
-                  height: 1.38,
-                  fontStyle: FontStyle.italic,
-                  color: _ink.withValues(alpha: 0.84),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 8, bottom: 6),
-                child: Opacity(
-                  opacity: 0.7,
-                  child: Container(
-                    height: 1,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [accent, accent.withValues(alpha: 0)],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 6),
+                    child: Opacity(
+                      opacity: 0.7,
+                      child: Container(
+                        height: 1,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [accent, accent.withValues(alpha: 0)],
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
+                  _Foot(left: data.meta, right: '3I RUN', accent: accent),
+                ],
               ),
-              _Foot(left: data.meta, right: '3I RUN', accent: accent),
-            ],
+            ),
           ),
         ),
         if (data.stamp case final stamp?)
@@ -811,56 +831,72 @@ class _Gem extends StatelessWidget {
   }
 }
 
-/// Lớp tối trên và dưới để chữ đọc được trên mọi ảnh.
-class _Shade extends StatelessWidget {
-  const _Shade();
+/// Lớp tối chỉ nằm sau khối chữ để chữ đọc được trên mọi tranh: đậm nhất ở
+/// mép thẻ, nhạt dần qua vùng chữ, rồi tan hết ngay ngoài chữ. Cao theo khối
+/// chữ (tên hai dòng thì phủ cao hơn), phần tranh không có chữ để nguyên.
+class _Scrim extends StatelessWidget {
+  const _Scrim.top({required this.child})
+    : _fromTop = true,
+      _edge = 0.66,
+      _inner = 0.34,
+      _fade = 40;
+
+  const _Scrim.bottom({required this.child})
+    : _fromTop = false,
+      _edge = 0.96,
+      _inner = 0.62,
+      _fade = 48;
+
+  final Widget child;
+  final bool _fromTop;
+
+  /// Độ tối ở mép thẻ và ở mép trong của khối chữ.
+  final double _edge;
+  final double _inner;
+
+  /// Dải tan từ mép trong của khối chữ về trong suốt.
+  final double _fade;
 
   @override
   Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Column(
-        // Không stretch thì DecoratedBox không con co về rộng 0, không vẽ gì.
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Ảnh sáng (tranh lụa, giấy) làm nhãn bạc chìm, nên phía trên
-          // tối đậm hơn bản thiết kế web một chút.
-          Expanded(
-            flex: 32,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    _T.shade.withValues(alpha: 0.78),
-                    _T.shade.withValues(alpha: 0.45),
-                    _T.shade.withValues(alpha: 0),
-                  ],
-                  stops: const [0, 0.45, 1],
-                ),
-              ),
-            ),
-          ),
-          const Spacer(flex: 18),
-          Expanded(
-            flex: 50,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [
-                    _T.shade.withValues(alpha: 0.96),
-                    _T.shade.withValues(alpha: 0.84),
-                    _T.shade.withValues(alpha: 0),
-                  ],
-                  stops: const [0, 0.42, 1],
-                ),
-              ),
-            ),
-          ),
-        ],
+    final outward = _fromTop ? Alignment.topCenter : Alignment.bottomCenter;
+    final inward = _fromTop ? Alignment.bottomCenter : Alignment.topCenter;
+    final text = DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: outward,
+          end: inward,
+          colors: [
+            _T.shade.withValues(alpha: _edge),
+            _T.shade.withValues(alpha: _inner),
+          ],
+        ),
       ),
+      child: child,
+    );
+    final fade = SizedBox(
+      height: _fade,
+      child: IgnorePointer(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: outward,
+              end: inward,
+              colors: [
+                _T.shade.withValues(alpha: _inner),
+                _T.shade.withValues(alpha: _inner * 0.4),
+                _T.shade.withValues(alpha: 0),
+              ],
+              stops: const [0, 0.5, 1],
+            ),
+          ),
+        ),
+      ),
+    );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: _fromTop ? [text, fade] : [fade, text],
     );
   }
 }

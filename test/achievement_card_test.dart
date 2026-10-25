@@ -142,6 +142,8 @@ void main() {
     expect(luma(0.85, 0.06), lessThan(128), reason: 'nhãn bậc');
     expect(luma(0.15, 0.94), lessThan(40), reason: 'chân thẻ');
     expect(luma(0.5, 0.42), greaterThan(200), reason: 'giữa ảnh');
+    // Lớp phủ chỉ nằm sau chữ, nên phía trên khối chữ dưới vẫn là ảnh.
+    expect(luma(0.5, 0.62), greaterThan(200), reason: 'trên khối chữ dưới');
   });
 
   testWidgets('only legendary and mythic cards keep animating', (tester) async {
