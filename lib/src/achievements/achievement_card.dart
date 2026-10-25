@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/theme.dart';
 
@@ -11,7 +12,6 @@ import 'package:myrun/src/theme.dart';
 const achievementCardSize = Size(300, 420);
 
 typedef _T = RunNowAchievementTokens;
-const _ink = RunNowGameTokens.nightInk;
 const _condensed = 'Barlow Condensed';
 
 /// Dữ liệu một thẻ thành tích. Ảnh full-art phủ cả thẻ, chữ và số do app vẽ
@@ -70,19 +70,16 @@ enum _Shine { none, rainbow, aurora }
 /// sáng, để nhìn thoáng là biết thẻ hiếm cỡ nào.
 class _Look {
   const _Look({
-    required this.accent,
     required this.frameWidth,
     required this.frame,
     required this.frameStops,
     required this.holo,
     this.aura,
     this.corner,
-    this.title,
     this.holoStrength = 0,
     this.shine = _Shine.none,
   });
 
-  final Color accent;
   final double frameWidth;
   final List<Color> frame;
   final List<double>? frameStops;
@@ -90,7 +87,6 @@ class _Look {
   final double holoStrength;
   final Color? aura;
   final List<Color>? corner;
-  final List<Color>? title;
 
   /// Cầu vồng ở bậc Huyền thoại, cực quang ở bậc Thần thoại.
   final _Shine shine;
@@ -117,23 +113,19 @@ const _aurora = [
 
 const _looks = {
   GameCardTier.common: _Look(
-    accent: _T.accentCommon,
     frameWidth: 6,
     frame: [_T.graphite1, _T.graphite2, _T.graphite3, _T.graphite4],
     frameStops: [0, 0.38, 0.66, 1],
     holo: _Holo.none,
   ),
   GameCardTier.rare: _Look(
-    accent: _T.accentRare,
     frameWidth: 7,
     frame: [_T.silver1, _T.silver2, _T.silver3, _T.silver4, _T.silver5],
     frameStops: [0, 0.26, 0.48, 0.7, 1],
     holo: _Holo.sheen,
     aura: _T.auraRare,
-    title: [_T.titleSilver1, _T.titleSilver2, _T.titleSilver3],
   ),
   GameCardTier.superRare: _Look(
-    accent: _T.accentEpic,
     frameWidth: 8,
     frame: [_T.gold1, _T.gold2, _T.gold3, _T.gold4, _T.gold5],
     frameStops: [0, 0.24, 0.47, 0.69, 1],
@@ -141,10 +133,8 @@ const _looks = {
     holoStrength: 0.24,
     aura: _T.auraEpic,
     corner: [_T.cornerGoldLight, _T.cornerGoldDeep],
-    title: [_T.titleGold1, _T.titleGold2, _T.titleGold3],
   ),
   GameCardTier.legendary: _Look(
-    accent: _T.accentLegendary,
     frameWidth: 9,
     frame: _prism,
     frameStops: null,
@@ -154,7 +144,6 @@ const _looks = {
     shine: _Shine.rainbow,
   ),
   GameCardTier.mythic: _Look(
-    accent: _T.accentMythic,
     frameWidth: 10,
     frame: _aurora,
     frameStops: null,
@@ -163,10 +152,6 @@ const _looks = {
     shine: _Shine.aurora,
   ),
 };
-
-/// Màu nhấn của bậc, để phần riêng của từng loại thẻ (mặt sau, con dấu) cùng
-/// tông với khung.
-Color achievementAccent(GameCardTier tier) => _looks[tier]!.accent;
 
 /// Thẻ thành tích vẽ ở [achievementCardSize]. [pose] là độ nghiêng (-1..1 mỗi
 /// chiều) mà viền, holo, ảnh và vệt sáng chạy theo. Thẻ Huyền thoại và Thần
@@ -236,6 +221,7 @@ class _AchievementCardState extends State<AchievementCard>
   Widget build(BuildContext context) {
     final data = widget.data;
     final look = _looks[data.tier]!;
+    final skin = RunCardSkin.of(context);
     final pose = widget.pose;
     final w = look.frameWidth;
     return SizedBox.fromSize(
@@ -249,10 +235,11 @@ class _AchievementCardState extends State<AchievementCard>
             child: ClipRRect(
               borderRadius: BorderRadius.circular(21 - w),
               child: widget.back
-                  ? _Back(data: data, look: look, pose: pose)
+                  ? _Back(data: data, skin: skin, pose: pose)
                   : _Front(
                       data: data,
                       look: look,
+                      skin: skin,
                       pose: pose,
                       seconds: _seconds,
                     ),
@@ -264,7 +251,7 @@ class _AchievementCardState extends State<AchievementCard>
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(21 - w),
-                  border: Border.all(color: _T.hairline),
+                  border: Border.all(color: skin.hairline),
                 ),
               ),
             ),
@@ -436,12 +423,14 @@ class _Front extends StatelessWidget {
   const _Front({
     required this.data,
     required this.look,
+    required this.skin,
     required this.pose,
     required this.seconds,
   });
 
   final AchievementCardData data;
   final _Look look;
+  final RunCardSkin skin;
   final Offset pose;
   final double seconds;
 
@@ -449,11 +438,14 @@ class _Front extends StatelessWidget {
   Widget build(BuildContext context) {
     final light = _lightAt(pose);
     final shine = look.shine;
-    final accent = look.accent;
+    final accent = skin.accent(data.tier);
+    final ink = skin.ink;
+    TextStyle label(Color color, double size) =>
+        _label(color, size, skin.textShadow);
     return Stack(
       fit: StackFit.expand,
       children: [
-        const ColoredBox(color: _T.field),
+        ColoredBox(color: skin.field),
         // Ảnh tràn ra 10px mỗi bên và lệch nhẹ theo độ nghiêng, tạo chiều sâu.
         Positioned(
           left: -10,
@@ -483,6 +475,7 @@ class _Front extends StatelessWidget {
           left: 0,
           right: 0,
           child: _Scrim.top(
+            color: skin.shade,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(13, 12, 12, 0),
               // Khối km quyết định lớp phủ cao bao nhiêu; nhãn bậc nằm đè góc
@@ -492,7 +485,7 @@ class _Front extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(data.kind, style: _label(accent, 11)),
+                      Text(data.kind, style: label(accent, 11)),
                       const SizedBox(height: 3),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -500,15 +493,15 @@ class _Front extends StatelessWidget {
                         children: [
                           Text(
                             data.hero,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontFamily: _condensed,
                               fontWeight: FontWeight.w800,
                               fontSize: 38,
                               height: 0.9,
-                              color: _T.hero,
+                              color: skin.hero,
                               shadows: [
                                 Shadow(
-                                  color: _T.textShadow,
+                                  color: skin.textShadow,
                                   offset: Offset(0, 2),
                                   blurRadius: 10,
                                 ),
@@ -523,7 +516,7 @@ class _Front extends StatelessWidget {
                               fontWeight: FontWeight.w700,
                               fontSize: 13,
                               letterSpacing: 1.04,
-                              color: _T.hero.withValues(alpha: 0.85),
+                              color: skin.hero.withValues(alpha: 0.85),
                             ),
                           ),
                         ],
@@ -552,7 +545,7 @@ class _Front extends StatelessWidget {
                         const SizedBox(height: 6),
                         Text(
                           gameCardTiers[data.tier]!.label.toUpperCase(),
-                          style: _label(accent, 9.5),
+                          style: label(accent, 9.5),
                         ),
                       ],
                     ),
@@ -567,6 +560,7 @@ class _Front extends StatelessWidget {
           right: 0,
           bottom: 0,
           child: _Scrim.bottom(
+            color: skin.shade,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(13, 0, 13, 11),
               child: Column(
@@ -582,7 +576,7 @@ class _Front extends StatelessWidget {
                         ),
                         TextSpan(
                           text: ' · ${data.serial}',
-                          style: TextStyle(color: _ink.withValues(alpha: 0.62)),
+                          style: TextStyle(color: ink.withValues(alpha: 0.62)),
                         ),
                       ],
                     ),
@@ -596,7 +590,13 @@ class _Front extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 3),
-                  _Title(text: data.title, look: look, seconds: seconds),
+                  _Title(
+                    text: data.title,
+                    tier: data.tier,
+                    look: look,
+                    skin: skin,
+                    seconds: seconds,
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     data.desc,
@@ -606,7 +606,7 @@ class _Front extends StatelessWidget {
                       fontSize: 10.5,
                       height: 1.38,
                       fontStyle: FontStyle.italic,
-                      color: _ink.withValues(alpha: 0.84),
+                      color: ink.withValues(alpha: 0.84),
                     ),
                   ),
                   Padding(
@@ -623,7 +623,12 @@ class _Front extends StatelessWidget {
                       ),
                     ),
                   ),
-                  _Foot(left: data.meta, right: '3I RUN', accent: accent),
+                  _Foot(
+                    left: data.meta,
+                    right: '3I RUN',
+                    accent: accent,
+                    ink: ink,
+                  ),
                 ],
               ),
             ),
@@ -638,7 +643,7 @@ class _Front extends StatelessWidget {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _T.stamp,
+                color: skin.stamp,
                 border: Border.all(
                   color: accent,
                   width: 1.5,
@@ -669,23 +674,27 @@ class _Front extends StatelessWidget {
   }
 }
 
-TextStyle _label(Color color, double size) => TextStyle(
+TextStyle _label(Color color, double size, Color shadow) => TextStyle(
   fontFamily: _condensed,
   fontWeight: FontWeight.w700,
   fontSize: size,
   letterSpacing: size * 0.16,
   color: color,
-  shadows: const [
-    Shadow(color: _T.textShadow, offset: Offset(0, 1), blurRadius: 4),
-  ],
+  shadows: [Shadow(color: shadow, offset: const Offset(0, 1), blurRadius: 4)],
 );
 
 class _Foot extends StatelessWidget {
-  const _Foot({required this.left, required this.right, required this.accent});
+  const _Foot({
+    required this.left,
+    required this.right,
+    required this.accent,
+    required this.ink,
+  });
 
   final String left;
   final String right;
   final Color accent;
+  final Color ink;
 
   @override
   Widget build(BuildContext context) {
@@ -702,7 +711,7 @@ class _Foot extends StatelessWidget {
             left,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: style.copyWith(color: _ink.withValues(alpha: 0.66)),
+            style: style.copyWith(color: ink.withValues(alpha: 0.66)),
           ),
         ),
         const SizedBox(width: 8),
@@ -722,10 +731,18 @@ class _Foot extends StatelessWidget {
 /// Tên thẻ: trắng ở bậc Thường, ánh bạc, ánh vàng, rồi cầu vồng chạy ở bậc
 /// Huyền thoại. Bóng đổ vẽ riêng bên dưới để không bị nhuộm màu gradient.
 class _Title extends StatelessWidget {
-  const _Title({required this.text, required this.look, required this.seconds});
+  const _Title({
+    required this.text,
+    required this.tier,
+    required this.look,
+    required this.skin,
+    required this.seconds,
+  });
 
   final String text;
+  final GameCardTier tier;
   final _Look look;
+  final RunCardSkin skin;
   final double seconds;
 
   static const _style = TextStyle(
@@ -746,32 +763,22 @@ class _Title extends StatelessWidget {
 
     final shadow = line(
       Colors.transparent,
-      shadows: const [
-        Shadow(color: _T.textShadow, offset: Offset(0, 2), blurRadius: 6),
+      shadows: [
+        Shadow(
+          color: skin.textShadow,
+          offset: const Offset(0, 2),
+          blurRadius: 6,
+        ),
       ],
     );
     final running = switch (look.shine) {
-      _Shine.rainbow => const [
-        _T.titlePink,
-        _T.titleAmber,
-        _T.titleMint,
-        _T.titleSky,
-        _T.titleViolet,
-        _T.titlePink,
-      ],
-      _Shine.aurora => const [
-        _T.titleIce,
-        _T.titleTeal,
-        _T.titleBlue,
-        _T.titleLilac,
-        _T.titleTeal,
-        _T.titleIce,
-      ],
+      _Shine.rainbow => skin.rainbow,
+      _Shine.aurora => skin.aurora,
       _Shine.none => null,
     };
-    final colors = look.title;
+    final colors = skin.titles[tier];
     if (colors == null && running == null) {
-      return Stack(children: [shadow, line(_ink)]);
+      return Stack(children: [shadow, line(skin.ink)]);
     }
     return Stack(
       children: [
@@ -835,18 +842,19 @@ class _Gem extends StatelessWidget {
 /// mép thẻ, nhạt dần qua vùng chữ, rồi tan hết ngay ngoài chữ. Cao theo khối
 /// chữ (tên hai dòng thì phủ cao hơn), phần tranh không có chữ để nguyên.
 class _Scrim extends StatelessWidget {
-  const _Scrim.top({required this.child})
+  const _Scrim.top({required this.color, required this.child})
     : _fromTop = true,
       _edge = 0.66,
       _inner = 0.34,
       _fade = 40;
 
-  const _Scrim.bottom({required this.child})
+  const _Scrim.bottom({required this.color, required this.child})
     : _fromTop = false,
       _edge = 0.96,
       _inner = 0.62,
       _fade = 48;
 
+  final Color color;
   final Widget child;
   final bool _fromTop;
 
@@ -867,8 +875,8 @@ class _Scrim extends StatelessWidget {
           begin: outward,
           end: inward,
           colors: [
-            _T.shade.withValues(alpha: _edge),
-            _T.shade.withValues(alpha: _inner),
+            color.withValues(alpha: _edge),
+            color.withValues(alpha: _inner),
           ],
         ),
       ),
@@ -883,9 +891,9 @@ class _Scrim extends StatelessWidget {
               begin: outward,
               end: inward,
               colors: [
-                _T.shade.withValues(alpha: _inner),
-                _T.shade.withValues(alpha: _inner * 0.4),
-                _T.shade.withValues(alpha: 0),
+                color.withValues(alpha: _inner),
+                color.withValues(alpha: _inner * 0.4),
+                color.withValues(alpha: 0),
               ],
               stops: const [0, 0.5, 1],
             ),
@@ -1106,10 +1114,10 @@ class _StarPainter extends CustomPainter {
 
 /// Mặt sau: huy hiệu 3I RUN, ngày nhận và bậc.
 class _Back extends StatelessWidget {
-  const _Back({required this.data, required this.look, required this.pose});
+  const _Back({required this.data, required this.skin, required this.pose});
 
   final AchievementCardData data;
-  final _Look look;
+  final RunCardSkin skin;
   final Offset pose;
 
   @override
@@ -1123,28 +1131,29 @@ class _Back extends StatelessWidget {
         ],
       );
     }
-    final accent = look.accent;
+    final accent = skin.accent(data.tier);
+    final ink = skin.ink;
     return Stack(
       fit: StackFit.expand,
       children: [
-        const DecoratedBox(
+        DecoratedBox(
           decoration: BoxDecoration(
             gradient: RadialGradient(
-              center: Alignment(0, -0.2),
+              center: const Alignment(0, -0.2),
               radius: 0.9,
-              colors: [_T.backTop, _T.backBottom],
-              stops: [0, 0.72],
+              colors: [skin.backTop, skin.backBottom],
+              stops: const [0, 0.72],
             ),
           ),
         ),
-        const DecoratedBox(
+        DecoratedBox(
           decoration: BoxDecoration(
             gradient: SweepGradient(
-              center: Alignment(0, -0.16),
+              center: const Alignment(0, -0.16),
               endAngle: 12 * math.pi / 180,
               tileMode: TileMode.repeated,
-              colors: [_T.backRay, _T.backRay, Colors.transparent],
-              stops: [0, 0.5, 0.5],
+              colors: [skin.backRay, skin.backRay, Colors.transparent],
+              stops: const [0, 0.5, 0.5],
             ),
           ),
         ),
@@ -1168,9 +1177,9 @@ class _Back extends StatelessWidget {
                   ),
                   // Bóng Flutter vẽ cả dưới hộp, nên lấp nền trước để vòng
                   // nhấn chỉ còn 1px ở mép ngoài như bản thiết kế.
-                  const BoxShadow(color: _T.backTop, spreadRadius: 6),
-                  const BoxShadow(color: _T.emblemRing, spreadRadius: 6),
-                  const BoxShadow(color: _T.backTop),
+                  BoxShadow(color: skin.backTop, spreadRadius: 6),
+                  BoxShadow(color: skin.emblemRing, spreadRadius: 6),
+                  BoxShadow(color: skin.backTop),
                 ],
               ),
               child: Column(
@@ -1195,7 +1204,7 @@ class _Back extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         fontSize: 12,
                         letterSpacing: 4.8,
-                        color: _ink.withValues(alpha: 0.8),
+                        color: ink.withValues(alpha: 0.8),
                       ),
                     ),
                   ),
@@ -1205,7 +1214,7 @@ class _Back extends StatelessWidget {
             const SizedBox(height: 14),
             Text(
               'THẺ THÀNH TÍCH',
-              style: _label(_ink.withValues(alpha: 0.7), 11),
+              style: _label(ink.withValues(alpha: 0.7), 11, skin.textShadow),
             ),
           ],
         ),
@@ -1217,6 +1226,7 @@ class _Back extends StatelessWidget {
             left: data.date,
             right: gameCardTiers[data.tier]!.label.toUpperCase(),
             accent: accent,
+            ink: ink,
           ),
         ),
         GameCardGlare(at: _lightAt(pose), strength: 0.38),

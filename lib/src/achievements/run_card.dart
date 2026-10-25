@@ -4,17 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:myrun/src/achievements/achievement_card.dart';
+import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/models.dart';
-import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/map_tiles.dart';
 import 'package:myrun/src/widgets/photo_viewer.dart';
 import 'package:myrun/src/widgets/route_map.dart' show routeBounds;
 
-typedef _T = RunNowAchievementTokens;
-const _ink = RunNowGameTokens.nightInk;
 const _condensed = 'Barlow Condensed';
 
 /// Thẻ chỉ dành cho buổi chạy bộ. Server còn chặn buổi dưới 500 m và buổi
@@ -89,36 +87,8 @@ AchievementCardData runCardData(RunCard card, {required String owner}) {
 double? _paceOf(int movingSeconds, double km) =>
     km > 0 && movingSeconds > 0 ? movingSeconds / km : null;
 
-/// Màu đường chạy của bậc: nền giữa, nền mép và màu phát sáng.
-(Color, Color, Color) _routeColors(GameCardTier tier) => switch (tier) {
-  GameCardTier.common => (
-    _T.routeFieldCommon,
-    _T.routeFieldCommonEdge,
-    _T.routeGlowCommon,
-  ),
-  GameCardTier.rare => (
-    _T.routeFieldRare,
-    _T.routeFieldRareEdge,
-    _T.routeGlowRare,
-  ),
-  GameCardTier.superRare => (
-    _T.routeFieldEpic,
-    _T.routeFieldEpicEdge,
-    _T.routeGlowEpic,
-  ),
-  GameCardTier.legendary => (
-    _T.routeFieldLegendary,
-    _T.routeFieldLegendaryEdge,
-    _T.routeGlowLegendary,
-  ),
-  GameCardTier.mythic => (
-    _T.routeFieldMythic,
-    _T.routeFieldMythicEdge,
-    _T.routeGlowMythic,
-  ),
-};
-
-Color runCardGlow(GameCardTier tier) => _routeColors(tier).$3;
+/// Màu phát sáng của bậc ở ngoài thẻ (bảng tỉ lệ), không theo bộ màu thẻ.
+Color runCardGlow(GameCardTier tier) => RunCardSkin.classic.glow(tier);
 
 /// Chiếu kinh/vĩ độ lên mặt phẳng rồi đặt giữa [box], giữ đúng tỉ lệ hình
 /// đường chạy. Đường chỉ có một điểm hay đứng yên thì trả rỗng.
@@ -171,21 +141,30 @@ class RunRouteArt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: _RouteArtPainter(points: points, tier: tier),
+      painter: _RouteArtPainter(
+        points: points,
+        tier: tier,
+        skin: RunCardSkin.of(context),
+      ),
       child: const SizedBox.expand(),
     );
   }
 }
 
 class _RouteArtPainter extends CustomPainter {
-  _RouteArtPainter({required this.points, required this.tier});
+  _RouteArtPainter({
+    required this.points,
+    required this.tier,
+    required this.skin,
+  });
 
   final List<LatLng> points;
   final GameCardTier tier;
+  final RunCardSkin skin;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final (field, edge, glow) = _routeColors(tier);
+    final (field, edge, glow) = skin.routes[tier]!;
     final whole = Offset.zero & size;
     canvas.drawRect(
       whole,
@@ -200,7 +179,7 @@ class _RouteArtPainter extends CustomPainter {
     final contour = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1
-      ..color = _T.routeContour;
+      ..color = skin.routeContour;
     for (var i = 0; i < 7; i++) {
       final y = size.height * (0.16 + i * 0.1);
       canvas.drawPath(
@@ -233,11 +212,11 @@ class _RouteArtPainter extends CustomPainter {
     canvas
       ..drawPath(path, _stroke(glow.withValues(alpha: 0.22), 16))
       ..drawPath(path, _stroke(glow.withValues(alpha: 0.45), 7))
-      ..drawPath(path, _stroke(_T.routeLine, 2.6));
+      ..drawPath(path, _stroke(skin.routeLine, 2.6));
 
-    final ring = _stroke(_T.routeLine, 2.4);
+    final ring = _stroke(skin.routeLine, 2.4);
     canvas
-      ..drawCircle(route.first, 6, Paint()..color = _T.routeStart)
+      ..drawCircle(route.first, 6, Paint()..color = skin.routeStart)
       ..drawCircle(route.first, 6, ring)
       ..drawCircle(route.last, 7, Paint()..color = glow)
       ..drawCircle(route.last, 7, ring);
@@ -245,7 +224,9 @@ class _RouteArtPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_RouteArtPainter old) =>
-      old.tier != tier || !identical(old.points, points);
+      old.tier != tier ||
+      !identical(old.skin, skin) ||
+      !identical(old.points, points);
 }
 
 /// Con dấu tròn: đường chạy thu nhỏ, đặt trên tranh để thẻ vẫn là của buổi
@@ -258,18 +239,24 @@ class RunRouteStamp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final skin = RunCardSkin.of(context);
     return CustomPaint(
-      painter: _StampPainter(points: points, glow: runCardGlow(tier)),
+      painter: _StampPainter(
+        points: points,
+        glow: skin.glow(tier),
+        line: skin.routeLine,
+      ),
       child: const SizedBox.expand(),
     );
   }
 }
 
 class _StampPainter extends CustomPainter {
-  _StampPainter({required this.points, required this.glow});
+  _StampPainter({required this.points, required this.glow, required this.line});
 
   final List<LatLng> points;
   final Color glow;
+  final Color line;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -278,12 +265,12 @@ class _StampPainter extends CustomPainter {
     final path = _pathOf(route);
     canvas
       ..drawPath(path, _stroke(glow.withValues(alpha: 0.35), 6))
-      ..drawPath(path, _stroke(_T.routeLine, 2.2));
+      ..drawPath(path, _stroke(line, 2.2));
   }
 
   @override
   bool shouldRepaint(_StampPainter old) =>
-      old.glow != glow || !identical(old.points, points);
+      old.glow != glow || old.line != line || !identical(old.points, points);
 }
 
 /// Đoạn lẻ cuối ngắn hơn thế này thì bỏ khỏi biểu đồ: pace của vài chục mét
@@ -306,8 +293,9 @@ class RunCardBack extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final snap = card.snapshot;
-    final accent = achievementAccent(card.tier);
-    final glow = runCardGlow(card.tier);
+    final skin = RunCardSkin.of(context);
+    final accent = skin.accent(card.tier);
+    final glow = skin.glow(card.tier);
     final paces = runCardSplitPaces(snap.splits);
     final start = (snap.startedAt ?? card.rolledAt ?? DateTime.now()).toLocal();
     final foot = TextStyle(
@@ -315,7 +303,7 @@ class RunCardBack extends StatelessWidget {
       fontWeight: FontWeight.w600,
       fontSize: 10,
       letterSpacing: 1.2,
-      color: _ink.withValues(alpha: 0.66),
+      color: skin.ink.withValues(alpha: 0.66),
     );
     final brand = foot.copyWith(
       fontWeight: FontWeight.w800,
@@ -323,7 +311,7 @@ class RunCardBack extends StatelessWidget {
       color: accent,
     );
     return ColoredBox(
-      color: _T.dataBack,
+      color: skin.dataBack,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(8, 10, 8, 12),
         child: Column(
@@ -351,16 +339,20 @@ class RunCardBack extends StatelessWidget {
             if (snap.route.length > 1)
               Expanded(
                 flex: 11,
-                child: _BackMap(points: snap.route, glow: glow),
+                child: _BackMap(points: snap.route, glow: glow, skin: skin),
               ),
             if (paces.length > 1) ...[
               const SizedBox(height: 10),
-              _PaceHeader(paces: paces),
+              _PaceHeader(paces: paces, skin: skin),
               const SizedBox(height: 6),
               Expanded(
                 flex: 4,
                 child: CustomPaint(
-                  painter: _PaceChartPainter(paces: paces, glow: glow),
+                  painter: _PaceChartPainter(
+                    paces: paces,
+                    glow: glow,
+                    skin: skin,
+                  ),
                   child: const SizedBox.expand(),
                 ),
               ),
@@ -371,14 +363,16 @@ class RunCardBack extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Row(
                 children: [
-                  _BackStat('KM', runCardKm(card.km)),
+                  _BackStat('KM', runCardKm(card.km), skin),
                   _BackStat(
                     'THỜI GIAN',
                     formatDuration(snap.movingTimeSeconds),
+                    skin,
                   ),
                   _BackStat(
                     'PACE /KM',
                     _pace(_paceOf(snap.movingTimeSeconds, card.km) ?? 0),
+                    skin,
                   ),
                 ],
               ),
@@ -410,10 +404,15 @@ class RunCardBack extends StatelessWidget {
 /// Bản đồ OSM tối, đứng yên, khung vừa đường chạy. Ghi công OSM in thẳng lên
 /// thẻ vì ảnh khoe không bấm được.
 class _BackMap extends StatelessWidget {
-  const _BackMap({required this.points, required this.glow});
+  const _BackMap({
+    required this.points,
+    required this.glow,
+    required this.skin,
+  });
 
   final List<LatLng> points;
   final Color glow;
+  final RunCardSkin skin;
 
   @override
   Widget build(BuildContext context) {
@@ -423,7 +422,7 @@ class _BackMap extends StatelessWidget {
     return Container(
       foregroundDecoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _T.dataMapEdge),
+        border: Border.all(color: skin.dataMapEdge),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(10),
@@ -437,13 +436,13 @@ class _BackMap extends StatelessWidget {
                     padding: const EdgeInsets.all(20),
                     maxZoom: 16,
                   ),
-                  backgroundColor: _T.dataBack,
+                  backgroundColor: skin.dataBack,
                   interactionOptions: const InteractionOptions(
                     flags: InteractiveFlag.none,
                   ),
                 ),
                 children: [
-                  mapTileLayer(context, dark: true),
+                  mapTileLayer(context, dark: skin.darkMap),
                   PolylineLayer(
                     polylines: [
                       Polyline(
@@ -453,14 +452,14 @@ class _BackMap extends StatelessWidget {
                       ),
                       Polyline(
                         points: points,
-                        color: _T.routeLine,
+                        color: skin.routeLine,
                         strokeWidth: 3,
                       ),
                     ],
                   ),
                   MarkerLayer(
                     markers: [
-                      _dot(points.first, _T.routeStart, 10),
+                      _dot(points.first, skin.routeStart, 10),
                       _dot(points.last, glow, 12),
                     ],
                   ),
@@ -472,10 +471,10 @@ class _BackMap extends StatelessWidget {
               bottom: 4,
               child: Text(
                 '© $credit',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 7,
-                  color: _T.dataCredit,
-                  shadows: [Shadow(color: _T.textShadow, blurRadius: 2)],
+                  color: skin.dataCredit,
+                  shadows: [Shadow(color: skin.textShadow, blurRadius: 2)],
                 ),
               ),
             ),
@@ -493,16 +492,17 @@ class _BackMap extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: fill,
-        border: Border.all(color: _T.routeLine, width: 2),
+        border: Border.all(color: skin.routeLine, width: 2),
       ),
     ),
   );
 }
 
 class _PaceHeader extends StatelessWidget {
-  const _PaceHeader({required this.paces});
+  const _PaceHeader({required this.paces, required this.skin});
 
   final List<double> paces;
+  final RunCardSkin skin;
 
   @override
   Widget build(BuildContext context) {
@@ -521,7 +521,7 @@ class _PaceHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
-          Text('PACE MỖI KM', style: label(_T.dataLabel)),
+          Text('PACE MỖI KM', style: label(skin.dataLabel)),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -529,7 +529,7 @@ class _PaceHeader extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.end,
-              style: label(_T.hero),
+              style: label(skin.hero),
             ),
           ),
         ],
@@ -540,16 +540,21 @@ class _PaceHeader extends StatelessWidget {
 
 /// Pace từng km: km nhanh hơn thì cao hơn, chấm sáng ở km nhanh nhất.
 class _PaceChartPainter extends CustomPainter {
-  _PaceChartPainter({required this.paces, required this.glow});
+  _PaceChartPainter({
+    required this.paces,
+    required this.glow,
+    required this.skin,
+  });
 
   final List<double> paces;
   final Color glow;
+  final RunCardSkin skin;
 
   @override
   void paint(Canvas canvas, Size size) {
     final area = Rect.fromLTRB(12, 2, size.width - 12, size.height - 2);
     final grid = Paint()
-      ..color = _T.dataGrid
+      ..color = skin.dataGrid
       ..strokeWidth = 1;
     for (final y in [area.top, area.center.dy, area.bottom]) {
       canvas.drawLine(Offset(area.left, y), Offset(area.right, y), grid);
@@ -584,7 +589,7 @@ class _PaceChartPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeJoin = StrokeJoin.round
           ..strokeWidth = 2
-          ..color = _T.routeLine,
+          ..color = skin.routeLine,
       );
     var fast = 0;
     for (var i = 1; i < paces.length; i++) {
@@ -592,19 +597,22 @@ class _PaceChartPainter extends CustomPainter {
     }
     canvas
       ..drawCircle(at(fast), 4.5, Paint()..color = glow)
-      ..drawCircle(at(fast), 4.5, _stroke(_T.routeLine, 2));
+      ..drawCircle(at(fast), 4.5, _stroke(skin.routeLine, 2));
   }
 
   @override
   bool shouldRepaint(_PaceChartPainter old) =>
-      old.glow != glow || !identical(old.paces, paces);
+      old.glow != glow ||
+      !identical(old.skin, skin) ||
+      !identical(old.paces, paces);
 }
 
 class _BackStat extends StatelessWidget {
-  const _BackStat(this.label, this.value);
+  const _BackStat(this.label, this.value, this.skin);
 
   final String label;
   final String value;
+  final RunCardSkin skin;
 
   @override
   Widget build(BuildContext context) {
@@ -615,12 +623,12 @@ class _BackStat extends StatelessWidget {
           Text(
             value,
             maxLines: 1,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: _condensed,
               fontWeight: FontWeight.w800,
               fontSize: 20,
               height: 1,
-              color: _T.hero,
+              color: skin.hero,
             ),
           ),
           const SizedBox(height: 2),
@@ -631,7 +639,7 @@ class _BackStat extends StatelessWidget {
               fontWeight: FontWeight.w700,
               fontSize: 9,
               letterSpacing: 1.4,
-              color: _ink.withValues(alpha: 0.6),
+              color: skin.ink.withValues(alpha: 0.6),
             ),
           ),
         ],

@@ -6,6 +6,7 @@ import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card.dart';
 import 'package:myrun/src/achievements/run_card_art_sheet.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
+import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/achievements/run_card_share.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
@@ -394,12 +395,14 @@ class RunCardFaceDown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const label = TextStyle(
+    final skin = RunCardSkin.of(context);
+    final mark = skin.accent(GameCardTier.common);
+    final label = TextStyle(
       fontFamily: _condensed,
       fontWeight: FontWeight.w700,
       fontSize: 11,
       letterSpacing: 1.8,
-      color: _T.accentCommon,
+      color: mark,
     );
     return SizedBox.fromSize(
       size: achievementCardSize,
@@ -421,12 +424,12 @@ class RunCardFaceDown extends StatelessWidget {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(15),
             child: DecoratedBox(
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 gradient: RadialGradient(
-                  center: Alignment(0, -0.2),
+                  center: const Alignment(0, -0.2),
                   radius: 0.9,
-                  colors: [_T.backTop, _T.backBottom],
-                  stops: [0, 0.72],
+                  colors: [skin.backTop, skin.backBottom],
+                  stops: const [0, 0.72],
                 ),
               ),
               child: Stack(
@@ -437,9 +440,9 @@ class RunCardFaceDown extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('BUỔI CHẠY', style: label),
+                        Text('BUỔI CHẠY', style: label),
                         const Spacer(),
-                        if (failure == null) ...const [
+                        if (failure == null) ...[
                           Center(
                             child: Text(
                               '?',
@@ -448,11 +451,11 @@ class RunCardFaceDown extends StatelessWidget {
                                 fontWeight: FontWeight.w800,
                                 fontSize: 120,
                                 height: 1,
-                                color: _T.accentCommon,
+                                color: mark,
                               ),
                             ),
                           ),
-                          SizedBox(height: 8),
+                          const SizedBox(height: 8),
                           Center(
                             child: Text('LẬT ĐỂ XEM ĐỘ HIẾM', style: label),
                           ),
@@ -460,12 +463,12 @@ class RunCardFaceDown extends StatelessWidget {
                         const Spacer(),
                         Text(
                           '${runCardKm(km)} KM',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontFamily: _condensed,
                             fontWeight: FontWeight.w800,
                             fontSize: 30,
                             height: 1,
-                            color: _T.hero,
+                            color: skin.hero,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -473,16 +476,17 @@ class RunCardFaceDown extends StatelessWidget {
                           title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w800,
-                            color: _T.hero,
+                            color: skin.hero,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  if (failure case final failure?) _FailVeil(failure),
+                  if (failure case final failure?)
+                    _FailVeil(failure, skin: skin),
                 ],
               ),
             ),
@@ -496,29 +500,30 @@ class RunCardFaceDown extends StatelessWidget {
 /// Màn tối phủ cả mặt lá úp khi buổi chạy không ra thẻ, icon và chữ to ở
 /// giữa để nhìn là biết, không phải đọc dòng nhỏ bên dưới.
 class _FailVeil extends StatelessWidget {
-  const _FailVeil(this.text);
+  const _FailVeil(this.text, {required this.skin});
 
   final String text;
+  final RunCardSkin skin;
 
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: _T.failVeil,
+      color: skin.failVeil,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.heart_broken_rounded, size: 84, color: _T.failInk),
+          Icon(Icons.heart_broken_rounded, size: 84, color: skin.failInk),
           const SizedBox(height: 12),
           Text(
             text,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: _condensed,
               fontWeight: FontWeight.w800,
               fontSize: 40,
               height: 1,
               letterSpacing: 1.2,
-              color: _T.failInk,
+              color: skin.failInk,
             ),
           ),
         ],
