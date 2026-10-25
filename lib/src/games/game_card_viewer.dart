@@ -381,6 +381,11 @@ class TiltFlipCardState extends State<TiltFlipCard>
   }
 }
 
+/// Lá ở [pose], [turn] đang quay mặt sau ra ngoài thì [tiltFlipFace] dựng mặt
+/// sau, còn không thì dựng mặt trước.
+bool tiltFlipShowsBack({required Offset pose, required double turn}) =>
+    math.cos(pose.dx * gameCardMaxTilt + turn) < 0;
+
 /// Lá đặt theo độ nghiêng [pose] (-1..1 mỗi chiều) và góc lật [turn] (radian
 /// quanh trục dọc: 0 là mặt trước, π là mặt sau). [captureKey] gắn vào mặt
 /// trước để chụp ảnh khoe.
@@ -395,7 +400,7 @@ Widget tiltFlipFace({
 }) {
   final ry = pose.dx * gameCardMaxTilt + turn;
   final rx = -pose.dy * gameCardMaxTilt;
-  final showBack = math.cos(ry) < 0;
+  final showBack = tiltFlipShowsBack(pose: pose, turn: turn);
   return Transform(
     alignment: Alignment.center,
     transform: Matrix4.identity()

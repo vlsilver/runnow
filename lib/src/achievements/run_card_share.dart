@@ -20,7 +20,7 @@ import 'package:path_provider/path_provider.dart';
 /// Ba file tạo một lần rồi giữ trong máy cho các lần khoe sau.
 
 /// Đổi số này khi cách vẽ thẻ hay cách ghi GIF đổi, để cache cũ không dùng nữa.
-const _shareVersion = 1;
+const _shareVersion = 2;
 
 const _gifFrameCount = 36;
 const _gifFrameMs = 80;
@@ -214,6 +214,7 @@ class RunCardShareScreen extends ConsumerStatefulWidget {
 
 class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
   final _stageKey = GlobalKey();
+  final _backKey = GlobalKey();
   RunCardShareFiles? _files;
   Object? _error;
   bool _recording = false;
@@ -431,8 +432,10 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
     ],
   );
 
-  /// Lá đang được ghi, kèm mặt sau dựng sẵn ngoài màn để tile bản đồ tải
-  /// trước khi lá lật tới.
+  /// Lá đang được ghi. Mặt sau là một element duy nhất mang [_backKey]: lá
+  /// quay mặt trước thì nó nằm ngoài màn, lá lật thì nó chuyển lên sân khấu
+  /// mà giữ nguyên state. Dựng mới lúc lật thì bản đồ phải tải tile và mờ dần
+  /// từ đầu, khung chụp ngay sau đó mất bản đồ.
   Widget _stage() {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -441,18 +444,21 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
           constraints.maxWidth * 0.8,
           (constraints.maxHeight - 60) * base.width / base.height * 0.8,
         );
-        Widget face(Offset pose, {bool back = false}) =>
-            AchievementCard(data: widget.data, pose: pose, back: back);
+        Widget back(Offset pose) => KeyedSubtree(
+          key: _backKey,
+          child: AchievementCard(data: widget.data, pose: pose, back: true),
+        );
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Offstage(
-              child: GameCardScaled(
-                width: width,
-                size: base,
-                child: face(Offset.zero, back: true),
+            if (!tiltFlipShowsBack(pose: _pose, turn: _turn))
+              Offstage(
+                child: GameCardScaled(
+                  width: width,
+                  size: base,
+                  child: back(Offset.zero),
+                ),
               ),
-            ),
             RepaintBoundary(
               key: _stageKey,
               child: ColoredBox(
@@ -460,8 +466,9 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
                 child: Padding(
                   padding: EdgeInsets.all(width * 0.08),
                   child: tiltFlipFace(
-                    front: (pose) => face(pose),
-                    back: (pose) => face(pose, back: true),
+                    front: (pose) =>
+                        AchievementCard(data: widget.data, pose: pose),
+                    back: back,
                     width: width,
                     cardSize: base,
                     pose: _pose,
