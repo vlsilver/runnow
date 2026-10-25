@@ -20,11 +20,14 @@ import 'package:path_provider/path_provider.dart';
 /// Ba file tạo một lần rồi giữ trong máy cho các lần khoe sau.
 
 /// Đổi số này khi cách vẽ thẻ hay cách ghi GIF đổi, để cache cũ không dùng nữa.
-const _shareVersion = 2;
+const _shareVersion = 3;
 
 const _gifFrameCount = 36;
 const _gifFrameMs = 80;
-const _gifWidthPx = 360.0;
+
+/// 360 px thì chữ và viền nhoè khi xem toàn màn; 540 px gần như không khác
+/// ảnh gốc, file thẻ thật khoảng 2,5 MB.
+const _gifWidthPx = 540.0;
 const _stillPixelRatio = 3.0;
 
 /// Chờ tranh nền và tile bản đồ mặt sau tải xong trước khi chụp. Mạng chậm
@@ -134,8 +137,9 @@ class CardGifFrames {
 /// Ghép các khung thành GIF lặp mãi. Chạy lâu (lượng tử màu từng khung), nên
 /// gọi qua compute.
 Uint8List encodeCardGif(CardGifFrames f) {
-  // Bỏ dither: 36 khung cỡ thật encode nhanh gần gấp đôi và file nhẹ hơn
-  // khoảng một phần ba; neural giữ màu glow mượt hơn octree.
+  // Bỏ dither: với 36 khung thẻ thật ở 540 px, dither encode chậm gấp ba và
+  // file nặng thêm khoảng 60% mà nhìn gần như không khác; neural giữ màu glow
+  // mượt hơn octree.
   final encoder = img.GifEncoder(
     repeat: 0,
     quantizerType: img.QuantizerType.neural,
