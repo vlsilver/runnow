@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
+import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/models.dart';
@@ -75,12 +76,17 @@ void main() {
     expect(find.text('Chia sẻ poster'), findsNothing);
   });
 
-  testWidgets('a run not flipped yet invites to flip, without a card', (
-    tester,
-  ) async {
+  testWidgets('a run not flipped yet shows the card face down; a tap opens '
+      'the sheet to flip it', (tester) async {
     await _pump(tester, _detail(ActivityKind.run));
-    expect(find.text('Lật để xem độ hiếm. Mỗi buổi một lần.'), findsOneWidget);
+    expect(find.byType(RunCardFaceDown), findsOneWidget);
     expect(find.byType(TiltFlipCard), findsNothing);
+    expect(find.byTooltip('Khoe thẻ'), findsNothing);
+
+    await tester.tap(find.byType(RunCardFaceDown));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('SHARE // ACTIVITY'), findsOneWidget);
   });
 
   testWidgets('a flipped card shows on the page and taps flip its faces', (
@@ -102,6 +108,17 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 700));
     expect(showsBack(), isFalse);
+  });
+
+  testWidgets('the share icon on the card opens the card sheet', (
+    tester,
+  ) async {
+    await _pump(tester, _detail(ActivityKind.run), card: _card);
+    expect(find.text('Khoe thẻ'), findsNothing);
+    await tester.tap(find.byTooltip('Khoe thẻ'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('SHARE // ACTIVITY'), findsOneWidget);
   });
 
   // Ngoài thẻ không còn gì để chia sẻ, nên buổi không có thẻ thì không có nút.

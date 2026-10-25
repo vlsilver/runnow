@@ -63,7 +63,7 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
     final view = ref.watch(runCardViewProvider(_id));
     final km = (widget.activity.distanceMeters / 100).round() / 10;
     final faceDown = _CardFrame(
-      child: _FaceDown(km: km, title: widget.activity.name),
+      child: RunCardFaceDown(km: km, title: widget.activity.name),
     );
     return view.when(
       loading: () => Column(
@@ -164,7 +164,7 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
         if (_justRolled)
           _FlipReveal(
             from: _CardFrame(
-              child: _FaceDown(km: km, title: card.snapshot.name),
+              child: RunCardFaceDown(km: km, title: card.snapshot.name),
             ),
             to: shown,
           )
@@ -336,8 +336,8 @@ class _CardFrame extends StatelessWidget {
 }
 
 /// Thẻ úp: chưa biết bậc nên khung than chì trơn, dấu hỏi ở giữa.
-class _FaceDown extends StatelessWidget {
-  const _FaceDown({required this.km, required this.title});
+class RunCardFaceDown extends StatelessWidget {
+  const RunCardFaceDown({required this.km, required this.title, super.key});
 
   final double km;
   final String title;

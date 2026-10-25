@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card.dart';
-import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/activity_eligibility.dart';
@@ -113,7 +112,7 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                           hasRunCard(item.summary)) ...[
                         const SizedBox(height: 12),
                         _RunCardEntry(
-                          activityId: item.summary.id,
+                          activity: item.summary,
                           onOpen: () => _openShareComposer(item),
                         ),
                       ],
@@ -1438,104 +1437,122 @@ class _FallbackMetric extends StatelessWidget {
   }
 }
 
-/// Thẻ buổi chạy ngay trên màn buổi chạy: chưa lật thì mời lật (mở sheet
-/// Khoe), lật rồi thì hiện luôn lá 3D, chạm để lật hai mặt.
+/// Thẻ buổi chạy ngay trên màn buổi chạy: chưa lật thì hiện lá úp, chạm để
+/// mở sheet lật; lật rồi thì hiện luôn lá 3D, chạm để lật hai mặt.
 class _RunCardEntry extends ConsumerWidget {
-  const _RunCardEntry({required this.activityId, required this.onOpen});
+  const _RunCardEntry({required this.activity, required this.onOpen});
 
-  final String activityId;
+  final ActivitySummary activity;
   final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final palette = context.runNowPalette;
-    final card = ref.watch(runCardProvider(activityId)).value;
-    if (card != null) {
-      final owner =
-          ref.watch(userProfileProvider).asData?.value?.displayName ??
-          '3i member';
-      return _RunCardSection(card: card, owner: owner, onOpen: onOpen);
-    }
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: GlassPanel(
-        borderRadius: 14,
-        child: ListTile(
+    final card = ref.watch(runCardProvider(activity.id)).value;
+    if (card == null) {
+      return _RunCardSection(
+        detail: 'Chưa lật',
+        hint: 'Chạm để lật · mỗi buổi một lần',
+        card: (width) => GestureDetector(
           onTap: onOpen,
-          leading: Icon(Icons.style_outlined, color: palette.secondary),
-          title: const Text('Thẻ buổi chạy'),
-          subtitle: const Text('Lật để xem độ hiếm. Mỗi buổi một lần.'),
-          trailing: const Icon(Icons.chevron_right_rounded),
+          child: GameCardScaled(
+            width: width,
+            size: achievementCardSize,
+            child: RunCardFaceDown(
+              km: (activity.distanceMeters / 100).round() / 10,
+              title: activity.name,
+            ),
+          ),
         ),
+      );
+    }
+    final owner =
+        ref.watch(userProfileProvider).asData?.value?.displayName ??
+        '3i member';
+    final data = runCardData(card, owner: owner);
+    return _RunCardSection(
+      detail: '${gameCardTiers[card.tier]!.label} · ${runCardKm(card.km)} km',
+      hint: 'Kéo để xoay · chạm để lật',
+      onShare: onOpen,
+      card: (width) => TiltFlipCard(
+        front: (pose) => AchievementCard(data: data, pose: pose),
+        back: (pose) => AchievementCard(data: data, pose: pose, back: true),
+        width: width,
+        cardSize: achievementCardSize,
       ),
     );
   }
 }
 
+/// Khung chung của khối thẻ, cùng khuôn với các khối biểu đồ bên dưới: tràn
+/// ngang, góc vuông.
 class _RunCardSection extends StatelessWidget {
   const _RunCardSection({
+    required this.detail,
+    required this.hint,
     required this.card,
-    required this.owner,
-    required this.onOpen,
+    this.onShare,
   });
 
-  final RunCard card;
-  final String owner;
-  final VoidCallback onOpen;
+  final String detail;
+  final String hint;
+  final Widget Function(double width) card;
+  final VoidCallback? onShare;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final muted = Theme.of(
-      context,
-    ).colorScheme.onSurface.withValues(alpha: 0.6);
-    final data = runCardData(card, owner: owner);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: GlassPanel(
-        borderRadius: 14,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-        child: Column(
-          children: [
-            Row(
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final muted = onSurface.withValues(alpha: 0.6);
+    return GlassPanel(
+      borderRadius: 0,
+      padding: const EdgeInsets.fromLTRB(16, 6, 6, 16),
+      child: Column(
+        children: [
+          // Cao bằng nhau dù có icon share hay không, để lật xong thẻ không
+          // nhảy chỗ.
+          SizedBox(
+            height: 48,
+            child: Row(
               children: [
                 Icon(Icons.style, size: 18, color: palette.secondary),
                 const SizedBox(width: 8),
-                const Expanded(child: Text('Thẻ buổi chạy')),
-                Text(
-                  '${gameCardTiers[card.tier]!.label} · '
-                  '${runCardKm(card.km)} km',
-                  style: TextStyle(color: muted, fontSize: 13),
+                Expanded(
+                  child: Text(
+                    'THẺ BUỔI CHẠY',
+                    style: TextStyle(
+                      color: onSurface,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.1,
+                    ),
+                  ),
                 ),
+                Text(detail, style: TextStyle(color: muted, fontSize: 13)),
+                if (onShare case final onShare?)
+                  IconButton(
+                    onPressed: onShare,
+                    tooltip: 'Khoe thẻ',
+                    icon: const Icon(Icons.ios_share, size: 20),
+                  )
+                else
+                  const SizedBox(width: 10),
               ],
             ),
-            const SizedBox(height: 16),
-            LayoutBuilder(
-              builder: (context, constraints) => TiltFlipCard(
-                front: (pose) => AchievementCard(data: data, pose: pose),
-                back: (pose) =>
-                    AchievementCard(data: data, pose: pose, back: true),
-                width: math.min(constraints.maxWidth * 0.72, 260),
-                cardSize: achievementCardSize,
-              ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: LayoutBuilder(
+              builder: (context, constraints) =>
+                  card(math.min(constraints.maxWidth * 0.72, 260)),
             ),
-            const SizedBox(height: 14),
-            Text(
-              'Kéo để xoay · chạm để lật',
-              style: TextStyle(color: muted, fontSize: 12),
-            ),
-            const SizedBox(height: 6),
-            TextButton.icon(
-              onPressed: onOpen,
-              icon: const Icon(Icons.ios_share, size: 18),
-              label: Text(
-                card.art?.status == RunCardArtStatus.done
-                    ? 'Khoe thẻ'
-                    : 'Khoe · vẽ tranh nền',
-              ),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: Text(hint, style: TextStyle(color: muted, fontSize: 12)),
+          ),
+        ],
       ),
     );
   }
