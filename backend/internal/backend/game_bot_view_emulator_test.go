@@ -98,7 +98,8 @@ func TestEmulatorBotWerewolfShowsOnlyPublicGame(t *testing.T) {
 		t.Fatalf("game = %s", raw)
 	}
 
-	// 20h V2 lên giàn. Người lên giàn và người chết bấm thì không tính.
+	// 20h V2 (2 đề cử) và V3 (1 đề cử) lên giàn, mỗi người một phiên. Người lên
+	// giàn và người chết bấm thì không tính.
 	g.advance(time.Date(2026, 10, 16, 20, 0, 0, 0, vietnam))
 	at = time.Date(2026, 10, 16, 20, 30, 0, 0, vietnam)
 	for uid, choice := range map[string]string{"v1": ww.ChoiceHang, "w1": ww.ChoiceSpare, "v2": ww.ChoiceHang, "v4": ww.ChoiceHang} {
@@ -116,13 +117,17 @@ func TestEmulatorBotWerewolfShowsOnlyPublicGame(t *testing.T) {
 	}
 	v, raw = botWerewolfAt(t, g, at)
 	noRoleExcept(t, raw, "Dân")
-	if v.Game.OnTrial != "V2" || !reflect.DeepEqual(v.Game.Votes, map[string][]string{"Treo": {"V1"}, "Tha": {"W1"}}) || v.Game.Nominations != nil {
+	if !reflect.DeepEqual(v.Game.OnTrial, []string{"V2", "V3"}) || len(v.Game.Trials) != 2 || v.Game.Nominations != nil {
 		t.Fatalf("game = %s", raw)
 	}
-	if got := sortedCopy(v.Game.NotChosenYet); !reflect.DeepEqual(got, []string{"GUARD", "HUNTER", "SEER", "V3", "W2", "WITCH"}) {
+	if tr := v.Game.Trials; tr[0].Nominee != "V2" || !reflect.DeepEqual(tr[0].Votes, map[string][]string{"Treo": {"V1"}, "Tha": {"W1"}}) || tr[1].Nominee != "V3" || len(tr[1].Votes) != 0 {
+		t.Fatalf("game = %s", raw)
+	}
+	// Chưa ai bấm ở phiên V3, nên ai sống cũng còn ít nhất một phiên chưa bấm.
+	if got := sortedCopy(v.Game.NotChosenYet); !reflect.DeepEqual(got, []string{"GUARD", "HUNTER", "SEER", "V1", "V2", "V3", "W1", "W2", "WITCH"}) {
 		t.Fatalf("notChosenYet = %v", got)
 	}
-	f := v.Game.VoteForecast
+	f := v.Game.Trials[0].VoteForecast
 	if f == nil || f.Voters != 8 || f.CountedIfNow != 6 || !reflect.DeepEqual(f.LoseVote, []string{"V1"}) || !reflect.DeepEqual(sortedCopy(f.DrawAmong), []string{"SEER", "W1"}) || f.DrawLose != 1 {
 		t.Fatalf("voteForecast = %+v", f)
 	}
@@ -131,7 +136,7 @@ func TestEmulatorBotWerewolfShowsOnlyPublicGame(t *testing.T) {
 	km["seer"] = 1000
 	km["w1"] = 0
 	v, _ = botWerewolfAt(t, g, at)
-	if f := v.Game.VoteForecast; !reflect.DeepEqual(sortedCopy(f.LoseVote), []string{"V1", "W1"}) || f.DrawAmong != nil {
+	if f := v.Game.Trials[0].VoteForecast; !reflect.DeepEqual(sortedCopy(f.LoseVote), []string{"V1", "W1"}) || f.DrawAmong != nil {
 		t.Fatalf("voteForecast = %+v", f)
 	}
 

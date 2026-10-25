@@ -99,6 +99,10 @@ func TestFeedItemText(t *testing.T) {
 		{"r1/day", []ww.Event{{Kind: ww.EventNominee, UID: "b", Counts: map[string]int{"b": 3, "c": 3}, Draw: true}},
 			"Đề cử ngày 1", []string{"Bình lên giàn với 3 đề cử, bốc thăm vì hoà."}},
 		{"r3/day", []ww.Event{{Kind: ww.EventNominee}}, "Đề cử ngày 3", []string{"Không ai được đề cử, hôm nay không ai lên giàn."}},
+		{"r2/day", []ww.Event{{Kind: ww.EventNominee, UID: "c", Targets: []string{"c"}, Counts: map[string]int{"c": 2}}},
+			"Đề cử ngày 2", []string{"Chi lên giàn với 2 đề cử."}},
+		{"r4/day", []ww.Event{{Kind: ww.EventNominee, UID: "a", Targets: []string{"a", "c", "b"}, Counts: map[string]int{"a": 3, "b": 1, "c": 2, "zz": 1}, Draw: true}},
+			"Đề cử ngày 4", []string{"3 người lên giàn: An (3 đề cử), Chi (2 đề cử), Bình (1 đề cử). Suất cuối bốc thăm vì hoà."}},
 		{"r1/trial", []ww.Event{
 			{Kind: ww.EventVoteCut, Targets: []string{"a", "c"}},
 			{Kind: ww.EventVoteResult, UID: "b", Hang: 4, Spare: 2, Hanged: true},
@@ -106,6 +110,12 @@ func TestFeedItemText(t *testing.T) {
 			{Kind: ww.EventWinner, Team: ww.TeamVillage},
 		}, "Biểu quyết ngày 1", []string{"Tổng km chưa đủ nên An, Chi mất phiếu.", "Treo 4, Tha 2: Bình bị treo.", "Bình đã chết. Lá bài: Sói.", "Phe Dân thắng."}},
 		{"r2/trial", []ww.Event{{Kind: ww.EventVoteResult, UID: "b", Hang: 2, Spare: 2}}, "Biểu quyết ngày 2", []string{"Treo 2, Tha 2: Bình được tha."}},
+		{"r3/trial", []ww.Event{
+			{Kind: ww.EventVoteResult, UID: "a", Hang: 3, Spare: 1, Hanged: true},
+			{Kind: ww.EventVoteCut, UID: "c", Targets: []string{"b"}},
+			{Kind: ww.EventVoteResult, UID: "c", Hang: 1, Spare: 1},
+			{Kind: ww.EventDeath, UID: "a", Role: ww.Villager},
+		}, "Biểu quyết ngày 3", []string{"Treo 3, Tha 1: An bị treo.", "Phiên Chi: tổng km chưa đủ nên Bình mất phiếu.", "Treo 1, Tha 1: Chi được tha.", "An đã chết. Lá bài: Dân."}},
 		{"r4/trial", []ww.Event{{Kind: ww.EventVoteResult, UID: "c", Reason: ww.ReasonNoTrial}}, "Biểu quyết ngày 4", []string{"Chi đã rời PSC, bỏ biểu quyết."}},
 		{"r2/night/hunter", []ww.Event{{Kind: ww.EventDeath, UID: "c", Role: ww.Seer}}, "Thợ săn bắn", []string{"Chi đã chết. Lá bài: Tiên tri."}},
 		{"r1/night", nil, "Đêm 1", []string{}},
@@ -205,5 +215,26 @@ func TestBalanceScoreByHand(t *testing.T) {
 		if got := balanceScore(roles); got != c.want {
 			t.Errorf("n=%d %v: %d, mong đợi %d", c.n, c.cfg.Disabled, got, c.want)
 		}
+	}
+}
+
+// Ba người lên giàn: mỗi phiên một thẻ biểu quyết gọi theo tên, đúng kind của
+// phiên, để app bản cũ (vẽ theo input, gửi theo kind) bỏ phiếu được từng phiên.
+// Người lên giàn không có thẻ của phiên mình.
+func TestMeActionsOneVoteCardPerNominee(t *testing.T) {
+	st := ww.NewState(ww.Seed{1}, ww.Config{}, msgRoles(), msgStart)
+	st.Phase, st.Nominees, st.Nominee = ww.PhaseTrial, []string{"v1", "w1", "seer"}, "v1"
+	players := []gamePlayerInfo{{uid: "v1", name: "An"}, {uid: "w1", name: "Bình"}, {uid: "seer", name: "Chi"}}
+	now := st.NightAt.Add(23 * time.Hour) // 21h hôm sau: trong khung biểu quyết
+	got := map[string]string{}
+	for _, a := range meActions(st, "w1", nil, nil, players, now, 0) {
+		if a.Input != "choice" || len(a.Options) != 2 || !a.Enabled {
+			t.Fatalf("thẻ = %+v", a)
+		}
+		got[a.Kind] = a.Label
+	}
+	want := map[string]string{"vote": "Biểu quyết: An", "vote3": "Biểu quyết: Chi"}
+	if len(got) != len(want) || got["vote"] != want["vote"] || got["vote3"] != want["vote3"] {
+		t.Fatalf("thẻ của w1 = %v, mong đợi %v", got, want)
 	}
 }

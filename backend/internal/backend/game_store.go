@@ -722,6 +722,23 @@ func (w *stepWrite) writeGameCards() error {
 
 // publicGame là phần của games/{id} mà API được đọc: không có vai của người còn
 // sống, không có seed, km chi tiết hay lựa chọn.
+// gameNominees là người lên giàn trên doc ván; doc ghi trước khi có nhiều
+// phiên chỉ có "nominee".
+func gameNominees(data map[string]any) []string {
+	var out []string
+	for _, v := range anyList(data["nominees"]) {
+		if uid := stringValue(v); uid != "" {
+			out = append(out, uid)
+		}
+	}
+	if len(out) == 0 {
+		if uid := stringValue(data["nominee"]); uid != "" {
+			out = []string{uid}
+		}
+	}
+	return out
+}
+
 func (w *stepWrite) publicGame() map[string]any {
 	st := w.after
 	revealed := map[string]any{}

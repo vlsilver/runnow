@@ -28,6 +28,9 @@ const (
 // voteKinds[i] là phiên biểu quyết của Nominees[i].
 var voteKinds = []Kind{KindVote, KindVote2, KindVote3}
 
+// MaxNominees là số người lên giàn tối đa mỗi ngày, mỗi người một phiên.
+var MaxNominees = len(voteKinds)
+
 // VoteKinds trả các kind biểu quyết theo thứ tự người lên giàn.
 func VoteKinds() []Kind { return append([]Kind(nil), voteKinds...) }
 

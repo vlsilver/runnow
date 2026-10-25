@@ -24,8 +24,8 @@ const (
 	EventDeath        EventKind = "death"         // UID, Role, Cause
 	EventLovers       EventKind = "lovers"        // Targets; Draw = bot ghép thay Cupid
 	EventWolvesTarget EventKind = "wolves_target" // UID = người bị cắn (rỗng: không ai), Reason
-	EventNominee      EventKind = "nominee"       // UID (rỗng: không ai), Counts, Draw
-	EventVoteCut      EventKind = "vote_cut"      // Targets = người mất phiếu, Draw
+	EventNominee      EventKind = "nominee"       // Targets = người lên giàn theo thứ tự phiên, UID = người đầu (rỗng: không ai), Counts, Draw
+	EventVoteCut      EventKind = "vote_cut"      // UID = người lên giàn của phiên, Targets = người mất phiếu, Draw
 	EventVoteResult   EventKind = "vote_result"   // UID, Hang, Spare, Hanged, Reason
 	EventHunterTurn   EventKind = "hunter_turn"   // UID
 	EventVoid         EventKind = "void"          // UID = actor, Action, Reason (R19)
@@ -350,9 +350,9 @@ func (r *resolver) witchChoices() (saved bool, poisoned string) {
 	return saved, poisoned
 }
 
-// pickNominee: 20h. Người có nhiều đề cử nhất lên giàn, một đề cử là đủ, hoà thì
-// bốc thăm; không ai đề cử thì hôm nay không treo. Đề cử của người đã chết hoặc
-// nhắm vào người đã chết bị huỷ (R19).
+// pickNominee: 20h. Tối đa MaxNominees người nhiều đề cử nhất lên giàn, một đề
+// cử là đủ; bằng đề cử ở suất cuối thì bốc thăm. Không ai đề cử thì hôm nay
+// không treo. Đề cử của người đã chết hoặc nhắm vào người đã chết bị huỷ (R19).
 func (r *resolver) pickNominee() {
 	counts := map[string]int{}
 	for _, a := range r.actionsOf(KindNominate) {
@@ -360,27 +360,21 @@ func (r *resolver) pickNominee() {
 			counts[a.target()]++
 		}
 	}
-	var top []string
-	best := 0
-	for uid, n := range counts {
-		switch {
-		case n > best:
-			best, top = n, []string{uid}
-		case n == best:
-			top = append(top, uid)
-		}
+	ranked := make([]string, 0, len(counts))
+	for uid := range counts {
+		ranked = append(ranked, uid)
 	}
-	sort.Strings(top)
+	sort.Strings(ranked)
+	// Xáo trước rồi xếp ổn định theo số đề cử: người bằng đề cử đứng theo thứ
+	// tự bốc thăm, nên suất cuối và thứ tự phiên đều tất định theo seed.
+	r.stream("nominee").shuffle(len(ranked), func(i, j int) { ranked[i], ranked[j] = ranked[j], ranked[i] })
+	sort.SliceStable(ranked, func(i, j int) bool { return counts[ranked[i]] > counts[ranked[j]] })
+	n := min(len(ranked), MaxNominees)
 	ev := Event{Kind: EventNominee, Counts: counts}
-	switch len(top) {
-	case 0:
-	case 1:
-		ev.UID = top[0]
-	default:
-		ev.UID, ev.Draw = top[r.stream("nominee").intn(len(top))], true
-	}
-	if ev.UID != "" {
-		r.st.setNominees([]string{ev.UID})
+	if n > 0 {
+		ev.UID, ev.Targets = ranked[0], ranked[:n]
+		ev.Draw = n < len(ranked) && counts[ranked[n-1]] == counts[ranked[n]]
+		r.st.setNominees(append([]string(nil), ranked[:n]...))
 	}
 	r.emit(ev)
 	r.st.Phase = PhaseTrial
@@ -432,7 +426,7 @@ func (r *resolver) countVotes(kind Kind, nominee string) bool {
 	}
 	cut, draw := r.voteCut(kind, voters)
 	if len(cut) > 0 {
-		r.emit(Event{Kind: EventVoteCut, Targets: cut, Draw: draw})
+		r.emit(Event{Kind: EventVoteCut, UID: nominee, Targets: cut, Draw: draw})
 	}
 	isCut := map[string]bool{}
 	for _, uid := range cut {

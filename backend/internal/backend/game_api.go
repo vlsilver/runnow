@@ -600,13 +600,29 @@ func feedItem(d map[string]any, players map[string]gamePlayerInfo) (GameFeedItem
 			deaths++
 			item.Lines = append(item.Lines, fmt.Sprintf("%s đã chết. Lá bài: %s.", name(e.UID), roleLabels[e.Role]))
 		case werewolf.EventNominee:
-			if e.UID == "" {
+			nominees := e.Targets
+			if len(nominees) == 0 && e.UID != "" {
+				nominees = []string{e.UID} // event ghi trước khi có nhiều phiên
+			}
+			switch len(nominees) {
+			case 0:
 				item.Lines = append(item.Lines, "Không ai được đề cử, hôm nay không ai lên giàn.")
 				continue
+			case 1:
+				line := fmt.Sprintf("%s lên giàn với %d đề cử", name(nominees[0]), e.Counts[nominees[0]])
+				if e.Draw {
+					line += ", bốc thăm vì hoà"
+				}
+				item.Lines = append(item.Lines, line+".")
+				continue
 			}
-			line := fmt.Sprintf("%s lên giàn với %d đề cử", name(e.UID), e.Counts[e.UID])
+			parts := make([]string, len(nominees))
+			for i, uid := range nominees {
+				parts[i] = fmt.Sprintf("%s (%d đề cử)", name(uid), e.Counts[uid])
+			}
+			line := fmt.Sprintf("%d người lên giàn: %s", len(nominees), strings.Join(parts, ", "))
 			if e.Draw {
-				line += ", bốc thăm vì hoà"
+				line += ". Suất cuối bốc thăm vì hoà"
 			}
 			item.Lines = append(item.Lines, line+".")
 		case werewolf.EventVoteCut:
@@ -615,6 +631,9 @@ func feedItem(d map[string]any, players map[string]gamePlayerInfo) (GameFeedItem
 				names[i] = name(uid)
 			}
 			line := fmt.Sprintf("Tổng km chưa đủ nên %s mất phiếu", strings.Join(names, ", "))
+			if e.UID != "" {
+				line = fmt.Sprintf("Phiên %s: tổng km chưa đủ nên %s mất phiếu", name(e.UID), strings.Join(names, ", "))
+			}
 			if e.Draw {
 				line += ", bốc thăm vì bằng km"
 			}
@@ -827,10 +846,10 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 	}
 	out.KmTable = kmTable(data, st, live, wall)
 	revealed, _ := data["revealed"].(map[string]any)
-	nominee := stringValue(data["nominee"])
+	nominees := gameNominees(data)
 	out.Players = make([]GamePlayer, 0, len(players))
 	for _, p := range players {
-		gp := GamePlayer{UID: p.uid, Name: p.name, AvatarURL: p.avatar, Alive: p.data["alive"] != false, Fake: p.fake, OnTrial: p.uid == nominee}
+		gp := GamePlayer{UID: p.uid, Name: p.name, AvatarURL: p.avatar, Alive: p.data["alive"] != false, Fake: p.fake, OnTrial: slices.Contains(nominees, p.uid)}
 		if role := werewolf.Role(stringValue(revealed[p.uid])); role != "" {
 			gp.RevealedRoleLabel, gp.RevealedCardURL = roleLabels[role], cfg.cards[string(role)]
 		}
@@ -1159,6 +1178,11 @@ func meActions(st *werewolf.State, uid string, mine []werewolf.Action, raw map[w
 	for _, kind := range st.Available(uid) {
 		text := actionTexts[kind]
 		a := GameAction{Kind: string(kind), Label: text.label, Help: text.help, Input: text.input, ConfirmText: text.confirm, Options: []GameOption{}}
+		if nominee := st.NomineeOf(kind); nominee != "" {
+			// Mỗi người lên giàn một thẻ biểu quyết, gọi theo tên để không nhầm phiên.
+			name := playerName(playerIndex(players), nominee)
+			a.Label, a.Help = "Biểu quyết: "+name, "Treo hay tha "+name+". Đổi được tới 22h."
+		}
 		switch text.input {
 		case "choice":
 			a.Options = append(a.Options, GameOption{ID: werewolf.ChoiceHang, Label: choiceLabels[werewolf.ChoiceHang]}, GameOption{ID: werewolf.ChoiceSpare, Label: choiceLabels[werewolf.ChoiceSpare]})

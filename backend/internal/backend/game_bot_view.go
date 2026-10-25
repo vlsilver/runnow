@@ -23,7 +23,7 @@ import (
 
 var botWerewolfDecl = &genai.FunctionDeclaration{
 	Name:        "get_werewolf_game",
-	Description: "Luật Ma Sói của club (luật RIÊNG chạy theo km, khác Ma Sói thông thường) cộng diễn biến công khai của ván hiện tại: giai đoạn, hạn giờ, ai còn sống, ai đã chết kèm lá bài, ai lên giàn, ai đang đề cử ai, phiếu Treo/Tha đang bấm, ai chưa bấm, km chốt lúc 22h gần nhất (lastKm, quyết định ai dùng được kỹ năng đêm nay), km từ 22h gần nhất tới giờ của từng người (kmSinceLast22h, sẽ chốt lúc kmFrameEnd), dự báo nếu chốt biểu quyết với km hiện tại thì bao nhiêu phiếu được tính và ai mất phiếu (voteForecast), các bản tin của ván. Dùng cho MỌI câu hỏi về Ma Sói. Không có vai của người còn sống.",
+	Description: "Luật Ma Sói của club (luật RIÊNG chạy theo km, khác Ma Sói thông thường) cộng diễn biến công khai của ván hiện tại: giai đoạn, hạn giờ, ai còn sống, ai đã chết kèm lá bài, ai lên giàn (tối đa 3 người, mỗi người một phiên trong trials), ai đang đề cử ai, phiếu Treo/Tha đang bấm của từng phiên, ai chưa bấm, km chốt lúc 22h gần nhất (lastKm, quyết định ai dùng được kỹ năng đêm nay), km từ 22h gần nhất tới giờ của từng người (kmSinceLast22h, sẽ chốt lúc kmFrameEnd), dự báo nếu chốt từng phiên với km hiện tại thì bao nhiêu phiếu được tính và ai mất phiếu (trials[].voteForecast), các bản tin của ván. Dùng cho MỌI câu hỏi về Ma Sói. Không có vai của người còn sống.",
 	Parameters:  &genai.Schema{Type: genai.TypeObject, Properties: map[string]*genai.Schema{}},
 }
 
@@ -53,16 +53,23 @@ type BotWerewolfGame struct {
 	Players              []string            `json:"players"`
 	Alive                []string            `json:"alive,omitempty"`
 	Dead                 []string            `json:"dead,omitempty"`
-	OnTrial              string              `json:"onTrial,omitempty"`
+	OnTrial              []string            `json:"onTrial,omitempty"`
 	Nominations          map[string][]string `json:"nominations,omitempty"`
-	Votes                map[string][]string `json:"votes,omitempty"`
+	Trials               []BotTrial          `json:"trials,omitempty"`
 	NotChosenYet         []string            `json:"notChosenYet,omitempty"`
 	LastKm               map[string]string   `json:"lastKm,omitempty"`
 	KmSinceLast22h       map[string]string   `json:"kmSinceLast22h,omitempty"`
 	KmFrameEnd           string              `json:"kmFrameEnd,omitempty"`
-	VoteForecast         *BotVoteForecast    `json:"voteForecast,omitempty"`
 	News                 []BotWerewolfNews   `json:"news,omitempty"`
 	Winner               string              `json:"winner,omitempty"`
+}
+
+// BotTrial là một phiên biểu quyết: người lên giàn, phiếu Treo/Tha đang bấm,
+// và dự báo phiếu nếu chốt với km hiện tại.
+type BotTrial struct {
+	Nominee      string              `json:"nominee"`
+	Votes        map[string][]string `json:"votes,omitempty"`
+	VoteForecast *BotVoteForecast    `json:"voteForecast,omitempty"`
 }
 
 // BotVoteForecast là R30 áp lên km tới giờ: nếu chốt ngay thì ra sao. Km còn
@@ -180,28 +187,44 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 		game.Dead = append(game.Dead, dead)
 	}
 	game.Alive = names(aliveUIDs)
-	nominee := stringValue(data["nominee"])
-	if nominee != "" {
-		game.OnTrial = name(nominee)
-	}
+	nominees := gameNominees(data)
+	game.OnTrial = names(nominees)
 	phase := werewolf.Phase(stringValue(data["phase"]))
 
 	if running && !strings.HasSuffix(stringValue(data["phaseKey"]), "/hunter") && (phase == werewolf.PhaseDay || phase == werewolf.PhaseTrial) {
-		kind := werewolf.KindNominate
-		if phase == werewolf.PhaseTrial {
-			kind = werewolf.KindVote
-		}
-		tally, chosen, err := s.botTally(ctx, g.Ref, int(number(data["round"])), kind, alive, nominee, name)
-		if err != nil {
-			return nil, x, err
-		}
-		if kind == werewolf.KindNominate {
+		round := int(number(data["round"]))
+		// pending: người còn phải bấm ít nhất một việc (đề cử, hay phiếu ở một
+		// phiên không phải của chính mình).
+		pending := map[string]bool{}
+		if phase == werewolf.PhaseDay {
+			tally, chosen, err := s.botTally(ctx, g.Ref, round, werewolf.KindNominate, alive, "", name)
+			if err != nil {
+				return nil, x, err
+			}
 			game.Nominations = tally
+			for _, uid := range aliveUIDs {
+				pending[uid] = !chosen[uid]
+			}
 		} else {
-			game.Votes = tally
+			kinds := werewolf.VoteKinds()
+			for i, nominee := range nominees {
+				if i >= len(kinds) {
+					break
+				}
+				tally, chosen, err := s.botTally(ctx, g.Ref, round, kinds[i], alive, nominee, name)
+				if err != nil {
+					return nil, x, err
+				}
+				game.Trials = append(game.Trials, BotTrial{Nominee: name(nominee), Votes: tally})
+				for _, uid := range aliveUIDs {
+					if uid != nominee && !chosen[uid] {
+						pending[uid] = true
+					}
+				}
+			}
 		}
 		for _, uid := range aliveUIDs {
-			if !chosen[uid] && !(kind == werewolf.KindVote && uid == nominee) {
+			if pending[uid] {
 				game.NotChosenYet = append(game.NotChosenYet, name(uid))
 			}
 		}
@@ -231,7 +254,11 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 			live[uid] = fk.Meters
 			game.KmSinceLast22h[name(uid)] = formatKm(fk.Meters/1000) + " km"
 		}
-		if phase == werewolf.PhaseTrial && alive[nominee] {
+		for i := range game.Trials {
+			nominee := nominees[i]
+			if !alive[nominee] {
+				continue
+			}
 			var voters []string
 			for _, uid := range aliveUIDs {
 				if uid != nominee {
@@ -239,12 +266,13 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 				}
 			}
 			plan := werewolf.PlanVoteCut(voters, live, cfg)
-			game.VoteForecast = &BotVoteForecast{Voters: len(voters), CountedIfNow: plan.Allowed, LoseVote: names(plan.Sure)}
+			f := &BotVoteForecast{Voters: len(voters), CountedIfNow: plan.Allowed, LoseVote: names(plan.Sure)}
 			if plan.Need == len(plan.Tied) {
-				game.VoteForecast.LoseVote = append(game.VoteForecast.LoseVote, names(plan.Tied)...)
+				f.LoseVote = append(f.LoseVote, names(plan.Tied)...)
 			} else if plan.Need > 0 {
-				game.VoteForecast.DrawAmong, game.VoteForecast.DrawLose = names(plan.Tied), plan.Need
+				f.DrawAmong, f.DrawLose = names(plan.Tied), plan.Need
 			}
+			game.Trials[i].VoteForecast = f
 		}
 	}
 

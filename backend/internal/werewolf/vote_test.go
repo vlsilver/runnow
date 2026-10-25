@@ -3,6 +3,7 @@ package werewolf
 import (
 	"encoding/json"
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -126,36 +127,181 @@ func TestR31LoverOfNomineeCanSpareButNotHang(t *testing.T) {
 	g.reject(ErrNotYourRole, Action{Kind: KindVote, Actor: "v1", Choice: ChoiceSpare}) // người lên giàn không bỏ phiếu
 }
 
-// Hoà đề cử thì bốc thăm; không ai đề cử thì không ai lên giàn và không có biểu quyết.
-func TestNomineeTieDrawnAndNoNominationMeansNoTrial(t *testing.T) {
-	g := game13(t)
-	g.toPhase(PhaseDay)
-	g.do(KindNominate, "v1", "v3")
-	g.do(KindNominate, "v2", "v4")
-	e := find(g.next(), EventNominee)
-	if e == nil || !e.Draw || (e.UID != "v3" && e.UID != "v4") || e.Counts["v3"] != 1 || e.Counts["v4"] != 1 {
-		t.Fatalf("lên giàn = %+v", e)
-	}
-	// Bốc thăm đổi theo seed, không cố định một người.
-	seen := map[string]bool{}
-	for s := byte(0); s < 40; s++ {
+// Bằng đề cử ở suất thứ ba thì bốc thăm ai ở lại; không ai đề cử thì không ai
+// lên giàn và không có biểu quyết.
+func TestNomineeTieAtLastSeatDrawnAndNoNominationMeansNoTrial(t *testing.T) {
+	tied := func(seed byte) *Event {
 		g := game13(t)
-		g.st.Seed = Seed{s}
+		g.st.Seed = Seed{seed}
 		g.toPhase(PhaseDay)
 		g.do(KindNominate, "v1", "v3")
 		g.do(KindNominate, "v2", "v4")
-		seen[find(g.next(), EventNominee).UID] = true
+		g.do(KindNominate, "w1", "v5")
+		g.do(KindNominate, "w2", "v6")
+		return find(g.next(), EventNominee)
 	}
-	if len(seen) != 2 {
-		t.Fatalf("40 seed chỉ ra %v", seen)
+	e := tied(7)
+	if e == nil || !e.Draw || len(e.Targets) != 3 || e.UID != e.Targets[0] {
+		t.Fatalf("lên giàn = %+v", e)
+	}
+	// Bốc thăm đổi theo seed: ai trong bốn người cũng có lúc ở lại.
+	left := map[string]bool{}
+	for s := byte(0); s < 40; s++ {
+		up := tied(s).Targets
+		for _, uid := range []string{"v3", "v4", "v5", "v6"} {
+			if !slices.Contains(up, uid) {
+				left[uid] = true
+			}
+		}
+	}
+	if len(left) != 4 {
+		t.Fatalf("40 seed chỉ để lại %v", left)
 	}
 
-	g = game13(t)
+	g := game13(t)
 	g.toPhase(PhaseDay)
-	if e := find(g.next(), EventNominee); e == nil || e.UID != "" {
+	if e := find(g.next(), EventNominee); e == nil || e.UID != "" || len(e.Targets) != 0 {
 		t.Fatalf("lên giàn = %+v", e)
 	}
 	g.reject(ErrPhaseClosed, Action{Kind: KindVote, Actor: "v2", Choice: ChoiceHang})
+}
+
+// Ba người nhiều đề cử nhất lên giàn theo thứ tự số đề cử, người thứ tư thì
+// không; bằng đề cử trong top ba thì không phải bốc thăm suất.
+func TestTopThreeNomineesGoUpInOrder(t *testing.T) {
+	g := game13(t)
+	g.toPhase(PhaseDay)
+	for _, v := range []string{"v1", "v2", "v3"} {
+		g.do(KindNominate, v, "w1") // 3
+	}
+	g.do(KindNominate, "v4", "v6") // 2
+	g.do(KindNominate, "v5", "v6")
+	g.do(KindNominate, "seer", "hunter") // 2
+	g.do(KindNominate, "guard", "hunter")
+	g.do(KindNominate, "witch", "v2") // 1
+	e := find(g.next(), EventNominee)
+	if e == nil || e.Draw || len(e.Targets) != 3 || e.Targets[0] != "w1" || e.UID != "w1" ||
+		!slices.Contains(e.Targets, "v6") || !slices.Contains(e.Targets, "hunter") {
+		t.Fatalf("lên giàn = %+v", e)
+	}
+	if !reflect.DeepEqual(g.st.TrialNominees(), e.Targets) || g.st.Nominee != "w1" {
+		t.Fatalf("state lên giàn = %v, %q", g.st.Nominees, g.st.Nominee)
+	}
+	for i, kind := range VoteKinds() {
+		if g.st.NomineeOf(kind) != e.Targets[i] {
+			t.Fatalf("phiên %s của %q, mong đợi %q", kind, g.st.NomineeOf(kind), e.Targets[i])
+		}
+	}
+}
+
+// Hai người lên giàn thì chỉ có hai phiên.
+func TestTwoNomineesOpenTwoTrials(t *testing.T) {
+	g := game13(t)
+	g.toPhase(PhaseDay)
+	g.do(KindNominate, "v1", "w1")
+	g.do(KindNominate, "v2", "v3")
+	g.next()
+	if got := g.st.Available("v4"); !reflect.DeepEqual(got, []Kind{KindVote, KindVote2}) {
+		t.Fatalf("v4 bấm được %v", got)
+	}
+	g.reject(ErrPhaseClosed, Action{Kind: KindVote3, Actor: "v4", Choice: ChoiceHang})
+}
+
+// voteIn bỏ phiếu ở phiên kind, fail nếu luật từ chối.
+func (g *tg) voteIn(kind Kind, actor, choice string) {
+	g.t.Helper()
+	if err := g.try(Action{Kind: kind, Actor: actor, Choice: choice}); err != nil {
+		g.t.Fatalf("%s %s %s bị từ chối: %v", actor, kind, choice, err)
+	}
+}
+
+// Ba phiên chốt cùng lúc 22h. Tính tay, 13 người đủ km nên không ai mất phiếu:
+//   - phiên w1: 7 Treo, 5 Tha → treo.
+//   - phiên hunter: 5 Treo (có w1), 6 Tha → tha.
+//   - phiên v1: 4 Treo (có w1), 3 Tha → treo.
+//
+// w1 bị treo ở phiên đầu mà phiếu ở phiên sau vẫn tính; người lên giàn không bỏ
+// phiếu ở phiên của mình; người yêu không Treo người yêu ở phiên của người đó
+// nhưng Treo được ở phiên khác.
+func TestThreeTrialsResolveTogether(t *testing.T) {
+	g := game13(t)
+	g.st.Lovers = []string{"v1", "v3"}
+	g.toPhase(PhaseDay)
+	for _, v := range []string{"v2", "v3", "v4"} {
+		g.do(KindNominate, v, "w1")
+	}
+	g.do(KindNominate, "v5", "hunter")
+	g.do(KindNominate, "v6", "hunter")
+	g.do(KindNominate, "seer", "v1")
+	g.next()
+	if got := g.st.TrialNominees(); !reflect.DeepEqual(got, []string{"w1", "hunter", "v1"}) {
+		t.Fatalf("lên giàn = %v", got)
+	}
+
+	g.reject(ErrNotYourRole, Action{Kind: KindVote, Actor: "w1", Choice: ChoiceSpare})
+	for _, v := range []string{"v1", "v2", "v3", "v4", "v5", "v6", "seer"} {
+		g.voteIn(KindVote, v, ChoiceHang)
+	}
+	for _, v := range []string{"w2", "w3", "guard", "witch", "hunter"} {
+		g.voteIn(KindVote, v, ChoiceSpare)
+	}
+
+	for _, v := range []string{"w1", "v2", "v3", "v4", "v5"} {
+		g.voteIn(KindVote2, v, ChoiceHang)
+	}
+	for _, v := range []string{"w2", "w3", "seer", "guard", "witch", "v6"} {
+		g.voteIn(KindVote2, v, ChoiceSpare)
+	}
+
+	g.reject(ErrNotYourRole, Action{Kind: KindVote3, Actor: "v1", Choice: ChoiceSpare})
+	g.reject(ErrLoverTarget, Action{Kind: KindVote3, Actor: "v3", Choice: ChoiceHang})
+	for _, v := range []string{"w1", "v2", "v4", "v5"} {
+		g.voteIn(KindVote3, v, ChoiceHang)
+	}
+	for _, v := range []string{"v3", "w2", "w3"} {
+		g.voteIn(KindVote3, v, ChoiceSpare)
+	}
+
+	evs := g.next()
+	results := map[string][3]int{} // Treo, Tha, treo hay không
+	for _, e := range evs {
+		if e.Kind == EventVoteResult {
+			hanged := 0
+			if e.Hanged {
+				hanged = 1
+			}
+			results[e.UID] = [3]int{e.Hang, e.Spare, hanged}
+		}
+	}
+	want := map[string][3]int{"w1": {7, 5, 1}, "hunter": {5, 6, 0}, "v1": {4, 3, 1}}
+	if !reflect.DeepEqual(results, want) {
+		t.Fatalf("kết quả = %v, mong đợi %v", results, want)
+	}
+	// v1 bị treo nên v3 (người yêu) chết theo.
+	sameDeaths(t, evs, map[string]Cause{"w1": CauseHang, "v1": CauseHang, "v3": CauseLover})
+	if len(voids(evs)) != 0 {
+		t.Fatalf("phiếu bị huỷ = %v", voids(evs))
+	}
+}
+
+// Thợ săn bị treo cùng người khác vẫn được bắn.
+func TestHunterHangedWithOthersGetsShot(t *testing.T) {
+	g := game13(t)
+	g.toPhase(PhaseDay)
+	g.do(KindNominate, "v1", "hunter")
+	g.do(KindNominate, "v2", "hunter")
+	g.do(KindNominate, "v3", "v6")
+	g.next()
+	for _, kind := range []Kind{KindVote, KindVote2} {
+		for _, v := range []string{"w1", "w2", "w3"} {
+			g.voteIn(kind, v, ChoiceHang)
+		}
+	}
+	evs := g.next()
+	sameDeaths(t, evs, map[string]Cause{"hunter": CauseHang, "v6": CauseHang})
+	if e := find(evs, EventHunterTurn); e == nil || e.UID != "hunter" || g.st.Hunter == nil {
+		t.Fatalf("lượt thợ săn = %+v, %+v", e, g.st.Hunter)
+	}
 }
 
 // State ghi trước khi có nhiều phiên chỉ có "nominee". Ván đang biểu quyết lúc
