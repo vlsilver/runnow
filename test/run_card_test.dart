@@ -607,34 +607,33 @@ void main() {
   ) async {
     final backend = _Backend();
     final card = _card();
-    final gif = encodeCardGif(
-      CardGifFrames(
-        width: 2,
-        height: 2,
-        frameMs: 80,
-        frames: [Uint8List.fromList(List.filled(16, 255))],
-      ),
-    );
+    // Byte giả: màn khoe không giải mã video, chỉ gửi đi.
+    final video = Uint8List.fromList([0, 0, 0, 24, 102, 116, 121, 112]);
     // Đã khoe một lần: ba file nằm trong máy theo khoá của thẻ này.
     final store = _MemoryShareStore()
       ..saved['r1/${runCardShareKey(card, runCardData(card, owner: 'An').owner)}'] =
-          RunCardShareFiles(front: _png, back: _png, gif: gif);
+          RunCardShareFiles(
+            front: _png,
+            back: _png,
+            motion: video,
+            motionType: 'video/mp4',
+          );
     await _pumpPanel(tester, backend, initial: card, shareStore: store);
     expect(backend.requests, isEmpty, reason: 'đã có thẻ thì không hỏi tỉ lệ');
 
     await _tapText(tester, 'Khoe thẻ');
     await _settle(tester);
     expect(store.saves, 0, reason: 'có sẵn thì không tạo lại');
-    for (final label in ['Mặt trước', 'Mặt sau', 'GIF 3D']) {
+    for (final label in ['Mặt trước', 'Mặt sau', 'Video 3D']) {
       expect(find.text(label), findsOneWidget);
     }
 
-    await tester.tap(find.text('Khoe gif 3d'));
+    await tester.tap(find.text('Khoe video 3d'));
     await tester.pump();
     final first = share.shared.last;
-    expect(first.fileNameOverrides, ['3i-r1-gif.gif']);
-    expect(first.files!.single.mimeType, 'image/gif');
-    expect(await first.files!.single.readAsBytes(), gif);
+    expect(first.fileNameOverrides, ['3i-r1-motion.mp4']);
+    expect(first.files!.single.mimeType, 'video/mp4');
+    expect(await first.files!.single.readAsBytes(), video);
     expect(first.text, startsWith('Dọc bờ sông Hồng · 15'));
 
     await tester.tap(find.text('Mặt sau'));

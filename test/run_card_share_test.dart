@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:myrun/src/achievements/run_card_share.dart';
@@ -17,6 +18,28 @@ Uint8List _frame(int w, int h, int r, int g, int b) {
 }
 
 void main() {
+  test('a frame a little off the video size is centered, padded or cut', () {
+    // Khung 1×2: điểm trên đỏ, điểm dưới xanh lá.
+    final tall = Uint8List.fromList([255, 0, 0, 255, 0, 255, 0, 255]);
+    // Đặt vào 1×4: thừa hai hàng, mỗi đầu một hàng màu nền xanh dương.
+    expect(fitRgbaFrame(tall, 1, 2, 1, 4, const Color(0xFF0000FF)), [
+      0, 0, 255, 255, //
+      255, 0, 0, 255, //
+      0, 255, 0, 255, //
+      0, 0, 255, 255, //
+    ]);
+    // Khung 3×1 đỏ, xanh lá, xanh dương cắt về 1×1: giữ điểm giữa.
+    final wide = Uint8List.fromList([
+      255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, //
+    ]);
+    expect(fitRgbaFrame(wide, 3, 1, 1, 1, const Color(0xFF000000)), [
+      0,
+      255,
+      0,
+      255,
+    ]);
+  });
+
   test('frames become a looping GIF with one image per frame', () {
     final gif = encodeCardGif(
       CardGifFrames(

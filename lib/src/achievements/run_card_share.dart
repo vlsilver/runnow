@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
 import 'package:myrun/src/achievements/achievement_card.dart';
@@ -16,35 +17,57 @@ import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme_tokens.dart';
 import 'package:path_provider/path_provider.dart';
 
-/// Khoe thẻ buổi chạy bằng ảnh mặt trước, ảnh mặt sau hoặc GIF lá xoay 3D.
-/// Ba file tạo một lần rồi giữ trong máy cho các lần khoe sau.
+/// Khoe thẻ buổi chạy bằng ảnh mặt trước, ảnh mặt sau hoặc lá xoay 3D. Ba file
+/// tạo một lần rồi giữ trong máy cho các lần khoe sau.
+///
+/// Lá xoay ghi thành video MP4 trên điện thoại: GIF chỉ có 256 màu mỗi khung
+/// nên tranh nền và glow bị vằn, không bao giờ nét bằng ảnh. Web không có bộ
+/// ghi video nên vẫn ghi GIF.
 
-/// Đổi số này khi cách vẽ thẻ hay cách ghi GIF đổi, để cache cũ không dùng nữa.
-const _shareVersion = 3;
+/// Đổi số này khi cách vẽ thẻ hay cách ghi đổi, để cache cũ không dùng nữa.
+const _shareVersion = 4;
+
+/// Một vòng lá xoay: đứng mặt trước, lật sang sau, đứng, lật về.
+const _motionDuration = Duration(milliseconds: 3600);
+
+const _videoFps = 30;
+const _videoWidth = 1080;
+const _videoBitRate = 5000000;
 
 const _gifFrameCount = 36;
-const _gifFrameMs = 80;
 
 /// 360 px thì chữ và viền nhoè khi xem toàn màn; 540 px gần như không khác
 /// ảnh gốc, file thẻ thật khoảng 2,5 MB.
-const _gifWidthPx = 540.0;
+const _gifWidth = 540;
 const _stillPixelRatio = 3.0;
 
 /// Chờ tranh nền và tile bản đồ mặt sau tải xong trước khi chụp. Mạng chậm
 /// mà vẫn thiếu thì người dùng bấm Tạo lại.
 const _warmUp = Duration(milliseconds: 1200);
 
+/// Máy có bộ ghi video native (iOS, Android) thì lá xoay là MP4, còn lại GIF.
+bool get _videoMotion =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.android);
+
 /// Ba file khoe của một thẻ.
 class RunCardShareFiles {
   const RunCardShareFiles({
     required this.front,
     required this.back,
-    required this.gif,
+    required this.motion,
+    required this.motionType,
   });
 
   final Uint8List front;
   final Uint8List back;
-  final Uint8List gif;
+
+  /// Lá xoay 3D, kiểu file là [motionType].
+  final Uint8List motion;
+
+  /// `video/mp4` hoặc `image/gif`.
+  final String motionType;
 }
 
 /// Khoá cache: đổi khi những gì in trên thẻ đổi (bậc, tranh nền, tên chủ).
@@ -64,7 +87,8 @@ String runCardShareKey(RunCard card, String owner) {
 class RunCardShareStore {
   final _memory = <String, RunCardShareFiles>{};
 
-  static const _names = ['front.png', 'back.png', 'card.gif'];
+  static String get _motionName => _videoMotion ? 'card.mp4' : 'card.gif';
+  static List<String> get _names => ['front.png', 'back.png', _motionName];
 
   Future<Directory> _cardDir(String cardId) async {
     final base = await getApplicationSupportDirectory();
@@ -79,13 +103,14 @@ class RunCardShareStore {
     for (final f in files) {
       if (!await f.exists()) return null;
     }
-    final [front, back, gif] = await Future.wait([
+    final [front, back, motion] = await Future.wait([
       for (final f in files) f.readAsBytes(),
     ]);
     return _memory['$cardId/$key'] = RunCardShareFiles(
       front: front,
       back: back,
-      gif: gif,
+      motion: motion,
+      motionType: _videoMotion ? 'video/mp4' : 'image/gif',
     );
   }
 
@@ -96,11 +121,12 @@ class RunCardShareStore {
     if (kIsWeb) return;
     final cardDir = await _cardDir(cardId);
     final dir = await Directory('${cardDir.path}/$key').create(recursive: true);
-    final bytes = [files.front, files.back, files.gif];
-    for (var i = 0; i < _names.length; i++) {
-      final tmp = File('${dir.path}/${_names[i]}.tmp');
+    final bytes = [files.front, files.back, files.motion];
+    final names = _names;
+    for (var i = 0; i < names.length; i++) {
+      final tmp = File('${dir.path}/${names[i]}.tmp');
       await tmp.writeAsBytes(bytes[i], flush: true);
-      await tmp.rename('${dir.path}/${_names[i]}');
+      await tmp.rename('${dir.path}/${names[i]}');
     }
     await for (final old in cardDir.list()) {
       if (old is Directory && old.path != dir.path) {
@@ -138,8 +164,8 @@ class CardGifFrames {
 /// gọi qua compute.
 Uint8List encodeCardGif(CardGifFrames f) {
   // Bỏ dither: với 36 khung thẻ thật ở 540 px, dither encode chậm gấp ba và
-  // file nặng thêm khoảng 60% mà nhìn gần như không khác; neural giữ màu glow
-  // mượt hơn octree.
+  // file nặng thêm khoảng 60% mà vẫn không hết vằn; neural giữ màu glow mượt
+  // hơn octree.
   final encoder = img.GifEncoder(
     repeat: 0,
     quantizerType: img.QuantizerType.neural,
@@ -160,19 +186,81 @@ Uint8List encodeCardGif(CardGifFrames f) {
   return encoder.finish()!;
 }
 
-/// Góc lật và độ nghiêng của khung thứ [i]: đứng mặt trước, lật sang mặt
-/// sau, đứng, lật tiếp về mặt trước; lá đung đưa nhẹ để ánh sáng chạy.
-({double turn, Offset pose}) _gifPose(int i) {
-  const hold = 6;
-  const flip = 12;
-  final t = i / _gifFrameCount;
-  double eased(int from) =>
-      Curves.easeInOutCubic.transform((i - from) / flip) * math.pi;
-  final turn = switch (i) {
-    < hold => 0.0,
-    < hold + flip => eased(hold),
-    < 2 * hold + flip => math.pi,
-    _ => math.pi + eased(2 * hold + flip),
+/// Bộ ghi MP4 H.264 bằng phần cứng của máy (AVAssetWriter trên iOS,
+/// MediaCodec trên Android). Mỗi lần chỉ ghi một video.
+class CardVideoWriter {
+  static const _channel = MethodChannel('runnow/card_video');
+
+  /// [width], [height] phải chia hết cho 16: một số bộ mã hoá Android từ
+  /// chối cỡ khác.
+  Future<void> start({
+    required String path,
+    required int width,
+    required int height,
+  }) => _channel.invokeMethod('start', {
+    'path': path,
+    'width': width,
+    'height': height,
+    'fps': _videoFps,
+    'bitRate': _videoBitRate,
+  });
+
+  /// Một khung RGBA đúng cỡ đã start.
+  Future<void> add(Uint8List rgba) => _channel.invokeMethod('frame', rgba);
+
+  Future<void> finish() => _channel.invokeMethod('finish');
+
+  Future<void> cancel() => _channel.invokeMethod('cancel');
+}
+
+/// Đặt khung RGBA [src] cỡ [sw]×[sh] vào giữa khung [w]×[h], phần thừa cắt,
+/// phần thiếu tô [fill]. toImage làm tròn cỡ theo pixelRatio nên có thể lệch
+/// một hai điểm so với cỡ video.
+Uint8List fitRgbaFrame(
+  Uint8List src,
+  int sw,
+  int sh,
+  int w,
+  int h,
+  Color fill,
+) {
+  if (sw == w && sh == h) return src;
+  final out = Uint8List(w * h * 4);
+  final px = [
+    (fill.r * 255).round(),
+    (fill.g * 255).round(),
+    (fill.b * 255).round(),
+    255,
+  ];
+  for (var i = 0; i < out.length; i += 4) {
+    out.setRange(i, i + 4, px);
+  }
+  final dx = (w - sw) ~/ 2;
+  final dy = (h - sh) ~/ 2;
+  final cols = math.min(sw, w);
+  final sx = math.max(0, -dx);
+  final ox = math.max(0, dx);
+  for (var y = 0; y < h; y++) {
+    final syRow = y - dy;
+    if (syRow < 0 || syRow >= sh) continue;
+    final from = (syRow * sw + sx) * 4;
+    final to = (y * w + ox) * 4;
+    out.setRange(to, to + cols * 4, src, from);
+  }
+  return out;
+}
+
+/// Góc lật và độ nghiêng của lá ở thời điểm [t] (0..1 trong một vòng): đứng
+/// mặt trước, lật sang mặt sau, đứng, lật tiếp về mặt trước; lá đung đưa nhẹ
+/// để ánh sáng chạy. t = 1 trùng t = 0 nên vòng lặp liền.
+({double turn, Offset pose}) _motionPose(double t) {
+  double flip(double from) =>
+      Curves.easeInOutCubic.transform((t - from) * 3) * math.pi;
+  final turn = switch (t) {
+    < 1 / 6 => 0.0,
+    < 1 / 2 => flip(1 / 6),
+    < 2 / 3 => math.pi,
+    _ => math.pi + flip(2 / 3),
   };
   final sway = t * 2 * math.pi;
   return (
@@ -181,13 +269,13 @@ Uint8List encodeCardGif(CardGifFrames f) {
   );
 }
 
-enum _Choice { front, back, gif }
+enum _Choice { front, back, motion }
 
 extension on _Choice {
   String get label => switch (this) {
     _Choice.front => 'Mặt trước',
     _Choice.back => 'Mặt sau',
-    _Choice.gif => 'GIF 3D',
+    _Choice.motion => _videoMotion ? 'Video 3D' : 'GIF 3D',
   };
 }
 
@@ -218,15 +306,14 @@ class RunCardShareScreen extends ConsumerStatefulWidget {
 
 class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
   final _stageKey = GlobalKey();
-  final _backKey = GlobalKey();
   RunCardShareFiles? _files;
   Object? _error;
   bool _recording = false;
   bool _sharing = false;
   int _step = 0;
-  double _turn = 0;
-  Offset _pose = Offset.zero;
-  _Choice _choice = _Choice.gif;
+  int _steps = 0;
+  ({double turn, Offset pose}) _at = _motionPose(0);
+  _Choice _choice = _Choice.motion;
 
   String get _key => runCardShareKey(widget.card, widget.data.owner);
 
@@ -263,74 +350,160 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
     }
   }
 
-  /// Đặt lá theo [turn], [pose] rồi chụp sân khấu ở khung kế tiếp.
-  Future<ui.Image> _shot(double turn, Offset pose, double pixelRatio) async {
+  /// Đặt lá ở [at] rồi chụp sân khấu ở khung kế tiếp.
+  Future<ui.Image> _shot(
+    ({double turn, Offset pose}) at,
+    double pixelRatio,
+  ) async {
     if (!mounted) throw StateError('Màn khoe đã đóng.');
-    setState(() {
-      _turn = turn;
-      _pose = pose;
-    });
+    setState(() => _at = at);
     await WidgetsBinding.instance.endOfFrame;
     final boundary =
         _stageKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
     return boundary.toImage(pixelRatio: pixelRatio);
   }
 
+  /// Chụp lá ở [t] thành khung RGBA rộng [width].
+  Future<({Uint8List rgba, int width, int height})> _frame(
+    double t,
+    int width,
+  ) async {
+    final stageWidth = _stageKey.currentContext!.size!.width;
+    final image = await _shot(_motionPose(t), width / stageWidth);
+    try {
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      return (
+        rgba: data!.buffer.asUint8List(),
+        width: image.width,
+        height: image.height,
+      );
+    } finally {
+      image.dispose();
+    }
+  }
+
+  void _progress(int step, int steps) {
+    if (!mounted) return;
+    setState(() {
+      _step = step;
+      _steps = steps;
+    });
+  }
+
   Future<RunCardShareFiles> _record() async {
     await Future<void>.delayed(_warmUp);
-    if (!mounted) throw StateError('Màn khoe đã đóng.');
     Future<Uint8List> png(double turn) async {
-      final image = await _shot(turn, Offset.zero, _stillPixelRatio);
-      final data = await image.toByteData(format: ui.ImageByteFormat.png);
-      image.dispose();
-      return data!.buffer.asUint8List();
+      final image = await _shot((
+        turn: turn,
+        pose: Offset.zero,
+      ), _stillPixelRatio);
+      try {
+        final data = await image.toByteData(format: ui.ImageByteFormat.png);
+        return data!.buffer.asUint8List();
+      } finally {
+        image.dispose();
+      }
     }
 
     final front = await png(0);
     final back = await png(math.pi);
-    final stageWidth = _stageKey.currentContext!.size!.width;
+    if (_videoMotion) {
+      return RunCardShareFiles(
+        front: front,
+        back: back,
+        motion: await _recordVideo(),
+        motionType: 'video/mp4',
+      );
+    }
+    return RunCardShareFiles(
+      front: front,
+      back: back,
+      motion: await _recordGif(),
+      motionType: 'image/gif',
+    );
+  }
+
+  /// Ghi từng khung sang bộ mã hoá ngay khi chụp, không giữ cả video trong
+  /// bộ nhớ: 108 khung 1080 px thô là khoảng 680 MB.
+  Future<Uint8List> _recordVideo() async {
+    final size = _stageKey.currentContext!.size!;
+    final height = (_videoWidth * size.height / size.width / 16).round() * 16;
+    final frames = _motionDuration.inMilliseconds * _videoFps ~/ 1000;
+    final dir = await getTemporaryDirectory();
+    final path = '${dir.path}/run-card-${widget.card.id}.mp4';
+    final writer = CardVideoWriter();
+    await writer.start(path: path, width: _videoWidth, height: height);
+    try {
+      for (var i = 0; i < frames; i++) {
+        _progress(i + 1, frames);
+        final f = await _frame(i / frames, _videoWidth);
+        await writer.add(
+          fitRgbaFrame(
+            f.rgba,
+            f.width,
+            f.height,
+            _videoWidth,
+            height,
+            RunNowGameTokens.nightBackground,
+          ),
+        );
+      }
+      if (mounted) setState(() => _step = frames + 1);
+      await writer.finish();
+    } catch (_) {
+      await writer.cancel().catchError(
+        (Object e) => debugPrint('Huỷ ghi video lỗi: $e'),
+      );
+      rethrow;
+    }
+    final file = File(path);
+    try {
+      return await file.readAsBytes();
+    } finally {
+      await file.delete();
+    }
+  }
+
+  Future<Uint8List> _recordGif() async {
     final frames = <Uint8List>[];
     var width = 0;
     var height = 0;
     for (var i = 0; i < _gifFrameCount; i++) {
-      if (!mounted) throw StateError('Màn khoe đã đóng.');
-      setState(() => _step = i + 1);
-      final p = _gifPose(i);
-      final image = await _shot(p.turn, p.pose, _gifWidthPx / stageWidth);
-      width = image.width;
-      height = image.height;
-      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      image.dispose();
-      frames.add(data!.buffer.asUint8List());
+      _progress(i + 1, _gifFrameCount);
+      final f = await _frame(i / _gifFrameCount, _gifWidth);
+      (width, height) = (f.width, f.height);
+      frames.add(f.rgba);
     }
     if (mounted) setState(() => _step = _gifFrameCount + 1);
-    final gif = await compute(
+    return compute(
       encodeCardGif,
       CardGifFrames(
         width: width,
         height: height,
-        frameMs: _gifFrameMs,
+        frameMs: _motionDuration.inMilliseconds ~/ _gifFrameCount,
         frames: frames,
       ),
     );
-    return RunCardShareFiles(front: front, back: back, gif: gif);
   }
-
-  Uint8List _bytes(RunCardShareFiles files, _Choice choice) => switch (choice) {
-    _Choice.front => files.front,
-    _Choice.back => files.back,
-    _Choice.gif => files.gif,
-  };
 
   Future<void> _share(BuildContext origin) async {
     final files = _files!;
     setState(() => _sharing = true);
     try {
-      final gif = _choice == _Choice.gif;
+      final (bytes, type) = switch (_choice) {
+        _Choice.front => (files.front, 'image/png'),
+        _Choice.back => (files.back, 'image/png'),
+        _Choice.motion => (files.motion, files.motionType),
+      };
+      final ext = switch (type) {
+        'video/mp4' => 'mp4',
+        'image/gif' => 'gif',
+        _ => 'png',
+      };
       await shareRunCardFile(
-        bytes: _bytes(files, _choice),
-        mimeType: gif ? 'image/gif' : 'image/png',
-        fileName: '3i-${widget.card.id}-${_choice.name}.${gif ? 'gif' : 'png'}',
+        bytes: bytes,
+        mimeType: type,
+        fileName: '3i-${widget.card.id}-${_choice.name}.$ext',
         shareOriginContext: origin,
         card: widget.card,
       );
@@ -370,14 +543,10 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
               Expanded(
                 child: Center(
                   child: files != null
-                      ? Image.memory(
-                          _bytes(files, _choice),
-                          key: ValueKey(_choice),
-                          gaplessPlayback: true,
-                        )
+                      ? _preview(files)
                       : _error != null
                       ? _failed()
-                      : _stage(),
+                      : _recordingStage(),
                 ),
               ),
               if (files != null) ...[
@@ -389,7 +558,11 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
                       Expanded(
                         child: _ChoiceTile(
                           label: choice.label,
-                          bytes: _bytes(files, choice),
+                          // Tile lá xoay dùng ảnh mặt trước kèm dấu phát.
+                          bytes: choice == _Choice.back
+                              ? files.back
+                              : files.front,
+                          motion: choice == _Choice.motion,
                           selected: choice == _choice,
                           onTap: () => setState(() => _choice = choice),
                         ),
@@ -424,6 +597,14 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
     );
   }
 
+  /// Ảnh tĩnh thì hiện đúng file sẽ gửi. Lá xoay thì cho lá xoay ngay trên
+  /// màn theo đúng nhịp đã ghi, khỏi cần trình phát video.
+  Widget _preview(RunCardShareFiles files) => switch (_choice) {
+    _Choice.front => Image.memory(files.front, gaplessPlayback: true),
+    _Choice.back => Image.memory(files.back, gaplessPlayback: true),
+    _Choice.motion => _SpinningCard(data: widget.data),
+  };
+
   Widget _failed() => Column(
     mainAxisSize: MainAxisSize.min,
     children: [
@@ -436,26 +617,67 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
     ],
   );
 
-  /// Lá đang được ghi. Mặt sau là một element duy nhất mang [_backKey]: lá
-  /// quay mặt trước thì nó nằm ngoài màn, lá lật thì nó chuyển lên sân khấu
-  /// mà giữ nguyên state. Dựng mới lúc lật thì bản đồ phải tải tile và mờ dần
-  /// từ đầu, khung chụp ngay sau đó mất bản đồ.
-  Widget _stage() {
+  Widget _recordingStage() {
+    final done = _steps > 0 && _step > _steps;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: _CardStage(boundaryKey: _stageKey, data: widget.data, at: _at),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          !_recording
+              ? 'Đang mở...'
+              : _step == 0
+              ? 'Đang chuẩn bị thẻ...'
+              : done
+              ? (_videoMotion ? 'Đang lưu video...' : 'Đang ghép GIF...')
+              : 'Đang ghi khung $_step/$_steps',
+          style: const TextStyle(color: gameNightMuted),
+        ),
+      ],
+    );
+  }
+}
+
+/// Lá đặt ở [at] trên nền tối, cỡ theo chỗ trống. Mặt sau là một element duy
+/// nhất: lá quay mặt trước thì nó nằm ngoài màn, lá lật thì nó chuyển lên lá
+/// mà giữ nguyên state. Dựng mới lúc lật thì bản đồ phải tải tile và mờ dần
+/// từ đầu, khung chụp ngay sau đó mất bản đồ.
+class _CardStage extends StatefulWidget {
+  const _CardStage({this.boundaryKey, required this.data, required this.at});
+
+  final GlobalKey? boundaryKey;
+  final AchievementCardData data;
+  final ({double turn, Offset pose}) at;
+
+  @override
+  State<_CardStage> createState() => _CardStageState();
+}
+
+class _CardStageState extends State<_CardStage> {
+  final _backKey = GlobalKey();
+
+  @override
+  Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final base = achievementCardSize;
+        // Lá cộng viền 8% mỗi bên.
         final width = math.min(
-          constraints.maxWidth * 0.8,
-          (constraints.maxHeight - 60) * base.width / base.height * 0.8,
+          constraints.maxWidth / 1.16,
+          constraints.maxHeight / (base.height / base.width + 0.16),
         );
         Widget back(Offset pose) => KeyedSubtree(
           key: _backKey,
           child: AchievementCard(data: widget.data, pose: pose, back: true),
         );
+        final at = widget.at;
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (!tiltFlipShowsBack(pose: _pose, turn: _turn))
+            if (!tiltFlipShowsBack(pose: at.pose, turn: at.turn))
               Offstage(
                 child: GameCardScaled(
                   width: width,
@@ -464,7 +686,7 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
                 ),
               ),
             RepaintBoundary(
-              key: _stageKey,
+              key: widget.boundaryKey,
               child: ColoredBox(
                 color: RunNowGameTokens.nightBackground,
                 child: Padding(
@@ -475,22 +697,11 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
                     back: back,
                     width: width,
                     cardSize: base,
-                    pose: _pose,
-                    turn: _turn,
+                    pose: at.pose,
+                    turn: at.turn,
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              !_recording
-                  ? 'Đang mở...'
-                  : _step == 0
-                  ? 'Đang chuẩn bị thẻ...'
-                  : _step > _gifFrameCount
-                  ? 'Đang ghép GIF...'
-                  : 'Đang ghi khung $_step/$_gifFrameCount',
-              style: const TextStyle(color: gameNightMuted),
             ),
           ],
         );
@@ -499,16 +710,49 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
   }
 }
 
+/// Lá xoay lặp mãi theo đúng nhịp của video hay GIF đã ghi.
+class _SpinningCard extends StatefulWidget {
+  const _SpinningCard({required this.data});
+
+  final AchievementCardData data;
+
+  @override
+  State<_SpinningCard> createState() => _SpinningCardState();
+}
+
+class _SpinningCardState extends State<_SpinningCard>
+    with SingleTickerProviderStateMixin {
+  late final _clock = AnimationController(
+    vsync: this,
+    duration: _motionDuration,
+  )..repeat();
+
+  @override
+  void dispose() {
+    _clock.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _clock,
+    builder: (context, _) =>
+        _CardStage(data: widget.data, at: _motionPose(_clock.value)),
+  );
+}
+
 class _ChoiceTile extends StatelessWidget {
   const _ChoiceTile({
     required this.label,
     required this.bytes,
+    required this.motion,
     required this.selected,
     required this.onTap,
   });
 
   final String label;
   final Uint8List bytes;
+  final bool motion;
   final bool selected;
   final VoidCallback onTap;
 
@@ -534,7 +778,18 @@ class _ChoiceTile extends StatelessWidget {
             children: [
               SizedBox(
                 height: 84,
-                child: Image.memory(bytes, gaplessPlayback: true),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Image.memory(bytes, gaplessPlayback: true),
+                    if (motion)
+                      const Icon(
+                        Icons.play_circle_fill_rounded,
+                        size: 32,
+                        color: gameNightInk,
+                      ),
+                  ],
+                ),
               ),
               const SizedBox(height: 6),
               Text(
