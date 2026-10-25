@@ -5,12 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/games/game_action_card.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_detail_controller.dart';
 import 'package:myrun/src/games/game_km_table.dart';
 import 'package:myrun/src/games/game_my_card.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
+import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/games/telegram_link_controller.dart';
 import 'package:myrun/src/games/telegram_link_section.dart';
@@ -204,37 +206,31 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  /// Lá khoe của người xem. Bậc hiếm chưa có từ backend nên tạm là Thường.
-  GameCardData _cardFor(GameDetail detail, GameMe me, GamePlayer? player) {
-    final lastKm = player?.lastKm;
-    final deathRound = player?.deathRound;
-    final ended = detail.status == 'ended';
-    return GameCardData(
-      role: me.role ?? '',
-      roleLabel: me.roleLabel,
-      player: player?.name ?? 'Bạn',
-      caption: detail.title,
-      stats: [
-        GameCardStat('Km chốt', lastKm == null ? '—' : gameKmText(lastKm)),
-        me.alive
-            ? const GameCardStat('Hiện tại', 'Còn sống')
-            : GameCardStat(
-                'Bị loại',
-                deathRound == null ? 'Rồi' : 'Vòng $deathRound',
-              ),
-        GameCardStat('Ván', ended ? 'Kết thúc' : 'Đang chơi', highlight: ended),
-      ],
-    );
-  }
+  /// Thẻ Ma Sói của người xem: bậc bốc lúc chia bài, phe thắng giữ thẻ khi
+  /// ván kết thúc.
+  AchievementCardData _cardFor(
+    GameDetail detail,
+    GameMe me,
+    GamePlayer? player,
+  ) => gameCardData(
+    GamePlayerCard.fromMe(detail: detail, me: me, player: player),
+    owner: player?.name ?? 'Bạn',
+  );
 
   void _openCard(GameDetail detail, GameMe me, GamePlayer? player) {
-    // Khoe lúc ván còn chạy mà mình còn sống là lộ vai.
-    final canShare = detail.status == 'ended' || !me.alive;
+    final card = GamePlayerCard.fromMe(detail: detail, me: me, player: player);
+    // Ván còn chạy mà mình còn sống thì vai còn bí mật.
+    final secret = detail.status != 'ended' && me.alive;
     showGameCardViewer(
       context,
-      card: _cardFor(detail, me, player),
-      canShare: canShare,
-      chips: [detail.statusLabel, if (!canShare) 'Chỉ mình bạn thấy'],
+      card: card,
+      data: _cardFor(detail, me, player),
+      secret: secret,
+      chips: [
+        detail.statusLabel,
+        gameCardTiers[card.tier]!.label,
+        if (secret) 'Chỉ mình bạn thấy',
+      ],
     );
   }
 

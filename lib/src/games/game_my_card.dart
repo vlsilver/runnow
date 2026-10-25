@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/games/game_km_table.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/games/game_turn.dart';
@@ -32,7 +33,7 @@ class GameMyCard extends StatelessWidget {
   final DateTime Function() serverNow;
 
   /// Lá vẽ trong mặt ngửa; chạm vào lá thì mở xem to ([onOpenCard]).
-  final GameCardData card;
+  final AchievementCardData card;
   final VoidCallback onOpenCard;
 
   /// Đầu cột cho bảng km phe trong mặt lá (`me.teamKm`).
@@ -142,7 +143,7 @@ class _Face extends StatelessWidget {
   });
 
   final GameMe me;
-  final GameCardData card;
+  final AchievementCardData card;
   final GameKmTable? kmTable;
   final bool running;
   final DateTime Function() serverNow;
@@ -168,7 +169,11 @@ class _Face extends StatelessWidget {
           children: [
             GestureDetector(
               onTap: onOpenCard,
-              child: GameCardScaled(width: 140, child: card.front()),
+              child: GameCardScaled(
+                width: 140,
+                size: achievementCardSize,
+                child: AchievementCard(data: card),
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(

@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_detail_screen.dart';
-import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/providers.dart';
 
 import 'support/fake_game_backend.dart';
@@ -504,7 +504,7 @@ void main() {
     Future<void> openBigCard(WidgetTester tester) async {
       await tester.tap(find.text(faceDown));
       await tester.pumpAndSettle();
-      await tester.tap(find.byType(GameRoleCard));
+      await tester.tap(find.byType(AchievementCard));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
     }
@@ -549,7 +549,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byType(GameCardViewer),
-          matching: find.byType(GameRoleCard),
+          matching: find.byType(AchievementCard),
         ),
         findsNothing,
       );
@@ -569,7 +569,10 @@ void main() {
       await close(tester);
     });
 
-    testWidgets('unlocks bragging once the viewer is out', (tester) async {
+    // Người chết giữa ván không khoe được nữa: thẻ chỉ thuộc về phe thắng.
+    testWidgets('keeps bragging locked for the dead while the game runs', (
+      tester,
+    ) async {
       backend.game = running();
       backend.me = {
         'status': 'running',
@@ -581,8 +584,56 @@ void main() {
       await tester.pump();
       await openBigCard(tester);
 
+      expect(find.text('Khoe thẻ'), findsNothing);
+      expect(find.textContaining('ván kết thúc và phe bạn thắng'), findsOne);
+      await close(tester);
+    });
+
+    Map<String, dynamic> ended() => {
+      ...running(),
+      'status': 'ended',
+      'statusLabel': 'Đã kết thúc',
+      'winner': 'village',
+    };
+
+    testWidgets('unlocks bragging for the winning side once the game ends', (
+      tester,
+    ) async {
+      backend.game = ended();
+      backend.me = {
+        'status': 'ended',
+        'alive': false,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+        'cardTier': 'rare',
+        'cardOwned': true,
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await openBigCard(tester);
+
       expect(find.text('Khoe thẻ'), findsOneWidget);
+      expect(find.text('Hiếm'), findsOneWidget);
       expect(find.textContaining('lộ vai'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('keeps bragging locked for the losing side', (tester) async {
+      backend.game = ended();
+      backend.me = {
+        'status': 'ended',
+        'alive': true,
+        'role': 'wolf',
+        'roleLabel': 'Sói',
+        'cardTier': 'rare',
+        'cardOwned': false,
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await openBigCard(tester);
+
+      expect(find.text('Khoe thẻ'), findsNothing);
+      expect(find.textContaining('Chỉ người phe thắng'), findsOneWidget);
       await close(tester);
     });
 

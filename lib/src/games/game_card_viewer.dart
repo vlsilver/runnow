@@ -1,44 +1,47 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
+import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/share.dart';
 
 /// Vẽ một mặt lá theo độ nghiêng [pose] (-1..1 mỗi chiều).
 typedef CardFaceBuilder = Widget Function(Offset pose);
 
-/// Điểm sáng (0..1 mỗi chiều) chạy ngược hướng nghiêng như ánh đèn trên mặt
-/// thẻ thật.
-Offset gameCardHoloAt(Offset pose) =>
-    Offset(0.5 + pose.dx * 0.45, 0.35 + pose.dy * 0.35);
-
-/// Mở lá bài Ma Sói toàn màn hình. Khi [canShare] là false (ván còn chạy,
-/// người xem còn sống) thì khoá nút khoe, vì khoe lúc này là lộ vai.
+/// Mở thẻ Ma Sói của người xem toàn màn hình. Chỉ thẻ đã sở hữu (phe thắng,
+/// ván đã xong) mới có nút khoe. [secret] là khi vai còn bí mật (ván chạy, người
+/// xem còn sống): rời app là đóng thẻ.
 Future<void> showGameCardViewer(
   BuildContext context, {
-  required GameCardData card,
-  required bool canShare,
+  required GamePlayerCard card,
+  required AchievementCardData data,
+  required bool secret,
   required List<String> chips,
 }) {
   return showCardViewer(
     context,
-    front: (pose) => card.front(holo: gameCardHoloAt(pose)),
-    back: (pose) {
-      final holo = gameCardHoloAt(pose);
-      return GameCardBack(holo: Offset(1 - holo.dx, holo.dy));
-    },
+    front: (pose) => AchievementCard(data: data, pose: pose),
+    back: (pose) => AchievementCard(data: data, pose: pose, back: true),
     chips: chips,
-    hideWhenInactive: !canShare,
-    onShare: canShare
+    cardSize: achievementCardSize,
+    hideWhenInactive: secret,
+    onShare: card.owned
         ? (cardKey, origin) => shareGameCard(
             cardKey: cardKey,
             shareOriginContext: origin,
-            player: card.player,
+            player: data.owner,
           )
         : null,
-    locked: const _LockedNote(),
+    locked: _LockedNote(
+      secret
+          ? 'Ván còn đang chơi, khoe thẻ lúc này là lộ vai.'
+          : card.ended
+          ? 'Chỉ người phe thắng mới giữ và khoe được thẻ ván này.'
+          : 'Thẻ chỉ khoe được khi ván kết thúc và phe bạn thắng.',
+    ),
   );
 }
 
@@ -429,7 +432,9 @@ Widget tiltFlipFace({
 }
 
 class _LockedNote extends StatelessWidget {
-  const _LockedNote();
+  const _LockedNote(this.text);
+
+  final String text;
 
   @override
   Widget build(BuildContext context) {
@@ -440,16 +445,19 @@ class _LockedNote extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
       ),
-      child: const Row(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.lock_outline_rounded, size: 18, color: gameNightGoldDeep),
-          SizedBox(width: 10),
+          const Icon(
+            Icons.lock_outline_rounded,
+            size: 18,
+            color: gameNightGoldDeep,
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Ván còn đang chơi, khoe thẻ lúc này là lộ vai. Nút Khoe mở khi '
-              'ván kết thúc hoặc khi bạn bị loại.',
-              style: TextStyle(
+              text,
+              style: const TextStyle(
                 fontSize: 13,
                 height: 1.45,
                 color: RunNowGameTokens.nightInkSoft,

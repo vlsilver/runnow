@@ -450,6 +450,8 @@ class GameMe {
     required this.actions,
     required this.allRoles,
     this.teamKm,
+    this.cardTier,
+    this.cardOwned = false,
   });
 
   factory GameMe.fromJson(Map<String, dynamic> json) {
@@ -468,6 +470,8 @@ class GameMe {
       actions: _list(json['actions'], GameAction.fromJson),
       allRoles: _list(json['allRoles'], GameRoleReveal.fromJson),
       teamKm: _obj(json['teamKm'], GameTeamKm.fromJson),
+      cardTier: _optString(json['cardTier']),
+      cardOwned: json['cardOwned'] == true,
     );
   }
 
@@ -496,6 +500,14 @@ class GameMe {
 
   /// Km của phe, chỉ sói còn sống mới có.
   final GameTeamKm? teamKm;
+
+  /// Khoá bậc thẻ Ma Sói (common … mythic), có từ lúc chia bài. Backend cũ
+  /// không gửi thì null.
+  final String? cardTier;
+
+  /// Ván đã kết thúc và người xem ở phe thắng: thẻ đã nằm trong
+  /// users/{uid}/gameCards, được khoe.
+  final bool cardOwned;
 }
 
 class GamePotions {
