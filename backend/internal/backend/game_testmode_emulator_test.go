@@ -13,6 +13,8 @@ import (
 	"time"
 
 	ww "github.com/vlsilver/runnow/backend/internal/werewolf"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // testPscChat là TELEGRAM_CHAT_ID của test; group test dùng chat khác.
@@ -209,6 +211,10 @@ func TestEmulatorTestModeGameRunsToEndByAdvance(t *testing.T) {
 	if st := g.state(); st.Phase != ww.PhaseNight || st.Round != 1 {
 		t.Fatalf("sau advance đầu: %s", st.PhaseKey())
 	}
+	// Bậc thẻ có từ lúc chia bài; ván chưa xong thì chưa ai sở hữu.
+	if me, err := g.store.Me(context.Background(), g.id, GameViewer{UID: "r1"}, g.wall); err != nil || me.CardOwned || me.CardTier != wantTier(g.state(), "r1") {
+		t.Fatalf("/me của r1 giữa ván: owned %v, tier %q, err %v", me.CardOwned, me.CardTier, err)
+	}
 	if res := g.do("r1", ww.KindSeerPeek, "", "fake-01"); res.Peek != ww.TeamWolves {
 		t.Fatalf("soi fake-01 = %s", res.Peek)
 	}
@@ -286,6 +292,33 @@ func TestEmulatorTestModeGameRunsToEndByAdvance(t *testing.T) {
 			t.Fatalf("có outboxChats %s", c.Ref.ID)
 		}
 	}
+	// Phe Dân thắng: người thật r1–r4 đều phe Dân nên đều giữ thẻ, kể cả r2, r3
+	// đã chết. Người giả không có tài khoản nên không có thẻ dù cùng phe.
+	ctx := context.Background()
+	for _, uid := range []string{"r1", "r2", "r3", "r4", "fake-01", "fake-03"} {
+		snap, err := g.db.Collection("users").Doc(uid).Collection("gameCards").Doc(g.id).Get(ctx)
+		if strings.HasPrefix(uid, "fake-") {
+			if status.Code(err) != codes.NotFound {
+				t.Fatalf("thẻ của %s: err = %v", uid, err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("thẻ của %s: %v", uid, err)
+		}
+		card := snap.Data()
+		if card["tier"] != wantTier(st, uid) || card["team"] != "village" || card["winner"] != "village" ||
+			card["role"] != string(st.Players[uid].Role) || card["alive"] != st.Players[uid].Alive ||
+			card["playerCount"] != int64(10) || card["testMode"] != true {
+			t.Fatalf("thẻ của %s = %v", uid, card)
+		}
+		if _, died := card["deathRound"]; died == st.Players[uid].Alive {
+			t.Fatalf("thẻ của %s: deathRound khi alive = %v", uid, st.Players[uid].Alive)
+		}
+	}
+	if me, err := g.store.Me(ctx, g.id, GameViewer{UID: "r2"}, g.wall); err != nil || !me.CardOwned || me.CardTier != wantTier(st, "r2") {
+		t.Fatalf("/me của r2 lúc kết thúc: owned %v, tier %q, err %v", me.CardOwned, me.CardTier, err)
+	}
 	replayMatches(t, g.storeGame)
 
 	// T6: gửi hết outbox của cả ván bằng chữ render từ event thật. Không tin nào
@@ -315,6 +348,9 @@ func TestEmulatorTestModeGameRunsToEndByAdvance(t *testing.T) {
 		t.Fatalf("bản tin cuối = %q", lastGroup)
 	}
 }
+
+// wantTier là bậc thẻ mong đợi, để so với cái backend ghi và trả.
+func wantTier(st *ww.State, uid string) string { return string(gameCardTier(st.Seed, uid)) }
 
 func (g *testModeGame) actionCount(round int) int {
 	g.t.Helper()

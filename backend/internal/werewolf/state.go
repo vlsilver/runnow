@@ -187,6 +187,34 @@ func (st *State) hasKm(uid string) bool {
 	return st.Km[uid] >= st.Config.unitMeters()
 }
 
+// TeamOf là phe của uid khi xét thắng thua: hai người trong cặp Sói–Dân thành
+// phe ba (R23, R24), còn lại theo vai.
+func (st *State) TeamOf(uid string) Team {
+	if st.mixedCouple() && st.loverOf(uid) != "" {
+		return TeamLovers
+	}
+	if st.role(uid) == Wolf {
+		return TeamWolves
+	}
+	return TeamVillage
+}
+
+// Winners là uid phe thắng, kể cả người đã chết, theo thứ tự uid. Ván chưa có
+// phe thắng thì rỗng.
+func (st *State) Winners() []string {
+	if st.Winner == "" {
+		return nil
+	}
+	var out []string
+	for uid := range st.Players {
+		if st.TeamOf(uid) == st.Winner {
+			out = append(out, uid)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Peek là kết quả soi của tiên tri: Sói hay Dân. Sói đang yêu vẫn ra Sói (R2).
 func (st *State) Peek(target string) Team {
 	if st.role(target) == Wolf {

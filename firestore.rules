@@ -88,6 +88,12 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // Thẻ Ma Sói: backend ghi cho phe thắng lúc ván kết thúc, client chỉ đọc.
+      match /gameCards/{gameId} {
+        allow read: if owns(userId);
+        allow write: if false;
+      }
+
       match /runContractActivityClaims/{activityId} {
         allow read: if owns(userId);
         allow create, update: if owns(userId)

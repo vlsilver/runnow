@@ -432,7 +432,8 @@ func (s *GameStore) advanceOnce(ctx context.Context, gameID string, wall time.Ti
 		if err != nil {
 			return err
 		}
-		w := stepWrite{tx: tx, game: game, gameData: g.Data(), before: st, after: next, events: evs, msgs: msgs, chats: chats, now: now, wall: wall}
+		w := stepWrite{tx: tx, game: game, gameData: g.Data(), before: st, after: next, events: evs, msgs: msgs, chats: chats, now: now, wall: wall,
+			users: s.db.Collection("users")}
 		if err := w.commit(map[string]any{"kind": "step", "phaseKey": st.PhaseKey(), "inputs": string(inputs)}); err != nil {
 			return err
 		}
@@ -615,6 +616,8 @@ type stepWrite struct {
 	now, wall time.Time
 	// extra gộp thêm vào games/{id} (Start ghi playerCount sau khi loại người).
 	extra map[string]any
+	// users là collection users, để bước kết thúc ván ghi thẻ cho phe thắng.
+	users *firestore.CollectionRef
 }
 
 func (w *stepWrite) status() string {
@@ -688,7 +691,33 @@ func (w *stepWrite) commit(event map[string]any) error {
 			}
 		}
 	}
+	if err := w.writeGameCards(); err != nil {
+		return err
+	}
 	return w.writeOutbox(eventSeq)
+}
+
+// writeGameCards trao thẻ cho người phe thắng, kể cả người đã chết, ở đúng bước
+// ván chuyển sang kết thúc. Người chơi giả của ván thử không có tài khoản nên
+// không nhận. Ván huỷ không đi qua đây nên không ai có thẻ.
+func (w *stepWrite) writeGameCards() error {
+	if w.before == nil || w.before.Phase == werewolf.PhaseEnded || w.after.Phase != werewolf.PhaseEnded {
+		return nil
+	}
+	if w.users == nil {
+		return errors.New("stepWrite: ván kết thúc mà thiếu users để ghi thẻ")
+	}
+	fake := fakeUIDs(w.gameData)
+	for _, uid := range w.after.Winners() {
+		if fake[uid] {
+			continue
+		}
+		ref := w.users.Doc(uid).Collection("gameCards").Doc(w.game.ID)
+		if err := w.tx.Set(ref, gameCardDoc(w.game.ID, uid, w.after, w.wall)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // publicGame là phần của games/{id} mà API được đọc: không có vai của người còn

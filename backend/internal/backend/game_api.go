@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -938,6 +939,11 @@ type GameMe struct {
 	Actions     []GameAction     `json:"actions"`
 	AllRoles    []GameRoleReveal `json:"allRoles,omitempty"`
 	TeamKm      *GameTeamKm      `json:"teamKm,omitempty"` // chỉ sói còn sống
+	// CardTier là bậc thẻ người gọi bốc được, có từ lúc chia bài. CardOwned true
+	// khi ván đã kết thúc và người gọi thuộc phe thắng: thẻ đã nằm trong
+	// users/{uid}/gameCards.
+	CardTier  string `json:"cardTier,omitempty"`
+	CardOwned bool   `json:"cardOwned"`
 }
 
 type GamePotions struct {
@@ -1036,6 +1042,7 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 	out.Role, out.RoleLabel, out.Alive = string(me.Role), roleLabels[me.Role], me.Alive
 	out.RoleRules = strings.ReplaceAll(roleRules[me.Role], "X km", formatKm(kmPerUnit(st.Config))+" km")
 	out.CardURL, out.CardBackURL = cfg.cards[string(me.Role)], cfg.cards["back"]
+	out.CardTier = string(gameCardTier(st.Seed, v.UID))
 	if me.Role == werewolf.Witch {
 		out.Potions = &GamePotions{Save: st.SavePotion, Poison: st.PoisonPotion}
 	}
@@ -1048,6 +1055,7 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 		}
 	}
 	if st.Phase == werewolf.PhaseEnded {
+		out.CardOwned = slices.Contains(st.Winners(), v.UID)
 		for _, uid := range sortedPlayers(st) {
 			r := st.Players[uid].Role
 			out.AllRoles = append(out.AllRoles, GameRoleReveal{UID: uid, Name: name(uid), Role: string(r), RoleLabel: roleLabels[r], CardURL: cfg.cards[string(r)]})
