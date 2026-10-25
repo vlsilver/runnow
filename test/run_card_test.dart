@@ -206,6 +206,9 @@ class _Backend {
   /// Mã lỗi 409 trả cho lệnh vẽ; null thì nhận và đẩy thẻ đang vẽ.
   String? artError;
 
+  /// Lật thì trượt như buổi ngắn quay hụt: 409 card_missed, view báo trượt.
+  bool missRoll = false;
+
   RunNowApiClient client() => RunNowApiClient(
     baseUri: Uri.parse('https://api.example.test'),
     tokenProvider: ({required forceRefresh}) async => 'token',
@@ -235,6 +238,10 @@ class _Backend {
           cards.add(RunCard.fromJson(card));
           out = {'card': card};
         }
+      } else if (request.method == 'POST' && missRoll) {
+        status = 409;
+        out = {'error': 'card_missed', 'message': 'Lần lật này không ra thẻ.'};
+        view = {'card': null, 'reason': 'card_missed'};
       } else if (request.method == 'POST') {
         final card = _cardJson(tier: 'mythic');
         cards.add(RunCard.fromJson(card));
@@ -519,6 +526,31 @@ void main() {
     expect(find.text('Lật thẻ'), findsNothing);
     expect(find.textContaining('Thần thoại · 15,0 km'), findsOneWidget);
     expect(find.text('Khoe thẻ'), findsOneWidget);
+  });
+
+  testWidgets('a short run shows its chance and a miss is final', (
+    tester,
+  ) async {
+    final backend = _Backend()
+      ..view = {'card': null, 'odds': _cardJson()['odds'], 'chance': 20}
+      ..missRoll = true;
+    await _pumpPanel(tester, backend);
+    expect(find.textContaining('20% cơ hội ra thẻ'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Lật thẻ'));
+    await tester.pump();
+    await tester.tap(find.text('Lật thẻ'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(backend.requests, [
+      'GET /v1/activities/r1/card',
+      'POST /v1/activities/r1/card',
+      'GET /v1/activities/r1/card',
+    ]);
+    expect(find.textContaining('không ra thẻ'), findsOneWidget);
+    expect(find.text('Lật thẻ'), findsNothing);
+    // Trượt là kết quả, không báo như lỗi.
+    expect(find.textContaining('Không lật được thẻ'), findsNothing);
   });
 
   testWidgets('a duplicate run says why it has no card', (tester) async {

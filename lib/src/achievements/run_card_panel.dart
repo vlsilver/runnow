@@ -100,9 +100,15 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
             const SizedBox(height: 16),
             _OddsTable(km: km, odds: view.odds),
             const SizedBox(height: 8),
-            const _Message(
-              'Mỗi buổi chạy chỉ lật một lần, không lật lại được.',
-            ),
+            if (view.chance < 100)
+              _Message(
+                'Buổi này có ${_percent(view.chance)}% cơ hội ra thẻ. Trượt '
+                'thì buổi này không lật lại được.',
+              )
+            else
+              const _Message(
+                'Mỗi buổi chạy chỉ lật một lần, không lật lại được.',
+              ),
             const SizedBox(height: 12),
             FilledButton.icon(
               onPressed: _rolling ? null : _roll,
@@ -128,6 +134,11 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
       if (mounted) setState(() => _justRolled = true);
     } catch (error) {
       if (!mounted) return;
+      // Trượt là kết quả, không phải lỗi: view tải lại sẽ báo trượt.
+      if (error is RunNowApiException && error.code == 'card_missed') {
+        ref.invalidate(runCardViewProvider(_id));
+        return;
+      }
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Không lật được thẻ: $error')));
@@ -312,11 +323,19 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
 
 /// Câu cho người dùng ứng với mã lý do backend trả khi không lật được.
 String runCardReasonText(String reason) => switch (reason) {
+  'card_missed' =>
+    'Lần lật này không ra thẻ. Buổi ngắn chỉ có một phần cơ hội, chạy dài '
+        'hơn để chắc có thẻ.',
   'card_duplicate' =>
     'Buổi này trùng một buổi khác đã có thẻ (cùng lần chạy ghi ở hai nguồn), '
         'nên không lật thêm được.',
   _ => 'Chỉ buổi chạy bộ từ 500 m mới lật được thẻ.',
 };
+
+/// 20 thành "20", 12.5 thành "12,5".
+String _percent(double p) => p == p.roundToDouble()
+    ? p.toStringAsFixed(0)
+    : p.toStringAsFixed(1).replaceAll('.', ',');
 
 /// Xem thẻ 3D, lật hai mặt, khoe từ đó.
 void showRunCardViewer(

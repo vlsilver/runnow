@@ -206,7 +206,12 @@ class RunCard {
 /// Trả lời GET thẻ: [card] khi đã lật; chưa lật thì [odds] là tỉ lệ sẽ quay,
 /// hoặc [reason] (`card_not_eligible`, `card_duplicate`) khi không lật được.
 class RunCardView {
-  const RunCardView({this.card, this.odds = const [], this.reason});
+  const RunCardView({
+    this.card,
+    this.odds = const [],
+    this.chance = 100,
+    this.reason,
+  });
 
   factory RunCardView.fromJson(Map<String, dynamic> json) => RunCardView(
     card: switch (_map(json['card'])) {
@@ -214,11 +219,18 @@ class RunCardView {
       null => null,
     },
     odds: _list(json['odds'], RunCardOdd.fromJson),
+    chance: _optDouble(json['chance']) ?? 100,
     reason: _optString(json['reason']),
   );
 
   final RunCard? card;
+
+  /// Tỉ lệ từng bậc khi lật ra thẻ.
   final List<RunCardOdd> odds;
+
+  /// Phần trăm cơ hội lật ra thẻ; dưới 100 thì có thể trượt. Backend cũ không
+  /// gửi field này, khi đó lật luôn ra thẻ.
+  final double chance;
   final String? reason;
 }
 
