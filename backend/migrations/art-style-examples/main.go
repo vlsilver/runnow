@@ -5,7 +5,8 @@
 //
 // Mỗi phong cách là một lượt gọi model ảnh, tính tiền thật và không qua trần
 // chi phí vẽ thẻ. Ảnh đã có trong -out thì bỏ qua, nên chạy lại chỉ vẽ phần
-// còn thiếu hay phần đã xoá để vẽ lại.
+// còn thiếu hay phần đã xoá để vẽ lại. Model báo hết quota thì chờ -wait rồi
+// vẽ lại phong cách đó.
 //
 // Cần Vertex AI (Application Default Credentials):
 //
@@ -16,11 +17,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"google.golang.org/genai"
 
@@ -32,6 +36,7 @@ func main() {
 	model := flag.String("model", "gemini-2.5-flash-image", "model ảnh, cùng model vẽ tranh thẻ trên prod")
 	out := flag.String("out", "", "thư mục ghi ảnh <key>.png")
 	keys := flag.String("keys", "", "các key cách nhau dấu phẩy; bỏ trống là mọi phong cách chưa có ảnh mẫu")
+	wait := flag.Duration("wait", time.Minute, "thời gian chờ trước khi vẽ lại khi model báo hết quota (429)")
 	flag.Parse()
 	if *out == "" {
 		slog.Error("thiếu -out")
@@ -61,7 +66,7 @@ func main() {
 			skipped = append(skipped, key)
 			continue
 		}
-		img, _, err := backend.ArtStyleExample(ctx, client, *model, key)
+		img, err := drawWithQuotaWait(ctx, client, *model, key, *wait)
 		if err != nil {
 			slog.Warn("không vẽ được", "style", key, "error", err)
 			failed = append(failed, key)
@@ -77,5 +82,22 @@ func main() {
 	slog.Info("art-style-examples xong", "drawn", len(drawn), "skipped", len(skipped), "failed", failed)
 	if len(failed) > 0 {
 		os.Exit(1)
+	}
+}
+
+// quotaRetries là số lần chờ thêm khi model ảnh báo hết quota (429). Quota ảnh
+// của project tính theo phút nên vẽ liền vài ảnh là bị chặn; chờ rồi vẽ lại
+// đúng phong cách đó thay vì bỏ qua để người chạy phải chạy lại tay.
+const quotaRetries = 3
+
+func drawWithQuotaWait(ctx context.Context, client *genai.Client, model, key string, wait time.Duration) ([]byte, error) {
+	for retry := 0; ; retry++ {
+		img, _, err := backend.ArtStyleExample(ctx, client, model, key)
+		var apiErr genai.APIError
+		if err == nil || !errors.As(err, &apiErr) || apiErr.Code != http.StatusTooManyRequests || retry == quotaRetries {
+			return img, err
+		}
+		slog.Info("hết quota, chờ rồi vẽ lại", "style", key, "wait", wait, "retry", retry+1)
+		time.Sleep(wait)
 	}
 }
