@@ -1438,7 +1438,8 @@ class _FallbackMetric extends StatelessWidget {
 }
 
 /// Thẻ buổi chạy ngay trên màn buổi chạy: chưa lật thì hiện lá úp, chạm để
-/// mở sheet lật; lật rồi thì hiện luôn lá 3D, chạm để lật hai mặt.
+/// mở sheet lật; lật trượt hay không lật được thì lá úp mờ kèm lý do; lật rồi
+/// thì hiện luôn lá 3D, chạm để lật hai mặt.
 class _RunCardEntry extends ConsumerWidget {
   const _RunCardEntry({required this.activity, required this.onOpen});
 
@@ -1449,17 +1450,31 @@ class _RunCardEntry extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final card = ref.watch(runCardProvider(activity.id)).value;
     if (card == null) {
+      // Lật trượt thì không có doc thẻ, chỉ GET mới biết. Sheet lật dùng chung
+      // provider này nên trượt xong ngoài màn đổi theo.
+      final view = ref.watch(runCardViewProvider(activity.id));
+      final reason = view.value?.reason;
+      final (detail, hint) = switch (reason) {
+        _ when !view.hasValue && !view.hasError => ('', ''),
+        null => ('Chưa lật', 'Chạm để lật · mỗi buổi một lần'),
+        'card_missed' => ('Không ra thẻ', 'Lần lật trượt · buổi này hết lượt'),
+        'card_duplicate' => ('Không có thẻ', 'Trùng buổi khác đã có thẻ'),
+        _ => ('Không có thẻ', 'Buổi này không lật được thẻ'),
+      };
       return _RunCardSection(
-        detail: 'Chưa lật',
-        hint: 'Chạm để lật · mỗi buổi một lần',
+        detail: detail,
+        hint: hint,
         card: (width) => GestureDetector(
           onTap: onOpen,
-          child: GameCardScaled(
-            width: width,
-            size: achievementCardSize,
-            child: RunCardFaceDown(
-              km: (activity.distanceMeters / 100).round() / 10,
-              title: activity.name,
+          child: Opacity(
+            opacity: reason == null ? 1 : 0.45,
+            child: GameCardScaled(
+              width: width,
+              size: achievementCardSize,
+              child: RunCardFaceDown(
+                km: (activity.distanceMeters / 100).round() / 10,
+                title: activity.name,
+              ),
             ),
           ),
         ),

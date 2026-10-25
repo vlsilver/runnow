@@ -40,6 +40,7 @@ Future<void> _pump(
   ActivityDetail detail, {
   String? ownerUid,
   RunCard? card,
+  RunCardView view = const RunCardView(chance: 20),
 }) async {
   tester.view.physicalSize = const Size(420, 1600);
   tester.view.devicePixelRatio = 1.0;
@@ -51,6 +52,7 @@ Future<void> _pump(
         activityDetailProvider.overrideWith((ref, id) async => detail),
         memberActivityDetailProvider.overrideWith((ref, req) async => detail),
         runCardProvider.overrideWith((ref, id) => Stream.value(card)),
+        runCardViewProvider.overrideWith((ref, id) async => view),
         myActiveContractsProvider.overrideWith((ref) => Stream.value(const [])),
         userProfileProvider.overrideWith((ref) => Stream.value(null)),
       ],
@@ -87,6 +89,21 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('SHARE // ACTIVITY'), findsOneWidget);
+  });
+
+  // Lật trượt thì không có doc thẻ; ngoài màn phải báo trượt chứ không còn
+  // "Chưa lật" như buổi chưa lật.
+  testWidgets('a run that flipped and missed says so on the page', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _detail(ActivityKind.run),
+      view: const RunCardView(reason: 'card_missed'),
+    );
+    expect(find.text('Không ra thẻ'), findsOneWidget);
+    expect(find.text('Chưa lật'), findsNothing);
+    expect(find.textContaining('Chạm để lật'), findsNothing);
   });
 
   testWidgets('a flipped card shows on the page and taps flip its faces', (
