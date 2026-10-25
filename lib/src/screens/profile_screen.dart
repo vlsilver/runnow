@@ -6,8 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
+import 'package:myrun/src/achievements/run_card.dart';
 import 'package:myrun/src/achievements/run_card_collection.dart';
+import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
+import 'package:myrun/src/games/game_card_viewer.dart';
+import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/journey/journey_timeline.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/profile_stats.dart';
@@ -95,6 +99,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   List<Widget> _content(ProfileStatsData stats) {
     final lifetime = stats.lifetime;
     return [
+      const _CardShelfSection(),
+      const SizedBox(height: 16),
       Row(
         children: [
           Expanded(
@@ -134,8 +140,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ),
       const SizedBox(height: 20),
       const _JournalSection(),
-      const SizedBox(height: 20),
-      const _CardShelfSection(),
       const SizedBox(height: 20),
       const _JourneySection(),
     ];
@@ -1100,10 +1104,11 @@ class _JournalSectionState extends ConsumerState<_JournalSection> {
   }
 }
 
-/// Số thẻ hiện trong Hồ sơ; còn lại xem ở màn Bộ thẻ.
+/// Số thẻ hiện trong Hồ sơ, kể cả thẻ mới nhất; còn lại xem ở màn Bộ thẻ.
 const _shelfCardCount = 10;
 
-/// Bộ thẻ buổi chạy: hàng ngang các thẻ mới lật gần đây.
+/// Bộ thẻ buổi chạy, đặt đầu Hồ sơ: thẻ mới nhất to và 3D, kèm số thẻ theo
+/// bậc, rồi hàng ngang các thẻ trước đó.
 class _CardShelfSection extends ConsumerWidget {
   const _CardShelfSection();
 
@@ -1123,42 +1128,149 @@ class _CardShelfSection extends ConsumerWidget {
           );
         }
         final owner = runCardOwnerName(ref);
-        return SizedBox(
-          height: 112 * achievementCardSize.height / achievementCardSize.width,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: math.min(cards.length, _shelfCardCount),
-            separatorBuilder: (_, _) => const SizedBox(width: 10),
-            itemBuilder: (context, i) =>
-                RunCardThumb(card: cards[i], owner: owner, width: 112),
-          ),
+        final rest = cards.skip(1).take(_shelfCardCount - 1).toList();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _FeaturedCard(card: cards.first, owner: owner, all: cards),
+            if (rest.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                height:
+                    96 * achievementCardSize.height / achievementCardSize.width,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: rest.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 10),
+                  itemBuilder: (context, i) =>
+                      RunCardThumb(card: rest[i], owner: owner, width: 96),
+                ),
+              ),
+            ],
+          ],
         );
       },
     );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return _Card(
       children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Row(
-            children: [
-              const Expanded(child: _Caption('Bộ thẻ')),
-              if (count > 0)
-                Text(
-                  '$count thẻ',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: context.runNowPalette.textMuted,
-                  ),
+        Row(
+          children: [
+            const Expanded(child: _Caption('Bộ thẻ')),
+            if (count > 0)
+              Text(
+                '$count thẻ',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: context.runNowPalette.textMuted,
                 ),
-              TextButton(
-                onPressed: () => context.push('/me/cards'),
-                child: const Text('Xem tất cả'),
+              ),
+            TextButton(
+              onPressed: () => context.push('/me/cards'),
+              child: const Text('Xem tất cả'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        body,
+      ],
+    );
+  }
+}
+
+/// Thẻ mới nhất dựng 3D, cạnh đó là số thẻ đã có của từng bậc.
+class _FeaturedCard extends StatelessWidget {
+  const _FeaturedCard({
+    required this.card,
+    required this.owner,
+    required this.all,
+  });
+
+  final RunCard card;
+  final String owner;
+  final List<RunCard> all;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final data = runCardData(card, owner: owner);
+    final counts = <GameCardTier, int>{};
+    for (final c in all) {
+      counts[c.tier] = (counts[c.tier] ?? 0) + 1;
+    }
+    return Row(
+      children: [
+        TiltFlipCard(
+          front: (pose) => AchievementCard(data: data, pose: pose),
+          back: (pose) => AchievementCard(data: data, pose: pose, back: true),
+          width: 150,
+          cardSize: achievementCardSize,
+        ),
+        const SizedBox(width: 18),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'MỚI NHẤT',
+                style: TextStyle(
+                  fontSize: 11,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w700,
+                  color: palette.textMuted,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                card.snapshot.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Text(
+                '${gameCardTiers[card.tier]!.label} · '
+                '${runCardKm(card.km)} km',
+                style: TextStyle(fontSize: 13, color: palette.textMuted),
+              ),
+              const SizedBox(height: 14),
+              for (final tier in GameCardTier.values.reversed)
+                if (counts[tier] case final n?)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.diamond,
+                          size: 13,
+                          color: gameCardTiers[tier]!.gem,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            gameCardTiers[tier]!.label,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        Text(
+                          '×$n',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              const SizedBox(height: 6),
+              Text(
+                'Chạm thẻ để lật',
+                style: TextStyle(fontSize: 11, color: palette.textMuted),
               ),
             ],
           ),
         ),
-        body,
       ],
     );
   }

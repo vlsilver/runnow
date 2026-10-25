@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:myrun/src/achievements/run_card_collection.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
+import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/profile_stats.dart';
@@ -60,9 +61,9 @@ const _month = LeaderboardStats(
 );
 
 /// Thẻ thứ [n] trong bộ, mới lật trước như runCardsProvider trả.
-RunCard _card(int n) => RunCard.fromJson({
+RunCard _card(int n, {String tier = 'rare'}) => RunCard.fromJson({
   'id': 'card-$n',
-  'tier': 'rare',
+  'tier': tier,
   'km': 10.0,
   'rolledAt': DateTime.utc(2026, 10, 24).subtract(Duration(days: n)),
   'snapshot': {
@@ -167,6 +168,30 @@ void main() {
     );
   });
 
+  testWidgets('the shelf leads the profile with the newest card in 3D', (
+    tester,
+  ) async {
+    await pumpProfile(
+      tester,
+      cards: [
+        _card(1),
+        _card(2, tier: 'mythic'),
+        _card(3),
+      ],
+    );
+    expect(find.byType(TiltFlipCard), findsOneWidget);
+    expect(find.text('MỚI NHẤT'), findsOneWidget);
+    expect(find.text('Hiếm · 10,0 km'), findsOneWidget);
+    // Hai thẻ Hiếm, một thẻ Thần thoại.
+    expect(find.text('×2'), findsOneWidget);
+    expect(find.text('×1'), findsOneWidget);
+    // Bộ thẻ nằm trên các ô số liệu.
+    expect(
+      tester.getTopLeft(find.text('BỘ THẺ')).dy,
+      lessThan(tester.getTopLeft(find.text('TỔNG KM')).dy),
+    );
+  });
+
   testWidgets('the shelf shows the ten newest cards and opens the rest', (
     tester,
   ) async {
@@ -178,7 +203,8 @@ void main() {
       ))
         t.card.id,
     ];
-    expect(shown().first, 'card-1');
+    // Thẻ 1 đứng riêng to ở trên, hàng ngang bắt đầu từ thẻ 2.
+    expect(shown().first, 'card-2');
 
     await tester.drag(find.byType(RunCardThumb).first, const Offset(-3000, 0));
     await tester.pump();
