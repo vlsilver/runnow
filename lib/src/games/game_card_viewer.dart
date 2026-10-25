@@ -360,47 +360,67 @@ class TiltFlipCardState extends State<TiltFlipCard>
   }
 
   Widget _buildCard() {
-    final width = widget.width;
-    final pose = _pose();
-    final flip = Curves.easeInOutCubic.transform(_flip.value);
-    final ry = pose.dx * gameCardMaxTilt + flip * math.pi;
-    final rx = -pose.dy * gameCardMaxTilt;
-    final showBack = math.cos(ry) < 0;
     final base = widget.cardSize;
-    final size = Size(width, width * base.height / base.width);
+    final size = Size(widget.width, widget.width * base.height / base.width);
     return GestureDetector(
       onTap: _toggleFlip,
       onPanStart: (d) => _onDrag(d.localPosition, size),
       onPanUpdate: (d) => _onDrag(d.localPosition, size),
       onPanEnd: (_) => _onRelease(),
       onPanCancel: _onRelease,
-      child: Transform(
-        alignment: Alignment.center,
-        transform: Matrix4.identity()
-          ..setEntry(3, 2, 0.0012)
-          ..rotateX(rx)
-          ..rotateY(ry),
-        child: showBack
-            ? Transform(
-                alignment: Alignment.center,
-                transform: Matrix4.rotationY(math.pi),
-                child: GameCardScaled(
-                  width: width,
-                  size: base,
-                  child: widget.back(pose),
-                ),
-              )
-            : RepaintBoundary(
-                key: widget.captureKey,
-                child: GameCardScaled(
-                  width: width,
-                  size: base,
-                  child: widget.front(pose),
-                ),
-              ),
+      child: tiltFlipFace(
+        front: widget.front,
+        back: widget.back,
+        width: widget.width,
+        cardSize: base,
+        pose: _pose(),
+        turn: Curves.easeInOutCubic.transform(_flip.value) * math.pi,
+        captureKey: widget.captureKey,
       ),
     );
   }
+}
+
+/// Lá đặt theo độ nghiêng [pose] (-1..1 mỗi chiều) và góc lật [turn] (radian
+/// quanh trục dọc: 0 là mặt trước, π là mặt sau). [captureKey] gắn vào mặt
+/// trước để chụp ảnh khoe.
+Widget tiltFlipFace({
+  required CardFaceBuilder front,
+  required CardFaceBuilder back,
+  required double width,
+  required Size cardSize,
+  required Offset pose,
+  required double turn,
+  GlobalKey? captureKey,
+}) {
+  final ry = pose.dx * gameCardMaxTilt + turn;
+  final rx = -pose.dy * gameCardMaxTilt;
+  final showBack = math.cos(ry) < 0;
+  return Transform(
+    alignment: Alignment.center,
+    transform: Matrix4.identity()
+      ..setEntry(3, 2, 0.0012)
+      ..rotateX(rx)
+      ..rotateY(ry),
+    child: showBack
+        ? Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.rotationY(math.pi),
+            child: GameCardScaled(
+              width: width,
+              size: cardSize,
+              child: back(pose),
+            ),
+          )
+        : RepaintBoundary(
+            key: captureKey,
+            child: GameCardScaled(
+              width: width,
+              size: cardSize,
+              child: front(pose),
+            ),
+          ),
+  );
 }
 
 class _LockedNote extends StatelessWidget {
