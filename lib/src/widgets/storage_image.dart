@@ -10,6 +10,7 @@ class StorageImage extends StatefulWidget {
     this.fit = BoxFit.cover,
     this.cacheWidth,
     this.cacheHeight,
+    this.placeholder,
     super.key,
   });
 
@@ -24,6 +25,9 @@ class StorageImage extends StatefulWidget {
   /// GIỮ ĐÚNG TỈ LỆ. Truyền cả 2 vào Image sẽ ép decode đúng WxH → bóp méo ảnh.
   final int? cacheWidth;
   final int? cacheHeight;
+
+  /// Thay ô xám có vòng quay hay icon ảnh hỏng, lúc đang lấy link hoặc lỗi.
+  final Widget? placeholder;
 
   @override
   State<StorageImage> createState() => _StorageImageState();
@@ -64,6 +68,7 @@ class _StorageImageState extends State<StorageImage> {
       builder: (context, snapshot) {
         final url = snapshot.data;
         if (url == null) {
+          if (widget.placeholder case final placeholder?) return placeholder;
           return ColoredBox(
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             child: Center(
@@ -81,10 +86,12 @@ class _StorageImageState extends State<StorageImage> {
           // Chỉ dùng 1 chiều để decode giữ đúng tỉ lệ (không bóp méo).
           cacheWidth: widget.cacheWidth,
           cacheHeight: widget.cacheWidth == null ? widget.cacheHeight : null,
-          errorBuilder: (context, error, stack) => ColoredBox(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: const Center(child: Icon(Icons.broken_image_outlined)),
-          ),
+          errorBuilder: (context, error, stack) =>
+              widget.placeholder ??
+              ColoredBox(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: const Center(child: Icon(Icons.broken_image_outlined)),
+              ),
         );
       },
     );

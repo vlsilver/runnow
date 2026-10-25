@@ -8,6 +8,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/widgets/photo_viewer.dart';
+import 'package:myrun/src/widgets/storage_image.dart';
 
 /// Giới hạn file của storage rule cho ảnh gốc.
 const _maxPhotoBytes = 8 * 1024 * 1024;
@@ -372,7 +373,8 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
   }
 }
 
-/// Lưới phong cách ba cột: ô màu đại diện dáng thẻ 2:3 và tên.
+/// Lưới phong cách ba cột: ô dáng thẻ 2:3 (ảnh mẫu, chưa có thì màu đại
+/// diện) và tên.
 class _StyleGrid extends StatelessWidget {
   const _StyleGrid({
     required this.styles,
@@ -386,7 +388,6 @@ class _StyleGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return LayoutBuilder(
       builder: (context, constraints) {
         const gap = 10.0;
@@ -408,21 +409,9 @@ class _StyleGrid extends StatelessWidget {
                       children: [
                         AspectRatio(
                           aspectRatio: 2 / 3,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: style.key == selected
-                                    ? scheme.primary
-                                    : scheme.outlineVariant,
-                                width: style.key == selected ? 3 : 1,
-                              ),
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: _swatch(style, scheme),
-                              ),
-                            ),
+                          child: _StyleTile(
+                            style: style,
+                            selected: style.key == selected,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -441,6 +430,51 @@ class _StyleGrid extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// Ô một phong cách: ảnh mẫu phủ lên nền màu đại diện, nên lúc ảnh đang tải
+/// hay tải hỏng vẫn thấy màu.
+class _StyleTile extends StatelessWidget {
+  const _StyleTile({required this.style, required this.selected});
+
+  final ArtStyle style;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final radius = BorderRadius.circular(12);
+    return DecoratedBox(
+      position: DecorationPosition.foreground,
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        border: Border.all(
+          color: selected ? scheme.primary : scheme.outlineVariant,
+          width: selected ? 3 : 1,
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: radius,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: _swatch(style, scheme),
+            ),
+          ),
+          child: switch (style.example) {
+            final path? => StorageImage(
+              path: path,
+              cacheWidth: 360,
+              placeholder: const SizedBox.expand(),
+            ),
+            null => const SizedBox.expand(),
+          },
+        ),
+      ),
     );
   }
 }

@@ -250,6 +250,7 @@ class ArtStyle {
     required this.name,
     required this.family,
     required this.swatch,
+    this.example,
   });
 
   factory ArtStyle.fromJson(Map<String, dynamic> json) => ArtStyle(
@@ -261,6 +262,10 @@ class ArtStyle {
         for (final hex in hexes)
           if (hex is String) hex,
     ],
+    example: switch (json['example']) {
+      final String path when path.isNotEmpty => path,
+      _ => null,
+    },
   );
 
   final String key;
@@ -269,6 +274,9 @@ class ArtStyle {
 
   /// Ba màu đại diện dạng `#rrggbb`, cho ô xem trước.
   final List<String> swatch;
+
+  /// Đường dẫn Storage của ảnh mẫu; null thì ô chỉ có màu [swatch].
+  final String? example;
 }
 
 class ArtStyleList {

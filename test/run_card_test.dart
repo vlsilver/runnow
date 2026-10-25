@@ -21,6 +21,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/widgets/photo_viewer.dart';
+import 'package:myrun/src/widgets/storage_image.dart';
 import 'package:share_plus_platform_interface/share_plus_platform_interface.dart';
 
 /// Doc thẻ như API trả: thời gian là chuỗi, bậc là khoá server. startedAt
@@ -133,6 +134,7 @@ const _styles = {
       'name': 'Sơn dầu',
       'family': 'painting',
       'swatch': ['#7a4b2a', '#d9a441', '#2f4f6f'],
+      'example': 'artStyles/examples/oil.jpg',
     },
     {
       'key': 'anime_cel',
@@ -686,6 +688,13 @@ void main() {
     expect(find.text('Sơn dầu'), findsOne);
     expect(find.text('Anime cel'), findsNothing, reason: 'khác nhóm đang mở');
     expect(_drawEnabled(tester, 'Chọn một phong cách'), isFalse);
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is StorageImage && w.path == 'artStyles/examples/oil.jpg',
+      ),
+      findsOne,
+      reason: 'Sơn dầu có ảnh mẫu thì ô hiện ảnh đó',
+    );
 
     await _tapText(tester, 'Sơn dầu');
     expect(_drawEnabled(tester, 'Vẽ bằng Sơn dầu'), isTrue);
