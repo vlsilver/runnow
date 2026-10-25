@@ -158,7 +158,7 @@ func TestStepMessagesCloseTally(t *testing.T) {
 	}
 	hang := ww.Action{Kind: ww.KindVote, Actor: "v1", Choice: ww.ChoiceHang, ReceivedAt: trial.NightAt.Add(23 * time.Hour)}
 	night2, evs := mustStep(t, trial, hang)
-	want = map[string]any{"kind": "vote", "close": tallyClose{TurnKey: "r1", Round: 1, Nominee: "w1", Alive: alive}}
+	want = map[string]any{"kind": "vote", "close": tallyClose{TurnKey: "r1", Round: 1, Nominees: []string{"w1"}, Alive: alive}}
 	if got := closing(stepMessages(trial, night2, evs), ww.KindVote); !reflect.DeepEqual(got, want) {
 		t.Fatalf("đóng biểu quyết = %#v", got)
 	}

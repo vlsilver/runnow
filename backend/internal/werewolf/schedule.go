@@ -117,7 +117,7 @@ func (st *State) windowOpen(kind Kind, now time.Time) bool {
 	if !now.Before(st.Deadline()) {
 		return false
 	}
-	return kind != KindVote || !now.Before(st.NightAt.Add(voteOpens))
+	return !IsVote(kind) || !now.Before(st.NightAt.Add(voteOpens))
 }
 
 const (

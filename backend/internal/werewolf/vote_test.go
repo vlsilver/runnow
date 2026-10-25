@@ -1,6 +1,7 @@
 package werewolf
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 )
@@ -155,4 +156,42 @@ func TestNomineeTieDrawnAndNoNominationMeansNoTrial(t *testing.T) {
 		t.Fatalf("lên giàn = %+v", e)
 	}
 	g.reject(ErrPhaseClosed, Action{Kind: KindVote, Actor: "v2", Choice: ChoiceHang})
+}
+
+// State ghi trước khi có nhiều phiên chỉ có "nominee". Ván đang biểu quyết lúc
+// deploy vẫn bỏ phiếu và chốt đúng người đó, không mở phiên thứ hai.
+func TestTrialStateWithOnlyNomineeStillCounts(t *testing.T) {
+	g := trial(t, nil)
+	raw, err := json.Marshal(g.st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc["nominee"] != "v1" {
+		t.Fatalf("nominee = %v", doc["nominee"])
+	}
+	delete(doc, "nominees")
+	if raw, err = json.Marshal(doc); err != nil {
+		t.Fatal(err)
+	}
+	g.st = &State{}
+	if err := json.Unmarshal(raw, g.st); err != nil {
+		t.Fatal(err)
+	}
+	g.reject(ErrPhaseClosed, Action{Kind: KindVote2, Actor: "v2", Choice: ChoiceHang})
+	g.reject(ErrNotYourRole, Action{Kind: KindVote, Actor: "v1", Choice: ChoiceSpare})
+	for _, v := range []string{"w1", "w2", "w3"} {
+		g.vote(v, ChoiceHang)
+	}
+	evs := g.next()
+	if e := find(evs, EventVoteResult); e == nil || e.UID != "v1" || e.Hang != 3 || !e.Hanged {
+		t.Fatalf("kết quả = %+v", e)
+	}
+	sameDeaths(t, evs, map[string]Cause{"v1": CauseHang})
+	if len(g.st.TrialNominees()) != 0 || g.st.Nominee != "" {
+		t.Fatalf("sang đêm mà còn người lên giàn: %v %q", g.st.Nominees, g.st.Nominee)
+	}
 }

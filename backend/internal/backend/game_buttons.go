@@ -43,7 +43,7 @@ const (
 var kindCodes = map[werewolf.Kind]string{
 	werewolf.KindWolfBite: "b", werewolf.KindSeerPeek: "s", werewolf.KindGuard: "g", werewolf.KindWitchSave: "w",
 	werewolf.KindWitchPoison: "p", werewolf.KindHunterShoot: "h", werewolf.KindCupidPair: "c",
-	werewolf.KindNominate: "n", werewolf.KindVote: "x",
+	werewolf.KindNominate: "n", werewolf.KindVote: "x", werewolf.KindVote2: "y", werewolf.KindVote3: "u",
 }
 
 var voteChoices = []string{werewolf.ChoiceHang, werewolf.ChoiceSpare}
@@ -376,7 +376,7 @@ func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, u
 		return ButtonReply{Text: buttonTexts.stale}, nil
 	}
 	order := sortedPlayers(st)
-	if b.Kind == werewolf.KindVote {
+	if werewolf.IsVote(b.Kind) {
 		order = voteChoices
 	}
 	var targets []string
@@ -422,7 +422,7 @@ func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, u
 		GameID: b.GameID, UID: uid, Kind: b.Kind, Targets: targets, Source: "telegram",
 		TgUpdateID: updateID, TurnKey: b.TurnKey, ReceivedAt: received,
 	}
-	if b.Kind == werewolf.KindVote {
+	if werewolf.IsVote(b.Kind) {
 		req.Choice, req.Targets = targets[0], nil
 	}
 	res, err := s.SubmitAction(ctx, req)
@@ -438,11 +438,11 @@ func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, u
 		return ButtonReply{Text: buttonTexts.kept}, nil
 	}
 	reply := ButtonReply{Wrote: true}
-	switch b.Kind {
-	case werewolf.KindWitchSave:
+	switch {
+	case b.Kind == werewolf.KindWitchSave:
 		reply.Text = "Đã dùng bình cứu."
 		return reply, nil
-	case werewolf.KindVote:
+	case werewolf.IsVote(b.Kind):
 		reply.Text = "Đã chọn " + choiceLabels[req.Choice] + "."
 		return reply, nil
 	}

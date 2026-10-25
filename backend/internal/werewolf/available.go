@@ -1,7 +1,7 @@
 package werewolf
 
 // kindOrder là thứ tự cố định khi liệt kê hành động, để DM và /me ổn định.
-var kindOrder = []Kind{KindWolfBite, KindSeerPeek, KindGuard, KindWitchSave, KindWitchPoison, KindHunterShoot, KindCupidPair, KindNominate, KindVote}
+var kindOrder = []Kind{KindWolfBite, KindSeerPeek, KindGuard, KindWitchSave, KindWitchPoison, KindHunterShoot, KindCupidPair, KindNominate, KindVote, KindVote2, KindVote3}
 
 // Available là các loại hành động đang mở cho uid theo phase, vai, sống/chết,
 // lượt thợ săn, vòng của Cupid, bình còn hay hết và người lên giàn. Không xét
@@ -40,8 +40,8 @@ func (st *State) Available(uid string) []Kind {
 			if !st.PoisonPotion {
 				continue
 			}
-		case KindVote:
-			if st.Nominee == "" || st.Nominee == uid {
+		case KindVote, KindVote2, KindVote3:
+			if nominee := st.NomineeOf(kind); nominee == "" || nominee == uid {
 				continue
 			}
 		}

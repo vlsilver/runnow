@@ -188,8 +188,7 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 // Phe Sói trong app (C2), ghi ở SubmitAction.
 func actionMessages(a werewolf.Action) []gameMsg {
 	kind := map[string]any{"kind": string(a.Kind)}
-	switch a.Kind {
-	case werewolf.KindNominate, werewolf.KindVote:
+	if groupKind(a.Kind) {
 		return []gameMsg{{ChatKey: chatGroup, Template: tplTally, Data: kind}}
 	}
 	return []gameMsg{{ChatKey: dmChat(a.Actor), Template: tplChoice, Data: kind}}

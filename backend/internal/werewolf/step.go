@@ -379,7 +379,9 @@ func (r *resolver) pickNominee() {
 	default:
 		ev.UID, ev.Draw = top[r.stream("nominee").intn(len(top))], true
 	}
-	r.st.Nominee = ev.UID
+	if ev.UID != "" {
+		r.st.setNominees([]string{ev.UID})
+	}
 	r.emit(ev)
 	r.st.Phase = PhaseTrial
 	r.finish()
@@ -390,36 +392,45 @@ func (r *resolver) pickNominee() {
 func (r *resolver) resolveDay() {
 	r.st.Km = cloneKm(r.in.Km)
 	r.killLeavers()
-	if nominee := r.st.Nominee; nominee != "" {
-		if r.st.alive(nominee) {
-			r.countVotes(nominee)
-		} else {
-			// Người lên giàn đã rời PSC thì bỏ biểu quyết (R16).
-			for _, a := range r.actionsOf(KindVote) {
+	// Mọi phiên đếm trên cùng một lúc chốt rồi mới treo, để người bị treo ở
+	// phiên trước vẫn bỏ phiếu ở phiên sau và thứ tự phiên không đổi kết quả.
+	var hanged []string
+	for i, nominee := range r.st.TrialNominees() {
+		kind := voteKinds[i]
+		if !r.st.alive(nominee) {
+			// Người lên giàn đã rời PSC thì bỏ phiên của người đó (R16).
+			for _, a := range r.actionsOf(kind) {
 				r.void(a, VoidTargetDead)
 			}
 			r.emit(Event{Kind: EventVoteResult, UID: nominee, Reason: ReasonNoTrial})
+			continue
 		}
+		if r.countVotes(kind, nominee) {
+			hanged = append(hanged, nominee)
+		}
+	}
+	for _, uid := range hanged {
+		r.kill(uid, CauseHang)
 	}
 	r.killLovers()
 	r.st.Round++
 	r.st.NightAt = r.st.NightAt.Add(24 * time.Hour)
 	r.st.Phase = PhaseNight
-	r.st.Nominee = ""
+	r.st.setNominees(nil)
 	r.openHunterTurn() // khung 22h–23h nằm trong đêm của vòng sau
 	r.finish()
 }
 
-// countVotes áp R30, R31. Treo khi số phiếu Treo được tính nhiều hơn số phiếu Tha;
-// hoà thì tha (MĐ).
-func (r *resolver) countVotes(nominee string) {
+// countVotes áp R30, R31 cho phiên kind của nominee và trả có treo không. Treo
+// khi số phiếu Treo được tính nhiều hơn số phiếu Tha; hoà thì tha (MĐ).
+func (r *resolver) countVotes(kind Kind, nominee string) bool {
 	var voters []string
 	for _, uid := range r.st.aliveUIDs() {
 		if uid != nominee {
 			voters = append(voters, uid)
 		}
 	}
-	cut, draw := r.voteCut(voters)
+	cut, draw := r.voteCut(kind, voters)
 	if len(cut) > 0 {
 		r.emit(Event{Kind: EventVoteCut, Targets: cut, Draw: draw})
 	}
@@ -428,7 +439,7 @@ func (r *resolver) countVotes(nominee string) {
 		isCut[uid] = true
 	}
 	ev := Event{Kind: EventVoteResult, UID: nominee}
-	for _, a := range r.actionsOf(KindVote) {
+	for _, a := range r.actionsOf(kind) {
 		switch {
 		case a.Actor == nominee:
 			r.void(a, VoidTargetDead)
@@ -444,19 +455,22 @@ func (r *resolver) countVotes(nominee string) {
 	}
 	ev.Hanged = ev.Hang > ev.Spare
 	r.emit(ev)
-	if ev.Hanged {
-		r.kill(nominee, CauseHang)
-	}
+	return ev.Hanged
 }
 
-// voteCut chọn người mất phiếu (R30) theo PlanVoteCut. Bằng km ở đúng ngưỡng
-// thì bốc thăm bằng hash(seed, phaseKey, "vote-cut").
-func (r *resolver) voteCut(voters []string) (cut []string, draw bool) {
+// voteCut chọn người mất phiếu (R30) của phiên kind theo PlanVoteCut. Bằng km ở
+// đúng ngưỡng thì bốc thăm bằng hash(seed, phaseKey, "vote-cut"); phiên sau
+// phiên đầu thêm tên kind vào nhãn để mỗi phiên bốc riêng.
+func (r *resolver) voteCut(kind Kind, voters []string) (cut []string, draw bool) {
 	plan := PlanVoteCut(voters, r.st.Km, r.st.Config)
 	cut, tied := plan.Sure, plan.Tied
 	if plan.Need < len(tied) {
 		draw = true
-		r.stream("vote-cut").shuffle(len(tied), func(i, j int) { tied[i], tied[j] = tied[j], tied[i] })
+		purpose := "vote-cut"
+		if kind != KindVote {
+			purpose += "/" + string(kind)
+		}
+		r.stream(purpose).shuffle(len(tied), func(i, j int) { tied[i], tied[j] = tied[j], tied[i] })
 	}
 	cut = append(cut, tied[:plan.Need]...)
 	sort.Strings(cut)

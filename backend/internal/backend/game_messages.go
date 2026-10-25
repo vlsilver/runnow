@@ -24,6 +24,21 @@ const (
 
 func dmChat(uid string) string { return "dm:" + uid }
 
+// groupKinds là việc của cả group: đề cử và các phiên biểu quyết. Prompt nằm
+// trong topic, có tin đếm, không DM từng người.
+var groupKinds = append([]werewolf.Kind{werewolf.KindNominate}, werewolf.VoteKinds()...)
+
+func groupKind(k werewolf.Kind) bool { return slices.Contains(groupKinds, k) }
+
+// groupKindKeys là groupKinds dạng chuỗi, cho query Firestore theo kind.
+func groupKindKeys() []string {
+	out := make([]string, len(groupKinds))
+	for i, k := range groupKinds {
+		out[i] = string(k)
+	}
+	return out
+}
+
 const (
 	tplStart    = "start"     // group: ván bắt đầu, đêm 1 lúc nào
 	tplCard     = "card"      // dm: lá bài; sói thấy đồng đội
@@ -255,7 +270,7 @@ func promptMessages(before, after *werewolf.State) []gameMsg {
 			}
 		}
 		for _, k := range after.Available(uid) {
-			if had[k] || k == werewolf.KindNominate || k == werewolf.KindVote {
+			if had[k] || groupKind(k) {
 				continue
 			}
 			msgs = append(msgs, gameMsg{ChatKey: dmChat(uid), Template: tplPrompt, Data: map[string]any{
@@ -263,7 +278,7 @@ func promptMessages(before, after *werewolf.State) []gameMsg {
 			}})
 		}
 	}
-	for _, k := range []werewolf.Kind{werewolf.KindNominate, werewolf.KindVote} {
+	for _, k := range groupKinds {
 		wasOpen, isOpen := before != nil && openForAnyone(before, k), openForAnyone(after, k)
 		if wasOpen && !isOpen {
 			msgs = append(msgs, gameMsg{ChatKey: chatGroup, Template: tplTally, Data: map[string]any{
@@ -283,14 +298,16 @@ func promptMessages(before, after *werewolf.State) []gameMsg {
 // người lên giàn và giết người bị treo, nên tin đóng vẽ theo dữ liệu này chứ
 // không theo state lúc gửi.
 type tallyClose struct {
-	TurnKey string   `json:"turnKey"`
-	Round   int      `json:"round"`
-	Nominee string   `json:"nominee,omitempty"`
-	Alive   []string `json:"alive"`
+	TurnKey string `json:"turnKey"`
+	Round   int    `json:"round"`
+	// Nominee là người lên giàn của tin đóng ghi trước khi có nhiều phiên.
+	Nominee  string   `json:"nominee,omitempty"`
+	Nominees []string `json:"nominees,omitempty"`
+	Alive    []string `json:"alive"`
 }
 
 func closeOf(st *werewolf.State) tallyClose {
-	c := tallyClose{TurnKey: turnKey(st), Round: st.Round, Nominee: st.Nominee}
+	c := tallyClose{TurnKey: turnKey(st), Round: st.Round, Nominees: st.TrialNominees()}
 	for _, uid := range sortedPlayers(st) {
 		if st.Players[uid].Alive {
 			c.Alive = append(c.Alive, uid)

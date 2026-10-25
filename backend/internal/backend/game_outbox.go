@@ -955,8 +955,13 @@ func (r *outboxRenderer) liveKmLines(ctx context.Context) ([]string, error) {
 		km[uid] = fk.Meters
 	}
 	lines := append([]string{"<b>Km tới " + now.In(vietnam).Format("15:04") + ", chốt lúc 22h</b>"}, r.kmBoard(km)...)
-	if st.Phase == werewolf.PhaseTrial && st.Players[st.Nominee] != nil && st.Players[st.Nominee].Alive {
-		lines = append(lines, r.voteForecast(st, km))
+	if st.Phase == werewolf.PhaseTrial {
+		nominees := st.TrialNominees()
+		for _, nominee := range nominees {
+			if p := st.Players[nominee]; p != nil && p.Alive {
+				lines = append(lines, r.voteForecast(st, km, nominee, len(nominees) > 1))
+			}
+		}
 	}
 	return append(lines, "Km chốt 22h dùng cho biểu quyết tối nay và kỹ năng đêm nay. Chạy xong mở app cho km kịp đồng bộ."), nil
 }
@@ -964,17 +969,22 @@ func (r *outboxRenderer) liveKmLines(ctx context.Context) ([]string, error) {
 // voteForecast là R30 áp lên km tới giờ (km của người còn sống): nếu chốt bây
 // giờ thì bao nhiêu phiếu được tính, ai mất phiếu. Km còn tăng tới 22h nên chỉ
 // là dự báo; lúc chốt engine tính lại bằng km 22h.
-func (r *outboxRenderer) voteForecast(st *werewolf.State, km map[string]float64) string {
+// Nhiều người lên giàn thì mỗi phiên một dòng, gọi theo tên (named).
+func (r *outboxRenderer) voteForecast(st *werewolf.State, km map[string]float64, nominee string, named bool) string {
 	var voters []string
 	var total float64
 	for _, uid := range sortedPlayers(st) {
-		if _, alive := km[uid]; alive && uid != st.Nominee {
+		if _, alive := km[uid]; alive && uid != nominee {
 			voters = append(voters, uid)
 			total += km[uid]
 		}
 	}
 	plan := werewolf.PlanVoteCut(voters, km, r.cfg)
-	text := fmt.Sprintf("Biểu quyết nếu chốt bây giờ: %d người bỏ phiếu có tổng %s km, ", len(voters), formatKm(math.Floor(total/100)/10))
+	title := "Biểu quyết"
+	if named {
+		title += " " + r.names([]string{nominee})
+	}
+	text := fmt.Sprintf("%s nếu chốt bây giờ: %d người bỏ phiếu có tổng %s km, ", title, len(voters), formatKm(math.Floor(total/100)/10))
 	if plan.Allowed == len(voters) {
 		return text + fmt.Sprintf("đủ cho cả %d phiếu.", len(voters))
 	}
@@ -1138,7 +1148,7 @@ func (r *outboxRenderer) renderAction(ctx context.Context, key, tpl, raw string,
 // cuối cùng nhưng không còn nút.
 func (r *outboxRenderer) renderTally(ctx context.Context, out outboxText, tpl string, st *werewolf.State, kind werewolf.Kind, turn string) (outboxText, error) {
 	open := st.Phase == werewolf.PhaseDay && kind == werewolf.KindNominate ||
-		st.Phase == werewolf.PhaseTrial && kind == werewolf.KindVote
+		st.Phase == werewolf.PhaseTrial && st.NomineeOf(kind) != ""
 	if tpl == tplPrompt && !open {
 		return outboxText{skip: "closed"}, nil
 	}
@@ -1172,7 +1182,7 @@ func (r *outboxRenderer) renderTally(ctx context.Context, out outboxText, tpl st
 // sau lúc đóng nên renderTally vẽ bản hết giờ, không nút.
 func closedState(st *werewolf.State, c tallyClose) *werewolf.State {
 	cs := *st
-	cs.Round, cs.Nominee = c.Round, c.Nominee
+	cs.Round, cs.Nominees, cs.Nominee = c.Round, c.Nominees, c.Nominee
 	cs.Players = make(map[string]*werewolf.Player, len(st.Players))
 	for uid, p := range st.Players {
 		cp := *p

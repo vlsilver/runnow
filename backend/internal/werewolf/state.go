@@ -2,6 +2,7 @@ package werewolf
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 )
@@ -77,12 +78,16 @@ type State struct {
 	// kế tiếp và cho thợ săn (R26, R5).
 	Km map[string]float64 `json:"km,omitempty"`
 
-	Lovers       []string `json:"lovers,omitempty"`  // 0 hoặc 2 uid, áp lúc 0h đêm 1
-	SavePotion   bool     `json:"savePotion"`        // còn bình cứu
-	PoisonPotion bool     `json:"poisonPotion"`      // còn bình độc
-	LastGuarded  string   `json:"lastGuarded"`       // lần bảo vệ hợp lệ gần nhất đã chốt (R3)
-	Bitten       string   `json:"bitten,omitempty"`  // sói chốt lúc 0h; phù thuỷ thấy người này (R4)
-	Nominee      string   `json:"nominee,omitempty"` // người lên giàn lúc 20h
+	Lovers       []string `json:"lovers,omitempty"` // 0 hoặc 2 uid, áp lúc 0h đêm 1
+	SavePotion   bool     `json:"savePotion"`       // còn bình cứu
+	PoisonPotion bool     `json:"poisonPotion"`     // còn bình độc
+	LastGuarded  string   `json:"lastGuarded"`      // lần bảo vệ hợp lệ gần nhất đã chốt (R3)
+	Bitten       string   `json:"bitten,omitempty"` // sói chốt lúc 0h; phù thuỷ thấy người này (R4)
+	// Nominees là những người lên giàn lúc 20h, theo thứ tự phiên biểu quyết
+	// (VoteKinds). Nominee là người đầu tiên: state ghi trước khi có nhiều
+	// người lên giàn chỉ có field này, và bản cũ của service vẫn đọc nó.
+	Nominees []string `json:"nominees,omitempty"`
+	Nominee  string   `json:"nominee,omitempty"`
 
 	Hunter *HunterTurn `json:"hunter,omitempty"`
 	Winner Team        `json:"winner,omitempty"`
@@ -121,11 +126,42 @@ func (st *State) clone() *State {
 		}
 	}
 	c.Lovers = append([]string(nil), st.Lovers...)
+	c.Nominees = append([]string(nil), st.Nominees...)
 	if st.Hunter != nil {
 		h := *st.Hunter
 		c.Hunter = &h
 	}
 	return &c
+}
+
+// TrialNominees là những người lên giàn hôm nay, theo thứ tự phiên. State ghi
+// trước khi có nhiều người lên giàn chỉ có Nominee.
+func (st *State) TrialNominees() []string {
+	if len(st.Nominees) > 0 {
+		return append([]string(nil), st.Nominees...)
+	}
+	if st.Nominee != "" {
+		return []string{st.Nominee}
+	}
+	return nil
+}
+
+// NomineeOf là người lên giàn của phiên biểu quyết kind, rỗng nếu phiên đó
+// không có ai (hoặc kind không phải biểu quyết).
+func (st *State) NomineeOf(kind Kind) string {
+	i := slices.Index(voteKinds, kind)
+	if nominees := st.TrialNominees(); i >= 0 && i < len(nominees) {
+		return nominees[i]
+	}
+	return ""
+}
+
+// setNominees ghi người lên giàn, cả Nominee cho bản đọc cũ.
+func (st *State) setNominees(uids []string) {
+	st.Nominees, st.Nominee = uids, ""
+	if len(uids) > 0 {
+		st.Nominee = uids[0]
+	}
 }
 
 func (st *State) alive(uid string) bool {

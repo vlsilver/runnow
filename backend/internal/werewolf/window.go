@@ -36,7 +36,7 @@ func (st *State) Window(kind Kind) (opens, closes time.Time) {
 	if first != PhaseSetup {
 		opens = st.NightAt.Add(phaseStart[first])
 	}
-	if kind == KindVote {
+	if IsVote(kind) {
 		opens = st.NightAt.Add(voteOpens)
 	}
 	if last == st.Phase {
@@ -72,11 +72,12 @@ func Precheck(st *State, kind Kind, actor string, mine []Action, now time.Time) 
 		if !st.PoisonPotion {
 			return ErrAlreadyUsed
 		}
-	case KindVote:
-		if st.Nominee == "" {
+	case KindVote, KindVote2, KindVote3:
+		nominee := st.NomineeOf(kind)
+		if nominee == "" {
 			return ErrPhaseClosed
 		}
-		if actor == st.Nominee {
+		if actor == nominee {
 			return ErrNotYourRole
 		}
 	}

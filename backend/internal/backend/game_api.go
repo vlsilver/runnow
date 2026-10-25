@@ -457,7 +457,7 @@ func (s *GameStore) hasTodo(ctx context.Context, game *firestore.DocumentRef, g 
 		return false, err
 	}
 	for _, k := range todoKinds(st, uid, mine, gameNow(g, wall)) {
-		if k == werewolf.KindNominate || k == werewolf.KindVote {
+		if groupKind(k) {
 			return true, nil
 		}
 	}

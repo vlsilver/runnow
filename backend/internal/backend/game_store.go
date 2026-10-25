@@ -735,8 +735,10 @@ func (w *stepWrite) publicGame() map[string]any {
 		"paused": st.Paused, "nextAt": nil, "taskKey": st.TaskKey(), "updatedAt": w.wall,
 		"deadline": nil, "winner": string(st.Winner), "nominee": nil,
 	}
-	if st.Phase == werewolf.PhaseTrial && st.Nominee != "" {
-		out["nominee"] = st.Nominee
+	if nominees := st.TrialNominees(); st.Phase == werewolf.PhaseTrial && len(nominees) > 0 {
+		out["nominee"], out["nominees"] = nominees[0], nominees
+	} else {
+		out["nominees"] = nil
 	}
 	if len(revealed) > 0 {
 		out["revealed"] = revealed

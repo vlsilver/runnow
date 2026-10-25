@@ -64,8 +64,12 @@ var actionTexts = map[werewolf.Kind]actionText{
 	werewolf.KindHunterShoot: {"Bắn", "Bạn đã chết. Chọn một người bắn theo.", "single_target", confirmOnce},
 	werewolf.KindCupidPair:   {"Ghép đôi", "Chọn hai người thành cặp đôi. Một người chết thì người kia chết theo.", "two_targets", confirmOnce},
 	werewolf.KindNominate:    {"Đề cử", "Chọn một người lên giàn. Đổi được tới 20h.", "single_target", ""},
-	werewolf.KindVote:        {"Biểu quyết", "Treo hay tha người đang lên giàn. Đổi được tới 22h.", "choice", ""},
+	werewolf.KindVote:        voteText,
+	werewolf.KindVote2:       voteText,
+	werewolf.KindVote3:       voteText,
 }
+
+var voteText = actionText{"Biểu quyết", "Treo hay tha người đang lên giàn. Đổi được tới 22h.", "choice", ""}
 
 // rejectTexts là lý do luật từ chối, dùng cho cả disabledReason lẫn body lỗi.
 var rejectTexts = map[werewolf.Reject]string{
@@ -85,7 +89,7 @@ func rejectText(kind werewolf.Kind, err error) string {
 	if kind == werewolf.KindWitchSave && errors.Is(err, werewolf.ErrInvalidTarget) {
 		return "Đêm nay không có ai để cứu."
 	}
-	if kind == werewolf.KindVote && errors.Is(err, werewolf.ErrNotYourRole) {
+	if werewolf.IsVote(kind) && errors.Is(err, werewolf.ErrNotYourRole) {
 		return "Người lên giàn không bỏ phiếu."
 	}
 	// Cắn xét km chung của phe (wolvesHaveKm), còn app hiện km riêng từng người:
