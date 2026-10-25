@@ -12,6 +12,7 @@ import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/achievements/run_card_skin_choice.dart';
+import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_role_card.dart';
@@ -19,8 +20,9 @@ import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:path_provider/path_provider.dart';
 
-/// Khoe thẻ buổi chạy bằng ảnh mặt trước, ảnh mặt sau hoặc lá xoay 3D. Ba file
-/// tạo một lần rồi giữ trong máy cho các lần khoe sau.
+/// Khoe một thẻ khuôn thẻ thành tích (thẻ buổi chạy, thẻ Ma Sói) bằng ảnh mặt
+/// trước, ảnh mặt sau hoặc lá xoay 3D. Ba file tạo một lần rồi giữ trong máy
+/// cho các lần khoe sau.
 ///
 /// Lá xoay ghi thành video MP4 trên điện thoại: GIF chỉ có 256 màu mỗi khung
 /// nên tranh nền và glow bị vằn, không bao giờ nét bằng ảnh. Web không có bộ
@@ -53,9 +55,39 @@ bool get _videoMotion =>
     (defaultTargetPlatform == TargetPlatform.iOS ||
         defaultTargetPlatform == TargetPlatform.android);
 
+/// Thẻ đem khoe. Màn khoe chỉ cần biết thẻ nào, trên thẻ in gì và câu gửi kèm.
+class CardShareSubject {
+  const CardShareSubject({
+    required this.id,
+    required this.printed,
+    required this.text,
+  });
+
+  /// Thư mục cache và tên file gửi đi; mỗi loại thẻ một tiền tố riêng.
+  final String id;
+
+  /// Mọi thứ in trên thẻ ngoài bộ màu, ghép thành chuỗi. Đổi là file cũ thôi
+  /// dùng.
+  final String printed;
+
+  /// Câu gửi kèm file.
+  final String text;
+}
+
+CardShareSubject runCardShareSubject(
+  RunCard card,
+  String owner,
+) => CardShareSubject(
+  id: card.id,
+  printed: '${card.tier.name}|${card.artPath ?? ''}|$owner',
+  text:
+      '${card.snapshot.name} · ${formatDistance(card.snapshot.distanceMeters)}\n'
+      'Chia sẻ từ 3i',
+);
+
 /// Ba file khoe của một thẻ.
-class RunCardShareFiles {
-  const RunCardShareFiles({
+class CardShareFiles {
+  const CardShareFiles({
     required this.front,
     required this.back,
     required this.motion,
@@ -73,40 +105,40 @@ class RunCardShareFiles {
 }
 
 /// Khoá cache dạng `<nội dung>.<bộ màu>`. Phần nội dung đổi khi những gì in
-/// trên thẻ đổi (bậc, tranh nền, tên chủ); mỗi bộ màu của cùng nội dung giữ
-/// file riêng.
-String runCardShareKey(
-  RunCard card,
-  String owner, {
-  required RunCardSkin skin,
-}) {
+/// trên thẻ đổi; mỗi bộ màu của cùng nội dung giữ file riêng.
+String cardShareKey(CardShareSubject subject, {required RunCardSkin skin}) {
   // FNV-1a 32 bit: ổn định giữa các lần mở app, khác String.hashCode.
   var hash = 0x811c9dc5;
-  final printed =
-      '${card.tier.name}|${card.artPath ?? ''}|$owner|$_shareVersion';
-  for (final unit in printed.codeUnits) {
+  for (final unit in '${subject.printed}|$_shareVersion'.codeUnits) {
     hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
   }
   return '${hash.toRadixString(16)}.${skin.id}';
 }
+
+String runCardShareKey(
+  RunCard card,
+  String owner, {
+  required RunCardSkin skin,
+}) => cardShareKey(runCardShareSubject(card, owner), skin: skin);
 
 /// Phần nội dung của khoá, bỏ bộ màu.
 String _shareContent(String key) => key.split('.').first;
 
 /// Giữ ba file khoe của từng thẻ trong thư mục support của app; trên web chỉ
 /// giữ trong bộ nhớ.
-class RunCardShareStore {
-  final _memory = <String, RunCardShareFiles>{};
+class CardShareStore {
+  final _memory = <String, CardShareFiles>{};
 
   static String get _motionName => _videoMotion ? 'card.mp4' : 'card.gif';
   static List<String> get _names => ['front.png', 'back.png', _motionName];
 
   Future<Directory> _cardDir(String cardId) async {
     final base = await getApplicationSupportDirectory();
+    // Tên thư mục từ lúc chỉ thẻ chạy được khoe; giữ để file cũ còn dùng.
     return Directory('${base.path}/run_card_share/$cardId');
   }
 
-  Future<RunCardShareFiles?> load(String cardId, String key) async {
+  Future<CardShareFiles?> load(String cardId, String key) async {
     if (_memory['$cardId/$key'] case final hit?) return hit;
     if (kIsWeb) return null;
     final dir = Directory('${(await _cardDir(cardId)).path}/$key');
@@ -117,7 +149,7 @@ class RunCardShareStore {
     final [front, back, motion] = await Future.wait([
       for (final f in files) f.readAsBytes(),
     ]);
-    return _memory['$cardId/$key'] = RunCardShareFiles(
+    return _memory['$cardId/$key'] = CardShareFiles(
       front: front,
       back: back,
       motion: motion,
@@ -129,7 +161,7 @@ class RunCardShareStore {
   /// bản các bộ màu khác của cùng nội dung thì giữ. Mỗi file ghi ra tên tạm
   /// rồi đổi tên, nên app tắt giữa chừng không để lại file dở mà load tưởng
   /// là đủ.
-  Future<void> save(String cardId, String key, RunCardShareFiles files) async {
+  Future<void> save(String cardId, String key, CardShareFiles files) async {
     _memory['$cardId/$key'] = files;
     if (kIsWeb) return;
     final cardDir = await _cardDir(cardId);
@@ -158,7 +190,7 @@ class RunCardShareStore {
   }
 }
 
-final runCardShareStoreProvider = Provider((ref) => RunCardShareStore());
+final cardShareStoreProvider = Provider((ref) => CardShareStore());
 
 /// Khung ảnh RGBA cùng cỡ để ghép GIF; gửi sang isolate nên chỉ giữ dữ liệu.
 class CardGifFrames {
@@ -296,9 +328,9 @@ extension on _Choice {
 
 /// Màn khoe mở với bộ màu thẻ đang xem rồi tự giữ bộ màu riêng: đổi bộ màu
 /// chung giữa chừng thì ba file vẫn khớp nhau và khớp khoá cache.
-Future<void> showRunCardShare(
+Future<void> showCardShare(
   BuildContext context, {
-  required RunCard card,
+  required CardShareSubject subject,
   required AchievementCardData data,
 }) {
   final skin = RunCardSkin.of(context);
@@ -306,21 +338,31 @@ Future<void> showRunCardShare(
     MaterialPageRoute<void>(
       builder: (_) => Theme(
         data: gameNightTheme(),
-        child: RunCardShareScreen(card: card, data: data, skin: skin),
+        child: CardShareScreen(subject: subject, data: data, skin: skin),
       ),
     ),
   );
 }
 
-class RunCardShareScreen extends ConsumerStatefulWidget {
-  const RunCardShareScreen({
+Future<void> showRunCardShare(
+  BuildContext context, {
+  required RunCard card,
+  required AchievementCardData data,
+}) => showCardShare(
+  context,
+  subject: runCardShareSubject(card, data.owner),
+  data: data,
+);
+
+class CardShareScreen extends ConsumerStatefulWidget {
+  const CardShareScreen({
     super.key,
-    required this.card,
+    required this.subject,
     required this.data,
     required this.skin,
   });
 
-  final RunCard card;
+  final CardShareSubject subject;
   final AchievementCardData data;
 
   /// Bộ màu lúc mở. Chọn màu khác trên màn khoe chỉ đổi file khoe lần này,
@@ -328,12 +370,12 @@ class RunCardShareScreen extends ConsumerStatefulWidget {
   final RunCardSkin skin;
 
   @override
-  ConsumerState<RunCardShareScreen> createState() => _RunCardShareScreenState();
+  ConsumerState<CardShareScreen> createState() => _CardShareScreenState();
 }
 
-class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
+class _CardShareScreenState extends ConsumerState<CardShareScreen> {
   final _stageKey = GlobalKey();
-  RunCardShareFiles? _files;
+  CardShareFiles? _files;
   Object? _error;
   bool _recording = false;
   bool _sharing = false;
@@ -343,8 +385,7 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
   _Choice _choice = _Choice.motion;
   late RunCardSkin _skin = widget.skin;
 
-  String get _key =>
-      runCardShareKey(widget.card, widget.data.owner, skin: _skin);
+  String get _key => cardShareKey(widget.subject, skin: _skin);
 
   @override
   void initState() {
@@ -362,7 +403,7 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
   }
 
   Future<void> _start({bool fresh = false}) async {
-    final store = ref.read(runCardShareStoreProvider);
+    final store = ref.read(cardShareStoreProvider);
     setState(() {
       _files = null;
       _error = null;
@@ -370,15 +411,15 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
     });
     try {
       if (fresh) {
-        await store.clear(widget.card.id);
-      } else if (await store.load(widget.card.id, _key) case final hit?) {
+        await store.clear(widget.subject.id);
+      } else if (await store.load(widget.subject.id, _key) case final hit?) {
         if (mounted) setState(() => _files = hit);
         return;
       }
       if (!mounted) return;
       setState(() => _recording = true);
       final files = await _record();
-      await store.save(widget.card.id, _key, files);
+      await store.save(widget.subject.id, _key, files);
       if (mounted) setState(() => _files = files);
     } catch (error, stack) {
       debugPrint('Tạo ảnh khoe thẻ lỗi: $error\n$stack');
@@ -428,7 +469,7 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
     });
   }
 
-  Future<RunCardShareFiles> _record() async {
+  Future<CardShareFiles> _record() async {
     await Future<void>.delayed(_warmUp);
     Future<Uint8List> png(double turn) async {
       final image = await _shot((
@@ -446,14 +487,14 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
     final front = await png(0);
     final back = await png(math.pi);
     if (_videoMotion) {
-      return RunCardShareFiles(
+      return CardShareFiles(
         front: front,
         back: back,
         motion: await _recordVideo(),
         motionType: 'video/mp4',
       );
     }
-    return RunCardShareFiles(
+    return CardShareFiles(
       front: front,
       back: back,
       motion: await _recordGif(),
@@ -468,7 +509,7 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
     final height = (_videoWidth * size.height / size.width / 16).round() * 16;
     final frames = _motionDuration.inMilliseconds * _videoFps ~/ 1000;
     final dir = await getTemporaryDirectory();
-    final path = '${dir.path}/run-card-${widget.card.id}.mp4';
+    final path = '${dir.path}/card-${widget.subject.id}.mp4';
     final writer = CardVideoWriter();
     await writer.start(path: path, width: _videoWidth, height: height);
     try {
@@ -538,12 +579,12 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
         'image/gif' => 'gif',
         _ => 'png',
       };
-      await shareRunCardFile(
+      await shareCardFile(
         bytes: bytes,
         mimeType: type,
-        fileName: '3i-${widget.card.id}-${_choice.name}.$ext',
+        fileName: '3i-${widget.subject.id}-${_choice.name}.$ext',
         shareOriginContext: origin,
-        card: widget.card,
+        text: widget.subject.text,
       );
     } catch (error) {
       debugPrint('Khoe thẻ lỗi: $error');
@@ -563,7 +604,7 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
     return RunCardSkinScope(skin: _skin, child: _screen(files));
   }
 
-  Widget _screen(RunCardShareFiles? files) {
+  Widget _screen(CardShareFiles? files) {
     return Scaffold(
       backgroundColor: RunNowGameTokens.nightBackground,
       appBar: AppBar(
@@ -644,7 +685,7 @@ class _RunCardShareScreenState extends ConsumerState<RunCardShareScreen> {
 
   /// Ảnh tĩnh thì hiện đúng file sẽ gửi. Lá xoay thì cho lá xoay ngay trên
   /// màn theo đúng nhịp đã ghi, khỏi cần trình phát video.
-  Widget _preview(RunCardShareFiles files) => switch (_choice) {
+  Widget _preview(CardShareFiles files) => switch (_choice) {
     _Choice.front => Image.memory(files.front, gaplessPlayback: true),
     _Choice.back => Image.memory(files.back, gaplessPlayback: true),
     _Choice.motion => _SpinningCard(data: widget.data),

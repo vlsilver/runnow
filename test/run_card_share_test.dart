@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
-import 'package:myrun/src/achievements/run_card_share.dart';
+import 'package:myrun/src/achievements/card_share.dart';
 
 /// Khung RGBA một màu.
 Uint8List _frame(int w, int h, int r, int g, int b) {

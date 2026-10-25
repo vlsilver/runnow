@@ -15,7 +15,7 @@ import 'package:myrun/src/achievements/run_card.dart';
 import 'package:myrun/src/achievements/run_card_art_sheet.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
-import 'package:myrun/src/achievements/run_card_share.dart';
+import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/models.dart';
@@ -216,16 +216,16 @@ class _FakeShare extends SharePlatform {
 final share = _FakeShare();
 
 /// File khoe giữ trong bộ nhớ thay cho thư mục của app.
-class _MemoryShareStore extends RunCardShareStore {
-  final saved = <String, RunCardShareFiles>{};
+class _MemoryShareStore extends CardShareStore {
+  final saved = <String, CardShareFiles>{};
   int saves = 0;
 
   @override
-  Future<RunCardShareFiles?> load(String cardId, String key) async =>
+  Future<CardShareFiles?> load(String cardId, String key) async =>
       saved['$cardId/$key'];
 
   @override
-  Future<void> save(String cardId, String key, RunCardShareFiles files) async {
+  Future<void> save(String cardId, String key, CardShareFiles files) async {
     saves++;
     saved['$cardId/$key'] = files;
   }
@@ -306,13 +306,13 @@ Future<void> _pumpPanel(
   RunCard? initial,
   List<ActivityPhoto> photos = const [],
   _Photos? picker,
-  RunCardShareStore? shareStore,
+  CardShareStore? shareStore,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         runNowApiClientProvider.overrideWithValue(backend.client()),
-        runCardShareStoreProvider.overrideWithValue(
+        cardShareStoreProvider.overrideWithValue(
           shareStore ?? _MemoryShareStore(),
         ),
         runCardPhotosProvider.overrideWithValue(picker ?? _Photos()),
@@ -647,7 +647,7 @@ void main() {
     // Đã khoe một lần: ba file nằm trong máy theo khoá của thẻ này.
     final store = _MemoryShareStore()
       ..saved['r1/${runCardShareKey(card, runCardData(card, owner: 'An').owner, skin: RunCardSkin.classic)}'] =
-          RunCardShareFiles(
+          CardShareFiles(
             front: _png,
             back: _png,
             motion: video,
@@ -685,7 +685,7 @@ void main() {
   ) async {
     final card = _card();
     final owner = runCardData(card, owner: 'An').owner;
-    RunCardShareFiles files(int mark) => RunCardShareFiles(
+    CardShareFiles files(int mark) => CardShareFiles(
       front: _png,
       back: _png,
       motion: Uint8List.fromList([0, 0, 0, 24, 102, 116, 121, mark]),

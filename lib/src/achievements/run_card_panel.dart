@@ -8,7 +8,7 @@ import 'package:myrun/src/achievements/run_card_art_sheet.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
-import 'package:myrun/src/achievements/run_card_share.dart';
+import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/models.dart';

@@ -3,8 +3,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:myrun/src/achievements/run_card_models.dart';
-import 'package:myrun/src/formatters.dart';
 import 'package:share_plus/share_plus.dart';
 
 Future<ShareResult> shareDashboardCard({
@@ -65,14 +63,13 @@ Future<ShareResult> shareGameCard({
   fileName: '3i-ma-soi.png',
 );
 
-/// Gửi một file khoe thẻ buổi chạy đã tạo sẵn (ảnh mặt trước, mặt sau hay
-/// GIF 3D).
-Future<ShareResult> shareRunCardFile({
+/// Gửi một file khoe thẻ đã tạo sẵn (ảnh mặt trước, mặt sau hay lá xoay 3D).
+Future<ShareResult> shareCardFile({
   required Uint8List bytes,
   required String mimeType,
   required String fileName,
   required BuildContext shareOriginContext,
-  required RunCard card,
+  required String text,
 }) {
   final renderBox = shareOriginContext.findRenderObject() as RenderBox?;
   final sharePositionOrigin = renderBox == null
@@ -80,9 +77,7 @@ Future<ShareResult> shareRunCardFile({
       : renderBox.localToGlobal(Offset.zero) & renderBox.size;
   return SharePlus.instance.share(
     ShareParams(
-      text:
-          '${card.snapshot.name} · ${formatDistance(card.snapshot.distanceMeters)}\n'
-          'Chia sẻ từ 3i',
+      text: text,
       files: [XFile.fromData(bytes, mimeType: mimeType)],
       fileNameOverrides: [fileName],
       sharePositionOrigin: sharePositionOrigin,
