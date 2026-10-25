@@ -72,8 +72,9 @@ class RunCardShareFiles {
   final String motionType;
 }
 
-/// Khoá cache: đổi khi những gì in trên thẻ đổi (bậc, tranh nền, tên chủ,
-/// bộ màu thẻ).
+/// Khoá cache dạng `<nội dung>.<bộ màu>`. Phần nội dung đổi khi những gì in
+/// trên thẻ đổi (bậc, tranh nền, tên chủ); mỗi bộ màu của cùng nội dung giữ
+/// file riêng.
 String runCardShareKey(
   RunCard card,
   String owner, {
@@ -82,13 +83,15 @@ String runCardShareKey(
   // FNV-1a 32 bit: ổn định giữa các lần mở app, khác String.hashCode.
   var hash = 0x811c9dc5;
   final printed =
-      '${card.tier.name}|${card.artPath ?? ''}|$owner|${skin.id}|'
-      '$_shareVersion';
+      '${card.tier.name}|${card.artPath ?? ''}|$owner|$_shareVersion';
   for (final unit in printed.codeUnits) {
     hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
   }
-  return hash.toRadixString(16);
+  return '${hash.toRadixString(16)}.${skin.id}';
 }
+
+/// Phần nội dung của khoá, bỏ bộ màu.
+String _shareContent(String key) => key.split('.').first;
 
 /// Giữ ba file khoe của từng thẻ trong thư mục support của app; trên web chỉ
 /// giữ trong bộ nhớ.
@@ -122,8 +125,10 @@ class RunCardShareStore {
     );
   }
 
-  /// Ghi ba file rồi xoá bản của khoá cũ. Mỗi file ghi ra tên tạm rồi đổi tên,
-  /// nên app tắt giữa chừng không để lại file dở mà load tưởng là đủ.
+  /// Ghi ba file rồi xoá các bản thẻ đã thôi in (khác phần nội dung của khoá);
+  /// bản các bộ màu khác của cùng nội dung thì giữ. Mỗi file ghi ra tên tạm
+  /// rồi đổi tên, nên app tắt giữa chừng không để lại file dở mà load tưởng
+  /// là đủ.
   Future<void> save(String cardId, String key, RunCardShareFiles files) async {
     _memory['$cardId/$key'] = files;
     if (kIsWeb) return;
@@ -136,8 +141,10 @@ class RunCardShareStore {
       await tmp.writeAsBytes(bytes[i], flush: true);
       await tmp.rename('${dir.path}/${names[i]}');
     }
+    final content = _shareContent(key);
     await for (final old in cardDir.list()) {
-      if (old is Directory && old.path != dir.path) {
+      final name = old.path.substring(old.path.lastIndexOf('/') + 1);
+      if (old is Directory && _shareContent(name) != content) {
         await old.delete(recursive: true);
       }
     }
