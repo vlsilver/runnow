@@ -15,11 +15,13 @@ import 'package:myrun/src/achievements/run_card.dart';
 import 'package:myrun/src/achievements/run_card_art_sheet.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
+import 'package:myrun/src/achievements/run_card_share.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/widgets/photo_viewer.dart';
+import 'package:share_plus_platform_interface/share_plus_platform_interface.dart';
 
 /// Doc thẻ như API trả: thời gian là chuỗi, bậc là khoá server. startedAt
 /// không có múi giờ để test chạy ở máy nào cũng ra 06:12.
@@ -196,6 +198,39 @@ Future<int Function(double, double)> _paintArt(
   };
 }
 
+/// Bảng chia sẻ của máy: ghi lại thứ được gửi đi.
+class _FakeShare extends SharePlatform {
+  final shared = <ShareParams>[];
+
+  @override
+  Future<ShareResult> share(ShareParams params) async {
+    shared.add(params);
+    return const ShareResult('ok', ShareResultStatus.success);
+  }
+}
+
+final share = _FakeShare();
+
+/// File khoe giữ trong bộ nhớ thay cho thư mục của app.
+class _MemoryShareStore extends RunCardShareStore {
+  final saved = <String, RunCardShareFiles>{};
+  int saves = 0;
+
+  @override
+  Future<RunCardShareFiles?> load(String cardId, String key) async =>
+      saved['$cardId/$key'];
+
+  @override
+  Future<void> save(String cardId, String key, RunCardShareFiles files) async {
+    saves++;
+    saved['$cardId/$key'] = files;
+  }
+
+  @override
+  Future<void> clear(String cardId) async =>
+      saved.removeWhere((k, _) => k.startsWith('$cardId/'));
+}
+
 /// API giả: ghi lại lệnh gọi, POST lật thẻ đẩy thẻ vào stream như Firestore.
 class _Backend {
   final requests = <String>[];
@@ -262,11 +297,15 @@ Future<void> _pumpPanel(
   RunCard? initial,
   List<ActivityPhoto> photos = const [],
   _Photos? picker,
+  RunCardShareStore? shareStore,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         runNowApiClientProvider.overrideWithValue(backend.client()),
+        runCardShareStoreProvider.overrideWithValue(
+          shareStore ?? _MemoryShareStore(),
+        ),
         runCardPhotosProvider.overrideWithValue(picker ?? _Photos()),
         runCardProvider('r1').overrideWith((ref) async* {
           yield initial;
@@ -332,6 +371,8 @@ Future<void> _confirmDraw(WidgetTester tester, String label) async {
 }
 
 void main() {
+  setUpAll(() => SharePlatform.instance = share);
+
   test('server tier keys map onto the five card tiers', () {
     // Khoá lấy từ backend run_card.go: common, rare, epic, legendary, mythic.
     expect(runCardTierFromKey('common'), GameCardTier.common);
@@ -561,18 +602,60 @@ void main() {
     expect(find.text('Lật thẻ'), findsNothing);
   });
 
-  testWidgets('a rolled card can be turned to its data side for sharing', (
+  testWidgets('Khoe thẻ reuses the saved files and shares the chosen one', (
     tester,
   ) async {
     final backend = _Backend();
-    await _pumpPanel(tester, backend, initial: _card());
+    final card = _card();
+    final gif = encodeCardGif(
+      CardGifFrames(
+        width: 2,
+        height: 2,
+        frameMs: 80,
+        frames: [Uint8List.fromList(List.filled(16, 255))],
+      ),
+    );
+    // Đã khoe một lần: ba file nằm trong máy theo khoá của thẻ này.
+    final store = _MemoryShareStore()
+      ..saved['r1/${runCardShareKey(card, runCardData(card, owner: 'An').owner)}'] =
+          RunCardShareFiles(front: _png, back: _png, gif: gif);
+    await _pumpPanel(tester, backend, initial: card, shareStore: store);
     expect(backend.requests, isEmpty, reason: 'đã có thẻ thì không hỏi tỉ lệ');
-    expect(find.text('MẶT SAU · DỮ LIỆU'), findsNothing);
 
-    await tester.ensureVisible(find.text('Mặt sau'));
+    await _tapText(tester, 'Khoe thẻ');
+    await _settle(tester);
+    expect(store.saves, 0, reason: 'có sẵn thì không tạo lại');
+    for (final label in ['Mặt trước', 'Mặt sau', 'GIF 3D']) {
+      expect(find.text(label), findsOneWidget);
+    }
+
+    await tester.tap(find.text('Khoe gif 3d'));
+    await tester.pump();
+    final first = share.shared.last;
+    expect(first.fileNameOverrides, ['3i-r1-gif.gif']);
+    expect(first.files!.single.mimeType, 'image/gif');
+    expect(await first.files!.single.readAsBytes(), gif);
+    expect(first.text, startsWith('Dọc bờ sông Hồng · 15'));
+
     await tester.tap(find.text('Mặt sau'));
     await tester.pump();
-    expect(find.text('MẶT SAU · DỮ LIỆU'), findsOneWidget);
+    await tester.tap(find.text('Khoe mặt sau'));
+    await tester.pump();
+    final second = share.shared.last;
+    expect(second.fileNameOverrides, ['3i-r1-back.png']);
+    expect(second.files!.single.mimeType, 'image/png');
+  });
+
+  test('the share cache key follows what the card shows', () {
+    final plain = _card();
+    final drawn = _card(art: {'status': 'done', 'path': 'u/a/r1.png'});
+    expect(runCardShareKey(plain, 'An'), runCardShareKey(_card(), 'An'));
+    expect(runCardShareKey(plain, 'An'), isNot(runCardShareKey(drawn, 'An')));
+    expect(runCardShareKey(plain, 'An'), isNot(runCardShareKey(plain, 'Bình')));
+    expect(
+      runCardShareKey(plain, 'An'),
+      isNot(runCardShareKey(_card(tier: 'rare'), 'An')),
+    );
   });
 
   test('a picked photo is typed from its first bytes', () {

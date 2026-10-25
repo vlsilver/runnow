@@ -6,12 +6,12 @@ import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card.dart';
 import 'package:myrun/src/achievements/run_card_art_sheet.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
+import 'package:myrun/src/achievements/run_card_share.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
-import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 
 typedef _T = RunNowAchievementTokens;
@@ -36,11 +36,8 @@ class RunCardPanel extends ConsumerStatefulWidget {
 }
 
 class _RunCardPanelState extends ConsumerState<RunCardPanel> {
-  final _captureKey = GlobalKey();
   bool _rolling = false;
-  bool _sharing = false;
   bool _redrawing = false;
-  bool _back = false;
 
   /// Thẻ vừa lật trong phiên này thì chạy hiệu ứng lật mặt; mở lại thẻ cũ thì
   /// hiện thẳng.
@@ -159,12 +156,7 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
       label: 'Xem thẻ 3D',
       child: GestureDetector(
         onTap: () => showRunCardViewer(context, card, data),
-        child: RepaintBoundary(
-          key: _captureKey,
-          child: _CardFrame(
-            child: AchievementCard(data: data, back: _back),
-          ),
-        ),
+        child: _CardFrame(child: AchievementCard(data: data)),
       ),
     );
     return Column(
@@ -191,28 +183,10 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
         ),
         const SizedBox(height: 14),
         ..._artStatus(card, muted),
-        SegmentedButton<bool>(
-          segments: const [
-            ButtonSegment(value: false, label: Text('Mặt trước')),
-            ButtonSegment(value: true, label: Text('Mặt sau')),
-          ],
-          selected: {_back},
-          onSelectionChanged: _sharing
-              ? null
-              : (value) => setState(() => _back = value.single),
-        ),
-        const SizedBox(height: 12),
-        Builder(
-          builder: (origin) => FilledButton.icon(
-            onPressed: _sharing ? null : () => _share(origin, card),
-            icon: _sharing
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.ios_share),
-            label: Text(_sharing ? 'Đang tạo thẻ...' : 'Khoe thẻ'),
-          ),
+        FilledButton.icon(
+          onPressed: () => showRunCardShare(context, card: card, data: data),
+          icon: const Icon(Icons.ios_share),
+          label: const Text('Khoe thẻ'),
         ),
       ],
     );
@@ -301,24 +275,6 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
       if (mounted) setState(() => _redrawing = false);
     }
   }
-
-  Future<void> _share(BuildContext origin, RunCard card) async {
-    setState(() => _sharing = true);
-    try {
-      await shareRunCard(
-        cardKey: _captureKey,
-        shareOriginContext: origin,
-        card: card,
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Không thể chia sẻ thẻ: $error')));
-    } finally {
-      if (mounted) setState(() => _sharing = false);
-    }
-  }
 }
 
 /// Câu cho người dùng ứng với mã lý do backend trả khi không lật được.
@@ -348,8 +304,8 @@ void showRunCardViewer(
   back: (pose) => AchievementCard(data: data, pose: pose, back: true),
   chips: [gameCardTiers[card.tier]!.label, '${runCardKm(card.km)} km'],
   cardSize: achievementCardSize,
-  onShare: (cardKey, origin) =>
-      shareRunCard(cardKey: cardKey, shareOriginContext: origin, card: card),
+  // Mở màn khoe từ trong màn xem để nó nằm trên màn xem.
+  onShare: (_, origin) => showRunCardShare(origin, card: card, data: data),
 );
 
 /// Câu cho người dùng ứng với lý do lần vẽ tranh hỏng.

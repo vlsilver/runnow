@@ -32,6 +32,8 @@ dependencies:
   firebase_analytics: ^12.4.3
   firebase_storage: ^13.4.3
   image_picker: ^1.2.3
+  # Encode GIF thẻ 3D để khoe; đã có sẵn trong lockfile qua gói khác.
+  image: ^4.8.0
   flutter_svg: ^2.2.1
   xml: ^6.6.1
   path_parsing: ^1.1.0

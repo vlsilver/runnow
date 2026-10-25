@@ -65,18 +65,30 @@ Future<ShareResult> shareGameCard({
   fileName: '3i-ma-soi.png',
 );
 
-Future<ShareResult> shareRunCard({
-  required GlobalKey cardKey,
+/// Gửi một file khoe thẻ buổi chạy đã tạo sẵn (ảnh mặt trước, mặt sau hay
+/// GIF 3D).
+Future<ShareResult> shareRunCardFile({
+  required Uint8List bytes,
+  required String mimeType,
+  required String fileName,
   required BuildContext shareOriginContext,
   required RunCard card,
-}) => _shareCard(
-  cardKey: cardKey,
-  shareOriginContext: shareOriginContext,
-  text:
-      '${card.snapshot.name} · ${formatDistance(card.snapshot.distanceMeters)}\n'
-      'Chia sẻ từ 3i',
-  fileName: '3i-${card.id}-the.png',
-);
+}) {
+  final renderBox = shareOriginContext.findRenderObject() as RenderBox?;
+  final sharePositionOrigin = renderBox == null
+      ? null
+      : renderBox.localToGlobal(Offset.zero) & renderBox.size;
+  return SharePlus.instance.share(
+    ShareParams(
+      text:
+          '${card.snapshot.name} · ${formatDistance(card.snapshot.distanceMeters)}\n'
+          'Chia sẻ từ 3i',
+      files: [XFile.fromData(bytes, mimeType: mimeType)],
+      fileNameOverrides: [fileName],
+      sharePositionOrigin: sharePositionOrigin,
+    ),
+  );
+}
 
 Future<ShareResult> shareAgentCard({
   required GlobalKey cardKey,
