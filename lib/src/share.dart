@@ -5,38 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/formatters.dart';
-import 'package:myrun/src/models.dart';
 import 'package:share_plus/share_plus.dart';
-
-String buildShareCaption(ActivitySummary activity) {
-  return [
-    activity.name,
-    '${formatDistance(activity.distanceMeters)} • ${formatDuration(activity.movingTimeSeconds)} • ${formatPace(activity.paceSecondsPerKm)}',
-    'Chia sẻ từ 3i',
-  ].join('\n');
-}
-
-Future<ShareResult> shareActivityRecap({
-  required GlobalKey recapKey,
-  required BuildContext shareButtonContext,
-  required ActivitySummary activity,
-}) async {
-  final boundary =
-      recapKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-  final renderBox = shareButtonContext.findRenderObject() as RenderBox?;
-  final sharePositionOrigin = renderBox == null
-      ? null
-      : renderBox.localToGlobal(Offset.zero) & renderBox.size;
-  final png = await captureRecapPng(boundary);
-  return SharePlus.instance.share(
-    ShareParams(
-      text: buildShareCaption(activity),
-      files: [XFile.fromData(png, mimeType: 'image/png')],
-      fileNameOverrides: ['3i-${activity.id}.png'],
-      sharePositionOrigin: sharePositionOrigin,
-    ),
-  );
-}
 
 Future<ShareResult> shareDashboardCard({
   required GlobalKey cardKey,

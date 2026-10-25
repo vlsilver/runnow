@@ -12,9 +12,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
-import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
-import 'package:myrun/src/widgets/activity_recap_card.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/photo_viewer.dart';
 import 'package:myrun/src/widgets/route_map.dart';
@@ -59,7 +57,8 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
       appBar: AppBar(
         title: const Text('Chi tiết hoạt động'),
         actions: [
-          if (detail.asData?.value case final item?)
+          if (detail.asData?.value case final item?
+              when widget.ownerUid == null && hasRunCard(item.summary))
             IconButton(
               onPressed: () => _openShareComposer(item),
               tooltip: 'Chia sẻ hoạt động',
@@ -160,8 +159,7 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (context) =>
-          _ShareComposer(detail: detail, ownerUid: widget.ownerUid),
+      builder: (context) => _ShareComposer(detail: detail),
     );
   }
 
@@ -1469,43 +1467,19 @@ class _RunCardEntry extends ConsumerWidget {
   }
 }
 
-enum _ShareMode { card, poster }
-
-class _ShareComposer extends ConsumerStatefulWidget {
-  const _ShareComposer({required this.detail, this.ownerUid});
+/// Sheet Khoe chỉ mở trên buổi chạy của chính mình: thẻ chỉ chủ buổi đọc được
+/// (rule Firestore), và ngoài thẻ ra không còn gì để chia sẻ.
+class _ShareComposer extends ConsumerWidget {
+  const _ShareComposer({required this.detail});
 
   final ActivityDetail detail;
 
-  /// Null là buổi của chính mình; có uid là đang xem buổi của thành viên khác.
-  final String? ownerUid;
-
   @override
-  ConsumerState<_ShareComposer> createState() => _ShareComposerState();
-}
-
-class _ShareComposerState extends ConsumerState<_ShareComposer> {
-  final _recapKey = GlobalKey();
-
-  /// Thẻ chỉ chủ buổi đọc được (rule Firestore), nên buổi của người khác chỉ
-  /// có poster.
-  late final _canCard =
-      widget.ownerUid == null && hasRunCard(widget.detail.summary);
-  late var _mode = _canCard ? _ShareMode.card : _ShareMode.poster;
-  bool _sharing = false;
-
-  /// Tên in trên thẻ là chủ buổi chạy, không phải người đang xem.
-  String _ownerName() {
-    final uid = widget.ownerUid;
-    final name = uid == null
-        ? ref.watch(userProfileProvider).asData?.value?.displayName
-        : ref.watch(memberProfileProvider(uid)).asData?.value?.displayName;
-    return name ?? '3i member';
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.runNowPalette;
-    final card = _mode == _ShareMode.card;
+    final owner =
+        ref.watch(userProfileProvider).asData?.value?.displayName ??
+        '3i member';
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.92,
@@ -1549,9 +1523,7 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
             ),
             const SizedBox(height: 4),
             Text(
-              card
-                  ? 'Mỗi buổi lật một thẻ, độ hiếm do server quay.'
-                  : 'Tạo poster thành tích để chia sẻ.',
+              'Mỗi buổi lật một thẻ, độ hiếm do server quay.',
               style: TextStyle(
                 color: Theme.of(
                   context,
@@ -1559,75 +1531,10 @@ class _ShareComposerState extends ConsumerState<_ShareComposer> {
               ),
             ),
             const SizedBox(height: 16),
-            if (_canCard) ...[
-              SegmentedButton<_ShareMode>(
-                segments: const [
-                  ButtonSegment(
-                    value: _ShareMode.card,
-                    icon: Icon(Icons.style_outlined),
-                    label: Text('Thẻ'),
-                  ),
-                  ButtonSegment(
-                    value: _ShareMode.poster,
-                    icon: Icon(Icons.image_outlined),
-                    label: Text('Poster'),
-                  ),
-                ],
-                selected: {_mode},
-                onSelectionChanged: _sharing
-                    ? null
-                    : (value) => setState(() => _mode = value.single),
-              ),
-              const SizedBox(height: 16),
-            ],
-            if (card)
-              RunCardPanel(
-                activity: widget.detail.summary,
-                owner: _ownerName(),
-              )
-            else ...[
-              ActivityRecapCard(
-                repaintBoundaryKey: _recapKey,
-                activity: widget.detail.summary,
-                streams: widget.detail.streams,
-              ),
-              const SizedBox(height: 12),
-              Builder(
-                builder: (buttonContext) => FilledButton.icon(
-                  onPressed: _sharing ? null : () => _share(buttonContext),
-                  icon: _sharing
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.ios_share),
-                  label: Text(
-                    _sharing ? 'Đang tạo poster...' : 'Chia sẻ poster',
-                  ),
-                ),
-              ),
-            ],
+            RunCardPanel(activity: detail.summary, owner: owner),
           ],
         ),
       ),
     );
-  }
-
-  Future<void> _share(BuildContext buttonContext) async {
-    setState(() => _sharing = true);
-    try {
-      await shareActivityRecap(
-        recapKey: _recapKey,
-        shareButtonContext: buttonContext,
-        activity: widget.detail.summary,
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không thể chia sẻ poster: $error')),
-      );
-    } finally {
-      if (mounted) setState(() => _sharing = false);
-    }
   }
 }
