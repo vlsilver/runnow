@@ -2,11 +2,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
+import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/games/game_role_card.dart';
-import 'package:myrun/src/share.dart';
 
 /// Vẽ một mặt lá theo độ nghiêng [pose] (-1..1 mỗi chiều).
 typedef CardFaceBuilder = Widget Function(Offset pose);
@@ -28,11 +28,12 @@ Future<void> showGameCardViewer(
     chips: chips,
     cardSize: achievementCardSize,
     hideWhenInactive: secret,
+    // Mở màn khoe từ trong màn xem để nó nằm trên màn xem.
     onShare: card.owned
-        ? (cardKey, origin) => shareGameCard(
-            cardKey: cardKey,
-            shareOriginContext: origin,
-            player: data.owner,
+        ? (_, origin) => showCardShare(
+            origin,
+            subject: gameCardShareSubject(card, owner: data.owner),
+            data: data,
           )
         : null,
     locked: _LockedNote(

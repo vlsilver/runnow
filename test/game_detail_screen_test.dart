@@ -3,12 +3,15 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
+import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_detail_screen.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:share_plus_platform_interface/share_plus_platform_interface.dart';
 
 import 'support/fake_game_backend.dart';
 
@@ -20,11 +23,51 @@ class _FakeUser implements User {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// Bảng chia sẻ của máy: ghi lại thứ được gửi đi.
+class _FakeShare extends SharePlatform {
+  final shared = <ShareParams>[];
+
+  @override
+  Future<ShareResult> share(ShareParams params) async {
+    shared.add(params);
+    return const ShareResult('ok', ShareResultStatus.success);
+  }
+}
+
+/// Thẻ đã khoe một lần: mọi bộ màu của [cardId] đều có sẵn ba file.
+class _SavedShareStore extends CardShareStore {
+  _SavedShareStore(this.cardId, this.files);
+
+  final String cardId;
+  final CardShareFiles files;
+  final loaded = <String>[];
+  int saves = 0;
+
+  @override
+  Future<CardShareFiles?> load(String cardId, String key) async {
+    loaded.add(cardId);
+    return cardId == this.cardId ? files : null;
+  }
+
+  @override
+  Future<void> save(String cardId, String key, CardShareFiles files) async =>
+      saves++;
+}
+
+/// Ảnh PNG 1x1 thật, vì màn khoe vẽ ảnh từ byte.
+final _png = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+);
+
 void main() {
   late DateTime now;
   late FakeGameBackend backend;
   late List<Uri> opened;
   late bool openOk;
+  late CardShareStore shareStore;
+  final share = _FakeShare();
+
+  setUpAll(() => SharePlatform.instance = share);
 
   Future<void> pumpScreen(WidgetTester tester) async {
     await tester.pumpWidget(
@@ -32,6 +75,7 @@ void main() {
         overrides: [
           runNowApiClientProvider.overrideWithValue(backend.client()),
           firebaseUserProvider.overrideWith((ref) => Stream.value(_FakeUser())),
+          cardShareStoreProvider.overrideWithValue(shareStore),
         ],
         child: MaterialApp(
           home: GameDetailScreen(
@@ -62,6 +106,15 @@ void main() {
     backend = FakeGameBackend(() => now);
     opened = [];
     openOk = true;
+    shareStore = _SavedShareStore(
+      '',
+      CardShareFiles(
+        front: _png,
+        back: _png,
+        motion: Uint8List(0),
+        motionType: 'video/mp4',
+      ),
+    );
   });
 
   testWidgets('follows rules text from backend', (tester) async {
@@ -615,6 +668,51 @@ void main() {
       expect(find.text('Khoe thẻ'), findsOneWidget);
       expect(find.text('Hiếm'), findsOneWidget);
       expect(find.textContaining('lộ vai'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('a winner brags through the card share screen', (tester) async {
+      // Byte giả: màn khoe không giải mã video, chỉ gửi đi.
+      final video = Uint8List.fromList([0, 0, 0, 24, 102, 116, 121, 112]);
+      final store = _SavedShareStore(
+        'masoi-g1',
+        CardShareFiles(
+          front: _png,
+          back: _png,
+          motion: video,
+          motionType: 'video/mp4',
+        ),
+      );
+      shareStore = store;
+      backend.game = ended();
+      backend.me = {
+        'status': 'ended',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+        'cardTier': 'rare',
+        'cardOwned': true,
+        'cardRounds': 3,
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await openBigCard(tester);
+
+      await tester.tap(find.text('Khoe thẻ'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(store.loaded, contains('masoi-g1'));
+      expect(store.saves, 0, reason: 'có sẵn thì không tạo lại');
+      for (final label in ['Mặt trước', 'Mặt sau', 'Video 3D']) {
+        expect(find.text(label), findsOneWidget);
+      }
+
+      await tester.tap(find.text('Khoe video 3d'));
+      await tester.pump();
+      final sent = share.shared.last;
+      expect(sent.fileNameOverrides, ['3i-masoi-g1-motion.mp4']);
+      expect(await sent.files!.single.readAsBytes(), video);
+      expect(sent.text, startsWith('Tiên tri · Dân làng thắng'));
       await close(tester);
     });
 

@@ -52,17 +52,6 @@ Future<ShareResult> shareJourneyCompletion({
   );
 }
 
-Future<ShareResult> shareGameCard({
-  required GlobalKey cardKey,
-  required BuildContext shareOriginContext,
-  required String player,
-}) => _shareCard(
-  cardKey: cardKey,
-  shareOriginContext: shareOriginContext,
-  text: 'Lá bài Ma Sói của $player trên 3i',
-  fileName: '3i-ma-soi.png',
-);
-
 /// Gửi một file khoe thẻ đã tạo sẵn (ảnh mặt trước, mặt sau hay lá xoay 3D).
 Future<ShareResult> shareCardFile({
   required Uint8List bytes,

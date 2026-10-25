@@ -1,7 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:myrun/src/achievements/card_share.dart';
+import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/games/game_models.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/games/game_role_card.dart';
+import 'package:myrun/src/theme.dart';
 
 void main() {
   group('gameRoundOf', () {
@@ -135,6 +138,48 @@ void main() {
       expect(card.round, 2);
       expect(card.result, 'Đang chơi');
       expect(card.fate, 'Còn sống');
+    });
+  });
+
+  group('gameCardShareSubject', () {
+    GamePlayerCard card({String tier = 'rare', bool alive = true}) =>
+        GamePlayerCard.fromJson('g1', {
+          'tier': tier,
+          'role': 'seer',
+          'team': 'village',
+          'winner': 'village',
+          'alive': alive,
+          'rounds': 3,
+          'playerCount': 10,
+          if (!alive) 'deathRound': 2,
+        });
+    String key(GamePlayerCard c, {String owner = 'AN', RunCardSkin? skin}) =>
+        cardShareKey(
+          gameCardShareSubject(c, owner: owner),
+          skin: skin ?? RunCardSkin.classic,
+        );
+
+    test('keeps files apart from run cards and other games', () {
+      expect(gameCardShareSubject(card(), owner: 'AN').id, 'masoi-g1');
+    });
+
+    test('the cache key follows what the card shows', () {
+      expect(key(card()), key(card()));
+      expect(key(card()), isNot(key(card(tier: 'epic'))));
+      expect(key(card()), isNot(key(card(alive: false))));
+      expect(key(card()), isNot(key(card(), owner: 'BÌNH')));
+      final fire = RunCardSkin.forTheme(
+        RunNowAppearance.dark,
+        RunNowElement.fire,
+      );
+      expect(key(card()), isNot(key(card(), skin: fire)));
+    });
+
+    test('says the role and the winning side', () {
+      expect(
+        gameCardShareSubject(card(), owner: 'AN').text,
+        'Tiên tri · Dân làng thắng\nChia sẻ từ 3i',
+      );
     });
   });
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
+import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/games/game_models.dart';
@@ -169,6 +170,31 @@ AchievementCardData gameCardData(GamePlayerCard card, {required String owner}) {
     date: _date(card.endedAt),
   );
 }
+
+/// Thẻ Ma Sói đem khoe. Chỉ thẻ đã sở hữu mới khoe được, lúc đó ván đã xong
+/// nên vai không còn bí mật.
+CardShareSubject gameCardShareSubject(
+  GamePlayerCard card, {
+  required String owner,
+}) => CardShareSubject(
+  id: 'masoi-${card.gameId}',
+  printed: [
+    card.tier.name,
+    card.role,
+    card.label,
+    card.team,
+    card.winner ?? '',
+    card.alive,
+    card.deathRound ?? '',
+    card.round,
+    card.playerCount,
+    card.owned,
+    _date(card.endedAt),
+    owner,
+  ].join('|'),
+  text:
+      '${card.label} · ${_winnerTitles[card.winner] ?? 'Ma Sói'}\nChia sẻ từ 3i',
+);
 
 /// Màu icon vai trên nền thẻ: màu vai vốn dịu cho nền đêm, nền sáng thì kéo
 /// về phía mực để còn đọc được.
