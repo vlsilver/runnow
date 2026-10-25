@@ -33,6 +33,15 @@ import 'package:path_provider/path_provider.dart';
 
 import 'fixtures/achievement_e2e_cards.dart';
 
+/// Khoá bậc của fixture: `super` là siêu hiếm, khác khoá `epic` của backend.
+GameCardTier _tierFromKey(String key) => switch (key) {
+  'rare' => GameCardTier.rare,
+  'super' => GameCardTier.superRare,
+  'legendary' => GameCardTier.legendary,
+  'mythic' => GameCardTier.mythic,
+  _ => GameCardTier.common,
+};
+
 /// Thẻ chữ dài nhất có thể, để bắt tràn chữ trên font thật của máy.
 const _longText = E2ECard(
   key: 'long',
@@ -235,7 +244,7 @@ class _Lab extends StatelessWidget {
   final ValueNotifier<Uint8List?> exported;
 
   AchievementCardData _data(E2ECard c) => AchievementCardData(
-    tier: GameCardTierParse.fromKey(c.tier),
+    tier: _tierFromKey(c.tier),
     art: Image(
       image: arts[c.key]!,
       fit: BoxFit.cover,
