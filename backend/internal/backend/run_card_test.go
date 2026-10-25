@@ -65,6 +65,15 @@ func TestRunCardPickWalksCumulativeOdds(t *testing.T) {
 	}
 }
 
+// Dưới 3 km chỉ 1/5 lượt lật ra thẻ; mốc xét trên km đã làm tròn như in trên thẻ.
+func TestRunCardChanceBelowThreeKm(t *testing.T) {
+	for m, want := range map[float64]int64{500: 200000, 2949: 200000, 2950: 1000000, 3000: 1000000, 42195: 1000000} {
+		if got := runCardChancePpm(runCardKm(m)); got != want {
+			t.Errorf("%v m: %d, muốn %d", m, got, want)
+		}
+	}
+}
+
 func TestRunCardKmRoundsToTenth(t *testing.T) {
 	for m, want := range map[float64]float64{42195: 42.2, 4949: 4.9, 4950: 5, 500: 0.5} {
 		if got := runCardKm(m); got != want {

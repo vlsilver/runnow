@@ -76,6 +76,21 @@ func runCardOdds(km float64) [5]int64 {
 	return out
 }
 
+// Buổi ngắn hơn runCardShortKm (km đã làm tròn) chỉ có runCardShortChancePpm
+// cơ hội ra thẻ; trượt thì ghi lại và buổi đó không lật được nữa.
+const (
+	runCardShortKm        = 3.0
+	runCardShortChancePpm = 200_000
+)
+
+// runCardChancePpm là cơ hội ra thẻ (phần triệu) khi lật buổi km.
+func runCardChancePpm(km float64) int64 {
+	if km < runCardShortKm {
+		return runCardShortChancePpm
+	}
+	return runCardPpm
+}
+
 // runCardPick là bậc ứng với số quay r trong [0, runCardPpm).
 func runCardPick(odds [5]int64, r int64) runCardTier {
 	for i, w := range odds {
@@ -107,6 +122,7 @@ var (
 	errRunCardNoActivity = &HTTPError{Status: http.StatusNotFound, Code: "activity_not_found", Message: "Không thấy buổi chạy này."}
 	errRunCardNotRun     = &HTTPError{Status: http.StatusConflict, Code: "card_not_eligible", Message: "Chỉ buổi chạy bộ từ 500 m mới lật được thẻ."}
 	errRunCardDuplicate  = &HTTPError{Status: http.StatusConflict, Code: "card_duplicate", Message: "Buổi này trùng một buổi khác đã có hoặc sẽ có thẻ."}
+	errRunCardMissed     = &HTTPError{Status: http.StatusConflict, Code: "card_missed", Message: "Lần lật này không ra thẻ. Buổi dưới 3 km chỉ có 1/5 cơ hội ra thẻ."}
 )
 
 // runCardEligible kiểm buổi chạy được lật thẻ: chạy bộ (cả trail và máy chạy),
@@ -184,10 +200,12 @@ func runCardOddList(odds [5]int64) []RunCardOdd {
 }
 
 // RunCardView là trả lời GET thẻ: Card khi đã lật; chưa lật thì Odds là tỉ lệ
-// sẽ quay, hoặc Reason khi buổi này không lật được.
+// từng bậc khi ra thẻ và Chance là phần trăm cơ hội ra thẻ, hoặc Reason khi
+// buổi này không lật được (kể cả đã lật mà trượt).
 type RunCardView struct {
 	Card   map[string]any `json:"card"`
 	Odds   []RunCardOdd   `json:"odds,omitempty"`
+	Chance float64        `json:"chance,omitempty"`
 	Reason string         `json:"reason,omitempty"`
 }
 
@@ -205,6 +223,11 @@ func NewRunCardStore(db *firestore.Client) *RunCardStore {
 
 func (s *RunCardStore) cardRef(uid, activityID string) *firestore.DocumentRef {
 	return s.db.Collection("users").Doc(uid).Collection("runCards").Doc(activityID)
+}
+
+// missRef ghi lượt lật trượt của buổi ngắn; chỉ backend đọc, rule không mở.
+func (s *RunCardStore) missRef(uid, activityID string) *firestore.DocumentRef {
+	return s.db.Collection("users").Doc(uid).Collection("runCardMisses").Doc(activityID)
 }
 
 func (s *RunCardStore) activityRef(uid, activityID string) *firestore.DocumentRef {
@@ -234,6 +257,13 @@ func (s *RunCardStore) Get(ctx context.Context, uid, activityID string) (RunCard
 	if card != nil {
 		return RunCardView{Card: runCardJSON(activityID, card)}, nil
 	}
+	miss, err := getData(ctx, s.missRef(uid, activityID))
+	if err != nil {
+		return RunCardView{}, err
+	}
+	if miss != nil {
+		return RunCardView{Reason: errRunCardMissed.Code}, nil
+	}
 	act, err := getData(ctx, s.activityRef(uid, activityID))
 	if err != nil {
 		return RunCardView{}, err
@@ -244,26 +274,46 @@ func (s *RunCardStore) Get(ctx context.Context, uid, activityID string) (RunCard
 	if err := runCardEligible(act); err != nil {
 		return RunCardView{Reason: err.(*HTTPError).Code}, nil
 	}
-	return RunCardView{Odds: runCardOddList(runCardOdds(runCardKm(number(act["distanceMeters"]))))}, nil
+	km := runCardKm(number(act["distanceMeters"]))
+	return RunCardView{
+		Odds:   runCardOddList(runCardOdds(km)),
+		Chance: float64(runCardChancePpm(km)) / (runCardPpm / 100),
+	}, nil
 }
 
-// Roll lật thẻ cho buổi chạy. Đã lật thì trả thẻ cũ, nên app gửi lại (mạng
-// chập, bấm hai lần) không quay lại. Bậc quay trước transaction và chỉ dùng khi
-// doc chưa có, nên transaction chạy lại vẫn ra một kết quả.
+// Roll lật thẻ cho buổi chạy. Đã lật thì trả thẻ cũ, đã trượt thì trả
+// errRunCardMissed, nên app gửi lại (mạng chập, bấm hai lần) không quay lại.
+// Bậc và cơ hội quay trước transaction và chỉ dùng khi chưa có kết quả, nên
+// transaction chạy lại vẫn ra một kết quả.
 func (s *RunCardStore) Roll(ctx context.Context, uid, activityID string) (map[string]any, error) {
 	r, err := s.roll()
 	if err != nil {
 		return nil, err
 	}
+	chance, err := s.roll()
+	if err != nil {
+		return nil, err
+	}
 	var card map[string]any
+	// Trượt vẫn phải commit doc trượt, nên transaction trả nil và báo qua cờ này.
+	var missed bool
 	ref := s.cardRef(uid, activityID)
 	err = s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		missed = false
 		snap, err := getOptional(tx, ref)
 		if err != nil {
 			return err
 		}
 		if snap.Exists() {
 			card = snap.Data()
+			return nil
+		}
+		missSnap, err := getOptional(tx, s.missRef(uid, activityID))
+		if err != nil {
+			return err
+		}
+		if missSnap.Exists() {
+			missed = true
 			return nil
 		}
 		actSnap, err := getOptional(tx, s.activityRef(uid, activityID))
@@ -288,6 +338,13 @@ func (s *RunCardStore) Roll(ctx context.Context, uid, activityID string) (map[st
 			return err
 		}
 		km := runCardKm(fact.DistanceMeters)
+		if ppm := runCardChancePpm(km); chance >= ppm {
+			missed = true
+			return tx.Create(s.missRef(uid, activityID), map[string]any{
+				"activityId": activityID, "km": km, "chancePpm": ppm, "rollPpm": chance,
+				"startedAt": fact.StartedAt, "rolledAt": s.now(), "snapshot": runCardSnapshot(act),
+			})
+		}
 		odds := runCardOdds(km)
 		card = map[string]any{
 			"activityId": activityID, "tier": string(runCardPick(odds, r)), "odds": runCardOddMaps(odds), "rollPpm": r,
@@ -297,6 +354,9 @@ func (s *RunCardStore) Roll(ctx context.Context, uid, activityID string) (map[st
 	})
 	if err != nil {
 		return nil, err
+	}
+	if missed {
+		return nil, errRunCardMissed
 	}
 	return runCardJSON(activityID, card), nil
 }
@@ -309,21 +369,24 @@ func runCardOddMaps(odds [5]int64) []any {
 	return out
 }
 
-// overlapsCard là buổi fact trùng (sameRun) một buổi khác của uid đã có thẻ:
-// cùng một lần chạy ghi ở hai nguồn chỉ được một thẻ. Chỉ xét thẻ bắt đầu
-// trong vòng một ngày trước fact, vì buổi bắt đầu sớm hơn nữa không chạm được.
+// overlapsCard là buổi fact trùng (sameRun) một buổi khác của uid đã lật, ra
+// thẻ hay trượt: cùng một lần chạy ghi ở hai nguồn chỉ được lật một lần. Chỉ
+// xét lượt lật bắt đầu trong vòng một ngày trước fact, vì buổi bắt đầu sớm hơn
+// nữa không chạm được.
 func (s *RunCardStore) overlapsCard(tx *firestore.Transaction, uid string, fact ActivityFact) (bool, error) {
 	end := fact.StartedAt.Add(time.Duration(max(fact.ElapsedTimeSeconds, fact.MovingTimeSeconds, 1)) * time.Second)
-	q := s.db.Collection("users").Doc(uid).Collection("runCards").
-		Where("startedAt", ">=", fact.StartedAt.Add(-24*time.Hour)).Where("startedAt", "<", end)
-	docs, err := tx.Documents(q).GetAll()
-	if err != nil {
-		return false, err
-	}
-	for _, d := range docs {
-		snapshot, _ := d.Data()["snapshot"].(map[string]any)
-		if d.Ref.ID != fact.ID && sameRun(fact, activityFact(d.Ref.ID, snapshot)) {
-			return true, nil
+	for _, coll := range []string{"runCards", "runCardMisses"} {
+		q := s.db.Collection("users").Doc(uid).Collection(coll).
+			Where("startedAt", ">=", fact.StartedAt.Add(-24*time.Hour)).Where("startedAt", "<", end)
+		docs, err := tx.Documents(q).GetAll()
+		if err != nil {
+			return false, err
+		}
+		for _, d := range docs {
+			snapshot, _ := d.Data()["snapshot"].(map[string]any)
+			if d.Ref.ID != fact.ID && sameRun(fact, activityFact(d.Ref.ID, snapshot)) {
+				return true, nil
+			}
 		}
 	}
 	return false, nil

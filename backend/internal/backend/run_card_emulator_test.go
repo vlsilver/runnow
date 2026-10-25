@@ -140,6 +140,45 @@ func TestEmulatorRunCardRejects(t *testing.T) {
 	h.want(h.call("u1", "POST", "/v1/activities/later/card", nil, ""), 200, "")
 }
 
+func TestEmulatorRunCardShortRunMissIsFinal(t *testing.T) {
+	// Mỗi lần lật quay hai số: bậc rồi cơ hội. 200000 vừa chạm ngưỡng 1/5 nên
+	// trượt; lần lật sau quay 0 (ra thẻ) nhưng buổi đã trượt thì không quay lại.
+	h := runCardHarness(t, 0, 200000, 0)
+	seedRun(t, h, "u1", "short", map[string]any{"distanceMeters": 2500.0})
+
+	r := h.call("u1", "GET", "/v1/activities/short/card", nil, "")
+	h.want(r, 200, "")
+	if r.body["chance"] != 20.0 || r.body["odds"] == nil {
+		t.Fatalf("GET trước khi lật = %s, muốn chance 20", r.raw)
+	}
+
+	h.want(h.call("u1", "POST", "/v1/activities/short/card", nil, ""), 409, "card_missed")
+	h.want(h.call("u1", "POST", "/v1/activities/short/card", nil, ""), 409, "card_missed")
+	r = h.call("u1", "GET", "/v1/activities/short/card", nil, "")
+	h.want(r, 200, "")
+	if r.body["reason"] != "card_missed" || r.body["card"] != nil || r.body["odds"] != nil {
+		t.Fatalf("GET sau khi trượt = %s", r.raw)
+	}
+	if snap, err := h.store.db.Doc("users/u1/runCards/short").Get(context.Background()); err == nil {
+		t.Fatalf("trượt mà vẫn có thẻ: %v", snap.Data())
+	}
+
+	// Cùng lần chạy ghi ở Apple Health cũng không được lật thêm một lượt.
+	seedRun(t, h, "u1", "health", map[string]any{"distanceMeters": 2500.0, "source": "apple_health", "startedAt": "2026-10-24T23:10:00Z"})
+	h.want(h.call("u1", "POST", "/v1/activities/health/card", nil, ""), 409, "card_duplicate")
+}
+
+func TestEmulatorRunCardShortRunHit(t *testing.T) {
+	// 199999 nằm trong 1/5 nên ra thẻ, bậc theo số đầu như buổi dài.
+	h := runCardHarness(t, 0, 199999)
+	seedRun(t, h, "u1", "short", map[string]any{"distanceMeters": 2500.0})
+	r := h.call("u1", "POST", "/v1/activities/short/card", nil, "")
+	h.want(r, 200, "")
+	if c := r.body["card"].(map[string]any); c["tier"] != "common" || c["km"] != 2.5 {
+		t.Fatalf("thẻ = %v", c)
+	}
+}
+
 func TestEmulatorArtStyles(t *testing.T) {
 	h := runCardHarness(t, 0)
 	r := h.call("u1", "GET", "/v1/art-styles?kind=run", nil, "")
