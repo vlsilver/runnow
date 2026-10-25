@@ -106,31 +106,9 @@ class GameCardViewer extends StatefulWidget {
 }
 
 class _GameCardViewerState extends State<GameCardViewer>
-    with TickerProviderStateMixin, WidgetsBindingObserver {
+    with WidgetsBindingObserver {
   final _captureKey = GlobalKey();
-
-  /// Lật: 0 là mặt trước, 1 là mặt sau.
-  late final AnimationController _flip = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 600),
-  );
-
-  /// Thả tay thì lá trôi về giữa.
-  late final AnimationController _settle = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 600),
-    value: 1,
-  );
-
-  /// Lá tự đung đưa nhẹ khi không ai chạm, để thấy ánh sáng chạy.
-  late final AnimationController _sway = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 6),
-  )..repeat();
-
-  Offset _drag = Offset.zero;
-  Offset _from = Offset.zero;
-  bool _dragging = false;
+  final _card = GlobalKey<TiltFlipCardState>();
   bool _sharing = false;
 
   @override
@@ -158,43 +136,14 @@ class _GameCardViewerState extends State<GameCardViewer>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _flip.dispose();
-    _settle.dispose();
-    _sway.dispose();
     super.dispose();
-  }
-
-  /// [local] là vị trí ngón tay trong lá, quy về -1..1 mỗi chiều.
-  void _onDrag(Offset local, Size size) {
-    _settle.stop();
-    setState(() {
-      _dragging = true;
-      _drag = Offset(
-        (local.dx / size.width * 2 - 1).clamp(-1.0, 1.0),
-        (local.dy / size.height * 2 - 1).clamp(-1.0, 1.0),
-      );
-    });
-  }
-
-  void _onRelease() {
-    _from = _drag;
-    _dragging = false;
-    _settle.forward(from: 0);
-  }
-
-  void _toggleFlip() {
-    if (_flip.value < 0.5) {
-      _flip.forward();
-    } else {
-      _flip.reverse();
-    }
   }
 
   Future<void> _share(BuildContext buttonContext) async {
     setState(() => _sharing = true);
     try {
       // Mặt trước phải đang vẽ thì mới chụp được.
-      if (_flip.value > 0) await _flip.reverse();
+      await _card.currentState?.showFront();
       if (!buttonContext.mounted) return;
       await widget.onShare!(_captureKey, buttonContext);
     } catch (error) {
@@ -207,15 +156,6 @@ class _GameCardViewerState extends State<GameCardViewer>
     } finally {
       if (mounted) setState(() => _sharing = false);
     }
-  }
-
-  /// Độ lệch hiện tại (-1..1): theo tay, đang trôi về, hay đung đưa.
-  Offset _pose() {
-    if (_dragging) return _drag;
-    final settle = Curves.easeOutCubic.transform(_settle.value);
-    final sway = _sway.value * 2 * math.pi;
-    final idle = Offset(math.sin(sway) * 0.45, math.cos(sway) * 0.2);
-    return Offset.lerp(_from, idle, settle)!;
   }
 
   @override
@@ -266,10 +206,16 @@ class _GameCardViewerState extends State<GameCardViewer>
               ),
               Expanded(
                 child: Center(
-                  child: AnimatedBuilder(
-                    animation: Listenable.merge([_flip, _settle, _sway]),
-                    builder: (context, _) => _buildCard(cardWidth),
-                  ),
+                  child: _closed
+                      ? const SizedBox.shrink()
+                      : TiltFlipCard(
+                          key: _card,
+                          front: widget.front,
+                          back: widget.back,
+                          width: cardWidth,
+                          cardSize: widget.cardSize,
+                          captureKey: _captureKey,
+                        ),
                 ),
               ),
               const Text(
@@ -290,8 +236,131 @@ class _GameCardViewerState extends State<GameCardViewer>
     );
   }
 
-  Widget _buildCard(double width) {
-    if (_closed) return const SizedBox.shrink();
+  Widget _shareButton() {
+    return Builder(
+      builder: (buttonContext) => SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: _sharing ? null : () => _share(buttonContext),
+          icon: const Icon(Icons.ios_share_rounded),
+          label: Text(_sharing ? 'Đang tạo ảnh…' : 'Khoe thẻ'),
+        ),
+      ),
+    );
+  }
+}
+
+/// Một lá 3D: tự đung đưa nhẹ cho thấy ánh sáng chạy, kéo để nghiêng, chạm để
+/// lật.
+class TiltFlipCard extends StatefulWidget {
+  const TiltFlipCard({
+    super.key,
+    required this.front,
+    required this.back,
+    required this.width,
+    this.cardSize = gameCardSize,
+    this.captureKey,
+  });
+
+  final CardFaceBuilder front;
+  final CardFaceBuilder back;
+
+  /// Bề ngang lá trên màn; cao theo tỉ lệ [cardSize].
+  final double width;
+
+  /// Kích thước gốc của lá, giữ đúng tỉ lệ khi phóng to.
+  final Size cardSize;
+
+  /// Gắn vào mặt trước để chụp ảnh khoe.
+  final GlobalKey? captureKey;
+
+  @override
+  State<TiltFlipCard> createState() => TiltFlipCardState();
+}
+
+class TiltFlipCardState extends State<TiltFlipCard>
+    with TickerProviderStateMixin {
+  /// Lật: 0 là mặt trước, 1 là mặt sau.
+  late final AnimationController _flip = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 600),
+  );
+
+  /// Thả tay thì lá trôi về giữa.
+  late final AnimationController _settle = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 600),
+    value: 1,
+  );
+
+  /// Lá tự đung đưa nhẹ khi không ai chạm, để thấy ánh sáng chạy.
+  late final AnimationController _sway = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 6),
+  )..repeat();
+
+  Offset _drag = Offset.zero;
+  Offset _from = Offset.zero;
+  bool _dragging = false;
+
+  @override
+  void dispose() {
+    _flip.dispose();
+    _settle.dispose();
+    _sway.dispose();
+    super.dispose();
+  }
+
+  /// Lật về mặt trước, xong khi lá đã nằm yên.
+  Future<void> showFront() async {
+    if (_flip.value > 0) await _flip.reverse();
+  }
+
+  /// [local] là vị trí ngón tay trong lá, quy về -1..1 mỗi chiều.
+  void _onDrag(Offset local, Size size) {
+    _settle.stop();
+    setState(() {
+      _dragging = true;
+      _drag = Offset(
+        (local.dx / size.width * 2 - 1).clamp(-1.0, 1.0),
+        (local.dy / size.height * 2 - 1).clamp(-1.0, 1.0),
+      );
+    });
+  }
+
+  void _onRelease() {
+    _from = _drag;
+    _dragging = false;
+    _settle.forward(from: 0);
+  }
+
+  void _toggleFlip() {
+    if (_flip.value < 0.5) {
+      _flip.forward();
+    } else {
+      _flip.reverse();
+    }
+  }
+
+  /// Độ lệch hiện tại (-1..1): theo tay, đang trôi về, hay đung đưa.
+  Offset _pose() {
+    if (_dragging) return _drag;
+    final settle = Curves.easeOutCubic.transform(_settle.value);
+    final sway = _sway.value * 2 * math.pi;
+    final idle = Offset(math.sin(sway) * 0.45, math.cos(sway) * 0.2);
+    return Offset.lerp(_from, idle, settle)!;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([_flip, _settle, _sway]),
+      builder: (context, _) => _buildCard(),
+    );
+  }
+
+  Widget _buildCard() {
+    final width = widget.width;
     final pose = _pose();
     final flip = Curves.easeInOutCubic.transform(_flip.value);
     final ry = pose.dx * gameCardMaxTilt + flip * math.pi;
@@ -322,26 +391,13 @@ class _GameCardViewerState extends State<GameCardViewer>
                 ),
               )
             : RepaintBoundary(
-                key: _captureKey,
+                key: widget.captureKey,
                 child: GameCardScaled(
                   width: width,
                   size: base,
                   child: widget.front(pose),
                 ),
               ),
-      ),
-    );
-  }
-
-  Widget _shareButton() {
-    return Builder(
-      builder: (buttonContext) => SizedBox(
-        width: double.infinity,
-        child: FilledButton.icon(
-          onPressed: _sharing ? null : () => _share(buttonContext),
-          icon: const Icon(Icons.ios_share_rounded),
-          label: Text(_sharing ? 'Đang tạo ảnh…' : 'Khoe thẻ'),
-        ),
       ),
     );
   }
