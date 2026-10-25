@@ -691,6 +691,11 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 				err = fmt.Errorf("chat lạ %q", d.Chat)
 			}
 		}
+	case tplPick:
+		var p pick
+		if err = json.Unmarshal([]byte(raw), &p); err == nil {
+			text = p.text(r.name)
+		}
 	case tplNight:
 		var d struct {
 			Round int `json:"round"`

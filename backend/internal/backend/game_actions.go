@@ -2,7 +2,11 @@ package backend
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -137,6 +141,11 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 		}
 
 		msgs := withoutFakeDMs(actionMessages(a), g.Data())
+		prev, _ := storedAction(cur)
+		p, posted := newPick(st, a, prev, req.ReceivedAt)
+		if posted {
+			msgs = append(msgs, gameMsg{ChatKey: chatGroup, Template: tplPick, Data: p.data()})
+		}
 		var wolfChat *chatPost
 		var pings []gameMsg
 		if a.Kind == werewolf.KindWolfBite && chatMembers(st, chatWolves) != nil {
@@ -169,6 +178,11 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 				return err
 			}
 		}
+		if posted {
+			if err := writePickFeed(tx, game, g.Data(), st, p, now); err != nil {
+				return err
+			}
+		}
 		w := stepWrite{tx: tx, game: game, gameData: g.Data(), msgs: msgs, chats: chats, now: now, wall: req.ReceivedAt}
 		if err := w.writeOutbox(int64(number(g.Data()["eventSeq"]))); err != nil {
 			return err
@@ -192,6 +206,89 @@ func actionMessages(a werewolf.Action) []gameMsg {
 		return []gameMsg{{ChatKey: chatGroup, Template: tplTally, Data: kind}}
 	}
 	return []gameMsg{{ChatKey: dmChat(a.Actor), Template: tplChoice, Data: kind}}
+}
+
+// pick là một lần đề cử hoặc biểu quyết vừa đổi lựa chọn. Nó thành một tin
+// mới trong topic và một dòng trong mục diễn biến của pha ở nhật ký app, nên
+// bấm ở app hay ở Telegram thì cả hai nơi đều thấy. Chở snapshot lúc bấm, vì
+// lúc outbox gửi thì lựa chọn đang lưu có thể đã đổi tiếp.
+type pick struct {
+	At      time.Time     `json:"at"`
+	UID     string        `json:"uid"`
+	Kind    werewolf.Kind `json:"kind"`
+	Targets []string      `json:"targets,omitempty"`
+	Choice  string        `json:"choice,omitempty"`
+	Nominee string        `json:"nominee,omitempty"` // người lên giàn của phiên, khi là phiếu
+	Clear   bool          `json:"clear,omitempty"`
+}
+
+// newPick trả pick của a. False khi a không phải đề cử hay biểu quyết, hoặc
+// không đổi gì so với prev (lựa chọn đang lưu; nil nếu chưa có hay đã rút):
+// bấm lại đúng nút cũ thì không đăng thêm tin.
+func newPick(st *werewolf.State, a werewolf.Action, prev *werewolf.Action, at time.Time) (pick, bool) {
+	if !groupKind(a.Kind) {
+		return pick{}, false
+	}
+	if a.Clear && prev == nil {
+		return pick{}, false
+	}
+	if !a.Clear && prev != nil && prev.Choice == a.Choice && slices.Equal(prev.Targets, a.Targets) {
+		return pick{}, false
+	}
+	p := pick{At: at, UID: a.Actor, Kind: a.Kind, Targets: a.Targets, Choice: a.Choice, Clear: a.Clear}
+	if werewolf.IsVote(a.Kind) {
+		p.Nominee = st.NomineeOf(a.Kind)
+	}
+	return p, true
+}
+
+func (p pick) data() map[string]any {
+	return map[string]any{"at": p.At, "uid": p.UID, "kind": string(p.Kind), "targets": p.Targets,
+		"choice": p.Choice, "nominee": p.Nominee, "clear": p.Clear}
+}
+
+// text là câu của p, dùng chung cho topic và nhật ký. name trả tên đã escape
+// theo nơi hiển thị.
+func (p pick) text(name func(string) string) string {
+	switch {
+	case p.Kind == werewolf.KindNominate && p.Clear:
+		return name(p.UID) + " rút đề cử."
+	case p.Kind == werewolf.KindNominate:
+		names := make([]string, len(p.Targets))
+		for i, uid := range p.Targets {
+			names[i] = name(uid)
+		}
+		return fmt.Sprintf("%s đề cử %s.", name(p.UID), strings.Join(names, ", "))
+	case p.Clear:
+		return fmt.Sprintf("%s rút phiếu ở phiên %s.", name(p.UID), name(p.Nominee))
+	default:
+		return fmt.Sprintf("%s bỏ phiếu %s %s.", name(p.UID), choiceLabels[p.Choice], name(p.Nominee))
+	}
+}
+
+// pickFeedID là doc gom mọi lần bấm của một pha, như "picks-r3-day". Mỗi lần
+// bấm một mục thì một ngày 15 người ra vài chục mục, đẩy bản tin ra khỏi
+// trang đầu nhật ký.
+func pickFeedID(st *werewolf.State) string {
+	return "picks-" + strings.ReplaceAll(st.PhaseKey(), "/", "-")
+}
+
+// writePickFeed thêm p vào mục diễn biến của pha và đẩy mục lên đầu nhật ký
+// bằng feedSeq mới. Đề cử và biểu quyết là việc ban ngày, ai cũng thấy, nên
+// tăng feedSeq không lộ gì như tăng version lúc đêm.
+func writePickFeed(tx *firestore.Transaction, game *firestore.DocumentRef, gameData map[string]any, st *werewolf.State, p pick, now time.Time) error {
+	line, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	seq := int64(number(gameData["feedSeq"])) + 1
+	if err := tx.Set(game.Collection("feed").Doc(pickFeedID(st)), map[string]any{
+		"seq": seq, "at": now, "wallAt": p.At, "phaseKey": st.PhaseKey(), "round": st.Round,
+		"phase": string(st.Phase), "events": "[]", "picks": firestore.ArrayUnion(string(line)),
+	}, firestore.MergeAll); err != nil {
+		return err
+	}
+	return tx.Set(game, map[string]any{"feedSeq": seq}, firestore.MergeAll)
 }
 
 // wolfPickMessage là tin hệ thống của chat Phe Sói cho một lần chọn cắn, chở

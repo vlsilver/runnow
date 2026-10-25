@@ -539,6 +539,8 @@ type GameFeedItem struct {
 	At    time.Time `json:"at"`
 	Title string    `json:"title"`
 	Lines []string  `json:"lines"`
+	// picks: mục diễn biến từng lần bấm (writePickFeed), không phải bản tin.
+	picks bool
 }
 
 const feedPageSize = 20
@@ -592,6 +594,20 @@ func feedItem(d map[string]any, players map[string]gamePlayerInfo) (GameFeedItem
 			return p.name
 		}
 		return "Người chơi"
+	}
+	var picks []pick
+	for _, raw := range anyList(d["picks"]) {
+		var p pick
+		if err := json.Unmarshal([]byte(stringValue(raw)), &p); err != nil {
+			return GameFeedItem{}, err
+		}
+		picks = append(picks, p)
+	}
+	// Hai lần bấm sát nhau có thể commit lệch thứ tự bấm.
+	slices.SortStableFunc(picks, func(a, b pick) int { return a.At.Compare(b.At) })
+	for _, p := range picks {
+		item.picks = true
+		item.Lines = append(item.Lines, p.At.In(vietnam).Format("15:04")+" "+p.text(name))
 	}
 	deaths := 0
 	for _, e := range evs {
@@ -662,8 +678,12 @@ func feedItem(d map[string]any, players map[string]gamePlayerInfo) (GameFeedItem
 		if deaths == 0 {
 			item.Lines = append([]string{"Đêm qua không ai chết."}, item.Lines...)
 		}
+	case phase == werewolf.PhaseDay && item.picks:
+		item.Title = fmt.Sprintf("Diễn biến đề cử ngày %d", round)
 	case phase == werewolf.PhaseDay:
 		item.Title = fmt.Sprintf("Đề cử ngày %d", round)
+	case phase == werewolf.PhaseTrial && item.picks:
+		item.Title = fmt.Sprintf("Diễn biến biểu quyết ngày %d", round)
 	case phase == werewolf.PhaseTrial:
 		item.Title = fmt.Sprintf("Biểu quyết ngày %d", round)
 	default:

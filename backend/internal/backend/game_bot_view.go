@@ -281,6 +281,9 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 		return nil, x, err
 	}
 	for _, item := range feed.Items {
+		if item.picks {
+			continue // phiếu đang bấm đã có ở Nominations và Trials
+		}
 		game.News = append(game.News, BotWerewolfNews{At: vnTime(item.At), Title: item.Title, Lines: item.Lines})
 	}
 	return game, x, nil

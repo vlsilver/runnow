@@ -48,6 +48,7 @@ const (
 	tplPrompt   = "prompt"    // dm: tới lượt một loại hành động
 	tplChoice   = "choice"    // dm: sửa prompt cho khớp lựa chọn vừa đổi
 	tplTally    = "tally"     // group: sửa prompt đề cử/biểu quyết cho khớp lựa chọn vừa đổi
+	tplPick     = "pick"      // group: tin mới cho một lần đề cử/biểu quyết (pick)
 	tplChatPing = "chat_ping" // dm: có tin mới trong chat phe ở app
 	tplNight    = "night"     // dm: vào đêm mà không có lượt mới (nightMessages)
 )

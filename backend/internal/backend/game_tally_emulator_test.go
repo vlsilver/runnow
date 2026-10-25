@@ -94,10 +94,18 @@ func TestEmulatorTopicNominateAndVote(t *testing.T) {
 	pick := buttonData(t, prompt, "W1")
 
 	edits := func() int { return len(e.tg.Calls("editMessageText")) }
-	wantEdit := func(lines ...string) {
+	// Mỗi lần bấm: sửa tin đếm phiếu, rồi đăng một tin mới kể ai vừa chọn gì.
+	wantEdit := func(posted string, lines ...string) {
 		t.Helper()
 		e.flush()
-		c := e.lastGroup()
+		calls := e.groupCalls()
+		if len(calls) < 2 {
+			t.Fatalf("group mới nhận %d tin", len(calls))
+		}
+		if c := calls[len(calls)-1]; c.Method != "sendMessage" || c.Params["text"] != posted {
+			t.Fatalf("tin mới = %v, mong đợi %q", c, posted)
+		}
+		c := calls[len(calls)-2]
 		text, _ := c.Params["text"].(string)
 		if c.Method != "editMessageText" || c.Params["message_id"] != id || !strings.Contains(text, "\n"+strings.Join(lines, "\n")+"\n") {
 			t.Fatalf("tin sửa = %v, mong đợi có %q", c, lines)
@@ -106,7 +114,7 @@ func TestEmulatorTopicNominateAndVote(t *testing.T) {
 	if text, _ := e.press(tg["v2"], pick); text != "Đã chọn W1." {
 		t.Fatalf("v2 đề cử = %q", text)
 	}
-	wantEdit("<b>W1</b>: 1 (V2)")
+	wantEdit("V2 đề cử W1.", "<b>W1</b>: 1 (V2)")
 
 	n := edits()
 	for _, c := range []struct{ uid, data, want string }{
@@ -130,7 +138,7 @@ func TestEmulatorTopicNominateAndVote(t *testing.T) {
 		t.Fatalf("v3 chưa đề cử mà hasTodo = %v", got)
 	}
 	e.h.want(e.h.call("v3", "POST", "/v1/games/"+e.id+"/actions", map[string]any{"kind": "nominate", "targets": []string{"w1"}}, ""), 200, "")
-	wantEdit("<b>W1</b>: 2 (V2, V3)")
+	wantEdit("V3 đề cử W1.", "<b>W1</b>: 2 (V2, V3)")
 	if got := todo("v3"); got != false {
 		t.Fatalf("v3 đã đề cử mà hasTodo = %v", got)
 	}
@@ -163,7 +171,7 @@ func TestEmulatorTopicNominateAndVote(t *testing.T) {
 	if text, _ := e.press(tg["v2"], hang); text != "Đã chọn Treo." {
 		t.Fatalf("v2 Treo = %q", text)
 	}
-	wantEdit("Hạn: "+e.wall(time.Date(2026, 10, 16, 22, 0, 0, 0, vietnam))+".", "<b>Treo</b>: 1 (V2)", "<b>Tha</b>: 0")
+	wantEdit("V2 bỏ phiếu Treo W1.", "Hạn: "+e.wall(time.Date(2026, 10, 16, 22, 0, 0, 0, vietnam))+".", "<b>Treo</b>: 1 (V2)", "<b>Tha</b>: 0")
 	n = edits()
 	if text, _ := e.press(tg["w1"], hang); text != "Người lên giàn không bỏ phiếu." {
 		t.Fatalf("người lên giàn bấm = %q", text)
@@ -173,7 +181,7 @@ func TestEmulatorTopicNominateAndVote(t *testing.T) {
 		t.Fatal("người lên giàn bấm mà tin vẫn bị sửa")
 	}
 	e.h.want(e.h.call("v3", "POST", "/v1/games/"+e.id+"/actions", map[string]any{"kind": "vote", "choice": "spare"}, ""), 200, "")
-	wantEdit("<b>Treo</b>: 1 (V2)", "<b>Tha</b>: 1 (V3)")
+	wantEdit("V3 bỏ phiếu Tha W1.", "<b>Treo</b>: 1 (V2)", "<b>Tha</b>: 1 (V3)")
 	if a := e.data("games/" + e.id + "/rounds/1/actions/v2_vote"); a["choice"] != ww.ChoiceHang || a["source"] != "telegram" {
 		t.Fatalf("action của v2 = %v", a)
 	}
