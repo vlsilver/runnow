@@ -174,7 +174,7 @@ const _sheens = {
 /// Bo góc ngoài của thẻ.
 const _radius = 17.0;
 
-/// Đỉnh đường cong ngăn tranh với chân thẻ; chân thẻ chiếm từ đây tới đáy.
+/// Nét ngang ngăn tranh với chân thẻ; chân thẻ chiếm từ đây tới đáy.
 const _footTop = 360.0;
 
 /// Lề trái phải của chữ và ô đá.
@@ -306,14 +306,12 @@ Shader _metalShader(_Metal metal, Rect rect, double tilt) => LinearGradient(
   tileMode: TileMode.mirror,
 ).createShader(rect);
 
-/// Đường cong chân thẻ: phẳng ở giữa, cong xuống hai mép.
-Path _footArc(double width, double dy) {
+/// Nét ngang chân thẻ, chạy thẳng từ mép này sang mép kia.
+Path _footLine(double width, double dy) {
   final y = _footTop + dy;
   return Path()
-    ..moveTo(0, y + 26.4)
-    ..cubicTo(0, y + 7.2, 8.4, y, 28.8, y)
-    ..lineTo(width - 28.8, y)
-    ..cubicTo(width - 8.4, y, width, y + 7.2, width, y + 26.4);
+    ..moveTo(0, y)
+    ..lineTo(width, y);
 }
 
 /// Độ dày nét kim loại chính theo bậc, Sắt mảnh nhất.
@@ -363,7 +361,7 @@ class _Front extends StatelessWidget {
           ),
         ),
         if (sheen != null) _Sheen(light: light, color: sheen),
-        // Khối chữ đứng ngay trên đường cong, cùng mốc với nét kim loại.
+        // Khối chữ đứng ngay trên nét chân thẻ, cùng mốc với nét kim loại.
         Positioned(
           left: 0,
           right: 0,
@@ -556,7 +554,7 @@ class _Front extends StatelessWidget {
   }
 }
 
-/// Nét kim loại của bậc. Mặt trước có đường cong ngăn tranh với chân thẻ:
+/// Nét kim loại của bậc. Mặt trước có nét ngang ngăn tranh với chân thẻ:
 /// Sắt và Đồng một nét, từ Bạc thêm nét mảnh phía trên, từ Vàng thêm viền
 /// trong, Kim cương có vệt sáng chạy dọc các nét. Mặt sau chỉ có viền trong.
 class _TrimPainter extends CustomPainter {
@@ -597,27 +595,24 @@ class _TrimPainter extends CustomPainter {
       );
     final traced = <Path>[];
     if (shade case final shade?) {
-      final arc = _footArc(size.width, 0);
-      canvas.drawPath(
-        Path.from(arc)
-          ..lineTo(size.width, size.height)
-          ..lineTo(0, size.height)
-          ..close(),
+      final foot = _footLine(size.width, 0);
+      canvas.drawRect(
+        Rect.fromLTRB(0, _footTop, size.width, size.height),
         Paint()..color = shade.withValues(alpha: 0.94),
       );
-      canvas.drawPath(arc, line(_lineWidths[level]));
+      canvas.drawPath(foot, line(_lineWidths[level]));
       if (level >= 2) {
-        canvas.drawPath(_footArc(size.width, -3.1), line(0.54, 0.85));
+        canvas.drawPath(_footLine(size.width, -3.1), line(0.54, 0.85));
       }
       if (level >= 3) canvas.drawPath(inner, line(0.72, 0.9));
-      traced.addAll([arc, inner]);
+      traced.addAll([foot, inner]);
     } else {
       canvas.drawPath(inner, line(_lineWidths[level], 0.9));
       traced.add(inner);
     }
     if (tier == GameCardTier.mythic) {
       // Vệt dài 5% nét, chạy hết một vòng trong 5,5 giây. Giây 0 là ảnh tĩnh
-      // đem khoe, nên vệt xuất phát từ giữa đường cong chứ không ở mép trái.
+      // đem khoe, nên vệt xuất phát từ giữa nét chân thẻ chứ không ở mép trái.
       final sweep = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.68
