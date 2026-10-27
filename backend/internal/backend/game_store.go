@@ -741,10 +741,15 @@ func gameNominees(data map[string]any) []string {
 
 func (w *stepWrite) publicGame() map[string]any {
 	st := w.after
-	revealed := map[string]any{}
+	// revealed là lá bài đã lật, revealedTeams là phe của người chỉ lộ phe
+	// (sideOnly). MergeAll không xoá key cũ, nên một uid đã lật thì giữ nguyên.
+	revealed, revealedTeams := map[string]any{}, map[string]any{}
 	for uid, p := range st.Players {
-		if !p.Alive || st.Phase == werewolf.PhaseEnded {
+		switch {
+		case st.Phase == werewolf.PhaseEnded || !p.Alive && !sideOnly(p.Cause):
 			revealed[uid] = string(p.Role)
+		case !p.Alive:
+			revealedTeams[uid] = string(werewolf.Side(p.Role))
 		}
 	}
 	out := map[string]any{
@@ -759,6 +764,9 @@ func (w *stepWrite) publicGame() map[string]any {
 	}
 	if len(revealed) > 0 {
 		out["revealed"] = revealed
+	}
+	if len(revealedTeams) > 0 {
+		out["revealedTeams"] = revealedTeams
 	}
 	if st.Phase != werewolf.PhaseEnded {
 		out["deadline"], out["nextAt"] = st.Deadline(), st.NextAt()

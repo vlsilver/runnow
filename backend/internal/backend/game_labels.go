@@ -28,6 +28,7 @@ var roleRules = map[werewolf.Role]string{
 }
 
 const gameRulesText = "Mỗi vòng dài một ngày. 22h tới 10h là đêm: các vai có kỹ năng chọn người. 10h bản tin đêm, đề cử tới 20h; tối đa 3 người nhiều đề cử nhất lên giàn. 20h tới 22h biểu quyết Treo hay Tha từng người. 22h chốt phiếu và km.\n" +
+	"Người bị treo chỉ lộ là phe Dân hay phe Sói, không lật lá bài. Chết cách khác thì lật lá bài. Hết ván lật bài tất cả.\n" +
 	"km trong khung 22h hôm qua tới 22h hôm nay quyết định có được dùng kỹ năng và có được bỏ phiếu không.\n" +
 	"Dân thắng khi hết sói. Sói thắng khi số sói bằng số người còn lại. Cặp đôi Sói và Dân thắng khi chỉ còn hai người họ. Ván chạy tới khi có phe thắng, không giới hạn số vòng."
 

@@ -168,7 +168,6 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 		}
 	}
 	game.Winner = teamLabels[werewolf.Team(stringValue(data["winner"]))]
-	revealed, _ := data["revealed"].(map[string]any)
 	alive := map[string]bool{}
 	var aliveUIDs []string
 	for _, p := range players {
@@ -178,8 +177,8 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 			continue
 		}
 		dead := p.name
-		if role := roleLabels[werewolf.Role(stringValue(revealed[p.uid]))]; role != "" {
-			dead += ": " + role
+		if label, _ := revealedLabel(data, p.uid); label != "" {
+			dead += ": " + label
 		}
 		if n := int(number(p.data["deathRound"])); n > 0 {
 			dead += ", chết vòng " + itoa(n)

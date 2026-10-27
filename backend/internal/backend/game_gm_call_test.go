@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -39,8 +40,9 @@ func TestStepMessagesGameMasterCalls(t *testing.T) {
 		t.Fatalf("20h mà quản trò gọi %v", c)
 	}
 
-	// Phù thuỷ bị treo ngày 1: đêm 2 không gọi tiên tri (chết đêm 1), 0h không
-	// còn ai để gọi nên bản tin 0h không có lời quản trò.
+	// Phù thuỷ bị treo ngày 1: group chỉ biết người đó phe Dân, nên đêm 2 quản
+	// trò vẫn gọi phù thuỷ, cả lúc 22h lẫn 0h, kẻo lời gọi lộ vai. Tiên tri chết
+	// đêm 1 đã lật bài nên không gọi nữa.
 	hang := func(actor string) ww.Action {
 		return ww.Action{Kind: ww.KindVote, Actor: actor, Choice: ww.ChoiceHang, ReceivedAt: trial.NightAt.Add(23 * time.Hour)}
 	}
@@ -48,12 +50,67 @@ func TestStepMessagesGameMasterCalls(t *testing.T) {
 	if night2.Players["witch"].Alive {
 		t.Fatalf("phù thuỷ chưa bị treo: %+v", evs)
 	}
-	if c, w := call(stepMessages(trial, night2, evs)[0]); c != callNight || !reflect.DeepEqual(w, []string{"wolf", "guard"}) {
+	if c, w := call(stepMessages(trial, night2, evs)[0]); c != callNight || !reflect.DeepEqual(w, []string{"wolf", "guard", "witch"}) {
 		t.Fatalf("22h đêm 2: %v %v", c, w)
 	}
 	dawn2, evs := mustStep(t, night2)
-	if c, _ := call(stepMessages(night2, dawn2, evs)[0]); c != nil {
-		t.Fatalf("0h đêm 2 không còn phù thuỷ mà gọi %v", c)
+	if c, w := call(stepMessages(night2, dawn2, evs)[0]); c != callWitch || !reflect.DeepEqual(w, []string{"witch"}) {
+		t.Fatalf("0h đêm 2 phải gọi phù thuỷ đã bị treo: %v %v", c, w)
+	}
+}
+
+// Người bị treo chỉ lộ phe; chết cách khác vẫn lật lá bài. Event công khai là
+// thứ vào feed, bản tin group và app, nên vai người bị treo không được nằm trong đó.
+func TestPublicEventHangShowsTeamOnly(t *testing.T) {
+	cases := []struct {
+		in       ww.Event
+		role     ww.Role
+		team     ww.Team
+		feedLine string
+	}{
+		{ww.Event{Kind: ww.EventDeath, UID: "s1", Role: ww.Seer, Cause: ww.CauseHang}, "", ww.TeamVillage, "Chi đã chết, thuộc Phe Dân."},
+		{ww.Event{Kind: ww.EventDeath, UID: "w2", Role: ww.Wolf, Cause: ww.CauseHang}, "", ww.TeamWolves, "Bình & Co đã chết, thuộc Phe Sói."},
+		{ww.Event{Kind: ww.EventDeath, UID: "s1", Role: ww.Seer, Cause: ww.CauseBite}, ww.Seer, "", "Chi đã chết. Lá bài: Tiên tri."},
+		{ww.Event{Kind: ww.EventDeath, UID: "s1", Role: ww.Seer, Cause: ww.CauseLover}, ww.Seer, "", "Chi đã chết. Lá bài: Tiên tri."},
+	}
+	r := testRenderer()
+	for _, c := range cases {
+		pub, ok := publicEvent(c.in)
+		if !ok || pub.Role != c.role || pub.Team != c.team || pub.Cause != "" {
+			t.Fatalf("publicEvent(%+v) = %+v, %v", c.in, pub, ok)
+		}
+		raw, err := json.Marshal([]ww.Event{pub})
+		if err != nil {
+			t.Fatal(err)
+		}
+		item, err := feedItem(map[string]any{"events": string(raw), "phaseKey": "r1/trial"}, r.byUID)
+		if err != nil || len(item.Lines) != 1 || item.Lines[0] != c.feedLine {
+			t.Fatalf("feed của %+v = %q, %v", c.in, item.Lines, err)
+		}
+	}
+}
+
+// Doc game công khai giữ vai người chết cho app và 3i đọc: người bị treo chỉ
+// có phe, tới hết ván mới lật lá bài.
+func TestPublicGameHangShowsTeamOnly(t *testing.T) {
+	st := ww.NewState(ww.Seed{1}, ww.Config{}, msgRoles(), msgStart)
+	st.Phase = ww.PhaseNight
+	st.Players["witch"].Alive, st.Players["witch"].Cause = false, ww.CauseHang
+	st.Players["w1"].Alive, st.Players["w1"].Cause = false, ww.CauseHang
+	st.Players["seer"].Alive, st.Players["seer"].Cause = false, ww.CauseBite
+
+	data := (&stepWrite{after: st}).publicGame()
+	want := map[string][2]string{"witch": {"Phe Dân", ""}, "w1": {"Phe Sói", ""}, "seer": {"Tiên tri", "seer"}, "v1": {"", ""}}
+	for uid, w := range want {
+		if label, role := revealedLabel(data, uid); label != w[0] || string(role) != w[1] {
+			t.Fatalf("đang chơi, %s lộ %q %q, muốn %q", uid, label, role, w)
+		}
+	}
+
+	st.Phase = ww.PhaseEnded
+	data = (&stepWrite{after: st}).publicGame()
+	if label, role := revealedLabel(data, "witch"); label != roleLabels[ww.Witch] || role != ww.Witch {
+		t.Fatalf("hết ván, phù thuỷ bị treo lộ %q %q", label, role)
 	}
 }
 

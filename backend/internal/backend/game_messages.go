@@ -54,16 +54,38 @@ const (
 )
 
 // publicEvent trả bản công khai của e, hoặc false nếu e chỉ dành cho người
-// trong cuộc. Lý do chết không công khai (C3), vai thì lật khi chết.
+// trong cuộc. Lý do chết không công khai (C3). Chết thì lật lá bài, trừ người
+// bị treo chỉ lộ phe (sideOnly).
 func publicEvent(e werewolf.Event) (werewolf.Event, bool) {
 	switch e.Kind {
 	case werewolf.EventDeath:
+		if sideOnly(e.Cause) {
+			e.Role, e.Team = "", werewolf.Side(e.Role)
+		}
 		e.Cause = ""
 		return e, true
 	case werewolf.EventNominee, werewolf.EventVoteCut, werewolf.EventVoteResult, werewolf.EventHunterTurn, werewolf.EventWinner:
 		return e, true
 	}
 	return werewolf.Event{}, false
+}
+
+// sideOnly: người chết vì cause này chỉ lộ phe Sói hay Dân cho tới hết ván,
+// không lật lá bài. Hiện chỉ có người bị dân làng treo.
+func sideOnly(c werewolf.Cause) bool {
+	return c == werewolf.CauseHang
+}
+
+// revealedLabel đọc từ doc game công khai (publicGame) cái group đã biết về
+// người chết uid: lá bài thì trả nhãn và vai, chỉ lộ phe thì trả nhãn phe và
+// vai rỗng, còn sống thì rỗng cả hai. Lá bài thắng phe, vì hết ván mới lật hết.
+func revealedLabel(data map[string]any, uid string) (string, werewolf.Role) {
+	revealed, _ := data["revealed"].(map[string]any)
+	if role := werewolf.Role(stringValue(revealed[uid])); role != "" {
+		return roleLabels[role], role
+	}
+	teams, _ := data["revealedTeams"].(map[string]any)
+	return teamLabels[werewolf.Team(stringValue(teams[uid]))], ""
 }
 
 func publicEvents(evs []werewolf.Event) []werewolf.Event {
@@ -83,7 +105,7 @@ func startMessages(st *werewolf.State) []gameMsg {
 	start := map[string]any{
 		"phaseKey": st.PhaseKey(), "nightAt": st.NightAt.UTC().Format(time.RFC3339), "players": len(uids),
 	}
-	if wake := aliveRoles(st, werewolf.Cupid); len(wake) > 0 {
+	if wake := calledRoles(st, werewolf.Cupid); len(wake) > 0 {
 		start["wake"] = wake
 	}
 	msgs := []gameMsg{{ChatKey: chatGroup, Template: tplStart, Data: start}}
@@ -199,10 +221,10 @@ const (
 )
 
 // gmCall trả lời quản trò cho lần chuyển phase này và các vai được gọi. Chỉ gọi
-// vai còn người sống: người chết đã lật bài nên group biết vai đó hết người,
-// còn bộ vai thì suy ra được từ số người và config. Không xét bình hay km, nên
-// phù thuỷ hết bình vẫn được gọi như thường. Phù thuỷ đã chết thì 0h không có
-// gì để gọi, bản tin 0h vẫn rỗng và không gửi.
+// vai mà group chưa biết là hết người (calledRoles): người chết đã lật bài thì
+// group biết vai đó hết người, còn bộ vai thì suy ra được từ số người và
+// config. Không xét bình hay km, nên phù thuỷ hết bình vẫn được gọi như thường.
+// Phù thuỷ đã lật bài thì 0h không có gì để gọi, bản tin 0h vẫn rỗng và không gửi.
 func gmCall(before, after *werewolf.State) (string, []string) {
 	switch {
 	case after.Phase == werewolf.PhaseNight && before.Phase != werewolf.PhaseNight:
@@ -212,9 +234,9 @@ func gmCall(before, after *werewolf.State) (string, []string) {
 		if after.Round == 1 {
 			order = append([]werewolf.Role{werewolf.Cupid}, order...)
 		}
-		return callNight, aliveRoles(after, order...)
+		return callNight, calledRoles(after, order...)
 	case after.Phase == werewolf.PhaseDawn && before.Phase == werewolf.PhaseNight:
-		if wake := aliveRoles(after, werewolf.Witch); len(wake) > 0 {
+		if wake := calledRoles(after, werewolf.Witch); len(wake) > 0 {
 			return callWitch, wake
 		}
 	case before.Phase == werewolf.PhaseDawn && after.Phase != werewolf.PhaseDawn:
@@ -223,12 +245,14 @@ func gmCall(before, after *werewolf.State) (string, []string) {
 	return "", nil
 }
 
-// aliveRoles trả các vai trong roles (giữ thứ tự) còn ít nhất một người sống.
-func aliveRoles(st *werewolf.State, roles ...werewolf.Role) []string {
+// calledRoles trả các vai trong roles (giữ thứ tự) còn ít nhất một người sống
+// hoặc một người chết mà chưa lật bài (sideOnly). Gọi cả vai của người bị treo
+// thì group không suy ra được vai người đó từ lời quản trò.
+func calledRoles(st *werewolf.State, roles ...werewolf.Role) []string {
 	var out []string
 	for _, role := range roles {
 		for _, p := range st.Players {
-			if p.Role == role && p.Alive {
+			if p.Role == role && (p.Alive || sideOnly(p.Cause)) {
 				out = append(out, string(role))
 				break
 			}

@@ -614,7 +614,11 @@ func feedItem(d map[string]any, players map[string]gamePlayerInfo) (GameFeedItem
 		switch e.Kind {
 		case werewolf.EventDeath:
 			deaths++
-			item.Lines = append(item.Lines, fmt.Sprintf("%s đã chết. Lá bài: %s.", name(e.UID), roleLabels[e.Role]))
+			if e.Role == "" && e.Team != "" { // bị treo: chỉ lộ phe (sideOnly)
+				item.Lines = append(item.Lines, fmt.Sprintf("%s đã chết, thuộc %s.", name(e.UID), teamLabels[e.Team]))
+			} else {
+				item.Lines = append(item.Lines, fmt.Sprintf("%s đã chết. Lá bài: %s.", name(e.UID), roleLabels[e.Role]))
+			}
 		case werewolf.EventNominee:
 			nominees := e.Targets
 			if len(nominees) == 0 && e.UID != "" {
@@ -765,6 +769,8 @@ type GamePlayer struct {
 	Name              string   `json:"name"`
 	AvatarURL         string   `json:"avatarUrl,omitempty"`
 	Alive             bool     `json:"alive"`
+	// RevealedRoleLabel là cái group đã biết về người chết: tên lá bài, hoặc
+	// chỉ "Phe Dân"/"Phe Sói" với người bị treo, khi đó không có RevealedCardURL.
 	RevealedRoleLabel string   `json:"revealedRoleLabel,omitempty"`
 	RevealedCardURL   string   `json:"revealedCardUrl,omitempty"`
 	DeathRound        int      `json:"deathRound,omitempty"`
@@ -865,13 +871,12 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 		return out, err
 	}
 	out.KmTable = kmTable(data, st, live, wall)
-	revealed, _ := data["revealed"].(map[string]any)
 	nominees := gameNominees(data)
 	out.Players = make([]GamePlayer, 0, len(players))
 	for _, p := range players {
 		gp := GamePlayer{UID: p.uid, Name: p.name, AvatarURL: p.avatar, Alive: p.data["alive"] != false, Fake: p.fake, OnTrial: slices.Contains(nominees, p.uid)}
-		if role := werewolf.Role(stringValue(revealed[p.uid])); role != "" {
-			gp.RevealedRoleLabel, gp.RevealedCardURL = roleLabels[role], cfg.cards[string(role)]
+		if label, role := revealedLabel(data, p.uid); label != "" {
+			gp.RevealedRoleLabel, gp.RevealedCardURL = label, cfg.cards[string(role)]
 		}
 		gp.DeathRound = int(number(p.data["deathRound"]))
 		if m, ok := km[p.uid]; ok {

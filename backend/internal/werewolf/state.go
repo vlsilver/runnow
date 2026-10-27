@@ -253,7 +253,13 @@ func (st *State) Winners() []string {
 
 // Peek là kết quả soi của tiên tri: Sói hay Dân. Sói đang yêu vẫn ra Sói (R2).
 func (st *State) Peek(target string) Team {
-	if st.role(target) == Wolf {
+	return Side(st.role(target))
+}
+
+// Side là phe lộ ra khi chỉ nói Sói hay Dân chứ không nói vai: tiên tri soi,
+// hay người bị treo. Không xét cặp đôi, nên Sói đang yêu vẫn ra Sói.
+func Side(r Role) Team {
+	if r == Wolf {
 		return TeamWolves
 	}
 	return TeamVillage
