@@ -3,8 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:myrun/src/theme.dart';
 
-/// Bậc của lá bài khoe. Bậc chỉ hiện ở chất liệu khung: than chì, bạc, vàng,
-/// vàng foil có ánh xà cừ. Thần thoại (cực quang) hiện chỉ thẻ buổi chạy quay ra.
+/// Bậc của lá bài khoe. Bậc chỉ hiện ở chất liệu khung: sắt, đồng, bạc, vàng,
+/// kim cương. Mọi bậc giữ tông của kim loại đó, không có cầu vồng.
 enum GameCardTier { common, rare, superRare, legendary, mythic }
 
 /// Kích thước gốc của lá bài; nơi dùng bọc trong [FittedBox] để phóng to nhỏ.
@@ -105,6 +105,21 @@ const gameCardTiers = {
   GameCardTier.rare: GameCardTierStyle(
     'Hiếm',
     2,
+    RunNowGameTokens.gemBronze,
+    [
+      RunNowGameTokens.bronzeEdge,
+      RunNowGameTokens.bronzeLight,
+      RunNowGameTokens.bronzeDeep,
+      RunNowGameTokens.bronzeBright,
+      RunNowGameTokens.bronzeEdge,
+    ],
+    [0, 0.3, 0.55, 0.8, 1],
+    0.08,
+    false,
+  ),
+  GameCardTier.superRare: GameCardTierStyle(
+    'Siêu hiếm',
+    3,
     RunNowGameTokens.gemSilver,
     [
       RunNowGameTokens.silverEdge,
@@ -114,20 +129,6 @@ const gameCardTiers = {
       RunNowGameTokens.silverEdge,
     ],
     [0, 0.3, 0.55, 0.8, 1],
-    0.08,
-    false,
-  ),
-  GameCardTier.superRare: GameCardTierStyle(
-    'Siêu hiếm',
-    3,
-    RunNowGameTokens.goldDeep,
-    [
-      RunNowGameTokens.goldEdge,
-      RunNowGameTokens.goldDeep,
-      RunNowGameTokens.goldMid,
-      RunNowGameTokens.goldDeep,
-    ],
-    [0, 0.35, 0.65, 1],
     0.14,
     false,
   ),
@@ -150,16 +151,30 @@ const gameCardTiers = {
   GameCardTier.mythic: GameCardTierStyle(
     'Thần thoại',
     5,
-    RunNowAchievementTokens.auroraTeal,
+    RunNowGameTokens.gemDiamond,
+    // Mặt cắt kim cương: mỗi màu đứng hai lần để ranh giới sắc như cạnh đá.
     [
-      RunNowAchievementTokens.auroraDeep,
-      RunNowAchievementTokens.auroraTeal,
-      RunNowAchievementTokens.auroraBlue,
-      RunNowAchievementTokens.auroraViolet,
-      RunNowAchievementTokens.auroraIce,
-      RunNowAchievementTokens.auroraDeep,
+      RunNowGameTokens.diamondShade,
+      RunNowGameTokens.diamondShade,
+      RunNowGameTokens.diamondBright,
+      RunNowGameTokens.diamondBright,
+      RunNowGameTokens.diamondMist,
+      RunNowGameTokens.diamondMist,
+      RunNowGameTokens.diamondWhite,
+      RunNowGameTokens.diamondWhite,
+      RunNowGameTokens.diamondDeep,
+      RunNowGameTokens.diamondDeep,
+      RunNowGameTokens.diamondIce,
+      RunNowGameTokens.diamondIce,
+      RunNowGameTokens.diamondShade,
+      RunNowGameTokens.diamondShade,
+      RunNowGameTokens.diamondBright,
+      RunNowGameTokens.diamondBright,
     ],
-    [0, 0.2, 0.42, 0.6, 0.8, 1],
+    [
+      0, 0.12, 0.12, 0.25, 0.25, 0.36, 0.36, 0.48, //
+      0.48, 0.58, 0.58, 0.72, 0.72, 0.85, 0.85, 1,
+    ],
     0.3,
     true,
   ),
@@ -379,7 +394,7 @@ GameRoleStyle gameRoleStyle(String role) => _roles[role] ?? _roles['villager']!;
 /// Màu nhấn của vai, như trên lá bài; vai lạ thì vàng.
 Color gameRoleAccent(String role) => _roles[role]?.accent ?? _gold;
 
-/// Lớp xà cừ: dải kem, xanh băng, tím nhạt lặp lại, dời theo điểm sáng.
+/// Lớp xà cừ: dải kem, xanh băng, trắng ngọc trai lặp lại, dời theo điểm sáng.
 class GameCardHolo extends StatelessWidget {
   const GameCardHolo({super.key, required this.strength, required this.at});
 
@@ -403,7 +418,7 @@ class GameCardHolo extends StatelessWidget {
               RunNowGameTokens.holoClear,
               RunNowGameTokens.holoCream.withValues(alpha: a),
               RunNowGameTokens.holoIce.withValues(alpha: a),
-              RunNowGameTokens.holoLilac.withValues(alpha: a),
+              RunNowGameTokens.holoPearl.withValues(alpha: a),
               RunNowGameTokens.holoClear,
             ],
             stops: const [0, 0.25, 0.5, 0.75, 1],

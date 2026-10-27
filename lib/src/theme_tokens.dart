@@ -220,19 +220,32 @@ class RunNowGameTokens {
   static const roleWitch = Color(0xFF9CC7C2);
   static const roleHunter = Color(0xFFD6AE80);
   static const roleCupid = Color(0xFFDBA3B6);
+  // Khung theo bậc: sắt, đồng, bạc, vàng, kim cương.
   static const graphiteEdge = Color(0xFF3A3C44);
   static const graphiteCore = Color(0xFF1E2027);
   static const gemGraphite = Color(0xFF8D8980);
+  static const bronzeEdge = Color(0xFF5A3519);
+  static const bronzeLight = Color(0xFFE2A86A);
+  static const bronzeDeep = Color(0xFF7A4A22);
+  static const bronzeBright = Color(0xFFC98A4B);
+  static const gemBronze = Color(0xFFD99A5E);
   static const silverEdge = Color(0xFF7D828B);
   static const silverLight = Color(0xFFDCDFE4);
   static const silverDeep = Color(0xFF6F747D);
   static const silverBright = Color(0xFFE4E7EC);
   static const gemSilver = Color(0xFFD4D8DE);
   static const goldEdge = Color(0xFF9C7C30);
-  static const goldMid = Color(0xFFA8873A);
   static const foilDark = Color(0xFF7E5A12);
   static const foilMid = Color(0xFFA8801E);
   static const foilDeep = Color(0xFF8A6416);
+  // Kim cương chỉ trắng và xanh băng, sáng tối theo mặt cắt; không tán sắc.
+  static const diamondWhite = Color(0xFFFFFFFF);
+  static const diamondBright = Color(0xFFF4FAFF);
+  static const diamondIce = Color(0xFFDDEBF7);
+  static const diamondMist = Color(0xFFB9CCDB);
+  static const diamondShade = Color(0xFF8FA7BA);
+  static const diamondDeep = Color(0xFF5E7487);
+  static const gemDiamond = Color(0xFFE6F3FF);
   static const backEdge = Color(0xFF3A3D48);
   static const backLight = Color(0xFFA9ADB6);
   static const backDeep = Color(0xFF2C2E36);
@@ -250,7 +263,7 @@ class RunNowGameTokens {
   static const holoClear = Color(0x00FFF0DC);
   static const holoCream = Color(0xFFFFE2C4);
   static const holoIce = Color(0xFFD6ECF0);
-  static const holoLilac = Color(0xFFE6D6F5);
+  static const holoPearl = Color(0xFFF2F0EA);
   static const sparkleWarm = Color(0xFFFFF6C8);
 }
 
@@ -320,22 +333,27 @@ class RunNowBotCardTokens {
   static const revealEdge = Color(0xFF121116);
 }
 
-/// Thẻ thành tích: khung kim loại theo bậc, lớp holo cầu vồng và chữ phủ lên
-/// ảnh full-art. Tông đêm như lá Ma Sói, nhưng ảnh nền là ảnh thật nên chữ
-/// cần lớp tối phía dưới để đọc được trên mọi ảnh.
+/// Thẻ thành tích: khung sắt, đồng, bạc, vàng, kim cương theo bậc, vệt sáng
+/// cùng tông khung và chữ phủ lên ảnh full-art. Tông đêm như lá Ma Sói, nhưng
+/// ảnh nền là ảnh thật nên chữ cần lớp tối phía dưới để đọc được trên mọi ảnh.
 class RunNowAchievementTokens {
   const RunNowAchievementTokens._();
 
   static const accentCommon = Color(0xFFC3C8CF);
-  static const accentRare = Color(0xFFE3E8EE);
-  static const accentEpic = Color(0xFFF3D27A);
-  static const accentLegendary = Color(0xFFEBCBFF);
-  static const accentMythic = Color(0xFFA6FFE4);
+  static const accentRare = Color(0xFFE2A86A);
+  static const accentEpic = Color(0xFFE3E8EE);
+  static const accentLegendary = Color(0xFFF3D27A);
+  static const accentMythic = Color(0xFFDDEFFF);
 
   static const graphite1 = Color(0xFF50545D);
   static const graphite2 = Color(0xFF2B2D33);
   static const graphite3 = Color(0xFF454850);
   static const graphite4 = Color(0xFF26282D);
+  static const bronze1 = Color(0xFF4A2C14);
+  static const bronze2 = Color(0xFFE2A86A);
+  static const bronze3 = Color(0xFF7A4A22);
+  static const bronze4 = Color(0xFFC98A4B);
+  static const bronze5 = Color(0xFF5A3519);
   static const silver1 = Color(0xFF7E8690);
   static const silver2 = Color(0xFFF3F6F9);
   static const silver3 = Color(0xFF8B929C);
@@ -348,42 +366,40 @@ class RunNowAchievementTokens {
   static const gold3 = Color(0xFFA9781E);
   static const gold4 = Color(0xFFFFF1BD);
   static const gold5 = Color(0xFF86611C);
-  static const prismPink = Color(0xFFFF9AD5);
-  static const prismAmber = Color(0xFFFFD36E);
-  static const prismMint = Color(0xFF8EF0C9);
-  static const prismSky = Color(0xFF7CC8FF);
-  static const prismViolet = Color(0xFFC39BFF);
-  // Cực quang của bậc Thần thoại: xanh ngọc, lam, tím, trắng băng.
-  static const auroraTeal = Color(0xFF5CF2C8);
-  static const auroraBlue = Color(0xFF2F7BFF);
-  static const auroraViolet = Color(0xFF9B6BFF);
-  static const auroraIce = Color(0xFFE0FFF6);
-  static const auroraDeep = Color(0xFF1FB89A);
-  static const auroraFlare = Color(0xE6FFFFFF);
-  static const auraMythic = Color(0x735CF2C8);
-  static const auraMythicOuter = Color(0x4D786EFF);
-  static const holoAuroraTeal = Color(0x525CF2C8);
-  static const holoAuroraSky = Color(0x388FB8FF);
-  static const holoAuroraViolet = Color(0x47B98CFF);
-  static const glitterAurora = Color(0x8796FFE1);
-  static const starAurora = Color(0xFFE6FFF8);
+  // Kim cương: mặt cắt trắng và xanh băng xen nhau, không có sắc nào khác.
+  static const diamond1 = Color(0xFFF4FAFF);
+  static const diamond2 = Color(0xFF8FA7BA);
+  static const diamond3 = Color(0xFFFFFFFF);
+  static const diamond4 = Color(0xFFB9CCDB);
+  static const diamond5 = Color(0xFF5E7487);
+  static const diamond6 = Color(0xFFE6F2FC);
+  static const diamond7 = Color(0xFF6C8295);
+  static const diamond8 = Color(0xFF9DB4C6);
+  static const diamond9 = Color(0xFFD4E4F1);
+  static const diamond10 = Color(0xFF8099AD);
+  static const diamond11 = Color(0xFFF7FBFF);
+  static const diamond12 = Color(0xFFA9BFD0);
+  static const diamondFlare = Color(0xE6FFFFFF);
+  static const auraDiamond = Color(0x6BCDE8FF);
+  static const auraDiamondOuter = Color(0x33FFFFFF);
+  static const glitterDiamond = Color(0x8CE1F2FF);
+  static const starDiamond = Color(0xFFF2F9FF);
 
+  static const auraBronze = Color(0x29D08A4A);
   static const auraRare = Color(0x29E1E8F0);
   static const auraEpic = Color(0x52F3C864);
   static const drop = Color(0x99000000);
   static const etch = Color(0x59FFFFFF);
   static const cornerGoldLight = Color(0xFFFFF3C4);
   static const cornerGoldDeep = Color(0xFFB9862A);
-  static const cornerPrismLight = Color(0xFFFFFFFF);
-  static const cornerPrismDeep = Color(0xFFD9C2FF);
+  static const cornerDiamondLight = Color(0xFFFFFFFF);
+  static const cornerDiamondDeep = Color(0xFFA9BFD0);
   static const cornerGlow = Color(0xB3FFF0C8);
 
-  static const holoPink = Color(0xFFFF77B7);
-  static const holoAmber = Color(0xFFFFD66E);
-  static const holoMint = Color(0xFF7EF0C9);
-  static const holoSky = Color(0xFF7CC8FF);
-  static const holoViolet = Color(0xFFC39BFF);
   static const sheen = Color(0x57FFFFFF);
+  static const sheenBronze = Color(0x57FFD6AA);
+  static const sheenGold = Color(0x5CFFF0CD);
+  static const sheenDiamond = Color(0x66EBF7FF);
   static const sheenTail = Color(0x0FFFFFFF);
   static const glitterWhite = Color(0x8CFFFFFF);
   static const glitterWarm = Color(0x87FFE296);
@@ -401,15 +417,12 @@ class RunNowAchievementTokens {
   static const titleGold1 = Color(0xFFFFF6D2);
   static const titleGold2 = Color(0xFFF6D77F);
   static const titleGold3 = Color(0xFFC08D2E);
-  static const titlePink = Color(0xFFFFC2E6);
-  static const titleAmber = Color(0xFFFFE7A0);
-  static const titleMint = Color(0xFFAEF7DA);
-  static const titleSky = Color(0xFFA9DCFF);
-  static const titleViolet = Color(0xFFDCC2FF);
-  static const titleIce = Color(0xFFD8FFF3);
-  static const titleTeal = Color(0xFF7FF3D1);
-  static const titleBlue = Color(0xFF8FB8FF);
-  static const titleLilac = Color(0xFFD4B6FF);
+  static const titleBronze1 = Color(0xFFFBE2C6);
+  static const titleBronze2 = Color(0xFFD9A06A);
+  static const titleBronze3 = Color(0xFF8C5628);
+  static const titleDiamond1 = Color(0xFFFFFFFF);
+  static const titleDiamond2 = Color(0xFFDDEBF7);
+  static const titleDiamond3 = Color(0xFF9AB0C2);
 
   static const backTop = Color(0xFF20244A);
   static const backBottom = Color(0xFF0B0C14);
@@ -419,19 +432,19 @@ class RunNowAchievementTokens {
   // Nền "đường chạy" của thẻ buổi chạy: nền tối theo bậc, đường sáng màu bậc.
   static const routeFieldCommon = Color(0xFF2A2F38);
   static const routeFieldCommonEdge = Color(0xFF101217);
-  static const routeFieldRare = Color(0xFF1F3346);
-  static const routeFieldRareEdge = Color(0xFF0C1219);
-  static const routeFieldEpic = Color(0xFF3D2C10);
-  static const routeFieldEpicEdge = Color(0xFF120D06);
-  static const routeFieldLegendary = Color(0xFF33204D);
-  static const routeFieldLegendaryEdge = Color(0xFF0B0A16);
+  static const routeFieldRare = Color(0xFF3A2616);
+  static const routeFieldRareEdge = Color(0xFF120B06);
+  static const routeFieldEpic = Color(0xFF2B3038);
+  static const routeFieldEpicEdge = Color(0xFF0E1014);
+  static const routeFieldLegendary = Color(0xFF3D2C10);
+  static const routeFieldLegendaryEdge = Color(0xFF120D06);
   static const routeGlowCommon = Color(0xFF9FB3C8);
-  static const routeGlowRare = Color(0xFF7CC8FF);
-  static const routeGlowEpic = Color(0xFFFFC65C);
-  static const routeGlowLegendary = Color(0xFFD59BFF);
-  static const routeFieldMythic = Color(0xFF0E3B3F);
-  static const routeFieldMythicEdge = Color(0xFF04090F);
-  static const routeGlowMythic = Color(0xFF5CF2C8);
+  static const routeGlowRare = Color(0xFFE2A86A);
+  static const routeGlowEpic = Color(0xFFE3E8EE);
+  static const routeGlowLegendary = Color(0xFFFFC65C);
+  static const routeFieldMythic = Color(0xFF1C2A38);
+  static const routeFieldMythicEdge = Color(0xFF06090E);
+  static const routeGlowMythic = Color(0xFFDDF0FF);
   static const routeContour = Color(0x0FFFFFFF);
   static const routeLine = Color(0xFFFFFFFF);
   static const routeStart = Color(0xFF0B0B10);
@@ -464,38 +477,35 @@ class RunNowAchievementTokens {
   static const paperVeil = Color(0xC7F4F2EC);
   static const paperFailInk = Color(0xFFD9452F);
   static const paperAccentCommon = Color(0xFF59606B);
-  static const paperAccentRare = Color(0xFF3F6C8E);
-  static const paperAccentEpic = Color(0xFF9A6A10);
-  static const paperAccentLegendary = Color(0xFF7B3FC4);
-  static const paperAccentMythic = Color(0xFF0E8C73);
+  static const paperAccentRare = Color(0xFF8A4E1C);
+  static const paperAccentEpic = Color(0xFF4A5462);
+  static const paperAccentLegendary = Color(0xFF9A6A10);
+  static const paperAccentMythic = Color(0xFF3C6A8E);
+  static const paperBronze1 = Color(0xFF6E3A12);
+  static const paperBronze2 = Color(0xFFA8682E);
+  static const paperBronze3 = Color(0xFF5A2E0C);
   static const paperSilver1 = Color(0xFF3A434F);
   static const paperSilver2 = Color(0xFF6B7684);
   static const paperSilver3 = Color(0xFF2E3540);
   static const paperGold1 = Color(0xFF6F4A0C);
   static const paperGold2 = Color(0xFFA9781E);
   static const paperGold3 = Color(0xFF5E400C);
-  static const paperPink = Color(0xFFC2306F);
-  static const paperAmber = Color(0xFFB76A00);
-  static const paperMint = Color(0xFF0E8A5F);
-  static const paperSky = Color(0xFF1F6FC0);
-  static const paperViolet = Color(0xFF6B3FC8);
-  static const paperTeal = Color(0xFF0E8C73);
-  static const paperCyan = Color(0xFF0F9C8A);
-  static const paperBlue = Color(0xFF2155C8);
-  static const paperLilac = Color(0xFF6A3FD0);
+  static const paperDiamond1 = Color(0xFF2E4A63);
+  static const paperDiamond2 = Color(0xFF5F86A6);
+  static const paperDiamond3 = Color(0xFF23384C);
   static const paperRouteCommon = Color(0xFFECEAE4);
   static const paperRouteCommonEdge = Color(0xFFD6D2C8);
   static const paperGlowCommon = Color(0xFF7C8896);
-  static const paperRouteRare = Color(0xFFE3EDF5);
-  static const paperRouteRareEdge = Color(0xFFC9D9E6);
-  static const paperGlowRare = Color(0xFF3F8FD0);
-  static const paperRouteEpic = Color(0xFFF6EBD2);
-  static const paperRouteEpicEdge = Color(0xFFE3CFA2);
-  static const paperGlowEpic = Color(0xFFC98A12);
-  static const paperRouteLegendary = Color(0xFFEEE3F8);
-  static const paperRouteLegendaryEdge = Color(0xFFD7C4EE);
-  static const paperGlowLegendary = Color(0xFF9B55E0);
-  static const paperRouteMythic = Color(0xFFDDF3EC);
-  static const paperRouteMythicEdge = Color(0xFFBFE3D8);
-  static const paperGlowMythic = Color(0xFF12A889);
+  static const paperRouteRare = Color(0xFFF4E6D8);
+  static const paperRouteRareEdge = Color(0xFFE2CBB2);
+  static const paperGlowRare = Color(0xFFB06A2C);
+  static const paperRouteEpic = Color(0xFFECEEF1);
+  static const paperRouteEpicEdge = Color(0xFFD3D8DE);
+  static const paperGlowEpic = Color(0xFF6B7684);
+  static const paperRouteLegendary = Color(0xFFF6EBD2);
+  static const paperRouteLegendaryEdge = Color(0xFFE3CFA2);
+  static const paperGlowLegendary = Color(0xFFC98A12);
+  static const paperRouteMythic = Color(0xFFE6F0F8);
+  static const paperRouteMythicEdge = Color(0xFFCBDCEA);
+  static const paperGlowMythic = Color(0xFF4F86B5);
 }

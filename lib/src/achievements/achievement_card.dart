@@ -61,102 +61,118 @@ class AchievementCardData {
   final Widget? backFace;
 }
 
-enum _Holo { none, sheen, prism, aurora }
+/// Ánh tự chạy của hai bậc trên cùng: quầng sáng thở, kim tuyến, và riêng kim
+/// cương có đốm sáng chạy quanh viền cùng sao nhấp nháy.
+enum _Shine { none, gold, diamond }
 
-/// Ánh tự chạy của bậc cao: viền xoay, chữ ánh, kim tuyến và sao nhấp nháy.
-enum _Shine { none, rainbow, aurora }
-
-/// Chất liệu từng bậc. Bậc càng cao thì viền càng dày và càng nhiều lớp
-/// sáng, để nhìn thoáng là biết thẻ hiếm cỡ nào.
+/// Chất liệu từng bậc: sắt, đồng, bạc, vàng, kim cương. Bậc càng cao thì viền
+/// càng dày và càng nhiều lớp sáng, để nhìn thoáng là biết thẻ hiếm cỡ nào,
+/// nhưng mọi bậc chỉ dùng tông của kim loại đó, không có cầu vồng.
 class _Look {
   const _Look({
     required this.frameWidth,
     required this.frame,
     required this.frameStops,
-    required this.holo,
+    this.faceted = false,
+    this.sheen,
+    this.brushed = false,
     this.aura,
     this.corner,
-    this.holoStrength = 0,
     this.shine = _Shine.none,
   });
 
   final double frameWidth;
   final List<Color> frame;
   final List<double>? frameStops;
-  final _Holo holo;
-  final double holoStrength;
+
+  /// Viền là các mặt cắt xếp quanh tâm thẻ (kim cương) thay vì dải chéo.
+  final bool faceted;
+
+  /// Vệt sáng quét qua ảnh khi nghiêng; null thì ảnh để nguyên.
+  final Color? sheen;
+
+  /// Vân xước trên viền, như kim loại đánh xước.
+  final bool brushed;
   final Color? aura;
   final List<Color>? corner;
-
-  /// Cầu vồng ở bậc Huyền thoại, cực quang ở bậc Thần thoại.
   final _Shine shine;
 }
 
-const _prism = [
-  _T.prismPink,
-  _T.prismAmber,
-  _T.prismMint,
-  _T.prismSky,
-  _T.prismViolet,
-  _T.prismPink,
+/// Mặt cắt kim cương: mỗi màu chiếm một cung, ranh giới sắc như cạnh đá.
+const _diamondFacets = [
+  (_T.diamond1, 0.08),
+  (_T.diamond2, 0.16),
+  (_T.diamond3, 0.22),
+  (_T.diamond4, 0.31),
+  (_T.diamond5, 0.38),
+  (_T.diamond6, 0.47),
+  (_T.diamond8, 0.55),
+  (_T.diamond3, 0.61),
+  (_T.diamond7, 0.70),
+  (_T.diamond9, 0.79),
+  (_T.diamond10, 0.87),
+  (_T.diamond11, 0.94),
+  (_T.diamond12, 1.0),
 ];
 
-const _aurora = [
-  _T.auroraTeal,
-  _T.auroraBlue,
-  _T.auroraViolet,
-  _T.auroraIce,
-  _T.auroraTeal,
-  _T.auroraDeep,
-  _T.auroraTeal,
+final _diamondFrame = [
+  for (final (color, _) in _diamondFacets) ...[color, color],
 ];
 
-const _looks = {
-  GameCardTier.common: _Look(
+final _diamondStops = [
+  for (var i = 0; i < _diamondFacets.length; i++) ...[
+    i == 0 ? 0.0 : _diamondFacets[i - 1].$2,
+    _diamondFacets[i].$2,
+  ],
+];
+
+final _looks = {
+  GameCardTier.common: const _Look(
     frameWidth: 6,
     frame: [_T.graphite1, _T.graphite2, _T.graphite3, _T.graphite4],
     frameStops: [0, 0.38, 0.66, 1],
-    holo: _Holo.none,
   ),
-  GameCardTier.rare: _Look(
+  GameCardTier.rare: const _Look(
     frameWidth: 7,
+    frame: [_T.bronze1, _T.bronze4, _T.bronze3, _T.bronze2, _T.bronze5],
+    frameStops: [0, 0.26, 0.5, 0.72, 1],
+    sheen: _T.sheenBronze,
+    brushed: true,
+    aura: _T.auraBronze,
+  ),
+  GameCardTier.superRare: const _Look(
+    frameWidth: 8,
     frame: [_T.silver1, _T.silver2, _T.silver3, _T.silver4, _T.silver5],
     frameStops: [0, 0.26, 0.48, 0.7, 1],
-    holo: _Holo.sheen,
+    sheen: _T.sheen,
+    brushed: true,
     aura: _T.auraRare,
   ),
-  GameCardTier.superRare: _Look(
-    frameWidth: 8,
+  GameCardTier.legendary: const _Look(
+    frameWidth: 9,
     frame: [_T.gold1, _T.gold2, _T.gold3, _T.gold4, _T.gold5],
     frameStops: [0, 0.24, 0.47, 0.69, 1],
-    holo: _Holo.prism,
-    holoStrength: 0.24,
+    sheen: _T.sheenGold,
     aura: _T.auraEpic,
     corner: [_T.cornerGoldLight, _T.cornerGoldDeep],
-  ),
-  GameCardTier.legendary: _Look(
-    frameWidth: 9,
-    frame: _prism,
-    frameStops: null,
-    holo: _Holo.prism,
-    holoStrength: 0.34,
-    corner: [_T.cornerPrismLight, _T.cornerPrismDeep],
-    shine: _Shine.rainbow,
+    shine: _Shine.gold,
   ),
   GameCardTier.mythic: _Look(
     frameWidth: 10,
-    frame: _aurora,
-    frameStops: null,
-    holo: _Holo.aurora,
-    corner: [_T.cornerPrismLight, _T.auroraTeal],
-    shine: _Shine.aurora,
+    frame: _diamondFrame,
+    frameStops: _diamondStops,
+    faceted: true,
+    sheen: _T.sheenDiamond,
+    aura: _T.auraDiamond,
+    corner: const [_T.cornerDiamondLight, _T.cornerDiamondDeep],
+    shine: _Shine.diamond,
   ),
 };
 
 /// Thẻ thành tích vẽ ở [achievementCardSize]. [pose] là độ nghiêng (-1..1 mỗi
-/// chiều) mà viền, holo, ảnh và vệt sáng chạy theo. Thẻ Huyền thoại và Thần
-/// thoại tự chạy viền xoay, chữ ánh và sao nhấp nháy khi [animate]; tắt đi thì
-/// vẽ một khung hình đứng yên, dùng cho test và ảnh tĩnh.
+/// chiều) mà viền, vệt sáng và ảnh chạy theo. Thẻ Huyền thoại và Thần thoại tự
+/// chạy quầng sáng và sao nhấp nháy khi [animate]; tắt đi thì vẽ một khung
+/// hình đứng yên, dùng cho test và ảnh tĩnh.
 class AchievementCard extends StatefulWidget {
   const AchievementCard({
     super.key,
@@ -280,12 +296,12 @@ class _Frame extends StatelessWidget {
     // Nghiêng thẻ thì ánh kim trên viền trượt theo, như kim loại thật.
     final tiltDeg = pose.dx * 14;
     final shine = look.shine;
-    // Cực quang xoay nhanh gần gấp đôi cầu vồng.
-    final spin = shine == _Shine.aurora ? 90 : 50;
-    final Gradient gradient = shine != _Shine.none
+    final Gradient gradient = look.faceted
+        // Mặt cắt chỉ xoay theo độ nghiêng: đá thật không tự quay.
         ? SweepGradient(
             colors: look.frame,
-            transform: GradientRotation(_deg(seconds * spin + tiltDeg * 6)),
+            stops: look.frameStops,
+            transform: GradientRotation(_deg(20 + tiltDeg * 6)),
           )
         : LinearGradient(
             begin: Alignment.topLeft,
@@ -294,18 +310,13 @@ class _Frame extends StatelessWidget {
             stops: look.frameStops,
             transform: GradientRotation(_deg(tiltDeg * 4)),
           );
-    final aura = switch (shine) {
-      _Shine.rainbow => HSLColor.fromAHSL(
-        0.42,
-        (seconds * 40) % 360,
-        0.9,
-        0.72,
-      ).toColor(),
-      // Quầng xanh ngọc thở theo nhịp 3 giây.
-      _Shine.aurora => _T.auraMythic.withValues(
-        alpha: 0.45 + math.sin(seconds * 2) * 0.15,
+    // Quầng của hai bậc trên cùng thở chậm, chu kỳ khoảng 3,6 giây.
+    final breath = 0.775 + math.sin(seconds * 1.75) * 0.225;
+    final aura = switch (look.aura) {
+      final aura? when shine != _Shine.none => aura.withValues(
+        alpha: aura.a * breath,
       ),
-      _Shine.none => look.aura,
+      final aura => aura,
     };
     return Stack(
       fit: StackFit.expand,
@@ -324,18 +335,18 @@ class _Frame extends StatelessWidget {
                 BoxShadow(
                   color: aura,
                   blurRadius: switch (shine) {
-                    _Shine.rainbow => 52,
-                    _Shine.aurora => 46,
+                    _Shine.diamond => 46,
+                    _Shine.gold => 40,
                     _Shine.none => 34,
                   },
                 ),
-              if (shine == _Shine.aurora)
-                const BoxShadow(color: _T.auraMythicOuter, blurRadius: 90),
+              if (shine == _Shine.diamond)
+                const BoxShadow(color: _T.auraDiamondOuter, blurRadius: 90),
             ],
           ),
         ),
-        if (shine == _Shine.aurora)
-          // Đốm sáng trắng chạy vòng quanh viền cực quang.
+        if (shine == _Shine.diamond)
+          // Đốm sáng trắng chạy vòng quanh viền, như ánh đèn lướt qua mặt đá.
           ClipRRect(
             borderRadius: BorderRadius.circular(18),
             child: DecoratedBox(
@@ -346,13 +357,16 @@ class _Frame extends StatelessWidget {
                     math.cos(seconds * 1.1) * 0.8,
                   ),
                   radius: 0.3,
-                  colors: [_T.auroraFlare, _T.auroraFlare.withValues(alpha: 0)],
+                  colors: [
+                    _T.diamondFlare,
+                    _T.diamondFlare.withValues(alpha: 0),
+                  ],
                 ),
               ),
             ),
           ),
-        if (look.holo == _Holo.sheen)
-          // Vân xước của bạc: vạch sáng tối 3px lặp lại.
+        if (look.brushed)
+          // Vân xước của đồng và bạc: vạch sáng tối 3px lặp lại.
           ClipRRect(
             borderRadius: BorderRadius.circular(18),
             child: const DecoratedBox(
@@ -372,7 +386,7 @@ class _Frame extends StatelessWidget {
               ),
             ),
           ),
-        if (look.holo != _Holo.none)
+        if (look.sheen != null)
           Padding(
             padding: const EdgeInsets.all(3),
             child: DecoratedBox(
@@ -457,16 +471,13 @@ class _Front extends StatelessWidget {
             child: data.art,
           ),
         ),
-        if (look.holo == _Holo.sheen) _Sheen(light: light),
-        if (look.holo == _Holo.prism)
-          _Prism(light: light, strength: look.holoStrength),
-        if (look.holo == _Holo.aurora) _AuroraBand(seconds: seconds),
+        if (look.sheen case final sheen?) _Sheen(light: light, color: sheen),
         if (shine != _Shine.none)
           IgnorePointer(
             child: CustomPaint(
               painter: _GlitterPainter(
                 light,
-                shine == _Shine.aurora ? _T.glitterAurora : _T.glitterWarm,
+                shine == _Shine.diamond ? _T.glitterDiamond : _T.glitterWarm,
               ),
             ),
           ),
@@ -600,13 +611,7 @@ class _Front extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 3),
-                  _Title(
-                    text: data.title,
-                    tier: data.tier,
-                    look: look,
-                    skin: skin,
-                    seconds: seconds,
-                  ),
+                  _Title(text: data.title, tier: data.tier, skin: skin),
                   const SizedBox(height: 4),
                   Text(
                     data.desc,
@@ -670,12 +675,10 @@ class _Front extends StatelessWidget {
               child: ClipOval(child: stamp),
             ),
           ),
-        if (shine != _Shine.none)
+        if (shine == _Shine.diamond)
           IgnorePointer(
             child: CustomPaint(
-              painter: shine == _Shine.aurora
-                  ? _StarPainter(seconds, count: 8, color: _T.starAurora)
-                  : _StarPainter(seconds),
+              painter: _StarPainter(seconds, count: 8, color: _T.starDiamond),
             ),
           ),
         GameCardGlare(at: light, strength: 0.38),
@@ -738,22 +741,14 @@ class _Foot extends StatelessWidget {
   }
 }
 
-/// Tên thẻ: trắng ở bậc Thường, ánh bạc, ánh vàng, rồi cầu vồng chạy ở bậc
-/// Huyền thoại. Bóng đổ vẽ riêng bên dưới để không bị nhuộm màu gradient.
+/// Tên thẻ: chữ trơn ở bậc Thường, từ bậc Hiếm trở lên ánh theo kim loại của
+/// bậc. Bóng đổ vẽ riêng bên dưới để không bị nhuộm màu gradient.
 class _Title extends StatelessWidget {
-  const _Title({
-    required this.text,
-    required this.tier,
-    required this.look,
-    required this.skin,
-    required this.seconds,
-  });
+  const _Title({required this.text, required this.tier, required this.skin});
 
   final String text;
   final GameCardTier tier;
-  final _Look look;
   final RunCardSkin skin;
-  final double seconds;
 
   static const _style = TextStyle(
     fontSize: 21,
@@ -781,13 +776,8 @@ class _Title extends StatelessWidget {
         ),
       ],
     );
-    final running = switch (look.shine) {
-      _Shine.rainbow => skin.rainbow,
-      _Shine.aurora => skin.aurora,
-      _Shine.none => null,
-    };
     final colors = skin.titles[tier];
-    if (colors == null && running == null) {
+    if (colors == null) {
       return Stack(children: [shadow, line(skin.ink)]);
     }
     return Stack(
@@ -795,26 +785,12 @@ class _Title extends StatelessWidget {
         shadow,
         ShaderMask(
           blendMode: BlendMode.srcIn,
-          shaderCallback: (bounds) {
-            if (running != null) {
-              // Dải màu dài 2,2 lần chữ, trượt hết một vòng sau 5 giây.
-              final span = bounds.width * 2.2;
-              final x = -(seconds / 5 % 1) * span;
-              return ui.Gradient.linear(
-                Offset(x, 0),
-                Offset(x + span, 0),
-                running,
-                const [0, 0.2, 0.4, 0.6, 0.8, 1],
-                TileMode.repeated,
-              );
-            }
-            return LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: colors!,
-              stops: const [0, 0.45, 1],
-            ).createShader(bounds);
-          },
+          shaderCallback: (bounds) => LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: colors,
+            stops: const [0, 0.45, 1],
+          ).createShader(bounds),
           child: line(Colors.white),
         ),
       ],
@@ -921,11 +897,13 @@ class _Scrim extends StatelessWidget {
   }
 }
 
-/// Bậc Hiếm: một vệt sáng chéo quét qua khi nghiêng.
+/// Từ bậc Hiếm trở lên: một vệt sáng chéo cùng tông kim loại quét qua khi
+/// nghiêng.
 class _Sheen extends StatelessWidget {
-  const _Sheen({required this.light});
+  const _Sheen({required this.light, required this.color});
 
   final Offset light;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -940,91 +918,13 @@ class _Sheen extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment(cx - half.dx, cy - half.dy),
             end: Alignment(cx + half.dx, cy + half.dy),
-            colors: const [
+            colors: [
               Colors.transparent,
-              _T.sheen,
+              color,
               _T.sheenTail,
               Colors.transparent,
             ],
             stops: const [0.38, 0.48, 0.54, 0.64],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Siêu hiếm và Huyền thoại: dải cầu vồng lặp lại, color-dodge lên ảnh, trôi
-/// theo điểm sáng.
-class _Prism extends StatelessWidget {
-  const _Prism({required this.light, required this.strength});
-
-  final Offset light;
-  final double strength;
-
-  @override
-  Widget build(BuildContext context) {
-    final bx = -1 - 4.4 * light.dx;
-    final by = -1 - 4.4 * light.dy;
-    return IgnorePointer(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          backgroundBlendMode: BlendMode.colorDodge,
-          gradient: LinearGradient(
-            begin: Alignment(bx, by),
-            end: Alignment(bx + 2.55, by + 1.28),
-            tileMode: TileMode.repeated,
-            colors: [
-              for (final c in const [
-                _T.holoPink,
-                _T.holoAmber,
-                _T.holoMint,
-                _T.holoSky,
-                _T.holoViolet,
-                _T.holoPink,
-              ])
-                c.withValues(alpha: strength),
-            ],
-            stops: const [0, 0.2, 0.4, 0.6, 0.8, 1],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Thần thoại: dải xanh ngọc, lam, tím trôi chậm lên xuống như cực quang,
-/// blend screen lên ảnh.
-class _AuroraBand extends StatelessWidget {
-  const _AuroraBand({required this.seconds});
-
-  final double seconds;
-
-  @override
-  Widget build(BuildContext context) {
-    final angle = _deg(160 + math.sin(seconds * 0.7) * 25 - 90);
-    final dir = Offset(math.cos(angle), math.sin(angle));
-    // Dải cao gấp 2,6 lần thẻ, trượt theo trục dọc của nó.
-    final shift = math.sin(seconds * 0.9) * 0.8;
-    final center = dir * shift;
-    return IgnorePointer(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          backgroundBlendMode: BlendMode.screen,
-          gradient: LinearGradient(
-            begin: Alignment(
-              center.dx - dir.dx * 2.6,
-              center.dy - dir.dy * 2.6,
-            ),
-            end: Alignment(center.dx + dir.dx * 2.6, center.dy + dir.dy * 2.6),
-            colors: [
-              _T.holoAuroraTeal.withValues(alpha: 0),
-              _T.holoAuroraTeal,
-              _T.holoAuroraSky,
-              _T.holoAuroraViolet,
-              _T.holoAuroraViolet.withValues(alpha: 0),
-            ],
-            stops: const [0.18, 0.34, 0.48, 0.6, 0.78],
           ),
         ),
       ),
@@ -1038,7 +938,7 @@ class _GlitterPainter extends CustomPainter {
 
   final Offset light;
 
-  /// Màu lưới chấm thứ hai: vàng ấm ở Huyền thoại, xanh ngọc ở Thần thoại.
+  /// Màu lưới chấm thứ hai: vàng ấm ở Huyền thoại, trắng băng ở Thần thoại.
   final Color tint;
 
   @override

@@ -36,8 +36,6 @@ class RunCardSkin {
     required this.failInk,
     required this.accents,
     required this.titles,
-    required this.rainbow,
-    required this.aurora,
     required this.routes,
     this.scrimTop = (0.66, 0.34),
     this.scrimBottom = (0.96, 0.62),
@@ -89,12 +87,9 @@ class RunCardSkin {
   /// Màu nhấn từng bậc: đá, nhãn bậc, tên chủ, chân thẻ.
   final Map<GameCardTier, Color> accents;
 
-  /// Chữ ánh của tên thẻ bậc Hiếm và Siêu hiếm (trên xuống dưới).
+  /// Chữ ánh của tên thẻ từ bậc Hiếm trở lên (trên xuống dưới): đồng, bạc,
+  /// vàng, kim cương. Bậc không có ở đây thì tên in bằng [ink].
   final Map<GameCardTier, List<Color>> titles;
-
-  /// Dải màu chạy qua tên thẻ bậc Huyền thoại và Thần thoại.
-  final List<Color> rainbow;
-  final List<Color> aurora;
 
   /// Tranh đường chạy từng bậc: nền giữa, nền mép, màu phát sáng.
   final Map<GameCardTier, (Color, Color, Color)> routes;
@@ -140,25 +135,19 @@ class RunCardSkin {
       GameCardTier.mythic: _T.accentMythic,
     },
     titles: {
-      GameCardTier.rare: [_T.titleSilver1, _T.titleSilver2, _T.titleSilver3],
-      GameCardTier.superRare: [_T.titleGold1, _T.titleGold2, _T.titleGold3],
+      GameCardTier.rare: [_T.titleBronze1, _T.titleBronze2, _T.titleBronze3],
+      GameCardTier.superRare: [
+        _T.titleSilver1,
+        _T.titleSilver2,
+        _T.titleSilver3,
+      ],
+      GameCardTier.legendary: [_T.titleGold1, _T.titleGold2, _T.titleGold3],
+      GameCardTier.mythic: [
+        _T.titleDiamond1,
+        _T.titleDiamond2,
+        _T.titleDiamond3,
+      ],
     },
-    rainbow: [
-      _T.titlePink,
-      _T.titleAmber,
-      _T.titleMint,
-      _T.titleSky,
-      _T.titleViolet,
-      _T.titlePink,
-    ],
-    aurora: [
-      _T.titleIce,
-      _T.titleTeal,
-      _T.titleBlue,
-      _T.titleLilac,
-      _T.titleTeal,
-      _T.titleIce,
-    ],
     routes: {
       GameCardTier.common: (
         _T.routeFieldCommon,
@@ -233,8 +222,6 @@ class RunCardSkin {
       failInk: classic.failInk,
       accents: classic.accents,
       titles: classic.titles,
-      rainbow: classic.rainbow,
-      aurora: classic.aurora,
       routes: classic.routes,
     );
   }
@@ -276,25 +263,19 @@ class RunCardSkin {
         GameCardTier.mythic: _T.paperAccentMythic,
       },
       titles: const {
-        GameCardTier.rare: [_T.paperSilver1, _T.paperSilver2, _T.paperSilver3],
-        GameCardTier.superRare: [_T.paperGold1, _T.paperGold2, _T.paperGold3],
+        GameCardTier.rare: [_T.paperBronze1, _T.paperBronze2, _T.paperBronze3],
+        GameCardTier.superRare: [
+          _T.paperSilver1,
+          _T.paperSilver2,
+          _T.paperSilver3,
+        ],
+        GameCardTier.legendary: [_T.paperGold1, _T.paperGold2, _T.paperGold3],
+        GameCardTier.mythic: [
+          _T.paperDiamond1,
+          _T.paperDiamond2,
+          _T.paperDiamond3,
+        ],
       },
-      rainbow: const [
-        _T.paperPink,
-        _T.paperAmber,
-        _T.paperMint,
-        _T.paperSky,
-        _T.paperViolet,
-        _T.paperPink,
-      ],
-      aurora: const [
-        _T.paperTeal,
-        _T.paperCyan,
-        _T.paperBlue,
-        _T.paperLilac,
-        _T.paperCyan,
-        _T.paperTeal,
-      ],
       routes: const {
         GameCardTier.common: (
           _T.paperRouteCommon,
