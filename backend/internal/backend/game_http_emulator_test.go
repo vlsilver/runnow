@@ -240,16 +240,17 @@ func TestEmulatorGameRegistrationDeadlineAndFull(t *testing.T) {
 		t.Fatalf("tester không thấy ván thử: %v", items)
 	}
 
-	// Đủ 16 người (giả) thì 409; bớt người giả thì đăng ký được.
-	h.want(h.call("u1", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 16}, ""), 403, "not_admin")
-	h.want(h.call("boss", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 16}, ""), 200, "")
+	// Đủ 24 người (giả) thì 409; bớt người giả thì đăng ký được.
+	h.want(h.call("u1", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 24}, ""), 403, "not_admin")
+	h.want(h.call("boss", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 25}, ""), 422, "invalid_count")
+	h.want(h.call("boss", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 24}, ""), 200, "")
 	h.want(h.call("t1", "POST", "/v1/games/"+id+"/registration", nil, ""), 409, "game_full")
-	h.want(h.call("boss", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 15}, ""), 200, "")
-	if r := h.call("t1", "POST", "/v1/games/"+id+"/registration", nil, ""); r.status != 200 || r.body["playerCount"] != 16.0 {
+	h.want(h.call("boss", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 23}, ""), 200, "")
+	if r := h.call("t1", "POST", "/v1/games/"+id+"/registration", nil, ""); r.status != 200 || r.body["playerCount"] != 24.0 {
 		t.Fatalf("đăng ký sau khi bớt người giả: %d %s", r.status, r.raw)
 	}
-	h.want(h.call("boss", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 14}, ""), 200, "")
-	if r := h.call("boss", "GET", "/v1/games", nil, ""); r.body["items"].([]any)[0].(map[string]any)["playerCount"] != 15.0 {
+	h.want(h.call("boss", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 22}, ""), 200, "")
+	if r := h.call("boss", "GET", "/v1/games", nil, ""); r.body["items"].([]any)[0].(map[string]any)["playerCount"] != 23.0 {
 		t.Fatalf("playerCount của list sau khi bớt người giả: %s", r.raw)
 	}
 

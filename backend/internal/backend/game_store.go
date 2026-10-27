@@ -98,7 +98,7 @@ type NewGameInput struct {
 func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Time) (string, error) {
 	if in.Config.TestMode {
 		// Ván thử có người giả và lệnh admin đẩy giờ; chạy trong PSC là tin của nó
-		// tới cả 16 người thật. Thiếu cấu hình thì không kiểm được, nên từ chối.
+		// tới mọi người thật trong group. Thiếu cấu hình thì không kiểm được, nên từ chối.
 		if s.pscChatID == "" {
 			return "", errors.New("thiếu TELEGRAM_CHAT_ID, không kiểm được ván thử có nằm ngoài PSC không")
 		}

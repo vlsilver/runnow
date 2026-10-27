@@ -1311,7 +1311,7 @@ type RegistrationResult struct {
 
 // Register thêm người gọi vào ván đang đăng ký. Ván thử của người khác thì
 // readVisibleGame đã trả 404. Gọi lại khi đã đăng ký thì trả kết quả cũ. Transaction đọc và ghi games/{id}, nên hai người đăng ký cùng lúc
-// không vượt được giới hạn 16 người.
+// không vượt được giới hạn số người (werewolf.MaxPlayers).
 func (s *GameStore) Register(ctx context.Context, gameID string, v GameViewer, wall time.Time) (RegistrationResult, error) {
 	cfg, err := s.loadConfig(ctx)
 	if err != nil {

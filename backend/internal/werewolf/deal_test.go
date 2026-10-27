@@ -35,6 +35,10 @@ func TestDealCompositionFollowsTable(t *testing.T) {
 		{12, map[Role]int{Wolf: 3, Seer: 1, Guard: 1, Witch: 1, Hunter: 1, Villager: 5}},
 		{13, map[Role]int{Wolf: 3, Seer: 1, Guard: 1, Witch: 1, Hunter: 1, Cupid: 1, Villager: 5}},
 		{16, map[Role]int{Wolf: 3, Seer: 1, Guard: 1, Witch: 1, Hunter: 1, Cupid: 1, Villager: 8}},
+		{17, map[Role]int{Wolf: 4, Seer: 1, Guard: 1, Witch: 1, Hunter: 1, Cupid: 1, Villager: 8}},
+		{20, map[Role]int{Wolf: 4, Seer: 1, Guard: 1, Witch: 1, Hunter: 1, Cupid: 1, Villager: 11}},
+		{21, map[Role]int{Wolf: 5, Seer: 1, Guard: 1, Witch: 1, Hunter: 1, Cupid: 1, Villager: 11}},
+		{24, map[Role]int{Wolf: 5, Seer: 1, Guard: 1, Witch: 1, Hunter: 1, Cupid: 1, Villager: 14}},
 	}
 	for _, c := range cases {
 		roles, err := Deal(Seed{1}, uids(c.n), Config{})
@@ -53,13 +57,13 @@ func TestDealCompositionFollowsTable(t *testing.T) {
 	}
 }
 
-func TestR9PlayerCountOutsideTenToSixteenRejected(t *testing.T) {
-	for _, n := range []int{0, 9, 17} {
+func TestR9PlayerCountOutsideTenToTwentyFourRejected(t *testing.T) {
+	for _, n := range []int{0, 9, 25} {
 		if _, err := Deal(Seed{1}, uids(n), Config{}); !errors.Is(err, ErrPlayerCount) {
 			t.Fatalf("n=%d: err = %v, mong đợi ErrPlayerCount", n, err)
 		}
 	}
-	for _, n := range []int{10, 16} {
+	for _, n := range []int{10, 16, 24} {
 		if _, err := Deal(Seed{1}, uids(n), Config{}); err != nil {
 			t.Fatalf("n=%d phải Start được: %v", n, err)
 		}
