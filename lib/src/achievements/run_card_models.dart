@@ -5,6 +5,7 @@ library;
 
 import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:myrun/src/games/game_role_card.dart';
+import 'package:myrun/src/theme.dart' show RunNowElement;
 
 String _string(Object? value) => value is String ? value : '';
 
@@ -40,6 +41,14 @@ GameCardTier runCardTierFromKey(String? key) => switch (key) {
   'mythic' => GameCardTier.mythic,
   _ => GameCardTier.common,
 };
+
+/// Bản Ẩn của thẻ: cả thẻ một màu theo một hành. Backend ghi
+/// `secret.<hành>`; giá trị lạ (server mới thêm bản khác) thì coi như thẻ
+/// thường.
+RunNowElement? runCardSecretFromKey(String? key) {
+  if (key == null || !key.startsWith('secret.')) return null;
+  return RunNowElement.values.asNameMap()[key.substring('secret.'.length)];
+}
 
 class RunCardOdd {
   const RunCardOdd({required this.tier, required this.percent});
@@ -175,6 +184,7 @@ class RunCard {
     required this.snapshot,
     this.rolledAt,
     this.art,
+    this.secret,
   });
 
   factory RunCard.fromJson(Map<String, dynamic> json) => RunCard(
@@ -188,6 +198,7 @@ class RunCard {
       final art? => RunCardArt.fromJson(art),
       null => null,
     },
+    secret: runCardSecretFromKey(_optString(json['variant'])),
   );
 
   /// Trùng id buổi chạy.
@@ -202,6 +213,9 @@ class RunCard {
   final DateTime? rolledAt;
   final RunCardSnapshot snapshot;
   final RunCardArt? art;
+
+  /// Hành của bản Ẩn, null là thẻ thường.
+  final RunNowElement? secret;
 
   /// Tranh đã vẽ xong, null khi chưa có.
   String? get artPath =>

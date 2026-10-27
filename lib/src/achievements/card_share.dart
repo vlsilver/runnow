@@ -327,13 +327,17 @@ extension on _Choice {
 }
 
 /// Màn khoe mở với bộ màu thẻ đang xem rồi tự giữ bộ màu riêng: đổi bộ màu
-/// chung giữa chừng thì ba file vẫn khớp nhau và khớp khoá cache.
+/// chung giữa chừng thì ba file vẫn khớp nhau và khớp khoá cache. Thẻ Ẩn chỉ
+/// có bộ màu của hành nó.
 Future<void> showCardShare(
   BuildContext context, {
   required CardShareSubject subject,
   required AchievementCardData data,
 }) {
-  final skin = RunCardSkin.of(context);
+  final skin = switch (data.secret) {
+    final element? => RunCardSkin.secret(element),
+    null => RunCardSkin.of(context),
+  };
   return Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => Theme(
@@ -655,7 +659,8 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
                 ),
                 const SizedBox(height: 12),
                 // Đang ghi thì ẩn: hai lượt ghi cùng chụp một sân khấu.
-                _SkinPicker(skin: _skin, onPick: _pickSkin),
+                if (widget.data.secret == null)
+                  _SkinPicker(skin: _skin, onPick: _pickSkin),
               ],
               const SizedBox(height: 16),
               SizedBox(

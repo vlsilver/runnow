@@ -65,6 +65,23 @@ void main() {
       expect(card.endedAt, isNull);
       expect(card.testMode, isFalse);
       expect(card.fate, 'Sống sót');
+      expect(card.secret, isNull);
+    });
+
+    test('reads the secret element the backend rolled', () {
+      final card = GamePlayerCard.fromJson('g3', {
+        'tier': 'rare',
+        'role': 'seer',
+        'team': 'village',
+        'winner': 'village',
+        'alive': true,
+        'rounds': 2,
+        'playerCount': 8,
+        'variant': 'secret.wood',
+      });
+
+      expect(card.secret, RunNowElement.wood);
+      expect(gameCardData(card, owner: 'An').secret, RunNowElement.wood);
     });
   });
 
@@ -94,11 +111,27 @@ void main() {
 
       expect(card.owned, isTrue);
       expect(card.tier, GameCardTier.mythic);
+      expect(card.secret, isNull);
       expect(card.team, 'lovers');
       expect(card.winner, 'lovers');
       expect(card.round, 5);
       expect(card.playerCount, 9);
       expect(card.result, 'Thắng');
+    });
+
+    test('the game screen card shows the secret element from /me', () {
+      final card = GamePlayerCard.fromMe(
+        detail: detail(phase: 'r2/day'),
+        me: GameMe.fromJson({
+          'status': 'running',
+          'alive': true,
+          'role': 'hunter',
+          'cardTier': 'common',
+          'cardVariant': 'secret.earth',
+        }),
+      );
+
+      expect(card.secret, RunNowElement.earth);
     });
 
     test('a loser does not own the card and keeps the side of the role', () {

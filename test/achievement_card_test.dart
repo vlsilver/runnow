@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/games/game_role_card.dart';
+import 'package:myrun/src/theme.dart';
 
 // PNG 1x1 trong suốt, đủ để Image có ảnh mà không cần mạng hay asset.
 final _pixel = MemoryImage(
@@ -37,6 +38,22 @@ AchievementCardData _data(
   meta: meta,
   date: '24.10.2026',
 );
+
+AchievementCardData _secret(AchievementCardData d, RunNowElement element) =>
+    AchievementCardData(
+      tier: d.tier,
+      art: d.art,
+      kind: d.kind,
+      hero: d.hero,
+      heroUnit: d.heroUnit,
+      title: d.title,
+      owner: d.owner,
+      serial: d.serial,
+      desc: d.desc,
+      meta: d.meta,
+      date: d.date,
+      secret: element,
+    );
 
 Future<void> _pump(WidgetTester tester, Widget card) {
   return tester.pumpWidget(MaterialApp(home: Center(child: card)));
@@ -147,6 +164,101 @@ void main() {
     // trên và giữa tranh vẫn là ảnh.
     expect(luma(0.5, 0.25), greaterThan(200), reason: 'trên tranh');
     expect(luma(0.5, 0.42), greaterThan(200), reason: 'giữa ảnh');
+  });
+
+  testWidgets('a secret card names its element instead of the tier', (
+    tester,
+  ) async {
+    final plain = _data(GameCardTier.legendary);
+    await _pump(tester, AchievementCard(data: plain, animate: false));
+    expect(find.text('HUYỀN THOẠI'), findsOneWidget);
+    expect(find.text('火'), findsNothing);
+
+    await _pump(
+      tester,
+      AchievementCard(data: _secret(plain, RunNowElement.fire), animate: false),
+    );
+    expect(find.text('ẨN · HỎA'), findsOneWidget);
+    expect(find.text('HUYỀN THOẠI'), findsNothing);
+    expect(find.text('火'), findsOneWidget);
+
+    // Mặt sau vẫn ghi bậc.
+    await _pump(
+      tester,
+      AchievementCard(
+        data: _secret(plain, RunNowElement.fire),
+        back: true,
+        animate: false,
+      ),
+    );
+    expect(find.text('HUYỀN THOẠI'), findsOneWidget);
+  });
+
+  testWidgets('a secret card turns the art into its element colour', (
+    tester,
+  ) async {
+    late MemoryImage green;
+    await tester.runAsync(() async {
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawColor(const Color(0xFF00FF00), BlendMode.src);
+      final image = await recorder.endRecording().toImage(30, 42);
+      final png = await image.toByteData(format: ui.ImageByteFormat.png);
+      green = MemoryImage(png!.buffer.asUint8List());
+    });
+    final base = AchievementCardData(
+      tier: GameCardTier.common,
+      art: Image(image: green, fit: BoxFit.cover),
+      kind: '',
+      hero: '',
+      title: '',
+      owner: '',
+      serial: '',
+      desc: '',
+      meta: '',
+      date: '',
+    );
+    Future<(int, int, int)> rgbAt(AchievementCardData data) async {
+      final boundary = GlobalKey();
+      await _pump(
+        tester,
+        RepaintBoundary(
+          key: boundary,
+          child: AchievementCard(animate: false, data: data),
+        ),
+      );
+      await tester.runAsync(() async {
+        await precacheImage(green, tester.element(find.byKey(boundary)));
+      });
+      await tester.pump();
+      late ByteData pixels;
+      await tester.runAsync(() async {
+        final render =
+            boundary.currentContext!.findRenderObject()!
+                as RenderRepaintBoundary;
+        pixels = (await (await render.toImage()).toByteData())!;
+      });
+      final x = (achievementCardSize.width * 0.5).toInt();
+      final y = (achievementCardSize.height * 0.3).toInt();
+      final i = (y * achievementCardSize.width.toInt() + x) * 4;
+      return (
+        pixels.getUint8(i),
+        pixels.getUint8(i + 1),
+        pixels.getUint8(i + 2),
+      );
+    }
+
+    final (pr, pg, _) = await rgbAt(base);
+    expect(pg - pr, greaterThan(100), reason: 'thẻ thường giữ màu tranh');
+
+    // Tranh xanh lá có độ sáng 0,7152. Hỏa: tối 9C2418·0,28 = (44, 10, 7),
+    // sáng giữa FFB3A3 và trắng = (255, 217, 209), nên điểm ảnh ≈ (195, 158,
+    // 151): đỏ hơn xanh lá chừng 37.
+    final (fr, fg, _) = await rgbAt(_secret(base, RunNowElement.fire));
+    expect(fr - fg, greaterThan(20), reason: 'Hỏa');
+    // Thủy: tối 0A5663·0,28 = (3, 24, 28), sáng giữa 7FC9D4 và trắng =
+    // (191, 228, 234), nên ≈ (137, 170, 175): lam hơn đỏ chừng 38.
+    final (wr, _, wb) = await rgbAt(_secret(base, RunNowElement.water));
+    expect(wb - wr, greaterThan(20), reason: 'Thủy');
   });
 
   testWidgets('only mythic cards keep animating', (tester) async {

@@ -186,6 +186,52 @@ class RunCardSkin {
         : _night(element),
   );
 
+  static final _secrets = <RunNowElement, RunCardSkin>{};
+
+  /// Bộ màu của thẻ Ẩn: ruột tối nhuốm hành, mọi bậc nhấn và chữ ánh cùng
+  /// màu hành. Thẻ Ẩn luôn mặc bộ này, không theo lựa chọn của người xem.
+  static RunCardSkin secret(RunNowElement element) =>
+      _secrets.putIfAbsent(element, () {
+        final ramp = element.ramp;
+        final night = _night(element);
+        final accent = Color.lerp(ramp[0], _T.secretLift, 0.45)!;
+        final route = (
+          Color.lerp(ramp[4], _T.secretDeep, 0.6)!,
+          Color.lerp(ramp[4], _T.secretDeep, 0.82)!,
+          ramp[1],
+        );
+        return RunCardSkin(
+          id: 'secret.${element.name}',
+          field: night.field,
+          shade: night.shade,
+          hero: night.hero,
+          ink: night.ink,
+          textShadow: night.textShadow,
+          backTop: night.backTop,
+          backBottom: night.backBottom,
+          backRay: night.backRay,
+          emblemRing: night.emblemRing,
+          dataBack: night.dataBack,
+          dataMapEdge: night.dataMapEdge,
+          dataGrid: night.dataGrid,
+          dataLabel: night.dataLabel,
+          dataCredit: night.dataCredit,
+          darkMap: true,
+          routeLine: night.routeLine,
+          routeStart: night.routeStart,
+          routeContour: night.routeContour,
+          stamp: night.stamp,
+          failVeil: night.failVeil,
+          failInk: night.failInk,
+          accents: {for (final tier in GameCardTier.values) tier: accent},
+          titles: {
+            for (final tier in GameCardTier.values)
+              tier: [accent, ramp[1], ramp[3]],
+          },
+          routes: {for (final tier in GameCardTier.values) tier: route},
+        );
+      });
+
   /// Ruột tối như [classic], nền nhuốm hành và đường chạy màu hành.
   static RunCardSkin _night(RunNowElement element) {
     final ramp = element.ramp;

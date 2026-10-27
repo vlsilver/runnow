@@ -5,6 +5,7 @@ import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/games/game_models.dart';
 import 'package:myrun/src/games/game_role_card.dart';
+import 'package:myrun/src/theme.dart' show RunNowElement;
 
 const _condensed = 'Barlow Condensed';
 
@@ -38,6 +39,7 @@ class GamePlayerCard {
     this.deathRound,
     this.endedAt,
     this.testMode = false,
+    this.secret,
   });
 
   /// Doc gameCards chỉ có ở người phe thắng nên luôn là thẻ đã sở hữu.
@@ -58,6 +60,7 @@ class GamePlayerCard {
       endedAt: endedAt is DateTime ? endedAt : null,
       testMode: json['testMode'] == true,
       owned: true,
+      secret: runCardSecretFromKey(json['variant'] as String?),
     );
   }
 
@@ -88,6 +91,7 @@ class GamePlayerCard {
       deathRound: player?.deathRound,
       testMode: detail.testMode,
       owned: me.cardOwned,
+      secret: runCardSecretFromKey(me.cardVariant),
     );
   }
 
@@ -113,6 +117,9 @@ class GamePlayerCard {
   final int? deathRound;
   final DateTime? endedAt;
   final bool testMode;
+
+  /// Hành của bản Ẩn, null là thẻ thường.
+  final RunNowElement? secret;
 
   /// Người phe thắng, ván đã xong: được khoe và nằm trong bộ thẻ.
   final bool owned;
@@ -152,6 +159,7 @@ String _date(DateTime? at) {
 AchievementCardData gameCardData(GamePlayerCard card, {required String owner}) {
   return AchievementCardData(
     tier: card.tier,
+    secret: card.secret,
     art: GameRoleArt(role: card.role, tier: card.tier),
     stamp: card.owned ? GameWinStamp(tier: card.tier) : null,
     backFace: GameCardBackFace(card: card),

@@ -29,9 +29,13 @@ class AchievementCardData {
     this.heroUnit = 'KM',
     this.stamp,
     this.backFace,
+    this.secret,
   });
 
   final GameCardTier tier;
+
+  /// Hành của thẻ Ẩn: cả thẻ một màu theo hành đó, bỏ qua bộ màu đang chọn.
+  final RunNowElement? secret;
 
   /// Nền phủ cả thẻ: ảnh, hay hình vẽ như đường chạy. Thẻ tự cho nó tràn
   /// viền và lệch theo độ nghiêng.
@@ -90,6 +94,74 @@ const _metals = <GameCardTier, _Metal>{
     dark: _T.diamondDark,
   ),
 };
+
+/// Màu thẻ Ẩn của một hành, pha từ ramp của hành: nét và ô đá, đá, hai đầu
+/// tranh một màu, chữ Hán của hành, quầng quanh thẻ, sao.
+class _SecretLook {
+  _SecretLook._(RunNowElement element)
+    : glyph = _glyphs[element]!,
+      metal = (
+        light: Color.lerp(element.ramp[0], _T.secretLift, 0.45)!,
+        mid: element.ramp[1],
+        dark: element.ramp[3],
+      ),
+      gems = (
+        light: Color.lerp(element.ramp[0], _T.secretLift, 0.6)!,
+        mid: element.ramp[2],
+        dark: element.ramp[4],
+      ),
+      glyphColor = Color.lerp(element.ramp[0], _T.secretLift, 0.4)!,
+      halo = Color.lerp(
+        element.ramp[2],
+        _T.secretDeep,
+        0.2,
+      )!.withValues(alpha: 0.4),
+      star = Color.lerp(element.ramp[0], _T.secretLift, 0.6)!,
+      duotone = _duotone(
+        Color.lerp(element.ramp[4], _T.secretDeep, 0.72)!,
+        Color.lerp(element.ramp[0], _T.secretLift, 0.5)!,
+      );
+
+  static final _cache = <RunNowElement, _SecretLook>{};
+  static _SecretLook of(RunNowElement element) =>
+      _cache.putIfAbsent(element, () => _SecretLook._(element));
+
+  static const _glyphs = {
+    RunNowElement.metal: '金',
+    RunNowElement.wood: '木',
+    RunNowElement.water: '水',
+    RunNowElement.fire: '火',
+    RunNowElement.earth: '土',
+  };
+
+  final String glyph;
+  final _Metal metal;
+  final _Metal gems;
+  final Color glyphColor;
+  final Color halo;
+  final Color star;
+
+  /// Đổi tranh về một màu: độ sáng của điểm ảnh chạy từ [dark] tới [light].
+  final ColorFilter duotone;
+
+  static ColorFilter _duotone(Color dark, Color light) {
+    List<double> row(double d, double l) {
+      final k = l - d;
+      return [k * 0.2126, k * 0.7152, k * 0.0722, 0, d * 255];
+    }
+
+    return ColorFilter.matrix([
+      ...row(dark.r, light.r),
+      ...row(dark.g, light.g),
+      ...row(dark.b, light.b),
+      0,
+      0,
+      0,
+      1,
+      0,
+    ]);
+  }
+}
 
 /// Vệt sáng cùng tông kim loại quét qua tranh khi nghiêng, từ bậc Hiếm.
 const _sheens = {
@@ -175,25 +247,49 @@ class _AchievementCardState extends State<AchievementCard>
   @override
   Widget build(BuildContext context) {
     final data = widget.data;
-    final skin = RunCardSkin.of(context);
+    final secret = data.secret;
+    final look = secret == null ? null : _SecretLook.of(secret);
+    final skin = secret == null
+        ? RunCardSkin.of(context)
+        : RunCardSkin.secret(secret);
     final pose = widget.pose;
-    return SizedBox.fromSize(
+    final card = SizedBox.fromSize(
       size: achievementCardSize,
       child: DecoratedBox(
-        decoration: const BoxDecoration(
-          borderRadius: BorderRadius.all(Radius.circular(_radius)),
+        decoration: BoxDecoration(
+          borderRadius: const BorderRadius.all(Radius.circular(_radius)),
           boxShadow: [
-            BoxShadow(color: _T.drop, blurRadius: 44, offset: Offset(0, 22)),
+            const BoxShadow(
+              color: _T.drop,
+              blurRadius: 44,
+              offset: Offset(0, 22),
+            ),
+            if (look != null) BoxShadow(color: look.halo, blurRadius: 31),
           ],
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(_radius),
           child: widget.back
-              ? _Back(data: data, skin: skin, pose: pose, seconds: _seconds)
-              : _Front(data: data, skin: skin, pose: pose, seconds: _seconds),
+              ? _Back(
+                  data: data,
+                  skin: skin,
+                  look: look,
+                  pose: pose,
+                  seconds: _seconds,
+                )
+              : _Front(
+                  data: data,
+                  skin: skin,
+                  look: look,
+                  pose: pose,
+                  seconds: _seconds,
+                ),
         ),
       ),
     );
+    // Tranh, con dấu và mặt sau do nơi gọi dựng, đọc bộ màu từ context: thẻ
+    // Ẩn đặt bộ màu của hành cho cả cây bên dưới.
+    return secret == null ? card : RunCardSkinScope(skin: skin, child: card);
   }
 }
 
@@ -227,12 +323,14 @@ class _Front extends StatelessWidget {
   const _Front({
     required this.data,
     required this.skin,
+    required this.look,
     required this.pose,
     required this.seconds,
   });
 
   final AchievementCardData data;
   final RunCardSkin skin;
+  final _SecretLook? look;
   final Offset pose;
   final double seconds;
 
@@ -240,6 +338,9 @@ class _Front extends StatelessWidget {
   Widget build(BuildContext context) {
     final light = _lightAt(pose);
     final tier = data.tier;
+    final look = this.look;
+    final metal = look?.metal ?? _metals[tier]!;
+    final sheen = look != null ? _T.sheen : _sheens[tier];
     final accent = skin.accent(tier);
     final ink = skin.ink;
     TextStyle label(Color color, double size) =>
@@ -256,10 +357,12 @@ class _Front extends StatelessWidget {
           bottom: -10,
           child: Transform.translate(
             offset: Offset(-pose.dx * 7, -pose.dy * 7),
-            child: data.art,
+            child: look == null
+                ? data.art
+                : ColorFiltered(colorFilter: look.duotone, child: data.art),
           ),
         ),
-        if (_sheens[tier] case final sheen?) _Sheen(light: light, color: sheen),
+        if (sheen != null) _Sheen(light: light, color: sheen),
         // Khối chữ đứng ngay trên đường cong, cùng mốc với nét kim loại.
         Positioned(
           left: 0,
@@ -350,6 +453,7 @@ class _Front extends StatelessWidget {
           child: CustomPaint(
             painter: _TrimPainter(
               tier: tier,
+              metal: metal,
               tilt: pose.dx,
               seconds: seconds,
               shade: skin.shade,
@@ -392,10 +496,10 @@ class _Front extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    gameCardTiers[tier]!.label.toUpperCase(),
-                    style: label(accent, 11),
-                  ),
+                  Text(switch (data.secret) {
+                    final element? => 'ẨN · ${element.label.toUpperCase()}',
+                    null => gameCardTiers[tier]!.label.toUpperCase(),
+                  }, style: label(accent, 11)),
                 ],
               ),
               const SizedBox(height: 4),
@@ -406,7 +510,13 @@ class _Front extends StatelessWidget {
         Positioned(
           top: _inset,
           left: _inset,
-          child: _Cartouche(tier: tier, tilt: pose.dx),
+          child: _Cartouche(
+            tier: tier,
+            metal: metal,
+            gems: look?.gems ?? metal,
+            tilt: pose.dx,
+            glyph: look,
+          ),
         ),
         if (data.stamp case final stamp?)
           Positioned(
@@ -435,7 +545,11 @@ class _Front extends StatelessWidget {
             ),
           ),
         if (tier == GameCardTier.mythic)
-          IgnorePointer(child: CustomPaint(painter: _StarPainter(seconds))),
+          IgnorePointer(
+            child: CustomPaint(
+              painter: _StarPainter(seconds, look?.star ?? _T.starDiamond),
+            ),
+          ),
         GameCardGlare(at: light, strength: 0.38),
       ],
     );
@@ -448,12 +562,14 @@ class _Front extends StatelessWidget {
 class _TrimPainter extends CustomPainter {
   const _TrimPainter({
     required this.tier,
+    required this.metal,
     required this.tilt,
     required this.seconds,
     this.shade,
   });
 
   final GameCardTier tier;
+  final _Metal metal;
   final double tilt;
   final double seconds;
 
@@ -465,12 +581,12 @@ class _TrimPainter extends CustomPainter {
     // Thứ tự enum là thứ tự bậc, Sắt là 0.
     final level = tier.index;
     final card = Offset.zero & size;
-    final metal = _metalShader(_metals[tier]!, card, tilt);
+    final shader = _metalShader(metal, card, tilt);
     // Có shader thì Paint chỉ lấy độ trong của color.
     Paint line(double width, [double opacity = 1]) => Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = width
-      ..shader = metal
+      ..shader = shader
       ..color = Color.fromRGBO(0, 0, 0, opacity);
     final inner = Path()
       ..addRRect(
@@ -534,40 +650,92 @@ class _TrimPainter extends CustomPainter {
   @override
   bool shouldRepaint(_TrimPainter old) =>
       old.tier != tier ||
+      old.metal != metal ||
       old.tilt != tilt ||
       old.seconds != seconds ||
       old.shade != shade;
 }
 
 /// Ô dọc góc trái trên, số đá bằng số bậc. Từ bậc Bạc viền ô có thêm nét
-/// trong.
+/// trong. Thẻ Ẩn có thêm ô chữ Hán của hành ở đầu, ngăn với đá bằng một nét.
 class _Cartouche extends StatelessWidget {
-  const _Cartouche({required this.tier, required this.tilt});
+  const _Cartouche({
+    required this.tier,
+    required this.metal,
+    required this.gems,
+    required this.tilt,
+    this.glyph,
+  });
 
   final GameCardTier tier;
+  final _Metal metal;
+  final _Metal gems;
   final double tilt;
+  final _SecretLook? glyph;
 
   static const _width = 29.0;
   static const _gemPitch = 13.2;
+  static const _glyphCell = 31.0;
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      size: Size(_width, 12 + gameCardTiers[tier]!.gems * _gemPitch),
-      painter: _CartouchePainter(tier: tier, tilt: tilt),
+    final look = glyph;
+    final head = look == null ? 0.0 : _glyphCell;
+    final painted = CustomPaint(
+      size: Size(_width, head + 12 + gameCardTiers[tier]!.gems * _gemPitch),
+      painter: _CartouchePainter(
+        tier: tier,
+        metal: metal,
+        gems: gems,
+        tilt: tilt,
+        head: head,
+      ),
+    );
+    if (look == null) return painted;
+    return Stack(
+      children: [
+        painted,
+        Positioned(
+          left: 0,
+          right: 0,
+          top: 0,
+          height: _glyphCell,
+          child: Center(
+            child: Text(
+              look.glyph,
+              style: TextStyle(
+                fontSize: 18,
+                height: 1,
+                fontWeight: FontWeight.w600,
+                color: look.glyphColor,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
 
 class _CartouchePainter extends CustomPainter {
-  const _CartouchePainter({required this.tier, required this.tilt});
+  const _CartouchePainter({
+    required this.tier,
+    required this.metal,
+    required this.gems,
+    required this.tilt,
+    required this.head,
+  });
 
   final GameCardTier tier;
+  final _Metal metal;
+  final _Metal gems;
   final double tilt;
+
+  /// Cao ô chữ Hán ở đầu, 0 khi không có.
+  final double head;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final metal = _metals[tier]!;
     final box = Offset.zero & size;
     final shader = _metalShader(metal, box, tilt);
     final outer = RRect.fromRectAndRadius(
@@ -593,9 +761,18 @@ class _CartouchePainter extends CustomPainter {
           ..color = const Color.fromRGBO(0, 0, 0, 0.8),
       );
     }
+    if (head > 0) {
+      canvas.drawLine(
+        Offset(5, head),
+        Offset(size.width - 5, head),
+        Paint()
+          ..strokeWidth = 0.72
+          ..shader = shader,
+      );
+    }
     final cx = size.width / 2;
     for (var i = 0; i < gameCardTiers[tier]!.gems; i++) {
-      final cy = 6 + _Cartouche._gemPitch * (i + 0.5);
+      final cy = head + 6 + _Cartouche._gemPitch * (i + 0.5);
       final gem = Path()
         ..moveTo(cx, cy - 5)
         ..lineTo(cx + 3.8, cy)
@@ -609,7 +786,7 @@ class _CartouchePainter extends CustomPainter {
             ..shader = LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [metal.light, metal.mid, metal.dark],
+              colors: [gems.light, gems.mid, gems.dark],
             ).createShader(gem.getBounds()),
         )
         ..drawPath(
@@ -632,7 +809,11 @@ class _CartouchePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_CartouchePainter old) =>
-      old.tier != tier || old.tilt != tilt;
+      old.tier != tier ||
+      old.metal != metal ||
+      old.gems != gems ||
+      old.tilt != tilt ||
+      old.head != head;
 }
 
 TextStyle _label(Color color, double size, Color shadow) => TextStyle(
@@ -840,9 +1021,10 @@ class _Sheen extends StatelessWidget {
 
 /// Ba sao bốn cánh trên tranh Kim cương, nhấp nháy lệch nhịp, chu kỳ 2,8 giây.
 class _StarPainter extends CustomPainter {
-  const _StarPainter(this.seconds);
+  const _StarPainter(this.seconds, this.color);
 
   final double seconds;
+  final Color color;
 
   static const _spots = [
     (0.824, 0.2, 0.0),
@@ -872,16 +1054,14 @@ class _StarPainter extends CustomPainter {
         ..translate(x * size.width, y * size.height)
         ..rotate(math.pi / 4 * k)
         ..scale(0.4 + 0.6 * k);
-      canvas.drawPath(
-        _star,
-        Paint()..color = _T.starDiamond.withValues(alpha: k),
-      );
+      canvas.drawPath(_star, Paint()..color = color.withValues(alpha: k));
       canvas.restore();
     }
   }
 
   @override
-  bool shouldRepaint(_StarPainter old) => old.seconds != seconds;
+  bool shouldRepaint(_StarPainter old) =>
+      old.seconds != seconds || old.color != color;
 }
 
 /// Mặt sau: huy hiệu 3I RUN, ngày nhận và bậc, viền trong theo kim loại bậc.
@@ -889,12 +1069,14 @@ class _Back extends StatelessWidget {
   const _Back({
     required this.data,
     required this.skin,
+    required this.look,
     required this.pose,
     required this.seconds,
   });
 
   final AchievementCardData data;
   final RunCardSkin skin;
+  final _SecretLook? look;
   final Offset pose;
   final double seconds;
 
@@ -902,7 +1084,12 @@ class _Back extends StatelessWidget {
   Widget build(BuildContext context) {
     final trim = IgnorePointer(
       child: CustomPaint(
-        painter: _TrimPainter(tier: data.tier, tilt: pose.dx, seconds: seconds),
+        painter: _TrimPainter(
+          tier: data.tier,
+          metal: look?.metal ?? _metals[data.tier]!,
+          tilt: pose.dx,
+          seconds: seconds,
+        ),
       ),
     );
     if (data.backFace case final face?) {

@@ -410,6 +410,23 @@ void main() {
     expect(runCardTierFromKey('cosmic'), GameCardTier.common);
   });
 
+  test('a secret variant names its element, anything else is a plain card', () {
+    // Khoá lấy từ backend run_card.go: "secret." + tên hành.
+    expect(runCardSecretFromKey('secret.metal'), RunNowElement.metal);
+    expect(runCardSecretFromKey('secret.wood'), RunNowElement.wood);
+    expect(runCardSecretFromKey('secret.water'), RunNowElement.water);
+    expect(runCardSecretFromKey('secret.fire'), RunNowElement.fire);
+    expect(runCardSecretFromKey('secret.earth'), RunNowElement.earth);
+    expect(runCardSecretFromKey('secret.gold'), isNull);
+    expect(runCardSecretFromKey('fire'), isNull);
+    expect(runCardSecretFromKey(null), isNull);
+
+    expect(_card().secret, isNull);
+    final secret = RunCard.fromJson({..._cardJson(), 'variant': 'secret.fire'});
+    expect(secret.secret, RunNowElement.fire);
+    expect(runCardData(secret, owner: 'An').secret, RunNowElement.fire);
+  });
+
   test('only running activities get a card', () {
     ActivitySummary kind(ActivityKind k) => ActivitySummary(
       id: 'a',
@@ -713,6 +730,29 @@ void main() {
       await share.shared.last.files!.single.readAsBytes(),
       files(2).motion,
     );
+  });
+
+  testWidgets('a secret card keeps its own colours on screen and in shares', (
+    tester,
+  ) async {
+    final card = RunCard.fromJson({..._cardJson(), 'variant': 'secret.water'});
+    final owner = runCardData(card, owner: 'An').owner;
+    // File khoe của thẻ Ẩn nằm theo bộ màu của hành, dù máy đang chọn bộ khác.
+    final store = _MemoryShareStore()
+      ..saved['r1/${runCardShareKey(card, owner, skin: RunCardSkin.secret(RunNowElement.water))}'] =
+          CardShareFiles(
+            front: _png,
+            back: _png,
+            motion: Uint8List.fromList([0, 0, 0, 24, 102, 116, 121, 112]),
+            motionType: 'video/mp4',
+          );
+    await _pumpPanel(tester, _Backend(), initial: card, shareStore: store);
+    expect(find.byTooltip('Bộ màu thẻ'), findsNothing);
+
+    await _tapText(tester, 'Khoe thẻ');
+    await _settle(tester);
+    expect(store.saves, 0, reason: 'mở đúng file của bộ màu hành Thủy');
+    expect(find.byTooltip('Hỏa'), findsNothing, reason: 'không có chọn bộ màu');
   });
 
   test('the share cache key follows what the card shows', () {

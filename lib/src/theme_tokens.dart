@@ -367,6 +367,10 @@ class RunNowAchievementTokens {
   static const sweep = Color(0xFFFFFFFF);
   static const rim = Color(0xB3000000);
 
+  // Thẻ Ẩn pha ramp của hành về hai đầu này để ra tông sáng nhất, tối nhất.
+  static const secretLift = Color(0xFFFFFFFF);
+  static const secretDeep = Color(0xFF000000);
+
   static const graphite1 = Color(0xFF50545D);
   static const graphite2 = Color(0xFF2B2D33);
   static const graphite3 = Color(0xFF454850);

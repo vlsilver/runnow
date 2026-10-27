@@ -62,6 +62,7 @@ AchievementCardData runCardData(RunCard card, {required String owner}) {
   final artPath = card.artPath;
   return AchievementCardData(
     tier: card.tier,
+    secret: card.secret,
     art: artPath == null
         ? RunRouteArt(points: snap.route, tier: card.tier)
         : StoragePhoto(path: artPath, cacheWidth: 960),

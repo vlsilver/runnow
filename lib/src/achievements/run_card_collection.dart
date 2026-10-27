@@ -183,10 +183,11 @@ class _RunCardCollectionScreenState
             tooltip: 'Bộ màu thẻ',
             onPressed: () => showRunCardSkinSheet(
               context,
-              sample: switch (cards.value) {
-                [final first, ...] => first.data(owner),
-                _ => null,
-              },
+              // Thẻ Ẩn không theo bộ màu, nên mẫu là thẻ thường đầu tiên.
+              sample: cards.value
+                  ?.map((card) => card.data(owner))
+                  .where((data) => data.secret == null)
+                  .firstOrNull,
             ),
             icon: const Icon(Icons.palette_outlined),
           ),

@@ -451,6 +451,7 @@ class GameMe {
     required this.allRoles,
     this.teamKm,
     this.cardTier,
+    this.cardVariant,
     this.cardOwned = false,
     this.cardRounds = 0,
   });
@@ -472,6 +473,7 @@ class GameMe {
       allRoles: _list(json['allRoles'], GameRoleReveal.fromJson),
       teamKm: _obj(json['teamKm'], GameTeamKm.fromJson),
       cardTier: _optString(json['cardTier']),
+      cardVariant: _optString(json['cardVariant']),
       cardOwned: json['cardOwned'] == true,
       cardRounds: _int(json['cardRounds']),
     );
@@ -506,6 +508,9 @@ class GameMe {
   /// Khoá bậc thẻ Ma Sói (common … mythic), có từ lúc chia bài. Backend cũ
   /// không gửi thì null.
   final String? cardTier;
+
+  /// Bản thẻ, như "secret.fire" cho thẻ Ẩn; thẻ thường thì null.
+  final String? cardVariant;
 
   /// Ván đã kết thúc và người xem ở phe thắng: thẻ đã nằm trong
   /// users/{uid}/gameCards, được khoe.

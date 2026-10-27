@@ -210,16 +210,18 @@ class _Face extends StatelessWidget {
                       color: palette.accent,
                     ),
                   ),
-                  TextButton.icon(
-                    onPressed: () =>
-                        showRunCardSkinSheet(context, sample: card),
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      visualDensity: VisualDensity.compact,
+                  // Thẻ Ẩn luôn mặc màu hành của nó.
+                  if (card.secret == null)
+                    TextButton.icon(
+                      onPressed: () =>
+                          showRunCardSkinSheet(context, sample: card),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      icon: const Icon(Icons.palette_outlined, size: 18),
+                      label: const Text('Bộ màu thẻ'),
                     ),
-                    icon: const Icon(Icons.palette_outlined, size: 18),
-                    label: const Text('Bộ màu thẻ'),
-                  ),
                 ],
               ),
             ),

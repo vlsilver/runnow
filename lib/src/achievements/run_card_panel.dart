@@ -210,12 +210,16 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
                 label: const Text('Khoe thẻ'),
               ),
             ),
-            const SizedBox(width: 10),
-            IconButton.outlined(
-              tooltip: 'Bộ màu thẻ',
-              onPressed: () => showRunCardSkinSheet(context, sample: data),
-              icon: const Icon(Icons.palette_outlined),
-            ),
+            // Thẻ Ẩn luôn mặc màu hành của nó, bộ màu chọn ở đây không đổi
+            // được thẻ này.
+            if (card.secret == null) ...[
+              const SizedBox(width: 10),
+              IconButton.outlined(
+                tooltip: 'Bộ màu thẻ',
+                onPressed: () => showRunCardSkinSheet(context, sample: data),
+                icon: const Icon(Icons.palette_outlined),
+              ),
+            ],
           ],
         ),
         if (card.art == null) ...[
