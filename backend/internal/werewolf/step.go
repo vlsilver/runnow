@@ -152,6 +152,7 @@ func (r *resolver) openHunterTurn() {
 			continue
 		}
 		r.st.Hunter = &HunterTurn{UID: uid, Phase: r.st.Phase}
+		p.ShotOpened = true
 		r.emit(Event{Kind: EventHunterTurn, UID: uid})
 	}
 }

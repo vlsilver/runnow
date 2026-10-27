@@ -614,7 +614,7 @@ func feedItem(d map[string]any, players map[string]gamePlayerInfo) (GameFeedItem
 		switch e.Kind {
 		case werewolf.EventDeath:
 			deaths++
-			if e.Role == "" && e.Team != "" { // bị treo: chỉ lộ phe (sideOnly)
+			if e.Role == "" && e.Team != "" { // chỉ lộ phe (roleHidden)
 				item.Lines = append(item.Lines, fmt.Sprintf("%s đã chết, thuộc %s.", name(e.UID), teamLabels[e.Team]))
 			} else {
 				item.Lines = append(item.Lines, fmt.Sprintf("%s đã chết. Lá bài: %s.", name(e.UID), roleLabels[e.Role]))

@@ -662,7 +662,7 @@ func (w *stepWrite) commit(event map[string]any) error {
 	if w.before != nil && !reminderOnly {
 		feedSeq := int64(number(w.gameData["feedSeq"])) + 1
 		public["feedSeq"] = feedSeq
-		feed, err := json.Marshal(publicEvents(w.events))
+		feed, err := json.Marshal(publicEvents(w.after, w.events))
 		if err != nil {
 			return err
 		}
@@ -742,14 +742,14 @@ func gameNominees(data map[string]any) []string {
 func (w *stepWrite) publicGame() map[string]any {
 	st := w.after
 	// revealed là lá bài đã lật, revealedTeams là phe của người chỉ lộ phe
-	// (sideOnly). MergeAll không xoá key cũ, nên một uid đã lật thì giữ nguyên.
+	// (roleHidden). MergeAll không xoá key cũ, nên một uid đã lật thì giữ nguyên.
 	revealed, revealedTeams := map[string]any{}, map[string]any{}
 	for uid, p := range st.Players {
 		switch {
-		case st.Phase == werewolf.PhaseEnded || !p.Alive && !sideOnly(p.Cause):
-			revealed[uid] = string(p.Role)
-		case !p.Alive:
+		case roleHidden(st, uid):
 			revealedTeams[uid] = string(werewolf.Side(p.Role))
+		case !p.Alive || st.Phase == werewolf.PhaseEnded:
+			revealed[uid] = string(p.Role)
 		}
 	}
 	out := map[string]any{

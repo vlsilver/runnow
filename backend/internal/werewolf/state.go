@@ -47,6 +47,8 @@ type Player struct {
 	Alive      bool  `json:"alive"`
 	DeathRound int   `json:"deathRound,omitempty"`
 	Cause      Cause `json:"cause,omitempty"`
+	// ShotOpened: thợ săn đã được mở lượt bắn (R5), giữ cả sau khi lượt đóng.
+	ShotOpened bool `json:"shotOpened,omitempty"`
 }
 
 // HunterTurn là lượt bắn của thợ săn vừa chết (R5). Khung giờ do E5 giữ: 10h–12h

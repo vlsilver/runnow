@@ -55,11 +55,11 @@ const (
 
 // publicEvent trả bản công khai của e, hoặc false nếu e chỉ dành cho người
 // trong cuộc. Lý do chết không công khai (C3). Chết thì lật lá bài, trừ người
-// bị treo chỉ lộ phe (sideOnly).
-func publicEvent(e werewolf.Event) (werewolf.Event, bool) {
+// group chỉ được biết phe (roleHidden). st là state sau bước ra e.
+func publicEvent(st *werewolf.State, e werewolf.Event) (werewolf.Event, bool) {
 	switch e.Kind {
 	case werewolf.EventDeath:
-		if sideOnly(e.Cause) {
+		if roleHidden(st, e.UID) {
 			e.Role, e.Team = "", werewolf.Side(e.Role)
 		}
 		e.Cause = ""
@@ -70,10 +70,12 @@ func publicEvent(e werewolf.Event) (werewolf.Event, bool) {
 	return werewolf.Event{}, false
 }
 
-// sideOnly: người chết vì cause này chỉ lộ phe Sói hay Dân cho tới hết ván,
-// không lật lá bài. Hiện chỉ có người bị dân làng treo.
-func sideOnly(c werewolf.Cause) bool {
-	return c == werewolf.CauseHang
+// roleHidden: group chỉ biết người chết uid là Sói hay Dân, chưa biết lá bài.
+// Đó là người bị dân làng treo mà không còn việc gì làm; thợ săn bị treo được
+// mở lượt bắn thì đã lộ vai qua lượt bắn. Hết ván thì lật hết.
+func roleHidden(st *werewolf.State, uid string) bool {
+	p := st.Players[uid]
+	return p != nil && !p.Alive && p.Cause == werewolf.CauseHang && !p.ShotOpened && st.Phase != werewolf.PhaseEnded
 }
 
 // revealedLabel đọc từ doc game công khai (publicGame) cái group đã biết về
@@ -88,10 +90,10 @@ func revealedLabel(data map[string]any, uid string) (string, werewolf.Role) {
 	return teamLabels[werewolf.Team(stringValue(teams[uid]))], ""
 }
 
-func publicEvents(evs []werewolf.Event) []werewolf.Event {
+func publicEvents(st *werewolf.State, evs []werewolf.Event) []werewolf.Event {
 	out := []werewolf.Event{}
 	for _, e := range evs {
-		if pub, ok := publicEvent(e); ok {
+		if pub, ok := publicEvent(st, e); ok {
 			out = append(out, pub)
 		}
 	}
@@ -137,7 +139,7 @@ func stepMessages(before, after *werewolf.State, evs []werewolf.Event) []gameMsg
 		"phaseKey": before.PhaseKey(),
 		"round":    after.Round,
 		"phase":    string(after.Phase),
-		"events":   publicEvents(evs),
+		"events":   publicEvents(after, evs),
 	}
 	if after.Phase == werewolf.PhaseEnded {
 		roles := map[string]string{}
@@ -246,13 +248,13 @@ func gmCall(before, after *werewolf.State) (string, []string) {
 }
 
 // calledRoles trả các vai trong roles (giữ thứ tự) còn ít nhất một người sống
-// hoặc một người chết mà chưa lật bài (sideOnly). Gọi cả vai của người bị treo
-// thì group không suy ra được vai người đó từ lời quản trò.
+// hoặc một người chết mà chưa lật bài (roleHidden). Gọi cả vai của người bị
+// treo thì group không suy ra được vai người đó từ lời quản trò.
 func calledRoles(st *werewolf.State, roles ...werewolf.Role) []string {
 	var out []string
 	for _, role := range roles {
-		for _, p := range st.Players {
-			if p.Role == role && (p.Alive || sideOnly(p.Cause)) {
+		for uid, p := range st.Players {
+			if p.Role == role && (p.Alive || roleHidden(st, uid)) {
 				out = append(out, string(role))
 				break
 			}
