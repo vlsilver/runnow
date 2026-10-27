@@ -333,9 +333,9 @@ class RunNowBotCardTokens {
   static const revealEdge = Color(0xFF121116);
 }
 
-/// Thẻ thành tích: khung sắt, đồng, bạc, vàng, kim cương theo bậc, vệt sáng
-/// cùng tông khung và chữ phủ lên ảnh full-art. Tông đêm như lá Ma Sói, nhưng
-/// ảnh nền là ảnh thật nên chữ cần lớp tối phía dưới để đọc được trên mọi ảnh.
+/// Thẻ thành tích: tranh phủ cả thẻ, kim loại của bậc (sắt, đồng, bạc, vàng,
+/// kim cương) chỉ còn ở nét chân thẻ, ô đá và viền trong. Tông đêm như lá Ma
+/// Sói, nhưng nền là ảnh thật nên chữ cần lớp tối phía dưới để đọc được.
 class RunNowAchievementTokens {
   const RunNowAchievementTokens._();
 
@@ -345,69 +345,44 @@ class RunNowAchievementTokens {
   static const accentLegendary = Color(0xFFF3D27A);
   static const accentMythic = Color(0xFFDDEFFF);
 
+  // Kim loại của bậc, mỗi thứ sáng, giữa, tối: nét chân thẻ, ô đá, viền trong.
+  static const ironLight = Color(0xFF9AA1AA);
+  static const ironMid = Color(0xFF6B727C);
+  static const ironDark = Color(0xFF3A3F46);
+  static const bronzeLight = Color(0xFFF0C08A);
+  static const bronzeMid = Color(0xFFC98A4B);
+  static const bronzeDark = Color(0xFF7A4A22);
+  static const silverLight = Color(0xFFFFFFFF);
+  static const silverMid = Color(0xFFC9D0D8);
+  static const silverDark = Color(0xFF7E8690);
+  static const goldLight = Color(0xFFFFF1BD);
+  static const goldMid = Color(0xFFE2B85A);
+  static const goldDark = Color(0xFF8A6218);
+  static const diamondLight = Color(0xFFFFFFFF);
+  static const diamondMid = Color(0xFFDDEBF7);
+  static const diamondDark = Color(0xFF8FA7BA);
+  static const cartouche = Color(0x9E0A0A0E);
+  static const gemEdge = Color(0x59000000);
+  static const gemGlint = Color(0xCCFFFFFF);
+  static const sweep = Color(0xFFFFFFFF);
+  static const rim = Color(0xB3000000);
+
   static const graphite1 = Color(0xFF50545D);
   static const graphite2 = Color(0xFF2B2D33);
   static const graphite3 = Color(0xFF454850);
   static const graphite4 = Color(0xFF26282D);
-  static const bronze1 = Color(0xFF4A2C14);
-  static const bronze2 = Color(0xFFE2A86A);
-  static const bronze3 = Color(0xFF7A4A22);
-  static const bronze4 = Color(0xFFC98A4B);
-  static const bronze5 = Color(0xFF5A3519);
-  static const silver1 = Color(0xFF7E8690);
-  static const silver2 = Color(0xFFF3F6F9);
-  static const silver3 = Color(0xFF8B929C);
-  static const silver4 = Color(0xFFE2E7EC);
-  static const silver5 = Color(0xFF737A84);
-  static const brushLight = Color(0x0FFFFFFF);
-  static const brushDark = Color(0x0D000000);
-  static const gold1 = Color(0xFF6F5016);
-  static const gold2 = Color(0xFFF8DF92);
-  static const gold3 = Color(0xFFA9781E);
-  static const gold4 = Color(0xFFFFF1BD);
-  static const gold5 = Color(0xFF86611C);
-  // Kim cương: mặt cắt trắng và xanh băng xen nhau, không có sắc nào khác.
-  static const diamond1 = Color(0xFFF4FAFF);
-  static const diamond2 = Color(0xFF8FA7BA);
-  static const diamond3 = Color(0xFFFFFFFF);
-  static const diamond4 = Color(0xFFB9CCDB);
-  static const diamond5 = Color(0xFF5E7487);
-  static const diamond6 = Color(0xFFE6F2FC);
-  static const diamond7 = Color(0xFF6C8295);
-  static const diamond8 = Color(0xFF9DB4C6);
-  static const diamond9 = Color(0xFFD4E4F1);
-  static const diamond10 = Color(0xFF8099AD);
-  static const diamond11 = Color(0xFFF7FBFF);
-  static const diamond12 = Color(0xFFA9BFD0);
-  static const diamondFlare = Color(0xE6FFFFFF);
-  static const auraDiamond = Color(0x6BCDE8FF);
-  static const auraDiamondOuter = Color(0x33FFFFFF);
-  static const glitterDiamond = Color(0x8CE1F2FF);
   static const starDiamond = Color(0xFFF2F9FF);
 
-  static const auraBronze = Color(0x29D08A4A);
-  static const auraRare = Color(0x29E1E8F0);
-  static const auraEpic = Color(0x52F3C864);
   static const drop = Color(0x99000000);
-  static const etch = Color(0x59FFFFFF);
-  static const cornerGoldLight = Color(0xFFFFF3C4);
-  static const cornerGoldDeep = Color(0xFFB9862A);
-  static const cornerDiamondLight = Color(0xFFFFFFFF);
-  static const cornerDiamondDeep = Color(0xFFA9BFD0);
-  static const cornerGlow = Color(0xB3FFF0C8);
 
   static const sheen = Color(0x57FFFFFF);
   static const sheenBronze = Color(0x57FFD6AA);
   static const sheenGold = Color(0x5CFFF0CD);
   static const sheenDiamond = Color(0x66EBF7FF);
   static const sheenTail = Color(0x0FFFFFFF);
-  static const glitterWhite = Color(0x8CFFFFFF);
-  static const glitterWarm = Color(0x87FFE296);
-  static const star = Color(0xFFFFF8E6);
 
   static const field = Color(0xFF0D0E14);
   static const shade = Color(0xFF08090E);
-  static const hairline = Color(0x29FFFFFF);
   static const hero = Color(0xFFF7F5EF);
   static const textShadow = Color(0x99000000);
 
@@ -465,7 +440,6 @@ class RunNowAchievementTokens {
   // Bộ màu thẻ sáng: ruột giấy, chữ mực. Màu bậc và chữ ánh lấy tông đậm để
   // đọc được trên nền sáng; khung và holo của bậc dùng chung với bản tối.
   static const paperShadow = Color(0x66FFFFFF);
-  static const paperHairline = Color(0x1F000000);
   static const paperRay = Color(0x0A000000);
   static const paperRing = Color(0x0F000000);
   static const paperMapEdge = Color(0x24000000);

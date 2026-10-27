@@ -157,10 +157,11 @@ void main() {
           3;
     }
 
-    // Chữ mực cần nền sáng: góc nhãn bậc và chân thẻ phải sáng, giữa thẻ vẫn
-    // là ảnh.
-    expect(luma(0.85, 0.06), greaterThan(170), reason: 'nhãn bậc');
+    // Chữ mực cần nền sáng: khối chữ trên đường cong (giấy E9F0F2 phủ ~92%,
+    // 238·0,92 ≈ 219) và chân thẻ phải sáng, phần trên và giữa thẻ vẫn là ảnh.
+    expect(luma(0.5, 0.8), greaterThan(170), reason: 'khối chữ');
     expect(luma(0.15, 0.94), greaterThan(200), reason: 'chân thẻ');
+    expect(luma(0.5, 0.25), lessThan(40), reason: 'trên tranh');
     expect(luma(0.5, 0.42), lessThan(40), reason: 'giữa ảnh');
   });
 

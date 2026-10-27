@@ -138,22 +138,21 @@ void main() {
           3;
     }
 
-    // Góc nhãn bậc và chân thẻ phải tối, giữa thẻ vẫn là ảnh.
-    expect(luma(0.85, 0.06), lessThan(128), reason: 'nhãn bậc');
+    // Ô đá góc trái trên: nền mực 62% trên ảnh trắng, 255·0,38 + 10·0,62 ≈ 103.
+    expect(luma(0.07, 0.06), lessThan(128), reason: 'ô đá');
+    // Chân thẻ dưới đường cong: mực 94%, 255·0,06 + 9·0,94 ≈ 24.
+    expect(luma(0.5, 0.875), lessThan(40), reason: 'chân thẻ, trên dòng chữ');
     expect(luma(0.15, 0.94), lessThan(40), reason: 'chân thẻ');
+    // Không còn lớp phủ trên; lớp phủ dưới chỉ nằm sau khối chữ, nên phần
+    // trên và giữa tranh vẫn là ảnh.
+    expect(luma(0.5, 0.25), greaterThan(200), reason: 'trên tranh');
     expect(luma(0.5, 0.42), greaterThan(200), reason: 'giữa ảnh');
-    // Lớp phủ chỉ nằm sau chữ, nên phía trên khối chữ dưới vẫn là ảnh.
-    expect(luma(0.5, 0.62), greaterThan(200), reason: 'trên khối chữ dưới');
   });
 
-  testWidgets('only legendary and mythic cards keep animating', (tester) async {
-    await _pump(tester, AchievementCard(data: _data(GameCardTier.superRare)));
+  testWidgets('only mythic cards keep animating', (tester) async {
+    await _pump(tester, AchievementCard(data: _data(GameCardTier.legendary)));
     await tester.pump();
     expect(tester.binding.hasScheduledFrame, isFalse);
-
-    await _pump(tester, AchievementCard(data: _data(GameCardTier.legendary)));
-    await tester.pump(const Duration(milliseconds: 16));
-    expect(tester.binding.hasScheduledFrame, isTrue);
 
     await _pump(tester, AchievementCard(data: _data(GameCardTier.mythic)));
     await tester.pump(const Duration(milliseconds: 16));
@@ -161,7 +160,7 @@ void main() {
 
     await _pump(
       tester,
-      AchievementCard(data: _data(GameCardTier.legendary), animate: false),
+      AchievementCard(data: _data(GameCardTier.mythic), animate: false),
     );
     await tester.pump();
     expect(tester.binding.hasScheduledFrame, isFalse);

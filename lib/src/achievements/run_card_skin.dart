@@ -17,7 +17,6 @@ class RunCardSkin {
     required this.hero,
     required this.ink,
     required this.textShadow,
-    required this.hairline,
     required this.backTop,
     required this.backBottom,
     required this.backRay,
@@ -37,8 +36,7 @@ class RunCardSkin {
     required this.accents,
     required this.titles,
     required this.routes,
-    this.scrimTop = (0.66, 0.34),
-    this.scrimBottom = (0.96, 0.62),
+    this.scrim = (0.96, 0.62),
   });
 
   /// Tên ổn định của bộ màu, vào khoá cache ảnh khoe.
@@ -56,7 +54,6 @@ class RunCardSkin {
   /// Chữ thường: tên thẻ bậc Thường, mô tả, chân thẻ.
   final Color ink;
   final Color textShadow;
-  final Color hairline;
 
   /// Nền mặt sau huy hiệu và lá úp.
   final Color backTop;
@@ -94,10 +91,9 @@ class RunCardSkin {
   /// Tranh đường chạy từng bậc: nền giữa, nền mép, màu phát sáng.
   final Map<GameCardTier, (Color, Color, Color)> routes;
 
-  /// Độ đậm lớp phủ sau khối chữ trên và dưới: ở mép thẻ, ở mép trong khối
-  /// chữ. Chữ mực trên lớp phủ sáng cần phủ dày hơn chữ trắng trên lớp tối.
-  final (double, double) scrimTop;
-  final (double, double) scrimBottom;
+  /// Độ đậm lớp phủ sau khối chữ: ở chân thẻ, ở mép trên khối chữ. Chữ mực
+  /// trên lớp phủ sáng cần phủ dày hơn chữ trắng trên lớp tối.
+  final (double, double) scrim;
 
   Color accent(GameCardTier tier) => accents[tier]!;
   Color glow(GameCardTier tier) => routes[tier]!.$3;
@@ -110,7 +106,6 @@ class RunCardSkin {
     hero: _T.hero,
     ink: RunNowGameTokens.nightInk,
     textShadow: _T.textShadow,
-    hairline: _T.hairline,
     backTop: _T.backTop,
     backBottom: _T.backBottom,
     backRay: _T.backRay,
@@ -203,7 +198,6 @@ class RunCardSkin {
       hero: classic.hero,
       ink: classic.ink,
       textShadow: classic.textShadow,
-      hairline: classic.hairline,
       backTop: tint(classic.backBottom, ramp[3], 0.32),
       backBottom: classic.backBottom,
       backRay: classic.backRay,
@@ -238,7 +232,6 @@ class RunCardSkin {
       hero: ink,
       ink: ink,
       textShadow: _T.paperShadow,
-      hairline: _T.paperHairline,
       backTop: Color.alphaBlend(ramp[1].withValues(alpha: 0.3), paper),
       backBottom: paper,
       backRay: _T.paperRay,
@@ -303,8 +296,7 @@ class RunCardSkin {
           _T.paperGlowMythic,
         ),
       },
-      scrimTop: (0.86, 0.6),
-      scrimBottom: (0.96, 0.8),
+      scrim: (0.96, 0.8),
     );
   }
 

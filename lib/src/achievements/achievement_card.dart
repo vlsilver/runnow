@@ -1,6 +1,4 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -61,118 +59,59 @@ class AchievementCardData {
   final Widget? backFace;
 }
 
-/// Ánh tự chạy của hai bậc trên cùng: quầng sáng thở, kim tuyến, và riêng kim
-/// cương có đốm sáng chạy quanh viền cùng sao nhấp nháy.
-enum _Shine { none, gold, diamond }
+/// Kim loại của bậc, mỗi thứ ba tông sáng, giữa, tối. Tranh phủ cả thẻ, kim
+/// loại chỉ còn ở nét chân thẻ, ô đá và viền trong.
+typedef _Metal = ({Color light, Color mid, Color dark});
 
-/// Chất liệu từng bậc: sắt, đồng, bạc, vàng, kim cương. Bậc càng cao thì viền
-/// càng dày và càng nhiều lớp sáng, để nhìn thoáng là biết thẻ hiếm cỡ nào,
-/// nhưng mọi bậc chỉ dùng tông của kim loại đó, không có cầu vồng.
-class _Look {
-  const _Look({
-    required this.frameWidth,
-    required this.frame,
-    required this.frameStops,
-    this.faceted = false,
-    this.sheen,
-    this.brushed = false,
-    this.aura,
-    this.corner,
-    this.shine = _Shine.none,
-  });
-
-  final double frameWidth;
-  final List<Color> frame;
-  final List<double>? frameStops;
-
-  /// Viền là các mặt cắt xếp quanh tâm thẻ (kim cương) thay vì dải chéo.
-  final bool faceted;
-
-  /// Vệt sáng quét qua ảnh khi nghiêng; null thì ảnh để nguyên.
-  final Color? sheen;
-
-  /// Vân xước trên viền, như kim loại đánh xước.
-  final bool brushed;
-  final Color? aura;
-  final List<Color>? corner;
-  final _Shine shine;
-}
-
-/// Mặt cắt kim cương: mỗi màu chiếm một cung, ranh giới sắc như cạnh đá.
-const _diamondFacets = [
-  (_T.diamond1, 0.08),
-  (_T.diamond2, 0.16),
-  (_T.diamond3, 0.22),
-  (_T.diamond4, 0.31),
-  (_T.diamond5, 0.38),
-  (_T.diamond6, 0.47),
-  (_T.diamond8, 0.55),
-  (_T.diamond3, 0.61),
-  (_T.diamond7, 0.70),
-  (_T.diamond9, 0.79),
-  (_T.diamond10, 0.87),
-  (_T.diamond11, 0.94),
-  (_T.diamond12, 1.0),
-];
-
-final _diamondFrame = [
-  for (final (color, _) in _diamondFacets) ...[color, color],
-];
-
-final _diamondStops = [
-  for (var i = 0; i < _diamondFacets.length; i++) ...[
-    i == 0 ? 0.0 : _diamondFacets[i - 1].$2,
-    _diamondFacets[i].$2,
-  ],
-];
-
-final _looks = {
-  GameCardTier.common: const _Look(
-    frameWidth: 6,
-    frame: [_T.graphite1, _T.graphite2, _T.graphite3, _T.graphite4],
-    frameStops: [0, 0.38, 0.66, 1],
+const _metals = <GameCardTier, _Metal>{
+  GameCardTier.common: (
+    light: _T.ironLight,
+    mid: _T.ironMid,
+    dark: _T.ironDark,
   ),
-  GameCardTier.rare: const _Look(
-    frameWidth: 7,
-    frame: [_T.bronze1, _T.bronze4, _T.bronze3, _T.bronze2, _T.bronze5],
-    frameStops: [0, 0.26, 0.5, 0.72, 1],
-    sheen: _T.sheenBronze,
-    brushed: true,
-    aura: _T.auraBronze,
+  GameCardTier.rare: (
+    light: _T.bronzeLight,
+    mid: _T.bronzeMid,
+    dark: _T.bronzeDark,
   ),
-  GameCardTier.superRare: const _Look(
-    frameWidth: 8,
-    frame: [_T.silver1, _T.silver2, _T.silver3, _T.silver4, _T.silver5],
-    frameStops: [0, 0.26, 0.48, 0.7, 1],
-    sheen: _T.sheen,
-    brushed: true,
-    aura: _T.auraRare,
+  GameCardTier.superRare: (
+    light: _T.silverLight,
+    mid: _T.silverMid,
+    dark: _T.silverDark,
   ),
-  GameCardTier.legendary: const _Look(
-    frameWidth: 9,
-    frame: [_T.gold1, _T.gold2, _T.gold3, _T.gold4, _T.gold5],
-    frameStops: [0, 0.24, 0.47, 0.69, 1],
-    sheen: _T.sheenGold,
-    aura: _T.auraEpic,
-    corner: [_T.cornerGoldLight, _T.cornerGoldDeep],
-    shine: _Shine.gold,
+  GameCardTier.legendary: (
+    light: _T.goldLight,
+    mid: _T.goldMid,
+    dark: _T.goldDark,
   ),
-  GameCardTier.mythic: _Look(
-    frameWidth: 10,
-    frame: _diamondFrame,
-    frameStops: _diamondStops,
-    faceted: true,
-    sheen: _T.sheenDiamond,
-    aura: _T.auraDiamond,
-    corner: const [_T.cornerDiamondLight, _T.cornerDiamondDeep],
-    shine: _Shine.diamond,
+  GameCardTier.mythic: (
+    light: _T.diamondLight,
+    mid: _T.diamondMid,
+    dark: _T.diamondDark,
   ),
 };
 
+/// Vệt sáng cùng tông kim loại quét qua tranh khi nghiêng, từ bậc Hiếm.
+const _sheens = {
+  GameCardTier.rare: _T.sheenBronze,
+  GameCardTier.superRare: _T.sheen,
+  GameCardTier.legendary: _T.sheenGold,
+  GameCardTier.mythic: _T.sheenDiamond,
+};
+
+/// Bo góc ngoài của thẻ.
+const _radius = 17.0;
+
+/// Đỉnh đường cong ngăn tranh với chân thẻ; chân thẻ chiếm từ đây tới đáy.
+const _footTop = 360.0;
+
+/// Lề trái phải của chữ và ô đá.
+const _inset = 17.0;
+
 /// Thẻ thành tích vẽ ở [achievementCardSize]. [pose] là độ nghiêng (-1..1 mỗi
-/// chiều) mà viền, vệt sáng và ảnh chạy theo. Thẻ Huyền thoại và Thần thoại tự
-/// chạy quầng sáng và sao nhấp nháy khi [animate]; tắt đi thì vẽ một khung
-/// hình đứng yên, dùng cho test và ảnh tĩnh.
+/// chiều) mà nét kim loại, vệt sáng và tranh chạy theo. Riêng thẻ Thần thoại
+/// tự chạy vệt sáng dọc nét và sao nhấp nháy khi [animate]; tắt đi thì vẽ một
+/// khung hình đứng yên, dùng cho test và ảnh tĩnh.
 class AchievementCard extends StatefulWidget {
   const AchievementCard({
     super.key,
@@ -196,11 +135,11 @@ class _AchievementCardState extends State<AchievementCard>
   /// Chỉ tạo khi thẻ cần chạy, để thẻ đứng yên không giữ ticker.
   Ticker? _ticker;
 
-  /// Giây đã chạy, cho các lớp tự chuyển động của bậc có ánh.
+  /// Giây đã chạy, cho vệt sáng và sao của bậc Thần thoại.
   double _seconds = 0;
 
   bool get _animates =>
-      widget.animate && _looks[widget.data.tier]!.shine != _Shine.none;
+      widget.animate && widget.data.tier == GameCardTier.mythic;
 
   @override
   void initState() {
@@ -236,43 +175,23 @@ class _AchievementCardState extends State<AchievementCard>
   @override
   Widget build(BuildContext context) {
     final data = widget.data;
-    final look = _looks[data.tier]!;
     final skin = RunCardSkin.of(context);
     final pose = widget.pose;
-    final w = look.frameWidth;
     return SizedBox.fromSize(
       size: achievementCardSize,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          _Frame(look: look, pose: pose, seconds: _seconds),
-          Padding(
-            padding: EdgeInsets.all(w),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(21 - w),
-              child: widget.back
-                  ? _Back(data: data, skin: skin, pose: pose)
-                  : _Front(
-                      data: data,
-                      look: look,
-                      skin: skin,
-                      pose: pose,
-                      seconds: _seconds,
-                    ),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.all(w),
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(21 - w),
-                  border: Border.all(color: skin.hairline),
-                ),
-              ),
-            ),
-          ),
-        ],
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          borderRadius: BorderRadius.all(Radius.circular(_radius)),
+          boxShadow: [
+            BoxShadow(color: _T.drop, blurRadius: 44, offset: Offset(0, 22)),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(_radius),
+          child: widget.back
+              ? _Back(data: data, skin: skin, pose: pose, seconds: _seconds)
+              : _Front(data: data, skin: skin, pose: pose, seconds: _seconds),
+        ),
       ),
     );
   }
@@ -282,168 +201,37 @@ class _AchievementCardState extends State<AchievementCard>
 Offset _lightAt(Offset pose) =>
     Offset(0.5 + pose.dx * 0.5, 0.5 + pose.dy * 0.5);
 
-double _deg(double d) => d * math.pi / 180;
+/// Ánh kim chạy ngang: tối ở hai mép, sáng hai bên giữa. Nghiêng thẻ thì
+/// ánh trượt theo, như kim loại thật.
+Shader _metalShader(_Metal metal, Rect rect, double tilt) => LinearGradient(
+  begin: Alignment(-1 + tilt * 0.5, 0),
+  end: Alignment(1 + tilt * 0.5, 0),
+  colors: [metal.dark, metal.light, metal.mid, metal.light, metal.dark],
+  tileMode: TileMode.mirror,
+).createShader(rect);
 
-class _Frame extends StatelessWidget {
-  const _Frame({required this.look, required this.pose, required this.seconds});
-
-  final _Look look;
-  final Offset pose;
-  final double seconds;
-
-  @override
-  Widget build(BuildContext context) {
-    // Nghiêng thẻ thì ánh kim trên viền trượt theo, như kim loại thật.
-    final tiltDeg = pose.dx * 14;
-    final shine = look.shine;
-    final Gradient gradient = look.faceted
-        // Mặt cắt chỉ xoay theo độ nghiêng: đá thật không tự quay.
-        ? SweepGradient(
-            colors: look.frame,
-            stops: look.frameStops,
-            transform: GradientRotation(_deg(20 + tiltDeg * 6)),
-          )
-        : LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: look.frame,
-            stops: look.frameStops,
-            transform: GradientRotation(_deg(tiltDeg * 4)),
-          );
-    // Quầng của hai bậc trên cùng thở chậm, chu kỳ khoảng 3,6 giây.
-    final breath = 0.775 + math.sin(seconds * 1.75) * 0.225;
-    final aura = switch (look.aura) {
-      final aura? when shine != _Shine.none => aura.withValues(
-        alpha: aura.a * breath,
-      ),
-      final aura => aura,
-    };
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            gradient: gradient,
-            boxShadow: [
-              const BoxShadow(
-                color: _T.drop,
-                blurRadius: 44,
-                offset: Offset(0, 22),
-              ),
-              if (aura != null)
-                BoxShadow(
-                  color: aura,
-                  blurRadius: switch (shine) {
-                    _Shine.diamond => 46,
-                    _Shine.gold => 40,
-                    _Shine.none => 34,
-                  },
-                ),
-              if (shine == _Shine.diamond)
-                const BoxShadow(color: _T.auraDiamondOuter, blurRadius: 90),
-            ],
-          ),
-        ),
-        if (shine == _Shine.diamond)
-          // Đốm sáng trắng chạy vòng quanh viền, như ánh đèn lướt qua mặt đá.
-          ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(
-                    math.sin(seconds * 1.3) * 0.8,
-                    math.cos(seconds * 1.1) * 0.8,
-                  ),
-                  radius: 0.3,
-                  colors: [
-                    _T.diamondFlare,
-                    _T.diamondFlare.withValues(alpha: 0),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        if (look.brushed)
-          // Vân xước của đồng và bạc: vạch sáng tối 3px lặp lại.
-          ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment(-1, 0),
-                  end: Alignment(-0.98, 0),
-                  tileMode: TileMode.repeated,
-                  colors: [
-                    _T.brushLight,
-                    _T.brushLight,
-                    _T.brushDark,
-                    _T.brushDark,
-                  ],
-                  stops: [0, 1 / 3, 1 / 3, 1],
-                ),
-              ),
-            ),
-          ),
-        if (look.sheen != null)
-          Padding(
-            padding: const EdgeInsets.all(3),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(color: _T.etch),
-              ),
-            ),
-          ),
-        if (look.corner case final corner?) ...[
-          for (final align in const [
-            Alignment.topLeft,
-            Alignment.topRight,
-            Alignment.bottomLeft,
-            Alignment.bottomRight,
-          ])
-            Align(
-              alignment: align,
-              child: Padding(
-                padding: const EdgeInsets.all(3),
-                child: Transform.rotate(
-                  angle: math.pi / 4,
-                  child: Container(
-                    width: 9,
-                    height: 9,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(1),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: corner,
-                      ),
-                      boxShadow: const [
-                        BoxShadow(color: _T.cornerGlow, blurRadius: 6),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ],
-    );
-  }
+/// Đường cong chân thẻ: phẳng ở giữa, cong xuống hai mép.
+Path _footArc(double width, double dy) {
+  final y = _footTop + dy;
+  return Path()
+    ..moveTo(0, y + 26.4)
+    ..cubicTo(0, y + 7.2, 8.4, y, 28.8, y)
+    ..lineTo(width - 28.8, y)
+    ..cubicTo(width - 8.4, y, width, y + 7.2, width, y + 26.4);
 }
+
+/// Độ dày nét kim loại chính theo bậc, Sắt mảnh nhất.
+const _lineWidths = [0.96, 1.32, 1.44, 1.56, 1.68];
 
 class _Front extends StatelessWidget {
   const _Front({
     required this.data,
-    required this.look,
     required this.skin,
     required this.pose,
     required this.seconds,
   });
 
   final AchievementCardData data;
-  final _Look look;
   final RunCardSkin skin;
   final Offset pose;
   final double seconds;
@@ -451,8 +239,8 @@ class _Front extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final light = _lightAt(pose);
-    final shine = look.shine;
-    final accent = skin.accent(data.tier);
+    final tier = data.tier;
+    final accent = skin.accent(tier);
     final ink = skin.ink;
     TextStyle label(Color color, double size) =>
         _label(color, size, skin.textShadow);
@@ -471,188 +259,159 @@ class _Front extends StatelessWidget {
             child: data.art,
           ),
         ),
-        if (look.sheen case final sheen?) _Sheen(light: light, color: sheen),
-        if (shine != _Shine.none)
-          IgnorePointer(
-            child: CustomPaint(
-              painter: _GlitterPainter(
-                light,
-                shine == _Shine.diamond ? _T.glitterDiamond : _T.glitterWarm,
-              ),
-            ),
-          ),
+        if (_sheens[tier] case final sheen?) _Sheen(light: light, color: sheen),
+        // Khối chữ đứng ngay trên đường cong, cùng mốc với nét kim loại.
         Positioned(
-          top: 0,
           left: 0,
           right: 0,
-          child: _Scrim.top(
-            skin: skin,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(13, 12, 12, 0),
-              // Khối km quyết định lớp phủ cao bao nhiêu; nhãn bậc nằm đè góc
-              // phải như trước, chữ dài không đẩy nhau.
-              child: Stack(
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(data.kind, style: label(accent, 11)),
-                      const SizedBox(height: 3),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          // Hero có thể là tên vai backend gửi, dài bao nhiêu
-                          // không biết trước: quá bề ngang thì thu nhỏ chứ không
-                          // tràn.
-                          Flexible(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                data.hero,
-                                maxLines: 1,
-                                style: TextStyle(
-                                  fontFamily: _condensed,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 38,
-                                  height: 0.9,
-                                  color: skin.hero,
-                                  shadows: [
-                                    Shadow(
-                                      color: skin.textShadow,
-                                      offset: Offset(0, 2),
-                                      blurRadius: 10,
-                                    ),
-                                  ],
-                                ),
+          top: 0,
+          height: _footTop,
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: _Scrim(
+              skin: skin,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(_inset, 0, _inset, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      data.kind,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: label(accent, 11),
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        // Hero có thể là tên vai backend gửi, dài bao nhiêu không
+                        // biết trước: quá bề ngang thì thu nhỏ chứ không tràn.
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              data.hero,
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontFamily: _condensed,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 38,
+                                height: 0.9,
+                                color: skin.hero,
+                                shadows: [
+                                  Shadow(
+                                    color: skin.textShadow,
+                                    offset: Offset(0, 2),
+                                    blurRadius: 10,
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                          const SizedBox(width: 3),
-                          Text(
-                            data.heroUnit,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          data.heroUnit,
+                          style: TextStyle(
+                            fontFamily: _condensed,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            letterSpacing: 1.04,
+                            color: skin.hero.withValues(alpha: 0.85),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    _Title(text: data.title, tier: tier, skin: skin),
+                    const SizedBox(height: 4),
+                    Text(
+                      data.desc,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        height: 1.38,
+                        fontStyle: FontStyle.italic,
+                        color: ink.withValues(alpha: 0.84),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        IgnorePointer(
+          child: CustomPaint(
+            painter: _TrimPainter(
+              tier: tier,
+              tilt: pose.dx,
+              seconds: seconds,
+              shade: skin.shade,
+            ),
+          ),
+        ),
+        Positioned(
+          left: _inset,
+          right: _inset,
+          top: _footTop + 13,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: data.owner,
+                            style: TextStyle(color: ink.withValues(alpha: 0.8)),
+                          ),
+                          TextSpan(
+                            text: ' · ${data.serial}',
                             style: TextStyle(
-                              fontFamily: _condensed,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                              letterSpacing: 1.04,
-                              color: skin.hero.withValues(alpha: 0.85),
+                              color: ink.withValues(alpha: 0.55),
                             ),
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                  Positioned(
-                    top: 1,
-                    right: 0,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Row(
-                          children: [
-                            for (
-                              var i = 0;
-                              i < gameCardTiers[data.tier]!.gems;
-                              i++
-                            )
-                              Padding(
-                                padding: const EdgeInsets.only(left: 5),
-                                child: _Gem(color: accent),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          gameCardTiers[data.tier]!.label.toUpperCase(),
-                          style: label(accent, 9.5),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: _Scrim.bottom(
-            skin: skin,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(13, 0, 13, 11),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text: data.owner,
-                          style: TextStyle(color: accent),
-                        ),
-                        TextSpan(
-                          text: ' · ${data.serial}',
-                          style: TextStyle(color: ink.withValues(alpha: 0.62)),
-                        ),
-                      ],
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: _condensed,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 11,
-                      letterSpacing: 1.54,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  _Title(text: data.title, tier: data.tier, skin: skin),
-                  const SizedBox(height: 4),
-                  Text(
-                    data.desc,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      height: 1.38,
-                      fontStyle: FontStyle.italic,
-                      color: ink.withValues(alpha: 0.84),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8, bottom: 6),
-                    child: Opacity(
-                      opacity: 0.7,
-                      child: Container(
-                        height: 1,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [accent, accent.withValues(alpha: 0)],
-                          ),
-                        ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: _condensed,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 11,
+                        letterSpacing: 1.54,
                       ),
                     ),
                   ),
-                  _Foot(
-                    left: data.meta,
-                    right: '3I RUN',
-                    accent: accent,
-                    ink: ink,
+                  const SizedBox(width: 8),
+                  Text(
+                    gameCardTiers[tier]!.label.toUpperCase(),
+                    style: label(accent, 11),
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 4),
+              _Foot(left: data.meta, right: '3I RUN', accent: accent, ink: ink),
+            ],
           ),
+        ),
+        Positioned(
+          top: _inset,
+          left: _inset,
+          child: _Cartouche(tier: tier, tilt: pose.dx),
         ),
         if (data.stamp case final stamp?)
           Positioned(
-            top: 58,
-            right: 12,
+            top: _inset,
+            right: _inset,
             width: 64,
             height: 64,
             child: DecoratedBox(
@@ -675,16 +434,205 @@ class _Front extends StatelessWidget {
               child: ClipOval(child: stamp),
             ),
           ),
-        if (shine == _Shine.diamond)
-          IgnorePointer(
-            child: CustomPaint(
-              painter: _StarPainter(seconds, count: 8, color: _T.starDiamond),
-            ),
-          ),
+        if (tier == GameCardTier.mythic)
+          IgnorePointer(child: CustomPaint(painter: _StarPainter(seconds))),
         GameCardGlare(at: light, strength: 0.38),
       ],
     );
   }
+}
+
+/// Nét kim loại của bậc. Mặt trước có đường cong ngăn tranh với chân thẻ:
+/// Sắt và Đồng một nét, từ Bạc thêm nét mảnh phía trên, từ Vàng thêm viền
+/// trong, Kim cương có vệt sáng chạy dọc các nét. Mặt sau chỉ có viền trong.
+class _TrimPainter extends CustomPainter {
+  const _TrimPainter({
+    required this.tier,
+    required this.tilt,
+    required this.seconds,
+    this.shade,
+  });
+
+  final GameCardTier tier;
+  final double tilt;
+  final double seconds;
+
+  /// Màu chân thẻ; null là mặt sau, không có chân thẻ.
+  final Color? shade;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Thứ tự enum là thứ tự bậc, Sắt là 0.
+    final level = tier.index;
+    final card = Offset.zero & size;
+    final metal = _metalShader(_metals[tier]!, card, tilt);
+    // Có shader thì Paint chỉ lấy độ trong của color.
+    Paint line(double width, [double opacity = 1]) => Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = width
+      ..shader = metal
+      ..color = Color.fromRGBO(0, 0, 0, opacity);
+    final inner = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          card.deflate(4.8),
+          const Radius.circular(_radius - 4.8),
+        ),
+      );
+    final traced = <Path>[];
+    if (shade case final shade?) {
+      final arc = _footArc(size.width, 0);
+      canvas.drawPath(
+        Path.from(arc)
+          ..lineTo(size.width, size.height)
+          ..lineTo(0, size.height)
+          ..close(),
+        Paint()..color = shade.withValues(alpha: 0.94),
+      );
+      canvas.drawPath(arc, line(_lineWidths[level]));
+      if (level >= 2) {
+        canvas.drawPath(_footArc(size.width, -3.1), line(0.54, 0.85));
+      }
+      if (level >= 3) canvas.drawPath(inner, line(0.72, 0.9));
+      traced.addAll([arc, inner]);
+    } else {
+      canvas.drawPath(inner, line(_lineWidths[level], 0.9));
+      traced.add(inner);
+    }
+    if (tier == GameCardTier.mythic) {
+      // Vệt dài 5% nét, chạy hết một vòng trong 5,5 giây. Giây 0 là ảnh tĩnh
+      // đem khoe, nên vệt xuất phát từ giữa đường cong chứ không ở mép trái.
+      final sweep = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.68
+        ..strokeCap = StrokeCap.round
+        ..color = _T.sweep;
+      final at = (seconds / 5.5 + 0.62) % 1;
+      for (final path in traced) {
+        for (final metric in path.computeMetrics()) {
+          final start = metric.length * at;
+          canvas.drawPath(
+            metric.extractPath(start, start + metric.length * 0.05),
+            sweep,
+          );
+        }
+      }
+    }
+    // Mép ngoài tối mảnh để tranh sáng không loang ra nền.
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        card.deflate(0.7),
+        const Radius.circular(_radius - 0.7),
+      ),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4
+        ..color = _T.rim,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_TrimPainter old) =>
+      old.tier != tier ||
+      old.tilt != tilt ||
+      old.seconds != seconds ||
+      old.shade != shade;
+}
+
+/// Ô dọc góc trái trên, số đá bằng số bậc. Từ bậc Bạc viền ô có thêm nét
+/// trong.
+class _Cartouche extends StatelessWidget {
+  const _Cartouche({required this.tier, required this.tilt});
+
+  final GameCardTier tier;
+  final double tilt;
+
+  static const _width = 29.0;
+  static const _gemPitch = 13.2;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size(_width, 12 + gameCardTiers[tier]!.gems * _gemPitch),
+      painter: _CartouchePainter(tier: tier, tilt: tilt),
+    );
+  }
+}
+
+class _CartouchePainter extends CustomPainter {
+  const _CartouchePainter({required this.tier, required this.tilt});
+
+  final GameCardTier tier;
+  final double tilt;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final metal = _metals[tier]!;
+    final box = Offset.zero & size;
+    final shader = _metalShader(metal, box, tilt);
+    final outer = RRect.fromRectAndRadius(
+      box.deflate(0.65),
+      const Radius.circular(7.2),
+    );
+    canvas
+      ..drawRRect(outer, Paint()..color = _T.cartouche)
+      ..drawRRect(
+        outer,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.3
+          ..shader = shader,
+      );
+    if (tier.index >= 2) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(box.deflate(2.9), const Radius.circular(4.8)),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.54
+          ..shader = shader
+          ..color = const Color.fromRGBO(0, 0, 0, 0.8),
+      );
+    }
+    final cx = size.width / 2;
+    for (var i = 0; i < gameCardTiers[tier]!.gems; i++) {
+      final cy = 6 + _Cartouche._gemPitch * (i + 0.5);
+      final gem = Path()
+        ..moveTo(cx, cy - 5)
+        ..lineTo(cx + 3.8, cy)
+        ..lineTo(cx, cy + 5)
+        ..lineTo(cx - 3.8, cy)
+        ..close();
+      canvas
+        ..drawPath(
+          gem,
+          Paint()
+            ..shader = LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [metal.light, metal.mid, metal.dark],
+            ).createShader(gem.getBounds()),
+        )
+        ..drawPath(
+          gem,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 0.36
+            ..color = _T.gemEdge,
+        )
+        ..drawLine(
+          Offset(cx - 1.7, cy - 1.4),
+          Offset(cx, cy - 3.6),
+          Paint()
+            ..strokeWidth = 0.6
+            ..strokeCap = StrokeCap.round
+            ..color = _T.gemGlint,
+        );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_CartouchePainter old) =>
+      old.tier != tier || old.tilt != tilt;
 }
 
 TextStyle _label(Color color, double size, Color shadow) => TextStyle(
@@ -798,101 +746,59 @@ class _Title extends StatelessWidget {
   }
 }
 
-class _Gem extends StatelessWidget {
-  const _Gem({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Transform.rotate(
-      angle: math.pi / 4,
-      child: Container(
-        width: 8,
-        height: 8,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(1),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Colors.white, color],
-          ),
-          boxShadow: [BoxShadow(color: color, blurRadius: 6)],
-        ),
-      ),
-    );
-  }
-}
-
 /// Lớp tối chỉ nằm sau khối chữ để chữ đọc được trên mọi tranh: đậm nhất ở
-/// mép thẻ, nhạt dần qua vùng chữ, rồi tan hết ngay ngoài chữ. Cao theo khối
+/// chân thẻ, nhạt dần qua vùng chữ, rồi tan hết ngay trên chữ. Cao theo khối
 /// chữ (tên hai dòng thì phủ cao hơn), phần tranh không có chữ để nguyên.
 class _Scrim extends StatelessWidget {
-  _Scrim.top({required RunCardSkin skin, required this.child})
-    : _fromTop = true,
-      color = skin.shade,
-      _edge = skin.scrimTop.$1,
-      _inner = skin.scrimTop.$2,
-      _fade = 40;
+  const _Scrim({required this.skin, required this.child});
 
-  _Scrim.bottom({required RunCardSkin skin, required this.child})
-    : _fromTop = false,
-      color = skin.shade,
-      _edge = skin.scrimBottom.$1,
-      _inner = skin.scrimBottom.$2,
-      _fade = 48;
-
-  final Color color;
+  final RunCardSkin skin;
   final Widget child;
-  final bool _fromTop;
 
-  /// Độ đậm ở mép thẻ và ở mép trong của khối chữ.
-  final double _edge;
-  final double _inner;
-
-  /// Dải tan từ mép trong của khối chữ về trong suốt.
-  final double _fade;
+  /// Dải tan từ mép trên khối chữ về trong suốt.
+  static const _fade = 48.0;
 
   @override
   Widget build(BuildContext context) {
-    final outward = _fromTop ? Alignment.topCenter : Alignment.bottomCenter;
-    final inward = _fromTop ? Alignment.bottomCenter : Alignment.topCenter;
-    final text = DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: outward,
-          end: inward,
-          colors: [
-            color.withValues(alpha: _edge),
-            color.withValues(alpha: _inner),
-          ],
-        ),
-      ),
-      child: child,
-    );
-    final fade = SizedBox(
-      height: _fade,
-      child: IgnorePointer(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: outward,
-              end: inward,
-              colors: [
-                color.withValues(alpha: _inner),
-                color.withValues(alpha: _inner * 0.4),
-                color.withValues(alpha: 0),
-              ],
-              stops: const [0, 0.5, 1],
-            ),
-          ),
-        ),
-      ),
-    );
+    final color = skin.shade;
+    final (edge, inner) = skin.scrim;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: _fromTop ? [text, fade] : [fade, text],
+      children: [
+        SizedBox(
+          height: _fade,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    color.withValues(alpha: inner),
+                    color.withValues(alpha: inner * 0.4),
+                    color.withValues(alpha: 0),
+                  ],
+                  stops: const [0, 0.5, 1],
+                ),
+              ),
+            ),
+          ),
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.bottomCenter,
+              end: Alignment.topCenter,
+              colors: [
+                color.withValues(alpha: edge),
+                color.withValues(alpha: inner),
+              ],
+            ),
+          ),
+          child: child,
+        ),
+      ],
     );
   }
 }
@@ -932,65 +838,16 @@ class _Sheen extends StatelessWidget {
   }
 }
 
-/// Kim tuyến: hai lưới chấm nhỏ trôi ngược chiều nhau theo điểm sáng.
-class _GlitterPainter extends CustomPainter {
-  const _GlitterPainter(this.light, this.tint);
-
-  final Offset light;
-
-  /// Màu lưới chấm thứ hai: vàng ấm ở Huyền thoại, trắng băng ở Thần thoại.
-  final Color tint;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // Mỗi lưới là một lệnh vẽ: vài trăm drawCircle riêng, mỗi cái một lần
-    // blend screen, làm GPU iPhone mất ~50 ms mỗi khung hình.
-    void grid(double w, double h, double ox, double oy, double r, Color c) {
-      final points = <double>[];
-      for (var x = ox % w - w; x < size.width + w; x += w) {
-        for (var y = oy % h - h; y < size.height + h; y += h) {
-          points
-            ..add(x + w / 2)
-            ..add(y + h / 2);
-        }
-      }
-      canvas.drawRawPoints(
-        ui.PointMode.points,
-        Float32List.fromList(points),
-        Paint()
-          ..color = c
-          ..blendMode = BlendMode.screen
-          ..strokeWidth = r * 2
-          ..strokeCap = StrokeCap.round,
-      );
-    }
-
-    grid(17, 21, light.dx * 70, light.dy * 50, 0.9, _T.glitterWhite);
-    grid(29, 25, -light.dx * 50, light.dy * 80, 0.8, tint);
-  }
-
-  @override
-  bool shouldRepaint(_GlitterPainter old) =>
-      old.light != light || old.tint != tint;
-}
-
-/// Sao bốn cánh nhấp nháy lệch nhịp nhau, chu kỳ 2,4 giây.
+/// Ba sao bốn cánh trên tranh Kim cương, nhấp nháy lệch nhịp, chu kỳ 2,8 giây.
 class _StarPainter extends CustomPainter {
-  const _StarPainter(this.seconds, {this.count = 6, this.color = _T.star});
+  const _StarPainter(this.seconds);
 
   final double seconds;
-  final int count;
-  final Color color;
 
   static const _spots = [
-    (0.18, 0.22, 0.0),
-    (0.78, 0.14, 0.7),
-    (0.64, 0.46, 1.4),
-    (0.30, 0.58, 2.1),
-    (0.86, 0.66, 0.35),
-    (0.12, 0.40, 1.05),
-    (0.50, 0.30, 1.7),
-    (0.70, 0.60, 2.4),
+    (0.824, 0.2, 0.0),
+    (0.232, 0.429, 0.9),
+    (0.888, 0.68, 1.7),
   ];
 
   static final _star = Path()
@@ -1006,8 +863,8 @@ class _StarPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    for (final (x, y, delay) in _spots.take(count)) {
-      final phase = ((seconds - delay) / 2.4) % 1;
+    for (final (x, y, delay) in _spots) {
+      final phase = ((seconds - delay) / 2.8) % 1;
       final k = 0.5 - 0.5 * math.cos(2 * math.pi * phase);
       if (k < 0.02) continue;
       canvas
@@ -1015,7 +872,10 @@ class _StarPainter extends CustomPainter {
         ..translate(x * size.width, y * size.height)
         ..rotate(math.pi / 4 * k)
         ..scale(0.4 + 0.6 * k);
-      canvas.drawPath(_star, Paint()..color = color.withValues(alpha: k));
+      canvas.drawPath(
+        _star,
+        Paint()..color = _T.starDiamond.withValues(alpha: k),
+      );
       canvas.restore();
     }
   }
@@ -1024,21 +884,33 @@ class _StarPainter extends CustomPainter {
   bool shouldRepaint(_StarPainter old) => old.seconds != seconds;
 }
 
-/// Mặt sau: huy hiệu 3I RUN, ngày nhận và bậc.
+/// Mặt sau: huy hiệu 3I RUN, ngày nhận và bậc, viền trong theo kim loại bậc.
 class _Back extends StatelessWidget {
-  const _Back({required this.data, required this.skin, required this.pose});
+  const _Back({
+    required this.data,
+    required this.skin,
+    required this.pose,
+    required this.seconds,
+  });
 
   final AchievementCardData data;
   final RunCardSkin skin;
   final Offset pose;
+  final double seconds;
 
   @override
   Widget build(BuildContext context) {
+    final trim = IgnorePointer(
+      child: CustomPaint(
+        painter: _TrimPainter(tier: data.tier, tilt: pose.dx, seconds: seconds),
+      ),
+    );
     if (data.backFace case final face?) {
       return Stack(
         fit: StackFit.expand,
         children: [
           face,
+          trim,
           GameCardGlare(at: _lightAt(pose), strength: 0.38),
         ],
       );
@@ -1141,6 +1013,7 @@ class _Back extends StatelessWidget {
             ink: ink,
           ),
         ),
+        trim,
         GameCardGlare(at: _lightAt(pose), strength: 0.38),
       ],
     );
