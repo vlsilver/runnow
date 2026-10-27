@@ -23,7 +23,7 @@ import (
 
 var botWerewolfDecl = &genai.FunctionDeclaration{
 	Name:        "get_werewolf_game",
-	Description: "Luật Ma Sói của club (luật RIÊNG chạy theo km, khác Ma Sói thông thường) cộng diễn biến công khai của ván hiện tại: giai đoạn, hạn giờ, ai còn sống, ai đã chết kèm lá bài, ai lên giàn (tối đa 3 người, mỗi người một phiên trong trials), ai đang đề cử ai, phiếu Treo/Tha đang bấm của từng phiên, ai chưa bấm, km chốt lúc 22h gần nhất (lastKm, quyết định ai dùng được kỹ năng đêm nay), km từ 22h gần nhất tới giờ của từng người (kmSinceLast22h, sẽ chốt lúc kmFrameEnd), dự báo nếu chốt từng phiên với km hiện tại thì bao nhiêu phiếu được tính và ai mất phiếu (trials[].voteForecast), các bản tin của ván. Dùng cho MỌI câu hỏi về Ma Sói. Không có vai của người còn sống.",
+	Description: "Luật Ma Sói của club (luật RIÊNG chạy theo km, khác Ma Sói thông thường) cộng diễn biến công khai của ván hiện tại: giai đoạn, hạn giờ, bộ vai lúc chia bài (deck: mỗi vai mấy lá, số sói đầu ván lấy ở đây), ai còn sống, ai đã chết kèm lá bài, ai lên giàn (tối đa 3 người, mỗi người một phiên trong trials), ai đang đề cử ai, phiếu Treo/Tha đang bấm của từng phiên, ai chưa bấm, km chốt lúc 22h gần nhất (lastKm, quyết định ai dùng được kỹ năng đêm nay), km từ 22h gần nhất tới giờ của từng người (kmSinceLast22h, sẽ chốt lúc kmFrameEnd), dự báo nếu chốt từng phiên với km hiện tại thì bao nhiêu phiếu được tính và ai mất phiếu (trials[].voteForecast), các bản tin của ván. Dùng cho MỌI câu hỏi về Ma Sói. Không có vai của người còn sống.",
 	Parameters:  &genai.Schema{Type: genai.TypeObject, Properties: map[string]*genai.Schema{}},
 }
 
@@ -45,23 +45,26 @@ type BotWerewolf struct {
 }
 
 type BotWerewolfGame struct {
-	Status               string              `json:"status"`
-	Now                  string              `json:"now"`
-	Phase                string              `json:"phase,omitempty"`
-	Deadline             string              `json:"deadline,omitempty"`
-	RegistrationDeadline string              `json:"registrationDeadline,omitempty"`
-	Players              []string            `json:"players"`
-	Alive                []string            `json:"alive,omitempty"`
-	Dead                 []string            `json:"dead,omitempty"`
-	OnTrial              []string            `json:"onTrial,omitempty"`
-	Nominations          map[string][]string `json:"nominations,omitempty"`
-	Trials               []BotTrial          `json:"trials,omitempty"`
-	NotChosenYet         []string            `json:"notChosenYet,omitempty"`
-	LastKm               map[string]string   `json:"lastKm,omitempty"`
-	KmSinceLast22h       map[string]string   `json:"kmSinceLast22h,omitempty"`
-	KmFrameEnd           string              `json:"kmFrameEnd,omitempty"`
-	News                 []BotWerewolfNews   `json:"news,omitempty"`
-	Winner               string              `json:"winner,omitempty"`
+	Status               string   `json:"status"`
+	Now                  string   `json:"now"`
+	Phase                string   `json:"phase,omitempty"`
+	Deadline             string   `json:"deadline,omitempty"`
+	RegistrationDeadline string   `json:"registrationDeadline,omitempty"`
+	Players              []string `json:"players"`
+	// Deck là bộ vai lúc chia bài (vai → số lá). Suy ra được từ số người và
+	// config nên công khai; không nói ai cầm lá nào.
+	Deck           map[string]int      `json:"deck,omitempty"`
+	Alive          []string            `json:"alive,omitempty"`
+	Dead           []string            `json:"dead,omitempty"`
+	OnTrial        []string            `json:"onTrial,omitempty"`
+	Nominations    map[string][]string `json:"nominations,omitempty"`
+	Trials         []BotTrial          `json:"trials,omitempty"`
+	NotChosenYet   []string            `json:"notChosenYet,omitempty"`
+	LastKm         map[string]string   `json:"lastKm,omitempty"`
+	KmSinceLast22h map[string]string   `json:"kmSinceLast22h,omitempty"`
+	KmFrameEnd     string              `json:"kmFrameEnd,omitempty"`
+	News           []BotWerewolfNews   `json:"news,omitempty"`
+	Winner         string              `json:"winner,omitempty"`
 }
 
 // BotTrial là một phiên biểu quyết: người lên giàn, phiếu Treo/Tha đang bấm,
@@ -161,6 +164,7 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 		return game, x, nil
 	}
 
+	game.Deck = botDeck(int(number(data["playerCount"])), cfg)
 	if running {
 		game.Phase = phaseLabelOf(data)
 		if d := nextDeadline(data); d != nil {
@@ -286,6 +290,20 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 		game.News = append(game.News, BotWerewolfNews{At: vnTime(item.At), Title: item.Title, Lines: item.Lines})
 	}
 	return game, x, nil
+}
+
+// botDeck là bộ vai của ván n người theo werewolf.Composition; nil khi n người
+// chưa chia được bài.
+func botDeck(n int, cfg werewolf.Config) map[string]int {
+	roles, err := werewolf.Composition(n, cfg)
+	if err != nil {
+		return nil
+	}
+	deck := map[string]int{}
+	for _, r := range roles {
+		deck[roleLabels[r]]++
+	}
+	return deck
 }
 
 // nextKmFrameEnd là mốc chốt km 22:00 VN kế tiếp sau wall.

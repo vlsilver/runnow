@@ -21,7 +21,14 @@ func botWerewolfAt(t *testing.T, g *storeGame, wall time.Time) (BotWerewolf, str
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := json.Marshal(v.Game)
+	// raw để soi lộ vai, nên bỏ deck: bộ vai cố ý có đủ tên vai.
+	scan := v.Game
+	if scan != nil {
+		c := *scan
+		c.Deck = nil
+		scan = &c
+	}
+	raw, err := json.Marshal(scan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,6 +78,10 @@ func TestEmulatorBotWerewolfShowsOnlyPublicGame(t *testing.T) {
 	}
 	if len(v.Game.Alive) != 10 || len(v.Game.Dead) != 0 || v.Game.LastKm["V1"] != "5 km" || v.Game.KmSinceLast22h["V1"] != "5 km" || v.Game.KmFrameEnd != "22:00 16/10" {
 		t.Fatalf("game = %s", raw)
+	}
+	// Bảng 1.2: 10 người là 2 sói, 2 vai đặc biệt đầu (Tiên tri, Bảo vệ).
+	if want := map[string]int{"Sói": 2, "Tiên tri": 1, "Bảo vệ": 1, "Dân": 6}; !reflect.DeepEqual(v.Game.Deck, want) {
+		t.Fatalf("deck = %v", v.Game.Deck)
 	}
 	if v.Rules != gameRulesText || !strings.Contains(v.Roles["Tiên tri"], "Cần đủ 1 km") || strings.Contains(v.VoteRules, "X km") {
 		t.Fatalf("luật = %+v", v)
