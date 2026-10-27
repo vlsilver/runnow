@@ -40,9 +40,9 @@ func TestStepMessagesGameMasterCalls(t *testing.T) {
 		t.Fatalf("20h mà quản trò gọi %v", c)
 	}
 
-	// Phù thuỷ bị treo ngày 1: group chỉ biết người đó phe Dân, nên đêm 2 quản
-	// trò vẫn gọi phù thuỷ, cả lúc 22h lẫn 0h, kẻo lời gọi lộ vai. Tiên tri chết
-	// đêm 1 đã lật bài nên không gọi nữa.
+	// Đêm 2 quản trò vẫn gọi đủ vai trong bộ bài: phù thuỷ bị treo ngày 1 (group
+	// chỉ biết là phe Dân) lẫn tiên tri bị cắn đêm 1, kẻo lời gọi cho biết vai
+	// nào đã hết người.
 	hang := func(actor string) ww.Action {
 		return ww.Action{Kind: ww.KindVote, Actor: actor, Choice: ww.ChoiceHang, ReceivedAt: trial.NightAt.Add(23 * time.Hour)}
 	}
@@ -50,7 +50,7 @@ func TestStepMessagesGameMasterCalls(t *testing.T) {
 	if night2.Players["witch"].Alive {
 		t.Fatalf("phù thuỷ chưa bị treo: %+v", evs)
 	}
-	if c, w := call(stepMessages(trial, night2, evs)[0]); c != callNight || !reflect.DeepEqual(w, []string{"wolf", "guard", "witch"}) {
+	if c, w := call(stepMessages(trial, night2, evs)[0]); c != callNight || !reflect.DeepEqual(w, []string{"wolf", "guard", "seer", "witch"}) {
 		t.Fatalf("22h đêm 2: %v %v", c, w)
 	}
 	dawn2, evs := mustStep(t, night2)

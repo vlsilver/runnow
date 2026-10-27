@@ -222,11 +222,10 @@ const (
 	callMorning = "morning" // 10h: trời sáng, rồi tới bản tin đêm
 )
 
-// gmCall trả lời quản trò cho lần chuyển phase này và các vai được gọi. Chỉ gọi
-// vai mà group chưa biết là hết người (calledRoles): người chết đã lật bài thì
-// group biết vai đó hết người, còn bộ vai thì suy ra được từ số người và
-// config. Không xét bình hay km, nên phù thuỷ hết bình vẫn được gọi như thường.
-// Phù thuỷ đã lật bài thì 0h không có gì để gọi, bản tin 0h vẫn rỗng và không gửi.
+// gmCall trả lời quản trò cho lần chuyển phase này và các vai được gọi. Gọi đủ
+// vai trong bộ bài (calledRoles), kể cả vai đã hết người, để lời gọi không cho
+// biết vai nào đã chết. Không xét bình hay km, nên phù thuỷ hết bình vẫn được
+// gọi như thường.
 func gmCall(before, after *werewolf.State) (string, []string) {
 	switch {
 	case after.Phase == werewolf.PhaseNight && before.Phase != werewolf.PhaseNight:
@@ -247,14 +246,14 @@ func gmCall(before, after *werewolf.State) (string, []string) {
 	return "", nil
 }
 
-// calledRoles trả các vai trong roles (giữ thứ tự) còn ít nhất một người sống
-// hoặc một người chết mà chưa lật bài (roleHidden). Gọi cả vai của người bị
-// treo thì group không suy ra được vai người đó từ lời quản trò.
+// calledRoles trả các vai trong roles (giữ thứ tự) có trong bộ bài của ván,
+// sống hay chết đều tính. Vai bị tắt (thành Dân) thì không gọi; bộ vai vốn công
+// khai nên chuyện đó không lộ gì.
 func calledRoles(st *werewolf.State, roles ...werewolf.Role) []string {
 	var out []string
 	for _, role := range roles {
-		for uid, p := range st.Players {
-			if p.Role == role && (p.Alive || roleHidden(st, uid)) {
+		for _, p := range st.Players {
+			if p.Role == role {
 				out = append(out, string(role))
 				break
 			}
