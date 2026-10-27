@@ -172,7 +172,11 @@ func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, 
 			"distanceMeters":     w.DistanceMeters,
 			"movingTimeSeconds":  w.MovingTimeSeconds,
 			"elapsedTimeSeconds": w.MovingTimeSeconds,
-			"updatedAt":          firestore.ServerTimestamp,
+			// Kho sức khoẻ chỉ gửi phần tóm tắt, không còn gì để hydrate thêm.
+			// Thiếu cờ này thì app gọi hydrate (chỉ chạy qua Strava, trả 409) và
+			// màn chi tiết không mở được.
+			"hydrated":  true,
+			"updatedAt": firestore.ServerTimestamp,
 		}
 		if w.CaloriesKcal > 0 {
 			next["caloriesKcal"] = w.CaloriesKcal // chủ yếu Gym/Swim, để hiển thị
@@ -241,6 +245,35 @@ func (s *ActivityService) ImportHealthWorkouts(ctx context.Context, uid string, 
 		return imported, err
 	}
 	return imported, nil
+}
+
+// BackfillHealthHydrated ghi hydrated=true cho các buổi từ kho sức khoẻ nhập
+// trước khi ImportHealthWorkouts ghi cờ này; app chỉ nhập lại từ lần sync gần
+// nhất nên buổi cũ không tự có. Duyệt từng user (kể cả user không có doc cha)
+// vì truy vấn collection group theo source cần index riêng. Chạy lại không đổi
+// gì. Trả về số doc đã sửa.
+func BackfillHealthHydrated(ctx context.Context, db *firestore.Client) (int, error) {
+	users, err := db.Collection("users").DocumentRefs(ctx).GetAll()
+	if err != nil {
+		return 0, err
+	}
+	updated := 0
+	for _, user := range users {
+		docs, err := user.Collection("activities").Where("source", "in", []string{"apple_health", "health_connect"}).Documents(ctx).GetAll()
+		if err != nil {
+			return updated, err
+		}
+		for _, d := range docs {
+			if d.Data()["hydrated"] == true {
+				continue
+			}
+			if _, err := d.Ref.Update(ctx, []firestore.Update{{Path: "hydrated", Value: true}}); err != nil {
+				return updated, err
+			}
+			updated++
+		}
+	}
+	return updated, nil
 }
 
 func trackedDerivedCause(activity map[string]any) string {
