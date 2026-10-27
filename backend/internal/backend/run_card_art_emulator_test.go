@@ -142,10 +142,10 @@ func TestEmulatorRunCardArtDrawOnceThenFixed(t *testing.T) {
 
 	e.draw(first)
 	art := e.art("a1")
-	if art["status"] != "done" || art["path"] != "users/u1/runCards/a1/art.png" || art["model"] != "img-model" || art["styleVersion"] != int64(1) {
+	if art["status"] != "done" || art["path"] != "users/u1/runCards/a1/art-1.png" || art["model"] != "img-model" || art["styleVersion"] != int64(1) {
 		t.Fatalf("art sau khi vẽ = %v", art)
 	}
-	if string(e.files.files["users/u1/runCards/a1/art.png"]) != "art-png" {
+	if string(e.files.files["users/u1/runCards/a1/art-1.png"]) != "art-png" {
 		t.Fatal("chưa lưu file tranh")
 	}
 	prompt := e.gen.prompts[0]
@@ -218,8 +218,10 @@ func TestEmulatorRunCardArtFailuresAllowAnotherStyle(t *testing.T) {
 		t.Fatal("task cũ không được vẽ đè khoá mới")
 	}
 	e.draw(fresh)
-	if art := e.art("a1"); art["status"] != "done" || art["style"] != "oil_impasto" {
-		t.Fatalf("art = %v, muốn done oil_impasto", art)
+	// Mỗi lượt vẽ ra file riêng: app giữ cache ảnh theo đường dẫn, trùng tên
+	// thì vẽ lại xong vẫn hiện tranh cũ.
+	if art := e.art("a1"); art["status"] != "done" || art["style"] != "oil_impasto" || art["path"] != "users/u1/runCards/a1/art-4.png" {
+		t.Fatalf("art = %v, muốn done oil_impasto ở art-4.png", art)
 	}
 }
 

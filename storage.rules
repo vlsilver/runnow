@@ -36,7 +36,7 @@ service firebase.storage {
       allow write: if false;
     }
 
-    // Thẻ buổi chạy: chủ thẻ tải ảnh nguồn src.jpg để vẽ lại; tranh art.png
+    // Thẻ buổi chạy: chủ thẻ tải ảnh nguồn src.jpg để vẽ lại; tranh art-{attempt}.png
     // backend ghi bằng admin SDK. Chỉ chủ thẻ xem.
     match /users/{userId}/runCards/{activityId}/{fileName} {
       allow read: if owns(userId);

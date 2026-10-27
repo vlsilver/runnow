@@ -26,7 +26,8 @@ import (
 //	art.status       drawing | done | failed
 //	art.attempt      tăng mỗi lần khoá; task mang attempt, lệch thì bỏ
 //	art.reason       lý do hỏng: budget, blocked, model_error, photo_missing, style_unavailable
-//	art.path         users/{uid}/runCards/{activityId}/art.png khi done
+//	art.path         users/{uid}/runCards/{activityId}/art-{attempt}.png khi done;
+//	                 mỗi lượt một tên vì app cache ảnh theo đường dẫn
 //
 // Mọi lượt vẽ đi qua trần chi phí ngày riêng runCardArtDailyBudgetUsd.
 //
@@ -279,7 +280,7 @@ func (s *RunCardStore) DrawArt(ctx context.Context, t runCardArtTask) error {
 		slog.WarnContext(ctx, "run_card.art_blocked", "uid", t.UID, "activityId", t.ActivityID, "style", style.Key, "photo", len(photo) > 0, "finishReason", finish, "blockReason", block)
 		return s.finishArt(ctx, t, map[string]any{"status": "failed", "reason": "blocked"})
 	}
-	path := runCardArtPath(t.UID, t.ActivityID, "art.png")
+	path := runCardArtPath(t.UID, t.ActivityID, fmt.Sprintf("art-%d.png", t.Attempt))
 	if err := a.images.Put(ctx, path, img); err != nil {
 		return err
 	}
