@@ -474,19 +474,32 @@ func TestEmulatorGameMeAfterEndShowsAllRoles(t *testing.T) {
 	}
 }
 
-// Ván đã huỷ hay đã hết chỉ nằm trên feed thêm một ngày, để mọi người kịp thấy
-// kết quả, rồi thôi chiếm chỗ trên các kèo đang chạy.
+// Ván đã hết nằm trên feed thêm một ngày, để mọi người kịp thấy kết quả, rồi
+// thôi chiếm chỗ trên các kèo đang chạy. Ván bị huỷ không có kết quả gì để xem
+// nên rời feed ngay.
 func TestEmulatorGameListHidesOldClosedGames(t *testing.T) {
+	g, h := runningAPIGame(t)
+	seedMerge(t, g, map[string]any{"status": gameEnded, "updatedAt": time.Now()})
+	items := h.call("outsider", "GET", "/v1/games", nil, "").body["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["status"] != gameEnded {
+		t.Fatalf("vừa hết ván: items = %v", items)
+	}
+	seedMerge(t, g, map[string]any{"updatedAt": time.Now().Add(-25 * time.Hour)})
+	if items := h.call("outsider", "GET", "/v1/games", nil, "").body["items"].([]any); len(items) != 0 {
+		t.Fatalf("hết ván quá một ngày: items = %v", items)
+	}
+}
+
+func TestEmulatorGameListHidesCancelledGames(t *testing.T) {
 	g, h := runningAPIGame(t)
 	if err := g.store.AdminCancel(context.Background(), g.id, "admin", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	items := h.call("outsider", "GET", "/v1/games", nil, "").body["items"].([]any)
-	if len(items) != 1 || items[0].(map[string]any)["status"] != "cancelled" {
-		t.Fatalf("vừa huỷ: items = %v", items)
-	}
-	seedMerge(t, g, map[string]any{"updatedAt": time.Now().Add(-25 * time.Hour)})
 	if items := h.call("outsider", "GET", "/v1/games", nil, "").body["items"].([]any); len(items) != 0 {
-		t.Fatalf("huỷ quá một ngày: items = %v", items)
+		t.Fatalf("vừa huỷ mà còn trên feed: items = %v", items)
+	}
+	// Link thẳng tới ván vẫn mở được.
+	if d := h.call("outsider", "GET", "/v1/games/"+g.id, nil, ""); d.status != 200 || d.body["status"] != gameCancelled {
+		t.Fatalf("detail ván huỷ: %d %s", d.status, d.raw)
 	}
 }

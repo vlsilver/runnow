@@ -267,13 +267,13 @@ type GameListItem struct {
 
 const (
 	gameListLimit = 10
-	// gameListKeepClosed: ván đã hết hay đã huỷ còn trên feed bấy lâu.
+	// gameListKeepClosed: ván đã hết còn trên feed bấy lâu.
 	gameListKeepClosed = 24 * time.Hour
 )
 
-// List trả các ván trong 10 ván mới nhất còn đáng hiện: ván đã đóng quá
-// gameListKeepClosed thì bỏ. Ván thử chỉ hiện với admin, người test và người
-// đã đăng ký vào ván đó.
+// List trả các ván trong 10 ván mới nhất còn đáng hiện: ván bị huỷ thì bỏ ngay
+// vì không có kết quả để xem, ván đã hết quá gameListKeepClosed thì bỏ. Ván thử
+// chỉ hiện với admin, người test và người đã đăng ký vào ván đó.
 func (s *GameStore) List(ctx context.Context, v GameViewer, wall time.Time) (GameList, error) {
 	cfg, err := s.loadConfig(ctx)
 	if err != nil {
@@ -301,7 +301,8 @@ func (s *GameStore) List(ctx context.Context, v GameViewer, wall time.Time) (Gam
 		if g["testMode"] == true && !cfg.isTester(v.UID) && !registered {
 			continue
 		}
-		if gameClosed(stringValue(g["status"])) && wall.Sub(timeValue(g["updatedAt"])) > gameListKeepClosed {
+		status := stringValue(g["status"])
+		if status == gameCancelled || status == gameEnded && wall.Sub(timeValue(g["updatedAt"])) > gameListKeepClosed {
 			continue
 		}
 		item := GameListItem{
