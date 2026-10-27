@@ -141,3 +141,26 @@ func TestRunCardSnapshotKeepsWhatTheCardDraws(t *testing.T) {
 		t.Fatal("splits chỉ giữ quãng và thời gian")
 	}
 }
+
+func TestRunCardVariantSplitsTheSecretSliceByElement(t *testing.T) {
+	// Trúng khi số quay dưới 10.000 phần triệu (1 %), mỗi hành 2.000 liền nhau
+	// theo thứ tự kim, mộc, thuỷ, hoả, thổ; từ 10.000 là thẻ thường.
+	cases := []struct {
+		r    int64
+		want string
+	}{
+		{0, "secret.metal"},
+		{1999, "secret.metal"},
+		{2000, "secret.wood"},
+		{4100, "secret.water"},
+		{6000, "secret.fire"},
+		{9999, "secret.earth"},
+		{10000, ""},
+		{999999, ""},
+	}
+	for _, c := range cases {
+		if got := runCardVariant(c.r); got != c.want {
+			t.Errorf("r %d: %q, muốn %q", c.r, got, c.want)
+		}
+	}
+}

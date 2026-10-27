@@ -29,6 +29,16 @@ func gameCardTier(seed werewolf.Seed, uid string) runCardTier {
 	return runCardPick(gameCardOdds, int64(r))
 }
 
+// gameCardVariant bốc bản Ẩn như gameCardTier, với tiền tố riêng để trúng Ẩn
+// không dính tới bậc.
+func gameCardVariant(seed werewolf.Seed, uid string) string {
+	h := sha256.New()
+	h.Write(seed[:])
+	h.Write([]byte("secret:" + uid))
+	r := binary.BigEndian.Uint64(h.Sum(nil)[:8]) % runCardPpm
+	return runCardVariant(int64(r))
+}
+
 // gameCardDoc chép đủ những gì in trên thẻ, nên xoá ván thì thẻ vẫn còn.
 func gameCardDoc(gameID, uid string, st *werewolf.State, endedAt time.Time) map[string]any {
 	p := st.Players[uid]
@@ -45,6 +55,9 @@ func gameCardDoc(gameID, uid string, st *werewolf.State, endedAt time.Time) map[
 	}
 	if !p.Alive {
 		doc["deathRound"] = p.DeathRound
+	}
+	if v := gameCardVariant(st.Seed, uid); v != "" {
+		doc["variant"] = v
 	}
 	if st.Config.TestMode {
 		doc["testMode"] = true

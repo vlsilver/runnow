@@ -102,6 +102,24 @@ func runCardPick(odds [5]int64, r int64) runCardTier {
 	return runCardTiers[len(runCardTiers)-1]
 }
 
+// Thẻ Ẩn: ngoài bậc, mỗi thẻ có runCardSecretPpm cơ hội ra bản Ẩn, cả thẻ
+// một màu theo một hành. Bốc riêng với bậc nên bậc nào cũng có thể Ẩn; hành
+// chia đều trong khoảng trúng. Doc thẻ ghi variant "secret.<hành>" chỉ khi
+// trúng; app chưa biết variant thì vẽ thẻ thường.
+const runCardSecretPpm = 10_000
+
+// runCardElements theo tên RunNowElement của app.
+var runCardElements = [5]string{"metal", "wood", "water", "fire", "earth"}
+
+// runCardVariant là bản của thẻ ứng với số quay r trong [0, runCardPpm), rỗng
+// khi là thẻ thường.
+func runCardVariant(r int64) string {
+	if r >= runCardSecretPpm {
+		return ""
+	}
+	return "secret." + runCardElements[r*int64(len(runCardElements))/runCardSecretPpm]
+}
+
 func cryptoRoll() (int64, error) {
 	n, err := rand.Int(rand.Reader, big.NewInt(runCardPpm))
 	if err != nil {
@@ -283,7 +301,7 @@ func (s *RunCardStore) Get(ctx context.Context, uid, activityID string) (RunCard
 
 // Roll lật thẻ cho buổi chạy. Đã lật thì trả thẻ cũ, đã trượt thì trả
 // errRunCardMissed, nên app gửi lại (mạng chập, bấm hai lần) không quay lại.
-// Bậc và cơ hội quay trước transaction và chỉ dùng khi chưa có kết quả, nên
+// Bậc, cơ hội và bản Ẩn quay trước transaction và chỉ dùng khi chưa có kết quả, nên
 // transaction chạy lại vẫn ra một kết quả.
 func (s *RunCardStore) Roll(ctx context.Context, uid, activityID string) (map[string]any, error) {
 	r, err := s.roll()
@@ -291,6 +309,10 @@ func (s *RunCardStore) Roll(ctx context.Context, uid, activityID string) (map[st
 		return nil, err
 	}
 	chance, err := s.roll()
+	if err != nil {
+		return nil, err
+	}
+	secret, err := s.roll()
 	if err != nil {
 		return nil, err
 	}
@@ -349,6 +371,10 @@ func (s *RunCardStore) Roll(ctx context.Context, uid, activityID string) (map[st
 		card = map[string]any{
 			"activityId": activityID, "tier": string(runCardPick(odds, r)), "odds": runCardOddMaps(odds), "rollPpm": r,
 			"km": km, "startedAt": fact.StartedAt, "rolledAt": s.now(), "snapshot": runCardSnapshot(act),
+			"variantRollPpm": secret,
+		}
+		if v := runCardVariant(secret); v != "" {
+			card["variant"] = v
 		}
 		return tx.Create(ref, card)
 	})

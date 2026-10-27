@@ -40,8 +40,9 @@ func seedRun(t *testing.T, h *apiHarness, uid, id string, extra map[string]any) 
 
 func TestEmulatorRunCardRollOnceAndKeep(t *testing.T) {
 	// 23,5 km: 0 / 50,5 / 31 / 14 / 4,5 %. Số quay 820000 rơi vào bậc huyền thoại
-	// (đoạn 815000..954999); lần quay sau ra số khác nhưng thẻ không đổi.
-	h := runCardHarness(t, 820000, 0)
+	// (đoạn 815000..954999); lần quay sau ra số khác nhưng thẻ không đổi. Lượt
+	// Ẩn quay 10000, vừa ngoài khoảng trúng.
+	h := runCardHarness(t, 820000, 0, 10000)
 	seedRun(t, h, "u1", "a1", nil)
 
 	r := h.call("u1", "GET", "/v1/activities/a1/card", nil, "")
@@ -59,6 +60,9 @@ func TestEmulatorRunCardRollOnceAndKeep(t *testing.T) {
 	card := r.body["card"].(map[string]any)
 	if card["tier"] != "legendary" || card["km"] != 23.5 || card["rollPpm"] != 820000.0 || card["startedAt"] != "2026-10-24T23:00:00Z" {
 		t.Fatalf("thẻ = %v", card)
+	}
+	if _, ok := card["variant"]; ok || card["variantRollPpm"] != 10000.0 {
+		t.Fatalf("thẻ thường mà variant = %v, variantRollPpm = %v", card["variant"], card["variantRollPpm"])
 	}
 	snap := card["snapshot"].(map[string]any)
 	if snap["name"] != "Buổi a1" || len(snap["route"].([]any)) != 2 || len(snap["splits"].([]any)) != 1 {
@@ -79,6 +83,29 @@ func TestEmulatorRunCardRollOnceAndKeep(t *testing.T) {
 	h.want(r, 200, "")
 	if c, _ := r.body["card"].(map[string]any); c == nil || c["tier"] != "legendary" {
 		t.Fatalf("xoá buổi chạy làm mất thẻ: %s", r.raw)
+	}
+}
+
+func TestEmulatorRunCardSecretVariantIsKept(t *testing.T) {
+	// Lượt Ẩn quay 4100: trong khoảng 4000..5999 của hành thuỷ. Bậc vẫn bốc
+	// riêng (820000 ra huyền thoại); lật lại với số quay khác không đổi bản.
+	h := runCardHarness(t, 820000, 0, 4100, 999999)
+	seedRun(t, h, "u1", "a1", nil)
+
+	r := h.call("u1", "POST", "/v1/activities/a1/card", nil, "")
+	h.want(r, 200, "")
+	card := r.body["card"].(map[string]any)
+	if card["tier"] != "legendary" || card["variant"] != "secret.water" || card["variantRollPpm"] != 4100.0 {
+		t.Fatalf("thẻ = %v", card)
+	}
+	r = h.call("u1", "POST", "/v1/activities/a1/card", nil, "")
+	h.want(r, 200, "")
+	if r.body["card"].(map[string]any)["variant"] != "secret.water" {
+		t.Fatalf("lật lại đổi bản Ẩn: %s", r.raw)
+	}
+	snap, err := h.store.db.Doc("users/u1/runCards/a1").Get(context.Background())
+	if err != nil || snap.Data()["variant"] != "secret.water" {
+		t.Fatalf("doc thẻ = %v (%v)", snap.Data(), err)
 	}
 }
 

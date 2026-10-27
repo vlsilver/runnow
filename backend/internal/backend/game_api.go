@@ -988,9 +988,11 @@ type GameMe struct {
 	// khi ván đã kết thúc và người gọi thuộc phe thắng: thẻ đã nằm trong
 	// users/{uid}/gameCards. CardRounds là số vòng đã chơi, chỉ có khi ván đã
 	// kết thúc (lúc đó ván không còn gửi phase): đúng số in trên thẻ.
-	CardTier   string `json:"cardTier,omitempty"`
-	CardOwned  bool   `json:"cardOwned"`
-	CardRounds int    `json:"cardRounds,omitempty"`
+	// CardVariant là bản Ẩn ("secret.<hành>"), rỗng với thẻ thường.
+	CardTier    string `json:"cardTier,omitempty"`
+	CardVariant string `json:"cardVariant,omitempty"`
+	CardOwned   bool   `json:"cardOwned"`
+	CardRounds  int    `json:"cardRounds,omitempty"`
 }
 
 type GamePotions struct {
@@ -1090,6 +1092,7 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 	out.RoleRules = strings.ReplaceAll(roleRules[me.Role], "X km", formatKm(kmPerUnit(st.Config))+" km")
 	out.CardURL, out.CardBackURL = cfg.cards[string(me.Role)], cfg.cards["back"]
 	out.CardTier = string(gameCardTier(st.Seed, v.UID))
+	out.CardVariant = gameCardVariant(st.Seed, v.UID)
 	if me.Role == werewolf.Witch {
 		out.Potions = &GamePotions{Save: st.SavePotion, Poison: st.PoisonPotion}
 	}

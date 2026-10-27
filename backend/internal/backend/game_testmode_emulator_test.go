@@ -307,6 +307,9 @@ func TestEmulatorTestModeGameRunsToEndByAdvance(t *testing.T) {
 			t.Fatalf("thẻ của %s: %v", uid, err)
 		}
 		card := snap.Data()
+		if v, _ := card["variant"].(string); v != gameCardVariant(st.Seed, uid) {
+			t.Fatalf("thẻ của %s: variant %q, muốn %q", uid, v, gameCardVariant(st.Seed, uid))
+		}
 		if card["tier"] != wantTier(st, uid) || card["team"] != "village" || card["winner"] != "village" ||
 			card["role"] != string(st.Players[uid].Role) || card["alive"] != st.Players[uid].Alive ||
 			card["playerCount"] != int64(10) || card["testMode"] != true {
