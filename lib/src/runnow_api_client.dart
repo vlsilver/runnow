@@ -38,6 +38,34 @@ class StravaConnectionStatus {
   final String? athleteId;
 }
 
+/// Trạng thái nối Garmin Connect. [available] false là backend chưa cấu hình
+/// Garmin, lúc đó nối sẽ báo lỗi garmin_not_configured.
+class GarminConnectionStatus {
+  const GarminConnectionStatus({
+    required this.available,
+    required this.connected,
+    required this.status,
+    this.lastPushAt,
+  });
+
+  factory GarminConnectionStatus.fromJson(Map<String, dynamic> json) {
+    final lastPushAt = json['lastPushAt'] as String?;
+    return GarminConnectionStatus(
+      available: json['available'] == true,
+      connected: json['connected'] == true,
+      status: json['status'] as String? ?? 'disconnected',
+      lastPushAt: lastPushAt == null ? null : DateTime.tryParse(lastPushAt),
+    );
+  }
+
+  final bool available;
+  final bool connected;
+  final String status;
+
+  /// Lần gần nhất Garmin đẩy buổi chạy về.
+  final DateTime? lastPushAt;
+}
+
 class TrackedActivityBackendResult {
   const TrackedActivityBackendResult({
     required this.status,
@@ -506,6 +534,31 @@ class RunNowApiClient {
 
   Future<void> requestStravaRepair({bool full = false}) async {
     await _send('POST', '/v1/strava/repair', body: {'full': full});
+  }
+
+  Future<GarminConnectionStatus> getGarminStatus() async {
+    final response = await _send('GET', '/v1/garmin/status');
+    return GarminConnectionStatus.fromJson(_jsonObject(response));
+  }
+
+  Future<Uri> createGarminAuthorization({required String returnTarget}) async {
+    final response = await _send(
+      'POST',
+      '/v1/garmin/authorization',
+      body: {'returnTarget': returnTarget},
+    );
+    final value = _jsonObject(response)['authorizationUrl'] as String?;
+    final uri = value == null ? null : Uri.tryParse(value);
+    if (uri == null) {
+      throw const FormatException(
+        'Backend trả về authorization URL không hợp lệ.',
+      );
+    }
+    return uri;
+  }
+
+  Future<void> disconnectGarmin() async {
+    await _send('POST', '/v1/garmin/disconnect');
   }
 
   /// Một trang buổi chạy của mình, mới trước, chỉ các field để vẽ danh sách

@@ -37,6 +37,10 @@ class SettingsScreen extends ConsumerWidget {
     // Ẩn Strava khi RC strava_enabled=false (app Strava đang Inactive).
     final stravaEnabled = ref.watch(stravaEnabledProvider).value ?? false;
     final health = ref.watch(healthSyncProvider);
+    final garmin = ref.watch(garminAuthProvider);
+    // Đang nối thì vẫn hiện dù cờ tắt, để user còn ngắt được.
+    final garminVisible =
+        (ref.watch(garminEnabledProvider).value ?? false) || garmin.connected;
     final telegram = ref.watch(_telegramStatusProvider);
     final googleAuth = ref.watch(authControllerProvider);
     final lastSynced = profile.value?.lastSyncedAt;
@@ -114,6 +118,26 @@ class SettingsScreen extends ConsumerWidget {
                         context,
                         title: health.providerName,
                         child: const _HealthSheet(),
+                      ),
+                    ),
+                  if (garminVisible)
+                    _SettingsRow(
+                      icon: Icons.watch_rounded,
+                      title: 'Garmin Connect',
+                      subtitle: garmin.errorMessage,
+                      value: garmin.statusLoading
+                          ? 'Đang kiểm tra'
+                          : garmin.loading
+                          ? 'Đang xử lý'
+                          : garmin.connected
+                          ? (garmin.lastPushAt == null
+                                ? 'Đã kết nối'
+                                : 'Nhận ${_syncedLabel(garmin.lastPushAt!)}')
+                          : 'Chưa kết nối',
+                      onTap: () => _showSettingsSheet(
+                        context,
+                        title: 'Garmin Connect',
+                        child: const _GarminSheet(),
                       ),
                     ),
                   _SettingsRow(
@@ -320,6 +344,61 @@ class _StravaSheet extends ConsumerWidget {
           _SettingsMessage(message: strava.errorMessage!),
         if (sync.message != null) _SettingsMessage(message: sync.message!),
         const _PoweredByStrava(),
+      ],
+    );
+  }
+}
+
+/// Thao tác Garmin Connect. Garmin tự đẩy buổi mới về nên không có nút đồng bộ.
+/// Câu đồng ý nêu rõ 3i bot (Gemini) đọc số liệu Garmin: bấm nối là đồng ý,
+/// ngắt kết nối là rút lại.
+class _GarminSheet extends ConsumerWidget {
+  const _GarminSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final garmin = ref.watch(garminAuthProvider);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (garmin.statusLoading)
+          const _SettingsRow(
+            icon: Icons.watch_rounded,
+            title: 'Garmin Connect',
+            value: 'Đang kiểm tra',
+          )
+        else if (garmin.connected) ...[
+          const _SettingsMessage(
+            message:
+                'Buổi chạy, đi bộ mới trên Garmin Connect tự về 3i sau khi '
+                'đồng hồ đồng bộ, không cần bấm gì.',
+          ),
+          _SettingsRow(
+            icon: Icons.link_off,
+            title: 'Ngắt kết nối Garmin',
+            value: garmin.loading ? 'Đang xử lý' : null,
+            destructive: true,
+            onTap: garmin.loading ? null : garmin.disconnect,
+          ),
+        ] else ...[
+          const _SettingsMessage(
+            message:
+                '3i nhận buổi chạy, đi bộ từ Garmin Connect: giờ bắt đầu, '
+                'quãng đường, thời gian, nhịp tim, cadence và tên đồng hồ. '
+                'Số liệu này được tính vào bảng xếp hạng, kèo, và 3i bot '
+                '(chạy trên Google Gemini) dùng nó để trả lời, nhận xét buổi '
+                'chạy. Ngắt kết nối lúc nào cũng được.',
+          ),
+          _SettingsRow(
+            icon: Icons.watch_rounded,
+            title: 'Đồng ý và nối Garmin',
+            value: garmin.loading ? 'Đang xử lý' : null,
+            onTap: garmin.loading ? null : garmin.connect,
+          ),
+        ],
+        if (garmin.errorMessage != null)
+          _SettingsMessage(message: garmin.errorMessage!),
       ],
     );
   }

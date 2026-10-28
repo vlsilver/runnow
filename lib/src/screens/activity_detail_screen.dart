@@ -108,6 +108,16 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                             ),
                           ),
                         ),
+                      // Brand guideline của Garmin: dữ liệu từ Garmin phải ghi
+                      // "Garmin [tên đồng hồ]" ngay cạnh phần hiển thị chính.
+                      if (item.summary.source == ActivitySource.garmin)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 16, top: 8),
+                          child: Text(
+                            item.summary.recordingDevice ?? 'Garmin',
+                            style: Theme.of(context).textTheme.labelMedium,
+                          ),
+                        ),
                       if (widget.ownerUid == null &&
                           hasRunCard(item.summary)) ...[
                         const SizedBox(height: 12),

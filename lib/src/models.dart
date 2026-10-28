@@ -19,7 +19,8 @@ enum ProfileVisibility {
 enum ActivitySource {
   strava('strava'),
   runnow('runnow'),
-  appleHealth('apple_health');
+  appleHealth('apple_health'),
+  garmin('garmin');
 
   const ActivitySource(this.value);
 
@@ -27,6 +28,7 @@ enum ActivitySource {
     return switch (value) {
       'runnow' => ActivitySource.runnow,
       'apple_health' => ActivitySource.appleHealth,
+      'garmin' => ActivitySource.garmin,
       _ => ActivitySource.strava,
     };
   }

@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:myrun/src/auth.dart';
 import 'package:myrun/src/avatar_repository.dart';
+import 'package:myrun/src/garmin_controller.dart';
 import 'package:myrun/src/health_sync.dart';
 import 'package:myrun/src/journal_controller.dart';
 import 'package:myrun/src/journey/journey_models.dart';
@@ -165,6 +166,13 @@ final stravaConnectionProvider = Provider<bool>((ref) {
   return ref.watch(stravaAuthProvider).connected;
 });
 
+final garminAuthProvider = ChangeNotifierProvider<GarminController>(
+  (ref) => GarminController(
+    FirebaseAuth.instance,
+    ref.watch(runNowApiClientProvider),
+  ),
+);
+
 /// Đồng bộ Apple Health (iOS). Quản trạng thái kết nối + đồng bộ workout.
 final healthSyncProvider = ChangeNotifierProvider<HealthSyncController>(
   (ref) => HealthSyncController(ref.watch(runNowApiClientProvider)),
@@ -247,6 +255,29 @@ final stravaEnabledProvider = StreamProvider<bool>((ref) async* {
   bool read() {
     try {
       final v = rc.getValue('strava_enabled');
+      return v.source == ValueSource.valueStatic ? false : v.asBool();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  yield read();
+  try {
+    await for (final _ in rc.onConfigUpdated) {
+      await rc.activate();
+      yield read();
+    }
+  } catch (_) {}
+});
+
+/// Cờ HIỆN/ẨN Garmin ở Cài đặt, Remote Config `garmin_enabled`. Bật khi backend
+/// đã có key Garmin và endpoint push đã khai trên portal Garmin. Mặc định và
+/// khi chưa fetch là false (ẩn).
+final garminEnabledProvider = StreamProvider<bool>((ref) async* {
+  final rc = FirebaseRemoteConfig.instance;
+  bool read() {
+    try {
+      final v = rc.getValue('garmin_enabled');
       return v.source == ValueSource.valueStatic ? false : v.asBool();
     } catch (_) {
       return false;

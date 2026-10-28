@@ -62,4 +62,29 @@ void main() {
     expect(find.text('TRÙNG · ƯU TIÊN STRAVA'), findsOneWidget);
     expect(find.byIcon(Icons.link_rounded), findsOneWidget);
   });
+
+  testWidgets('labels a Garmin run as GARMIN, not STRAVA', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ActivityTile(
+            activity: ActivitySummary(
+              id: 'garmin-21468990741',
+              name: 'Chạy sáng',
+              kind: ActivityKind.run,
+              source: ActivitySource.fromValue('garmin'),
+              startedAt: DateTime(2026, 10, 21, 6),
+              distanceMeters: 5012.3,
+              movingTimeSeconds: 1500,
+              elapsedTimeSeconds: 1500,
+              hydrated: true,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('GARMIN'), findsOneWidget);
+    expect(find.text('STRAVA'), findsNothing);
+  });
 }

@@ -746,7 +746,11 @@ class _SyncedActivityRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final isStrava = activity.source == ActivitySource.strava;
     final sourceColor = isStrava ? RunNowBrandColors.strava : palette.accent;
-    final sourceLabel = isStrava ? 'Strava' : 'Tự track';
+    final sourceLabel = switch (activity.source) {
+      ActivitySource.strava => 'Strava',
+      ActivitySource.garmin => 'Garmin',
+      _ => 'Tự track',
+    };
     final time = TimeOfDay.fromDateTime(activity.startedAt).format(context);
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return InkWell(
