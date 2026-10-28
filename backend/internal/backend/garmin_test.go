@@ -11,6 +11,16 @@ import (
 	"time"
 )
 
+// URL lấy từ Garmin OAuth2.0 PKCE Specification, mục STEP 1, STEP 2 và User ID.
+func TestGarminGatewayUsesSpecEndpoints(t *testing.T) {
+	g := NewGarminGateway("c", "s")
+	if g.authorizeURL != "https://connect.garmin.com/oauth2Confirm" ||
+		g.tokenURL != "https://diauth.garmin.com/di-oauth2-service/oauth/token" ||
+		g.apiBaseURL != "https://apis.garmin.com/wellness-api/rest" {
+		t.Fatalf("endpoints = %s %s %s", g.authorizeURL, g.tokenURL, g.apiBaseURL)
+	}
+}
+
 // Vector ở RFC 7636 phụ lục B.
 func TestGarminPKCEChallengeMatchesRFC7636(t *testing.T) {
 	if got := pkceChallenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"); got != "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM" {

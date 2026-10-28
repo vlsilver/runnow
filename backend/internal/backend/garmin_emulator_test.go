@@ -193,6 +193,34 @@ func TestEmulatorGarminConnectThenPushStoresRuns(t *testing.T) {
 	}
 }
 
+// Garmin từ chối client (key chưa bật OAuth 2.0) thì phải báo lỗi và để lại
+// dấu vết, khác với user tự bấm từ chối.
+func TestEmulatorGarminAuthorizeErrorIsReportedUnlessUserDenied(t *testing.T) {
+	h := newGarminHarness(t)
+	ctx := context.Background()
+	for oauthErr, want := range map[string]string{
+		"unauthorized_client": "garmin_authorization_failed",
+		"access_denied":       "garmin_authorization_denied",
+	} {
+		raw, err := h.svc.Authorization(ctx, "u1", "mobile")
+		if err != nil {
+			t.Fatal(err)
+		}
+		auth, _ := url.Parse(raw)
+		redirect, err := h.svc.Callback(ctx, OAuthCallback{State: auth.Query().Get("state"), OAuthError: oauthErr})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, _ := url.Parse(redirect)
+		if got.Query().Get("garminError") != want {
+			t.Errorf("%s: redirect = %s, muốn garminError=%s", oauthErr, redirect, want)
+		}
+	}
+	if code := h.data(t, "garminConnections/u1")["lastErrorCode"]; code != "garmin_authorization_failed" {
+		t.Fatalf("lastErrorCode = %v", code)
+	}
+}
+
 func TestEmulatorGarminAccountLinkedToAnotherUserIsRejected(t *testing.T) {
 	h := newGarminHarness(t)
 	h.connect(t, "u1")

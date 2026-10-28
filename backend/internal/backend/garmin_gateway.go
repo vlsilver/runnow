@@ -29,7 +29,7 @@ func NewGarminGateway(clientID, clientSecret string) *GarminGateway {
 		clientID: clientID, clientSecret: clientSecret,
 		client:       &http.Client{Timeout: 20 * time.Second},
 		authorizeURL: "https://connect.garmin.com/oauth2Confirm",
-		tokenURL:     "https://connectapi.garmin.com/di-oauth2-service/oauth/token",
+		tokenURL:     "https://diauth.garmin.com/di-oauth2-service/oauth/token",
 		apiBaseURL:   "https://apis.garmin.com/wellness-api/rest",
 	}
 }

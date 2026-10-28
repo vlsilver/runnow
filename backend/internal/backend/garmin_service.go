@@ -102,9 +102,15 @@ func (s *GarminService) Callback(ctx context.Context, input OAuthCallback) (stri
 		returnURI = s.webReturnURI
 	}
 	// garminError chứ không phải error: deep link trả về dùng chung với Strava,
-	// và app cũ đọc error là lỗi Strava.
-	if input.OAuthError != "" || input.Code == "" || state.Verifier == "" {
+	// và app cũ đọc error là lỗi Strava. Chỉ access_denied là user tự từ chối;
+	// lỗi khác (vd unauthorized_client khi key chưa bật OAuth 2.0) là lỗi cấu
+	// hình, phải để lại dấu vết.
+	if input.OAuthError == "access_denied" {
 		return withQuery(returnURI, map[string]string{"garminError": "garmin_authorization_denied"}), nil
+	}
+	if input.OAuthError != "" || input.Code == "" || state.Verifier == "" {
+		cause := fmt.Errorf("garmin authorize returned error %q", truncateRunes(input.OAuthError, 60))
+		return s.failure(ctx, state.UID, returnURI, "garmin_authorization_failed", cause)
 	}
 	if !s.enabled {
 		return withQuery(returnURI, map[string]string{"garminError": "garmin_not_configured"}), nil
