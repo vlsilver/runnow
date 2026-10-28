@@ -43,7 +43,7 @@ func (f *fakeGarmin) handler(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/access_token":
 		oauth := parseOAuthHeader(f.t, r.Header.Get("Authorization"))
 		verifyOAuthRequest(f.t, r, "secret-1", strings.Replace(oauth["oauth_token"], "rt-", "rs-", 1))
-		f.verifiers = append(f.verifiers, r.PostForm.Get("oauth_verifier"))
+		f.verifiers = append(f.verifiers, oauth["oauth_verifier"])
 		_, _ = w.Write([]byte("oauth_token=at&oauth_token_secret=as"))
 		return
 	}

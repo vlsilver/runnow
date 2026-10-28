@@ -145,8 +145,10 @@ func (g *GarminGateway) AuthorizationURL(requestToken, callbackURL string) strin
 }
 
 // AccessToken đổi verifier Garmin trả về callback lấy access token của user.
+// oauth_verifier là tham số giao thức nên nằm trong header; Garmin không đọc
+// nó trong form body.
 func (g *GarminGateway) AccessToken(ctx context.Context, request garminCredentials, verifier string) (garminCredentials, error) {
-	return g.tokenRequest(ctx, g.accessTokenURL, request, nil, url.Values{"oauth_verifier": {verifier}})
+	return g.tokenRequest(ctx, g.accessTokenURL, request, map[string]string{"oauth_verifier": verifier}, nil)
 }
 
 func (g *GarminGateway) tokenRequest(ctx context.Context, endpoint string, token garminCredentials, extra map[string]string, form url.Values) (garminCredentials, error) {

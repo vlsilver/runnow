@@ -79,10 +79,8 @@ func verifyOAuthRequest(t *testing.T, r *http.Request, consumerSecret, tokenSecr
 
 func TestGarminAccessTokenSignsVerifierWithRequestSecret(t *testing.T) {
 	var oauth map[string]string
-	var verifier string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		oauth = verifyOAuthRequest(t, r, "consumer-secret", "request-secret")
-		verifier = r.PostForm.Get("oauth_verifier")
 		_, _ = w.Write([]byte("oauth_token=at&oauth_token_secret=as"))
 	}))
 	defer srv.Close()
@@ -95,8 +93,10 @@ func TestGarminAccessTokenSignsVerifierWithRequestSecret(t *testing.T) {
 	if got != (garminCredentials{Token: "at", Secret: "as"}) {
 		t.Fatalf("access = %+v", got)
 	}
-	if oauth["oauth_token"] != "rt" || oauth["oauth_consumer_key"] != "consumer-1" || oauth["oauth_signature_method"] != "HMAC-SHA1" || verifier != "v-1" {
-		t.Fatalf("oauth = %v, verifier = %q", oauth, verifier)
+	// oauth_verifier là tham số giao thức (RFC 5849 mục 2.3), nằm trong header
+	// Authorization. Garmin không đọc nó trong form body và trả 401.
+	if oauth["oauth_token"] != "rt" || oauth["oauth_consumer_key"] != "consumer-1" || oauth["oauth_signature_method"] != "HMAC-SHA1" || oauth["oauth_verifier"] != "v-1" {
+		t.Fatalf("oauth = %v", oauth)
 	}
 }
 

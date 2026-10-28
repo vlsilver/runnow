@@ -121,7 +121,14 @@ func (s *GarminService) Callback(ctx context.Context, requestToken, verifier str
 }
 
 func (s *GarminService) failure(ctx context.Context, uid, returnURI, code string, cause error) (string, error) {
-	slog.WarnContext(ctx, "garmin.oauth_failed", "uid", uid, "code", code, "error", cause)
+	// Body lỗi của Garmin (vd oauth_problem) là manh mối duy nhất vì sao bị
+	// từ chối; không chứa secret.
+	body := ""
+	var api *GarminAPIError
+	if errors.As(cause, &api) {
+		body = api.Body
+	}
+	slog.WarnContext(ctx, "garmin.oauth_failed", "uid", uid, "code", code, "error", cause, "body", body)
 	_, err := s.db.Collection("garminConnections").Doc(uid).Set(ctx, map[string]any{
 		"uid": uid, "lastErrorCode": code, "updatedAt": firestore.ServerTimestamp,
 	}, firestore.MergeAll)
