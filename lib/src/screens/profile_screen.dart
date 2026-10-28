@@ -180,7 +180,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           const SizedBox(height: 12),
           FilledButton(
             onPressed: () => context.push('/me/settings'),
-            child: const Text('Kết nối Strava hoặc Apple Health'),
+            // Không nêu tên nguồn: nguồn nào hiện ở Cài đặt do cờ Remote
+            // Config quyết, bật tắt nguồn không phải sửa chữ ở đây.
+            child: const Text('Kết nối đồng hồ hoặc app chạy bộ'),
           ),
           if (!kIsWeb) ...[
             const SizedBox(height: 12),
