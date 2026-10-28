@@ -260,6 +260,9 @@ class RunNowGameTokens {
   static const moonMid = Color(0xFFE8DFC0);
   static const moonShade = Color(0xFFB9AE8A);
   static const moonGlow = Color(0xFFFFF8D6);
+
+  /// Bóng vai in trên trăng tròn ở mặt sau thẻ Ma Sói.
+  static const moonSilhouette = Color(0xE61A1520);
   static const holoClear = Color(0x00FFF0DC);
   static const holoCream = Color(0xFFFFE2C4);
   static const holoIce = Color(0xFFD6ECF0);

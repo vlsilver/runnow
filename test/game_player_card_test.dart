@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
@@ -213,6 +214,38 @@ void main() {
         gameCardShareSubject(card(), owner: 'AN').text,
         'Tiên tri · Dân làng thắng\nChia sẻ từ 3i',
       );
+    });
+  });
+
+  group('GameCardBackFace', () {
+    testWidgets('carries the Ma Sói moon and name, not just the stats', (
+      tester,
+    ) async {
+      final card = GamePlayerCard.fromJson('g1', {
+        'tier': 'legendary',
+        'role': 'wolf',
+        'team': 'wolves',
+        'winner': 'wolves',
+        'alive': true,
+        'rounds': 5,
+        'playerCount': 14,
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: 300,
+              height: 420,
+              child: GameCardBackFace(card: card),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(GameMoon), findsOneWidget);
+      expect(find.text('MA SÓI'), findsOneWidget);
+      expect(find.text('BẦY SÓI THẮNG'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 }

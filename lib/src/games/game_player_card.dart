@@ -5,7 +5,7 @@ import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/games/game_models.dart';
 import 'package:myrun/src/games/game_role_card.dart';
-import 'package:myrun/src/theme.dart' show RunNowElement;
+import 'package:myrun/src/theme.dart' show RunNowElement, RunNowGameTokens;
 
 const _condensed = 'Barlow Condensed';
 
@@ -248,11 +248,13 @@ class GameRoleArt extends StatelessWidget {
 }
 
 class _NightPainter extends CustomPainter {
-  _NightPainter({required this.tier, required this.skin, required this.road});
+  _NightPainter({required this.tier, required this.skin, this.road});
 
   final GameCardTier tier;
   final RunCardSkin skin;
-  final Color road;
+
+  /// Màu con đường đứt nét dưới chân núi; null thì không vẽ đường.
+  final Color? road;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -318,6 +320,8 @@ class _NightPainter extends CustomPainter {
         Paint()..color = Color.lerp(edge, Colors.black, 0.32)!,
       );
 
+    final road = this.road;
+    if (road == null) return;
     final path = Path()
       ..moveTo(0, size.height * 0.79)
       ..cubicTo(
@@ -396,103 +400,104 @@ class GameCardBackFace extends StatelessWidget {
       letterSpacing: 2.2,
       color: accent,
     );
-    return ColoredBox(
-      color: skin.dataBack,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Text('3I RUN', style: brand),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'MA SÓI · MẶT SAU',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.end,
-                    style: foot,
-                  ),
-                ),
-              ],
-            ),
-            const Spacer(),
-            Center(
-              child: Container(
-                width: 104,
-                height: 104,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: skin.stamp,
-                  border: Border.all(color: accent, width: 1.5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: skin.glow(card.tier).withValues(alpha: 0.3),
-                      blurRadius: 30,
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: CustomPaint(
-                    size: const Size.square(62),
-                    painter: GameRoleIconPainter(
-                      card.role,
-                      _roleInk(card.role, skin),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              card.ended
-                  ? (_winnerTitles[card.winner] ?? 'Ván đã xong').toUpperCase()
-                  : 'VÁN ĐANG CHƠI',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: _condensed,
-                fontWeight: FontWeight.w800,
-                fontSize: 22,
-                letterSpacing: 1.5,
-                color: skin.hero,
-              ),
-            ),
-            const Spacer(),
-            Row(
-              children: [
-                _BackStat('VAI', card.label, skin),
-                _BackStat('PHE', card.teamLabel, skin),
-                _BackStat('KẾT QUẢ', card.result, skin),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                _BackStat(
-                  card.ended ? 'SỐ VÒNG' : 'VÒNG',
-                  '${card.round}',
-                  skin,
-                ),
-                _BackStat('NGƯỜI CHƠI', '${card.playerCount}', skin),
-                _BackStat('BẢN THÂN', card.fate, skin),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Text(_date(card.endedAt), style: foot),
-                const Spacer(),
-                Text(
-                  gameCardTiers[card.tier]!.label.toUpperCase(),
-                  style: brand,
-                ),
-              ],
-            ),
-          ],
+    // Trời đêm, rặng núi và trăng tròn như lá bài Ma Sói; vai in bóng trên
+    // trăng, số liệu ván nằm dưới chân núi.
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        CustomPaint(
+          painter: _NightPainter(tier: card.tier, skin: skin),
         ),
-      ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'MA SÓI',
+                    style: TextStyle(
+                      fontFamily: _condensed,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                      letterSpacing: 4,
+                      color: accent,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text('3I RUN', style: brand),
+                ],
+              ),
+              const Spacer(),
+              Center(
+                child: SizedBox.square(
+                  dimension: 104,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      const GameMoon(size: 104, glow: 34),
+                      CustomPaint(
+                        size: const Size.square(62),
+                        painter: GameRoleIconPainter(
+                          card.role,
+                          RunNowGameTokens.moonSilhouette,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                card.ended
+                    ? (_winnerTitles[card.winner] ?? 'Ván đã xong')
+                          .toUpperCase()
+                    : 'VÁN ĐANG CHƠI',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: _condensed,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 22,
+                  letterSpacing: 1.5,
+                  color: skin.hero,
+                ),
+              ),
+              const Spacer(),
+              Row(
+                children: [
+                  _BackStat('VAI', card.label, skin),
+                  _BackStat('PHE', card.teamLabel, skin),
+                  _BackStat('KẾT QUẢ', card.result, skin),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _BackStat(
+                    card.ended ? 'SỐ VÒNG' : 'VÒNG',
+                    '${card.round}',
+                    skin,
+                  ),
+                  _BackStat('NGƯỜI CHƠI', '${card.playerCount}', skin),
+                  _BackStat('BẢN THÂN', card.fate, skin),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Text(_date(card.endedAt), style: foot),
+                  const Spacer(),
+                  Text(
+                    gameCardTiers[card.tier]!.label.toUpperCase(),
+                    style: brand,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
