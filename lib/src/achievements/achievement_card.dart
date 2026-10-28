@@ -64,7 +64,7 @@ class AchievementCardData {
 }
 
 /// Kim loại của bậc, mỗi thứ ba tông sáng, giữa, tối. Tranh phủ cả thẻ, kim
-/// loại chỉ còn ở nét chân thẻ, ô đá và viền trong.
+/// loại chỉ còn ở ô đá và viền trong.
 typedef _Metal = ({Color light, Color mid, Color dark});
 
 const _metals = <GameCardTier, _Metal>{
@@ -174,7 +174,7 @@ const _sheens = {
 /// Bo góc ngoài của thẻ.
 const _radius = 17.0;
 
-/// Nét ngang ngăn tranh với chân thẻ; chân thẻ chiếm từ đây tới đáy.
+/// Đỉnh chân thẻ; chân thẻ là nền tối từ đây tới đáy, nối liền lớp phủ chữ.
 const _footTop = 360.0;
 
 /// Lề trái phải của chữ và ô đá.
@@ -306,14 +306,6 @@ Shader _metalShader(_Metal metal, Rect rect, double tilt) => LinearGradient(
   tileMode: TileMode.mirror,
 ).createShader(rect);
 
-/// Nét ngang chân thẻ, chạy thẳng từ mép này sang mép kia.
-Path _footLine(double width, double dy) {
-  final y = _footTop + dy;
-  return Path()
-    ..moveTo(0, y)
-    ..lineTo(width, y);
-}
-
 /// Độ dày nét kim loại chính theo bậc, Sắt mảnh nhất.
 const _lineWidths = [0.96, 1.32, 1.44, 1.56, 1.68];
 
@@ -361,7 +353,7 @@ class _Front extends StatelessWidget {
           ),
         ),
         if (sheen != null) _Sheen(light: light, color: sheen),
-        // Khối chữ đứng ngay trên nét chân thẻ, cùng mốc với nét kim loại.
+        // Khối chữ đứng ngay trên chân thẻ, lớp phủ của nó nối liền nền chân.
         Positioned(
           left: 0,
           right: 0,
@@ -554,9 +546,9 @@ class _Front extends StatelessWidget {
   }
 }
 
-/// Nét kim loại của bậc. Mặt trước có nét ngang ngăn tranh với chân thẻ:
-/// Sắt và Đồng một nét, từ Bạc thêm nét mảnh phía trên, từ Vàng thêm viền
-/// trong, Kim cương có vệt sáng chạy dọc các nét. Mặt sau chỉ có viền trong.
+/// Chân thẻ và nét kim loại của bậc. Mặt trước không có nét ngăn tranh với
+/// chân thẻ; từ Vàng có viền trong, Kim cương thêm vệt sáng chạy dọc viền.
+/// Mặt sau luôn có viền trong.
 class _TrimPainter extends CustomPainter {
   const _TrimPainter({
     required this.tier,
@@ -595,24 +587,21 @@ class _TrimPainter extends CustomPainter {
       );
     final traced = <Path>[];
     if (shade case final shade?) {
-      final foot = _footLine(size.width, 0);
       canvas.drawRect(
         Rect.fromLTRB(0, _footTop, size.width, size.height),
         Paint()..color = shade.withValues(alpha: 0.94),
       );
-      canvas.drawPath(foot, line(_lineWidths[level]));
-      if (level >= 2) {
-        canvas.drawPath(_footLine(size.width, -3.1), line(0.54, 0.85));
+      if (level >= 3) {
+        canvas.drawPath(inner, line(0.72, 0.9));
+        traced.add(inner);
       }
-      if (level >= 3) canvas.drawPath(inner, line(0.72, 0.9));
-      traced.addAll([foot, inner]);
     } else {
       canvas.drawPath(inner, line(_lineWidths[level], 0.9));
       traced.add(inner);
     }
     if (tier == GameCardTier.mythic) {
       // Vệt dài 5% nét, chạy hết một vòng trong 5,5 giây. Giây 0 là ảnh tĩnh
-      // đem khoe, nên vệt xuất phát từ giữa nét chân thẻ chứ không ở mép trái.
+      // đem khoe, nên vệt lệch pha cho khỏi nằm ở góc có ô đá.
       final sweep = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.68

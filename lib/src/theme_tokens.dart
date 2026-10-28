@@ -334,7 +334,7 @@ class RunNowBotCardTokens {
 }
 
 /// Thẻ thành tích: tranh phủ cả thẻ, kim loại của bậc (sắt, đồng, bạc, vàng,
-/// kim cương) chỉ còn ở nét chân thẻ, ô đá và viền trong. Tông đêm như lá Ma
+/// kim cương) chỉ còn ở ô đá và viền trong. Tông đêm như lá Ma
 /// Sói, nhưng nền là ảnh thật nên chữ cần lớp tối phía dưới để đọc được.
 class RunNowAchievementTokens {
   const RunNowAchievementTokens._();
@@ -345,7 +345,7 @@ class RunNowAchievementTokens {
   static const accentLegendary = Color(0xFFF3D27A);
   static const accentMythic = Color(0xFFDDEFFF);
 
-  // Kim loại của bậc, mỗi thứ sáng, giữa, tối: nét chân thẻ, ô đá, viền trong.
+  // Kim loại của bậc, mỗi thứ sáng, giữa, tối: ô đá, viền trong.
   static const ironLight = Color(0xFF9AA1AA);
   static const ironMid = Color(0xFF6B727C);
   static const ironDark = Color(0xFF3A3F46);

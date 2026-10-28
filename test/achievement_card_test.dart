@@ -157,7 +157,7 @@ void main() {
 
     // Ô đá góc trái trên: nền mực 62% trên ảnh trắng, 255·0,38 + 10·0,62 ≈ 103.
     expect(luma(0.07, 0.06), lessThan(128), reason: 'ô đá');
-    // Chân thẻ dưới nét ngang: mực 94%, 255·0,06 + 9·0,94 ≈ 24.
+    // Chân thẻ: mực 94%, 255·0,06 + 9·0,94 ≈ 24.
     expect(luma(0.5, 0.875), lessThan(40), reason: 'chân thẻ, trên dòng chữ');
     expect(luma(0.15, 0.94), lessThan(40), reason: 'chân thẻ');
     // Không còn lớp phủ trên; lớp phủ dưới chỉ nằm sau khối chữ, nên phần
