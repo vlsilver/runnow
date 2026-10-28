@@ -11,86 +11,122 @@ import (
 	"time"
 )
 
-// URL lấy từ Garmin OAuth2.0 PKCE Specification, mục STEP 1, STEP 2 và User ID.
-func TestGarminGatewayUsesSpecEndpoints(t *testing.T) {
-	g := NewGarminGateway("c", "s")
-	if g.authorizeURL != "https://connect.garmin.com/oauth2Confirm" ||
-		g.tokenURL != "https://diauth.garmin.com/di-oauth2-service/oauth/token" ||
-		g.apiBaseURL != "https://apis.garmin.com/wellness-api/rest" {
-		t.Fatalf("endpoints = %s %s %s", g.authorizeURL, g.tokenURL, g.apiBaseURL)
+// Ví dụ ở OAuth Core 1.0 phụ lục A.5.1–A.5.2 (RFC 5849 giữ nguyên thuật
+// toán): chữ ký in trong spec là tR3+Ty81lMeYAr/Fid0kMTYa/WM=.
+func TestOAuthSignatureMatchesSpecExample(t *testing.T) {
+	params := url.Values{
+		"file": {"vacation.jpg"}, "size": {"original"},
+		"oauth_consumer_key": {"dpf43f3p2l4k3l03"}, "oauth_token": {"nnch734d00sl2jdk"},
+		"oauth_signature_method": {"HMAC-SHA1"}, "oauth_timestamp": {"1191242096"},
+		"oauth_nonce": {"kllo9940pd9333jh"}, "oauth_version": {"1.0"},
+	}
+	got := oauthSignature("GET", "http://photos.example.net/photos", params, "kd94hf93k423kf44", "pfkkdhi9sl3r4s00")
+	if got != "tR3+Ty81lMeYAr/Fid0kMTYa/WM=" {
+		t.Fatalf("signature = %s", got)
 	}
 }
 
-// Vector ở RFC 7636 phụ lục B.
-func TestGarminPKCEChallengeMatchesRFC7636(t *testing.T) {
-	if got := pkceChallenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"); got != "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM" {
-		t.Fatalf("challenge = %s", got)
+// RFC 5849 mục 3.6: chỉ ký tự unreserved giữ nguyên, dấu cách là %20.
+func TestOAuthEscape(t *testing.T) {
+	if got := oauthEscape("a b+c~d.e_f-g/h=é"); got != "a%20b%2Bc~d.e_f-g%2Fh%3D%C3%A9" {
+		t.Fatalf("escape = %s", got)
 	}
 }
 
-func TestGarminAuthorizationURLCarriesPKCE(t *testing.T) {
-	g := NewGarminGateway("client-1", "secret")
-	u, err := url.Parse(g.AuthorizationURL("https://api.example/v1/garmin/callback", "st", "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"))
-	if err != nil {
-		t.Fatal(err)
+// parseOAuthHeader đọc header Authorization: OAuth k="v", ... thành map. Chạy
+// được trong handler của httptest nên báo lỗi bằng Errorf, không Fatalf.
+func parseOAuthHeader(t *testing.T, header string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	if !strings.HasPrefix(header, "OAuth ") {
+		t.Errorf("Authorization = %q", header)
+		return out
 	}
-	q := u.Query()
-	want := map[string]string{
-		"client_id": "client-1", "response_type": "code", "state": "st",
-		"code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", "code_challenge_method": "S256",
-		"redirect_uri": "https://api.example/v1/garmin/callback",
+	for _, part := range strings.Split(strings.TrimPrefix(header, "OAuth "), ", ") {
+		k, v, ok := strings.Cut(part, "=")
+		if !ok {
+			t.Errorf("phần header hỏng: %q", part)
+			continue
+		}
+		key, _ := url.PathUnescape(k)
+		val, _ := url.PathUnescape(strings.Trim(v, `"`))
+		out[key] = val
 	}
-	for k, v := range want {
-		if q.Get(k) != v {
-			t.Errorf("%s = %q, muốn %q", k, q.Get(k), v)
+	return out
+}
+
+// verifyOAuthRequest kiểm chữ ký của request Garmin nhận được với hai secret
+// đúng, gồm cả tham số query và form body.
+func verifyOAuthRequest(t *testing.T, r *http.Request, consumerSecret, tokenSecret string) map[string]string {
+	t.Helper()
+	oauth := parseOAuthHeader(t, r.Header.Get("Authorization"))
+	_ = r.ParseForm()
+	params := url.Values{}
+	for k, vs := range r.Form {
+		params[k] = vs
+	}
+	for k, v := range oauth {
+		if k != "oauth_signature" {
+			params.Set(k, v)
 		}
 	}
-	if q.Has("client_secret") {
-		t.Error("client_secret không được nằm trong URL gửi ra trình duyệt")
+	base := "http://" + r.Host + r.URL.Path
+	if want := oauthSignature(r.Method, base, params, consumerSecret, tokenSecret); oauth["oauth_signature"] != want {
+		t.Errorf("%s %s: chữ ký sai", r.Method, r.URL.Path)
 	}
+	return oauth
 }
 
-func TestGarminTokenExchangeSendsSecretAndVerifier(t *testing.T) {
-	var form url.Values
+func TestGarminAccessTokenSignsVerifierWithRequestSecret(t *testing.T) {
+	var oauth map[string]string
+	var verifier string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = r.ParseForm()
-		form = r.PostForm
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"access_token":"at","refresh_token":"rt","expires_in":86400,"refresh_token_expires_in":7776000,"scope":"ACTIVITY_EXPORT"}`))
+		oauth = verifyOAuthRequest(t, r, "consumer-secret", "request-secret")
+		verifier = r.PostForm.Get("oauth_verifier")
+		_, _ = w.Write([]byte("oauth_token=at&oauth_token_secret=as"))
 	}))
 	defer srv.Close()
-	g := NewGarminGateway("client-1", "secret-1")
-	g.tokenURL = srv.URL
-	token, err := g.ExchangeCode(context.Background(), "code-1", "verifier-1", "https://api.example/cb")
+	g := NewGarminGateway("consumer-1", "consumer-secret")
+	g.accessTokenURL = srv.URL + "/access_token"
+	got, err := g.AccessToken(context.Background(), garminCredentials{Token: "rt", Secret: "request-secret"}, "v-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if token.AccessToken != "at" || token.RefreshToken != "rt" || token.ExpiresIn != 86400 || token.RefreshTokenExpiresIn != 7776000 {
-		t.Fatalf("token = %+v", token)
+	if got != (garminCredentials{Token: "at", Secret: "as"}) {
+		t.Fatalf("access = %+v", got)
 	}
-	want := map[string]string{
-		"grant_type": "authorization_code", "code": "code-1", "code_verifier": "verifier-1",
-		"redirect_uri": "https://api.example/cb", "client_id": "client-1", "client_secret": "secret-1",
+	if oauth["oauth_token"] != "rt" || oauth["oauth_consumer_key"] != "consumer-1" || oauth["oauth_signature_method"] != "HMAC-SHA1" || verifier != "v-1" {
+		t.Fatalf("oauth = %v, verifier = %q", oauth, verifier)
 	}
-	for k, v := range want {
-		if form.Get(k) != v {
-			t.Errorf("%s = %q, muốn %q", k, form.Get(k), v)
-		}
+}
+
+func TestGarminAuthorizationURLCarriesTokenAndCallback(t *testing.T) {
+	g := NewGarminGateway("consumer-1", "consumer-secret")
+	u, err := url.Parse(g.AuthorizationURL("rt", "https://api.example/v1/garmin/callback"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Host != "connect.garmin.com" || u.Path != "/oauthConfirm" ||
+		u.Query().Get("oauth_token") != "rt" || u.Query().Get("oauth_callback") != "https://api.example/v1/garmin/callback" {
+		t.Fatalf("url = %s", u)
+	}
+	if strings.Contains(u.String(), "consumer-secret") {
+		t.Fatal("secret không được nằm trong URL gửi ra trình duyệt")
 	}
 }
 
 func TestGarminGatewayReturnsAPIErrorStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`invalid consumer`))
 	}))
 	defer srv.Close()
 	g := NewGarminGateway("c", "s")
-	g.tokenURL = srv.URL
-	_, err := g.RefreshToken(context.Background(), "rt")
+	g.requestTokenURL = srv.URL
+	_, err := g.RequestToken(context.Background(), "https://api.example/cb")
 	var api *GarminAPIError
-	if !errors.As(err, &api) || api.Status != http.StatusBadRequest {
-		t.Fatalf("err = %v, muốn GarminAPIError 400", err)
+	if !errors.As(err, &api) || api.Status != http.StatusUnauthorized {
+		t.Fatalf("err = %v, muốn GarminAPIError 401", err)
 	}
 }
 

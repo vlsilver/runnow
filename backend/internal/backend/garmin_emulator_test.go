@@ -16,12 +16,16 @@ import (
 	"cloud.google.com/go/firestore"
 )
 
-// fakeGarmin đóng vai token endpoint và Wellness API của Garmin.
+// fakeGarmin đóng vai OAuth 1.0a và Wellness API của Garmin, kiểm chữ ký từng
+// request với đúng secret: consumer khi xin request token, request token khi
+// đổi access token, access token khi gọi API.
 type fakeGarmin struct {
+	t            *testing.T
 	mu           sync.Mutex
 	userID       string
+	issued       int
+	callbacks    []string
 	verifiers    []string
-	refreshes    int
 	deregistered int
 	backfillCode int
 }
@@ -29,16 +33,25 @@ type fakeGarmin struct {
 func (f *fakeGarmin) handler(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	switch {
+	case r.URL.Path == "/request_token":
+		oauth := verifyOAuthRequest(f.t, r, "secret-1", "")
+		f.callbacks = append(f.callbacks, oauth["oauth_callback"])
+		f.issued++
+		_, _ = fmt.Fprintf(w, "oauth_token=rt-%d&oauth_token_secret=rs-%d&oauth_callback_confirmed=true", f.issued, f.issued)
+		return
+	case r.URL.Path == "/access_token":
+		oauth := parseOAuthHeader(f.t, r.Header.Get("Authorization"))
+		verifyOAuthRequest(f.t, r, "secret-1", strings.Replace(oauth["oauth_token"], "rt-", "rs-", 1))
+		f.verifiers = append(f.verifiers, r.PostForm.Get("oauth_verifier"))
+		_, _ = w.Write([]byte("oauth_token=at&oauth_token_secret=as"))
+		return
+	}
+	if oauth := verifyOAuthRequest(f.t, r, "secret-1", "as"); oauth["oauth_token"] != "at" {
+		f.t.Errorf("%s gọi bằng token %q, muốn access token", r.URL.Path, oauth["oauth_token"])
+	}
 	w.Header().Set("Content-Type", "application/json")
 	switch {
-	case r.URL.Path == "/token":
-		_ = r.ParseForm()
-		if r.PostForm.Get("grant_type") == "refresh_token" {
-			f.refreshes++
-		} else {
-			f.verifiers = append(f.verifiers, r.PostForm.Get("code_verifier"))
-		}
-		_, _ = w.Write([]byte(`{"access_token":"at","refresh_token":"rt","expires_in":86400,"refresh_token_expires_in":7776000}`))
 	case r.URL.Path == "/user/id":
 		_, _ = fmt.Fprintf(w, `{"userId":%q}`, f.userID)
 	case r.URL.Path == "/backfill/activities":
@@ -62,11 +75,12 @@ type garminHarness struct {
 func newGarminHarness(t *testing.T) *garminHarness {
 	t.Helper()
 	db := emulatorDB(t)
-	fake := &fakeGarmin{userID: "g-1", backfillCode: http.StatusForbidden}
+	fake := &fakeGarmin{t: t, userID: "g-1", backfillCode: http.StatusForbidden}
 	srv := httptest.NewServer(http.HandlerFunc(fake.handler))
 	t.Cleanup(srv.Close)
 	gateway := NewGarminGateway("client-1", "secret-1")
-	gateway.tokenURL = srv.URL + "/token"
+	gateway.requestTokenURL = srv.URL + "/request_token"
+	gateway.accessTokenURL = srv.URL + "/access_token"
 	gateway.apiBaseURL = srv.URL
 	tasks, rec := newRecordingTaskPublisher(t)
 	activities := NewActivityService(db, nil, nil, tasks, nil, "", "")
@@ -86,16 +100,15 @@ func (h *garminHarness) connect(t *testing.T, uid string) *url.URL {
 		t.Fatal(err)
 	}
 	auth, _ := url.Parse(raw)
-	redirect, err := h.svc.Callback(ctx, OAuthCallback{State: auth.Query().Get("state"), Code: "code-" + uid})
+	redirect, err := h.svc.Callback(ctx, auth.Query().Get("oauth_token"), "v-"+uid)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Verifier gửi lên lúc đổi mã phải khớp challenge đã đưa Garmin lúc xin quyền.
 	h.fake.mu.Lock()
-	sent := h.fake.verifiers[len(h.fake.verifiers)-1]
+	callback, verifier := h.fake.callbacks[len(h.fake.callbacks)-1], h.fake.verifiers[len(h.fake.verifiers)-1]
 	h.fake.mu.Unlock()
-	if pkceChallenge(sent) != auth.Query().Get("code_challenge") {
-		t.Fatal("code_verifier không khớp code_challenge")
+	if callback != "https://api.example/v1/garmin/callback" || auth.Query().Get("oauth_callback") != callback || verifier != "v-"+uid {
+		t.Fatalf("callback = %q, url = %s, verifier = %q", callback, raw, verifier)
 	}
 	u, err := url.Parse(redirect)
 	if err != nil {
@@ -140,7 +153,7 @@ func TestEmulatorGarminConnectThenPushStoresRuns(t *testing.T) {
 		t.Fatalf("link = %v", link)
 	}
 	conn := h.data(t, "garminConnections/u1")
-	if conn["status"] != "active" || conn["accessToken"] != "at" || conn["aiConsentAt"] == nil {
+	if conn["status"] != "active" || conn["accessToken"] != "at" || conn["accessTokenSecret"] != "as" || conn["aiConsentAt"] == nil {
 		t.Fatalf("connection = %v", conn)
 	}
 	// Gói không có backfill: Garmin trả 403 mà vẫn nối xong.
@@ -193,31 +206,33 @@ func TestEmulatorGarminConnectThenPushStoresRuns(t *testing.T) {
 	}
 }
 
-// Garmin từ chối client (key chưa bật OAuth 2.0) thì phải báo lỗi và để lại
-// dấu vết, khác với user tự bấm từ chối.
-func TestEmulatorGarminAuthorizeErrorIsReportedUnlessUserDenied(t *testing.T) {
+// Garmin trả về không kèm verifier là không cấp quyền: báo app và để lại dấu
+// vết, không đổi token.
+func TestEmulatorGarminCallbackWithoutVerifierIsReported(t *testing.T) {
 	h := newGarminHarness(t)
 	ctx := context.Background()
-	for oauthErr, want := range map[string]string{
-		"unauthorized_client": "garmin_authorization_failed",
-		"access_denied":       "garmin_authorization_denied",
-	} {
-		raw, err := h.svc.Authorization(ctx, "u1", "mobile")
-		if err != nil {
-			t.Fatal(err)
-		}
-		auth, _ := url.Parse(raw)
-		redirect, err := h.svc.Callback(ctx, OAuthCallback{State: auth.Query().Get("state"), OAuthError: oauthErr})
-		if err != nil {
-			t.Fatal(err)
-		}
-		got, _ := url.Parse(redirect)
-		if got.Query().Get("garminError") != want {
-			t.Errorf("%s: redirect = %s, muốn garminError=%s", oauthErr, redirect, want)
-		}
+	raw, err := h.svc.Authorization(ctx, "u1", "mobile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth, _ := url.Parse(raw)
+	redirect, err := h.svc.Callback(ctx, auth.Query().Get("oauth_token"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := url.Parse(redirect)
+	if got.Query().Get("garminError") != "garmin_authorization_failed" {
+		t.Fatalf("redirect = %s", redirect)
 	}
 	if code := h.data(t, "garminConnections/u1")["lastErrorCode"]; code != "garmin_authorization_failed" {
 		t.Fatalf("lastErrorCode = %v", code)
+	}
+	if len(h.fake.verifiers) != 0 {
+		t.Fatal("không có verifier thì không được gọi access_token")
+	}
+	// Request token chỉ dùng được một lần.
+	if _, err := h.svc.Callback(ctx, auth.Query().Get("oauth_token"), "v-1"); err == nil {
+		t.Fatal("request token dùng lại được")
 	}
 }
 
@@ -257,7 +272,7 @@ func TestEmulatorGarminDeregistrationPushRevokes(t *testing.T) {
 		t.Fatal("link còn sau deregistration")
 	}
 	conn := h.data(t, "garminConnections/u1")
-	if conn["status"] != "revoked" || conn["accessToken"] != nil || conn["refreshToken"] != nil {
+	if conn["status"] != "revoked" || conn["accessToken"] != nil || conn["accessTokenSecret"] != nil {
 		t.Fatalf("connection = %v", conn)
 	}
 	if h.data(t, "users/u1")["garminConnected"] != false {
@@ -270,17 +285,14 @@ func TestEmulatorGarminDeregistrationPushRevokes(t *testing.T) {
 	}
 }
 
-func TestEmulatorGarminDisconnectRefreshesExpiredTokenThenDeregisters(t *testing.T) {
+func TestEmulatorGarminDisconnectDeregisters(t *testing.T) {
 	h := newGarminHarness(t)
 	h.connect(t, "u1")
-	if _, err := h.db.Doc("garminConnections/u1").Set(context.Background(), map[string]any{"expiresAt": time.Now().Add(time.Minute)}, firestore.MergeAll); err != nil {
-		t.Fatal(err)
-	}
 	if err := h.svc.Disconnect(context.Background(), "u1"); err != nil {
 		t.Fatal(err)
 	}
-	if h.fake.refreshes != 1 || h.fake.deregistered != 1 {
-		t.Fatalf("refresh = %d, deregister = %d; muốn 1, 1", h.fake.refreshes, h.fake.deregistered)
+	if h.fake.deregistered != 1 {
+		t.Fatalf("deregister = %d, muốn 1", h.fake.deregistered)
 	}
 	if h.data(t, "garminUserLinks/g-1") != nil || h.data(t, "garminConnections/u1")["status"] != "revoked" {
 		t.Fatal("chưa gỡ link hay connection")

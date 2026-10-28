@@ -2,9 +2,7 @@ package backend
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/subtle"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -58,14 +56,9 @@ func errGarminNotConfigured() error {
 	return &HTTPError{Status: 503, Code: "garmin_not_configured", Message: "Garmin is not configured"}
 }
 
-func randomURLToken(n int) (string, error) {
-	raw := make([]byte, n)
-	if _, err := rand.Read(raw); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(raw), nil
-}
-
+// Authorization xin request token rồi trả trang cho phép của Garmin. OAuth
+// 1.0a không có state: callback mang lại oauth_token, nên oauthStates khoá
+// theo request token và giữ secret của nó để đổi access token.
 func (s *GarminService) Authorization(ctx context.Context, uid, target string) (string, error) {
 	if !s.enabled {
 		return "", errGarminNotConfigured()
@@ -73,27 +66,22 @@ func (s *GarminService) Authorization(ctx context.Context, uid, target string) (
 	if target != "mobile" && target != "web" {
 		return "", &HTTPError{Status: 400, Code: "invalid_request", Message: "Invalid OAuth return target"}
 	}
-	state, err := randomURLToken(32)
+	request, err := s.gateway.RequestToken(ctx, s.callbackURL)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("garmin request token: %w", err)
 	}
-	// 48 byte thành 64 ký tự, nằm trong khoảng 43–128 của PKCE.
-	verifier, err := randomURLToken(48)
-	if err != nil {
-		return "", err
-	}
-	_, err = s.db.Collection("oauthStates").Doc(hashState(state)).Create(ctx, map[string]any{
-		"provider": "garmin", "uid": uid, "returnTarget": target, "codeVerifier": verifier,
+	_, err = s.db.Collection("oauthStates").Doc(hashState(request.Token)).Create(ctx, map[string]any{
+		"provider": "garmin", "uid": uid, "returnTarget": target, "requestTokenSecret": request.Secret,
 		"createdAt": firestore.ServerTimestamp, "expiresAt": s.now().Add(10 * time.Minute),
 	})
 	if err != nil {
 		return "", err
 	}
-	return s.gateway.AuthorizationURL(s.callbackURL, state, verifier), nil
+	return s.gateway.AuthorizationURL(request.Token, s.callbackURL), nil
 }
 
-func (s *GarminService) Callback(ctx context.Context, input OAuthCallback) (string, error) {
-	state, err := consumeOAuthState(ctx, s.db, "garmin", input.State)
+func (s *GarminService) Callback(ctx context.Context, requestToken, verifier string) (string, error) {
+	state, err := consumeOAuthState(ctx, s.db, "garmin", requestToken)
 	if err != nil {
 		return "", err
 	}
@@ -102,28 +90,23 @@ func (s *GarminService) Callback(ctx context.Context, input OAuthCallback) (stri
 		returnURI = s.webReturnURI
 	}
 	// garminError chứ không phải error: deep link trả về dùng chung với Strava,
-	// và app cũ đọc error là lỗi Strava. Chỉ access_denied là user tự từ chối;
-	// lỗi khác (vd unauthorized_client khi key chưa bật OAuth 2.0) là lỗi cấu
-	// hình, phải để lại dấu vết.
-	if input.OAuthError == "access_denied" {
-		return withQuery(returnURI, map[string]string{"garminError": "garmin_authorization_denied"}), nil
-	}
-	if input.OAuthError != "" || input.Code == "" || state.Verifier == "" {
-		cause := fmt.Errorf("garmin authorize returned error %q", truncateRunes(input.OAuthError, 60))
-		return s.failure(ctx, state.UID, returnURI, "garmin_authorization_failed", cause)
+	// và app cũ đọc error là lỗi Strava. Không có verifier là Garmin không cấp
+	// quyền; OAuth 1.0a không nói lý do nên ghi lại để điều tra.
+	if verifier == "" || state.Secret == "" {
+		return s.failure(ctx, state.UID, returnURI, "garmin_authorization_failed", errors.New("garmin callback without oauth_verifier"))
 	}
 	if !s.enabled {
 		return withQuery(returnURI, map[string]string{"garminError": "garmin_not_configured"}), nil
 	}
-	token, err := s.gateway.ExchangeCode(ctx, input.Code, state.Verifier, s.callbackURL)
+	access, err := s.gateway.AccessToken(ctx, garminCredentials{Token: requestToken, Secret: state.Secret}, verifier)
 	if err != nil {
 		return s.failure(ctx, state.UID, returnURI, "garmin_token_failed", err)
 	}
-	userID, err := s.gateway.UserID(ctx, token.AccessToken)
+	userID, err := s.gateway.UserID(ctx, access)
 	if err != nil {
 		return s.failure(ctx, state.UID, returnURI, "garmin_user_failed", err)
 	}
-	if err := s.link(ctx, state.UID, userID, token); err != nil {
+	if err := s.link(ctx, state.UID, userID, access); err != nil {
 		code := "garmin_link_failed"
 		var httpErr *HTTPError
 		if errors.As(err, &httpErr) {
@@ -131,7 +114,7 @@ func (s *GarminService) Callback(ctx context.Context, input OAuthCallback) (stri
 		}
 		return s.failure(ctx, state.UID, returnURI, code, err)
 	}
-	if err := s.requestBackfill(ctx, state.UID, token.AccessToken); err != nil {
+	if err := s.requestBackfill(ctx, state.UID, access); err != nil {
 		return "", err
 	}
 	return withQuery(returnURI, map[string]string{"garmin": "connected"}), nil
@@ -148,10 +131,9 @@ func (s *GarminService) failure(ctx context.Context, uid, returnURI, code string
 	return withQuery(returnURI, map[string]string{"garminError": code}), nil
 }
 
-func (s *GarminService) link(ctx context.Context, uid, garminUserID string, token garminToken) error {
+func (s *GarminService) link(ctx context.Context, uid, garminUserID string, access garminCredentials) error {
 	connection := s.db.Collection("garminConnections").Doc(uid)
 	link := s.db.Collection("garminUserLinks").Doc(garminUserID)
-	now := s.now()
 	return s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		connSnap, connErr := tx.Get(connection)
 		if connErr != nil && status.Code(connErr) != codes.NotFound {
@@ -180,10 +162,7 @@ func (s *GarminService) link(ctx context.Context, uid, garminUserID string, toke
 		}
 		if err := tx.Set(connection, map[string]any{
 			"uid": uid, "garminUserId": garminUserID,
-			"accessToken": token.AccessToken, "refreshToken": token.RefreshToken,
-			"expiresAt":        now.Add(time.Duration(token.ExpiresIn) * time.Second),
-			"refreshExpiresAt": now.Add(time.Duration(token.RefreshTokenExpiresIn) * time.Second),
-			"scope":            token.Scope, "status": "active",
+			"accessToken": access.Token, "accessTokenSecret": access.Secret, "status": "active",
 			// User bấm nối sau khi đọc dòng đồng ý cho 3i bot dùng km từ
 			// Garmin; rút lại bằng cách ngắt kết nối.
 			"aiConsentAt":   firestore.ServerTimestamp,
@@ -201,10 +180,10 @@ func (s *GarminService) link(ctx context.Context, uid, garminUserID string, toke
 // requestBackfill xin Garmin đẩy lại 30 ngày gần nhất. Chỉ gói Enterprise và
 // user có bật quyền dữ liệu cũ mới được, nên Garmin từ chối thì vẫn nối xong:
 // ghi lý do vào connection và log, buổi mới vẫn về qua push.
-func (s *GarminService) requestBackfill(ctx context.Context, uid, accessToken string) error {
+func (s *GarminService) requestBackfill(ctx context.Context, uid string, access garminCredentials) error {
 	now := s.now()
 	result := map[string]any{"backfillRequestedAt": firestore.ServerTimestamp, "updatedAt": firestore.ServerTimestamp}
-	if err := s.gateway.BackfillActivities(ctx, accessToken, now.Add(-garminBackfillWindow), now); err != nil {
+	if err := s.gateway.BackfillActivities(ctx, access, now.Add(-garminBackfillWindow), now); err != nil {
 		slog.WarnContext(ctx, "garmin.backfill_rejected", "uid", uid, "error", err)
 		result["backfillStatus"] = "rejected"
 		result["backfillError"] = err.Error()
@@ -255,7 +234,7 @@ func (s *GarminService) Status(ctx context.Context, uid string) (GarminConnectio
 }
 
 // Disconnect gỡ đăng ký trên Garmin (Garmin bắt app làm khi user ngắt) rồi gỡ
-// link. Garmin trả 4xx (token đã chết, user đã gỡ bên Garmin) thì vẫn gỡ
+// link. Garmin trả 4xx (user đã gỡ bên Garmin, thiếu token) thì vẫn gỡ
 // phía mình; 5xx hay lỗi mạng thì trả lỗi để user bấm lại.
 func (s *GarminService) Disconnect(ctx context.Context, uid string) error {
 	snap, err := s.db.Collection("garminConnections").Doc(uid).Get(ctx)
@@ -267,7 +246,7 @@ func (s *GarminService) Disconnect(ctx context.Context, uid string) error {
 	}
 	data := snap.Data()
 	if stringValue(data["status"]) == "active" && s.enabled {
-		err := s.deregister(ctx, data)
+		err := s.gateway.Deregister(ctx, garminCredentials{Token: stringValue(data["accessToken"]), Secret: stringValue(data["accessTokenSecret"])})
 		var api *GarminAPIError
 		if err != nil && (!errors.As(err, &api) || api.Status >= 500) {
 			return err
@@ -277,25 +256,6 @@ func (s *GarminService) Disconnect(ctx context.Context, uid string) error {
 		}
 	}
 	return s.revokeLocal(ctx, uid, stringValue(data["garminUserId"]), "disconnected")
-}
-
-func (s *GarminService) deregister(ctx context.Context, data map[string]any) error {
-	access := stringValue(data["accessToken"])
-	expiry, _ := data["expiresAt"].(time.Time)
-	// Garmin khuyên làm mới token sớm ít nhất 10 phút. Token mới không lưu vì
-	// ngay sau đây connection bị gỡ.
-	if access == "" || !expiry.After(s.now().Add(10*time.Minute)) {
-		refresh := stringValue(data["refreshToken"])
-		if refresh == "" {
-			return &GarminAPIError{Status: 401, Body: "no refresh token"}
-		}
-		token, err := s.gateway.RefreshToken(ctx, refresh)
-		if err != nil {
-			return err
-		}
-		access = token.AccessToken
-	}
-	return s.gateway.Deregister(ctx, access)
 }
 
 // revokeLocal gỡ connection và link của uid. Link chỉ bị xoá khi còn trỏ về
@@ -321,7 +281,7 @@ func (s *GarminService) revokeLocal(ctx context.Context, uid, garminUserID, reas
 		}
 		if err := tx.Set(connection, map[string]any{
 			"status": "revoked", "revokeReason": reason,
-			"accessToken": firestore.Delete, "refreshToken": firestore.Delete,
+			"accessToken": firestore.Delete, "accessTokenSecret": firestore.Delete,
 			"disconnectedAt": firestore.ServerTimestamp, "updatedAt": firestore.ServerTimestamp,
 		}, firestore.MergeAll); err != nil {
 			return err

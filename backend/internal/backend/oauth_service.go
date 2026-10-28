@@ -150,8 +150,9 @@ func (s *OAuthService) Disconnect(ctx context.Context, uid string) error {
 	})
 }
 
-// oauthState là state OAuth đã dùng. Verifier chỉ có ở luồng PKCE (Garmin).
-type oauthState struct{ UID, Target, Verifier string }
+// oauthState là state OAuth đã dùng. Secret là secret của request token, chỉ
+// có ở luồng OAuth 1.0a (Garmin).
+type oauthState struct{ UID, Target, Secret string }
 
 func (s *OAuthService) consumeState(ctx context.Context, state string) (oauthState, error) {
 	return consumeOAuthState(ctx, s.db, "strava", state)
@@ -179,7 +180,7 @@ func consumeOAuthState(ctx context.Context, db *firestore.Client, provider, stat
 			_ = tx.Delete(ref)
 			return &HTTPError{Status: 400, Code: "expired_oauth_state", Message: "OAuth state expired"}
 		}
-		out = oauthState{UID: stringValue(data["uid"]), Target: stringValue(data["returnTarget"]), Verifier: stringValue(data["codeVerifier"])}
+		out = oauthState{UID: stringValue(data["uid"]), Target: stringValue(data["returnTarget"]), Secret: stringValue(data["requestTokenSecret"])}
 		if out.UID == "" || (out.Target != "mobile" && out.Target != "web") {
 			return &HTTPError{Status: 400, Code: "invalid_oauth_state", Message: "OAuth state is invalid"}
 		}

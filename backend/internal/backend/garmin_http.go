@@ -29,7 +29,7 @@ func (s *Server) garminRoutes() {
 	}))
 	s.route("GET /v1/garmin/callback", func(w http.ResponseWriter, r *http.Request) error {
 		q := r.URL.Query()
-		redirect, err := s.deps.Garmin.Callback(r.Context(), OAuthCallback{State: q.Get("state"), Code: q.Get("code"), OAuthError: q.Get("error")})
+		redirect, err := s.deps.Garmin.Callback(r.Context(), q.Get("oauth_token"), q.Get("oauth_verifier"))
 		if err != nil {
 			return err
 		}
