@@ -10,20 +10,26 @@ import (
 )
 
 type Config struct {
-	Environment           string
-	Port                  int
-	ProjectID             string
-	Region                string
-	PublicBaseURL         string
-	WorkerBaseURL         string
-	BotBaseURL            string
-	MobileReturnURI       string
-	WebReturnURI          string
-	AllowedWebOrigins     map[string]struct{}
-	StravaClientID        string
-	StravaClientSecret    string
-	WebhookVerifyToken    string
-	StravaSubscriptionID  string
+	Environment          string
+	Port                 int
+	ProjectID            string
+	Region               string
+	PublicBaseURL        string
+	WorkerBaseURL        string
+	BotBaseURL           string
+	MobileReturnURI      string
+	WebReturnURI         string
+	AllowedWebOrigins    map[string]struct{}
+	StravaClientID       string
+	StravaClientSecret   string
+	WebhookVerifyToken   string
+	StravaSubscriptionID string
+	// Garmin là nguồn tuỳ chọn: GarminClientID rỗng thì route Garmin trả
+	// garmin_not_configured, mọi thứ khác chạy như cũ. GarminWebhookToken là
+	// đoạn bí mật trong đường dẫn webhook, vì Garmin không ký các lần đẩy.
+	GarminClientID        string
+	GarminClientSecret    string
+	GarminWebhookToken    string
 	TaskInvokerAccount    string
 	EventsQueue           string
 	BackfillQueue         string
@@ -99,6 +105,9 @@ func LoadConfig() (Config, error) {
 	c.BotBaseURL = trimURL(env("BOT_BASE_URL", ""))
 	c.TelegramBotUsername = strings.TrimPrefix(env("TELEGRAM_BOT_USERNAME", ""), "@")
 	c.TelegramWebhookSecret = env("TELEGRAM_WEBHOOK_SECRET", "")
+	c.GarminClientID = env("GARMIN_CLIENT_ID", "")
+	c.GarminClientSecret = env("GARMIN_CLIENT_SECRET", "")
+	c.GarminWebhookToken = env("GARMIN_WEBHOOK_TOKEN", "")
 	// Gemini chạy ở location riêng, không dùng chung GOOGLE_CLOUD_REGION:
 	// gemini-3.8-flash chỉ mở ở global. Dòng 2.5 Vertex retire 20/10/2026, và
 	// Google ghi 3.8-flash là model thay cho 2.5-pro.
@@ -161,6 +170,12 @@ func LoadConfig() (Config, error) {
 // không có token, mọi lời gọi Telegram của bot con chạy trong task trên bot.
 func (c Config) MybotEnabled() bool {
 	return c.AgentTelegramBots && c.TelegramBotUsername != "" && c.TelegramWebhookSecret != ""
+}
+
+// GarminEnabled: đủ cả ba giá trị Garmin. File env dùng chung cho mọi service
+// nhưng chỉ api nhận secret Garmin, nên bot và worker luôn thấy Garmin tắt.
+func (c Config) GarminEnabled() bool {
+	return c.GarminClientID != "" && c.GarminClientSecret != "" && c.GarminWebhookToken != ""
 }
 
 func env(name, fallback string) string {

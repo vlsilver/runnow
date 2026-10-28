@@ -33,6 +33,9 @@ type Dependencies struct {
 	Games          *GameStore
 	Agents         *AgentStore
 	RunCards       *RunCardStore
+	// Garmin luôn có; khi chưa cấu hình (Config.GarminEnabled) thì nối trả
+	// garmin_not_configured và push trả 404.
+	Garmin *GarminService
 	// AgentBrain chạy LLM của bot cá nhân; chỉ có trên service có Gemini (bot).
 	AgentBrain *AgentService
 	// ManagedBots là MyBot trên Telegram; nil khi chưa cấu hình bot quản lý
@@ -95,7 +98,9 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 	} else {
 		slog.WarnContext(ctx, "dependencies.storage_unavailable", "error", storageErr)
 	}
+	d.Garmin = NewGarminService(db, NewGarminGateway(config.GarminClientID, config.GarminClientSecret), d.Activities, config)
 	d.Accounts = NewAccountService(db, authClient, d.OAuth, bucket)
+	d.Accounts.garmin = d.Garmin
 	// 3i là bot quản lý của mọi MyBot trên Telegram. Trên api telegram không
 	// có token: api chỉ ghi Firestore và hẹn task, task chạy trên bot.
 	if config.MybotEnabled() {

@@ -124,9 +124,14 @@ func resolveProfile(ctx context.Context, db *firestore.Client, uid string) (map[
 
 // nonStravaSourcePriority: khi hai buổi non-Strava TRÙNG nhau (cùng một lần
 // chạy ở hai nguồn), giữ nguồn giàu dữ liệu hơn. 3i native có GPS/route/streams
-// nên ưu tiên hơn Apple Health (chỉ có quãng đường + thời gian).
+// nên đứng đầu; Garmin có nhịp tim, cadence từ đồng hồ nên đứng trên Apple
+// Health (chỉ có quãng đường + thời gian). App giữ cùng thứ tự này
+// (activity_eligibility.dart).
 func nonStravaSourcePriority(source string) int {
-	if source == "runnow" {
+	switch source {
+	case "runnow":
+		return 3
+	case "garmin":
 		return 2
 	}
 	return 1 // apple_health & các nguồn phụ khác

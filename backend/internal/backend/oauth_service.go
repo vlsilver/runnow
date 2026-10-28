@@ -150,21 +150,28 @@ func (s *OAuthService) Disconnect(ctx context.Context, uid string) error {
 	})
 }
 
-type oauthState struct{ UID, Target string }
+// oauthState là state OAuth đã dùng. Verifier chỉ có ở luồng PKCE (Garmin).
+type oauthState struct{ UID, Target, Verifier string }
 
 func (s *OAuthService) consumeState(ctx context.Context, state string) (oauthState, error) {
+	return consumeOAuthState(ctx, s.db, "strava", state)
+}
+
+// consumeOAuthState đọc rồi xoá state trong một transaction: mỗi state chỉ
+// dùng được một lần, đúng provider và còn hạn.
+func consumeOAuthState(ctx context.Context, db *firestore.Client, provider, state string) (oauthState, error) {
 	if state == "" {
 		return oauthState{}, &HTTPError{Status: 400, Code: "invalid_oauth_state", Message: "Missing OAuth state"}
 	}
-	ref := s.db.Collection("oauthStates").Doc(hashState(state))
+	ref := db.Collection("oauthStates").Doc(hashState(state))
 	var out oauthState
-	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+	err := db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		snap, err := tx.Get(ref)
 		if err != nil {
 			return &HTTPError{Status: 400, Code: "invalid_oauth_state", Message: "OAuth state is invalid or already used"}
 		}
 		data := snap.Data()
-		if data["provider"] != "strava" {
+		if data["provider"] != provider {
 			return &HTTPError{Status: 400, Code: "invalid_oauth_state", Message: "OAuth state is invalid"}
 		}
 		expiry, ok := data["expiresAt"].(time.Time)
@@ -172,7 +179,7 @@ func (s *OAuthService) consumeState(ctx context.Context, state string) (oauthSta
 			_ = tx.Delete(ref)
 			return &HTTPError{Status: 400, Code: "expired_oauth_state", Message: "OAuth state expired"}
 		}
-		out = oauthState{UID: stringValue(data["uid"]), Target: stringValue(data["returnTarget"])}
+		out = oauthState{UID: stringValue(data["uid"]), Target: stringValue(data["returnTarget"]), Verifier: stringValue(data["codeVerifier"])}
 		if out.UID == "" || (out.Target != "mobile" && out.Target != "web") {
 			return &HTTPError{Status: 400, Code: "invalid_oauth_state", Message: "OAuth state is invalid"}
 		}

@@ -28,6 +28,8 @@ type AccountService struct {
 	// managed hẹn gỡ webhook bot con khi xoá tài khoản; nil khi MyBot trên
 	// Telegram tắt, lúc đó chỉ xoá bản ghi.
 	managed *ManagedBotService
+	// garmin gỡ đăng ký trên Garmin trước khi xoá; nil thì chỉ xoá bản ghi.
+	garmin *GarminService
 }
 
 func NewAccountService(db *firestore.Client, authClient *auth.Client, oauth *OAuthService, bucket *gcs.BucketHandle) *AccountService {
@@ -46,12 +48,23 @@ func (s *AccountService) Delete(ctx context.Context, uid string) error {
 		return invalidRequest()
 	}
 	athleteID := s.stravaAthleteID(ctx, uid)
+	garminUserID, err := garminUserIDOf(ctx, s.db, uid)
+	if err != nil {
+		return err
+	}
 
 	// Lỗi phía Strava không được chặn việc xoá: user đã yêu cầu xoá thì phải
 	// xoá được, kể cả khi Strava đang sập. Token vẫn bị xoá cùng Firestore
 	// ngay bên dưới, và user có thể tự gỡ quyền tại strava.com/settings/apps.
 	if err := s.oauth.Disconnect(ctx, uid); err != nil {
 		slog.WarnContext(ctx, "account.delete.strava_revoke_failed", "uid", uid, "error", err)
+	}
+	// Garmin cũng vậy: user tự gỡ được tại connect.garmin.com, phần ghi phía
+	// mình do deleteGarmin bên dưới lo.
+	if s.garmin != nil {
+		if err := s.garmin.Disconnect(ctx, uid); err != nil {
+			slog.WarnContext(ctx, "account.delete.garmin_deregister_failed", "uid", uid, "error", err)
+		}
 	}
 
 	if err := s.deleteStorage(ctx, uid); err != nil {
@@ -74,6 +87,11 @@ func (s *AccountService) Delete(ctx context.Context, uid string) error {
 	}
 	if err := s.deleteOwnedDocuments(ctx, uid, athleteID); err != nil {
 		return fmt.Errorf("delete documents: %w", err)
+	}
+	// Trước khi xoá cây users/{uid}: còn link thì push sau đó ghi lại buổi
+	// chạy vào uid đã xoá.
+	if err := s.deleteGarmin(ctx, uid, garminUserID); err != nil {
+		return fmt.Errorf("delete garmin: %w", err)
 	}
 	// Dọn cả users/{uid} lẫn mọi subcollection bên dưới (activities, stats,
 	// periodStats, trainingGoalHistory, runContractActivityClaims) —
@@ -130,6 +148,26 @@ func (s *AccountService) removeLearnOptOut(ctx context.Context, uid string) erro
 	if status.Code(err) == codes.NotFound {
 		return nil
 	}
+	return err
+}
+
+// deleteGarmin xoá connection và link Garmin của uid. Link chỉ bị xoá khi còn
+// trỏ về uid này: sau khi uid ngắt kết nối, người khác có thể đã nối lại đúng
+// tài khoản Garmin đó.
+func (s *AccountService) deleteGarmin(ctx context.Context, uid, garminUserID string) error {
+	if garminUserID != "" {
+		link := s.db.Collection("garminUserLinks").Doc(garminUserID)
+		snap, err := link.Get(ctx)
+		if err != nil && status.Code(err) != codes.NotFound {
+			return err
+		}
+		if err == nil && stringValue(snap.Data()["uid"]) == uid {
+			if _, err := link.Delete(ctx, firestore.LastUpdateTime(snap.UpdateTime)); err != nil {
+				return err
+			}
+		}
+	}
+	_, err := s.db.Collection("garminConnections").Doc(uid).Delete(ctx)
 	return err
 }
 

@@ -124,6 +124,7 @@ WEB_RETURN_URI: ${WEB_RETURN_URI}
 ALLOWED_WEB_ORIGINS: ${ALLOWED_WEB_ORIGINS}
 STRAVA_CLIENT_ID: '${STRAVA_CLIENT_ID}'
 STRAVA_SUBSCRIPTION_ID: '${STRAVA_SUBSCRIPTION_ID:-}'
+GARMIN_CLIENT_ID: '${GARMIN_CLIENT_ID:-}'
 TASK_INVOKER_SERVICE_ACCOUNT: ${INVOKER_SA}
 STRAVA_EVENTS_QUEUE: strava-events
 STRAVA_BACKFILL_QUEUE: strava-backfill
@@ -260,6 +261,14 @@ if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
   # token cho hai service này (least-privilege). --set-secrets thay thế toàn
   # bộ nên bỏ token khỏi danh sách là nó tự bị gỡ khỏi api/worker.
   BOT_SECRETS="${BOT_SECRETS},TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest"
+fi
+# Garmin cũng tuỳ chọn: chỉ đòi secret khi đã đặt GARMIN_CLIENT_ID. Chỉ api
+# cần: api đổi mã lấy token, nhận push (push mang sẵn dữ liệu buổi chạy, ghi
+# luôn trong request) và gọi Garmin khi ngắt kết nối. Worker, bot không gọi Garmin.
+if [[ -n "${GARMIN_CLIENT_ID:-}" ]]; then
+  require_secret GARMIN_CLIENT_SECRET
+  require_secret GARMIN_WEBHOOK_TOKEN
+  API_SECRETS="${API_SECRETS},GARMIN_CLIENT_SECRET=GARMIN_CLIENT_SECRET:latest,GARMIN_WEBHOOK_TOKEN=GARMIN_WEBHOOK_TOKEN:latest"
 fi
 
 if is_full_deploy; then
