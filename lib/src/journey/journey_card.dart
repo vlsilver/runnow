@@ -92,7 +92,7 @@ AchievementCardData journeyCardData(JourneyCard card, {required String owner}) {
   final route = _campaigns[card.campaign]?.route;
   return AchievementCardData(
     tier: card.tier,
-    art: JourneyPosterArt(campaign: card.campaign, km: '${card.km} KM'),
+    art: JourneyPosterArt(campaign: card.campaign),
     backFace: JourneyCardEmblem(campaign: card.campaign, tier: card.tier),
     kind: route == null ? 'HÀNH TRÌNH' : 'HÀNH TRÌNH · ${route.toUpperCase()}',
     hero: card.name.toUpperCase(),

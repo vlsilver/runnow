@@ -9,33 +9,28 @@ import 'package:myrun/src/theme.dart';
 
 typedef _T = RunNowCardSceneTokens;
 
-typedef _Scene = void Function(Canvas canvas, Size size, String km);
+typedef _Scene = void Function(Canvas canvas, Size size);
 
-/// Poster mặt trước thẻ Hành trình theo chặng, góc phải in dấu HOÀN THÀNH
-/// kèm cự ly. Chặng lạ vẽ như Marathon.
+/// Poster mặt trước thẻ Hành trình theo chặng. Chặng lạ vẽ như Marathon.
 class JourneyPosterArt extends StatelessWidget {
-  const JourneyPosterArt({super.key, required this.campaign, required this.km});
+  const JourneyPosterArt({super.key, required this.campaign});
 
   /// Khoá chặng của backend: marathon, mont_blanc, xuyen_viet, dong_nam_a.
   final String campaign;
-
-  /// Dòng trên dấu HOÀN THÀNH, ví dụ "42 KM".
-  final String km;
 
   @override
   Widget build(BuildContext context) {
     // Thẻ vẽ lại mỗi khung hình khi nghiêng; tranh đứng yên nên tách lớp.
     return RepaintBoundary(
-      child: CustomPaint(painter: _PosterPainter(campaign, km)),
+      child: CustomPaint(painter: _PosterPainter(campaign)),
     );
   }
 }
 
 class _PosterPainter extends CustomPainter {
-  const _PosterPainter(this.campaign, this.km);
+  const _PosterPainter(this.campaign);
 
   final String campaign;
-  final String km;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -63,14 +58,13 @@ class _PosterPainter extends CustomPainter {
         // Mép cắt không làm mờ: hàng điểm ảnh ở mép mờ để lọt trời của cảnh
         // thành một vạch sáng.
         ..clipRect(Offset.zero & Size(size.width, top), doAntiAlias: false);
-      scene(canvas, Size(size.width, top), km);
+      scene(canvas, Size(size.width, top));
       canvas.restore();
     });
   }
 
   @override
-  bool shouldRepaint(_PosterPainter old) =>
-      old.campaign != campaign || old.km != km;
+  bool shouldRepaint(_PosterPainter old) => old.campaign != campaign;
 }
 
 /// Phần chiều cao tranh dành cho cảnh, tính từ trên xuống.
@@ -129,54 +123,6 @@ void _ellipse(
     ..restore();
 }
 
-/// Chữ căn giữa theo x = 0, chân chữ nằm ở [baseline].
-void _text(
-  Canvas canvas,
-  String text,
-  double size,
-  FontWeight weight,
-  Color color,
-  double baseline,
-) {
-  final painter = TextPainter(
-    text: TextSpan(
-      text: text,
-      style: TextStyle(
-        fontFamily: 'Barlow Condensed',
-        fontWeight: weight,
-        fontSize: size,
-        height: 1,
-        color: color,
-      ),
-    ),
-    textDirection: TextDirection.ltr,
-  )..layout();
-  painter.paint(
-    canvas,
-    Offset(
-      -painter.width / 2,
-      baseline -
-          painter.computeDistanceToActualBaseline(TextBaseline.alphabetic),
-    ),
-  );
-  painter.dispose();
-}
-
-/// Dấu mộc tròn nghiêng: cự ly ở trên, HOÀN THÀNH ở giữa.
-void _stamp(Canvas canvas, Offset at, double r, Color color, String km) {
-  final ink = color.withValues(alpha: color.a * 0.9);
-  canvas
-    ..save()
-    ..translate(at.dx, at.dy)
-    ..rotate(-0.18)
-    ..drawCircle(Offset.zero, r, _stroke(ink, 2.4))
-    ..drawCircle(Offset.zero, r - 5, _stroke(ink, 1));
-  _text(canvas, 'HOÀN', r * 0.3, FontWeight.w800, ink, -r * 0.05);
-  _text(canvas, 'THÀNH', r * 0.3, FontWeight.w800, ink, r * 0.28);
-  _text(canvas, km, r * 0.2, FontWeight.w700, ink, -r * 0.42);
-  canvas.restore();
-}
-
 /// Mặt đất kín từ độ cao [startY], qua các đường cong, xuống tới đáy tranh.
 Path _ground(Size size, double startY, void Function(Path path) curve) {
   final path = Path()..moveTo(0, startY);
@@ -187,7 +133,7 @@ Path _ground(Size size, double startY, void Function(Path path) curve) {
     ..close();
 }
 
-void _marathon(Canvas canvas, Size size, String km) {
+void _marathon(Canvas canvas, Size size) {
   final Size(width: w, height: h) = size;
   _poster(canvas, size, const [
     (0, _T.marathonSky1),
@@ -196,7 +142,7 @@ void _marathon(Canvas canvas, Size size, String km) {
   ], 101);
   _sun(
     canvas,
-    Offset(w * 0.4, h * 0.3),
+    Offset(w * 0.5, h * 0.3),
     w * 0.12,
     _T.marathonSun,
     _T.marathonSunGlow,
@@ -212,7 +158,7 @@ void _marathon(Canvas canvas, Size size, String km) {
     _fill(_T.marathonHill),
   );
   // Đền cột trên đồi.
-  final bx = w * 0.2, by = h * 0.58, bw = w * 0.44;
+  final bx = w * 0.28, by = h * 0.58, bw = w * 0.44;
   final temple = _fill(_T.marathonTemple);
   canvas
     ..drawPath(
@@ -265,10 +211,9 @@ void _marathon(Canvas canvas, Size size, String km) {
       leaf,
     );
   }
-  _stamp(canvas, Offset(w * 0.8, h * 0.36), 27, _T.marathonStamp, km);
 }
 
-void _montBlanc(Canvas canvas, Size size, String km) {
+void _montBlanc(Canvas canvas, Size size) {
   final Size(width: w, height: h) = size;
   _poster(canvas, size, const [
     (0, _T.montBlancSky1),
@@ -354,10 +299,9 @@ void _montBlanc(Canvas canvas, Size size, String km) {
     ),
     _stroke(_T.montBlancPath, 2.4),
   );
-  _stamp(canvas, Offset(w * 0.8, h * 0.45), 27, _T.montBlancStamp, km);
 }
 
-void _xuyenViet(Canvas canvas, Size size, String km) {
+void _xuyenViet(Canvas canvas, Size size) {
   final Size(width: w, height: h) = size;
   _poster(canvas, size, const [
     (0, _T.xuyenVietSky1),
@@ -412,7 +356,7 @@ void _xuyenViet(Canvas canvas, Size size, String km) {
       ..drawCircle(Offset(w * x, h * y), 3.4, _fill(_T.xuyenVietStop))
       ..drawCircle(Offset(w * x, h * y), 1.8, _fill(_T.xuyenVietRoute));
   }
-  // Sóng biển, chừa chỗ cho dấu bên dưới.
+  // Sóng biển.
   final wave = _stroke(_T.xuyenVietWave, 1.2);
   for (var i = 0; i < 3; i++) {
     final x = w * 0.72, y = h * (0.24 + i * 0.06);
@@ -424,10 +368,9 @@ void _xuyenViet(Canvas canvas, Size size, String km) {
       wave,
     );
   }
-  _stamp(canvas, Offset(w * 0.8, h * 0.62), 25, _T.xuyenVietStamp, km);
 }
 
-void _dongNamA(Canvas canvas, Size size, String km) {
+void _dongNamA(Canvas canvas, Size size) {
   final Size(width: w, height: h) = size;
   _poster(canvas, size, const [
     (0, _T.dongNamASky1),
@@ -528,7 +471,6 @@ void _dongNamA(Canvas canvas, Size size, String km) {
   for (final (x, y) in capitals) {
     canvas.drawCircle(Offset(w * x, h * y), 2.6, _fill(_T.dongNamACapital));
   }
-  _stamp(canvas, Offset(w * 0.84, h * 0.5), 25, _T.dongNamAStamp, km);
 }
 
 /// Mặt sau thẻ Hành trình: biểu tượng chặng trong vòng nhũ màu bậc, nguyệt

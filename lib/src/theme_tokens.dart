@@ -565,7 +565,6 @@ class RunNowCardSceneTokens {
   static const marathonPath = Color(0xFFFBE3B8);
   static const marathonBranch = Color(0xFF4F5A2A);
   static const marathonLeaf = Color(0xFF5F6B30);
-  static const marathonStamp = Color(0xFF7A1F12);
 
   static const montBlancSky1 = Color(0xFF9FD0EA);
   static const montBlancSky2 = Color(0xFFE5F2F7);
@@ -578,7 +577,6 @@ class RunNowCardSceneTokens {
   static const montBlancPeakNear = Color(0xFF1F3D57);
   static const montBlancPines = Color(0xFF15293B);
   static const montBlancPath = Color(0xFFFFD36B);
-  static const montBlancStamp = Color(0xFF9B1C1C);
 
   static const xuyenVietSky1 = Color(0xFF0F4C5C);
   static const xuyenVietSky2 = Color(0xFF1B6F7C);
@@ -589,7 +587,6 @@ class RunNowCardSceneTokens {
   static const xuyenVietRoute = Color(0xFFC0392B);
   static const xuyenVietStop = Color(0xFFFFFFFF);
   static const xuyenVietWave = Color(0x59FFFFFF);
-  static const xuyenVietStamp = Color(0xFFFFE08A);
 
   static const dongNamASky1 = Color(0xFF2A1B4A);
   static const dongNamASky2 = Color(0xFFC4506A);
@@ -600,7 +597,6 @@ class RunNowCardSceneTokens {
   static const dongNamAInk = Color(0xFF2A0F26);
   static const dongNamARoute = Color(0x99FFF0D2);
   static const dongNamACapital = Color(0xFFFFF3D6);
-  static const dongNamAStamp = Color(0xFFFFF1C4);
 
   // Mặt sau Hành trình: nguyệt quế nhũ quanh biểu tượng chặng.
   static const marathonEmblemTop = Color(0xFF5A2C18);

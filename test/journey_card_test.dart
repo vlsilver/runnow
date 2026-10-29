@@ -129,9 +129,7 @@ void main() {
               height: 420,
               child: Row(
                 children: [
-                  Expanded(
-                    child: JourneyPosterArt(campaign: campaign, km: '42 KM'),
-                  ),
+                  Expanded(child: JourneyPosterArt(campaign: campaign)),
                   Expanded(
                     child: JourneyCardEmblem(
                       campaign: campaign,
@@ -165,7 +163,7 @@ void main() {
             child: SizedBox(
               width: 300,
               height: 440,
-              child: JourneyPosterArt(campaign: campaign, km: '42 KM'),
+              child: JourneyPosterArt(campaign: campaign),
             ),
           ),
         ),
