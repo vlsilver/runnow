@@ -193,6 +193,52 @@ void main() {
     await close(tester);
   });
 
+  testWidgets('a long feed item shows its last lines until expanded', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(2400, 9000);
+    addTearDown(tester.view.reset);
+    backend.game = {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'running',
+      'statusLabel': 'Đang chơi',
+      'refreshAfterSeconds': 300,
+      'feed': {
+        'items': [
+          {
+            'seq': 7,
+            'at': '2026-10-17T10:00:00Z',
+            'title': 'Ngày 2',
+            'lines': [
+              '09:01 An đề cử Bình.',
+              '09:05 Chi đề cử Bình.',
+              '09:12 Dũng đề cử An.',
+              '09:30 Hà đề cử Bình.',
+              '10:02 Giang đề cử An.',
+              'Bình lên giàn.',
+            ],
+          },
+        ],
+      },
+    };
+    await pumpScreen(tester);
+    await tester.pump();
+
+    expect(find.text('09:01 An đề cử Bình.'), findsNothing);
+    expect(find.text('09:30 Hà đề cử Bình.'), findsOneWidget);
+    expect(find.text('Bình lên giàn.'), findsOneWidget);
+
+    await tester.tap(find.text('Xem đủ 6 dòng'));
+    await tester.pump();
+    expect(find.text('09:01 An đề cử Bình.'), findsOneWidget);
+
+    await tester.tap(find.text('Thu gọn'));
+    await tester.pump();
+    expect(find.text('09:01 An đề cử Bình.'), findsNothing);
+    await close(tester);
+  });
+
   testWidgets('shows closing instead of the old phase past deadline', (
     tester,
   ) async {

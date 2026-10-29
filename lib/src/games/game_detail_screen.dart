@@ -1133,7 +1133,7 @@ class _PlayerRow extends StatelessWidget {
   }
 }
 
-class _Feed extends StatelessWidget {
+class _Feed extends StatefulWidget {
   const _Feed({
     required this.items,
     required this.hasOlder,
@@ -1147,8 +1147,21 @@ class _Feed extends StatelessWidget {
   final VoidCallback onLoadOlder;
 
   @override
+  State<_Feed> createState() => _FeedState();
+}
+
+class _FeedState extends State<_Feed> {
+  // Một ngày đông người có cả chục lượt đề cử, vote. Backend để kết quả ở
+  // cuối mục nên khi gọn thì giữ mấy dòng cuối, các lượt bấm cũ ẩn đi.
+  static const _foldAbove = 4;
+  static const _shownWhenFolded = 3;
+
+  final _expanded = <int>{};
+
+  @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
+    final items = widget.items;
     if (items.isEmpty) {
       return Text('Chưa có gì.', style: TextStyle(color: palette.textMuted));
     }
@@ -1179,27 +1192,48 @@ class _Feed extends StatelessWidget {
                       style: TextStyle(fontSize: 12, color: palette.textMuted),
                     ),
                   ),
-                for (final line in item.lines)
-                  Text(
-                    line,
-                    style: TextStyle(
-                      fontSize: 14,
-                      height: 1.45,
-                      color: palette.ink,
-                    ),
-                  ),
+                ..._lines(item, palette),
               ],
             ),
           ),
-        if (hasOlder)
+        if (widget.hasOlder)
           Center(
             child: TextButton(
-              onPressed: loadingOlder ? null : onLoadOlder,
-              child: Text(loadingOlder ? 'Đang tải…' : 'Xem cũ hơn'),
+              onPressed: widget.loadingOlder ? null : widget.onLoadOlder,
+              child: Text(widget.loadingOlder ? 'Đang tải…' : 'Xem cũ hơn'),
             ),
           ),
       ],
     );
+  }
+
+  List<Widget> _lines(GameFeedItem item, RunNowPalette palette) {
+    final lines = item.lines;
+    final foldable = lines.length > _foldAbove;
+    final open = !foldable || _expanded.contains(item.seq);
+    final shown = open ? lines : lines.sublist(lines.length - _shownWhenFolded);
+    return [
+      for (final line in shown)
+        Text(
+          line,
+          style: TextStyle(fontSize: 14, height: 1.45, color: palette.ink),
+        ),
+      if (foldable)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.only(top: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            onPressed: () => setState(() {
+              if (!_expanded.remove(item.seq)) _expanded.add(item.seq);
+            }),
+            child: Text(open ? 'Thu gọn' : 'Xem đủ ${lines.length} dòng'),
+          ),
+        ),
+    ];
   }
 }
 
