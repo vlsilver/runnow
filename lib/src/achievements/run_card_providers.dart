@@ -11,6 +11,7 @@ import 'package:myrun/src/achievements/run_card_skin_choice.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/journey/journey_card.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/rank/rank_card.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 
 /// Doc Firestore sang map thường: Timestamp thành DateTime, kể cả trong map
@@ -114,6 +115,64 @@ final journeyCardsProvider = StreamProvider.autoDispose<List<JourneyCard>>((
         ],
       );
 });
+
+/// Bảng đã chốt của kỳ trước, null khi backend chưa chốt.
+final rankBoardProvider = StreamProvider.autoDispose.family<RankBoard?, String>(
+  (ref, boardId) {
+    return FirebaseFirestore.instance
+        .collection('rankBoards')
+        .doc(boardId)
+        .snapshots()
+        .map(
+          (doc) => doc.exists
+              ? RankBoard.fromJson(_plain(doc.data()) as Map<String, dynamic>)
+              : null,
+        );
+  },
+);
+
+RankCard? _rankCardFrom(
+  String uid,
+  DocumentSnapshot<Map<String, dynamic>> doc,
+) => doc.exists
+    ? RankCard.fromJson(uid, doc.id, _plain(doc.data()) as Map<String, dynamic>)
+    : null;
+
+/// Thẻ BXH của một người trên một bảng. Ai đăng nhập cũng đọc được để thấy thẻ
+/// đã lật của top 10; nghe doc để chủ thẻ lật thì mọi người thấy ngay.
+final rankCardProvider = StreamProvider.autoDispose
+    .family<RankCard?, ({String uid, String boardId})>((ref, key) {
+      return FirebaseFirestore.instance
+          .collection('users')
+          .doc(key.uid)
+          .collection('rankCards')
+          .doc(key.boardId)
+          .snapshots()
+          .map((doc) => _rankCardFrom(key.uid, doc));
+    });
+
+/// Thẻ BXH của mình, mới nhất trước.
+final myRankCardsProvider = StreamProvider.autoDispose<List<RankCard>>((ref) {
+  final uid = ref.watch(firebaseUserProvider.select((user) => user.value?.uid));
+  if (uid == null) return Stream.value(const []);
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('rankCards')
+      .orderBy('awardedAt', descending: true)
+      .snapshots()
+      .map((snap) => [for (final doc in snap.docs) ?_rankCardFrom(uid, doc)]);
+});
+
+/// Chủ thẻ lật thẻ của mình. Rules chỉ cho ghi revealedAt một lần, bằng giờ
+/// server, nên lật hai lần thì lần sau bị từ chối và lỗi trả về nơi gọi.
+Future<void> revealRankCard(String uid, String boardId) => FirebaseFirestore
+    .instance
+    .collection('users')
+    .doc(uid)
+    .collection('rankCards')
+    .doc(boardId)
+    .update({'revealedAt': FieldValue.serverTimestamp()});
 
 /// Phong cách vẽ đang bật, giữ suốt phiên để mở lại bảng chọn là hiện ngay.
 /// Bảng chọn tải lại ngầm mỗi lần mở, để backend tắt một phong cách thì app

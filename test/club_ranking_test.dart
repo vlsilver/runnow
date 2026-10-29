@@ -111,6 +111,63 @@ void main() {
     );
   });
 
+  test('past period is the one just ended, closing until noon Vietnam', () {
+    String key(DateTime d) => d.toIso8601String().substring(0, 10);
+    // Thứ Hai 2/11 05:00 giờ VN: tuần 26/10 – 1/11 vừa hết, đang chốt.
+    final early = pastRankingPeriod(
+      DateTime.utc(2026, 11, 1, 22),
+      ClubRankingRange.currentWeek,
+    );
+    expect(
+      [key(early.start), key(early.end), early.closing],
+      ['2026-10-26', '2026-11-02', true],
+    );
+    expect(pastRankingPeriodLabel(early), 'Tuần 26/10 – 1/11');
+    // 12:00 giờ VN thì đã chốt.
+    final noon = pastRankingPeriod(
+      DateTime.utc(2026, 11, 2, 5),
+      ClubRankingRange.currentWeek,
+    );
+    expect([key(noon.start), noon.closing], ['2026-10-26', false]);
+
+    // Thứ Sáu 30/10: tuần 19 – 25/10 và tháng 9.
+    final friday = DateTime.utc(2026, 10, 30, 10);
+    final week = pastRankingPeriod(friday, ClubRankingRange.currentWeek);
+    expect(
+      [key(week.start), key(week.end), week.closing],
+      ['2026-10-19', '2026-10-26', false],
+    );
+    expect(pastRankingPeriodLabel(week), 'Tuần 19 – 25/10');
+    final month = pastRankingPeriod(friday, ClubRankingRange.currentMonth);
+    expect([key(month.start), key(month.end)], ['2026-09-01', '2026-10-01']);
+    expect(pastRankingPeriodLabel(month), 'Tháng 9');
+
+    // 1/11 11:00 giờ VN: tháng 10 đang chốt.
+    final monthEarly = pastRankingPeriod(
+      DateTime.utc(2026, 11, 1, 4),
+      ClubRankingRange.currentMonth,
+    );
+    expect([key(monthEarly.start), monthEarly.closing], ['2026-10-01', true]);
+  });
+
+  test('board id matches the backend rankBoards key', () {
+    final friday = DateTime.utc(2026, 10, 30, 10);
+    expect(
+      rankBoardId(
+        pastRankingPeriod(friday, ClubRankingRange.currentWeek),
+        ClubRankingSport.run,
+      ),
+      'week_2026-10-19_run',
+    );
+    expect(
+      rankBoardId(
+        pastRankingPeriod(friday, ClubRankingRange.currentMonth),
+        ClubRankingSport.steps,
+      ),
+      'month_2026-09-01_steps',
+    );
+  });
+
   test('gap label is empty for a lone leader', () {
     final ranked = rankClubMembers(
       [_member('only', weekMeters: 4200)],

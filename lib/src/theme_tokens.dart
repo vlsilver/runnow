@@ -617,4 +617,64 @@ class RunNowCardSceneTokens {
   static const journeyShade = Color(0xFF000000);
   static const medalShine = Color(0xFFFFFFFF);
   static const mapInk = Color(0xFFFBF8F1);
+
+  /// Nền thẻ BXH theo hạng 1..10: trên, dưới, quầng sáng sau huy chương.
+  /// Hạng 1–3 theo màu vàng, bạc, đồng; còn lại mỗi hạng một màu riêng.
+  static const rankTop = <Color>[
+    Color(0xFFE9A91E),
+    Color(0xFF8D9BB2),
+    Color(0xFFC8682A),
+    Color(0xFF14B3A1),
+    Color(0xFF3B82F6),
+    Color(0xFF8B5CF6),
+    Color(0xFFE8468F),
+    Color(0xFF6CB012),
+    Color(0xFFF47A1A),
+    Color(0xFF5B63F0),
+  ];
+  static const rankBottom = <Color>[
+    Color(0xFF4A2300),
+    Color(0xFF161D29),
+    Color(0xFF331103),
+    Color(0xFF032925),
+    Color(0xFF091A42),
+    Color(0xFF1C0D45),
+    Color(0xFF3F0A24),
+    Color(0xFF142A04),
+    Color(0xFF401802),
+    Color(0xFF111443),
+  ];
+  static const rankGlow = <Color>[
+    Color(0xFFFFE7A0),
+    Color(0xFFEAF0F8),
+    Color(0xFFFFCFA6),
+    Color(0xFFB8FFF4),
+    Color(0xFFC6DCFF),
+    Color(0xFFE2D5FF),
+    Color(0xFFFFCDE2),
+    Color(0xFFE2FFB8),
+    Color(0xFFFFD9B5),
+    Color(0xFFD3D6FF),
+  ];
+
+  /// Thẻ tháng ngả về trời đêm có sao.
+  static const rankNightTop = Color(0xFF0B0F2A);
+  static const rankNightBottom = Color(0xFF05060F);
+
+  /// Huy chương kim cương (bậc Thần thoại) đổ một dải mịn, không cắt cạnh
+  /// như khung thẻ, kèm quầng ngũ sắc.
+  static const rankDiamond = <Color>[
+    Color(0xFFFFFFFF),
+    Color(0xFFDDEBF7),
+    Color(0xFF9DB4C8),
+    Color(0xFFF4FAFF),
+    Color(0xFFB9CCDB),
+  ];
+  static const rankDiamondHalo = <Color>[
+    Color(0xFFFF9FD8),
+    Color(0xFF9FB4FF),
+    Color(0xFF7FF0DC),
+    Color(0xFFFFE98A),
+    Color(0xFFFF9FD8),
+  ];
 }

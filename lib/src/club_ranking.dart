@@ -117,6 +117,59 @@ DateTime clubRankingPeriodEnd(DateTime now, ClubRankingRange range) {
   return endOnVietnamClock.subtract(_vietnamOffset);
 }
 
+/// Kỳ vừa hết gần nhất. [start], [end] là ngày lịch VN (giữ ở dạng UTC 00:00),
+/// [end] không tính. Backend chốt lúc 12:00 giờ VN ngày đầu kỳ mới
+/// (rank_card.go), nên trước giờ đó kỳ này còn [closing].
+typedef PastRankingPeriod = ({
+  ClubRankingRange range,
+  DateTime start,
+  DateTime end,
+  bool closing,
+});
+
+const _rankCloseDelay = Duration(hours: 12);
+
+PastRankingPeriod pastRankingPeriod(DateTime now, ClubRankingRange range) {
+  final vn = now.toUtc().add(_vietnamOffset);
+  final (start, end) = switch (range) {
+    ClubRankingRange.currentWeek => (
+      DateTime.utc(vn.year, vn.month, vn.day - vn.weekday - 6),
+      DateTime.utc(vn.year, vn.month, vn.day - vn.weekday + 1),
+    ),
+    ClubRankingRange.currentMonth => (
+      DateTime.utc(vn.year, vn.month - 1),
+      DateTime.utc(vn.year, vn.month),
+    ),
+  };
+  return (
+    range: range,
+    start: start,
+    end: end,
+    closing: vn.isBefore(end.add(_rankCloseDelay)),
+  );
+}
+
+String _dateKey(DateTime day) => day.toIso8601String().substring(0, 10);
+
+/// Khoá doc rankBoards/{id} và users/{uid}/rankCards/{id} backend ghi.
+String rankBoardId(PastRankingPeriod period, ClubRankingSport sport) {
+  final range = period.range == ClubRankingRange.currentWeek ? 'week' : 'month';
+  return '${range}_${_dateKey(period.start)}_${sport.name}';
+}
+
+/// "Tuần 19 – 25/10", "Tuần 26/10 – 1/11", "Tháng 9".
+String pastRankingPeriodLabel(PastRankingPeriod period) {
+  final first = period.start;
+  if (period.range == ClubRankingRange.currentMonth) {
+    return 'Tháng ${first.month}';
+  }
+  final last = period.end.subtract(const Duration(days: 1));
+  final from = first.month == last.month
+      ? '${first.day}'
+      : '${first.day}/${first.month}';
+  return 'Tuần $from – ${last.day}/${last.month}';
+}
+
 String clubRankingTimeLeftLabel(DateTime now, ClubRankingRange range) {
   final left = clubRankingPeriodEnd(now, range).difference(now.toUtc());
   final days = left.inDays;

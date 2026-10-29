@@ -7,6 +7,7 @@ import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/journey/journey_card.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/rank/rank_card.dart';
 
 RunCard _card(String id, String tier, int daysAgo) => RunCard.fromJson({
   'id': id,
@@ -26,6 +27,7 @@ Future<void> _pump(
   List<RunCard> cards, {
   List<GamePlayerCard> games = const [],
   List<JourneyCard> journeys = const [],
+  List<RankCard> ranks = const [],
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -33,15 +35,17 @@ Future<void> _pump(
         runCardsProvider.overrideWith((ref) => Stream.value(cards)),
         gameCardsProvider.overrideWith((ref) => Stream.value(games)),
         journeyCardsProvider.overrideWith((ref) => Stream.value(journeys)),
+        myRankCardsProvider.overrideWith((ref) => Stream.value(ranks)),
         userProfileProvider.overrideWith((ref) => Stream.value(null)),
       ],
       child: const MaterialApp(home: RunCardCollectionScreen()),
     ),
   );
-  // Thẻ Thần thoại chạy hiệu ứng mãi, nên không chờ settle.
-  await tester.pump();
-  await tester.pump();
-  await tester.pump();
+  // Thẻ Thần thoại chạy hiệu ứng mãi, nên không chờ settle. Mỗi nguồn thẻ
+  // cần một frame để có giá trị.
+  for (var i = 0; i < 4; i++) {
+    await tester.pump();
+  }
 }
 
 /// Thẻ Ma Sói của ván kết thúc [daysAgo] ngày trước, như doc gameCards.
@@ -149,6 +153,45 @@ void main() {
     expect(find.text('Khoe thẻ'), findsOneWidget);
   });
 
+  testWidgets('a flipped BXH card joins by flip time, a face-down one waits', (
+    tester,
+  ) async {
+    RankCard rank(String boardId, DateTime? revealedAt) =>
+        RankCard.fromJson('me', boardId, {
+          'range': 'week',
+          'sport': 'run',
+          'periodStart': '2026-10-12',
+          'periodEnd': '2026-10-19',
+          'rank': 1,
+          'participants': 9,
+          'tier': 'legendary',
+          'score': 30000,
+          'displayName': 'Linh',
+          'awardedAt': DateTime.utc(2026, 10, 19, 5),
+          'revealedAt': revealedAt,
+        })!;
+    await _pump(
+      tester,
+      [_card('a', 'rare', 1), _card('c', 'rare', 3)],
+      ranks: [
+        rank('week_2026-10-12_run', DateTime.utc(2026, 10, 22)),
+        rank('week_2026-10-12_steps', null),
+      ],
+    );
+    expect(_shown(tester), ['a', 'rank-week_2026-10-12_run', 'c']);
+
+    await tester.tap(
+      find.byWidgetPredicate(
+        (w) =>
+            w is CollectedCardThumb && w.card.id == 'rank-week_2026-10-12_run',
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('BXH tuần · Quán quân'), findsOneWidget);
+    expect(find.text('Khoe thẻ'), findsOneWidget);
+  });
+
   testWidgets('a failing source shows the error, not half the collection', (
     tester,
   ) async {
@@ -162,6 +205,7 @@ void main() {
             (ref) => Stream.error(StateError('permission-denied')),
           ),
           journeyCardsProvider.overrideWith((ref) => Stream.value(const [])),
+          myRankCardsProvider.overrideWith((ref) => Stream.value(const [])),
           userProfileProvider.overrideWith((ref) => Stream.value(null)),
         ],
         child: const MaterialApp(home: RunCardCollectionScreen()),

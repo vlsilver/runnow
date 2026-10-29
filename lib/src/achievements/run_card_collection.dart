@@ -5,11 +5,13 @@ import 'package:myrun/src/achievements/run_card.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
+import 'package:myrun/src/club_ranking.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/journey/journey_card.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/rank/rank_card.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 
@@ -20,8 +22,8 @@ String runCardOwnerName(WidgetRef ref) =>
     ) ??
     '3i member';
 
-/// Một thẻ trong bộ: thẻ buổi chạy, thẻ Ma Sói của ván phe mình thắng, hay
-/// thẻ Hành trình của chặng đã về đích.
+/// Một thẻ trong bộ: thẻ buổi chạy, thẻ Ma Sói của ván phe mình thắng, thẻ
+/// Hành trình của chặng đã về đích, hay thẻ BXH đã lật.
 sealed class CollectedCard {
   const CollectedCard();
 
@@ -128,6 +130,36 @@ class CollectedJourneyCard extends CollectedCard {
       showJourneyCardViewer(context, card, data);
 }
 
+class CollectedRankCard extends CollectedCard {
+  const CollectedRankCard(this.card);
+
+  final RankCard card;
+
+  @override
+  String get id => 'rank-${card.boardId}';
+  @override
+  GameCardTier get tier => card.tier;
+
+  /// Lúc lật, như thẻ buổi chạy: lật xong là thẻ mới nhất.
+  @override
+  DateTime? get at => card.revealedAt;
+  @override
+  String get title =>
+      'BXH ${card.month ? 'tháng' : 'tuần'} · ${rankTitle(card.rank)}';
+  @override
+  String get subtitle =>
+      '${gameCardTiers[tier]!.label} · ${pastRankingPeriodLabel(card.period)}';
+  @override
+  String get label => 'Thẻ BXH ${gameCardTiers[tier]!.label} $title';
+
+  /// Thẻ in tên lúc chốt, không theo tên hiện tại.
+  @override
+  AchievementCardData data(String owner) => rankCardData(card);
+  @override
+  void open(BuildContext context, AchievementCardData data) =>
+      showRankCardViewer(context, card, canShare: true);
+}
+
 /// Cả bộ thẻ, mới có trước. Một nguồn lỗi thì cả bộ báo lỗi chứ không hiện
 /// thiếu.
 final collectedCardsProvider =
@@ -135,18 +167,25 @@ final collectedCardsProvider =
       final runs = ref.watch(runCardsProvider);
       final games = ref.watch(gameCardsProvider);
       final journeys = ref.watch(journeyCardsProvider);
-      for (final source in [runs, games, journeys]) {
+      final ranks = ref.watch(myRankCardsProvider);
+      for (final source in [runs, games, journeys, ranks]) {
         if (source case AsyncError(:final error, :final stackTrace)) {
           return AsyncError(error, stackTrace);
         }
       }
-      if (!runs.hasValue || !games.hasValue || !journeys.hasValue) {
+      if (!runs.hasValue ||
+          !games.hasValue ||
+          !journeys.hasValue ||
+          !ranks.hasValue) {
         return const AsyncLoading();
       }
       final cards = <CollectedCard>[
         for (final card in runs.requireValue) CollectedRunCard(card),
         for (final card in games.requireValue) CollectedGameCard(card),
         for (final card in journeys.requireValue) CollectedJourneyCard(card),
+        // Thẻ còn úp chưa vào bộ: chủ thẻ lật ở mục Kỳ trước của BXH.
+        for (final card in ranks.requireValue)
+          if (card.revealed) CollectedRankCard(card),
       ];
       // Thẻ thiếu mốc thời gian xếp cuối.
       final never = DateTime.fromMillisecondsSinceEpoch(0);
@@ -156,8 +195,8 @@ final collectedCardsProvider =
 
 /// Câu khi bộ thẻ còn trống.
 const collectedCardsEmpty =
-    'Chưa có thẻ nào. Lật thẻ sau buổi chạy, thắng một ván Ma Sói, hoặc về '
-    'đích một chặng Hành trình để có thẻ đầu tiên.';
+    'Chưa có thẻ nào. Lật thẻ sau buổi chạy, thắng một ván Ma Sói, về đích '
+    'một chặng Hành trình, hoặc vào top 10 BXH tuần, tháng để có thẻ đầu tiên.';
 
 /// Thẻ thu nhỏ theo bề ngang [width]; chạm để xem 3D.
 class CollectedCardThumb extends StatelessWidget {
