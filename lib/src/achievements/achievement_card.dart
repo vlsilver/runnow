@@ -182,16 +182,15 @@ const _sheens = {
 /// Bo góc ngoài của thẻ.
 const _radius = 17.0;
 
-/// Đỉnh chân thẻ; chân thẻ là nền tối từ đây tới đáy, nối liền lớp phủ chữ.
+/// Đỉnh chân thẻ; chân thẻ là nền đặc từ đây tới đáy, nối liền nền chữ.
 const _footTop = 360.0;
+
+/// Thẻ có số liệu: tranh vẽ trong khung tới đây, vừa chạm mép nền chữ, để
+/// poster không bị nền che mất phần dưới.
+const _artBottom = 214.0;
 
 /// Lề trái phải của chữ và ô đá.
 const _inset = 17.0;
-
-/// Thẻ có số liệu: tranh dừng ở đây, nền chân thẻ tan lên trên một đoạn
-/// [_panelFade] để tranh không bị cắt ngang.
-const _panelTop = 244.0;
-const _panelFade = 46.0;
 
 /// Thẻ thành tích vẽ ở [achievementCardSize]. [pose] là độ nghiêng (-1..1 mỗi
 /// chiều) mà nét kim loại, vệt sáng và tranh chạy theo. Riêng thẻ Thần thoại
@@ -413,10 +412,10 @@ class _Front extends StatelessWidget {
     );
     const linesPadding = EdgeInsets.fromLTRB(_inset, 0, _inset, 10);
     final lines = stats == null
-        ? _Scrim(
-            skin: skin,
+        ? _Panel(
+            color: skin.shade,
             child: Padding(
-              padding: linesPadding,
+              padding: linesPadding.copyWith(top: _Panel.lift),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
@@ -442,37 +441,45 @@ class _Front extends StatelessWidget {
               ),
             ),
           )
-        : Padding(
-            padding: linesPadding,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                kind,
-                const SizedBox(height: 3),
-                hero(32),
-                const SizedBox(height: 3),
-                _Title(text: data.title, tier: tier, skin: skin, compact: true),
-                const SizedBox(height: 9),
-                SizedBox(
-                  height: 1,
-                  child: ColoredBox(color: ink.withValues(alpha: 0.16)),
-                ),
-                const SizedBox(height: 7),
-                Row(
-                  children: [
-                    for (final (i, stat) in stats.indexed)
-                      Expanded(
-                        child: Padding(
-                          padding: EdgeInsets.only(
-                            right: i < stats.length - 1 ? 6 : 0,
+        : _Panel(
+            color: skin.shade,
+            child: Padding(
+              padding: linesPadding.copyWith(top: _Panel.lift),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  kind,
+                  const SizedBox(height: 3),
+                  hero(32),
+                  const SizedBox(height: 3),
+                  _Title(
+                    text: data.title,
+                    tier: tier,
+                    skin: skin,
+                    compact: true,
+                  ),
+                  const SizedBox(height: 9),
+                  SizedBox(
+                    height: 1,
+                    child: ColoredBox(color: ink.withValues(alpha: 0.16)),
+                  ),
+                  const SizedBox(height: 7),
+                  Row(
+                    children: [
+                      for (final (i, stat) in stats.indexed)
+                        Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              right: i < stats.length - 1 ? 6 : 0,
+                            ),
+                            child: _Stat(stat: stat, skin: skin),
                           ),
-                          child: _Stat(stat: stat, skin: skin),
                         ),
-                      ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           );
     return Stack(
@@ -481,41 +488,16 @@ class _Front extends StatelessWidget {
         ColoredBox(color: skin.field),
         if (stats == null)
           art
-        else ...[
+        else
           Positioned(
             left: 0,
             top: 0,
             right: 0,
-            height: _panelTop,
+            height: _artBottom,
             child: ClipRect(child: Stack(children: [art])),
           ),
-          Positioned(
-            left: 0,
-            top: _panelTop - _panelFade,
-            right: 0,
-            bottom: 0,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(
-                  height: _panelFade,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [skin.shade.withValues(alpha: 0), skin.shade],
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(child: ColoredBox(color: skin.shade)),
-              ],
-            ),
-          ),
-        ],
         if (sheen != null) _Sheen(light: light, color: sheen),
-        // Khối chữ đứng ngay trên chân thẻ, lớp phủ của nó nối liền nền chân.
+        // Khối chữ đứng ngay trên chân thẻ, nền của nó nối liền nền chân.
         Positioned(
           left: 0,
           right: 0,
@@ -674,7 +656,7 @@ class _TrimPainter extends CustomPainter {
     if (shade case final shade?) {
       canvas.drawRect(
         Rect.fromLTRB(0, _footTop, size.width, size.height),
-        Paint()..color = shade.withValues(alpha: 0.94),
+        Paint()..color = shade,
       );
       if (level >= 3) {
         canvas.drawPath(inner, line(0.72, 0.9));
@@ -1045,61 +1027,49 @@ class _Stat extends StatelessWidget {
   }
 }
 
-/// Lớp tối chỉ nằm sau khối chữ để chữ đọc được trên mọi tranh: đậm nhất ở
-/// chân thẻ, nhạt dần qua vùng chữ, rồi tan hết ngay trên chữ. Cao theo khối
-/// chữ (tên hai dòng thì phủ cao hơn), phần tranh không có chữ để nguyên.
-class _Scrim extends StatelessWidget {
-  const _Scrim({required this.skin, required this.child});
+/// Nền đặc sau khối chữ, nối liền chân thẻ. Tranh dừng ở mép trên của nền,
+/// không tan qua lớp mờ: nền giấy mờ đè lên tranh tối thành một dải sương đục,
+/// lệch màu với cả tranh lẫn chân thẻ. Một vệt bóng mỏng trên tranh ngay sát
+/// mép cho nền như đặt chồng lên tranh.
+class _Panel extends StatelessWidget {
+  const _Panel({required this.color, required this.child});
 
-  final RunCardSkin skin;
+  final Color color;
   final Widget child;
 
-  /// Dải tan từ mép trên khối chữ về trong suốt.
-  static const _fade = 48.0;
+  /// Khoảng từ mép nền tới chữ.
+  static const lift = 14.0;
 
   @override
-  Widget build(BuildContext context) {
-    final color = skin.shade;
-    final (edge, inner) = skin.scrim;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          height: _fade,
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [
-                    color.withValues(alpha: inner),
-                    color.withValues(alpha: inner * 0.4),
-                    color.withValues(alpha: 0),
-                  ],
-                  stops: const [0, 0.5, 1],
-                ),
-              ),
-            ),
-          ),
-        ),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-              colors: [
-                color.withValues(alpha: edge),
-                color.withValues(alpha: inner),
-              ],
-            ),
-          ),
-          child: child,
-        ),
-      ],
+  Widget build(BuildContext context) =>
+      CustomPaint(painter: _PanelPainter(color), child: child);
+}
+
+class _PanelPainter extends CustomPainter {
+  const _PanelPainter(this.color);
+
+  final Color color;
+
+  /// Cao của vệt bóng trên tranh.
+  static const _shadow = 12.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final shadow = Rect.fromLTWH(0, -_shadow, size.width, _shadow);
+    canvas.drawRect(
+      shadow,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [_T.panelShadow, _T.panelShadowEnd],
+        ).createShader(shadow),
     );
+    canvas.drawRect(Offset.zero & size, Paint()..color = color);
   }
+
+  @override
+  bool shouldRepaint(_PanelPainter old) => old.color != color;
 }
 
 /// Từ bậc Hiếm trở lên: một vệt sáng chéo cùng tông kim loại quét qua khi
