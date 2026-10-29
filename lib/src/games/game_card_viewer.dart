@@ -482,3 +482,32 @@ class _LockedNote extends StatelessWidget {
     );
   }
 }
+
+/// Lật từ [from] sang [to] quanh trục dọc trong 0,7 giây.
+class CardFlipReveal extends StatelessWidget {
+  const CardFlipReveal({super.key, required this.from, required this.to});
+
+  final Widget from;
+  final Widget to;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 700),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, _) {
+        // Nửa đầu mặt úp quay đi, nửa sau mặt thẻ quay về.
+        final angle = math.pi * (1 - t);
+        final faceDown = angle > math.pi / 2;
+        return Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, 0.0012)
+            ..rotateY(faceDown ? math.pi - angle : angle),
+          child: faceDown ? from : to,
+        );
+      },
+    );
+  }
+}
