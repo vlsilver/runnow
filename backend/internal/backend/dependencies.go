@@ -36,6 +36,9 @@ type Dependencies struct {
 	// JourneyCards trao thẻ Hành trình sau mỗi lần dựng lại periodStats; nil
 	// thì task chỉ dựng periodStats (test không cần thẻ).
 	JourneyCards *JourneyCardService
+	// RankCards chốt BXH kỳ trước và trao thẻ; nil thì schedule-tick không hẹn
+	// task chốt.
+	RankCards *RankCardService
 	// Garmin luôn có; khi chưa cấu hình (Config.GarminEnabled) thì nối trả
 	// garmin_not_configured và push trả 404.
 	Garmin *GarminService
@@ -88,6 +91,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 	d.Derived = NewDerivedDataService(db)
 	d.PeriodStats = NewPeriodStatsService(db)
 	d.JourneyCards = NewJourneyCardService(db)
+	d.RankCards = NewRankCardService(db, nil)
 	d.Profiles = NewProfileService(db, tasks)
 	d.Reconciliation = NewReconciliationService(db, tasks)
 	// Không có bucket thì xoá tài khoản vẫn chạy, chỉ bỏ qua phần ảnh —
@@ -145,6 +149,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 				}
 			}
 			d.Memory = NewMemoryService(genaiClient, db, config.GeminiModel)
+			d.RankCards.quoter = genaiRankQuoter{client: genaiClient, model: config.GeminiModel}
 			// Mọi lượt gọi model của bot cá nhân đi qua trần chi phí ngày; chưa đặt
 			// agentState/config.dailyBudgetUsd thì chỉ cộng số, không chặn gì.
 			budget := NewAgentBudget(db, adminNotifier(d.Games, telegram))

@@ -100,6 +100,17 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // Thẻ BXH: backend ghi lúc chốt kỳ. Ai đăng nhập cũng đọc, vì người khác
+      // cần biết thẻ đã lật chưa. Chủ thẻ chỉ ghi được lúc lật: một lần, chỉ
+      // revealedAt, và phải là giờ server.
+      match /rankCards/{boardId} {
+        allow read: if signedIn();
+        allow update: if owns(userId)
+          && resource.data.revealedAt == null
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revealedAt'])
+          && request.resource.data.revealedAt == request.time;
+      }
+
       match /runContractActivityClaims/{activityId} {
         allow read: if owns(userId);
         allow create, update: if owns(userId)
@@ -311,6 +322,12 @@ service cloud.firestore {
 
     // Bảng xếp hạng SỐ BƯỚC (Apple Health) — công khai đọc, chỉ backend ghi.
     match /stepLeaderboardEntries/{userId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Top 10 đã chốt của từng kỳ BXH, chỉ backend ghi.
+    match /rankBoards/{boardId} {
       allow read: if signedIn();
       allow write: if false;
     }
