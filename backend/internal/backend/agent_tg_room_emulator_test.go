@@ -278,3 +278,31 @@ func TestEmulatorTelegramRoomNoProactive3i(t *testing.T) {
 		t.Fatalf("cả hai tin phải vào lịch sử, có %d", len(rows))
 	}
 }
+
+// Tin bot nói trong topic Phòng bot trừ vào lượt hôm nay của chủ bot, chung bộ
+// đếm với chat riêng: bot hết lượt thì không được chọn nói nữa, bot khác còn
+// lượt vẫn nói. Mặc định chưa chạy thì mỗi người có 10 lượt.
+func TestEmulatorTelegramRoomCountsOwnerQuota(t *testing.T) {
+	e := newMybotEnv(t)
+	cuongTok := e.linkBot("cuong", "5001", 8001, "Cú Mèo", 10)
+	anTok := e.linkBot("an", "5002", 8002, "Sóc", 11)
+	e.manager(topicMsg(100, 5002, tgRoomThread, "/phongbot"))
+	e.child(8001, pscMemberUpd(200, 8001, "member"))
+	e.child(8002, pscMemberUpd(201, 8002, "member"))
+	e.drain()
+	e.merge("agents/an", map[string]any{"dmDay": vnDay(e.clock), "dmDayCount": 9})
+
+	e.llm.script = append(e.llm.script, llmText("Sóc chào"), llmText("Cú Mèo chào"), llmText("Sóc nói tiếp"), llmText("Cú Mèo nói tiếp"))
+	e.manager(topicMsg(300, 5001, tgRoomThread, "chào cả nhà"))
+	e.drain()
+
+	if len(e.llm.calls) != 2 || len(e.tg.CallsBy(anTok, "sendMessage")) != 1 || len(e.tg.CallsBy(cuongTok, "sendMessage")) != 1 {
+		t.Fatalf("Sóc còn 1 lượt thì chỉ nói 1 tin: llm=%d, room=%v", len(e.llm.calls), e.roomMessages(agentTelegramRoom))
+	}
+	if an, cuong := e.doc("agents/an")["dmDayCount"], e.doc("agents/cuong")["dmDayCount"]; an != int64(10) || cuong != int64(1) {
+		t.Fatalf("dmDayCount an=%v cuong=%v, muốn 10 và 1", an, cuong)
+	}
+	if got := e.meToday("an"); got["dmUsed"] != 10.0 || got["resting"] != agentRestingDMLimit {
+		t.Fatalf("today của An sau khi hết lượt trong phòng: %v", got)
+	}
+}

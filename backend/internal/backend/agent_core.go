@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -27,7 +28,7 @@ const (
 	agentReplyMaxRune = 600
 	// Các giới hạn dưới là mặc định; admin sửa được ở agentState/config (xem
 	// agentConfigFields).
-	agentDMDailyMax   = 100 // trần câu trả lời chat riêng mỗi người mỗi ngày
+	agentDMDailyMax   = 100 // trần tin bot mỗi người mỗi ngày, chat riêng và phòng cộng lại
 	agentDMBaseDaily  = 10  // câu trả lời chat riêng có sẵn mỗi ngày
 	agentDMPerKm      = 10  // câu trả lời thêm cho mỗi km trọn chạy hay đi bộ hôm nay
 	agentRoomDailyMax = 300 // tin bot trong phòng mỗi ngày
@@ -265,7 +266,7 @@ func (a *AgentService) ReplyDM(ctx context.Context, uid, channel string, seq int
 		}
 		return nil
 	}
-	// Trần câu trả lời mỗi ngày đếm chung mọi kênh, vì chi phí tính theo người.
+	// Trần tin mỗi ngày đếm chung mọi kênh và mọi phòng, vì chi phí tính theo người.
 	allowed, quota, err := a.consumeDMBudget(ctx, uid, ch, seq, wall)
 	if err != nil {
 		return err
@@ -316,8 +317,8 @@ func (a *AgentService) redeliverDMReply(ctx context.Context, uid string, ch agen
 	return a.deliverDMReply(ctx, uid, ch, reply)
 }
 
-// consumeDMBudget đếm tin seq của kênh ch vào số câu trả lời chat riêng trong
-// ngày (giờ VN) trên doc bot, chặn ở hạn mức theo km hôm nay. Tin đã đếm rồi
+// consumeDMBudget đếm tin seq của kênh ch vào số tin bot trong ngày (giờ VN)
+// trên doc bot, chặn ở hạn mức theo km hôm nay. Tin đã đếm rồi
 // (task chạy lại sau lỗi model) thì cho qua mà không đếm nữa, kể cả khi lần đếm
 // đó đã chạm hạn mức. Km đọc ngoài transaction: hai tin cùng lúc vẫn bị
 // transaction chặn ở cùng một max, còn km đổi giữa chừng (buổi chạy mới đồng
@@ -340,14 +341,11 @@ func (a *AgentService) consumeDMBudget(ctx context.Context, uid string, ch agent
 		if allowed = int64(number(doc.Data()[ch.countedField])) >= seq; allowed {
 			return nil
 		}
-		day, count := vnDay(wall), int64(0)
-		if stringValue(doc.Data()["dmDay"]) == day {
-			count = int64(number(doc.Data()["dmDayCount"]))
-		}
+		count := dmUsedToday(doc.Data(), wall)
 		if allowed = count < q.max; !allowed {
 			return nil
 		}
-		return tx.Update(ref, []firestore.Update{{Path: "dmDay", Value: day}, {Path: "dmDayCount", Value: count + 1}, {Path: ch.countedField, Value: seq}})
+		return tx.Update(ref, []firestore.Update{{Path: "dmDay", Value: vnDay(wall)}, {Path: "dmDayCount", Value: count + 1}, {Path: ch.countedField, Value: seq}})
 	})
 	return allowed, q, err
 }
@@ -576,9 +574,9 @@ func (a *AgentService) RoomTurn(ctx context.Context, roomID string, afterSeq int
 	if err != nil {
 		return err
 	}
-	speaker, ok := pickSpeaker(agents, room, transcript[len(transcript)-1])
-	if !ok {
-		return nil
+	speaker, quotaMax, ok, err := a.pickRoomSpeaker(ctx, lim, roomID, agents, room, transcript[len(transcript)-1], wall)
+	if err != nil || !ok {
+		return err
 	}
 	text, image, err := a.roomReply(ctx, roomID, speaker, agents, acc.roster(agents), transcript, wall)
 	if errors.Is(err, errAgentOverBudget) {
@@ -589,7 +587,7 @@ func (a *AgentService) RoomTurn(ctx context.Context, roomID string, afterSeq int
 		if last := transcript[len(transcript)-1]; stringValue(last["kind"]) == agentKindAgent && stringValue(last["text"]) == agentBudgetReply {
 			return nil
 		}
-		written, err := a.store.appendRoomTurn(ctx, lim, roomID, afterSeq, speaker, agentBudgetReply, "", wall)
+		written, err := a.store.appendRoomTurn(ctx, lim, roomID, afterSeq, speaker, quotaMax, agentBudgetReply, "", wall)
 		if err != nil || !written {
 			return err
 		}
@@ -602,7 +600,7 @@ func (a *AgentService) RoomTurn(ctx context.Context, roomID string, afterSeq int
 		slog.InfoContext(ctx, "agent.room_pass", "room", roomID, "afterSeq", afterSeq, "speaker", speaker.uid)
 		return nil
 	}
-	written, err := a.store.appendRoomTurn(ctx, lim, roomID, afterSeq, speaker, text, image, wall)
+	written, err := a.store.appendRoomTurn(ctx, lim, roomID, afterSeq, speaker, quotaMax, text, image, wall)
 	if err != nil || !written {
 		return err
 	}
@@ -702,6 +700,30 @@ func pickSpeaker(agents []roomAgent, room map[string]any, last map[string]any) (
 		return roomAgent{}, false
 	}
 	return *best, true
+}
+
+// pickRoomSpeaker chọn bot nói tiếp như pickSpeaker nhưng bỏ bot mà chủ đã hết
+// lượt hôm nay, vì tin bot trong phòng trừ vào cùng lượt với chat riêng. Kiểm
+// trước khi gọi model để bot hết lượt không tốn một lần gọi. Trả hạn mức của
+// bot được chọn để appendRoomTurn kiểm lại trong transaction. Km chỉ đọc cho
+// bot pickSpeaker chọn ra, không đọc cho cả phòng.
+func (a *AgentService) pickRoomSpeaker(ctx context.Context, lim agentLimits, roomID string, agents []roomAgent, room, last map[string]any, wall time.Time) (roomAgent, int64, bool, error) {
+	left := slices.Clone(agents)
+	for {
+		speaker, ok := pickSpeaker(left, room, last)
+		if !ok {
+			return roomAgent{}, 0, false, nil
+		}
+		q, err := a.store.dmQuota(ctx, lim, speaker.uid, wall)
+		if err != nil {
+			return roomAgent{}, 0, false, err
+		}
+		if dmUsedToday(speaker.doc, wall) < q.max {
+			return speaker, q.max, true, nil
+		}
+		slog.InfoContext(ctx, "agent.room_quota_skip", "room", roomID, "speaker", speaker.uid)
+		left = slices.DeleteFunc(left, func(ag roomAgent) bool { return ag.uid == speaker.uid })
+	}
 }
 
 // addressedBot là bot con mà tin người last reply tới, hay được @username trong
@@ -946,9 +968,11 @@ func uniqueStrings(in []string) []string {
 }
 
 // appendRoomTurn ghi tin của bot nếu phòng vẫn đứng ở afterSeq (không ai chen
-// vào lúc model đang viết) và còn ngân sách ngày của phòng.
-func (s *AgentStore) appendRoomTurn(ctx context.Context, lim agentLimits, roomID string, afterSeq int64, speaker roomAgent, text, imagePath string, wall time.Time) (bool, error) {
-	ref := s.roomRef(roomID)
+// vào lúc model đang viết), còn ngân sách ngày của phòng và chủ bot còn lượt
+// dưới quotaMax. Tin ghi được thì trừ một lượt của chủ bot trong cùng
+// transaction, nên chat riêng chạy song song không vượt trần được.
+func (s *AgentStore) appendRoomTurn(ctx context.Context, lim agentLimits, roomID string, afterSeq int64, speaker roomAgent, quotaMax int64, text, imagePath string, wall time.Time) (bool, error) {
+	ref, agentRef := s.roomRef(roomID), s.agentRef(speaker.uid)
 	written := false
 	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		written = false
@@ -956,7 +980,15 @@ func (s *AgentStore) appendRoomTurn(ctx context.Context, lim agentLimits, roomID
 		if err != nil {
 			return err
 		}
-		if int64(number(room["seq"])) != afterSeq || int64(number(room["chain"])) >= lim.chainMax || roomBudgetLeft(lim, room, wall) <= 0 {
+		agent, err := tx.Get(agentRef)
+		if status.Code(err) == codes.NotFound {
+			return nil // chủ vừa xoá bot
+		}
+		if err != nil {
+			return err
+		}
+		used := dmUsedToday(agent.Data(), wall)
+		if int64(number(room["seq"])) != afterSeq || int64(number(room["chain"])) >= lim.chainMax || roomBudgetLeft(lim, room, wall) <= 0 || used >= quotaMax {
 			return nil
 		}
 		seq := afterSeq + 1
@@ -968,6 +1000,9 @@ func (s *AgentStore) appendRoomTurn(ctx context.Context, lim agentLimits, roomID
 			return err
 		}
 		day := vnDay(wall)
+		if err := tx.Update(agentRef, []firestore.Update{{Path: "dmDay", Value: day}, {Path: "dmDayCount", Value: used + 1}}); err != nil {
+			return err
+		}
 		written = true
 		return tx.Set(ref, map[string]any{
 			"seq": seq, "chain": int64(number(room["chain"])) + 1, "lastSpeaker": speaker.uid, "turnOf": afterSeq,

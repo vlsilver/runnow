@@ -9,9 +9,10 @@ import (
 	"time"
 )
 
-// agentDMQuota là số câu trả lời chat riêng một người được nhận hôm nay (giờ
-// VN): dmBaseDaily câu sẵn, cộng dmPerKm câu cho mỗi km trọn chạy hay đi bộ
-// hôm nay, không quá dmDailyMax. Km lấy từ todayKm, cùng chỗ với lượt vẽ ảnh.
+// agentDMQuota là số tin bot của một người được nói hôm nay (giờ VN), gồm câu
+// trả lời chat riêng mọi kênh và tin trong mọi phòng: dmBaseDaily tin sẵn, cộng
+// dmPerKm tin cho mỗi km trọn chạy hay đi bộ hôm nay, không quá dmDailyMax. Km
+// lấy từ todayKm, cùng chỗ với lượt vẽ ảnh.
 type agentDMQuota struct {
 	runKm float64
 	max   int64
@@ -40,13 +41,21 @@ func (s *AgentStore) dmQuota(ctx context.Context, lim agentLimits, uid string, w
 	return newAgentDMQuota(lim, runKm), nil
 }
 
-// dmLimitReply là câu bot trả khi chủ hết lượt chat riêng hôm nay. Còn mốc km
-// thì nói luôn cách mở thêm, vì trên Telegram chủ không thấy thẻ km của app.
+// dmUsedToday là số tin bot đã nói hôm nay (giờ VN), đếm trên doc bot.
+func dmUsedToday(agent map[string]any, wall time.Time) int64 {
+	if stringValue(agent["dmDay"]) != vnDay(wall) {
+		return 0
+	}
+	return int64(number(agent["dmDayCount"]))
+}
+
+// dmLimitReply là câu bot trả khi chủ hết lượt hôm nay. Còn mốc km thì nói
+// luôn cách mở thêm, vì trên Telegram chủ không thấy thẻ km của app.
 func dmLimitReply(q agentDMQuota) string {
 	if q.nextKm == nil {
 		return agentBudgetReply
 	}
-	return fmt.Sprintf("Hôm nay mình hết lượt chat riêng rồi. Bạn chạy hay đi bộ thêm %s km là mình nói tiếp được %d câu nữa, không thì qua 0h mình nói tiếp nhé.",
+	return fmt.Sprintf("Hôm nay mình hết lượt nói rồi. Bạn chạy hay đi bộ thêm %s km là mình nói tiếp được %d câu nữa, không thì qua 0h mình nói tiếp nhé.",
 		viKmLeft(*q.nextKm-q.runKm), *q.nextMax-q.max)
 }
 

@@ -56,10 +56,12 @@ type AgentRoomPage struct {
 }
 
 // roomAgent là một bot trong phòng: chủ, tên, persona. botID và username là bot
-// con trên Telegram, chỉ có ở phòng tg-psc.
+// con trên Telegram, chỉ có ở phòng tg-psc. doc là doc bot lúc đọc, để biết
+// lượt đã dùng hôm nay (dmUsedToday) mà không đọc lại.
 type roomAgent struct {
 	uid, name, persona string
 	botID, username    string
+	doc                map[string]any
 }
 
 // agentRoomMax là số bot tối đa được đọc vào một lượt nói khi đã mở cho mọi
@@ -114,7 +116,7 @@ func (s *AgentStore) roomAgents(ctx context.Context, acc agentAccess, prefer str
 	var out []roomAgent
 	for _, d := range docs {
 		if inRoom, ok := d.Data()["inRoom"]; !ok || inRoom == true {
-			out = append(out, roomAgent{uid: d.Ref.ID, name: stringValue(d.Data()["name"]), persona: stringValue(d.Data()["persona"])})
+			out = append(out, roomAgent{uid: d.Ref.ID, name: stringValue(d.Data()["name"]), persona: stringValue(d.Data()["persona"]), doc: d.Data()})
 		}
 	}
 	slices.SortFunc(out, func(a, b roomAgent) int { return strings.Compare(a.uid, b.uid) })
@@ -149,7 +151,7 @@ func (s *AgentStore) telegramRoomAgents(ctx context.Context, acc agentAccess) ([
 		}
 		out = append(out, roomAgent{
 			uid: d.Ref.ID, name: stringValue(data["name"]), persona: stringValue(data["persona"]),
-			botID: stringValue(tg["botId"]), username: stringValue(tg["username"]),
+			botID: stringValue(tg["botId"]), username: stringValue(tg["username"]), doc: data,
 		})
 	}
 	slices.SortFunc(out, func(a, b roomAgent) int { return strings.Compare(a.uid, b.uid) })

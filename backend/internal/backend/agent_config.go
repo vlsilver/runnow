@@ -48,22 +48,23 @@ var agentConfigFields = []agentConfigField{
 			"Tiền tính theo bảng giá model bên dưới: nhớ khai giá model ảnh, thiếu giá thì tính theo giá dự phòng, thấp hơn giá ảnh thật.",
 	},
 	{
-		Key: "dmDailyMax", Label: "Trần câu trả lời chat riêng mỗi người mỗi ngày", Kind: "int", Unit: "câu/người/ngày", Min: 0, Max: 1000, Default: agentDMDailyMax,
-		Help: "Câu sẵn cộng câu thưởng theo km (hai dòng dưới) không vượt quá số này, chạy bao xa cũng vậy. Hết lượt thì bot trả câu nghỉ, 0h giờ VN đếm lại. " +
+		Key: "dmDailyMax", Label: "Trần tin bot của mỗi người mỗi ngày", Kind: "int", Unit: "tin/người/ngày", Min: 0, Max: 1000, Default: agentDMDailyMax,
+		Help: "Câu sẵn cộng câu thưởng theo km (hai dòng dưới) không vượt quá số này, chạy bao xa cũng vậy. Câu trả lời chat riêng (app, Telegram) và tin bot nói trong phòng bot (app, topic Telegram) trừ chung một lượt. " +
+			"Hết lượt thì chat riêng nhận câu nghỉ, trong phòng thì bot im để bot khác nói; 0h giờ VN đếm lại. " +
 			"Một câu trả lời gọi AI tối đa 3 lần (khi bot cần nhớ, quên hay tra web), nên đây là chỗ chặn một người tiêu quá nhiều. 0 thì bot chỉ trả câu nghỉ, không gọi AI.",
 	},
 	{
-		Key: "dmBaseDaily", Label: "Câu trả lời chat riêng có sẵn mỗi ngày", Kind: "int", Unit: "câu/người/ngày", Min: 0, Max: 1000, Default: agentDMBaseDaily,
-		Help: "Mỗi người có sẵn chừng này câu trả lời trong chat riêng mỗi ngày (giờ VN), chưa cần chạy. App và Telegram đếm chung.",
+		Key: "dmBaseDaily", Label: "Tin bot có sẵn mỗi ngày", Kind: "int", Unit: "tin/người/ngày", Min: 0, Max: 1000, Default: agentDMBaseDaily,
+		Help: "Bot của mỗi người có sẵn chừng này tin mỗi ngày (giờ VN), chưa cần chạy. Chat riêng và phòng bot, app và Telegram đều đếm chung.",
 	},
 	{
-		Key: "dmPerKm", Label: "Câu trả lời thêm cho mỗi km chạy", Kind: "int", Unit: "câu/km", Min: 0, Max: 1000, Default: agentDMPerKm,
+		Key: "dmPerKm", Label: "Tin bot thêm cho mỗi km chạy", Kind: "int", Unit: "tin/km", Min: 0, Max: 1000, Default: agentDMPerKm,
 		Help: "Mỗi km trọn chạy hay đi bộ trong ngày (giờ VN) mở thêm chừng này câu: 4,1 km tính 4 km. Km gồm buổi chạy đã đồng bộ và quãng đường Apple Health tự đồng bộ (lấy số lớn hơn), cùng số km với lượt vẽ ảnh. " +
 			"Hết lượt mà còn mốc km thì câu nghỉ của bot chỉ chủ chạy thêm bao nhiêu. 0 là không thưởng theo km.",
 	},
 	{
 		Key: "roomDailyMax", Label: "Tin bot trong phòng mỗi ngày", Kind: "int", Unit: "tin/ngày, cả phòng", Min: 0, Max: 5000, Default: agentRoomDailyMax,
-		Help: "Tổng số tin mọi bot được nói trong phòng bot mỗi ngày (giờ VN), dùng chung cho cả phòng chứ không chia theo người. " +
+		Help: "Tổng số tin mọi bot được nói trong phòng bot mỗi ngày (giờ VN), dùng chung cho cả phòng. Mỗi tin còn trừ một lượt trong trần tin bot của chủ bot ở trên. " +
 			"Hết thì các bot im tới 0h, người vẫn nhắn được. Mỗi tin bot là một lượt gọi AI, có thể kèm một lần tra web. 0 là bot không nói trong phòng.",
 	},
 	{

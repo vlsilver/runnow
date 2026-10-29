@@ -13,7 +13,7 @@ import (
 
 // noRunDMLimitReply là câu nghỉ khi chủ chưa chạy hôm nay và đã dùng hết 10
 // câu sẵn, với config mặc định.
-const noRunDMLimitReply = "Hôm nay mình hết lượt chat riêng rồi. Bạn chạy hay đi bộ thêm 1 km là mình nói tiếp được 10 câu nữa, không thì qua 0h mình nói tiếp nhé."
+const noRunDMLimitReply = "Hôm nay mình hết lượt nói rồi. Bạn chạy hay đi bộ thêm 1 km là mình nói tiếp được 10 câu nữa, không thì qua 0h mình nói tiếp nhé."
 
 func (e *agentEnv) wantDMByKm(uid string, dmMax float64, byKm map[string]any) {
 	e.t.Helper()
@@ -41,7 +41,7 @@ func TestEmulatorAgentDMByKm(t *testing.T) {
 	}
 	e.want(e.call("an", "POST", "/v1/agents/me/dm", map[string]any{"text": "còn nói được không"}, ""), 200, "")
 	e.mustRun("/tasks/agent-dm", agentDMTask{UID: "an", Seq: 1})
-	want := "Hôm nay mình hết lượt chat riêng rồi. Bạn chạy hay đi bộ thêm 0,9 km là mình nói tiếp được 10 câu nữa, không thì qua 0h mình nói tiếp nhé."
+	want := "Hôm nay mình hết lượt nói rồi. Bạn chạy hay đi bộ thêm 0,9 km là mình nói tiếp được 10 câu nữa, không thì qua 0h mình nói tiếp nhé."
 	if msgs := messages(t, e.call("an", "GET", "/v1/agents/me/dm", nil, "")); len(e.llm.calls) != 0 || msgs[0]["text"] != want {
 		t.Fatalf("câu nghỉ khi hết lượt: %v (gọi model %d lần)", msgs[0]["text"], len(e.llm.calls))
 	}

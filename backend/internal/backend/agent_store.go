@@ -153,14 +153,15 @@ type AgentMe struct {
 // AgentToday là lượt đã dùng hôm nay (giờ VN) để app hiện "tin hôm nay" và báo
 // bot đang nghỉ trước khi người dùng nhắn rồi mới nhận câu nghỉ.
 type AgentToday struct {
+	// DMUsed là tin bot đã nói hôm nay, chat riêng mọi kênh và mọi phòng cộng lại.
 	DMUsed int64 `json:"dmUsed"`
-	// DMMax là hạn mức chat riêng hôm nay đã tính theo km (xem DMByKm).
+	// DMMax là hạn mức tin bot hôm nay đã tính theo km (xem DMByKm).
 	DMMax    int64 `json:"dmMax"`
 	RoomUsed int64 `json:"roomUsed"`
 	RoomMax  int64 `json:"roomMax"`
 	// Resting là lý do bot đang trả câu nghỉ: "budget" (cả hệ thống chạm trần
-	// tiền AI) hay "dm_limit" (người này hết lượt chat riêng); null là không nghỉ.
-	// Budget đứng trước vì nó chặn mọi bot, nâng lượt chat riêng cũng không mở lại.
+	// tiền AI) hay "dm_limit" (bot của người này hết lượt hôm nay); null là không
+	// nghỉ. Budget đứng trước vì nó chặn mọi bot, nâng lượt cũng không mở lại.
 	Resting *string `json:"resting"`
 	// DMByKm là cách tính DMMax, chỉ có khi đã tạo bot.
 	DMByKm *AgentDMByKm `json:"dmByKm,omitempty"`
@@ -396,9 +397,7 @@ func (s *AgentStore) today(ctx context.Context, cfg map[string]any, uid string, 
 		out.DMMax = q.max
 		out.DMByKm = &AgentDMByKm{Base: lim.dmBase, PerKm: lim.dmPerKm, RunKm: q.runKm, NextKm: q.nextKm, NextMax: q.nextMax}
 	}
-	if stringValue(agent["dmDay"]) == vnDay(wall) {
-		out.DMUsed = int64(number(agent["dmDayCount"]))
-	}
+	out.DMUsed = dmUsedToday(agent, wall)
 	switch {
 	case budget > 0 && number(docs[1].Data()["costUsd"]) >= budget:
 		out.Resting = new(agentRestingBudget)

@@ -42,10 +42,10 @@ func TestAgentDMQuota(t *testing.T) {
 func TestDMLimitReply(t *testing.T) {
 	ctx := context.Background()
 	lim := parseAgentLimits(ctx, nil)
-	if got, want := dmLimitReply(newAgentDMQuota(lim, 4.1)), "Hôm nay mình hết lượt chat riêng rồi. Bạn chạy hay đi bộ thêm 0,9 km là mình nói tiếp được 10 câu nữa, không thì qua 0h mình nói tiếp nhé."; got != want {
+	if got, want := dmLimitReply(newAgentDMQuota(lim, 4.1)), "Hôm nay mình hết lượt nói rồi. Bạn chạy hay đi bộ thêm 0,9 km là mình nói tiếp được 10 câu nữa, không thì qua 0h mình nói tiếp nhé."; got != want {
 		t.Fatalf("4,1 km:\n got %q\nwant %q", got, want)
 	}
-	if got, want := dmLimitReply(newAgentDMQuota(lim, 0)), "Hôm nay mình hết lượt chat riêng rồi. Bạn chạy hay đi bộ thêm 1 km là mình nói tiếp được 10 câu nữa, không thì qua 0h mình nói tiếp nhé."; got != want {
+	if got, want := dmLimitReply(newAgentDMQuota(lim, 0)), "Hôm nay mình hết lượt nói rồi. Bạn chạy hay đi bộ thêm 1 km là mình nói tiếp được 10 câu nữa, không thì qua 0h mình nói tiếp nhé."; got != want {
 		t.Fatalf("chưa chạy:\n got %q\nwant %q", got, want)
 	}
 	if got := dmLimitReply(newAgentDMQuota(lim, 12)); got != agentBudgetReply {
