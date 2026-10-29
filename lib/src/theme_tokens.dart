@@ -497,6 +497,7 @@ class RunNowCardSceneTokens {
   static const crater = Color(0x17000000);
   static const grainLight = Color(0xFFFFFFFF);
   static const grainDark = Color(0xFF000000);
+  static const posterFloorShade = Color(0xFF000000);
   static const starWhite = Color(0xFFFFFFFF);
 
   static const wolvesSky1 = Color(0xFF12030A);

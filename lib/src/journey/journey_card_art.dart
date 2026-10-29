@@ -39,8 +39,33 @@ class _PosterPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final scene = _posters[campaign] ?? _marathon;
-    paintScene(canvas, size, (canvas, size) => scene(canvas, size, km));
+    final (scene, floor) = _posters[campaign] ?? _posters['marathon']!;
+    paintScene(canvas, size, (canvas, size) {
+      // Cảnh gói trong phần trên; phần dưới là nền của chính cảnh đó tối dần
+      // xuống đáy, để tên và số liệu nằm trên chỗ yên.
+      final top = size.height * _sceneShare;
+      final rest = Rect.fromLTWH(0, top, size.width, size.height - top);
+      canvas
+        ..drawRect(
+          rest,
+          Paint()
+            ..shader = ui.Gradient.linear(rest.topLeft, rest.bottomLeft, [
+              floor,
+              Color.lerp(floor, _T.posterFloorShade, 0.5)!,
+            ]),
+        )
+        ..save()
+        ..translate(0, rest.top);
+      paintGrain(canvas, rest.size, 505, alpha: 0.045);
+      canvas
+        ..restore()
+        ..save()
+        // Mép cắt không làm mờ: hàng điểm ảnh ở mép mờ để lọt trời của cảnh
+        // thành một vạch sáng.
+        ..clipRect(Offset.zero & Size(size.width, top), doAntiAlias: false);
+      scene(canvas, Size(size.width, top), km);
+      canvas.restore();
+    });
   }
 
   @override
@@ -48,11 +73,15 @@ class _PosterPainter extends CustomPainter {
       old.campaign != campaign || old.km != km;
 }
 
-const _posters = <String, _Scene>{
-  'marathon': _marathon,
-  'mont_blanc': _montBlanc,
-  'xuyen_viet': _xuyenViet,
-  'dong_nam_a': _dongNamA,
+/// Phần chiều cao tranh dành cho cảnh, tính từ trên xuống.
+const _sceneShare = 0.57;
+
+/// Mỗi chặng: cảnh, và màu lớp sát đáy cảnh để nền bên dưới nối liền.
+const _posters = <String, (_Scene, Color)>{
+  'marathon': (_marathon, _T.marathonHillFront),
+  'mont_blanc': (_montBlanc, _T.montBlancPines),
+  'xuyen_viet': (_xuyenViet, _T.xuyenVietSky3),
+  'dong_nam_a': (_dongNamA, _T.dongNamAInk),
 };
 
 Paint _fill(Color color) => Paint()..color = color;
@@ -167,7 +196,7 @@ void _marathon(Canvas canvas, Size size, String km) {
   ], 101);
   _sun(
     canvas,
-    Offset(w * 0.7, h * 0.3),
+    Offset(w * 0.4, h * 0.3),
     w * 0.12,
     _T.marathonSun,
     _T.marathonSunGlow,
@@ -236,7 +265,7 @@ void _marathon(Canvas canvas, Size size, String km) {
       leaf,
     );
   }
-  _stamp(canvas, Offset(w * 0.82, h * 0.45), 27, _T.marathonStamp, km);
+  _stamp(canvas, Offset(w * 0.8, h * 0.36), 27, _T.marathonStamp, km);
 }
 
 void _montBlanc(Canvas canvas, Size size, String km) {
@@ -395,7 +424,7 @@ void _xuyenViet(Canvas canvas, Size size, String km) {
       wave,
     );
   }
-  _stamp(canvas, Offset(w * 0.8, h * 0.47), 25, _T.xuyenVietStamp, km);
+  _stamp(canvas, Offset(w * 0.8, h * 0.62), 25, _T.xuyenVietStamp, km);
 }
 
 void _dongNamA(Canvas canvas, Size size, String km) {
@@ -499,7 +528,7 @@ void _dongNamA(Canvas canvas, Size size, String km) {
   for (final (x, y) in capitals) {
     canvas.drawCircle(Offset(w * x, h * y), 2.6, _fill(_T.dongNamACapital));
   }
-  _stamp(canvas, Offset(w * 0.82, h * 0.44), 25, _T.dongNamAStamp, km);
+  _stamp(canvas, Offset(w * 0.84, h * 0.5), 25, _T.dongNamAStamp, km);
 }
 
 /// Mặt sau thẻ Hành trình: biểu tượng chặng trong vòng nhũ màu bậc, nguyệt

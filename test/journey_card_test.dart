@@ -1,4 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
@@ -141,6 +145,54 @@ void main() {
         ),
       );
       expect(tester.takeException(), isNull, reason: campaign);
+    }
+  });
+
+  testWidgets('every poster keeps one calm tone behind the text and stats', (
+    tester,
+  ) async {
+    for (final campaign in [
+      'marathon',
+      'mont_blanc',
+      'xuyen_viet',
+      'dong_nam_a',
+    ]) {
+      final boundary = GlobalKey();
+      await tester.pumpWidget(
+        Center(
+          child: RepaintBoundary(
+            key: boundary,
+            child: SizedBox(
+              width: 300,
+              height: 440,
+              child: JourneyPosterArt(campaign: campaign, km: '42 KM'),
+            ),
+          ),
+        ),
+      );
+      late ByteData pixels;
+      await tester.runAsync(() async {
+        final render =
+            boundary.currentContext!.findRenderObject()!
+                as RenderRepaintBoundary;
+        pixels = (await (await render.toImage()).toByteData())!;
+      });
+      int luma(double fx, double fy) {
+        final i = ((440 * fy).toInt() * 300 + (300 * fx).toInt()) * 4;
+        return (pixels.getUint8(i) +
+                pixels.getUint8(i + 1) +
+                pixels.getUint8(i + 2)) ~/
+            3;
+      }
+
+      // Khối chữ nằm từ khoảng 0,6 chiều cao tranh xuống. Mỗi hàng ở đó chỉ
+      // được lệch nhau bằng hạt nhiễu (độ mờ 0,045, cỡ 12 mức sáng), không
+      // còn núi, đường hay đền nằm sau chữ.
+      for (final fy in [0.62, 0.7, 0.8, 0.9]) {
+        final row = [for (var fx = 0.05; fx < 1; fx += 0.1) luma(fx, fy)];
+        final spread = row.reduce(math.max) - row.reduce(math.min);
+        expect(spread, lessThanOrEqualTo(16), reason: '$campaign y=$fy $row');
+      }
     }
   });
 
