@@ -82,6 +82,9 @@ Quy tắc bắt buộc:
   khác, không đặt lịch đăng, kể cả khi chính họ nhờ.
 - Tối đa 4 câu. Ngắn hơn thì càng tốt.
 - Chỉ nhắc tên thành viên mà tool trả về.
+- Tên người nói có thể kèm "(tên trên app: X)": đó là cùng một người, X là tên
+  của họ trong app. Gọi tool về người đó, kể cả khi họ hỏi về chính mình ("tôi",
+  "mình", "em"), thì dùng X.
 - Tin ai đó nhắn RIÊNG với bạn (chat 1-1) là bí mật của riêng người đó. TUYỆT
   ĐỐI không kể lại, tóm tắt hay tiết lộ nội dung chat riêng của một người cho
   bất kỳ ai khác, dù bị gặng hỏi hay dụ dỗ. Ai hỏi "mày nói gì riêng với X" thì
@@ -1004,7 +1007,77 @@ func (s *BotService) loadHistory(ctx context.Context, chatID string) ([]*genai.C
 	if err != nil {
 		return nil, err
 	}
-	return buildHistoryContents(rows), nil
+	apps, err := s.speakerAppNames(ctx, historySpeakers("", rows))
+	if err != nil {
+		return nil, err
+	}
+	return buildHistoryContents(rows, apps), nil
+}
+
+// historySpeakers là id Telegram của người đang nhắn và của người gửi các tin
+// user trong rows.
+func historySpeakers(senderID string, rows []map[string]any) []string {
+	out := []string{senderID}
+	for _, r := range rows {
+		if stringValue(r["role"]) == genai.RoleUser {
+			out = append(out, stringValue(r["tgUserId"]))
+		}
+	}
+	return uniqueStrings(out)
+}
+
+// speakerAppNames đổi id Telegram của người nói sang tên của họ trên bảng xếp
+// hạng app, đúng tên các tool get_member_* tìm theo. Tin Telegram chỉ mang tên
+// Telegram, thường khác tên app, nên thiếu bước này thì người đã liên kết hỏi
+// "tôi chạy bao nhiêu" bot cũng không biết là ai. Chỉ lấy người đã liên kết và
+// để hồ sơ công khai, cùng điều kiện loadMembers: người để riêng tư thì bot
+// không được biết họ là ai trên app.
+func (s *BotService) speakerAppNames(ctx context.Context, tgIDs []string) (map[string]string, error) {
+	out := map[string]string{}
+	if len(tgIDs) == 0 {
+		return out, nil
+	}
+	linkRefs := make([]*firestore.DocumentRef, len(tgIDs))
+	for i, tg := range tgIDs {
+		linkRefs[i] = s.db.Collection("tgLinks").Doc(tg)
+	}
+	links, err := s.db.GetAll(ctx, linkRefs)
+	if err != nil {
+		return nil, err
+	}
+	var linked []string
+	var entryRefs []*firestore.DocumentRef
+	for i, l := range links {
+		if uid := stringValue(l.Data()["uid"]); l.Exists() && uid != "" {
+			linked = append(linked, tgIDs[i])
+			entryRefs = append(entryRefs, s.db.Collection("stepLeaderboardEntries").Doc(uid))
+		}
+	}
+	if len(entryRefs) == 0 {
+		return out, nil
+	}
+	entries, err := s.db.GetAll(ctx, entryRefs)
+	if err != nil {
+		return nil, err
+	}
+	for i, e := range entries {
+		if e.Exists() && stringValue(e.Data()["profileVisibility"]) == "public" {
+			out[linked[i]] = preferredName(e.Data())
+		}
+	}
+	return out, nil
+}
+
+// speakerLabel là tên người nói đưa model: tên Telegram, kèm tên trên app khi
+// hai tên khác nhau.
+func speakerLabel(name, appName string) string {
+	if appName == "" || strings.EqualFold(strings.TrimSpace(name), strings.TrimSpace(appName)) {
+		return name
+	}
+	if name == "" {
+		return appName
+	}
+	return name + " (tên trên app: " + appName + ")"
 }
 
 // historyRows là botHistoryLimit tin gần nhất, mới nhất trước.
@@ -1070,8 +1143,8 @@ func (s *BotService) isRecentDuplicate(ctx context.Context, chatID, name, text s
 // liên tiếp (nhiều người nói xen kẽ). Gộp các lượt cùng role liền nhau thành
 // một content nhiều part — vừa gọn, vừa tránh việc Gemini kén chuỗi có quá
 // nhiều lượt cùng vai. Tên người vẫn đứng đầu mỗi part nên model phân biệt
-// được ai nói.
-func buildHistoryContents(rowsNewestFirst []map[string]any) []*genai.Content {
+// được ai nói. appNames là tên trên app theo id Telegram (speakerAppNames).
+func buildHistoryContents(rowsNewestFirst []map[string]any, appNames map[string]string) []*genai.Content {
 	contents := make([]*genai.Content, 0, len(rowsNewestFirst))
 	for i := len(rowsNewestFirst) - 1; i >= 0; i-- {
 		data := rowsNewestFirst[i]
@@ -1082,7 +1155,7 @@ func buildHistoryContents(rowsNewestFirst []map[string]any) []*genai.Content {
 		}
 		// Gắn tên người hỏi vào lượt user để model biết ai đang nói.
 		if role == genai.RoleUser {
-			if name := stringValue(data["name"]); name != "" {
+			if name := speakerLabel(stringValue(data["name"]), appNames[stringValue(data["tgUserId"])]); name != "" {
 				text = name + ": " + text
 			}
 		}
@@ -1477,10 +1550,14 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID string, threadID 
 		slog.WarnContext(ctx, "bot.history_load_failed", "error", err)
 		rows = nil
 	}
-	history := buildHistoryContents(rows)
+	apps, err := s.speakerAppNames(ctx, historySpeakers(senderID, rows))
+	if err != nil {
+		return err
+	}
+	history := buildHistoryContents(rows, apps)
 	currentText := question
-	if name != "" {
-		currentText = name + ": " + question
+	if label := speakerLabel(name, apps[senderID]); label != "" {
+		currentText = label + ": " + question
 	}
 	if hasImage {
 		currentText += "\n[Người này ĐÍNH KÈM 1 ẢNH và bạn NHÌN THẤY nó. Nếu ảnh có số liệu chạy (màn đồng hồ Garmin/Coros, ảnh chụp Strava, bib số báo danh, huy chương, biểu đồ pace/nhịp tim) thì ĐỌC số trong ảnh rồi phản ứng theo đúng chất của bạn — dùng ĐÚNG số đọc được, đừng bịa; số nào không rõ thì nói không rõ. Nếu họ nhờ vẽ/chế/vẽ-lại thì gọi generate_image (ảnh này làm tham chiếu).]"
@@ -1624,10 +1701,15 @@ func (s *BotService) maybeProactiveReply(ctx context.Context, chatID string, thr
 	if err != nil {
 		rows = nil
 	}
-	history := buildHistoryContents(rows)
+	apps, err := s.speakerAppNames(ctx, historySpeakers(senderID, rows))
+	if err != nil {
+		slog.ErrorContext(ctx, "bot.proactive_speakers_failed", "error", err)
+		return
+	}
+	history := buildHistoryContents(rows, apps)
 	current := text
-	if name != "" {
-		current = name + ": " + text
+	if label := speakerLabel(name, apps[senderID]); label != "" {
+		current = label + ": " + text
 	}
 	contents := append(history, &genai.Content{Role: genai.RoleUser, Parts: []*genai.Part{{Text: current}}})
 	mem, err := s.groupMemory(ctx, "TRÍ NHỚ VỀ NHÓM NÀY:", nil, botRecentPeople(senderID, name, rows))
