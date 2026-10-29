@@ -128,6 +128,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   };
 
   String _activityNameFor(ActivityKind kind) => switch (kind) {
+    ActivityKind.walk => '3I Walk',
     ActivityKind.ride => '3I Ride',
     ActivityKind.motorbike => '3I Moto',
     _ => '3I Run',
@@ -1248,9 +1249,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // Chạy: user chọn mốc. Đạp/xe máy: mốc CỐ ĐỊNH (10/20km) vì
-                    // quãng đường dài, mốc nhỏ sẽ spam group.
-                    if (_selectedKind == ActivityKind.run)
+                    // Chạy/đi bộ: user chọn mốc. Đạp/xe máy: mốc CỐ ĐỊNH (10/20km)
+                    // vì quãng đường dài, mốc nhỏ sẽ spam group.
+                    if (_selectedKind == ActivityKind.run ||
+                        _selectedKind == ActivityKind.walk)
                       SegmentedButton<int>(
                         showSelectedIcon: false,
                         segments: [
@@ -1574,8 +1576,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
 
 }
 
-/// Chọn môn trước khi bắt đầu: Chạy / Đạp / Xe máy. Đạp & xe máy có BXH riêng,
-/// KHÔNG cộng vào km chạy hay kèo.
+/// Chọn môn trước khi bắt đầu: Đi bộ / Chạy bộ / Đạp xe. Đi bộ chung BXH với
+/// chạy; đạp xe có BXH riêng. Chỉ chạy bộ cộng vào km chạy của kèo.
 class _SportPicker extends StatelessWidget {
   const _SportPicker({required this.selected, required this.onChanged});
 
@@ -1634,9 +1636,9 @@ class _SportPicker extends StatelessWidget {
       ),
       child: Row(
         children: [
-          seg(ActivityKind.run, Icons.directions_run_rounded, 'Chạy'),
-          seg(ActivityKind.ride, Icons.directions_bike_rounded, 'Đạp'),
-          seg(ActivityKind.motorbike, Icons.two_wheeler_rounded, 'Xe máy'),
+          seg(ActivityKind.walk, Icons.directions_walk_rounded, 'Đi bộ'),
+          seg(ActivityKind.run, Icons.directions_run_rounded, 'Chạy bộ'),
+          seg(ActivityKind.ride, Icons.directions_bike_rounded, 'Đạp xe'),
         ],
       ),
     );
