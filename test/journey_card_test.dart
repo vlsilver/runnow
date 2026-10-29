@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
@@ -148,7 +149,6 @@ void main() {
     Future<void> pump(
       WidgetTester tester, {
       List<JourneyCard> cards = const [],
-      String? memberUid,
     }) async {
       tester.view.physicalSize = const Size(420, 2000);
       tester.view.devicePixelRatio = 1.0;
@@ -159,9 +159,6 @@ void main() {
             journeyCardsProvider.overrideWith((ref) => Stream.value(cards)),
             userProfileProvider.overrideWith((ref) => Stream.value(null)),
             journeyLifetimeDistanceProvider.overrideWith((ref) async => 50000),
-            memberJourneyLifetimeDistanceProvider.overrideWith(
-              (ref, uid) async => 50000,
-            ),
             journeyRouteSummaryProvider.overrideWith(
               (ref, id) async => JourneyRouteSummary(
                 id: id.name,
@@ -173,9 +170,7 @@ void main() {
           ],
           child: MaterialApp(
             home: Scaffold(
-              body: SingleChildScrollView(
-                child: JourneyTimeline(memberUid: memberUid),
-              ),
+              body: SingleChildScrollView(child: const JourneyTimeline()),
             ),
           ),
         ),
@@ -193,44 +188,52 @@ void main() {
       'runCount': 9,
       'finishedAt': DateTime(2026, 9, 21, 6),
     });
-    Finder faceDown() =>
-        find.bySemanticsLabel('Thẻ Hành trình Marathon Athens, chạm để lật');
-
-    testWidgets('a finished leg with a card shows it face down', (
+    testWidgets('the journey list keeps the stamp even with a card', (
       tester,
     ) async {
       await pump(tester, cards: [marathon]);
-      expect(faceDown(), findsOneWidget);
-      expect(find.text('HOÀN THÀNH'), findsNothing);
-      expect(find.byType(JourneyCardEmblem), findsOneWidget);
-
-      // Màn lật mở lá còn úp: thêm một mặt huy hiệu, chưa thấy poster.
-      await tester.tap(faceDown());
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('Hành trình · Level 1'), findsOneWidget);
-      expect(find.text('Khoe thẻ'), findsOneWidget);
-      expect(find.byType(JourneyCardEmblem), findsNWidgets(2));
-      expect(find.byType(JourneyPosterArt), findsNothing);
-
-      // Chạm lá thì lật sang mặt thành tích.
-      await tester.tap(find.byType(TiltFlipCard));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 700));
-      expect(find.byType(JourneyPosterArt), findsOneWidget);
-      expect(find.byType(JourneyCardEmblem), findsOneWidget);
-    });
-
-    testWidgets('without a card yet the leg keeps the stamp', (tester) async {
-      await pump(tester);
-      expect(faceDown(), findsNothing);
       expect(find.text('HOÀN THÀNH'), findsOneWidget);
+      expect(find.byType(AchievementCard), findsNothing);
     });
+  });
 
-    testWidgets("another member's journey keeps the stamp", (tester) async {
-      await pump(tester, cards: [marathon], memberUid: 'u2');
-      expect(faceDown(), findsNothing);
-      expect(find.text('HOÀN THÀNH'), findsOneWidget);
+  testWidgets('the face-down card opens face down and flips to the front', (
+    tester,
+  ) async {
+    final card = JourneyCard.fromJson('marathon', {
+      'routeId': 'athens_marathon',
+      'level': 1,
+      'tier': 'rare',
+      'distanceMeters': 42000,
+      'runCount': 9,
+      'finishedAt': DateTime(2026, 9, 21, 6),
     });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: JourneyCardFaceDown(card: card, owner: 'An', width: 84),
+          ),
+        ),
+      ),
+    );
+    expect(find.byType(JourneyCardEmblem), findsOneWidget);
+    expect(find.byType(JourneyPosterArt), findsNothing);
+
+    // Màn lật mở lá còn úp: thêm một mặt huy hiệu, chưa thấy poster.
+    await tester.tap(find.byType(JourneyCardFaceDown));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Hành trình · Level 1'), findsOneWidget);
+    expect(find.text('Khoe thẻ'), findsOneWidget);
+    expect(find.byType(JourneyCardEmblem), findsNWidgets(2));
+    expect(find.byType(JourneyPosterArt), findsNothing);
+
+    // Chạm lá thì lật sang mặt thành tích.
+    await tester.tap(find.byType(TiltFlipCard));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(find.byType(JourneyPosterArt), findsOneWidget);
+    expect(find.byType(JourneyCardEmblem), findsOneWidget);
   });
 }

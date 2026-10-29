@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:myrun/src/achievements/run_card_collection.dart';
-import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/formatters.dart';
-import 'package:myrun/src/journey/journey_card.dart';
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
@@ -370,10 +367,7 @@ class _LevelCard extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
           decoration: _decoration(context.runNowPalette),
           child: switch (state.status) {
-            _JourneyLevelStatus.done => _DoneCardContent(
-              state: state,
-              own: memberUid == null,
-            ),
+            _JourneyLevelStatus.done => _DoneCardContent(state: state),
             _JourneyLevelStatus.current => _CurrentCardContent(state: state),
             _JourneyLevelStatus.locked => _LockedCardContent(state: state),
           },
@@ -471,26 +465,15 @@ class _LevelCardShell extends StatelessWidget {
 }
 
 /// Card "đã chinh phục" — chỉ tên + km/mộc "HOÀN THÀNH" dồn xuống góc
-/// dưới-phải để nhường chỗ tối đa cho ảnh. Hành trình của mình mà backend đã
-/// ghi thẻ chặng thì lá thẻ úp thay cho mộc.
-class _DoneCardContent extends ConsumerWidget {
-  const _DoneCardContent({required this.state, required this.own});
+/// dưới-phải để nhường chỗ tối đa cho ảnh.
+class _DoneCardContent extends StatelessWidget {
+  const _DoneCardContent({required this.state});
 
   final _JourneyLevelState state;
 
-  /// Thẻ chỉ chủ đọc được, nên hành trình người khác giữ mộc.
-  final bool own;
-
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final card = own
-        ? ref
-              .watch(journeyCardsProvider)
-              .value
-              ?.where((card) => card.campaign == state.campaign.value)
-              .firstOrNull
-        : null;
     return _LevelCardShell(
       state: state,
       child: Column(
@@ -505,19 +488,11 @@ class _DoneCardContent extends ConsumerWidget {
           const Spacer(),
           Wrap(
             alignment: WrapAlignment.end,
-            crossAxisAlignment: WrapCrossAlignment.center,
             spacing: 7,
             runSpacing: 7,
             children: [
               _InfoPill(label: formatDistance(state.route.totalLengthMeters)),
-              if (card == null)
-                const _CompletionStampLabel()
-              else
-                JourneyCardFaceDown(
-                  card: card,
-                  owner: runCardOwnerName(ref),
-                  width: 44,
-                ),
+              const _CompletionStampLabel(),
             ],
           ),
         ],

@@ -560,7 +560,7 @@ class _JourneyCardOnMap extends ConsumerWidget {
           borderRadius: 999,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           child: Text(
-            'Chạm để lật',
+            'Mở thẻ',
             style: Theme.of(
               context,
             ).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),

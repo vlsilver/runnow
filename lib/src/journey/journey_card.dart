@@ -171,7 +171,7 @@ class JourneyCardFaceDown extends StatelessWidget {
     final data = journeyCardData(card, owner: owner);
     return Semantics(
       button: true,
-      label: 'Thẻ Hành trình ${card.name}, chạm để lật',
+      label: 'Mở thẻ Hành trình ${card.name}',
       child: GestureDetector(
         onTap: () => showJourneyCardViewer(context, card, data, faceDown: true),
         child: GameCardScaled(
