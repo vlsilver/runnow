@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
+import 'package:flutter/widgets.dart' show StringCharacters;
 import 'package:myrun/src/theme.dart';
 
 typedef _T = RunNowCardSceneTokens;
@@ -235,4 +236,63 @@ void paintGrain(Canvas canvas, Size size, int seed, {double alpha = 0.05}) {
       dark,
       dot(_T.grainDark.withValues(alpha: math.min(1, alpha * 1.4))),
     );
+}
+
+/// [text] lặp quanh vòng bán kính [r], đọc xuôi chiều kim đồng hồ từ đỉnh.
+/// Lặp đủ số lần cho kín vòng rồi giãn đều; một lần đã dài hơn vòng thì thu
+/// nhỏ chữ.
+void paintRingText(
+  Canvas canvas,
+  Offset c,
+  double r,
+  String text,
+  Color color,
+) {
+  final around = 2 * math.pi * r;
+  List<TextPainter> lay(String s, double size) => [
+    for (final ch in s.characters)
+      TextPainter(
+        text: TextSpan(
+          text: ch,
+          style: TextStyle(
+            fontFamily: 'Barlow Condensed',
+            fontWeight: FontWeight.w800,
+            fontSize: size,
+            letterSpacing: size * 0.16,
+            height: 1,
+            color: color,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout(),
+  ];
+  double width(List<TextPainter> glyphs) =>
+      glyphs.fold(0.0, (sum, g) => sum + g.width);
+  void dispose(List<TextPainter> glyphs) {
+    for (final g in glyphs) {
+      g.dispose();
+    }
+  }
+
+  var size = 9.5;
+  final probe = lay(text, size);
+  final once = width(probe);
+  dispose(probe);
+  if (once > around) size *= around / once * 0.95;
+  final times = math.max(1, (around / (once * size / 9.5)).floor());
+  final glyphs = lay(text * times, size);
+  final gap = (around - width(glyphs)) / glyphs.length;
+  var angle = -math.pi / 2;
+  for (final g in glyphs) {
+    final step = (g.width + gap) / r;
+    final mid = angle + step / 2;
+    canvas
+      ..save()
+      ..translate(c.dx + r * math.cos(mid), c.dy + r * math.sin(mid))
+      ..rotate(mid + math.pi / 2);
+    g.paint(canvas, Offset(-g.width / 2, -g.height / 2));
+    canvas.restore();
+    angle += step;
+  }
+  dispose(glyphs);
 }

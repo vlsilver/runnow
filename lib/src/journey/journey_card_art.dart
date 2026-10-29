@@ -341,7 +341,7 @@ class _MedalPainter extends CustomPainter {
         field - 1.5,
         _stroke(_T.medalShine.withValues(alpha: 0.35), 0.8),
       );
-    _ringText(canvas, c, r - 8.5, '$rim · VỀ ĐÍCH · ', ink);
+    paintRingText(canvas, c, r - 8.5, '$rim · VỀ ĐÍCH · ', ink);
     if (shape case final shape? when shape.points.isNotEmpty) {
       final to = shape.fit(Rect.fromCircle(center: c, radius: field * 0.66));
       final path = shape.path(to);
@@ -392,46 +392,6 @@ class _MedalPainter extends CustomPainter {
       old.metal != metal ||
       old.shape != shape ||
       old.rim != rim;
-}
-
-/// [text] lặp quanh vòng bán kính [r], đọc xuôi chiều kim đồng hồ từ đỉnh.
-/// Lặp đủ số lần cho kín vòng rồi giãn đều; một lần đã dài hơn vòng thì thu
-/// nhỏ chữ.
-void _ringText(Canvas canvas, Offset c, double r, String text, Color color) {
-  final around = 2 * math.pi * r;
-  List<TextPainter> lay(String s, double size) => [
-    for (final ch in s.characters)
-      _label(ch, _type(size, FontWeight.w800, color: color)),
-  ];
-  double width(List<TextPainter> glyphs) =>
-      glyphs.fold(0.0, (sum, g) => sum + g.width);
-  void dispose(List<TextPainter> glyphs) {
-    for (final g in glyphs) {
-      g.dispose();
-    }
-  }
-
-  var size = 9.5;
-  final probe = lay(text, size);
-  final once = width(probe);
-  dispose(probe);
-  if (once > around) size *= around / once * 0.95;
-  final times = math.max(1, (around / (once * size / 9.5)).floor());
-  final glyphs = lay(text * times, size);
-  final gap = (around - width(glyphs)) / glyphs.length;
-  var angle = -math.pi / 2;
-  for (final g in glyphs) {
-    final step = (g.width + gap) / r;
-    final mid = angle + step / 2;
-    canvas
-      ..save()
-      ..translate(c.dx + r * math.cos(mid), c.dy + r * math.sin(mid))
-      ..rotate(mid + math.pi / 2);
-    g.paint(canvas, Offset(-g.width / 2, -g.height / 2));
-    canvas.restore();
-    angle += step;
-  }
-  dispose(glyphs);
 }
 
 class _MapPainter extends CustomPainter {
