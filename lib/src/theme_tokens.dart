@@ -328,12 +328,6 @@ class RunNowBotCardTokens {
   static const sunCore = Color(0xFFFFF3C4);
   static const sunHalo = Color(0xFFFFC36B);
 
-  /// Ánh cầu vồng của bậc Foil, cùng vàng của lá bài.
-  static const foilSky = Color(0xFF8FE3F0);
-  static const foilPink = Color(0xFFE9A2FF);
-
-  /// Chữ tên bậc Foil trên nền sáng, nơi hồng nhạt không đọc được.
-  static const foilInk = Color(0xFF9B4FC4);
   static const revealGlow = Color(0xFF2A2416);
   static const revealEdge = Color(0xFF121116);
 }

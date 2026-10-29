@@ -899,7 +899,7 @@ Color _tierInk(AgentCardTier tier, RunNowPalette palette) {
     AgentCardTier.gold =>
       light ? RunNowGameTokens.goldEdge : RunNowGameTokens.sunMid,
     AgentCardTier.foil =>
-      light ? RunNowBotCardTokens.foilInk : RunNowBotCardTokens.foilPink,
+      light ? RunNowGameTokens.diamondDeep : RunNowGameTokens.gemDiamond,
   };
 }
 
@@ -916,38 +916,20 @@ class _TrackNode extends StatelessWidget {
     final palette = context.runNowPalette;
     final t = gameCardTiers[tier.material]!;
     final size = next ? _TierTrack._nextNode : _TierTrack._node;
-    final foil = tier == AgentCardTier.foil;
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        // Khung Foil là vàng, ánh cầu vồng nằm ở lớp holo phủ lên thẻ; nút
-        // nhỏ không có lớp đó nên vẽ thẳng cầu vồng.
-        gradient: foil
-            ? const SweepGradient(
-                colors: [
-                  RunNowGameTokens.gold,
-                  RunNowBotCardTokens.foilSky,
-                  RunNowBotCardTokens.foilPink,
-                  RunNowGameTokens.gold,
-                ],
-              )
-            : LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: t.frame,
-                stops: t.frameStops,
-              ),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: t.frame,
+          stops: t.frameStops,
+        ),
         border: Border.all(color: palette.glassStart, width: 2),
         boxShadow: next
-            ? [
-                BoxShadow(
-                  color: (foil ? RunNowBotCardTokens.foilPink : t.gem)
-                      .withValues(alpha: 0.35),
-                  spreadRadius: 3,
-                ),
-              ]
+            ? [BoxShadow(color: t.gem.withValues(alpha: 0.35), spreadRadius: 3)]
             : null,
       ),
     );
