@@ -360,11 +360,10 @@ func estimateDocJSONSize(m map[string]any) int {
 	return len(b)
 }
 
-// appRecordableSports là các môn app được phép TỰ GHI qua live-tracking. Cố ý
-// KHÔNG gồm Walk/Hike/Swim/Gym (các môn đó nhập từ Health, không track tay). Xe
-// đạp (Ride) và xe máy (Motorbike) là môn có route → track tay được. Rỗng =
-// client cũ chỉ gửi buổi chạy → coi là "Run".
-var appRecordableSports = map[string]bool{"Run": true, "Ride": true, "Motorbike": true}
+// appRecordableSports là các môn app được phép TỰ GHI qua live-tracking: chạy,
+// đi bộ, đạp xe. Hike/Swim/Gym chỉ nhập từ Health. Motorbike vẫn nhận vì app cũ
+// còn cho chọn xe máy. Rỗng = client cũ chỉ gửi buổi chạy → coi là "Run".
+var appRecordableSports = map[string]bool{"Run": true, "Walk": true, "Ride": true, "Motorbike": true}
 
 func normalizeTrackedActivity(raw map[string]any) (map[string]any, error) {
 	id := strings.TrimSpace(stringValue(raw["id"]))
