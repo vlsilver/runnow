@@ -88,9 +88,6 @@ flutter:
     - assets/strava/api_logo_pwrdBy_strava_horiz_orange.png
     - assets/strava/api_logo_pwrdBy_strava_horiz_white.png
     - "features/Icon 3I Export/runow-3i-1024.png"
-    - assets/medals/medal-gold.svg
-    - assets/medals/medal-silver.svg
-    - assets/medals/medal-bronze.svg
     - assets/journey/map-xuyen-viet.svg
     - assets/journey/images/
   fonts:

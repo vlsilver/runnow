@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:myrun/src/auth.dart';
 import 'package:myrun/src/avatar_repository.dart';
+import 'package:myrun/src/club_ranking.dart';
 import 'package:myrun/src/garmin_controller.dart';
 import 'package:myrun/src/health_sync.dart';
 import 'package:myrun/src/journal_controller.dart';
@@ -86,26 +87,9 @@ final runContractAnalyticsProvider = Provider<RunContractAnalytics>((ref) {
   return RunContractAnalytics(FirebaseAnalytics.instance);
 });
 
-enum ClubRankingMetric {
-  distance,
-  time,
-  consistency,
-  pace,
-  longestRun,
-  activityCount,
-  steps, // bảng xếp hạng số bước chân (Apple Health) — dữ liệu riêng
-  swim, // BXH bơi — km bơi (leaderboardEntries.swim)
-  gym, // BXH gym/workout — tổng phút tập (leaderboardEntries.gym)
-  bike, // BXH đạp xe — km đạp (leaderboardEntries.ride)
-  motorbike, // BXH xe máy — km chạy xe máy (leaderboardEntries.motorbike)
-}
-
-enum ClubRankingRange { currentWeek, currentMonth }
-
-/// Bộ lọc của màn "Câu lạc bộ" (chỉ còn đúng bảng xếp hạng), hoist ra để gộp
-/// vào navigation bar (xem [app.dart]).
-final clubRankingMetricProvider = StateProvider<ClubRankingMetric>(
-  (ref) => ClubRankingMetric.distance,
+/// Bộ môn và kỳ đang xem ở màn "Câu lạc bộ".
+final clubRankingSportProvider = StateProvider<ClubRankingSport>(
+  (ref) => ClubRankingSport.run,
 );
 final clubRankingRangeProvider = StateProvider<ClubRankingRange>(
   (ref) => ClubRankingRange.currentWeek,
@@ -378,13 +362,6 @@ final membersProvider = StreamProvider<List<MemberProfile>>(
   (ref) => ref.watch(memberRepositoryProvider).watchMembers(),
 );
 
-/// BXH km CHẠY. keepAlive (không autoDispose) để giá trị prefetch lúc khởi động
-/// sống tới khi tab Club dùng → mở Club là có sẵn, khỏi chờ round-trip. Số vẫn
-/// tươi (fetch từ server); pull-to-refresh invalidate để lấy mới.
-final leaderboardEntriesProvider = FutureProvider<List<LeaderboardEntry>>(
-  (ref) => ref.watch(memberRepositoryProvider).getLeaderboardEntries(),
-);
-
 /// Parse 1 doc stepDays → StepDay (kèm chi tiết theo giờ nếu đã lưu). Dùng chung
 /// cho nhật ký của mình lẫn của member.
 StepDay _stepDayFromDoc(Map<String, dynamic> m, String id) => StepDay(
@@ -472,9 +449,13 @@ final stepLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
     steps: steps,
   );
   final docs = await ref.watch(stepLeaderboardDocsProvider.future);
+  final now = DateTime.now();
   return docs.map((d) {
     final m = d.data();
     final name = (m['displayName'] as String?)?.trim();
+    // Doc chỉ được dựng lại khi chủ nó có bước hay buổi mới, nên số của kỳ đã
+    // qua không được hiện như kỳ này.
+    final current = leaderboardPeriodsCurrent(m, now);
     double dist(String k) => (m[k] as num?)?.toDouble() ?? 0;
     int steps(String k) => (m[k] as num?)?.toInt() ?? 0;
     return LeaderboardEntry(
@@ -486,14 +467,12 @@ final stepLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
         steps('rollingSevenDaysSteps'),
         dist('rollingSevenDaysDistance'),
       ),
-      currentWeek: stepStat(
-        steps('currentWeekSteps'),
-        dist('currentWeekDistance'),
-      ),
-      currentMonth: stepStat(
-        steps('currentMonthSteps'),
-        dist('currentMonthDistance'),
-      ),
+      currentWeek: current.week
+          ? stepStat(steps('currentWeekSteps'), dist('currentWeekDistance'))
+          : stepStat(0, 0),
+      currentMonth: current.month
+          ? stepStat(steps('currentMonthSteps'), dist('currentMonthDistance'))
+          : stepStat(0, 0),
     );
   }).toList();
 });
@@ -517,9 +496,11 @@ final totalKmLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
     steps: 0,
   );
   final docs = await ref.watch(stepLeaderboardDocsProvider.future);
+  final now = DateTime.now();
   return docs.map((d) {
     final m = d.data();
     final name = (m['displayName'] as String?)?.trim();
+    final current = leaderboardPeriodsCurrent(m, now);
     double dist(String k) => (m[k] as num?)?.toDouble() ?? 0;
     return LeaderboardEntry(
       uid: m['uid'] as String? ?? d.id,
@@ -527,14 +508,18 @@ final totalKmLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
       avatarUrl: m['avatarUrl'] as String?,
       visibility: ProfileVisibility.fromValue(m['profileVisibility'] as String?),
       rollingSevenDays: totalStat(dist('rollingSevenDaysTotalDistance')),
-      currentWeek: totalStat(dist('currentWeekTotalDistance')),
-      currentMonth: totalStat(dist('currentMonthTotalDistance')),
+      currentWeek: totalStat(
+        current.week ? dist('currentWeekTotalDistance') : 0,
+      ),
+      currentMonth: totalStat(
+        current.month ? dist('currentMonthTotalDistance') : 0,
+      ),
     );
   }).toList();
 });
 
-/// Docs thô leaderboardEntries — chia sẻ cho BXH Bơi + Gym (đọc field lồng
-/// swim/gym). keepAlive + prefetch giống các BXH khác.
+/// Docs thô leaderboardEntries — BXH Đạp xe đọc field lồng `ride`.
+/// keepAlive + prefetch giống các BXH khác.
 final leaderboardDocsProvider =
     FutureProvider<List<QueryDocumentSnapshot<Map<String, dynamic>>>>((
       ref,
@@ -545,61 +530,6 @@ final leaderboardDocsProvider =
           .get(const GetOptions(source: Source.server));
       return snap.docs;
     });
-
-LeaderboardEntry _sportEntry(
-  QueryDocumentSnapshot<Map<String, dynamic>> d,
-  String sportKey,
-  LeaderboardStats Function(Map<String, dynamic>? period) stat,
-) {
-  final m = d.data();
-  final sport = (m[sportKey] as Map?)?.cast<String, dynamic>();
-  Map<String, dynamic>? pd(String k) =>
-      (sport?[k] as Map?)?.cast<String, dynamic>();
-  final name = (m['displayName'] as String?)?.trim();
-  return LeaderboardEntry(
-    uid: m['uid'] as String? ?? d.id,
-    displayName: (name?.isNotEmpty ?? false) ? name! : '3i member',
-    avatarUrl: m['avatarUrl'] as String?,
-    visibility: ProfileVisibility.fromValue(m['profileVisibility'] as String?),
-    rollingSevenDays: stat(pd('rollingSevenDays')),
-    currentWeek: stat(pd('currentWeek')),
-    currentMonth: stat(pd('currentMonth')),
-  );
-}
-
-/// BXH BƠI — km bơi/kỳ (leaderboardEntries.swim.distanceMeters).
-final swimLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
-  ref,
-) async {
-  LeaderboardStats stat(Map<String, dynamic>? p) => LeaderboardStats(
-    distanceMeters: (p?['distanceMeters'] as num?)?.toDouble() ?? 0,
-    movingTimeSeconds: 0,
-    activityCount: 0,
-    activeDays: 0,
-    longestDistanceMeters: 0,
-    fastestPaceSecondsPerKm: null,
-    steps: 0,
-  );
-  final docs = await ref.watch(leaderboardDocsProvider.future);
-  return docs.map((d) => _sportEntry(d, 'swim', stat)).toList();
-});
-
-/// BXH GYM/workout — tổng PHÚT tập/kỳ (leaderboardEntries.gym.movingTimeSeconds).
-final gymLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
-  ref,
-) async {
-  LeaderboardStats stat(Map<String, dynamic>? p) => LeaderboardStats(
-    distanceMeters: 0,
-    movingTimeSeconds: (p?['movingTimeSeconds'] as num?)?.toInt() ?? 0,
-    activityCount: 0,
-    activeDays: 0,
-    longestDistanceMeters: 0,
-    fastestPaceSecondsPerKm: null,
-    steps: 0,
-  );
-  final docs = await ref.watch(leaderboardDocsProvider.future);
-  return docs.map((d) => _sportEntry(d, 'gym', stat)).toList();
-});
 
 /// BXH ĐẠP XE — km đạp/kỳ (leaderboardEntries.ride.distanceMeters). Xe đạp
 /// KHÔNG cộng vào km chạy/kèo — bảng hoàn toàn riêng.
@@ -616,26 +546,26 @@ final bikeLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
     steps: 0,
   );
   final docs = await ref.watch(leaderboardDocsProvider.future);
-  return docs.map((d) => _sportEntry(d, 'ride', stat)).toList();
-});
-
-/// BXH XE MÁY — km chạy xe máy/kỳ (leaderboardEntries.motorbike.distanceMeters).
-/// Là bảng vui/riêng, KHÔNG phải môn thể thao: không cộng vào bất cứ bảng
-/// thể lực nào (km chạy, bước, tổng, kèo).
-final motorbikeLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
-  ref,
-) async {
-  LeaderboardStats stat(Map<String, dynamic>? p) => LeaderboardStats(
-    distanceMeters: (p?['distanceMeters'] as num?)?.toDouble() ?? 0,
-    movingTimeSeconds: 0,
-    activityCount: 0,
-    activeDays: 0,
-    longestDistanceMeters: 0,
-    fastestPaceSecondsPerKm: null,
-    steps: 0,
-  );
-  final docs = await ref.watch(leaderboardDocsProvider.future);
-  return docs.map((d) => _sportEntry(d, 'motorbike', stat)).toList();
+  final now = DateTime.now();
+  return docs.map((d) {
+    final m = d.data();
+    final ride = (m['ride'] as Map?)?.cast<String, dynamic>();
+    Map<String, dynamic>? period(String k) =>
+        (ride?[k] as Map?)?.cast<String, dynamic>();
+    final current = leaderboardPeriodsCurrent(m, now);
+    final name = (m['displayName'] as String?)?.trim();
+    return LeaderboardEntry(
+      uid: m['uid'] as String? ?? d.id,
+      displayName: (name?.isNotEmpty ?? false) ? name! : '3i member',
+      avatarUrl: m['avatarUrl'] as String?,
+      visibility: ProfileVisibility.fromValue(
+        m['profileVisibility'] as String?,
+      ),
+      rollingSevenDays: stat(period('rollingSevenDays')),
+      currentWeek: stat(current.week ? period('currentWeek') : null),
+      currentMonth: stat(current.month ? period('currentMonth') : null),
+    );
+  }).toList();
 });
 
 final clubLiveSessionsProvider =

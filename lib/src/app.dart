@@ -56,7 +56,7 @@ final _router = GoRouter(
     StatefulShellRoute.indexedStack(
       builder: (context, state, shell) => _HealthSyncTrigger(
         child: AppUpdatePrompt(
-          child: _Scaffold(shell: shell, location: state.uri.path),
+          child: _Scaffold(shell: shell),
         ),
       ),
       branches: [
@@ -447,10 +447,10 @@ class _AuthenticatedSessionState extends ConsumerState<_AuthenticatedSession> {
         if (!mounted) return;
         // Prefetch BXH ngay lúc mở app → tới lúc mở tab Club đã có sẵn, khỏi chờ
         // round-trip (số vẫn TƯƠI từ server, không phải disk-cache cũ). keepAlive
-        // giữ giá trị tới khi Club watch; stepLeaderboardDocs dùng chung Bước+Tổng.
-        ref.read(leaderboardEntriesProvider);
+        // giữ giá trị tới khi Club watch; stepLeaderboardDocs dùng chung
+        // Chạy/Đi bộ + Bước chân.
         ref.read(stepLeaderboardDocsProvider);
-        ref.read(leaderboardDocsProvider); // BXH Bơi + Gym
+        ref.read(leaderboardDocsProvider); // BXH Đạp xe
         final controller = ref.read(runContractControllerProvider);
         // Await .future để chắc kèo ĐÃ tải: coordinator chạy 1 lần lúc mở app; đọc
         // .value lúc stream chưa emit sẽ ra rỗng → bỏ sót recalc/auto-link cả phiên.
@@ -913,9 +913,8 @@ bool _showAdminTab(WidgetRef ref) =>
     kIsWeb && ref.watch(adminSettingsProvider).value != null;
 
 class _Scaffold extends ConsumerWidget {
-  const _Scaffold({required this.shell, required this.location});
+  const _Scaffold({required this.shell});
   final StatefulNavigationShell shell;
-  final String location;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -974,12 +973,6 @@ class _Scaffold extends ConsumerWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // CHỈ hiện filter xếp hạng khi đang ở đúng màn Club gốc (/club).
-              // Khi push sang màn con (nhật ký member, chi tiết hoạt động…) thì
-              // ẩn — không để filter Club "dính" lại ở màn khác.
-              ClubNavFilter(
-                branchActive: shell.currentIndex == 1 && location == '/club',
-              ),
               Row(
                 children: [
                   Expanded(
