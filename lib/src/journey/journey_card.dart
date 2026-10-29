@@ -1,10 +1,13 @@
 import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/journey/journey_card_art.dart';
+import 'package:myrun/src/journey/journey_models.dart';
+import 'package:myrun/src/providers.dart';
 
 typedef _Campaign = ({String name, String route});
 
@@ -86,14 +89,23 @@ String _date(DateTime? at, {bool short = false}) {
   return '${_two(d.day)}.${_two(d.month)}.$year';
 }
 
-/// Dữ liệu thẻ khuôn thẻ thành tích: mặt trước là poster chặng và số liệu về
-/// đích, mặt sau là biểu tượng chặng trong vòng nguyệt quế.
+/// Dữ liệu thẻ khuôn thẻ thành tích: mặt trước là huy chương về đích và số
+/// liệu, mặt sau là bản đồ đường chạy thật của cung.
 AchievementCardData journeyCardData(JourneyCard card, {required String owner}) {
   final route = _campaigns[card.campaign]?.route;
   return AchievementCardData(
     tier: card.tier,
-    art: JourneyPosterArt(campaign: card.campaign),
-    backFace: JourneyCardEmblem(campaign: card.campaign, tier: card.tier),
+    art: JourneyMedalArt(
+      campaign: card.campaign,
+      routeId: card.routeId,
+      tier: card.tier,
+      rim: '${card.name.toUpperCase()} · ${card.km} KM',
+    ),
+    backFace: JourneyRouteMap(
+      campaign: card.campaign,
+      routeId: card.routeId,
+      title: card.name.toUpperCase(),
+    ),
     kind: route == null ? 'HÀNH TRÌNH' : 'HÀNH TRÌNH · ${route.toUpperCase()}',
     hero: card.name.toUpperCase(),
     heroUnit: '',
@@ -144,11 +156,22 @@ Future<void> showJourneyCardViewer(
   chips: [gameCardTiers[card.tier]!.label, 'Hành trình · Level ${card.level}'],
   cardSize: achievementCardSize,
   startBack: faceDown,
-  onShare: (_, origin) => showCardShare(
-    origin,
-    subject: journeyCardShareSubject(card, owner: data.owner),
-    data: data,
-  ),
+  onShare: (_, origin) async {
+    // Ảnh và video khoe được giữ theo khoá thẻ, nên chỉ chụp khi đường chạy
+    // đã tải xong; tải lỗi thì màn xem báo khoe thất bại.
+    if (parseJourneyRouteId(card.routeId) case final id?) {
+      await ProviderScope.containerOf(
+        origin,
+        listen: false,
+      ).read(journeyRouteDetailProvider(id).future);
+    }
+    if (!origin.mounted) return;
+    await showCardShare(
+      origin,
+      subject: journeyCardShareSubject(card, owner: data.owner),
+      data: data,
+    );
+  },
 );
 
 /// Lá chặng nằm úp, rộng [width]; chạm để mở màn lật thẻ.

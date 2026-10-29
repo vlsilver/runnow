@@ -29,7 +29,7 @@ import 'package:path_provider/path_provider.dart';
 /// ghi video nên vẫn ghi GIF.
 
 /// Đổi số này khi cách vẽ thẻ hay cách ghi đổi, để cache cũ không dùng nữa.
-const _shareVersion = 10;
+const _shareVersion = 11;
 
 /// Một vòng lá xoay: đứng mặt trước, lật sang sau, đứng, lật về.
 const _motionDuration = Duration(milliseconds: 3600);

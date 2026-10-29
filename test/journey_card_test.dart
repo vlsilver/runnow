@@ -1,4 +1,5 @@
-import 'dart:math' as math;
+import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -31,6 +32,51 @@ JourneyCard _card({
   'runCount': runCount,
   'finishedAt': DateTime(2027, 8, 14, 6),
 });
+
+/// Cung giả đi thẳng từ [from] tới [to] (vĩ độ, kinh độ), hai mốc ở hai đầu.
+JourneyRoute _line((double, double) from, (double, double) to) {
+  Map<String, dynamic> at(double t) => {
+    'lat': from.$1 + (to.$1 - from.$1) * t,
+    'lon': from.$2 + (to.$2 - from.$2) * t,
+  };
+  return JourneyRoute.fromMap({
+    'id': 'hcm_trail',
+    'name': 'Cung giả',
+    'tagline': '',
+    'totalLengthMeters': 1,
+    'points': [for (var i = 0; i <= 10; i++) at(i / 10)],
+    'milestones': [
+      for (final (name, t) in [('A', 0.0), ('B', 1.0)])
+        {...at(t), 'name': name, 'cumulativeMeters': t},
+    ],
+  });
+}
+
+final _png = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+);
+
+/// Kho file khoe đã có sẵn file của mọi thẻ, đếm số lần màn khoe mở ra đọc.
+class _FilledShareStore extends CardShareStore {
+  int loads = 0;
+
+  @override
+  Future<CardShareFiles?> load(String cardId, String key) async {
+    loads++;
+    return CardShareFiles(
+      front: _png,
+      back: _png,
+      motion: Uint8List.fromList([0, 0, 0, 24, 102, 116, 121, 112]),
+      motionType: 'video/mp4',
+    );
+  }
+
+  @override
+  Future<void> save(String cardId, String key, CardShareFiles files) async {}
+
+  @override
+  Future<void> clear(String cardId) async {}
+}
 
 void main() {
   group('journeyCardKm', () {
@@ -79,7 +125,8 @@ void main() {
       expect(data.owner, 'AN');
       expect(data.meta, 'LEVEL 3');
       expect(data.date, '14.08.2027');
-      expect(data.backFace, isA<JourneyCardEmblem>());
+      expect(data.art, isA<JourneyMedalArt>());
+      expect(data.backFace, isA<JourneyRouteMap>());
     });
   });
 
@@ -111,63 +158,90 @@ void main() {
     });
   });
 
-  testWidgets('poster and emblem paint every campaign and unknown ones', (
+  testWidgets('medal and map paint every campaign, unknown ones included', (
     tester,
   ) async {
-    for (final campaign in [
-      'marathon',
-      'mont_blanc',
-      'xuyen_viet',
-      'dong_nam_a',
-      'chau_au',
+    for (final (campaign, routeId) in [
+      ('marathon', 'athens_marathon'),
+      ('mont_blanc', 'tour_du_mont_blanc'),
+      ('xuyen_viet', 'hcm_trail'),
+      ('dong_nam_a', 'dong_nam_a'),
+      // Chặng và cung app chưa biết: vẽ huy chương và nền, không có đường.
+      ('chau_au', 'paris_berlin'),
     ]) {
       await tester.pumpWidget(
-        MaterialApp(
-          home: Center(
-            child: SizedBox(
-              width: 300,
-              height: 420,
-              child: Row(
-                children: [
-                  Expanded(child: JourneyPosterArt(campaign: campaign)),
-                  Expanded(
-                    child: JourneyCardEmblem(
-                      campaign: campaign,
-                      tier: GameCardTier.rare,
+        ProviderScope(
+          overrides: [
+            journeyRouteDetailProvider.overrideWith(
+              (ref, id) async => _line((0, 0), (-1, 1)),
+            ),
+          ],
+          child: MaterialApp(
+            home: Center(
+              child: SizedBox(
+                width: 300,
+                height: 420,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: JourneyMedalArt(
+                        campaign: campaign,
+                        routeId: routeId,
+                        tier: GameCardTier.rare,
+                        rim: 'CHẶNG · 42 KM',
+                      ),
                     ),
-                  ),
-                ],
+                    Expanded(
+                      child: JourneyRouteMap(
+                        campaign: campaign,
+                        routeId: routeId,
+                        title: 'CHẶNG',
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         ),
       );
+      await tester.pump();
       expect(tester.takeException(), isNull, reason: campaign);
     }
   });
 
-  testWidgets('every poster keeps one calm tone behind the text and stats', (
-    tester,
-  ) async {
-    for (final campaign in [
-      'marathon',
-      'mont_blanc',
-      'xuyen_viet',
-      'dong_nam_a',
-    ]) {
+  testWidgets('the back map follows the real route geometry', (tester) async {
+    // Bản đồ khổ 300 điểm ngang, vùng vẽ đường là hộp (36, 54) cỡ 228x244.
+    // Cung vuông cạnh 1 độ nên phóng thành ô 228x228 ở giữa hộp: góc trên
+    // trái (36, 62), góc dưới phải (264, 290). Hai điểm 1/4 và 3/4 đường
+    // chéo xuôi là (93, 119) và (207, 233); của đường chéo ngược là (207,
+    // 119) và (93, 233).
+    Future<int Function(int, int)> paint(JourneyRoute route) async {
       final boundary = GlobalKey();
       await tester.pumpWidget(
-        Center(
-          child: RepaintBoundary(
-            key: boundary,
-            child: SizedBox(
-              width: 300,
-              height: 440,
-              child: JourneyPosterArt(campaign: campaign),
+        // Khoá mới thì container mới, không giữ route của lần vẽ trước.
+        ProviderScope(
+          key: ObjectKey(route),
+          overrides: [
+            journeyRouteDetailProvider.overrideWith((ref, id) async => route),
+          ],
+          child: Center(
+            child: RepaintBoundary(
+              key: boundary,
+              child: const SizedBox(
+                width: 300,
+                height: 420,
+                child: JourneyRouteMap(
+                  campaign: 'xuyen_viet',
+                  routeId: 'hcm_trail',
+                  title: 'XUYÊN VIỆT',
+                ),
+              ),
             ),
           ),
         ),
       );
+      await tester.pump();
       late ByteData pixels;
       await tester.runAsync(() async {
         final render =
@@ -175,23 +249,73 @@ void main() {
                 as RenderRepaintBoundary;
         pixels = (await (await render.toImage()).toByteData())!;
       });
-      int luma(double fx, double fy) {
-        final i = ((440 * fy).toInt() * 300 + (300 * fx).toInt()) * 4;
+      return (x, y) {
+        final i = (y * 300 + x) * 4;
         return (pixels.getUint8(i) +
                 pixels.getUint8(i + 1) +
                 pixels.getUint8(i + 2)) ~/
             3;
-      }
-
-      // Khối chữ nằm từ khoảng 0,6 chiều cao tranh xuống. Mỗi hàng ở đó chỉ
-      // được lệch nhau bằng hạt nhiễu (độ mờ 0,045, cỡ 12 mức sáng), không
-      // còn núi, đường hay đền nằm sau chữ.
-      for (final fy in [0.62, 0.7, 0.8, 0.9]) {
-        final row = [for (var fx = 0.05; fx < 1; fx += 0.1) luma(fx, fy)];
-        final spread = row.reduce(math.max) - row.reduce(math.min);
-        expect(spread, lessThanOrEqualTo(16), reason: '$campaign y=$fy $row');
-      }
+      };
     }
+
+    // Nét đường màu vàng sáng (độ sáng cỡ 186), nền xanh tối (cỡ 60-90).
+    final down = await paint(_line((0, 0), (-1, 1)));
+    for (final (x, y) in [(93, 119), (207, 233)]) {
+      expect(down(x, y), greaterThan(150), reason: 'trên đường ($x, $y)');
+    }
+    for (final (x, y) in [(207, 119), (93, 233)]) {
+      expect(down(x, y), lessThan(120), reason: 'ngoài đường ($x, $y)');
+    }
+    final up = await paint(_line((0, 1), (-1, 0)));
+    for (final (x, y) in [(207, 119), (93, 233)]) {
+      expect(up(x, y), greaterThan(150), reason: 'trên đường ($x, $y)');
+    }
+    for (final (x, y) in [(93, 119), (207, 233)]) {
+      expect(up(x, y), lessThan(120), reason: 'ngoài đường ($x, $y)');
+    }
+  });
+
+  testWidgets('sharing waits for the route so the saved files show it', (
+    tester,
+  ) async {
+    final route = Completer<JourneyRoute>();
+    final store = _FilledShareStore();
+    final card = _card();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          journeyRouteDetailProvider.overrideWith((ref, id) => route.future),
+          cardShareStoreProvider.overrideWithValue(store),
+        ],
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showJourneyCardViewer(
+                context,
+                card,
+                journeyCardData(card, owner: 'An'),
+              ),
+              child: const Text('Mở'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Mở'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    await tester.tap(find.text('Khoe thẻ'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(CardShareScreen), findsNothing);
+    expect(store.loads, 0, reason: 'chưa có đường thì chưa mở kho file');
+
+    route.complete(_line((0, 0), (-1, 1)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(CardShareScreen), findsOneWidget);
+    expect(store.loads, 1);
   });
 
   group('JourneyTimeline', () {
@@ -259,31 +383,38 @@ void main() {
       'finishedAt': DateTime(2026, 9, 21, 6),
     });
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: JourneyCardFaceDown(card: card, owner: 'An', width: 84),
+      ProviderScope(
+        overrides: [
+          journeyRouteDetailProvider.overrideWith(
+            (ref, id) async => _line((0, 0), (-1, 1)),
+          ),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: JourneyCardFaceDown(card: card, owner: 'An', width: 84),
+            ),
           ),
         ),
       ),
     );
-    expect(find.byType(JourneyCardEmblem), findsOneWidget);
-    expect(find.byType(JourneyPosterArt), findsNothing);
+    expect(find.byType(JourneyRouteMap), findsOneWidget);
+    expect(find.byType(JourneyMedalArt), findsNothing);
 
-    // Màn lật mở lá còn úp: thêm một mặt huy hiệu, chưa thấy poster.
+    // Màn lật mở lá còn úp: thêm một mặt bản đồ, chưa thấy huy chương.
     await tester.tap(find.byType(JourneyCardFaceDown));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Hành trình · Level 1'), findsOneWidget);
     expect(find.text('Khoe thẻ'), findsOneWidget);
-    expect(find.byType(JourneyCardEmblem), findsNWidgets(2));
-    expect(find.byType(JourneyPosterArt), findsNothing);
+    expect(find.byType(JourneyRouteMap), findsNWidgets(2));
+    expect(find.byType(JourneyMedalArt), findsNothing);
 
     // Chạm lá thì lật sang mặt thành tích.
     await tester.tap(find.byType(TiltFlipCard));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 700));
-    expect(find.byType(JourneyPosterArt), findsOneWidget);
-    expect(find.byType(JourneyCardEmblem), findsOneWidget);
+    expect(find.byType(JourneyMedalArt), findsOneWidget);
+    expect(find.byType(JourneyRouteMap), findsOneWidget);
   });
 }

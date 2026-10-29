@@ -497,7 +497,6 @@ class RunNowCardSceneTokens {
   static const crater = Color(0x17000000);
   static const grainLight = Color(0xFFFFFFFF);
   static const grainDark = Color(0xFF000000);
-  static const posterFloorShade = Color(0xFF000000);
   static const starWhite = Color(0xFFFFFFFF);
 
   static const wolvesSky1 = Color(0xFF12030A);
@@ -553,58 +552,41 @@ class RunNowCardSceneTokens {
   static const loversEmblemBottom = Color(0xFF0D0412);
   static const loversEmblemDark = Color(0xFF1C0818);
 
-  // Thẻ Hành trình: poster từng chặng.
-  static const marathonSky1 = Color(0xFFF2A65A);
-  static const marathonSky2 = Color(0xFFF7D29A);
-  static const marathonSky3 = Color(0xFFE58C4F);
-  static const marathonSun = Color(0xFFFFF1D0);
-  static const marathonSunGlow = Color(0xB3FFE6AA);
-  static const marathonHill = Color(0xFFC96A3A);
-  static const marathonTemple = Color(0xFF7A3A22);
-  static const marathonHillFront = Color(0xFF8F4426);
-  static const marathonPath = Color(0xFFFBE3B8);
-  static const marathonBranch = Color(0xFF4F5A2A);
-  static const marathonLeaf = Color(0xFF5F6B30);
-
-  static const montBlancSky1 = Color(0xFF9FD0EA);
-  static const montBlancSky2 = Color(0xFFE5F2F7);
-  static const montBlancSky3 = Color(0xFFBFE0EE);
-  static const montBlancSun = Color(0xFFFFFBE6);
-  static const montBlancSunGlow = Color(0x99FFFFE6);
-  static const montBlancPeakFar = Color(0xFF5D7F9C);
-  static const montBlancSnow = Color(0xFFFFFFFF);
-  static const montBlancPeakMid = Color(0xFF36597A);
-  static const montBlancPeakNear = Color(0xFF1F3D57);
-  static const montBlancPines = Color(0xFF15293B);
-  static const montBlancPath = Color(0xFFFFD36B);
-
-  static const xuyenVietSky1 = Color(0xFF0F4C5C);
-  static const xuyenVietSky2 = Color(0xFF1B6F7C);
-  static const xuyenVietSky3 = Color(0xFF0A3440);
-  static const xuyenVietSun = Color(0xFFFFD36B);
-  static const xuyenVietSunGlow = Color(0x73FFC85A);
-  static const xuyenVietLand = Color(0xFFE9C46A);
-  static const xuyenVietRoute = Color(0xFFC0392B);
-  static const xuyenVietStop = Color(0xFFFFFFFF);
-  static const xuyenVietWave = Color(0x59FFFFFF);
-
-  static const dongNamASky1 = Color(0xFF2A1B4A);
-  static const dongNamASky2 = Color(0xFFC4506A);
-  static const dongNamASky3 = Color(0xFFF2A65A);
-  static const dongNamASky4 = Color(0xFF6B2F4A);
-  static const dongNamASun = Color(0xFFFFD98A);
-  static const dongNamASunGlow = Color(0x80FFC878);
-  static const dongNamAInk = Color(0xFF2A0F26);
-  static const dongNamARoute = Color(0x99FFF0D2);
-  static const dongNamACapital = Color(0xFFFFF3D6);
-
-  // Mặt sau Hành trình: nguyệt quế nhũ quanh biểu tượng chặng.
-  static const marathonEmblemTop = Color(0xFF5A2C18);
-  static const marathonEmblemBottom = Color(0xFF2A120A);
-  static const montBlancEmblemTop = Color(0xFF2C4560);
-  static const montBlancEmblemBottom = Color(0xFF101D2C);
-  static const xuyenVietEmblemTop = Color(0xFF145057);
-  static const xuyenVietEmblemBottom = Color(0xFF06222A);
-  static const dongNamAEmblemTop = Color(0xFF3E2268);
-  static const dongNamAEmblemBottom = Color(0xFF160C2A);
+  // Thẻ Hành trình: nền từng chặng, nét đường chạy, sọc dây huy chương.
+  static const marathonTop = Color(0xFF5A2C18);
+  static const marathonBottom = Color(0xFF2A120A);
+  static const marathonRoute = Color(0xFFFFD59A);
+  static const marathonRibbon = <Color>[
+    Color(0xFF1D4F9C),
+    Color(0xFFF7F7F2),
+    Color(0xFF1D4F9C),
+  ];
+  static const montBlancTop = Color(0xFF2C4560);
+  static const montBlancBottom = Color(0xFF101D2C);
+  static const montBlancRoute = Color(0xFFE8F3FF);
+  static const montBlancRibbon = <Color>[
+    Color(0xFFC8102E),
+    Color(0xFFF7F7F2),
+    Color(0xFFC8102E),
+  ];
+  static const xuyenVietTop = Color(0xFF145057);
+  static const xuyenVietBottom = Color(0xFF06222A);
+  static const xuyenVietRoute = Color(0xFFF7D266);
+  static const xuyenVietRibbon = <Color>[
+    Color(0xFFDA251D),
+    Color(0xFFFFCD00),
+    Color(0xFFDA251D),
+  ];
+  static const dongNamATop = Color(0xFF3E2268);
+  static const dongNamABottom = Color(0xFF160C2A);
+  static const dongNamARoute = Color(0xFFFFE0B8);
+  static const dongNamARibbon = <Color>[
+    Color(0xFF0039A6),
+    Color(0xFFFFCC00),
+    Color(0xFFD4001A),
+    Color(0xFFF7F7F2),
+  ];
+  static const journeyShade = Color(0xFF000000);
+  static const medalShine = Color(0xFFFFFFFF);
+  static const mapInk = Color(0xFFFBF8F1);
 }
