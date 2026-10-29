@@ -131,20 +131,55 @@ CardShareSubject journeyCardShareSubject(
 );
 
 /// Xem thẻ toàn màn hình: nghiêng, lật, khoe. Thẻ chỉ có khi đã về đích nên
-/// lúc nào cũng khoe được.
+/// lúc nào cũng khoe được. [faceDown] mở lá đang úp để người xem tự lật.
 Future<void> showJourneyCardViewer(
   BuildContext context,
   JourneyCard card,
-  AchievementCardData data,
-) => showCardViewer(
+  AchievementCardData data, {
+  bool faceDown = false,
+}) => showCardViewer(
   context,
   front: (pose) => AchievementCard(data: data, pose: pose),
   back: (pose) => AchievementCard(data: data, pose: pose, back: true),
   chips: [gameCardTiers[card.tier]!.label, 'Hành trình · Level ${card.level}'],
   cardSize: achievementCardSize,
+  startBack: faceDown,
   onShare: (_, origin) => showCardShare(
     origin,
     subject: journeyCardShareSubject(card, owner: data.owner),
     data: data,
   ),
 );
+
+/// Lá chặng nằm úp, rộng [width]; chạm để mở màn lật thẻ.
+class JourneyCardFaceDown extends StatelessWidget {
+  const JourneyCardFaceDown({
+    super.key,
+    required this.card,
+    required this.owner,
+    required this.width,
+  });
+
+  final JourneyCard card;
+
+  /// Tên in trên thẻ.
+  final String owner;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = journeyCardData(card, owner: owner);
+    return Semantics(
+      button: true,
+      label: 'Thẻ Hành trình ${card.name}, chạm để lật',
+      child: GestureDetector(
+        onTap: () => showJourneyCardViewer(context, card, data, faceDown: true),
+        child: GameCardScaled(
+          width: width,
+          size: achievementCardSize,
+          child: AchievementCard(data: data, back: true),
+        ),
+      ),
+    );
+  }
+}

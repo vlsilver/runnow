@@ -56,6 +56,7 @@ Future<void> showCardViewer(
   bool hideWhenInactive = false,
   Future<void> Function(GlobalKey cardKey, BuildContext origin)? onShare,
   Widget? locked,
+  bool startBack = false,
 }) {
   return Navigator.of(context).push(
     PageRouteBuilder<void>(
@@ -71,6 +72,7 @@ Future<void> showCardViewer(
           hideWhenInactive: hideWhenInactive,
           onShare: onShare,
           locked: locked,
+          startBack: startBack,
         ),
       ),
       transitionsBuilder: (_, animation, _, child) =>
@@ -89,6 +91,7 @@ class GameCardViewer extends StatefulWidget {
     this.hideWhenInactive = false,
     this.onShare,
     this.locked,
+    this.startBack = false,
   });
 
   final CardFaceBuilder front;
@@ -104,6 +107,9 @@ class GameCardViewer extends StatefulWidget {
   /// Null thì không có nút khoe; khi đó hiện [locked] nếu có.
   final Future<void> Function(GlobalKey cardKey, BuildContext origin)? onShare;
   final Widget? locked;
+
+  /// Mở lá đang úp để người xem tự chạm lật.
+  final bool startBack;
 
   @override
   State<GameCardViewer> createState() => _GameCardViewerState();
@@ -219,6 +225,7 @@ class _GameCardViewerState extends State<GameCardViewer>
                           width: cardWidth,
                           cardSize: widget.cardSize,
                           captureKey: _captureKey,
+                          startBack: widget.startBack,
                         ),
                 ),
               ),
@@ -264,6 +271,7 @@ class TiltFlipCard extends StatefulWidget {
     required this.width,
     this.cardSize = gameCardSize,
     this.captureKey,
+    this.startBack = false,
   });
 
   final CardFaceBuilder front;
@@ -278,6 +286,9 @@ class TiltFlipCard extends StatefulWidget {
   /// Gắn vào mặt trước để chụp ảnh khoe.
   final GlobalKey? captureKey;
 
+  /// Lá bắt đầu ở mặt sau.
+  final bool startBack;
+
   @override
   State<TiltFlipCard> createState() => TiltFlipCardState();
 }
@@ -288,6 +299,7 @@ class TiltFlipCardState extends State<TiltFlipCard>
   late final AnimationController _flip = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 600),
+    value: widget.startBack ? 1 : 0,
   );
 
   /// Thả tay thì lá trôi về giữa.

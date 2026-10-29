@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card_collection.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/formatters.dart';
-import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/journey/journey_card.dart';
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
@@ -515,7 +513,11 @@ class _DoneCardContent extends ConsumerWidget {
               if (card == null)
                 const _CompletionStampLabel()
               else
-                _FaceDownJourneyCard(card: card),
+                JourneyCardFaceDown(
+                  card: card,
+                  owner: runCardOwnerName(ref),
+                  width: 44,
+                ),
             ],
           ),
         ],
@@ -644,30 +646,6 @@ TextStyle _cardTitleStyle(RunNowPalette palette) => TextStyle(
   height: 1.2,
   fontWeight: FontWeight.w900,
 );
-
-/// Thẻ chặng nằm úp; chạm để mở, lật và khoe.
-class _FaceDownJourneyCard extends ConsumerWidget {
-  const _FaceDownJourneyCard({required this.card});
-
-  final JourneyCard card;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final data = journeyCardData(card, owner: runCardOwnerName(ref));
-    return Semantics(
-      button: true,
-      label: 'Thẻ Hành trình ${card.name}, chạm để lật',
-      child: GestureDetector(
-        onTap: () => showJourneyCardViewer(context, card, data),
-        child: GameCardScaled(
-          width: 44,
-          size: achievementCardSize,
-          child: AchievementCard(data: data, back: true),
-        ),
-      ),
-    );
-  }
-}
 
 class _CompletionStampLabel extends StatelessWidget {
   const _CompletionStampLabel();

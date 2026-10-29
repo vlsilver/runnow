@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
+import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/journey/journey_card.dart';
 import 'package:myrun/src/journey/journey_card_art.dart';
@@ -201,12 +202,23 @@ void main() {
       await pump(tester, cards: [marathon]);
       expect(faceDown(), findsOneWidget);
       expect(find.text('HOÀN THÀNH'), findsNothing);
+      expect(find.byType(JourneyCardEmblem), findsOneWidget);
 
+      // Màn lật mở lá còn úp: thêm một mặt huy hiệu, chưa thấy poster.
       await tester.tap(faceDown());
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('Hành trình · Level 1'), findsOneWidget);
       expect(find.text('Khoe thẻ'), findsOneWidget);
+      expect(find.byType(JourneyCardEmblem), findsNWidgets(2));
+      expect(find.byType(JourneyPosterArt), findsNothing);
+
+      // Chạm lá thì lật sang mặt thành tích.
+      await tester.tap(find.byType(TiltFlipCard));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(find.byType(JourneyPosterArt), findsOneWidget);
+      expect(find.byType(JourneyCardEmblem), findsOneWidget);
     });
 
     testWidgets('without a card yet the leg keeps the stamp', (tester) async {
