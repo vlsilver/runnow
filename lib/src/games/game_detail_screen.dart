@@ -59,9 +59,21 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   /// thì úp lại, để quay lại không thấy vai đang ngửa.
   bool _faceUp = false;
 
+  /// Thẻ của ván này đã lật trên máy này chưa; null là đang đọc.
+  bool? _cardRevealed;
+
+  /// Vừa lật lúc lá đang ngửa thì chạy hiệu ứng lật một lần.
+  bool _justRevealed = false;
+
   @override
   void initState() {
     super.initState();
+    ref.listenManual(firebaseUserProvider.select((user) => user.value?.uid), (
+      _,
+      uid,
+    ) {
+      if (uid != null) unawaited(_loadReveal(uid));
+    }, fireImmediately: true);
     _controller = GameDetailController(
       api: ref.read(runNowApiClientProvider),
       gameId: widget.gameId,
@@ -103,7 +115,34 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   }
 
   void _turnFaceDown() {
-    if (_faceUp && mounted) setState(() => _faceUp = false);
+    if (_faceUp && mounted) {
+      setState(() {
+        _faceUp = false;
+        _justRevealed = false;
+      });
+    }
+  }
+
+  Future<void> _loadReveal(String uid) async {
+    final revealed = await ref
+        .read(gameCardRevealsProvider)
+        .revealed(uid, widget.gameId);
+    if (mounted) setState(() => _cardRevealed = revealed);
+  }
+
+  Future<void> _revealCard() async {
+    final uid = ref.read(firebaseUserProvider).value?.uid;
+    if (uid == null) return;
+    setState(() {
+      _cardRevealed = true;
+      _justRevealed = true;
+    });
+    try {
+      await ref.read(gameCardRevealsProvider).markRevealed(uid, widget.gameId);
+    } catch (error) {
+      // Không ghi được thì lần sau mở màn lá lại úp, bậc vẫn như cũ.
+      debugPrint('Ma Sói: ghi thẻ đã lật lỗi: $error');
+    }
   }
 
   @override
@@ -299,7 +338,13 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                               serverNow: _controller.serverNow,
                               card: _cardFor(detail, me, myPlayer),
                               onOpenCard: () => _openCard(detail, me, myPlayer),
-                              onFlip: () => setState(() => _faceUp = !_faceUp),
+                              cardRevealed: _cardRevealed,
+                              justRevealed: _justRevealed,
+                              onRevealCard: _revealCard,
+                              onFlip: () => setState(() {
+                                _faceUp = !_faceUp;
+                                _justRevealed = false;
+                              }),
                               onOpenUrl: _openLink,
                               onOpenChat: (key) {
                                 _turnFaceDown();

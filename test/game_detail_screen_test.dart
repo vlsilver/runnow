@@ -12,6 +12,7 @@ import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_detail_screen.dart';
+import 'package:myrun/src/games/game_my_card.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/providers.dart';
@@ -64,8 +65,24 @@ final _png = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
 );
 
+/// Kho thẻ đã lật trong bộ nhớ, như secure storage trên máy.
+class _MemoryReveals extends GameCardReveals {
+  _MemoryReveals({required this.revealedAll});
+  final bool revealedAll;
+  final marked = <String>[];
+
+  @override
+  Future<bool> revealed(String uid, String gameId) async =>
+      revealedAll || marked.contains('$uid/$gameId');
+
+  @override
+  Future<void> markRevealed(String uid, String gameId) async =>
+      marked.add('$uid/$gameId');
+}
+
 void main() {
   late DateTime now;
+  late _MemoryReveals reveals;
   late FakeGameBackend backend;
   late List<Uri> opened;
   late bool openOk;
@@ -81,6 +98,7 @@ void main() {
           runNowApiClientProvider.overrideWithValue(backend.client()),
           firebaseUserProvider.overrideWith((ref) => Stream.value(_FakeUser())),
           cardShareStoreProvider.overrideWithValue(shareStore),
+          gameCardRevealsProvider.overrideWithValue(reveals),
         ],
         child: MaterialApp(
           home: GameDetailScreen(
@@ -111,6 +129,7 @@ void main() {
     backend = FakeGameBackend(() => now);
     opened = [];
     openOk = true;
+    reveals = _MemoryReveals(revealedAll: true);
     shareStore = _SavedShareStore(
       '',
       CardShareFiles(
@@ -609,6 +628,37 @@ void main() {
         glass,
         isNot(gameNightTheme().extension<RunNowPalette>()!.glassStart),
       );
+      await close(tester);
+    });
+
+    testWidgets('the card stays face down until flipped, then shows its tier', (
+      tester,
+    ) async {
+      reveals = _MemoryReveals(revealedAll: false);
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+        'cardTier': 'legendary',
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+
+      // Vai đã ngửa, nhưng thẻ còn úp nên chưa biết bậc.
+      expect(find.text('Tiên tri'), findsWidgets);
+      expect(find.byType(AchievementCard), findsNothing);
+      expect(reveals.marked, isEmpty);
+
+      await tester.tap(find.text('Lật thẻ'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 700));
+      final card = tester.widget<AchievementCard>(find.byType(AchievementCard));
+      expect(card.data.tier, GameCardTier.legendary);
+      expect(reveals.marked, ['me/g1']);
       await close(tester);
     });
 

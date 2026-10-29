@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
+import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_km_table.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/games/game_turn.dart';
@@ -21,6 +24,9 @@ class GameMyCard extends StatelessWidget {
     required this.onOpenChat,
     required this.card,
     required this.onOpenCard,
+    required this.cardRevealed,
+    required this.justRevealed,
+    required this.onRevealCard,
     required this.running,
     required this.serverNow,
     this.kmTable,
@@ -36,6 +42,15 @@ class GameMyCard extends StatelessWidget {
   /// Lá vẽ trong mặt ngửa; chạm vào lá thì mở xem to ([onOpenCard]).
   final AchievementCardData card;
   final VoidCallback onOpenCard;
+
+  /// Bậc thẻ backend bốc sẵn lúc chia bài, nhưng người chơi chỉ thấy khi tự
+  /// lật: false thì lá nằm úp chờ lật ([onRevealCard]), null là chưa đọc xong
+  /// máy này đã lật chưa.
+  final bool? cardRevealed;
+
+  /// Vừa lật trong phiên này thì chạy hiệu ứng lật.
+  final bool justRevealed;
+  final VoidCallback onRevealCard;
 
   /// Đầu cột cho bảng km phe trong mặt lá (`me.teamKm`).
   final GameKmTable? kmTable;
@@ -69,6 +84,9 @@ class GameMyCard extends StatelessWidget {
                     running: running,
                     serverNow: serverNow,
                     onOpenCard: onOpenCard,
+                    cardRevealed: cardRevealed,
+                    justRevealed: justRevealed,
+                    onRevealCard: onRevealCard,
                     onOpenUrl: onOpenUrl,
                     onOpenChat: onOpenChat,
                   )
@@ -139,6 +157,9 @@ class _Face extends StatelessWidget {
     required this.running,
     required this.serverNow,
     required this.onOpenCard,
+    required this.cardRevealed,
+    required this.justRevealed,
+    required this.onRevealCard,
     required this.onOpenUrl,
     required this.onOpenChat,
   });
@@ -149,8 +170,53 @@ class _Face extends StatelessWidget {
   final bool running;
   final DateTime Function() serverNow;
   final VoidCallback onOpenCard;
+  final bool? cardRevealed;
+  final bool justRevealed;
+  final VoidCallback onRevealCard;
   final ValueChanged<String> onOpenUrl;
   final ValueChanged<String> onOpenChat;
+
+  /// Chỗ thẻ trong mặt lá: úp trung tính (lá úp không có khung theo bậc) cho
+  /// tới khi người chơi lật, rồi mới là thẻ thật.
+  Widget _cardSlot(RunNowPalette palette) {
+    const width = 140.0;
+    const back = GameCardScaled(width: width, child: GameCardBack());
+    final shown = GameCardScaled(
+      width: width,
+      size: achievementCardSize,
+      child: AchievementCard(data: card),
+    );
+    return switch (cardRevealed) {
+      null => back,
+      false => Semantics(
+        button: true,
+        label: 'Lật thẻ',
+        excludeSemantics: true,
+        child: GestureDetector(
+          onTap: onRevealCard,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              back,
+              const SizedBox(height: 6),
+              Text(
+                'Lật thẻ',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: palette.accent,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      true => GestureDetector(
+        onTap: onOpenCard,
+        child: justRevealed ? CardFlipReveal(from: back, to: shown) : shown,
+      ),
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -168,14 +234,7 @@ class _Face extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            GestureDetector(
-              onTap: onOpenCard,
-              child: GameCardScaled(
-                width: 140,
-                size: achievementCardSize,
-                child: AchievementCard(data: card),
-              ),
-            ),
+            _cardSlot(palette),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -351,3 +410,32 @@ class _TeamKm extends StatelessWidget {
     );
   }
 }
+
+/// Ván nào người chơi đã lật thẻ trên máy này. Chỉ lưu trong máy: đổi máy thì
+/// lật lại, bậc vẫn là bậc backend đã bốc.
+class GameCardReveals {
+  GameCardReveals({FlutterSecureStorage? storage})
+    : _storage = storage ?? const FlutterSecureStorage();
+
+  final FlutterSecureStorage _storage;
+
+  static String _key(String uid, String gameId) =>
+      'masoi_card_revealed_v1_${uid}_$gameId';
+
+  /// Đọc lỗi thì coi như đã lật, để lỗi máy không giấu thẻ mãi.
+  Future<bool> revealed(String uid, String gameId) async {
+    try {
+      return await _storage.read(key: _key(uid, gameId)) != null;
+    } catch (error) {
+      debugPrint('Ma Sói: đọc thẻ đã lật lỗi: $error');
+      return true;
+    }
+  }
+
+  Future<void> markRevealed(String uid, String gameId) =>
+      _storage.write(key: _key(uid, gameId), value: '1');
+}
+
+final gameCardRevealsProvider = Provider<GameCardReveals>(
+  (ref) => GameCardReveals(),
+);
