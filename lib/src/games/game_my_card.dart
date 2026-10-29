@@ -222,11 +222,16 @@ class _Face extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final potions = me.potions;
-    final accent = gameRoleAccent(me.role ?? '');
-    const body = TextStyle(
+    // Màu vai pha cho nền đêm của lá bài; nền sáng thì hạ độ sáng để chữ
+    // còn đọc được mà vẫn giữ sắc của vai.
+    final roleAccent = gameRoleAccent(me.role ?? '');
+    final accent = Theme.of(context).brightness == Brightness.light
+        ? HSLColor.fromColor(roleAccent).withLightness(0.36).toColor()
+        : roleAccent;
+    final body = TextStyle(
       fontSize: 13,
       height: 1.45,
-      color: RunNowGameTokens.heroSub,
+      color: palette.foreground,
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

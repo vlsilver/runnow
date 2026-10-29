@@ -113,7 +113,7 @@ class _GameTurnBannerState extends State<GameTurnBanner> {
       String? detail,
     ) = switch (turn.state) {
       GameTurnState.now => (
-        RunNowGameTokens.kmOk,
+        RunNowSemanticColors.success,
         Icons.bolt_rounded,
         'Tới giờ của bạn',
         turn.at == null
@@ -128,13 +128,13 @@ class _GameTurnBannerState extends State<GameTurnBanner> {
         turn.reason,
       ),
       GameTurnState.later => (
-        RunNowGameTokens.heroSub,
+        palette.foreground,
         Icons.schedule_rounded,
         'Chưa tới giờ của bạn',
         'Mở lúc ${_clock(turn.at!, now)}',
       ),
       GameTurnState.rest => (
-        RunNowGameTokens.heroSub,
+        palette.foreground,
         Icons.bedtime_rounded,
         'Giờ này bạn nghỉ',
         'Vai của bạn không có việc ở giai đoạn này.',

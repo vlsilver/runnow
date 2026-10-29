@@ -91,7 +91,7 @@ void main() {
 
   setUpAll(() => SharePlatform.instance = share);
 
-  Future<void> pumpScreen(WidgetTester tester) async {
+  Future<void> pumpScreen(WidgetTester tester, {ThemeData? theme}) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -101,6 +101,7 @@ void main() {
           gameCardRevealsProvider.overrideWithValue(reveals),
         ],
         child: MaterialApp(
+          theme: theme,
           home: GameDetailScreen(
             gameId: 'g1',
             clock: () => now,
@@ -160,6 +161,35 @@ void main() {
 
     expect(find.text('Sói cắn mỗi đêm.'), findsNothing);
     expect(find.text('Sói cắn mỗi đêm, trừ đêm đầu.'), findsOneWidget);
+    await close(tester);
+  });
+
+  testWidgets('the page follows the app theme, the night scene stays night', (
+    tester,
+  ) async {
+    backend.game = {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'running',
+      'statusLabel': 'Đang chơi',
+      'refreshAfterSeconds': 300,
+    };
+    final app = buildRunNowTheme(
+      RunNowElement.fire,
+      appearance: RunNowAppearance.light,
+    );
+    await pumpScreen(tester, theme: app);
+
+    RunNowPalette paletteAt(Finder finder) =>
+        Theme.of(tester.element(finder)).extension<RunNowPalette>()!;
+    expect(
+      paletteAt(find.byType(Scaffold)).background,
+      app.extension<RunNowPalette>()!.background,
+    );
+    expect(
+      paletteAt(find.byType(GameMoon)).accent,
+      gameNightTheme().extension<RunNowPalette>()!.accent,
+    );
     await close(tester);
   });
 

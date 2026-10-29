@@ -154,28 +154,27 @@ class GameKmStatusLabel extends StatelessWidget {
     if (km == null) {
       return Text('—', style: TextStyle(color: palette.textMuted));
     }
-    // Chỉ dùng trong màn ván, mà màn ván luôn tông đêm.
     final missing = gameKmMissing(km, unitKm);
     if (missing == null) {
       return const Text(
         'Đủ',
         style: TextStyle(
           fontWeight: FontWeight.w800,
-          color: RunNowGameTokens.kmOk,
+          color: RunNowSemanticColors.success,
         ),
       );
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: RunNowGameTokens.kmShort,
+        color: RunNowSemanticColors.danger.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         'Thiếu $missing',
         style: const TextStyle(
           fontWeight: FontWeight.w800,
-          color: RunNowGameTokens.nightDanger,
+          color: RunNowSemanticColors.danger,
         ),
       ),
     );

@@ -165,32 +165,18 @@ abstract final class RunNowDataColors {
   static const coachSheetDark = Color(0xff0e1a18);
 }
 
-/// Màu riêng của từng hạng 1–10 trên BXH Club, cùng họ màu với nền thẻ BXH
-/// của hạng đó. Không theo hành của app vì nó mã hoá thứ hạng.
+/// Vàng, bạc, đồng của hạng 1–3 trên BXH Club. Không theo hành của app vì nó
+/// mã hoá huy chương; các hạng sau theo màu hành.
 abstract final class RunNowRankColors {
   static const light = <Color>[
     Color(0xffc48a06),
     Color(0xff74839a),
     Color(0xffb4632a),
-    Color(0xff0f9a8a),
-    Color(0xff2f6fe0),
-    Color(0xff7c4ff0),
-    Color(0xffd63a82),
-    Color(0xff5f9c10),
-    Color(0xffe0670f),
-    Color(0xff4f57e0),
   ];
   static const dark = <Color>[
     Color(0xffe9a91e),
     Color(0xffaeb9cb),
     Color(0xffe08a50),
-    Color(0xff2fd0bd),
-    Color(0xff6fa4ff),
-    Color(0xffa98bfa),
-    Color(0xfff072ab),
-    Color(0xff8ed13a),
-    Color(0xffff9a4a),
-    Color(0xff8a90ff),
   ];
 }
 
@@ -233,8 +219,6 @@ class RunNowGameTokens {
   static const sunLight = Color(0xFFFFF7D6);
   static const sunMid = Color(0xFFF0C75E);
   static const sunShade = Color(0xFFB98A24);
-  static const kmOk = Color(0xFFB9D77A);
-  static const kmShort = Color(0x669C2418);
   static const cardFieldTop = Color(0xFF26272F);
   static const cardFieldBottom = Color(0xFF121318);
   static const cardArt = Color(0xFF0D0E14);

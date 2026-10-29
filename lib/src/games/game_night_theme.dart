@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:myrun/src/theme.dart';
 
-/// Tông đêm của các màn Ma Sói, cùng chất với lá bài: nền mực tím đen, kính
-/// trắng mờ, nhấn vàng. Không theo sáng/tối hay hành của app, vì màn ván phải
-/// trông như một bàn chơi riêng.
+/// Tông đêm của lá bài Ma Sói: nền mực tím đen, kính trắng mờ, nhấn vàng. Chỉ
+/// dùng cho chỗ là tranh (màn xem thẻ, cảnh đêm/ngày đầu màn ván); trang ván
+/// theo sáng/tối và hành của app như mọi màn khác.
 const gameNightGold = RunNowGameTokens.gold;
 const gameNightGoldDeep = RunNowGameTokens.goldDeep;
 const gameNightInk = RunNowGameTokens.nightInk;
@@ -22,6 +22,13 @@ const gameNightFoil = LinearGradient(
     RunNowGameTokens.goldPale,
     RunNowGameTokens.goldShade,
   ],
+);
+
+/// Dải màu hành cho nút đang chọn và thanh giờ trên trang ván, thay vàng foil.
+LinearGradient gameAccentFoil(RunNowPalette palette) => LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [palette.accentDeep, palette.accent],
 );
 
 ThemeData gameNightTheme() {

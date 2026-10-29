@@ -162,10 +162,10 @@ class _GameActionCardState extends State<GameActionCard> {
               const SizedBox(height: 8),
               Text(
                 action.help,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   height: 1.4,
-                  color: RunNowGameTokens.heroSub,
+                  color: palette.foreground,
                 ),
               ),
             ],
@@ -182,7 +182,7 @@ class _GameActionCardState extends State<GameActionCard> {
                     const Icon(
                       Icons.check_circle_rounded,
                       size: 16,
-                      color: RunNowGameTokens.kmOk,
+                      color: RunNowSemanticColors.success,
                     ),
                     const SizedBox(width: 6),
                     Expanded(
@@ -344,7 +344,7 @@ class GameOptionButton extends StatelessWidget {
       style: TextStyle(
         fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
         color: selected
-            ? RunNowGameTokens.onGold
+            ? Theme.of(context).colorScheme.onPrimary
             : palette.ink.withValues(alpha: onPressed == null ? 0.45 : 1),
       ),
     );
@@ -356,11 +356,15 @@ class GameOptionButton extends StatelessWidget {
         child: Ink(
           height: 44,
           decoration: BoxDecoration(
-            gradient: selected ? gameNightFoil : null,
+            gradient: selected ? gameAccentFoil(palette) : null,
             borderRadius: BorderRadius.circular(12),
             border: selected
                 ? null
-                : Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                : Border.all(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.18),
+                  ),
           ),
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
@@ -416,7 +420,7 @@ class _Window extends StatelessWidget {
       decoration: BoxDecoration(
         color: live
             ? palette.accent.withValues(alpha: 0.14)
-            : Colors.white.withValues(alpha: 0.07),
+            : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -463,6 +467,7 @@ class _TimeLeft extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
     final total = closesAt.difference(opensAt).inSeconds;
     final left = closesAt.difference(now).inSeconds;
     final fraction = total <= 0 ? 0.0 : (left / total).clamp(0.0, 1.0);
@@ -472,7 +477,7 @@ class _TimeLeft extends StatelessWidget {
         height: 4,
         width: double.infinity,
         child: ColoredBox(
-          color: Colors.white.withValues(alpha: 0.1),
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
           child: Align(
             alignment: Alignment.centerLeft,
             child: FractionallySizedBox(
@@ -480,8 +485,12 @@ class _TimeLeft extends StatelessWidget {
               heightFactor: 1,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  gradient: live ? gameNightFoil : null,
-                  color: live ? null : Colors.white.withValues(alpha: 0.3),
+                  gradient: live ? gameAccentFoil(palette) : null,
+                  color: live
+                      ? null
+                      : Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.3),
                 ),
               ),
             ),
@@ -505,9 +514,11 @@ class _Locked extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

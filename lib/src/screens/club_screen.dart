@@ -282,9 +282,10 @@ class _SegmentButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
     final light = Theme.of(context).brightness == Brightness.light;
-    final foreground = selected ? onSurface : palette.textMuted;
+    final foreground = selected
+        ? (light ? palette.accentDeep : palette.accent)
+        : palette.textMuted;
     return Semantics(
       button: true,
       selected: selected,
@@ -297,23 +298,8 @@ class _SegmentButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            // Nền tối thì thẻ được chọn sáng hơn rãnh, nền sáng thì là mặt
-            // giấy trắng nổi trên rãnh xám.
-            color: selected
-                ? (light
-                      ? palette.glassStart
-                      : onSurface.withValues(alpha: 0.14))
-                : Colors.transparent,
+            color: selected ? palette.tint : Colors.transparent,
             borderRadius: BorderRadius.circular(radius),
-            boxShadow: selected && light
-                ? const [
-                    BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 2,
-                      offset: Offset(0, 1),
-                    ),
-                  ]
-                : null,
           ),
           child: IconTheme.merge(
             data: IconThemeData(color: foreground),
@@ -512,9 +498,8 @@ class _RankingRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    final rankColors = Theme.of(context).brightness == Brightness.dark
-        ? RunNowRankColors.dark
-        : RunNowRankColors.light;
+    final light = Theme.of(context).brightness == Brightness.light;
+    final medals = light ? RunNowRankColors.light : RunNowRankColors.dark;
     final rank = member.rank;
     final (value, unit) = _splitValueLabel(
       clubRankingValueLabel(member.score, sport),
@@ -547,8 +532,10 @@ class _RankingRow extends StatelessWidget {
                       fontFamily: 'Barlow Condensed',
                       fontSize: 24,
                       fontWeight: FontWeight.w800,
-                      color: rank <= rankColors.length
-                          ? rankColors[rank - 1]
+                      color: rank <= medals.length
+                          ? medals[rank - 1]
+                          : rank <= _cardRanks
+                          ? (light ? palette.accentDeep : palette.accent)
                           : onSurface.withValues(alpha: 0.45),
                     ),
                   ),
