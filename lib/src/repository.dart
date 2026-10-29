@@ -1447,6 +1447,23 @@ Map<String, dynamic> normalizeLeaderboardEntryPeriods(
   DateTime now,
 ) {
   final normalized = Map<String, dynamic>.from(data);
+  final current = leaderboardPeriodsCurrent(data, now);
+  if (!current.week) {
+    normalized['currentWeek'] = const <String, dynamic>{};
+  }
+  if (!current.month) {
+    normalized['currentMonth'] = const <String, dynamic>{};
+  }
+  return normalized;
+}
+
+/// Whether a precomputed leaderboard document's week and month aggregates
+/// belong to the periods containing [now]. Shared by every board whose
+/// document carries `currentWeekStart` / `currentMonthStart`.
+({bool week, bool month}) leaderboardPeriodsCurrent(
+  Map<String, dynamic> data,
+  DateTime now,
+) {
   final updatedAt = switch (data['updatedAt']) {
     Timestamp value => value.toDate(),
     DateTime value => value,
@@ -1454,24 +1471,20 @@ Map<String, dynamic> normalizeLeaderboardEntryPeriods(
   };
   final weekStart = startOfCurrentWeek(now);
   final monthStart = DateTime(now.year, now.month);
-
-  if (!_leaderboardPeriodIsCurrent(
-    storedKey: data['currentWeekStart'],
-    expectedKey: _leaderboardPeriodKey(weekStart),
-    legacyUpdatedAt: updatedAt,
-    periodStart: weekStart,
-  )) {
-    normalized['currentWeek'] = const <String, dynamic>{};
-  }
-  if (!_leaderboardPeriodIsCurrent(
-    storedKey: data['currentMonthStart'],
-    expectedKey: _leaderboardPeriodKey(monthStart),
-    legacyUpdatedAt: updatedAt,
-    periodStart: monthStart,
-  )) {
-    normalized['currentMonth'] = const <String, dynamic>{};
-  }
-  return normalized;
+  return (
+    week: _leaderboardPeriodIsCurrent(
+      storedKey: data['currentWeekStart'],
+      expectedKey: _leaderboardPeriodKey(weekStart),
+      legacyUpdatedAt: updatedAt,
+      periodStart: weekStart,
+    ),
+    month: _leaderboardPeriodIsCurrent(
+      storedKey: data['currentMonthStart'],
+      expectedKey: _leaderboardPeriodKey(monthStart),
+      legacyUpdatedAt: updatedAt,
+      periodStart: monthStart,
+    ),
+  );
 }
 
 bool _leaderboardPeriodIsCurrent({
