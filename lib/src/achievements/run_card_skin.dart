@@ -36,6 +36,7 @@ class RunCardSkin {
     required this.accents,
     required this.titles,
     required this.routes,
+    this.onDarkArt,
   });
 
   /// Tên ổn định của bộ màu, vào khoá cache ảnh khoe.
@@ -44,7 +45,7 @@ class RunCardSkin {
   /// Nền dưới tranh, lộ ra khi tranh chưa tải xong.
   final Color field;
 
-  /// Nền đặc sau khối chữ và chân thẻ.
+  /// Quầng ôm nét chữ trên tranh.
   final Color shade;
 
   /// Số km, số liệu mặt sau, chữ lá úp.
@@ -89,6 +90,10 @@ class RunCardSkin {
 
   /// Tranh đường chạy từng bậc: nền giữa, nền mép, màu phát sáng.
   final Map<GameCardTier, (Color, Color, Color)> routes;
+
+  /// Bộ màu cho chữ mặt trước khi in trên tranh tối (tranh vẽ, poster);
+  /// null là chính bộ này, vốn đã là chữ sáng.
+  final RunCardSkin? onDarkArt;
 
   Color accent(GameCardTier tier) => accents[tier]!;
   Color glow(GameCardTier tier) => routes[tier]!.$3;
@@ -337,6 +342,7 @@ class RunCardSkin {
           _T.paperGlowMythic,
         ),
       },
+      onDarkArt: _night(element),
     );
   }
 

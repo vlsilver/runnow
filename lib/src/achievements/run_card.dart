@@ -70,6 +70,7 @@ AchievementCardData runCardData(RunCard card, {required String owner}) {
         ? RunRouteStamp(points: snap.route, tier: card.tier)
         : null,
     backFace: RunCardBack(card: card),
+    artFollowsSkin: artPath == null,
     kind: 'BUỔI CHẠY',
     hero: runCardKm(card.km),
     title: snap.name.isEmpty ? 'Buổi chạy' : snap.name,

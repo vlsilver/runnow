@@ -236,7 +236,7 @@ void _marathon(Canvas canvas, Size size, String km) {
       leaf,
     );
   }
-  _stamp(canvas, Offset(w * 0.8, h * 0.62), 27, _T.marathonStamp, km);
+  _stamp(canvas, Offset(w * 0.82, h * 0.45), 27, _T.marathonStamp, km);
 }
 
 void _montBlanc(Canvas canvas, Size size, String km) {
@@ -325,7 +325,7 @@ void _montBlanc(Canvas canvas, Size size, String km) {
     ),
     _stroke(_T.montBlancPath, 2.4),
   );
-  _stamp(canvas, Offset(w * 0.8, h * 0.62), 27, _T.montBlancStamp, km);
+  _stamp(canvas, Offset(w * 0.8, h * 0.45), 27, _T.montBlancStamp, km);
 }
 
 void _xuyenViet(Canvas canvas, Size size, String km) {
@@ -383,10 +383,10 @@ void _xuyenViet(Canvas canvas, Size size, String km) {
       ..drawCircle(Offset(w * x, h * y), 3.4, _fill(_T.xuyenVietStop))
       ..drawCircle(Offset(w * x, h * y), 1.8, _fill(_T.xuyenVietRoute));
   }
-  // Sóng biển.
+  // Sóng biển, chừa chỗ cho dấu bên dưới.
   final wave = _stroke(_T.xuyenVietWave, 1.2);
-  for (var i = 0; i < 5; i++) {
-    final x = w * 0.72, y = h * (0.3 + i * 0.1);
+  for (var i = 0; i < 3; i++) {
+    final x = w * 0.72, y = h * (0.24 + i * 0.06);
     canvas.drawPath(
       Path()
         ..moveTo(x, y)
@@ -395,7 +395,7 @@ void _xuyenViet(Canvas canvas, Size size, String km) {
       wave,
     );
   }
-  _stamp(canvas, Offset(w * 0.8, h * 0.78), 25, _T.xuyenVietStamp, km);
+  _stamp(canvas, Offset(w * 0.8, h * 0.47), 25, _T.xuyenVietStamp, km);
 }
 
 void _dongNamA(Canvas canvas, Size size, String km) {
@@ -499,7 +499,7 @@ void _dongNamA(Canvas canvas, Size size, String km) {
   for (final (x, y) in capitals) {
     canvas.drawCircle(Offset(w * x, h * y), 2.6, _fill(_T.dongNamACapital));
   }
-  _stamp(canvas, Offset(w * 0.82, h * 0.6), 25, _T.dongNamAStamp, km);
+  _stamp(canvas, Offset(w * 0.82, h * 0.44), 25, _T.dongNamAStamp, km);
 }
 
 /// Mặt sau thẻ Hành trình: biểu tượng chặng trong vòng nhũ màu bậc, nguyệt

@@ -19,19 +19,6 @@ import 'package:myrun/src/theme_controller.dart';
 const _light = RunNowAppearance.light;
 const _dark = RunNowAppearance.dark;
 
-AchievementCardData _blank(Widget art) => AchievementCardData(
-  tier: GameCardTier.common,
-  art: art,
-  kind: '',
-  hero: '',
-  title: '',
-  owner: '',
-  serial: '',
-  desc: '',
-  meta: '',
-  date: '25.10.2026',
-);
-
 void main() {
   group('controller', () {
     test('saves the choice and reads it back after a restart', () async {
@@ -107,7 +94,7 @@ void main() {
     );
   });
 
-  testWidgets('the light skin keeps text zones light on a black photo', (
+  testWidgets('the light skin prints light text straight on a dark photo', (
     tester,
   ) async {
     late MemoryImage black;
@@ -128,7 +115,18 @@ void main() {
               key: boundary,
               child: AchievementCard(
                 animate: false,
-                data: _blank(Image(image: black, fit: BoxFit.cover)),
+                data: AchievementCardData(
+                  tier: GameCardTier.common,
+                  art: Image(image: black, fit: BoxFit.cover),
+                  kind: '',
+                  hero: '12,4',
+                  title: '',
+                  owner: '',
+                  serial: '',
+                  desc: '',
+                  meta: '',
+                  date: '25.10.2026',
+                ),
               ),
             ),
           ),
@@ -157,12 +155,47 @@ void main() {
           3;
     }
 
-    // Chữ mực cần nền sáng: khối chữ ngay trên chân thẻ (giấy E9F0F2 phủ ~92%,
-    // 238·0,92 ≈ 219) và chân thẻ phải sáng, phần trên và giữa thẻ vẫn là ảnh.
-    expect(luma(0.5, 0.8), greaterThan(170), reason: 'khối chữ');
-    expect(luma(0.15, 0.94), greaterThan(200), reason: 'chân thẻ');
+    // Không phủ giấy lên ảnh: vùng chữ và chân thẻ vẫn đen như ảnh.
+    expect(luma(0.9, 0.8), lessThan(40), reason: 'khối chữ');
+    expect(luma(0.15, 0.94), lessThan(40), reason: 'chân thẻ');
     expect(luma(0.5, 0.25), lessThan(40), reason: 'trên tranh');
-    expect(luma(0.5, 0.42), lessThan(40), reason: 'giữa ảnh');
+    // Chữ mực sẽ chìm trên ảnh tối, nên số in màu sáng của bộ tối cùng hành.
+    final hero = tester.widget<Text>(find.text('12,4')).style!;
+    expect(hero.color, RunCardSkin.forTheme(_dark, RunNowElement.water).hero);
+    expect(
+      hero.color,
+      isNot(RunCardSkin.forTheme(_light, RunNowElement.water).hero),
+    );
+  });
+
+  testWidgets('art drawn in the skin keeps the skin ink', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: RunCardSkinScope(
+            skin: RunCardSkin.forTheme(_light, RunNowElement.water),
+            child: const AchievementCard(
+              animate: false,
+              data: AchievementCardData(
+                tier: GameCardTier.common,
+                art: SizedBox.expand(),
+                artFollowsSkin: true,
+                kind: '',
+                hero: '12,4',
+                title: '',
+                owner: '',
+                serial: '',
+                desc: '',
+                meta: '',
+                date: '25.10.2026',
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final hero = tester.widget<Text>(find.text('12,4')).style!;
+    expect(hero.color, RunCardSkin.forTheme(_light, RunNowElement.water).hero);
   });
 
   testWidgets('the sheet saves a picked skin and can go back to the app', (

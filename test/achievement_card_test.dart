@@ -100,7 +100,9 @@ void main() {
     expect(tester.getSize(desc).height, lessThanOrEqualTo(2 * 10.5 * 1.38 + 1));
   });
 
-  testWidgets('text zones stay dark on a pure white photo', (tester) async {
+  testWidgets('nothing covers the photo under the text and the foot', (
+    tester,
+  ) async {
     late MemoryImage white;
     await tester.runAsync(() async {
       final recorder = ui.PictureRecorder();
@@ -157,16 +159,20 @@ void main() {
 
     // Ô đá góc trái trên: nền mực 62% trên ảnh trắng, 255·0,38 + 10·0,62 ≈ 103.
     expect(luma(0.07, 0.06), lessThan(128), reason: 'ô đá');
-    // Chân thẻ: mực 94%, 255·0,06 + 9·0,94 ≈ 24.
-    expect(luma(0.5, 0.875), lessThan(40), reason: 'chân thẻ, trên dòng chữ');
-    expect(luma(0.15, 0.94), lessThan(40), reason: 'chân thẻ');
-    // Không còn lớp phủ trên; lớp phủ dưới chỉ nằm sau khối chữ, nên phần
-    // trên và giữa tranh vẫn là ảnh.
+    // Chữ tự mang quầng nên không lớp nào che tranh: khối chữ và chân thẻ
+    // vẫn là ảnh trắng như phần trên.
+    expect(luma(0.5, 0.8), greaterThan(200), reason: 'khối chữ');
+    expect(
+      luma(0.5, 0.875),
+      greaterThan(200),
+      reason: 'chân thẻ, trên dòng chữ',
+    );
+    expect(luma(0.15, 0.94), greaterThan(200), reason: 'chân thẻ');
     expect(luma(0.5, 0.25), greaterThan(200), reason: 'trên tranh');
     expect(luma(0.5, 0.42), greaterThan(200), reason: 'giữa ảnh');
   });
 
-  testWidgets('stats sit on a solid panel under the art instead of the desc', (
+  testWidgets('stats replace the desc and sit right on the art', (
     tester,
   ) async {
     late MemoryImage white;
@@ -235,10 +241,10 @@ void main() {
           3;
     }
 
-    // Tranh chiếm 58% trên; dưới đó là nền chân thẻ 08090E (độ sáng ≈ 9).
+    // Tranh tràn cả thẻ; cạnh tên và trên chân thẻ vẫn là ảnh trắng.
     expect(luma(0.5, 0.3), greaterThan(200), reason: 'tranh');
-    expect(luma(0.9, 0.62), lessThan(40), reason: 'panel ngay dưới tranh');
-    expect(luma(0.9, 0.8), lessThan(40), reason: 'panel quanh số liệu');
+    expect(luma(0.9, 0.62), greaterThan(200), reason: 'cạnh tên');
+    expect(luma(0.5, 0.875), greaterThan(200), reason: 'trên chân thẻ');
   });
 
   testWidgets('a secret card names its element instead of the tier', (

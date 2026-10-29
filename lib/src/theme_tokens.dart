@@ -385,10 +385,6 @@ class RunNowAchievementTokens {
   static const sheenDiamond = Color(0x66EBF7FF);
   static const sheenTail = Color(0x0FFFFFFF);
 
-  /// Bóng đổ mỏng trên tranh ngay sát mép nền chữ.
-  static const panelShadow = Color(0x33000000);
-  static const panelShadowEnd = Color(0x00000000);
-
   static const field = Color(0xFF0D0E14);
   static const shade = Color(0xFF08090E);
   static const hero = Color(0xFFF7F5EF);
