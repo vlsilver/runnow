@@ -8,6 +8,7 @@ import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/games/game_role_card.dart';
+import 'package:myrun/src/journey/journey_card.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
@@ -19,14 +20,15 @@ String runCardOwnerName(WidgetRef ref) =>
     ) ??
     '3i member';
 
-/// Một thẻ trong bộ: thẻ buổi chạy, hay thẻ Ma Sói của ván phe mình thắng.
+/// Một thẻ trong bộ: thẻ buổi chạy, thẻ Ma Sói của ván phe mình thắng, hay
+/// thẻ Hành trình của chặng đã về đích.
 sealed class CollectedCard {
   const CollectedCard();
 
   String get id;
   GameCardTier get tier;
 
-  /// Lúc có thẻ: lật thẻ buổi chạy, hay ván Ma Sói kết thúc.
+  /// Lúc có thẻ: lật thẻ buổi chạy, ván Ma Sói kết thúc, hay về đích chặng.
   DateTime? get at;
 
   /// Tên thẻ và dòng phụ cạnh thẻ mới nhất ở Hồ sơ.
@@ -99,21 +101,51 @@ class CollectedGameCard extends CollectedCard {
       );
 }
 
+class CollectedJourneyCard extends CollectedCard {
+  const CollectedJourneyCard(this.card);
+
+  final JourneyCard card;
+
+  @override
+  String get id => 'journey-${card.campaign}';
+  @override
+  GameCardTier get tier => card.tier;
+  @override
+  DateTime? get at => card.finishedAt;
+  @override
+  String get title => 'Hành trình · ${card.name}';
+  @override
+  String get subtitle =>
+      '${gameCardTiers[tier]!.label} · Level ${card.level} · ${card.km} km';
+  @override
+  String get label =>
+      'Thẻ Hành trình ${gameCardTiers[tier]!.label} ${card.name}';
+  @override
+  AchievementCardData data(String owner) => journeyCardData(card, owner: owner);
+  @override
+  void open(BuildContext context, AchievementCardData data) =>
+      showJourneyCardViewer(context, card, data);
+}
+
 /// Cả bộ thẻ, mới có trước. Một nguồn lỗi thì cả bộ báo lỗi chứ không hiện
 /// thiếu.
 final collectedCardsProvider =
     Provider.autoDispose<AsyncValue<List<CollectedCard>>>((ref) {
       final runs = ref.watch(runCardsProvider);
       final games = ref.watch(gameCardsProvider);
-      for (final source in [runs, games]) {
+      final journeys = ref.watch(journeyCardsProvider);
+      for (final source in [runs, games, journeys]) {
         if (source case AsyncError(:final error, :final stackTrace)) {
           return AsyncError(error, stackTrace);
         }
       }
-      if (!runs.hasValue || !games.hasValue) return const AsyncLoading();
+      if (!runs.hasValue || !games.hasValue || !journeys.hasValue) {
+        return const AsyncLoading();
+      }
       final cards = <CollectedCard>[
         for (final card in runs.requireValue) CollectedRunCard(card),
         for (final card in games.requireValue) CollectedGameCard(card),
+        for (final card in journeys.requireValue) CollectedJourneyCard(card),
       ];
       // Thẻ thiếu mốc thời gian xếp cuối.
       final never = DateTime.fromMillisecondsSinceEpoch(0);
@@ -123,8 +155,8 @@ final collectedCardsProvider =
 
 /// Câu khi bộ thẻ còn trống.
 const collectedCardsEmpty =
-    'Chưa có thẻ nào. Lật thẻ sau buổi chạy, hoặc thắng một ván Ma Sói để có '
-    'thẻ đầu tiên.';
+    'Chưa có thẻ nào. Lật thẻ sau buổi chạy, thắng một ván Ma Sói, hoặc về '
+    'đích một chặng Hành trình để có thẻ đầu tiên.';
 
 /// Thẻ thu nhỏ theo bề ngang [width]; chạm để xem 3D.
 class CollectedCardThumb extends StatelessWidget {

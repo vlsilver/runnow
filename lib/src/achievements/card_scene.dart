@@ -174,6 +174,20 @@ void paintFog(Canvas canvas, double width, double y, double half, Color color) {
   );
 }
 
+/// Nét đứt dọc [path]: liền [on], hở [off], như setLineDash của canvas web.
+Path dashPath(Path path, double on, double off) {
+  final out = Path();
+  for (final metric in path.computeMetrics()) {
+    for (var at = 0.0; at < metric.length; at += on + off) {
+      out.addPath(
+        metric.extractPath(at, math.min(at + on, metric.length)),
+        Offset.zero,
+      );
+    }
+  }
+  return out;
+}
+
 /// Sói ngồi hú, quay sang phải; toạ độ trong hộp 1x1.
 const _wolf = [
   (0.06, 1.0), (0.0, 0.84), (0.04, 0.72), (0.14, 0.74), (0.24, 0.62), //

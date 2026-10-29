@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/achievements/run_card_skin_choice.dart';
 import 'package:myrun/src/games/game_player_card.dart';
+import 'package:myrun/src/journey/journey_card.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 
@@ -83,6 +84,30 @@ final gameCardsProvider = StreamProvider.autoDispose<List<GamePlayerCard>>((
         (snap) => [
           for (final doc in snap.docs)
             GamePlayerCard.fromJson(
+              doc.id,
+              _plain(doc.data()) as Map<String, dynamic>,
+            ),
+        ],
+      );
+});
+
+/// Thẻ Hành trình của các chặng đã về đích, theo thứ tự chặng. Backend ghi
+/// lúc về đích, app chỉ đọc.
+final journeyCardsProvider = StreamProvider.autoDispose<List<JourneyCard>>((
+  ref,
+) {
+  final uid = ref.watch(firebaseUserProvider.select((user) => user.value?.uid));
+  if (uid == null) return Stream.value(const []);
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('journeyCards')
+      .orderBy('level')
+      .snapshots()
+      .map(
+        (snap) => [
+          for (final doc in snap.docs)
+            JourneyCard.fromJson(
               doc.id,
               _plain(doc.data()) as Map<String, dynamic>,
             ),

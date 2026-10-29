@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/achievements/achievement_card.dart';
+import 'package:myrun/src/achievements/run_card_collection.dart';
+import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/formatters.dart';
+import 'package:myrun/src/games/game_role_card.dart';
+import 'package:myrun/src/journey/journey_card.dart';
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
@@ -367,7 +372,10 @@ class _LevelCard extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
           decoration: _decoration(context.runNowPalette),
           child: switch (state.status) {
-            _JourneyLevelStatus.done => _DoneCardContent(state: state),
+            _JourneyLevelStatus.done => _DoneCardContent(
+              state: state,
+              own: memberUid == null,
+            ),
             _JourneyLevelStatus.current => _CurrentCardContent(state: state),
             _JourneyLevelStatus.locked => _LockedCardContent(state: state),
           },
@@ -465,15 +473,26 @@ class _LevelCardShell extends StatelessWidget {
 }
 
 /// Card "đã chinh phục" — chỉ tên + km/mộc "HOÀN THÀNH" dồn xuống góc
-/// dưới-phải để nhường chỗ tối đa cho ảnh.
-class _DoneCardContent extends StatelessWidget {
-  const _DoneCardContent({required this.state});
+/// dưới-phải để nhường chỗ tối đa cho ảnh. Hành trình của mình mà backend đã
+/// ghi thẻ chặng thì lá thẻ úp thay cho mộc.
+class _DoneCardContent extends ConsumerWidget {
+  const _DoneCardContent({required this.state, required this.own});
 
   final _JourneyLevelState state;
 
+  /// Thẻ chỉ chủ đọc được, nên hành trình người khác giữ mộc.
+  final bool own;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.runNowPalette;
+    final card = own
+        ? ref
+              .watch(journeyCardsProvider)
+              .value
+              ?.where((card) => card.campaign == state.campaign.value)
+              .firstOrNull
+        : null;
     return _LevelCardShell(
       state: state,
       child: Column(
@@ -488,11 +507,15 @@ class _DoneCardContent extends StatelessWidget {
           const Spacer(),
           Wrap(
             alignment: WrapAlignment.end,
+            crossAxisAlignment: WrapCrossAlignment.center,
             spacing: 7,
             runSpacing: 7,
             children: [
               _InfoPill(label: formatDistance(state.route.totalLengthMeters)),
-              const _CompletionStampLabel(),
+              if (card == null)
+                const _CompletionStampLabel()
+              else
+                _FaceDownJourneyCard(card: card),
             ],
           ),
         ],
@@ -621,6 +644,30 @@ TextStyle _cardTitleStyle(RunNowPalette palette) => TextStyle(
   height: 1.2,
   fontWeight: FontWeight.w900,
 );
+
+/// Thẻ chặng nằm úp; chạm để mở, lật và khoe.
+class _FaceDownJourneyCard extends ConsumerWidget {
+  const _FaceDownJourneyCard({required this.card});
+
+  final JourneyCard card;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final data = journeyCardData(card, owner: runCardOwnerName(ref));
+    return Semantics(
+      button: true,
+      label: 'Thẻ Hành trình ${card.name}, chạm để lật',
+      child: GestureDetector(
+        onTap: () => showJourneyCardViewer(context, card, data),
+        child: GameCardScaled(
+          width: 44,
+          size: achievementCardSize,
+          child: AchievementCard(data: data, back: true),
+        ),
+      ),
+    );
+  }
+}
 
 class _CompletionStampLabel extends StatelessWidget {
   const _CompletionStampLabel();

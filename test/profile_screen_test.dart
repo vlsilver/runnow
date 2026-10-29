@@ -7,6 +7,7 @@ import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
+import 'package:myrun/src/journey/journey_card.dart';
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/profile_stats.dart';
@@ -80,6 +81,7 @@ void main() {
     WidgetTester tester, {
     List<RunCard> cards = const [],
     List<GamePlayerCard> games = const [],
+    List<JourneyCard> journeys = const [],
   }) async {
     tester.view.physicalSize = const Size(420, 4000);
     tester.view.devicePixelRatio = 1.0;
@@ -108,6 +110,7 @@ void main() {
           activityRepositoryProvider.overrideWithValue(repository),
           runCardsProvider.overrideWith((ref) => Stream.value(cards)),
           gameCardsProvider.overrideWith((ref) => Stream.value(games)),
+          journeyCardsProvider.overrideWith((ref) => Stream.value(journeys)),
           userProfileProvider.overrideWith(
             (ref) => Stream.value(UserProfile.demo),
           ),
