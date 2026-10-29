@@ -260,9 +260,6 @@ class RunNowGameTokens {
   static const moonMid = Color(0xFFE8DFC0);
   static const moonShade = Color(0xFFB9AE8A);
   static const moonGlow = Color(0xFFFFF8D6);
-
-  /// Bóng vai in trên trăng tròn ở mặt sau thẻ Ma Sói.
-  static const moonSilhouette = Color(0xE61A1520);
   static const holoClear = Color(0x00FFF0DC);
   static const holoCream = Color(0xFFFFE2C4);
   static const holoIce = Color(0xFFD6ECF0);
@@ -489,4 +486,69 @@ class RunNowAchievementTokens {
   static const paperRouteMythic = Color(0xFFE6F0F8);
   static const paperRouteMythicEdge = Color(0xFFCBDCEA);
   static const paperGlowMythic = Color(0xFF4F86B5);
+}
+
+/// Tranh vẽ bằng code trên thẻ Ma Sói: mỗi phe một bầu trời. Phe Sói trăng
+/// máu, phe Dân trăng bạc trên làng thắp đèn, Cặp đôi trăng hồng. Màu giữ
+/// nguyên ở mọi bộ màu thẻ vì tranh là dấu hiệu của phe.
+class RunNowCardSceneTokens {
+  const RunNowCardSceneTokens._();
+
+  static const crater = Color(0x17000000);
+  static const grainLight = Color(0xFFFFFFFF);
+  static const grainDark = Color(0xFF000000);
+  static const starWhite = Color(0xFFFFFFFF);
+
+  static const wolvesSky1 = Color(0xFF12030A);
+  static const wolvesSky2 = Color(0xFF3A0B16);
+  static const wolvesSky3 = Color(0xFF1A0710);
+  static const wolvesSky4 = Color(0xFF07020A);
+  static const wolvesStar = Color(0xFFFFDCDC);
+  static const wolvesMoonCore = Color(0xFFFFB38A);
+  static const wolvesMoonRim = Color(0xFFB3241F);
+  static const wolvesMoonGlow = Color(0x80DC2828);
+  static const wolvesFog = Color(0x2EB42832);
+  static const wolvesPines = Color(0xFF230610);
+  static const wolvesRock = Color(0xFF0B0206);
+  static const wolvesClaw = Color(0xBFFF5A50);
+
+  static const villageSky1 = Color(0xFF060C1C);
+  static const villageSky2 = Color(0xFF14254A);
+  static const villageSky3 = Color(0xFF1D2F4F);
+  static const villageSky4 = Color(0xFF0A1020);
+  static const villageStar = Color(0xFFE6ECFF);
+  static const villageMoonCore = Color(0xFFF6F3E4);
+  static const villageMoonRim = Color(0xFFC9CDD9);
+  static const villageMoonGlow = Color(0x59C8D7FF);
+  static const villageEye = Color(0xFF1B2A4A);
+  static const villageFog = Color(0x29A0B4E6);
+  static const villagePines = Color(0xFF0D1730);
+  static const villageHouse = Color(0xFF070C18);
+  static const villageWindow = Color(0xFFFFC56B);
+  static const villageWolfEye = Color(0xFFFF5A4A);
+
+  static const loversSky1 = Color(0xFF14061A);
+  static const loversSky2 = Color(0xFF4A1640);
+  static const loversSky3 = Color(0xFF24102E);
+  static const loversSky4 = Color(0xFF0B0410);
+  static const loversStar = Color(0xFFFFE1F0);
+  static const loversMoonCore = Color(0xFFFFE0EC);
+  static const loversMoonRim = Color(0xFFE7779E);
+  static const loversMoonGlow = Color(0x66FF78AA);
+  static const loversArrow = Color(0xFF3A0F2C);
+  static const loversPines = Color(0xFF1E0A22);
+  static const loversHill = Color(0xFF0C0410);
+
+  // Mặt sau: sói hú trong vầng trăng của phe.
+  static const wolvesEmblemTop = Color(0xFF2B0711);
+  static const wolvesEmblemBottom = Color(0xFF0B0206);
+  static const wolvesEmblemGlow = Color(0x73DC2828);
+  static const wolvesEmblemDark = Color(0xFF14030A);
+  static const villageEmblemTop = Color(0xFF16264A);
+  static const villageEmblemBottom = Color(0xFF050A16);
+  static const villageEmblemRim = Color(0xFFC3C8D6);
+  static const villageEmblemDark = Color(0xFF0B1428);
+  static const loversEmblemTop = Color(0xFF3D1238);
+  static const loversEmblemBottom = Color(0xFF0D0412);
+  static const loversEmblemDark = Color(0xFF1C0818);
 }

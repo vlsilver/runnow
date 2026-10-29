@@ -12,6 +12,9 @@ const achievementCardSize = Size(300, 420);
 typedef _T = RunNowAchievementTokens;
 const _condensed = 'Barlow Condensed';
 
+/// Một ô số liệu dưới tên thẻ, ví dụ ("5", "SỐ VÒNG").
+typedef AchievementStat = ({String value, String label});
+
 /// Dữ liệu một thẻ thành tích. Ảnh full-art phủ cả thẻ, chữ và số do app vẽ
 /// đè lên, nên ảnh không bao giờ chứa chữ.
 class AchievementCardData {
@@ -30,6 +33,7 @@ class AchievementCardData {
     this.stamp,
     this.backFace,
     this.secret,
+    this.stats,
   });
 
   final GameCardTier tier;
@@ -61,6 +65,10 @@ class AchievementCardData {
 
   /// Ruột mặt sau thay cho huy hiệu 3I RUN; khung và vệt sáng vẫn do thẻ vẽ.
   final Widget? backFace;
+
+  /// Có số liệu thì tranh chỉ chiếm phần trên, phần dưới là nền liền màu
+  /// chân thẻ chứa tên và hàng số liệu thay cho [desc].
+  final List<AchievementStat>? stats;
 }
 
 /// Kim loại của bậc, mỗi thứ ba tông sáng, giữa, tối. Tranh phủ cả thẻ, kim
@@ -179,6 +187,11 @@ const _footTop = 360.0;
 
 /// Lề trái phải của chữ và ô đá.
 const _inset = 17.0;
+
+/// Thẻ có số liệu: tranh dừng ở đây, nền chân thẻ tan lên trên một đoạn
+/// [_panelFade] để tranh không bị cắt ngang.
+const _panelTop = 244.0;
+const _panelFade = 46.0;
 
 /// Thẻ thành tích vẽ ở [achievementCardSize]. [pose] là độ nghiêng (-1..1 mỗi
 /// chiều) mà nét kim loại, vệt sáng và tranh chạy theo. Riêng thẻ Thần thoại
@@ -335,23 +348,172 @@ class _Front extends StatelessWidget {
     final ink = skin.ink;
     TextStyle label(Color color, double size) =>
         _label(color, size, skin.textShadow);
+    final stats = data.stats;
+    // Ảnh tràn ra 10px mỗi bên và lệch nhẹ theo độ nghiêng, tạo chiều sâu.
+    final art = Positioned(
+      left: -10,
+      top: -10,
+      right: -10,
+      bottom: -10,
+      child: Transform.translate(
+        offset: Offset(-pose.dx * 7, -pose.dy * 7),
+        child: look == null
+            ? data.art
+            : ColorFiltered(colorFilter: look.duotone, child: data.art),
+      ),
+    );
+    final kind = Text(
+      data.kind,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: label(accent, 11),
+    );
+    Widget hero(double size) => Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        // Hero có thể là tên vai backend gửi, dài bao nhiêu không biết trước:
+        // quá bề ngang thì thu nhỏ chứ không tràn.
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              data.hero,
+              maxLines: 1,
+              style: TextStyle(
+                fontFamily: _condensed,
+                fontWeight: FontWeight.w800,
+                fontSize: size,
+                height: 0.9,
+                color: skin.hero,
+                shadows: [
+                  Shadow(
+                    color: skin.textShadow,
+                    offset: Offset(0, 2),
+                    blurRadius: 10,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 3),
+        Text(
+          data.heroUnit,
+          style: TextStyle(
+            fontFamily: _condensed,
+            fontWeight: FontWeight.w700,
+            fontSize: 13,
+            letterSpacing: 1.04,
+            color: skin.hero.withValues(alpha: 0.85),
+          ),
+        ),
+      ],
+    );
+    const linesPadding = EdgeInsets.fromLTRB(_inset, 0, _inset, 10);
+    final lines = stats == null
+        ? _Scrim(
+            skin: skin,
+            child: Padding(
+              padding: linesPadding,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  kind,
+                  const SizedBox(height: 3),
+                  hero(38),
+                  const SizedBox(height: 4),
+                  _Title(text: data.title, tier: tier, skin: skin),
+                  const SizedBox(height: 4),
+                  Text(
+                    data.desc,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      height: 1.38,
+                      fontStyle: FontStyle.italic,
+                      color: ink.withValues(alpha: 0.84),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        : Padding(
+            padding: linesPadding,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                kind,
+                const SizedBox(height: 3),
+                hero(32),
+                const SizedBox(height: 3),
+                _Title(text: data.title, tier: tier, skin: skin, compact: true),
+                const SizedBox(height: 9),
+                SizedBox(
+                  height: 1,
+                  child: ColoredBox(color: ink.withValues(alpha: 0.16)),
+                ),
+                const SizedBox(height: 7),
+                Row(
+                  children: [
+                    for (final (i, stat) in stats.indexed)
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            right: i < stats.length - 1 ? 6 : 0,
+                          ),
+                          child: _Stat(stat: stat, skin: skin),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          );
     return Stack(
       fit: StackFit.expand,
       children: [
         ColoredBox(color: skin.field),
-        // Ảnh tràn ra 10px mỗi bên và lệch nhẹ theo độ nghiêng, tạo chiều sâu.
-        Positioned(
-          left: -10,
-          top: -10,
-          right: -10,
-          bottom: -10,
-          child: Transform.translate(
-            offset: Offset(-pose.dx * 7, -pose.dy * 7),
-            child: look == null
-                ? data.art
-                : ColorFiltered(colorFilter: look.duotone, child: data.art),
+        if (stats == null)
+          art
+        else ...[
+          Positioned(
+            left: 0,
+            top: 0,
+            right: 0,
+            height: _panelTop,
+            child: ClipRect(child: Stack(children: [art])),
           ),
-        ),
+          Positioned(
+            left: 0,
+            top: _panelTop - _panelFade,
+            right: 0,
+            bottom: 0,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  height: _panelFade,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [skin.shade.withValues(alpha: 0), skin.shade],
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(child: ColoredBox(color: skin.shade)),
+              ],
+            ),
+          ),
+        ],
         if (sheen != null) _Sheen(light: light, color: sheen),
         // Khối chữ đứng ngay trên chân thẻ, lớp phủ của nó nối liền nền chân.
         Positioned(
@@ -359,85 +521,7 @@ class _Front extends StatelessWidget {
           right: 0,
           top: 0,
           height: _footTop,
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: _Scrim(
-              skin: skin,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(_inset, 0, _inset, 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      data.kind,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: label(accent, 11),
-                    ),
-                    const SizedBox(height: 3),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        // Hero có thể là tên vai backend gửi, dài bao nhiêu không
-                        // biết trước: quá bề ngang thì thu nhỏ chứ không tràn.
-                        Flexible(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              data.hero,
-                              maxLines: 1,
-                              style: TextStyle(
-                                fontFamily: _condensed,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 38,
-                                height: 0.9,
-                                color: skin.hero,
-                                shadows: [
-                                  Shadow(
-                                    color: skin.textShadow,
-                                    offset: Offset(0, 2),
-                                    blurRadius: 10,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 3),
-                        Text(
-                          data.heroUnit,
-                          style: TextStyle(
-                            fontFamily: _condensed,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                            letterSpacing: 1.04,
-                            color: skin.hero.withValues(alpha: 0.85),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    _Title(text: data.title, tier: tier, skin: skin),
-                    const SizedBox(height: 4),
-                    Text(
-                      data.desc,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        height: 1.38,
-                        fontStyle: FontStyle.italic,
-                        color: ink.withValues(alpha: 0.84),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+          child: Align(alignment: Alignment.bottomCenter, child: lines),
         ),
         IgnorePointer(
           child: CustomPaint(
@@ -467,12 +551,13 @@ class _Front extends StatelessWidget {
                             text: data.owner,
                             style: TextStyle(color: ink.withValues(alpha: 0.8)),
                           ),
-                          TextSpan(
-                            text: ' · ${data.serial}',
-                            style: TextStyle(
-                              color: ink.withValues(alpha: 0.55),
+                          if (data.serial.isNotEmpty)
+                            TextSpan(
+                              text: ' · ${data.serial}',
+                              style: TextStyle(
+                                color: ink.withValues(alpha: 0.55),
+                              ),
                             ),
-                          ),
                         ],
                       ),
                       maxLines: 1,
@@ -857,11 +942,19 @@ class _Foot extends StatelessWidget {
 /// Tên thẻ: chữ trơn ở bậc Thường, từ bậc Hiếm trở lên ánh theo kim loại của
 /// bậc. Bóng đổ vẽ riêng bên dưới để không bị nhuộm màu gradient.
 class _Title extends StatelessWidget {
-  const _Title({required this.text, required this.tier, required this.skin});
+  const _Title({
+    required this.text,
+    required this.tier,
+    required this.skin,
+    this.compact = false,
+  });
 
   final String text;
   final GameCardTier tier;
   final RunCardSkin skin;
+
+  /// Thẻ có hàng số liệu: tên nhỏ hơn, một dòng.
+  final bool compact;
 
   static const _style = TextStyle(
     fontSize: 21,
@@ -874,9 +967,13 @@ class _Title extends StatelessWidget {
   Widget build(BuildContext context) {
     Text line(Color color, {List<Shadow>? shadows}) => Text(
       text,
-      maxLines: 2,
+      maxLines: compact ? 1 : 2,
       overflow: TextOverflow.ellipsis,
-      style: _style.copyWith(color: color, shadows: shadows),
+      style: _style.copyWith(
+        color: color,
+        shadows: shadows,
+        fontSize: compact ? 17 : null,
+      ),
     );
 
     final shadow = line(
@@ -905,6 +1002,43 @@ class _Title extends StatelessWidget {
             stops: const [0, 0.45, 1],
           ).createShader(bounds),
           child: line(Colors.white),
+        ),
+      ],
+    );
+  }
+}
+
+/// Một ô trong hàng số liệu: số to, nhãn nhỏ bên dưới.
+class _Stat extends StatelessWidget {
+  const _Stat({required this.stat, required this.skin});
+
+  final AchievementStat stat;
+  final RunCardSkin skin;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          stat.value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontFamily: _condensed,
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+            height: 1,
+            color: skin.hero,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          stat.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: _label(skin.ink.withValues(alpha: 0.62), 9, skin.textShadow),
         ),
       ],
     );

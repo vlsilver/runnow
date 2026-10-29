@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
+import 'package:myrun/src/games/game_card_art.dart';
 import 'package:myrun/src/games/game_models.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/games/game_role_card.dart';
@@ -217,35 +218,88 @@ void main() {
     });
   });
 
-  group('GameCardBackFace', () {
-    testWidgets('carries the Ma Sói moon and name, not just the stats', (
-      tester,
-    ) async {
+  group('gameCardData', () {
+    test('a finished game shows result, rounds and fate as stats', () {
       final card = GamePlayerCard.fromJson('g1', {
         'tier': 'legendary',
         'role': 'wolf',
         'team': 'wolves',
         'winner': 'wolves',
-        'alive': true,
+        'alive': false,
         'rounds': 5,
         'playerCount': 14,
+        'deathRound': 4,
+        'endedAt': DateTime(2026, 10, 28, 21),
       });
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Center(
-            child: SizedBox(
-              width: 300,
-              height: 420,
-              child: GameCardBackFace(card: card),
+      final data = gameCardData(card, owner: 'An');
+
+      expect(data.kind, 'MA SÓI · PHE SÓI');
+      expect(data.hero, 'SÓI');
+      expect(data.title, 'Bầy sói thắng · 14 người');
+      expect(data.stats, const [
+        (value: 'Thắng', label: 'KẾT QUẢ'),
+        (value: '5', label: 'SỐ VÒNG'),
+        (value: 'Ngã vòng 4', label: 'BẢN THÂN'),
+      ]);
+      expect(data.owner, 'AN');
+      expect(data.meta, '28.10.2026');
+      expect(data.stamp, isNull);
+    });
+
+    test('a running game shows the current round', () {
+      final card = GamePlayerCard.fromMe(
+        detail: GameDetail.fromJson({
+          'id': 'g2',
+          'status': 'running',
+          'playerCount': 9,
+          'phase': {'key': 'r2/night'},
+        }),
+        me: GameMe.fromJson({
+          'status': 'running',
+          'alive': true,
+          'role': 'seer',
+          'cardTier': 'common',
+        }),
+      );
+      final data = gameCardData(card, owner: 'An');
+
+      expect(data.title, 'Ván đang chơi · 9 người');
+      expect(data.stats, const [
+        (value: 'Đang chơi', label: 'KẾT QUẢ'),
+        (value: '2', label: 'VÒNG'),
+        (value: 'Còn sống', label: 'BẢN THÂN'),
+      ]);
+    });
+  });
+
+  group('GameCardEmblem', () {
+    testWidgets('paints every side and unknown sides without errors', (
+      tester,
+    ) async {
+      for (final team in ['wolves', 'village', 'lovers', 'mới']) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Center(
+              child: SizedBox(
+                width: 300,
+                height: 420,
+                child: Row(
+                  children: [
+                    Expanded(child: GameTeamArt(team: team)),
+                    Expanded(
+                      child: GameCardEmblem(
+                        team: team,
+                        tier: GameCardTier.mythic,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-        ),
-      );
-
-      expect(find.byType(GameMoon), findsOneWidget);
-      expect(find.text('MA SÓI'), findsOneWidget);
-      expect(find.text('BẦY SÓI THẮNG'), findsOneWidget);
-      expect(tester.takeException(), isNull);
+        );
+        expect(tester.takeException(), isNull, reason: team);
+      }
     });
   });
 }

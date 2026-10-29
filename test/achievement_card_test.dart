@@ -166,6 +166,81 @@ void main() {
     expect(luma(0.5, 0.42), greaterThan(200), reason: 'giữa ảnh');
   });
 
+  testWidgets('stats sit on a solid panel under the art instead of the desc', (
+    tester,
+  ) async {
+    late MemoryImage white;
+    await tester.runAsync(() async {
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawColor(const Color(0xFFFFFFFF), BlendMode.src);
+      final image = await recorder.endRecording().toImage(30, 42);
+      final png = await image.toByteData(format: ui.ImageByteFormat.png);
+      white = MemoryImage(png!.buffer.asUint8List());
+    });
+    final boundary = GlobalKey();
+    await _pump(
+      tester,
+      RepaintBoundary(
+        key: boundary,
+        child: AchievementCard(
+          animate: false,
+          data: AchievementCardData(
+            tier: GameCardTier.legendary,
+            art: Image(image: white, fit: BoxFit.cover),
+            kind: 'MA SÓI · PHE SÓI',
+            hero: 'SÓI',
+            heroUnit: '',
+            title: 'Bầy sói thắng · 14 người',
+            owner: 'AN',
+            serial: '',
+            desc: 'Câu mô tả không hiện khi có số liệu.',
+            meta: '28.10.2026',
+            date: '28.10.2026',
+            stats: const [
+              (value: 'Thắng', label: 'KẾT QUẢ'),
+              (value: '5', label: 'SỐ VÒNG'),
+              (value: 'Sống sót', label: 'BẢN THÂN'),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.runAsync(() async {
+      await precacheImage(white, tester.element(find.byKey(boundary)));
+    });
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    for (final text in ['Thắng', 'KẾT QUẢ', '5', 'SỐ VÒNG', 'Sống sót']) {
+      expect(find.text(text), findsOneWidget, reason: text);
+    }
+    expect(find.textContaining('Câu mô tả'), findsNothing);
+    // Không có serial thì dòng chủ thẻ chỉ còn tên, không treo dấu chấm.
+    expect(find.text('AN · '), findsNothing);
+
+    late ByteData pixels;
+    await tester.runAsync(() async {
+      final render =
+          boundary.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+      pixels = (await (await render.toImage()).toByteData())!;
+    });
+    final width = achievementCardSize.width.toInt();
+    int luma(double fx, double fy) {
+      final x = (achievementCardSize.width * fx).toInt();
+      final y = (achievementCardSize.height * fy).toInt();
+      final i = (y * width + x) * 4;
+      return (pixels.getUint8(i) +
+              pixels.getUint8(i + 1) +
+              pixels.getUint8(i + 2)) ~/
+          3;
+    }
+
+    // Tranh chiếm 58% trên; dưới đó là nền chân thẻ 08090E (độ sáng ≈ 9).
+    expect(luma(0.5, 0.3), greaterThan(200), reason: 'tranh');
+    expect(luma(0.9, 0.62), lessThan(40), reason: 'panel ngay dưới tranh');
+    expect(luma(0.9, 0.8), lessThan(40), reason: 'panel quanh số liệu');
+  });
+
   testWidgets('a secret card names its element instead of the tier', (
     tester,
   ) async {
