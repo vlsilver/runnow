@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/card_scene.dart';
 import 'package:myrun/src/achievements/card_share.dart';
+import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/agents/agent_km.dart';
 import 'package:myrun/src/agents/agent_look.dart';
 import 'package:myrun/src/games/game_role_card.dart';
@@ -171,12 +172,13 @@ class AgentBotCardData {
   GameCardTier get _material => draft ? GameCardTier.common : tier.material;
 }
 
-/// Palette tối của hành đang chọn: trời đêm của thẻ theo màu hành, cả khi app
-/// sáng.
-RunNowPalette _cardPalette(BuildContext context) => RunNowPalette.forSelection(
-  context.runNowPalette.element,
-  appearance: RunNowAppearance.dark,
-);
+/// Palette tối theo hành của bộ màu thẻ (classic thì hành của app): trời đêm
+/// của thẻ theo màu hành, cả khi bộ màu sáng.
+RunNowPalette _cardPalette(BuildContext context, RunCardSkin skin) =>
+    RunNowPalette.forSelection(
+      skin.element ?? context.runNowPalette.element,
+      appearance: RunNowAppearance.dark,
+    );
 
 /// Thẻ bot trên khung thẻ thành tích, cùng hệ với thẻ buổi chạy, Hành trình
 /// và Ma Sói: chân dung robot phủ cả thẻ, tên bot, câu cửa miệng và số liệu
@@ -285,7 +287,8 @@ class AgentBotArt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = _cardPalette(context);
+    final skin = RunCardSkin.of(context);
+    final p = _cardPalette(context, skin);
     final deep = p.accentDeep;
     final draft = data.draft;
     final sky = draft
@@ -308,20 +311,30 @@ class AgentBotArt extends StatelessWidget {
         Color.lerp(deep, Colors.black, 0.62)!,
         Color.lerp(deep, Colors.black, 0.55)!,
       ],
-      _Sky.dawn => const [
-        RunNowBotCardTokens.dawnTop,
-        RunNowBotCardTokens.dawnMid,
-        RunNowBotCardTokens.dawnBottom,
+      // Trời đêm đã theo hành; trời bậc cao giữ cảnh, chỉ nhuốm màu bộ thẻ.
+      _Sky.dawn => [
+        for (final c in const [
+          RunNowBotCardTokens.dawnTop,
+          RunNowBotCardTokens.dawnMid,
+          RunNowBotCardTokens.dawnBottom,
+        ])
+          skin.tintArt(c),
       ],
-      _Sky.dusk => const [
-        RunNowBotCardTokens.duskTop,
-        RunNowBotCardTokens.duskMid,
-        RunNowBotCardTokens.duskBottom,
+      _Sky.dusk => [
+        for (final c in const [
+          RunNowBotCardTokens.duskTop,
+          RunNowBotCardTokens.duskMid,
+          RunNowBotCardTokens.duskBottom,
+        ])
+          skin.tintArt(c),
       ],
-      _Sky.aurora => const [
-        RunNowBotCardTokens.auroraTop,
-        RunNowBotCardTokens.auroraMid,
-        RunNowBotCardTokens.auroraBottom,
+      _Sky.aurora => [
+        for (final c in const [
+          RunNowBotCardTokens.auroraTop,
+          RunNowBotCardTokens.auroraMid,
+          RunNowBotCardTokens.auroraBottom,
+        ])
+          skin.tintArt(c),
       ],
     };
     final status = data.status;
@@ -556,6 +569,7 @@ class AgentBotMedal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final skin = RunCardSkin.of(context);
     return RepaintBoundary(
       child: CustomPaint(
         painter: _MedalPainter(
@@ -563,6 +577,8 @@ class AgentBotMedal extends StatelessWidget {
           mood: data._mood,
           look: data.look,
           ghost: data.draft,
+          top: skin.tintArt(RunNowBotCardTokens.backTop),
+          bottom: skin.tintArt(RunNowBotCardTokens.backBottom),
         ),
       ),
     );
@@ -575,12 +591,18 @@ class _MedalPainter extends CustomPainter {
     required this.mood,
     required this.look,
     required this.ghost,
+    required this.top,
+    required this.bottom,
   });
 
   final GameCardTierStyle metal;
   final _Mood mood;
   final AgentLook look;
   final bool ghost;
+
+  /// Nền trên và dưới, đã nhuốm theo bộ màu thẻ.
+  final Color top;
+  final Color bottom;
 
   // Toạ độ trên thẻ 300 ngang: huy hiệu giữa thẻ, hơi lệch lên để chữ MYBOT
   // nằm dưới.
@@ -600,10 +622,10 @@ class _MedalPainter extends CustomPainter {
     canvas.drawRect(
       rect,
       Paint()
-        ..shader = const LinearGradient(
+        ..shader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [RunNowBotCardTokens.backTop, RunNowBotCardTokens.backBottom],
+          colors: [top, bottom],
         ).createShader(rect),
     );
     paintStars(
@@ -714,7 +736,9 @@ class _MedalPainter extends CustomPainter {
       old.metal != metal ||
       old.mood != mood ||
       old.look != look ||
-      old.ghost != ghost;
+      old.ghost != ghost ||
+      old.top != top ||
+      old.bottom != bottom;
 }
 
 class _ScenePill extends StatelessWidget {

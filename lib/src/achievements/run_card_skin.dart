@@ -37,10 +37,14 @@ class RunCardSkin {
     required this.titles,
     required this.routes,
     this.onDarkArt,
+    this.element,
   });
 
   /// Tên ổn định của bộ màu, vào khoá cache ảnh khoe.
   final String id;
+
+  /// Hành của bộ màu; null là [classic], bộ màu gốc của từng tranh.
+  final RunNowElement? element;
 
   /// Nền dưới tranh, lộ ra khi tranh chưa tải xong.
   final Color field;
@@ -97,6 +101,16 @@ class RunCardSkin {
 
   Color accent(GameCardTier tier) => accents[tier]!;
   Color glow(GameCardTier tier) => routes[tier]!.$3;
+
+  /// Màu nền của tranh tự vẽ (trời, nền chặng, nền mặt sau) nhuốm về tông
+  /// đậm của hành. Nét vẽ và màu nhận diện của thẻ (linh vật, huy chương,
+  /// trăng phe) không đi qua đây, nên đổi bộ màu không đổi tranh. Tranh là
+  /// cảnh đêm nên bộ sáng nhuốm như bộ tối cùng hành: kéo về màu giấy thì
+  /// tranh xám đục. [classic] giữ nguyên màu gốc.
+  Color tintArt(Color color) {
+    final element = this.element;
+    return element == null ? color : Color.lerp(color, element.ramp[4], 0.35)!;
+  }
 
   /// Bộ màu thẻ có từ đầu: ruột tối trung tính.
   static const classic = RunCardSkin(
@@ -202,6 +216,7 @@ class RunCardSkin {
         );
         return RunCardSkin(
           id: 'secret.${element.name}',
+          element: element,
           field: night.field,
           shade: night.shade,
           hero: night.hero,
@@ -239,6 +254,7 @@ class RunCardSkin {
         Color.alphaBlend(hue.withValues(alpha: amount), base);
     return RunCardSkin(
       id: 'dark.${element.name}',
+      element: element,
       field: tint(classic.field, ramp[4], 0.18),
       shade: tint(classic.shade, ramp[4], 0.22),
       hero: classic.hero,
@@ -273,6 +289,7 @@ class RunCardSkin {
     const ink = RunNowThemeTokens.lightInk;
     return RunCardSkin(
       id: 'light.${element.name}',
+      element: element,
       field: element.tint,
       shade: element.tint,
       hero: ink,

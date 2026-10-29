@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:myrun/src/achievements/card_scene.dart';
+import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/providers.dart';
@@ -41,8 +42,18 @@ const _looks = <String, _Look>{
   ),
 };
 
-/// Chặng lạ mặc màu Marathon.
-_Look _look(String campaign) => _looks[campaign] ?? _looks['marathon']!;
+/// Màu chặng dưới bộ màu thẻ ở [context]: nền nhuốm theo bộ màu, nét đường
+/// và dây huy chương giữ màu chặng. Chặng lạ mặc màu Marathon.
+_Look _look(BuildContext context, String campaign) {
+  final skin = RunCardSkin.of(context);
+  final look = _looks[campaign] ?? _looks['marathon']!;
+  return (
+    top: skin.tintArt(look.top),
+    bottom: skin.tintArt(look.bottom),
+    route: look.route,
+    ribbon: look.ribbon,
+  );
+}
 
 /// Đường chạy của cung, null khi cung lạ hoặc chưa tải được. Thẻ khi đó vẽ
 /// thiếu đường; lỗi tải hiện ra lúc khoe (xem `showJourneyCardViewer`).
@@ -84,7 +95,7 @@ class JourneyMedalArt extends ConsumerWidget {
     return RepaintBoundary(
       child: CustomPaint(
         painter: _MedalPainter(
-          _look(campaign),
+          _look(context, campaign),
           gameCardTiers[tier]!,
           route == null ? null : _Shape.of(route),
           rim,
@@ -116,7 +127,7 @@ class JourneyRouteMap extends ConsumerWidget {
     return RepaintBoundary(
       child: CustomPaint(
         painter: _MapPainter(
-          _look(campaign),
+          _look(context, campaign),
           route == null ? null : _Shape.of(route),
           title,
           campaign.codeUnits.fold(0, (sum, unit) => sum + unit),

@@ -11,7 +11,11 @@ import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/achievements/run_card_skin_choice.dart';
 import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
+import 'package:myrun/src/agents/agent_bot_card.dart';
+import 'package:myrun/src/agents/agent_look.dart';
+import 'package:myrun/src/games/game_card_art.dart';
 import 'package:myrun/src/games/game_role_card.dart';
+import 'package:myrun/src/journey/journey_card_art.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/theme_controller.dart';
@@ -196,6 +200,73 @@ void main() {
     );
     final hero = tester.widget<Text>(find.text('12,4')).style!;
     expect(hero.color, RunCardSkin.forTheme(_light, RunNowElement.water).hero);
+  });
+
+  testWidgets('art the cards paint themselves takes the skin element', (
+    tester,
+  ) async {
+    final boundary = GlobalKey();
+    Future<({int red, int blue})> corner(RunCardSkin skin, Widget art) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: Center(
+              child: RunCardSkinScope(
+                skin: skin,
+                child: RepaintBoundary(
+                  key: boundary,
+                  child: SizedBox(width: 100, height: 140, child: art),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      late ByteData pixels;
+      await tester.runAsync(() async {
+        final render =
+            boundary.currentContext!.findRenderObject()!
+                as RenderRepaintBoundary;
+        pixels = (await (await render.toImage()).toByteData())!;
+      });
+      // Góc trên trái là nền tranh, chưa đụng hình nào.
+      const i = (10 * 100 + 10) * 4;
+      return (red: pixels.getUint8(i), blue: pixels.getUint8(i + 2));
+    }
+
+    final arts = {
+      'MyBot mặt sau': AgentBotMedal(
+        data: AgentBotCardData(
+          name: 'Cú Mèo',
+          tier: AgentCardTier.gold,
+          memoryCount: 0,
+          memoryLimit: 50,
+          look: AgentLook.funny,
+        ),
+      ),
+      'Hành trình mặt trước': const JourneyMedalArt(
+        campaign: 'xuyen_viet',
+        routeId: '',
+        tier: GameCardTier.legendary,
+        rim: '',
+      ),
+      'Ma Sói mặt trước': const GameTeamArt(team: 'wolves'),
+      'Ma Sói mặt sau': const GameCardEmblem(
+        team: 'wolves',
+        tier: GameCardTier.legendary,
+      ),
+    };
+    final fire = RunCardSkin.forTheme(_dark, RunNowElement.fire);
+    for (final MapEntry(key: name, value: art) in arts.entries) {
+      final classic = await corner(RunCardSkin.classic, art);
+      final tinted = await corner(fire, art);
+      // Hỏa kéo nền về đỏ: đỏ lấn xanh dương rõ hơn hẳn bộ gốc.
+      expect(
+        tinted.red - tinted.blue,
+        greaterThan(classic.red - classic.blue + 10),
+        reason: name,
+      );
+    }
   });
 
   testWidgets('the sheet saves a picked skin and can go back to the app', (

@@ -18,36 +18,43 @@ class GameTeamArt extends StatelessWidget {
   Widget build(BuildContext context) {
     // Thẻ vẽ lại mỗi khung hình khi nghiêng; tranh đứng yên nên tách lớp.
     return RepaintBoundary(
-      child: CustomPaint(painter: _TeamScenePainter(team)),
+      child: CustomPaint(
+        painter: _TeamScenePainter(team, RunCardSkin.of(context)),
+      ),
     );
   }
 }
 
 class _TeamScenePainter extends CustomPainter {
-  const _TeamScenePainter(this.team);
+  const _TeamScenePainter(this.team, this.skin);
 
   final String team;
 
+  /// Bộ màu thẻ: chỉ nhuốm trời, trăng và cảnh giữ màu phe.
+  final RunCardSkin skin;
+
   @override
   void paint(Canvas canvas, Size size) {
-    paintScene(canvas, size, switch (team) {
+    final scene = switch (team) {
       'wolves' => _wolves,
       'lovers' => _lovers,
       _ => _village,
-    });
+    };
+    paintScene(canvas, size, (c, s) => scene(c, s, skin.tintArt));
   }
 
   @override
-  bool shouldRepaint(_TeamScenePainter old) => old.team != team;
+  bool shouldRepaint(_TeamScenePainter old) =>
+      old.team != team || !identical(old.skin, skin);
 }
 
-void _wolves(Canvas canvas, Size size) {
+void _wolves(Canvas canvas, Size size, Color Function(Color) tint) {
   final Size(width: w, height: h) = size;
-  paintSky(canvas, size, const [
-    (0, _T.wolvesSky1),
-    (0.45, _T.wolvesSky2),
-    (0.75, _T.wolvesSky3),
-    (1, _T.wolvesSky4),
+  paintSky(canvas, size, [
+    (0, tint(_T.wolvesSky1)),
+    (0.45, tint(_T.wolvesSky2)),
+    (0.75, tint(_T.wolvesSky3)),
+    (1, tint(_T.wolvesSky4)),
   ]);
   paintStars(
     canvas,
@@ -100,13 +107,13 @@ void _wolves(Canvas canvas, Size size) {
   paintGrain(canvas, size, 4);
 }
 
-void _village(Canvas canvas, Size size) {
+void _village(Canvas canvas, Size size, Color Function(Color) tint) {
   final Size(width: w, height: h) = size;
-  paintSky(canvas, size, const [
-    (0, _T.villageSky1),
-    (0.5, _T.villageSky2),
-    (0.8, _T.villageSky3),
-    (1, _T.villageSky4),
+  paintSky(canvas, size, [
+    (0, tint(_T.villageSky1)),
+    (0.5, tint(_T.villageSky2)),
+    (0.8, tint(_T.villageSky3)),
+    (1, tint(_T.villageSky4)),
   ]);
   paintStars(
     canvas,
@@ -235,13 +242,13 @@ void _houses(Canvas canvas, double w, double base) {
     );
 }
 
-void _lovers(Canvas canvas, Size size) {
+void _lovers(Canvas canvas, Size size, Color Function(Color) tint) {
   final Size(width: w, height: h) = size;
-  paintSky(canvas, size, const [
-    (0, _T.loversSky1),
-    (0.45, _T.loversSky2),
-    (0.8, _T.loversSky3),
-    (1, _T.loversSky4),
+  paintSky(canvas, size, [
+    (0, tint(_T.loversSky1)),
+    (0.45, tint(_T.loversSky2)),
+    (0.8, tint(_T.loversSky3)),
+    (1, tint(_T.loversSky4)),
   ]);
   paintStars(
     canvas,
@@ -367,20 +374,22 @@ class GameCardEmblem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Nền huy hiệu luôn là đêm, nên bộ màu sáng mượn màu bậc của bộ tối.
+    // Nền huy hiệu là đêm ở mọi bộ màu, nên bộ màu sáng mượn màu bậc của bộ
+    // tối.
     final skin = RunCardSkin.of(context);
     final foil = (skin.darkMap ? skin : RunCardSkin.classic).accent(tier);
     return RepaintBoundary(
-      child: CustomPaint(painter: _EmblemPainter(team, foil)),
+      child: CustomPaint(painter: _EmblemPainter(team, foil, skin)),
     );
   }
 }
 
 class _EmblemPainter extends CustomPainter {
-  const _EmblemPainter(this.team, this.foil);
+  const _EmblemPainter(this.team, this.foil, this.skin);
 
   final String team;
   final Color foil;
+  final RunCardSkin skin;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -393,7 +402,7 @@ class _EmblemPainter extends CustomPainter {
         Paint()
           ..shader = RadialGradient(
             radius: size.height * 0.7 / size.shortestSide,
-            colors: [p.top, p.bottom],
+            colors: [skin.tintArt(p.top), skin.tintArt(p.bottom)],
           ).createShader(rect),
       );
       paintStars(
@@ -453,5 +462,5 @@ class _EmblemPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_EmblemPainter old) =>
-      old.team != team || old.foil != foil;
+      old.team != team || old.foil != foil || !identical(old.skin, skin);
 }
