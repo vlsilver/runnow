@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:go_router/go_router.dart';
 import 'package:http/testing.dart';
+import 'package:myrun/src/achievements/card_share.dart';
+import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
 import 'package:myrun/src/agents/agent_blocks_screen.dart';
 import 'package:myrun/src/agents/agent_bot_card.dart';
 import 'package:myrun/src/agents/agent_chat_controller.dart';
@@ -32,6 +34,31 @@ class _FakeShare extends SharePlatform {
     shared.add(params);
     return const ShareResult('ok', ShareResultStatus.success);
   }
+}
+
+/// Kho file khoe đã có sẵn file của mọi thẻ, ghi lại thẻ nào được mở khoe.
+class _FilledShareStore extends CardShareStore {
+  final loaded = <String>[];
+
+  @override
+  Future<CardShareFiles?> load(String cardId, String key) async {
+    loaded.add(cardId);
+    final png = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    );
+    return CardShareFiles(
+      front: png,
+      back: png,
+      motion: Uint8List.fromList([0, 0, 0, 24, 102, 116, 121, 112]),
+      motionType: 'video/mp4',
+    );
+  }
+
+  @override
+  Future<void> save(String cardId, String key, CardShareFiles files) async {}
+
+  @override
+  Future<void> clear(String cardId) async {}
 }
 
 /// Bậc thẻ đã khoe, giữ trong bộ nhớ thay cho secure storage.
@@ -251,6 +278,7 @@ void main() {
   final share = _FakeShare();
   setUpAll(() => SharePlatform.instance = share);
   final imageReads = <String>[];
+  late _FilledShareStore shareStore;
 
   Future<void> pump(WidgetTester tester, Widget home) async {
     // Thẻ bot tự lắc mãi; giảm chuyển động thì thẻ đứng yên, chờ settle được.
@@ -292,6 +320,7 @@ void main() {
     opened = [];
     share.shared.clear();
     imageReads.clear();
+    shareStore = _FilledShareStore();
   });
 
   /// Chạm thẻ bot để lật sang mặt sau. Hai frame: frame đầu mới ghi mốc
@@ -370,6 +399,7 @@ void main() {
             imageReads.add(path);
             return Uint8List.fromList([137, 80, 78, 71]);
           }),
+          cardShareStoreProvider.overrideWithValue(shareStore),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -1000,7 +1030,7 @@ void main() {
     expect(await params.files!.single.readAsBytes(), [137, 80, 78, 71]);
   });
 
-  testWidgets('Khoe thẻ on the tab shares the card face as a PNG', (
+  testWidgets('Khoe thẻ on the tab opens the shared card share screen', (
     tester,
   ) async {
     backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
@@ -1010,18 +1040,27 @@ void main() {
     await tester.tapAt(
       tester.getBottomRight(find.byTooltip('Khoe thẻ')) - const Offset(6, 6),
     );
-    // Chụp thẻ là việc của engine, phải cho chạy ngoài fake async.
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(seconds: 1)),
-    );
     await tester.pump();
-    expect(share.shared, hasLength(1));
-    final params = share.shared.single;
-    expect(params.text, 'Thẻ MyBot Cú của mình trên 3i');
-    expect(params.fileNameOverrides, ['3i-mybot.png']);
-    final png = await params.files!.single.readAsBytes();
-    expect(png.sublist(1, 4), 'PNG'.codeUnits);
-    await close(tester);
+    await tester.pump(const Duration(milliseconds: 500));
+    // Cùng màn khoe với thẻ chạy, Hành trình và Ma Sói: chọn bộ màu, gửi ảnh
+    // hai mặt hay video 3D.
+    final screen = tester.widget<CardShareScreen>(find.byType(CardShareScreen));
+    expect(screen.subject.id, 'mybot');
+    expect(screen.subject.text, 'Thẻ MyBot Cú của mình\nChia sẻ từ 3i');
+    expect(screen.data.hero, 'CÚ');
+    expect(shareStore.loaded, ['mybot']);
+  });
+
+  testWidgets('the palette button on the tab picks the card colours', (
+    tester,
+  ) async {
+    backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
+    await pumpMyBot(tester);
+    await tester.tapAt(
+      tester.getBottomLeft(find.byTooltip('Bộ màu thẻ')) + const Offset(6, -6),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(RunCardSkinSheet), findsOneWidget);
   });
 
   testWidgets('no images yet: no gallery on the tab', (tester) async {

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
 import 'package:myrun/src/agents/agent_bot_card.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
 import 'package:myrun/src/agents/agent_images_screen.dart';
@@ -13,7 +14,6 @@ import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/games/telegram_link_controller.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
-import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -496,43 +496,13 @@ class _Header extends StatelessWidget {
 }
 
 /// Đầu tab: thẻ bot của mình trên quầng sáng màu hành.
-class _BotCardSection extends StatefulWidget {
+class _BotCardSection extends StatelessWidget {
   const _BotCardSection({required this.data});
 
   final AgentBotCardData data;
 
   @override
-  State<_BotCardSection> createState() => _BotCardSectionState();
-}
-
-class _BotCardSectionState extends State<_BotCardSection> {
-  final _cardKey = GlobalKey();
-  final _shareKey = GlobalKey();
-  bool _sharing = false;
-
-  Future<void> _share() async {
-    setState(() => _sharing = true);
-    try {
-      await shareAgentCard(
-        cardKey: _cardKey,
-        shareOriginContext: _shareKey.currentContext ?? context,
-        botName: widget.data.name,
-      );
-    } catch (error) {
-      debugPrint('MyBot: khoe thẻ lỗi: $error');
-      if (mounted) {
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          const SnackBar(content: Text('Chưa khoe được thẻ, thử lại sau.')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _sharing = false);
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final data = widget.data;
     final palette = context.runNowPalette;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -566,29 +536,29 @@ class _BotCardSectionState extends State<_BotCardSection> {
                     // chạm. Đệm đều để thẻ vẫn ở giữa.
                     Padding(
                       padding: const EdgeInsets.all(14),
-                      child: AgentBotCardView(
-                        data: data,
-                        width: width,
-                        captureKey: _cardKey,
+                      child: AgentBotCardView(data: data, width: width),
+                    ),
+                    // Nút nhỏ đè góc thẻ thay cho một hàng nút riêng: bộ màu
+                    // bên trái, khoe bên phải.
+                    Positioned(
+                      left: 0,
+                      bottom: 0,
+                      child: IconButton.filled(
+                        tooltip: 'Bộ màu thẻ',
+                        onPressed: () => showRunCardSkinSheet(
+                          context,
+                          sample: agentCardData(data),
+                        ),
+                        icon: const Icon(Icons.palette_outlined, size: 20),
                       ),
                     ),
-                    // Nút nhỏ đè góc thẻ thay cho một hàng nút riêng.
                     Positioned(
                       right: 0,
                       bottom: 0,
                       child: IconButton.filled(
-                        key: _shareKey,
                         tooltip: 'Khoe thẻ',
-                        onPressed: _sharing ? null : _share,
-                        icon: _sharing
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.ios_share_rounded, size: 20),
+                        onPressed: () => showAgentCardShare(context, data),
+                        icon: const Icon(Icons.ios_share_rounded, size: 20),
                       ),
                     ),
                   ],

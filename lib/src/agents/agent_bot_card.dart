@@ -7,11 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/card_scene.dart';
+import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/agents/agent_km.dart';
 import 'package:myrun/src/agents/agent_look.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/runnow_api_client.dart';
-import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 
 /// Bậc thẻ bot trong ngày. Bậc đi theo số mốc ảnh chủ đã qua hôm nay; km của
@@ -229,6 +229,44 @@ AchievementCardData agentCardData(AgentBotCardData data) {
     date: '',
   );
 }
+
+/// Thẻ bot đem khoe. Thẻ đổi theo ngày (bậc, số liệu, ngày thứ N) nên mọi
+/// thứ in trên thẻ vào [CardShareSubject.printed]; mỗi chủ chỉ có một bot nên
+/// một id, file của ngày cũ bị thay.
+CardShareSubject agentCardShareSubject(AgentBotCardData data) {
+  final card = agentCardData(data);
+  return CardShareSubject(
+    id: 'mybot',
+    printed: [
+      // Mốc thiết kế thẻ bot: đổi khi đổi cách vẽ để file khoe cũ thôi dùng.
+      'portrait',
+      card.tier.name,
+      card.tierLabel ?? '',
+      card.kind,
+      card.hero,
+      card.quote ?? '',
+      for (final stat in card.stats ?? const <AchievementStat>[])
+        '${stat.label}=${stat.value}',
+      card.owner,
+      card.meta,
+      data.look.name,
+      data._mood.name,
+      data.status?.text ?? '',
+    ].join('|'),
+    text: data.draft
+        ? 'Thẻ MyBot của mình trên 3i'
+        : 'Thẻ MyBot ${data.name} của mình\nChia sẻ từ 3i',
+  );
+}
+
+/// Màn khoe chung của thẻ thành tích: chọn bộ màu, gửi ảnh hai mặt hay video
+/// 3D.
+Future<void> showAgentCardShare(BuildContext context, AgentBotCardData data) =>
+    showCardShare(
+      context,
+      subject: agentCardShareSubject(data),
+      data: agentCardData(data),
+    );
 
 String _dayLine(DateTime createdAt, DateTime now) {
   final n = agentDayCount(createdAt, now);
@@ -1120,19 +1158,10 @@ class AgentMascot extends StatelessWidget {
 /// người xem thấy ánh thẻ chạy mà không phải tự vuốt. Máy bật giảm chuyển
 /// động thì thẻ đứng yên.
 class AgentBotCardView extends StatefulWidget {
-  const AgentBotCardView({
-    super.key,
-    required this.data,
-    required this.width,
-    this.captureKey,
-  });
+  const AgentBotCardView({super.key, required this.data, required this.width});
 
   final AgentBotCardData data;
   final double width;
-
-  /// Gắn vào lớp vẽ mặt thẻ, nằm trong phép nghiêng/lật, nên chụp ra là mặt
-  /// thẻ phẳng đang hiện.
-  final GlobalKey? captureKey;
 
   @override
   State<AgentBotCardView> createState() => _AgentBotCardViewState();
@@ -1266,18 +1295,15 @@ class _AgentBotCardViewState extends State<AgentBotCardView>
               child: Transform(
                 alignment: Alignment.center,
                 transform: Matrix4.rotationY(back ? math.pi : 0),
-                child: RepaintBoundary(
-                  key: widget.captureKey,
-                  child: SizedBox(
-                    width: widget.width,
-                    height: height,
-                    child: FittedBox(
-                      child: AchievementCard(
-                        data: card,
-                        pose: pose,
-                        back: back,
-                        animate: animate,
-                      ),
+                child: SizedBox(
+                  width: widget.width,
+                  height: height,
+                  child: FittedBox(
+                    child: AchievementCard(
+                      data: card,
+                      pose: pose,
+                      back: back,
+                      animate: animate,
                     ),
                   ),
                 ),
@@ -1382,30 +1408,7 @@ class _TierReveal extends StatefulWidget {
 }
 
 class _TierRevealState extends State<_TierReveal> {
-  final _cardKey = GlobalKey();
-  final _shareKey = GlobalKey();
-  bool _sharing = false;
-
-  Future<void> _share() async {
-    if (_sharing) return;
-    setState(() => _sharing = true);
-    try {
-      await shareAgentCard(
-        cardKey: _cardKey,
-        shareOriginContext: _shareKey.currentContext ?? context,
-        botName: widget.data.name,
-      );
-    } catch (error) {
-      debugPrint('MyBot: khoe thẻ lỗi: $error');
-      if (mounted) {
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          const SnackBar(content: Text('Chưa khoe được thẻ, thử lại sau.')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _sharing = false);
-    }
-  }
+  void _share() => unawaited(showAgentCardShare(context, widget.data));
 
   @override
   Widget build(BuildContext context) {
@@ -1475,14 +1478,11 @@ class _TierRevealState extends State<_TierReveal> {
                     child: Center(
                       child: Transform.rotate(
                         angle: 0.035,
-                        child: RepaintBoundary(
-                          key: _cardKey,
-                          child: FittedBox(
-                            child: AchievementCard(
-                              data: agentCardData(widget.data),
-                              pose: const Offset(0.24, -0.1),
-                              animate: !MediaQuery.disableAnimationsOf(context),
-                            ),
+                        child: FittedBox(
+                          child: AchievementCard(
+                            data: agentCardData(widget.data),
+                            pose: const Offset(0.24, -0.1),
+                            animate: !MediaQuery.disableAnimationsOf(context),
                           ),
                         ),
                       ),
@@ -1555,8 +1555,7 @@ class _TierRevealState extends State<_TierReveal> {
                   ),
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
-                    key: _shareKey,
-                    onPressed: _sharing ? null : _share,
+                    onPressed: _share,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: ink,
                       minimumSize: const Size.fromHeight(50),

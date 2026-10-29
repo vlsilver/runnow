@@ -74,17 +74,6 @@ Future<ShareResult> shareCardFile({
   );
 }
 
-Future<ShareResult> shareAgentCard({
-  required GlobalKey cardKey,
-  required BuildContext shareOriginContext,
-  required String botName,
-}) => _shareCard(
-  cardKey: cardKey,
-  shareOriginContext: shareOriginContext,
-  text: 'Thẻ MyBot $botName của mình trên 3i',
-  fileName: '3i-mybot.png',
-);
-
 /// Ảnh bot vẽ: gửi đúng file PNG gốc trên Storage, không chụp lại màn xem
 /// (màn xem có viền đen và đang phóng to tuỳ tay người xem).
 Future<ShareResult> shareAgentImage({
@@ -100,29 +89,6 @@ Future<ShareResult> shareAgentImage({
       text: 'MyBot vẽ cho mình trên 3i',
       files: [XFile.fromData(png, mimeType: 'image/png')],
       fileNameOverrides: ['3i-mybot-anh.png'],
-      sharePositionOrigin: sharePositionOrigin,
-    ),
-  );
-}
-
-Future<ShareResult> _shareCard({
-  required GlobalKey cardKey,
-  required BuildContext shareOriginContext,
-  required String text,
-  required String fileName,
-}) async {
-  final boundary =
-      cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-  final renderBox = shareOriginContext.findRenderObject() as RenderBox?;
-  final sharePositionOrigin = renderBox == null
-      ? null
-      : renderBox.localToGlobal(Offset.zero) & renderBox.size;
-  final png = await captureRecapPng(boundary);
-  return SharePlus.instance.share(
-    ShareParams(
-      text: text,
-      files: [XFile.fromData(png, mimeType: 'image/png')],
-      fileNameOverrides: [fileName],
       sharePositionOrigin: sharePositionOrigin,
     ),
   );
