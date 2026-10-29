@@ -32,7 +32,7 @@ class AgentSetupScreen extends ConsumerStatefulWidget {
 
 class _AgentSetupScreenState extends ConsumerState<AgentSetupScreen> {
   final _name = TextEditingController();
-  late final _persona = _QuoteHighlightController();
+  final _persona = TextEditingController();
   final _personaFocus = FocusNode();
 
   /// Kiểu đang chọn; null khi tạo bot mà chưa chọn kiểu nào.
@@ -160,11 +160,11 @@ class _AgentSetupScreenState extends ConsumerState<AgentSetupScreen> {
       created: created,
       createdAt: me?.agent?.createdAt,
       look: (_look ?? AgentLook.of(null, persona)).slug,
+      voice: me?.agent?.voice,
     );
     if (me != null) return AgentBotCardData.fromMe(me, profile);
     return AgentBotCardData(
       name: profile.name,
-      persona: persona,
       look: AgentLook.of(profile.look, persona),
       tier: AgentCardTier.common,
       memoryCount: 0,
@@ -278,26 +278,6 @@ class _AgentSetupScreenState extends ConsumerState<AgentSetupScreen> {
                               'Vd: Nói ngắn, hay đùa, xưng "tui", mê chạy trail.',
                         ),
                       ),
-                      Row(
-                        children: [
-                          Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              color: _QuoteHighlightController.highlight,
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Câu đầu lên thẻ làm lời thoại',
-                            style: TextStyle(
-                              color: palette.textMuted,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
                       const SizedBox(height: 12),
                       Wrap(
                         spacing: 8,
@@ -330,40 +310,6 @@ class _AgentSetupScreenState extends ConsumerState<AgentSetupScreen> {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// Ô tính cách tô sáng câu đầu, đúng câu thẻ lấy làm lời thoại. Đang gõ dở
-/// (bộ gõ tiếng Việt giữ vùng composing) thì vẽ như ô thường để giữ gạch chân.
-class _QuoteHighlightController extends TextEditingController {
-  static const highlight = RunNowBotCardTokens.quoteHighlight;
-
-  @override
-  TextSpan buildTextSpan({
-    required BuildContext context,
-    TextStyle? style,
-    required bool withComposing,
-  }) {
-    final start = text.length - text.trimLeft().length;
-    if (text.trim().isEmpty || (withComposing && value.isComposingRangeValid)) {
-      return super.buildTextSpan(
-        context: context,
-        style: style,
-        withComposing: withComposing,
-      );
-    }
-    final end = start + agentQuoteEnd(text.substring(start));
-    return TextSpan(
-      style: style,
-      children: [
-        TextSpan(text: text.substring(0, start)),
-        TextSpan(
-          text: text.substring(start, end),
-          style: const TextStyle(backgroundColor: highlight),
-        ),
-        TextSpan(text: text.substring(end)),
-      ],
     );
   }
 }

@@ -34,6 +34,8 @@ class AchievementCardData {
     this.backFace,
     this.secret,
     this.stats,
+    this.quote,
+    this.tierLabel,
     this.artFollowsSkin = false,
   });
 
@@ -69,6 +71,14 @@ class AchievementCardData {
 
   /// Có số liệu thì khối chữ là tên ngắn và hàng số liệu thay cho [desc].
   final List<AchievementStat>? stats;
+
+  /// Lời thoại in nghiêng dưới [hero] khi có [stats], vd. câu cửa miệng của
+  /// bot. [title] rỗng thì chỉ còn lời thoại.
+  final String? quote;
+
+  /// Tên bậc ở chân thẻ thay cho tên bậc chung, cho thẻ có thang bậc riêng
+  /// mượn kim loại của bậc chung (MyBot: Bạc là khung bạc của Siêu hiếm).
+  final String? tierLabel;
 
   /// [art] tự đổi sáng tối theo bộ màu (đường chạy vẽ theo bộ màu), nên chữ
   /// in màu của bộ màu. Không thì tranh coi như tối, chữ in sáng trên quầng
@@ -448,13 +458,30 @@ class _Front extends StatelessWidget {
                   kind,
                   const SizedBox(height: 3),
                   hero(32),
-                  const SizedBox(height: 3),
-                  _Title(
-                    text: data.title,
-                    tier: tier,
-                    skin: skin,
-                    compact: true,
-                  ),
+                  if (data.title.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    _Title(
+                      text: data.title,
+                      tier: tier,
+                      skin: skin,
+                      compact: true,
+                    ),
+                  ],
+                  if (data.quote case final quote?) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      quote,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.3,
+                        fontStyle: FontStyle.italic,
+                        fontWeight: FontWeight.w500,
+                        color: ink.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 9),
                   SizedBox(
                     height: 1,
@@ -546,7 +573,9 @@ class _Front extends StatelessWidget {
                     const SizedBox(width: 8),
                     Text(switch (data.secret) {
                       final element? => 'ẨN · ${element.label.toUpperCase()}',
-                      null => gameCardTiers[tier]!.label.toUpperCase(),
+                      null =>
+                        (data.tierLabel ?? gameCardTiers[tier]!.label)
+                            .toUpperCase(),
                     }, style: label(accent, 11)),
                   ],
                 ),

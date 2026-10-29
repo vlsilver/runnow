@@ -142,7 +142,7 @@ void main() {
     await tester.tap(find.text('MyBot'));
     await tester.pumpAndSettle();
     expect(meReads, reads + 1);
-    expect(find.text('Sóc'), findsOneWidget);
+    expect(find.text('SÓC'), findsOneWidget);
     expect(find.text('Chat riêng'), findsOneWidget);
     // Vẫn ở trong shell: thanh tab còn đó.
     expect(find.text('Chạy'), findsOneWidget);

@@ -17,8 +17,10 @@ import 'package:myrun/src/agents/agent_images_screen.dart';
 import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/agents/agent_screen.dart';
 import 'package:myrun/src/agents/agent_setup_screen.dart';
+import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
+import 'package:myrun/src/theme_tokens.dart';
 import 'package:share_plus_platform_interface/share_plus_platform_interface.dart';
 
 /// Bảng chia sẻ của máy: ghi lại thứ được gửi đi.
@@ -300,6 +302,18 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   }
 
+  /// Km hôm nay trên mặt trước thẻ: số [km] đứng trên nhãn KM HÔM NAY.
+  void expectCardKm(String km) {
+    final label = find.text('KM HÔM NAY');
+    expect(label, findsOneWidget);
+    final stat = find.ancestor(of: label, matching: find.byType(Column)).first;
+    expect(
+      find.descendant(of: stat, matching: find.text(km)),
+      findsOneWidget,
+      reason: km,
+    );
+  }
+
   /// Màn MyBot cùng màn tạo/sửa bot, đủ để đi qua lại bằng go_router.
   Future<void> pumpMyBot(WidgetTester tester) async {
     // Thẻ bot tự lắc mãi; giảm chuyển động thì thẻ đứng yên, chờ settle được.
@@ -459,7 +473,7 @@ void main() {
       'resting': 'budget',
     };
     await pumpMyBot(tester);
-    expect(find.text('Cú đang nghỉ'), findsOneWidget);
+    expect(find.text('CÚ ĐANG NGHỈ'), findsOneWidget);
     expect(find.text('MyBot chạm trần chi phí hôm nay.'), findsOneWidget);
     expect(find.text('QUAY LẠI LÚC 0H'), findsOneWidget);
     expect(find.byIcon(Icons.bedtime_rounded), findsOneWidget);
@@ -484,8 +498,8 @@ void main() {
     expect(find.text('30/30'), findsOneWidget);
     expect(find.text('HẾT TIN · MỞ LẠI 0H'), findsOneWidget);
     // Hết tin chat riêng thì bot vẫn nói trong phòng, nên không ngủ.
-    expect(find.text('Cú'), findsOneWidget);
-    expect(find.text('Cú đang nghỉ'), findsNothing);
+    expect(find.text('CÚ'), findsOneWidget);
+    expect(find.text('CÚ ĐANG NGHỈ'), findsNothing);
   });
 
   // 4,1 km: 10 câu sẵn + 4 km × 10 = 50 tin; mốc 1 km = 3 ảnh. Mốc kế tiếp
@@ -518,7 +532,7 @@ void main() {
       };
       await pumpMyBot(tester);
       expect(find.text('BẬC THẺ HÔM NAY'), findsOneWidget);
-      expect(find.text('4,1 km hôm nay'), findsWidgets);
+      expectCardKm('4,1');
       expect(find.text('1/3'), findsOneWidget);
       // Không lặp số đã có trên thẻ.
       expect(find.text('50 tin chat'), findsNothing);
@@ -692,10 +706,14 @@ void main() {
       await pumpMyBot(tester);
       expect(find.text('BẬC THẺ HÔM NAY'), findsOneWidget);
       for (final text in texts) {
-        // Km hiện cả ở góc cảnh lẫn chân thẻ.
+        // Thẻ in km thành số trên nhãn KM HÔM NAY.
+        if (text.endsWith(' km hôm nay')) {
+          expectCardKm(text.substring(0, text.length - ' km hôm nay'.length));
+          continue;
+        }
         expect(
           find.text(text, findRichText: true),
-          text.endsWith('km hôm nay') ? findsWidgets : findsOneWidget,
+          findsOneWidget,
           reason: text,
         );
       }
@@ -889,7 +907,7 @@ void main() {
     resumeApp(tester);
     await tester.pump();
     await tester.pump();
-    expect(find.text('3,2 km hôm nay'), findsWidgets);
+    expectCardKm('3,2');
     expect(find.text('10/40'), findsOneWidget);
     expect(
       find.text(
@@ -951,8 +969,6 @@ void main() {
     await tester.pump();
     expect(meReads(), reads + 1);
     expect(find.text('Đưa bot vào group PSC'), findsNothing);
-    await flipCard(tester);
-    expect(find.text('Ở group PSC'), findsOneWidget);
 
     // Đã ở PSC: quay về chỉ đọc lại một lần, không đọc lần hai.
     await tester.pump(const Duration(seconds: 5));
@@ -1148,7 +1164,8 @@ void main() {
       ],
     };
     await pumpMyBot(tester);
-    expect(find.text('“Nói ngắn”'), findsOneWidget);
+    // Tính cách là chữ chủ viết để lái bot; thẻ không in nó.
+    expect(find.text('“Nói ngắn”'), findsNothing);
     expect(find.text('2 bot'), findsOneWidget);
     expect(find.text('chào cả nhà'), findsNothing);
     final older = tester.getTopLeft(find.text('Sóc · bot của An'));
@@ -1175,7 +1192,7 @@ void main() {
     await tester.pumpAndSettle();
     final save = backend.requests.lastWhere((r) => r.method == 'POST');
     expect(jsonDecode(save.body), {'name': 'Cú Mèo', 'persona': 'Nói ngắn'});
-    expect(find.text('Cú Mèo'), findsOneWidget);
+    expect(find.text('CÚ MÈO'), findsOneWidget);
   });
 
   testWidgets('a backend that knows looks saves the look, own words stay', (
@@ -1281,8 +1298,6 @@ void main() {
     bool switchOn() =>
         tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value;
     expect(switchOn(), isTrue);
-    await flipCard(tester);
-    expect(find.text('Đang tự học'), findsOneWidget);
 
     await tester.tap(find.text('Cho bot tự học về bạn'));
     await tester.pumpAndSettle();
@@ -1298,7 +1313,6 @@ void main() {
     expect(switchOn(), isFalse);
     expect(find.text('Mê chạy trail'), findsNothing);
     expect(find.text('Bot không tự học về bạn.'), findsOneWidget);
-    expect(find.text('Đang tự học'), findsNothing);
 
     await tester.tap(find.text('Cho bot tự học về bạn'));
     await tester.pumpAndSettle();
@@ -1798,11 +1812,11 @@ void main() {
           .toIso8601String(),
     };
     await pumpMyBot(tester);
-    expect(find.text('Ngày thứ 2 bên bạn'), findsOneWidget);
+    expect(find.text('NGÀY THỨ 2 BÊN BẠN'), findsOneWidget);
 
     await flipCard(tester);
-    expect(find.text('TÍNH CÁCH'), findsOneWidget);
-    expect(find.text('Ngày thứ 2 bên bạn'), findsNothing);
+    expect(find.byType(AgentBotMedal), findsOneWidget);
+    expect(find.text('NGÀY THỨ 2 BÊN BẠN'), findsNothing);
   });
 
   // Mốc 1, 5, 10 km. 5,2 km qua hai mốc là Vàng, 10,4 km qua cả ba là Foil.
@@ -1837,6 +1851,7 @@ void main() {
     backend.agent = {
       'name': 'Cú',
       'persona': 'Nói ngắn, hay trêu. Thích gọi chủ là "sếp".',
+      'voice': 'Sếp lười là tui réo tên đó nha.',
       'created': true,
     };
     // Chưa qua mốc 1 km nên không bật màn lên bậc che tab.
@@ -1870,8 +1885,10 @@ void main() {
     tester.view.physicalSize = const Size(420, 4000);
     await tester.pumpAndSettle();
 
-    // Mặt trước chỉ trích câu đầu của tính cách.
-    expect(find.text('“Nói ngắn, hay trêu.”'), findsOneWidget);
+    // Câu trên thẻ là câu cửa miệng backend rút từ lời bot, không phải tính
+    // cách chủ viết.
+    expect(find.text('“Sếp lười là tui réo tên đó nha.”'), findsOneWidget);
+    expect(find.text('“Nói ngắn, hay trêu.”'), findsNothing);
     // Tên bot và @username có cả trên thẻ: lấy chỗ xuất hiện cuối của @username
     // là thẻ Telegram.
     double top(String text) => tester.getTopLeft(find.text(text).last).dy;
@@ -1959,10 +1976,53 @@ void main() {
     expect(find.text('VÀNG'), findsOneWidget);
   });
 
+  test('each bot tier is cut from the metal it is named after', () {
+    Color gemOf(AgentCardTier tier) =>
+        gameCardTiers[agentCardData(
+              AgentBotCardData(
+                name: 'Cú',
+                tier: tier,
+                memoryCount: 0,
+                memoryLimit: 0,
+              ),
+            ).tier]!
+            .gem;
+    expect(gemOf(AgentCardTier.common), RunNowGameTokens.gemGraphite);
+    expect(gemOf(AgentCardTier.silver), RunNowGameTokens.gemSilver);
+    expect(gemOf(AgentCardTier.gold), RunNowGameTokens.gold);
+    expect(gemOf(AgentCardTier.foil), RunNowGameTokens.gemDiamond);
+  });
+
+  testWidgets('a silver card is labelled Bạc, not by the shared scale', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MediaQuery(
+        // Thẻ tự lắc mãi; giảm chuyển động thì thẻ đứng yên, chờ settle được.
+        data: MediaQueryData(disableAnimations: true),
+        child: MaterialApp(
+          home: Center(
+            child: AgentBotCardView(
+              data: AgentBotCardData(
+                name: 'Cú',
+                tier: AgentCardTier.silver,
+                memoryCount: 0,
+                memoryLimit: 0,
+              ),
+              width: 240,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('BẠC'), findsOneWidget);
+    expect(find.text('SIÊU HIẾM'), findsNothing);
+  });
+
   group('bot card on the tab', () {
     const data = AgentBotCardData(
       name: 'Cú',
-      persona: '',
       tier: AgentCardTier.common,
       memoryCount: 0,
       memoryLimit: 20,

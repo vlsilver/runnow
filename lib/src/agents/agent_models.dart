@@ -26,6 +26,7 @@ class AgentProfile {
     required this.created,
     this.createdAt,
     this.look,
+    this.voice,
   });
 
   factory AgentProfile.fromJson(Map<String, dynamic> json) => AgentProfile(
@@ -34,10 +35,15 @@ class AgentProfile {
     look: json.containsKey('look') ? _string(json['look']) : null,
     created: json['created'] == true,
     createdAt: _date(json['createdAt']),
+    voice: _optString(json['voice']),
   );
 
   final String name;
   final String persona;
+
+  /// Câu cửa miệng backend rút từ lời bot đã nói trong phòng, in lên thẻ.
+  /// null khi bot chưa nói đủ để rút, hay backend cũ.
+  final String? voice;
 
   /// Kiểu bot vẽ trên thẻ, rỗng là chưa chọn. null là backend cũ chưa có
   /// field này: app không được gửi `look` vì backend cũ từ chối field lạ.

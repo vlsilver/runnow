@@ -315,11 +315,16 @@ class RunNowBotCardTokens {
   static const auroraViolet = Color(0xFFA078FF);
   static const auroraBlue = Color(0xFF50E6FF);
 
-  /// Nền dưới tranh và biển tên.
-  static const plaque = Color(0xFF151820);
+  /// Trăng của trời đêm (bậc Thường) và trời bình minh (bậc Bạc).
+  static const moon = Color(0xFFEEF3E8);
+  static const dawnMoon = Color(0xFFF4F1E6);
 
-  /// Nền câu đầu của tính cách ở màn sửa bot: câu thẻ lấy làm lời thoại.
-  static const quoteHighlight = Color(0x40F0C75E);
+  /// Mặt đất dưới chân trời, nơi khối chữ của mặt trước nằm.
+  static const ground = Color(0xFF0D1519);
+
+  /// Nền đêm sau huy hiệu ở mặt sau.
+  static const backTop = Color(0xFF0F171B);
+  static const backBottom = Color(0xFF070A0C);
   static const sunCore = Color(0xFFFFF3C4);
   static const sunHalo = Color(0xFFFFC36B);
 
