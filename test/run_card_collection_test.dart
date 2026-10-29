@@ -115,9 +115,11 @@ void main() {
     expect(find.text('Khoe thẻ'), findsOneWidget);
   });
 
-  testWidgets('journey cards join the collection by finish time', (
+  testWidgets('journey cards join the collection by award time', (
     tester,
   ) async {
+    // Buổi chạy qua mốc về đích từ tháng 3, nhưng thẻ mới trao hai ngày
+    // trước (phát bù): thẻ đứng theo lúc trao, như thẻ chạy theo lúc lật.
     await _pump(
       tester,
       [_card('a', 'rare', 1), _card('c', 'rare', 3)],
@@ -128,7 +130,8 @@ void main() {
           'tier': 'epic',
           'distanceMeters': 170000,
           'runCount': 31,
-          'finishedAt': DateTime.utc(2026, 10, 22),
+          'finishedAt': DateTime.utc(2026, 3, 1),
+          'awardedAt': DateTime.utc(2026, 10, 22),
         }),
       ],
     );

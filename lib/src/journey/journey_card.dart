@@ -31,11 +31,13 @@ class JourneyCard {
     required this.distanceMeters,
     required this.runCount,
     this.finishedAt,
+    this.awardedAt,
   });
 
   /// Đọc từ Firestore thì provider đổi Timestamp sang DateTime trước.
   factory JourneyCard.fromJson(String campaign, Map<String, dynamic> json) {
     final finishedAt = json['finishedAt'];
+    final awardedAt = json['awardedAt'];
     return JourneyCard(
       campaign: campaign,
       routeId: json['routeId'] as String? ?? '',
@@ -44,6 +46,7 @@ class JourneyCard {
       distanceMeters: (json['distanceMeters'] as num?)?.toDouble() ?? 0,
       runCount: (json['runCount'] as num?)?.toInt() ?? 0,
       finishedAt: finishedAt is DateTime ? finishedAt : null,
+      awardedAt: awardedAt is DateTime ? awardedAt : null,
     );
   }
 
@@ -63,6 +66,10 @@ class JourneyCard {
 
   /// Giờ bắt đầu buổi chạy đưa tổng km qua mốc về đích.
   final DateTime? finishedAt;
+
+  /// Lúc backend trao thẻ. Thẻ phát bù có lúc trao muộn hơn lúc về đích
+  /// nhiều tháng.
+  final DateTime? awardedAt;
 
   /// Chặng lạ (backend mới thêm) thì lấy khoá làm tên.
   String get name => _campaigns[campaign]?.name ?? campaign;

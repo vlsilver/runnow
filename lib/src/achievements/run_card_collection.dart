@@ -28,7 +28,8 @@ sealed class CollectedCard {
   String get id;
   GameCardTier get tier;
 
-  /// Lúc có thẻ: lật thẻ buổi chạy, ván Ma Sói kết thúc, hay về đích chặng.
+  /// Lúc có thẻ: lật thẻ buổi chạy, ván Ma Sói kết thúc, hay backend trao
+  /// thẻ chặng.
   DateTime? get at;
 
   /// Tên thẻ và dòng phụ cạnh thẻ mới nhất ở Hồ sơ.
@@ -111,7 +112,7 @@ class CollectedJourneyCard extends CollectedCard {
   @override
   GameCardTier get tier => card.tier;
   @override
-  DateTime? get at => card.finishedAt;
+  DateTime? get at => card.awardedAt;
   @override
   String get title => 'Hành trình · ${card.name}';
   @override
