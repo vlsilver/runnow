@@ -94,6 +94,12 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // Thẻ Hành trình: backend ghi khi về đích một chặng, client chỉ đọc.
+      match /journeyCards/{campaign} {
+        allow read: if owns(userId);
+        allow write: if false;
+      }
+
       match /runContractActivityClaims/{activityId} {
         allow read: if owns(userId);
         allow create, update: if owns(userId)

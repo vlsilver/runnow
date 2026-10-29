@@ -1038,6 +1038,14 @@ func (s *Server) workerRoutes() {
 		if err := s.deps.PeriodStats.RebuildForInstants(r.Context(), task.UID, instants); err != nil {
 			return err
 		}
+		// Thẻ Hành trình đọc tổng km từ chính các doc tháng vừa dựng. Lỗi thì
+		// task chạy lại; dựng lại periodStats lần nữa không sao vì nó tính lại
+		// từ đầu.
+		if s.deps.JourneyCards != nil {
+			if _, err := s.deps.JourneyCards.AwardFinished(r.Context(), task.UID); err != nil {
+				return err
+			}
+		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
 	})
 	s.route("POST /tasks/refresh-leaderboard", func(w http.ResponseWriter, r *http.Request) error {

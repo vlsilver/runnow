@@ -33,6 +33,9 @@ type Dependencies struct {
 	Games          *GameStore
 	Agents         *AgentStore
 	RunCards       *RunCardStore
+	// JourneyCards trao thẻ Hành trình sau mỗi lần dựng lại periodStats; nil
+	// thì task chỉ dựng periodStats (test không cần thẻ).
+	JourneyCards *JourneyCardService
 	// Garmin luôn có; khi chưa cấu hình (Config.GarminEnabled) thì nối trả
 	// garmin_not_configured và push trả 404.
 	Garmin *GarminService
@@ -84,6 +87,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 	d.Activities = NewActivityService(db, gateway, tokens, tasks, telegram, config.PublicBaseURL, config.WebBaseURL)
 	d.Derived = NewDerivedDataService(db)
 	d.PeriodStats = NewPeriodStatsService(db)
+	d.JourneyCards = NewJourneyCardService(db)
 	d.Profiles = NewProfileService(db, tasks)
 	d.Reconciliation = NewReconciliationService(db, tasks)
 	// Không có bucket thì xoá tài khoản vẫn chạy, chỉ bỏ qua phần ảnh —
