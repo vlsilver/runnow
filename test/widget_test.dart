@@ -116,7 +116,8 @@ void main() {
     tester,
   ) async {
     await pumpApp(tester);
-    expect(find.text('Kèo'), findsNWidgets(2));
+    // Trang không còn tiêu đề "Kèo", chỉ nhãn ở thanh dưới.
+    expect(find.text('Kèo'), findsOneWidget);
     expect(find.text('Kèo đang chạy'), findsOneWidget);
     expect(find.byIcon(Icons.add_rounded), findsOneWidget);
     expect(find.text('Đặt kèo tuần này'), findsOneWidget);

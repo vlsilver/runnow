@@ -58,16 +58,7 @@ class KeoHubScreen extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(20, 4, 12, 14),
                 child: Row(
                   children: [
-                    Expanded(
-                      child: Text(
-                        'Kèo',
-                        style: Theme.of(context).textTheme.headlineMedium
-                            ?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.6,
-                            ),
-                      ),
-                    ),
+                    const Spacer(),
                     if (connected)
                       ContractSyncAction(
                         syncing: sync.syncing,
