@@ -363,6 +363,19 @@ service cloud.firestore {
         && resource.data.ownerUid == request.auth.uid;
     }
 
+    // Tim: mỗi người một document theo uid trong hearts/{target}/by.
+    // target: run_{uid}_{activityId}, card_{uid}_{activityId}, live_{sessionId}.
+    // Tim live không gỡ được, để người chạy không bị bắn thông báo liên tục.
+    match /hearts/{targetKey}/by/{uid} {
+      allow read: if signedIn();
+      allow create, update: if owns(uid)
+        && targetKey.matches('(run|card)_[A-Za-z0-9]+_.+|live_.+')
+        && request.resource.data.keys().hasOnly(['uid', 'at'])
+        && request.resource.data.uid == uid
+        && request.resource.data.at == request.time;
+      allow delete: if owns(uid) && !targetKey.matches('live_.*');
+    }
+
     // Backend-owned integration state. Firebase Admin bypasses these rules;
     // Flutter clients must never read tokens, OAuth state, or event payloads.
     // Cấu hình tích hợp (cap Strava + số đang kết nối). Client ĐỌC để gate nút
