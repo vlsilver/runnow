@@ -190,3 +190,30 @@ func TestEmulatorDerivedRebuildSyncsClubCards(t *testing.T) {
 		t.Fatal("dựng lại xong mà thẻ chưa lên club")
 	}
 }
+
+// Job đêm refresh-leaderboard khoe bù thẻ cho mọi user ngay trong request,
+// không qua task: task rebuild-derived-data trùng tên trong ngày bị bỏ qua.
+func TestEmulatorRefreshLeaderboardSyncsClubCards(t *testing.T) {
+	db := emulatorDB(t)
+	rolled := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	seed(t, db, "publicProfiles/u1", map[string]any{"profileVisibility": "public"})
+	seed(t, db, "publicProfiles/u2", map[string]any{"profileVisibility": "private"})
+	// u1 không có doc users/u1, chỉ có thẻ bên dưới.
+	seed(t, db, "users/u1/runCards/r1", map[string]any{"tier": "rare", "rolledAt": rolled})
+	seed(t, db, "users/u2", map[string]any{"displayName": "B"})
+	seed(t, db, "users/u2/runCards/r2", map[string]any{"tier": "rare", "rolledAt": rolled})
+
+	tasks, _ := newRecordingTaskPublisher(t)
+	worker := NewWorkerServer(Config{}, &Dependencies{Firestore: db, Tasks: tasks, RunCards: NewRunCardStore(db)})
+	w := httptest.NewRecorder()
+	worker.ServeHTTP(w, httptest.NewRequest("POST", "/tasks/refresh-leaderboard", nil))
+	if w.Code != 200 {
+		t.Fatalf("refresh-leaderboard: %d %s", w.Code, w.Body)
+	}
+	if clubCardOf(t, db, "u1_r1") == nil {
+		t.Fatal("job đêm chạy xong mà thẻ chưa lên club")
+	}
+	if clubCardOf(t, db, "u2_r2") != nil {
+		t.Fatal("thẻ của người để riêng tư lên club")
+	}
+}

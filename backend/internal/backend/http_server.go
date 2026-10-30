@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"google.golang.org/api/iterator"
 )
 
 type handler func(http.ResponseWriter, *http.Request) error
@@ -1148,7 +1150,25 @@ func (s *Server) workerRoutes() {
 			}
 			enqueued++
 		}
-		return writeJSON(w, 200, map[string]any{"ok": true, "enqueued": enqueued})
+		// Khoe bù thẻ cho mọi user ngay tại đây chứ không trông vào task ở
+		// trên: chạy lại job trong ngày thì task trùng tên bị Cloud Tasks bỏ
+		// qua. DocumentRefs lấy cả user chỉ có subcollection mà không có doc.
+		users := s.deps.Firestore.Collection("users").DocumentRefs(r.Context())
+		synced := 0
+		for {
+			ref, err := users.Next()
+			if errors.Is(err, iterator.Done) {
+				break
+			}
+			if err != nil {
+				return err
+			}
+			if err := s.deps.RunCards.SyncClub(r.Context(), ref.ID); err != nil {
+				return err
+			}
+			synced++
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true, "enqueued": enqueued, "clubSynced": synced})
 	})
 	s.route("POST /tasks/recalc-contracts", func(w http.ResponseWriter, r *http.Request) error {
 		// Cron 06:05 + 14:05 + 20:05 VN: link buổi chạy CHƯA gán + tính lại tiến độ kèo (GỒM
