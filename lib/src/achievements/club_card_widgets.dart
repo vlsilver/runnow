@@ -67,18 +67,12 @@ class ClubCardThumb extends ConsumerWidget {
             label: 'Xem thẻ của ${owner.isMe ? 'bạn' : owner.name}',
             child: GestureDetector(
               onTap: () => showClubCardViewer(context, item, data),
-              child: GameCardScaled(
-                width: width,
-                size: achievementCardSize,
-                child: AchievementCard(data: data),
-              ),
+              child: _CardFace(data: data, member: owner.member, width: width),
             ),
           ),
           const SizedBox(height: 8),
           Row(
             children: [
-              ClubAvatar(member: owner.member, size: 18),
-              const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   owner.isMe ? 'Bạn' : owner.name,
@@ -130,17 +124,15 @@ class ClubCardTile extends ConsumerWidget {
             label: 'Xem thẻ của ${owner.isMe ? 'bạn' : owner.name}',
             child: GestureDetector(
               onTap: () => showClubCardViewer(context, item, data),
-              child: GameCardScaled(
+              child: _CardFace(
+                data: data,
+                member: owner.member,
                 width: constraints.maxWidth,
-                size: achievementCardSize,
-                child: AchievementCard(data: data),
               ),
             ),
           ),
           Row(
             children: [
-              ClubAvatar(member: owner.member, size: 22),
-              const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   owner.isMe ? 'Bạn' : owner.name,
@@ -160,6 +152,48 @@ class ClubCardTile extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Mặt thẻ khoe, avatar chủ thẻ ở góc trên phải (góc trái là dấu bậc thẻ).
+class _CardFace extends StatelessWidget {
+  const _CardFace({
+    required this.data,
+    required this.member,
+    required this.width,
+  });
+
+  final AchievementCardData data;
+  final MemberProfile? member;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final avatar = (width * 0.22).clamp(20.0, 34.0);
+    final inset = width * 0.06;
+    return Stack(
+      children: [
+        GameCardScaled(
+          width: width,
+          size: achievementCardSize,
+          child: AchievementCard(data: data),
+        ),
+        Positioned(
+          top: inset,
+          right: inset,
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: RunNowGameTokens.nightInk,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(1.5),
+              child: ClubAvatar(member: member, size: avatar - 3),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
