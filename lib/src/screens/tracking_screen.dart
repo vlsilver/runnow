@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/formatters.dart';
+import 'package:myrun/src/hearts.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/repository.dart';
@@ -185,11 +186,57 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     }
   }
 
+  /// Báo người đang chạy khi có người xem live thả tim.
+  void _toastNewHearts(Hearts? previous, AsyncValue<Hearts> next) {
+    if (next.error case final error?) {
+      debugPrint('Không đọc được tim buổi live: $error');
+      return;
+    }
+    final hearts = next.value;
+    final myUid = ref.read(firebaseUserProvider).value?.uid;
+    if (hearts == null || myUid == null || !mounted) return;
+    final uids = newHeartUids(previous, hearts, myUid: myUid);
+    if (uids.isEmpty) return;
+    final members = ref.read(membersProvider).value ?? const <MemberProfile>[];
+    final first =
+        members.where((member) => member.uid == uids.first).firstOrNull
+            ?.displayName ??
+        'Một người';
+    final text = uids.length == 1
+        ? '$first thả tim cho bạn'
+        : '$first và ${uids.length - 1} người nữa thả tim cho bạn';
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+          content: Row(
+            children: [
+              const Icon(Icons.favorite_rounded, color: RunNowDataColors.heart),
+              const SizedBox(width: 8),
+              Expanded(child: Text(text)),
+            ],
+          ),
+        ),
+      );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Giữ subscribe cấu hình tracking từ DB để lúc bấm Bắt đầu đã có giá trị mới
     // nhất (appConfig/tracking) thay vì mặc định.
     ref.watch(trackingConfigProvider);
+    final liveId = _liveEnabled ? _session?.id : null;
+    if (liveId != null) {
+      // Giữ danh sách thành viên để toast có tên, không rebuild màn này.
+      ref.listen(membersProvider, (_, _) {});
+      ref.listen(
+        heartsProvider(liveHeartTarget(liveId)),
+        (previous, next) => _toastNewHearts(previous?.value, next),
+      );
+    }
     final snapshot = _snapshot;
     final isPublic =
         ref.watch(userProfileProvider).value?.visibility ==

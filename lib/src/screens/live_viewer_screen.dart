@@ -4,11 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:myrun/src/formatters.dart';
+import 'package:myrun/src/hearts.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
+import 'package:myrun/src/widgets/heart_button.dart';
 import 'package:myrun/src/widgets/live_bits.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
 import 'package:myrun/src/widgets/map_tiles.dart';
@@ -273,6 +275,7 @@ class _LiveSheet extends ConsumerWidget {
     ).colorScheme.onSurface.withValues(alpha: 0.55);
     final contractId = session.contractId;
     final note = _statusNote(session, DateTime.now());
+    final heart = liveHeartTarget(session.id);
     return DecoratedBox(
       decoration: BoxDecoration(
         color: palette.background.withValues(alpha: 0.9),
@@ -292,26 +295,36 @@ class _LiveSheet extends ConsumerWidget {
               ),
               const SizedBox(height: 6),
             ],
-            Text.rich(
-              TextSpan(
-                children: [
-                  TextSpan(
-                    text: (session.distanceMeters / 1000).toStringAsFixed(2),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: (session.distanceMeters / 1000).toStringAsFixed(
+                            2,
+                          ),
+                        ),
+                        TextSpan(
+                          text: ' km',
+                          style: TextStyle(fontSize: 24, color: muted),
+                        ),
+                      ],
+                    ),
+                    style: const TextStyle(
+                      fontFamily: 'Barlow Condensed',
+                      fontSize: 68,
+                      height: 0.95,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -1,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
                   ),
-                  TextSpan(
-                    text: ' km',
-                    style: TextStyle(fontSize: 24, color: muted),
-                  ),
-                ],
-              ),
-              style: const TextStyle(
-                fontFamily: 'Barlow Condensed',
-                fontSize: 68,
-                height: 0.95,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -1,
-                fontFeatures: [FontFeature.tabularFigures()],
-              ),
+                ),
+                HeartButton(target: heart, canUnlike: false, size: 30),
+              ],
             ),
             const SizedBox(height: 14),
             Row(
@@ -344,6 +357,10 @@ class _LiveSheet extends ConsumerWidget {
             ),
             if (contractId != null)
               _ContractChip(contractId: contractId, session: session),
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: HeartCheerers(target: heart),
+            ),
           ],
         ),
       ),

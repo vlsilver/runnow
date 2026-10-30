@@ -12,6 +12,7 @@ import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
+import 'package:myrun/src/hearts.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
@@ -19,6 +20,7 @@ import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_overview.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/heart_button.dart';
 import 'package:myrun/src/widgets/photo_viewer.dart';
 import 'package:myrun/src/widgets/route_map.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
@@ -67,6 +69,10 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
               .value
               ?.where((member) => member.uid == ownerUid)
               .firstOrNull;
+    final heartOwner = ownerUid ?? ref.watch(firebaseUserProvider).value?.uid;
+    final heart = heartOwner == null
+        ? null
+        : runHeartTarget(heartOwner, widget.activityId);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chi tiết hoạt động'),
@@ -129,6 +135,22 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                           ),
                         ),
                       ActivityOverview(detail: item, owner: owner),
+                      if (heart != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(10, 8, 16, 0),
+                          child: Row(
+                            children: [
+                              HeartButton(target: heart),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: HeartCheerers(
+                                  target: heart,
+                                  label: 'thả tim',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       if (widget.ownerUid == null &&
                           hasRunCard(item.summary)) ...[
                         const SizedBox(height: 12),
