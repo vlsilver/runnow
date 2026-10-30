@@ -594,8 +594,6 @@ final memberProfileProvider = StreamProvider.autoDispose
       return ref.watch(memberRepositoryProvider).watchMember(uid);
     });
 
-const _clubActivityLogPerMemberLimit = 20;
-const _clubActivityLogConcurrency = 4;
 const _memberDashboardActivityLimit = 30;
 
 final memberActivitiesProvider = StreamProvider.autoDispose
@@ -612,62 +610,9 @@ final memberActivityDetailProvider = FutureProvider.autoDispose
           .getMemberActivityDetail(request.uid, request.activityId);
     });
 
-final clubActivityLogProvider =
-    FutureProvider.autoDispose<List<ClubActivityLogItem>>((ref) async {
-      final cacheLink = ref.keepAlive();
-      final cacheTimer = Timer(const Duration(minutes: 2), cacheLink.close);
-      ref.onDispose(cacheTimer.cancel);
-      final repository = ref.watch(memberRepositoryProvider);
-      final members = await ref.watch(membersProvider.future);
-      final publicMembers = members.where((member) => member.isPublic).toList();
-      if (publicMembers.isEmpty) return const <ClubActivityLogItem>[];
-      final activitiesByMember = <String, List<ActivitySummary>>{};
-      for (
-        var offset = 0;
-        offset < publicMembers.length;
-        offset += _clubActivityLogConcurrency
-      ) {
-        final batch = publicMembers
-            .skip(offset)
-            .take(_clubActivityLogConcurrency);
-        final results = await Future.wait([
-          for (final member in batch)
-            repository
-                .listMemberActivities(
-                  member.uid,
-                  limit: _clubActivityLogPerMemberLimit,
-                )
-                .then((activities) => (member.uid, activities))
-                .catchError((_) => (member.uid, const <ActivitySummary>[])),
-        ]);
-        for (final result in results) {
-          activitiesByMember[result.$1] = result.$2;
-        }
-      }
-      final items = <ClubActivityLogItem>[];
-      for (final member in publicMembers) {
-        for (final activity
-            in activitiesByMember[member.uid] ?? const <ActivitySummary>[]) {
-          items.add(ClubActivityLogItem(member: member, activity: activity));
-        }
-      }
-      items.sort(
-        (left, right) =>
-            right.activity.startedAt.compareTo(left.activity.startedAt),
-      );
-      return items;
-    });
-
 final trainingGoalsProvider = StreamProvider<TrainingGoals>(
   (ref) => ref.watch(trainingGoalRepositoryProvider).watchGoals(),
 );
-
-class ClubActivityLogItem {
-  const ClubActivityLogItem({required this.member, required this.activity});
-
-  final MemberProfile member;
-  final ActivitySummary activity;
-}
 
 /// Các buổi chạy đã được ghi nhận (đếm vào tiến độ) của MỌI người tham gia
 /// 1 kèo — không chỉ của riêng user hiện tại. Chỉ đọc được hoạt động của
