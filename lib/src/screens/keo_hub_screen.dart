@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/achievements/club_card_widgets.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
+import 'package:myrun/src/club_ranking.dart';
 import 'package:myrun/src/club_runs.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_models.dart';
@@ -27,8 +28,8 @@ import 'package:myrun/src/widgets/live_bits.dart';
 import 'package:myrun/src/widgets/live_map_preview.dart';
 import 'package:myrun/src/widgets/hub_scene.dart';
 
-/// Trang đầu của app: ai trong club đang chạy, các kèo đang diễn ra, thẻ vừa
-/// khoe, rồi các buổi chạy gần đây. Mục nào rỗng thì ẩn, riêng Kèo và Thẻ rỗng
+/// Trang đầu của app: ai trong club đang chạy, các kèo đang diễn ra, ai dẫn
+/// BXH tuần, thẻ vừa khoe, rồi các buổi chạy gần đây. Mục nào rỗng thì ẩn, riêng Kèo và Thẻ rỗng
 /// thì còn một dòng mời đặt kèo, khoe thẻ.
 class KeoHubScreen extends ConsumerWidget {
   const KeoHubScreen({super.key});
@@ -45,6 +46,7 @@ class KeoHubScreen extends ConsumerWidget {
             ref.invalidate(hubClubContractsProvider);
             ref.invalidate(gameListProvider);
             ref.invalidate(hubClubRunsProvider);
+            ref.invalidate(stepLeaderboardDocsProvider);
             await ref
                 .read(hubClubContractsProvider.future)
                 .catchError(
@@ -73,6 +75,7 @@ class KeoHubScreen extends ConsumerWidget {
               ),
               const _LiveSection(),
               const _KeoSection(),
+              const _RankSection(),
               const _CardsSection(),
               const _RunsSection(),
             ],
@@ -717,6 +720,234 @@ class _InviteRow extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------- bits
+
+// ---------------------------------------------------------------- BXH TUẦN
+
+/// Ba người dẫn BXH Chạy/Đi bộ tuần này và hạng của mình. Đọc chung bảng với
+/// tab Club (đã tải sẵn lúc mở app). Tuần chưa ai có km thì ẩn.
+class _RankSection extends ConsumerWidget {
+  const _RankSection();
+
+  static const _sport = ClubRankingSport.run;
+  static const _range = ClubRankingRange.currentWeek;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final board = ref.watch(totalKmLeaderboardProvider);
+    if (board.error case final error?) {
+      debugPrint('Không tải được BXH tuần: $error');
+      return _RetryRow(
+        label: 'Không tải được bảng xếp hạng. Chạm để thử lại.',
+        onTap: () => ref.invalidate(stepLeaderboardDocsProvider),
+      );
+    }
+    final entries = board.value ?? const <LeaderboardEntry>[];
+    final ranked = rankClubMembers(entries, _sport, _range);
+    if (ranked.isEmpty) return const SizedBox.shrink();
+    final uid = ref.watch(firebaseUserProvider).value?.uid;
+    final myIndex = ranked.indexWhere((member) => member.entry.uid == uid);
+    final private = entries.any((e) => e.uid == uid && !e.isPublic);
+    void open() {
+      ref.read(clubRankingSportProvider.notifier).state = _sport;
+      ref.read(clubRankingRangeProvider.notifier).state = _range;
+      StatefulNavigationShell.of(context).goBranch(1);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        HubSectionHeader(title: 'BXH tuần', onMore: open),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Material(
+            color: context.runNowPalette.tint,
+            borderRadius: BorderRadius.circular(26),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: open,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 16, 12, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _Podium(top: ranked.take(3).toList()),
+                    const SizedBox(height: 14),
+                    _MyRankLine(
+                      me: myIndex < 0 ? null : ranked[myIndex],
+                      gap: myIndex < 0
+                          ? null
+                          : clubRankingGapLabel(ranked, myIndex, _sport),
+                      private: private,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Bục nhận giải: hạng 2 bên trái, hạng 1 giữa và cao nhất, hạng 3 bên phải.
+class _Podium extends StatelessWidget {
+  const _Podium({required this.top});
+
+  final List<ClubRankedMember> top;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget place(int index) => Expanded(
+      child: index < top.length
+          ? _PodiumPlace(member: top[index], place: index + 1)
+          : const SizedBox.shrink(),
+    );
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [place(1), place(0), place(2)],
+    );
+  }
+}
+
+class _PodiumPlace extends StatelessWidget {
+  const _PodiumPlace({required this.member, required this.place});
+
+  final ClubRankedMember member;
+
+  /// Chỗ đứng trên bục (1–3), quyết định cỡ avatar và độ cao bục. Hạng in
+  /// trên bục là [ClubRankedMember.rank], bằng điểm thì chung hạng.
+  final int place;
+
+  @override
+  Widget build(BuildContext context) {
+    final light = Theme.of(context).brightness == Brightness.light;
+    final medal = (light
+        ? RunNowRankColors.light
+        : RunNowRankColors.dark)[place - 1];
+    final entry = member.entry;
+    final avatar = place == 1 ? 58.0 : 46.0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(shape: BoxShape.circle, color: medal),
+            child: Padding(
+              padding: const EdgeInsets.all(2.5),
+              child: _Avatar(
+                url: entry.avatarUrl,
+                name: entry.displayName,
+                size: avatar,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            entry.displayName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+          ),
+          _BigNumber(
+            value: (member.score / 1000).toStringAsFixed(1),
+            unit: 'km',
+            size: place == 1 ? 24 : 20,
+          ),
+          const SizedBox(height: 6),
+          Container(
+            height: switch (place) {
+              1 => 34.0,
+              2 => 24.0,
+              _ => 16.0,
+            },
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: medal.withValues(alpha: 0.85),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(10),
+              ),
+            ),
+            child: Text(
+              '${member.rank}',
+              style: TextStyle(
+                fontFamily: 'Barlow Condensed',
+                fontSize: place == 1 ? 20 : 15,
+                height: 1,
+                fontWeight: FontWeight.w800,
+                color: _onColor(medal),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Dòng dưới bục: hạng của mình và còn bao xa để lên hạng.
+class _MyRankLine extends StatelessWidget {
+  const _MyRankLine({
+    required this.me,
+    required this.gap,
+    required this.private,
+  });
+
+  final ClubRankedMember? me;
+  final String? gap;
+
+  /// Hồ sơ riêng tư thì không lên BXH, nói rõ để không tưởng là thiếu km.
+  final bool private;
+
+  @override
+  Widget build(BuildContext context) {
+    final me = this.me;
+    final palette = context.runNowPalette;
+    if (me == null) {
+      return _MutedLine(
+        private
+            ? 'Hồ sơ của bạn đang riêng tư nên không lên BXH.'
+            : 'Tuần này bạn chưa có km nào. Chạy một buổi để lên bảng.',
+      );
+    }
+    return _GlassPill(
+      radius: 16,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Row(
+        children: [
+          Text(
+            '#${me.rank}',
+            style: TextStyle(
+              fontFamily: 'Barlow Condensed',
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: palette.accent,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Bạn',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                if (gap case final gap?) _MutedLine(gap),
+              ],
+            ),
+          ),
+          _BigNumber(
+            value: (me.score / 1000).toStringAsFixed(1),
+            unit: 'km',
+            size: 24,
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 // ---------------------------------------------------------------- BUỔI CHẠY
 
