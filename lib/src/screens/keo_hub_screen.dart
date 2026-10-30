@@ -800,8 +800,8 @@ class _CardsSection extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: _InviteRow(
-              title: 'Khoe thẻ của bạn',
-              subtitle: 'mở Bộ thẻ, bật Khoe với club',
+              title: 'Chưa ai có thẻ mới',
+              subtitle: 'chạy xong lật thẻ, thẻ tự lên đây',
               icon: Icons.style_rounded,
               onTap: () => context.go('/me/cards'),
             ),

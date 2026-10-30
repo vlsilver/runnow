@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/card_share.dart';
-import 'package:myrun/src/achievements/club_share_switch.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_player_card.dart';
@@ -44,15 +43,6 @@ Future<void> showGameCardViewer(
           ? 'Chỉ người phe thắng mới giữ và khoe được thẻ ván này.'
           : 'Thẻ chỉ khoe được khi ván kết thúc và phe bạn thắng.',
     ),
-    // Backend chỉ có thẻ khi ván kết thúc và mình phe thắng; ván thử không
-    // lên club.
-    footer: card.owned && card.ended && !card.testMode
-        ? ClubShareSwitch.kept(
-            kind: 'game',
-            id: card.gameId,
-            offHint: 'Club sẽ thấy cả vai của bạn trong ván này.',
-          )
-        : null,
   );
 }
 
@@ -66,7 +56,6 @@ Future<void> showCardViewer(
   bool hideWhenInactive = false,
   Future<void> Function(GlobalKey cardKey, BuildContext origin)? onShare,
   Widget? locked,
-  Widget? footer,
   bool startBack = false,
 }) {
   return Navigator.of(context).push(
@@ -83,7 +72,6 @@ Future<void> showCardViewer(
           hideWhenInactive: hideWhenInactive,
           onShare: onShare,
           locked: locked,
-          footer: footer,
           startBack: startBack,
         ),
       ),
@@ -103,7 +91,6 @@ class GameCardViewer extends StatefulWidget {
     this.hideWhenInactive = false,
     this.onShare,
     this.locked,
-    this.footer,
     this.startBack = false,
   });
 
@@ -120,9 +107,6 @@ class GameCardViewer extends StatefulWidget {
   /// Null thì không có nút khoe; khi đó hiện [locked] nếu có.
   final Future<void> Function(GlobalKey cardKey, BuildContext origin)? onShare;
   final Widget? locked;
-
-  /// Nằm dưới nút khoe, vd công tắc khoe với club.
-  final Widget? footer;
 
   /// Mở lá đang úp để người xem tự chạm lật.
   final bool startBack;
@@ -252,15 +236,9 @@ class _GameCardViewerState extends State<GameCardViewer>
               const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    widget.onShare != null
-                        ? _shareButton()
-                        : widget.locked ?? const SizedBox.shrink(),
-                    ?widget.footer,
-                  ],
-                ),
+                child: widget.onShare != null
+                    ? _shareButton()
+                    : widget.locked ?? const SizedBox.shrink(),
               ),
             ],
           ),

@@ -2,7 +2,6 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/card_share.dart';
-import 'package:myrun/src/achievements/club_share_switch.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
@@ -180,11 +179,6 @@ Future<void> showJourneyCardViewer(
       data: data,
     );
   },
-  footer: ClubShareSwitch.kept(
-    kind: 'journey',
-    id: card.campaign,
-    offHint: 'Club sẽ thấy thẻ này ở trang Kèo.',
-  ),
 );
 
 /// Lá chặng nằm úp, rộng [width]; chạm để mở màn lật thẻ.

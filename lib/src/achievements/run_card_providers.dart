@@ -76,16 +76,6 @@ final clubCardsProvider = StreamProvider.autoDispose<List<ClubCard>>((ref) {
       );
 });
 
-/// Thẻ [key] của mình có đang khoe với club không; [key] như [ClubCard.key].
-final cardSharedProvider = StreamProvider.autoDispose.family<bool, String>((
-  ref,
-  key,
-) {
-  final uid = ref.watch(firebaseUserProvider.select((user) => user.value?.uid));
-  if (uid == null) return Stream.value(false);
-  return _clubCards.doc('${uid}_$key').snapshots().map((doc) => doc.exists);
-});
-
 /// Tỉ lệ sẽ quay, hoặc lý do buổi này không lật được. Chỉ đọc khi chưa có thẻ.
 final runCardViewProvider = FutureProvider.autoDispose
     .family<RunCardView, String>(

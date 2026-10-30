@@ -9,7 +9,6 @@ import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
 import 'package:myrun/src/achievements/card_share.dart';
-import 'package:myrun/src/achievements/club_share_switch.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/models.dart';
@@ -230,13 +229,6 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
             style: TextStyle(color: muted, fontSize: 12),
           ),
         ],
-        const SizedBox(height: 10),
-        ClubShareSwitch(
-          clubKey: _id,
-          share: (api) => api.shareRunCard(_id),
-          unshare: (api) => api.unshareRunCard(_id),
-          offHint: 'Không kèm đường chạy và nhịp tim.',
-        ),
       ],
     );
   }

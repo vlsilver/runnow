@@ -627,26 +627,6 @@ class RunNowApiClient {
     return _runCard(response);
   }
 
-  /// Khoe thẻ với club. Khoe lại thì backend giữ giờ khoe đầu.
-  Future<void> shareRunCard(String activityId) =>
-      _send('POST', '${_runCardPath(activityId)}/share');
-
-  /// Thôi khoe thẻ; chưa khoe cũng không lỗi.
-  Future<void> unshareRunCard(String activityId) =>
-      _send('DELETE', '${_runCardPath(activityId)}/share');
-
-  /// Khoe thẻ Ma Sói ([kind] `game`, [id] là gameId) hay Hành trình (`journey`,
-  /// campaign) với club.
-  Future<void> shareKeptCard(String kind, String id) =>
-      _send('POST', _keptCardSharePath(kind, id));
-
-  /// Thôi khoe thẻ Ma Sói hay Hành trình; chưa khoe cũng không lỗi.
-  Future<void> unshareKeptCard(String kind, String id) =>
-      _send('DELETE', _keptCardSharePath(kind, id));
-
-  String _keptCardSharePath(String kind, String id) =>
-      '/v1/cards/${Uri.encodeComponent(kind)}/${Uri.encodeComponent(id)}/share';
-
   /// Các phong cách vẽ đang bật cho thẻ buổi chạy.
   Future<ArtStyleList> getRunCardStyles() async {
     final response = await _send('GET', '/v1/art-styles?kind=run');
