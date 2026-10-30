@@ -23,7 +23,7 @@ import 'package:myrun/src/training_plan/training_plan_repository.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/club_run_row.dart';
 import 'package:myrun/src/widgets/live_bits.dart';
-import 'package:myrun/src/widgets/tinted_card.dart';
+import 'package:myrun/src/widgets/hub_scene.dart';
 
 /// Trang đầu của app: ai trong club đang chạy, các kèo đang diễn ra, thẻ vừa
 /// khoe, rồi các buổi chạy gần đây. Mục nào rỗng thì ẩn, riêng Kèo và Thẻ rỗng
@@ -434,14 +434,13 @@ List<RunContract> _mergeActive(
 }
 
 /// Thẻ đứng ở hàng Kèo. Thẻ có [gradient] riêng (Ma Sói) thì vẽ nền đó, còn
-/// lại nền nhuốm màu [tint] với [icon] chìm.
+/// lại vẽ tranh [scene].
 class _MiniCard extends StatelessWidget {
   const _MiniCard({
     required this.child,
     required this.onTap,
     this.gradient,
-    this.tint,
-    this.icon,
+    this.scene = HubScene.road,
   });
 
   static const width = 140.0;
@@ -450,8 +449,7 @@ class _MiniCard extends StatelessWidget {
   final Widget child;
   final VoidCallback onTap;
   final Gradient? gradient;
-  final Color? tint;
-  final IconData? icon;
+  final HubScene scene;
 
   @override
   Widget build(BuildContext context) {
@@ -461,9 +459,8 @@ class _MiniCard extends StatelessWidget {
       width: width,
       height: height,
       child: gradient == null
-          ? TintedCard(
-              tint: tint ?? context.runNowPalette.accent,
-              icon: icon,
+          ? HubSceneCard(
+              scene: scene,
               onTap: onTap,
               padding: padding,
               child: child,
@@ -499,8 +496,7 @@ class _ContractMiniCard extends StatelessWidget {
     final joined = contract.participantFor(currentUid) != null;
     return _MiniCard(
       onTap: () => context.push('/contracts/${contract.id}'),
-      tint: color,
-      icon: Icons.flag_rounded,
+      scene: _contractScene(contract.metric),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -534,6 +530,14 @@ class _ContractMiniCard extends StatelessWidget {
   }
 }
 
+HubScene _contractScene(RunContractMetric metric) => switch (metric) {
+  RunContractMetric.distance => HubScene.road,
+  RunContractMetric.activeDays => HubScene.sunrise,
+  RunContractMetric.activityCount => HubScene.city,
+  RunContractMetric.longestRun => HubScene.summit,
+  RunContractMetric.routeCompletion => HubScene.map,
+};
+
 class _CoachMiniCard extends StatelessWidget {
   const _CoachMiniCard({required this.plan, required this.onTap});
 
@@ -547,8 +551,7 @@ class _CoachMiniCard extends StatelessWidget {
     final color = context.runNowPalette.secondary;
     return _MiniCard(
       onTap: onTap,
-      tint: color,
-      icon: Icons.event_note_rounded,
+      scene: HubScene.track,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -861,7 +864,7 @@ class _Ring extends StatelessWidget {
             strokeWidth: 7,
             strokeCap: StrokeCap.round,
             color: color,
-            backgroundColor: onSurface.withValues(alpha: 0.08),
+            backgroundColor: onSurface.withValues(alpha: 0.2),
           ),
           Center(
             child: Text(

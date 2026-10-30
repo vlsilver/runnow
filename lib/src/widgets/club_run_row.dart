@@ -11,7 +11,7 @@ import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_overview.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/heart_button.dart';
-import 'package:myrun/src/widgets/tinted_card.dart';
+import 'package:myrun/src/widgets/hub_scene.dart';
 
 const _runKinds = {
   ActivityKind.run,
@@ -57,12 +57,9 @@ class ClubRunCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final who = _who(ref, item);
     final activity = item.activity;
-    final muted = Theme.of(
-      context,
-    ).colorScheme.onSurface.withValues(alpha: 0.55);
-    return TintedCard(
-      tint: context.runNowPalette.accent,
-      icon: Icons.directions_run_rounded,
+    final muted = RunNowHubSceneTokens.ink.withValues(alpha: 0.7);
+    return HubSceneCard(
+      scene: HubScene.forRunAt(activity.startedAt),
       onTap: () => context.push(who.path),
       padding: const EdgeInsets.fromLTRB(14, 12, 4, 14),
       child: Column(

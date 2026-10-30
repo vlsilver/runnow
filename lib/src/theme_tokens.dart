@@ -662,3 +662,136 @@ class RunNowCardSceneTokens {
     Color(0xFFFF9FD8),
   ];
 }
+
+/// Tranh nền thẻ nhỏ ở trang Kèo, vẽ bằng code: mỗi loại kèo một cảnh, giáo
+/// án là sân điền kinh, buổi chạy là bầu trời theo giờ chạy. Cảnh nào cũng
+/// tối để chữ sáng đọc được ở cả hai theme.
+class RunNowHubSceneTokens {
+  const RunNowHubSceneTokens._();
+
+  static const ink = RunNowGameTokens.nightInk;
+  static const shade = Color(0xFF000000);
+  static const star = Color(0xFFE6ECFF);
+  static const window = Color(0xFFFFD27A);
+
+  // Cự ly: con đường về chân trời lúc hoàng hôn.
+  static const roadSky = [
+    Color(0xFF2B1B4A),
+    Color(0xFF7A3A6B),
+    Color(0xFFE0785A),
+    Color(0xFFF6B26B),
+  ];
+  static const roadSun = Color(0xFFFFE3A3);
+  static const roadSunGlow = Color(0x80FFB46B);
+  static const roadRange = Color(0xFF4A2A52);
+  static const roadGround = Color(0xFF1E1424);
+  static const roadAsphalt = Color(0xFF2E2536);
+  static const roadLine = Color(0xFFF6D58E);
+
+  // Số ngày chạy: mặt trời mọc trên đồi.
+  static const sunriseSky = [
+    Color(0xFF1F4E6B),
+    Color(0xFF4F8FA6),
+    Color(0xFFF2B48A),
+    Color(0xFFF9D58B),
+  ];
+  static const sunriseSun = Color(0xFFFFF1C1);
+  static const sunriseGlow = Color(0x99FFD27A);
+  static const sunriseRay = Color(0x26FFF1C1);
+  static const sunriseHills = [
+    Color(0xFF5C8A5A),
+    Color(0xFF3F6E46),
+    Color(0xFF24452E),
+  ];
+
+  // Số buổi: phố đêm lên đèn.
+  static const citySky = [
+    Color(0xFF0B1030),
+    Color(0xFF1E2457),
+    Color(0xFF3B2F6E),
+  ];
+  static const cityBack = Color(0xFF1C2250);
+  static const cityFront = Color(0xFF0C1028);
+  static const cityMoon = Color(0xFFF6F3E4);
+  static const cityMoonRim = Color(0xFFC9CDD9);
+  static const cityMoonGlow = Color(0x59C8D7FF);
+
+  // Buổi dài nhất: đỉnh núi cắm cờ.
+  static const summitSky = [
+    Color(0xFF14102E),
+    Color(0xFF3A2A6A),
+    Color(0xFF6E5AA8),
+  ];
+  static const summitRange = Color(0xFF2C2558);
+  static const summitPeak = Color(0xFF1B1640);
+  static const summitSnow = Color(0xFFE8ECFF);
+  static const summitFlag = Color(0xFFFF5A4A);
+
+  // Hoàn thành tuyến: bản đồ đường đồng mức.
+  static const mapTop = Color(0xFF0E3B3F);
+  static const mapBottom = Color(0xFF082528);
+  static const mapContour = Color(0x592E9A90);
+  static const mapRoute = Color(0xFFFFD27A);
+  static const mapPin = Color(0xFFFF5A4A);
+
+  // Giáo án: sân điền kinh dưới đèn.
+  static const trackSky = [Color(0xFF0C1A33), Color(0xFF1B3557)];
+  static const trackLight = Color(0x66CFE8FF);
+  static const trackStands = Color(0xFF0A1424);
+  static const trackField = Color(0xFF1F5A3A);
+  static const trackLane = Color(0xFFB2553A);
+  static const trackLine = Color(0xCCFFFFFF);
+
+  // Buổi chạy theo giờ: rạng sáng, ban ngày, hoàng hôn, đêm.
+  static const dawnSky = [
+    Color(0xFF3A2E5C),
+    Color(0xFF9A6A9E),
+    Color(0xFFF1A38A),
+    Color(0xFFFBD3A0),
+  ];
+  static const dawnSun = Color(0xFFFFE9C4);
+  static const dawnGlow = Color(0x80FFC18A);
+  static const dawnFog = Color(0x40FFE2D0);
+  static const dawnHills = [Color(0xFF6B5A86), Color(0xFF4A3D66)];
+  static const dawnPines = Color(0xFF2E2546);
+
+  static const daySky = [
+    Color(0xFF1E5FA8),
+    Color(0xFF3D8BD6),
+    Color(0xFF8CC4EC),
+  ];
+  static const daySun = Color(0xFFFFF6D6);
+  static const dayGlow = Color(0x80FFF3B0);
+  static const dayCloud = Color(0xD9FFFFFF);
+  static const dayHills = [
+    Color(0xFF6FA866),
+    Color(0xFF4C8A4C),
+    Color(0xFF2F6638),
+  ];
+  static const dayTrail = Color(0x99F4E3C2);
+
+  static const duskSky = [
+    Color(0xFF2A1E4E),
+    Color(0xFF8A3B6E),
+    Color(0xFFE96A4C),
+    Color(0xFFF6A85A),
+  ];
+  static const duskSun = Color(0xFFFFD08A);
+  static const duskGlow = Color(0x80FF8A4A);
+  static const duskHills = [
+    Color(0xFF5A2E52),
+    Color(0xFF3A1E3C),
+    Color(0xFF22142A),
+  ];
+
+  static const nightSky = [
+    Color(0xFF060B1E),
+    Color(0xFF13204A),
+    Color(0xFF1C2C58),
+  ];
+  static const nightHills = [
+    Color(0xFF16224A),
+    Color(0xFF0E1834),
+    Color(0xFF080E22),
+  ];
+}
