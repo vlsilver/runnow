@@ -26,6 +26,7 @@ import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/club_run_row.dart';
 import 'package:myrun/src/widgets/live_bits.dart';
 import 'package:myrun/src/widgets/live_map_preview.dart';
+import 'package:myrun/src/widgets/rank_road.dart';
 import 'package:myrun/src/widgets/hub_scene.dart';
 
 /// Trang đầu của app: ai trong club đang chạy, các kèo đang diễn ra, ai dẫn
@@ -723,7 +724,7 @@ class _InviteRow extends StatelessWidget {
 
 // ---------------------------------------------------------------- BXH TUẦN
 
-/// Ba người dẫn BXH Chạy/Đi bộ tuần này và hạng của mình. Đọc chung bảng với
+/// Top 10 BXH Chạy/Đi bộ tuần này trên đường đua và hạng của mình. Đọc chung bảng với
 /// tab Club (đã tải sẵn lúc mở app). Tuần chưa ai có km thì ẩn.
 class _RankSection extends ConsumerWidget {
   const _RankSection();
@@ -770,7 +771,7 @@ class _RankSection extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _Podium(top: ranked.take(3).toList()),
+                    RankRoad(ranked: ranked, myUid: uid),
                     const SizedBox(height: 14),
                     _MyRankLine(
                       me: myIndex < 0 ? null : ranked[myIndex],
@@ -790,103 +791,7 @@ class _RankSection extends ConsumerWidget {
   }
 }
 
-/// Bục nhận giải: hạng 2 bên trái, hạng 1 giữa và cao nhất, hạng 3 bên phải.
-class _Podium extends StatelessWidget {
-  const _Podium({required this.top});
-
-  final List<ClubRankedMember> top;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget place(int index) => Expanded(
-      child: index < top.length
-          ? _PodiumPlace(member: top[index], place: index + 1)
-          : const SizedBox.shrink(),
-    );
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [place(1), place(0), place(2)],
-    );
-  }
-}
-
-class _PodiumPlace extends StatelessWidget {
-  const _PodiumPlace({required this.member, required this.place});
-
-  final ClubRankedMember member;
-
-  /// Chỗ đứng trên bục (1–3), quyết định cỡ avatar và độ cao bục. Hạng in
-  /// trên bục là [ClubRankedMember.rank], bằng điểm thì chung hạng.
-  final int place;
-
-  @override
-  Widget build(BuildContext context) {
-    final light = Theme.of(context).brightness == Brightness.light;
-    final medal = (light
-        ? RunNowRankColors.light
-        : RunNowRankColors.dark)[place - 1];
-    final entry = member.entry;
-    final avatar = place == 1 ? 58.0 : 46.0;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Column(
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(shape: BoxShape.circle, color: medal),
-            child: Padding(
-              padding: const EdgeInsets.all(2.5),
-              child: _Avatar(
-                url: entry.avatarUrl,
-                name: entry.displayName,
-                size: avatar,
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            entry.displayName,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-          ),
-          _BigNumber(
-            value: (member.score / 1000).toStringAsFixed(1),
-            unit: 'km',
-            size: place == 1 ? 24 : 20,
-          ),
-          const SizedBox(height: 6),
-          Container(
-            height: switch (place) {
-              1 => 34.0,
-              2 => 24.0,
-              _ => 16.0,
-            },
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: medal.withValues(alpha: 0.85),
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(10),
-              ),
-            ),
-            child: Text(
-              '${member.rank}',
-              style: TextStyle(
-                fontFamily: 'Barlow Condensed',
-                fontSize: place == 1 ? 20 : 15,
-                height: 1,
-                fontWeight: FontWeight.w800,
-                color: _onColor(medal),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Dòng dưới bục: hạng của mình và còn bao xa để lên hạng.
+/// Dòng dưới đường đua: hạng của mình và còn bao xa để lên hạng.
 class _MyRankLine extends StatelessWidget {
   const _MyRankLine({
     required this.me,
