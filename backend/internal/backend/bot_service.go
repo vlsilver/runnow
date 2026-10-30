@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -457,6 +458,10 @@ func (s *BotService) toolDeclarations(canPostToGroup bool) []*genai.Tool {
 		if canPostToGroup {
 			decls = append(decls, botForgetMyFactDecl)
 		}
+	}
+	// Không có client ảnh (BOT_IMAGES tắt) thì không mời model vẽ.
+	if s.imageGenai == nil {
+		decls = slices.DeleteFunc(decls, func(d *genai.FunctionDeclaration) bool { return d.Name == "generate_image" })
 	}
 	return []*genai.Tool{{FunctionDeclarations: decls}}
 }
@@ -1560,7 +1565,11 @@ func (s *BotService) HandleMessage(ctx context.Context, chatID string, threadID 
 		currentText = label + ": " + question
 	}
 	if hasImage {
-		currentText += "\n[Người này ĐÍNH KÈM 1 ẢNH và bạn NHÌN THẤY nó. Nếu ảnh có số liệu chạy (màn đồng hồ Garmin/Coros, ảnh chụp Strava, bib số báo danh, huy chương, biểu đồ pace/nhịp tim) thì ĐỌC số trong ảnh rồi phản ứng theo đúng chất của bạn — dùng ĐÚNG số đọc được, đừng bịa; số nào không rõ thì nói không rõ. Nếu họ nhờ vẽ/chế/vẽ-lại thì gọi generate_image (ảnh này làm tham chiếu).]"
+		currentText += "\n[Người này ĐÍNH KÈM 1 ẢNH và bạn NHÌN THẤY nó. Nếu ảnh có số liệu chạy (màn đồng hồ Garmin/Coros, ảnh chụp Strava, bib số báo danh, huy chương, biểu đồ pace/nhịp tim) thì ĐỌC số trong ảnh rồi phản ứng theo đúng chất của bạn — dùng ĐÚNG số đọc được, đừng bịa; số nào không rõ thì nói không rõ."
+		if s.imageGenai != nil {
+			currentText += " Nếu họ nhờ vẽ/chế/vẽ-lại thì gọi generate_image (ảnh này làm tham chiếu)."
+		}
+		currentText += "]"
 	}
 	userParts := []*genai.Part{{Text: currentText}}
 	if hasImage {

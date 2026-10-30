@@ -68,7 +68,14 @@ func (s *memImageStore) Get(_ context.Context, path string) ([]byte, error) {
 func (e *agentEnv) enableImages() (*fakeImageLLM, *memImageStore) {
 	gen, store := &fakeImageLLM{}, &memImageStore{files: map[string][]byte{}}
 	e.brain.SetImages(gen, store)
+	e.imagesOn()
 	return gen, store
+}
+
+// imagesOn bật BOT_IMAGES ở api, như prod đặt cùng một env cho api và bot.
+func (e *agentEnv) imagesOn() {
+	e.cfg.BotImages = true
+	e.srv = NewAPIServer(e.cfg, e.deps)
 }
 
 // seedRunKm cho uid một buổi chạy km sáng nay.
@@ -409,11 +416,15 @@ func TestEmulatorAgentImageTelegramRoomPhoto(t *testing.T) {
 
 // GET me báo lượt vẽ ảnh hôm nay và mốc km kế tiếp, đọc cùng bộ đếm mà lượt vẽ
 // dùng để chặn. Api không dựng AgentService (không có Vertex AI), nên số này
-// chỉ đọc Firestore. Chưa tạo bot thì không có images.
+// chỉ đọc Firestore. BOT_IMAGES tắt hay chưa tạo bot thì không có images.
 func TestEmulatorAgentMeImages(t *testing.T) {
 	e := newAgentEnv(t)
 	e.deps.AgentBrain = nil
 	e.createBot("an", "Sóc", "")
+	if got := e.meToday("an")["images"]; got != nil {
+		t.Fatalf("BOT_IMAGES tắt mà có images: %v", got)
+	}
+	e.imagesOn()
 	if got := e.meToday("cuong")["images"]; got != nil {
 		t.Fatalf("chưa tạo bot mà có images: %v", got)
 	}

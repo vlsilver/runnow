@@ -55,6 +55,8 @@ func newMybotEnv(t *testing.T) *mybotEnv {
 	e.m.now = func() time.Time { return e.clock }
 	e.m.chatID = cfg.TelegramChatID
 	e.deps.ManagedBots = e.m
+	// Giữ cfg ở harness để lần dựng lại api sau (vd imagesOn) không mất cờ MyBot.
+	e.cfg = cfg
 	e.srv = NewAPIServer(cfg, e.deps)
 	e.brain.SetChannelReply(e.m.channelReply)
 	e.brain.SetRoomOut(e.m.roomOut)

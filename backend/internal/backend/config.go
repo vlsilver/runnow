@@ -68,7 +68,11 @@ type Config struct {
 	AgentTelegramBots bool
 	// BotGroupFacts cho 3i đọc trí nhớ về group club từ ký ức tự học thay cho
 	// tóm tắt botMemory. Chỉ "on" mới bật; tắt là quay về botMemory ngay.
-	BotGroupFacts  bool
+	BotGroupFacts bool
+	// BotImages bật vẽ ảnh khi chat của MyBot và 3i trong group. Chỉ "on" mới
+	// bật. Tắt thì hai bot không có tool vẽ và GET /v1/agents/me không trả lượt
+	// ảnh. Vẽ tranh thẻ buổi chạy không theo cờ này, nó có trần tiền riêng.
+	BotImages      bool
 	BotHourlyLimit int
 	// WebBaseURL là domain của app 3i Run bản web, không phải của API. Link
 	// chia sẻ trỏ về đây để mở đúng màn hình chi tiết trong app (hoặc bản
@@ -129,6 +133,7 @@ func LoadConfig() (Config, error) {
 	// 3i vì model cũ treo thì task học đổi theo, không bị bỏ lại trên model cũ.
 	c.AgentLearnModel = env("AGENT_LEARN_MODEL", c.GeminiModel)
 	c.BotGroupFacts = env("BOT_GROUP_FACTS", "") == "on"
+	c.BotImages = env("BOT_IMAGES", "") == "on"
 	if n, convErr := strconv.Atoi(env("BOT_HOURLY_LIMIT", "100")); convErr == nil && n > 0 {
 		c.BotHourlyLimit = n
 	} else {

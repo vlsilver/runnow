@@ -176,11 +176,13 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 				imageClient = nil
 			}
 			// Bot cá nhân vẽ ảnh bằng cùng model ảnh, qua trần chi phí của nó, và
-			// gửi ảnh từ Storage qua outbox của bot con; thiếu client hay bucket
-			// thì bot không có tool vẽ.
+			// gửi ảnh từ Storage qua outbox của bot con; thiếu client hay bucket,
+			// hoặc BOT_IMAGES tắt, thì bot không có tool vẽ.
 			if imageClient != nil && bucket != nil {
 				images := gcsImageStore{bucket: bucket}
-				d.AgentBrain.SetImages(budgetImageLLM{inner: genaiImageLLM{client: imageClient, model: geminiImageModel}, model: geminiImageModel, budget: budget}, images)
+				if config.BotImages {
+					d.AgentBrain.SetImages(budgetImageLLM{inner: genaiImageLLM{client: imageClient, model: geminiImageModel}, model: geminiImageModel, budget: budget}, images)
+				}
 				// Tranh thẻ buổi chạy có trần chi phí riêng, để bot cá nhân tiêu hết
 				// trần không chặn vẽ thẻ và ngược lại.
 				artModel := config.RunCardArtModel
@@ -190,7 +192,13 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 					d.ManagedBots.images = images
 				}
 			}
-			d.Bot = NewBotService(genaiClient, telegram, NewBotTools(db), db, config.GeminiModel, config.BotHourlyLimit, d.Memory, NewScheduleStore(db), imageClient, geminiImageModel, bucket)
+			// 3i không có client ảnh thì không vẽ, vẫn nhìn được ảnh người gửi
+			// qua model chat.
+			botImageClient := imageClient
+			if !config.BotImages {
+				botImageClient = nil
+			}
+			d.Bot = NewBotService(genaiClient, telegram, NewBotTools(db), db, config.GeminiModel, config.BotHourlyLimit, d.Memory, NewScheduleStore(db), botImageClient, geminiImageModel, bucket)
 			d.Bot.thinking = config.GeminiThinkingLevel
 			d.Bot.fallback = fallback
 			d.Bot.games = d.Games

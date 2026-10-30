@@ -23,7 +23,7 @@ func (s *Server) agentRoutes() {
 				return err
 			}
 		}
-		if me.Today != nil && me.Agent != nil && me.Agent.Created {
+		if s.config.BotImages && me.Today != nil && me.Agent != nil && me.Agent.Created {
 			if me.Today.Images, err = s.deps.Agents.ImagesToday(r.Context(), uid, s.now()); err != nil {
 				return err
 			}
