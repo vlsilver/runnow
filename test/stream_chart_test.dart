@@ -27,16 +27,15 @@ void main() {
       ),
     );
 
-    expect(find.text('Pace'), findsOneWidget);
+    // Mỗi loại số liệu một tab; chỉ biểu đồ của tab đang chọn hiện ra.
+    expect(find.text('Pace'), findsNWidgets(2));
     expect(find.text('Nhịp tim'), findsOneWidget);
     expect(find.text('Cao độ'), findsOneWidget);
     expect(find.text('Cadence'), findsOneWidget);
     expect(find.text('Năng lượng'), findsOneWidget);
     expect(find.text('PHÚT / KM'), findsOneWidget);
-    expect(find.text('BPM'), findsOneWidget);
-    expect(find.text('MÉT'), findsOneWidget);
-    expect(find.text('RPM'), findsOneWidget);
-    expect(find.text('KJ'), findsOneWidget);
+    expect(find.text('BPM'), findsNothing);
+    expect(find.text('KJ'), findsNothing);
     expect(find.byType(LineChart), findsNothing);
     expect(find.byType(BarChart), findsOneWidget);
 
@@ -53,6 +52,11 @@ void main() {
     await tester.tap(find.text('Line').last);
     await tester.pumpAndSettle();
     expect(find.byType(LineChart), findsOneWidget);
+
+    await tester.tap(find.text('Nhịp tim'));
+    await tester.pumpAndSettle();
+    expect(find.text('BPM'), findsOneWidget);
+    expect(find.text('PHÚT / KM'), findsNothing);
   });
 
   testWidgets('renders time in heart rate zones when heart stream exists', (

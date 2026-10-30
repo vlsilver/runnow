@@ -17,10 +17,12 @@ import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/activity_overview.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/photo_viewer.dart';
 import 'package:myrun/src/widgets/route_map.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
+import 'package:myrun/src/widgets/split_pace_chart.dart';
 import 'package:myrun/src/widgets/strava_activity_link.dart';
 import 'package:myrun/src/widgets/stream_chart.dart';
 
@@ -57,6 +59,14 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
               activityId: widget.activityId,
             )),
           );
+    final ownerUid = widget.ownerUid;
+    final owner = ownerUid == null
+        ? null
+        : ref
+              .watch(membersProvider)
+              .value
+              ?.where((member) => member.uid == ownerUid)
+              .firstOrNull;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chi tiết hoạt động'),
@@ -118,6 +128,7 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                             style: Theme.of(context).textTheme.labelMedium,
                           ),
                         ),
+                      ActivityOverview(detail: item, owner: owner),
                       if (widget.ownerUid == null &&
                           hasRunCard(item.summary)) ...[
                         const SizedBox(height: 12),
@@ -126,22 +137,17 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                           onOpen: () => _openShareComposer(item),
                         ),
                       ],
-                      if (item.streams.isEmpty) ...[
+                      if (item.splits.isNotEmpty) ...[
                         const SizedBox(height: 16),
-                        _CachedSummaryFallback(
-                          detail: item,
-                          isMemberView: widget.ownerUid != null,
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: SplitPaceChart(splits: item.splits),
                         ),
                       ],
                       const SizedBox(height: 16),
-                      if (item.photos.isNotEmpty) ...[
-                        _ActivityPhotoGallery(
-                          photos: item.photos,
-                          onPhotoTap: _openPhoto,
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      if (item.streams.isNotEmpty) ...[
+                      if (item.streams.isEmpty)
+                        _NoChartsNote(isMemberView: widget.ownerUid != null)
+                      else ...[
                         StreamChart(
                           streams: item.streams,
                           onDistanceSelected: (distance) =>
@@ -151,6 +157,13 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                           const SizedBox(height: 12),
                           HeartRateZoneChart(streams: item.streams),
                         ],
+                      ],
+                      if (item.photos.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        _ActivityPhotoGallery(
+                          photos: item.photos,
+                          onPhotoTap: _openPhoto,
+                        ),
                       ],
                       const SizedBox(height: 24),
                     ],
@@ -1307,149 +1320,31 @@ int _ratioPercent(double value, double target) =>
 String _formatShortDate(DateTime date) =>
     '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}';
 
-class _CachedSummaryFallback extends StatelessWidget {
-  const _CachedSummaryFallback({
-    required this.detail,
-    required this.isMemberView,
-  });
+/// Buổi chưa có stream: số tổng đã có ở phần đầu, chỉ báo vì sao chưa có
+/// biểu đồ.
+class _NoChartsNote extends StatelessWidget {
+  const _NoChartsNote({required this.isMemberView});
 
-  final ActivityDetail detail;
   final bool isMemberView;
 
   @override
   Widget build(BuildContext context) {
-    final summary = detail.summary;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    final palette = context.runNowPalette;
-    return GlassPanel(
-      borderRadius: 0,
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.insights_rounded, color: palette.accent, size: 18),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'TỔNG QUAN HOẠT ĐỘNG',
-                  style: TextStyle(
-                    color: onSurface.withValues(alpha: 0.66),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.1,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              _FallbackMetric(
-                label: 'KM',
-                value: formatDistance(summary.distanceMeters),
-              ),
-              _FallbackMetric(
-                label: 'TIME',
-                value: formatDuration(summary.movingTimeSeconds),
-              ),
-              _FallbackMetric(
-                label: 'PACE',
-                value: formatPace(summary.paceSecondsPerKm),
-              ),
-              if (summary.averageHeartRate != null)
-                _FallbackMetric(
-                  label: 'HR',
-                  value: '${summary.averageHeartRate!.round()} bpm',
-                ),
-              if (summary.averageCadence != null)
-                _FallbackMetric(
-                  label: 'CADENCE',
-                  value: '${summary.averageCadence!.round()} rpm',
-                ),
-              if (summary.elevationGainMeters != null)
-                _FallbackMetric(
-                  label: 'ELEV',
-                  value: '${summary.elevationGainMeters!.round()} m',
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            isMemberView
-                ? 'Hoạt động này chưa có biểu đồ chi tiết (pace, nhịp tim, độ cao theo thời gian).'
-                : 'Biểu đồ chi tiết sẽ hiện sau khi đồng bộ xong dữ liệu hoạt động.',
-            style: TextStyle(
-              color: onSurface.withValues(alpha: 0.58),
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FallbackMetric extends StatelessWidget {
-  const _FallbackMetric({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    final palette = context.runNowPalette;
-    return SizedBox(
-      width: 96,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
-        decoration: BoxDecoration(
-          border: Border(
-            left: BorderSide(
-              color: palette.secondary.withValues(alpha: 0.7),
-              width: 2,
-            ),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: onSurface.withValues(alpha: 0.48),
-                fontSize: 9,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1,
-              ),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: palette.secondary,
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Text(
+        isMemberView
+            ? 'Buổi này chưa có biểu đồ chi tiết (pace, nhịp tim, độ cao).'
+            : 'Biểu đồ chi tiết sẽ hiện sau khi đồng bộ xong dữ liệu hoạt động.',
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
   }
 }
 
-/// Thẻ buổi chạy ngay trên màn buổi chạy: chưa lật thì hiện lá úp, chạm để
-/// mở sheet lật; lật trượt hay không lật được thì lá úp mờ kèm lý do; lật rồi
-/// thì hiện luôn lá 3D, chạm để lật hai mặt.
 class _RunCardEntry extends ConsumerWidget {
   const _RunCardEntry({required this.activity, required this.onOpen});
 
