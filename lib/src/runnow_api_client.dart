@@ -627,6 +627,14 @@ class RunNowApiClient {
     return _runCard(response);
   }
 
+  /// Khoe thẻ với club. Khoe lại thì backend giữ giờ khoe đầu.
+  Future<void> shareRunCard(String activityId) =>
+      _send('POST', '${_runCardPath(activityId)}/share');
+
+  /// Thôi khoe thẻ; chưa khoe cũng không lỗi.
+  Future<void> unshareRunCard(String activityId) =>
+      _send('DELETE', '${_runCardPath(activityId)}/share');
+
   /// Các phong cách vẽ đang bật cho thẻ buổi chạy.
   Future<ArtStyleList> getRunCardStyles() async {
     final response = await _send('GET', '/v1/art-styles?kind=run');

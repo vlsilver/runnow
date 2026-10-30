@@ -222,6 +222,22 @@ class RunCard {
       art?.status == RunCardArtStatus.done ? art?.path : null;
 }
 
+/// Thẻ một người khoe với club, doc `clubCards/{uid}_{activityId}`. Cùng dạng
+/// doc thẻ nhưng không có đường chạy và nhịp tim.
+class ClubCard {
+  const ClubCard({required this.ownerUid, required this.card, this.sharedAt});
+
+  factory ClubCard.fromJson(Map<String, dynamic> json) => ClubCard(
+    ownerUid: _string(json['ownerUid']),
+    sharedAt: _date(json['sharedAt']),
+    card: RunCard.fromJson({...json, 'id': _string(json['activityId'])}),
+  );
+
+  final String ownerUid;
+  final RunCard card;
+  final DateTime? sharedAt;
+}
+
 /// Trả lời GET thẻ: [card] khi đã lật; chưa lật thì [odds] là tỉ lệ sẽ quay,
 /// hoặc [reason] (`card_not_eligible`, `card_duplicate`) khi không lật được.
 class RunCardView {

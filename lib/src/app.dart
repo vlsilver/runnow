@@ -25,6 +25,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/health_sync.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/screens/activity_detail_screen.dart';
+import 'package:myrun/src/screens/club_cards_screen.dart';
 import 'package:myrun/src/screens/club_runs_screen.dart';
 import 'package:myrun/src/screens/club_screen.dart';
 import 'package:myrun/src/screens/journal_screen.dart';
@@ -211,6 +212,10 @@ final _router = GoRouter(
     GoRoute(
       path: '/club-runs',
       builder: (context, state) => const ClubRunsScreen(),
+    ),
+    GoRoute(
+      path: '/club-cards',
+      builder: (context, state) => const ClubCardsScreen(),
     ),
     GoRoute(
       path: '/club/:uid/activity/:id',

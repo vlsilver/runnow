@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/achievements/run_card_skin_choice.dart';
 import 'package:myrun/src/games/game_player_card.dart';
@@ -49,6 +50,42 @@ final runCardProvider = StreamProvider.autoDispose.family<RunCard?, String>((
       .doc(activityId)
       .snapshots()
       .map((doc) => doc.exists ? _cardFrom(doc) : null);
+});
+
+CollectionReference<Map<String, dynamic>> get _clubCards =>
+    FirebaseFirestore.instance.collection('clubCards');
+
+/// Club vài chục người nên một lô này đủ cho cả mục Thẻ mới ở trang Kèo lẫn
+/// trang Thẻ của club.
+const _clubCardLimit = 60;
+
+/// Thẻ cả club đang khoe, khoe mới trước.
+final clubCardsProvider = StreamProvider.autoDispose<List<ClubCard>>((ref) {
+  final uid = ref.watch(firebaseUserProvider.select((user) => user.value?.uid));
+  if (uid == null) return Stream.value(const []);
+  return _clubCards
+      .orderBy('sharedAt', descending: true)
+      .limit(_clubCardLimit)
+      .snapshots()
+      .map(
+        (snap) => [
+          for (final doc in snap.docs)
+            ClubCard.fromJson(_plain(doc.data()) as Map<String, dynamic>),
+        ],
+      );
+});
+
+/// Thẻ buổi [activityId] của mình có đang khoe với club không.
+final cardSharedProvider = StreamProvider.autoDispose.family<bool, String>((
+  ref,
+  activityId,
+) {
+  final uid = ref.watch(firebaseUserProvider.select((user) => user.value?.uid));
+  if (uid == null) return Stream.value(false);
+  return _clubCards
+      .doc('${uid}_$activityId')
+      .snapshots()
+      .map((doc) => doc.exists);
 });
 
 /// Tỉ lệ sẽ quay, hoặc lý do buổi này không lật được. Chỉ đọc khi chưa có thẻ.

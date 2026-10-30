@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/achievements/club_card_widgets.dart';
+import 'package:myrun/src/achievements/run_card_models.dart';
+import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/club_runs.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_models.dart';
@@ -22,9 +25,9 @@ import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/club_run_row.dart';
 import 'package:myrun/src/widgets/live_bits.dart';
 
-/// Trang đầu của app: ai trong club đang chạy, các kèo đang diễn ra, rồi các
-/// buổi chạy gần đây. Mục nào rỗng thì ẩn, riêng Kèo rỗng thì còn một dòng mời
-/// đặt kèo.
+/// Trang đầu của app: ai trong club đang chạy, các kèo đang diễn ra, thẻ vừa
+/// khoe, rồi các buổi chạy gần đây. Mục nào rỗng thì ẩn, riêng Kèo rỗng thì
+/// còn một dòng mời đặt kèo.
 class KeoHubScreen extends ConsumerWidget {
   const KeoHubScreen({super.key});
 
@@ -77,6 +80,7 @@ class KeoHubScreen extends ConsumerWidget {
               ),
               const _LiveSection(),
               const _KeoSection(),
+              const _CardsSection(),
               const _RunsSection(),
             ],
           ),
@@ -706,6 +710,48 @@ class _RunsSection extends ConsumerWidget {
           onMore: () => context.push('/club-runs'),
         ),
         for (final item in items) ClubRunRow(item: item),
+      ],
+    );
+  }
+}
+
+/// Thẻ club vừa khoe, xếp ngang.
+class _CardsSection extends ConsumerWidget {
+  const _CardsSection();
+
+  static const _shown = 10;
+  static const _thumbWidth = 116.0;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cards = ref.watch(clubCardsProvider);
+    if (cards.error case final error?) {
+      debugPrint('Không tải được thẻ của club: $error');
+      return _RetryRow(
+        label: 'Không tải được thẻ. Chạm để thử lại.',
+        onTap: () => ref.invalidate(clubCardsProvider),
+      );
+    }
+    final items = (cards.value ?? const <ClubCard>[]).take(_shown).toList();
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        HubSectionHeader(
+          title: 'Thẻ mới',
+          onMore: () => context.push('/club-cards'),
+        ),
+        SizedBox(
+          height: clubCardThumbHeight(_thumbWidth),
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            itemCount: items.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, i) =>
+                ClubCardThumb(item: items[i], width: _thumbWidth),
+          ),
+        ),
       ],
     );
   }
