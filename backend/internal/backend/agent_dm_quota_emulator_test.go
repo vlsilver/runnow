@@ -13,7 +13,7 @@ import (
 
 // noRunDMLimitReply là câu nghỉ khi chủ chưa chạy hôm nay và đã dùng hết 10
 // câu sẵn, với config mặc định.
-const noRunDMLimitReply = "Hôm nay mình hết lượt nói rồi. Bạn chạy hay đi bộ thêm 1 km là mình nói tiếp được 10 câu nữa, không thì qua 0h mình nói tiếp nhé."
+const noRunDMLimitReply = "Hôm nay mình hết lượt nói rồi. Bạn chạy hay đi bộ thêm 1 km là mình nói tiếp được 5 câu nữa, không thì qua 0h mình nói tiếp nhé."
 
 func (e *agentEnv) wantDMByKm(uid string, dmMax float64, byKm map[string]any) {
 	e.t.Helper()
@@ -23,44 +23,44 @@ func (e *agentEnv) wantDMByKm(uid string, dmMax float64, byKm map[string]any) {
 	}
 }
 
-// Hạn mức chat riêng theo km: 10 câu sẵn, mỗi km chạy trọn hôm nay thêm 10 câu,
+// Hạn mức chat riêng theo km: 10 câu sẵn, mỗi km chạy trọn hôm nay thêm 5 câu,
 // không quá dmDailyMax. GET me trả dmMax đã tính kèm cách tính để app vẽ thẻ
 // km; bot chặn đúng ở dmMax đó, và câu nghỉ chỉ chủ chạy thêm bao nhiêu.
 func TestEmulatorAgentDMByKm(t *testing.T) {
 	e := newAgentEnv(t)
 	e.createBot("an", "Sóc", "")
-	e.wantDMByKm("an", 10, map[string]any{"base": 10.0, "perKm": 10.0, "runKm": 0.0, "nextKm": 1.0, "nextMax": 20.0})
+	e.wantDMByKm("an", 10, map[string]any{"base": 10.0, "perKm": 5.0, "runKm": 0.0, "nextKm": 1.0, "nextMax": 15.0})
 
 	e.seedRunKm("an", 4.1)
-	e.wantDMByKm("an", 50, map[string]any{"base": 10.0, "perKm": 10.0, "runKm": 4.1, "nextKm": 5.0, "nextMax": 60.0})
+	e.wantDMByKm("an", 30, map[string]any{"base": 10.0, "perKm": 5.0, "runKm": 4.1, "nextKm": 5.0, "nextMax": 35.0})
 
-	// Dùng hết 50 câu: bot nghỉ, câu nghỉ chỉ cách mở thêm, không gọi model.
-	e.merge("agents/an", map[string]any{"dmDay": vnDay(e.clock), "dmDayCount": 50})
+	// Dùng hết 30 câu: bot nghỉ, câu nghỉ chỉ cách mở thêm, không gọi model.
+	e.merge("agents/an", map[string]any{"dmDay": vnDay(e.clock), "dmDayCount": 30})
 	if got := e.meToday("an"); got["resting"] != agentRestingDMLimit {
-		t.Fatalf("hết 50/50 mà không nghỉ: %v", got)
+		t.Fatalf("hết 30/30 mà không nghỉ: %v", got)
 	}
 	e.want(e.call("an", "POST", "/v1/agents/me/dm", map[string]any{"text": "còn nói được không"}, ""), 200, "")
 	e.mustRun("/tasks/agent-dm", agentDMTask{UID: "an", Seq: 1})
-	want := "Hôm nay mình hết lượt nói rồi. Bạn chạy hay đi bộ thêm 0,9 km là mình nói tiếp được 10 câu nữa, không thì qua 0h mình nói tiếp nhé."
+	want := "Hôm nay mình hết lượt nói rồi. Bạn chạy hay đi bộ thêm 0,9 km là mình nói tiếp được 5 câu nữa, không thì qua 0h mình nói tiếp nhé."
 	if msgs := messages(t, e.call("an", "GET", "/v1/agents/me/dm", nil, "")); len(e.llm.calls) != 0 || msgs[0]["text"] != want {
 		t.Fatalf("câu nghỉ khi hết lượt: %v (gọi model %d lần)", msgs[0]["text"], len(e.llm.calls))
 	}
 
-	// Chạy thêm tới 5 km: câu thứ 51 được trả lời thật.
+	// Chạy thêm tới 5 km: câu thứ 31 được trả lời thật.
 	e.seedRunKm("an", 5)
 	e.tick(time.Second)
 	e.want(e.call("an", "POST", "/v1/agents/me/dm", map[string]any{"text": "giờ thì sao"}, ""), 200, "")
 	e.llm.script = []*genai.GenerateContentResponse{llmText("Nói tiếp nè")}
 	e.mustRun("/tasks/agent-dm", agentDMTask{UID: "an", Seq: 3})
-	if msgs := messages(t, e.call("an", "GET", "/v1/agents/me/dm", nil, "")); msgs[0]["text"] != "Nói tiếp nè" || e.doc("agents/an")["dmDayCount"] != int64(51) {
-		t.Fatalf("chạy đủ 5 km mà chưa mở câu 51: %v, dmDayCount %v", msgs[0]["text"], e.doc("agents/an")["dmDayCount"])
+	if msgs := messages(t, e.call("an", "GET", "/v1/agents/me/dm", nil, "")); msgs[0]["text"] != "Nói tiếp nè" || e.doc("agents/an")["dmDayCount"] != int64(31) {
+		t.Fatalf("chạy đủ 5 km mà chưa mở câu 31: %v, dmDayCount %v", msgs[0]["text"], e.doc("agents/an")["dmDayCount"])
 	}
 
 	// Trần thấp hơn mốc kế thì nextMax là trần; chạm trần thì hết mốc.
-	e.merge("agentState/config", map[string]any{"dmDailyMax": 65})
-	e.wantDMByKm("an", 60, map[string]any{"base": 10.0, "perKm": 10.0, "runKm": 5.0, "nextKm": 6.0, "nextMax": 65.0})
+	e.merge("agentState/config", map[string]any{"dmDailyMax": 38})
+	e.wantDMByKm("an", 35, map[string]any{"base": 10.0, "perKm": 5.0, "runKm": 5.0, "nextKm": 6.0, "nextMax": 38.0})
 	e.seedRunKm("an", 9.5)
-	e.wantDMByKm("an", 65, map[string]any{"base": 10.0, "perKm": 10.0, "runKm": 9.5, "nextKm": nil, "nextMax": nil})
+	e.wantDMByKm("an", 38, map[string]any{"base": 10.0, "perKm": 5.0, "runKm": 9.5, "nextKm": nil, "nextMax": nil})
 
 	// Người chưa tạo bot: dmMax là số câu sẵn, không đọc km, không có dmByKm.
 	if got := e.meToday("cuong"); got["dmMax"] != 10.0 || got["dmByKm"] != nil {
@@ -81,16 +81,16 @@ func TestEmulatorAgentDMKmCountsHealth(t *testing.T) {
 	}
 
 	stepDay(1.66)
-	e.wantDMByKm("an", 20, map[string]any{"base": 10.0, "perKm": 10.0, "runKm": 1.66, "nextKm": 2.0, "nextMax": 30.0})
+	e.wantDMByKm("an", 15, map[string]any{"base": 10.0, "perKm": 5.0, "runKm": 1.66, "nextKm": 2.0, "nextMax": 20.0})
 	if images := e.meToday("an")["images"].(map[string]any); images["limit"] != 3.0 || images["runKm"] != 1.66 {
 		t.Fatalf("đi bộ 1,66 km mà lượt vẽ ảnh: %v", images)
 	}
 
 	e.seedRunKm("an", 5)
 	stepDay(6)
-	e.wantDMByKm("an", 70, map[string]any{"base": 10.0, "perKm": 10.0, "runKm": 6.0, "nextKm": 7.0, "nextMax": 80.0})
+	e.wantDMByKm("an", 40, map[string]any{"base": 10.0, "perKm": 5.0, "runKm": 6.0, "nextKm": 7.0, "nextMax": 45.0})
 	stepDay(3)
-	e.wantDMByKm("an", 60, map[string]any{"base": 10.0, "perKm": 10.0, "runKm": 5.0, "nextKm": 6.0, "nextMax": 70.0})
+	e.wantDMByKm("an", 35, map[string]any{"base": 10.0, "perKm": 5.0, "runKm": 5.0, "nextKm": 6.0, "nextMax": 40.0})
 }
 
 // Task agent-dm chạy lại khi model lỗi thì tin đó chỉ đếm một lần, kể cả khi
