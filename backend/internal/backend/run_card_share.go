@@ -49,18 +49,32 @@ func clubCardDoc(uid, activityID string, card map[string]any, sharedAt time.Time
 	return doc
 }
 
-// Share khoe thẻ của buổi activityID với club. Khoe lại thì chép lại mặt thẻ
-// nhưng giữ giờ khoe đầu, để app gửi lại không đẩy thẻ lên đầu mục.
+// Share khoe thẻ của buổi activityID với club.
 func (s *RunCardStore) Share(ctx context.Context, uid, activityID string) (map[string]any, error) {
-	ref := s.clubCardRef(uid, activityID)
+	doc, err := s.share(ctx, s.cardRef(uid, activityID), s.clubCardRef(uid, activityID), errRunCardNoCard,
+		func(card map[string]any, sharedAt time.Time) (map[string]any, error) {
+			return clubCardDoc(uid, activityID, card, sharedAt), nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	out := runCardJSON(activityID, doc)
+	out["sharedAt"] = doc["sharedAt"].(time.Time).UTC().Format(time.RFC3339Nano)
+	return out, nil
+}
+
+// share chép thẻ ở source sang thẻ khoe ref, trả doc đã ghi; chưa có thẻ thì
+// trả notFound. Khoe lại thì chép lại mặt thẻ nhưng giữ giờ khoe đầu, để app
+// gửi lại không đẩy thẻ lên đầu mục.
+func (s *RunCardStore) share(ctx context.Context, source, ref *firestore.DocumentRef, notFound error, build func(card map[string]any, sharedAt time.Time) (map[string]any, error)) (map[string]any, error) {
 	var doc map[string]any
 	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
-		card, err := getOptional(tx, s.cardRef(uid, activityID))
+		card, err := getOptional(tx, source)
 		if err != nil {
 			return err
 		}
 		if !card.Exists() {
-			return errRunCardNoCard
+			return notFound
 		}
 		shared, err := getOptional(tx, ref)
 		if err != nil {
@@ -70,15 +84,13 @@ func (s *RunCardStore) Share(ctx context.Context, uid, activityID string) (map[s
 		if t, ok := shared.Data()["sharedAt"].(time.Time); ok {
 			sharedAt = t
 		}
-		doc = clubCardDoc(uid, activityID, card.Data(), sharedAt)
+		doc, err = build(card.Data(), sharedAt)
+		if err != nil {
+			return err
+		}
 		return tx.Set(ref, doc)
 	})
-	if err != nil {
-		return nil, err
-	}
-	out := runCardJSON(activityID, doc)
-	out["sharedAt"] = doc["sharedAt"].(time.Time).UTC().Format(time.RFC3339Nano)
-	return out, nil
+	return doc, err
 }
 
 // Unshare thôi khoe thẻ. Firestore xoá doc không có vẫn thành công, nên gọi

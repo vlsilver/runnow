@@ -421,7 +421,13 @@ func (s *RunCardStore) overlapsCard(tx *firestore.Transaction, uid string, fact 
 // runCardActivityID là activityId trên path, đã chặn những tên Firestore không
 // nhận làm id doc.
 func runCardActivityID(r *http.Request) (string, error) {
-	id := r.PathValue("activityId")
+	return pathDocID(r, "activityId")
+}
+
+// pathDocID là tham số name trên path, đã chặn những tên Firestore không nhận
+// làm id doc.
+func pathDocID(r *http.Request, name string) (string, error) {
+	id := r.PathValue(name)
 	if id == "" || len(id) > 128 || id == "." || id == ".." || (strings.HasPrefix(id, "__") && strings.HasSuffix(id, "__")) {
 		return "", invalidRequest()
 	}
