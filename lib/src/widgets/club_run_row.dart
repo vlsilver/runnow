@@ -11,6 +11,7 @@ import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_overview.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/heart_button.dart';
+import 'package:myrun/src/widgets/tinted_card.dart';
 
 const _runKinds = {
   ActivityKind.run,
@@ -56,62 +57,56 @@ class ClubRunCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final who = _who(ref, item);
     final activity = item.activity;
-    final palette = context.runNowPalette;
     final muted = Theme.of(
       context,
     ).colorScheme.onSurface.withValues(alpha: 0.55);
-    return Material(
-      color: palette.glassStart,
-      borderRadius: BorderRadius.circular(24),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => context.push(who.path),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 4, 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return TintedCard(
+      tint: context.runNowPalette.accent,
+      icon: Icons.directions_run_rounded,
+      onTap: () => context.push(who.path),
+      padding: const EdgeInsets.fromLTRB(14, 12, 4, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  ClubAvatar(member: who.member, size: 32),
-                  const Spacer(),
-                  HeartButton(
-                    target: runHeartTarget(item.ownerUid, activity.id),
-                    size: 18,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                who.isMe ? 'Bạn' : who.member?.displayName ?? 'Thành viên',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              ),
-              Text(
-                feedWhenLabel(activity.startedAt, DateTime.now()),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: muted, fontSize: 12),
-              ),
+              ClubAvatar(member: who.member, size: 32),
               const Spacer(),
-              _Km(meters: activity.distanceMeters, size: 34),
-              const SizedBox(height: 4),
-              Text(
-                '${formatDuration(activity.movingTimeSeconds)} · '
-                '${clubRunDetail(activity)}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: muted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
+              HeartButton(
+                target: runHeartTarget(item.ownerUid, activity.id),
+                size: 18,
               ),
             ],
           ),
-        ),
+          const SizedBox(height: 8),
+          Text(
+            who.isMe ? 'Bạn' : who.member?.displayName ?? 'Thành viên',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          Text(
+            feedWhenLabel(activity.startedAt, DateTime.now()),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: muted, fontSize: 12),
+          ),
+          const Spacer(),
+          _Km(meters: activity.distanceMeters, size: 34),
+          const SizedBox(height: 4),
+          Text(
+            '${formatDuration(activity.movingTimeSeconds)} · '
+            '${clubRunDetail(activity)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
       ),
     );
   }

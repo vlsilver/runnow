@@ -23,6 +23,7 @@ import 'package:myrun/src/training_plan/training_plan_repository.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/club_run_row.dart';
 import 'package:myrun/src/widgets/live_bits.dart';
+import 'package:myrun/src/widgets/tinted_card.dart';
 
 /// Trang đầu của app: ai trong club đang chạy, các kèo đang diễn ra, thẻ vừa
 /// khoe, rồi các buổi chạy gần đây. Mục nào rỗng thì ẩn, riêng Kèo và Thẻ rỗng
@@ -432,8 +433,16 @@ List<RunContract> _mergeActive(
   });
 }
 
+/// Thẻ đứng ở hàng Kèo. Thẻ có [gradient] riêng (Ma Sói) thì vẽ nền đó, còn
+/// lại nền nhuốm màu [tint] với [icon] chìm.
 class _MiniCard extends StatelessWidget {
-  const _MiniCard({required this.child, required this.onTap, this.gradient});
+  const _MiniCard({
+    required this.child,
+    required this.onTap,
+    this.gradient,
+    this.tint,
+    this.icon,
+  });
 
   static const width = 140.0;
   static const height = 176.0;
@@ -441,25 +450,36 @@ class _MiniCard extends StatelessWidget {
   final Widget child;
   final VoidCallback onTap;
   final Gradient? gradient;
+  final Color? tint;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
+    const padding = EdgeInsets.all(14);
+    final gradient = this.gradient;
     return SizedBox(
       width: width,
       height: height,
-      child: Material(
-        clipBehavior: Clip.antiAlias,
-        borderRadius: BorderRadius.circular(24),
-        color: gradient == null ? palette.glassStart : Colors.transparent,
-        child: Ink(
-          decoration: BoxDecoration(gradient: gradient),
-          child: InkWell(
-            onTap: onTap,
-            child: Padding(padding: const EdgeInsets.all(14), child: child),
-          ),
-        ),
-      ),
+      child: gradient == null
+          ? TintedCard(
+              tint: tint ?? context.runNowPalette.accent,
+              icon: icon,
+              onTap: onTap,
+              padding: padding,
+              child: child,
+            )
+          : Material(
+              clipBehavior: Clip.antiAlias,
+              borderRadius: BorderRadius.circular(24),
+              color: Colors.transparent,
+              child: Ink(
+                decoration: BoxDecoration(gradient: gradient),
+                child: InkWell(
+                  onTap: onTap,
+                  child: Padding(padding: padding, child: child),
+                ),
+              ),
+            ),
     );
   }
 }
@@ -479,6 +499,8 @@ class _ContractMiniCard extends StatelessWidget {
     final joined = contract.participantFor(currentUid) != null;
     return _MiniCard(
       onTap: () => context.push('/contracts/${contract.id}'),
+      tint: color,
+      icon: Icons.flag_rounded,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -522,14 +544,17 @@ class _CoachMiniCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final total = plan.totalSessions;
     final ratio = total == 0 ? 0.0 : plan.doneSessions / total;
+    final color = context.runNowPalette.secondary;
     return _MiniCard(
       onTap: onTap,
+      tint: color,
+      icon: Icons.event_note_rounded,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _Ring(
             ratio: ratio,
-            color: context.runNowPalette.secondary,
+            color: color,
             label: '${plan.doneSessions}/$total',
           ),
           const Spacer(),
