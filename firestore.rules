@@ -364,7 +364,8 @@ service cloud.firestore {
     }
 
     // Tim: mỗi người một document theo uid trong hearts/{target}/by.
-    // target: run_{uid}_{activityId}, card_{uid}_{activityId}, live_{sessionId}.
+    // target: run_{uid}_{activityId}, card_{uid}_{activityId},
+    // card_{uid}_{kind}_{id} (thẻ Ma Sói, Hành trình), live_{sessionId}.
     // Tim live không gỡ được, để người chạy không bị bắn thông báo liên tục.
     match /hearts/{targetKey}/by/{uid} {
       allow read: if signedIn();
@@ -376,7 +377,8 @@ service cloud.firestore {
       allow delete: if owns(uid) && !targetKey.matches('live_.*');
     }
 
-    // Thẻ buổi chạy chủ thẻ khoe với club, id {uid}_{activityId}. Backend chép
+    // Thẻ chủ thẻ khoe với club: buổi chạy id {uid}_{activityId}, Ma Sói và
+    // Hành trình id {uid}_{kind}_{id} có field kind. Backend chép
     // mặt thẻ (không đường chạy, không nhịp tim) qua API khoe/bỏ khoe.
     match /clubCards/{key} {
       allow read: if signedIn();

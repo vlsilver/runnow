@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -91,6 +92,61 @@ func (s *RunCardStore) share(ctx context.Context, source, ref *firestore.Documen
 		return tx.Set(ref, doc)
 	})
 	return doc, err
+}
+
+// Thẻ Ma Sói và Hành trình khoe chung clubCards, id {uid}_{kind}_{id} và có
+// field kind; thẻ buổi chạy không có kind vì app 1.7.0 chỉ biết loại đó. Id
+// buổi chạy không bắt đầu bằng game_ hay journey_, mà có trùng thì cũng chỉ
+// đụng thẻ của chính chủ vì id bắt đầu bằng uid. Hai loại này không có gì
+// riêng tư nhưng vẫn chép theo danh sách field như thẻ buổi chạy.
+var keptCardKinds = map[string]struct {
+	collection string
+	keys       []string
+}{
+	"game":    {"gameCards", []string{"gameId", "tier", "role", "team", "winner", "alive", "rounds", "playerCount", "endedAt", "deathRound", "variant"}},
+	"journey": {"journeyCards", []string{"campaign", "routeId", "level", "tier", "distanceMeters", "runCount", "finishedAt"}},
+}
+
+var (
+	errKeptCardNotFound = &HTTPError{Status: http.StatusNotFound, Code: "card_not_found", Message: "Bạn chưa có thẻ này."}
+	errKeptCardTestMode = &HTTPError{Status: http.StatusConflict, Code: "card_test_mode", Message: "Thẻ của ván thử không khoe được."}
+)
+
+func (s *RunCardStore) keptClubCardRef(uid, kind, id string) *firestore.DocumentRef {
+	return s.db.Collection("clubCards").Doc(uid + "_" + kind + "_" + id)
+}
+
+// ShareKept khoe thẻ Ma Sói (kind game) hay Hành trình (kind journey) với
+// club. Thẻ của ván thử thì không.
+func (s *RunCardStore) ShareKept(ctx context.Context, uid, kind, id string) error {
+	spec, ok := keptCardKinds[kind]
+	if !ok {
+		return invalidRequest()
+	}
+	source := s.db.Collection("users").Doc(uid).Collection(spec.collection).Doc(id)
+	_, err := s.share(ctx, source, s.keptClubCardRef(uid, kind, id), errKeptCardNotFound,
+		func(card map[string]any, sharedAt time.Time) (map[string]any, error) {
+			if card["testMode"] == true {
+				return nil, errKeptCardTestMode
+			}
+			doc := map[string]any{"kind": kind, "ownerUid": uid, "sharedAt": sharedAt}
+			for _, k := range spec.keys {
+				if v, ok := card[k]; ok {
+					doc[k] = v
+				}
+			}
+			return doc, nil
+		})
+	return err
+}
+
+// UnshareKept thôi khoe thẻ Ma Sói hay Hành trình; gọi lại vẫn trả nil.
+func (s *RunCardStore) UnshareKept(ctx context.Context, uid, kind, id string) error {
+	if _, ok := keptCardKinds[kind]; !ok {
+		return invalidRequest()
+	}
+	_, err := s.keptClubCardRef(uid, kind, id).Delete(ctx)
+	return err
 }
 
 // Unshare thôi khoe thẻ. Firestore xoá doc không có vẫn thành công, nên gọi
