@@ -112,8 +112,22 @@ var (
 	errKeptCardTestMode = &HTTPError{Status: http.StatusConflict, Code: "card_test_mode", Message: "Thẻ của ván thử không khoe được."}
 )
 
+func keptClubCardID(uid, kind, id string) string { return uid + "_" + kind + "_" + id }
+
 func (s *RunCardStore) keptClubCardRef(uid, kind, id string) *firestore.DocumentRef {
-	return s.db.Collection("clubCards").Doc(uid + "_" + kind + "_" + id)
+	return s.db.Collection("clubCards").Doc(keptClubCardID(uid, kind, id))
+}
+
+// keptClubCardDoc là thẻ khoe của thẻ Ma Sói hay Hành trình: chỉ chép
+// các field trong danh sách của kind.
+func keptClubCardDoc(kind, uid string, card map[string]any, sharedAt time.Time) map[string]any {
+	doc := map[string]any{"kind": kind, "ownerUid": uid, "sharedAt": sharedAt}
+	for _, k := range keptCardKinds[kind].keys {
+		if v, ok := card[k]; ok {
+			doc[k] = v
+		}
+	}
+	return doc
 }
 
 // ShareKept khoe thẻ Ma Sói (kind game) hay Hành trình (kind journey) với
@@ -129,13 +143,7 @@ func (s *RunCardStore) ShareKept(ctx context.Context, uid, kind, id string) erro
 			if card["testMode"] == true {
 				return nil, errKeptCardTestMode
 			}
-			doc := map[string]any{"kind": kind, "ownerUid": uid, "sharedAt": sharedAt}
-			for _, k := range spec.keys {
-				if v, ok := card[k]; ok {
-					doc[k] = v
-				}
-			}
-			return doc, nil
+			return keptClubCardDoc(kind, uid, card, sharedAt), nil
 		})
 	return err
 }
