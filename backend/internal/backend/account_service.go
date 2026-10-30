@@ -274,6 +274,7 @@ func (s *AccountService) deleteOwnedDocuments(ctx context.Context, uid, athleteI
 		// buổi của user thì để lại: chỉ mang uid người thả, và buổi đã xoá
 		// nên không ai mở tới.
 		s.db.CollectionGroup("by").Where("uid", "==", uid),
+		s.db.Collection("clubCards").Where("ownerUid", "==", uid),
 	}
 	if athleteID != "" {
 		queries = append(queries, s.db.Collection("integrationEvents").Where("ownerId", "==", athleteID))

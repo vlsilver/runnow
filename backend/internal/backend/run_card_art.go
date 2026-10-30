@@ -300,6 +300,11 @@ func (s *RunCardStore) finishArt(ctx context.Context, t runCardArtTask, result m
 		if stringValue(art["status"]) != "drawing" || int64(number(art["attempt"])) != t.Attempt {
 			return nil
 		}
+		// Thẻ đang khoe thì tranh xong hiện luôn ở thẻ khoe.
+		shared, err := getOptional(tx, s.clubCardRef(t.UID, t.ActivityID))
+		if err != nil {
+			return err
+		}
 		next := cloneMap(art)
 		for k, v := range result {
 			next[k] = v
@@ -309,7 +314,13 @@ func (s *RunCardStore) finishArt(ctx context.Context, t runCardArtTask, result m
 		} else {
 			next["failedAt"] = s.now()
 		}
-		return tx.Update(ref, []firestore.Update{{Path: "art", Value: next}})
+		if err := tx.Update(ref, []firestore.Update{{Path: "art", Value: next}}); err != nil {
+			return err
+		}
+		if shared.Exists() && clubCardArt(next) != nil {
+			return tx.Update(shared.Ref, []firestore.Update{{Path: "art", Value: clubCardArt(next)}})
+		}
+		return nil
 	})
 }
 

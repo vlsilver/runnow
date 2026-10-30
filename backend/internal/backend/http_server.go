@@ -835,6 +835,28 @@ func (s *Server) apiRoutes() {
 		}
 		return writeJSON(w, 200, map[string]any{"card": card})
 	}))
+	s.route("POST /v1/activities/{activityId}/card/share", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		id, err := runCardActivityID(r)
+		if err != nil {
+			return err
+		}
+		card, err := s.deps.RunCards.Share(r.Context(), uid, id)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"card": card})
+	}))
+	s.route("DELETE /v1/activities/{activityId}/card/share", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		id, err := runCardActivityID(r)
+		if err != nil {
+			return err
+		}
+		if err := s.deps.RunCards.Unshare(r.Context(), uid, id); err != nil {
+			return err
+		}
+		w.WriteHeader(204)
+		return nil
+	}))
 	s.route("GET /v1/art-styles", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		kind, ok := parseArtKind(r.URL.Query().Get("kind"))
 		if !ok {

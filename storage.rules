@@ -37,9 +37,13 @@ service firebase.storage {
     }
 
     // Thẻ buổi chạy: chủ thẻ tải ảnh nguồn src.jpg để vẽ lại; tranh art-{attempt}.png
-    // backend ghi bằng admin SDK. Chỉ chủ thẻ xem.
+    // backend ghi bằng admin SDK. Chủ thẻ xem hết; thẻ đang khoe với club
+    // (còn doc clubCards) thì người khác xem được tranh, không xem được ảnh gốc.
     match /users/{userId}/runCards/{activityId}/{fileName} {
-      allow read: if owns(userId);
+      allow read: if owns(userId)
+        || (signedIn()
+          && fileName.matches('art-[0-9]+[.]png')
+          && firestore.exists(/databases/(default)/documents/clubCards/$(userId + '_' + activityId)));
       allow create, update: if owns(userId)
         && fileName == 'src.jpg'
         && request.resource.size < 8 * 1024 * 1024
