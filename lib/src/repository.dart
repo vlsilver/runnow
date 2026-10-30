@@ -1149,6 +1149,17 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
   static const _visibleLiveSessionLimit = 50;
   static const _activeStatusValues = ['running', 'paused'];
 
+  static LiveTrackingSession _session(String id, Map<String, dynamic> data) {
+    final startedAt = data['startedAt'];
+    final updatedAt = data['updatedAt'];
+    return LiveTrackingSession.fromMap({
+      ...data,
+      'id': id,
+      if (startedAt is Timestamp) 'startedAt': startedAt.toDate(),
+      if (updatedAt is Timestamp) 'updatedAt': updatedAt.toDate(),
+    });
+  }
+
   @override
   Stream<List<LiveTrackingSession>> watchClubLiveSessions() {
     return _liveSessions
@@ -1161,19 +1172,7 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
           final now = DateTime.now();
           final items =
               snapshot.docs
-                  .map((document) {
-                    final data = document.data();
-                    final startedAt = data['startedAt'];
-                    final updatedAt = data['updatedAt'];
-                    return LiveTrackingSession.fromMap({
-                      ...data,
-                      'id': document.id,
-                      if (startedAt is Timestamp)
-                        'startedAt': startedAt.toDate(),
-                      if (updatedAt is Timestamp)
-                        'updatedAt': updatedAt.toDate(),
-                    });
-                  })
+                  .map((document) => _session(document.id, document.data()))
                   .where(
                     (session) => session.isActive && !session.isExpired(now),
                   )
@@ -1247,19 +1246,7 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
           final now = DateTime.now();
           final items =
               snapshot.docs
-                  .map((document) {
-                    final data = document.data();
-                    final startedAt = data['startedAt'];
-                    final updatedAt = data['updatedAt'];
-                    return LiveTrackingSession.fromMap({
-                      ...data,
-                      'id': document.id,
-                      if (startedAt is Timestamp)
-                        'startedAt': startedAt.toDate(),
-                      if (updatedAt is Timestamp)
-                        'updatedAt': updatedAt.toDate(),
-                    });
-                  })
+                  .map((document) => _session(document.id, document.data()))
                   .where(
                     (session) => session.isActive && !session.isExpired(now),
                   )
