@@ -79,18 +79,7 @@ class _LiveViewState extends State<_LiveView> {
   // Người xem tự kéo bản đồ thì thôi bám theo, tới khi bấm nút định vị.
   bool _manual = false;
 
-  List<LatLng> get _points {
-    final session = widget.session;
-    final points = [
-      for (final p in session.routePreview) LatLng(p.latitude, p.longitude),
-    ];
-    final last = session.lastLocation;
-    if (last != null) {
-      final here = LatLng(last.latitude, last.longitude);
-      if (points.isEmpty || points.last != here) points.add(here);
-    }
-    return points;
-  }
+  List<LatLng> get _points => liveRoutePoints(widget.session);
 
   @override
   void didUpdateWidget(covariant _LiveView oldWidget) {

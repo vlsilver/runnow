@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
 
@@ -16,6 +17,21 @@ int liveElapsedSeconds(LiveTrackingSession session, DateTime now) {
   }
   final sinceWrite = now.difference(session.updatedAt).inSeconds.clamp(0, 180);
   return session.movingTimeSeconds + sinceWrite;
+}
+
+/// Đường đã chạy của một phiên live: `routePreview` (đã thưa bớt) nối thêm
+/// `lastLocation` nếu điểm cuối chưa có trong đó, để chấm đang chạy luôn ở
+/// chỗ mới nhất.
+List<LatLng> liveRoutePoints(LiveTrackingSession session) {
+  final points = [
+    for (final p in session.routePreview) LatLng(p.latitude, p.longitude),
+  ];
+  final last = session.lastLocation;
+  if (last != null) {
+    final here = LatLng(last.latitude, last.longitude);
+    if (points.isEmpty || points.last != here) points.add(here);
+  }
+  return points;
 }
 
 /// Đọc lại [builder] mỗi giây, cho đồng hồ live.
