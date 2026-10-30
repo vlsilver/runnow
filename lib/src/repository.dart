@@ -217,6 +217,9 @@ abstract interface class MemberRepository {
 abstract interface class LiveTrackingRepository {
   Stream<List<LiveTrackingSession>> watchClubLiveSessions();
 
+  /// Mấy buổi live club đã xong gần nhất, mới trước.
+  Stream<List<LiveTrackingSession>> watchRecentClubLiveSessions();
+
   /// Một phiên theo id, kể cả khi đã xong hay mất tín hiệu (màn xem live cần
   /// biết để báo). Null khi document không còn.
   Stream<LiveTrackingSession?> watchSession(String sessionId);
@@ -1151,6 +1154,7 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
       _firestore.collection('liveSessions');
 
   static const _visibleLiveSessionLimit = 50;
+  static const _recentLiveSessionLimit = 10;
   static const _activeStatusValues = ['running', 'paused'];
 
   static LiveTrackingSession _session(String id, Map<String, dynamic> data) {
@@ -1186,6 +1190,29 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
                 );
           return items;
         });
+  }
+
+  @override
+  Stream<List<LiveTrackingSession>> watchRecentClubLiveSessions() {
+    // Đủ mọi trạng thái để bắt cả buổi app tắt giữa chừng; dùng chung index
+    // (visibility, status, updatedAt) với watchClubLiveSessions.
+    return _liveSessions
+        .where('visibility', isEqualTo: LiveTrackingVisibility.club.value)
+        .where(
+          'status',
+          whereIn: [
+            for (final status in LiveTrackingStatus.values) status.value,
+          ],
+        )
+        .orderBy('updatedAt', descending: true)
+        .limit(_recentLiveSessionLimit)
+        .snapshots()
+        .map(
+          (snapshot) => recentLiveSessions([
+            for (final document in snapshot.docs)
+              _session(document.id, document.data()),
+          ], DateTime.now()),
+        );
   }
 
   @override
