@@ -583,6 +583,21 @@ class RunNowApiClient {
     );
   }
 
+  /// Một trang feed buổi tập của club (người để hồ sơ public), mới trước:
+  /// `{runs: [{ownerUid, activity}], cursor?}`. Trang có thể ít hơn [limit]
+  /// mà vẫn có cursor; cursor null là đã hết.
+  Future<Map<String, dynamic>> getClubRuns({String? cursor, int? limit}) async {
+    final query = [
+      if (cursor != null) 'cursor=${Uri.encodeQueryComponent(cursor)}',
+      if (limit != null) 'limit=$limit',
+    ];
+    final response = await _send(
+      'GET',
+      '/v1/club/runs${query.isEmpty ? '' : '?${query.join('&')}'}',
+    );
+    return _jsonObject(response);
+  }
+
   /// Thẻ của buổi [activityId]: thẻ đã lật, hoặc tỉ lệ sẽ quay khi chưa lật.
   Future<RunCardView> getRunCard(String activityId) async {
     final response = await _send('GET', _runCardPath(activityId));

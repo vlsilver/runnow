@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/club_runs.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_models.dart';
 import 'package:myrun/src/games/game_providers.dart';
@@ -18,11 +19,12 @@ import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/training_plan/training_plan_models.dart';
 import 'package:myrun/src/training_plan/training_plan_repository.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
+import 'package:myrun/src/widgets/club_run_row.dart';
 import 'package:myrun/src/widgets/live_bits.dart';
 
-/// Trang đầu của app: ai trong club đang chạy, các kèo đang diễn ra, rồi
-/// (khi backend có) thẻ mới khoe và các buổi chạy gần đây. Mục nào rỗng thì
-/// ẩn, riêng Kèo rỗng thì còn một dòng mời đặt kèo.
+/// Trang đầu của app: ai trong club đang chạy, các kèo đang diễn ra, rồi các
+/// buổi chạy gần đây. Mục nào rỗng thì ẩn, riêng Kèo rỗng thì còn một dòng mời
+/// đặt kèo.
 class KeoHubScreen extends ConsumerWidget {
   const KeoHubScreen({super.key});
 
@@ -37,6 +39,7 @@ class KeoHubScreen extends ConsumerWidget {
           onRefresh: () async {
             ref.invalidate(hubClubContractsProvider);
             ref.invalidate(gameListProvider);
+            ref.invalidate(hubClubRunsProvider);
             await ref
                 .read(hubClubContractsProvider.future)
                 .catchError(
@@ -74,6 +77,7 @@ class KeoHubScreen extends ConsumerWidget {
               ),
               const _LiveSection(),
               const _KeoSection(),
+              const _RunsSection(),
             ],
           ),
         ),
@@ -676,6 +680,36 @@ class _NewKeoRow extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------- bits
+
+// ---------------------------------------------------------------- BUỔI CHẠY
+
+class _RunsSection extends ConsumerWidget {
+  const _RunsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final runs = ref.watch(hubClubRunsProvider);
+    if (runs.error case final error?) {
+      debugPrint('Không tải được buổi chạy của club: $error');
+      return _RetryRow(
+        label: 'Không tải được buổi chạy. Chạm để thử lại.',
+        onTap: () => ref.invalidate(hubClubRunsProvider),
+      );
+    }
+    final items = runs.value ?? const <ClubRunItem>[];
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        HubSectionHeader(
+          title: 'Buổi chạy',
+          onMore: () => context.push('/club-runs'),
+        ),
+        for (final item in items) ClubRunRow(item: item),
+      ],
+    );
+  }
+}
 
 class _RetryRow extends StatelessWidget {
   const _RetryRow({required this.label, required this.onTap});
