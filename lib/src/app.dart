@@ -29,6 +29,7 @@ import 'package:myrun/src/screens/club_screen.dart';
 import 'package:myrun/src/screens/journal_screen.dart';
 import 'package:myrun/src/screens/journey_hub_screen.dart';
 import 'package:myrun/src/screens/journey_screen.dart';
+import 'package:myrun/src/screens/keo_hub_screen.dart';
 import 'package:myrun/src/screens/member_profile_screen.dart';
 import 'package:myrun/src/screens/onboarding_screen.dart';
 import 'package:myrun/src/screens/public_activity_screen.dart';
@@ -64,7 +65,7 @@ final _router = GoRouter(
           routes: [
             GoRoute(
               path: '/',
-              builder: (context, state) => const RunContractHomeScreen(),
+              builder: (context, state) => const KeoHubScreen(),
             ),
           ],
         ),
@@ -238,6 +239,10 @@ final _router = GoRouter(
     ),
     GoRoute(
       path: '/oauth',
+      builder: (context, state) => const KeoHubScreen(),
+    ),
+    GoRoute(
+      path: '/contracts',
       builder: (context, state) => const RunContractHomeScreen(),
     ),
     GoRoute(

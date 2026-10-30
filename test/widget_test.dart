@@ -112,11 +112,14 @@ void main() {
     learned: const [],
   );
 
-  testWidgets('renders contract home in demo mode', (tester) async {
+  testWidgets('tab Kèo mở trang tổng, chưa có kèo thì mời đặt kèo', (
+    tester,
+  ) async {
     await pumpApp(tester);
     expect(find.text('Kèo'), findsNWidgets(2));
+    expect(find.text('Kèo đang chạy'), findsOneWidget);
     expect(find.byIcon(Icons.add_rounded), findsOneWidget);
-    expect(find.text('Chưa có kèo đang diễn ra'), findsOneWidget);
+    expect(find.text('Đặt kèo tuần này'), findsOneWidget);
     expect(find.text('Tổng quan'), findsNothing);
   });
 

@@ -228,7 +228,7 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Kèo'),
+        title: const Text('Tất cả kèo'),
         actions: [
           if (connected)
             Padding(
