@@ -63,7 +63,7 @@ String feedWhenLabel(DateTime startedAt, DateTime now) {
   return DateFormat('dd/MM').format(local);
 }
 
-const _hubClubRunsLimit = 5;
+const _hubClubRunsLimit = 10;
 
 /// Mấy buổi mới nhất cho mục "Buổi chạy" ở trang Kèo.
 final hubClubRunsProvider = FutureProvider.autoDispose<List<ClubRunItem>>((

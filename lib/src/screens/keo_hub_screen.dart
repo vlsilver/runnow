@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/achievements/club_card_widgets.dart';
-import 'package:myrun/src/achievements/club_card.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/club_runs.dart';
 import 'package:myrun/src/formatters.dart';
@@ -26,8 +25,8 @@ import 'package:myrun/src/widgets/club_run_row.dart';
 import 'package:myrun/src/widgets/live_bits.dart';
 
 /// Trang đầu của app: ai trong club đang chạy, các kèo đang diễn ra, thẻ vừa
-/// khoe, rồi các buổi chạy gần đây. Mục nào rỗng thì ẩn, riêng Kèo rỗng thì
-/// còn một dòng mời đặt kèo.
+/// khoe, rồi các buổi chạy gần đây. Mục nào rỗng thì ẩn, riêng Kèo và Thẻ rỗng
+/// thì còn một dòng mời đặt kèo, khoe thẻ.
 class KeoHubScreen extends ConsumerWidget {
   const KeoHubScreen({super.key});
 
@@ -98,10 +97,18 @@ final hubClubContractsProvider = FutureProvider.autoDispose<RunContractPage>(
 );
 
 class HubSectionHeader extends StatelessWidget {
-  const HubSectionHeader({required this.title, this.onMore, super.key});
+  const HubSectionHeader({
+    required this.title,
+    this.onMore,
+    this.action,
+    super.key,
+  });
 
   final String title;
   final VoidCallback? onMore;
+
+  /// Nút cạnh tiêu đề, vd đặt kèo.
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -121,6 +128,7 @@ class HubSectionHeader extends StatelessWidget {
               ),
             ),
             const Spacer(),
+            ?action,
             if (onMore != null)
               Icon(
                 Icons.chevron_right_rounded,
@@ -362,6 +370,8 @@ class _KeoSection extends ConsumerWidget {
         HubSectionHeader(
           title: 'Kèo đang chạy',
           onMore: () => context.push('/contracts'),
+          // Rỗng thì dòng mời bên dưới đã có nút đặt kèo.
+          action: cards.isEmpty ? null : _AddButton(onTap: create),
         ),
         if (error != null && cards.isEmpty)
           _RetryRow(
@@ -376,7 +386,12 @@ class _KeoSection extends ConsumerWidget {
         else if (cards.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _NewKeoRow(onTap: create),
+            child: _InviteRow(
+              title: 'Đặt kèo tuần này',
+              subtitle: 'tự đặt hay rủ club',
+              icon: Icons.add_rounded,
+              onTap: create,
+            ),
           )
         else
           SizedBox(
@@ -384,11 +399,9 @@ class _KeoSection extends ConsumerWidget {
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              itemCount: cards.length + 1,
+              itemCount: cards.length,
               separatorBuilder: (_, _) => const SizedBox(width: 12),
-              itemBuilder: (context, index) => index < cards.length
-                  ? cards[index]
-                  : _AddMiniCard(onTap: create),
+              itemBuilder: (context, index) => cards[index],
             ),
           ),
       ],
@@ -600,38 +613,49 @@ class _GameMiniCard extends StatelessWidget {
   }
 }
 
-class _AddMiniCard extends StatelessWidget {
-  const _AddMiniCard({required this.onTap});
+/// Nút đặt kèo trên tiêu đề mục Kèo, để thấy ngay chứ không phải lướt tới
+/// cuối hàng thẻ.
+class _AddButton extends StatelessWidget {
+  const _AddButton({required this.onTap});
 
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    return SizedBox(
-      width: 76,
-      height: _MiniCard.height,
-      child: Material(
-        color: Colors.transparent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-          side: BorderSide(color: palette.border, width: 1.5),
-        ),
-        child: InkWell(
-          customBorder: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
-          onTap: onTap,
-          child: Icon(Icons.add_rounded, size: 30, color: palette.accent),
-        ),
+    final accent = context.runNowPalette.accent;
+    return IconButton(
+      tooltip: 'Đặt kèo',
+      onPressed: onTap,
+      style: IconButton.styleFrom(
+        backgroundColor: accent,
+        foregroundColor: _onColor(accent),
+        minimumSize: const Size.square(32),
+        fixedSize: const Size.square(32),
+        padding: EdgeInsets.zero,
       ),
+      icon: const Icon(Icons.add_rounded, size: 22),
     );
   }
 }
 
-class _NewKeoRow extends StatelessWidget {
-  const _NewKeoRow({required this.onTap});
+/// Màu chữ, icon đọc được trên nền [background].
+Color _onColor(Color background) =>
+    ThemeData.estimateBrightnessForColor(background) == Brightness.dark
+    ? Colors.white
+    : Colors.black;
 
+/// Dòng mời ở mục còn rỗng: tiêu đề, dòng phụ và nút tròn bên phải.
+class _InviteRow extends StatelessWidget {
+  const _InviteRow({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
   final VoidCallback onTap;
 
   @override
@@ -647,33 +671,26 @@ class _NewKeoRow extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
           child: Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Đặt kèo tuần này',
-                      style: TextStyle(
+                      title,
+                      style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    SizedBox(height: 2),
-                    _MutedLine('tự đặt hay rủ club'),
+                    const SizedBox(height: 2),
+                    _MutedLine(subtitle),
                   ],
                 ),
               ),
               CircleAvatar(
                 radius: 19,
                 backgroundColor: palette.accent,
-                child: Icon(
-                  Icons.add_rounded,
-                  color:
-                      ThemeData.estimateBrightnessForColor(palette.accent) ==
-                          Brightness.dark
-                      ? Colors.white
-                      : Colors.black,
-                ),
+                child: Icon(icon, color: _onColor(palette.accent)),
               ),
             ],
           ),
@@ -709,7 +726,19 @@ class _RunsSection extends ConsumerWidget {
           title: 'Buổi chạy',
           onMore: () => context.push('/club-runs'),
         ),
-        for (final item in items) ClubRunRow(item: item),
+        SizedBox(
+          height: _MiniCard.height + 12,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            itemCount: items.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, index) => SizedBox(
+              width: _MiniCard.width,
+              child: ClubRunCard(item: items[index]),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -732,8 +761,9 @@ class _CardsSection extends ConsumerWidget {
         onTap: () => ref.invalidate(clubCardsProvider),
       );
     }
-    final items = (cards.value ?? const <ClubCard>[]).take(_shown).toList();
-    if (items.isEmpty) return const SizedBox.shrink();
+    // Chưa tải xong thì chưa hiện gì, để dòng mời không nháy lên rồi biến mất.
+    if (!cards.hasValue) return const SizedBox.shrink();
+    final items = cards.requireValue.take(_shown).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -741,17 +771,28 @@ class _CardsSection extends ConsumerWidget {
           title: 'Thẻ mới',
           onMore: () => context.push('/club-cards'),
         ),
-        SizedBox(
-          height: clubCardThumbHeight(_thumbWidth),
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: items.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 12),
-            itemBuilder: (context, i) =>
-                ClubCardThumb(item: items[i], width: _thumbWidth),
+        if (items.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _InviteRow(
+              title: 'Khoe thẻ của bạn',
+              subtitle: 'mở Bộ thẻ, bật Khoe với club',
+              icon: Icons.style_rounded,
+              onTap: () => context.go('/me/cards'),
+            ),
+          )
+        else
+          SizedBox(
+            height: clubCardThumbHeight(_thumbWidth),
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: items.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (context, i) =>
+                  ClubCardThumb(item: items[i], width: _thumbWidth),
+            ),
           ),
-        ),
       ],
     );
   }
