@@ -574,6 +574,12 @@ final clubLiveSessionsProvider =
           ref.watch(liveTrackingRepositoryProvider).watchClubLiveSessions(),
     );
 
+final liveSessionProvider = StreamProvider.autoDispose
+    .family<LiveTrackingSession?, String>(
+      (ref, sessionId) =>
+          ref.watch(liveTrackingRepositoryProvider).watchSession(sessionId),
+    );
+
 /// Vị trí/ảnh live của các buổi chạy đang gắn với 1 kèo theo tuyến cụ thể —
 /// dùng cho bản đồ route ở màn chi tiết kèo.
 final contractLiveSessionsProvider = StreamProvider.autoDispose

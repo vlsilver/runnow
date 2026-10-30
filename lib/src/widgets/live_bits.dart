@@ -62,7 +62,7 @@ class LiveBadge extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _BlinkDot(),
+            LiveDot(color: Colors.white, size: 7),
             SizedBox(width: 6),
             Text(
               'LIVE',
@@ -80,15 +80,18 @@ class LiveBadge extends StatelessWidget {
   }
 }
 
-class _BlinkDot extends StatefulWidget {
-  const _BlinkDot();
+/// Chấm nhấp nháy báo đang live.
+class LiveDot extends StatefulWidget {
+  const LiveDot({required this.color, this.size = 8, super.key});
+
+  final Color color;
+  final double size;
 
   @override
-  State<_BlinkDot> createState() => _BlinkDotState();
+  State<LiveDot> createState() => _LiveDotState();
 }
 
-class _BlinkDotState extends State<_BlinkDot>
-    with SingleTickerProviderStateMixin {
+class _LiveDotState extends State<LiveDot> with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1200),
@@ -115,12 +118,9 @@ class _BlinkDotState extends State<_BlinkDot>
     return FadeTransition(
       opacity: Tween(begin: 0.25, end: 1.0).animate(_controller),
       child: Container(
-        width: 7,
-        height: 7,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-        ),
+        width: widget.size,
+        height: widget.size,
+        decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle),
       ),
     );
   }

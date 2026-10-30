@@ -30,6 +30,7 @@ import 'package:myrun/src/screens/journal_screen.dart';
 import 'package:myrun/src/screens/journey_hub_screen.dart';
 import 'package:myrun/src/screens/journey_screen.dart';
 import 'package:myrun/src/screens/keo_hub_screen.dart';
+import 'package:myrun/src/screens/live_viewer_screen.dart';
 import 'package:myrun/src/screens/member_profile_screen.dart';
 import 'package:myrun/src/screens/onboarding_screen.dart';
 import 'package:myrun/src/screens/public_activity_screen.dart';
@@ -200,6 +201,11 @@ final _router = GoRouter(
       path: '/tracking/live',
       builder: (context, state) =>
           TrackingScreen(contractId: state.extra as String?),
+    ),
+    GoRoute(
+      path: '/live/:sessionId',
+      builder: (context, state) =>
+          LiveViewerScreen(sessionId: state.pathParameters['sessionId']!),
     ),
     GoRoute(
       path: '/club/:uid/activity/:id',

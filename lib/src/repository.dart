@@ -216,6 +216,10 @@ abstract interface class MemberRepository {
 
 abstract interface class LiveTrackingRepository {
   Stream<List<LiveTrackingSession>> watchClubLiveSessions();
+
+  /// Một phiên theo id, kể cả khi đã xong hay mất tín hiệu (màn xem live cần
+  /// biết để báo). Null khi document không còn.
+  Stream<LiveTrackingSession?> watchSession(String sessionId);
   Stream<List<LiveTrackingSession>> watchContractLiveSessions(
     String contractId,
   );
@@ -1182,6 +1186,14 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
                 );
           return items;
         });
+  }
+
+  @override
+  Stream<LiveTrackingSession?> watchSession(String sessionId) {
+    return _liveSessions.doc(sessionId).snapshots().map((document) {
+      final data = document.data();
+      return data == null ? null : _session(document.id, data);
+    });
   }
 
   @override
