@@ -999,9 +999,9 @@ class _Scaffold extends ConsumerWidget {
                   Expanded(
                     child: _NavItem(
                       selected: shell.currentIndex == 0,
-                      icon: Icons.flag_outlined,
-                      selectedIcon: Icons.flag_rounded,
-                      label: 'Kèo',
+                      icon: Icons.home_outlined,
+                      selectedIcon: Icons.home_rounded,
+                      label: 'Trang chủ',
                       onTap: () => shell.goBranch(0),
                     ),
                   ),
@@ -1114,9 +1114,9 @@ class _DesktopNavRail extends StatelessWidget {
     ];
     final destinations = <NavigationRailDestination>[
       const NavigationRailDestination(
-        icon: Icon(Icons.flag_outlined),
-        selectedIcon: Icon(Icons.flag_rounded),
-        label: Text('Kèo'),
+        icon: Icon(Icons.home_outlined),
+        selectedIcon: Icon(Icons.home_rounded),
+        label: Text('Trang chủ'),
       ),
       const NavigationRailDestination(
         icon: Icon(Icons.groups_2_outlined),

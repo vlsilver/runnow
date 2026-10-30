@@ -112,12 +112,13 @@ void main() {
     learned: const [],
   );
 
-  testWidgets('tab Kèo mở trang tổng, chưa có kèo thì mời đặt kèo', (
+  testWidgets('tab Trang chủ mở trang tổng, chưa có kèo thì mời đặt kèo', (
     tester,
   ) async {
     await pumpApp(tester);
-    // Trang không còn tiêu đề "Kèo", chỉ nhãn ở thanh dưới.
-    expect(find.text('Kèo'), findsOneWidget);
+    // Tab đầu tên "Trang chủ"; trang không còn chữ "Kèo" đứng riêng nào.
+    expect(find.text('Trang chủ'), findsOneWidget);
+    expect(find.text('Kèo'), findsNothing);
     expect(find.text('Kèo đang chạy'), findsOneWidget);
     expect(find.byIcon(Icons.add_rounded), findsOneWidget);
     expect(find.text('Đặt kèo tuần này'), findsOneWidget);
