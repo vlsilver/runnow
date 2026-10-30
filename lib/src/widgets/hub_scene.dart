@@ -8,7 +8,8 @@ import 'package:myrun/src/theme.dart';
 typedef _T = RunNowHubSceneTokens;
 
 /// Cảnh vẽ làm nền thẻ nhỏ ở trang Kèo. Năm cảnh đầu theo loại kèo, [track]
-/// cho giáo án, bốn cảnh cuối là bầu trời theo giờ của buổi chạy.
+/// cho giáo án, [werewolf] cho ván Ma Sói, bốn cảnh cuối là bầu trời theo giờ
+/// của buổi chạy.
 enum HubScene {
   road,
   sunrise,
@@ -16,6 +17,7 @@ enum HubScene {
   summit,
   map,
   track,
+  werewolf,
   dawn,
   day,
   dusk,
@@ -99,6 +101,7 @@ class _HubScenePainter extends CustomPainter {
       HubScene.summit => _summit,
       HubScene.map => _map,
       HubScene.track => _track,
+      HubScene.werewolf => _werewolf,
       HubScene.dawn => _dawn,
       HubScene.day => _day,
       HubScene.dusk => _dusk,
@@ -485,6 +488,47 @@ void _track(Canvas canvas, Size size) {
   for (var i = 0; i <= 4; i++) {
     canvas.drawOval(oval(i / 4), lane);
   }
+}
+
+void _werewolf(Canvas canvas, Size size) {
+  final Size(width: w, height: h) = size;
+  paintSky(canvas, size, _stops(_T.wolfSky));
+  paintStars(canvas, size, count: 34, seed: 81, maxY: 0.5, color: _T.star);
+  paintMoon(
+    canvas,
+    Offset(w * 0.6, h * 0.24),
+    24,
+    core: _T.wolfMoon,
+    rim: _T.wolfMoonRim,
+    glow: _T.wolfMoonGlow,
+  );
+  _hills(canvas, size, const [0.62, 0.72], _T.wolfHills, 51);
+  paintFog(canvas, w, h * 0.68, 18, _T.wolfFog);
+  // Mấy mái nhà của làng, đèn còn sáng.
+  final hut = Paint()..color = _T.wolfPines;
+  final window = Paint()..color = _T.window;
+  final ground = h * 0.84;
+  paintPines(canvas, w, ground, h * 0.2, 8, _T.wolfPines, 91);
+  for (final (x, s) in const [(0.3, 1.0), (0.46, 0.8), (0.74, 0.9)]) {
+    final left = w * x;
+    final width = 30 * s;
+    final wall = 18 * s;
+    canvas
+      ..drawRect(Rect.fromLTWH(left, ground - wall, width, wall + 2), hut)
+      ..drawPath(
+        _poly([
+          Offset(left - 4 * s, ground - wall),
+          Offset(left + width / 2, ground - wall - 16 * s),
+          Offset(left + width + 4 * s, ground - wall),
+        ]),
+        hut,
+      )
+      ..drawRect(
+        Rect.fromLTWH(left + width * 0.38, ground - wall * 0.7, 6 * s, 7 * s),
+        window,
+      );
+  }
+  canvas.drawRect(Rect.fromLTRB(0, ground, w, h), hut);
 }
 
 void _dawn(Canvas canvas, Size size) {

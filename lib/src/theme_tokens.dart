@@ -794,4 +794,17 @@ class RunNowHubSceneTokens {
     Color(0xFF0E1834),
     Color(0xFF080E22),
   ];
+
+  // Ma Sói: làng trong sương dưới trăng, cùng tông với nền game.
+  static const wolfSky = [
+    Color(0xFF15122E),
+    Color(0xFF2A2152),
+    Color(0xFF3B2C63),
+  ];
+  static const wolfMoon = Color(0xFFFFF4D6);
+  static const wolfMoonRim = Color(0xFFE2C98F);
+  static const wolfMoonGlow = Color(0x66FFE7A8);
+  static const wolfFog = Color(0x4DCFC6EE);
+  static const wolfHills = [Color(0xFF221B44), Color(0xFF151129)];
+  static const wolfPines = Color(0xFF0B0918);
 }

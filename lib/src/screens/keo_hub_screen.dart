@@ -433,14 +433,12 @@ List<RunContract> _mergeActive(
   });
 }
 
-/// Thẻ đứng ở hàng Kèo. Thẻ có [gradient] riêng (Ma Sói) thì vẽ nền đó, còn
-/// lại vẽ tranh [scene].
+/// Thẻ đứng ở hàng Kèo, nền là tranh [scene].
 class _MiniCard extends StatelessWidget {
   const _MiniCard({
     required this.child,
     required this.onTap,
-    this.gradient,
-    this.scene = HubScene.road,
+    required this.scene,
   });
 
   static const width = 140.0;
@@ -448,35 +446,19 @@ class _MiniCard extends StatelessWidget {
 
   final Widget child;
   final VoidCallback onTap;
-  final Gradient? gradient;
   final HubScene scene;
 
   @override
   Widget build(BuildContext context) {
-    const padding = EdgeInsets.all(14);
-    final gradient = this.gradient;
     return SizedBox(
       width: width,
       height: height,
-      child: gradient == null
-          ? HubSceneCard(
-              scene: scene,
-              onTap: onTap,
-              padding: padding,
-              child: child,
-            )
-          : Material(
-              clipBehavior: Clip.antiAlias,
-              borderRadius: BorderRadius.circular(24),
-              color: Colors.transparent,
-              child: Ink(
-                decoration: BoxDecoration(gradient: gradient),
-                child: InkWell(
-                  onTap: onTap,
-                  child: Padding(padding: padding, child: child),
-                ),
-              ),
-            ),
+      child: HubSceneCard(
+        scene: scene,
+        onTap: onTap,
+        padding: const EdgeInsets.all(14),
+        child: child,
+      ),
     );
   }
 }
@@ -589,11 +571,7 @@ class _GameMiniCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return _MiniCard(
       onTap: onTap,
-      gradient: const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [RunNowGameTokens.heroTop, RunNowGameTokens.heroBottom],
-      ),
+      scene: HubScene.werewolf,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
