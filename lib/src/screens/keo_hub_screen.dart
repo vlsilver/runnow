@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -157,7 +158,21 @@ class _LiveSection extends ConsumerWidget {
           for (final session in sessions)
             if (session.ownerUid != uid) session,
         ];
-        if (others.isEmpty) return const SizedBox.shrink();
+        if (others.isEmpty) {
+          // Chính mình đang live thì thôi mời. Web không có tab Chạy.
+          final meLive = sessions.length > others.length;
+          if (meLive || kIsWeb) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _InviteRow(
+              title: 'Chưa ai đang chạy live',
+              subtitle: 'Chạm để bắt đầu buổi chạy của bạn.',
+              icon: Icons.directions_run_rounded,
+              // Sang tab Chạy như nút ở thanh dưới, không mở thêm màn ghi.
+              onTap: () => StatefulNavigationShell.of(context).goBranch(2),
+            ),
+          );
+        }
         if (others.length == 1) {
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
