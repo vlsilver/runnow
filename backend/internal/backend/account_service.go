@@ -270,6 +270,10 @@ func (s *AccountService) deleteOwnedDocuments(ctx context.Context, uid, athleteI
 		// tính là đã rời PSC ở mốc chốt kế tiếp (R33).
 		s.db.Collection("tgLinks").Where("uid", "==", uid),
 		s.db.Collection("linkCodes").Where("uid", "==", uid),
+		// Tim user đã thả (hearts/{target}/by/{uid}). Tim người khác thả cho
+		// buổi của user thì để lại: chỉ mang uid người thả, và buổi đã xoá
+		// nên không ai mở tới.
+		s.db.CollectionGroup("by").Where("uid", "==", uid),
 	}
 	if athleteID != "" {
 		queries = append(queries, s.db.Collection("integrationEvents").Where("ownerId", "==", athleteID))
