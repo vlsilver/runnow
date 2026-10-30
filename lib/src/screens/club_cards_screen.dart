@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/achievements/club_card_widgets.dart';
-import 'package:myrun/src/achievements/run_card_models.dart';
+import 'package:myrun/src/achievements/club_card.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/providers.dart';

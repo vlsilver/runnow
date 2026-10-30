@@ -17,8 +17,18 @@ class ClubShareSwitch extends ConsumerStatefulWidget {
     required this.offHint,
   });
 
-  /// Phần sau `{uid}_` của id thẻ khoe và của tim thẻ: activityId với thẻ
-  /// buổi chạy.
+  /// Thẻ Ma Sói ([kind] `game`, [id] là gameId) hay Hành trình (`journey`,
+  /// campaign).
+  ClubShareSwitch.kept({
+    super.key,
+    required String kind,
+    required String id,
+    required this.offHint,
+  }) : clubKey = '${kind}_$id',
+       share = ((api) => api.shareKeptCard(kind, id)),
+       unshare = ((api) => api.unshareKeptCard(kind, id));
+
+  /// Phần sau `{uid}_` của id thẻ khoe và của tim thẻ, như ClubCard.key.
   final String clubKey;
   final Future<void> Function(RunNowApiClient api) share;
   final Future<void> Function(RunNowApiClient api) unshare;

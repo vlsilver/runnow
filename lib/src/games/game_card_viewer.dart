@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/card_share.dart';
+import 'package:myrun/src/achievements/club_share_switch.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_player_card.dart';
@@ -43,6 +44,15 @@ Future<void> showGameCardViewer(
           ? 'Chỉ người phe thắng mới giữ và khoe được thẻ ván này.'
           : 'Thẻ chỉ khoe được khi ván kết thúc và phe bạn thắng.',
     ),
+    // Backend chỉ có thẻ khi ván kết thúc và mình phe thắng; ván thử không
+    // lên club.
+    footer: card.owned && card.ended && !card.testMode
+        ? ClubShareSwitch.kept(
+            kind: 'game',
+            id: card.gameId,
+            offHint: 'Club sẽ thấy cả vai của bạn trong ván này.',
+          )
+        : null,
   );
 }
 

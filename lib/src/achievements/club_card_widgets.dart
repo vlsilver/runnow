@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card.dart';
-import 'package:myrun/src/achievements/run_card_models.dart';
+import 'package:myrun/src/achievements/run_card_collection.dart';
+import 'package:myrun/src/achievements/club_card.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/hearts.dart';
@@ -13,8 +14,8 @@ import 'package:myrun/src/widgets/club_run_row.dart';
 import 'package:myrun/src/widgets/heart_button.dart';
 
 /// Chủ thẻ và tên in trên thẻ: thẻ của mình ghi "Bạn" ở dưới nhưng trên thẻ
-/// vẫn in tên. Danh sách thành viên chỉ có hồ sơ public, nên tên mình lấy từ
-/// hồ sơ của mình; người khác để riêng tư thì in "Thành viên".
+/// vẫn in tên. Danh sách thành viên đọc mọi publicProfiles, cả hồ sơ riêng
+/// tư; lúc danh sách chưa tải xong thì tên mình lấy từ hồ sơ của mình.
 ({MemberProfile? member, String name, bool isMe}) _owner(
   WidgetRef ref,
   ClubCard item,
@@ -49,9 +50,9 @@ class ClubCardThumb extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final owner = _owner(ref, item);
-    final data = runCardData(item.card, owner: owner.name);
+    final data = item.card.data(owner.name);
     final hearts = ref
-        .watch(heartsProvider(cardHeartTarget(item.ownerUid, item.card.id)))
+        .watch(heartsProvider(cardHeartTarget(item.ownerUid, item.key)))
         .value;
     final muted = Theme.of(
       context,
@@ -119,7 +120,7 @@ class ClubCardTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final owner = _owner(ref, item);
-    final data = runCardData(item.card, owner: owner.name);
+    final data = item.card.data(owner.name);
     return LayoutBuilder(
       builder: (context, constraints) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -152,7 +153,7 @@ class ClubCardTile extends ConsumerWidget {
                 ),
               ),
               HeartButton(
-                target: cardHeartTarget(item.ownerUid, item.card.id),
+                target: cardHeartTarget(item.ownerUid, item.key),
                 size: 20,
               ),
             ],
@@ -174,7 +175,12 @@ void showClubCardViewer(
   back: (pose) => AchievementCard(data: data, pose: pose, back: true),
   chips: [
     gameCardTiers[item.card.tier]!.label,
-    '${runCardKm(item.card.km)} km',
+    switch (item.card) {
+      CollectedRunCard(:final card) => '${runCardKm(card.km)} km',
+      CollectedGameCard() => 'Ma Sói',
+      CollectedJourneyCard(:final card) => 'Hành trình · Level ${card.level}',
+      CollectedRankCard() => 'BXH',
+    },
   ],
   cardSize: achievementCardSize,
 );
