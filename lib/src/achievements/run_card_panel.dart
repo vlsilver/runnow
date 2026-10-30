@@ -351,13 +351,15 @@ String _percent(double p) => p == p.roundToDouble()
 void showRunCardViewer(
   BuildContext context,
   RunCard card,
-  AchievementCardData data,
-) => showCardViewer(
+  AchievementCardData data, {
+  Widget? reaction,
+}) => showCardViewer(
   context,
   front: (pose) => AchievementCard(data: data, pose: pose),
   back: (pose) => AchievementCard(data: data, pose: pose, back: true),
   chips: [gameCardTiers[card.tier]!.label, '${runCardKm(card.km)} km'],
   cardSize: achievementCardSize,
+  reaction: reaction,
   // Mở màn khoe từ trong màn xem để nó nằm trên màn xem.
   onShare: (_, origin) => showRunCardShare(origin, card: card, data: data),
 );

@@ -43,8 +43,8 @@ sealed class CollectedCard {
 
   AchievementCardData data(String owner);
 
-  /// Xem 3D, khoe từ đó.
-  void open(BuildContext context, AchievementCardData data);
+  /// Xem 3D, khoe từ đó. [reaction] là hàng tim khi mở từ thẻ đã khoe.
+  void open(BuildContext context, AchievementCardData data, {Widget? reaction});
 }
 
 class CollectedRunCard extends CollectedCard {
@@ -69,8 +69,11 @@ class CollectedRunCard extends CollectedCard {
   @override
   AchievementCardData data(String owner) => runCardData(card, owner: owner);
   @override
-  void open(BuildContext context, AchievementCardData data) =>
-      showRunCardViewer(context, card, data);
+  void open(
+    BuildContext context,
+    AchievementCardData data, {
+    Widget? reaction,
+  }) => showRunCardViewer(context, card, data, reaction: reaction);
 }
 
 class CollectedGameCard extends CollectedCard {
@@ -94,14 +97,18 @@ class CollectedGameCard extends CollectedCard {
   @override
   AchievementCardData data(String owner) => gameCardData(card, owner: owner);
   @override
-  void open(BuildContext context, AchievementCardData data) =>
-      showGameCardViewer(
-        context,
-        card: card,
-        data: data,
-        secret: false,
-        chips: [gameCardTiers[tier]!.label, 'Ma Sói'],
-      );
+  void open(
+    BuildContext context,
+    AchievementCardData data, {
+    Widget? reaction,
+  }) => showGameCardViewer(
+    context,
+    card: card,
+    data: data,
+    secret: false,
+    chips: [gameCardTiers[tier]!.label, 'Ma Sói'],
+    reaction: reaction,
+  );
 }
 
 class CollectedJourneyCard extends CollectedCard {
@@ -126,8 +133,11 @@ class CollectedJourneyCard extends CollectedCard {
   @override
   AchievementCardData data(String owner) => journeyCardData(card, owner: owner);
   @override
-  void open(BuildContext context, AchievementCardData data) =>
-      showJourneyCardViewer(context, card, data);
+  void open(
+    BuildContext context,
+    AchievementCardData data, {
+    Widget? reaction,
+  }) => showJourneyCardViewer(context, card, data, reaction: reaction);
 }
 
 class CollectedRankCard extends CollectedCard {
@@ -156,8 +166,11 @@ class CollectedRankCard extends CollectedCard {
   @override
   AchievementCardData data(String owner) => rankCardData(card);
   @override
-  void open(BuildContext context, AchievementCardData data) =>
-      showRankCardViewer(context, card, canShare: true);
+  void open(
+    BuildContext context,
+    AchievementCardData data, {
+    Widget? reaction,
+  }) => showRankCardViewer(context, card, canShare: true, reaction: reaction);
 }
 
 /// Cả bộ thẻ, mới có trước. Một nguồn lỗi thì cả bộ báo lỗi chứ không hiện

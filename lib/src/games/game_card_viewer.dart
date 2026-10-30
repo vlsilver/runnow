@@ -20,6 +20,7 @@ Future<void> showGameCardViewer(
   required AchievementCardData data,
   required bool secret,
   required List<String> chips,
+  Widget? reaction,
 }) {
   return showCardViewer(
     context,
@@ -28,6 +29,7 @@ Future<void> showGameCardViewer(
     chips: chips,
     cardSize: achievementCardSize,
     hideWhenInactive: secret,
+    reaction: reaction,
     // Mở màn khoe từ trong màn xem để nó nằm trên màn xem.
     onShare: card.owned
         ? (_, origin) => showCardShare(
@@ -57,6 +59,7 @@ Future<void> showCardViewer(
   Future<void> Function(GlobalKey cardKey, BuildContext origin)? onShare,
   Widget? locked,
   bool startBack = false,
+  Widget? reaction,
 }) {
   return Navigator.of(context).push(
     PageRouteBuilder<void>(
@@ -73,6 +76,7 @@ Future<void> showCardViewer(
           onShare: onShare,
           locked: locked,
           startBack: startBack,
+          reaction: reaction,
         ),
       ),
       transitionsBuilder: (_, animation, _, child) =>
@@ -92,6 +96,7 @@ class GameCardViewer extends StatefulWidget {
     this.onShare,
     this.locked,
     this.startBack = false,
+    this.reaction,
   });
 
   final CardFaceBuilder front;
@@ -110,6 +115,9 @@ class GameCardViewer extends StatefulWidget {
 
   /// Mở lá đang úp để người xem tự chạm lật.
   final bool startBack;
+
+  /// Hàng tim của thẻ đã khoe lên club, ngay dưới lá. Null thì không có.
+  final Widget? reaction;
 
   @override
   State<GameCardViewer> createState() => _GameCardViewerState();
@@ -229,6 +237,11 @@ class _GameCardViewerState extends State<GameCardViewer>
                         ),
                 ),
               ),
+              if (widget.reaction case final reaction?)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+                  child: reaction,
+                ),
               const Text(
                 'Kéo để xoay · chạm để lật',
                 style: TextStyle(fontSize: 13, color: gameNightMuted),

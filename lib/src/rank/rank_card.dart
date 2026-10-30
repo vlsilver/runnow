@@ -281,6 +281,7 @@ Future<void> showRankCardViewer(
   RankCard card, {
   bool faceDown = false,
   bool canShare = false,
+  Widget? reaction,
 }) {
   final data = rankCardData(card);
   return showCardViewer(
@@ -293,6 +294,7 @@ Future<void> showRankCardViewer(
     ],
     cardSize: achievementCardSize,
     startBack: faceDown,
+    reaction: reaction,
     onShare: canShare
         ? (_, origin) => showCardShare(
             origin,

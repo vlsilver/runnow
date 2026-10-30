@@ -48,8 +48,30 @@ VoidCallback _onOpen(
   final own = owner.isMe
       ? ownClubCard(ref.watch(collectedCardsProvider).value ?? const [], item)
       : null;
-  if (own == null) return () => showClubCardViewer(context, item, data);
-  return () => own.open(context, own.data(owner.name));
+  final reaction = _CardHearts(
+    target: cardHeartTarget(item.ownerUid, item.key),
+  );
+  if (own == null) {
+    return () => showClubCardViewer(context, item, data, reaction: reaction);
+  }
+  return () => own.open(context, own.data(owner.name), reaction: reaction);
+}
+
+/// Hàng tim ở màn xem thẻ: ai đã thả tim, và nút tim để mình thả.
+class _CardHearts extends StatelessWidget {
+  const _CardHearts({required this.target});
+
+  final String target;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Expanded(
+        child: HeartCheerers(target: target, label: 'đã thả tim'),
+      ),
+      HeartButton(target: target, size: 26),
+    ],
+  );
 }
 
 /// Chiều cao một [ClubCardThumb] rộng [width], để danh sách ngang đặt cỡ.
@@ -187,8 +209,9 @@ class _CardFace extends StatelessWidget {
 void showClubCardViewer(
   BuildContext context,
   ClubCard item,
-  AchievementCardData data,
-) => showCardViewer(
+  AchievementCardData data, {
+  Widget? reaction,
+}) => showCardViewer(
   context,
   front: (pose) => AchievementCard(data: data, pose: pose),
   back: (pose) => AchievementCard(data: data, pose: pose, back: true),
@@ -202,4 +225,5 @@ void showClubCardViewer(
     },
   ],
   cardSize: achievementCardSize,
+  reaction: reaction,
 );

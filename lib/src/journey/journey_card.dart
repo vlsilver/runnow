@@ -156,6 +156,7 @@ Future<void> showJourneyCardViewer(
   JourneyCard card,
   AchievementCardData data, {
   bool faceDown = false,
+  Widget? reaction,
 }) => showCardViewer(
   context,
   front: (pose) => AchievementCard(data: data, pose: pose),
@@ -163,6 +164,7 @@ Future<void> showJourneyCardViewer(
   chips: [gameCardTiers[card.tier]!.label, 'Hành trình · Level ${card.level}'],
   cardSize: achievementCardSize,
   startBack: faceDown,
+  reaction: reaction,
   onShare: (_, origin) async {
     // Ảnh và video khoe được giữ theo khoá thẻ, nên chỉ chụp khi đường chạy
     // đã tải xong; tải lỗi thì màn xem báo khoe thất bại.
