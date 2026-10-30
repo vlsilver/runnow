@@ -879,16 +879,27 @@ class _RunsSection extends ConsumerWidget {
           title: 'Buổi chạy',
           onMore: () => context.push('/club-runs'),
         ),
-        SizedBox(
-          height: _MiniCard.height + 12,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            itemCount: items.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 12),
-            itemBuilder: (context, index) => SizedBox(
-              width: _MiniCard.width,
-              child: ClubRunCard(item: items[index]),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Material(
+            color: context.runNowPalette.tint,
+            borderRadius: BorderRadius.circular(26),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                for (final (i, item) in items.indexed) ...[
+                  if (i > 0)
+                    Divider(
+                      height: 1,
+                      indent: 66,
+                      endIndent: 14,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.08),
+                    ),
+                  ClubRunTile(item: item),
+                ],
+              ],
             ),
           ),
         ),

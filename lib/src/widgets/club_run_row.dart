@@ -11,7 +11,6 @@ import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_overview.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/heart_button.dart';
-import 'package:myrun/src/widgets/hub_scene.dart';
 
 const _runKinds = {
   ActivityKind.run,
@@ -46,10 +45,10 @@ String clubRunDetail(ActivitySummary activity) =>
   );
 }
 
-/// Một buổi ở mục "Buổi chạy" của trang Kèo, thẻ đứng xếp ngang: ai, bao
-/// giờ, tim, rồi km và thời gian, pace. Cỡ thẻ do chỗ đặt quyết định.
-class ClubRunCard extends ConsumerWidget {
-  const ClubRunCard({required this.item, super.key});
+/// Một hàng ở mục "Buổi chạy" của Trang chủ: ai, bao giờ, rồi km, thời gian,
+/// pace và tim. Khối bao quanh và đường kẻ giữa các hàng do chỗ đặt vẽ.
+class ClubRunTile extends ConsumerWidget {
+  const ClubRunTile({required this.item, super.key});
 
   final ClubRunItem item;
 
@@ -57,53 +56,62 @@ class ClubRunCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final who = _who(ref, item);
     final activity = item.activity;
-    final muted = RunNowHubSceneTokens.ink.withValues(alpha: 0.7);
-    return HubSceneCard(
-      scene: HubScene.forRunAt(activity.startedAt),
+    final muted = Theme.of(
+      context,
+    ).colorScheme.onSurface.withValues(alpha: 0.55);
+    final when = feedWhenLabel(activity.startedAt, DateTime.now());
+    final name = activity.name.trim();
+    return InkWell(
       onTap: () => context.push(who.path),
-      padding: const EdgeInsets.fromLTRB(14, 12, 4, 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              ClubAvatar(member: who.member, size: 32),
-              const Spacer(),
-              HeartButton(
-                target: runHeartTarget(item.ownerUid, activity.id),
-                size: 18,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
+        child: Row(
+          children: [
+            ClubAvatar(member: who.member, size: 40),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    who.isMe ? 'Bạn' : who.member?.displayName ?? 'Thành viên',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  Text(
+                    name.isEmpty ? when : '$when · $name',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: muted, fontSize: 12.5),
+                  ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            who.isMe ? 'Bạn' : who.member?.displayName ?? 'Thành viên',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w800),
-          ),
-          Text(
-            feedWhenLabel(activity.startedAt, DateTime.now()),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: muted, fontSize: 12),
-          ),
-          const Spacer(),
-          _Km(meters: activity.distanceMeters, size: 34),
-          const SizedBox(height: 4),
-          Text(
-            '${formatDuration(activity.movingTimeSeconds)} · '
-            '${clubRunDetail(activity)}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: muted,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              fontFeatures: const [FontFeature.tabularFigures()],
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _Km(meters: activity.distanceMeters, size: 24),
+                const SizedBox(height: 2),
+                Text(
+                  '${formatDuration(activity.movingTimeSeconds)} · '
+                  '${clubRunDetail(activity)}',
+                  style: TextStyle(
+                    color: muted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+            HeartButton(
+              target: runHeartTarget(item.ownerUid, activity.id),
+              size: 20,
+            ),
+          ],
+        ),
       ),
     );
   }
