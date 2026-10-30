@@ -33,6 +33,58 @@ void main() {
     });
   });
 
+  group('liveRoutePoints', () {
+    final at = DateTime(2026, 10, 30, 6);
+    RoutePoint point(double lat) =>
+        RoutePoint(latitude: lat, longitude: 105.85, timestamp: at);
+    LiveTrackingSession session({
+      List<RoutePoint> preview = const [],
+      RoutePoint? last,
+    }) => LiveTrackingSession(
+      id: 's',
+      ownerUid: 'u',
+      ownerName: 'A',
+      visibility: LiveTrackingVisibility.club,
+      status: LiveTrackingStatus.running,
+      startedAt: at,
+      updatedAt: at,
+      distanceMeters: 0,
+      movingTimeSeconds: 0,
+      routePreview: preview,
+      lastLocation: last,
+    );
+
+    test('mới bắt đầu, chưa có routePreview: vẫn có chỗ đang chạy', () {
+      expect(liveRoutePoints(session(last: point(21))), [
+        const LatLng(21, 105.85),
+      ]);
+    });
+
+    test('nối điểm mới nhất vào sau routePreview', () {
+      expect(
+        liveRoutePoints(
+          session(preview: [point(21), point(21.001)], last: point(21.002)),
+        ),
+        const [
+          LatLng(21, 105.85),
+          LatLng(21.001, 105.85),
+          LatLng(21.002, 105.85),
+        ],
+      );
+    });
+
+    test('điểm mới nhất trùng điểm cuối routePreview thì không lặp', () {
+      expect(
+        liveRoutePoints(session(preview: [point(21)], last: point(21))),
+        const [LatLng(21, 105.85)],
+      );
+    });
+
+    test('chưa có GPS thì rỗng', () {
+      expect(liveRoutePoints(session()), isEmpty);
+    });
+  });
+
   group('liveElapsedSeconds', () {
     final now = DateTime(2026, 10, 30, 6, 30);
 

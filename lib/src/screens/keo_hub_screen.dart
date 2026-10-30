@@ -24,6 +24,7 @@ import 'package:myrun/src/training_plan/training_plan_repository.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/club_run_row.dart';
 import 'package:myrun/src/widgets/live_bits.dart';
+import 'package:myrun/src/widgets/live_map_preview.dart';
 import 'package:myrun/src/widgets/hub_scene.dart';
 
 /// Trang đầu của app: ai trong club đang chạy, các kèo đang diễn ra, thẻ vừa
@@ -202,7 +203,7 @@ class _LiveSection extends ConsumerWidget {
 class LiveSessionCard extends StatelessWidget {
   const LiveSessionCard({required this.session, super.key});
 
-  static const height = 178.0;
+  static const height = 236.0;
 
   final LiveTrackingSession session;
 
@@ -232,9 +233,10 @@ class LiveSessionCard extends StatelessWidget {
                 ),
               ),
               Positioned.fill(
-                child: LiveRouteSketch(
-                  points: session.routePreview,
-                  color: palette.accent,
+                child: LiveMapPreview(
+                  session: session,
+                  // Chừa hàng nhãn LIVE ở trên và tấm tên, số km ở dưới.
+                  padding: const EdgeInsets.fromLTRB(28, 56, 28, 76),
                 ),
               ),
               Positioned(
