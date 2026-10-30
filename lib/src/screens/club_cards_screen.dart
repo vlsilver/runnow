@@ -33,8 +33,8 @@ class ClubCardsScreen extends ConsumerWidget {
                 if (item.ownerUid == myUid) item,
             ],
             empty:
-                'Bạn chưa khoe thẻ nào. Lật thẻ ở một buổi chạy rồi bật '
-                '"Khoe với club".',
+                'Bạn chưa có thẻ nào trên club. Thẻ tự lên club khi hồ sơ '
+                'của bạn để công khai.',
           ),
         ],
       );
