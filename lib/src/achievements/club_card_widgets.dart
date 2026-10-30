@@ -67,9 +67,6 @@ class ClubCardThumb extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final owner = _owner(ref, item);
     final data = item.card.data(owner.name);
-    final hearts = ref
-        .watch(heartsProvider(cardHeartTarget(item.ownerUid, item.key)))
-        .value;
     final muted = Theme.of(
       context,
     ).colorScheme.onSurface.withValues(alpha: 0.55);
@@ -86,7 +83,7 @@ class ClubCardThumb extends ConsumerWidget {
               child: _CardFace(data: data, member: owner.member, width: width),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Row(
             children: [
               Expanded(
@@ -97,22 +94,10 @@ class ClubCardThumb extends ConsumerWidget {
                   style: TextStyle(color: muted, fontSize: 12),
                 ),
               ),
-              if (hearts != null && hearts.count > 0) ...[
-                Icon(
-                  Icons.favorite_rounded,
-                  size: 13,
-                  color: RunNowDataColors.heart,
-                ),
-                const SizedBox(width: 2),
-                Text(
-                  '${hearts.count}',
-                  style: TextStyle(
-                    color: muted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+              HeartButton(
+                target: cardHeartTarget(item.ownerUid, item.key),
+                size: 14,
+              ),
             ],
           ),
         ],
