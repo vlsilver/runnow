@@ -724,8 +724,9 @@ class _InviteRow extends StatelessWidget {
 
 // ---------------------------------------------------------------- BXH TUẦN
 
-/// Top 10 BXH Chạy/Đi bộ tuần này trên đường đua và hạng của mình. Đọc chung bảng với
-/// tab Club (đã tải sẵn lúc mở app). Tuần chưa ai có km thì ẩn.
+/// Top 5 BXH Chạy/Đi bộ tuần này trên đường đua và hạng của mình. Đọc
+/// chung bảng với tab Club (đã tải sẵn lúc mở app). Tuần chưa ai có km thì
+/// ẩn.
 class _RankSection extends ConsumerWidget {
   const _RankSection();
 
