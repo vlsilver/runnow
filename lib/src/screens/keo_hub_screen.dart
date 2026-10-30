@@ -447,8 +447,8 @@ class _MiniCard extends StatelessWidget {
     required this.scene,
   });
 
-  static const width = 140.0;
-  static const height = 176.0;
+  static const width = 164.0;
+  static const height = 208.0;
 
   final Widget child;
   final VoidCallback onTap;
@@ -763,7 +763,7 @@ class _CardsSection extends ConsumerWidget {
   const _CardsSection();
 
   static const _shown = 10;
-  static const _thumbWidth = 116.0;
+  static const _thumbWidth = 150.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

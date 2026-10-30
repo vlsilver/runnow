@@ -26,7 +26,10 @@ class ClubCardsScreen extends ConsumerWidget {
       body = TabBarView(
         children: [
           _Grid(items: all, empty: 'Chưa ai khoe thẻ.'),
-          _Grid(items: rareFirst(all), empty: 'Chưa có thẻ hiếm nào được khoe.'),
+          _Grid(
+            items: rareFirst(all),
+            empty: 'Chưa có thẻ hiếm nào được khoe.',
+          ),
           _Grid(
             items: [
               for (final item in all)
@@ -82,8 +85,8 @@ class _Grid extends StatelessWidget {
         crossAxisCount: 2,
         mainAxisSpacing: 14,
         crossAxisSpacing: 14,
-        // Thẻ 300x420 cộng một hàng chủ thẻ và nút tim.
-        childAspectRatio: 0.6,
+        // Đúng tỉ lệ thẻ 300x420: chủ thẻ và nút tim nằm trên mặt thẻ.
+        childAspectRatio: 300 / 420,
       ),
       itemCount: items.length,
       itemBuilder: (context, i) => ClubCardTile(item: items[i]),

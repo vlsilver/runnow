@@ -54,125 +54,84 @@ VoidCallback _onOpen(
 
 /// Chiều cao một [ClubCardThumb] rộng [width], để danh sách ngang đặt cỡ.
 double clubCardThumbHeight(double width) =>
-    width * achievementCardSize.height / achievementCardSize.width + 30;
+    width * achievementCardSize.height / achievementCardSize.width;
 
-/// Thẻ khoe thu nhỏ: mặt thẻ, dưới là chủ thẻ và số tim. Chạm để xem 3D.
-class ClubCardThumb extends ConsumerWidget {
+/// Thẻ khoe thu nhỏ: mặt thẻ có chủ thẻ và nút tim. Chạm để xem 3D.
+class ClubCardThumb extends StatelessWidget {
   const ClubCardThumb({required this.item, required this.width, super.key});
 
   final ClubCard item;
   final double width;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final owner = _owner(ref, item);
-    final data = item.card.data(owner.name);
-    final muted = Theme.of(
-      context,
-    ).colorScheme.onSurface.withValues(alpha: 0.55);
-    return SizedBox(
-      width: width,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Semantics(
-            button: true,
-            label: 'Xem thẻ của ${owner.isMe ? 'bạn' : owner.name}',
-            child: GestureDetector(
-              onTap: _onOpen(context, ref, item, owner, data),
-              child: _CardFace(data: data, member: owner.member, width: width),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  owner.isMe ? 'Bạn' : owner.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: muted, fontSize: 12),
-                ),
-              ),
-              HeartButton(
-                target: cardHeartTarget(item.ownerUid, item.key),
-                size: 14,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => SizedBox(
+    width: width,
+    child: _ClubCardFace(item: item, width: width),
+  );
 }
 
-/// Một ô ở trang Thẻ của club: mặt thẻ, dưới là chủ thẻ và nút tim.
-class ClubCardTile extends ConsumerWidget {
+/// Một ô ở trang Thẻ của club: mặt thẻ có chủ thẻ và nút tim.
+class ClubCardTile extends StatelessWidget {
   const ClubCardTile({required this.item, super.key});
 
   final ClubCard item;
 
   @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) =>
+        _ClubCardFace(item: item, width: constraints.maxWidth),
+  );
+}
+
+/// Mặt thẻ chạm được để xem. Tên chủ thẻ đã in trên thẻ nên không thêm dòng
+/// nào bên dưới.
+class _ClubCardFace extends ConsumerWidget {
+  const _ClubCardFace({required this.item, required this.width});
+
+  final ClubCard item;
+  final double width;
+
+  @override
   Widget build(BuildContext context, WidgetRef ref) {
     final owner = _owner(ref, item);
     final data = item.card.data(owner.name);
-    return LayoutBuilder(
-      builder: (context, constraints) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Semantics(
-            button: true,
-            label: 'Xem thẻ của ${owner.isMe ? 'bạn' : owner.name}',
-            child: GestureDetector(
-              onTap: _onOpen(context, ref, item, owner, data),
-              child: _CardFace(
-                data: data,
-                member: owner.member,
-                width: constraints.maxWidth,
-              ),
-            ),
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  owner.isMe ? 'Bạn' : owner.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-              HeartButton(
-                target: cardHeartTarget(item.ownerUid, item.key),
-                size: 20,
-              ),
-            ],
-          ),
-        ],
+    return Semantics(
+      button: true,
+      label: 'Xem thẻ của ${owner.isMe ? 'bạn' : owner.name}',
+      child: GestureDetector(
+        onTap: _onOpen(context, ref, item, owner, data),
+        child: _CardFace(
+          data: data,
+          member: owner.member,
+          heartTarget: cardHeartTarget(item.ownerUid, item.key),
+          width: width,
+        ),
       ),
     );
   }
 }
 
-/// Mặt thẻ khoe, avatar chủ thẻ ở góc trên phải (góc trái là dấu bậc thẻ).
+/// Mặt thẻ khoe: góc trên phải là avatar chủ thẻ, ngay dưới là nút tim (góc
+/// trái là dấu bậc thẻ). Tim nằm trên tranh tối nên có nền tối và chữ sáng
+/// dù app đang sáng hay tối.
 class _CardFace extends StatelessWidget {
   const _CardFace({
     required this.data,
     required this.member,
+    required this.heartTarget,
     required this.width,
   });
 
   final AchievementCardData data;
   final MemberProfile? member;
+  final String heartTarget;
   final double width;
 
   @override
   Widget build(BuildContext context) {
     final avatar = (width * 0.22).clamp(20.0, 34.0);
     final inset = width * 0.06;
+    final theme = Theme.of(context);
     return Stack(
       children: [
         GameCardScaled(
@@ -183,15 +142,40 @@ class _CardFace extends StatelessWidget {
         Positioned(
           top: inset,
           right: inset,
-          child: DecoratedBox(
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: RunNowGameTokens.nightInk,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(1.5),
-              child: ClubAvatar(member: member, size: avatar - 3),
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              DecoratedBox(
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: RunNowGameTokens.nightInk,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(1.5),
+                  child: ClubAvatar(member: member, size: avatar - 3),
+                ),
+              ),
+              const SizedBox(height: 4),
+              DecoratedBox(
+                decoration: ShapeDecoration(
+                  shape: const StadiumBorder(),
+                  color: RunNowGameTokens.nightBackground.withValues(
+                    alpha: 0.72,
+                  ),
+                ),
+                child: Theme(
+                  data: theme.copyWith(
+                    colorScheme: theme.colorScheme.copyWith(
+                      onSurface: RunNowGameTokens.nightInk,
+                    ),
+                  ),
+                  child: HeartButton(
+                    target: heartTarget,
+                    size: (width * 0.1).clamp(13.0, 18.0),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],
