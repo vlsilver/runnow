@@ -554,7 +554,7 @@ class _CoachMiniCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          const _MutedLine('giáo án'),
+          _Joiners(plan: plan),
         ],
       ),
     );
@@ -856,6 +856,62 @@ class _Ring extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Avatar những người đang theo giáo án, chủ giáo án đứng đầu.
+class _Joiners extends ConsumerWidget {
+  const _Joiners({required this.plan});
+
+  final TrainingPlan plan;
+
+  static const _size = 22.0;
+  static const _step = 15.0;
+  static const _shown = 4;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final members = {
+      for (final member in ref.watch(membersProvider).value ?? const [])
+        member.uid: member,
+    };
+    final uids = plan.participants.keys.toList()
+      ..sort((a, b) {
+        if (a == plan.ownerUid) return -1;
+        if (b == plan.ownerUid) return 1;
+        return a.compareTo(b);
+      });
+    if (uids.isEmpty) return const _MutedLine('giáo án');
+    final shown = uids.take(_shown).toList();
+    final more = uids.length - shown.length;
+    return Row(
+      children: [
+        SizedBox(
+          width: _size + (shown.length - 1) * _step,
+          height: _size,
+          child: Stack(
+            children: [
+              for (final (i, uid) in shown.indexed)
+                Positioned(
+                  left: i * _step,
+                  child: DecoratedBox(
+                    // Viền tối tách các avatar chồng lên nhau trên tranh.
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: RunNowHubSceneTokens.shade,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(1.5),
+                      child: ClubAvatar(member: members[uid], size: _size - 3),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (more > 0) ...[const SizedBox(width: 6), _MutedLine('+$more')],
+      ],
     );
   }
 }
