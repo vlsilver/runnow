@@ -157,8 +157,27 @@ class _LiveSection extends ConsumerWidget {
           for (final session in sessions)
             if (session.ownerUid != uid) session,
         ];
-        if (others.isEmpty) return const _RecentLive();
-        return _LiveCards(sessions: others);
+        if (others.isEmpty) return const SizedBox.shrink();
+        if (others.length == 1) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: LiveSessionCard(session: others.single),
+          );
+        }
+        final width = MediaQuery.sizeOf(context).width - 60;
+        return SizedBox(
+          height: LiveSessionCard.height,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: others.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, index) => SizedBox(
+              width: width,
+              child: LiveSessionCard(session: others[index]),
+            ),
+          ),
+        );
       },
       // Live chỉ là phần thêm: lỗi thì báo một dòng, phần còn lại vẫn dùng
       // được.
@@ -174,63 +193,6 @@ class _LiveSection extends ConsumerWidget {
   }
 }
 
-/// Không ai đang live thì hiện mấy buổi live vừa xong.
-class _RecentLive extends ConsumerWidget {
-  const _RecentLive();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final recent = ref.watch(clubRecentLiveSessionsProvider);
-    if (recent.error case final error?) {
-      debugPrint('recent live sessions: $error');
-      return _RetryRow(
-        label: 'Không tải được các buổi live gần đây. Chạm để thử lại.',
-        onTap: () => ref.invalidate(clubRecentLiveSessionsProvider),
-      );
-    }
-    final sessions = recent.value ?? const <LiveTrackingSession>[];
-    if (sessions.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const HubSectionHeader(title: 'Live gần đây'),
-        _LiveCards(sessions: sessions),
-      ],
-    );
-  }
-}
-
-/// Một thẻ thì full ngang, nhiều thẻ thì cuộn ngang.
-class _LiveCards extends StatelessWidget {
-  const _LiveCards({required this.sessions});
-
-  final List<LiveTrackingSession> sessions;
-
-  @override
-  Widget build(BuildContext context) {
-    if (sessions.length == 1) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: LiveSessionCard(session: sessions.single),
-      );
-    }
-    final width = MediaQuery.sizeOf(context).width - 60;
-    return SizedBox(
-      height: LiveSessionCard.height,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: sessions.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 12),
-        itemBuilder: (context, index) => SizedBox(
-          width: width,
-          child: LiveSessionCard(session: sessions[index]),
-        ),
-      ),
-    );
-  }
-}
-
 class LiveSessionCard extends StatelessWidget {
   const LiveSessionCard({required this.session, super.key});
 
@@ -242,14 +204,6 @@ class LiveSessionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    final now = DateTime.now();
-    final over = !session.isActive || session.isExpired(now);
-    const clockStyle = TextStyle(
-      fontFamily: 'Barlow Condensed',
-      fontSize: 16,
-      fontWeight: FontWeight.w700,
-      fontFeatures: [FontFeature.tabularFigures()],
-    );
     return SizedBox(
       height: height,
       child: Material(
@@ -275,7 +229,6 @@ class LiveSessionCard extends StatelessWidget {
                 child: LiveRouteSketch(
                   points: session.routePreview,
                   color: palette.accent,
-                  live: !over,
                 ),
               ),
               Positioned(
@@ -284,33 +237,20 @@ class LiveSessionCard extends StatelessWidget {
                 top: 14,
                 child: Row(
                   children: [
-                    if (over)
-                      _GlassPill(
-                        child: Text(
-                          'Đã chạy · ${feedWhenLabel(session.updatedAt, now)}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      )
-                    else
-                      const LiveBadge(),
+                    const LiveBadge(),
                     const Spacer(),
                     _GlassPill(
-                      child: over
-                          ? Text(
-                              formatDuration(session.movingTimeSeconds),
-                              style: clockStyle,
-                            )
-                          : EverySecond(
-                              builder: (context, now) => Text(
-                                formatDuration(
-                                  liveElapsedSeconds(session, now),
-                                ),
-                                style: clockStyle,
-                              ),
-                            ),
+                      child: EverySecond(
+                        builder: (context, now) => Text(
+                          formatDuration(liveElapsedSeconds(session, now)),
+                          style: const TextStyle(
+                            fontFamily: 'Barlow Condensed',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),

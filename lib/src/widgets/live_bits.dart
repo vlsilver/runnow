@@ -219,16 +219,12 @@ class LiveRouteSketch extends StatelessWidget {
     required this.points,
     required this.color,
     this.padding = const EdgeInsets.fromLTRB(28, 46, 28, 70),
-    this.live = true,
     super.key,
   });
 
   final List<RoutePoint> points;
   final Color color;
   final EdgeInsets padding;
-
-  /// Còn đang chạy thì có chấm nhấp nháy ở vị trí cuối; buổi đã xong thì không.
-  final bool live;
 
   @override
   Widget build(BuildContext context) {
@@ -244,7 +240,7 @@ class LiveRouteSketch extends StatelessWidget {
             Positioned.fill(
               child: CustomPaint(painter: _RouteSketchPainter(shifted, color)),
             ),
-            if (live && shifted.isNotEmpty)
+            if (shifted.isNotEmpty)
               Positioned(
                 left: shifted.last.dx - 32,
                 top: shifted.last.dy - 32,

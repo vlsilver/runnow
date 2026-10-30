@@ -574,13 +574,6 @@ final clubLiveSessionsProvider =
           ref.watch(liveTrackingRepositoryProvider).watchClubLiveSessions(),
     );
 
-final clubRecentLiveSessionsProvider =
-    StreamProvider.autoDispose<List<LiveTrackingSession>>(
-      (ref) => ref
-          .watch(liveTrackingRepositoryProvider)
-          .watchRecentClubLiveSessions(),
-    );
-
 final liveSessionProvider = StreamProvider.autoDispose
     .family<LiveTrackingSession?, String>(
       (ref, sessionId) =>

@@ -530,18 +530,6 @@ class LiveTrackingSession {
       isActive && now.difference(updatedAt) > const Duration(minutes: 3);
 }
 
-/// Buổi live đã xong, kể cả buổi app tắt giữa chừng (còn "running" mà quá hạn),
-/// giữ thứ tự đầu vào. Bỏ buổi 0 km vì thẻ không có gì để xem.
-List<LiveTrackingSession> recentLiveSessions(
-  Iterable<LiveTrackingSession> sessions,
-  DateTime now,
-) => [
-  for (final session in sessions)
-    if ((!session.isActive || session.isExpired(now)) &&
-        session.distanceMeters > 0)
-      session,
-];
-
 DateTime? _dateTimeFromLiveValue(Object? value) {
   if (value is DateTime) return value.toLocal();
   if (value is String) return DateTime.tryParse(value)?.toLocal();
