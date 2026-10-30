@@ -56,6 +56,7 @@ Future<void> showCardViewer(
   bool hideWhenInactive = false,
   Future<void> Function(GlobalKey cardKey, BuildContext origin)? onShare,
   Widget? locked,
+  Widget? footer,
   bool startBack = false,
 }) {
   return Navigator.of(context).push(
@@ -72,6 +73,7 @@ Future<void> showCardViewer(
           hideWhenInactive: hideWhenInactive,
           onShare: onShare,
           locked: locked,
+          footer: footer,
           startBack: startBack,
         ),
       ),
@@ -91,6 +93,7 @@ class GameCardViewer extends StatefulWidget {
     this.hideWhenInactive = false,
     this.onShare,
     this.locked,
+    this.footer,
     this.startBack = false,
   });
 
@@ -107,6 +110,9 @@ class GameCardViewer extends StatefulWidget {
   /// Null thì không có nút khoe; khi đó hiện [locked] nếu có.
   final Future<void> Function(GlobalKey cardKey, BuildContext origin)? onShare;
   final Widget? locked;
+
+  /// Nằm dưới nút khoe, vd công tắc khoe với club.
+  final Widget? footer;
 
   /// Mở lá đang úp để người xem tự chạm lật.
   final bool startBack;
@@ -236,9 +242,15 @@ class _GameCardViewerState extends State<GameCardViewer>
               const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: widget.onShare != null
-                    ? _shareButton()
-                    : widget.locked ?? const SizedBox.shrink(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    widget.onShare != null
+                        ? _shareButton()
+                        : widget.locked ?? const SizedBox.shrink(),
+                    ?widget.footer,
+                  ],
+                ),
               ),
             ],
           ),
