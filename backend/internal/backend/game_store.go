@@ -432,8 +432,12 @@ func (s *GameStore) advanceOnce(ctx context.Context, gameID string, wall time.Ti
 		if err != nil {
 			return err
 		}
+		public, err := publicWinners(tx, s.db.Collection("publicProfiles"), st, next)
+		if err != nil {
+			return err
+		}
 		w := stepWrite{tx: tx, game: game, gameData: g.Data(), before: st, after: next, events: evs, msgs: msgs, chats: chats, now: now, wall: wall,
-			users: s.db.Collection("users")}
+			users: s.db.Collection("users"), clubCards: s.db.Collection("clubCards"), public: public}
 		if err := w.commit(map[string]any{"kind": "step", "phaseKey": st.PhaseKey(), "inputs": string(inputs)}); err != nil {
 			return err
 		}
@@ -618,6 +622,10 @@ type stepWrite struct {
 	extra map[string]any
 	// users là collection users, để bước kết thúc ván ghi thẻ cho phe thắng.
 	users *firestore.CollectionRef
+	// clubCards và public: thẻ của người phe thắng để hồ sơ công khai tự lên
+	// club (publicWinners).
+	clubCards *firestore.CollectionRef
+	public    map[string]bool
 }
 
 func (w *stepWrite) status() string {
@@ -713,11 +721,45 @@ func (w *stepWrite) writeGameCards() error {
 			continue
 		}
 		ref := w.users.Doc(uid).Collection("gameCards").Doc(w.game.ID)
-		if err := w.tx.Set(ref, gameCardDoc(w.game.ID, uid, w.after, w.wall)); err != nil {
+		card := gameCardDoc(w.game.ID, uid, w.after, w.wall)
+		if err := w.tx.Set(ref, card); err != nil {
 			return err
+		}
+		if w.public[uid] {
+			club := w.clubCards.Doc(keptClubCardID(uid, "game", w.game.ID))
+			if err := w.tx.Set(club, keptClubCardDoc("game", uid, card, w.wall)); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+// publicWinners đọc trong tx hồ sơ của người phe thắng khi bước này kết thúc
+// ván, trả những uid để công khai. Transaction phải đọc xong mới ghi, nên đọc
+// trước stepWrite. Ván thử không khoe gì nên không đọc.
+func publicWinners(tx *firestore.Transaction, profiles *firestore.CollectionRef, before, after *werewolf.State) (map[string]bool, error) {
+	if before.Phase == werewolf.PhaseEnded || after.Phase != werewolf.PhaseEnded || after.Config.TestMode {
+		return nil, nil
+	}
+	var refs []*firestore.DocumentRef
+	for _, uid := range after.Winners() {
+		refs = append(refs, profiles.Doc(uid))
+	}
+	if len(refs) == 0 {
+		return nil, nil
+	}
+	snaps, err := tx.GetAll(refs)
+	if err != nil {
+		return nil, err
+	}
+	public := map[string]bool{}
+	for _, snap := range snaps {
+		if snap.Exists() && publicProfile(snap.Data()) {
+			public[snap.Ref.ID] = true
+		}
+	}
+	return public, nil
 }
 
 // publicGame là phần của games/{id} mà API được đọc: không có vai của người còn

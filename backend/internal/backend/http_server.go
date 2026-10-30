@@ -1068,6 +1068,11 @@ func (s *Server) workerRoutes() {
 		if err := s.deps.Derived.RebuildCurrent(r.Context(), task.UID, now); err != nil {
 			return err
 		}
+		// Task chạy khi đổi hồ sơ và mỗi đêm cho mọi member, nên thẻ khoe theo
+		// kịp chế độ hồ sơ và thẻ cũ được khoe bù.
+		if err := s.deps.RunCards.SyncClub(r.Context(), task.UID); err != nil {
+			return err
+		}
 		// FIX GỐC đếm-đôi Tổng km: đi-bộ = Apple − run được tính trong
 		// rebuildStepLeaderboard, TRƯỚC ĐÂY chỉ chạy khi sync bước → buổi chạy mới
 		// (tạo sau lần sync bước cuối) không được trừ khỏi đi-bộ → đếm đôi. Giờ mỗi
@@ -1105,8 +1110,14 @@ func (s *Server) workerRoutes() {
 		// task chạy lại; dựng lại periodStats lần nữa không sao vì nó tính lại
 		// từ đầu.
 		if s.deps.JourneyCards != nil {
-			if _, err := s.deps.JourneyCards.AwardFinished(r.Context(), task.UID); err != nil {
+			awarded, err := s.deps.JourneyCards.AwardFinished(r.Context(), task.UID)
+			if err != nil {
 				return err
+			}
+			if awarded > 0 {
+				if err := s.deps.RunCards.SyncClub(r.Context(), task.UID); err != nil {
+					return err
+				}
 			}
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})

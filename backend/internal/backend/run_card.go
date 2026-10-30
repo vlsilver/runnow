@@ -359,24 +359,35 @@ func (s *RunCardStore) Roll(ctx context.Context, uid, activityID string) (map[st
 			}
 			return err
 		}
+		profile, err := getOptional(tx, s.db.Collection("publicProfiles").Doc(uid))
+		if err != nil {
+			return err
+		}
+		now := s.now()
 		km := runCardKm(fact.DistanceMeters)
 		if ppm := runCardChancePpm(km); chance >= ppm {
 			missed = true
 			return tx.Create(s.missRef(uid, activityID), map[string]any{
 				"activityId": activityID, "km": km, "chancePpm": ppm, "rollPpm": chance,
-				"startedAt": fact.StartedAt, "rolledAt": s.now(), "snapshot": runCardSnapshot(act),
+				"startedAt": fact.StartedAt, "rolledAt": now, "snapshot": runCardSnapshot(act),
 			})
 		}
 		odds := runCardOdds(km)
 		card = map[string]any{
 			"activityId": activityID, "tier": string(runCardPick(odds, r)), "odds": runCardOddMaps(odds), "rollPpm": r,
-			"km": km, "startedAt": fact.StartedAt, "rolledAt": s.now(), "snapshot": runCardSnapshot(act),
+			"km": km, "startedAt": fact.StartedAt, "rolledAt": now, "snapshot": runCardSnapshot(act),
 			"variantRollPpm": secret,
 		}
 		if v := runCardVariant(secret); v != "" {
 			card["variant"] = v
 		}
-		return tx.Create(ref, card)
+		if err := tx.Create(ref, card); err != nil {
+			return err
+		}
+		if !publicProfile(profile.Data()) {
+			return nil
+		}
+		return tx.Set(s.clubCardRef(uid, activityID), clubCardDoc(uid, activityID, card, now))
 	})
 	if err != nil {
 		return nil, err

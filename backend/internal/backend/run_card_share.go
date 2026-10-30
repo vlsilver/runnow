@@ -6,12 +6,24 @@ import (
 	"time"
 
 	"cloud.google.com/go/firestore"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Thẻ khoe với club nằm ở clubCards/{uid}_{activityId}, cùng dạng doc thẻ để
 // app vẽ được bằng một khuôn. Ai đăng nhập cũng đọc được nên chỉ chép mặt thẻ:
 // không có đường chạy (lộ chỗ ở) và nhịp tim. Tranh không chép: storage rule
 // mở art-*.png của thẻ khi doc khoe còn.
+//
+// Thẻ tự lên club khi chủ để hồ sơ công khai, giống feed buổi chạy của club:
+// lật thẻ và ván Ma Sói kết thúc thì ghi thẻ khoe trong cùng transaction,
+// SyncClub khoe bù thẻ còn thiếu và gỡ thẻ của người chuyển sang riêng tư.
+
+// publicProfile là hồ sơ (publicProfiles/{uid}) để công khai; thiếu field thì
+// là riêng tư.
+func publicProfile(data map[string]any) bool {
+	return stringValue(data["profileVisibility"]) == "public"
+}
 
 // clubCardSnapshotKeys là những field snapshot được khoe. Liệt kê field được
 // phép chứ không liệt kê field cấm, để field mới thêm vào snapshot không tự lộ.
@@ -102,9 +114,12 @@ func (s *RunCardStore) share(ctx context.Context, source, ref *firestore.Documen
 var keptCardKinds = map[string]struct {
 	collection string
 	keys       []string
+	// at là field giờ có thẻ, theo thứ tự ưu tiên; khoe bù lấy giờ đó làm giờ
+	// khoe để thẻ cũ không nhảy lên đầu mục.
+	at []string
 }{
-	"game":    {"gameCards", []string{"gameId", "tier", "role", "team", "winner", "alive", "rounds", "playerCount", "endedAt", "deathRound", "variant"}},
-	"journey": {"journeyCards", []string{"campaign", "routeId", "level", "tier", "distanceMeters", "runCount", "finishedAt"}},
+	"game":    {"gameCards", []string{"gameId", "tier", "role", "team", "winner", "alive", "rounds", "playerCount", "endedAt", "deathRound", "variant"}, []string{"endedAt"}},
+	"journey": {"journeyCards", []string{"campaign", "routeId", "level", "tier", "distanceMeters", "runCount", "finishedAt"}, []string{"awardedAt", "finishedAt"}},
 }
 
 var (
@@ -155,6 +170,77 @@ func (s *RunCardStore) UnshareKept(ctx context.Context, uid, kind, id string) er
 	}
 	_, err := s.keptClubCardRef(uid, kind, id).Delete(ctx)
 	return err
+}
+
+// SyncClub cho thẻ khoe của uid khớp chế độ hồ sơ. Công khai thì khoe mọi thẻ
+// chưa khoe (trừ thẻ ván thử), giờ khoe là giờ có thẻ; riêng tư thì gỡ hết.
+// Thẻ đã khoe giữ nguyên. Chạy lại bao nhiêu lần cũng được.
+func (s *RunCardStore) SyncClub(ctx context.Context, uid string) error {
+	profile, err := s.db.Collection("publicProfiles").Doc(uid).Get(ctx)
+	if err != nil && status.Code(err) != codes.NotFound {
+		return err
+	}
+	shared, err := s.db.Collection("clubCards").Where("ownerUid", "==", uid).Documents(ctx).GetAll()
+	if err != nil {
+		return err
+	}
+	if !profile.Exists() || !publicProfile(profile.Data()) {
+		for _, doc := range shared {
+			if _, err := doc.Ref.Delete(ctx); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	have := map[string]bool{}
+	for _, doc := range shared {
+		have[doc.Ref.ID] = true
+	}
+	// Create chứ không Set: thẻ vừa khoe lúc lật trong lúc này thì giữ bản đó.
+	create := func(ref *firestore.DocumentRef, doc map[string]any) error {
+		if have[ref.ID] {
+			return nil
+		}
+		if _, err := ref.Create(ctx, doc); err != nil && status.Code(err) != codes.AlreadyExists {
+			return err
+		}
+		return nil
+	}
+	user := s.db.Collection("users").Doc(uid)
+	runs, err := user.Collection("runCards").Documents(ctx).GetAll()
+	if err != nil {
+		return err
+	}
+	for _, doc := range runs {
+		card := doc.Data()
+		at, _ := card["rolledAt"].(time.Time)
+		if err := create(s.clubCardRef(uid, doc.Ref.ID), clubCardDoc(uid, doc.Ref.ID, card, at)); err != nil {
+			return err
+		}
+	}
+	for kind, spec := range keptCardKinds {
+		docs, err := user.Collection(spec.collection).Documents(ctx).GetAll()
+		if err != nil {
+			return err
+		}
+		for _, doc := range docs {
+			card := doc.Data()
+			if card["testMode"] == true {
+				continue
+			}
+			at := s.now()
+			for _, k := range spec.at {
+				if t, ok := card[k].(time.Time); ok {
+					at = t
+					break
+				}
+			}
+			if err := create(s.keptClubCardRef(uid, kind, doc.Ref.ID), keptClubCardDoc(kind, uid, card, at)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Unshare thôi khoe thẻ. Firestore xoá doc không có vẫn thành công, nên gọi

@@ -83,6 +83,7 @@ func TestEmulatorJourneyCardsAwardedWhenCampaignFinished(t *testing.T) {
 	ctx := context.Background()
 	seedJourneyRoutes(t, db)
 	seed(t, db, "users/u1", map[string]any{"journeyRouteId": "hcm_trail"})
+	seed(t, db, "publicProfiles/u1", map[string]any{"profileVisibility": "public"})
 	vn := func(month, day int) time.Time { return time.Date(2026, time.Month(month), day, 6, 0, 0, 0, vietnam) }
 
 	// Cộng dồn: 6, 12 (qua mốc 10 → xong marathon), 27, 32 (qua 30 → xong
@@ -95,7 +96,7 @@ func TestEmulatorJourneyCardsAwardedWhenCampaignFinished(t *testing.T) {
 	seedJourneyActivity(t, db, "a4", "Walk", vn(11, 1), 5000)
 	seedJourneyActivity(t, db, "a5", "Run", vn(11, 5), 30000)
 
-	worker := NewWorkerServer(Config{}, &Dependencies{Firestore: db, PeriodStats: NewPeriodStatsService(db), JourneyCards: NewJourneyCardService(db)})
+	worker := NewWorkerServer(Config{}, &Dependencies{Firestore: db, PeriodStats: NewPeriodStatsService(db), JourneyCards: NewJourneyCardService(db), RunCards: NewRunCardStore(db)})
 	rebuildPeriodStats(t, worker, vn(10, 1), vn(11, 1))
 
 	cards := journeyCards(t, db)
@@ -105,6 +106,11 @@ func TestEmulatorJourneyCardsAwardedWhenCampaignFinished(t *testing.T) {
 	// Marathon: a1, a2. Mont Blanc (10 → 30 km): a2 (6 → 12), a3, a4.
 	wantJourneyCard(t, cards["marathon"], "athens_marathon", "rare", 1, 10000, 2, vn(10, 2))
 	wantJourneyCard(t, cards["mont_blanc"], "tour_du_mont_blanc", "epic", 2, 20000, 3, vn(11, 1))
+	// Hồ sơ công khai: thẻ vừa trao tự lên club, giờ khoe là lúc trao.
+	club, err := getData(ctx, db.Doc("clubCards/u1_journey_marathon"))
+	if err != nil || club == nil || club["kind"] != "journey" || !club["sharedAt"].(time.Time).Equal(cards["marathon"]["awardedAt"].(time.Time)) {
+		t.Fatalf("thẻ khoe marathon = %v (%v)", club, err)
+	}
 
 	// Thẻ đã có thì không ghi lại, kể cả khi số liệu tính lại khác.
 	if _, err := db.Doc("users/u1/journeyCards/marathon").Update(ctx, []firestore.Update{{Path: "runCount", Value: 99}}); err != nil {
