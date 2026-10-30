@@ -55,6 +55,16 @@
   ],
   "fieldOverrides": [
     {
+      "collectionGroup": "activities",
+      "fieldPath": "startedAt",
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION" },
+        { "arrayConfig": "CONTAINS", "queryScope": "COLLECTION" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION_GROUP" }
+      ]
+    },
+    {
       "collectionGroup": "botMessages",
       "fieldPath": "tgUserId",
       "indexes": [

@@ -783,6 +783,21 @@ func (s *Server) apiRoutes() {
 		}
 		return writeJSON(w, 200, page)
 	}))
+	s.route("GET /v1/club/runs", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		limit := 20
+		if v := r.URL.Query().Get("limit"); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return invalidRequest()
+			}
+			limit = n
+		}
+		page, err := s.deps.Activities.ClubRuns(r.Context(), r.URL.Query().Get("cursor"), limit)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, page)
+	}))
 	s.route("GET /v1/activities/{activityId}/card", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		id, err := runCardActivityID(r)
 		if err != nil {
