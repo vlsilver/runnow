@@ -52,6 +52,12 @@ class ClubCard {
   final DateTime? sharedAt;
 }
 
+/// Thẻ gốc trong bộ thẻ của mình ứng với thẻ khoe [item], để mở bằng màn xem
+/// của chủ thẻ (có nút khoe, đủ đường chạy). Id thẻ khoe và thẻ trong bộ giống
+/// nhau: activityId, `masoi-{gameId}`, `journey-{campaign}`.
+CollectedCard? ownClubCard(Iterable<CollectedCard> mine, ClubCard item) =>
+    mine.where((card) => card.id == item.card.id).firstOrNull;
+
 /// Thẻ từ bậc Hiếm trở lên, bậc cao trước; cùng bậc thì thẻ khoe mới trước.
 /// So cả sharedAt vì List.sort không giữ thứ tự sẵn có của phần tử bằng nhau.
 List<ClubCard> rareFirst(Iterable<ClubCard> cards) {

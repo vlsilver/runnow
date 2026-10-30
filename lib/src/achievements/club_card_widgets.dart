@@ -36,6 +36,22 @@ import 'package:myrun/src/widgets/heart_button.dart';
   );
 }
 
+/// Thẻ của chính mình mở bằng thẻ gốc trong bộ để khoe được; thẻ người khác,
+/// hay bộ thẻ chưa tải xong, thì chỉ xem.
+VoidCallback _onOpen(
+  BuildContext context,
+  WidgetRef ref,
+  ClubCard item,
+  ({MemberProfile? member, String name, bool isMe}) owner,
+  AchievementCardData data,
+) {
+  final own = owner.isMe
+      ? ownClubCard(ref.watch(collectedCardsProvider).value ?? const [], item)
+      : null;
+  if (own == null) return () => showClubCardViewer(context, item, data);
+  return () => own.open(context, own.data(owner.name));
+}
+
 /// Chiều cao một [ClubCardThumb] rộng [width], để danh sách ngang đặt cỡ.
 double clubCardThumbHeight(double width) =>
     width * achievementCardSize.height / achievementCardSize.width + 30;
@@ -66,7 +82,7 @@ class ClubCardThumb extends ConsumerWidget {
             button: true,
             label: 'Xem thẻ của ${owner.isMe ? 'bạn' : owner.name}',
             child: GestureDetector(
-              onTap: () => showClubCardViewer(context, item, data),
+              onTap: _onOpen(context, ref, item, owner, data),
               child: _CardFace(data: data, member: owner.member, width: width),
             ),
           ),
@@ -123,7 +139,7 @@ class ClubCardTile extends ConsumerWidget {
             button: true,
             label: 'Xem thẻ của ${owner.isMe ? 'bạn' : owner.name}',
             child: GestureDetector(
-              onTap: () => showClubCardViewer(context, item, data),
+              onTap: _onOpen(context, ref, item, owner, data),
               child: _CardFace(
                 data: data,
                 member: owner.member,

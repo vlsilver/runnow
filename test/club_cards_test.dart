@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/achievements/club_card.dart';
 import 'package:myrun/src/achievements/run_card_collection.dart';
+import 'package:myrun/src/achievements/run_card_models.dart';
+import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 
 void main() {
@@ -105,30 +107,63 @@ void main() {
     );
   });
 
-  test('tab Hiếm+: bỏ thẻ Thường, bậc cao trước, cùng bậc thì mới khoe trước', () {
-    ClubCard card(String id, String tier, int day) => ClubCard.fromJson({
-      'ownerUid': 'u1',
-      'activityId': id,
-      'tier': tier,
-      'sharedAt': DateTime.utc(2026, 10, day),
-    })!;
-    // Thứ tự như clubCardsProvider trả về: mới khoe trước.
-    final all = [
-      card('c', 'common', 30),
-      card('r1', 'rare', 29),
-      card('l', 'legendary', 28),
-      card('r2', 'rare', 27),
-      card('m', 'mythic', 26),
-      card('e', 'epic', 25),
-      card('r3', 'rare', 24),
-    ];
-    expect([for (final item in rareFirst(all)) item.key], [
-      'm',
-      'l',
-      'e',
-      'r1',
-      'r2',
-      'r3',
-    ]);
+  test('thẻ khoe của mình mở bằng thẻ gốc trong bộ (đủ đường chạy)', () {
+    // Thẻ gốc trong bộ có đường chạy; bản khoe ở club đã bỏ.
+    final myRun = CollectedRunCard(
+      RunCard.fromJson({
+        'id': 'a1',
+        'tier': 'rare',
+        'snapshot': {
+          'name': 'Sáng',
+          'route': [
+            {'latitude': 21.0, 'longitude': 105.8},
+          ],
+        },
+      }),
+    );
+    final myGame = CollectedGameCard(
+      GamePlayerCard.fromJson('g1', {'tier': 'epic', 'role': 'seer'}),
+    );
+    final mine = [myGame, myRun];
+    ClubCard club(Map<String, dynamic> json) =>
+        ClubCard.fromJson({'ownerUid': 'me', 'tier': 'rare', ...json})!;
+
+    expect(ownClubCard(mine, club({'activityId': 'a1'})), same(myRun));
+    expect(
+      ownClubCard(mine, club({'kind': 'game', 'gameId': 'g1'})),
+      same(myGame),
+    );
+    // Chưa có trong bộ (bộ chưa tải, hay thẻ của buổi khác) thì không có.
+    expect(ownClubCard(mine, club({'activityId': 'a2'})), isNull);
+    expect(
+      ownClubCard(mine, club({'kind': 'journey', 'campaign': 'marathon'})),
+      isNull,
+    );
   });
+
+  test(
+    'tab Hiếm+: bỏ thẻ Thường, bậc cao trước, cùng bậc thì mới khoe trước',
+    () {
+      ClubCard card(String id, String tier, int day) => ClubCard.fromJson({
+        'ownerUid': 'u1',
+        'activityId': id,
+        'tier': tier,
+        'sharedAt': DateTime.utc(2026, 10, day),
+      })!;
+      // Thứ tự như clubCardsProvider trả về: mới khoe trước.
+      final all = [
+        card('c', 'common', 30),
+        card('r1', 'rare', 29),
+        card('l', 'legendary', 28),
+        card('r2', 'rare', 27),
+        card('m', 'mythic', 26),
+        card('e', 'epic', 25),
+        card('r3', 'rare', 24),
+      ];
+      expect(
+        [for (final item in rareFirst(all)) item.key],
+        ['m', 'l', 'e', 'r1', 'r2', 'r3'],
+      );
+    },
+  );
 }
