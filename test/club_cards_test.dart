@@ -104,4 +104,31 @@ void main() {
       isNull,
     );
   });
+
+  test('tab Hiếm+: bỏ thẻ Thường, bậc cao trước, cùng bậc thì mới khoe trước', () {
+    ClubCard card(String id, String tier, int day) => ClubCard.fromJson({
+      'ownerUid': 'u1',
+      'activityId': id,
+      'tier': tier,
+      'sharedAt': DateTime.utc(2026, 10, day),
+    })!;
+    // Thứ tự như clubCardsProvider trả về: mới khoe trước.
+    final all = [
+      card('c', 'common', 30),
+      card('r1', 'rare', 29),
+      card('l', 'legendary', 28),
+      card('r2', 'rare', 27),
+      card('m', 'mythic', 26),
+      card('e', 'epic', 25),
+      card('r3', 'rare', 24),
+    ];
+    expect([for (final item in rareFirst(all)) item.key], [
+      'm',
+      'l',
+      'e',
+      'r1',
+      'r2',
+      'r3',
+    ]);
+  });
 }

@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/achievements/club_card_widgets.dart';
 import 'package:myrun/src/achievements/club_card.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
-import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/providers.dart';
 
 /// Trang "Thẻ của club": thẻ mọi người đang khoe, chia ba tab.
@@ -27,13 +26,7 @@ class ClubCardsScreen extends ConsumerWidget {
       body = TabBarView(
         children: [
           _Grid(items: all, empty: 'Chưa ai khoe thẻ.'),
-          _Grid(
-            items: [
-              for (final item in all)
-                if (item.card.tier != GameCardTier.common) item,
-            ],
-            empty: 'Chưa có thẻ hiếm nào được khoe.',
-          ),
+          _Grid(items: rareFirst(all), empty: 'Chưa có thẻ hiếm nào được khoe.'),
           _Grid(
             items: [
               for (final item in all)

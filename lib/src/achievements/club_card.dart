@@ -1,6 +1,7 @@
 import 'package:myrun/src/achievements/run_card_collection.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/games/game_player_card.dart';
+import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/journey/journey_card.dart';
 
 /// Thẻ một người khoe với club, doc clubCards/{ownerUid}_{key}. Cùng dạng doc
@@ -49,4 +50,18 @@ class ClubCard {
   final String key;
   final CollectedCard card;
   final DateTime? sharedAt;
+}
+
+/// Thẻ từ bậc Hiếm trở lên, bậc cao trước; cùng bậc thì thẻ khoe mới trước.
+/// So cả sharedAt vì List.sort không giữ thứ tự sẵn có của phần tử bằng nhau.
+List<ClubCard> rareFirst(Iterable<ClubCard> cards) {
+  final epoch = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+  return [
+    for (final item in cards)
+      if (item.card.tier != GameCardTier.common) item,
+  ]..sort((a, b) {
+    final byTier = b.card.tier.index.compareTo(a.card.tier.index);
+    if (byTier != 0) return byTier;
+    return (b.sharedAt ?? epoch).compareTo(a.sharedAt ?? epoch);
+  });
 }
