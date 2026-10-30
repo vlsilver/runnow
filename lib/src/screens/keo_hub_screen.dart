@@ -662,7 +662,9 @@ class _InviteRow extends StatelessWidget {
   final String title;
   final String subtitle;
   final IconData icon;
-  final VoidCallback onTap;
+
+  /// null thì dòng chỉ để nhắc, chạm không đi đâu.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -784,7 +786,8 @@ class _CardsSection extends ConsumerWidget {
               title: 'Chưa ai có thẻ mới',
               subtitle: 'chạy xong lật thẻ, thẻ tự lên đây',
               icon: Icons.style_rounded,
-              onTap: () => context.go('/me/cards'),
+              // Bộ thẻ nằm ở tab Hồ sơ; chạm mà nhảy tab thì rời trang Kèo.
+              onTap: null,
             ),
           )
         else
