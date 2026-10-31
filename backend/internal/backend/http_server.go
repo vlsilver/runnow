@@ -563,6 +563,7 @@ func (s *Server) apiRoutes() {
 	s.gameRoutes()
 	s.garminRoutes()
 	s.agentRoutes()
+	s.runRoomRoutes()
 	s.adminRoutes()
 	s.agentConfigRoutes()
 	// Liên kết Telegram cho Ma Sói (L1). App lấy mã, mở t.me/<bot>?start=<mã>,

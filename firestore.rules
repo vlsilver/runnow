@@ -344,6 +344,45 @@ service cloud.firestore {
       }
     }
 
+    // Phòng chạy: backend ghi phòng và thành viên, vì trần người, mật khẩu và
+    // quyền chủ phòng kiểm trong transaction. Có id (link mời) thì xem được
+    // phòng; list chỉ ra phòng public. Thành viên, tin nhắn và buổi chạy live
+    // trong phòng chỉ người đã vào phòng mới thấy. secret (hash mật khẩu, bộ đếm
+    // sai) không có rule nào nên client không đọc được.
+    function roomJoined(roomId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/runRooms/$(roomId)/members/$(request.auth.uid))
+        && get(/databases/$(database)/documents/runRooms/$(roomId)/members/$(request.auth.uid)).data.state == 'joined';
+    }
+
+    match /runRooms/{roomId} {
+      allow get: if signedIn();
+      allow list: if signedIn() && resource.data.privacy == 'public';
+      allow write: if false;
+
+      match /members/{uid} {
+        allow read: if owns(uid) || roomJoined(roomId);
+        allow write: if false;
+      }
+
+      // Cổ vũ nhanh trong lúc chạy. expiresAt cho TTL của collection group
+      // messages dọn sau tối đa 7 ngày.
+      match /messages/{messageId} {
+        allow read: if roomJoined(roomId);
+        allow create: if roomJoined(roomId)
+          && request.resource.data.keys().hasOnly(['uid', 'kind', 'text', 'at', 'expiresAt'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.kind in ['emoji', 'text']
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 120
+          && request.resource.data.at == request.time
+          && request.resource.data.expiresAt is timestamp
+          && request.resource.data.expiresAt <= request.time + duration.value(7, 'd');
+        allow update, delete: if false;
+      }
+    }
+
     match /liveSessions/{sessionId} {
       allow read: if signedIn()
         && (
@@ -353,6 +392,7 @@ service cloud.firestore {
             && request.auth.uid in
                get(/databases/$(database)/documents/runContracts/$(resource.data.contractId)).data.participantUids
           )
+          || ('roomId' in resource.data && roomJoined(resource.data.roomId))
         );
       allow create: if signedIn()
         && request.resource.data.ownerUid == request.auth.uid;
