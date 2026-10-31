@@ -428,4 +428,19 @@ void main() {
       isFalse,
     );
   });
+
+  test('ảnh chụp lúc chạy lên buổi live khi theo kèo hoặc đã vào phòng', () {
+    expect(
+      runRoomSharesLivePhoto(contractId: null, joinedRoomId: 'r1'),
+      isTrue,
+    );
+    expect(
+      runRoomSharesLivePhoto(contractId: 'k1', joinedRoomId: null),
+      isTrue,
+    );
+    expect(
+      runRoomSharesLivePhoto(contractId: null, joinedRoomId: null),
+      isFalse,
+    );
+  });
 }

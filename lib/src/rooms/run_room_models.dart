@@ -67,6 +67,13 @@ bool runRoomCanHostRunTogether({
   required bool liveEnabled,
 }) => roomId == null && isRun && liveEnabled;
 
+/// Ảnh chụp lúc chạy được gắn lên buổi live khi chạy theo kèo hoặc đã vào
+/// phòng, để người trong kèo hay trong phòng cùng xem.
+bool runRoomSharesLivePhoto({
+  required String? contractId,
+  required String? joinedRoomId,
+}) => contractId != null || joinedRoomId != null;
+
 /// Số điểm tối đa của tuyến gửi lên phòng. Backend nhận tới 200; tuyến nằm
 /// trong doc phòng mà list phòng đọc cả doc, nên app gửi ít hơn.
 const runRoomRouteMaxPoints = 120;

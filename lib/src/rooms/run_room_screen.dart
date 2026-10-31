@@ -12,6 +12,7 @@ import 'package:myrun/src/rooms/run_room_models.dart';
 import 'package:myrun/src/rooms/run_room_repository.dart';
 import 'package:myrun/src/rooms/run_room_route_sketch.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/photo_viewer.dart';
 
 /// Emoji cổ vũ nhanh, bấm một chạm khi đang chạy.
 const runRoomCheers = ['👏', '🔥', '💪', '🐢', '🏁'];
@@ -468,6 +469,7 @@ class _JoinedBody extends ConsumerWidget {
               ),
               canKick: host && open && m.uid != myUid,
             ),
+        RunRoomPhotoStrip(sessions: sessions),
         const _SectionTitle('Cổ vũ'),
         if (open && myUid != null)
           RunRoomCheerBar(roomId: room.id, uid: myUid!),
@@ -490,6 +492,72 @@ class _SectionTitle extends StatelessWidget {
       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
     ),
   );
+}
+
+/// Ảnh mọi người trong phòng chụp lúc đang chạy, ảnh mới nhất đứng đầu.
+/// Chạm để xem to. Chưa ai chụp thì không hiện gì.
+class RunRoomPhotoStrip extends StatelessWidget {
+  const RunRoomPhotoStrip({required this.sessions, super.key});
+
+  final List<LiveTrackingSession> sessions;
+
+  @override
+  Widget build(BuildContext context) {
+    final photos = [
+      for (final s in sessions)
+        for (final p in s.livePhotos) (owner: s.ownerName, photo: p),
+    ]..sort((a, b) => b.photo.capturedAt.compareTo(a.photo.capturedAt));
+    if (photos.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionTitle('Ảnh (${photos.length})'),
+        SizedBox(
+          height: 132,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: photos.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final item = photos[index];
+              return GestureDetector(
+                onTap: () => showActivityPhotoViewer(context, item.photo),
+                child: SizedBox(
+                  width: 104,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: SizedBox.square(
+                          dimension: 104,
+                          child: StoragePhoto(
+                            path: item.photo.storagePath,
+                            cacheWidth: 240,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${item.owner} · '
+                        '${formatDistance(item.photo.distanceMeters)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// Một người xin vào, chủ phòng duyệt hay từ chối. Màn chạy dùng lại.

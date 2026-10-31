@@ -950,8 +950,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       if (mounted) setState(() => _snapshot = next);
       await _persistDraft();
       await ref.read(trackingPhotoCaptureProvider).deleteLocal(draft.localPath);
-      final contractId = _contractId;
-      if (contractId != null) {
+      if (runRoomSharesLivePhoto(
+        contractId: _contractId,
+        joinedRoomId: _roomJoined ? _roomId : null,
+      )) {
         await ref
             .read(liveTrackingRepositoryProvider)
             .publishPhoto(sessionId: session.id, photo: uploaded);
