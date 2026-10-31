@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -266,13 +267,13 @@ type GameListItem struct {
 
 const (
 	gameListLimit = 10
-	// gameListKeepClosed: ván đã hết hay đã huỷ còn trên feed bấy lâu.
+	// gameListKeepClosed: ván đã hết còn trên feed bấy lâu.
 	gameListKeepClosed = 24 * time.Hour
 )
 
-// List trả các ván trong 10 ván mới nhất còn đáng hiện: ván đã đóng quá
-// gameListKeepClosed thì bỏ. Ván thử chỉ hiện với admin, người test và người
-// đã đăng ký vào ván đó.
+// List trả các ván trong 10 ván mới nhất còn đáng hiện: ván bị huỷ thì bỏ ngay
+// vì không có kết quả để xem, ván đã hết quá gameListKeepClosed thì bỏ. Ván thử
+// chỉ hiện với admin, người test và người đã đăng ký vào ván đó.
 func (s *GameStore) List(ctx context.Context, v GameViewer, wall time.Time) (GameList, error) {
 	cfg, err := s.loadConfig(ctx)
 	if err != nil {
@@ -300,7 +301,8 @@ func (s *GameStore) List(ctx context.Context, v GameViewer, wall time.Time) (Gam
 		if g["testMode"] == true && !cfg.isTester(v.UID) && !registered {
 			continue
 		}
-		if gameClosed(stringValue(g["status"])) && wall.Sub(timeValue(g["updatedAt"])) > gameListKeepClosed {
+		status := stringValue(g["status"])
+		if status == gameCancelled || status == gameEnded && wall.Sub(timeValue(g["updatedAt"])) > gameListKeepClosed {
 			continue
 		}
 		item := GameListItem{
@@ -362,7 +364,7 @@ func phaseLabelOf(g map[string]any) string {
 }
 
 // nextDeadline là mốc khoá kế tiếp theo giờ thật: hạn đăng ký, hạn bắn của thợ
-// săn, hoặc hạn phase. Không lấy nextAt vì nó gồm cả giờ nhắc 15h, 21h.
+// săn, hoặc hạn phase. Không lấy nextAt vì nó gồm cả giờ nhắc 18h, 21h.
 func nextDeadline(g map[string]any) *time.Time {
 	var t time.Time
 	switch stringValue(g["status"]) {
@@ -456,7 +458,7 @@ func (s *GameStore) hasTodo(ctx context.Context, game *firestore.DocumentRef, g 
 		return false, err
 	}
 	for _, k := range todoKinds(st, uid, mine, gameNow(g, wall)) {
-		if k == werewolf.KindNominate || k == werewolf.KindVote {
+		if groupKind(k) {
 			return true, nil
 		}
 	}
@@ -538,6 +540,8 @@ type GameFeedItem struct {
 	At    time.Time `json:"at"`
 	Title string    `json:"title"`
 	Lines []string  `json:"lines"`
+	// picks: mục diễn biến từng lần bấm (writePickFeed), không phải bản tin.
+	picks bool
 }
 
 const feedPageSize = 20
@@ -592,20 +596,54 @@ func feedItem(d map[string]any, players map[string]gamePlayerInfo) (GameFeedItem
 		}
 		return "Người chơi"
 	}
+	var picks []pick
+	for _, raw := range anyList(d["picks"]) {
+		var p pick
+		if err := json.Unmarshal([]byte(stringValue(raw)), &p); err != nil {
+			return GameFeedItem{}, err
+		}
+		picks = append(picks, p)
+	}
+	// Hai lần bấm sát nhau có thể commit lệch thứ tự bấm.
+	slices.SortStableFunc(picks, func(a, b pick) int { return a.At.Compare(b.At) })
+	for _, p := range picks {
+		item.picks = true
+		item.Lines = append(item.Lines, p.At.In(vietnam).Format("15:04")+" "+p.text(name))
+	}
 	deaths := 0
 	for _, e := range evs {
 		switch e.Kind {
 		case werewolf.EventDeath:
 			deaths++
-			item.Lines = append(item.Lines, fmt.Sprintf("%s đã chết. Lá bài: %s.", name(e.UID), roleLabels[e.Role]))
+			if e.Role == "" && e.Team != "" { // chỉ lộ phe (roleHidden)
+				item.Lines = append(item.Lines, fmt.Sprintf("%s đã chết, thuộc %s.", name(e.UID), teamLabels[e.Team]))
+			} else {
+				item.Lines = append(item.Lines, fmt.Sprintf("%s đã chết. Lá bài: %s.", name(e.UID), roleLabels[e.Role]))
+			}
 		case werewolf.EventNominee:
-			if e.UID == "" {
+			nominees := e.Targets
+			if len(nominees) == 0 && e.UID != "" {
+				nominees = []string{e.UID} // event ghi trước khi có nhiều phiên
+			}
+			switch len(nominees) {
+			case 0:
 				item.Lines = append(item.Lines, "Không ai được đề cử, hôm nay không ai lên giàn.")
 				continue
+			case 1:
+				line := fmt.Sprintf("%s lên giàn với %d đề cử", name(nominees[0]), e.Counts[nominees[0]])
+				if e.Draw {
+					line += ", bốc thăm vì hoà"
+				}
+				item.Lines = append(item.Lines, line+".")
+				continue
 			}
-			line := fmt.Sprintf("%s lên giàn với %d đề cử", name(e.UID), e.Counts[e.UID])
+			parts := make([]string, len(nominees))
+			for i, uid := range nominees {
+				parts[i] = fmt.Sprintf("%s (%d đề cử)", name(uid), e.Counts[uid])
+			}
+			line := fmt.Sprintf("%d người lên giàn: %s", len(nominees), strings.Join(parts, ", "))
 			if e.Draw {
-				line += ", bốc thăm vì hoà"
+				line += ". Suất cuối bốc thăm vì hoà"
 			}
 			item.Lines = append(item.Lines, line+".")
 		case werewolf.EventVoteCut:
@@ -614,6 +652,9 @@ func feedItem(d map[string]any, players map[string]gamePlayerInfo) (GameFeedItem
 				names[i] = name(uid)
 			}
 			line := fmt.Sprintf("Tổng km chưa đủ nên %s mất phiếu", strings.Join(names, ", "))
+			if e.UID != "" {
+				line = fmt.Sprintf("Phiên %s: tổng km chưa đủ nên %s mất phiếu", name(e.UID), strings.Join(names, ", "))
+			}
 			if e.Draw {
 				line += ", bốc thăm vì bằng km"
 			}
@@ -642,8 +683,12 @@ func feedItem(d map[string]any, players map[string]gamePlayerInfo) (GameFeedItem
 		if deaths == 0 {
 			item.Lines = append([]string{"Đêm qua không ai chết."}, item.Lines...)
 		}
+	case phase == werewolf.PhaseDay && item.picks:
+		item.Title = fmt.Sprintf("Diễn biến đề cử ngày %d", round)
 	case phase == werewolf.PhaseDay:
 		item.Title = fmt.Sprintf("Đề cử ngày %d", round)
+	case phase == werewolf.PhaseTrial && item.picks:
+		item.Title = fmt.Sprintf("Diễn biến biểu quyết ngày %d", round)
 	case phase == werewolf.PhaseTrial:
 		item.Title = fmt.Sprintf("Biểu quyết ngày %d", round)
 	default:
@@ -691,6 +736,26 @@ type GameDetail struct {
 	TaskKey string `json:"taskKey,omitempty"`
 	// StartError chỉ trả cho admin: lần Start gần nhất bị bot trả về đăng ký.
 	StartError *GameStartError `json:"startError,omitempty"`
+	// KmTable là đầu cột của bảng km hai cột (players[].lastKm, players[].todayKm).
+	// Nil khi ván không chạy.
+	KmTable *GameKmTable `json:"kmTable,omitempty"`
+}
+
+type GameKmTable struct {
+	LastLabel  string     `json:"lastLabel"`
+	TodayLabel string     `json:"todayLabel"`
+	AsOf       *time.Time `json:"asOf,omitempty"` // lúc tính todayKm; nil ở ván thử
+	UnitKm     float64    `json:"unitKm"`         // mốc km cho một kỹ năng đêm, một phiếu
+	Note       string     `json:"note"`
+}
+
+// GameTeamKm là km của cả phe khi luật tính theo phe (phe Sói cắn).
+type GameTeamKm struct {
+	Label     string   `json:"label"`
+	Last      float64  `json:"last"`
+	Today     *float64 `json:"today,omitempty"`
+	Need      float64  `json:"need"`
+	NeedLabel string   `json:"needLabel"`
 }
 
 type GamePhase struct {
@@ -705,11 +770,15 @@ type GamePlayer struct {
 	Name              string   `json:"name"`
 	AvatarURL         string   `json:"avatarUrl,omitempty"`
 	Alive             bool     `json:"alive"`
+	// RevealedRoleLabel là cái group đã biết về người chết: tên lá bài, hoặc
+	// chỉ "Phe Dân"/"Phe Sói" với người bị treo, khi đó không có RevealedCardURL.
 	RevealedRoleLabel string   `json:"revealedRoleLabel,omitempty"`
 	RevealedCardURL   string   `json:"revealedCardUrl,omitempty"`
 	DeathRound        int      `json:"deathRound,omitempty"`
 	OnTrial           bool     `json:"onTrial,omitempty"`
 	LastKm            *float64 `json:"lastKm,omitempty"`
+	// TodayKm là km đang gom tới mốc 22h kế tiếp của người còn sống (kmTable).
+	TodayKm *float64 `json:"todayKm,omitempty"`
 	Fake              bool     `json:"fake,omitempty"`
 }
 
@@ -792,18 +861,32 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 	if err != nil {
 		return out, err
 	}
-	revealed, _ := data["revealed"].(map[string]any)
-	nominee := stringValue(data["nominee"])
+	var st *werewolf.State
+	if stringValue(data["status"]) == gameRunning {
+		if st, err = s.loadState(ctx, g.Ref); err != nil {
+			return out, err
+		}
+	}
+	live, err := s.liveKm(ctx, g.Ref, data, st, wall)
+	if err != nil {
+		return out, err
+	}
+	out.KmTable = kmTable(data, st, live, wall)
+	nominees := gameNominees(data)
 	out.Players = make([]GamePlayer, 0, len(players))
 	for _, p := range players {
-		gp := GamePlayer{UID: p.uid, Name: p.name, AvatarURL: p.avatar, Alive: p.data["alive"] != false, Fake: p.fake, OnTrial: p.uid == nominee}
-		if role := werewolf.Role(stringValue(revealed[p.uid])); role != "" {
-			gp.RevealedRoleLabel, gp.RevealedCardURL = roleLabels[role], cfg.cards[string(role)]
+		gp := GamePlayer{UID: p.uid, Name: p.name, AvatarURL: p.avatar, Alive: p.data["alive"] != false, Fake: p.fake, OnTrial: slices.Contains(nominees, p.uid)}
+		if label, role := revealedLabel(data, p.uid); label != "" {
+			gp.RevealedRoleLabel, gp.RevealedCardURL = label, cfg.cards[string(role)]
 		}
 		gp.DeathRound = int(number(p.data["deathRound"]))
 		if m, ok := km[p.uid]; ok {
 			k := m / 1000
 			gp.LastKm = &k
+		}
+		if m, ok := live.metersOf(p.uid); ok && gp.Alive {
+			k := m / 1000
+			gp.TodayKm = &k
 		}
 		out.Players = append(out.Players, gp)
 	}
@@ -900,6 +983,16 @@ type GameMe struct {
 	Chats       []GameChatLink   `json:"chats"`
 	Actions     []GameAction     `json:"actions"`
 	AllRoles    []GameRoleReveal `json:"allRoles,omitempty"`
+	TeamKm      *GameTeamKm      `json:"teamKm,omitempty"` // chỉ sói còn sống
+	// CardTier là bậc thẻ người gọi bốc được, có từ lúc chia bài. CardOwned true
+	// khi ván đã kết thúc và người gọi thuộc phe thắng: thẻ đã nằm trong
+	// users/{uid}/gameCards. CardRounds là số vòng đã chơi, chỉ có khi ván đã
+	// kết thúc (lúc đó ván không còn gửi phase): đúng số in trên thẻ.
+	// CardVariant là bản Ẩn ("secret.<hành>"), rỗng với thẻ thường.
+	CardTier    string `json:"cardTier,omitempty"`
+	CardVariant string `json:"cardVariant,omitempty"`
+	CardOwned   bool   `json:"cardOwned"`
+	CardRounds  int    `json:"cardRounds,omitempty"`
 }
 
 type GamePotions struct {
@@ -998,6 +1091,8 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 	out.Role, out.RoleLabel, out.Alive = string(me.Role), roleLabels[me.Role], me.Alive
 	out.RoleRules = strings.ReplaceAll(roleRules[me.Role], "X km", formatKm(kmPerUnit(st.Config))+" km")
 	out.CardURL, out.CardBackURL = cfg.cards[string(me.Role)], cfg.cards["back"]
+	out.CardTier = string(gameCardTier(st.Seed, v.UID))
+	out.CardVariant = gameCardVariant(st.Seed, v.UID)
 	if me.Role == werewolf.Witch {
 		out.Potions = &GamePotions{Save: st.SavePotion, Poison: st.PoisonPotion}
 	}
@@ -1010,6 +1105,8 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 		}
 	}
 	if st.Phase == werewolf.PhaseEnded {
+		out.CardOwned = slices.Contains(st.Winners(), v.UID)
+		out.CardRounds = st.Round
 		for _, uid := range sortedPlayers(st) {
 			r := st.Players[uid].Role
 			out.AllRoles = append(out.AllRoles, GameRoleReveal{UID: uid, Name: name(uid), Role: string(r), RoleLabel: roleLabels[r], CardURL: cfg.cards[string(r)]})
@@ -1021,6 +1118,11 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 		return out, err
 	}
 	out.Actions = meActions(st, v.UID, mine, raw, players, gameNow(data, wall), clockOffset(data))
+	if me.Role == werewolf.Wolf && me.Alive {
+		if out.TeamKm, err = s.wolfTeamKm(ctx, g.Ref, data, st, wall); err != nil {
+			return out, err
+		}
+	}
 	return out, nil
 }
 
@@ -1105,6 +1207,11 @@ func meActions(st *werewolf.State, uid string, mine []werewolf.Action, raw map[w
 	for _, kind := range st.Available(uid) {
 		text := actionTexts[kind]
 		a := GameAction{Kind: string(kind), Label: text.label, Help: text.help, Input: text.input, ConfirmText: text.confirm, Options: []GameOption{}}
+		if nominee := st.NomineeOf(kind); nominee != "" {
+			// Mỗi người lên giàn một thẻ biểu quyết, gọi theo tên để không nhầm phiên.
+			name := playerName(playerIndex(players), nominee)
+			a.Label, a.Help = "Biểu quyết: "+name, "Treo hay tha "+name+". Đổi được tới 22h."
+		}
 		switch text.input {
 		case "choice":
 			a.Options = append(a.Options, GameOption{ID: werewolf.ChoiceHang, Label: choiceLabels[werewolf.ChoiceHang]}, GameOption{ID: werewolf.ChoiceSpare, Label: choiceLabels[werewolf.ChoiceSpare]})
@@ -1142,7 +1249,7 @@ func meActions(st *werewolf.State, uid string, mine []werewolf.Action, raw map[w
 			a.ClosesAt = &t
 		}
 		if err := werewolf.Precheck(st, kind, uid, mine, now); err != nil {
-			a.DisabledReason = rejectText(kind, err)
+			a.DisabledReason = disabledReason(st, kind, err)
 		} else {
 			a.Enabled = true
 		}
@@ -1208,7 +1315,7 @@ type RegistrationResult struct {
 
 // Register thêm người gọi vào ván đang đăng ký. Ván thử của người khác thì
 // readVisibleGame đã trả 404. Gọi lại khi đã đăng ký thì trả kết quả cũ. Transaction đọc và ghi games/{id}, nên hai người đăng ký cùng lúc
-// không vượt được giới hạn 16 người.
+// không vượt được giới hạn số người (werewolf.MaxPlayers).
 func (s *GameStore) Register(ctx context.Context, gameID string, v GameViewer, wall time.Time) (RegistrationResult, error) {
 	cfg, err := s.loadConfig(ctx)
 	if err != nil {

@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"html"
 	"log/slog"
+	"maps"
+	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -322,9 +325,12 @@ func (f *chatFlusher) deliver(ctx context.Context, key string, seq int64, msg, c
 	tpl := stringValue(msg["template"])
 	var out outboxText
 	var err error
-	if tpl == tplPrompt || tpl == tplChoice || tpl == tplTally {
+	switch tpl {
+	case tplPrompt, tplChoice, tplTally:
 		out, err = f.r.renderAction(ctx, key, tpl, stringValue(msg["data"]), chat)
-	} else {
+	case tplReminder:
+		out, err = f.r.renderReminder(ctx, key, stringValue(msg["data"]))
+	default:
 		out, err = f.r.render(key, tpl, stringValue(msg["data"]))
 	}
 	if err != nil {
@@ -564,6 +570,14 @@ func (r *outboxRenderer) name(uid string) string {
 	return "Người chơi"
 }
 
+func (r *outboxRenderer) names(uids []string) string {
+	out := make([]string, len(uids))
+	for i, uid := range uids {
+		out[i] = r.name(uid)
+	}
+	return strings.Join(out, ", ")
+}
+
 // target chọn chat của key: DM tới tgUserId của người chơi hoặc topic Ma Sói
 // của group ván. Chat phe nằm trong app, không qua outbox. Key lạ thì lỗi,
 // không rơi về group chung, vì
@@ -600,10 +614,11 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 	switch tpl {
 	case tplStart:
 		var d struct {
-			NightAt time.Time `json:"nightAt"`
+			NightAt time.Time       `json:"nightAt"`
+			Wake    []werewolf.Role `json:"wake"`
 		}
 		if err = json.Unmarshal([]byte(raw), &d); err == nil {
-			text = r.startText(d.NightAt)
+			text = r.startText(d.NightAt, d.Wake)
 		}
 	case tplCard:
 		var d struct {
@@ -620,7 +635,15 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 			}
 		}
 	case tplDigest:
-		text, err = r.digestText(raw)
+		var d struct {
+			Roles map[string]string `json:"roles"`
+		}
+		if text, err = r.digestText(raw); err == nil {
+			err = json.Unmarshal([]byte(raw), &d)
+		}
+		if err == nil && d.Roles == nil { // hết ván thì bản tin lật bài, không còn km để xem
+			out.markup, err = r.kmButton()
+		}
 	case tplReminder:
 		var d struct {
 			Reason string `json:"reason"`
@@ -628,12 +651,23 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 		if err = json.Unmarshal([]byte(raw), &d); err == nil {
 			text, err = reminderText(d.Reason)
 		}
+		if err == nil {
+			out.markup, err = r.kmButton()
+		}
 	case tplPrivate:
 		var d struct {
 			Events []werewolf.Event `json:"events"`
+			WolfKm *struct {
+				Have float64 `json:"have"`
+				Need float64 `json:"need"`
+			} `json:"wolfKm"`
 		}
 		if err = json.Unmarshal([]byte(raw), &d); err == nil {
-			text = r.privateText(d.Events)
+			short := ""
+			if d.WolfKm != nil {
+				short = wolfKmShort(d.WolfKm.Have, d.WolfKm.Need, kmPerUnit(r.cfg))
+			}
+			text = r.privateText(d.Events, short)
 		}
 	case tplAdmin:
 		var d struct {
@@ -657,6 +691,11 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 				err = fmt.Errorf("chat lạ %q", d.Chat)
 			}
 		}
+	case tplPick:
+		var p pick
+		if err = json.Unmarshal([]byte(raw), &p); err == nil {
+			text = p.text(r.name)
+		}
 	case tplNight:
 		var d struct {
 			Round int `json:"round"`
@@ -679,13 +718,58 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 
 func vnTime(t time.Time) string { return t.In(vietnam).Format("15:04 02/01") }
 
-func (r *outboxRenderer) startText(nightAt time.Time) string {
+func (r *outboxRenderer) startText(nightAt time.Time, wake []werewolf.Role) string {
 	names := make([]string, 0, len(r.players))
 	for _, p := range r.players {
 		names = append(names, html.EscapeString(p.name))
 	}
-	return fmt.Sprintf("<b>Ma Sói bắt đầu</b>\n%d người chơi: %s.\nĐêm 1 bắt đầu lúc %s. Bot đã nhắn riêng lá bài cho từng người.",
+	text := fmt.Sprintf("<b>Ma Sói bắt đầu</b>\n%d người chơi: %s.\nĐêm 1 bắt đầu lúc %s. Bot đã nhắn riêng lá bài cho từng người.",
 		len(names), strings.Join(names, ", "), vnTime(nightAt))
+	if slices.Contains(wake, werewolf.Cupid) {
+		text += "\n" + wakeLines[werewolf.Cupid] + "\n" + gmHowTo
+	}
+	return text
+}
+
+// wakeLines: quản trò gọi từng vai dậy, kèm việc và hạn của vai đó (bảng 1.3).
+// Hạn ghi theo lịch chuẩn; lúc gọi thì admin chưa dời hạn được lượt mới.
+var wakeLines = map[werewolf.Role]string{
+	werewolf.Cupid: "Cupid thức dậy, chọn hai người để ghép đôi, chốt lúc 0h đêm 1.",
+	werewolf.Wolf:  "Sói thức dậy, cả phe chọn một người để cắn, chốt lúc 0h.",
+	werewolf.Guard: "Bảo vệ thức dậy, chọn một người để che, tới 10h sáng.",
+	werewolf.Seer:  "Tiên tri thức dậy, chọn một người để soi, tới 10h sáng.",
+	werewolf.Witch: "Phù thuỷ thức dậy, chọn cứu người hay dùng bình độc, tới 10h sáng.",
+}
+
+// witchLater: lúc 22h phù thuỷ chưa dậy, nhưng vẫn có số thứ tự của mình để
+// group thấy cả lượt đêm.
+const witchLater = "Phù thuỷ: 0h sói chốt xong thì quản trò gọi."
+
+const gmHowTo = "Ai có vai thì bấm trong tin 3i nhắn riêng hoặc trong app RunNow."
+
+// gmText là lời quản trò cuối bản tin khi vào đêm (22h) và lúc sói xong (0h).
+// Nó thay dòng "Tiếp theo", vì đã nói từng vai làm gì tới mấy giờ.
+func gmText(call string, round int, wake []werewolf.Role) []string {
+	var lines []string
+	switch call {
+	case callNight:
+		lines = append(lines, fmt.Sprintf("<b>Đêm %d buông xuống, cả làng đi ngủ.</b>", round), "Quản trò gọi lần lượt:")
+		for i, role := range wake {
+			l := wakeLines[role]
+			if role == werewolf.Witch {
+				l = witchLater
+			}
+			lines = append(lines, fmt.Sprintf("%d. %s", i+1, l))
+		}
+	case callWitch:
+		lines = append(lines, "<b>Sói đã chốt, sói đi ngủ.</b>")
+		for _, role := range wake {
+			lines = append(lines, wakeLines[role])
+		}
+	default:
+		return nil
+	}
+	return append(lines, gmHowTo)
 }
 
 // privateHeader mở mọi DM riêng của ván. Telegram hiện vài dòng đầu của tin
@@ -732,12 +816,15 @@ func (r *outboxRenderer) cardText(uid string, role werewolf.Role, wolves []strin
 // không có gì công khai (feed cũng bỏ) thì không gửi.
 func (r *outboxRenderer) digestText(raw string) (string, error) {
 	var d struct {
-		PhaseKey string            `json:"phaseKey"`
-		Round    int               `json:"round"`
-		Phase    werewolf.Phase    `json:"phase"`
-		Events   []werewolf.Event  `json:"events"`
-		Deadline time.Time         `json:"deadline"`
-		Roles    map[string]string `json:"roles"`
+		PhaseKey string             `json:"phaseKey"`
+		Round    int                `json:"round"`
+		Phase    werewolf.Phase     `json:"phase"`
+		Events   []werewolf.Event   `json:"events"`
+		Deadline time.Time          `json:"deadline"`
+		Roles    map[string]string  `json:"roles"`
+		Call     string             `json:"call"`
+		Wake     []werewolf.Role    `json:"wake"`
+		Km       map[string]float64 `json:"km"`
 	}
 	if err := json.Unmarshal([]byte(raw), &d); err != nil {
 		return "", err
@@ -750,14 +837,26 @@ func (r *outboxRenderer) digestText(raw string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(item.Lines) == 0 {
+	gm := gmText(d.Call, d.Round, d.Wake)
+	if len(item.Lines) == 0 && gm == nil {
 		return "", nil
 	}
-	lines := []string{"<b>" + html.EscapeString(item.Title) + "</b>"}
-	for _, l := range item.Lines {
-		lines = append(lines, html.EscapeString(l))
+	var lines []string
+	if d.Call == callMorning {
+		lines = append(lines, "<b>Trời sáng, cả làng thức dậy.</b>")
+	}
+	if len(item.Lines) > 0 {
+		lines = append(lines, "<b>"+html.EscapeString(item.Title)+"</b>")
+		for _, l := range item.Lines {
+			lines = append(lines, html.EscapeString(l))
+		}
 	}
 	switch {
+	case gm != nil:
+		if len(lines) > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, gm...)
 	case d.Roles != nil:
 		lines = append(lines, "", "Lá bài:")
 		for _, p := range r.players {
@@ -768,13 +867,150 @@ func (r *outboxRenderer) digestText(raw string) (string, error) {
 	case !d.Deadline.IsZero():
 		lines = append(lines, "", fmt.Sprintf("Tiếp theo: %s, tới %s.", phaseLabel(d.Round, d.Phase), vnTime(d.Deadline)))
 	}
+	if d.Km != nil {
+		lines = append(lines, "", fmt.Sprintf("<b>Km chốt 22h, dùng cho đêm %d</b>", d.Round))
+		lines = append(lines, r.kmBoard(d.Km)...)
+	}
 	return strings.Join(lines, "\n"), nil
+}
+
+// kmBoard chia người chơi trong km thành đủ và chưa đủ ngưỡng km của ván, nhiều
+// km đứng trước. Không nhắc vai ai. Số cắt xuống 0,1 km: làm tròn thì người
+// thiếu vài chục mét hiện thành đủ ngưỡng mà vẫn nằm ở dòng chưa đủ.
+func (r *outboxRenderer) kmBoard(km map[string]float64) []string {
+	uids := slices.Sorted(maps.Keys(km))
+	sort.SliceStable(uids, func(i, j int) bool { return km[uids[i]] > km[uids[j]] })
+	unit := kmPerUnit(r.cfg)
+	var enough, short []string
+	for _, uid := range uids {
+		s := r.name(uid) + " " + formatKm(math.Floor(km[uid]/100)/10)
+		if km[uid] >= unit*1000 {
+			enough = append(enough, s)
+		} else {
+			short = append(short, s)
+		}
+	}
+	u := formatKm(unit)
+	lines := []string{fmt.Sprintf("Có vai đêm thì cần đủ %s km mới dùng được kỹ năng. Sói tính chung cả phe: tổng km sói còn sống phải đủ %s km cho mỗi sói. Cupid không cần km.", u, u)}
+	if len(enough) > 0 {
+		lines = append(lines, "Đủ km: "+strings.Join(enough, " · "))
+	}
+	if len(short) > 0 {
+		lines = append(lines, "Chưa đủ: "+strings.Join(short, " · "))
+	}
+	return lines
+}
+
+// kmButton là nút "Xem km của tôi" dưới tin group: ai bấm thì thấy km của mình
+// trong hộp thoại chỉ người đó thấy (PressButton, opKm). Ván không có id (test
+// render) thì không có nút.
+func (r *outboxRenderer) kmButton() (any, error) {
+	if r.gameID == "" {
+		return nil, nil
+	}
+	data, err := (gameButton{GameID: r.gameID, Op: opKm}).data()
+	if err != nil {
+		return nil, err
+	}
+	return inlineKeyboard([][]map[string]any{{{"text": "Xem km của tôi", "callback_data": data}}}), nil
+}
+
+// renderReminder là tin nhắc kèm km đang gom cho mốc 22h tới, để ai còn thiếu
+// km biết mà chạy trước khi chốt.
+func (r *outboxRenderer) renderReminder(ctx context.Context, key, raw string) (outboxText, error) {
+	out, err := r.render(key, tplReminder, raw)
+	if err != nil || out.skip != "" {
+		return out, err
+	}
+	km, err := r.liveKmLines(ctx)
+	if err != nil {
+		return out, fmt.Errorf("render %s: %w", tplReminder, err)
+	}
+	if km != nil {
+		out.parts = splitTelegramText(strings.Join(out.parts, "\n")+"\n\n"+strings.Join(km, "\n"), telegramTextLimit)
+	}
+	return out, nil
+}
+
+// liveKmLines tính km khung 22h tới của người còn sống lúc gửi. Rỗng khi khung
+// đã chốt (tin nhắc gửi trễ, ván đã sang đêm) hoặc ván thử, vì ván thử không
+// đọc buổi chạy thật (snapshotKmIfDue).
+func (r *outboxRenderer) liveKmLines(ctx context.Context) ([]string, error) {
+	if r.gameData["testMode"] == true {
+		return nil, nil
+	}
+	st, err := r.state(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if st.Phase != werewolf.PhaseDay && st.Phase != werewolf.PhaseTrial {
+		return nil, nil
+	}
+	now := gameNow(r.gameData, r.now())
+	end := nextKmFrameEnd(now)
+	km := map[string]float64{}
+	for _, uid := range sortedPlayers(st) {
+		if !st.Players[uid].Alive {
+			continue
+		}
+		fk, err := r.store.frameKm(ctx, uid, end)
+		if err != nil {
+			return nil, fmt.Errorf("km của %s: %w", uid, err)
+		}
+		km[uid] = fk.Meters
+	}
+	lines := append([]string{"<b>Km tới " + now.In(vietnam).Format("15:04") + ", chốt lúc 22h</b>"}, r.kmBoard(km)...)
+	if st.Phase == werewolf.PhaseTrial {
+		nominees := st.TrialNominees()
+		for _, nominee := range nominees {
+			if p := st.Players[nominee]; p != nil && p.Alive {
+				lines = append(lines, r.voteForecast(st, km, nominee, len(nominees) > 1))
+			}
+		}
+	}
+	return append(lines, "Km chốt 22h dùng cho biểu quyết tối nay và kỹ năng đêm nay. Chạy xong mở app cho km kịp đồng bộ."), nil
+}
+
+// voteForecast là R30 áp lên km tới giờ (km của người còn sống): nếu chốt bây
+// giờ thì bao nhiêu phiếu được tính, ai mất phiếu. Km còn tăng tới 22h nên chỉ
+// là dự báo; lúc chốt engine tính lại bằng km 22h.
+// Nhiều người lên giàn thì mỗi phiên một dòng, gọi theo tên (named).
+func (r *outboxRenderer) voteForecast(st *werewolf.State, km map[string]float64, nominee string, named bool) string {
+	var voters []string
+	var total float64
+	for _, uid := range sortedPlayers(st) {
+		if _, alive := km[uid]; alive && uid != nominee {
+			voters = append(voters, uid)
+			total += km[uid]
+		}
+	}
+	plan := werewolf.PlanVoteCut(voters, km, r.cfg)
+	title := "Biểu quyết"
+	if named {
+		title += " " + r.names([]string{nominee})
+	}
+	text := fmt.Sprintf("%s nếu chốt bây giờ: %d người bỏ phiếu có tổng %s km, ", title, len(voters), formatKm(math.Floor(total/100)/10))
+	if plan.Allowed == len(voters) {
+		return text + fmt.Sprintf("đủ cho cả %d phiếu.", len(voters))
+	}
+	text += fmt.Sprintf("được tính %d phiếu (%s km một phiếu).", plan.Allowed, formatKm(kmPerUnit(r.cfg)))
+	sure, tied := plan.Sure, plan.Tied
+	if plan.Need == len(tied) {
+		sure, tied = append(sure, tied...), nil
+	}
+	if len(sure) > 0 {
+		text += " Mất phiếu vì ít km nhất: " + r.names(sure) + "."
+	}
+	if len(tied) > 0 {
+		text += fmt.Sprintf(" Bốc thăm %d người mất phiếu trong: %s.", plan.Need, r.names(tied))
+	}
+	return text + " Ai chạy thêm trước 22h thì làng thêm phiếu."
 }
 
 func reminderText(reason string) (string, error) {
 	switch reason {
 	case werewolf.ReminderNominate:
-		return "<b>Nhắc đề cử</b>\nĐề cử đóng lúc 17h. Ai chưa đề cử thì vào app RunNow để chọn.", nil
+		return "<b>Nhắc đề cử</b>\nĐề cử đóng lúc 20h. Ai chưa đề cử thì vào app RunNow để chọn.", nil
 	case werewolf.ReminderVote:
 		return "<b>Nhắc biểu quyết</b>\nBiểu quyết Treo hay Tha đóng lúc 22h. Ai chưa bỏ phiếu thì vào app RunNow.", nil
 	}
@@ -799,7 +1035,9 @@ var causeTexts = map[werewolf.Cause]string{
 }
 
 // privateText: việc riêng của một người sau một lần chốt (stepMessages).
-func (r *outboxRenderer) privateText(evs []werewolf.Event) string {
+// privateText: wolfShort là phe Sói thiếu km bao nhiêu (wolfKmShort), rỗng ở
+// tin không phải của sói thiếu km và ở tin xếp hàng trước khi có số.
+func (r *outboxRenderer) privateText(evs []werewolf.Event, wolfShort string) string {
 	var lines []string
 	for _, e := range evs {
 		switch e.Kind {
@@ -825,6 +1063,8 @@ func (r *outboxRenderer) privateText(evs []werewolf.Event) string {
 			switch {
 			case e.UID != "":
 				lines = append(lines, fmt.Sprintf("Phe Sói chốt cắn %s.", r.name(e.UID)))
+			case e.Reason == werewolf.VoidNoKm && wolfShort != "":
+				lines = append(lines, "Phe Sói chưa đủ km nên đêm nay không cắn được ai: "+wolfShort+". Muốn cắn đêm sau thì cả phe chạy thêm trước 22h.")
 			case e.Reason == werewolf.VoidNoKm:
 				lines = append(lines, "Phe Sói chưa đủ km nên đêm nay không cắn được ai.")
 			default:
@@ -851,6 +1091,7 @@ func (r *outboxRenderer) renderAction(ctx context.Context, key, tpl, raw string,
 		Kind    werewolf.Kind `json:"kind"`
 		TurnKey string        `json:"turnKey"`
 		Pick    []string      `json:"pick"`
+		Close   *tallyClose   `json:"close"`
 	}
 	if err := json.Unmarshal([]byte(raw), &d); err != nil {
 		return out, fmt.Errorf("render %s: %w", tpl, err)
@@ -864,17 +1105,24 @@ func (r *outboxRenderer) renderAction(ctx context.Context, key, tpl, raw string,
 		return outboxText{skip: "stale"}, nil
 	}
 	if tpl == tplChoice || tpl == tplTally {
+		match := turn
+		if d.Close != nil {
+			match = d.Close.TurnKey // 22h đã sang vòng mới, tin đóng thuộc vòng cũ
+		}
 		prompt := anyMap(anyMap(chat["prompts"])[string(d.Kind)])
 		id := int64(number(prompt["messageId"]))
 		switch {
 		case id == 0:
 			return outboxText{skip: "no_prompt"}, nil
-		case stringValue(prompt["turnKey"]) != turn:
+		case stringValue(prompt["turnKey"]) != match:
 			return outboxText{skip: "stale"}, nil
 		}
 		out.editID = id
 	}
 	if key == chatGroup {
+		if d.Close != nil {
+			st = closedState(st, *d.Close)
+		}
 		return r.renderTally(ctx, out, tpl, st, d.Kind, turn)
 	}
 	uid := strings.TrimPrefix(key, "dm:")
@@ -905,7 +1153,7 @@ func (r *outboxRenderer) renderAction(ctx context.Context, key, tpl, raw string,
 // cuối cùng nhưng không còn nút.
 func (r *outboxRenderer) renderTally(ctx context.Context, out outboxText, tpl string, st *werewolf.State, kind werewolf.Kind, turn string) (outboxText, error) {
 	open := st.Phase == werewolf.PhaseDay && kind == werewolf.KindNominate ||
-		st.Phase == werewolf.PhaseTrial && kind == werewolf.KindVote
+		st.Phase == werewolf.PhaseTrial && st.NomineeOf(kind) != ""
 	if tpl == tplPrompt && !open {
 		return outboxText{skip: "closed"}, nil
 	}
@@ -932,6 +1180,21 @@ func (r *outboxRenderer) renderTally(ctx context.Context, out outboxText, tpl st
 		out.promptKind, out.turnKey = string(kind), turn
 	}
 	return out, nil
+}
+
+// closedState là bản sao st với vòng, người lên giàn và người còn sống của lúc
+// tin đếm đóng, để renderTally vẽ số cuối khớp với lúc chốt. Phase vẫn là phase
+// sau lúc đóng nên renderTally vẽ bản hết giờ, không nút.
+func closedState(st *werewolf.State, c tallyClose) *werewolf.State {
+	cs := *st
+	cs.Round, cs.Nominees, cs.Nominee = c.Round, c.Nominees, c.Nominee
+	cs.Players = make(map[string]*werewolf.Player, len(st.Players))
+	for uid, p := range st.Players {
+		cp := *p
+		cp.Alive = slices.Contains(c.Alive, uid)
+		cs.Players[uid] = &cp
+	}
+	return &cs
 }
 
 // state đọc secret/state một lần cho cả lượt gửi.

@@ -2,6 +2,7 @@ package werewolf
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 )
@@ -15,8 +16,8 @@ const (
 	PhaseSetup Phase = "setup" // Start → 22h đêm 1: DM lá bài, Cupid ghép
 	PhaseNight Phase = "night" // 22h → 0h: sói chọn; tiên tri, bảo vệ; Cupid nếu là đêm 1
 	PhaseDawn  Phase = "dawn"  // 0h → 10h: phù thuỷ; tiên tri, bảo vệ
-	PhaseDay   Phase = "day"   // 10h → 17h: đề cử
-	PhaseTrial Phase = "trial" // 17h → 22h: bào chữa, biểu quyết
+	PhaseDay   Phase = "day"   // 10h → 20h: đề cử
+	PhaseTrial Phase = "trial" // 20h → 22h: biểu quyết
 	PhaseEnded Phase = "ended"
 )
 
@@ -46,6 +47,8 @@ type Player struct {
 	Alive      bool  `json:"alive"`
 	DeathRound int   `json:"deathRound,omitempty"`
 	Cause      Cause `json:"cause,omitempty"`
+	// ShotOpened: thợ săn đã được mở lượt bắn (R5), giữ cả sau khi lượt đóng.
+	ShotOpened bool `json:"shotOpened,omitempty"`
 }
 
 // HunterTurn là lượt bắn của thợ săn vừa chết (R5). Khung giờ do E5 giữ: 10h–12h
@@ -69,7 +72,7 @@ type State struct {
 	// Extra là phần admin dời hạn (Extend) của lượt ExtraKey (một PhaseKey).
 	Extra    time.Duration `json:"extra,omitempty"`
 	ExtraKey string        `json:"extraKey,omitempty"`
-	// Reminded là PhaseKey đã gửi tin nhắc (15h, 21h), để chạy lại không nhắc hai lần.
+	// Reminded là PhaseKey đã gửi tin nhắc (18h, 21h), để chạy lại không nhắc hai lần.
 	Reminded string             `json:"reminded,omitempty"`
 	Players  map[string]*Player `json:"players"`
 
@@ -77,12 +80,16 @@ type State struct {
 	// kế tiếp và cho thợ săn (R26, R5).
 	Km map[string]float64 `json:"km,omitempty"`
 
-	Lovers       []string `json:"lovers,omitempty"`  // 0 hoặc 2 uid, áp lúc 0h đêm 1
-	SavePotion   bool     `json:"savePotion"`        // còn bình cứu
-	PoisonPotion bool     `json:"poisonPotion"`      // còn bình độc
-	LastGuarded  string   `json:"lastGuarded"`       // lần bảo vệ hợp lệ gần nhất đã chốt (R3)
-	Bitten       string   `json:"bitten,omitempty"`  // sói chốt lúc 0h; phù thuỷ thấy người này (R4)
-	Nominee      string   `json:"nominee,omitempty"` // người lên giàn lúc 17h
+	Lovers       []string `json:"lovers,omitempty"` // 0 hoặc 2 uid, áp lúc 0h đêm 1
+	SavePotion   bool     `json:"savePotion"`       // còn bình cứu
+	PoisonPotion bool     `json:"poisonPotion"`     // còn bình độc
+	LastGuarded  string   `json:"lastGuarded"`      // lần bảo vệ hợp lệ gần nhất đã chốt (R3)
+	Bitten       string   `json:"bitten,omitempty"` // sói chốt lúc 0h; phù thuỷ thấy người này (R4)
+	// Nominees là những người lên giàn lúc 20h, theo thứ tự phiên biểu quyết
+	// (VoteKinds). Nominee là người đầu tiên: state ghi trước khi có nhiều
+	// người lên giàn chỉ có field này, và bản cũ của service vẫn đọc nó.
+	Nominees []string `json:"nominees,omitempty"`
+	Nominee  string   `json:"nominee,omitempty"`
 
 	Hunter *HunterTurn `json:"hunter,omitempty"`
 	Winner Team        `json:"winner,omitempty"`
@@ -121,11 +128,42 @@ func (st *State) clone() *State {
 		}
 	}
 	c.Lovers = append([]string(nil), st.Lovers...)
+	c.Nominees = append([]string(nil), st.Nominees...)
 	if st.Hunter != nil {
 		h := *st.Hunter
 		c.Hunter = &h
 	}
 	return &c
+}
+
+// TrialNominees là những người lên giàn hôm nay, theo thứ tự phiên. State ghi
+// trước khi có nhiều người lên giàn chỉ có Nominee.
+func (st *State) TrialNominees() []string {
+	if len(st.Nominees) > 0 {
+		return append([]string(nil), st.Nominees...)
+	}
+	if st.Nominee != "" {
+		return []string{st.Nominee}
+	}
+	return nil
+}
+
+// NomineeOf là người lên giàn của phiên biểu quyết kind, rỗng nếu phiên đó
+// không có ai (hoặc kind không phải biểu quyết).
+func (st *State) NomineeOf(kind Kind) string {
+	i := slices.Index(voteKinds, kind)
+	if nominees := st.TrialNominees(); i >= 0 && i < len(nominees) {
+		return nominees[i]
+	}
+	return ""
+}
+
+// setNominees ghi người lên giàn, cả Nominee cho bản đọc cũ.
+func (st *State) setNominees(uids []string) {
+	st.Nominees, st.Nominee = uids, ""
+	if len(uids) > 0 {
+		st.Nominee = uids[0]
+	}
 }
 
 func (st *State) alive(uid string) bool {
@@ -187,9 +225,43 @@ func (st *State) hasKm(uid string) bool {
 	return st.Km[uid] >= st.Config.unitMeters()
 }
 
+// TeamOf là phe của uid khi xét thắng thua: hai người trong cặp Sói–Dân thành
+// phe ba (R23, R24), còn lại theo vai.
+func (st *State) TeamOf(uid string) Team {
+	if st.mixedCouple() && st.loverOf(uid) != "" {
+		return TeamLovers
+	}
+	if st.role(uid) == Wolf {
+		return TeamWolves
+	}
+	return TeamVillage
+}
+
+// Winners là uid phe thắng, kể cả người đã chết, theo thứ tự uid. Ván chưa có
+// phe thắng thì rỗng.
+func (st *State) Winners() []string {
+	if st.Winner == "" {
+		return nil
+	}
+	var out []string
+	for uid := range st.Players {
+		if st.TeamOf(uid) == st.Winner {
+			out = append(out, uid)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Peek là kết quả soi của tiên tri: Sói hay Dân. Sói đang yêu vẫn ra Sói (R2).
 func (st *State) Peek(target string) Team {
-	if st.role(target) == Wolf {
+	return Side(st.role(target))
+}
+
+// Side là phe lộ ra khi chỉ nói Sói hay Dân chứ không nói vai: tiên tri soi,
+// hay người bị treo. Không xét cặp đôi, nên Sói đang yêu vẫn ra Sói.
+func Side(r Role) Team {
+	if r == Wolf {
 		return TeamWolves
 	}
 	return TeamVillage

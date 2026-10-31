@@ -108,17 +108,17 @@ func TestStepMessagesThroughANight(t *testing.T) {
 	if len(pub) != 1 || !reflect.DeepEqual(pub[0], ww.Event{Kind: ww.EventDeath, UID: "v2", Role: ww.Villager}) {
 		t.Fatalf("bản tin 10h = %+v", pub)
 	}
-	if got := msgs[0].Data["deadline"]; got != "2026-10-16T10:00:00Z" {
+	if got := msgs[0].Data["deadline"]; got != "2026-10-16T13:00:00Z" {
 		t.Fatalf("hạn đề cử = %v", got)
 	}
 	if got := msgs[2].Data; !reflect.DeepEqual(got, map[string]any{"kind": "nominate", "turnKey": "r1"}) {
 		t.Fatalf("prompt đề cử = %v", got)
 	}
 
-	// 17h có người lên giàn thì topic có prompt biểu quyết; không ai được đề cử
-	// thì không.
+	// 20h đóng tin đề cử; có người lên giàn thì topic có prompt biểu quyết,
+	// không ai được đề cử thì không.
 	trial, evs := mustStep(t, day, act1(ww.KindNominate, "v1", "w1"))
-	sameMsgs(t, stepMessages(day, trial, evs), "group/digest", "group/prompt/vote")
+	sameMsgs(t, stepMessages(day, trial, evs), "group/digest", "group/tally/nominate", "group/prompt/vote")
 
 	// Sang đêm 2: v2 đã chết nên không nhận gì; cupid đã ghép, chỉ còn tin đêm.
 	night2, evs := mustStep(t, trial)
@@ -126,11 +126,42 @@ func TestStepMessagesThroughANight(t *testing.T) {
 		t.Fatalf("chưa sang đêm 2: %s", night2.PhaseKey())
 	}
 	sameMsgs(t, stepMessages(trial, night2, evs), "group/digest",
-		"dm:guard/prompt/guard", "dm:seer/prompt/seer_peek", "dm:w1/prompt/wolf_bite", "dm:w2/prompt/wolf_bite",
+		"dm:guard/prompt/guard", "dm:seer/prompt/seer_peek", "dm:w1/prompt/wolf_bite", "dm:w2/prompt/wolf_bite", "group/tally/vote",
 		"dm:cupid/night", "dm:hunter/night", "dm:v1/night", "dm:v3/night", "dm:witch/night")
 
 	empty, evs := mustStep(t, day)
-	sameMsgs(t, stepMessages(day, empty, evs), "group/digest")
+	sameMsgs(t, stepMessages(day, empty, evs), "group/digest", "group/tally/nominate")
+}
+
+// Hết giờ đề cử (20h) hay biểu quyết (22h) thì sửa tin đếm trong topic thành
+// bản đã đóng. Bước 22h tăng vòng, xoá người lên giàn và giết người bị treo,
+// nên tin đóng chở vòng, người lên giàn và người còn sống của lúc đóng.
+func TestStepMessagesCloseTally(t *testing.T) {
+	st := ww.NewState(ww.Seed{1}, ww.Config{}, msgRoles(), msgStart)
+	night, _ := mustStep(t, st)
+	dawn, _ := mustStep(t, night, act1(ww.KindWolfBite, "w1", "v2"))
+	day, _ := mustStep(t, dawn)
+	trial, evs := mustStep(t, day, act1(ww.KindNominate, "v1", "w1"))
+	closing := func(msgs []gameMsg, kind ww.Kind) map[string]any {
+		for _, m := range msgs {
+			if m.Template == tplTally && m.Data["kind"] == string(kind) {
+				return m.Data
+			}
+		}
+		t.Fatalf("không có tin đóng %s: %v", kind, summary(msgs))
+		return nil
+	}
+	alive := []string{"cupid", "guard", "hunter", "seer", "v1", "v3", "w1", "w2", "witch"}
+	want := map[string]any{"kind": "nominate", "close": tallyClose{TurnKey: "r1", Round: 1, Alive: alive}}
+	if got := closing(stepMessages(day, trial, evs), ww.KindNominate); !reflect.DeepEqual(got, want) {
+		t.Fatalf("đóng đề cử = %#v", got)
+	}
+	hang := ww.Action{Kind: ww.KindVote, Actor: "v1", Choice: ww.ChoiceHang, ReceivedAt: trial.NightAt.Add(23 * time.Hour)}
+	night2, evs := mustStep(t, trial, hang)
+	want = map[string]any{"kind": "vote", "close": tallyClose{TurnKey: "r1", Round: 1, Nominees: []string{"w1"}, Alive: alive}}
+	if got := closing(stepMessages(trial, night2, evs), ww.KindVote); !reflect.DeepEqual(got, want) {
+		t.Fatalf("đóng biểu quyết = %#v", got)
+	}
 }
 
 func TestStepMessagesHunterTurnPromptsTheHunter(t *testing.T) {

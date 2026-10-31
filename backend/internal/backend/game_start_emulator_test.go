@@ -472,7 +472,7 @@ func TestEmulatorGameExtend(t *testing.T) {
 	}
 
 	// Sang trial (chốt 22h, đêm sau khoá 0h): chỉ còn dời được 60 phút.
-	g.advance(time.Date(2026, 10, 16, 17, 0, 0, 0, vietnam))
+	g.advance(time.Date(2026, 10, 16, 20, 0, 0, 0, vietnam))
 	if p := g.state().Phase; p != "trial" {
 		t.Fatalf("phase = %s", p)
 	}

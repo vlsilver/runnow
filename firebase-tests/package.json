@@ -2,7 +2,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test run_contract_rules.test.mjs"
+    "test": "node --test --test-concurrency=1 run_contract_rules.test.mjs hearts_rules.test.mjs club_cards_rules.test.mjs run_rooms_rules.test.mjs home_digest_rules.test.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",

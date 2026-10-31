@@ -74,6 +74,9 @@ func (s *Server) routeTelegramUpdate(ctx context.Context, update TelegramUpdate,
 	if update.CallbackQuery != nil {
 		return s.callbackReply(ctx, update)
 	}
+	if reply, ok, err := s.managedBotUpdate(ctx, raw); ok {
+		return reply, err
+	}
 	if reply, ok, err := s.linkReply(ctx, update, raw, publish); ok {
 		return reply, err
 	}
@@ -98,25 +101,40 @@ func (s *Server) routeTelegramUpdate(ctx context.Context, update TelegramUpdate,
 	if publish == nil {
 		return nil, nil
 	}
+	roomReply, inRoom, err := s.telegramRoomMessage(ctx, update)
+	if err != nil {
+		return nil, err
+	}
 	name := senderName(update)
 	chatID, question, isQuestion := botQuestion(update, s.config.TelegramBotUsername)
+	if inRoom {
+		// Topic Phòng bot là của MyBot: 3i không trả lời, chỉ ghi tin như mọi
+		// tin PSC khác, để việc tự học (nguồn botMessages) vẫn học tin ở đây.
+		isQuestion = false
+	}
 	recordChatID, _, rawText, hasText := incomingMessage(update)
-	if !isQuestion && !hasText {
-		return nil, nil
+	if isQuestion || hasText {
+		task := botMessageTask{IsQuestion: isQuestion, Name: name, SenderID: senderID(update), PhotoFileID: photoFileID(update), ThreadID: messageThreadID(update)}
+		if isQuestion {
+			task.ChatID, task.Question = chatID, question
+		} else {
+			task.ChatID, task.RawText = recordChatID, rawText
+		}
+		if _, err := publish(ctx, PublishTask{
+			Queue:       QueueBotInbound,
+			HandlerPath: "/tasks/bot-message",
+			Payload:     task,
+			TaskID:      StableTaskID("botmsg", update.UpdateID),
+		}); err != nil {
+			return roomReply, err
+		}
 	}
-	task := botMessageTask{IsQuestion: isQuestion, Name: name, SenderID: senderID(update), PhotoFileID: photoFileID(update), ThreadID: messageThreadID(update)}
-	if isQuestion {
-		task.ChatID, task.Question = chatID, question
-	} else {
-		task.ChatID, task.RawText = recordChatID, rawText
+	if inRoom {
+		return roomReply, nil
 	}
-	_, err := publish(ctx, PublishTask{
-		Queue:       QueueBotInbound,
-		HandlerPath: "/tasks/bot-message",
-		Payload:     task,
-		TaskID:      StableTaskID("botmsg", update.UpdateID),
-	})
-	return nil, err
+	// Sau task của 3i: lỗi ở đây thì Telegram gửi lại update, task của 3i khử
+	// trùng theo update_id nên không ghi đôi.
+	return roomReply, s.telegramGroupMessage(ctx, update, isQuestion)
 }
 
 // gameUpdateTask chở nguyên update sang bot. Bot decode lỏng, nên thêm field
@@ -143,7 +161,7 @@ func (s *Server) commandReply(ctx context.Context, update TelegramUpdate) (map[s
 		return nil, false, nil
 	}
 	cmd, arg := parseBotCommand(msg.Text, s.config.TelegramBotUsername)
-	if cmd != "/vai" && !adminCommands[cmd] {
+	if cmd != "/vai" && cmd != telegramRoomCommand && !adminCommands[cmd] {
 		return nil, false, nil
 	}
 	reply := func(text string, html bool) map[string]any {
@@ -155,6 +173,10 @@ func (s *Server) commandReply(ctx context.Context, update TelegramUpdate) (map[s
 			r["message_thread_id"] = id
 		}
 		return r
+	}
+	if cmd == telegramRoomCommand {
+		text, err := s.telegramRoomCommandText(ctx, update, arg)
+		return reply(text, false), true, err
 	}
 	if adminCommands[cmd] {
 		text, markup, err := s.adminReply(ctx, update, cmd, arg)

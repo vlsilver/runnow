@@ -159,17 +159,21 @@ func (s *GameStore) AdminSummary(ctx context.Context, gameID string) (string, er
 	lines = append(lines, fmt.Sprintf("Còn sống: %d/%d", alive, len(players)))
 	if phase := werewolf.Phase(stringValue(g["phase"])); stringValue(g["status"]) == gameRunning && (phase == werewolf.PhaseDay || phase == werewolf.PhaseTrial) {
 		docs, err := roundRef(game, int(number(g["round"]))).Collection("actions").
-			Where("kind", "in", []string{string(werewolf.KindNominate), string(werewolf.KindVote)}).Documents(ctx).GetAll()
+			Where("kind", "in", groupKindKeys()).Documents(ctx).GetAll()
 		if err != nil {
 			return "", err
 		}
-		counts := map[string]int{}
+		nominations, votes := 0, 0
 		for _, d := range docs {
-			if d.Data()["cleared"] != true {
-				counts[stringValue(d.Data()["kind"])]++
+			switch {
+			case d.Data()["cleared"] == true:
+			case stringValue(d.Data()["kind"]) == string(werewolf.KindNominate):
+				nominations++
+			default:
+				votes++
 			}
 		}
-		lines = append(lines, fmt.Sprintf("Đề cử: %d, phiếu: %d", counts[string(werewolf.KindNominate)], counts[string(werewolf.KindVote)]))
+		lines = append(lines, fmt.Sprintf("Đề cử: %d, phiếu: %d", nominations, votes))
 	}
 	docs, err := game.Collection("outbox").Where("status", "in", []string{outboxPending, outboxSending, outboxFailed}).Documents(ctx).GetAll()
 	if err != nil {

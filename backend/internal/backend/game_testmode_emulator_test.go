@@ -13,6 +13,8 @@ import (
 	"time"
 
 	ww "github.com/vlsilver/runnow/backend/internal/werewolf"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // testPscChat là TELEGRAM_CHAT_ID của test; group test dùng chat khác.
@@ -165,7 +167,7 @@ func aliveOf(st *ww.State) []string {
 }
 
 // Một ngày: mọi người còn sống đề cử target (target đề cử người khác), lên giàn
-// lúc 17h, 21h biểu quyết, ai cũng Treo trừ spare. Bấm advance: 15h, 17h, 21h, 22h.
+// lúc 20h, 21h biểu quyết, ai cũng Treo trừ spare. Bấm advance: 18h, 20h, 21h, 22h.
 func (g *testModeGame) hangDay(round int, target, spare, targetPick string) {
 	g.t.Helper()
 	for _, uid := range aliveOf(g.state()) {
@@ -175,8 +177,8 @@ func (g *testModeGame) hangDay(round int, target, spare, targetPick string) {
 		}
 		g.do(uid, ww.KindNominate, "", pick)
 	}
-	g.adv() // 15h nhắc đề cử
-	g.adv() // 17h lên giàn
+	g.adv() // 18h nhắc đề cử
+	g.adv() // 20h lên giàn
 	if st := g.state(); st.Nominee != target {
 		g.t.Fatalf("lên giàn %q, mong đợi %s", st.Nominee, target)
 	}
@@ -208,6 +210,10 @@ func TestEmulatorTestModeGameRunsToEndByAdvance(t *testing.T) {
 	g.adv() // 22h đêm 1
 	if st := g.state(); st.Phase != ww.PhaseNight || st.Round != 1 {
 		t.Fatalf("sau advance đầu: %s", st.PhaseKey())
+	}
+	// Bậc thẻ có từ lúc chia bài; ván chưa xong thì chưa ai sở hữu.
+	if me, err := g.store.Me(context.Background(), g.id, GameViewer{UID: "r1"}, g.wall); err != nil || me.CardOwned || me.CardTier != wantTier(g.state(), "r1") {
+		t.Fatalf("/me của r1 giữa ván: owned %v, tier %q, err %v", me.CardOwned, me.CardTier, err)
 	}
 	if res := g.do("r1", ww.KindSeerPeek, "", "fake-01"); res.Peek != ww.TeamWolves {
 		t.Fatalf("soi fake-01 = %s", res.Peek)
@@ -286,6 +292,36 @@ func TestEmulatorTestModeGameRunsToEndByAdvance(t *testing.T) {
 			t.Fatalf("có outboxChats %s", c.Ref.ID)
 		}
 	}
+	// Phe Dân thắng: người thật r1–r4 đều phe Dân nên đều giữ thẻ, kể cả r2, r3
+	// đã chết. Người giả không có tài khoản nên không có thẻ dù cùng phe.
+	ctx := context.Background()
+	for _, uid := range []string{"r1", "r2", "r3", "r4", "fake-01", "fake-03"} {
+		snap, err := g.db.Collection("users").Doc(uid).Collection("gameCards").Doc(g.id).Get(ctx)
+		if strings.HasPrefix(uid, "fake-") {
+			if status.Code(err) != codes.NotFound {
+				t.Fatalf("thẻ của %s: err = %v", uid, err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("thẻ của %s: %v", uid, err)
+		}
+		card := snap.Data()
+		if v, _ := card["variant"].(string); v != gameCardVariant(st.Seed, uid) {
+			t.Fatalf("thẻ của %s: variant %q, muốn %q", uid, v, gameCardVariant(st.Seed, uid))
+		}
+		if card["tier"] != wantTier(st, uid) || card["team"] != "village" || card["winner"] != "village" ||
+			card["role"] != string(st.Players[uid].Role) || card["alive"] != st.Players[uid].Alive ||
+			card["playerCount"] != int64(10) || card["testMode"] != true {
+			t.Fatalf("thẻ của %s = %v", uid, card)
+		}
+		if _, died := card["deathRound"]; died == st.Players[uid].Alive {
+			t.Fatalf("thẻ của %s: deathRound khi alive = %v", uid, st.Players[uid].Alive)
+		}
+	}
+	if me, err := g.store.Me(ctx, g.id, GameViewer{UID: "r2"}, g.wall); err != nil || !me.CardOwned || me.CardTier != wantTier(st, "r2") || me.CardRounds != st.Round {
+		t.Fatalf("/me của r2 lúc kết thúc: owned %v, tier %q, rounds %d (muốn %d), err %v", me.CardOwned, me.CardTier, me.CardRounds, st.Round, err)
+	}
 	replayMatches(t, g.storeGame)
 
 	// T6: gửi hết outbox của cả ván bằng chữ render từ event thật. Không tin nào
@@ -315,6 +351,9 @@ func TestEmulatorTestModeGameRunsToEndByAdvance(t *testing.T) {
 		t.Fatalf("bản tin cuối = %q", lastGroup)
 	}
 }
+
+// wantTier là bậc thẻ mong đợi, để so với cái backend ghi và trả.
+func wantTier(st *ww.State, uid string) string { return string(gameCardTier(st.Seed, uid)) }
 
 func (g *testModeGame) actionCount(round int) int {
 	g.t.Helper()
@@ -349,9 +388,9 @@ func TestEmulatorActAsOnlyForFakePlayersOfTestGame(t *testing.T) {
 	}
 }
 
-// CAS theo taskKey: key cũ thì 409, không chạy gì. Tin nhắc 15h không đổi
+// CAS theo taskKey: key cũ thì 409, không chạy gì. Tin nhắc 18h không đổi
 // phaseKey nhưng đổi taskKey, nên bấm lại với key trước tin nhắc cũng bị chặn,
-// không nhảy luôn qua 17h.
+// không nhảy luôn qua 20h.
 func TestEmulatorAdminAdvanceStaleKeyIs409(t *testing.T) {
 	g := newTestModeGame(t)
 	ctx := context.Background()
@@ -368,7 +407,7 @@ func TestEmulatorAdminAdvanceStaleKeyIs409(t *testing.T) {
 	g.adv() // 0h
 	g.adv() // 10h
 	beforeReminder := stringValue(g.public()["taskKey"])
-	g.adv() // 15h nhắc
+	g.adv() // 18h nhắc
 	if st := g.state(); st.PhaseKey() != "r1/day" || st.Reminded != "r1/day" {
 		t.Fatalf("sau tin nhắc: %s, reminded %q", st.PhaseKey(), st.Reminded)
 	}

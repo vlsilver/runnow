@@ -98,7 +98,7 @@ type NewGameInput struct {
 func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Time) (string, error) {
 	if in.Config.TestMode {
 		// Ván thử có người giả và lệnh admin đẩy giờ; chạy trong PSC là tin của nó
-		// tới cả 16 người thật. Thiếu cấu hình thì không kiểm được, nên từ chối.
+		// tới mọi người thật trong group. Thiếu cấu hình thì không kiểm được, nên từ chối.
 		if s.pscChatID == "" {
 			return "", errors.New("thiếu TELEGRAM_CHAT_ID, không kiểm được ván thử có nằm ngoài PSC không")
 		}
@@ -432,7 +432,12 @@ func (s *GameStore) advanceOnce(ctx context.Context, gameID string, wall time.Ti
 		if err != nil {
 			return err
 		}
-		w := stepWrite{tx: tx, game: game, gameData: g.Data(), before: st, after: next, events: evs, msgs: msgs, chats: chats, now: now, wall: wall}
+		public, err := publicWinners(tx, s.db.Collection("publicProfiles"), st, next)
+		if err != nil {
+			return err
+		}
+		w := stepWrite{tx: tx, game: game, gameData: g.Data(), before: st, after: next, events: evs, msgs: msgs, chats: chats, now: now, wall: wall,
+			users: s.db.Collection("users"), clubCards: s.db.Collection("clubCards"), public: public}
 		if err := w.commit(map[string]any{"kind": "step", "phaseKey": st.PhaseKey(), "inputs": string(inputs)}); err != nil {
 			return err
 		}
@@ -615,6 +620,12 @@ type stepWrite struct {
 	now, wall time.Time
 	// extra gộp thêm vào games/{id} (Start ghi playerCount sau khi loại người).
 	extra map[string]any
+	// users là collection users, để bước kết thúc ván ghi thẻ cho phe thắng.
+	users *firestore.CollectionRef
+	// clubCards và public: thẻ của người phe thắng để hồ sơ công khai tự lên
+	// club (publicWinners).
+	clubCards *firestore.CollectionRef
+	public    map[string]bool
 }
 
 func (w *stepWrite) status() string {
@@ -659,7 +670,7 @@ func (w *stepWrite) commit(event map[string]any) error {
 	if w.before != nil && !reminderOnly {
 		feedSeq := int64(number(w.gameData["feedSeq"])) + 1
 		public["feedSeq"] = feedSeq
-		feed, err := json.Marshal(publicEvents(w.events))
+		feed, err := json.Marshal(publicEvents(w.after, w.events))
 		if err != nil {
 			return err
 		}
@@ -688,16 +699,98 @@ func (w *stepWrite) commit(event map[string]any) error {
 			}
 		}
 	}
+	if err := w.writeGameCards(); err != nil {
+		return err
+	}
 	return w.writeOutbox(eventSeq)
+}
+
+// writeGameCards trao thẻ cho người phe thắng, kể cả người đã chết, ở đúng bước
+// ván chuyển sang kết thúc. Người chơi giả của ván thử không có tài khoản nên
+// không nhận. Ván huỷ không đi qua đây nên không ai có thẻ.
+func (w *stepWrite) writeGameCards() error {
+	if w.before == nil || w.before.Phase == werewolf.PhaseEnded || w.after.Phase != werewolf.PhaseEnded {
+		return nil
+	}
+	if w.users == nil {
+		return errors.New("stepWrite: ván kết thúc mà thiếu users để ghi thẻ")
+	}
+	fake := fakeUIDs(w.gameData)
+	for _, uid := range w.after.Winners() {
+		if fake[uid] {
+			continue
+		}
+		ref := w.users.Doc(uid).Collection("gameCards").Doc(w.game.ID)
+		card := gameCardDoc(w.game.ID, uid, w.after, w.wall)
+		if err := w.tx.Set(ref, card); err != nil {
+			return err
+		}
+		if w.public[uid] {
+			club := w.clubCards.Doc(keptClubCardID(uid, "game", w.game.ID))
+			if err := w.tx.Set(club, keptClubCardDoc("game", uid, card, w.wall)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// publicWinners đọc trong tx hồ sơ của người phe thắng khi bước này kết thúc
+// ván, trả những uid để công khai. Transaction phải đọc xong mới ghi, nên đọc
+// trước stepWrite. Ván thử không khoe gì nên không đọc.
+func publicWinners(tx *firestore.Transaction, profiles *firestore.CollectionRef, before, after *werewolf.State) (map[string]bool, error) {
+	if before.Phase == werewolf.PhaseEnded || after.Phase != werewolf.PhaseEnded || after.Config.TestMode {
+		return nil, nil
+	}
+	var refs []*firestore.DocumentRef
+	for _, uid := range after.Winners() {
+		refs = append(refs, profiles.Doc(uid))
+	}
+	if len(refs) == 0 {
+		return nil, nil
+	}
+	snaps, err := tx.GetAll(refs)
+	if err != nil {
+		return nil, err
+	}
+	public := map[string]bool{}
+	for _, snap := range snaps {
+		if snap.Exists() && publicProfile(snap.Data()) {
+			public[snap.Ref.ID] = true
+		}
+	}
+	return public, nil
 }
 
 // publicGame là phần của games/{id} mà API được đọc: không có vai của người còn
 // sống, không có seed, km chi tiết hay lựa chọn.
+// gameNominees là người lên giàn trên doc ván; doc ghi trước khi có nhiều
+// phiên chỉ có "nominee".
+func gameNominees(data map[string]any) []string {
+	var out []string
+	for _, v := range anyList(data["nominees"]) {
+		if uid := stringValue(v); uid != "" {
+			out = append(out, uid)
+		}
+	}
+	if len(out) == 0 {
+		if uid := stringValue(data["nominee"]); uid != "" {
+			out = []string{uid}
+		}
+	}
+	return out
+}
+
 func (w *stepWrite) publicGame() map[string]any {
 	st := w.after
-	revealed := map[string]any{}
+	// revealed là lá bài đã lật, revealedTeams là phe của người chỉ lộ phe
+	// (roleHidden). MergeAll không xoá key cũ, nên một uid đã lật thì giữ nguyên.
+	revealed, revealedTeams := map[string]any{}, map[string]any{}
 	for uid, p := range st.Players {
-		if !p.Alive || st.Phase == werewolf.PhaseEnded {
+		switch {
+		case roleHidden(st, uid):
+			revealedTeams[uid] = string(werewolf.Side(p.Role))
+		case !p.Alive || st.Phase == werewolf.PhaseEnded:
 			revealed[uid] = string(p.Role)
 		}
 	}
@@ -706,11 +799,16 @@ func (w *stepWrite) publicGame() map[string]any {
 		"paused": st.Paused, "nextAt": nil, "taskKey": st.TaskKey(), "updatedAt": w.wall,
 		"deadline": nil, "winner": string(st.Winner), "nominee": nil,
 	}
-	if st.Phase == werewolf.PhaseTrial && st.Nominee != "" {
-		out["nominee"] = st.Nominee
+	if nominees := st.TrialNominees(); st.Phase == werewolf.PhaseTrial && len(nominees) > 0 {
+		out["nominee"], out["nominees"] = nominees[0], nominees
+	} else {
+		out["nominees"] = nil
 	}
 	if len(revealed) > 0 {
 		out["revealed"] = revealed
+	}
+	if len(revealedTeams) > 0 {
+		out["revealedTeams"] = revealedTeams
 	}
 	if st.Phase != werewolf.PhaseEnded {
 		out["deadline"], out["nextAt"] = st.Deadline(), st.NextAt()

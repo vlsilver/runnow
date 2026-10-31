@@ -164,7 +164,7 @@ func TestHistoryReversedToChronological(t *testing.T) {
 		{"role": "model", "text": "đáp 1"},
 		{"role": "user", "text": "hỏi 1", "name": "Minh"},
 	}
-	c := buildHistoryContents(newestFirst)
+	c := buildHistoryContents(newestFirst, nil)
 	if len(c) != 4 {
 		t.Fatalf("len = %d", len(c))
 	}
@@ -183,7 +183,7 @@ func TestHistoryTrimsLeadingModelTurn(t *testing.T) {
 		{"role": "user", "text": "hỏi mới", "name": "A"},
 		{"role": "model", "text": "đáp mồ côi"}, // lượt model cụt ở đầu (sau khi đảo)
 	}
-	c := buildHistoryContents(newestFirst)
+	c := buildHistoryContents(newestFirst, nil)
 	if len(c) != 1 || c[0].Role != "user" {
 		t.Fatalf("phải cắt lượt model mồ côi ở đầu, còn: %+v", c)
 	}
@@ -195,7 +195,7 @@ func TestHistorySkipsEmptyAndBadRoles(t *testing.T) {
 		{"role": "system", "text": "nên bỏ"},
 		{"role": "user", "text": ""},
 	}
-	c := buildHistoryContents(rows)
+	c := buildHistoryContents(rows, nil)
 	if len(c) != 1 || c[0].Parts[0].Text != "A: ok" {
 		t.Fatalf("chỉ giữ lượt hợp lệ, còn: %+v", c)
 	}

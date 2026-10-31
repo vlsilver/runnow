@@ -124,6 +124,7 @@ WEB_RETURN_URI: ${WEB_RETURN_URI}
 ALLOWED_WEB_ORIGINS: ${ALLOWED_WEB_ORIGINS}
 STRAVA_CLIENT_ID: '${STRAVA_CLIENT_ID}'
 STRAVA_SUBSCRIPTION_ID: '${STRAVA_SUBSCRIPTION_ID:-}'
+GARMIN_CLIENT_ID: '${GARMIN_CLIENT_ID:-}'
 TASK_INVOKER_SERVICE_ACCOUNT: ${INVOKER_SA}
 STRAVA_EVENTS_QUEUE: strava-events
 STRAVA_BACKFILL_QUEUE: strava-backfill
@@ -138,7 +139,10 @@ GEMINI_LOCATION: '${GEMINI_LOCATION:-global}'
 GEMINI_MODEL: '${GEMINI_MODEL:-gemini-3.8-flash}'
 GEMINI_THINKING_LEVEL: '${GEMINI_THINKING_LEVEL:-LOW}'
 AGENT_LEARN: '${AGENT_LEARN:-off}'
+AGENT_TELEGRAM_BOTS: '${AGENT_TELEGRAM_BOTS:-off}'
 BOT_GROUP_FACTS: '${BOT_GROUP_FACTS:-off}'
+HOME_DIGEST: '${HOME_DIGEST:-off}'
+BOT_IMAGES: '${BOT_IMAGES:-off}'
 BOT_HOURLY_LIMIT: '${BOT_HOURLY_LIMIT:-100}'
 EOF
 }
@@ -260,9 +264,17 @@ if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
   # bộ nên bỏ token khỏi danh sách là nó tự bị gỡ khỏi api/worker.
   BOT_SECRETS="${BOT_SECRETS},TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest"
 fi
+# Garmin cũng tuỳ chọn: chỉ đòi secret khi đã đặt GARMIN_CLIENT_ID. Chỉ api
+# cần: api đổi mã lấy token, nhận push (push mang sẵn dữ liệu buổi chạy, ghi
+# luôn trong request) và gọi Garmin khi ngắt kết nối. Worker, bot không gọi Garmin.
+if [[ -n "${GARMIN_CLIENT_ID:-}" ]]; then
+  require_secret GARMIN_CLIENT_SECRET
+  require_secret GARMIN_WEBHOOK_TOKEN
+  API_SECRETS="${API_SECRETS},GARMIN_CLIENT_SECRET=GARMIN_CLIENT_SECRET:latest,GARMIN_WEBHOOK_TOKEN=GARMIN_WEBHOOK_TOKEN:latest"
+fi
 
 if is_full_deploy; then
-  for ttl_collection in oauthStates integrationEvents activityTombstones botRateLimits botMessages linkCodes chatMessages learnLog; do
+  for ttl_collection in oauthStates integrationEvents activityTombstones botRateLimits botMessages linkCodes chatMessages learnLog tgUpdates tgOutbox messages; do
     gcloud firestore fields ttls update expiresAt \
       --collection-group "$ttl_collection" \
       --enable-ttl \

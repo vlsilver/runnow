@@ -24,24 +24,44 @@ const (
 
 func dmChat(uid string) string { return "dm:" + uid }
 
+// groupKinds là việc của cả group: đề cử và các phiên biểu quyết. Prompt nằm
+// trong topic, có tin đếm, không DM từng người.
+var groupKinds = append([]werewolf.Kind{werewolf.KindNominate}, werewolf.VoteKinds()...)
+
+func groupKind(k werewolf.Kind) bool { return slices.Contains(groupKinds, k) }
+
+// groupKindKeys là groupKinds dạng chuỗi, cho query Firestore theo kind.
+func groupKindKeys() []string {
+	out := make([]string, len(groupKinds))
+	for i, k := range groupKinds {
+		out[i] = string(k)
+	}
+	return out
+}
+
 const (
 	tplStart    = "start"     // group: ván bắt đầu, đêm 1 lúc nào
 	tplCard     = "card"      // dm: lá bài; sói thấy đồng đội
 	tplDigest   = "digest"    // group: bản tin gộp của một lần chốt
-	tplReminder = "reminder"  // group: nhắc 15h, 21h
+	tplReminder = "reminder"  // group: nhắc 18h, 21h
 	tplPrivate  = "private"   // dm: việc riêng sau một lần chốt (bị huỷ, người yêu, bạn chết…)
 	tplPrompt   = "prompt"    // dm: tới lượt một loại hành động
 	tplChoice   = "choice"    // dm: sửa prompt cho khớp lựa chọn vừa đổi
 	tplTally    = "tally"     // group: sửa prompt đề cử/biểu quyết cho khớp lựa chọn vừa đổi
+	tplPick     = "pick"      // group: tin mới cho một lần đề cử/biểu quyết (pick)
 	tplChatPing = "chat_ping" // dm: có tin mới trong chat phe ở app
 	tplNight    = "night"     // dm: vào đêm mà không có lượt mới (nightMessages)
 )
 
 // publicEvent trả bản công khai của e, hoặc false nếu e chỉ dành cho người
-// trong cuộc. Lý do chết không công khai (C3), vai thì lật khi chết.
-func publicEvent(e werewolf.Event) (werewolf.Event, bool) {
+// trong cuộc. Lý do chết không công khai (C3). Chết thì lật lá bài, trừ người
+// group chỉ được biết phe (roleHidden). st là state sau bước ra e.
+func publicEvent(st *werewolf.State, e werewolf.Event) (werewolf.Event, bool) {
 	switch e.Kind {
 	case werewolf.EventDeath:
+		if roleHidden(st, e.UID) {
+			e.Role, e.Team = "", werewolf.Side(e.Role)
+		}
 		e.Cause = ""
 		return e, true
 	case werewolf.EventNominee, werewolf.EventVoteCut, werewolf.EventVoteResult, werewolf.EventHunterTurn, werewolf.EventWinner:
@@ -50,10 +70,30 @@ func publicEvent(e werewolf.Event) (werewolf.Event, bool) {
 	return werewolf.Event{}, false
 }
 
-func publicEvents(evs []werewolf.Event) []werewolf.Event {
+// roleHidden: group chỉ biết người chết uid là Sói hay Dân, chưa biết lá bài.
+// Đó là người bị dân làng treo mà không còn việc gì làm; thợ săn bị treo được
+// mở lượt bắn thì đã lộ vai qua lượt bắn. Hết ván thì lật hết.
+func roleHidden(st *werewolf.State, uid string) bool {
+	p := st.Players[uid]
+	return p != nil && !p.Alive && p.Cause == werewolf.CauseHang && !p.ShotOpened && st.Phase != werewolf.PhaseEnded
+}
+
+// revealedLabel đọc từ doc game công khai (publicGame) cái group đã biết về
+// người chết uid: lá bài thì trả nhãn và vai, chỉ lộ phe thì trả nhãn phe và
+// vai rỗng, còn sống thì rỗng cả hai. Lá bài thắng phe, vì hết ván mới lật hết.
+func revealedLabel(data map[string]any, uid string) (string, werewolf.Role) {
+	revealed, _ := data["revealed"].(map[string]any)
+	if role := werewolf.Role(stringValue(revealed[uid])); role != "" {
+		return roleLabels[role], role
+	}
+	teams, _ := data["revealedTeams"].(map[string]any)
+	return teamLabels[werewolf.Team(stringValue(teams[uid]))], ""
+}
+
+func publicEvents(st *werewolf.State, evs []werewolf.Event) []werewolf.Event {
 	out := []werewolf.Event{}
 	for _, e := range evs {
-		if pub, ok := publicEvent(e); ok {
+		if pub, ok := publicEvent(st, e); ok {
 			out = append(out, pub)
 		}
 	}
@@ -64,9 +104,13 @@ func publicEvents(evs []werewolf.Event) []werewolf.Event {
 // việc ngay (Cupid) nhận prompt.
 func startMessages(st *werewolf.State) []gameMsg {
 	uids := sortedPlayers(st)
-	msgs := []gameMsg{{ChatKey: chatGroup, Template: tplStart, Data: map[string]any{
+	start := map[string]any{
 		"phaseKey": st.PhaseKey(), "nightAt": st.NightAt.UTC().Format(time.RFC3339), "players": len(uids),
-	}}}
+	}
+	if wake := calledRoles(st, werewolf.Cupid); len(wake) > 0 {
+		start["wake"] = wake
+	}
+	msgs := []gameMsg{{ChatKey: chatGroup, Template: tplStart, Data: start}}
 	var wolves []string
 	for _, uid := range uids {
 		if st.Players[uid].Role == werewolf.Wolf {
@@ -95,7 +139,7 @@ func stepMessages(before, after *werewolf.State, evs []werewolf.Event) []gameMsg
 		"phaseKey": before.PhaseKey(),
 		"round":    after.Round,
 		"phase":    string(after.Phase),
-		"events":   publicEvents(evs),
+		"events":   publicEvents(after, evs),
 	}
 	if after.Phase == werewolf.PhaseEnded {
 		roles := map[string]string{}
@@ -105,6 +149,24 @@ func stepMessages(before, after *werewolf.State, evs []werewolf.Event) []gameMsg
 		digest["roles"] = roles
 	} else {
 		digest["deadline"] = after.Deadline().UTC().Format(time.RFC3339)
+	}
+	call, wake := gmCall(before, after)
+	if call != "" {
+		digest["call"] = call
+		if len(wake) > 0 {
+			digest["wake"] = wake
+		}
+	}
+	if call == callNight {
+		// Km vừa chốt 22h là km của kỹ năng đêm nay; chở theo bản tin để group
+		// biết ai đủ km mà không phải mở app.
+		km := map[string]float64{}
+		for _, uid := range sortedPlayers(after) {
+			if after.Players[uid].Alive {
+				km[uid] = after.Km[uid]
+			}
+		}
+		digest["km"] = km
 	}
 	msgs := []gameMsg{{ChatKey: chatGroup, Template: tplDigest, Data: digest}}
 
@@ -135,15 +197,69 @@ func stepMessages(before, after *werewolf.State, evs []werewolf.Event) []gameMsg
 	}
 	sort.Strings(uids)
 	for _, uid := range uids {
-		msgs = append(msgs, gameMsg{ChatKey: dmChat(uid), Template: tplPrivate, Data: map[string]any{
-			"phaseKey": before.PhaseKey(), "events": private[uid],
-		}})
+		data := map[string]any{"phaseKey": before.PhaseKey(), "events": private[uid]}
+		for _, e := range private[uid] {
+			if e.Kind == werewolf.EventWolvesTarget && e.Reason == werewolf.VoidNoKm {
+				// Bước 0h không đổi km và chưa giết người bị cắn, nên after là phe
+				// lúc xét km, kể cả người rời PSC vừa bị loại.
+				have, need := werewolf.WolfKm(after)
+				data["wolfKm"] = map[string]float64{"have": have, "need": need}
+			}
+		}
+		msgs = append(msgs, gameMsg{ChatKey: dmChat(uid), Template: tplPrivate, Data: data})
 	}
 	msgs = append(msgs, promptMessages(before, after)...)
 	if after.Phase == werewolf.PhaseNight && before.Phase != werewolf.PhaseNight {
 		msgs = append(msgs, nightMessages(after, msgs)...)
 	}
 	return msgs
+}
+
+// Lời quản trò trong bản tin group, như quản trò gọi từng vai ở bàn chơi.
+const (
+	callNight   = "night"   // 22h: cả làng ngủ, gọi lần lượt các vai đêm
+	callWitch   = "witch"   // 0h: sói xong, gọi phù thuỷ
+	callMorning = "morning" // 10h: trời sáng, rồi tới bản tin đêm
+)
+
+// gmCall trả lời quản trò cho lần chuyển phase này và các vai được gọi. Gọi đủ
+// vai trong bộ bài (calledRoles), kể cả vai đã hết người, để lời gọi không cho
+// biết vai nào đã chết. Không xét bình hay km, nên phù thuỷ hết bình vẫn được
+// gọi như thường.
+func gmCall(before, after *werewolf.State) (string, []string) {
+	switch {
+	case after.Phase == werewolf.PhaseNight && before.Phase != werewolf.PhaseNight:
+		// Thứ tự gọi là thứ tự chốt đêm (R15): Cupid và sói chốt 0h, rồi bảo vệ
+		// đỡ, phù thuỷ cứu hay độc. Tiên tri xem ngay nên đứng cạnh bảo vệ.
+		order := []werewolf.Role{werewolf.Wolf, werewolf.Guard, werewolf.Seer, werewolf.Witch}
+		if after.Round == 1 {
+			order = append([]werewolf.Role{werewolf.Cupid}, order...)
+		}
+		return callNight, calledRoles(after, order...)
+	case after.Phase == werewolf.PhaseDawn && before.Phase == werewolf.PhaseNight:
+		if wake := calledRoles(after, werewolf.Witch); len(wake) > 0 {
+			return callWitch, wake
+		}
+	case before.Phase == werewolf.PhaseDawn && after.Phase != werewolf.PhaseDawn:
+		return callMorning, nil
+	}
+	return "", nil
+}
+
+// calledRoles trả các vai trong roles (giữ thứ tự) có trong bộ bài của ván,
+// sống hay chết đều tính. Vai bị tắt (thành Dân) thì không gọi; bộ vai vốn công
+// khai nên chuyện đó không lộ gì.
+func calledRoles(st *werewolf.State, roles ...werewolf.Role) []string {
+	var out []string
+	for _, role := range roles {
+		for _, p := range st.Players {
+			if p.Role == role {
+				out = append(out, string(role))
+				break
+			}
+		}
+	}
+	return out
 }
 
 // nightMessages: lúc vào đêm, ai còn sống mà chưa có DM nào trong msgs thì
@@ -180,7 +296,7 @@ func promptMessages(before, after *werewolf.State) []gameMsg {
 			}
 		}
 		for _, k := range after.Available(uid) {
-			if had[k] || k == werewolf.KindNominate || k == werewolf.KindVote {
+			if had[k] || groupKind(k) {
 				continue
 			}
 			msgs = append(msgs, gameMsg{ChatKey: dmChat(uid), Template: tplPrompt, Data: map[string]any{
@@ -188,14 +304,42 @@ func promptMessages(before, after *werewolf.State) []gameMsg {
 			}})
 		}
 	}
-	for _, k := range []werewolf.Kind{werewolf.KindNominate, werewolf.KindVote} {
-		if openForAnyone(after, k) && (before == nil || !openForAnyone(before, k)) {
+	for _, k := range groupKinds {
+		wasOpen, isOpen := before != nil && openForAnyone(before, k), openForAnyone(after, k)
+		if wasOpen && !isOpen {
+			msgs = append(msgs, gameMsg{ChatKey: chatGroup, Template: tplTally, Data: map[string]any{
+				"kind": string(k), "close": closeOf(before),
+			}})
+		}
+		if isOpen && !wasOpen {
 			msgs = append(msgs, gameMsg{ChatKey: chatGroup, Template: tplPrompt, Data: map[string]any{
 				"kind": string(k), "turnKey": turnKey(after),
 			}})
 		}
 	}
 	return msgs
+}
+
+// tallyClose là lúc tin đếm đề cử hay biểu quyết đóng. Bước 22h tăng vòng, xoá
+// người lên giàn và giết người bị treo, nên tin đóng vẽ theo dữ liệu này chứ
+// không theo state lúc gửi.
+type tallyClose struct {
+	TurnKey string `json:"turnKey"`
+	Round   int    `json:"round"`
+	// Nominee là người lên giàn của tin đóng ghi trước khi có nhiều phiên.
+	Nominee  string   `json:"nominee,omitempty"`
+	Nominees []string `json:"nominees,omitempty"`
+	Alive    []string `json:"alive"`
+}
+
+func closeOf(st *werewolf.State) tallyClose {
+	c := tallyClose{TurnKey: turnKey(st), Round: st.Round, Nominees: st.TrialNominees()}
+	for _, uid := range sortedPlayers(st) {
+		if st.Players[uid].Alive {
+			c.Alive = append(c.Alive, uid)
+		}
+	}
+	return c
 }
 
 func openForAnyone(st *werewolf.State, kind werewolf.Kind) bool {

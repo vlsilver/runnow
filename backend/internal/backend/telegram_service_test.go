@@ -190,3 +190,53 @@ func TestTelegramSendsThreadIDOnlyWhenInTopic(t *testing.T) {
 		t.Fatalf("General không được có thread id: %v", photos[1])
 	}
 }
+
+// Telegram báo không thấy topic thì câu trả lời ra khung chat chính, không mất và không trả
+// lỗi (trả lỗi là task retry, gọi lại model mà vẫn hỏng). 400 khác thì vẫn lỗi.
+func TestTelegramResendsOutsideMissingThread(t *testing.T) {
+	var sent []string // "path thread=<id hoặc rỗng>"
+	reply := `{"ok":false,"error_code":400,"description":"Bad Request: message thread not found"}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		thread := ""
+		if strings.HasSuffix(r.URL.Path, "/sendPhoto") {
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				t.Fatalf("parse multipart: %v", err)
+			}
+			thread = r.FormValue("message_thread_id")
+		} else {
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if f, ok := body["message_thread_id"].(float64); ok {
+				thread = strconv.FormatInt(int64(f), 10)
+			}
+		}
+		sent = append(sent, r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]+" thread="+thread)
+		if thread != "" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(reply))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+	service := NewTelegramService("token", "chat")
+	service.apiBaseURL = server.URL
+	ctx := context.Background()
+
+	if err := service.SendChatMessageInThread(ctx, "42", 9, "trả lời"); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SendPhotoInThread(ctx, "42", 9, []byte("png"), "ảnh"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"sendMessage thread=9", "sendMessage thread=", "sendPhoto thread=9", "sendPhoto thread="}
+	if strings.Join(sent, "|") != strings.Join(want, "|") {
+		t.Fatalf("đã gửi %v, muốn %v", sent, want)
+	}
+
+	reply = `{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}`
+	sent = nil
+	if err := service.SendChatMessageInThread(ctx, "42", 9, "trả lời"); err == nil || len(sent) != 1 {
+		t.Fatalf("400 khác phải trả lỗi, không gửi lại: err=%v, đã gửi %v", err, sent)
+	}
+}

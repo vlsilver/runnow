@@ -59,3 +59,11 @@ ensure_secret_value STRAVA_WEBHOOK_VERIFY_TOKEN "$STRAVA_WEBHOOK_VERIFY_TOKEN"
 if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
   ensure_secret_value TELEGRAM_BOT_TOKEN "$TELEGRAM_BOT_TOKEN"
 fi
+
+# Garmin tuỳ chọn: đặt GARMIN_CLIENT_SECRET (consumer secret trên portal Garmin)
+# và GARMIN_WEBHOOK_TOKEN (chuỗi ngẫu nhiên, vd openssl rand -hex 24) trong
+# $LOCAL_SECRETS_FILE.
+if [[ -n "${GARMIN_CLIENT_SECRET:-}" ]]; then
+  ensure_secret_value GARMIN_CLIENT_SECRET "$GARMIN_CLIENT_SECRET"
+  ensure_secret_value GARMIN_WEBHOOK_TOKEN "${GARMIN_WEBHOOK_TOKEN:?Set GARMIN_WEBHOOK_TOKEN with GARMIN_CLIENT_SECRET}"
+fi

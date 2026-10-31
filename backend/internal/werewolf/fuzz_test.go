@@ -17,6 +17,7 @@ func TestFuzzRandomGames(t *testing.T) {
 	if testing.Short() {
 		n = 300
 	}
+	multiHang := 0 // số ngày treo từ hai người, để chắc fuzz phủ nhánh nhiều phiên
 	for seed := uint64(1); seed <= uint64(n); seed++ {
 		seed := seed
 		t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
@@ -25,7 +26,21 @@ func TestFuzzRandomGames(t *testing.T) {
 			if again := playRandomGame(t, seed); !reflect.DeepEqual(first, again) {
 				t.Fatalf("seed %d: chạy lại ra event khác", seed)
 			}
+			hanged := 0
+			for _, e := range first {
+				switch {
+				case e.Kind == EventNominee:
+					hanged = 0
+				case e.Kind == EventVoteResult && e.Hanged:
+					if hanged++; hanged == 2 {
+						multiHang++
+					}
+				}
+			}
 		})
+	}
+	if multiHang == 0 {
+		t.Fatal("không ván nào treo hai người trong một ngày")
 	}
 }
 
@@ -125,7 +140,7 @@ func playRandomGame(t *testing.T, seed uint64) []Event {
 		}
 
 		before := st.clone()
-		hunterBefore, nomineeBefore := st.Hunter, st.Nominee
+		hunterBefore, nomineeBefore := st.Hunter, st.TrialNominees()
 		next, evs, err := Advance(st, in, now.Add(30*time.Second))
 		if err != nil {
 			t.Fatalf("seed %d %s: %v", seed, st.PhaseKey(), err)
@@ -167,7 +182,7 @@ func playRandomGame(t *testing.T, seed uint64) []Event {
 }
 
 // checkStep kiểm bất biến của một bước.
-func checkStep(t *testing.T, seed uint64, before, after *State, evs []Event, hunterBefore *HunterTurn, nomineeBefore string, dead map[string]bool, in Inputs) {
+func checkStep(t *testing.T, seed uint64, before, after *State, evs []Event, hunterBefore *HunterTurn, nomineeBefore []string, dead map[string]bool, in Inputs) {
 	t.Helper()
 	aliveBefore := func(role Role) bool {
 		for _, p := range before.Players {
@@ -199,7 +214,7 @@ func checkStep(t *testing.T, seed uint64, before, after *State, evs []Event, hun
 		case CauseShot:
 			ok = hunterBefore != nil
 		case CauseHang:
-			ok = nomineeBefore == e.UID && before.Phase == PhaseTrial
+			ok = contains(nomineeBefore, e.UID) && before.Phase == PhaseTrial
 		case CauseLover:
 			ok = before.loverOf(e.UID) != ""
 		case CauseLeft:
@@ -217,14 +232,20 @@ func checkStep(t *testing.T, seed uint64, before, after *State, evs []Event, hun
 			t.Fatalf("seed %d: %s sống lại", seed, uid)
 		}
 	}
-	// Phiếu được tính không vượt số người được bỏ phiếu còn sống, trừ người bị cắt.
-	if e := find(evs, EventVoteResult); e != nil {
+	// Mỗi phiên: phiếu được tính không vượt số người được bỏ phiếu còn sống, trừ
+	// người bị cắt ở chính phiên đó.
+	for _, e := range evs {
+		if e.Kind != EventVoteResult {
+			continue
+		}
 		voters := len(before.aliveUIDs()) - 1
-		if cut := find(evs, EventVoteCut); cut != nil {
-			voters -= len(cut.Targets)
+		for _, cut := range evs {
+			if cut.Kind == EventVoteCut && cut.UID == e.UID {
+				voters -= len(cut.Targets)
+			}
 		}
 		if e.Hang+e.Spare > voters {
-			t.Fatalf("seed %d: %d phiếu với %d người", seed, e.Hang+e.Spare, voters)
+			t.Fatalf("seed %d: phiên %s %d phiếu với %d người", seed, e.UID, e.Hang+e.Spare, voters)
 		}
 	}
 	// Người chết không có hành động được tính: bước nào dùng tới action của người
@@ -235,7 +256,7 @@ func checkStep(t *testing.T, seed uint64, before, after *State, evs []Event, hun
 			continue
 		}
 		gone := !before.alive(a.Actor) || (contains(in.Left, a.Actor) && (before.Phase == PhaseDawn || before.Phase == PhaseTrial))
-		if gone && voided[a.Actor+"/"+string(a.Kind)] != VoidActorDead && !(a.Kind == KindVote && voided[a.Actor+"/"+string(a.Kind)] != "") {
+		if gone && voided[a.Actor+"/"+string(a.Kind)] != VoidActorDead && !(IsVote(a.Kind) && voided[a.Actor+"/"+string(a.Kind)] != "") {
 			t.Fatalf("seed %d %s: %s của %s đã chết mà không bị huỷ", seed, before.PhaseKey(), a.Kind, a.Actor)
 		}
 	}
@@ -282,12 +303,12 @@ func fittingKind(rng *rand.Rand, st *State, r Role) (Kind, bool) {
 	case PhaseDay:
 		return KindNominate, true
 	case PhaseTrial:
-		return KindVote, true
+		return voteKinds[rng.IntN(len(voteKinds))], true
 	}
 	return "", false
 }
 
-var fuzzKinds = []Kind{KindWolfBite, KindSeerPeek, KindGuard, KindWitchSave, KindWitchPoison, KindHunterShoot, KindCupidPair, KindNominate, KindVote}
+var fuzzKinds = []Kind{KindWolfBite, KindSeerPeek, KindGuard, KindWitchSave, KindWitchPoison, KindHunterShoot, KindCupidPair, KindNominate, KindVote, KindVote2, KindVote3}
 
 // randomAction sinh một hành động bất kỳ, kể cả không hợp lệ (người chết, sai
 // vai, sai target), để Validate là chỗ duy nhất lọc.
@@ -308,7 +329,7 @@ func randomAction(rng *rand.Rand, st *State, players []string) Action {
 	}
 	n := 1
 	switch a.Kind {
-	case KindWitchSave, KindVote:
+	case KindWitchSave, KindVote, KindVote2, KindVote3:
 		n = 0
 	case KindCupidPair:
 		n = 2
@@ -316,7 +337,7 @@ func randomAction(rng *rand.Rand, st *State, players []string) Action {
 	for i := 0; i < n; i++ {
 		a.Targets = append(a.Targets, players[rng.IntN(len(players))])
 	}
-	if a.Kind == KindVote {
+	if IsVote(a.Kind) {
 		a.Choice = []string{ChoiceHang, ChoiceSpare, "x"}[rng.IntN(3)]
 	}
 	return a
@@ -335,7 +356,7 @@ func consumes(st *State, kind Kind) bool {
 	case PhaseDay:
 		return kind == KindNominate
 	case PhaseTrial:
-		return kind == KindVote && st.Nominee != ""
+		return st.NomineeOf(kind) != ""
 	}
 	return false
 }

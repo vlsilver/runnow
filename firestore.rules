@@ -82,6 +82,35 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // Thẻ buổi chạy: backend quay bậc và vẽ tranh, client chỉ đọc.
+      match /runCards/{activityId} {
+        allow read: if owns(userId);
+        allow write: if false;
+      }
+
+      // Thẻ Ma Sói: backend ghi cho phe thắng lúc ván kết thúc, client chỉ đọc.
+      match /gameCards/{gameId} {
+        allow read: if owns(userId);
+        allow write: if false;
+      }
+
+      // Thẻ Hành trình: backend ghi khi về đích một chặng, client chỉ đọc.
+      match /journeyCards/{campaign} {
+        allow read: if owns(userId);
+        allow write: if false;
+      }
+
+      // Thẻ BXH: backend ghi lúc chốt kỳ. Ai đăng nhập cũng đọc, vì người khác
+      // cần biết thẻ đã lật chưa. Chủ thẻ chỉ ghi được lúc lật: một lần, chỉ
+      // revealedAt, và phải là giờ server.
+      match /rankCards/{boardId} {
+        allow read: if signedIn();
+        allow update: if owns(userId)
+          && resource.data.revealedAt == null
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revealedAt'])
+          && request.resource.data.revealedAt == request.time;
+      }
+
       match /runContractActivityClaims/{activityId} {
         allow read: if owns(userId);
         allow create, update: if owns(userId)
@@ -297,6 +326,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Top 10 đã chốt của từng kỳ BXH, chỉ backend ghi.
+    match /rankBoards/{boardId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
     // Dữ liệu tĩnh "Hành Trình" (route/milestone) — nội dung tham khảo
     // chung, không thuộc user nào, chỉ ghi qua Admin SDK (script migrate).
     match /journeyRoutes/{routeId} {
@@ -309,6 +344,58 @@ service cloud.firestore {
       }
     }
 
+    // Phòng chạy: backend ghi phòng và thành viên, vì trần người, mật khẩu và
+    // quyền chủ phòng kiểm trong transaction. Có id (link mời) thì xem được
+    // phòng; list chỉ ra phòng public. Thành viên, tin nhắn và buổi chạy live
+    // trong phòng chỉ người đã vào phòng mới thấy. secret (hash mật khẩu, bộ đếm
+    // sai) không có rule nào nên client không đọc được.
+    function roomJoined(roomId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/runRooms/$(roomId)/members/$(request.auth.uid))
+        && get(/databases/$(database)/documents/runRooms/$(roomId)/members/$(request.auth.uid)).data.state == 'joined';
+    }
+
+    // Điểm tin buổi sáng của 3i: backend viết, mọi người đăng nhập đọc.
+    match /homeDigests/{day} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /runRooms/{roomId} {
+      allow get: if signedIn();
+      allow list: if signedIn() && resource.data.privacy == 'public';
+      allow write: if false;
+
+      match /members/{uid} {
+        allow read: if owns(uid) || roomJoined(roomId);
+        allow write: if false;
+      }
+
+      // Cổ vũ nhanh trong lúc chạy. expiresAt cho TTL của collection group
+      // messages dọn sau tối đa 7 ngày.
+      match /messages/{messageId} {
+        allow read: if roomJoined(roomId);
+        allow create: if roomJoined(roomId)
+          && get(/databases/$(database)/documents/runRooms/$(roomId)).data.status == 'open'
+          && request.resource.data.keys().hasOnly(['uid', 'kind', 'text', 'at', 'expiresAt'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.kind in ['emoji', 'text']
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 120
+          && request.resource.data.at == request.time
+          && request.resource.data.expiresAt is timestamp
+          && request.resource.data.expiresAt <= request.time + duration.value(7, 'd');
+        allow update, delete: if false;
+      }
+    }
+
+    // "Phòng của bạn": app tìm các phòng mình đang ở bằng collection group
+    // query members theo uid của chính mình.
+    match /{path=**}/members/{uid} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
     match /liveSessions/{sessionId} {
       allow read: if signedIn()
         && (
@@ -318,14 +405,45 @@ service cloud.firestore {
             && request.auth.uid in
                get(/databases/$(database)/documents/runContracts/$(resource.data.contractId)).data.participantUids
           )
+          || ('roomId' in resource.data && roomJoined(resource.data.roomId))
         );
+      // Gắn roomId là cho thành viên phòng xem: chỉ người đã vào phòng mới
+      // gắn được. Buổi giữ nguyên roomId thì không phải get() mỗi lần cập nhật.
       allow create: if signedIn()
-        && request.resource.data.ownerUid == request.auth.uid;
+        && request.resource.data.ownerUid == request.auth.uid
+        && (!('roomId' in request.resource.data) || roomJoined(request.resource.data.roomId));
       allow update: if signedIn()
         && resource.data.ownerUid == request.auth.uid
-        && request.resource.data.ownerUid == request.auth.uid;
+        && request.resource.data.ownerUid == request.auth.uid
+        && (
+          request.resource.data.get('roomId', null) == resource.data.get('roomId', null)
+          || !('roomId' in request.resource.data)
+          || roomJoined(request.resource.data.roomId)
+        );
       allow delete: if signedIn()
         && resource.data.ownerUid == request.auth.uid;
+    }
+
+    // Tim: mỗi người một document theo uid trong hearts/{target}/by.
+    // target: run_{uid}_{activityId}, card_{uid}_{activityId},
+    // card_{uid}_{kind}_{id} (thẻ Ma Sói, Hành trình), live_{sessionId}.
+    // Tim live không gỡ được, để người chạy không bị bắn thông báo liên tục.
+    match /hearts/{targetKey}/by/{uid} {
+      allow read: if signedIn();
+      allow create, update: if owns(uid)
+        && targetKey.matches('(run|card)_[A-Za-z0-9]+_.+|live_.+')
+        && request.resource.data.keys().hasOnly(['uid', 'at'])
+        && request.resource.data.uid == uid
+        && request.resource.data.at == request.time;
+      allow delete: if owns(uid) && !targetKey.matches('live_.*');
+    }
+
+    // Thẻ chủ thẻ khoe với club: buổi chạy id {uid}_{activityId}, Ma Sói và
+    // Hành trình id {uid}_{kind}_{id} có field kind. Backend chép
+    // mặt thẻ (không đường chạy, không nhịp tim) qua API khoe/bỏ khoe.
+    match /clubCards/{key} {
+      allow read: if signedIn();
+      allow write: if false;
     }
 
     // Backend-owned integration state. Firebase Admin bypasses these rules;

@@ -29,6 +29,35 @@ service firebase.storage {
       allow delete: if owns(userId);
     }
 
+    // Ảnh bot cá nhân vẽ: chỉ chủ bot xem lại trong app. Backend ghi bằng
+    // admin SDK nên client không ghi được.
+    match /users/{userId}/agentImages/{fileName} {
+      allow read: if owns(userId);
+      allow write: if false;
+    }
+
+    // Thẻ buổi chạy: chủ thẻ tải ảnh nguồn src.jpg để vẽ lại; tranh art-{attempt}.png
+    // backend ghi bằng admin SDK. Chủ thẻ xem hết; thẻ đang khoe với club
+    // (còn doc clubCards) thì người khác xem được tranh, không xem được ảnh gốc.
+    match /users/{userId}/runCards/{activityId}/{fileName} {
+      allow read: if owns(userId)
+        || (signedIn()
+          && fileName.matches('art-[0-9]+[.]png')
+          && firestore.exists(/databases/(default)/documents/clubCards/$(userId + '_' + activityId)));
+      allow create, update: if owns(userId)
+        && fileName == 'src.jpg'
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png)');
+      allow delete: if false;
+    }
+
+    // Ảnh mẫu của các phong cách vẽ thẻ: nội dung tĩnh 3i tự upload, đường
+    // dẫn khai trong art_styles.go. Client không ghi.
+    match /artStyles/examples/{fileName} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
     // Ảnh minh hoạ mốc "Hành Trình" — nội dung tĩnh do 3i quản lý (upload
     // qua CLI khi dựng dữ liệu route), không phải nội dung user tạo nên
     // không có client write nào.

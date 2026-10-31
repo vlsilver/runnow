@@ -56,7 +56,7 @@ func (v tallyView) render() (string, map[string]any, error) {
 				continue
 			}
 			key = a.Targets[0]
-		} else if a.Actor == v.st.Nominee {
+		} else if a.Actor == v.st.NomineeOf(v.kind) {
 			continue
 		}
 		picks[key] = append(picks[key], a.Actor)
@@ -69,7 +69,7 @@ func (v tallyView) render() (string, map[string]any, error) {
 	if v.kind == werewolf.KindNominate {
 		lines = append(lines, fmt.Sprintf("<b>Đề cử lên giàn, ngày %d</b>", v.st.Round))
 	} else {
-		lines = append(lines, fmt.Sprintf("<b>Biểu quyết ngày %d: treo hay tha %s</b>", v.st.Round, name(v.st.Nominee)))
+		lines = append(lines, fmt.Sprintf("<b>Biểu quyết ngày %d: treo hay tha %s</b>", v.st.Round, name(v.st.NomineeOf(v.kind))))
 	}
 	switch {
 	case !v.open:
@@ -119,7 +119,7 @@ func (v tallyView) render() (string, map[string]any, error) {
 		return map[string]any{"text": label, "callback_data": data}, nil
 	}
 	var rows [][]map[string]any
-	if v.kind == werewolf.KindVote {
+	if werewolf.IsVote(v.kind) {
 		var row []map[string]any
 		for i, c := range voteChoices {
 			b, err := button(choiceLabels[c], i)

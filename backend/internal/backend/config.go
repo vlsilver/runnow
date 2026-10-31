@@ -10,20 +10,26 @@ import (
 )
 
 type Config struct {
-	Environment           string
-	Port                  int
-	ProjectID             string
-	Region                string
-	PublicBaseURL         string
-	WorkerBaseURL         string
-	BotBaseURL            string
-	MobileReturnURI       string
-	WebReturnURI          string
-	AllowedWebOrigins     map[string]struct{}
-	StravaClientID        string
-	StravaClientSecret    string
-	WebhookVerifyToken    string
-	StravaSubscriptionID  string
+	Environment          string
+	Port                 int
+	ProjectID            string
+	Region               string
+	PublicBaseURL        string
+	WorkerBaseURL        string
+	BotBaseURL           string
+	MobileReturnURI      string
+	WebReturnURI         string
+	AllowedWebOrigins    map[string]struct{}
+	StravaClientID       string
+	StravaClientSecret   string
+	WebhookVerifyToken   string
+	StravaSubscriptionID string
+	// Garmin là nguồn tuỳ chọn: GarminClientID rỗng thì route Garmin trả
+	// garmin_not_configured, mọi thứ khác chạy như cũ. GarminWebhookToken là
+	// đoạn bí mật trong đường dẫn webhook, vì Garmin không ký các lần đẩy.
+	GarminClientID        string
+	GarminClientSecret    string
+	GarminWebhookToken    string
 	TaskInvokerAccount    string
 	EventsQueue           string
 	BackfillQueue         string
@@ -38,6 +44,11 @@ type Config struct {
 	TelegramWebhookSecret string
 	GeminiLocation        string
 	GeminiModel           string
+	// GeminiFallbackModel ở GeminiFallbackLocation là model 3i và bot trong app
+	// gọi khi model chính hết chỗ (generateWithFallback). Rỗng là không có dự
+	// phòng; đặt GEMINI_FALLBACK_MODEL=off để tắt.
+	GeminiFallbackModel    string
+	GeminiFallbackLocation string
 	// GeminiThinkingLevel là mức thinking của 3i và bot trong app. "default"
 	// để model tự chọn, dùng khi đổi GEMINI_MODEL hay AGENT_MODEL sang model
 	// không nhận thinkingLevel.
@@ -45,13 +56,25 @@ type Config struct {
 	// AgentModel là model của bot cá nhân. Mặc định Flash: phòng bot nói nhiều
 	// tin ngắn, Pro đắt mà không cần.
 	AgentModel string
+	// RunCardArtModel là model ảnh vẽ tranh thẻ buổi chạy, gọi ở location
+	// global. Tách khỏi model ảnh của 3i để đổi riêng khi model cũ nghỉ.
+	RunCardArtModel string
 	// AgentLearn bật task bot tự học ký ức từ tin trong phòng bot và group
 	// Telegram (agent_learn.go). Chỉ "on" mới bật.
 	AgentLearn      bool
 	AgentLearnModel string
+	// AgentTelegramBots bật MyBot trên Telegram (Pha T): 3i làm bot quản lý
+	// Managed Bots, mỗi MyBot là một bot Telegram thật. Chỉ "on" mới bật.
+	AgentTelegramBots bool
 	// BotGroupFacts cho 3i đọc trí nhớ về group club từ ký ức tự học thay cho
 	// tóm tắt botMemory. Chỉ "on" mới bật; tắt là quay về botMemory ngay.
-	BotGroupFacts  bool
+	BotGroupFacts bool
+	// HomeDigest bật bài điểm tin buổi sáng của 3i ở Trang chủ app.
+	HomeDigest bool
+	// BotImages bật vẽ ảnh khi chat của MyBot và 3i trong group. Chỉ "on" mới
+	// bật. Tắt thì hai bot không có tool vẽ và GET /v1/agents/me không trả lượt
+	// ảnh. Vẽ tranh thẻ buổi chạy không theo cờ này, nó có trần tiền riêng.
+	BotImages      bool
 	BotHourlyLimit int
 	// WebBaseURL là domain của app 3i Run bản web, không phải của API. Link
 	// chia sẻ trỏ về đây để mở đúng màn hình chi tiết trong app (hoặc bản
@@ -88,16 +111,32 @@ func LoadConfig() (Config, error) {
 	c.BotBaseURL = trimURL(env("BOT_BASE_URL", ""))
 	c.TelegramBotUsername = strings.TrimPrefix(env("TELEGRAM_BOT_USERNAME", ""), "@")
 	c.TelegramWebhookSecret = env("TELEGRAM_WEBHOOK_SECRET", "")
+	c.GarminClientID = env("GARMIN_CLIENT_ID", "")
+	c.GarminClientSecret = env("GARMIN_CLIENT_SECRET", "")
+	c.GarminWebhookToken = env("GARMIN_WEBHOOK_TOKEN", "")
 	// Gemini chạy ở location riêng, không dùng chung GOOGLE_CLOUD_REGION:
 	// gemini-3.8-flash chỉ mở ở global. Dòng 2.5 Vertex retire 20/10/2026, và
 	// Google ghi 3.8-flash là model thay cho 2.5-pro.
 	c.GeminiLocation = env("GEMINI_LOCATION", "global")
 	c.GeminiModel = env("GEMINI_MODEL", "gemini-3.8-flash")
+	// Dự phòng là 3.5-flash ở asia-southeast1: khác model và khác location nên
+	// không chung pool capacity với 3.8-flash ở global.
+	c.GeminiFallbackModel = env("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash")
+	if c.GeminiFallbackModel == "off" {
+		c.GeminiFallbackModel = ""
+	}
+	c.GeminiFallbackLocation = env("GEMINI_FALLBACK_LOCATION", "asia-southeast1")
 	c.GeminiThinkingLevel = env("GEMINI_THINKING_LEVEL", "LOW")
 	c.AgentModel = env("AGENT_MODEL", "gemini-3.8-flash")
+	c.RunCardArtModel = env("RUN_CARD_ART_MODEL", geminiImageModel)
 	c.AgentLearn = env("AGENT_LEARN", "") == "on"
-	c.AgentLearnModel = env("AGENT_LEARN_MODEL", "gemini-3.8-flash")
+	c.AgentTelegramBots = env("AGENT_TELEGRAM_BOTS", "") == "on"
+	// Task học không có model dự phòng, nên đi theo GEMINI_MODEL: đổi model của
+	// 3i vì model cũ treo thì task học đổi theo, không bị bỏ lại trên model cũ.
+	c.AgentLearnModel = env("AGENT_LEARN_MODEL", c.GeminiModel)
 	c.BotGroupFacts = env("BOT_GROUP_FACTS", "") == "on"
+	c.HomeDigest = env("HOME_DIGEST", "") == "on"
+	c.BotImages = env("BOT_IMAGES", "") == "on"
 	if n, convErr := strconv.Atoi(env("BOT_HOURLY_LIMIT", "100")); convErr == nil && n > 0 {
 		c.BotHourlyLimit = n
 	} else {
@@ -131,6 +170,20 @@ func LoadConfig() (Config, error) {
 		}
 	}
 	return c, nil
+}
+
+// MybotEnabled: cờ bật và đủ cấu hình để chạy MyBot trên Telegram. Secret
+// webhook của bot con là HMAC của TelegramWebhookSecret, link tạo bot cần
+// username của 3i, nên thiếu một trong hai cũng tắt. Không đòi token 3i: api
+// không có token, mọi lời gọi Telegram của bot con chạy trong task trên bot.
+func (c Config) MybotEnabled() bool {
+	return c.AgentTelegramBots && c.TelegramBotUsername != "" && c.TelegramWebhookSecret != ""
+}
+
+// GarminEnabled: đủ cả ba giá trị Garmin. File env dùng chung cho mọi service
+// nhưng chỉ api nhận secret Garmin, nên bot và worker luôn thấy Garmin tắt.
+func (c Config) GarminEnabled() bool {
+	return c.GarminClientID != "" && c.GarminClientSecret != "" && c.GarminWebhookToken != ""
 }
 
 func env(name, fallback string) string {

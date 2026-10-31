@@ -1,6 +1,9 @@
 package werewolf
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 // Kind là loại hành động. Giá trị chuỗi nằm trong id doc action và API, đừng đổi.
 type Kind string
@@ -14,8 +17,25 @@ const (
 	KindHunterShoot Kind = "hunter_shoot"
 	KindCupidPair   Kind = "cupid_pair"
 	KindNominate    Kind = "nominate"
-	KindVote        Kind = "vote"
+	// Mỗi người lên giàn có một phiên biểu quyết riêng, mỗi phiên một kind (để
+	// mỗi người một doc action cho mỗi phiên, và app gửi theo kind). Phiên đầu
+	// giữ "vote" của bản chỉ treo một người.
+	KindVote  Kind = "vote"
+	KindVote2 Kind = "vote2"
+	KindVote3 Kind = "vote3"
 )
+
+// voteKinds[i] là phiên biểu quyết của Nominees[i].
+var voteKinds = []Kind{KindVote, KindVote2, KindVote3}
+
+// MaxNominees là số người lên giàn tối đa mỗi ngày, mỗi người một phiên.
+var MaxNominees = len(voteKinds)
+
+// VoteKinds trả các kind biểu quyết theo thứ tự người lên giàn.
+func VoteKinds() []Kind { return append([]Kind(nil), voteKinds...) }
+
+// IsVote: kind là một phiên biểu quyết Treo/Tha.
+func IsVote(kind Kind) bool { return slices.Contains(voteKinds, kind) }
 
 const (
 	ChoiceHang  = "hang"
@@ -75,6 +95,8 @@ var kindRules = map[Kind]kindRule{
 	KindCupidPair:   {role: Cupid, phases: []Phase{PhaseSetup, PhaseNight}, targets: 2},
 	KindNominate:    {phases: []Phase{PhaseDay}, targets: 1, changeable: true},
 	KindVote:        {phases: []Phase{PhaseTrial}, changeable: true},
+	KindVote2:       {phases: []Phase{PhaseTrial}, changeable: true},
+	KindVote3:       {phases: []Phase{PhaseTrial}, changeable: true},
 }
 
 // Validate kiểm một hành động theo luật, trước khi service hành động ghi nó.
@@ -151,17 +173,18 @@ func validateKind(st *State, a Action, mine []Action) error {
 		if t == a.Actor {
 			return ErrInvalidTarget
 		}
-	case KindVote:
-		if st.Nominee == "" {
-			return ErrPhaseClosed // hôm nay không ai lên giàn
+	case KindVote, KindVote2, KindVote3:
+		nominee := st.NomineeOf(a.Kind)
+		if nominee == "" {
+			return ErrPhaseClosed // phiên này không có ai lên giàn
 		}
-		if a.Actor == st.Nominee {
+		if a.Actor == nominee {
 			return ErrNotYourRole
 		}
 		if a.Choice != ChoiceHang && a.Choice != ChoiceSpare {
 			return ErrInvalidTarget
 		}
-		if a.Choice == ChoiceHang && st.loverOf(a.Actor) == st.Nominee {
+		if a.Choice == ChoiceHang && st.loverOf(a.Actor) == nominee {
 			return ErrLoverTarget
 		}
 	}
@@ -212,15 +235,20 @@ func precheck(st *State, kind Kind, actor string, mine []Action, now time.Time) 
 
 // wolvesHaveKm: tổng km của sói còn sống ≥ X × số sói còn sống (R1).
 func wolvesHaveKm(st *State) bool {
-	var n int
-	var sum float64
+	have, need := WolfKm(st)
+	return need > 0 && have >= need
+}
+
+// WolfKm trả tổng km (mét) của sói còn sống và mức phe cần (X × số sói còn
+// sống), để tin riêng cho sói nói được phe thiếu bao nhiêu.
+func WolfKm(st *State) (have, need float64) {
 	for _, uid := range st.aliveUIDs() {
 		if st.role(uid) == Wolf {
-			n++
-			sum += st.Km[uid]
+			have += st.Km[uid]
+			need += st.Config.unitMeters()
 		}
 	}
-	return n > 0 && sum >= float64(n)*st.Config.unitMeters()
+	return have, need
 }
 
 // witchCanSave: có người bị cắn, và chỉ tự cứu được ở đêm 1 (R4).

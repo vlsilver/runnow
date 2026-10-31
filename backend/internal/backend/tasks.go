@@ -89,7 +89,7 @@ func (p *TaskPublisher) Publish(ctx context.Context, input PublishTask) (string,
 	req := &cloudtaskspb.CreateTaskRequest{Parent: parent, Task: task}
 	delay := 200 * time.Millisecond
 	for attempt := 0; attempt < 4; attempt++ {
-		_, err = p.client.CreateTask(ctx, req)
+		_, err = p.createTask(ctx, req)
 		if err == nil || status.Code(err) == codes.AlreadyExists {
 			break
 		}
@@ -110,6 +110,17 @@ func (p *TaskPublisher) Publish(ctx context.Context, input PublishTask) (string,
 		return "", err
 	}
 	return "created", nil
+}
+
+// createTaskTimeout là trần của một cú CreateTask. Cloud Tasks trả
+// InvalidArgument cho request có deadline xa hơn 30s, mà ctx của caller có thể
+// dài hơn: job game của schedule-tick chạy với 40s.
+const createTaskTimeout = 20 * time.Second
+
+func (p *TaskPublisher) createTask(ctx context.Context, req *cloudtaskspb.CreateTaskRequest) (*cloudtaskspb.Task, error) {
+	ctx, cancel := context.WithTimeout(ctx, createTaskTimeout)
+	defer cancel()
+	return p.client.CreateTask(ctx, req)
 }
 
 var invalidTaskID = regexp.MustCompile(`[^A-Za-z0-9_-]`)

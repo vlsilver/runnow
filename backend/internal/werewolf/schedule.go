@@ -25,13 +25,13 @@ var phaseEnd = map[Phase]time.Duration{
 	PhaseSetup: 0,              // 22h đêm 1
 	PhaseNight: 2 * time.Hour,  // 0h: khoá sói
 	PhaseDawn:  12 * time.Hour, // 10h: chốt đêm
-	PhaseDay:   19 * time.Hour, // 17h: lên giàn
+	PhaseDay:   22 * time.Hour, // 20h: lên giàn
 	PhaseTrial: 24 * time.Hour, // 22h: chốt ngày
 }
 
 const (
-	voteOpens     = 22 * time.Hour // 20h: biểu quyết mở; 17h–20h là bào chữa
-	remindNominee = 17 * time.Hour // 15h
+	voteOpens     = 22 * time.Hour // 20h: biểu quyết mở ngay khi có người lên giàn
+	remindNominee = 20 * time.Hour // 18h
 	remindVote    = 23 * time.Hour // 21h, kèm nhắc mở app để sync km
 	hunterDay     = 14 * time.Hour // chết trong đêm: bắn trong 10h–12h
 	hunterNight   = 1 * time.Hour  // bị treo: bắn trong 22h–23h
@@ -117,7 +117,7 @@ func (st *State) windowOpen(kind Kind, now time.Time) bool {
 	if !now.Before(st.Deadline()) {
 		return false
 	}
-	return kind != KindVote || !now.Before(st.NightAt.Add(voteOpens))
+	return !IsVote(kind) || !now.Before(st.NightAt.Add(voteOpens))
 }
 
 const (

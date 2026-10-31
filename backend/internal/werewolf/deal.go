@@ -8,11 +8,11 @@ import (
 
 const (
 	MinPlayers = 10
-	MaxPlayers = 16
+	MaxPlayers = 24
 )
 
-// ErrPlayerCount: dưới 10 hoặc trên 16 người thì không Start được (R9).
-var ErrPlayerCount = errors.New("số người chơi phải từ 10 tới 16")
+// ErrPlayerCount: dưới 10 hoặc trên 24 người thì không Start được (R9).
+var ErrPlayerCount = errors.New("số người chơi phải từ 10 tới 24")
 
 // Composition trả bộ vai cho n người theo bảng 1.2, rồi áp công tắc (R8): vai
 // bị tắt thành Dân, số sói giữ nguyên. dryRun của Start dùng để tính điểm cân bằng.
@@ -28,6 +28,11 @@ func Composition(n int, cfg Config) ([]Role, error) {
 		specials = 3
 	case n == 12:
 		specials = 4
+	// Đông người thì thêm sói, giữ tỉ lệ sói trong khoảng 1/5 tới 1/4.
+	case n >= 21:
+		wolves = 5
+	case n >= 17:
+		wolves = 4
 	}
 	roles := make([]Role, 0, n)
 	for i := 0; i < wolves; i++ {
