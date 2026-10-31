@@ -15,6 +15,7 @@ func newRoomHarness(t *testing.T) *apiHarness {
 	db := emulatorDB(t)
 	h := newAPIHarness(t, NewGameStore(db, testPscChat))
 	h.deps.RunRooms = NewRunRoomStore(db)
+	h.deps.Push, _ = newFakePush(db)
 	return h
 }
 

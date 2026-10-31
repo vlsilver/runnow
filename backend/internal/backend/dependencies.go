@@ -34,6 +34,7 @@ type Dependencies struct {
 	Agents         *AgentStore
 	RunCards       *RunCardStore
 	RunRooms       *RunRoomStore
+	Push           *PushService
 	// Voice ký token nói chuyện trong phòng chạy; Enabled() false khi chưa
 	// cấu hình LiveKit.
 	Voice VoiceTokens
@@ -78,6 +79,11 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 		db.Close()
 		return nil, err
 	}
+	messagingClient, err := app.Messaging(ctx)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
 	tasksClient, err := cloudtasks.NewClient(ctx)
 	if err != nil {
 		db.Close()
@@ -92,7 +98,9 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 	d.Games = NewGameStore(db, config.TelegramChatID)
 	d.Agents = NewAgentStore(db)
 	d.RunCards = NewRunCardStore(db)
+	d.Push = NewPushService(db, messagingClient)
 	d.RunRooms = NewRunRoomStore(db)
+	d.RunRooms.enqueue = tasks.Publish
 	d.Voice = config.Voice
 	d.OAuth = NewOAuthService(db, gateway, tasks, config)
 	d.Webhook = NewWebhookService(db, tasks, config.WebhookVerifyToken, config.StravaSubscriptionID)

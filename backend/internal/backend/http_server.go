@@ -76,6 +76,20 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/managed-bot-sync", s.managedBotSync)
 	s.route("POST /tasks/managed-send", s.managedSend)
 	s.route("POST "+runCardArtQueuePath, s.runCardArt)
+	s.route("POST "+roomPushPath, s.roomPush)
+}
+
+// roomPush: task push của phòng chạy, hẹn từ RunRoomStore.notify.
+func (s *Server) roomPush(w http.ResponseWriter, r *http.Request) error {
+	var task roomPushTask
+	if decodeJSON(r, &task) != nil || task.Kind == "" || task.RoomID == "" {
+		w.WriteHeader(204)
+		return nil
+	}
+	if err := s.deps.RunRooms.Deliver(r.Context(), s.deps.Push, task, s.now()); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
 }
 
 // runCardArt: task vẽ tranh thẻ buổi chạy (Gemini), đẩy từ POST .../card/art.
@@ -568,6 +582,7 @@ func (s *Server) apiRoutes() {
 	s.garminRoutes()
 	s.agentRoutes()
 	s.runRoomRoutes()
+	s.pushRoutes()
 	s.adminRoutes()
 	s.agentConfigRoutes()
 	// Liên kết Telegram cho Ma Sói (L1). App lấy mã, mở t.me/<bot>?start=<mã>,

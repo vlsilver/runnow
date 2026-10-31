@@ -265,6 +265,7 @@ func (s *AccountService) deleteOwnedDocuments(ctx context.Context, uid, athleteI
 	queries := []firestore.Query{
 		s.db.Collection("feedPosts").Where("authorUid", "==", uid),
 		s.db.Collection("liveSessions").Where("ownerUid", "==", uid),
+		s.db.Collection("pushTokens").Where("uid", "==", uid),
 		s.db.Collection("activityTombstones").Where("uid", "==", uid),
 		// Liên kết Telegram (L1). Đang trong ván thì người chơi mất tgLinks và bị
 		// tính là đã rời PSC ở mốc chốt kế tiếp (R33).

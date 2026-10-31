@@ -230,6 +230,11 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member "serviceAccount:${BOT_RUNTIME_SA}" \
   --role roles/storage.objectAdmin \
   --condition=None >/dev/null
+# Push của app (queue notifications) chạy trên bot: chỉ bot gửi FCM.
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member "serviceAccount:${BOT_RUNTIME_SA}" \
+  --role roles/firebasecloudmessaging.admin \
+  --condition=None >/dev/null
 for strip_sa in "$API_RUNTIME_SA" "$WORKER_RUNTIME_SA"; do
   gcloud projects remove-iam-policy-binding "$PROJECT_ID" \
     --member "serviceAccount:${strip_sa}" \

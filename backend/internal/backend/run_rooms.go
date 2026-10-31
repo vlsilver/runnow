@@ -77,6 +77,8 @@ var (
 
 type RunRoomStore struct {
 	db *firestore.Client
+	// enqueue hẹn task push (run_room_push.go); nil thì không push.
+	enqueue taskPublishFunc
 }
 
 func NewRunRoomStore(db *firestore.Client) *RunRoomStore {
@@ -232,6 +234,9 @@ func (s *RunRoomStore) Create(ctx context.Context, uid string, in CreateRunRoomR
 	if _, err := batch.Commit(ctx); err != nil {
 		return "", err
 	}
+	if remind := startsAt.Add(-roomRemindBefore); remind.After(now) {
+		s.notify(ctx, roomPushTask{Kind: roomPushStarting, RoomID: room.ID, At: startsAt.UnixMicro()}, &remind)
+	}
 	return room.ID, nil
 }
 
@@ -260,7 +265,9 @@ func (s *RunRoomStore) Join(ctx context.Context, roomID, uid, password string, n
 	if err != nil {
 		return res, err
 	}
+	fresh := false
 	err = s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		fresh = false
 		r, err := tx.Get(room)
 		if status.Code(err) == codes.NotFound {
 			return errRoomNotFound
@@ -289,6 +296,7 @@ func (s *RunRoomStore) Join(ctx context.Context, roomID, uid, password string, n
 		}
 		if stringValue(data["privacy"]) == roomPrivate {
 			res.State = memberRequested
+			fresh = true
 			return tx.Set(memberRef(room, uid), map[string]any{
 				"uid": uid, "name": names[uid], "role": "runner", "state": memberRequested, "requestedAt": now, "updatedAt": now,
 			})
@@ -304,6 +312,9 @@ func (s *RunRoomStore) Join(ctx context.Context, roomID, uid, password string, n
 		}
 		return addRunner(tx, room, 1, now)
 	})
+	if err == nil && fresh {
+		s.notify(ctx, roomPushTask{Kind: roomPushRequest, RoomID: roomID, UID: uid, At: now.UnixMicro()}, nil)
+	}
 	return res, err
 }
 
@@ -427,7 +438,7 @@ const (
 // chạy ra khỏi phòng.
 func (s *RunRoomStore) Moderate(ctx context.Context, roomID, host, target, action string, now time.Time) error {
 	room := s.roomRef(roomID)
-	return s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		data, err := s.hostRoom(tx, room, host, now)
 		if err != nil {
 			return err
@@ -468,6 +479,16 @@ func (s *RunRoomStore) Moderate(ctx context.Context, roomID, host, target, actio
 		}
 		return invalidRequest()
 	})
+	if err != nil {
+		return err
+	}
+	switch action {
+	case roomApprove:
+		s.notify(ctx, roomPushTask{Kind: roomPushApproved, RoomID: roomID, UID: target, At: now.UnixMicro()}, nil)
+	case roomDeny:
+		s.notify(ctx, roomPushTask{Kind: roomPushDenied, RoomID: roomID, UID: target, At: now.UnixMicro()}, nil)
+	}
+	return nil
 }
 
 // Leave: người đang chạy hay đang chờ duyệt tự ra khỏi phòng. Gọi lại, hoặc đã
