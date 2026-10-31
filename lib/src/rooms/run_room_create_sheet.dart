@@ -164,6 +164,7 @@ class _CreateRunRoomSheetState extends ConsumerState<CreateRunRoomSheet> {
             startsAt: _startsAt(),
             route: _route,
           );
+      askRoomPushPermission(ref);
       if (mounted) Navigator.of(context).pop(id);
     } catch (error) {
       if (mounted) setState(() => _error = runRoomErrorText(error));

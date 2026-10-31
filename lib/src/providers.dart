@@ -19,6 +19,7 @@ import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/period_keys.dart';
 import 'package:myrun/src/profile_stats.dart';
+import 'package:myrun/src/push.dart';
 import 'package:myrun/src/repository.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
@@ -278,8 +279,32 @@ final garminEnabledProvider = StreamProvider<bool>((ref) async* {
 });
 
 final authControllerProvider = ChangeNotifierProvider<AuthController>(
-  (ref) => AuthController(FirebaseAuth.instance, FirebaseFirestore.instance),
+  (ref) => AuthController(
+    FirebaseAuth.instance,
+    FirebaseFirestore.instance,
+    beforeSignOut: () async =>
+        ref.read(pushControllerProvider)?.beforeSignOut(),
+  ),
 );
+
+/// Push chỉ làm cho app iOS và Android; web và desktop nhận null.
+final pushControllerProvider = Provider<PushController?>((ref) {
+  if (kIsWeb) return null;
+  final platform = switch (defaultTargetPlatform) {
+    TargetPlatform.iOS => 'ios',
+    TargetPlatform.android => 'android',
+    _ => null,
+  };
+  if (platform == null) return null;
+  final controller = PushController(
+    FirebaseAuth.instance,
+    ref.watch(runNowApiClientProvider),
+    FirebasePushMessaging(),
+    platform,
+  );
+  ref.onDispose(controller.dispose);
+  return controller;
+});
 
 final themeControllerProvider = ChangeNotifierProvider<ThemeController>(
   (ref) => ThemeController(),

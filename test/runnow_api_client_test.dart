@@ -647,5 +647,22 @@ void main() {
         isNull,
       );
     });
+
+    test('push token goes to PUT then DELETE /v1/push-token', () async {
+      final client = gameClient((_) => {'ok': true});
+
+      await client.registerPushToken('fcm-token-1', 'ios');
+      await client.unregisterPushToken('fcm-token-1');
+
+      expect(requests[0].method, 'PUT');
+      expect(requests[0].url.path, '/v1/push-token');
+      expect(jsonDecode(requests[0].body), {
+        'token': 'fcm-token-1',
+        'platform': 'ios',
+      });
+      expect(requests[1].method, 'DELETE');
+      expect(requests[1].url.path, '/v1/push-token');
+      expect(jsonDecode(requests[1].body), {'token': 'fcm-token-1'});
+    });
   });
 }

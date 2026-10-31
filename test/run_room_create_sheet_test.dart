@@ -35,7 +35,10 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [runNowApiClientProvider.overrideWithValue(client)],
+        overrides: [
+          runNowApiClientProvider.overrideWithValue(client),
+          pushControllerProvider.overrideWithValue(null),
+        ],
         child: MaterialApp(
           theme: buildRunNowTheme(RunNowElement.water),
           home: Builder(

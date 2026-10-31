@@ -482,6 +482,7 @@ class _AuthenticatedSessionState extends ConsumerState<_AuthenticatedSession> {
       _started = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
+        ref.read(pushControllerProvider)?.handleTaps(_router.push);
         // Prefetch BXH ngay lúc mở app → tới lúc mở tab Club đã có sẵn, khỏi chờ
         // round-trip (số vẫn TƯƠI từ server, không phải disk-cache cũ). keepAlive
         // giữ giá trị tới khi Club watch; stepLeaderboardDocs dùng chung

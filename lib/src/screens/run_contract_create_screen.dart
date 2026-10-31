@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_providers.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/rooms/run_room_actions.dart'
+    show askRoomPushPermission;
 import 'package:myrun/src/rooms/run_room_create_sheet.dart'
     show runRoomMaxRunners, showCreateRunRoomSheet;
 import 'package:myrun/src/rooms/run_room_models.dart';
@@ -911,6 +913,7 @@ class _RunContractCreateScreenState
         ),
         closeRoom: api.endRunRoom,
       );
+      if (draft.meetAt != null) askRoomPushPermission(ref);
       ref
           .read(runContractAnalyticsProvider)
           .log('contract_created', draft: _draft)

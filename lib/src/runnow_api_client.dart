@@ -389,6 +389,20 @@ class RunNowApiClient {
   String _roomPath(String roomId) =>
       '/v1/run-rooms/${Uri.encodeComponent(roomId)}';
 
+  // ---- Thông báo đẩy ----
+
+  /// Ghi token FCM của máy này cho người đang đăng nhập; [platform] là ios
+  /// hoặc android. Gọi lại với cùng token thì backend chỉ cập nhật.
+  Future<void> registerPushToken(String token, String platform) => _send(
+    'PUT',
+    '/v1/push-token',
+    body: {'token': token, 'platform': platform},
+  );
+
+  /// Gỡ token lúc đăng xuất. Token đã sang tài khoản khác thì backend để nguyên.
+  Future<void> unregisterPushToken(String token) =>
+      _send('DELETE', '/v1/push-token', body: {'token': token});
+
   // ---- Liên kết Telegram ----
 
   Future<TelegramLinkCode> createTelegramLinkCode() async {

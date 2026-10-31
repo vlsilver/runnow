@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/config.dart';
@@ -51,12 +53,17 @@ Future<bool> joinRunRoom(
     if (context.mounted && state == 'requested') {
       _snack(context, 'Đã xin vào phòng, chờ chủ phòng duyệt.');
     }
+    askRoomPushPermission(ref);
     return true;
   } catch (error) {
     if (context.mounted) _snack(context, runRoomErrorText(error));
     return false;
   }
 }
+
+/// Sau khi tạo hay vào phòng: xin quyền thông báo để báo duyệt và nhắc giờ.
+void askRoomPushPermission(WidgetRef ref) =>
+    unawaited(ref.read(pushControllerProvider)?.askForRooms());
 
 /// Chạy một thao tác phòng (duyệt, mời ra, rời, kết thúc), lỗi thì báo.
 Future<bool> runRoomAction(
