@@ -564,37 +564,49 @@ func (m *ManagedBotService) outboxRef(botID, key string) *firestore.DocumentRef 
 // enqueueManagedSend xếp tin text gửi từ bot con botID tới chatID. key khoá
 // chống gửi đôi: cùng key thì chỉ một tin.
 func (m *ManagedBotService) enqueueManagedSend(ctx context.Context, botID, chatID, text, key string) error {
-	return m.enqueueOp(ctx, botID, chatID, 0, managedOpSend, text, "", key)
+	return m.enqueueOp(ctx, botID, key, managedOut{chatID: chatID, op: managedOpSend, text: text})
 }
 
 // enqueueManagedLeave xếp việc cho bot con rời chatID.
 func (m *ManagedBotService) enqueueManagedLeave(ctx context.Context, botID, chatID, key string) error {
-	return m.enqueueOp(ctx, botID, chatID, 0, managedOpLeave, "", "", key)
+	return m.enqueueOp(ctx, botID, key, managedOut{chatID: chatID, op: managedOpLeave})
 }
 
-// enqueueReply xếp tin của bot: có imagePath thì gửi ảnh với text làm chú
+// enqueueReply xếp tin của bot: có out.imagePath thì gửi ảnh với text làm chú
 // thích, không thì gửi text.
-func (m *ManagedBotService) enqueueReply(ctx context.Context, botID, chatID string, threadID int64, text, imagePath, key string) error {
-	if imagePath != "" {
-		return m.enqueueOp(ctx, botID, chatID, threadID, managedOpPhoto, text, imagePath, key)
+func (m *ManagedBotService) enqueueReply(ctx context.Context, botID, key string, out managedOut) error {
+	out.op = managedOpSend
+	if out.imagePath != "" {
+		out.op = managedOpPhoto
 	}
-	return m.enqueueOp(ctx, botID, chatID, threadID, managedOpSend, text, "", key)
+	return m.enqueueOp(ctx, botID, key, out)
 }
 
-// enqueueOp ghi một việc vào outbox của bot con. threadID là topic của group
-// (0 là General hay chat không có topic). imagePath chỉ có ở op photo.
-func (m *ManagedBotService) enqueueOp(ctx context.Context, botID, chatID string, threadID int64, op, text, imagePath, key string) error {
+// managedOut là một việc trong outbox của bot con. threadID là topic của group
+// (0 là General hay chat không có topic); replyTo là tin được reply (0 là
+// không, op photo bỏ qua); imagePath chỉ có ở op photo.
+type managedOut struct {
+	chatID              string
+	threadID, replyTo   int64
+	op, text, imagePath string
+}
+
+// enqueueOp ghi một việc vào outbox của bot con.
+func (m *ManagedBotService) enqueueOp(ctx context.Context, botID, key string, out managedOut) error {
 	wall := m.now()
 	ref := m.outboxRef(botID, key)
 	doc := map[string]any{
-		"chatId": chatID, "op": op, "text": text, "status": outboxPending,
+		"chatId": out.chatID, "op": out.op, "text": out.text, "status": outboxPending,
 		"createdAt": wall, "expiresAt": wall.Add(managedOutboxTTL),
 	}
-	if threadID != 0 {
-		doc["threadId"] = threadID
+	if out.threadID != 0 {
+		doc["threadId"] = out.threadID
 	}
-	if imagePath != "" {
-		doc["imagePath"] = imagePath
+	if out.replyTo != 0 {
+		doc["replyTo"] = out.replyTo
+	}
+	if out.imagePath != "" {
+		doc["imagePath"] = out.imagePath
 	}
 	_, err := ref.Create(ctx, doc)
 	if status.Code(err) == codes.AlreadyExists {
@@ -663,7 +675,7 @@ func (m *ManagedBotService) Deliver(ctx context.Context, botID, key string) erro
 			case managedOpPhoto:
 				messageID, err = tg.SendImage(ctx, TelegramPhoto{ChatID: chatID, ThreadID: threadID, Image: image, Caption: stringValue(msg["text"])})
 			default:
-				messageID, err = tg.SendText(ctx, TelegramText{ChatID: chatID, ThreadID: threadID, Text: stringValue(msg["text"])})
+				messageID, err = tg.SendText(ctx, TelegramText{ChatID: chatID, ThreadID: threadID, Text: stringValue(msg["text"]), ReplyTo: int64(number(msg["replyTo"]))})
 			}
 			return err
 		})
@@ -734,7 +746,7 @@ func (m *ManagedBotService) channelReply(ctx context.Context, uid, channel strin
 	}
 	// Chat riêng với một người có chat id bằng user id của người đó. Key có uid:
 	// bot đổi chủ thì giữ outbox cũ, seq của chủ mới lại đếm từ 1.
-	return m.enqueueReply(ctx, botID, strconv.FormatInt(info.OwnerTgID, 10), 0, reply.Text, reply.ImagePath, "dm-"+uid+"-"+strconv.FormatInt(reply.Seq, 10))
+	return m.enqueueReply(ctx, botID, "dm-"+uid+"-"+strconv.FormatInt(reply.Seq, 10), managedOut{chatID: strconv.FormatInt(info.OwnerTgID, 10), text: reply.Text, imagePath: reply.ImagePath})
 }
 
 // ---- Phòng bot trên Telegram ----
@@ -761,23 +773,41 @@ func (m *ManagedBotService) setInPsc(ctx context.Context, uid, botID string, in 
 	})
 }
 
-// roomOut gắn vào AgentService.SetRoomOut: gửi tin của bot trong phòng tg-psc ra
-// topic Phòng bot của PSC bằng chính bot con của chủ. Doc outbox có ID theo seq
-// của phòng, nên RoomTurn gọi lại bao nhiêu lần cũng chỉ một tin. Topic đã tắt,
-// bot đã rời PSC hay bị thay thì log rồi thôi: tin vẫn nằm trong phòng, chỉ
-// không hiện trên Telegram, và task không chạy lại mãi.
+// roomOut gắn vào AgentService.SetRoomOut: gửi tin của bot trong phòng ngoài app
+// ra PSC bằng chính bot con của chủ. Phòng tg-psc ra topic Phòng bot; phòng
+// tg-group ra đúng topic của tin đã gọi bot, reply tin đó nếu là tin ngay trước.
+// Doc outbox có ID theo phòng và seq, nên RoomTurn gọi lại bao nhiêu lần cũng
+// chỉ một tin. Topic đã tắt, bot đã rời PSC hay bị thay thì log rồi thôi: tin
+// vẫn nằm trong phòng, chỉ không hiện trên Telegram, và task không chạy lại mãi.
 func (m *ManagedBotService) roomOut(ctx context.Context, roomID string, seq int64, uid, text, imagePath string) error {
-	if roomID != agentTelegramRoom {
+	out := managedOut{chatID: m.chatID, text: text, imagePath: imagePath}
+	switch roomID {
+	case agentTelegramRoom:
+		cfg, err := getData(ctx, m.db.Collection("agentState").Doc("config"))
+		if err != nil {
+			return err
+		}
+		out.threadID = telegramRoomThread(cfg)
+		if out.threadID == 0 {
+			slog.WarnContext(ctx, "mybot.room_no_topic", "seq", seq)
+			return nil
+		}
+	case agentTelegramGroupRoom:
+		thread, replyTo, ok, err := m.groupReplyTarget(ctx, seq)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			slog.WarnContext(ctx, "mybot.group_no_caller", "seq", seq)
+			return nil
+		}
+		out.threadID, out.replyTo = thread, replyTo
+	default:
 		slog.WarnContext(ctx, "mybot.room_unknown", "room", roomID, "seq", seq)
 		return nil
 	}
-	cfg, err := getData(ctx, m.db.Collection("agentState").Doc("config"))
-	if err != nil {
-		return err
-	}
-	thread := telegramRoomThread(cfg)
-	if thread == 0 || m.chatID == "" {
-		slog.WarnContext(ctx, "mybot.room_no_topic", "seq", seq)
+	if m.chatID == "" {
+		slog.WarnContext(ctx, "mybot.room_no_chat", "room", roomID, "seq", seq)
 		return nil
 	}
 	agent, err := getData(ctx, m.agentRef(uid))
@@ -798,7 +828,35 @@ func (m *ManagedBotService) roomOut(ctx context.Context, roomID string, seq int6
 		slog.WarnContext(ctx, "mybot.room_bot_gone", "uid", uid, "botId", botID, "seq", seq)
 		return nil
 	}
-	return m.enqueueReply(ctx, botID, m.chatID, thread, text, imagePath, "room-"+roomID+"-"+strconv.FormatInt(seq, 10))
+	return m.enqueueReply(ctx, botID, "room-"+roomID+"-"+strconv.FormatInt(seq, 10), out)
+}
+
+// groupReplyTarget tìm tin người đã gọi bot cho tin seq của bot ở phòng
+// tg-group: tin người gần nhất trong agentGroupChainMax tin trước đó (chuỗi bot
+// không dài hơn). Trả topic của tin đó, và message_id để reply khi tin đó đứng
+// ngay trước seq; tin bot nói tiếp bot khác thì chỉ gửi vào topic. ok false khi
+// không còn tin người nào (đã hết hạn TTL).
+func (m *ManagedBotService) groupReplyTarget(ctx context.Context, seq int64) (thread, replyTo int64, ok bool, err error) {
+	msgs := m.db.Collection("agentRooms").Doc(agentTelegramGroupRoom).Collection("messages")
+	var refs []*firestore.DocumentRef
+	for s := seq - 1; s >= 1 && s >= seq-agentGroupChainMax; s-- {
+		refs = append(refs, msgs.Doc(seqDocID(s)))
+	}
+	docs, err := m.db.GetAll(ctx, refs)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	for i, d := range docs { // refs đi từ seq-1 lùi dần
+		if !d.Exists() || stringValue(d.Data()["kind"]) != agentKindHuman {
+			continue
+		}
+		thread = int64(number(d.Data()["tgThread"]))
+		if i == 0 {
+			replyTo = int64(number(d.Data()["tgMessageId"]))
+		}
+		return thread, replyTo, true, nil
+	}
+	return 0, 0, false, nil
 }
 
 // ---- Chống xử lý trùng update của bot con ----

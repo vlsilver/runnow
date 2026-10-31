@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -124,9 +125,9 @@ func (s *AgentStore) roomAgents(ctx context.Context, acc agentAccess, prefer str
 }
 
 // roomSpeakers là bot được nói trong phòng roomID: phòng main theo roomAgents,
-// phòng tg-psc theo telegramRoomAgents.
+// phòng tg-psc và tg-group theo telegramRoomAgents (bot con đang ở PSC).
 func (s *AgentStore) roomSpeakers(ctx context.Context, roomID string, acc agentAccess, prefer string) ([]roomAgent, error) {
-	if roomID == agentTelegramRoom {
+	if roomID == agentTelegramRoom || roomID == agentTelegramGroupRoom {
 		return s.telegramRoomAgents(ctx, acc)
 	}
 	return s.roomAgents(ctx, acc, prefer)
@@ -274,9 +275,23 @@ func (s *AgentStore) Room(ctx context.Context, roomID, uid, cursor, after string
 // con mà tin đó reply, để bot đó nói trước. photo là file_id Telegram của ảnh
 // gửi kèm, của bot 3i vì 3i nhận update của PSC; chỉ service bot (có token
 // 3i) tải được, nên lưu file_id rồi tới lượt nói mới tải.
+//
+// Các field còn lại chỉ phòng tg-group dùng: target là chủ bot mà tin reply
+// tới (bot của chủ đỡ lời); tgThread và tgMessageID để bot trả lời đúng topic
+// và reply đúng tin; tgUserID và name là người gửi chưa liên kết 3i Run;
+// replyText là đoạn đầu tin được reply, cho bot biết người ta đáp câu nào.
 type roomSource struct {
 	key, replyToBot, photo string
+
+	target, name, replyText string
+	tgUserID, tgThread      int64
+	tgMessageID             int64
 }
+
+// agentGroupTTL là hạn giữ tin của phòng tg-group, bằng hạn botMessages của
+// 3i: phòng này nhận tin của cả người chưa dùng MyBot (TTL theo expiresAt,
+// deploy.sh).
+const agentGroupTTL = 30 * 24 * time.Hour
 
 // PostRoom ghi tin của người vào phòng roomID và trả seq của phòng đó. Tin người
 // reset chuỗi bot của phòng, nên sau mỗi tin người các bot lại được nói tối đa
@@ -298,8 +313,22 @@ func (s *AgentStore) PostRoomFrom(ctx context.Context, roomID, uid, text string,
 		return 0, errAgentText
 	}
 	text = maskProfanity(text)
-	if err := s.requireConsent(ctx, uid); err != nil {
-		return 0, err
+	// Phòng tg-group nhận tin của mọi người trong PSC, như 3i vẫn đọc mọi tin
+	// PSC: người gửi không cần dùng MyBot hay đồng ý AI của MyBot. Bot được gọi
+	// thì chủ bot đã đồng ý lúc tạo bot.
+	group := roomID == agentTelegramGroupRoom
+	if !group {
+		if err := s.requireConsent(ctx, uid); err != nil {
+			return 0, err
+		}
+	}
+	// sender là khoá chặn gửi dồn: uid, hay id Telegram của người chưa liên kết.
+	sender := uid
+	if sender == "" && group && src.tgUserID != 0 {
+		sender = "tg" + strconv.FormatInt(src.tgUserID, 10)
+	}
+	if sender == "" {
+		return 0, fmt.Errorf("agent room %s: tin không có người gửi", roomID)
 	}
 	ref := s.roomRef(roomID)
 	var srcRef *firestore.DocumentRef
@@ -322,7 +351,7 @@ func (s *AgentStore) PostRoomFrom(ctx context.Context, roomID, uid, text string,
 				return nil
 			}
 		}
-		if last := timeValue(nested(room, "lastSentAt", uid)); !last.IsZero() && wall.Sub(last) < agentMinGap {
+		if last := timeValue(nested(room, "lastSentAt", sender)); !last.IsZero() && wall.Sub(last) < agentMinGap {
 			return errAgentTooFast
 		}
 		seq = int64(number(room["seq"])) + 1
@@ -333,6 +362,19 @@ func (s *AgentStore) PostRoomFrom(ctx context.Context, roomID, uid, text string,
 		if src.photo != "" {
 			msg["photoFileId"] = src.photo
 		}
+		if group {
+			msg["expiresAt"] = wall.Add(agentGroupTTL)
+			for field, v := range map[string]any{"targetUid": src.target, "name": src.name, "replyText": src.replyText} {
+				if v != "" {
+					msg[field] = v
+				}
+			}
+			for field, v := range map[string]int64{"tgThread": src.tgThread, "tgMessageId": src.tgMessageID} {
+				if v != 0 {
+					msg[field] = v
+				}
+			}
+		}
 		if err := tx.Create(ref.Collection("messages").Doc(seqDocID(seq)), msg); err != nil {
 			return err
 		}
@@ -342,7 +384,7 @@ func (s *AgentStore) PostRoomFrom(ctx context.Context, roomID, uid, text string,
 				return err
 			}
 		}
-		return tx.Set(ref, map[string]any{"seq": seq, "chain": 0, "lastSpeaker": "", "lastSentAt": map[string]any{uid: wall}, "updatedAt": wall}, firestore.MergeAll)
+		return tx.Set(ref, map[string]any{"seq": seq, "chain": 0, "lastSpeaker": "", "lastSentAt": map[string]any{sender: wall}, "updatedAt": wall}, firestore.MergeAll)
 	})
 	return seq, err
 }

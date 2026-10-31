@@ -220,7 +220,7 @@ func TestEmulatorAgentImageMissingFileFails(t *testing.T) {
 	_, store := e.enableImages()
 	e.m.images = store
 	tok := e.linkBot("an", "5002", 8002, "Sóc", 10)
-	if err := e.m.enqueueReply(context.Background(), "8002", "5002", 0, "ảnh nè", "users/an/agentImages/tg9.png", "dm-an-10"); err != nil {
+	if err := e.m.enqueueReply(context.Background(), "8002", "dm-an-10", managedOut{chatID: "5002", text: "ảnh nè", imagePath: "users/an/agentImages/tg9.png"}); err != nil {
 		t.Fatal(err)
 	}
 	e.drain()

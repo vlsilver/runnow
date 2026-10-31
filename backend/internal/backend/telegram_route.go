@@ -113,22 +113,28 @@ func (s *Server) routeTelegramUpdate(ctx context.Context, update TelegramUpdate,
 		isQuestion = false
 	}
 	recordChatID, _, rawText, hasText := incomingMessage(update)
-	if !isQuestion && !hasText {
+	if isQuestion || hasText {
+		task := botMessageTask{IsQuestion: isQuestion, Name: name, SenderID: senderID(update), PhotoFileID: photoFileID(update), ThreadID: messageThreadID(update)}
+		if isQuestion {
+			task.ChatID, task.Question = chatID, question
+		} else {
+			task.ChatID, task.RawText = recordChatID, rawText
+		}
+		if _, err := publish(ctx, PublishTask{
+			Queue:       QueueBotInbound,
+			HandlerPath: "/tasks/bot-message",
+			Payload:     task,
+			TaskID:      StableTaskID("botmsg", update.UpdateID),
+		}); err != nil {
+			return roomReply, err
+		}
+	}
+	if inRoom {
 		return roomReply, nil
 	}
-	task := botMessageTask{IsQuestion: isQuestion, Name: name, SenderID: senderID(update), PhotoFileID: photoFileID(update), ThreadID: messageThreadID(update)}
-	if isQuestion {
-		task.ChatID, task.Question = chatID, question
-	} else {
-		task.ChatID, task.RawText = recordChatID, rawText
-	}
-	_, err = publish(ctx, PublishTask{
-		Queue:       QueueBotInbound,
-		HandlerPath: "/tasks/bot-message",
-		Payload:     task,
-		TaskID:      StableTaskID("botmsg", update.UpdateID),
-	})
-	return roomReply, err
+	// Sau task của 3i: lỗi ở đây thì Telegram gửi lại update, task của 3i khử
+	// trùng theo update_id nên không ghi đôi.
+	return roomReply, s.telegramGroupMessage(ctx, update, isQuestion)
 }
 
 // gameUpdateTask chở nguyên update sang bot. Bot decode lỏng, nên thêm field

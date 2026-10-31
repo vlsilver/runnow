@@ -273,7 +273,7 @@ if [[ -n "${GARMIN_CLIENT_ID:-}" ]]; then
 fi
 
 if is_full_deploy; then
-  for ttl_collection in oauthStates integrationEvents activityTombstones botRateLimits botMessages linkCodes chatMessages learnLog tgUpdates tgOutbox; do
+  for ttl_collection in oauthStates integrationEvents activityTombstones botRateLimits botMessages linkCodes chatMessages learnLog tgUpdates tgOutbox messages; do
     gcloud firestore fields ttls update expiresAt \
       --collection-group "$ttl_collection" \
       --enable-ttl \

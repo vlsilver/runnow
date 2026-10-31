@@ -40,6 +40,9 @@ type TelegramText struct {
 	Text     string
 	HTML     bool
 	Markup   any // reply_markup; nil là không có
+	// ReplyTo là message_id của tin được reply; 0 là không reply. Tin gốc đã bị
+	// xoá thì vẫn gửi như tin thường.
+	ReplyTo int64
 }
 
 // SendText gửi tin và trả message_id.
@@ -57,6 +60,9 @@ func (s *TelegramService) SendText(ctx context.Context, m TelegramText) (int64, 
 	}
 	if m.Markup != nil {
 		body["reply_markup"] = m.Markup
+	}
+	if m.ReplyTo != 0 {
+		body["reply_parameters"] = map[string]any{"message_id": m.ReplyTo, "allow_sending_without_reply": true}
 	}
 	var out struct {
 		MessageID int64 `json:"message_id"`

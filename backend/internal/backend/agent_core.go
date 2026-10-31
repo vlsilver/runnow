@@ -544,6 +544,10 @@ func (a *AgentService) RoomTurn(ctx context.Context, roomID string, afterSeq int
 	if err != nil {
 		return err
 	}
+	if roomID == agentTelegramGroupRoom {
+		// Group chung: hai bot đấu khẩu vài câu là đủ, không thành phòng bot thứ hai.
+		lim.chainMax = min(lim.chainMax, agentGroupChainMax)
+	}
 	seq := int64(number(room["seq"]))
 	if turnOf, ok := room["turnOf"]; ok && int64(number(turnOf)) == afterSeq {
 		// Lần trước có thể đã ghi mà gửi lỗi; gửi lại kể cả khi đã có tin mới
@@ -708,9 +712,13 @@ func pickSpeaker(agents []roomAgent, room map[string]any, last map[string]any) (
 // bot được chọn để appendRoomTurn kiểm lại trong transaction. Km chỉ đọc cho
 // bot pickSpeaker chọn ra, không đọc cho cả phòng.
 func (a *AgentService) pickRoomSpeaker(ctx context.Context, lim agentLimits, roomID string, agents []roomAgent, room, last map[string]any, wall time.Time) (roomAgent, int64, bool, error) {
+	pick := pickSpeaker
+	if roomID == agentTelegramGroupRoom {
+		pick = pickGroupSpeaker
+	}
 	left := slices.Clone(agents)
 	for {
-		speaker, ok := pickSpeaker(left, room, last)
+		speaker, ok := pick(left, room, last)
 		if !ok {
 			return roomAgent{}, 0, false, nil
 		}
@@ -776,7 +784,7 @@ func (a *AgentService) roomReply(ctx context.Context, roomID string, speaker roo
 	uids := append([]string(nil), members...)
 	present := []string{speaker.uid}
 	for _, m := range transcript {
-		uids = append(uids, stringValue(m["uid"]))
+		uids = append(uids, stringValue(m["uid"]), stringValue(m["targetUid"]))
 		present = append(present, stringValue(m["uid"]))
 	}
 	present = uniqueStrings(present)
@@ -841,6 +849,9 @@ func (a *AgentService) roomReply(ctx context.Context, roomID string, speaker roo
 	if images != nil {
 		system += agentRoomImageRule
 	}
+	if roomID == agentTelegramGroupRoom {
+		system += agentGroupRule
+	}
 	var chat strings.Builder
 	chat.WriteString("ĐOẠN CHAT GẦN ĐÂY:\n")
 	for _, m := range transcript {
@@ -851,7 +862,12 @@ func (a *AgentService) roomReply(ctx context.Context, roomID string, speaker roo
 			if stringValue(m["photoFileId"]) != "" {
 				text += " " + agentPhotoNote
 			}
-			fmt.Fprintf(&chat, "%s (người): %s\n", names[stringValue(m["uid"])], text)
+			// Người chưa liên kết 3i Run (chỉ có ở phòng tg-group) mang tên Telegram.
+			name := names[stringValue(m["uid"])]
+			if name == "" {
+				name = stringValue(m["name"])
+			}
+			fmt.Fprintf(&chat, "%s (người%s): %s\n", name, repliedTo(m, names, agents), text)
 		}
 	}
 	if photo != nil {
@@ -995,6 +1011,9 @@ func (s *AgentStore) appendRoomTurn(ctx context.Context, lim agentLimits, roomID
 		msg := map[string]any{"seq": seq, "kind": agentKindAgent, "uid": speaker.uid, "name": speaker.name, "text": text, "channel": agentRoomChannels[roomID], "at": wall}
 		if imagePath != "" {
 			msg["imagePath"] = imagePath
+		}
+		if roomID == agentTelegramGroupRoom {
+			msg["expiresAt"] = wall.Add(agentGroupTTL)
 		}
 		if err := tx.Create(ref.Collection("messages").Doc(seqDocID(seq)), msg); err != nil {
 			return err

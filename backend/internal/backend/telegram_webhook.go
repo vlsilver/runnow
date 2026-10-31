@@ -78,7 +78,9 @@ type TelegramUpdate struct {
 		CaptionEntities []telegramEntity `json:"caption_entities"`
 		ReplyToMessage  *struct {
 			MessageID int64 `json:"message_id"`
-			From      *struct {
+			// Text: MyBot ở group đọc kèm câu người ta đang đáp.
+			Text string `json:"text"`
+			From *struct {
 				ID       int64  `json:"id"`
 				IsBot    bool   `json:"is_bot"`
 				Username string `json:"username"`

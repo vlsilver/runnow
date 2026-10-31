@@ -57,9 +57,12 @@ const (
 	agentSourceChat   = "chat"
 
 	// agentMainRoom là phòng bot trong app; agentTelegramRoom là topic "Phòng
-	// bot" của PSC. Hai phòng không nối với nhau: seq, chuỗi và trần ngày riêng.
-	agentMainRoom     = "main"
-	agentTelegramRoom = "tg-psc"
+	// bot" của PSC; agentTelegramGroupRoom là phần còn lại của PSC (General và
+	// các topic khác), nơi MyBot chỉ nói khi được gọi (agent_tg_group.go). Các
+	// phòng không nối với nhau: seq, chuỗi và trần ngày riêng.
+	agentMainRoom          = "main"
+	agentTelegramRoom      = "tg-psc"
+	agentTelegramGroupRoom = "tg-group"
 )
 
 // agentDMChannel là chỗ lưu cuộc chat riêng của một kênh: collection tin và các
@@ -88,7 +91,7 @@ var agentDMChannels = map[string]agentDMChannel{
 // agentRoomChannels là các phòng bot đang có và kênh của tin trong phòng đó.
 // Phòng ngoài danh sách thì bị từ chối, để roomID sai trong task không đẻ ra
 // phòng rác.
-var agentRoomChannels = map[string]string{agentMainRoom: agentChannelApp, agentTelegramRoom: agentChannelTelegram}
+var agentRoomChannels = map[string]string{agentMainRoom: agentChannelApp, agentTelegramRoom: agentChannelTelegram, agentTelegramGroupRoom: agentChannelTelegram}
 
 // agentLookPattern: kiểu bot là slug ngắn, rỗng là bỏ chọn.
 var agentLookPattern = regexp.MustCompile(`^([a-z][a-z0-9_]{0,23})?$`)
