@@ -11,6 +11,7 @@ import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 import 'package:myrun/src/run_contracts/widgets/run_contract_card.dart'
     show runContractStateColor, runContractStateLabel;
+import 'package:myrun/src/run_contracts/widgets/run_contract_meetup_panel.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
@@ -238,6 +239,10 @@ class _RunContractDetailScreenState
           ownerName: ownerName,
           ownerAvatarUrl: ownerAvatarUrl,
         ),
+        if (contract.meetAt != null) ...[
+          const SizedBox(height: 12),
+          RunContractMeetupPanel(contract: contract),
+        ],
         if (contract.route != null) ...[
           const SizedBox(height: 16),
           _LazyRouteMapSection(

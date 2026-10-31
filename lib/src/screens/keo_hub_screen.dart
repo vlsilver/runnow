@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:myrun/src/achievements/club_card_widgets.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/club_ranking.dart';
@@ -518,13 +519,19 @@ class _ContractMiniCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          _MutedLine(
-            joined
-                ? (contract.openEnded
-                      ? 'không hạn'
-                      : timeLeftLabel(timeRemaining(contract, now)))
-                : '${contract.participantCount} người · chưa vào',
-          ),
+          _MutedLine(switch (contract.meetAt) {
+            // Kèo hẹn: trước giờ hẹn thì giờ hẹn và số người đăng ký mới là
+            // thứ cần biết.
+            final meetAt? =>
+              'hẹn ${DateFormat('HH:mm dd/MM').format(meetAt)} · '
+                  '${contract.participantCount} người',
+            null =>
+              joined
+                  ? (contract.openEnded
+                        ? 'không hạn'
+                        : timeLeftLabel(timeRemaining(contract, now)))
+                  : '${contract.participantCount} người · chưa vào',
+          }),
         ],
       ),
     );

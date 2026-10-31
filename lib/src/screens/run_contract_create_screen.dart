@@ -4,7 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_providers.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/rooms/run_room_create_sheet.dart'
+    show runRoomMaxRunners;
+import 'package:myrun/src/rooms/run_room_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
+import 'package:myrun/src/run_contracts/run_contract_meetup.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_period.dart';
 import 'package:myrun/src/run_contracts/widgets/run_contract_card.dart';
@@ -52,6 +56,10 @@ class _RunContractCreateScreenState
   }
 
   String _defaultTitle(RunContractDraft draft) {
+    if (draft.meetAt case final meetAt?) {
+      return 'Hẹn chạy ${_quickTargetLabel(draft.metric, draft.targetValue)} '
+          '${DateFormat('HH:mm dd/MM').format(meetAt)}';
+    }
     final period = switch (draft.period) {
       RunContractPeriodType.weekly => 'tuần này',
       RunContractPeriodType.today => 'hôm nay',
@@ -194,6 +202,14 @@ class _RunContractCreateScreenState
         onTap: _selectToday,
       ),
       _TemplateTile(
+        icon: Icons.groups_rounded,
+        title: 'Hẹn chạy cùng',
+        subtitle:
+            'Chọn ngày giờ, mở phòng chạy live. Ai đăng ký mà hôm đó '
+            'không chạy sẽ bị 3i réo tên.',
+        onTap: _showMeetup,
+      ),
+      _TemplateTile(
         icon: Icons.tune_rounded,
         title: 'Tự tạo',
         subtitle: 'Km, số buổi, ngày active hoặc chạy dài nhất',
@@ -238,30 +254,37 @@ class _RunContractCreateScreenState
         style: Theme.of(context).textTheme.headlineSmall,
       ),
       const SizedBox(height: 12),
-      RadioGroup<RunContractVisibility>(
-        groupValue: _draft.visibility,
-        onChanged: (value) {
-          if (value != null) {
-            setState(() => _draft = _draft.copyWith(visibility: value));
-          }
-        },
-        child: Column(
-          children: [
-            RadioListTile<RunContractVisibility>(
-              value: RunContractVisibility.club,
-              title: const Text('Public trong Club'),
-              subtitle: const Text(
-                'Thành viên thấy mục tiêu, tiến độ và trạng thái. Không chia sẻ live location.',
+      if (_draft.meetAt != null)
+        Text(
+          'Kèo hẹn luôn public trong Club để mọi người đăng ký. Phòng chạy '
+          'cũng mở công khai, ai vào phòng đều thấy vị trí của nhau lúc chạy.',
+          style: TextStyle(color: context.runNowPalette.textMuted, height: 1.4),
+        )
+      else
+        RadioGroup<RunContractVisibility>(
+          groupValue: _draft.visibility,
+          onChanged: (value) {
+            if (value != null) {
+              setState(() => _draft = _draft.copyWith(visibility: value));
+            }
+          },
+          child: Column(
+            children: [
+              RadioListTile<RunContractVisibility>(
+                value: RunContractVisibility.club,
+                title: const Text('Public trong Club'),
+                subtitle: const Text(
+                  'Thành viên thấy mục tiêu, tiến độ và trạng thái. Không chia sẻ live location.',
+                ),
               ),
-            ),
-            RadioListTile<RunContractVisibility>(
-              value: RunContractVisibility.private,
-              title: const Text('Chỉ mình tôi'),
-              subtitle: const Text('Kèo không xuất hiện trong Club.'),
-            ),
-          ],
+              RadioListTile<RunContractVisibility>(
+                value: RunContractVisibility.private,
+                title: const Text('Chỉ mình tôi'),
+                subtitle: const Text('Kèo không xuất hiện trong Club.'),
+              ),
+            ],
+          ),
         ),
-      ),
       const SizedBox(height: 20),
       Row(
         children: [
@@ -300,6 +323,16 @@ class _RunContractCreateScreenState
               if (_titleController.text.trim().isNotEmpty)
                 _ConfirmRow('Tên kèo', _titleController.text.trim()),
               _ConfirmRow('Mục tiêu', _targetLabel()),
+              if (_draft.meetAt case final meetAt?) ...[
+                _ConfirmRow(
+                  'Giờ hẹn',
+                  DateFormat('HH:mm · dd/MM').format(meetAt),
+                ),
+                const _ConfirmRow(
+                  'Phòng chạy',
+                  'Mở phòng live công khai đúng giờ hẹn',
+                ),
+              ],
               _ConfirmRow(
                 'Tính từ',
                 DateFormat('dd/MM · HH:mm').format(period.startAt),
@@ -380,6 +413,165 @@ class _RunContractCreateScreenState
         period: period,
       ),
     );
+  }
+
+  /// Kèo hẹn chạy: chọn ngày giờ hẹn và số km tối thiểu. Phòng chạy live mở
+  /// đúng giờ hẹn lúc chốt kèo.
+  Future<void> _showMeetup() async {
+    final today = _today();
+    var meetAt = _defaultMeetAt(DateTime.now());
+    var km = 3.0;
+    final draft = await showModalBottomSheet<RunContractDraft>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final palette = context.runNowPalette;
+          final past = !meetAt.isAfter(DateTime.now());
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              18,
+              10,
+              18,
+              MediaQuery.viewInsetsOf(context).bottom + 18,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: palette.border,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Hẹn chạy cùng',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Ai đăng ký mà hôm đó không chạy đủ sẽ bị 3i réo tên '
+                  'trên group.',
+                  style: TextStyle(color: palette.textMuted, height: 1.4),
+                ),
+                const SizedBox(height: 18),
+                const _SheetLabel('Ngày giờ hẹn'),
+                const SizedBox(height: 8),
+                _DateTimeTile(
+                  label: 'Ngày',
+                  value: meetAt,
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: meetAt,
+                      firstDate: today,
+                      // Phòng chạy chỉ hẹn trước được tối đa 7 ngày.
+                      lastDate: today.add(const Duration(days: 6)),
+                    );
+                    if (picked == null) return;
+                    setSheetState(
+                      () => meetAt = DateTime(
+                        picked.year,
+                        picked.month,
+                        picked.day,
+                        meetAt.hour,
+                        meetAt.minute,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+                _DateTimeTile(
+                  label: 'Giờ',
+                  icon: Icons.schedule_rounded,
+                  value: meetAt,
+                  format: DateFormat('HH:mm').format,
+                  onTap: () async {
+                    final picked = await showTimePicker(
+                      context: context,
+                      initialTime: TimeOfDay.fromDateTime(meetAt),
+                    );
+                    if (picked == null) return;
+                    setSheetState(
+                      () => meetAt = DateTime(
+                        meetAt.year,
+                        meetAt.month,
+                        meetAt.day,
+                        picked.hour,
+                        picked.minute,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                const _SheetLabel('Chạy ít nhất'),
+                const SizedBox(height: 8),
+                _GoalStepper(
+                  value: km,
+                  unit: 'km',
+                  onChanged: (value) => setSheetState(() => km = value),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final quick in const [1.0, 3.0, 5.0, 10.0])
+                      _QuickTargetChip(
+                        label: _quickTargetLabel(
+                          RunContractMetric.distance,
+                          quick,
+                        ),
+                        selected: km == quick,
+                        onTap: () => setSheetState(() => km = quick),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _GoalSummary(
+                  text:
+                      'Trong ngày ${DateFormat('dd/MM').format(meetAt)}, '
+                      'mỗi người đăng ký chạy đủ '
+                      '${_quickTargetLabel(RunContractMetric.distance, km)}. '
+                      'Chạy chung trong phòng hay chạy riêng đều được tính.',
+                ),
+                if (past) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Giờ hẹn đã qua, chọn giờ khác nhé.',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: past
+                        ? null
+                        : () => Navigator.pop(
+                            context,
+                            RunContractDraft.meetup(meetAt: meetAt, km: km),
+                          ),
+                    child: const Text('Tiếp tục'),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    if (draft != null) _select(draft);
   }
 
   /// Tạo giáo án AI Coach: mở hub coach của chính mình (/coach/{uid}) — ở đó
@@ -699,7 +891,18 @@ class _RunContractCreateScreenState
     try {
       final title = _titleController.text.trim();
       final draft = title.isEmpty ? _draft : _draft.copyWith(title: title);
-      final id = await ref.read(runContractControllerProvider).create(draft);
+      final api = ref.read(runNowApiClientProvider);
+      final id = await createContractWithMeetupRoom(
+        draft,
+        create: ref.read(runContractControllerProvider).create,
+        openRoom: (startsAt) => api.createRunRoom(
+          title: title.isEmpty ? _defaultTitle(draft) : title,
+          privacy: RunRoomPrivacy.public.value,
+          maxRunners: runRoomMaxRunners,
+          startsAt: startsAt,
+        ),
+        closeRoom: api.endRunRoom,
+      );
       ref
           .read(runContractAnalyticsProvider)
           .log('contract_created', draft: _draft)
@@ -856,6 +1059,11 @@ String _metricUnit(RunContractMetric metric) => switch (metric) {
   RunContractMetric.routeCompletion => 'lần',
 };
 
+/// Giờ hẹn gợi ý: 18:00 hôm nay nếu còn kịp rủ, không thì 05:30 sáng mai.
+DateTime _defaultMeetAt(DateTime now) => now.hour < 16
+    ? DateTime(now.year, now.month, now.day, 18)
+    : DateTime(now.year, now.month, now.day + 1, 5, 30);
+
 double _defaultTargetFor(RunContractMetric metric) => switch (metric) {
   RunContractMetric.distance => 10,
   RunContractMetric.longestRun => 5,
@@ -899,11 +1107,17 @@ class _DateTimeTile extends StatelessWidget {
     required this.label,
     required this.value,
     required this.onTap,
+    this.icon = Icons.event_rounded,
+    this.format,
   });
 
   final String label;
   final DateTime? value;
   final VoidCallback onTap;
+  final IconData icon;
+
+  /// Mặc định hiện thứ và ngày.
+  final String Function(DateTime value)? format;
 
   @override
   Widget build(BuildContext context) {
@@ -923,7 +1137,7 @@ class _DateTimeTile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(Icons.event_rounded, size: 18, color: palette.accentDeep),
+              Icon(icon, size: 18, color: palette.accentDeep),
               const SizedBox(width: 12),
               Text(
                 label,
@@ -934,9 +1148,12 @@ class _DateTimeTile extends StatelessWidget {
               ),
               const Spacer(),
               Text(
-                value == null
-                    ? 'Chọn'
-                    : DateFormat('EEE, dd/MM').format(value!),
+                switch (value) {
+                  null => 'Chọn',
+                  final value => (format ?? DateFormat('EEE, dd/MM').format)(
+                    value,
+                  ),
+                },
                 style: TextStyle(fontWeight: FontWeight.w800, color: onSurface),
               ),
               const SizedBox(width: 4),
