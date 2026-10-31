@@ -780,55 +780,76 @@ func (m *ManagedBotService) setInPsc(ctx context.Context, uid, botID string, in 
 // chỉ một tin. Topic đã tắt, bot đã rời PSC hay bị thay thì log rồi thôi: tin
 // vẫn nằm trong phòng, chỉ không hiện trên Telegram, và task không chạy lại mãi.
 func (m *ManagedBotService) roomOut(ctx context.Context, roomID string, seq int64, uid, text, imagePath string) error {
-	out := managedOut{chatID: m.chatID, text: text, imagePath: imagePath}
+	out, ok, err := m.roomTarget(ctx, roomID, seq)
+	if err != nil || !ok {
+		return err
+	}
+	botID, _, ok, err := m.roomBot(ctx, uid, seq)
+	if err != nil || !ok {
+		return err
+	}
+	out.text, out.imagePath = text, imagePath
+	return m.enqueueReply(ctx, botID, "room-"+roomID+"-"+strconv.FormatInt(seq, 10), out)
+}
+
+// roomTarget là chỗ tin seq của bot ở phòng roomID đi ra trên PSC: chat, topic
+// và tin để reply. ok false (đã log) khi không còn chỗ gửi.
+func (m *ManagedBotService) roomTarget(ctx context.Context, roomID string, seq int64) (managedOut, bool, error) {
+	out := managedOut{chatID: m.chatID}
 	switch roomID {
 	case agentTelegramRoom:
 		cfg, err := getData(ctx, m.db.Collection("agentState").Doc("config"))
 		if err != nil {
-			return err
+			return out, false, err
 		}
 		out.threadID = telegramRoomThread(cfg)
 		if out.threadID == 0 {
 			slog.WarnContext(ctx, "mybot.room_no_topic", "seq", seq)
-			return nil
+			return out, false, nil
 		}
 	case agentTelegramGroupRoom:
 		thread, replyTo, ok, err := m.groupReplyTarget(ctx, seq)
 		if err != nil {
-			return err
+			return out, false, err
 		}
 		if !ok {
 			slog.WarnContext(ctx, "mybot.group_no_caller", "seq", seq)
-			return nil
+			return out, false, nil
 		}
 		out.threadID, out.replyTo = thread, replyTo
 	default:
 		slog.WarnContext(ctx, "mybot.room_unknown", "room", roomID, "seq", seq)
-		return nil
+		return out, false, nil
 	}
 	if m.chatID == "" {
 		slog.WarnContext(ctx, "mybot.room_no_chat", "room", roomID, "seq", seq)
-		return nil
+		return out, false, nil
 	}
+	return out, true, nil
+}
+
+// roomBot là bot con hiện tại của uid khi bot đó đang ở PSC. ok false (đã log)
+// khi chủ chưa có bot, bot đã rời PSC hay bị thay.
+func (m *ManagedBotService) roomBot(ctx context.Context, uid string, seq int64) (string, managedBotInfo, bool, error) {
 	agent, err := getData(ctx, m.agentRef(uid))
 	if err != nil {
-		return err
+		return "", managedBotInfo{}, false, err
 	}
 	tg, _ := agent["telegram"].(map[string]any)
 	botID := stringValue(tg["botId"])
 	if botID == "" || tg["inPsc"] != true {
 		slog.WarnContext(ctx, "mybot.room_bot_not_in_psc", "uid", uid, "botId", botID, "seq", seq)
-		return nil
+		return "", managedBotInfo{}, false, nil
 	}
 	info, ok, err := m.bot(ctx, botID)
 	if err != nil {
-		return err
+		return "", managedBotInfo{}, false, err
 	}
 	if !ok || info.Retired || info.UID != uid {
 		slog.WarnContext(ctx, "mybot.room_bot_gone", "uid", uid, "botId", botID, "seq", seq)
-		return nil
+		return "", managedBotInfo{}, false, nil
 	}
-	return m.enqueueReply(ctx, botID, "room-"+roomID+"-"+strconv.FormatInt(seq, 10), out)
+	return botID, info, true, nil
 }
 
 // groupReplyTarget tìm tin người đã gọi bot cho tin seq của bot ở phòng
