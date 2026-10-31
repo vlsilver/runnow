@@ -370,6 +370,7 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if roomJoined(roomId);
         allow create: if roomJoined(roomId)
+          && get(/databases/$(database)/documents/runRooms/$(roomId)).data.status == 'open'
           && request.resource.data.keys().hasOnly(['uid', 'kind', 'text', 'at', 'expiresAt'])
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.kind in ['emoji', 'text']
@@ -400,11 +401,19 @@ service cloud.firestore {
           )
           || ('roomId' in resource.data && roomJoined(resource.data.roomId))
         );
+      // Gắn roomId là cho thành viên phòng xem: chỉ người đã vào phòng mới
+      // gắn được. Buổi giữ nguyên roomId thì không phải get() mỗi lần cập nhật.
       allow create: if signedIn()
-        && request.resource.data.ownerUid == request.auth.uid;
+        && request.resource.data.ownerUid == request.auth.uid
+        && (!('roomId' in request.resource.data) || roomJoined(request.resource.data.roomId));
       allow update: if signedIn()
         && resource.data.ownerUid == request.auth.uid
-        && request.resource.data.ownerUid == request.auth.uid;
+        && request.resource.data.ownerUid == request.auth.uid
+        && (
+          request.resource.data.get('roomId', null) == resource.data.get('roomId', null)
+          || !('roomId' in request.resource.data)
+          || roomJoined(request.resource.data.roomId)
+        );
       allow delete: if signedIn()
         && resource.data.ownerUid == request.auth.uid;
     }

@@ -16,6 +16,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
   where,
 } from 'firebase/firestore';
 
@@ -124,4 +125,23 @@ test('my rooms: a user finds only their own memberships across rooms', async () 
   await assertSucceeds(mine(as('u2'), 'u2'));
   await assertFails(mine(as('u2'), 'u1'));
   await assertFails(getDocs(collectionGroup(as('u1'), 'members')));
+});
+
+test('only joined members can attach a live session to a room', async () => {
+  await seedRooms();
+  const live = (uid, extra = {}) => ({ ownerUid: uid, visibility: 'private', status: 'running', updatedAt: new Date(), ...extra });
+  await assertSucceeds(setDoc(doc(as('u1'), 'liveSessions/new_u1'), live('u1', { roomId: 'r1' })));
+  await assertFails(setDoc(doc(as('stranger'), 'liveSessions/new_x'), live('stranger', { roomId: 'r1' })));
+  await assertFails(setDoc(doc(as('u2'), 'liveSessions/new_u2'), live('u2', { roomId: 'r1' })));
+  await assertFails(setDoc(doc(as('u3'), 'liveSessions/new_u3'), live('u3', { roomId: 'r1' })));
+  await assertSucceeds(setDoc(doc(as('stranger'), 'liveSessions/plain'), live('stranger')));
+  // Buổi cũ giữ nguyên roomId thì vẫn cập nhật được, kể cả khi đã bị mời ra.
+  await assertSucceeds(updateDoc(doc(as('u3'), 'liveSessions/s_u3'), { distanceMeters: 1200 }));
+  await assertFails(updateDoc(doc(as('stranger'), 'liveSessions/plain'), { roomId: 'r1' }));
+});
+
+test('no cheering in a room that has ended', async () => {
+  await seedRooms();
+  await environment.withSecurityRulesDisabled((ctx) => updateDoc(doc(ctx.firestore(), 'runRooms/r1'), { status: 'ended' }));
+  await assertFails(addDoc(collection(as('u1'), 'runRooms/r1/messages'), message('u1')));
 });

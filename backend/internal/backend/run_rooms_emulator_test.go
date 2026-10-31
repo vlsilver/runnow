@@ -229,3 +229,38 @@ func TestEmulatorRunRoomCreateValidation(t *testing.T) {
 		t.Fatalf("closesAt %v, mong đợi 04:30 UTC 2/11", got)
 	}
 }
+
+// Mật khẩu: quá 72 byte thì từ chối lúc tạo; gõ dạng Unicode khác (NFD) vẫn
+// khớp; phòng đã đóng hay người đã bị mời ra thì báo ngay, không so mật khẩu;
+// khoá tăng dần 10 phút, 1 giờ.
+func TestEmulatorRunRoomPasswordHardening(t *testing.T) {
+	h := newRoomHarness(t)
+	now := time.Date(2026, 11, 1, 6, 0, 0, 0, time.UTC)
+	h.deps.Now = func() time.Time { return now }
+	h.want(h.call("host", "POST", "/v1/run-rooms", map[string]any{"title": "Emoji", "privacy": "password", "password": strings.Repeat("🏃", 19)}, ""), 400, "invalid_request")
+
+	r := h.call("host", "POST", "/v1/run-rooms", map[string]any{"title": "Hồ", "privacy": "password", "password": "h\u1ed3 t\u00e2y"}, "")
+	h.want(r, 201, "")
+	id := r.body["id"].(string)
+	join := "/v1/run-rooms/" + id + "/join"
+	// "hồ tây" gõ kiểu tổ hợp: o + dấu mũ + dấu huyền, a + dấu mũ.
+	h.want(h.call("u1", "POST", join, map[string]any{"password": "ho\u0302\u0300 ta\u0302y"}, ""), 200, "")
+
+	h.want(h.call("host", "POST", "/v1/run-rooms/"+id+"/members/u1/kick", nil, ""), 200, "")
+	h.want(h.call("u1", "POST", join, map[string]any{"password": "sai"}, ""), 403, "room_kicked")
+
+	for i := 0; i < 5; i++ {
+		h.want(h.call("u2", "POST", join, map[string]any{"password": "sai"}, ""), 403, "wrong_password")
+	}
+	now = now.Add(10*time.Minute + time.Second)
+	for i := 0; i < 5; i++ {
+		h.want(h.call("u2", "POST", join, map[string]any{"password": "sai"}, ""), 403, "wrong_password")
+	}
+	now = now.Add(30 * time.Minute)
+	h.want(h.call("u2", "POST", join, map[string]any{"password": "h\u1ed3 t\u00e2y"}, ""), 429, "room_locked")
+	now = now.Add(31 * time.Minute)
+	h.want(h.call("u2", "POST", join, map[string]any{"password": "h\u1ed3 t\u00e2y"}, ""), 200, "")
+
+	h.want(h.call("host", "POST", "/v1/run-rooms/"+id+"/end", nil, ""), 200, "")
+	h.want(h.call("u3", "POST", join, map[string]any{"password": "sai"}, ""), 409, "room_closed")
+}

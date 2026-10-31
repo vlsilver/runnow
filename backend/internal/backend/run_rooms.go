@@ -10,6 +10,7 @@ import (
 
 	"cloud.google.com/go/firestore"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/text/unicode/norm"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -42,13 +43,15 @@ const (
 	roomStartsWithin = 7 * 24 * time.Hour
 
 	roomPasswordMin = 4
-	// roomPasswordMax giữ dưới 72 byte của bcrypt kể cả khi gõ toàn chữ có dấu.
 	roomPasswordMax = 24
-	// Sai mật khẩu roomMaxFails lần liền thì người đó bị khoá roomLockFor ở
-	// phòng này, để không dò được mật khẩu ngắn.
+	// bcrypt chỉ nhận tối đa 72 byte; emoji 4 byte thì 24 ký tự đã vượt.
+	roomPasswordMaxBytes = 72
+	// Cứ roomMaxFails lần sai thì người đó bị khoá ở phòng này, lần sau lâu
+	// hơn lần trước, để không dò hết được mật khẩu 4 số trong đời phòng.
 	roomMaxFails = 5
-	roomLockFor  = 10 * time.Minute
 )
+
+var roomLockSteps = []time.Duration{10 * time.Minute, time.Hour, 24 * time.Hour}
 
 var (
 	errRoomNotFound    = &HTTPError{Status: http.StatusNotFound, Code: "room_not_found", Message: "Không tìm thấy phòng chạy."}
@@ -116,8 +119,10 @@ func (s *RunRoomStore) Create(ctx context.Context, uid string, in CreateRunRoomR
 	if max < roomMinRunners || max > roomMaxRunners {
 		return "", invalidRequest()
 	}
-	n := utf8.RuneCountInString(in.Password)
-	if in.Privacy == roomPassword && (n < roomPasswordMin || n > roomPasswordMax) || in.Privacy != roomPassword && n > 0 {
+	password := roomPasswordForm(in.Password)
+	n := utf8.RuneCountInString(password)
+	if in.Privacy == roomPassword && (n < roomPasswordMin || n > roomPasswordMax || len(password) > roomPasswordMaxBytes) ||
+		in.Privacy != roomPassword && n > 0 {
 		return "", invalidRequest()
 	}
 	startsAt := now
@@ -145,7 +150,7 @@ func (s *RunRoomStore) Create(ctx context.Context, uid string, in CreateRunRoomR
 		"uid": uid, "name": names[uid], "role": "host", "state": memberJoined, "joinedAt": now, "updatedAt": now,
 	})
 	if in.Privacy == roomPassword {
-		hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 		if err != nil {
 			return "", err
 		}
@@ -169,7 +174,7 @@ type JoinResult struct {
 func (s *RunRoomStore) Join(ctx context.Context, roomID, uid, password string, now time.Time) (JoinResult, error) {
 	var res JoinResult
 	room := s.roomRef(roomID)
-	needs, err := s.needsPassword(ctx, room, uid)
+	needs, err := s.passwordGate(ctx, room, uid, now)
 	if err != nil {
 		return res, err
 	}
@@ -229,9 +234,11 @@ func (s *RunRoomStore) Join(ctx context.Context, roomID, uid, password string, n
 	return res, err
 }
 
-// needsPassword: phòng mật khẩu và uid chưa ở trong phòng. Phòng không có
-// thì để transaction của Join trả room_not_found.
-func (s *RunRoomStore) needsPassword(ctx context.Context, room *firestore.DocumentRef, uid string) (bool, error) {
+// passwordGate cho biết có phải so mật khẩu không: phòng mật khẩu và uid
+// chưa ở trong phòng. Phòng đã đóng, hay uid đã bị mời ra, từ chối thì báo
+// luôn ở đây, không chạy bcrypt. Phòng không có thì để transaction của Join
+// trả room_not_found.
+func (s *RunRoomStore) passwordGate(ctx context.Context, room *firestore.DocumentRef, uid string, now time.Time) (bool, error) {
 	r, err := room.Get(ctx)
 	if status.Code(err) == codes.NotFound {
 		return false, nil
@@ -242,6 +249,9 @@ func (s *RunRoomStore) needsPassword(ctx context.Context, room *firestore.Docume
 	if stringValue(r.Data()["privacy"]) != roomPassword {
 		return false, nil
 	}
+	if !roomIsOpen(r.Data(), now) {
+		return false, errRoomClosed
+	}
 	m, err := memberRef(room, uid).Get(ctx)
 	if status.Code(err) == codes.NotFound {
 		return true, nil
@@ -249,11 +259,26 @@ func (s *RunRoomStore) needsPassword(ctx context.Context, room *firestore.Docume
 	if err != nil {
 		return false, err
 	}
-	return stringValue(m.Data()["state"]) != memberJoined, nil
+	switch stringValue(m.Data()["state"]) {
+	case memberJoined:
+		return false, nil
+	case memberKicked:
+		return false, errRoomKicked
+	case memberDenied:
+		return false, errRoomDenied
+	}
+	return true, nil
 }
 
-// checkPassword so mật khẩu với hash. Sai thì đếm vào attempts của uid, đủ
-// roomMaxFails lần thì khoá tới lockedUntil; đúng thì xoá bộ đếm.
+// roomPasswordForm đưa mật khẩu về NFC: bàn phím tiếng Việt có thể gửi chữ
+// có dấu dạng tổ hợp (NFD), gõ đúng vẫn bị báo sai nếu so từng byte.
+func roomPasswordForm(password string) string {
+	return norm.NFC.String(password)
+}
+
+// checkPassword so mật khẩu với hash. Sai thì đếm vào attempts của uid, cứ
+// roomMaxFails lần thì khoá tới lockedUntil theo roomLockSteps; đúng thì xoá
+// bộ đếm.
 func (s *RunRoomStore) checkPassword(ctx context.Context, room *firestore.DocumentRef, uid, password string, now time.Time) error {
 	if password == "" {
 		return errRoomPassword
@@ -272,7 +297,7 @@ func (s *RunRoomStore) checkPassword(ctx context.Context, room *firestore.Docume
 	if err != nil {
 		return err
 	}
-	err = bcrypt.CompareHashAndPassword([]byte(stringValue(p.Data()["hash"])), []byte(password))
+	err = bcrypt.CompareHashAndPassword([]byte(stringValue(p.Data()["hash"])), []byte(roomPasswordForm(password)))
 	if err == nil {
 		if a.Exists() {
 			_, err := attempts.Delete(ctx)
@@ -292,10 +317,12 @@ func (s *RunRoomStore) checkPassword(ctx context.Context, room *firestore.Docume
 		if a.Exists() {
 			fails = int(number(a.Data()["fails"])) + 1
 		}
-		if fails >= roomMaxFails {
-			return tx.Set(attempts, map[string]any{"fails": 0, "lockedUntil": now.Add(roomLockFor)})
+		var lockedUntil any
+		if fails%roomMaxFails == 0 {
+			step := min(fails/roomMaxFails, len(roomLockSteps)) - 1
+			lockedUntil = now.Add(roomLockSteps[step])
 		}
-		return tx.Set(attempts, map[string]any{"fails": fails, "lockedUntil": nil})
+		return tx.Set(attempts, map[string]any{"fails": fails, "lockedUntil": lockedUntil})
 	})
 	if err != nil {
 		return err
