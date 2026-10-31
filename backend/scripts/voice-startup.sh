@@ -43,10 +43,18 @@ logging:
   level: info
 EOF
 # Host là IP trần thì Let's Encrypt chỉ cấp chứng chỉ ngắn hạn (profile
-# shortlived, 6 ngày); Caddy tự gia hạn.
+# shortlived, 6 ngày); Caddy tự gia hạn. Client gọi tới IP không gửi SNI, còn
+# Caddy khi thiếu SNI lại chọn chứng chỉ theo IP nội bộ của VM, nên phải chỉ
+# default_sni về IP public.
 GLOBAL=""
 if [[ "$DOMAIN" =~ ^[0-9.]+$ ]]; then
-  GLOBAL=$'{\n  cert_issuer acme {\n    profile shortlived\n  }\n}\n'
+  GLOBAL="{
+  default_sni ${DOMAIN}
+  cert_issuer acme {
+    profile shortlived
+  }
+}
+"
 fi
 cat >/etc/livekit/Caddyfile <<EOF
 ${GLOBAL}${DOMAIN} {

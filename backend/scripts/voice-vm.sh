@@ -62,5 +62,9 @@ else
     --metadata-from-file "startup-script=${SCRIPT_DIR}/voice-startup.sh"
 fi
 
-echo "Máy ${VM} chạy ở ${IP}. Trỏ bản ghi A ${DOMAIN} → ${IP}, rồi kiểm:"
+if [[ "$DOMAIN" != "$IP" ]]; then
+  echo "Máy ${VM} chạy ở ${IP}. Trỏ bản ghi A ${DOMAIN} → ${IP}, rồi kiểm:"
+else
+  echo "Máy ${VM} chạy ở ${IP}. Khởi động lại máy nếu vừa đổi cấu hình, rồi kiểm:"
+fi
 echo "  curl -s https://${DOMAIN}   # LiveKit trả OK khi Caddy đã có cert"
