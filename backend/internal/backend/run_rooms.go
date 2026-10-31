@@ -68,6 +68,7 @@ var (
 	errWrongPassword   = &HTTPError{Status: http.StatusForbidden, Code: "wrong_password", Message: "Sai mật khẩu phòng."}
 	errHostCannotLeave = &HTTPError{Status: http.StatusConflict, Code: "host_cannot_leave", Message: "Chủ phòng kết thúc phòng thay vì rời phòng."}
 	errNotRoomHost     = &HTTPError{Status: http.StatusForbidden, Code: "not_room_host", Message: "Chỉ chủ phòng làm được việc này."}
+	errNotRoomMember   = &HTTPError{Status: http.StatusForbidden, Code: "not_room_member", Message: "Vào phòng rồi mới nói chuyện được."}
 
 	errMemberNotFound     = &HTTPError{Status: http.StatusNotFound, Code: "member_not_found", Message: "Người này chưa xin vào phòng."}
 	errMemberNotRequested = &HTTPError{Status: http.StatusConflict, Code: "member_not_requested", Message: "Người này không còn chờ duyệt."}
@@ -519,6 +520,33 @@ func (s *RunRoomStore) End(ctx context.Context, roomID, uid string, now time.Tim
 			{Path: "status", Value: roomEnded}, {Path: "endedAt", Value: now}, {Path: "updatedAt", Value: now},
 		})
 	})
+}
+
+// VoiceMember trả tên uid trong phòng khi uid đã vào một phòng còn mở: chỉ
+// người đang chạy cùng mới được nói chuyện.
+func (s *RunRoomStore) VoiceMember(ctx context.Context, roomID, uid string, now time.Time) (string, error) {
+	room := s.roomRef(roomID)
+	r, err := room.Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return "", errRoomNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	if !roomIsOpen(r.Data(), now) {
+		return "", errRoomClosed
+	}
+	m, err := memberRef(room, uid).Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return "", errNotRoomMember
+	}
+	if err != nil {
+		return "", err
+	}
+	if stringValue(m.Data()["state"]) != memberJoined {
+		return "", errNotRoomMember
+	}
+	return stringValue(m.Data()["name"]), nil
 }
 
 // hostRoom đọc phòng trong tx và kiểm uid là chủ một phòng còn mở.

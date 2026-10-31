@@ -76,6 +76,9 @@ type Config struct {
 	// ảnh. Vẽ tranh thẻ buổi chạy không theo cờ này, nó có trần tiền riêng.
 	BotImages      bool
 	BotHourlyLimit int
+	// Voice là server LiveKit tự host cho nói chuyện trong phòng chạy. Thiếu
+	// một trong ba giá trị thì tắt.
+	Voice VoiceTokens
 	// WebBaseURL là domain của app 3i Run bản web, không phải của API. Link
 	// chia sẻ trỏ về đây để mở đúng màn hình chi tiết trong app (hoặc bản
 	// web nếu chưa cài app), thay vì một trang HTML do backend tự dựng.
@@ -137,6 +140,7 @@ func LoadConfig() (Config, error) {
 	c.BotGroupFacts = env("BOT_GROUP_FACTS", "") == "on"
 	c.HomeDigest = env("HOME_DIGEST", "") == "on"
 	c.BotImages = env("BOT_IMAGES", "") == "on"
+	c.Voice = VoiceTokens{URL: env("LIVEKIT_URL", ""), Key: env("LIVEKIT_API_KEY", ""), Secret: env("LIVEKIT_API_SECRET", "")}
 	if n, convErr := strconv.Atoi(env("BOT_HOURLY_LIMIT", "100")); convErr == nil && n > 0 {
 		c.BotHourlyLimit = n
 	} else {

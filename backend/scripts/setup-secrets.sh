@@ -67,3 +67,9 @@ if [[ -n "${GARMIN_CLIENT_SECRET:-}" ]]; then
   ensure_secret_value GARMIN_CLIENT_SECRET "$GARMIN_CLIENT_SECRET"
   ensure_secret_value GARMIN_WEBHOOK_TOKEN "${GARMIN_WEBHOOK_TOKEN:?Set GARMIN_WEBHOOK_TOKEN with GARMIN_CLIENT_SECRET}"
 fi
+
+# Nói chuyện trong phòng chạy tuỳ chọn: LIVEKIT_API_SECRET là chuỗi ngẫu nhiên
+# (vd openssl rand -base64 32), dùng chung cho api và máy voice-vm.sh.
+if [[ -n "${LIVEKIT_API_SECRET:-}" ]]; then
+  ensure_secret_value LIVEKIT_API_SECRET "$LIVEKIT_API_SECRET"
+fi

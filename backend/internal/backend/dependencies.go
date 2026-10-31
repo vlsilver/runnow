@@ -34,6 +34,9 @@ type Dependencies struct {
 	Agents         *AgentStore
 	RunCards       *RunCardStore
 	RunRooms       *RunRoomStore
+	// Voice ký token nói chuyện trong phòng chạy; Enabled() false khi chưa
+	// cấu hình LiveKit.
+	Voice VoiceTokens
 	// JourneyCards trao thẻ Hành trình sau mỗi lần dựng lại periodStats; nil
 	// thì task chỉ dựng periodStats (test không cần thẻ).
 	JourneyCards *JourneyCardService
@@ -90,6 +93,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 	d.Agents = NewAgentStore(db)
 	d.RunCards = NewRunCardStore(db)
 	d.RunRooms = NewRunRoomStore(db)
+	d.Voice = config.Voice
 	d.OAuth = NewOAuthService(db, gateway, tasks, config)
 	d.Webhook = NewWebhookService(db, tasks, config.WebhookVerifyToken, config.StravaSubscriptionID)
 	d.Activities = NewActivityService(db, gateway, tokens, tasks, telegram, config.PublicBaseURL, config.WebBaseURL)

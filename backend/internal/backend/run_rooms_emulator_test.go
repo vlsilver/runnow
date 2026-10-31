@@ -4,6 +4,7 @@ package backend
 
 import (
 	"context"
+	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
@@ -343,4 +344,40 @@ func TestEmulatorRunRoomRoute(t *testing.T) {
 		}
 	}
 	h.want(h.call("host", "POST", "/v1/run-rooms", map[string]any{"title": "x", "privacy": "public", "route": map[string]any{"distanceMeters": 100, "points": pts(200)}}, ""), 201, "")
+}
+
+// Chỉ người đã vào phòng còn mở mới lấy được token nói chuyện; chưa cấu hình
+// LiveKit thì báo voice_unavailable.
+func TestEmulatorRunRoomVoiceToken(t *testing.T) {
+	h := newRoomHarness(t)
+	r := h.call("host", "POST", "/v1/run-rooms", map[string]any{"title": "Chạy đêm", "privacy": "private", "maxRunners": 4}, "")
+	h.want(r, 201, "")
+	id := r.body["id"].(string)
+	base := "/v1/run-rooms/" + id
+
+	h.want(h.call("host", "POST", base+"/voice", map[string]any{}, ""), 503, "voice_unavailable")
+
+	h.deps.Voice = VoiceTokens{URL: "wss://voice.example.test", Key: "APIdemo", Secret: "s3cret"}
+	r = h.call("host", "POST", base+"/voice", map[string]any{}, "")
+	h.want(r, 200, "")
+	token, _ := r.body["token"].(string)
+	parts := strings.Split(token, ".")
+	if r.body["url"] != "wss://voice.example.test" || len(parts) != 3 {
+		t.Fatalf("voice: %s", r.raw)
+	}
+	claims, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(claims), `"sub":"host"`) || !strings.Contains(string(claims), `"room":"run-room-`+id+`"`) {
+		t.Fatalf("claims: %s", claims)
+	}
+
+	h.want(h.call("u1", "POST", base+"/join", map[string]any{}, ""), 200, "")
+	h.want(h.call("u1", "POST", base+"/voice", map[string]any{}, ""), 403, "not_room_member")
+	h.want(h.call("u2", "POST", base+"/voice", map[string]any{}, ""), 403, "not_room_member")
+
+	h.want(h.call("host", "POST", base+"/end", map[string]any{}, ""), 200, "")
+	h.want(h.call("host", "POST", base+"/voice", map[string]any{}, ""), 409, "room_closed")
+	h.want(h.call("host", "POST", "/v1/run-rooms/nope/voice", map[string]any{}, ""), 404, "room_not_found")
 }
