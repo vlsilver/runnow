@@ -409,4 +409,23 @@ void main() {
       isFalse,
     );
   });
+
+  test('chỉ buổi chạy bộ riêng đang bật Live mới nhận người chạy cùng', () {
+    expect(
+      runRoomCanHostRunTogether(roomId: null, isRun: true, liveEnabled: true),
+      isTrue,
+    );
+    expect(
+      runRoomCanHostRunTogether(roomId: null, isRun: true, liveEnabled: false),
+      isFalse,
+    );
+    expect(
+      runRoomCanHostRunTogether(roomId: 'r1', isRun: true, liveEnabled: true),
+      isFalse,
+    );
+    expect(
+      runRoomCanHostRunTogether(roomId: null, isRun: false, liveEnabled: true),
+      isFalse,
+    );
+  });
 }

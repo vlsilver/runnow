@@ -175,9 +175,11 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     privacy: _roomPrivacy,
   );
 
-  /// Buổi chạy bộ không vào phòng nào thì được chọn nhận người chạy cùng.
-  bool get _canHostRunTogether =>
-      widget.roomId == null && _selectedKind == ActivityKind.run;
+  bool get _canHostRunTogether => runRoomCanHostRunTogether(
+    roomId: widget.roomId,
+    isRun: _selectedKind == ActivityKind.run,
+    liveEnabled: _liveEnabled,
+  );
 
   /// Dòng phụ của Live: trước khi chạy là lựa chọn, đang chạy chỉ hiện khi
   /// phòng solo đã mở thật.

@@ -59,6 +59,14 @@ bool runRoomLiveRoomOnly({
     kind != RunRoomKind.solo &&
     privacy != RunRoomPrivacy.public;
 
+/// Buổi chạy bộ không vào phòng nào và đang bật Live thì được nhận người chạy
+/// cùng. Tắt Live thì không mở phòng và không hỏi quyền vào.
+bool runRoomCanHostRunTogether({
+  required String? roomId,
+  required bool isRun,
+  required bool liveEnabled,
+}) => roomId == null && isRun && liveEnabled;
+
 /// Số điểm tối đa của tuyến gửi lên phòng. Backend nhận tới 200; tuyến nằm
 /// trong doc phòng mà list phòng đọc cả doc, nên app gửi ít hơn.
 const runRoomRouteMaxPoints = 120;
