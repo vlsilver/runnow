@@ -9,6 +9,7 @@ import 'package:myrun/src/club_runs.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_models.dart';
 import 'package:myrun/src/games/game_providers.dart';
+import 'package:myrun/src/home_digest.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rooms/run_room_repository.dart';
@@ -51,6 +52,7 @@ class KeoHubScreen extends ConsumerWidget {
             ref.invalidate(hubClubRunsProvider);
             ref.invalidate(stepLeaderboardDocsProvider);
             ref.invalidate(publicRunRoomsProvider);
+            ref.invalidate(homeDigestProvider);
             await ref
                 .read(hubClubContractsProvider.future)
                 .catchError(
@@ -77,6 +79,7 @@ class KeoHubScreen extends ConsumerWidget {
                   ],
                 ),
               ),
+              const HomeDigestCard(),
               const _LiveSection(),
               const RunRoomsSection(),
               const _KeoSection(),
