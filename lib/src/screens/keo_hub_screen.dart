@@ -11,6 +11,8 @@ import 'package:myrun/src/games/game_models.dart';
 import 'package:myrun/src/games/game_providers.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/rooms/run_room_repository.dart';
+import 'package:myrun/src/rooms/run_rooms_section.dart';
 import 'package:myrun/src/run_contracts/run_contract_insights.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_period.dart';
@@ -48,6 +50,7 @@ class KeoHubScreen extends ConsumerWidget {
             ref.invalidate(gameListProvider);
             ref.invalidate(hubClubRunsProvider);
             ref.invalidate(stepLeaderboardDocsProvider);
+            ref.invalidate(publicRunRoomsProvider);
             await ref
                 .read(hubClubContractsProvider.future)
                 .catchError(
@@ -75,6 +78,7 @@ class KeoHubScreen extends ConsumerWidget {
                 ),
               ),
               const _LiveSection(),
+              const RunRoomsSection(),
               const _KeoSection(),
               const _RankSection(),
               const _CardsSection(),

@@ -323,6 +323,56 @@ class RunNowApiClient {
 
   String _gamePath(String gameId) => '/v1/games/${Uri.encodeComponent(gameId)}';
 
+  // ---- Phòng chạy ----
+
+  /// Mở phòng, trả id. [startsAt] null là chạy ngay.
+  Future<String> createRunRoom({
+    required String title,
+    required String privacy,
+    required int maxRunners,
+    String? password,
+    DateTime? startsAt,
+  }) async {
+    final response = await _send(
+      'POST',
+      '/v1/run-rooms',
+      body: {
+        'title': title,
+        'privacy': privacy,
+        'maxRunners': maxRunners,
+        'password': ?password,
+        'startsAt': ?startsAt?.toUtc().toIso8601String(),
+      },
+    );
+    return _jsonObject(response)['id'] as String;
+  }
+
+  /// Vào phòng; trả `joined`, hoặc `requested` khi phòng cần chủ duyệt.
+  Future<String> joinRunRoom(String roomId, {String? password}) async {
+    final response = await _send(
+      'POST',
+      '${_roomPath(roomId)}/join',
+      body: {'password': ?password},
+    );
+    return _jsonObject(response)['state'] as String;
+  }
+
+  /// Chủ phòng duyệt, từ chối hay mời ra: [action] là approve | deny | kick.
+  Future<void> moderateRunRoom(String roomId, String uid, String action) =>
+      _send(
+        'POST',
+        '${_roomPath(roomId)}/members/${Uri.encodeComponent(uid)}/$action',
+      );
+
+  Future<void> leaveRunRoom(String roomId) =>
+      _send('POST', '${_roomPath(roomId)}/leave');
+
+  Future<void> endRunRoom(String roomId) =>
+      _send('POST', '${_roomPath(roomId)}/end');
+
+  String _roomPath(String roomId) =>
+      '/v1/run-rooms/${Uri.encodeComponent(roomId)}';
+
   // ---- Liên kết Telegram ----
 
   Future<TelegramLinkCode> createTelegramLinkCode() async {

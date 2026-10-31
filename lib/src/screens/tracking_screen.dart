@@ -15,6 +15,9 @@ import 'package:myrun/src/hearts.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/repository.dart';
+import 'package:myrun/src/rooms/run_room_models.dart';
+import 'package:myrun/src/rooms/run_room_repository.dart';
+import 'package:myrun/src/rooms/run_room_run_panel.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/tracking_draft_store.dart';
@@ -24,10 +27,18 @@ import 'package:myrun/src/widgets/route_map.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 class TrackingScreen extends ConsumerStatefulWidget {
-  const TrackingScreen({super.key, this.autoLock = true, this.contractId});
+  const TrackingScreen({
+    super.key,
+    this.autoLock = true,
+    this.contractId,
+    this.roomId,
+  });
 
   final bool autoLock;
   final String? contractId;
+
+  /// Chạy trong phòng: buổi live gắn roomId để người trong phòng thấy nhau.
+  final String? roomId;
 
   @override
   ConsumerState<TrackingScreen> createState() => _TrackingScreenState();
@@ -80,6 +91,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   var _autoLockStarted = false;
   var _persistingDraft = false;
   String? _contractId;
+  String? _roomId;
+  // Đọc từ phòng ở build; null khi chưa tải xong phòng.
+  RunRoomPrivacy? _roomPrivacy;
+  bool _roomJoined = false;
   Future<void> _livePublishQueue = Future<void>.value();
   Future<void> _photoUploadQueue = Future<void>.value();
   DateTime? _lastDraftSavedAt;
@@ -143,11 +158,17 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   bool get _hasSession => _snapshot != null;
   bool get _gpsReady => _gpsReadyAnchor != null;
 
+  /// Chạy trong phòng không công khai, hoặc chưa biết phòng kiểu gì: buổi
+  /// live chỉ người trong phòng xem.
+  bool get _roomOnly =>
+      _roomId != null && _roomPrivacy != RunRoomPrivacy.public;
+
 
   @override
   void initState() {
     super.initState();
     _contractId = widget.contractId;
+    _roomId = widget.roomId;
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _autoLockStarted) return;
@@ -228,6 +249,17 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     // Giữ subscribe cấu hình tracking từ DB để lúc bấm Bắt đầu đã có giá trị mới
     // nhất (appConfig/tracking) thay vì mặc định.
     ref.watch(trackingConfigProvider);
+    final roomId = _roomId;
+    if (roomId != null) {
+      _roomPrivacy = ref.watch(runRoomProvider(roomId)).value?.privacy;
+      _roomJoined =
+          ref.watch(myRunRoomMemberProvider(roomId)).value?.state ==
+          RunRoomMemberState.joined;
+      // Phòng kín thì không báo lên group Telegram: người ngoài phòng không
+      // xem được buổi live mà tin trên group lại lộ ra là đang chạy. Chờ biết
+      // kiểu phòng rồi mới tắt, để phòng công khai giữ mặc định Live.
+      if (_roomPrivacy != null && _roomOnly) _liveEnabled = false;
+    }
     final liveId = _liveEnabled ? _session?.id : null;
     if (liveId != null) {
       // Giữ danh sách thành viên để toast có tên, không rebuild màn này.
@@ -318,6 +350,20 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                 ),
               ),
             ),
+          if (roomId != null)
+            Positioned(
+              top: 0,
+              // Chừa chỗ nút đóng khi chưa chạy.
+              left: !_running && !_paused ? 64 : 12,
+              right: 12,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: RunRoomRunPanel(roomId: roomId),
+                ),
+              ),
+            ),
           Positioned(
             left: 0,
             right: 0,
@@ -392,7 +438,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                           ],
                         ),
                         // Live gom vào cùng card cho liền khối, không trôi nổi.
-                        if (isPublic && !_finished) ...[
+                        if (isPublic && !_finished && !_roomOnly) ...[
                           const SizedBox(height: 10),
                           Divider(
                             height: 1,
@@ -515,6 +561,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         _snapshot = snapshot;
         _lastWarmupDebug = draft.gpsWarmup;
         _contractId = draft.contractId ?? widget.contractId;
+        _roomId = draft.roomId ?? widget.roomId;
         _message = snapshot.status == TrackingSessionStatus.finished
             ? 'Đang hoàn tất upload ảnh của buổi chạy.'
             : wasRunning
@@ -1011,6 +1058,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _lastLivePublishedAt = null;
       _lastLivePublishedDistanceMeters = 0;
       _contractId = widget.contractId;
+      _roomId = widget.roomId;
       _message = message;
     });
   }
@@ -1035,6 +1083,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
               session: session,
               gpsWarmup: _lastWarmupDebug,
               contractId: _contractId,
+              roomId: _roomId,
             ),
           );
       _lastDraftSavedAt = DateTime.now();
@@ -1129,6 +1178,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             status: status ?? _liveStatusForSnapshot(snapshot),
             routePreview: _downsampleLiveRoute(snapshot.routePoints),
             contractId: _contractId,
+            // Chỉ gắn phòng khi đã vào: rules từ chối roomId của người ngoài
+            // phòng, gắn bừa thì mất luôn buổi live.
+            roomId: _roomJoined ? _roomId : null,
+            roomOnly: _roomOnly,
           );
       _lastLivePublishedAt = now;
       _lastLivePublishedDistanceMeters = snapshot.distanceMeters;

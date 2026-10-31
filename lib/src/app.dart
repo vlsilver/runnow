@@ -24,6 +24,7 @@ import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/health_sync.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/rooms/run_room_screen.dart';
 import 'package:myrun/src/screens/activity_detail_screen.dart';
 import 'package:myrun/src/screens/club_cards_screen.dart';
 import 'package:myrun/src/screens/club_runs_screen.dart';
@@ -203,6 +204,19 @@ final _router = GoRouter(
       path: '/tracking/live',
       builder: (context, state) =>
           TrackingScreen(contractId: state.extra as String?),
+    ),
+    // Chạy trong phòng: ngoài shell như /tracking/live, buổi live gắn roomId
+    // để người trong phòng thấy nhau.
+    GoRoute(
+      path: '/tracking/room/:roomId',
+      builder: (context, state) =>
+          TrackingScreen(roomId: state.pathParameters['roomId']),
+    ),
+    // Link mời (https://threei.run/rooms/{id}) mở thẳng route này trên web.
+    GoRoute(
+      path: '/rooms/:id',
+      builder: (context, state) =>
+          RunRoomScreen(roomId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/live/:sessionId',

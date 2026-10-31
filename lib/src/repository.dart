@@ -228,6 +228,8 @@ abstract interface class LiveTrackingRepository {
     required LiveTrackingStatus status,
     required List<RoutePoint> routePreview,
     String? contractId,
+    String? roomId,
+    bool roomOnly = false,
   });
   Future<void> publishPhoto({
     required String sessionId,
@@ -1202,12 +1204,17 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
     required LiveTrackingStatus status,
     required List<RoutePoint> routePreview,
     String? contractId,
+    String? roomId,
+    bool roomOnly = false,
   }) async {
     final owner = await _ownerProfile();
     final profileVisibility = ProfileVisibility.fromValue(
       owner['profileVisibility'] as String?,
     );
-    final liveVisibility = profileVisibility == ProfileVisibility.public
+    // Phòng kín (chủ duyệt, mật khẩu): chỉ người trong phòng xem được, rules
+    // cho họ đọc qua roomId kể cả khi visibility là private.
+    final liveVisibility =
+        profileVisibility == ProfileVisibility.public && !roomOnly
         ? LiveTrackingVisibility.club
         : LiveTrackingVisibility.private;
     final data = <String, dynamic>{
@@ -1226,6 +1233,7 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
       if (routePreview.isNotEmpty)
         'routePreview': routePreview.map((point) => point.toMap()).toList(),
       'contractId': contractId,
+      'roomId': roomId,
     }..removeWhere((key, value) => value == null);
     final avatarUrl = owner['avatarUrl'] as String?;
     if (avatarUrl != null && avatarUrl.trim().isNotEmpty) {
