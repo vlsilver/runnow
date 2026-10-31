@@ -59,6 +59,15 @@ func dmLimitReply(q agentDMQuota) string {
 		viKmLeft(*q.nextKm-q.runKm), *q.nextMax-q.max)
 }
 
+// roomQuotaNudge là câu bot hết lượt nhắc chủ trong phòng, nói sau tên chủ.
+func roomQuotaNudge(q agentDMQuota) string {
+	if q.nextKm == nil {
+		return "có người gọi mình mà hôm nay mình hết lượt nói rồi, qua 0h mình nói tiếp nha."
+	}
+	return fmt.Sprintf("có người gọi mình mà hôm nay mình hết lượt nói rồi. Chạy hay đi bộ thêm %s km là mình nói tiếp được %d câu nữa nha.",
+		viKmLeft(*q.nextKm-q.runKm), *q.nextMax-q.max)
+}
+
 // viKmLeft làm tròn lên 0,1 km cho chạy đúng số đó là đủ mốc, viết dấu phẩy
 // thập phân. Trừ 1e-9 để 5 − 4,1 (ra 0,9000000000000004) không thành 1.
 func viKmLeft(km float64) string {

@@ -81,6 +81,56 @@ func TestEmulatorTelegramGroupAnswersAddressedBot(t *testing.T) {
 	}
 }
 
+// Có người gọi mà bot đã hết lượt hôm nay: bot không gọi model, mà nhắc nhẹ chủ
+// (tag chủ) cần chạy thêm bao nhiêu km để nói tiếp, reply đúng tin đã gọi nó.
+// Mỗi ngày chỉ nhắc một lần, gọi tiếp thì im. Bot chỉ tới lượt theo vòng ở
+// Phòng bot thì không ai gọi nó, nên không nhắc.
+func TestEmulatorTelegramGroupNudgesOwnerOutOfQuota(t *testing.T) {
+	e := newMybotEnv(t)
+	cuongTok := e.linkBot("cuong", "5001", 8001, "Cú Mèo", 10)
+	anTok := e.linkBot("an", "5002", 8002, "Sóc", 11)
+	e.manager(topicMsg(100, 5002, tgRoomThread, "/phongbot"))
+	e.child(8001, pscMemberUpd(200, 8001, "member"))
+	e.child(8002, pscMemberUpd(201, 8002, "member"))
+	e.drain()
+	// Chưa chạy hôm nay: 10 lượt, chạy đủ 1 km mở thêm 5 câu.
+	e.merge("agents/cuong", map[string]any{"dmDay": vnDay(e.clock), "dmDayCount": 10})
+
+	// Phòng bot: tới vòng Cú Mèo (uid đứng trước) mà hết lượt thì Sóc nói thay.
+	e.llm.script = append(e.llm.script, llmText("Sóc đây"))
+	e.manager(topicMsg(300, 5002, tgRoomThread, "chào cả nhà"))
+	e.drain()
+	if len(e.tg.CallsBy(cuongTok, "sendMessage")) != 0 || len(e.tg.CallsBy(anTok, "sendMessage")) != 1 {
+		t.Fatalf("Phòng bot: bot tới vòng mà hết lượt vẫn nhắc chủ, hay Sóc không nói thay")
+	}
+
+	e.llm.calls = nil
+	e.tick(time.Minute)
+	e.manager(groupMsg(302, 5002, 0, "bot gì mà lắm mồm", 8001, true, "Hôm nay Cường chạy 5 km"))
+	e.drain()
+	if len(e.llm.calls) != 0 {
+		t.Fatalf("bot hết lượt vẫn gọi model: %d", len(e.llm.calls))
+	}
+	sends := e.tg.CallsBy(cuongTok, "sendMessage")
+	want := `<a href="tg://user?id=5001">Cường</a> ơi, có người gọi mình mà hôm nay mình hết lượt nói rồi. Chạy hay đi bộ thêm 1 km là mình nói tiếp được 5 câu nữa nha.`
+	if len(sends) != 1 || sends[0].Params["text"] != want || sends[0].Params["parse_mode"] != "HTML" || sends[0].Params["message_thread_id"] != nil {
+		t.Fatalf("Cú Mèo nhắc chủ = %+v", sends)
+	}
+	if rp, _ := sends[0].Params["reply_parameters"].(map[string]any); rp["message_id"] != float64(302) {
+		t.Fatalf("tin nhắc không reply tin đã gọi bot: %+v", sends[0].Params)
+	}
+	if got := e.doc("agents/cuong")["dmDayCount"]; got != int64(10) {
+		t.Fatalf("tin nhắc trừ lượt của chủ: dmDayCount %v", got)
+	}
+
+	e.tick(time.Minute)
+	e.manager(groupMsg(303, 5002, 0, "sao im rồi", 8001, true, "Hôm nay Cường chạy 5 km"))
+	e.drain()
+	if n := len(e.tg.CallsBy(cuongTok, "sendMessage")); n != 1 {
+		t.Fatalf("một ngày nhắc chủ %d lần, muốn 1", n)
+	}
+}
+
 // Người khác reply tin của chủ bot thì bot của chủ đỡ lời, kể cả người chưa
 // liên kết 3i Run. Hai bot gọi tên nhau thì nói tiếp, nhưng cả chuỗi tối đa 3
 // tin. Chủ tự reply mình, hay tin đang hỏi 3i, thì bot không chen.

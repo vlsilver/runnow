@@ -60,6 +60,7 @@ func newMybotEnv(t *testing.T) *mybotEnv {
 	e.srv = NewAPIServer(cfg, e.deps)
 	e.brain.SetChannelReply(e.m.channelReply)
 	e.brain.SetRoomOut(e.m.roomOut)
+	e.brain.SetRoomNudge(e.m.roomNudge)
 	e.bot = NewBotServer(cfg, &Dependencies{Firestore: e.store.db, Agents: e.deps.Agents, AgentBrain: e.brain, EnqueueTask: e.publish, Now: e.deps.Now, ManagedBots: e.m})
 	return e
 }

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"html"
 	"log/slog"
 	"net/url"
 	"strconv"
@@ -584,11 +585,13 @@ func (m *ManagedBotService) enqueueReply(ctx context.Context, botID, key string,
 
 // managedOut là một việc trong outbox của bot con. threadID là topic của group
 // (0 là General hay chat không có topic); replyTo là tin được reply (0 là
-// không, op photo bỏ qua); imagePath chỉ có ở op photo.
+// không, op photo bỏ qua); imagePath chỉ có ở op photo; html bật parse_mode
+// HTML cho op send, text khi đó đã được escape.
 type managedOut struct {
 	chatID              string
 	threadID, replyTo   int64
 	op, text, imagePath string
+	html                bool
 }
 
 // enqueueOp ghi một việc vào outbox của bot con.
@@ -607,6 +610,9 @@ func (m *ManagedBotService) enqueueOp(ctx context.Context, botID, key string, ou
 	}
 	if out.imagePath != "" {
 		doc["imagePath"] = out.imagePath
+	}
+	if out.html {
+		doc["html"] = true
 	}
 	_, err := ref.Create(ctx, doc)
 	if status.Code(err) == codes.AlreadyExists {
@@ -675,7 +681,7 @@ func (m *ManagedBotService) Deliver(ctx context.Context, botID, key string) erro
 			case managedOpPhoto:
 				messageID, err = tg.SendImage(ctx, TelegramPhoto{ChatID: chatID, ThreadID: threadID, Image: image, Caption: stringValue(msg["text"])})
 			default:
-				messageID, err = tg.SendText(ctx, TelegramText{ChatID: chatID, ThreadID: threadID, Text: stringValue(msg["text"]), ReplyTo: int64(number(msg["replyTo"]))})
+				messageID, err = tg.SendText(ctx, TelegramText{ChatID: chatID, ThreadID: threadID, Text: stringValue(msg["text"]), HTML: msg["html"] == true, ReplyTo: int64(number(msg["replyTo"]))})
 			}
 			return err
 		})
@@ -790,6 +796,28 @@ func (m *ManagedBotService) roomOut(ctx context.Context, roomID string, seq int6
 	}
 	out.text, out.imagePath = text, imagePath
 	return m.enqueueReply(ctx, botID, "room-"+roomID+"-"+strconv.FormatInt(seq, 10), out)
+}
+
+// roomNudge gắn vào AgentService.SetRoomNudge: bot con của uid nhắc chủ ngay
+// chỗ tin afterSeq đã gọi nó, tag chủ bằng tg://user?id (chủ không cần có
+// username). Key theo ngày giờ VN nên mỗi bot nhắc một lần mỗi ngày, dù được
+// gọi bao nhiêu lần, ở phòng nào.
+func (m *ManagedBotService) roomNudge(ctx context.Context, roomID string, afterSeq int64, uid, owner, text string) error {
+	out, ok, err := m.roomTarget(ctx, roomID, afterSeq+1)
+	if err != nil || !ok {
+		return err
+	}
+	botID, info, ok, err := m.roomBot(ctx, uid, afterSeq+1)
+	if err != nil || !ok {
+		return err
+	}
+	if info.OwnerTgID == 0 {
+		slog.WarnContext(ctx, "mybot.nudge_no_owner", "uid", uid, "botId", botID)
+		return nil
+	}
+	out.html = true
+	out.text = fmt.Sprintf(`<a href="tg://user?id=%d">%s</a> ơi, %s`, info.OwnerTgID, html.EscapeString(owner), html.EscapeString(text))
+	return m.enqueueReply(ctx, botID, "nudge-"+uid+"-"+vnDay(m.now()), out)
 }
 
 // roomTarget là chỗ tin seq của bot ở phòng roomID đi ra trên PSC: chat, topic

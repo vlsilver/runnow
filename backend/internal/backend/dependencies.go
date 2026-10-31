@@ -159,6 +159,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 			if d.ManagedBots != nil {
 				d.AgentBrain.SetChannelReply(d.ManagedBots.channelReply)
 				d.AgentBrain.SetRoomOut(d.ManagedBots.roomOut)
+				d.AgentBrain.SetRoomNudge(d.ManagedBots.roomNudge)
 			}
 			if config.AgentLearn {
 				d.Learn = NewLearnService(d.Agents, budgetLearnLLM{inner: genaiLearnLLM{client: genaiClient, model: config.AgentLearnModel}, model: config.AgentLearnModel, budget: budget}, config.TelegramChatID)

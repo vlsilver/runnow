@@ -86,6 +86,9 @@ type AgentService struct {
 	// roomOut gửi tin của bot trong phòng ngoài app (tg-psc) ra kênh đó; nil
 	// thì chỉ ghi Firestore. Xem SetRoomOut.
 	roomOut AgentRoomOutFunc
+	// roomNudge cho bot hết lượt nhắc chủ trong phòng ngoài app; nil thì bot hết
+	// lượt chỉ im. Xem SetRoomNudge.
+	roomNudge AgentRoomNudgeFunc
 	// imageGen và imageStore bật tool generate_image; nil thì không vẽ. Xem
 	// SetImages.
 	imageGen   agentImageLLM
@@ -110,6 +113,11 @@ type AgentReplyFunc func(ctx context.Context, uid, channel string, reply AgentMe
 // với đúng tin đó.
 type AgentRoomOutFunc func(ctx context.Context, roomID string, seq int64, uid, text, imagePath string) error
 
+// AgentRoomNudgeFunc gửi tin bot của uid nhắc chủ (tên owner) khi có người gọi
+// bot ở tin afterSeq của phòng roomID mà bot đã hết lượt hôm nay. Hàm tự giữ
+// mỗi bot một tin nhắc mỗi ngày, nên gọi lại bao nhiêu lần cũng được.
+type AgentRoomNudgeFunc func(ctx context.Context, roomID string, afterSeq int64, uid, owner, text string) error
+
 func NewAgentService(store *AgentStore, llm agentLLM, enqueue taskPublishFunc) *AgentService {
 	return &AgentService{store: store, llm: llm, enqueue: enqueue}
 }
@@ -121,6 +129,10 @@ func (a *AgentService) SetChannelReply(fn AgentReplyFunc) { a.channelReply = fn 
 // SetRoomOut gắn hàm gửi tin của bot ra phòng ngoài app. Gọi lúc dựng
 // dependencies, trước khi nhận task.
 func (a *AgentService) SetRoomOut(fn AgentRoomOutFunc) { a.roomOut = fn }
+
+// SetRoomNudge gắn hàm cho bot hết lượt nhắc chủ ở phòng ngoài app. Gọi lúc
+// dựng dependencies, trước khi nhận task.
+func (a *AgentService) SetRoomNudge(fn AgentRoomNudgeFunc) { a.roomNudge = fn }
 
 // Channel và RoomID bỏ trống khi là app và main, để payload của kênh app giữ
 // đúng dạng cũ: bot bản trước giải mã payload với DisallowUnknownFields, gặp
@@ -578,7 +590,7 @@ func (a *AgentService) RoomTurn(ctx context.Context, roomID string, afterSeq int
 	if err != nil {
 		return err
 	}
-	speaker, quotaMax, ok, err := a.pickRoomSpeaker(ctx, lim, roomID, agents, room, transcript[len(transcript)-1], wall)
+	speaker, quotaMax, ok, err := a.pickRoomSpeaker(ctx, lim, roomID, afterSeq, agents, room, transcript[len(transcript)-1], wall)
 	if err != nil || !ok {
 		return err
 	}
@@ -710,8 +722,9 @@ func pickSpeaker(agents []roomAgent, room map[string]any, last map[string]any) (
 // lượt hôm nay, vì tin bot trong phòng trừ vào cùng lượt với chat riêng. Kiểm
 // trước khi gọi model để bot hết lượt không tốn một lần gọi. Trả hạn mức của
 // bot được chọn để appendRoomTurn kiểm lại trong transaction. Km chỉ đọc cho
-// bot pickSpeaker chọn ra, không đọc cho cả phòng.
-func (a *AgentService) pickRoomSpeaker(ctx context.Context, lim agentLimits, roomID string, agents []roomAgent, room, last map[string]any, wall time.Time) (roomAgent, int64, bool, error) {
+// bot pickSpeaker chọn ra, không đọc cho cả phòng. Bot hết lượt mà đang được
+// người gọi thì nhắc chủ (nudgeOwner) trước khi nhường cho bot khác.
+func (a *AgentService) pickRoomSpeaker(ctx context.Context, lim agentLimits, roomID string, afterSeq int64, agents []roomAgent, room, last map[string]any, wall time.Time) (roomAgent, int64, bool, error) {
 	pick := pickSpeaker
 	if roomID == agentTelegramGroupRoom {
 		pick = pickGroupSpeaker
@@ -730,8 +743,29 @@ func (a *AgentService) pickRoomSpeaker(ctx context.Context, lim agentLimits, roo
 			return speaker, q.max, true, nil
 		}
 		slog.InfoContext(ctx, "agent.room_quota_skip", "room", roomID, "speaker", speaker.uid)
+		if err := a.nudgeOwner(ctx, roomID, afterSeq, speaker, q, last); err != nil {
+			return roomAgent{}, 0, false, err
+		}
 		left = slices.DeleteFunc(left, func(ag roomAgent) bool { return ag.uid == speaker.uid })
 	}
+}
+
+// nudgeOwner cho bot đã hết lượt nhắc chủ chạy thêm để nói tiếp, khi tin người
+// last gọi đúng bot đó: reply hay @username bot, hay reply tin của chủ bot (phòng
+// tg-group). Bot tới lượt theo vòng ở Phòng bot, hay bot gọi nhau, thì không ai
+// chờ bot đó nên không nhắc. Tin nhắc không qua model và không trừ lượt.
+func (a *AgentService) nudgeOwner(ctx context.Context, roomID string, afterSeq int64, bot roomAgent, q agentDMQuota, last map[string]any) error {
+	if roomID == agentMainRoom || a.roomNudge == nil {
+		return nil
+	}
+	if _, called := addressedBot([]roomAgent{bot}, last); !called && stringValue(last["targetUid"]) != bot.uid {
+		return nil
+	}
+	names, err := a.store.displayNames(ctx, []string{bot.uid})
+	if err != nil {
+		return err
+	}
+	return a.roomNudge(ctx, roomID, afterSeq, bot.uid, names[bot.uid], roomQuotaNudge(q))
 }
 
 // addressedBot là bot con mà tin người last reply tới, hay được @username trong
