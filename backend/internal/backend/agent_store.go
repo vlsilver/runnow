@@ -289,17 +289,21 @@ func (s *AgentStore) requireMember(ctx context.Context, uid string) error {
 	return nil
 }
 
-// displayNames đọc tên hiển thị từ publicProfiles; thiếu thì "Thành viên".
 func (s *AgentStore) displayNames(ctx context.Context, uids []string) (map[string]string, error) {
+	return displayNames(ctx, s.db, uids)
+}
+
+// displayNames đọc tên hiển thị từ publicProfiles; thiếu thì "Thành viên".
+func displayNames(ctx context.Context, db *firestore.Client, uids []string) (map[string]string, error) {
 	out := map[string]string{}
 	if len(uids) == 0 {
 		return out, nil
 	}
 	refs := make([]*firestore.DocumentRef, len(uids))
 	for i, uid := range uids {
-		refs[i] = s.db.Collection("publicProfiles").Doc(uid)
+		refs[i] = db.Collection("publicProfiles").Doc(uid)
 	}
-	docs, err := s.db.GetAll(ctx, refs)
+	docs, err := db.GetAll(ctx, refs)
 	if err != nil {
 		return nil, err
 	}
