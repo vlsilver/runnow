@@ -264,3 +264,83 @@ func TestEmulatorRunRoomPasswordHardening(t *testing.T) {
 	h.want(h.call("host", "POST", "/v1/run-rooms/"+id+"/end", nil, ""), 200, "")
 	h.want(h.call("u3", "POST", join, map[string]any{"password": "sai"}, ""), 409, "room_closed")
 }
+
+// Phòng solo là phòng ngầm của một buổi chạy riêng: chỉ tự vào (public) hay
+// chủ duyệt (private), mở ngay chứ không hẹn giờ, không đặt tên thì lấy tên
+// chủ. Phòng mở bình thường ghi kind group.
+func TestEmulatorRunRoomSoloKind(t *testing.T) {
+	h := newRoomHarness(t)
+	now := time.Date(2026, 11, 1, 6, 0, 0, 0, time.UTC)
+	h.deps.Now = func() time.Time { return now }
+	seed(t, h.store.db, "publicProfiles/host", map[string]any{"displayName": "Linh"})
+
+	r := h.call("host", "POST", "/v1/run-rooms", map[string]any{"kind": "solo", "privacy": "private"}, "")
+	h.want(r, 201, "")
+	room := roomDoc(t, h, r.body["id"].(string))
+	if room["kind"] != "solo" || room["title"] != "Linh" || room["privacy"] != "private" || !room["startsAt"].(time.Time).Equal(now) {
+		t.Fatalf("phòng solo: %v", room)
+	}
+
+	r = h.call("host", "POST", "/v1/run-rooms", map[string]any{"title": "Hồ Tây", "privacy": "public"}, "")
+	h.want(r, 201, "")
+	if k := roomDoc(t, h, r.body["id"].(string))["kind"]; k != "group" {
+		t.Fatalf("kind %v, mong đợi group", k)
+	}
+
+	for _, body := range []map[string]any{
+		{"kind": "solo", "privacy": "password", "password": "1234"},
+		{"kind": "solo", "privacy": "public", "startsAt": now.Add(time.Hour).Format(time.RFC3339)},
+		{"kind": "duo", "title": "x", "privacy": "public"},
+		{"kind": "group", "privacy": "public"},
+	} {
+		h.want(h.call("host", "POST", "/v1/run-rooms", body, ""), 400, "invalid_request")
+	}
+}
+
+// Tuyến chủ phòng vẽ hay nhập GPX: app gửi bản rút gọn để vẽ lên map, phòng
+// giữ nguyên điểm và quãng đường. Tuyến hỏng thì từ chối cả phòng.
+func TestEmulatorRunRoomRoute(t *testing.T) {
+	h := newRoomHarness(t)
+	route := map[string]any{
+		"distanceMeters": 6400.5,
+		"points":         []map[string]any{{"lat": 21.05, "lng": 105.82}, {"lat": 21.06, "lng": 105.83}, {"lat": 21.05, "lng": 105.84}},
+	}
+	r := h.call("host", "POST", "/v1/run-rooms", map[string]any{"title": "Hồ Tây", "privacy": "public", "route": route}, "")
+	h.want(r, 201, "")
+	got, _ := roomDoc(t, h, r.body["id"].(string))["route"].(map[string]any)
+	points, _ := got["points"].([]any)
+	if got["distanceMeters"] != 6400.5 || len(points) != 3 {
+		t.Fatalf("route: %v", got)
+	}
+	if p, _ := points[1].(map[string]any); p["lat"] != 21.06 || p["lng"] != 105.83 {
+		t.Fatalf("điểm 2: %v", points[1])
+	}
+
+	r = h.call("host", "POST", "/v1/run-rooms", map[string]any{"title": "Không tuyến", "privacy": "public"}, "")
+	h.want(r, 201, "")
+	if _, ok := roomDoc(t, h, r.body["id"].(string))["route"]; ok {
+		t.Fatal("không gửi tuyến mà phòng có route")
+	}
+
+	pts := func(n int) []map[string]any {
+		out := make([]map[string]any, n)
+		for i := range out {
+			out[i] = map[string]any{"lat": 21 + float64(i)/1000, "lng": 105.8}
+		}
+		return out
+	}
+	for name, bad := range map[string]map[string]any{
+		"một điểm":     {"distanceMeters": 100, "points": pts(1)},
+		"201 điểm":     {"distanceMeters": 100, "points": pts(201)},
+		"lat ngoài":    {"distanceMeters": 100, "points": []map[string]any{{"lat": 91, "lng": 0}, {"lat": 0, "lng": 0}}},
+		"lng ngoài":    {"distanceMeters": 100, "points": []map[string]any{{"lat": 0, "lng": 181}, {"lat": 0, "lng": 0}}},
+		"quãng 0":      {"distanceMeters": 0, "points": pts(2)},
+		"quãng 301 km": {"distanceMeters": 301000, "points": pts(2)},
+	} {
+		r := h.call("host", "POST", "/v1/run-rooms", map[string]any{"title": "x", "privacy": "public", "route": bad}, "")
+		if r.status != 400 {
+			t.Errorf("%s: %d %s", name, r.status, r.raw)
+		}
+	}
+	h.want(h.call("host", "POST", "/v1/run-rooms", map[string]any{"title": "x", "privacy": "public", "route": map[string]any{"distanceMeters": 100, "points": pts(200)}}, ""), 201, "")
+}

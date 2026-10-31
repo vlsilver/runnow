@@ -26,6 +26,11 @@ const (
 	roomPrivate  = "private"
 	roomPassword = "password"
 
+	// roomGroup là phòng mở để rủ nhau chạy; roomSolo là phòng ngầm của một
+	// buổi chạy riêng, chủ mở lúc bắt đầu chạy để người khác xin chạy cùng.
+	roomGroup = "group"
+	roomSolo  = "solo"
+
 	memberRequested = "requested"
 	memberJoined    = "joined"
 	memberLeft      = "left"
@@ -84,6 +89,50 @@ type CreateRunRoomRequest struct {
 	MaxRunners int    `json:"maxRunners"`
 	// StartsAt là giờ hẹn chạy (RFC 3339); rỗng là chạy ngay.
 	StartsAt string `json:"startsAt"`
+	// Kind rỗng là group. Phòng solo chỉ public hoặc private, mở ngay, và
+	// không đặt tên thì lấy tên chủ.
+	Kind string `json:"kind"`
+	// Route là tuyến chủ phòng vẽ hay nhập GPX, đã rút gọn ở app để vẽ lên
+	// map. DistanceMeters là quãng của tuyến gốc, chỉ để hiển thị.
+	Route *RunRoomRoute `json:"route"`
+}
+
+type RunRoomRoute struct {
+	DistanceMeters float64        `json:"distanceMeters"`
+	Points         []RunRoomPoint `json:"points"`
+}
+
+type RunRoomPoint struct {
+	Lat float64 `json:"lat"`
+	Lng float64 `json:"lng"`
+}
+
+// Tuyến nằm luôn trong doc phòng, mà list phòng public đọc cả doc, nên chặn
+// số điểm cho doc nhỏ (200 điểm chừng 8 KB).
+const (
+	roomRouteMaxPoints = 200
+	roomRouteMaxMeters = 300_000
+)
+
+func (r *RunRoomRoute) valid() bool {
+	if len(r.Points) < 2 || len(r.Points) > roomRouteMaxPoints ||
+		!(r.DistanceMeters > 0 && r.DistanceMeters <= roomRouteMaxMeters) {
+		return false
+	}
+	for _, p := range r.Points {
+		if p.Lat < -90 || p.Lat > 90 || p.Lng < -180 || p.Lng > 180 {
+			return false
+		}
+	}
+	return true
+}
+
+func (r *RunRoomRoute) doc() map[string]any {
+	points := make([]map[string]any, len(r.Points))
+	for i, p := range r.Points {
+		points[i] = map[string]any{"lat": p.Lat, "lng": p.Lng}
+	}
+	return map[string]any{"distanceMeters": r.DistanceMeters, "points": points}
 }
 
 func (s *RunRoomStore) roomRef(id string) *firestore.DocumentRef {
@@ -105,8 +154,24 @@ func attemptRef(room *firestore.DocumentRef, uid string) *firestore.DocumentRef 
 
 // Create mở phòng và ghi chủ phòng là thành viên đầu tiên.
 func (s *RunRoomStore) Create(ctx context.Context, uid string, in CreateRunRoomRequest, now time.Time) (string, error) {
+	kind := in.Kind
+	if kind == "" {
+		kind = roomGroup
+	}
 	title := strings.TrimSpace(in.Title)
-	if title == "" || utf8.RuneCountInString(title) > roomTitleMax {
+	switch kind {
+	case roomGroup:
+		if title == "" {
+			return "", invalidRequest()
+		}
+	case roomSolo:
+		if in.Privacy == roomPassword || in.StartsAt != "" {
+			return "", invalidRequest()
+		}
+	default:
+		return "", invalidRequest()
+	}
+	if utf8.RuneCountInString(title) > roomTitleMax || in.Route != nil && !in.Route.valid() {
 		return "", invalidRequest()
 	}
 	if in.Privacy != roomPublic && in.Privacy != roomPrivate && in.Privacy != roomPassword {
@@ -139,13 +204,20 @@ func (s *RunRoomStore) Create(ctx context.Context, uid string, in CreateRunRoomR
 	if err != nil {
 		return "", err
 	}
-	room := s.db.Collection("runRooms").NewDoc()
-	batch := s.db.Batch()
-	batch.Create(room, map[string]any{
-		"hostUid": uid, "hostName": names[uid], "title": title, "privacy": in.Privacy,
+	if title == "" {
+		title = names[uid]
+	}
+	data := map[string]any{
+		"hostUid": uid, "hostName": names[uid], "title": title, "privacy": in.Privacy, "kind": kind,
 		"maxRunners": max, "runnerCount": 1, "status": roomOpen,
 		"createdAt": now, "updatedAt": now, "startsAt": startsAt, "closesAt": startsAt.Add(roomOpenFor),
-	})
+	}
+	if in.Route != nil {
+		data["route"] = in.Route.doc()
+	}
+	room := s.db.Collection("runRooms").NewDoc()
+	batch := s.db.Batch()
+	batch.Create(room, data)
 	batch.Create(memberRef(room, uid), map[string]any{
 		"uid": uid, "name": names[uid], "role": "host", "state": memberJoined, "joinedAt": now, "updatedAt": now,
 	})

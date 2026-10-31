@@ -68,6 +68,7 @@
       "fields": [
         { "fieldPath": "privacy", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "kind", "order": "ASCENDING" },
         { "fieldPath": "closesAt", "order": "ASCENDING" }
       ]
     },
