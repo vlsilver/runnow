@@ -94,7 +94,7 @@ void main() {
         ],
         child: MaterialApp(
           theme: buildRunNowTheme(RunNowElement.water),
-          home: const Scaffold(body: RunRoomRunPanel(roomId: 'room-1')),
+          home: const Scaffold(body: RunRoomRunActions(roomId: 'room-1')),
         ),
       ),
     );
@@ -115,19 +115,19 @@ void main() {
     await seed();
     await pump(tester);
 
-    await tester.tap(find.text('Nói chuyện'));
+    await tester.tap(find.byTooltip('Nói chuyện'));
     await tester.pump();
     await tester.pump();
 
     expect(calls, ['POST /v1/run-rooms/room-1/voice']);
     expect(link.joins, ['wss://voice.example.test lk-token-1']);
-    expect(find.text('Đang nói · 2 người nghe'), findsOneWidget);
+    expect(find.byTooltip('Đang nói · 2 người nghe'), findsOneWidget);
   });
 
   testWidgets('bị mời ra khỏi phòng thì tự thoát thoại', (tester) async {
     await seed();
     await pump(tester);
-    await tester.tap(find.text('Nói chuyện'));
+    await tester.tap(find.byTooltip('Nói chuyện'));
     await tester.pump();
     await tester.pump();
     expect(link.leaves, 0);
@@ -137,7 +137,7 @@ void main() {
     await tester.pump();
 
     expect(link.leaves, 1);
-    expect(find.text('Nói chuyện'), findsNothing);
+    expect(find.byTooltip('Nói chuyện'), findsNothing);
   });
 
   testWidgets('chưa bật thoại thì báo câu của backend, không vào phòng thoại', (
@@ -151,12 +151,12 @@ void main() {
           '{"error":"voice_unavailable","message":"Chưa bật nói chuyện trong phòng."}',
     );
 
-    await tester.tap(find.text('Nói chuyện'));
+    await tester.tap(find.byTooltip('Nói chuyện'));
     await tester.pump();
     await tester.pump();
 
     expect(link.joins, isEmpty);
     expect(find.text('Chưa bật nói chuyện trong phòng.'), findsOneWidget);
-    expect(find.text('Nói chuyện'), findsOneWidget);
+    expect(find.byTooltip('Nói chuyện'), findsOneWidget);
   });
 }

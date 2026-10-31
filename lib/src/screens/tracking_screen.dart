@@ -566,6 +566,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                       },
                     ),
                   ],
+                  if (roomId != null) ...[
+                    const SizedBox(height: 10),
+                    RunRoomRunActions(roomId: roomId),
+                  ],
                   const SizedBox(height: 10),
                   _Controls(
                     running: _running,

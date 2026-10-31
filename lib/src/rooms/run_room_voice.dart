@@ -169,8 +169,9 @@ class RunRoomVoice extends Notifier<RunRoomVoiceState> {
   }
 }
 
-/// Nút vào hay thoát thoại trên thanh phòng. Mặc định tắt: chỉ bật micro khi
-/// người dùng tự bấm.
+/// Nút tròn vào hay thoát thoại, đặt cạnh emoji cổ vũ ở đáy màn chạy. Mặc
+/// định tắt: chỉ bật micro khi người dùng tự bấm. Tooltip nói trạng thái,
+/// badge là số người đang nghe.
 class RunRoomVoiceButton extends ConsumerWidget {
   const RunRoomVoiceButton({required this.roomId, super.key});
 
@@ -190,26 +191,28 @@ class RunRoomVoiceButton extends ConsumerWidget {
     final voice = ref.watch(provider);
     final controller = ref.read(provider.notifier);
     return switch (voice.status) {
-      RunRoomVoiceStatus.off => TextButton.icon(
+      RunRoomVoiceStatus.off => IconButton.filledTonal(
+        tooltip: 'Nói chuyện',
         onPressed: controller.join,
-        icon: const Icon(Icons.mic_none_rounded, size: 18),
-        label: const Text('Nói chuyện'),
+        icon: const Icon(Icons.mic_off_rounded),
       ),
-      RunRoomVoiceStatus.connecting => TextButton.icon(
+      RunRoomVoiceStatus.connecting => IconButton.filledTonal(
+        tooltip: 'Đang vào thoại…',
         onPressed: controller.leave,
         icon: const SizedBox.square(
-          dimension: 16,
+          dimension: 20,
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
-        label: const Text('Đang vào thoại…'),
       ),
-      RunRoomVoiceStatus.on => FilledButton.tonalIcon(
-        onPressed: controller.leave,
-        icon: const Icon(Icons.mic_rounded, size: 18),
-        label: Text(
-          voice.peers == 0
+      RunRoomVoiceStatus.on => Badge.count(
+        count: voice.peers,
+        isLabelVisible: voice.peers > 0,
+        child: IconButton.filled(
+          tooltip: voice.peers == 0
               ? 'Đang nói · chưa ai nghe'
               : 'Đang nói · ${voice.peers} người nghe',
+          onPressed: controller.leave,
+          icon: const Icon(Icons.mic_rounded),
         ),
       ),
     };

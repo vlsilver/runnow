@@ -10,8 +10,9 @@ import 'package:myrun/src/rooms/run_room_voice.dart';
 import 'package:myrun/src/widgets/glass.dart';
 
 /// Thanh phòng nổi trên màn chạy: tên phòng, bao nhiêu người đang chạy, ai
-/// đang xin vào (với chủ phòng), emoji cổ vũ một chạm. Cổ vũ mới của người
-/// khác hiện thành snackbar. Chạm vào tên để mở map cả phòng.
+/// đang xin vào (với chủ phòng). Cổ vũ mới của người khác hiện thành
+/// snackbar. Chạm vào tên để mở map cả phòng. Thoại và emoji cổ vũ nằm ở
+/// [RunRoomRunActions] dưới đáy màn.
 class RunRoomRunPanel extends ConsumerWidget {
   const RunRoomRunPanel({required this.roomId, super.key});
 
@@ -102,13 +103,6 @@ class RunRoomRunPanel extends ConsumerWidget {
           // Duyệt từng người một ngay trên màn chạy, người xin trước lên trước.
           if (open && requested.isNotEmpty)
             RunRoomRequestTile(roomId: roomId, member: requested.first),
-          if (open && joined)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: RunRoomVoiceButton(roomId: roomId),
-            ),
-          if (open && joined)
-            RunRoomCheerBar(roomId: roomId, uid: uid, emojiOnly: true),
         ],
       ),
     );
@@ -148,5 +142,40 @@ class RunRoomRunPanel extends ConsumerWidget {
           content: Text('${names[latest.uid] ?? 'Thành viên'}: ${latest.text}'),
         ),
       );
+  }
+}
+
+/// Hàng thao tác nhanh của phòng ở đáy màn chạy, ngay trên nút chụp ảnh và
+/// tạm dừng, cho người đang chạy bấm bằng ngón cái: thoại và emoji cổ vũ.
+/// Chỉ hiện khi phòng còn mở và mình còn trong phòng.
+class RunRoomRunActions extends ConsumerWidget {
+  const RunRoomRunActions({required this.roomId, super.key});
+
+  final String roomId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final uid = ref.watch(firebaseUserProvider).value?.uid;
+    final room = ref.watch(runRoomProvider(roomId)).value;
+    final me = ref.watch(myRunRoomMemberProvider(roomId)).value;
+    if (uid == null ||
+        room == null ||
+        !room.isOpen(DateTime.now()) ||
+        me?.state != RunRoomMemberState.joined) {
+      return const SizedBox.shrink();
+    }
+    return GlassPanel(
+      borderRadius: 18,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        children: [
+          RunRoomVoiceButton(roomId: roomId),
+          const SizedBox(width: 6),
+          Expanded(
+            child: RunRoomCheerBar(roomId: roomId, uid: uid, emojiOnly: true),
+          ),
+        ],
+      ),
+    );
   }
 }
