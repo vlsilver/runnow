@@ -443,4 +443,22 @@ void main() {
       isFalse,
     );
   });
+
+  test(
+    'tắt Live thì ẩn thoại và emoji, phòng kín không có công tắc nên vẫn hiện',
+    () {
+      expect(
+        runRoomShowsRunActions(roomOnly: false, liveEnabled: true),
+        isTrue,
+      );
+      expect(
+        runRoomShowsRunActions(roomOnly: false, liveEnabled: false),
+        isFalse,
+      );
+      expect(
+        runRoomShowsRunActions(roomOnly: true, liveEnabled: false),
+        isTrue,
+      );
+    },
+  );
 }

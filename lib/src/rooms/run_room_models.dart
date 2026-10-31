@@ -74,6 +74,13 @@ bool runRoomSharesLivePhoto({
   required String? joinedRoomId,
 }) => contractId != null || joinedRoomId != null;
 
+/// Thoại và emoji cổ vũ ở đáy màn chạy hiện khi đang bật Live. Phòng kín luôn
+/// tắt Live lên group và không có công tắc, nên vẫn hiện.
+bool runRoomShowsRunActions({
+  required bool roomOnly,
+  required bool liveEnabled,
+}) => roomOnly || liveEnabled;
+
 /// Số điểm tối đa của tuyến gửi lên phòng. Backend nhận tới 200; tuyến nằm
 /// trong doc phòng mà list phòng đọc cả doc, nên app gửi ít hơn.
 const runRoomRouteMaxPoints = 120;

@@ -566,7 +566,11 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                       },
                     ),
                   ],
-                  if (roomId != null) ...[
+                  if (roomId != null &&
+                      runRoomShowsRunActions(
+                        roomOnly: _roomOnly,
+                        liveEnabled: _liveEnabled,
+                      )) ...[
                     const SizedBox(height: 10),
                     RunRoomRunActions(roomId: roomId),
                   ],
