@@ -228,12 +228,12 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Kèo'),
+        title: const Text('Tất cả kèo'),
         actions: [
           if (connected)
             Padding(
               padding: const EdgeInsets.only(right: 10),
-              child: _ContractSyncAction(
+              child: ContractSyncAction(
                 syncing: sync.syncing,
                 synced: sync.lastSyncSucceeded,
                 onPressed: () => ref
@@ -245,44 +245,19 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
       ),
       floatingActionButton: FloatingActionButton.small(
         tooltip: 'Tạo kèo',
-        onPressed: () =>
-            _createContract(myActive.value ?? const [], currentUid),
+        onPressed: () async {
+          final created = await startCreateContract(
+            context,
+            ref,
+            myActive.value ?? const [],
+            currentUid,
+          );
+          if (created && mounted) await _loadFirstPage();
+        },
         child: const Icon(Icons.add_rounded),
       ),
       body: keoBody,
     );
-  }
-
-  Future<void> _createContract(
-    List<RunContract> myActive,
-    String? currentUid,
-  ) async {
-    // Ai cũng tạo được kèo — không cần kết nối Strava (chạy bằng 3i native cũng
-    // theo dõi được tiến độ). Chỉ chặn khi đang dở quá nhiều kèo.
-    final unfinished = myActive
-        .where((contract) => !contract.completedBy(currentUid))
-        .toList();
-    if (unfinished.length >= maxActiveRunContracts) {
-      // Ván Ma Sói không phải kèo, nên giới hạn số kèo không chặn admin mở ván.
-      final canCreateGame = ref.read(gameListProvider).value?.canCreate == true;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Bạn đang tham gia ${unfinished.length} kèo chưa hoàn thành. '
-            'Hãy chốt một kèo để tạo kèo mới.',
-          ),
-          action: canCreateGame
-              ? SnackBarAction(
-                  label: 'Mở ván Ma Sói',
-                  onPressed: () => context.push('/games/new'),
-                )
-              : null,
-        ),
-      );
-      return;
-    }
-    await context.push('/contracts/new');
-    if (mounted) await _loadFirstPage();
   }
 
   Future<void> _joinContract(RunContract contract) async {
@@ -304,13 +279,50 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
   }
 }
 
+/// Mở màn tạo kèo. Trả true khi đã mở (để màn gọi nạp lại danh sách), false
+/// khi bị chặn vì đang dở quá nhiều kèo.
+Future<bool> startCreateContract(
+  BuildContext context,
+  WidgetRef ref,
+  List<RunContract> myActive,
+  String? currentUid,
+) async {
+  // Ai cũng tạo được kèo — không cần kết nối Strava (chạy bằng 3i native cũng
+  // theo dõi được tiến độ). Chỉ chặn khi đang dở quá nhiều kèo.
+  final unfinished = myActive
+      .where((contract) => !contract.completedBy(currentUid))
+      .toList();
+  if (unfinished.length >= maxActiveRunContracts) {
+    // Ván Ma Sói không phải kèo, nên giới hạn số kèo không chặn admin mở ván.
+    final canCreateGame = ref.read(gameListProvider).value?.canCreate == true;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Bạn đang tham gia ${unfinished.length} kèo chưa hoàn thành. '
+          'Hãy chốt một kèo để tạo kèo mới.',
+        ),
+        action: canCreateGame
+            ? SnackBarAction(
+                label: 'Mở ván Ma Sói',
+                onPressed: () => context.push('/games/new'),
+              )
+            : null,
+      ),
+    );
+    return false;
+  }
+  await context.push('/contracts/new');
+  return true;
+}
+
 enum _ContractFilter { active, completed, failed }
 
-class _ContractSyncAction extends StatefulWidget {
-  const _ContractSyncAction({
+class ContractSyncAction extends StatefulWidget {
+  const ContractSyncAction({
     required this.syncing,
     required this.synced,
     required this.onPressed,
+    super.key,
   });
 
   final bool syncing;
@@ -318,10 +330,10 @@ class _ContractSyncAction extends StatefulWidget {
   final VoidCallback onPressed;
 
   @override
-  State<_ContractSyncAction> createState() => _ContractSyncActionState();
+  State<ContractSyncAction> createState() => _ContractSyncActionState();
 }
 
-class _ContractSyncActionState extends State<_ContractSyncAction>
+class _ContractSyncActionState extends State<ContractSyncAction>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
@@ -336,7 +348,7 @@ class _ContractSyncActionState extends State<_ContractSyncAction>
   }
 
   @override
-  void didUpdateWidget(covariant _ContractSyncAction oldWidget) {
+  void didUpdateWidget(covariant ContractSyncAction oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.syncing != widget.syncing) _syncAnimation();
   }

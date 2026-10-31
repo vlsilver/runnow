@@ -19,7 +19,8 @@ enum ProfileVisibility {
 enum ActivitySource {
   strava('strava'),
   runnow('runnow'),
-  appleHealth('apple_health');
+  appleHealth('apple_health'),
+  garmin('garmin');
 
   const ActivitySource(this.value);
 
@@ -27,6 +28,7 @@ enum ActivitySource {
     return switch (value) {
       'runnow' => ActivitySource.runnow,
       'apple_health' => ActivitySource.appleHealth,
+      'garmin' => ActivitySource.garmin,
       _ => ActivitySource.strava,
     };
   }
@@ -296,6 +298,7 @@ class PeriodStat {
     required this.periodType,
     required this.periodKey,
     required this.stats,
+    this.run = _noRun,
   });
 
   factory PeriodStat.fromMap(Map<String, dynamic> map) {
@@ -303,13 +306,38 @@ class PeriodStat {
       periodType: map['periodType'] as String? ?? '',
       periodKey: map['periodKey'] as String? ?? '',
       stats: LeaderboardStats.fromMap(map),
+      run: LeaderboardStats(
+        distanceMeters: (map['runDistanceMeters'] as num?)?.toDouble() ?? 0,
+        movingTimeSeconds: (map['runMovingTimeSeconds'] as num?)?.toInt() ?? 0,
+        activityCount: (map['runCount'] as num?)?.toInt() ?? 0,
+        activeDays: (map['runActiveDays'] as num?)?.toInt() ?? 0,
+        longestDistanceMeters:
+            (map['runLongestDistanceMeters'] as num?)?.toDouble() ?? 0,
+        fastestPaceSecondsPerKm: (map['runFastestPaceSecondsPerKm'] as num?)
+            ?.toDouble(),
+      ),
     );
   }
 
   final String periodType;
   final String periodKey;
+
+  /// Gồm cả đi bộ, như bảng xếp hạng.
   final LeaderboardStats stats;
+
+  /// Chỉ buổi chạy (field run* của backend); pace nhanh nhất chỉ xét buổi từ
+  /// 1 km. Doc chưa được rebuild từ khi có field này thì toàn 0.
+  final LeaderboardStats run;
 }
+
+const _noRun = LeaderboardStats(
+  distanceMeters: 0,
+  movingTimeSeconds: 0,
+  activityCount: 0,
+  activeDays: 0,
+  longestDistanceMeters: 0,
+  fastestPaceSecondsPerKm: null,
+);
 
 class LeaderboardEntry {
   const LeaderboardEntry({

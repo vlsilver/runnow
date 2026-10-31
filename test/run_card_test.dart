@@ -1,0 +1,1022 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:latlong2/latlong.dart' show LatLng;
+import 'package:myrun/src/achievements/achievement_card.dart';
+import 'package:myrun/src/achievements/run_card.dart';
+import 'package:myrun/src/achievements/run_card_art_sheet.dart';
+import 'package:myrun/src/achievements/run_card_panel.dart';
+import 'package:myrun/src/achievements/run_card_providers.dart';
+import 'package:myrun/src/achievements/card_share.dart';
+import 'package:myrun/src/achievements/run_card_skin.dart';
+import 'package:myrun/src/games/game_role_card.dart';
+import 'package:myrun/src/models.dart';
+import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/runnow_api_client.dart';
+import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/photo_viewer.dart';
+import 'package:myrun/src/widgets/storage_image.dart';
+import 'package:share_plus_platform_interface/share_plus_platform_interface.dart';
+
+/// Doc thẻ như API trả: thời gian là chuỗi, bậc là khoá server. startedAt
+/// không có múi giờ để test chạy ở máy nào cũng ra 06:12.
+Map<String, dynamic> _cardJson({
+  String tier = 'epic',
+  Map<String, dynamic>? art,
+  List<Map<String, dynamic>> route = const [
+    {'lat': 21.0, 'lng': 105.8},
+    {'lat': 21.01, 'lng': 105.8},
+  ],
+  List<Map<String, dynamic>> splits = const [],
+  double? elevation = 40,
+}) => {
+  'id': 'r1',
+  'activityId': 'r1',
+  'tier': tier,
+  'km': 15.0,
+  'rollPpm': 123,
+  'rolledAt': '2026-10-24T08:00:00Z',
+  'startedAt': '2026-10-23T23:12:00Z',
+  'odds': [
+    {'tier': 'common', 'percent': 0},
+    {'tier': 'rare', 'percent': 63.5},
+    {'tier': 'epic', 'percent': 25.2},
+    {'tier': 'legendary', 'percent': 9.1},
+    {'tier': 'mythic', 'percent': 2.2},
+  ],
+  'snapshot': {
+    'name': 'Dọc bờ sông Hồng',
+    'sportType': 'Run',
+    // Thứ Bảy.
+    'startedAt': '2026-10-24T06:12:00',
+    'distanceMeters': 15000,
+    'movingTimeSeconds': 4965,
+    'elapsedTimeSeconds': 5100,
+    'elevationGainMeters': ?elevation,
+    'route': route,
+    'splits': splits,
+  },
+  'art': ?art,
+};
+
+RunCard _card({
+  String tier = 'epic',
+  Map<String, dynamic>? art,
+  List<Map<String, dynamic>> route = const [
+    {'lat': 21.0, 'lng': 105.8},
+    {'lat': 21.01, 'lng': 105.8},
+  ],
+  List<Map<String, dynamic>> splits = const [],
+  double? elevation = 40,
+}) => RunCard.fromJson(
+  _cardJson(
+    tier: tier,
+    art: art,
+    route: route,
+    splits: splits,
+    elevation: elevation,
+  ),
+);
+
+const _done = {
+  'status': 'done',
+  'style': 'linocut',
+  'attempt': 1,
+  'path': 'users/u1/runCards/r1/art.png',
+};
+
+ActivitySummary _run({List<ActivityPhoto> photos = const []}) =>
+    ActivitySummary(
+      id: 'r1',
+      name: 'Dọc bờ sông Hồng',
+      kind: ActivityKind.run,
+      startedAt: DateTime(2026, 10, 24, 6, 12),
+      distanceMeters: 14960,
+      movingTimeSeconds: 4965,
+      elapsedTimeSeconds: 5100,
+      photos: photos,
+    );
+
+const _runPhotoPath = 'users/u1/activities/r1/photos/p1.jpg';
+
+final _runPhoto = ActivityPhoto(
+  id: 'p1',
+  capturedAt: DateTime(2026, 10, 24, 6, 40),
+  latitude: 21,
+  longitude: 105.8,
+  distanceMeters: 5000,
+  storagePath: _runPhotoPath,
+);
+
+/// Ảnh PNG 1x1 thật, vì app đọc loại ảnh từ byte đầu.
+final _png = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+);
+
+/// Danh sách phong cách như GET /v1/art-styles; nhóm không có phong cách nào
+/// thì app ẩn.
+const _styles = {
+  'families': [
+    {'key': 'painting', 'label': 'Hội hoạ'},
+    {'key': 'anime', 'label': 'Anime'},
+    {'key': 'empty', 'label': 'Nhóm trống'},
+  ],
+  'styles': [
+    {
+      'key': 'oil',
+      'version': 1,
+      'name': 'Sơn dầu',
+      'family': 'painting',
+      'swatch': ['#7a4b2a', '#d9a441', '#2f4f6f'],
+      'example': 'artStyles/examples/oil.jpg',
+    },
+    {
+      'key': 'anime_cel',
+      'version': 1,
+      'name': 'Anime cel',
+      'family': 'anime',
+      'swatch': ['#ff6fa8', '#6fd3ff'],
+    },
+  ],
+};
+
+/// Thư viện ảnh giả: trả [bytes] khi chọn, ghi lại mỗi lần tải lên.
+class _Photos extends RunCardPhotos {
+  _Photos([this.bytes]);
+
+  Uint8List? bytes;
+  final uploads = <String>[];
+
+  @override
+  Future<Uint8List?> pick() async => bytes;
+
+  @override
+  Future<String> upload(
+    String activityId,
+    Uint8List bytes,
+    String contentType,
+  ) async {
+    uploads.add('$activityId $contentType ${bytes.length}');
+    return 'users/u1/runCards/$activityId/src.jpg';
+  }
+}
+
+/// Độ sáng trung bình RGB tại điểm (fx, fy) tính theo tỉ lệ khung 300x420.
+Future<int Function(double, double)> _paintArt(
+  WidgetTester tester,
+  List<LatLng> points,
+) async {
+  final boundary = GlobalKey();
+  await tester.pumpWidget(
+    Center(
+      child: RepaintBoundary(
+        key: boundary,
+        child: SizedBox(
+          width: 300,
+          height: 420,
+          child: RunRouteArt(points: points, tier: GameCardTier.rare),
+        ),
+      ),
+    ),
+  );
+  late ByteData pixels;
+  await tester.runAsync(() async {
+    final render =
+        boundary.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+    pixels = (await (await render.toImage()).toByteData())!;
+  });
+  return (fx, fy) {
+    final i = ((420 * fy).toInt() * 300 + (300 * fx).toInt()) * 4;
+    return (pixels.getUint8(i) +
+            pixels.getUint8(i + 1) +
+            pixels.getUint8(i + 2)) ~/
+        3;
+  };
+}
+
+/// Bảng chia sẻ của máy: ghi lại thứ được gửi đi.
+class _FakeShare extends SharePlatform {
+  final shared = <ShareParams>[];
+
+  @override
+  Future<ShareResult> share(ShareParams params) async {
+    shared.add(params);
+    return const ShareResult('ok', ShareResultStatus.success);
+  }
+}
+
+final share = _FakeShare();
+
+/// File khoe giữ trong bộ nhớ thay cho thư mục của app.
+class _MemoryShareStore extends CardShareStore {
+  final saved = <String, CardShareFiles>{};
+  int saves = 0;
+
+  @override
+  Future<CardShareFiles?> load(String cardId, String key) async =>
+      saved['$cardId/$key'];
+
+  @override
+  Future<void> save(String cardId, String key, CardShareFiles files) async {
+    saves++;
+    saved['$cardId/$key'] = files;
+  }
+
+  @override
+  Future<void> clear(String cardId) async =>
+      saved.removeWhere((k, _) => k.startsWith('$cardId/'));
+}
+
+/// API giả: ghi lại lệnh gọi, POST lật thẻ đẩy thẻ vào stream như Firestore.
+class _Backend {
+  final requests = <String>[];
+  final artBodies = <Map<String, dynamic>>[];
+  final cards = StreamController<RunCard?>.broadcast();
+  Map<String, dynamic> view = {'card': null, 'odds': _cardJson()['odds']};
+
+  /// Mã lỗi 409 trả cho lệnh vẽ; null thì nhận và đẩy thẻ đang vẽ.
+  String? artError;
+
+  /// Danh sách GET /v1/art-styles trả về; có [stylesGate] thì đợi nó xong mới trả.
+  Map<String, dynamic> styles = _styles;
+  Completer<void>? stylesGate;
+
+  /// Lật thì trượt như buổi ngắn quay hụt: 409 card_missed, view báo trượt.
+  bool missRoll = false;
+
+  RunNowApiClient client() => RunNowApiClient(
+    baseUri: Uri.parse('https://api.example.test'),
+    tokenProvider: ({required forceRefresh}) async => 'token',
+    appVersion: () async => '1.6.0+1',
+    appPlatform: 'ios',
+    httpClient: MockClient((request) async {
+      requests.add('${request.method} ${request.url.path}');
+      Object out = view;
+      var status = 200;
+      if (request.url.path == '/v1/art-styles') {
+        await stylesGate?.future;
+        out = styles;
+      } else if (request.url.path.endsWith('/art')) {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        artBodies.add(body);
+        if (artError case final code?) {
+          status = 409;
+          out = {'error': code, 'message': 'bị từ chối'};
+        } else {
+          final card = _cardJson(
+            art: {
+              'status': 'drawing',
+              'attempt': 1,
+              'requestedAt': DateTime.now().toUtc().toIso8601String(),
+              ...body,
+            },
+          );
+          cards.add(RunCard.fromJson(card));
+          out = {'card': card};
+        }
+      } else if (request.method == 'POST' && missRoll) {
+        status = 409;
+        out = {'error': 'card_missed', 'message': 'Lần lật này không ra thẻ.'};
+        view = {'card': null, 'reason': 'card_missed'};
+      } else if (request.method == 'POST') {
+        final card = _cardJson(tier: 'mythic');
+        cards.add(RunCard.fromJson(card));
+        out = {'card': card};
+      }
+      return http.Response(
+        jsonEncode(out),
+        status,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    }),
+  );
+}
+
+Future<void> _pumpPanel(
+  WidgetTester tester,
+  _Backend backend, {
+  RunCard? initial,
+  List<ActivityPhoto> photos = const [],
+  _Photos? picker,
+  CardShareStore? shareStore,
+}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        runNowApiClientProvider.overrideWithValue(backend.client()),
+        cardShareStoreProvider.overrideWithValue(
+          shareStore ?? _MemoryShareStore(),
+        ),
+        runCardPhotosProvider.overrideWithValue(picker ?? _Photos()),
+        runCardProvider('r1').overrideWith((ref) async* {
+          yield initial;
+          yield* backend.cards.stream;
+        }),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: RunCardPanel(
+              activity: _run(photos: photos),
+              owner: 'An',
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+  await tester.pump();
+}
+
+/// Cho sheet và dialog chạy xong hiệu ứng mở/đóng. Không dùng pumpAndSettle
+/// vì vòng xoay "đang vẽ" chạy mãi.
+Future<void> _settle(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 500));
+}
+
+/// Cuộn tới [text] rồi chạm. ensureVisible chỉ đặt vị trí cuộn, cần một frame
+/// để layout theo kịp.
+Future<void> _tapText(WidgetTester tester, String text) async {
+  await tester.ensureVisible(find.text(text));
+  await tester.pump();
+  await tester.tap(find.text(text));
+  await _settle(tester);
+}
+
+/// Ô mô tả thêm của sheet vẽ, cuộn tới cho nó được dựng.
+Future<Finder> _noteField(WidgetTester tester) async {
+  final field = find.widgetWithText(TextField, 'Mô tả thêm');
+  await tester.scrollUntilVisible(
+    field,
+    200,
+    scrollable: find
+        .descendant(
+          of: find.byType(RunCardArtSheet),
+          matching: find.byWidgetPredicate(
+            (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+          ),
+        )
+        .first,
+  );
+  return field;
+}
+
+/// Nút Vẽ ở chân sheet có bật không.
+bool _drawEnabled(WidgetTester tester, String label) => tester
+    .widget<ButtonStyleButton>(
+      find.ancestor(
+        of: find.text(label),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      ),
+    )
+    .enabled;
+
+/// Đồng ý gửi ảnh, bấm Vẽ ở chân sheet rồi xác nhận trong dialog.
+Future<void> _consentAndDraw(WidgetTester tester, String label) async {
+  await tester.ensureVisible(find.byType(Checkbox));
+  await tester.pump();
+  await tester.tap(find.byType(Checkbox));
+  await tester.pump();
+  await _confirmDraw(tester, label);
+}
+
+Future<void> _confirmDraw(WidgetTester tester, String label) async {
+  await _tapText(tester, label);
+  expect(find.text('$label?'), findsOne);
+  await tester.tap(find.widgetWithText(FilledButton, 'Vẽ'));
+  await _settle(tester);
+}
+
+void main() {
+  setUpAll(() => SharePlatform.instance = share);
+
+  test('server tier keys map onto the five card tiers', () {
+    // Khoá lấy từ backend run_card.go: common, rare, epic, legendary, mythic.
+    expect(runCardTierFromKey('common'), GameCardTier.common);
+    expect(runCardTierFromKey('rare'), GameCardTier.rare);
+    expect(runCardTierFromKey('epic'), GameCardTier.superRare);
+    expect(runCardTierFromKey('legendary'), GameCardTier.legendary);
+    expect(runCardTierFromKey('mythic'), GameCardTier.mythic);
+    expect(runCardTierFromKey('cosmic'), GameCardTier.common);
+  });
+
+  test('a secret variant names its element, anything else is a plain card', () {
+    // Khoá lấy từ backend run_card.go: "secret." + tên hành.
+    expect(runCardSecretFromKey('secret.metal'), RunNowElement.metal);
+    expect(runCardSecretFromKey('secret.wood'), RunNowElement.wood);
+    expect(runCardSecretFromKey('secret.water'), RunNowElement.water);
+    expect(runCardSecretFromKey('secret.fire'), RunNowElement.fire);
+    expect(runCardSecretFromKey('secret.earth'), RunNowElement.earth);
+    expect(runCardSecretFromKey('secret.gold'), isNull);
+    expect(runCardSecretFromKey('fire'), isNull);
+    expect(runCardSecretFromKey(null), isNull);
+
+    expect(_card().secret, isNull);
+    final secret = RunCard.fromJson({..._cardJson(), 'variant': 'secret.fire'});
+    expect(secret.secret, RunNowElement.fire);
+    expect(runCardData(secret, owner: 'An').secret, RunNowElement.fire);
+  });
+
+  test('only running activities get a card', () {
+    ActivitySummary kind(ActivityKind k) => ActivitySummary(
+      id: 'a',
+      name: 'a',
+      kind: k,
+      startedAt: DateTime(2026),
+      distanceMeters: 40000,
+      movingTimeSeconds: 3600,
+      elapsedTimeSeconds: 3600,
+    );
+    expect(hasRunCard(kind(ActivityKind.run)), isTrue);
+    expect(hasRunCard(kind(ActivityKind.trailRun)), isTrue);
+    expect(hasRunCard(kind(ActivityKind.virtualRun)), isTrue);
+    expect(hasRunCard(kind(ActivityKind.ride)), isFalse);
+    expect(hasRunCard(kind(ActivityKind.walk)), isFalse);
+    expect(hasRunCard(kind(ActivityKind.motorbike)), isFalse);
+  });
+
+  test('a card parses from the API and from a Firestore doc alike', () {
+    final api = _card(art: _done);
+    expect(api.tier, GameCardTier.superRare);
+    expect(api.km, 15);
+    expect(api.odds.map((o) => o.percent), [0, 63.5, 25.2, 9.1, 2.2]);
+    expect(api.rolledAt, DateTime.utc(2026, 10, 24, 8));
+    expect(api.snapshot.route, const [LatLng(21, 105.8), LatLng(21.01, 105.8)]);
+    expect(api.artPath, 'users/u1/runCards/r1/art.png');
+
+    // Doc Firestore đã đổi Timestamp sang DateTime; map con là Map thường.
+    final doc = RunCard.fromJson({
+      ..._cardJson(),
+      'rolledAt': DateTime.utc(2026, 10, 24, 8),
+      'art': <Object?, Object?>{
+        'status': 'drawing',
+        'style': 'linocut',
+        'attempt': 2,
+        'requestedAt': DateTime.utc(2026, 10, 24, 9),
+      },
+    });
+    expect(doc.rolledAt, DateTime.utc(2026, 10, 24, 8));
+    expect(doc.art!.status, RunCardArtStatus.drawing);
+    expect(doc.art!.requestedAt, DateTime.utc(2026, 10, 24, 9));
+    expect(doc.artPath, isNull, reason: 'đang vẽ thì chưa có tranh');
+  });
+
+  test('card text comes from the snapshot', () {
+    final data = runCardData(_card(), owner: 'An Nguyễn');
+    expect(data.tier, GameCardTier.superRare);
+    expect(data.kind, 'BUỔI CHẠY');
+    expect(data.hero, '15,0');
+    expect(data.title, 'Dọc bờ sông Hồng');
+    expect(data.owner, 'AN NGUYỄN');
+    expect(data.serial, '06:12');
+    // 4965 s cho 15 km là 331 s/km.
+    expect(data.desc, 'Pace 5:31 /km · 1:22:45 · leo 40 m');
+    expect(data.meta, 'THỨ BẢY · SÁNG');
+    expect(data.date, '24.10.2026');
+    expect(
+      runCardData(_card(elevation: null), owner: 'An').desc,
+      'Pace 5:31 /km · 1:22:45',
+    );
+  });
+
+  test('the drawn art replaces the route, which moves into a stamp', () {
+    final plain = runCardData(_card(), owner: 'An');
+    expect(plain.art, isA<RunRouteArt>());
+    expect(plain.stamp, isNull);
+
+    final drawing = runCardData(
+      _card(art: {'status': 'drawing', 'style': 'linocut', 'attempt': 1}),
+      owner: 'An',
+    );
+    expect(drawing.art, isA<RunRouteArt>());
+
+    final drawn = runCardData(_card(art: _done), owner: 'An');
+    expect(drawn.art, isA<StoragePhoto>());
+    expect(drawn.stamp, isA<RunRouteStamp>());
+
+    final noGps = runCardData(
+      _card(art: _done, route: const []),
+      owner: 'An',
+    );
+    expect(noGps.stamp, isNull);
+  });
+
+  test('a short last split stays out of the pace chart', () {
+    final paces = runCardSplitPaces([
+      const RunCardSplit(distanceMeters: 1000, movingTimeSeconds: 330),
+      const RunCardSplit(distanceMeters: 1000, movingTimeSeconds: 320),
+      const RunCardSplit(distanceMeters: 150, movingTimeSeconds: 40),
+    ]);
+    expect(paces, [330, 320]);
+  });
+
+  testWidgets('route art draws the run as a bright line across the card', (
+    tester,
+  ) async {
+    // Đường thẳng bắc–nam: hình vẽ nằm giữa thẻ theo chiều ngang, trong khoảng
+    // trống phía trên khối chữ.
+    final luma = await _paintArt(tester, const [
+      LatLng(21.00, 105.8),
+      LatLng(21.01, 105.8),
+    ]);
+    expect(luma(0.5, 0.38), greaterThan(200), reason: 'nét đường chạy');
+    expect(luma(0.05, 0.05), lessThan(80), reason: 'nền');
+
+    final empty = await _paintArt(tester, const []);
+    expect(empty(0.5, 0.38), lessThan(80), reason: 'không GPS thì chỉ có nền');
+  });
+
+  testWidgets('the back shows the map, per-km pace and the three numbers', (
+    tester,
+  ) async {
+    final card = _card(
+      tier: 'mythic',
+      splits: const [
+        {'distanceMeters': 1000, 'movingTimeSeconds': 330},
+        {'distanceMeters': 1000, 'movingTimeSeconds': 320},
+        {'distanceMeters': 1000, 'movingTimeSeconds': 341},
+      ],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: AchievementCard(
+            data: runCardData(card, owner: 'An'),
+            back: true,
+            animate: false,
+          ),
+        ),
+      ),
+    );
+    expect(find.byType(FlutterMap), findsOneWidget);
+    expect(find.text('NHANH NHẤT · KM 2 · 5:20'), findsOneWidget);
+    expect(find.text('15,0'), findsOneWidget);
+    expect(find.text('1:22:45'), findsOneWidget);
+    expect(find.text('5:31'), findsOneWidget);
+    expect(find.text('THẦN THOẠI'), findsOneWidget);
+    expect(find.text('Dọc bờ sông Hồng'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a run without GPS or splits has a back without map or chart', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: AchievementCard(
+            data: runCardData(_card(route: const []), owner: 'An'),
+            back: true,
+            animate: false,
+          ),
+        ),
+      ),
+    );
+    expect(find.byType(FlutterMap), findsNothing);
+    expect(find.textContaining('NHANH NHẤT'), findsNothing);
+    expect(find.text('1:22:45'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an unrolled run shows its odds and flips into the card', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    await _pumpPanel(tester, backend);
+    expect(find.text('LẬT ĐỂ XEM ĐỘ HIẾM'), findsOneWidget);
+    expect(find.text('TỈ LỆ CHO BUỔI 15,0 KM'), findsOneWidget);
+    // Bậc 0% không hiện.
+    expect(find.text('Thường'), findsNothing);
+    expect(find.text('63,5%'), findsOneWidget);
+    expect(find.text('2,2%'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Lật thẻ'));
+    await tester.tap(find.text('Lật thẻ'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(backend.requests, [
+      'GET /v1/activities/r1/card',
+      'POST /v1/activities/r1/card',
+    ]);
+    expect(find.text('Lật thẻ'), findsNothing);
+    expect(find.textContaining('Thần thoại · 15,0 km'), findsOneWidget);
+    expect(find.text('Khoe thẻ'), findsOneWidget);
+    // Nút vẽ và nút khoe chung một hàng, vẽ bên trái.
+    final draw = tester.getCenter(find.text('Vẽ tranh nền'));
+    final share = tester.getCenter(find.text('Khoe thẻ'));
+    expect(draw.dy, share.dy);
+    expect(draw.dx, lessThan(share.dx));
+  });
+
+  testWidgets('a short run shows its chance and a miss is final', (
+    tester,
+  ) async {
+    final backend = _Backend()
+      ..view = {'card': null, 'odds': _cardJson()['odds'], 'chance': 20}
+      ..missRoll = true;
+    await _pumpPanel(tester, backend);
+    expect(find.textContaining('20% cơ hội ra thẻ'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Lật thẻ'));
+    await tester.pump();
+    await tester.tap(find.text('Lật thẻ'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(backend.requests, [
+      'GET /v1/activities/r1/card',
+      'POST /v1/activities/r1/card',
+      'GET /v1/activities/r1/card',
+    ]);
+    expect(find.textContaining('không ra thẻ'), findsOneWidget);
+    expect(find.text('Lật thẻ'), findsNothing);
+    expect(find.text('LẬT THẤT BẠI'), findsOneWidget);
+    expect(find.text('LẬT ĐỂ XEM ĐỘ HIẾM'), findsNothing);
+    // Trượt là kết quả, không báo như lỗi.
+    expect(find.textContaining('Không lật được thẻ'), findsNothing);
+  });
+
+  testWidgets('a duplicate run says why it has no card', (tester) async {
+    final backend = _Backend()
+      ..view = {'card': null, 'reason': 'card_duplicate'};
+    await _pumpPanel(tester, backend);
+    expect(find.textContaining('trùng một buổi khác'), findsOneWidget);
+    expect(find.text('Lật thẻ'), findsNothing);
+    expect(find.text('KHÔNG CÓ THẺ'), findsOneWidget);
+  });
+
+  testWidgets('Khoe thẻ reuses the saved files and shares the chosen one', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    final card = _card();
+    // Byte giả: màn khoe không giải mã video, chỉ gửi đi.
+    final video = Uint8List.fromList([0, 0, 0, 24, 102, 116, 121, 112]);
+    // Đã khoe một lần: ba file nằm trong máy theo khoá của thẻ này.
+    final store = _MemoryShareStore()
+      ..saved['r1/${runCardShareKey(card, runCardData(card, owner: 'An').owner, skin: RunCardSkin.classic)}'] =
+          CardShareFiles(
+            front: _png,
+            back: _png,
+            motion: video,
+            motionType: 'video/mp4',
+          );
+    await _pumpPanel(tester, backend, initial: card, shareStore: store);
+    expect(backend.requests, isEmpty, reason: 'đã có thẻ thì không hỏi tỉ lệ');
+
+    await _tapText(tester, 'Khoe thẻ');
+    await _settle(tester);
+    expect(store.saves, 0, reason: 'có sẵn thì không tạo lại');
+    for (final label in ['Mặt trước', 'Mặt sau', 'Video 3D']) {
+      expect(find.text(label), findsOneWidget);
+    }
+
+    await tester.tap(find.text('Khoe video 3d'));
+    await tester.pump();
+    final first = share.shared.last;
+    expect(first.fileNameOverrides, ['3i-r1-motion.mp4']);
+    expect(first.files!.single.mimeType, 'video/mp4');
+    expect(await first.files!.single.readAsBytes(), video);
+    expect(first.text, startsWith('Dọc bờ sông Hồng · 15'));
+
+    await tester.tap(find.text('Mặt sau'));
+    await tester.pump();
+    await tester.tap(find.text('Khoe mặt sau'));
+    await tester.pump();
+    final second = share.shared.last;
+    expect(second.fileNameOverrides, ['3i-r1-back.png']);
+    expect(second.files!.single.mimeType, 'image/png');
+  });
+
+  testWidgets('picking a skin on the share screen shares that skin\'s files', (
+    tester,
+  ) async {
+    final card = _card();
+    final owner = runCardData(card, owner: 'An').owner;
+    CardShareFiles files(int mark) => CardShareFiles(
+      front: _png,
+      back: _png,
+      motion: Uint8List.fromList([0, 0, 0, 24, 102, 116, 121, mark]),
+      motionType: 'video/mp4',
+    );
+    final fire = RunCardSkin.forTheme(
+      RunNowAppearance.dark,
+      RunNowElement.fire,
+    );
+    final store = _MemoryShareStore()
+      ..saved['r1/${runCardShareKey(card, owner, skin: RunCardSkin.classic)}'] =
+          files(1)
+      ..saved['r1/${runCardShareKey(card, owner, skin: fire)}'] = files(2);
+    await _pumpPanel(tester, _Backend(), initial: card, shareStore: store);
+
+    await _tapText(tester, 'Khoe thẻ');
+    await _settle(tester);
+    await tester.tap(find.byTooltip('Hỏa'));
+    await _settle(tester);
+    expect(store.saves, 0, reason: 'bộ màu đã có file thì không ghi lại');
+
+    await tester.tap(find.text('Khoe video 3d'));
+    await tester.pump();
+    expect(
+      await share.shared.last.files!.single.readAsBytes(),
+      files(2).motion,
+    );
+  });
+
+  testWidgets('a secret card keeps its own colours on screen and in shares', (
+    tester,
+  ) async {
+    final card = RunCard.fromJson({..._cardJson(), 'variant': 'secret.water'});
+    final owner = runCardData(card, owner: 'An').owner;
+    // File khoe của thẻ Ẩn nằm theo bộ màu của hành, dù máy đang chọn bộ khác.
+    final store = _MemoryShareStore()
+      ..saved['r1/${runCardShareKey(card, owner, skin: RunCardSkin.secret(RunNowElement.water))}'] =
+          CardShareFiles(
+            front: _png,
+            back: _png,
+            motion: Uint8List.fromList([0, 0, 0, 24, 102, 116, 121, 112]),
+            motionType: 'video/mp4',
+          );
+    await _pumpPanel(tester, _Backend(), initial: card, shareStore: store);
+    expect(find.byTooltip('Bộ màu thẻ'), findsNothing);
+
+    await _tapText(tester, 'Khoe thẻ');
+    await _settle(tester);
+    expect(store.saves, 0, reason: 'mở đúng file của bộ màu hành Thủy');
+    expect(find.byTooltip('Hỏa'), findsNothing, reason: 'không có chọn bộ màu');
+  });
+
+  test('the share cache key follows what the card shows', () {
+    final plain = _card();
+    final drawn = _card(art: {'status': 'done', 'path': 'u/a/r1.png'});
+    String key(RunCard card, String owner, [RunCardSkin? skin]) =>
+        runCardShareKey(card, owner, skin: skin ?? RunCardSkin.classic);
+    expect(key(plain, 'An'), key(_card(), 'An'));
+    expect(key(plain, 'An'), isNot(key(drawn, 'An')));
+    expect(key(plain, 'An'), isNot(key(plain, 'Bình')));
+    expect(key(plain, 'An'), isNot(key(_card(tier: 'rare'), 'An')));
+    final paperFire = RunCardSkin.forTheme(
+      RunNowAppearance.light,
+      RunNowElement.fire,
+    );
+    expect(key(plain, 'An'), isNot(key(plain, 'An', paperFire)));
+    expect(
+      key(plain, 'An', paperFire),
+      isNot(
+        key(
+          plain,
+          'An',
+          RunCardSkin.forTheme(RunNowAppearance.light, RunNowElement.water),
+        ),
+      ),
+    );
+  });
+
+  test('a picked photo is typed from its first bytes', () {
+    // Chữ ký file: JPEG bắt đầu FF D8, PNG bắt đầu 89 'PNG'.
+    expect(
+      runCardPhotoType(Uint8List.fromList([0xFF, 0xD8, 0xFF, 0xE0])),
+      'image/jpeg',
+    );
+    expect(runCardPhotoType(_png), 'image/png');
+    expect(runCardPhotoType(utf8.encode('GIF89a')), isNull);
+    expect(runCardPhotoType(Uint8List(0)), isNull);
+  });
+
+  testWidgets(
+    'reopening the style sheet shows the last styles at once and refreshes them',
+    (tester) async {
+      final backend = _Backend();
+      await _pumpPanel(tester, backend, initial: _card());
+      await _tapText(tester, 'Vẽ tranh nền');
+      expect(find.text('Sơn dầu'), findsOne);
+      Navigator.of(tester.element(find.text('Sơn dầu'))).pop();
+      await _settle(tester);
+
+      backend.stylesGate = Completer<void>();
+      backend.styles = {
+        ..._styles,
+        'styles': [
+          ...(_styles['styles']! as List),
+          {
+            'key': 'ink',
+            'version': 1,
+            'name': 'Thuỷ mặc',
+            'family': 'painting',
+            'swatch': ['#222222', '#f4f1ea'],
+          },
+        ],
+      };
+      await _tapText(tester, 'Vẽ tranh nền');
+      expect(find.text('Sơn dầu'), findsOne, reason: 'hiện ngay bản lần trước');
+      expect(
+        find.descendant(
+          of: find.byType(RunCardArtSheet),
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsNothing,
+      );
+      expect(find.text('Thuỷ mặc'), findsNothing);
+
+      backend.stylesGate!.complete();
+      await _settle(tester);
+      expect(
+        find.text('Thuỷ mặc'),
+        findsOne,
+        reason: 'tải ngầm xong thì cập nhật',
+      );
+      expect(
+        backend.requests.where((r) => r == 'GET /v1/art-styles'),
+        hasLength(2),
+      );
+    },
+  );
+
+  testWidgets('a card without art draws with a style and a run photo', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    await _pumpPanel(tester, backend, initial: _card(), photos: [_runPhoto]);
+    await _tapText(tester, 'Vẽ tranh nền');
+
+    expect(find.text('Thẻ Siêu hiếm · vẽ một lần, xong là cố định'), findsOne);
+    expect(find.text('Hội hoạ'), findsOne);
+    expect(find.text('Nhóm trống'), findsNothing);
+    expect(find.text('Sơn dầu'), findsOne);
+    expect(find.text('Anime cel'), findsNothing, reason: 'khác nhóm đang mở');
+    expect(_drawEnabled(tester, 'Chọn một phong cách'), isFalse);
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is StorageImage && w.path == 'artStyles/examples/oil.jpg',
+      ),
+      findsOne,
+      reason: 'Sơn dầu có ảnh mẫu thì ô hiện ảnh đó',
+    );
+
+    await _tapText(tester, 'Sơn dầu');
+    expect(_drawEnabled(tester, 'Vẽ bằng Sơn dầu'), isTrue);
+
+    await tester.tap(find.bySemanticsLabel('Ảnh buổi chạy'));
+    await tester.pump();
+    expect(
+      _drawEnabled(tester, 'Vẽ bằng Sơn dầu'),
+      isFalse,
+      reason: 'có ảnh thì phải đồng ý gửi ảnh trước',
+    );
+
+    await _consentAndDraw(tester, 'Vẽ bằng Sơn dầu');
+    expect(backend.artBodies, [
+      {'style': 'oil', 'photoPath': _runPhotoPath},
+    ]);
+    expect(find.text('Chọn phong cách'), findsNothing, reason: 'sheet đóng');
+    expect(find.text('Đang vẽ tranh nền'), findsOne);
+    expect(find.text('Vẽ lại'), findsNothing, reason: 'vừa gửi thì chưa kẹt');
+  });
+
+  testWidgets('a note goes with the draw, trimmed and capped at 200 runes', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    await _pumpPanel(tester, backend, initial: _card());
+    await _tapText(tester, 'Vẽ tranh nền');
+    await _tapText(tester, 'Sơn dầu');
+    final note = await _noteField(tester);
+
+    await tester.enterText(note, 'ệ' * 201);
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(note).controller!.text.runes.length,
+      200,
+      reason: 'cùng cách đếm rune với backend',
+    );
+    expect(find.text('200/200'), findsOne);
+
+    await tester.enterText(note, '  áo đỏ, chạy cùng chú chó  ');
+    await _confirmDraw(tester, 'Vẽ bằng Sơn dầu');
+    expect(backend.artBodies, [
+      {'style': 'oil', 'note': 'áo đỏ, chạy cùng chú chó'},
+    ]);
+  });
+
+  testWidgets('the style sheet keeps one height whichever group is open', (
+    tester,
+  ) async {
+    // Màn cao để nhóm một phong cách không tự lấp đầy sheet.
+    tester.view.physicalSize = const Size(400, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await _pumpPanel(tester, _Backend(), initial: _card());
+    await _tapText(tester, 'Vẽ tranh nền');
+    final sheet = find.byType(RunCardArtSheet);
+    expect(tester.getSize(sheet).height, 1600 * 0.88);
+
+    await _tapText(tester, 'Anime');
+    expect(find.text('Anime cel'), findsOne);
+    expect(tester.getSize(sheet).height, 1600 * 0.88);
+  });
+
+  testWidgets('an uploaded PNG goes up before the draw request', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    final picker = _Photos(utf8.encode('GIF89a....'));
+    await _pumpPanel(tester, backend, initial: _card(), picker: picker);
+    await _tapText(tester, 'Vẽ tranh nền');
+    await _tapText(tester, 'Anime');
+    await _tapText(tester, 'Anime cel');
+
+    await _tapText(tester, 'Tải ảnh');
+    expect(find.text('Chỉ dùng được ảnh JPEG hoặc PNG.'), findsOne);
+    expect(find.byType(Checkbox), findsNothing, reason: 'GIF không được nhận');
+
+    picker.bytes = _png;
+    await _tapText(tester, 'Tải ảnh');
+    await _consentAndDraw(tester, 'Vẽ bằng Anime cel');
+    expect(picker.uploads, ['r1 image/png ${_png.length}']);
+    expect(backend.artBodies, [
+      {'style': 'anime_cel', 'photoPath': 'users/u1/runCards/r1/src.jpg'},
+    ]);
+  });
+
+  testWidgets('a refused draw keeps the sheet open with the reason', (
+    tester,
+  ) async {
+    final backend = _Backend()..artError = 'art_fixed';
+    await _pumpPanel(tester, backend, initial: _card());
+    await _tapText(tester, 'Vẽ tranh nền');
+    await _tapText(tester, 'Sơn dầu');
+    await _confirmDraw(tester, 'Vẽ bằng Sơn dầu');
+
+    expect(backend.artBodies, [
+      {'style': 'oil'},
+    ]);
+    expect(find.text('Thẻ này đã có tranh, không vẽ lại được.'), findsOne);
+    expect(find.text('Chọn phong cách'), findsOne);
+  });
+
+  testWidgets('a failed draw says why and reopens with the old choice', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    await _pumpPanel(
+      tester,
+      backend,
+      initial: _card(
+        art: {
+          'status': 'failed',
+          'style': 'anime_cel',
+          'attempt': 1,
+          'reason': 'budget',
+          'note': 'áo đỏ',
+        },
+      ),
+    );
+    expect(
+      find.text('Hôm nay 3i đã dùng hết hạn mức vẽ tranh. Mai thử lại nhé.'),
+      findsOne,
+    );
+    await _tapText(tester, 'Vẽ lại');
+    expect(find.text('Vẽ bằng Anime cel'), findsOne);
+    final note = await _noteField(tester);
+    expect(tester.widget<TextField>(note).controller!.text, 'áo đỏ');
+  });
+
+  testWidgets('a stuck draw offers to send the same choice again', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    await _pumpPanel(
+      tester,
+      backend,
+      initial: _card(
+        art: {
+          'status': 'drawing',
+          'style': 'oil',
+          'attempt': 1,
+          'photoPath': _runPhotoPath,
+          'note': 'áo đỏ',
+          'requestedAt': DateTime.now()
+              .toUtc()
+              .subtract(const Duration(minutes: 10))
+              .toIso8601String(),
+        },
+      ),
+    );
+    expect(find.text('Lâu quá chưa xong, có thể lần vẽ bị kẹt.'), findsOne);
+    await _tapText(tester, 'Vẽ lại');
+    // Thiếu note thì backend coi là lựa chọn khác và báo đang vẽ.
+    expect(backend.artBodies, [
+      {'style': 'oil', 'photoPath': _runPhotoPath, 'note': 'áo đỏ'},
+    ]);
+  });
+}

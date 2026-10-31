@@ -216,6 +216,10 @@ abstract interface class MemberRepository {
 
 abstract interface class LiveTrackingRepository {
   Stream<List<LiveTrackingSession>> watchClubLiveSessions();
+
+  /// Một phiên theo id, kể cả khi đã xong hay mất tín hiệu (màn xem live cần
+  /// biết để báo). Null khi document không còn.
+  Stream<LiveTrackingSession?> watchSession(String sessionId);
   Stream<List<LiveTrackingSession>> watchContractLiveSessions(
     String contractId,
   );
@@ -224,6 +228,8 @@ abstract interface class LiveTrackingRepository {
     required LiveTrackingStatus status,
     required List<RoutePoint> routePreview,
     String? contractId,
+    String? roomId,
+    bool roomOnly = false,
   });
   Future<void> publishPhoto({
     required String sessionId,
@@ -277,24 +283,21 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
     int limit = 30,
     Object? cursor,
   }) async {
-    Query<Map<String, dynamic>> query = _activities.orderBy(
-      'startedAt',
-      descending: true,
+    // Qua backend chứ không đọc Firestore trực tiếp: doc activity mang cả
+    // route, streams (gần hết dung lượng, 20 doc có thể vài MB) mà SDK trên
+    // điện thoại không bỏ bớt field được. Backend chỉ trả field danh sách cần.
+    final page = await _api.getActivities(
+      cursor: cursor as String?,
+      limit: limit,
     );
-    final documentCursor = cursor;
-    if (documentCursor is DocumentSnapshot<Map<String, dynamic>>) {
-      query = query.startAfterDocument(documentCursor);
-    }
-    final snapshot = await query.limit(limit).get();
-    final activities = snapshot.docs
-        .map(
-          (document) => ActivitySummary.fromMap(
-            document.data(),
-            includeRoutePoints: false,
-            includePhotos: false,
-          ),
-        )
-        .toList();
+    final activities = [
+      for (final map in page.activities)
+        ActivitySummary.fromMap(
+          map,
+          includeRoutePoints: false,
+          includePhotos: false,
+        ),
+    ];
     // Backend đã tự stamp `duplicateOfActivityId` lên doc lúc sync (cả lúc
     // 3i activity được tạo lẫn lúc Strava activity trùng giờ sync về sau,
     // xem `markRunNowDuplicates`/`SaveTracked` trong `activity_service.go`)
@@ -314,8 +317,8 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
                   : null,
             ),
       ],
-      nextCursor: snapshot.docs.isEmpty ? cursor : snapshot.docs.last,
-      hasMore: snapshot.docs.length == limit,
+      nextCursor: page.cursor,
+      hasMore: page.cursor != null,
     );
   }
 
@@ -1152,6 +1155,17 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
   static const _visibleLiveSessionLimit = 50;
   static const _activeStatusValues = ['running', 'paused'];
 
+  static LiveTrackingSession _session(String id, Map<String, dynamic> data) {
+    final startedAt = data['startedAt'];
+    final updatedAt = data['updatedAt'];
+    return LiveTrackingSession.fromMap({
+      ...data,
+      'id': id,
+      if (startedAt is Timestamp) 'startedAt': startedAt.toDate(),
+      if (updatedAt is Timestamp) 'updatedAt': updatedAt.toDate(),
+    });
+  }
+
   @override
   Stream<List<LiveTrackingSession>> watchClubLiveSessions() {
     return _liveSessions
@@ -1164,19 +1178,7 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
           final now = DateTime.now();
           final items =
               snapshot.docs
-                  .map((document) {
-                    final data = document.data();
-                    final startedAt = data['startedAt'];
-                    final updatedAt = data['updatedAt'];
-                    return LiveTrackingSession.fromMap({
-                      ...data,
-                      'id': document.id,
-                      if (startedAt is Timestamp)
-                        'startedAt': startedAt.toDate(),
-                      if (updatedAt is Timestamp)
-                        'updatedAt': updatedAt.toDate(),
-                    });
-                  })
+                  .map((document) => _session(document.id, document.data()))
                   .where(
                     (session) => session.isActive && !session.isExpired(now),
                   )
@@ -1189,17 +1191,30 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
   }
 
   @override
+  Stream<LiveTrackingSession?> watchSession(String sessionId) {
+    return _liveSessions.doc(sessionId).snapshots().map((document) {
+      final data = document.data();
+      return data == null ? null : _session(document.id, data);
+    });
+  }
+
+  @override
   Future<void> publishSnapshot({
     required TrackingSessionSnapshot snapshot,
     required LiveTrackingStatus status,
     required List<RoutePoint> routePreview,
     String? contractId,
+    String? roomId,
+    bool roomOnly = false,
   }) async {
     final owner = await _ownerProfile();
     final profileVisibility = ProfileVisibility.fromValue(
       owner['profileVisibility'] as String?,
     );
-    final liveVisibility = profileVisibility == ProfileVisibility.public
+    // Phòng kín (chủ duyệt, mật khẩu): chỉ người trong phòng xem được, rules
+    // cho họ đọc qua roomId kể cả khi visibility là private.
+    final liveVisibility =
+        profileVisibility == ProfileVisibility.public && !roomOnly
         ? LiveTrackingVisibility.club
         : LiveTrackingVisibility.private;
     final data = <String, dynamic>{
@@ -1218,6 +1233,7 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
       if (routePreview.isNotEmpty)
         'routePreview': routePreview.map((point) => point.toMap()).toList(),
       'contractId': contractId,
+      'roomId': roomId,
     }..removeWhere((key, value) => value == null);
     final avatarUrl = owner['avatarUrl'] as String?;
     if (avatarUrl != null && avatarUrl.trim().isNotEmpty) {
@@ -1250,19 +1266,7 @@ class FirestoreLiveTrackingRepository implements LiveTrackingRepository {
           final now = DateTime.now();
           final items =
               snapshot.docs
-                  .map((document) {
-                    final data = document.data();
-                    final startedAt = data['startedAt'];
-                    final updatedAt = data['updatedAt'];
-                    return LiveTrackingSession.fromMap({
-                      ...data,
-                      'id': document.id,
-                      if (startedAt is Timestamp)
-                        'startedAt': startedAt.toDate(),
-                      if (updatedAt is Timestamp)
-                        'updatedAt': updatedAt.toDate(),
-                    });
-                  })
+                  .map((document) => _session(document.id, document.data()))
                   .where(
                     (session) => session.isActive && !session.isExpired(now),
                   )
@@ -1450,6 +1454,23 @@ Map<String, dynamic> normalizeLeaderboardEntryPeriods(
   DateTime now,
 ) {
   final normalized = Map<String, dynamic>.from(data);
+  final current = leaderboardPeriodsCurrent(data, now);
+  if (!current.week) {
+    normalized['currentWeek'] = const <String, dynamic>{};
+  }
+  if (!current.month) {
+    normalized['currentMonth'] = const <String, dynamic>{};
+  }
+  return normalized;
+}
+
+/// Whether a precomputed leaderboard document's week and month aggregates
+/// belong to the periods containing [now]. Shared by every board whose
+/// document carries `currentWeekStart` / `currentMonthStart`.
+({bool week, bool month}) leaderboardPeriodsCurrent(
+  Map<String, dynamic> data,
+  DateTime now,
+) {
   final updatedAt = switch (data['updatedAt']) {
     Timestamp value => value.toDate(),
     DateTime value => value,
@@ -1457,24 +1478,20 @@ Map<String, dynamic> normalizeLeaderboardEntryPeriods(
   };
   final weekStart = startOfCurrentWeek(now);
   final monthStart = DateTime(now.year, now.month);
-
-  if (!_leaderboardPeriodIsCurrent(
-    storedKey: data['currentWeekStart'],
-    expectedKey: _leaderboardPeriodKey(weekStart),
-    legacyUpdatedAt: updatedAt,
-    periodStart: weekStart,
-  )) {
-    normalized['currentWeek'] = const <String, dynamic>{};
-  }
-  if (!_leaderboardPeriodIsCurrent(
-    storedKey: data['currentMonthStart'],
-    expectedKey: _leaderboardPeriodKey(monthStart),
-    legacyUpdatedAt: updatedAt,
-    periodStart: monthStart,
-  )) {
-    normalized['currentMonth'] = const <String, dynamic>{};
-  }
-  return normalized;
+  return (
+    week: _leaderboardPeriodIsCurrent(
+      storedKey: data['currentWeekStart'],
+      expectedKey: _leaderboardPeriodKey(weekStart),
+      legacyUpdatedAt: updatedAt,
+      periodStart: weekStart,
+    ),
+    month: _leaderboardPeriodIsCurrent(
+      storedKey: data['currentMonthStart'],
+      expectedKey: _leaderboardPeriodKey(monthStart),
+      legacyUpdatedAt: updatedAt,
+      periodStart: monthStart,
+    ),
+  );
 }
 
 bool _leaderboardPeriodIsCurrent({

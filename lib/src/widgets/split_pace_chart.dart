@@ -2,6 +2,50 @@ import 'package:flutter/material.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/theme.dart';
 
+typedef KmSplitRow = ({
+  String label,
+  double pace,
+  double widthFactor,
+  bool fastest,
+});
+
+/// Splits của buổi chạy thành từng dòng: pace mỗi km, độ dài thanh theo tốc
+/// độ so với km nhanh nhất. Km lẻ cuối buổi (dưới 950 m) ghi số km thật thay
+/// cho số thứ tự và không được tính là km nhanh nhất, vì đoạn ngắn hay chạy
+/// nước rút.
+List<KmSplitRow> kmSplitRows(List<Map<String, dynamic>> splits) {
+  final entries = <({String label, double pace, bool full})>[];
+  for (final split in splits) {
+    final distance = (split['distanceMeters'] as num?)?.toDouble() ?? 0;
+    final seconds = (split['movingTimeSeconds'] as num?)?.toInt() ?? 0;
+    if (distance <= 0 || seconds <= 0) continue;
+    final full = distance >= 950;
+    entries.add((
+      label: full
+          ? '${split['split'] ?? entries.length + 1}'
+          : (distance / 1000).toStringAsFixed(1),
+      pace: seconds / (distance / 1000),
+      full: full,
+    ));
+  }
+  final fullPaces = [
+    for (final e in entries)
+      if (e.full) e.pace,
+  ];
+  if (fullPaces.isEmpty) return const [];
+  final best = fullPaces.reduce((a, b) => a < b ? a : b);
+  return [
+    for (final e in entries)
+      (
+        label: e.label,
+        pace: e.pace,
+        widthFactor: (best / e.pace).clamp(0.15, 1.0),
+        fastest: e.full && e.pace == best,
+      ),
+  ];
+}
+
+/// Mục "Từng km" của màn chi tiết buổi chạy. Không có km trọn nào thì ẩn.
 class SplitPaceChart extends StatelessWidget {
   const SplitPaceChart({required this.splits, super.key});
 
@@ -9,177 +53,108 @@ class SplitPaceChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final entries = splits.map(_SplitEntry.fromMap).whereType<_SplitEntry>();
-    final items = entries.toList();
-    if (items.isEmpty) {
-      return const Text('Không có dữ liệu splits.');
-    }
-    final fastest = items.map((item) => item.pace).reduce(_min);
-    final slowest = items.map((item) => item.pace).reduce(_max);
-    final average =
-        items.fold<double>(0, (sum, item) => sum + item.pace) / items.length;
+    final rows = kmSplitRows(splits);
+    if (rows.isEmpty) return const SizedBox.shrink();
     final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final fastest = rows.firstWhere((row) => row.fastest);
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        gradient: LinearGradient(
-          colors: [palette.backgroundDeep, palette.glassStart],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: palette.glassStart,
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
             children: [
+              const Text(
+                'Từng km',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(width: 8),
               Text(
-                'PACE THEO KM',
+                'nhanh nhất km ${fastest.label}',
                 style: TextStyle(
-                  color: onSurface.withValues(alpha: 0.7),
+                  color: onSurface.withValues(alpha: 0.5),
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  letterSpacing: 1.2,
                 ),
-              ),
-              Text(
-                'TB ${formatPace(average)}',
-                style: TextStyle(color: onSurface, fontWeight: FontWeight.w700),
               ),
             ],
           ),
-          const SizedBox(height: 18),
-          for (final item in items) ...[
-            _SplitBar(item: item, fastestPace: fastest, slowestPace: slowest),
-            if (item != items.last) const SizedBox(height: 12),
+          const SizedBox(height: 12),
+          for (final row in rows) ...[
+            _SplitBar(row: row),
+            if (row != rows.last) const SizedBox(height: 7),
           ],
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              _LegendDot(color: palette.accent),
-              const SizedBox(width: 6),
-              Text(
-                'Nhanh nhất',
-                style: TextStyle(
-                  color: onSurface.withValues(alpha: 0.7),
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(width: 16),
-              _LegendDot(color: palette.secondary),
-              const SizedBox(width: 6),
-              Text(
-                'Pace từng km',
-                style: TextStyle(
-                  color: onSurface.withValues(alpha: 0.7),
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
   }
-
-  double _min(double left, double right) => left < right ? left : right;
-  double _max(double left, double right) => left > right ? left : right;
 }
 
 class _SplitBar extends StatelessWidget {
-  const _SplitBar({
-    required this.item,
-    required this.fastestPace,
-    required this.slowestPace,
-  });
+  const _SplitBar({required this.row});
 
-  final _SplitEntry item;
-  final double fastestPace;
-  final double slowestPace;
+  final KmSplitRow row;
 
   @override
   Widget build(BuildContext context) {
-    final range = slowestPace - fastestPace;
-    final paceScore = range == 0 ? 1.0 : (slowestPace - item.pace) / range;
-    final widthFactor = 0.42 + (paceScore * 0.58);
-    final isFastest = item.pace == fastestPace;
     final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    const number = TextStyle(
+      fontFamily: 'Barlow Condensed',
+      fontSize: 15,
+      fontWeight: FontWeight.w700,
+      fontFeatures: [FontFeature.tabularFigures()],
+    );
     return Row(
       children: [
         SizedBox(
-          width: 42,
+          width: 30,
           child: Text(
-            'K${item.index}',
-            style: TextStyle(color: onSurface, fontWeight: FontWeight.w700),
+            row.label,
+            style: number.copyWith(color: onSurface.withValues(alpha: 0.55)),
           ),
         ),
         Expanded(
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(99),
             child: ColoredBox(
-              color: onSurface.withValues(alpha: 0.12),
+              color: onSurface.withValues(alpha: 0.07),
               child: FractionallySizedBox(
-                widthFactor: widthFactor,
+                widthFactor: row.widthFactor,
                 alignment: Alignment.centerLeft,
                 child: Container(
-                  height: 18,
+                  height: 10,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    color: isFastest ? palette.accent : palette.secondary,
+                    borderRadius: BorderRadius.circular(99),
+                    color: row.fastest
+                        ? palette.accent
+                        : palette.accent.withValues(alpha: 0.45),
                   ),
                 ),
               ),
             ),
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
         SizedBox(
-          width: 72,
+          width: 44,
           child: Text(
-            formatPace(item.pace).replaceFirst(' /km', ''),
+            formatPace(row.pace).replaceFirst(' /km', ''),
             textAlign: TextAlign.end,
-            style: TextStyle(
-              color: isFastest ? palette.accent : onSurface,
-              fontWeight: FontWeight.w700,
+            style: number.copyWith(
+              color: row.fastest ? palette.accent : onSurface,
+              fontWeight: row.fastest ? FontWeight.w800 : FontWeight.w700,
             ),
           ),
         ),
       ],
     );
   }
-}
-
-class _LegendDot extends StatelessWidget {
-  const _LegendDot({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      child: const SizedBox.square(dimension: 8),
-    );
-  }
-}
-
-class _SplitEntry {
-  const _SplitEntry({required this.index, required this.pace});
-
-  static _SplitEntry? fromMap(Map<String, dynamic> split) {
-    final distance = (split['distanceMeters'] as num?)?.toDouble() ?? 0;
-    final seconds = (split['movingTimeSeconds'] as num?)?.toInt() ?? 0;
-    if (distance <= 0 || seconds <= 0) return null;
-    return _SplitEntry(
-      index: '${split['split'] ?? '-'}',
-      pace: seconds / (distance / 1000),
-    );
-  }
-
-  final String index;
-  final double pace;
 }

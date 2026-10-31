@@ -31,7 +31,9 @@ enum _DistanceRange {
   final String label;
 }
 
-class StreamChart extends StatelessWidget {
+/// Biểu đồ theo quãng đường của buổi chạy, mỗi lúc một loại số liệu, chọn
+/// bằng hàng tab ở trên.
+class StreamChart extends StatefulWidget {
   const StreamChart({
     required this.streams,
     this.onDistanceSelected,
@@ -42,7 +44,16 @@ class StreamChart extends StatelessWidget {
   final ValueChanged<double>? onDistanceSelected;
 
   @override
+  State<StreamChart> createState() => _StreamChartState();
+}
+
+class _StreamChartState extends State<StreamChart> {
+  int _selected = 0;
+
+  @override
   Widget build(BuildContext context) {
+    final streams = widget.streams;
+    final onDistanceSelected = widget.onDistanceSelected;
     final chartColor = context.runNowPalette.accent;
     final distances = streams['distance'];
     final energyKilojoules = cumulativeEnergyKilojoules(
@@ -64,20 +75,83 @@ class StreamChart extends StatelessWidget {
     if (series.isEmpty) {
       return const Text('Không có dữ liệu biểu đồ cho hoạt động này.');
     }
+    final selected = _selected.clamp(0, series.length - 1);
+    final item = series[selected];
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final item in series) ...[
-          _ShareableTelemetryCard(
-            title: '3i ${item.label}',
-            builder: (sharing) => _TrainingChartCard(
-              series: item,
-              shareMode: sharing,
-              onDistanceSelected: sharing ? null : onDistanceSelected,
-            ),
+        if (series.length > 1) ...[
+          _SeriesTabs(
+            labels: [for (final s in series) s.label],
+            selected: selected,
+            onSelected: (index) => setState(() => _selected = index),
           ),
-          if (item != series.last) const SizedBox(height: 12),
+          const SizedBox(height: 10),
         ],
+        _ShareableTelemetryCard(
+          key: ValueKey(item.label),
+          title: '3i ${item.label}',
+          builder: (sharing) => _TrainingChartCard(
+            series: item,
+            shareMode: sharing,
+            onDistanceSelected: sharing ? null : onDistanceSelected,
+          ),
+        ),
       ],
+    );
+  }
+}
+
+class _SeriesTabs extends StatelessWidget {
+  const _SeriesTabs({
+    required this.labels,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<String> labels;
+  final int selected;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          for (var i = 0; i < labels.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Material(
+                color: i == selected ? palette.accent : palette.glassStart,
+                borderRadius: BorderRadius.circular(999),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () => onSelected(i),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 7,
+                    ),
+                    child: Text(
+                      labels[i],
+                      style: TextStyle(
+                        color: i == selected
+                            ? palette.background
+                            : onSurface.withValues(alpha: 0.65),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -194,7 +268,11 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
 }
 
 class _ShareableTelemetryCard extends StatefulWidget {
-  const _ShareableTelemetryCard({required this.title, required this.builder});
+  const _ShareableTelemetryCard({
+    required this.title,
+    required this.builder,
+    super.key,
+  });
 
   final String title;
   final Widget Function(bool sharing) builder;

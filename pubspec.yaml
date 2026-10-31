@@ -1,7 +1,7 @@
 name: myrun
 description: 3i Run — nhật ký chạy bộ và cộng đồng, đồng bộ từ Strava.
 publish_to: none
-version: 1.5.0+13
+version: 1.8.0+18
 
 environment:
   sdk: ">=3.12.0 <4.0.0"
@@ -32,6 +32,8 @@ dependencies:
   firebase_analytics: ^12.4.3
   firebase_storage: ^13.4.3
   image_picker: ^1.2.3
+  # Encode GIF thẻ 3D để khoe; đã có sẵn trong lockfile qua gói khác.
+  image: ^4.8.0
   flutter_svg: ^2.2.1
   xml: ^6.6.1
   path_parsing: ^1.1.0
@@ -46,13 +48,19 @@ dependencies:
   health: ^13.3.2
   firebase_remote_config: ^6.5.6
   package_info_plus: ^10.2.0
+  cached_network_image: ^3.4.1
 dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
   flutter_test:
     sdk: flutter
-  fake_cloud_firestore: ^4.1.1
+  integration_test:
+    sdk: flutter
+  flutter_driver:
+    sdk: flutter
+  fake_cloud_firestore: ^4.2.0
   firebase_auth_mocks: ^0.15.2
+  share_plus_platform_interface: ^7.1.0
 
 flutter_launcher_icons:
   image_path: "features/Icon 3I Export/runow-3i-1024.png"
@@ -80,12 +88,18 @@ flutter:
     - assets/strava/api_logo_pwrdBy_strava_horiz_orange.png
     - assets/strava/api_logo_pwrdBy_strava_horiz_white.png
     - "features/Icon 3I Export/runow-3i-1024.png"
-    - assets/medals/medal-gold.svg
-    - assets/medals/medal-silver.svg
-    - assets/medals/medal-bronze.svg
     - assets/journey/map-xuyen-viet.svg
     - assets/journey/images/
   fonts:
     - family: Exo 2
       fonts:
         - asset: assets/fonts/exo2/Exo2-Variable.ttf
+    # Số km và nhãn trên thẻ thành tích: nét hẹp, đậm như thẻ thể thao.
+    - family: Barlow Condensed
+      fonts:
+        - asset: assets/fonts/barlow_condensed/BarlowCondensed-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/barlow_condensed/BarlowCondensed-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/barlow_condensed/BarlowCondensed-ExtraBold.ttf
+          weight: 800

@@ -128,7 +128,7 @@ void main() {
     );
 
     bool picked(String name) => tester
-        .widget<FilterChip>(find.widgetWithText(FilterChip, name))
+        .widget<GameOptionButton>(find.widgetWithText(GameOptionButton, name))
         .selected;
     expect([picked('An'), picked('Bình'), picked('Chi')], [false, true, true]);
   });
@@ -194,6 +194,20 @@ void main() {
     await tester.tap(find.text('An'));
     await tester.pump();
     expect(sent, isEmpty);
+  });
+
+  testWidgets('names who is picked, by the option labels', (tester) async {
+    await pumpCard(
+      tester,
+      _action({
+        'input': 'two_targets',
+        'selected': {
+          'targets': ['u3', 'u1'],
+        },
+      }),
+    );
+    expect(find.text('Đã chọn Chi, An'), findsOneWidget);
+    expect(find.text('Bỏ chọn'), findsOneWidget);
   });
 
   testWidgets('an unknown input says the app is too old for it', (

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
+import 'package:myrun/src/widgets/map_tiles.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
@@ -11,8 +12,6 @@ import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/photo_pin_marker.dart';
 import 'package:myrun/src/widgets/photo_viewer.dart';
 
-const _liveRouteTileTemplate =
-    'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const _clusterThresholdMeters = 15.0;
 const _distance = Distance();
 
@@ -673,11 +672,7 @@ class _LiveMap extends StatelessWidget {
         },
       ),
       children: [
-        TileLayer(
-          urlTemplate: _liveRouteTileTemplate,
-          userAgentPackageName: 'com.threei.run',
-          retinaMode: RetinaMode.isHighDensity(context),
-        ),
+        mapTileLayer(context, dark: true),
         const MapAttribution(),
         PolylineLayer(
           polylines: [

@@ -329,7 +329,9 @@ class _TimelineRail extends StatelessWidget {
 /// thức chỉ có khối "Powered by Strava"/"Compatible with Strava", mà brand
 /// guideline lại cấm cắt lấy một phần logo. Nên phía Strava dùng chữ đặt
 /// trong màu cam thương hiệu `#FC5200`, đúng cỡ nhỏ hơn tên hoạt động như
-/// guideline yêu cầu. Phía 3i thì dùng thẳng app icon.
+/// guideline yêu cầu. Garmin cũng ghi bằng chữ, màu trung tính theo theme vì
+/// brand guideline của Garmin chỉ đòi ghi tên "Garmin". Phía 3i thì dùng thẳng
+/// app icon.
 class _SourceBadge extends StatelessWidget {
   const _SourceBadge({required this.source});
 
@@ -349,6 +351,27 @@ class _SourceBadge extends StatelessWidget {
             'STRAVA',
             style: TextStyle(
               color: RunNowBrandColors.strava,
+              fontSize: 8,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.9,
+            ),
+          ),
+        ),
+      );
+    }
+    if (source == ActivitySource.garmin) {
+      final color = Theme.of(context).colorScheme.onSurface;
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          child: Text(
+            'GARMIN',
+            style: TextStyle(
+              color: color,
               fontSize: 8,
               fontWeight: FontWeight.w900,
               letterSpacing: 0.9,

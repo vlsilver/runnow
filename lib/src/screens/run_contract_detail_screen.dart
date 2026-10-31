@@ -6,8 +6,11 @@ import 'package:intl/intl.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
+import 'package:myrun/src/run_contracts/run_contract_insights.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
+import 'package:myrun/src/run_contracts/widgets/run_contract_card.dart'
+    show runContractStateColor, runContractStateLabel;
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
@@ -231,6 +234,7 @@ class _RunContractDetailScreenState
       children: [
         _ContractDetailHeader(
           contract: contract,
+          currentUid: uid,
           ownerName: ownerName,
           ownerAvatarUrl: ownerAvatarUrl,
         ),
@@ -806,18 +810,21 @@ class _AssignedActivityTile extends StatelessWidget {
 class _ContractDetailHeader extends StatelessWidget {
   const _ContractDetailHeader({
     required this.contract,
+    required this.currentUid,
     required this.ownerName,
     required this.ownerAvatarUrl,
   });
 
   final RunContract contract;
+  final String? currentUid;
   final String ownerName;
   final String? ownerAvatarUrl;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final completed = contract.overallProgressPercent >= 100;
+    final state = contractUiStateFor(contract, DateTime.now(), currentUid);
+    final stateColor = runContractStateColor(context, state);
     return GlassPanel(
       borderRadius: 18,
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -855,7 +862,7 @@ class _ContractDetailHeader extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'KÈO NHÓM',
+                      contractKindLabel(contract),
                       style: TextStyle(
                         color: palette.accent,
                         fontSize: 11,
@@ -868,7 +875,7 @@ class _ContractDetailHeader extends StatelessWidget {
               ),
               DecoratedBox(
                 decoration: BoxDecoration(
-                  color: palette.accent.withValues(alpha: 0.13),
+                  color: stateColor.withValues(alpha: 0.13),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Padding(
@@ -877,9 +884,9 @@ class _ContractDetailHeader extends StatelessWidget {
                     vertical: 7,
                   ),
                   child: Text(
-                    completed ? 'ĐÃ CỨU' : 'ĐANG CHẠY',
+                    runContractStateLabel(state),
                     style: TextStyle(
-                      color: palette.accent,
+                      color: stateColor,
                       fontSize: 10,
                       fontWeight: FontWeight.w900,
                     ),
@@ -933,6 +940,7 @@ class _MyProgressCard extends StatelessWidget {
       contract.targetValue,
     );
     final completed = rawRatio >= 1;
+    final need = dailyNeed(contract, participant.uid, DateTime.now());
     final foreground =
         ThemeData.estimateBrightnessForColor(palette.accent) == Brightness.dark
         ? Colors.white
@@ -1015,10 +1023,33 @@ class _MyProgressCard extends StatelessWidget {
             backgroundColor: foreground.withValues(alpha: 0.2),
             color: foreground,
           ),
+          if (need != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _dailyNeedLabel(need),
+              style: TextStyle(
+                color: foreground.withValues(alpha: 0.82),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
+}
+
+String _dailyNeedLabel(DailyNeed need) {
+  if (need.metric == RunContractMetric.activeDays) {
+    final days = need.remaining.ceil();
+    if (need.mustRunToday) return 'Hôm nay phải chạy · còn $days ngày cần chạy';
+    return 'Còn $days ngày cần chạy trong ${need.daysLeft} ngày';
+  }
+  if (need.daysLeft == 1) {
+    return 'Hôm nay cần ${need.remaining.toStringAsFixed(1)} km';
+  }
+  return 'Mỗi ngày ~${need.perDay.toStringAsFixed(1)} km · ${need.daysLeft} ngày nữa';
 }
 
 /// Kèo HÀNH TRÌNH TẬP THỂ: tiến độ GỘP cả nhóm (tổng km mọi người / độ dài
@@ -1092,31 +1123,7 @@ class _TeamConquestCard extends StatelessWidget {
               ),
               const Spacer(),
               if (completed)
-                Row(
-                  children: [
-                    Icon(
-                      Icons.emoji_events_rounded,
-                      color: foreground,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Chinh phục!',
-                      style: TextStyle(
-                        color: foreground,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                )
-              else
-                Text(
-                  'Còn ${_contractValue(contract.metric, remaining)}',
-                  style: TextStyle(
-                    color: foreground.withValues(alpha: 0.82),
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
+                Icon(Icons.emoji_events_rounded, color: foreground, size: 18),
             ],
           ),
           const SizedBox(height: 10),
@@ -1128,9 +1135,17 @@ class _TeamConquestCard extends StatelessWidget {
             color: foreground,
           ),
           const SizedBox(height: 8),
+          // "Còn …" nằm ở dòng này chứ không ở dòng tổng phía trên: tổng nhóm
+          // ba chữ số cộng "Còn …" tràn bề ngang 390.
           Text(
-            '${(ratio * 100).clamp(0, 100).toStringAsFixed(0)}% chặng đường · '
-            '${contract.participants.length} người cùng đi',
+            [
+              '${(ratio * 100).clamp(0, 100).toStringAsFixed(0)}% chặng đường',
+              if (completed)
+                'Chinh phục!'
+              else
+                'còn ${_contractValue(contract.metric, remaining)}',
+              '${contract.participants.length} người cùng đi',
+            ].join(' · '),
             style: TextStyle(
               color: foreground.withValues(alpha: 0.82),
               fontSize: 12,

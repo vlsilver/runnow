@@ -1,27 +1,107 @@
 import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/achievements/achievement_card.dart';
+import 'package:myrun/src/achievements/card_share.dart';
+import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
+import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_detail_screen.dart';
+import 'package:myrun/src/games/game_my_card.dart';
+import 'package:myrun/src/games/game_night_theme.dart';
+import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/theme.dart';
+import 'package:share_plus_platform_interface/share_plus_platform_interface.dart';
 
 import 'support/fake_game_backend.dart';
 
+class _FakeUser implements User {
+  @override
+  String get uid => 'me';
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Bảng chia sẻ của máy: ghi lại thứ được gửi đi.
+class _FakeShare extends SharePlatform {
+  final shared = <ShareParams>[];
+
+  @override
+  Future<ShareResult> share(ShareParams params) async {
+    shared.add(params);
+    return const ShareResult('ok', ShareResultStatus.success);
+  }
+}
+
+/// Thẻ đã khoe một lần: mọi bộ màu của [cardId] đều có sẵn ba file.
+class _SavedShareStore extends CardShareStore {
+  _SavedShareStore(this.cardId, this.files);
+
+  final String cardId;
+  final CardShareFiles files;
+  final loaded = <String>[];
+  int saves = 0;
+
+  @override
+  Future<CardShareFiles?> load(String cardId, String key) async {
+    loaded.add(cardId);
+    return cardId == this.cardId ? files : null;
+  }
+
+  @override
+  Future<void> save(String cardId, String key, CardShareFiles files) async =>
+      saves++;
+}
+
+/// Ảnh PNG 1x1 thật, vì màn khoe vẽ ảnh từ byte.
+final _png = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+);
+
+/// Kho thẻ đã lật trong bộ nhớ, như secure storage trên máy.
+class _MemoryReveals extends GameCardReveals {
+  _MemoryReveals({required this.revealedAll});
+  final bool revealedAll;
+  final marked = <String>[];
+
+  @override
+  Future<bool> revealed(String uid, String gameId) async =>
+      revealedAll || marked.contains('$uid/$gameId');
+
+  @override
+  Future<void> markRevealed(String uid, String gameId) async =>
+      marked.add('$uid/$gameId');
+}
+
 void main() {
   late DateTime now;
+  late _MemoryReveals reveals;
   late FakeGameBackend backend;
   late List<Uri> opened;
   late bool openOk;
+  late CardShareStore shareStore;
+  final share = _FakeShare();
 
-  Future<void> pumpScreen(WidgetTester tester) async {
+  setUpAll(() => SharePlatform.instance = share);
+
+  Future<void> pumpScreen(WidgetTester tester, {ThemeData? theme}) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           runNowApiClientProvider.overrideWithValue(backend.client()),
+          firebaseUserProvider.overrideWith((ref) => Stream.value(_FakeUser())),
+          cardShareStoreProvider.overrideWithValue(shareStore),
+          gameCardRevealsProvider.overrideWithValue(reveals),
         ],
         child: MaterialApp(
+          theme: theme,
           home: GameDetailScreen(
             gameId: 'g1',
             clock: () => now,
@@ -50,6 +130,16 @@ void main() {
     backend = FakeGameBackend(() => now);
     opened = [];
     openOk = true;
+    reveals = _MemoryReveals(revealedAll: true);
+    shareStore = _SavedShareStore(
+      '',
+      CardShareFiles(
+        front: _png,
+        back: _png,
+        motion: Uint8List(0),
+        motionType: 'video/mp4',
+      ),
+    );
   });
 
   testWidgets('follows rules text from backend', (tester) async {
@@ -71,6 +161,81 @@ void main() {
 
     expect(find.text('Sói cắn mỗi đêm.'), findsNothing);
     expect(find.text('Sói cắn mỗi đêm, trừ đêm đầu.'), findsOneWidget);
+    await close(tester);
+  });
+
+  testWidgets('the page follows the app theme, the night scene stays night', (
+    tester,
+  ) async {
+    backend.game = {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'running',
+      'statusLabel': 'Đang chơi',
+      'refreshAfterSeconds': 300,
+    };
+    final app = buildRunNowTheme(
+      RunNowElement.fire,
+      appearance: RunNowAppearance.light,
+    );
+    await pumpScreen(tester, theme: app);
+
+    RunNowPalette paletteAt(Finder finder) =>
+        Theme.of(tester.element(finder)).extension<RunNowPalette>()!;
+    expect(
+      paletteAt(find.byType(Scaffold)).background,
+      app.extension<RunNowPalette>()!.background,
+    );
+    expect(
+      paletteAt(find.byType(GameMoon)).accent,
+      gameNightTheme().extension<RunNowPalette>()!.accent,
+    );
+    await close(tester);
+  });
+
+  testWidgets('a long feed item shows its last lines until expanded', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(2400, 9000);
+    addTearDown(tester.view.reset);
+    backend.game = {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'running',
+      'statusLabel': 'Đang chơi',
+      'refreshAfterSeconds': 300,
+      'feed': {
+        'items': [
+          {
+            'seq': 7,
+            'at': '2026-10-17T10:00:00Z',
+            'title': 'Ngày 2',
+            'lines': [
+              '09:01 An đề cử Bình.',
+              '09:05 Chi đề cử Bình.',
+              '09:12 Dũng đề cử An.',
+              '09:30 Hà đề cử Bình.',
+              '10:02 Giang đề cử An.',
+              'Bình lên giàn.',
+            ],
+          },
+        ],
+      },
+    };
+    await pumpScreen(tester);
+    await tester.pump();
+
+    expect(find.text('09:01 An đề cử Bình.'), findsNothing);
+    expect(find.text('09:30 Hà đề cử Bình.'), findsOneWidget);
+    expect(find.text('Bình lên giàn.'), findsOneWidget);
+
+    await tester.tap(find.text('Xem đủ 6 dòng'));
+    await tester.pump();
+    expect(find.text('09:01 An đề cử Bình.'), findsOneWidget);
+
+    await tester.tap(find.text('Thu gọn'));
+    await tester.pump();
+    expect(find.text('09:01 An đề cử Bình.'), findsNothing);
     await close(tester);
   });
 
@@ -257,7 +422,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(starts(), ['dryRun=true', '']);
-      expect(find.text('Đang chia bài'), findsOneWidget);
+      expect(find.text('ĐANG CHIA BÀI'), findsOneWidget);
       expect(find.text('Bắt đầu ván'), findsNothing);
       await close(tester);
     });
@@ -436,8 +601,7 @@ void main() {
     });
   });
 
-  const faceDown =
-      'Lá bài của bạn đang úp. Chạm để xem vai, việc cần làm và chat phe.';
+  const faceDown = 'Đang úp. Chạm để xem vai, việc cần làm và chat phe.';
 
   group('my card', () {
     Map<String, dynamic> running({bool registered = true}) => {
@@ -483,9 +647,276 @@ void main() {
       await tester.pump();
       expect(opened, [Uri.parse('https://t.me/+wolves')]);
 
-      await tester.tap(find.text('Chạm để úp lại.'));
+      await tester.tap(find.text('Chạm ra ngoài lá bài để úp lại.'));
       await tester.pumpAndSettle();
       expect(find.text('Mỗi đêm soi một người.'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('the face opens the skin sheet previewing this card', (
+      tester,
+    ) async {
+      FlutterSecureStorage.setMockInitialValues({});
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+        'cardTier': 'rare',
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+
+      final face = tester
+          .widget<AchievementCard>(find.byType(AchievementCard))
+          .data;
+      await tester.tap(find.text('Bộ màu thẻ'));
+      await tester.pumpAndSettle();
+      final sample = tester
+          .widget<RunCardSkinSheet>(find.byType(RunCardSkinSheet))
+          .sample;
+      expect(sample.tier, GameCardTier.rare);
+      expect(
+        [sample.title, sample.hero, sample.owner],
+        [face.title, face.hero, face.owner],
+      );
+
+      // Sheet mặc theme app, không mượn kính gần trong suốt của theme đêm.
+      final sheetContext = tester.element(find.byType(RunCardSkinSheet));
+      final app = ProviderScope.containerOf(
+        sheetContext,
+      ).read(themeControllerProvider);
+      final glass = Theme.of(
+        sheetContext,
+      ).extension<RunNowPalette>()!.glassStart;
+      expect(
+        glass,
+        buildRunNowTheme(
+          app.element,
+          appearance: app.appearance,
+          darkTone: app.darkTone,
+        ).extension<RunNowPalette>()!.glassStart,
+      );
+      expect(
+        glass,
+        isNot(gameNightTheme().extension<RunNowPalette>()!.glassStart),
+      );
+      await close(tester);
+    });
+
+    testWidgets('the card stays face down until flipped, then shows its tier', (
+      tester,
+    ) async {
+      reveals = _MemoryReveals(revealedAll: false);
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+        'cardTier': 'legendary',
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+
+      // Vai đã ngửa, nhưng thẻ còn úp nên chưa biết bậc.
+      expect(find.text('Tiên tri'), findsWidgets);
+      expect(find.byType(AchievementCard), findsNothing);
+      expect(reveals.marked, isEmpty);
+
+      await tester.tap(find.text('Lật thẻ'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 700));
+      final card = tester.widget<AchievementCard>(find.byType(AchievementCard));
+      expect(card.data.tier, GameCardTier.legendary);
+      expect(reveals.marked, ['me/g1']);
+      await close(tester);
+    });
+
+    // Lá xem to có hoạt ảnh lặp nên không pumpAndSettle được.
+    Future<void> openBigCard(WidgetTester tester) async {
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(AchievementCard));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    testWidgets('locks bragging while the game runs and the viewer lives', (
+      tester,
+    ) async {
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await openBigCard(tester);
+
+      expect(find.textContaining('khoe thẻ lúc này là lộ vai'), findsOneWidget);
+      expect(find.text('Khoe thẻ'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('closes the secret big card when the app leaves the screen', (
+      tester,
+    ) async {
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await openBigCard(tester);
+
+      final binding = tester.binding;
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.pump();
+      // Frame chụp app switcher đã không còn lá ngửa.
+      expect(
+        find.descendant(
+          of: find.byType(GameCardViewer),
+          matching: find.byType(AchievementCard),
+        ),
+        findsNothing,
+      );
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      // App nền không vẽ frame; route chạy hết hiệu ứng đóng sau khi quay lại.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.textContaining('lộ vai'), findsNothing);
+      // Chỉ đóng lá to, màn ván vẫn còn và lá đã úp lại.
+      expect(find.text(faceDown), findsOneWidget);
+      await close(tester);
+    });
+
+    // Người chết giữa ván không khoe được nữa: thẻ chỉ thuộc về phe thắng.
+    testWidgets('keeps bragging locked for the dead while the game runs', (
+      tester,
+    ) async {
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': false,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await openBigCard(tester);
+
+      expect(find.text('Khoe thẻ'), findsNothing);
+      expect(find.textContaining('ván kết thúc và phe bạn thắng'), findsOne);
+      await close(tester);
+    });
+
+    Map<String, dynamic> ended() => {
+      ...running(),
+      'status': 'ended',
+      'statusLabel': 'Đã kết thúc',
+      'winner': 'village',
+    };
+
+    testWidgets('unlocks bragging for the winning side once the game ends', (
+      tester,
+    ) async {
+      backend.game = ended();
+      backend.me = {
+        'status': 'ended',
+        'alive': false,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+        'cardTier': 'rare',
+        'cardOwned': true,
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await openBigCard(tester);
+
+      expect(find.text('Khoe thẻ'), findsOneWidget);
+      expect(find.text('Hiếm'), findsOneWidget);
+      expect(find.textContaining('lộ vai'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('a winner brags through the card share screen', (tester) async {
+      // Byte giả: màn khoe không giải mã video, chỉ gửi đi.
+      final video = Uint8List.fromList([0, 0, 0, 24, 102, 116, 121, 112]);
+      final store = _SavedShareStore(
+        'masoi-g1',
+        CardShareFiles(
+          front: _png,
+          back: _png,
+          motion: video,
+          motionType: 'video/mp4',
+        ),
+      );
+      shareStore = store;
+      backend.game = ended();
+      backend.me = {
+        'status': 'ended',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+        'cardTier': 'rare',
+        'cardOwned': true,
+        'cardRounds': 3,
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await openBigCard(tester);
+
+      await tester.tap(find.text('Khoe thẻ'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(store.loaded, contains('masoi-g1'));
+      expect(store.saves, 0, reason: 'có sẵn thì không tạo lại');
+      for (final label in ['Mặt trước', 'Mặt sau', 'Video 3D']) {
+        expect(find.text(label), findsOneWidget);
+      }
+
+      await tester.tap(find.text('Khoe video 3d'));
+      await tester.pump();
+      final sent = share.shared.last;
+      expect(sent.fileNameOverrides, ['3i-masoi-g1-motion.mp4']);
+      expect(await sent.files!.single.readAsBytes(), video);
+      expect(sent.text, startsWith('Tiên tri · Dân làng thắng'));
+      await close(tester);
+    });
+
+    testWidgets('keeps bragging locked for the losing side', (tester) async {
+      backend.game = ended();
+      backend.me = {
+        'status': 'ended',
+        'alive': true,
+        'role': 'wolf',
+        'roleLabel': 'Sói',
+        'cardTier': 'rare',
+        'cardOwned': false,
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await openBigCard(tester);
+
+      expect(find.text('Khoe thẻ'), findsNothing);
+      expect(find.textContaining('Chỉ người phe thắng'), findsOneWidget);
       await close(tester);
     });
 
@@ -523,6 +954,9 @@ void main() {
         ProviderScope(
           overrides: [
             runNowApiClientProvider.overrideWithValue(backend.client()),
+            firebaseUserProvider.overrideWith(
+              (ref) => Stream.value(_FakeUser()),
+            ),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),
@@ -607,6 +1041,88 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Việc của bạn'), findsOneWidget);
       expect(find.text('Cắn'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('the face says whether now is your turn, on server time', (
+      tester,
+    ) async {
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'wolf',
+        'roleLabel': 'Sói',
+        'actions': [
+          {
+            'kind': 'wolf_bite',
+            'label': 'Cắn',
+            'help': '',
+            'input': 'single_target',
+            'enabled': true,
+            'opensAt': '2026-10-17T13:00:00Z',
+            'closesAt': '2026-10-17T15:05:00Z',
+            'options': [
+              {'id': 'u2', 'label': 'Bình'},
+            ],
+          },
+        ],
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      expect(find.text('Tới giờ của bạn'), findsNothing);
+
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+      expect(find.text('Tới giờ của bạn'), findsOneWidget);
+      expect(
+        find.textContaining('Còn 1 giờ 5 phút · khoá lúc'),
+        findsOneWidget,
+      );
+
+      await elapse(tester, const Duration(hours: 1, minutes: 10));
+      expect(find.text('Tới giờ của bạn'), findsNothing);
+      expect(find.text('Giờ này bạn nghỉ'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('the face says when your turn opens, or that you are out', (
+      tester,
+    ) async {
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'villager',
+        'roleLabel': 'Dân',
+        'actions': [
+          {
+            'kind': 'vote',
+            'label': 'Biểu quyết',
+            'help': '',
+            'input': 'choice',
+            'enabled': false,
+            'opensAt': '2026-10-17T17:00:00Z',
+            'closesAt': '2026-10-17T19:00:00Z',
+          },
+        ],
+      };
+      await pumpScreen(tester);
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+      expect(find.text('Chưa tới giờ của bạn'), findsOneWidget);
+      await close(tester);
+
+      backend.me = {
+        'status': 'running',
+        'alive': false,
+        'role': 'villager',
+        'roleLabel': 'Dân',
+      };
+      await pumpScreen(tester);
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+      expect(find.text('Bạn đã bị loại'), findsOneWidget);
       await close(tester);
     });
 
@@ -745,6 +1261,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Việc của bạn'), findsOneWidget);
 
+      await tester.ensureVisible(find.text('Bình'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Bình'));
       await tester.pump();
       await tester.pump();
@@ -769,11 +1287,185 @@ void main() {
       await tester.tap(find.text(faceDown));
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(find.text('Bình'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Bình'));
       await tester.pump();
       await tester.pump();
 
       expect(find.text('Đã quá giờ đề cử.'), findsOneWidget);
+      await close(tester);
+    });
+  });
+
+  group('km table', () {
+    const table = {
+      'lastLabel': 'Hôm qua · chốt 22h',
+      'todayLabel': 'Hôm nay · tới 15:40',
+      'unitKm': 1,
+      'note': 'Km chốt lúc 22h.',
+    };
+    Map<String, dynamic> game(List<Map<String, dynamic>> players) => {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'running',
+      'statusLabel': 'Đang chơi',
+      'refreshAfterSeconds': 300,
+      'isRegistered': true,
+      'kmTable': table,
+      'players': players,
+    };
+
+    testWidgets('ranks the living by today km, then 22h km, the dead last', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(2400, 9000);
+      addTearDown(tester.view.reset);
+      backend.game = game([
+        {'uid': 'a', 'name': 'An', 'alive': true, 'lastKm': 5, 'todayKm': 0.4},
+        {'uid': 'b', 'name': 'Bình', 'alive': false, 'deathRound': 1},
+        {
+          'uid': 'c',
+          'name': 'Chi',
+          'alive': true,
+          'lastKm': 0.4,
+          'todayKm': 3.1,
+        },
+        {
+          'uid': 'd',
+          'name': 'Dũng',
+          'alive': true,
+          'lastKm': 7.3,
+          'todayKm': 2,
+        },
+        {'uid': 'h', 'name': 'Hà', 'alive': true, 'lastKm': 2, 'todayKm': 2},
+      ]);
+      await pumpScreen(tester);
+      await tester.pump();
+
+      double y(String name) => tester.getTopLeft(find.text(name)).dy;
+      final order = ['An', 'Bình', 'Chi', 'Dũng', 'Hà']
+        ..sort((a, b) => y(a).compareTo(y(b)));
+      expect(order, ['Chi', 'Dũng', 'Hà', 'An', 'Bình']);
+      await close(tester);
+    });
+
+    testWidgets('without the table ranks by 22h km', (tester) async {
+      tester.view.physicalSize = const Size(2400, 9000);
+      addTearDown(tester.view.reset);
+      backend.game = game([
+        {'uid': 'a', 'name': 'An', 'alive': true, 'lastKm': 1.2},
+        {'uid': 'c', 'name': 'Chi', 'alive': true, 'lastKm': 4},
+        {'uid': 'k', 'name': 'Khoa', 'alive': true},
+      ])..remove('kmTable');
+      await pumpScreen(tester);
+      await tester.pump();
+
+      double y(String name) => tester.getTopLeft(find.text(name)).dy;
+      final order = ['An', 'Chi', 'Khoa']..sort((a, b) => y(a).compareTo(y(b)));
+      expect(order, ['Chi', 'An', 'Khoa']);
+      await close(tester);
+    });
+
+    testWidgets('shows your km against the mark and both columns per player', (
+      tester,
+    ) async {
+      // Danh sách người chơi nằm dưới card km; màn cao để ListView dựng đủ.
+      tester.view.physicalSize = const Size(2400, 9000);
+      addTearDown(tester.view.reset);
+      backend.game = game([
+        {
+          'uid': 'me',
+          'name': 'Nam',
+          'alive': true,
+          'lastKm': 3.2,
+          'todayKm': 0.4,
+        },
+        {
+          'uid': 'u2',
+          'name': 'Chi',
+          'alive': true,
+          'lastKm': 0.96,
+          'todayKm': 2.35,
+        },
+        {
+          'uid': 'u3',
+          'name': 'Minh',
+          'alive': false,
+          'deathRound': 1,
+          'lastKm': 5.0,
+        },
+      ]);
+      await pumpScreen(tester);
+      await tester.pump();
+
+      expect(find.text('Km của bạn'), findsOneWidget);
+      expect(find.text('Thiếu 0.6'), findsOneWidget);
+      expect(
+        find.text('Chạy thêm 0.6 km trước 22h để đủ mốc.'),
+        findsOneWidget,
+      );
+      expect(find.text('Km chốt lúc 22h.'), findsOneWidget);
+      // 0.96 km chưa đủ mốc 1 km nên không được hiện thành 1.0.
+      expect(find.text('0.9'), findsOneWidget);
+      expect(find.text('2.3'), findsOneWidget);
+      expect(find.text('Bạn'), findsOneWidget);
+      // Người chết không còn tính km, kể cả km đã chốt.
+      expect(find.text('5.0'), findsNothing);
+      expect(find.text('Chết vòng 1'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('without the table keeps one column of 22h km', (tester) async {
+      backend.game = game([
+        {'uid': 'u2', 'name': 'Chi', 'alive': true, 'lastKm': 0.96},
+      ])..remove('kmTable');
+      await pumpScreen(tester);
+      await tester.pump();
+
+      expect(find.text('Km của bạn'), findsNothing);
+      expect(find.text('Km chốt'), findsOneWidget);
+      expect(find.text('0.9'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('wolves see the team km only on the face-up card', (
+      tester,
+    ) async {
+      backend.game = game([
+        {
+          'uid': 'me',
+          'name': 'Nam',
+          'alive': true,
+          'lastKm': 3.2,
+          'todayKm': 1.4,
+        },
+      ]);
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'wolf',
+        'roleLabel': 'Sói',
+        'teamKm': {
+          'label': 'Km phe Sói',
+          'last': 2.6,
+          'today': 1.2,
+          'need': 2,
+          'needLabel': 'Cần 2 km để cắn',
+        },
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+
+      expect(find.text('Km phe Sói'), findsNothing);
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+      expect(find.text('Km phe Sói'), findsOneWidget);
+      expect(find.text('Thiếu 0.8'), findsOneWidget);
+      expect(
+        find.text('Phe cần thêm 0.8 km trước 22h thì đêm nay mới cắn được.'),
+        findsOneWidget,
+      );
       await close(tester);
     });
   });

@@ -4,12 +4,14 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/admin/admin_models.dart';
 import 'package:myrun/src/agents/agent_models.dart';
 import 'package:myrun/src/config.dart';
 import 'package:myrun/src/games/game_models.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+export 'package:myrun/src/achievements/run_card_models.dart';
 export 'package:myrun/src/admin/admin_models.dart';
 export 'package:myrun/src/agents/agent_models.dart';
 export 'package:myrun/src/games/game_models.dart';
@@ -34,6 +36,34 @@ class StravaConnectionStatus {
   final bool connected;
   final String status;
   final String? athleteId;
+}
+
+/// Trạng thái nối Garmin Connect. [available] false là backend chưa cấu hình
+/// Garmin, lúc đó nối sẽ báo lỗi garmin_not_configured.
+class GarminConnectionStatus {
+  const GarminConnectionStatus({
+    required this.available,
+    required this.connected,
+    required this.status,
+    this.lastPushAt,
+  });
+
+  factory GarminConnectionStatus.fromJson(Map<String, dynamic> json) {
+    final lastPushAt = json['lastPushAt'] as String?;
+    return GarminConnectionStatus(
+      available: json['available'] == true,
+      connected: json['connected'] == true,
+      status: json['status'] as String? ?? 'disconnected',
+      lastPushAt: lastPushAt == null ? null : DateTime.tryParse(lastPushAt),
+    );
+  }
+
+  final bool available;
+  final bool connected;
+  final String status;
+
+  /// Lần gần nhất Garmin đẩy buổi chạy về.
+  final DateTime? lastPushAt;
 }
 
 class TrackedActivityBackendResult {
@@ -293,6 +323,56 @@ class RunNowApiClient {
 
   String _gamePath(String gameId) => '/v1/games/${Uri.encodeComponent(gameId)}';
 
+  // ---- Phòng chạy ----
+
+  /// Mở phòng, trả id. [startsAt] null là chạy ngay.
+  Future<String> createRunRoom({
+    required String title,
+    required String privacy,
+    required int maxRunners,
+    String? password,
+    DateTime? startsAt,
+  }) async {
+    final response = await _send(
+      'POST',
+      '/v1/run-rooms',
+      body: {
+        'title': title,
+        'privacy': privacy,
+        'maxRunners': maxRunners,
+        'password': ?password,
+        'startsAt': ?startsAt?.toUtc().toIso8601String(),
+      },
+    );
+    return _jsonObject(response)['id'] as String;
+  }
+
+  /// Vào phòng; trả `joined`, hoặc `requested` khi phòng cần chủ duyệt.
+  Future<String> joinRunRoom(String roomId, {String? password}) async {
+    final response = await _send(
+      'POST',
+      '${_roomPath(roomId)}/join',
+      body: {'password': ?password},
+    );
+    return _jsonObject(response)['state'] as String;
+  }
+
+  /// Chủ phòng duyệt, từ chối hay mời ra: [action] là approve | deny | kick.
+  Future<void> moderateRunRoom(String roomId, String uid, String action) =>
+      _send(
+        'POST',
+        '${_roomPath(roomId)}/members/${Uri.encodeComponent(uid)}/$action',
+      );
+
+  Future<void> leaveRunRoom(String roomId) =>
+      _send('POST', '${_roomPath(roomId)}/leave');
+
+  Future<void> endRunRoom(String roomId) =>
+      _send('POST', '${_roomPath(roomId)}/end');
+
+  String _roomPath(String roomId) =>
+      '/v1/run-rooms/${Uri.encodeComponent(roomId)}';
+
   // ---- Liên kết Telegram ----
 
   Future<TelegramLinkCode> createTelegramLinkCode() async {
@@ -315,17 +395,24 @@ class RunNowApiClient {
   }
 
   /// Tạo bot (lần đầu) hoặc sửa tên, tính cách.
+  /// [look] null là không gửi, backend giữ kiểu đang có.
   Future<AgentProfile> saveAgentProfile({
     required String name,
     required String persona,
+    String? look,
   }) async {
     final response = await _send(
       'POST',
       '/v1/agents/me',
-      body: {'name': name, 'persona': persona},
+      body: {'name': name, 'persona': persona, 'look': ?look},
     );
     return AgentProfile.fromJson(_jsonObject(response));
   }
+
+  /// Đồng ý gửi dữ liệu cho AI, [version] là `consentVersion` backend trả.
+  /// Bản cũ thì `consent_version_mismatch`. Gọi lại vẫn 200.
+  Future<void> recordAgentConsent(int version) =>
+      _send('POST', '/v1/agents/me/consent', body: {'version': version});
 
   /// Lỗi `memory_full`, `invalid_memory` có message đọc được.
   Future<AgentMemory> addAgentMemory(String text) async {
@@ -352,6 +439,10 @@ class RunNowApiClient {
   Future<void> deleteAgentLearned(String id) =>
       _send('DELETE', '/v1/agents/me/learned/${Uri.encodeComponent(id)}');
 
+  /// Bật thì bot thôi tự học về mình và xoá những gì đã học.
+  Future<void> setAgentNoLearn(bool on) =>
+      _send('POST', '/v1/agents/me/no-learn', body: {'on': on});
+
   Future<AgentGroupFacts> getAgentGroupFacts() async {
     final response = await _send('GET', '/v1/agents/group-facts');
     return AgentGroupFacts.fromJson(_jsonObject(response));
@@ -377,6 +468,32 @@ class RunNowApiClient {
   String _rolePath(String role, String uid) =>
       '/v1/admin/roles/${Uri.encodeComponent(role)}/${Uri.encodeComponent(uid)}';
 
+  /// Chỉ admin: trần, giá model và chi phí hôm nay của bot cá nhân.
+  Future<AgentConfig> getAgentConfig() async {
+    final response = await _send('GET', '/v1/admin/agent-config');
+    return AgentConfig.fromJson(_jsonObject(response));
+  }
+
+  /// [version] lấy từ lần đọc gần nhất; admin khác lưu trước thì
+  /// `config_changed`. [values] chỉ chứa key đổi, null là về mặc định.
+  /// [prices] là cả bảng giá, backend thay nguyên bảng.
+  Future<AgentConfig> updateAgentConfig({
+    required String version,
+    Map<String, num?>? values,
+    List<AgentModelPrice>? prices,
+  }) async {
+    final response = await _send(
+      'PATCH',
+      '/v1/admin/agent-config',
+      body: {
+        'version': version,
+        'values': ?values,
+        if (prices != null) 'prices': [for (final p in prices) p.toJson()],
+      },
+    );
+    return AgentConfig.fromJson(_jsonObject(response));
+  }
+
   Future<AgentChatPage<AgentMessage>> getAgentDM({
     String? cursor,
     int? after,
@@ -391,6 +508,19 @@ class RunNowApiClient {
   Future<void> postAgentDM(String text) =>
       _send('POST', '/v1/agents/me/dm', body: {'text': text});
 
+  /// Ảnh bot đã vẽ, mới trước; [limit] tối đa 30, bỏ trống là 30.
+  Future<AgentImagePage> getAgentImages({String? cursor, int? limit}) async {
+    final query = [
+      if (cursor != null) 'cursor=${Uri.encodeQueryComponent(cursor)}',
+      if (limit != null) 'limit=$limit',
+    ];
+    final response = await _send(
+      'GET',
+      '/v1/agents/me/images${query.isEmpty ? '' : '?${query.join('&')}'}',
+    );
+    return AgentImagePage.fromJson(_jsonObject(response));
+  }
+
   Future<AgentChatPage<AgentRoomMessage>> getAgentRoom({
     String? cursor,
     int? after,
@@ -404,6 +534,22 @@ class RunNowApiClient {
 
   Future<void> postAgentRoom(String text) =>
       _send('POST', '/v1/agents/room', body: {'text': text});
+
+  /// Báo cáo tin [seq] trong phòng bot; [block] chặn luôn người gửi (tin của
+  /// bot thì chặn chủ bot). Tin của mình hay bot mình thì `invalid_request`.
+  Future<void> reportAgentRoomMessage(int seq, {required bool block}) => _send(
+    'POST',
+    '/v1/agents/room/messages/$seq/report',
+    body: {'block': block},
+  );
+
+  Future<List<AgentBlocked>> getAgentBlocks() async {
+    final response = await _send('GET', '/v1/agents/blocks');
+    return AgentBlocked.listFromJson(_jsonObject(response));
+  }
+
+  Future<void> unblockAgentRoomUser(String uid) =>
+      _send('DELETE', '/v1/agents/blocks/${Uri.encodeComponent(uid)}');
 
   String _seqQuery(String? cursor, int? after) => cursor != null
       ? '?cursor=${Uri.encodeQueryComponent(cursor)}'
@@ -439,6 +585,109 @@ class RunNowApiClient {
   Future<void> requestStravaRepair({bool full = false}) async {
     await _send('POST', '/v1/strava/repair', body: {'full': full});
   }
+
+  Future<GarminConnectionStatus> getGarminStatus() async {
+    final response = await _send('GET', '/v1/garmin/status');
+    return GarminConnectionStatus.fromJson(_jsonObject(response));
+  }
+
+  Future<Uri> createGarminAuthorization({required String returnTarget}) async {
+    final response = await _send(
+      'POST',
+      '/v1/garmin/authorization',
+      body: {'returnTarget': returnTarget},
+    );
+    final value = _jsonObject(response)['authorizationUrl'] as String?;
+    final uri = value == null ? null : Uri.tryParse(value);
+    if (uri == null) {
+      throw const FormatException(
+        'Backend trả về authorization URL không hợp lệ.',
+      );
+    }
+    return uri;
+  }
+
+  Future<void> disconnectGarmin() async {
+    await _send('POST', '/v1/garmin/disconnect');
+  }
+
+  /// Một trang buổi chạy của mình, mới trước, chỉ các field để vẽ danh sách
+  /// (không có route, streams). [cursor] null là đã hết trang.
+  Future<({List<Map<String, dynamic>> activities, String? cursor})>
+  getActivities({String? cursor, int? limit}) async {
+    final query = [
+      if (cursor != null) 'cursor=${Uri.encodeQueryComponent(cursor)}',
+      if (limit != null) 'limit=$limit',
+    ];
+    final response = await _send(
+      'GET',
+      '/v1/activities${query.isEmpty ? '' : '?${query.join('&')}'}',
+    );
+    final json = _jsonObject(response);
+    return (
+      activities: [
+        for (final item in json['activities'] as List<dynamic>? ?? const [])
+          item as Map<String, dynamic>,
+      ],
+      cursor: json['cursor'] as String?,
+    );
+  }
+
+  /// Một trang feed buổi tập của club (người để hồ sơ public), mới trước:
+  /// `{runs: [{ownerUid, activity}], cursor?}`. Trang có thể ít hơn [limit]
+  /// mà vẫn có cursor; cursor null là đã hết.
+  Future<Map<String, dynamic>> getClubRuns({String? cursor, int? limit}) async {
+    final query = [
+      if (cursor != null) 'cursor=${Uri.encodeQueryComponent(cursor)}',
+      if (limit != null) 'limit=$limit',
+    ];
+    final response = await _send(
+      'GET',
+      '/v1/club/runs${query.isEmpty ? '' : '?${query.join('&')}'}',
+    );
+    return _jsonObject(response);
+  }
+
+  /// Thẻ của buổi [activityId]: thẻ đã lật, hoặc tỉ lệ sẽ quay khi chưa lật.
+  Future<RunCardView> getRunCard(String activityId) async {
+    final response = await _send('GET', _runCardPath(activityId));
+    return RunCardView.fromJson(_jsonObject(response));
+  }
+
+  /// Lật thẻ: server quay bậc một lần rồi giữ, gọi lại trả đúng thẻ đó.
+  Future<RunCard> rollRunCard(String activityId) async {
+    final response = await _send('POST', _runCardPath(activityId));
+    return _runCard(response);
+  }
+
+  /// Nhờ backend vẽ tranh nền theo [style], từ [photoPath] nếu có. Tranh vẽ
+  /// chạy nền; app nghe doc thẻ để biết lúc xong.
+  Future<RunCard> requestRunCardArt(
+    String activityId, {
+    required String style,
+    String? photoPath,
+    String? note,
+  }) async {
+    final response = await _send(
+      'POST',
+      '${_runCardPath(activityId)}/art',
+      // Backend cũ chặn field lạ, nên chỉ gửi note khi có.
+      body: {'style': style, 'photoPath': ?photoPath, 'note': ?note},
+    );
+    return _runCard(response);
+  }
+
+  /// Các phong cách vẽ đang bật cho thẻ buổi chạy.
+  Future<ArtStyleList> getRunCardStyles() async {
+    final response = await _send('GET', '/v1/art-styles?kind=run');
+    return ArtStyleList.fromJson(_jsonObject(response));
+  }
+
+  String _runCardPath(String activityId) =>
+      '/v1/activities/${Uri.encodeComponent(activityId)}/card';
+
+  RunCard _runCard(http.Response response) =>
+      RunCard.fromJson(_jsonObject(response)['card'] as Map<String, dynamic>);
 
   Future<void> hydrateActivity(String activityId) async {
     await _send(

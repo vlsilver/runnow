@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
+import 'package:myrun/src/widgets/map_tiles.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
@@ -925,16 +926,10 @@ class _RouteDrawingMap extends StatelessWidget {
   /// trên, tránh xung đột với việc bản đồ tự pan theo ngón tay.
   final bool interactive;
 
-  static const _lightTileTemplate =
-      'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-  static const _darkTileTemplate =
-      'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tileTemplate = isDark ? _darkTileTemplate : _lightTileTemplate;
     return FlutterMap(
       mapController: controller,
       options: MapOptions(
@@ -946,12 +941,7 @@ class _RouteDrawingMap extends StatelessWidget {
         ),
       ),
       children: [
-        TileLayer(
-          key: ValueKey(tileTemplate),
-          urlTemplate: tileTemplate,
-          userAgentPackageName: 'com.threei.run',
-          retinaMode: RetinaMode.isHighDensity(context),
-        ),
+        mapTileLayer(context, dark: isDark),
         const MapAttribution(),
         if (points.length >= 2)
           PolylineLayer(

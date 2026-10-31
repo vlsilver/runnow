@@ -11,11 +11,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:myrun/src/auth.dart';
 import 'package:myrun/src/avatar_repository.dart';
+import 'package:myrun/src/club_ranking.dart';
+import 'package:myrun/src/garmin_controller.dart';
 import 'package:myrun/src/health_sync.dart';
 import 'package:myrun/src/journal_controller.dart';
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/period_keys.dart';
+import 'package:myrun/src/profile_stats.dart';
 import 'package:myrun/src/repository.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
@@ -29,7 +32,6 @@ import 'package:myrun/src/tracking_location_provider.dart';
 import 'package:myrun/src/tracking_photo_capture.dart';
 import 'package:myrun/src/tracking_photo_repository.dart';
 import 'package:myrun/src/theme_controller.dart';
-import 'package:myrun/src/training_power.dart';
 
 final runNowApiClientProvider = Provider<RunNowApiClient>((ref) {
   final client = RunNowApiClient.firebase(FirebaseAuth.instance);
@@ -85,26 +87,9 @@ final runContractAnalyticsProvider = Provider<RunContractAnalytics>((ref) {
   return RunContractAnalytics(FirebaseAnalytics.instance);
 });
 
-enum ClubRankingMetric {
-  distance,
-  time,
-  consistency,
-  pace,
-  longestRun,
-  activityCount,
-  steps, // bảng xếp hạng số bước chân (Apple Health) — dữ liệu riêng
-  swim, // BXH bơi — km bơi (leaderboardEntries.swim)
-  gym, // BXH gym/workout — tổng phút tập (leaderboardEntries.gym)
-  bike, // BXH đạp xe — km đạp (leaderboardEntries.ride)
-  motorbike, // BXH xe máy — km chạy xe máy (leaderboardEntries.motorbike)
-}
-
-enum ClubRankingRange { currentWeek, currentMonth }
-
-/// Bộ lọc của màn "Câu lạc bộ" (chỉ còn đúng bảng xếp hạng), hoist ra để gộp
-/// vào navigation bar (xem [app.dart]).
-final clubRankingMetricProvider = StateProvider<ClubRankingMetric>(
-  (ref) => ClubRankingMetric.distance,
+/// Bộ môn và kỳ đang xem ở màn "Câu lạc bộ".
+final clubRankingSportProvider = StateProvider<ClubRankingSport>(
+  (ref) => ClubRankingSport.run,
 );
 final clubRankingRangeProvider = StateProvider<ClubRankingRange>(
   (ref) => ClubRankingRange.currentWeek,
@@ -164,6 +149,13 @@ final stravaAuthProvider = ChangeNotifierProvider<StravaAuthController>(
 final stravaConnectionProvider = Provider<bool>((ref) {
   return ref.watch(stravaAuthProvider).connected;
 });
+
+final garminAuthProvider = ChangeNotifierProvider<GarminController>(
+  (ref) => GarminController(
+    FirebaseAuth.instance,
+    ref.watch(runNowApiClientProvider),
+  ),
+);
 
 /// Đồng bộ Apple Health (iOS). Quản trạng thái kết nối + đồng bộ workout.
 final healthSyncProvider = ChangeNotifierProvider<HealthSyncController>(
@@ -247,6 +239,29 @@ final stravaEnabledProvider = StreamProvider<bool>((ref) async* {
   bool read() {
     try {
       final v = rc.getValue('strava_enabled');
+      return v.source == ValueSource.valueStatic ? false : v.asBool();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  yield read();
+  try {
+    await for (final _ in rc.onConfigUpdated) {
+      await rc.activate();
+      yield read();
+    }
+  } catch (_) {}
+});
+
+/// Cờ HIỆN/ẨN Garmin ở Cài đặt, Remote Config `garmin_enabled`. Bật khi backend
+/// đã có key Garmin và endpoint push đã khai trên portal Garmin. Mặc định và
+/// khi chưa fetch là false (ẩn).
+final garminEnabledProvider = StreamProvider<bool>((ref) async* {
+  final rc = FirebaseRemoteConfig.instance;
+  bool read() {
+    try {
+      final v = rc.getValue('garmin_enabled');
       return v.source == ValueSource.valueStatic ? false : v.asBool();
     } catch (_) {
       return false;
@@ -347,13 +362,6 @@ final membersProvider = StreamProvider<List<MemberProfile>>(
   (ref) => ref.watch(memberRepositoryProvider).watchMembers(),
 );
 
-/// BXH km CHẠY. keepAlive (không autoDispose) để giá trị prefetch lúc khởi động
-/// sống tới khi tab Club dùng → mở Club là có sẵn, khỏi chờ round-trip. Số vẫn
-/// tươi (fetch từ server); pull-to-refresh invalidate để lấy mới.
-final leaderboardEntriesProvider = FutureProvider<List<LeaderboardEntry>>(
-  (ref) => ref.watch(memberRepositoryProvider).getLeaderboardEntries(),
-);
-
 /// Parse 1 doc stepDays → StepDay (kèm chi tiết theo giờ nếu đã lưu). Dùng chung
 /// cho nhật ký của mình lẫn của member.
 StepDay _stepDayFromDoc(Map<String, dynamic> m, String id) => StepDay(
@@ -441,9 +449,13 @@ final stepLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
     steps: steps,
   );
   final docs = await ref.watch(stepLeaderboardDocsProvider.future);
+  final now = DateTime.now();
   return docs.map((d) {
     final m = d.data();
     final name = (m['displayName'] as String?)?.trim();
+    // Doc chỉ được dựng lại khi chủ nó có bước hay buổi mới, nên số của kỳ đã
+    // qua không được hiện như kỳ này.
+    final current = leaderboardPeriodsCurrent(m, now);
     double dist(String k) => (m[k] as num?)?.toDouble() ?? 0;
     int steps(String k) => (m[k] as num?)?.toInt() ?? 0;
     return LeaderboardEntry(
@@ -455,14 +467,12 @@ final stepLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
         steps('rollingSevenDaysSteps'),
         dist('rollingSevenDaysDistance'),
       ),
-      currentWeek: stepStat(
-        steps('currentWeekSteps'),
-        dist('currentWeekDistance'),
-      ),
-      currentMonth: stepStat(
-        steps('currentMonthSteps'),
-        dist('currentMonthDistance'),
-      ),
+      currentWeek: current.week
+          ? stepStat(steps('currentWeekSteps'), dist('currentWeekDistance'))
+          : stepStat(0, 0),
+      currentMonth: current.month
+          ? stepStat(steps('currentMonthSteps'), dist('currentMonthDistance'))
+          : stepStat(0, 0),
     );
   }).toList();
 });
@@ -486,9 +496,11 @@ final totalKmLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
     steps: 0,
   );
   final docs = await ref.watch(stepLeaderboardDocsProvider.future);
+  final now = DateTime.now();
   return docs.map((d) {
     final m = d.data();
     final name = (m['displayName'] as String?)?.trim();
+    final current = leaderboardPeriodsCurrent(m, now);
     double dist(String k) => (m[k] as num?)?.toDouble() ?? 0;
     return LeaderboardEntry(
       uid: m['uid'] as String? ?? d.id,
@@ -496,14 +508,18 @@ final totalKmLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
       avatarUrl: m['avatarUrl'] as String?,
       visibility: ProfileVisibility.fromValue(m['profileVisibility'] as String?),
       rollingSevenDays: totalStat(dist('rollingSevenDaysTotalDistance')),
-      currentWeek: totalStat(dist('currentWeekTotalDistance')),
-      currentMonth: totalStat(dist('currentMonthTotalDistance')),
+      currentWeek: totalStat(
+        current.week ? dist('currentWeekTotalDistance') : 0,
+      ),
+      currentMonth: totalStat(
+        current.month ? dist('currentMonthTotalDistance') : 0,
+      ),
     );
   }).toList();
 });
 
-/// Docs thô leaderboardEntries — chia sẻ cho BXH Bơi + Gym (đọc field lồng
-/// swim/gym). keepAlive + prefetch giống các BXH khác.
+/// Docs thô leaderboardEntries — BXH Đạp xe đọc field lồng `ride`.
+/// keepAlive + prefetch giống các BXH khác.
 final leaderboardDocsProvider =
     FutureProvider<List<QueryDocumentSnapshot<Map<String, dynamic>>>>((
       ref,
@@ -514,61 +530,6 @@ final leaderboardDocsProvider =
           .get(const GetOptions(source: Source.server));
       return snap.docs;
     });
-
-LeaderboardEntry _sportEntry(
-  QueryDocumentSnapshot<Map<String, dynamic>> d,
-  String sportKey,
-  LeaderboardStats Function(Map<String, dynamic>? period) stat,
-) {
-  final m = d.data();
-  final sport = (m[sportKey] as Map?)?.cast<String, dynamic>();
-  Map<String, dynamic>? pd(String k) =>
-      (sport?[k] as Map?)?.cast<String, dynamic>();
-  final name = (m['displayName'] as String?)?.trim();
-  return LeaderboardEntry(
-    uid: m['uid'] as String? ?? d.id,
-    displayName: (name?.isNotEmpty ?? false) ? name! : '3i member',
-    avatarUrl: m['avatarUrl'] as String?,
-    visibility: ProfileVisibility.fromValue(m['profileVisibility'] as String?),
-    rollingSevenDays: stat(pd('rollingSevenDays')),
-    currentWeek: stat(pd('currentWeek')),
-    currentMonth: stat(pd('currentMonth')),
-  );
-}
-
-/// BXH BƠI — km bơi/kỳ (leaderboardEntries.swim.distanceMeters).
-final swimLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
-  ref,
-) async {
-  LeaderboardStats stat(Map<String, dynamic>? p) => LeaderboardStats(
-    distanceMeters: (p?['distanceMeters'] as num?)?.toDouble() ?? 0,
-    movingTimeSeconds: 0,
-    activityCount: 0,
-    activeDays: 0,
-    longestDistanceMeters: 0,
-    fastestPaceSecondsPerKm: null,
-    steps: 0,
-  );
-  final docs = await ref.watch(leaderboardDocsProvider.future);
-  return docs.map((d) => _sportEntry(d, 'swim', stat)).toList();
-});
-
-/// BXH GYM/workout — tổng PHÚT tập/kỳ (leaderboardEntries.gym.movingTimeSeconds).
-final gymLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
-  ref,
-) async {
-  LeaderboardStats stat(Map<String, dynamic>? p) => LeaderboardStats(
-    distanceMeters: 0,
-    movingTimeSeconds: (p?['movingTimeSeconds'] as num?)?.toInt() ?? 0,
-    activityCount: 0,
-    activeDays: 0,
-    longestDistanceMeters: 0,
-    fastestPaceSecondsPerKm: null,
-    steps: 0,
-  );
-  final docs = await ref.watch(leaderboardDocsProvider.future);
-  return docs.map((d) => _sportEntry(d, 'gym', stat)).toList();
-});
 
 /// BXH ĐẠP XE — km đạp/kỳ (leaderboardEntries.ride.distanceMeters). Xe đạp
 /// KHÔNG cộng vào km chạy/kèo — bảng hoàn toàn riêng.
@@ -585,32 +546,38 @@ final bikeLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
     steps: 0,
   );
   final docs = await ref.watch(leaderboardDocsProvider.future);
-  return docs.map((d) => _sportEntry(d, 'ride', stat)).toList();
-});
-
-/// BXH XE MÁY — km chạy xe máy/kỳ (leaderboardEntries.motorbike.distanceMeters).
-/// Là bảng vui/riêng, KHÔNG phải môn thể thao: không cộng vào bất cứ bảng
-/// thể lực nào (km chạy, bước, tổng, kèo).
-final motorbikeLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
-  ref,
-) async {
-  LeaderboardStats stat(Map<String, dynamic>? p) => LeaderboardStats(
-    distanceMeters: (p?['distanceMeters'] as num?)?.toDouble() ?? 0,
-    movingTimeSeconds: 0,
-    activityCount: 0,
-    activeDays: 0,
-    longestDistanceMeters: 0,
-    fastestPaceSecondsPerKm: null,
-    steps: 0,
-  );
-  final docs = await ref.watch(leaderboardDocsProvider.future);
-  return docs.map((d) => _sportEntry(d, 'motorbike', stat)).toList();
+  final now = DateTime.now();
+  return docs.map((d) {
+    final m = d.data();
+    final ride = (m['ride'] as Map?)?.cast<String, dynamic>();
+    Map<String, dynamic>? period(String k) =>
+        (ride?[k] as Map?)?.cast<String, dynamic>();
+    final current = leaderboardPeriodsCurrent(m, now);
+    final name = (m['displayName'] as String?)?.trim();
+    return LeaderboardEntry(
+      uid: m['uid'] as String? ?? d.id,
+      displayName: (name?.isNotEmpty ?? false) ? name! : '3i member',
+      avatarUrl: m['avatarUrl'] as String?,
+      visibility: ProfileVisibility.fromValue(
+        m['profileVisibility'] as String?,
+      ),
+      rollingSevenDays: stat(period('rollingSevenDays')),
+      currentWeek: stat(current.week ? period('currentWeek') : null),
+      currentMonth: stat(current.month ? period('currentMonth') : null),
+    );
+  }).toList();
 });
 
 final clubLiveSessionsProvider =
     StreamProvider.autoDispose<List<LiveTrackingSession>>(
       (ref) =>
           ref.watch(liveTrackingRepositoryProvider).watchClubLiveSessions(),
+    );
+
+final liveSessionProvider = StreamProvider.autoDispose
+    .family<LiveTrackingSession?, String>(
+      (ref, sessionId) =>
+          ref.watch(liveTrackingRepositoryProvider).watchSession(sessionId),
     );
 
 /// Vị trí/ảnh live của các buổi chạy đang gắn với 1 kèo theo tuyến cụ thể —
@@ -627,8 +594,6 @@ final memberProfileProvider = StreamProvider.autoDispose
       return ref.watch(memberRepositoryProvider).watchMember(uid);
     });
 
-const _clubActivityLogPerMemberLimit = 20;
-const _clubActivityLogConcurrency = 4;
 const _memberDashboardActivityLimit = 30;
 
 final memberActivitiesProvider = StreamProvider.autoDispose
@@ -645,62 +610,9 @@ final memberActivityDetailProvider = FutureProvider.autoDispose
           .getMemberActivityDetail(request.uid, request.activityId);
     });
 
-final clubActivityLogProvider =
-    FutureProvider.autoDispose<List<ClubActivityLogItem>>((ref) async {
-      final cacheLink = ref.keepAlive();
-      final cacheTimer = Timer(const Duration(minutes: 2), cacheLink.close);
-      ref.onDispose(cacheTimer.cancel);
-      final repository = ref.watch(memberRepositoryProvider);
-      final members = await ref.watch(membersProvider.future);
-      final publicMembers = members.where((member) => member.isPublic).toList();
-      if (publicMembers.isEmpty) return const <ClubActivityLogItem>[];
-      final activitiesByMember = <String, List<ActivitySummary>>{};
-      for (
-        var offset = 0;
-        offset < publicMembers.length;
-        offset += _clubActivityLogConcurrency
-      ) {
-        final batch = publicMembers
-            .skip(offset)
-            .take(_clubActivityLogConcurrency);
-        final results = await Future.wait([
-          for (final member in batch)
-            repository
-                .listMemberActivities(
-                  member.uid,
-                  limit: _clubActivityLogPerMemberLimit,
-                )
-                .then((activities) => (member.uid, activities))
-                .catchError((_) => (member.uid, const <ActivitySummary>[])),
-        ]);
-        for (final result in results) {
-          activitiesByMember[result.$1] = result.$2;
-        }
-      }
-      final items = <ClubActivityLogItem>[];
-      for (final member in publicMembers) {
-        for (final activity
-            in activitiesByMember[member.uid] ?? const <ActivitySummary>[]) {
-          items.add(ClubActivityLogItem(member: member, activity: activity));
-        }
-      }
-      items.sort(
-        (left, right) =>
-            right.activity.startedAt.compareTo(left.activity.startedAt),
-      );
-      return items;
-    });
-
 final trainingGoalsProvider = StreamProvider<TrainingGoals>(
   (ref) => ref.watch(trainingGoalRepositoryProvider).watchGoals(),
 );
-
-class ClubActivityLogItem {
-  const ClubActivityLogItem({required this.member, required this.activity});
-
-  final MemberProfile member;
-  final ActivitySummary activity;
-}
 
 /// Các buổi chạy đã được ghi nhận (đếm vào tiến độ) của MỌI người tham gia
 /// 1 kèo — không chỉ của riêng user hiện tại. Chỉ đọc được hoạt động của
@@ -857,105 +769,43 @@ final memberJourneyLifetimeDistanceProvider = FutureProvider.autoDispose
       );
     });
 
-/// Số liệu gộp cho 1 trong 4 mốc Tuần/Tháng/Năm/Total của card hero Hành
-/// Trình. Tuần/Tháng đọc thẳng 1 doc `periodStats`; Năm/Total cộng nhiều
-/// doc `month` theo đúng cách [journeyLifetimeDistanceProvider] đã làm,
-/// tái dùng [listMemberPeriodStats] — không thêm collection/API mới.
-class JourneyPowerSnapshot {
-  const JourneyPowerSnapshot({required this.stats, required this.activeMonths});
-
-  static const empty = JourneyPowerSnapshot(
-    stats: LeaderboardStats(
-      distanceMeters: 0,
-      movingTimeSeconds: 0,
-      activityCount: 0,
-      activeDays: 0,
-      longestDistanceMeters: 0,
-      fastestPaceSecondsPerKm: null,
+/// periodStats trang Hồ sơ của user hiện tại: mọi doc tháng, 12 tuần gần nhất
+/// và các khoảng doc ngày [profileDayRanges] cần. Bốn query document-id range,
+/// chạy song song. Không autoDispose vì tab Hồ sơ sống trong IndexedStack; bấm
+/// tab thì app invalidate để đọc lại.
+final profileStatsProvider = FutureProvider<ProfileStatsData?>((ref) async {
+  final uid = ref.watch(firebaseUserProvider).value?.uid;
+  if (uid == null) return null;
+  final repo = ref.watch(memberRepositoryProvider);
+  final today = DateTime.now();
+  Future<Map<String, LeaderboardStats>> load(
+    String type,
+    String from,
+    String to,
+  ) async => {
+    for (final stat in await repo.listMemberPeriodStats(
+      uid,
+      periodType: type,
+      fromKey: from,
+      toKeyInclusive: to,
+    ))
+      stat.periodKey: stat.run,
+  };
+  final dayRanges = profileDayRanges(today);
+  final (months, weeks, days) = await (
+    load('month', '2000-01', monthKey(today)),
+    load(
+      'week',
+      weekKey(today.subtract(const Duration(days: 7 * 11))),
+      weekKey(today),
     ),
-    activeMonths: 1,
+    Future.wait([for (final (from, to) in dayRanges) load('day', from, to)]),
+  ).wait;
+  return ProfileStatsData(
+    today: today,
+    days: {for (final part in days) ...part},
+    weeks: weeks,
+    months: months,
   );
+});
 
-  final LeaderboardStats stats;
-
-  /// Số tháng thực có dữ liệu trong khoảng — dùng làm mẫu số khi
-  /// [journeyPowerScore] quy Năm/Total về "trung bình mỗi tháng".
-  final int activeMonths;
-}
-
-typedef JourneyPowerQuery = ({String uid, JourneyPowerScope scope});
-
-/// Mốc thời gian đang chọn ở toggle Tuần/Tháng/Năm/Total của hero Hành
-/// Trình — chỉ là lựa chọn UI, autoDispose để reset lúc rời màn hình.
-final journeyPowerScopeProvider = StateProvider.autoDispose<JourneyPowerScope>(
-  (ref) => JourneyPowerScope.week,
-);
-
-final journeyPowerSnapshotProvider = FutureProvider.autoDispose
-    .family<JourneyPowerSnapshot, JourneyPowerQuery>((ref, query) async {
-      final repo = ref.watch(memberRepositoryProvider);
-      final now = DateTime.now();
-      Future<JourneyPowerSnapshot> monthRange(
-        String fromKey,
-        String toKeyInclusive,
-      ) async {
-        final stats = await repo.listMemberPeriodStats(
-          query.uid,
-          periodType: 'month',
-          fromKey: fromKey,
-          toKeyInclusive: toKeyInclusive,
-        );
-        return JourneyPowerSnapshot(
-          stats: combineLeaderboardStats(stats.map((stat) => stat.stats)),
-          activeMonths: stats.isEmpty ? 1 : stats.length,
-        );
-      }
-
-      // KM TÍCH LUỸ = TỔNG mọi nguồn (chạy + đi-bộ), khử trùng — do BACKEND tính sẵn
-      // (stepLeaderboardEntries.*TotalDistance). Hành Trình dùng đúng con số này cho
-      // Tuần/Tháng (khớp leaderboard). Năm/Total tạm giữ km CHẠY vì đi-bộ chưa lưu
-      // lịch sử theo năm (dữ liệu bước mới có gần đây → chênh không đáng kể lúc này).
-      Future<double?> totalKm(String field) async {
-        try {
-          final doc = await FirebaseFirestore.instance
-              .collection('stepLeaderboardEntries')
-              .doc(query.uid)
-              .get(const GetOptions(source: Source.server));
-          final v = doc.data()?[field];
-          return v is num ? v.toDouble() : null;
-        } catch (_) {
-          return null;
-        }
-      }
-
-      switch (query.scope) {
-        case JourneyPowerScope.week:
-          final key = weekKey(now);
-          final stats = await repo.listMemberPeriodStats(
-            query.uid,
-            periodType: 'week',
-            fromKey: key,
-            toKeyInclusive: key,
-          );
-          final run = combineLeaderboardStats(stats.map((stat) => stat.stats));
-          final total = await totalKm('currentWeekTotalDistance');
-          return JourneyPowerSnapshot(
-            stats: total != null ? run.withDistance(total) : run,
-            activeMonths: 1,
-          );
-        case JourneyPowerScope.month:
-          final key = monthKey(now);
-          final snap = await monthRange(key, key);
-          final total = await totalKm('currentMonthTotalDistance');
-          return total != null
-              ? JourneyPowerSnapshot(
-                  stats: snap.stats.withDistance(total),
-                  activeMonths: snap.activeMonths,
-                )
-              : snap;
-        case JourneyPowerScope.year:
-          return monthRange('${now.year}-01', monthKey(now));
-        case JourneyPowerScope.total:
-          return monthRange('2000-01', monthKey(now));
-      }
-    });

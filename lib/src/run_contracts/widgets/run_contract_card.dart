@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:myrun/src/run_contracts/run_contract_insights.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 import 'package:myrun/src/theme.dart';
@@ -34,17 +35,15 @@ class RunContractCard extends StatelessWidget {
     final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final participant = contract.participantFor(currentUid);
-    final state = contractUiState(contract, DateTime.now());
-    final stateColor = _stateColor(context, state);
+    final state = contractUiStateFor(contract, DateTime.now(), currentUid);
+    final stateColor = runContractStateColor(context, state);
     final completedCount = contract.participants.values
         .where((item) => item.progressValue >= contract.targetValue)
         .length;
     final progressValue =
         participant?.progressValue ??
         contract.overallProgressRatio * contract.targetValue;
-    final ratio = contract.targetValue <= 0
-        ? 0.0
-        : progressValue / contract.targetValue;
+    final ratio = contractPercentFor(contract, currentUid) / 100;
     final percent = (ratio * 100).toStringAsFixed(0);
     final surface = palette.glassStart;
     const radius = 16.0;
@@ -62,6 +61,7 @@ class RunContractCard extends StatelessWidget {
             children: [
               _Header(
                 contract: contract,
+                state: state,
                 ownerName: ownerName,
                 ownerAvatarUrl: ownerAvatarUrl,
               ),
@@ -195,17 +195,18 @@ class RunContractCard extends StatelessWidget {
 class _Header extends StatelessWidget {
   const _Header({
     required this.contract,
+    required this.state,
     required this.ownerName,
     required this.ownerAvatarUrl,
   });
 
   final RunContract contract;
+  final RunContractUiState state;
   final String? ownerName;
   final String? ownerAvatarUrl;
 
   @override
   Widget build(BuildContext context) {
-    final state = contractUiState(contract, DateTime.now());
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final name = ownerName ?? '3i member';
     return Row(
@@ -241,13 +242,18 @@ class _Header extends StatelessWidget {
             ],
           ),
         ),
-        if (contract.route != null) ...[
+        // Chỉ kèo theo tuyến có nút chạy LIVE (xem màn chi tiết); hành trình
+        // cũng mang route nhưng không có.
+        if (contract.route != null && !contract.isJourney) ...[
           const _LiveTag(),
           const SizedBox(width: 6),
         ],
         DecoratedBox(
           decoration: BoxDecoration(
-            color: _stateColor(context, state).withValues(alpha: 0.13),
+            color: runContractStateColor(
+              context,
+              state,
+            ).withValues(alpha: 0.13),
             borderRadius: BorderRadius.circular(999),
           ),
           child: Padding(
@@ -259,15 +265,15 @@ class _Header extends StatelessWidget {
                   width: 6,
                   height: 6,
                   decoration: BoxDecoration(
-                    color: _stateColor(context, state),
+                    color: runContractStateColor(context, state),
                     shape: BoxShape.circle,
                   ),
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  _stateLabel(state),
+                  runContractStateLabel(state),
                   style: TextStyle(
-                    color: _stateColor(context, state),
+                    color: runContractStateColor(context, state),
                     fontSize: 10,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 0.7,
@@ -398,7 +404,7 @@ String _valueOverTarget(RunContractMetric metric, double value, double target) {
   };
 }
 
-String _stateLabel(RunContractUiState state) => switch (state) {
+String runContractStateLabel(RunContractUiState state) => switch (state) {
   RunContractUiState.scheduled => 'SẮP BẮT ĐẦU',
   RunContractUiState.newContract => 'MỚI CHỐT',
   RunContractUiState.onTrack => 'ĐANG CHẠY',
@@ -411,7 +417,7 @@ String _stateLabel(RunContractUiState state) => switch (state) {
   RunContractUiState.cancelled => 'ĐÃ HỦY',
 };
 
-Color _stateColor(BuildContext context, RunContractUiState state) =>
+Color runContractStateColor(BuildContext context, RunContractUiState state) =>
     switch (state) {
       RunContractUiState.atRisk ||
       RunContractUiState.broken => Theme.of(context).colorScheme.error,
