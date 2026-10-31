@@ -42,8 +42,14 @@ keys:
 logging:
   level: info
 EOF
+# Host là IP trần thì Let's Encrypt chỉ cấp chứng chỉ ngắn hạn (profile
+# shortlived, 6 ngày); Caddy tự gia hạn.
+GLOBAL=""
+if [[ "$DOMAIN" =~ ^[0-9.]+$ ]]; then
+  GLOBAL=$'{\n  cert_issuer acme {\n    profile shortlived\n  }\n}\n'
+fi
 cat >/etc/livekit/Caddyfile <<EOF
-${DOMAIN} {
+${GLOBAL}${DOMAIN} {
   reverse_proxy 127.0.0.1:7880
 }
 EOF
