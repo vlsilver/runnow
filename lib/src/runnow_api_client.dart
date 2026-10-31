@@ -377,6 +377,15 @@ class RunNowApiClient {
   Future<void> endRunRoom(String roomId) =>
       _send('POST', '${_roomPath(roomId)}/end');
 
+  /// Vé vào phòng thoại của phòng chạy: url server LiveKit và token ngắn hạn.
+  /// Chỉ người đã vào phòng còn mở mới lấy được.
+  Future<({String url, String token})> runRoomVoice(String roomId) async {
+    final body = _jsonObject(
+      await _send('POST', '${_roomPath(roomId)}/voice'),
+    );
+    return (url: body['url'] as String, token: body['token'] as String);
+  }
+
   String _roomPath(String roomId) =>
       '/v1/run-rooms/${Uri.encodeComponent(roomId)}';
 

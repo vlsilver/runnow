@@ -6,6 +6,7 @@ import 'package:myrun/src/rooms/run_room_models.dart';
 import 'package:myrun/src/rooms/run_room_repository.dart';
 import 'package:myrun/src/rooms/run_room_screen.dart'
     show RunRoomCheerBar, RunRoomRequestTile;
+import 'package:myrun/src/rooms/run_room_voice.dart';
 import 'package:myrun/src/widgets/glass.dart';
 
 /// Thanh phòng nổi trên màn chạy: tên phòng, bao nhiêu người đang chạy, ai
@@ -101,6 +102,11 @@ class RunRoomRunPanel extends ConsumerWidget {
           // Duyệt từng người một ngay trên màn chạy, người xin trước lên trước.
           if (open && requested.isNotEmpty)
             RunRoomRequestTile(roomId: roomId, member: requested.first),
+          if (open && joined)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: RunRoomVoiceButton(roomId: roomId),
+            ),
           if (open && joined)
             RunRoomCheerBar(roomId: roomId, uid: uid, emojiOnly: true),
         ],
