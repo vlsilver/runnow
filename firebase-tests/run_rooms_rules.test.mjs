@@ -9,6 +9,7 @@ import {
   Timestamp,
   addDoc,
   collection,
+  collectionGroup,
   doc,
   getDoc,
   getDocs,
@@ -115,4 +116,12 @@ test('room messages: joined members read and post short pings as themselves', as
   await assertFails(addDoc(msgs(as('u1')), message('u1', { at: new Date('2026-01-01') })));
   await assertFails(addDoc(msgs(as('u1')), message('u1', { expiresAt: Timestamp.fromMillis(Date.now() + 8 * 24 * 3600 * 1000) })));
   await assertFails(setDoc(doc(as('u1'), 'runRooms/r1/messages/m1'), message('u1')));
+});
+
+test('my rooms: a user finds only their own memberships across rooms', async () => {
+  await seedRooms();
+  const mine = (db, uid) => getDocs(query(collectionGroup(db, 'members'), where('uid', '==', uid), where('state', 'in', ['joined', 'requested'])));
+  await assertSucceeds(mine(as('u2'), 'u2'));
+  await assertFails(mine(as('u2'), 'u1'));
+  await assertFails(getDocs(collectionGroup(as('u1'), 'members')));
 });

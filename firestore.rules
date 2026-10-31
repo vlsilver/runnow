@@ -383,6 +383,12 @@ service cloud.firestore {
       }
     }
 
+    // "Phòng của bạn": app tìm các phòng mình đang ở bằng collection group
+    // query members theo uid của chính mình.
+    match /{path=**}/members/{uid} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
     match /liveSessions/{sessionId} {
       allow read: if signedIn()
         && (
