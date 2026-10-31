@@ -9,6 +9,7 @@ import 'package:myrun/src/admin/admin_models.dart';
 import 'package:myrun/src/agents/agent_models.dart';
 import 'package:myrun/src/config.dart';
 import 'package:myrun/src/games/game_models.dart';
+import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 export 'package:myrun/src/achievements/run_card_models.dart';
@@ -326,22 +327,28 @@ class RunNowApiClient {
   // ---- Phòng chạy ----
 
   /// Mở phòng, trả id. [startsAt] null là chạy ngay.
+  /// Mở phòng. [kind] null là phòng group; phòng `solo` không cần [title],
+  /// backend lấy tên chủ phòng. [route] là bản đã rút gọn để vẽ lên map.
   Future<String> createRunRoom({
-    required String title,
+    String? title,
     required String privacy,
     required int maxRunners,
     String? password,
     DateTime? startsAt,
+    String? kind,
+    RunContractRoute? route,
   }) async {
     final response = await _send(
       'POST',
       '/v1/run-rooms',
       body: {
-        'title': title,
+        'title': ?title,
         'privacy': privacy,
         'maxRunners': maxRunners,
         'password': ?password,
         'startsAt': ?startsAt?.toUtc().toIso8601String(),
+        'kind': ?kind,
+        'route': ?route?.toMap(),
       },
     );
     return _jsonObject(response)['id'] as String;

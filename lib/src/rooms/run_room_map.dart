@@ -25,14 +25,20 @@ Color runRoomRunnerColor(BuildContext context, int index, {required bool me}) =>
     ? context.runNowPalette.accent
     : runRoomRunnerColors[index % runRoomRunnerColors.length];
 
-/// Map của phòng: đường đã chạy và vị trí mới nhất của từng người. Tự canh
-/// khung cho thấy hết mọi người khi có người mới xuất hiện; người xem kéo map
-/// thì thôi canh lại.
+/// Map của phòng: tuyến chủ phòng vẽ (nét đứt), đường đã chạy và vị trí mới
+/// nhất của từng người. Tự canh khung cho thấy hết mọi người khi có người mới
+/// xuất hiện; người xem kéo map thì thôi canh lại.
 class RunRoomMap extends StatefulWidget {
-  const RunRoomMap({required this.sessions, required this.myUid, super.key});
+  const RunRoomMap({
+    required this.sessions,
+    required this.myUid,
+    this.plannedRoute = const [],
+    super.key,
+  });
 
   final List<LiveTrackingSession> sessions;
   final String? myUid;
+  final List<LatLng> plannedRoute;
 
   @override
   State<RunRoomMap> createState() => _RunRoomMapState();
@@ -58,6 +64,7 @@ class _RunRoomMapState extends State<RunRoomMap> {
   }
 
   List<LatLng> _allPoints() => [
+    ...widget.plannedRoute,
     for (final session in widget.sessions) ...liveRoutePoints(session),
   ];
 
@@ -104,6 +111,13 @@ class _RunRoomMapState extends State<RunRoomMap> {
         const MapAttribution(),
         PolylineLayer(
           polylines: [
+            if (widget.plannedRoute.length >= 2)
+              Polyline(
+                points: widget.plannedRoute,
+                color: palette.accentDeep.withValues(alpha: 0.8),
+                strokeWidth: 3,
+                pattern: StrokePattern.dashed(segments: const [8, 8]),
+              ),
             for (final (i, session) in widget.sessions.indexed)
               Polyline(
                 points: liveRoutePoints(session),

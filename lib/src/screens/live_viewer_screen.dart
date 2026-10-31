@@ -7,6 +7,7 @@ import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/hearts.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/rooms/run_together_button.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
@@ -346,6 +347,7 @@ class _LiveSheet extends ConsumerWidget {
             ),
             if (contractId != null)
               _ContractChip(contractId: contractId, session: session),
+            RunTogetherButton(session: session),
             Padding(
               padding: const EdgeInsets.only(top: 12),
               child: HeartCheerers(target: heart),

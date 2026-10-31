@@ -465,6 +465,7 @@ class LiveTrackingSession {
     this.averagePaceSecondsPerKm,
     this.routePreview = const [],
     this.contractId,
+    this.roomId,
     this.livePhotos = const [],
   });
 
@@ -496,6 +497,7 @@ class LiveTrackingSession {
           .map(RoutePoint.fromMap)
           .toList(),
       contractId: map['contractId'] as String?,
+      roomId: map['roomId'] as String?,
       livePhotos: livePhotos
           .whereType<Map<String, dynamic>>()
           .map(ActivityPhoto.fromMap)
@@ -517,6 +519,10 @@ class LiveTrackingSession {
   final double? averagePaceSecondsPerKm;
   final List<RoutePoint> routePreview;
   final String? contractId;
+
+  /// Phòng buổi chạy đang gắn: phòng group, hoặc phòng solo chủ buổi mở để
+  /// người khác xin chạy cùng.
+  final String? roomId;
   final List<ActivityPhoto> livePhotos;
 
   bool get isActive =>

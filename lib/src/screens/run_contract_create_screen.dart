@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_providers.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rooms/run_room_create_sheet.dart'
-    show runRoomMaxRunners;
+    show runRoomMaxRunners, showCreateRunRoomSheet;
 import 'package:myrun/src/rooms/run_room_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
 import 'package:myrun/src/run_contracts/run_contract_meetup.dart';
@@ -144,6 +144,14 @@ class _RunContractCreateScreenState
           subtitle: 'Chỉ admin thấy. Mở ván cho cả PSC đăng ký.',
           onTap: () => context.push('/games/new'),
         ),
+      _TemplateTile(
+        icon: Icons.sensors_rounded,
+        title: 'Phòng Live hẹn giờ',
+        subtitle: 'Chọn giờ, vẽ tuyến hoặc nhập GPX. Cả nhóm chạy chung '
+            'một phòng, thấy nhau trên map.',
+        accent: true,
+        onTap: () => showCreateRunRoomSheet(context, scheduled: true),
+      ),
       _TemplateTile(
         icon: Icons.auto_awesome_rounded,
         title: 'Giáo án AI Coach',

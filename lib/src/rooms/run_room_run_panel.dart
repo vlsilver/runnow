@@ -4,7 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rooms/run_room_models.dart';
 import 'package:myrun/src/rooms/run_room_repository.dart';
-import 'package:myrun/src/rooms/run_room_screen.dart' show RunRoomCheerBar;
+import 'package:myrun/src/rooms/run_room_screen.dart'
+    show RunRoomCheerBar, RunRoomRequestTile;
 import 'package:myrun/src/widgets/glass.dart';
 
 /// Thanh phòng nổi trên màn chạy: tên phòng, bao nhiêu người đang chạy, ai
@@ -40,10 +41,21 @@ class RunRoomRunPanel extends ConsumerWidget {
               .where((s) => joinedUids.contains(s.ownerUid))
               .length
         : 0;
-    final requests = room.hostUid == uid
-        ? members.where((m) => m.state == RunRoomMemberState.requested).length
-        : 0;
+    final isHost = room.hostUid == uid;
+    final requested = isHost
+        ? [
+            for (final m in members)
+              if (m.state == RunRoomMemberState.requested) m,
+          ]
+        : const <RunRoomMember>[];
+    final requests = requested.length;
     final open = room.isOpen(DateTime.now());
+    final solo = room.kind == RunRoomKind.solo;
+    final title = !solo
+        ? room.title
+        : isHost
+        ? 'Đang nhận người chạy cùng'
+        : 'Chạy cùng ${room.hostName}';
     final status = !open
         ? 'Phòng đã đóng'
         : !joined
@@ -67,7 +79,7 @@ class RunRoomRunPanel extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        room.title,
+                        title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w900),
@@ -86,6 +98,9 @@ class RunRoomRunPanel extends ConsumerWidget {
               ],
             ),
           ),
+          // Duyệt từng người một ngay trên màn chạy, người xin trước lên trước.
+          if (open && requested.isNotEmpty)
+            RunRoomRequestTile(roomId: roomId, member: requested.first),
           if (open && joined)
             RunRoomCheerBar(roomId: roomId, uid: uid, emojiOnly: true),
         ],

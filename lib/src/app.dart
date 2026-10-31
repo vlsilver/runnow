@@ -24,6 +24,7 @@ import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/health_sync.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/rooms/live_screen.dart';
 import 'package:myrun/src/rooms/run_room_screen.dart';
 import 'package:myrun/src/screens/activity_detail_screen.dart';
 import 'package:myrun/src/screens/club_cards_screen.dart';
@@ -218,6 +219,7 @@ final _router = GoRouter(
       builder: (context, state) =>
           RunRoomScreen(roomId: state.pathParameters['id']!),
     ),
+    GoRoute(path: '/live', builder: (context, state) => const LiveScreen()),
     GoRoute(
       path: '/live/:sessionId',
       builder: (context, state) =>

@@ -15,10 +15,15 @@ import 'package:myrun/src/hearts.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/repository.dart';
+import 'package:myrun/src/rooms/live_board.dart';
+import 'package:myrun/src/rooms/run_room_actions.dart' show runRoomErrorText;
+import 'package:myrun/src/rooms/run_room_create_sheet.dart'
+    show runRoomMaxRunners;
 import 'package:myrun/src/rooms/run_room_models.dart';
 import 'package:myrun/src/rooms/run_room_repository.dart';
 import 'package:myrun/src/rooms/run_room_run_panel.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
+import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/tracking_draft_store.dart';
 import 'package:myrun/src/tracking_session.dart';
@@ -94,7 +99,13 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   String? _roomId;
   // Đọc từ phòng ở build; null khi chưa tải xong phòng.
   RunRoomPrivacy? _roomPrivacy;
+  RunRoomKind? _roomKind;
+  String? _roomHostUid;
   bool _roomJoined = false;
+  // Chạy riêng có nhận người chạy cùng không. Chọn trước khi bắt đầu; nhận
+  // thì lúc bắt đầu mở một phòng solo. Chỉ giữ trong màn này, như các cài
+  // đặt Live khác.
+  LiveJoinPolicy _joinPolicy = LiveJoinPolicy.approve;
   Future<void> _livePublishQueue = Future<void>.value();
   Future<void> _photoUploadQueue = Future<void>.value();
   DateTime? _lastDraftSavedAt;
@@ -158,10 +169,20 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   bool get _hasSession => _snapshot != null;
   bool get _gpsReady => _gpsReadyAnchor != null;
 
-  /// Chạy trong phòng không công khai, hoặc chưa biết phòng kiểu gì: buổi
-  /// live chỉ người trong phòng xem.
-  bool get _roomOnly =>
-      _roomId != null && _roomPrivacy != RunRoomPrivacy.public;
+  bool get _roomOnly => runRoomLiveRoomOnly(
+    roomId: _roomId,
+    kind: _roomKind,
+    privacy: _roomPrivacy,
+  );
+
+  /// Buổi chạy bộ không vào phòng nào thì được chọn nhận người chạy cùng.
+  bool get _canHostRunTogether =>
+      widget.roomId == null && _selectedKind == ActivityKind.run;
+
+  /// Dòng phụ của Live: trước khi chạy là lựa chọn, đang chạy chỉ hiện khi
+  /// phòng solo đã mở thật.
+  bool get _showRunTogether =>
+      _canHostRunTogether && (!_hasSession || _roomKind == RunRoomKind.solo);
 
 
   @override
@@ -251,7 +272,13 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     ref.watch(trackingConfigProvider);
     final roomId = _roomId;
     if (roomId != null) {
-      _roomPrivacy = ref.watch(runRoomProvider(roomId)).value?.privacy;
+      // Giữ giá trị cũ lúc doc phòng đang tải: phòng solo vừa mở đã gán sẵn ở
+      // _openSoloRoom, gán null thì buổi live bị giấu trong chốc lát.
+      if (ref.watch(runRoomProvider(roomId)).value case final room?) {
+        _roomPrivacy = room.privacy;
+        _roomKind = room.kind;
+        _roomHostUid = room.hostUid;
+      }
       _roomJoined =
           ref.watch(myRunRoomMemberProvider(roomId)).value?.state ==
           RunRoomMemberState.joined;
@@ -347,6 +374,19 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                       ),
                     ),
                   ),
+                ),
+              ),
+            ),
+          if (roomId == null && !_hasSession)
+            const Positioned(
+              top: 0,
+              left: 64,
+              right: 64,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: Center(child: _LiveNearbyPill()),
                 ),
               ),
             ),
@@ -468,10 +508,16 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                    if (_liveEnabled)
+                                    if (_liveEnabled || _showRunTogether)
                                       Text(
-                                        'Báo mỗi ${_effectiveMilestoneKm}km'
-                                        '${_livePhotoEnabled ? ' · kèm ảnh' : ''}',
+                                        [
+                                          if (_liveEnabled)
+                                            'Báo mỗi ${_effectiveMilestoneKm}km'
+                                                '${_livePhotoEnabled ? ' · kèm ảnh' : ''}',
+                                          if (_showRunTogether)
+                                            'Chạy cùng: '
+                                                '${_joinPolicy.label.toLowerCase()}',
+                                        ].join(' · '),
                                         style: TextStyle(
                                           fontSize: 11,
                                           color: onSurface.withValues(
@@ -482,8 +528,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                   ],
                                 ),
                               ),
-                              // Nút cài đặt: chỉ hiện khi Live bật (có gì để chỉnh).
-                              if (_liveEnabled)
+                              // Nút cài đặt: chỉ hiện khi có gì để chỉnh.
+                              if (_liveEnabled || _canHostRunTogether)
                                 IconButton(
                                   visualDensity: VisualDensity.compact,
                                   icon: const Icon(Icons.tune_rounded, size: 20),
@@ -653,6 +699,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _setWakelock(true);
       unawaited(_persistDraft());
       unawaited(_publishLiveSnapshot(force: true));
+      unawaited(_openSoloRoom(session.id));
       HapticFeedback.mediumImpact();
     } catch (error) {
       if (!mounted) return;
@@ -964,6 +1011,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         force: true,
         status: LiveTrackingStatus.finished,
       );
+      unawaited(_endOwnSoloRoom());
       final photosUploaded = await _uploadPendingPhotos();
       final finalSnapshot = session.snapshot();
       final detail = finalSnapshot.toActivityDetail(
@@ -1036,6 +1084,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             .finishSession(sessionId, LiveTrackingStatus.expired),
       );
     }
+    unawaited(_endOwnSoloRoom());
     await ref.read(trackingDraftStoreProvider).clear();
     for (final photo in localPhotos) {
       await ref.read(trackingPhotoCaptureProvider).deleteLocal(photo.localPath);
@@ -1059,8 +1108,82 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _lastLivePublishedDistanceMeters = 0;
       _contractId = widget.contractId;
       _roomId = widget.roomId;
+      _roomPrivacy = null;
+      _roomKind = null;
+      _roomHostUid = null;
       _message = message;
     });
+  }
+
+  /// Mở phòng solo cho buổi chạy riêng vừa bắt đầu để người trong club xin
+  /// chạy cùng. Không chặn việc ghi buổi chạy: lỗi chỉ báo snackbar.
+  Future<void> _openSoloRoom(String sessionId) async {
+    final privacy = _joinPolicy.roomPrivacy;
+    final uid = ref.read(firebaseUserProvider).value?.uid;
+    final isPublic =
+        ref.read(userProfileProvider).value?.visibility ==
+        ProfileVisibility.public;
+    // Hồ sơ riêng tư thì club không thấy buổi live, chẳng ai xin chạy cùng.
+    if (privacy == null || uid == null || !isPublic || !_canHostRunTogether) {
+      return;
+    }
+    final api = ref.read(runNowApiClientProvider);
+    final String roomId;
+    try {
+      roomId = await api.createRunRoom(
+        privacy: privacy.value,
+        maxRunners: runRoomMaxRunners,
+        kind: RunRoomKind.solo.name,
+      );
+    } catch (error) {
+      debugPrint('mở phòng chạy cùng: $error');
+      _showSnack('Chưa mở được chạy cùng: ${runRoomErrorText(error)}');
+      return;
+    }
+    // Buổi chạy đã xong hay bị bỏ trong lúc chờ: không ai còn chủ phòng này.
+    if (!mounted || _session?.id != sessionId || _finished) {
+      unawaited(_endRoom(api, roomId));
+      return;
+    }
+    setState(() {
+      _roomId = roomId;
+      _roomPrivacy = privacy;
+      _roomKind = RunRoomKind.solo;
+      _roomHostUid = uid;
+    });
+    unawaited(_persistDraft());
+  }
+
+  /// Đóng phòng solo mình mở cho buổi này, để người chạy cùng thấy buổi đã
+  /// xong thay vì phòng nằm mở tới hạn.
+  Future<void> _endOwnSoloRoom() async {
+    final roomId = _roomId;
+    final uid = ref.read(firebaseUserProvider).value?.uid;
+    if (roomId == null ||
+        _roomKind != RunRoomKind.solo ||
+        uid == null ||
+        _roomHostUid != uid) {
+      return;
+    }
+    await _endRoom(ref.read(runNowApiClientProvider), roomId);
+  }
+
+  Future<void> _endRoom(RunNowApiClient api, String roomId) async {
+    try {
+      await api.endRunRoom(roomId);
+    } catch (error) {
+      debugPrint('đóng phòng chạy cùng $roomId: $error');
+      _showSnack('Chưa đóng được phòng chạy cùng: ${runRoomErrorText(error)}');
+    }
+  }
+
+  void _showSnack(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(behavior: SnackBarBehavior.floating, content: Text(text)),
+      );
   }
 
   Future<void> _startRunningLocationStream() async {
@@ -1321,6 +1444,57 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (_canHostRunTogether) ...[
+                    const Text(
+                      'CHẠY CÙNG',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Phòng mở lúc bấm Bắt đầu với quyền vào đã chọn; đang chạy
+                    // thì giữ nguyên tới hết buổi.
+                    if (!_hasSession)
+                      SegmentedButton<LiveJoinPolicy>(
+                        showSelectedIcon: false,
+                        segments: [
+                          for (final policy in LiveJoinPolicy.values)
+                            ButtonSegment(
+                              value: policy,
+                              label: Text(policy.label),
+                            ),
+                        ],
+                        selected: {_joinPolicy},
+                        onSelectionChanged: (s) =>
+                            update(() => _joinPolicy = s.first),
+                      )
+                    else
+                      Text(
+                        _roomKind == RunRoomKind.solo
+                            ? 'Đang nhận người chạy cùng · '
+                                  '${_joinPolicy.label.toLowerCase()}'
+                            : 'Buổi này không nhận người chạy cùng',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Bạn bè trong club thấy bạn ở trang Live và xin chạy cùng.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.55),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
                   const Text(
                     'CÀI ĐẶT LIVE',
                     style: TextStyle(
@@ -2052,3 +2226,36 @@ class _DistanceReadout extends StatelessWidget {
   }
 }
 
+/// Rủ chạy cùng trước khi bắt đầu: có người đang live thì hiện số người, chạm
+/// vào trang Live để xin chạy cùng.
+class _LiveNearbyPill extends ConsumerWidget {
+  const _LiveNearbyPill();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final board = ref.watch(liveBoardProvider).value;
+    final count = board == null
+        ? 0
+        : board.liveRooms.length + board.solos.length;
+    if (count == 0) return const SizedBox.shrink();
+    final palette = context.runNowPalette;
+    return Material(
+      color: palette.ink,
+      shape: const StadiumBorder(),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: () => context.push('/live'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Text(
+            '$count đang Live · chạy cùng?',
+            style: TextStyle(
+              color: palette.accent,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

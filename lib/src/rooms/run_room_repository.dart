@@ -20,10 +20,12 @@ class RunRoomRepository {
       _firestore.collection('runRooms');
 
   /// Phòng public còn mở, sắp đóng trước. Phòng private và mật khẩu không
-  /// nằm ở đây; người được mời vào qua link.
+  /// nằm ở đây; người được mời vào qua link. Phòng solo đi theo buổi live
+  /// của chủ phòng nên cũng không nằm ở đây.
   Stream<List<RunRoom>> watchPublicRooms(DateTime now) => _rooms
       .where('privacy', isEqualTo: RunRoomPrivacy.public.value)
       .where('status', isEqualTo: 'open')
+      .where('kind', isEqualTo: RunRoomKind.group.name)
       .where('closesAt', isGreaterThan: Timestamp.fromDate(now))
       .orderBy('closesAt')
       .limit(_publicLimit)

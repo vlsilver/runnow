@@ -14,7 +14,9 @@ import 'package:myrun/src/home_digest.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rooms/run_room_repository.dart';
-import 'package:myrun/src/rooms/run_rooms_section.dart';
+import 'package:myrun/src/rooms/live_board.dart';
+import 'package:myrun/src/rooms/run_room_models.dart';
+import 'package:myrun/src/rooms/run_room_route_sketch.dart';
 import 'package:myrun/src/run_contracts/run_contract_insights.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_period.dart';
@@ -82,7 +84,6 @@ class KeoHubScreen extends ConsumerWidget {
               ),
               const HomeDigestCard(),
               const _LiveSection(),
-              const RunRoomsSection(),
               const _KeoSection(),
               const _RankSection(),
               const _CardsSection(),
@@ -149,24 +150,59 @@ class HubSectionHeader extends StatelessWidget {
 
 // ---------------------------------------------------------------- LIVE
 
+/// Mục Live: phòng group đang chạy rồi người đang chạy riêng, chạm tiêu đề
+/// sang trang Live có cả phòng hẹn giờ.
 class _LiveSection extends ConsumerWidget {
   const _LiveSection();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final uid = ref.watch(firebaseUserProvider).value?.uid;
-    final live = ref.watch(clubLiveSessionsProvider);
-    return live.when(
-      data: (sessions) {
-        final others = [
-          for (final session in sessions)
-            if (session.ownerUid != uid) session,
-        ];
-        if (others.isEmpty) {
-          // Chính mình đang live thì thôi mời. Web không có tab Chạy.
-          final meLive = sessions.length > others.length;
-          if (meLive || kIsWeb) return const SizedBox.shrink();
-          return Padding(
+    return switch (ref.watch(liveBoardProvider)) {
+      AsyncData(:final value) => _content(context, value),
+      // Live chỉ là phần thêm: lỗi thì báo một dòng, phần còn lại vẫn dùng
+      // được.
+      AsyncError(:final error) => Builder(
+        builder: (context) {
+          debugPrint('live board: $error');
+          return _RetryRow(
+            label: 'Không tải được ai đang chạy. Chạm để thử lại.',
+            onTap: () {
+              ref.invalidate(clubLiveSessionsProvider);
+              ref.invalidate(publicRunRoomsProvider);
+              ref.invalidate(myRunRoomsProvider);
+            },
+          );
+        },
+      ),
+      _ => const SizedBox.shrink(),
+    };
+  }
+
+  Widget _content(BuildContext context, LiveBoard board) {
+    final cards = <Widget>[
+      for (final room in board.liveRooms)
+        LiveRoomCard(room: room, myState: board.myStates[room.id]),
+      for (final solo in board.solos) LiveSessionCard(session: solo.session),
+    ];
+    // Chính mình đang live thì thôi mời. Web không có tab Chạy.
+    if (cards.isEmpty && (board.meLive || kIsWeb)) {
+      return const SizedBox.shrink();
+    }
+    final summary = [
+      if (board.solos.isNotEmpty) '${board.solos.length} đang chạy',
+      if (board.liveRooms.isNotEmpty) '${board.liveRooms.length} phòng',
+    ].join(' · ');
+    final width = MediaQuery.sizeOf(context).width - 60;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        HubSectionHeader(
+          title: 'Live',
+          onMore: () => context.push('/live'),
+          action: summary.isEmpty ? null : _MutedLine(summary),
+        ),
+        if (cards.isEmpty)
+          Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: _InviteRow(
               title: 'Chưa ai đang chạy live',
@@ -175,39 +211,156 @@ class _LiveSection extends ConsumerWidget {
               // Sang tab Chạy như nút ở thanh dưới, không mở thêm màn ghi.
               onTap: () => StatefulNavigationShell.of(context).goBranch(2),
             ),
-          );
-        }
-        if (others.length == 1) {
-          return Padding(
+          )
+        else if (cards.length == 1)
+          Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: LiveSessionCard(session: others.single),
-          );
-        }
-        final width = MediaQuery.sizeOf(context).width - 60;
-        return SizedBox(
-          height: LiveSessionCard.height,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: others.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 12),
-            itemBuilder: (context, index) => SizedBox(
-              width: width,
-              child: LiveSessionCard(session: others[index]),
+            child: cards.single,
+          )
+        else
+          SizedBox(
+            height: LiveSessionCard.height,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: cards.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (context, index) =>
+                  SizedBox(width: width, child: cards[index]),
             ),
           ),
-        );
+      ],
+    );
+  }
+}
+
+/// Thẻ phòng group đang chạy, cùng cỡ với [LiveSessionCard]: hình tuyến làm
+/// nền, tên phòng và số người ở tấm dưới.
+class LiveRoomCard extends StatelessWidget {
+  const LiveRoomCard({required this.room, this.myState, super.key});
+
+  final RunRoom room;
+  final RunRoomMemberState? myState;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final route = room.route;
+    final detail = [
+      room.hostName,
+      if (route != null) 'tuyến ${runRoomRouteKm(route)}',
+      switch (myState) {
+        RunRoomMemberState.joined => 'đã vào',
+        RunRoomMemberState.requested => 'chờ duyệt',
+        _ => runRoomAccessLabel(room.privacy).toLowerCase(),
       },
-      // Live chỉ là phần thêm: lỗi thì báo một dòng, phần còn lại vẫn dùng
-      // được.
-      error: (error, stack) {
-        debugPrint('club live sessions: $error');
-        return _RetryRow(
-          label: 'Không tải được ai đang chạy. Chạm để thử lại.',
-          onTap: () => ref.invalidate(clubLiveSessionsProvider),
-        );
-      },
-      loading: () => const SizedBox.shrink(),
+    ].join(' · ');
+    return SizedBox(
+      height: LiveSessionCard.height,
+      child: Material(
+        clipBehavior: Clip.antiAlias,
+        borderRadius: BorderRadius.circular(26),
+        color: palette.tint,
+        child: InkWell(
+          onTap: () => context.push('/rooms/${room.id}'),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [palette.tint, palette.glassStart],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: route != null
+                    ? RunRoomRouteSketch(
+                        route: route,
+                        color: palette.accent,
+                        strokeWidth: 4,
+                        padding: const EdgeInsets.fromLTRB(28, 56, 28, 76),
+                      )
+                    : Padding(
+                        padding: const EdgeInsets.only(bottom: 40),
+                        child: Icon(
+                          Icons.groups_rounded,
+                          size: 72,
+                          color: palette.accent.withValues(alpha: 0.35),
+                        ),
+                      ),
+              ),
+              const Positioned(
+                left: 14,
+                top: 14,
+                child: Row(
+                  children: [
+                    LiveBadge(),
+                    SizedBox(width: 6),
+                    _GlassPill(
+                      child: Text(
+                        'PHÒNG',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                left: 10,
+                right: 10,
+                bottom: 10,
+                child: _GlassPill(
+                  radius: 18,
+                  padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              room.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            Text(
+                              detail,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: onSurface.withValues(alpha: 0.55),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _BigNumber(
+                        value: '${room.runnerCount}',
+                        unit: '/${room.maxRunners}',
+                        size: 34,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -353,6 +506,13 @@ class _KeoSection extends ConsumerWidget {
       uid,
     );
     final showCoach = coach != null && !coach.isDraft && !coach.completed;
+    final board = ref.watch(liveBoardProvider).value;
+    // Phòng của kèo "Hẹn chạy cùng" đã có thẻ kèo, không hiện lần nữa.
+    final linkedRooms = {for (final c in contracts) ?c.roomId};
+    final scheduled = [
+      for (final room in board?.upcomingRooms ?? const <RunRoom>[])
+        if (!linkedRooms.contains(room.id)) room,
+    ];
     final loading =
         (mine.isLoading && !mine.hasValue) ||
         (club.isLoading && !club.hasValue);
@@ -368,6 +528,8 @@ class _KeoSection extends ConsumerWidget {
     }
 
     final cards = <Widget>[
+      for (final room in scheduled)
+        _RoomMiniCard(room: room, myState: board?.myStates[room.id]),
       for (final game in games)
         _GameMiniCard(
           game: game,
@@ -532,6 +694,98 @@ class _ContractMiniCard extends StatelessWidget {
                         : timeLeftLabel(timeRemaining(contract, now)))
                   : '${contract.participantCount} người · chưa vào',
           }),
+        ],
+      ),
+    );
+  }
+}
+
+/// Phòng hẹn giờ trong hàng Kèo: giờ hẹn to, chạm vào phòng để đăng ký.
+class _RoomMiniCard extends StatelessWidget {
+  const _RoomMiniCard({required this.room, required this.myState});
+
+  final RunRoom room;
+  final RunRoomMemberState? myState;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final now = DateTime.now();
+    final starts = room.startsAt!.toLocal();
+    final day = runRoomDayLabel(starts, now);
+    final weekday = runRoomWeekdayShort[starts.weekday - 1];
+    final registered = myState != null;
+    return _MiniCard(
+      onTap: () => context.push('/rooms/${room.id}'),
+      scene: HubScene.map,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'PHÒNG LIVE',
+            style: TextStyle(
+              color: palette.accentDeep,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            DateFormat('HH:mm').format(starts),
+            style: const TextStyle(
+              fontFamily: 'Barlow Condensed',
+              fontSize: 34,
+              height: 1,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          _MutedLine(
+            (day == weekday ? day : '$day · $weekday').toUpperCase(),
+          ),
+          const Spacer(),
+          Text(
+            room.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.2,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: _MutedLine(
+                  '${room.runnerCount}/${room.maxRunners} đăng ký',
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: registered ? palette.tint : palette.ink,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  switch (myState) {
+                    RunRoomMemberState.requested => 'Chờ duyệt',
+                    null => 'Đăng ký',
+                    _ => 'Đã đăng ký',
+                  },
+                  style: TextStyle(
+                    color: registered ? palette.ink : palette.accent,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );

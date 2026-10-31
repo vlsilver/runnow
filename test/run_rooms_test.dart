@@ -10,7 +10,9 @@ import 'package:myrun/src/repository.dart';
 import 'package:myrun/src/rooms/run_room_actions.dart';
 import 'package:myrun/src/rooms/run_room_models.dart';
 import 'package:myrun/src/rooms/run_room_repository.dart';
+import 'package:myrun/src/rooms/run_room_route_sketch.dart';
 import 'package:myrun/src/rooms/run_room_screen.dart';
+import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/tracking_draft_store.dart';
@@ -164,8 +166,40 @@ void main() {
         final sessions = await repository.watchRoomLive('room-a').first;
 
         expect(sessions.map((s) => s.id).toSet(), {'a', 'b'});
+        expect(sessions.map((s) => s.roomId).toSet(), {'room-a'});
       },
     );
+
+    test('phòng công khai: bỏ phòng solo, đọc được tuyến', () async {
+      Future<void> room(String id, Map<String, dynamic> extra) =>
+          firestore.collection('runRooms').doc(id).set({
+            'title': id,
+            'privacy': 'public',
+            'status': 'open',
+            'closesAt': Timestamp.fromDate(now.add(const Duration(hours: 2))),
+            ...extra,
+          });
+      await room('group', {
+        'kind': 'group',
+        'route': {
+          'distanceMeters': 6400,
+          'points': [
+            {'lat': 21.05, 'lng': 105.82},
+            {'lat': 21.06, 'lng': 105.83},
+          ],
+        },
+      });
+      await room('solo', {'kind': 'solo'});
+
+      final rooms = await repository.watchPublicRooms(now).first;
+
+      expect(rooms.map((r) => r.id), ['group']);
+      expect(rooms.single.kind, RunRoomKind.group);
+      expect(rooms.single.route?.distanceMeters, 6400);
+      expect(rooms.single.route?.points.last.longitude, 105.83);
+      expect(RunRoom.fromMap('cũ', const {}).kind, RunRoomKind.group);
+      expect(RunRoom.fromMap('cũ', const {}).route, isNull);
+    });
 
     test('cổ vũ: ghi đúng field rules cho phép, TTL 6 ngày', () async {
       await repository.sendMessage('room-a', uid: me, text: '🔥', emoji: true);
@@ -184,6 +218,29 @@ void main() {
         inInclusiveRange(6 * 24 - 1, 6 * 24),
       );
     });
+  });
+
+  test('tuyến gửi lên phòng: tối đa 120 điểm, giữ đầu cuối và quãng gốc', () {
+    final long = RunContractRoute(
+      points: [
+        for (var i = 0; i < 1000; i++)
+          RunContractRoutePoint(latitude: 21 + i / 10000, longitude: 105.8),
+      ],
+      distanceMeters: 11120,
+    );
+
+    final preview = runRoomRoutePreview(long);
+
+    expect(preview.points, hasLength(120));
+    expect(preview.points.first.latitude, 21);
+    expect(preview.points.last.latitude, closeTo(21.0999, 1e-9));
+    expect(preview.distanceMeters, 11120);
+
+    final short = RunContractRoute(
+      points: long.points.take(50).toList(),
+      distanceMeters: 550,
+    );
+    expect(runRoomRoutePreview(short).points, hasLength(50));
   });
 
   test('draft giữ phòng để mở lại app vẫn chạy chung phòng', () {
@@ -233,9 +290,14 @@ void main() {
   group('RunRoomScreen khi chưa vào phòng', () {
     late FakeFirebaseFirestore firestore;
 
-    Future<void> seedRoom(String privacy, {String? myState}) async {
+    Future<void> seedRoom(
+      String privacy, {
+      String? myState,
+      Map<String, Object>? route,
+    }) async {
       final room = firestore.collection('runRooms').doc('room-a');
       await room.set({
+        'route': ?route,
         'hostUid': 'host-1',
         'hostName': 'Chủ',
         'title': 'Hồ Tây sáng',
@@ -304,6 +366,24 @@ void main() {
       expect(find.text('Xin vào phòng'), findsNothing);
     });
 
+    testWidgets('phòng có tuyến thì người ngoài thấy quãng và hình tuyến', (
+      tester,
+    ) async {
+      await seedRoom(
+        'public',
+        route: {
+          'distanceMeters': 6400,
+          'points': [
+            {'lat': 21.05, 'lng': 105.82},
+            {'lat': 21.06, 'lng': 105.83},
+          ],
+        },
+      );
+      await pump(tester);
+      expect(find.text('Tuyến 6,4 km'), findsOneWidget);
+      expect(find.byType(RunRoomRouteSketch), findsOneWidget);
+    });
+
     testWidgets('bị mời ra thì không có nút vào lại', (tester) async {
       await seedRoom('public', myState: 'kicked');
       await pump(tester);
@@ -313,5 +393,20 @@ void main() {
       );
       expect(find.text('Vào phòng'), findsNothing);
     });
+  });
+
+  test('buổi chạy riêng có phòng solo kín vẫn live cho cả club', () {
+    bool roomOnly(RunRoomKind? kind, RunRoomPrivacy? privacy) =>
+        runRoomLiveRoomOnly(roomId: 'r1', kind: kind, privacy: privacy);
+
+    expect(roomOnly(RunRoomKind.solo, RunRoomPrivacy.private), isFalse);
+    expect(roomOnly(RunRoomKind.group, RunRoomPrivacy.private), isTrue);
+    expect(roomOnly(RunRoomKind.group, RunRoomPrivacy.public), isFalse);
+    // Chưa đọc được phòng thì giữ kín cho an toàn.
+    expect(roomOnly(null, null), isTrue);
+    expect(
+      runRoomLiveRoomOnly(roomId: null, kind: null, privacy: null),
+      isFalse,
+    );
   });
 }

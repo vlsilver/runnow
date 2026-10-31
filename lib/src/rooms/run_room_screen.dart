@@ -10,6 +10,7 @@ import 'package:myrun/src/rooms/run_room_actions.dart';
 import 'package:myrun/src/rooms/run_room_map.dart';
 import 'package:myrun/src/rooms/run_room_models.dart';
 import 'package:myrun/src/rooms/run_room_repository.dart';
+import 'package:myrun/src/rooms/run_room_route_sketch.dart';
 import 'package:myrun/src/theme.dart';
 
 /// Emoji cổ vũ nhanh, bấm một chạm khi đang chạy.
@@ -71,8 +72,27 @@ class RunRoomScreen extends ConsumerWidget {
               const SizedBox(height: 14),
               if (joined)
                 _JoinedBody(room: data, myUid: uid, host: host)
-              else
+              else ...[
+                // Người ngoài phòng không đọc được buổi live của phòng, nên
+                // chỉ thấy hình tuyến chứ không có map người chạy.
+                if (data.route case final route?) ...[
+                  Container(
+                    height: 160,
+                    decoration: BoxDecoration(
+                      color: context.runNowPalette.tint,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: RunRoomRouteSketch(
+                      route: route,
+                      color: context.runNowPalette.accent,
+                      dashed: true,
+                      padding: const EdgeInsets.all(24),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 _JoinPanel(room: data, me: me),
+              ],
             ],
           );
         },
@@ -196,6 +216,11 @@ class _RoomHeader extends StatelessWidget {
                 icon: Icons.schedule_rounded,
                 label: runRoomWhen(room, DateTime.now()),
               ),
+              if (room.route case final route?)
+                _Chip(
+                  icon: Icons.route_rounded,
+                  label: 'Tuyến ${runRoomRouteKm(route)}',
+                ),
             ],
           ),
         ],
@@ -382,7 +407,14 @@ class _JoinedBody extends ConsumerWidget {
             child: Stack(
               children: [
                 Positioned.fill(
-                  child: RunRoomMap(sessions: sessions, myUid: myUid),
+                  child: RunRoomMap(
+                    sessions: sessions,
+                    myUid: myUid,
+                    plannedRoute: switch (room.route) {
+                      final route? => runRoomRouteLatLngs(route),
+                      null => const [],
+                    },
+                  ),
                 ),
                 if (sessions.isEmpty)
                   Positioned(
@@ -395,9 +427,11 @@ class _JoinedBody extends ConsumerWidget {
                         color: palette.glassStart,
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      child: const Text(
-                        'Chưa ai bắt đầu chạy trong phòng.',
-                        style: TextStyle(fontWeight: FontWeight.w700),
+                      child: Text(
+                        room.route == null
+                            ? 'Chưa ai bắt đầu chạy trong phòng.'
+                            : 'Nét đứt là tuyến chủ phòng vẽ. Chưa ai bắt đầu chạy.',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
                   ),
