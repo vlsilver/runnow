@@ -645,9 +645,11 @@ type memberDayStats struct {
 	DayKm float64
 }
 
-// memberDay tính số của uid trong ngày VN bắt đầu từ start (0h VN).
+// memberDay tính số của uid trong ngày VN bắt đầu từ start (0h VN). Hỏi ngày
+// đã qua thì buổi của các ngày sau không được tính vào.
 func (t *BotTools) memberDay(ctx context.Context, uid string, start time.Time) (memberDayStats, error) {
 	today := dateKey(start)
+	end := start.AddDate(0, 0, 1)
 
 	// Buổi chạy hôm nay → official (đã khử trùng) → km chạy + tổng official/ngày.
 	facts := []ActivityFact{}
@@ -668,7 +670,7 @@ func (t *BotTools) memberDay(ctx context.Context, uid string, start time.Time) (
 	var officialMeters, runMeters float64
 	runCount := 0
 	for _, f := range SelectOfficialActivities(facts) {
-		if f.StartedAt.Before(start) {
+		if f.StartedAt.Before(start) || !f.StartedAt.Before(end) {
 			continue
 		}
 		officialMeters += f.DistanceMeters

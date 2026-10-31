@@ -50,6 +50,9 @@ type Dependencies struct {
 	ManagedBots *ManagedBotService
 	// Learn là task bot tự học ký ức; nil khi AGENT_LEARN chưa bật.
 	Learn *LearnService
+	// HomeDigest viết điểm tin buổi sáng; nil khi HOME_DIGEST chưa bật hay
+	// service không có Gemini.
+	HomeDigest *HomeDigestService
 	// EnqueueTask thay Tasks.Publish khi khác nil; test gài để bắt task mà
 	// không cần Cloud Tasks.
 	EnqueueTask taskPublishFunc
@@ -162,6 +165,9 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 				d.AgentBrain.SetChannelReply(d.ManagedBots.channelReply)
 				d.AgentBrain.SetRoomOut(d.ManagedBots.roomOut)
 				d.AgentBrain.SetRoomNudge(d.ManagedBots.roomNudge)
+			}
+			if config.HomeDigest {
+				d.HomeDigest = NewHomeDigestService(db, genaiDigestWriter{client: genaiClient, model: config.GeminiModel}, config.GeminiModel)
 			}
 			if config.AgentLearn {
 				d.Learn = NewLearnService(d.Agents, budgetLearnLLM{inner: genaiLearnLLM{client: genaiClient, model: config.AgentLearnModel}, model: config.AgentLearnModel, budget: budget}, config.TelegramChatID)

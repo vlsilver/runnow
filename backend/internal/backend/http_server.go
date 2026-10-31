@@ -71,6 +71,7 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/agent-dm", s.agentDM)
 	s.route("POST /tasks/agent-turn", s.agentTurn)
 	s.route("POST /tasks/agent-learn", s.agentLearn)
+	s.route("POST /tasks/home-digest", s.homeDigest)
 	s.route("POST /tasks/rank-close", s.rankClose)
 	s.route("POST /tasks/managed-bot-sync", s.managedBotSync)
 	s.route("POST /tasks/managed-send", s.managedSend)
@@ -117,6 +118,9 @@ func (s *Server) scheduleTick(w http.ResponseWriter, r *http.Request) error {
 	}
 	if s.deps.RankCards != nil {
 		jobs = append(jobs, tickJob{name: "rank", timeout: 5 * time.Second, run: s.enqueueRankClose})
+	}
+	if s.deps.HomeDigest != nil {
+		jobs = append(jobs, tickJob{name: "digest", timeout: 5 * time.Second, run: s.enqueueHomeDigest})
 	}
 	if s.deps.Bot != nil {
 		jobs = append(jobs, tickJob{name: "bot", timeout: 225 * time.Second, run: s.deps.Bot.RunDueSchedules})

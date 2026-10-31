@@ -69,6 +69,8 @@ type Config struct {
 	// BotGroupFacts cho 3i đọc trí nhớ về group club từ ký ức tự học thay cho
 	// tóm tắt botMemory. Chỉ "on" mới bật; tắt là quay về botMemory ngay.
 	BotGroupFacts bool
+	// HomeDigest bật bài điểm tin buổi sáng của 3i ở Trang chủ app.
+	HomeDigest bool
 	// BotImages bật vẽ ảnh khi chat của MyBot và 3i trong group. Chỉ "on" mới
 	// bật. Tắt thì hai bot không có tool vẽ và GET /v1/agents/me không trả lượt
 	// ảnh. Vẽ tranh thẻ buổi chạy không theo cờ này, nó có trần tiền riêng.
@@ -133,6 +135,7 @@ func LoadConfig() (Config, error) {
 	// 3i vì model cũ treo thì task học đổi theo, không bị bỏ lại trên model cũ.
 	c.AgentLearnModel = env("AGENT_LEARN_MODEL", c.GeminiModel)
 	c.BotGroupFacts = env("BOT_GROUP_FACTS", "") == "on"
+	c.HomeDigest = env("HOME_DIGEST", "") == "on"
 	c.BotImages = env("BOT_IMAGES", "") == "on"
 	if n, convErr := strconv.Atoi(env("BOT_HOURLY_LIMIT", "100")); convErr == nil && n > 0 {
 		c.BotHourlyLimit = n

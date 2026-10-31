@@ -355,6 +355,12 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/runRooms/$(roomId)/members/$(request.auth.uid)).data.state == 'joined';
     }
 
+    // Điểm tin buổi sáng của 3i: backend viết, mọi người đăng nhập đọc.
+    match /homeDigests/{day} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
     match /runRooms/{roomId} {
       allow get: if signedIn();
       allow list: if signedIn() && resource.data.privacy == 'public';
