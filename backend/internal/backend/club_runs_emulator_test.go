@@ -21,7 +21,8 @@ func TestClubRunsEmulator(t *testing.T) {
 		m := map[string]any{"id": id, "name": "Buổi " + id, "sportType": "Run", "startedAt": startedAt,
 			"distanceMeters": 5000.0, "movingTimeSeconds": 1800,
 			"routePoints": []any{map[string]any{"latitude": 21.0, "longitude": 105.8}},
-			"streams":     map[string]any{"heartrate": []any{140.0}}}
+			"streams":     map[string]any{"heartrate": []any{140.0}},
+			"routeSketch": []any{0, 0, 1000, 1000}}
 		for k, v := range extra {
 			m[k] = v
 		}
@@ -62,7 +63,8 @@ func TestClubRunsEmulator(t *testing.T) {
 			t.Fatalf("feed không được trả %s", k)
 		}
 	}
-	if first["name"] != "Buổi a" || first["distanceMeters"] != 5000.0 {
+	if first["name"] != "Buổi a" || first["distanceMeters"] != 5000.0 ||
+		!reflect.DeepEqual(first["routeSketch"], []any{0.0, 0.0, 1000.0, 1000.0}) {
 		t.Fatalf("thiếu field danh sách cần: %v", first)
 	}
 

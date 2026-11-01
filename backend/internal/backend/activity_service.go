@@ -276,6 +276,45 @@ func BackfillHealthHydrated(ctx context.Context, db *firestore.Client) (int, err
 	return updated, nil
 }
 
+// BackfillRouteSketch ghi routeSketch cho các buổi lưu trước khi backend tự
+// tính field này. Đọc từng doc qua iterator vì routePoints mỗi doc có thể vài
+// trăm KB, GetAll cả trăm buổi của một user là đầy bộ nhớ. Buổi không có tuyến
+// (kho sức khoẻ, Garmin) để nguyên. Chạy lại không đổi gì. Trả về số doc đã sửa.
+func BackfillRouteSketch(ctx context.Context, db *firestore.Client) (int, error) {
+	users, err := db.Collection("users").DocumentRefs(ctx).GetAll()
+	if err != nil {
+		return 0, err
+	}
+	updated := 0
+	for _, user := range users {
+		iter := user.Collection("activities").Select("routePoints", "polyline", "routeSketch").Documents(ctx)
+		for {
+			d, err := iter.Next()
+			if errors.Is(err, iterator.Done) {
+				break
+			}
+			if err != nil {
+				iter.Stop()
+				return updated, err
+			}
+			data := d.Data()
+			if data["routeSketch"] != nil {
+				continue
+			}
+			sketch := activityRouteSketch(data)
+			if sketch == nil {
+				continue
+			}
+			if _, err := d.Ref.Update(ctx, []firestore.Update{{Path: "routeSketch", Value: sketch}}); err != nil {
+				iter.Stop()
+				return updated, err
+			}
+			updated++
+		}
+	}
+	return updated, nil
+}
+
 func trackedDerivedCause(activity map[string]any) string {
 	identity := map[string]any{}
 	for _, key := range []string{
@@ -417,6 +456,10 @@ func normalizeTrackedActivity(raw map[string]any) (map[string]any, error) {
 	next["hydrated"] = true
 	next["streamsHydrated"] = true
 	next["streamsVersion"] = 4
+	// Tính trên tuyến đầy đủ, trước khi shrinkTrackedActivity giảm điểm.
+	if sketch := activityRouteSketch(next); sketch != nil {
+		next["routeSketch"] = sketch
+	}
 	next["officialState"] = "candidate"
 	next["updatedBy"] = "backend"
 	return next, nil

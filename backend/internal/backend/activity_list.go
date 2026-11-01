@@ -15,7 +15,7 @@ var activityListFields = []string{
 	"id", "name", "sportType", "startedAt", "distanceMeters", "movingTimeSeconds",
 	"elapsedTimeSeconds", "source", "sourceActivityId", "manual", "recordingDevice",
 	"averageHeartRate", "averageCadence", "elevationGainMeters", "hydrated",
-	"schemaVersion", "duplicateOfActivityId",
+	"schemaVersion", "duplicateOfActivityId", "routeSketch",
 }
 
 const activityPageMax = 50
