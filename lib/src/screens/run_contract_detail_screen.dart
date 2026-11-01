@@ -9,6 +9,7 @@ import 'package:myrun/src/run_contracts/run_contract_controller.dart';
 import 'package:myrun/src/run_contracts/run_contract_insights.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
+import 'package:myrun/src/run_contracts/widgets/contract_card_panel.dart';
 import 'package:myrun/src/run_contracts/widgets/run_contract_card.dart'
     show runContractStateColor, runContractStateLabel;
 import 'package:myrun/src/run_contracts/widgets/run_contract_meetup_panel.dart';
@@ -257,6 +258,16 @@ class _RunContractDetailScreenState
         ] else if (participant != null) ...[
           const SizedBox(height: 12),
           _MyProgressCard(contract: contract, participant: participant),
+          // Hành trình nhóm xét đạt theo tổng cả nhóm, còn thẻ xét theo tiến
+          // độ riêng từng người, nên loại kèo đó chưa có thẻ.
+          if (contract.status == RunContractStatus.completed ||
+              contract.status == RunContractStatus.failed) ...[
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: ContractCardPanel(contract: contract),
+            ),
+          ],
         ],
         const SizedBox(height: 12),
         _ParticipantProgressList(

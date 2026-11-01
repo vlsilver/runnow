@@ -9,6 +9,7 @@ import 'package:myrun/src/admin/admin_models.dart';
 import 'package:myrun/src/agents/agent_models.dart';
 import 'package:myrun/src/config.dart';
 import 'package:myrun/src/games/game_models.dart';
+import 'package:myrun/src/run_contracts/contract_card_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -715,6 +716,24 @@ class RunNowApiClient {
 
   String _runCardPath(String activityId) =>
       '/v1/activities/${Uri.encodeComponent(activityId)}/card';
+
+  /// Thẻ của kèo [contractId]: thẻ đã lật, tỉ lệ sẽ quay khi chưa lật, hoặc lý
+  /// do không lật được.
+  Future<ContractCardView> getContractCard(String contractId) async {
+    final response = await _send('GET', _contractCardPath(contractId));
+    return ContractCardView.fromJson(_jsonObject(response));
+  }
+
+  /// Lật thẻ kèo: server quay bậc một lần rồi giữ, gọi lại trả đúng thẻ đó.
+  Future<ContractCard> rollContractCard(String contractId) async {
+    final response = await _send('POST', _contractCardPath(contractId));
+    return ContractCard.fromJson(
+      _jsonObject(response)['card'] as Map<String, dynamic>,
+    );
+  }
+
+  String _contractCardPath(String contractId) =>
+      '/v1/contracts/${Uri.encodeComponent(contractId)}/card';
 
   RunCard _runCard(http.Response response) =>
       RunCard.fromJson(_jsonObject(response)['card'] as Map<String, dynamic>);
