@@ -62,8 +62,8 @@ func (p *photoThreads) LivePhotoAnnouncement(_ context.Context, threadID int64, 
 func (*photoThreads) ContractRoast(context.Context, string, string, []roastFailer) string { return "" }
 func (*photoThreads) Enabled() bool                                                       { return true }
 
-// Tin Live và tin buổi chạy xong vào topic Live Track khi đã đặt; chưa đặt
-// thì vẫn ở General như trước.
+// Thẻ Live, ảnh live và tin buổi chạy xong vào topic Live Track khi đã đặt;
+// chưa đặt thì vẫn ở General như trước.
 func TestEmulatorRunNewsGoToLiveTrackTopic(t *testing.T) {
 	ctx := context.Background()
 	db := emulatorDB(t)
@@ -75,11 +75,11 @@ func TestEmulatorRunNewsGoToLiveTrackTopic(t *testing.T) {
 	seed(t, db, "users/u1/activities/runnow-1785619792289", map[string]any{"name": "Chạy sáng", "source": "runnow",
 		"sportType": "Run", "startedAt": "2026-08-01T22:49:52Z", "distanceMeters": 5000.0, "movingTimeSeconds": 1800})
 
-	if err := acts.LiveAnnounce(ctx, "u1", "runnow-1785619792289", liveEventStart, 400, 120, 0, ""); err != nil {
+	if err := acts.LiveAnnounce(ctx, "u1", "runnow-1785600000000", liveEventStart, 400, 120, 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	seed(t, db, "appConfig/telegram", map[string]any{"liveTrackThreadId": int64(liveTrackTopic)})
-	if err := acts.LiveAnnounce(ctx, "u1", "runnow-1785619792289", liveEventMilestone, 5000, 1500, 5, ""); err != nil {
+	if err := acts.LiveAnnounce(ctx, "u1", "runnow-1785619792289", liveEventStart, 400, 120, 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := acts.LiveAnnounce(ctx, "u1", "runnow-1785619792289", liveEventPhoto, 2500, 700, 0, "live/u1/a.jpg"); err != nil {
@@ -94,7 +94,7 @@ func TestEmulatorRunNewsGoToLiveTrackTopic(t *testing.T) {
 		threads = append(threads, c.Params["message_thread_id"])
 	}
 	if want := []any{nil, float64(liveTrackTopic), float64(liveTrackTopic)}; !reflect.DeepEqual(threads, want) {
-		t.Fatalf("thread của bắt đầu, mốc 5km, chạy xong = %v, muốn %v", threads, want)
+		t.Fatalf("thread của thẻ trước khi đặt topic, thẻ sau khi đặt, tin chạy xong = %v, muốn %v", threads, want)
 	}
 	if !reflect.DeepEqual(photos.threads, []int64{liveTrackTopic}) {
 		t.Fatalf("thread của ảnh live = %v", photos.threads)

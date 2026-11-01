@@ -59,6 +59,7 @@ func (s *Server) botRoutes() {
 	// dời sang service bot. Định tuyến queue/scheduler đổi ở deploy.sh.
 	s.route("POST /tasks/notify-telegram", s.notifyTelegram)
 	s.route("POST /tasks/live-announce", s.liveAnnounce)
+	s.route("POST /tasks/live-card", s.liveCard)
 	s.route("POST /tasks/contract-roast", s.contractRoast)
 	s.route("POST /tasks/contract-announce-new", s.contractAnnounceNew)
 	s.route("POST /tasks/coach-announce", s.coachAnnounce)
@@ -345,6 +346,22 @@ func (s *Server) liveAnnounce(w http.ResponseWriter, r *http.Request) error {
 		return nil
 	}
 	if err := s.deps.Activities.LiveAnnounce(r.Context(), task.UID, task.ActivityID, task.Event, task.DistanceMeters, task.MovingTimeSeconds, task.MilestoneKm, task.PhotoPath); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// liveCard: task chạy trên bot, sửa thẻ Live sau các lượt bấm cổ vũ trên
+// Telegram (gom theo liveCardRefreshEvery).
+func (s *Server) liveCard(w http.ResponseWriter, r *http.Request) error {
+	var task struct {
+		ActivityID string `json:"activityId"`
+	}
+	if decodeJSON(r, &task) != nil || task.ActivityID == "" {
+		w.WriteHeader(204)
+		return nil
+	}
+	if err := s.deps.Activities.SyncLiveCard(r.Context(), task.ActivityID); err != nil {
 		return err
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})

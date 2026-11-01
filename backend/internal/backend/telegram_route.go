@@ -231,6 +231,13 @@ func (s *Server) callbackReply(ctx context.Context, update TelegramUpdate) (map[
 		}
 		return r
 	}
+	if activityID, emoji, ok := parseLiveCheer(cq.Data); ok {
+		text, err := s.liveCheerText(ctx, cq.From.ID, activityID, emoji, received)
+		if err != nil && transientEnqueueErr(err) {
+			return nil, err
+		}
+		return answer(text, false), err
+	}
 	b, ok := parseGameButton(cq.Data)
 	if !ok || s.deps == nil || s.deps.Games == nil || s.deps.TelegramLinks == nil {
 		return answer("Nút này chưa dùng được.", false), nil

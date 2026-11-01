@@ -1912,7 +1912,10 @@ CUỐI). Sự kiện: start = vừa xuất phát, milestone = vừa qua một c�
 đường, finish = vừa về đích. Lịch sử phía trên GỒM CÁC THÔNG BÁO TRƯỚC của chính
 buổi này + tin nhắn mọi người trong group.
 
-Báo tin này lên group theo đúng chất của bạn, dùng ĐÚNG số liệu cho sẵn, và:
+Lời của bạn là dòng bình luận trên THẺ LIVE của buổi này. Thẻ đã hiện quãng
+đường, thời gian, pace và trạng thái, mỗi mốc dòng của bạn thay dòng cũ. Viết
+MỘT câu ngắn (dưới 25 từ) theo đúng chất của bạn, số liệu nếu nhắc thì dùng
+ĐÚNG số cho sẵn, và:
 - NỐI TIẾP mạch buổi như một câu chuyện liền: nhắc tiến triển ("nãy Xkm giờ đã
   Ykm"), bắt không khí nhóm (ai vừa cổ vũ thì đáp lại).
 - TUYỆT ĐỐI KHÔNG lặp lại câu/ý đã đăng ở các thông báo trước — mỗi mốc một góc mới.
