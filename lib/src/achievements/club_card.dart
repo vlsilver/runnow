@@ -2,6 +2,7 @@ import 'package:myrun/src/achievements/run_card_collection.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/journey/journey_card.dart';
+import 'package:myrun/src/rank/rank_card.dart';
 
 /// Thẻ một người khoe với club, doc clubCards/{ownerUid}_{key}. Cùng dạng doc
 /// thẻ của chủ (đã bỏ phần riêng tư), nên vẽ bằng khuôn của Bộ thẻ.
@@ -30,6 +31,16 @@ class ClubCard {
         'journey_${text('campaign')}',
         CollectedJourneyCard(JourneyCard.fromJson(text('campaign'), json)),
       ),
+      // Backend chỉ khoe thẻ BXH đã lật. Kỳ hay bộ môn app chưa biết thì
+      // RankCard trả null và thẻ bị bỏ qua như kind lạ.
+      'rank' => switch (RankCard.fromJson(
+        text('ownerUid'),
+        text('boardId'),
+        json,
+      )) {
+        final card? => ('rank_${card.boardId}', CollectedRankCard(card)),
+        null => null,
+      },
       _ => null,
     };
     if (parsed == null) return null;
@@ -45,7 +56,7 @@ class ClubCard {
   final String ownerUid;
 
   /// Phần sau `{ownerUid}_` của id thẻ khoe và của tim thẻ: activityId,
-  /// `game_{gameId}` hay `journey_{campaign}`.
+  /// `game_{gameId}`, `journey_{campaign}` hay `rank_{boardId}`.
   final String key;
   final CollectedCard card;
   final DateTime? sharedAt;

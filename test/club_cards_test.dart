@@ -100,9 +100,55 @@ void main() {
     expect(card.runCount, 9);
   });
 
+  test('thẻ BXH khoe: khoá rank_{boardId}, đủ hạng, kỳ và câu', () {
+    final item = ClubCard.fromJson({
+      'kind': 'rank',
+      'ownerUid': 'u3',
+      'boardId': 'week_run_2026-10-19',
+      'range': 'week',
+      'sport': 'run',
+      'periodStart': '2026-10-19',
+      'periodEnd': '2026-10-26',
+      'rank': 2,
+      'participants': 14,
+      'tier': 'epic',
+      'score': 42.5,
+      'displayName': 'An',
+      'quote': 'Bám đuôi số 1 cả tuần.',
+      'stats': {'runMeters': 42500, 'walkMeters': 3000},
+      'revealedAt': DateTime.utc(2026, 10, 27, 1, 30),
+      'sharedAt': DateTime.utc(2026, 10, 27, 1, 30),
+    })!;
+    expect(item.key, 'rank_week_run_2026-10-19');
+    expect(item.ownerUid, 'u3');
+    final card = (item.card as CollectedRankCard).card;
+    expect(card.uid, 'u3');
+    expect(card.boardId, 'week_run_2026-10-19');
+    expect(card.rank, 2);
+    expect(card.tier, GameCardTier.superRare);
+    expect(card.quote, 'Bám đuôi số 1 cả tuần.');
+    expect(card.revealed, isTrue);
+  });
+
+  test('thẻ BXH có bộ môn app chưa biết thì bỏ qua', () {
+    expect(
+      ClubCard.fromJson({
+        'kind': 'rank',
+        'ownerUid': 'u3',
+        'boardId': 'week_swim_2026-10-19',
+        'range': 'week',
+        'sport': 'swim',
+        'periodStart': '2026-10-19',
+        'periodEnd': '2026-10-26',
+        'tier': 'rare',
+      }),
+      isNull,
+    );
+  });
+
   test('loại thẻ app chưa biết thì bỏ qua', () {
     expect(
-      ClubCard.fromJson({'kind': 'rank', 'ownerUid': 'u1', 'tier': 'rare'}),
+      ClubCard.fromJson({'kind': 'badge', 'ownerUid': 'u1', 'tier': 'rare'}),
       isNull,
     );
   });
