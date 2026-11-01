@@ -161,7 +161,7 @@ func (s *Server) commandReply(ctx context.Context, update TelegramUpdate) (map[s
 		return nil, false, nil
 	}
 	cmd, arg := parseBotCommand(msg.Text, s.config.TelegramBotUsername)
-	if cmd != "/vai" && cmd != telegramRoomCommand && !adminCommands[cmd] {
+	if cmd != "/vai" && cmd != telegramRoomCommand && cmd != liveTrackCommand && !adminCommands[cmd] {
 		return nil, false, nil
 	}
 	reply := func(text string, html bool) map[string]any {
@@ -176,6 +176,10 @@ func (s *Server) commandReply(ctx context.Context, update TelegramUpdate) (map[s
 	}
 	if cmd == telegramRoomCommand {
 		text, err := s.telegramRoomCommandText(ctx, update, arg)
+		return reply(text, false), true, err
+	}
+	if cmd == liveTrackCommand {
+		text, err := s.liveTrackCommandText(ctx, update, arg)
 		return reply(text, false), true, err
 	}
 	if adminCommands[cmd] {

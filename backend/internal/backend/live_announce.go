@@ -74,6 +74,11 @@ func (s *ActivityService) LiveAnnounce(ctx context.Context, uid, activityID, eve
 	}
 
 	hasBot := s.broadcast != nil && s.broadcast.Enabled()
+	// Đọc topic trước khi claim: đọc lỗi thì app gọi lại, sự kiện chưa bị đánh dấu.
+	thread, err := liveTrackThread(ctx, s.db)
+	if err != nil {
+		return err
+	}
 
 	// Ảnh: cần bot (tải ảnh từ Storage + caption + SendPhoto). Không có bot thì
 	// bỏ qua êm (ảnh không gửi được bằng thẻ tĩnh).
@@ -90,7 +95,7 @@ func (s *ActivityService) LiveAnnounce(ctx context.Context, uid, activityID, eve
 		if !claimed {
 			return nil
 		}
-		if err := s.broadcast.LivePhotoAnnouncement(ctx, uid, displayName, photoPath, distanceMeters); err != nil {
+		if err := s.broadcast.LivePhotoAnnouncement(ctx, thread, uid, displayName, photoPath, distanceMeters); err != nil {
 			slog.WarnContext(ctx, "live.photo_send_failed_after_claim", "error", err)
 			return nil
 		}
@@ -130,7 +135,7 @@ func (s *ActivityService) LiveAnnounce(ctx context.Context, uid, activityID, eve
 	if !claimed {
 		return nil
 	}
-	if err := s.telegram.SendChatMessage(ctx, s.telegram.ChatID(), text); err != nil {
+	if err := s.telegram.SendChatMessageInThread(ctx, s.telegram.ChatID(), thread, text); err != nil {
 		slog.WarnContext(ctx, "live.telegram_send_failed_after_claim", "error", err)
 		return nil
 	}

@@ -2010,7 +2010,7 @@ func (s *BotService) LiveAnnouncement(ctx context.Context, uid, displayName, eve
 // LivePhotoAnnouncement tải ảnh user vừa chụp giữa buổi chạy từ Storage rồi gửi
 // vào group kèm caption bot tự viết. Bot tắt / không có bucket / đọc lỗi thì bỏ
 // qua êm — mất tấm ảnh chứ không làm hỏng buổi chạy.
-func (s *BotService) LivePhotoAnnouncement(ctx context.Context, uid, displayName, photoPath string, distanceMeters float64) error {
+func (s *BotService) LivePhotoAnnouncement(ctx context.Context, threadID int64, uid, displayName, photoPath string, distanceMeters float64) error {
 	if !s.Enabled() || s.bucket == nil || photoPath == "" {
 		return nil
 	}
@@ -2027,7 +2027,7 @@ func (s *BotService) LivePhotoAnnouncement(ctx context.Context, uid, displayName
 	if caption == "" {
 		caption = fmt.Sprintf("📸 %s vừa khoe một tấm giữa buổi chạy (%s).", strings.TrimSpace(displayName), formatDistanceKm(distanceMeters))
 	}
-	if err := s.telegram.SendPhoto(ctx, s.telegram.ChatID(), img, caption); err != nil {
+	if err := s.telegram.SendPhotoInThread(ctx, s.telegram.ChatID(), threadID, img, caption); err != nil {
 		return err
 	}
 	if err := s.RecordBroadcast(ctx, s.telegram.ChatID(), caption); err != nil {

@@ -49,7 +49,7 @@ type broadcastRecorder interface {
 	RecordBroadcast(ctx context.Context, chatID, text string) error
 	ActivityAnnouncement(ctx context.Context, uid, displayName, activityName string, fact ActivityFact) string
 	LiveAnnouncement(ctx context.Context, uid, displayName, event string, distanceMeters, movingTimeSeconds float64, milestoneKm int) string
-	LivePhotoAnnouncement(ctx context.Context, uid, displayName, photoPath string, distanceMeters float64) error
+	LivePhotoAnnouncement(ctx context.Context, threadID int64, uid, displayName, photoPath string, distanceMeters float64) error
 	ContractRoast(ctx context.Context, title, targetLabel string, failers []roastFailer) string
 	Enabled() bool
 }
@@ -841,6 +841,11 @@ func (s *ActivityService) NotifyTelegram(ctx context.Context, uid, activityID st
 		_, _ = ref.Set(ctx, map[string]any{"telegramNotifiedAt": firestore.ServerTimestamp}, firestore.MergeAll)
 		return nil
 	}
+	// Đọc topic trước khi gọi model và claim: đọc lỗi thì task retry.
+	thread, err := liveTrackThread(ctx, s.db)
+	if err != nil {
+		return err
+	}
 	detailURL := activityDetailURL(s.webBaseURL, uid, activityID)
 	displayName := preferredName(profile)
 	fact := activityFact(activityID, data)
@@ -869,11 +874,11 @@ func (s *ActivityService) NotifyTelegram(ctx context.Context, uid, activityID st
 		return nil
 	}
 	if announcement != "" {
-		if err := s.telegram.SendActivityAnnouncement(ctx, announcement, detailURL); err != nil {
+		if err := s.telegram.SendActivityAnnouncement(ctx, thread, announcement, detailURL); err != nil {
 			slog.WarnContext(ctx, "activity.telegram_send_failed_after_claim", "error", err, "activityId", activityID)
 			return nil
 		}
-	} else if err := s.telegram.SendActivityAlert(ctx, displayName, activityName, fact, detailURL, ""); err != nil {
+	} else if err := s.telegram.SendActivityAlert(ctx, thread, displayName, activityName, fact, detailURL, ""); err != nil {
 		slog.WarnContext(ctx, "activity.telegram_send_failed_after_claim", "error", err, "activityId", activityID)
 		return nil
 	}

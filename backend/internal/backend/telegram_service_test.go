@@ -37,7 +37,7 @@ func TestTelegramActivityAlertSendsHTMLMessage(t *testing.T) {
 		MovingTimeSeconds:   1812,
 		ElevationGainMeters: 24,
 	}
-	if err := service.SendActivityAlert(context.Background(), "vlsilver", "Morning Run", fact, "https://example.test/activity", ""); err != nil {
+	if err := service.SendActivityAlert(context.Background(), 0, "vlsilver", "Morning Run", fact, "https://example.test/activity", ""); err != nil {
 		t.Fatalf("SendActivityAlert: %v", err)
 	}
 
@@ -103,7 +103,7 @@ func TestActivityDetailURLPointsAtShareRoute(t *testing.T) {
 
 func TestTelegramActivityAlertSkipsWhenDisabled(t *testing.T) {
 	service := NewTelegramService("", "")
-	if err := service.SendActivityAlert(context.Background(), "runner", "Run", ActivityFact{}, "https://example.test", ""); err != nil {
+	if err := service.SendActivityAlert(context.Background(), 0, "runner", "Run", ActivityFact{}, "https://example.test", ""); err != nil {
 		t.Fatalf("SendActivityAlert disabled = %v", err)
 	}
 }
@@ -120,8 +120,8 @@ func TestTelegramTransportErrorDoesNotLeakToken(t *testing.T) {
 	service.apiBaseURL = baseURL
 	ctx := context.Background()
 	calls := map[string]error{
-		"SendActivityAlert":        service.SendActivityAlert(ctx, "a", "b", ActivityFact{}, "https://x.test", ""),
-		"SendActivityAnnouncement": service.SendActivityAnnouncement(ctx, "hi", "https://x.test"),
+		"SendActivityAlert":        service.SendActivityAlert(ctx, 0, "a", "b", ActivityFact{}, "https://x.test", ""),
+		"SendActivityAnnouncement": service.SendActivityAnnouncement(ctx, 0, "hi", "https://x.test"),
 		"SendChatMessage":          service.SendChatMessage(ctx, "chat", "hi"),
 		"SendPhoto":                service.SendPhoto(ctx, "chat", []byte("png"), "cap"),
 	}
@@ -175,6 +175,9 @@ func TestTelegramSendsThreadIDOnlyWhenInTopic(t *testing.T) {
 		service.SendChatMessageInThread(ctx, "-100", 0, "ở General"),
 		service.SendPhotoInThread(ctx, "-100", 7, []byte("png"), "ảnh topic"),
 		service.SendPhotoInThread(ctx, "-100", 0, []byte("png"), "ảnh General"),
+		service.SendActivityAlert(ctx, 7, "a", "b", ActivityFact{}, "https://x.test", ""),
+		service.SendActivityAnnouncement(ctx, 7, "hi", "https://x.test"),
+		service.SendActivityAlert(ctx, 0, "a", "b", ActivityFact{}, "https://x.test", ""),
 	} {
 		if err != nil {
 			t.Fatal(err)
@@ -183,8 +186,13 @@ func TestTelegramSendsThreadIDOnlyWhenInTopic(t *testing.T) {
 	if texts[0]["message_thread_id"] != "7" || photos[0]["message_thread_id"] != "7" {
 		t.Fatalf("thiếu thread id: text=%v photo=%v", texts[0], photos[0])
 	}
-	if _, ok := texts[1]["message_thread_id"]; ok {
-		t.Fatalf("General không được có thread id: %v", texts[1])
+	if texts[2]["message_thread_id"] != "7" || texts[3]["message_thread_id"] != "7" {
+		t.Fatalf("tin buổi chạy thiếu thread id: alert=%v announcement=%v", texts[2], texts[3])
+	}
+	for _, i := range []int{1, 4} {
+		if _, ok := texts[i]["message_thread_id"]; ok {
+			t.Fatalf("General không được có thread id: %v", texts[i])
+		}
 	}
 	if _, ok := photos[1]["message_thread_id"]; ok {
 		t.Fatalf("General không được có thread id: %v", photos[1])
@@ -229,7 +237,14 @@ func TestTelegramResendsOutsideMissingThread(t *testing.T) {
 	if err := service.SendPhotoInThread(ctx, "42", 9, []byte("png"), "ảnh"); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"sendMessage thread=9", "sendMessage thread=", "sendPhoto thread=9", "sendPhoto thread="}
+	if err := service.SendActivityAlert(ctx, 9, "a", "b", ActivityFact{}, "https://x.test", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SendActivityAnnouncement(ctx, 9, "hi", "https://x.test"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"sendMessage thread=9", "sendMessage thread=", "sendPhoto thread=9", "sendPhoto thread=",
+		"sendMessage thread=9", "sendMessage thread=", "sendMessage thread=9", "sendMessage thread="}
 	if strings.Join(sent, "|") != strings.Join(want, "|") {
 		t.Fatalf("đã gửi %v, muốn %v", sent, want)
 	}

@@ -84,7 +84,9 @@ func (s *TelegramService) ChatID() string { return s.chatID }
 // was stripped ("hoàn thành" came out "hoan thanh") and the text was
 // aliased. Telegram renders HTML natively with the reader's own font and
 // theme, which handles Unicode correctly and stays sharp at any zoom.
-func (s *TelegramService) SendActivityAlert(ctx context.Context, displayName, activityName string, fact ActivityFact, detailURL, comment string) error {
+//
+// threadID và cách xử lý topic đã mất như SendChatMessageInThread.
+func (s *TelegramService) SendActivityAlert(ctx context.Context, threadID int64, displayName, activityName string, fact ActivityFact, detailURL, comment string) error {
 	if !s.Enabled() {
 		return nil
 	}
@@ -94,7 +96,7 @@ func (s *TelegramService) SendActivityAlert(ctx context.Context, displayName, ac
 	if err != nil {
 		return err
 	}
-	payload, err := json.Marshal(map[string]any{
+	body := map[string]any{
 		"chat_id":    s.chatID,
 		"text":       telegramActivityMessage(displayName, activityName, fact, comment),
 		"parse_mode": "HTML",
@@ -102,7 +104,11 @@ func (s *TelegramService) SendActivityAlert(ctx context.Context, displayName, ac
 		// đăng nhập, vừa xấu vừa vô nghĩa.
 		"link_preview_options": map[string]any{"is_disabled": true},
 		"reply_markup":         json.RawMessage(replyMarkup),
-	})
+	}
+	if threadID != 0 {
+		body["message_thread_id"] = threadID
+	}
+	payload, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
@@ -119,6 +125,10 @@ func (s *TelegramService) SendActivityAlert(ctx context.Context, displayName, ac
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		if threadID != 0 && threadMissing(resp.StatusCode, respBody) {
+			slog.WarnContext(ctx, "telegram.thread_missing", "method", "sendMessage", "threadId", threadID)
+			return s.SendActivityAlert(ctx, 0, displayName, activityName, fact, detailURL, comment)
+		}
 		return fmt.Errorf("telegram sendMessage failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
 	return nil
@@ -126,7 +136,8 @@ func (s *TelegramService) SendActivityAlert(ctx context.Context, displayName, ac
 
 // SendActivityAnnouncement gửi lời thông báo buổi chạy do BOT tự viết — text
 // thô (KHÔNG parse_mode vì model sinh, tránh vỡ HTML), kèm nút "Xem chi tiết".
-func (s *TelegramService) SendActivityAnnouncement(ctx context.Context, text, detailURL string) error {
+// threadID và cách xử lý topic đã mất như SendChatMessageInThread.
+func (s *TelegramService) SendActivityAnnouncement(ctx context.Context, threadID int64, text, detailURL string) error {
 	if !s.Enabled() {
 		return nil
 	}
@@ -136,12 +147,16 @@ func (s *TelegramService) SendActivityAnnouncement(ctx context.Context, text, de
 	if err != nil {
 		return err
 	}
-	payload, err := json.Marshal(map[string]any{
+	body := map[string]any{
 		"chat_id":              s.chatID,
 		"text":                 text,
 		"link_preview_options": map[string]any{"is_disabled": true},
 		"reply_markup":         json.RawMessage(replyMarkup),
-	})
+	}
+	if threadID != 0 {
+		body["message_thread_id"] = threadID
+	}
+	payload, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
@@ -156,8 +171,12 @@ func (s *TelegramService) SendActivityAnnouncement(ctx context.Context, text, de
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return fmt.Errorf("telegram sendMessage failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		if threadID != 0 && threadMissing(resp.StatusCode, respBody) {
+			slog.WarnContext(ctx, "telegram.thread_missing", "method", "sendMessage", "threadId", threadID)
+			return s.SendActivityAnnouncement(ctx, 0, text, detailURL)
+		}
+		return fmt.Errorf("telegram sendMessage failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
 	return nil
 }
