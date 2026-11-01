@@ -106,10 +106,10 @@ func (s *RunCardStore) share(ctx context.Context, source, ref *firestore.Documen
 	return doc, err
 }
 
-// Thẻ Ma Sói và Hành trình khoe chung clubCards, id {uid}_{kind}_{id} và có
-// field kind; thẻ buổi chạy không có kind vì app 1.7.0 chỉ biết loại đó. Id
-// buổi chạy không bắt đầu bằng game_ hay journey_, mà có trùng thì cũng chỉ
-// đụng thẻ của chính chủ vì id bắt đầu bằng uid. Hai loại này không có gì
+// Thẻ Ma Sói, Hành trình và BXH khoe chung clubCards, id {uid}_{kind}_{id} và
+// có field kind; thẻ buổi chạy không có kind vì app 1.7.0 chỉ biết loại đó. Id
+// buổi chạy không bắt đầu bằng game_, journey_ hay rank_, mà có trùng thì cũng
+// chỉ đụng thẻ của chính chủ vì id bắt đầu bằng uid. Các loại này không có gì
 // riêng tư nhưng vẫn chép theo danh sách field như thẻ buổi chạy.
 var keptCardKinds = map[string]struct {
 	collection string
@@ -117,15 +117,29 @@ var keptCardKinds = map[string]struct {
 	// at là field giờ có thẻ, theo thứ tự ưu tiên; khoe bù lấy giờ đó làm giờ
 	// khoe để thẻ cũ không nhảy lên đầu mục.
 	at []string
+	// revealedAt là field giờ lật của loại thẻ trao úp. Thẻ còn úp không lên
+	// club, để hạng và câu trên thẻ không lộ trước khi chủ tự lật.
+	revealedAt string
 }{
-	"game":    {"gameCards", []string{"gameId", "tier", "role", "team", "winner", "alive", "rounds", "playerCount", "endedAt", "deathRound", "variant"}, []string{"endedAt"}},
-	"journey": {"journeyCards", []string{"campaign", "routeId", "level", "tier", "distanceMeters", "runCount", "finishedAt"}, []string{"awardedAt", "finishedAt"}},
+	"game":    {"gameCards", []string{"gameId", "tier", "role", "team", "winner", "alive", "rounds", "playerCount", "endedAt", "deathRound", "variant"}, []string{"endedAt"}, ""},
+	"journey": {"journeyCards", []string{"campaign", "routeId", "level", "tier", "distanceMeters", "runCount", "finishedAt"}, []string{"awardedAt", "finishedAt"}, ""},
+	"rank":    {"rankCards", []string{"boardId", "range", "sport", "periodStart", "periodEnd", "rank", "participants", "tier", "score", "displayName", "stats", "quote", "awardedAt", "revealedAt"}, []string{"revealedAt"}, "revealedAt"},
 }
 
 var (
 	errKeptCardNotFound = &HTTPError{Status: http.StatusNotFound, Code: "card_not_found", Message: "Bạn chưa có thẻ này."}
 	errKeptCardTestMode = &HTTPError{Status: http.StatusConflict, Code: "card_test_mode", Message: "Thẻ của ván thử không khoe được."}
+	errKeptCardFaceDown = &HTTPError{Status: http.StatusConflict, Code: "card_face_down", Message: "Thẻ còn úp, lật rồi mới khoe được."}
 )
+
+// keptCardFaceDown báo thẻ của loại trao úp mà chưa có giờ lật.
+func keptCardFaceDown(revealedAt string, card map[string]any) bool {
+	if revealedAt == "" {
+		return false
+	}
+	_, ok := card[revealedAt].(time.Time)
+	return !ok
+}
 
 func keptClubCardID(uid, kind, id string) string { return uid + "_" + kind + "_" + id }
 
@@ -145,8 +159,8 @@ func keptClubCardDoc(kind, uid string, card map[string]any, sharedAt time.Time) 
 	return doc
 }
 
-// ShareKept khoe thẻ Ma Sói (kind game) hay Hành trình (kind journey) với
-// club. Thẻ của ván thử thì không.
+// ShareKept khoe thẻ Ma Sói (kind game), Hành trình (kind journey) hay BXH
+// (kind rank) với club. Thẻ của ván thử hay thẻ còn úp thì không.
 func (s *RunCardStore) ShareKept(ctx context.Context, uid, kind, id string) error {
 	spec, ok := keptCardKinds[kind]
 	if !ok {
@@ -158,12 +172,15 @@ func (s *RunCardStore) ShareKept(ctx context.Context, uid, kind, id string) erro
 			if card["testMode"] == true {
 				return nil, errKeptCardTestMode
 			}
+			if keptCardFaceDown(spec.revealedAt, card) {
+				return nil, errKeptCardFaceDown
+			}
 			return keptClubCardDoc(kind, uid, card, sharedAt), nil
 		})
 	return err
 }
 
-// UnshareKept thôi khoe thẻ Ma Sói hay Hành trình; gọi lại vẫn trả nil.
+// UnshareKept thôi khoe thẻ Ma Sói, Hành trình hay BXH; gọi lại vẫn trả nil.
 func (s *RunCardStore) UnshareKept(ctx context.Context, uid, kind, id string) error {
 	if _, ok := keptCardKinds[kind]; !ok {
 		return invalidRequest()
@@ -225,7 +242,7 @@ func (s *RunCardStore) SyncClub(ctx context.Context, uid string) error {
 		}
 		for _, doc := range docs {
 			card := doc.Data()
-			if card["testMode"] == true {
+			if card["testMode"] == true || keptCardFaceDown(spec.revealedAt, card) {
 				continue
 			}
 			at := s.now()

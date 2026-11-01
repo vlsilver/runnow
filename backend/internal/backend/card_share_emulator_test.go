@@ -86,5 +86,33 @@ func TestEmulatorCardShareUnknownKind(t *testing.T) {
 	e := newArtEnv(t, map[string]any{})
 	// Thẻ buổi chạy khoe qua /v1/activities, không qua đây.
 	e.want(e.call("u1", "POST", "/v1/cards/run/a1/share", nil, ""), 400, "invalid_request")
-	e.want(e.call("u1", "DELETE", "/v1/cards/rank/b1/share", nil, ""), 400, "invalid_request")
+	e.want(e.call("u1", "DELETE", "/v1/cards/badge/b1/share", nil, ""), 400, "invalid_request")
+}
+
+func TestEmulatorRankCardShare(t *testing.T) {
+	e := newArtEnv(t, map[string]any{})
+	card := map[string]any{
+		"boardId": "month_steps_2026-09-01", "range": "month", "sport": "steps",
+		"periodStart": "2026-09-01", "periodEnd": "2026-10-01", "rank": int64(3), "participants": int64(20),
+		"tier": "rare", "score": 312000.0, "displayName": "An", "quote": "Đi bộ không nghỉ.",
+		"stats":     map[string]any{"avgSteps": int64(10400), "days10k": int64(18), "days": int64(30)},
+		"awardedAt": time.Date(2026, 10, 1, 5, 0, 0, 0, time.UTC), "revealedAt": nil,
+	}
+	seed(t, e.store.db, "users/u1/rankCards/month_steps_2026-09-01", card)
+	// Thẻ còn úp: chưa khoe được, để hạng không lộ trước khi chủ lật.
+	e.want(e.call("u1", "POST", "/v1/cards/rank/month_steps_2026-09-01/share", nil, ""), 409, "card_face_down")
+	if e.clubCard("rank_month_steps_2026-09-01") != nil {
+		t.Fatal("thẻ còn úp lên club")
+	}
+
+	card["revealedAt"] = time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)
+	seed(t, e.store.db, "users/u1/rankCards/month_steps_2026-09-01", card)
+	e.want(e.call("u1", "POST", "/v1/cards/rank/month_steps_2026-09-01/share", nil, ""), 204, "")
+	club := e.clubCard("rank_month_steps_2026-09-01")
+	if got := sortedKeys(club); !slices.Equal(got, []string{"awardedAt", "boardId", "displayName", "kind", "ownerUid", "participants", "periodEnd", "periodStart", "quote", "range", "rank", "revealedAt", "score", "sharedAt", "sport", "stats", "tier"}) {
+		t.Fatalf("field thẻ khoe = %v", got)
+	}
+	if club["kind"] != "rank" || club["sport"] != "steps" || club["rank"] != int64(3) {
+		t.Fatalf("thẻ khoe = %v", club)
+	}
 }

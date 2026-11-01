@@ -217,3 +217,40 @@ func TestEmulatorRefreshLeaderboardSyncsClubCards(t *testing.T) {
 		t.Fatal("thẻ của người để riêng tư lên club")
 	}
 }
+
+// Thẻ BXH chỉ lên club sau khi chủ lật, để thẻ úp không lộ hạng và câu
+// trên thẻ trước khi chủ tự lật.
+func TestEmulatorSyncClubSharesRevealedRankCards(t *testing.T) {
+	db := emulatorDB(t)
+	ctx := context.Background()
+	store := &RunCardStore{db: db, now: time.Now}
+	awarded := time.Date(2026, 10, 26, 5, 0, 0, 0, time.UTC)
+	revealed := time.Date(2026, 10, 27, 1, 30, 0, 0, time.UTC)
+	seed(t, db, "publicProfiles/u1", map[string]any{"profileVisibility": "public"})
+	seed(t, db, "users/u1/rankCards/week_run_2026-10-19", map[string]any{
+		"boardId": "week_run_2026-10-19", "range": "week", "sport": "run",
+		"periodStart": "2026-10-19", "periodEnd": "2026-10-26", "rank": 2, "participants": 14,
+		"tier": "epic", "score": 42.5, "displayName": "An", "quote": "Bám đuôi số 1 cả tuần.",
+		"stats":     map[string]any{"runMeters": 42500, "walkMeters": 3000},
+		"awardedAt": awarded, "revealedAt": revealed,
+	})
+	seed(t, db, "users/u1/rankCards/week_bike_2026-10-19", map[string]any{
+		"boardId": "week_bike_2026-10-19", "range": "week", "sport": "bike", "rank": 1,
+		"tier": "legendary", "awardedAt": awarded, "revealedAt": nil,
+	})
+
+	if err := store.SyncClub(ctx, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	club := clubCardOf(t, db, "u1_rank_week_run_2026-10-19")
+	if club == nil {
+		t.Fatal("thẻ BXH đã lật mà không lên club")
+	}
+	if club["kind"] != "rank" || club["rank"] != int64(2) || club["quote"] != "Bám đuôi số 1 cả tuần." ||
+		club["periodStart"] != "2026-10-19" || !club["sharedAt"].(time.Time).Equal(revealed) {
+		t.Fatalf("thẻ BXH khoe = %v", club)
+	}
+	if clubCardOf(t, db, "u1_rank_week_bike_2026-10-19") != nil {
+		t.Fatal("thẻ BXH còn úp lên club")
+	}
+}

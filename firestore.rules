@@ -426,7 +426,7 @@ service cloud.firestore {
 
     // Tim: mỗi người một document theo uid trong hearts/{target}/by.
     // target: run_{uid}_{activityId}, card_{uid}_{activityId},
-    // card_{uid}_{kind}_{id} (thẻ Ma Sói, Hành trình), live_{sessionId}.
+    // card_{uid}_{kind}_{id} (thẻ Ma Sói, Hành trình, BXH), live_{sessionId}.
     // Tim live không gỡ được, để người chạy không bị bắn thông báo liên tục.
     match /hearts/{targetKey}/by/{uid} {
       allow read: if signedIn();
