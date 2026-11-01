@@ -671,3 +671,105 @@ class RunNowKeoSceneTokens {
   static const darkMuted = Color(0xFFC4BFB5);
   static const star = Color(0x8CFFFFFF);
 }
+
+/// Màu tranh trên mặt trước thẻ Kèo (`contract_card_art.dart`). Tranh luôn là
+/// cảnh tối để chữ sáng của khuôn thẻ đọc được, nên không theo bộ màu.
+class RunNowContractCardTokens {
+  const RunNowContractCardTokens._();
+
+  // Dùng chung giữa các cảnh.
+  static const star = Color(0xBFFFFFFF);
+  static const paper = Color(0xFFF4EFE6);
+  static const flagRed = Color(0xFFE63946);
+
+  // Quãng đường: cổng về đích lúc hoàng hôn.
+  static const duskTop = Color(0xFF1D1438);
+  static const duskMid = Color(0xFF5E2A57);
+  static const duskLow = Color(0xFFE2704A);
+  static const duskHorizon = Color(0xFFFFC07A);
+  static const duskGlow = Color(0xF2FFE2A8);
+  static const duskGlowEdge = Color(0x00FFB070);
+  static const duskSun = Color(0xFFFFE3AD);
+  static const duskHillFar = Color(0xFF3A1D46);
+  static const duskHillNear = Color(0xFF22122C);
+  static const duskRoad = Color(0xFF140C1B);
+  static const duskRoadEdge = Color(0x59FFCF8F);
+  static const duskDash = Color(0xFFFFD79A);
+  static const duskPost = Color(0xFF0E0812);
+  static const confettiTeal = Color(0xFF7AD1C6);
+
+  // Số buổi: sân điền kinh, gạch đếm buổi.
+  static const trackField = Color(0xFF123425);
+  static const trackStripe = Color(0xFF164330);
+  static const trackLane = Color(0xFFB4462E);
+  static const trackLine = Color(0xFFF6E9DC);
+  static const trackLineSoft = Color(0x80F6E9DC);
+  static const trackInfield = Color(0xFF1D5539);
+  static const trackTally = Color(0xFFF3E6C8);
+  static const trackChecker = Color(0xFF1D1812);
+  static const trackPanel = Color(0xFF0D2419);
+
+  // Số ngày chạy: bảy viên đá trong tuần.
+  static const daysTop = Color(0xFF0C2F3D);
+  static const daysMid = Color(0xFF2D6F73);
+  static const daysLow = Color(0xFFF0C069);
+  static const daysSun = Color(0xFFFFF0C2);
+  static const daysHillFar = Color(0xFF14505A);
+  static const daysHillNear = Color(0xFF0F3A44);
+  static const daysPanel = Color(0xFF0A2630);
+  static const daysStoneMissed = Color(0xB3F0C069);
+  static const daysLabel = Color(0xFFF3ECD8);
+
+  // Buổi dài nhất: đỉnh núi cắm cờ dưới trăng.
+  static const nightTop = Color(0xFF070F26);
+  static const nightMid = Color(0xFF1C2F63);
+  static const nightLow = Color(0xFF3B4F8A);
+  static const moon = Color(0xFFF3F0DD);
+  static const moonGlow = Color(0x80F3F0DD);
+  static const mountain = Color(0xFF0E1A3A);
+  static const mountainShade = Color(0xCC0A1229);
+  static const snow = Color(0xFFE6EDF8);
+  static const trail = Color(0xFFF5D77A);
+  static const nightPanel = Color(0xFF0B1430);
+
+  // Theo tuyến: bản đồ đường đồng mức.
+  static const mapField = Color(0xFF10241D);
+  static const mapContour = Color(0xBF2B5A47);
+  static const mapHill = Color(0xB33B7A60);
+  static const mapRouteCasing = Color(0xFF08130F);
+  static const mapRoute = Color(0xFFFF8A3D);
+  static const mapPanel = Color(0xFF0C1A16);
+
+  // Hẹn chạy: rạng sáng bên hồ.
+  static const dawnTop = Color(0xFF13213D);
+  static const dawnMid = Color(0xFF3D4F7F);
+  static const dawnLow = Color(0xFFF1A36A);
+  static const dawnSun = Color(0xFFFFD9A0);
+  static const dawnRipple = Color(0x8CFFD9A0);
+  static const lakeTop = Color(0xFF2C4068);
+  static const lakeBottom = Color(0xFF121C33);
+  static const shore = Color(0xFF0D1526);
+  static const clockFace = Color(0xFFF6EAD2);
+  static const meetPin = Color(0xFFFF6B6B);
+  static const meetPinDot = Color(0xFFFFF6EA);
+  static const runnerGreen = Color(0xFF58C888);
+  static const runnerGold = Color(0xFFF5D77A);
+  static const runnerBlue = Color(0xFF5FA0EE);
+  static const runnerCoral = Color(0xFFF4785C);
+  static const dawnPanel = Color(0xFF0F1628);
+
+  // Trong ngày: tờ lịch xé.
+  static const dayTop = Color(0xFF12355C);
+  static const dayMid = Color(0xFF4F86B8);
+  static const dayLow = Color(0xFFF7D9A0);
+  static const dayGlow = Color(0x8CFFF3D6);
+  static const daySun = Color(0xFFFFE7B0);
+  static const dayGround = Color(0xFF1D3F5E);
+  static const dayLane = Color(0x59F4EFE6);
+  static const calendarPage = Color(0xFFFBF6EC);
+  static const calendarInk = Color(0xFF0F2238);
+
+  // Nhãn trạng thái ở đáy thẻ úp: nền tối trong suốt nổi trên mọi bộ màu.
+  static const chip = Color(0x8C000000);
+  static const chipLine = Color(0x38FFFFFF);
+}

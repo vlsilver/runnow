@@ -9,8 +9,8 @@ import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/run_contracts/contract_card_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
-import 'package:myrun/src/theme.dart';
-import 'package:myrun/src/widgets/keo_scene.dart';
+import 'package:myrun/src/run_contracts/widgets/contract_card_art.dart';
+import 'package:myrun/src/run_contracts/widgets/contract_card_face.dart';
 
 String _two(int n) => n.toString().padLeft(2, '0');
 
@@ -37,84 +37,175 @@ String _target(RunContractMetric metric, double value) {
   return '${_number(value)} $unit';
 }
 
-/// "19 – 25.10.2026"; kèo vắt qua tháng thì ngày đầu kèm tháng.
-String _period(ContractCardSnapshot snap) {
-  final (start, end) = (snap.startAt, snap.endAtExclusive);
-  if (start == null || end == null) return '';
+const _weekdays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+
+String _day(DateTime day) => '${_two(day.day)}.${_two(day.month)}';
+String _fullDay(DateTime day) => '${_day(day)}.${day.year}';
+String _weekday(DateTime day) => _weekdays[day.weekday - 1];
+
+typedef _Span = ({DateTime first, DateTime last, int days});
+
+/// Ngày đầu, ngày cuối (giờ VN) và số ngày của kèo; null khi thẻ cũ thiếu mốc.
+_Span? _span(DateTime? start, DateTime? end) {
+  if (start == null || end == null) return null;
   final first = _vn(start);
   final last = _vn(end).subtract(const Duration(days: 1));
-  final from = first.month == last.month
-      ? _two(first.day)
-      : '${_two(first.day)}.${_two(first.month)}';
-  return '$from – ${_two(last.day)}.${_two(last.month)}.${last.year}';
+  final days =
+      DateTime.utc(
+        last.year,
+        last.month,
+        last.day,
+      ).difference(DateTime.utc(first.year, first.month, first.day)).inDays +
+      1;
+  return (first: first, last: last, days: days);
 }
 
-/// Nền thẻ là hình của loại kèo theo hành đang chọn. Khuôn thẻ in chữ sáng
-/// lên tranh, nên hình luôn vẽ bản tối dù app đang ở chế độ sáng.
-class ContractSceneArt extends StatelessWidget {
-  const ContractSceneArt({super.key, required this.scene, required this.seed});
+enum _Length { day, week, month, other }
 
-  final KeoScene scene;
-
-  /// Id kèo, chọn bố cục hình như thẻ kèo ở trang chủ.
-  final String seed;
-
-  @override
-  Widget build(BuildContext context) => CustomPaint(
-    painter: KeoScenePainter(
-      scene: scene,
-      variant: keoSceneVariant(seed),
-      colors: KeoSceneColors.resolve(
-        RunNowPalette.forSelection(context.runNowPalette.element),
-        scene,
-      ),
-    ),
-    child: const SizedBox.expand(),
-  );
+_Length _lengthOf(_Span span) {
+  final (first, last) = (span.first, span.last);
+  if (span.days == 1) return _Length.day;
+  if (span.days == 7 && first.weekday == DateTime.monday) return _Length.week;
+  final nextMonth = DateTime.utc(last.year, last.month, last.day + 1);
+  if (first.day == 1 && first.month == last.month && nextMonth.day == 1) {
+    return _Length.month;
+  }
+  return _Length.other;
 }
 
-KeoScene _sceneOf(RunContractMetric metric) => switch (metric) {
-  RunContractMetric.distance => KeoScene.distance,
-  RunContractMetric.activeDays => KeoScene.activeDays,
-  RunContractMetric.activityCount => KeoScene.activityCount,
-  RunContractMetric.longestRun => KeoScene.longestRun,
-  RunContractMetric.routeCompletion => KeoScene.route,
+/// "19.10 → 25.10.2026"; kèo vắt qua năm thì ngày đầu kèm năm.
+String _range(DateTime first, DateTime last) {
+  final from = first.year == last.year ? _day(first) : _fullDay(first);
+  return '$from → ${_fullDay(last)}';
+}
+
+String _meetLine(DateTime at, {String prefix = ''}) =>
+    '${_weekday(at)} ${_fullDay(at)} · $prefix${_two(at.hour)}:${_two(at.minute)}';
+
+/// Dòng ngày dưới huy hiệu mặt sau và thẻ úp: "19.10 → 25.10.2026 · 7 NGÀY",
+/// kèo một ngày "CN 01.11.2026", kèo hẹn gặp kèm giờ hẹn.
+String contractCardDateLine(
+  DateTime? startAt,
+  DateTime? endAtExclusive, {
+  DateTime? meetAt,
+}) {
+  if (meetAt != null) return _meetLine(_vn(meetAt));
+  final span = _span(startAt, endAtExclusive);
+  if (span == null) return '';
+  if (span.days == 1) return '${_weekday(span.first)} ${_fullDay(span.first)}';
+  return '${_range(span.first, span.last)} · ${span.days} NGÀY';
+}
+
+/// Cảnh của thẻ: kèo hẹn gặp và kèo theo tuyến có cảnh riêng, kèo một ngày là
+/// tờ lịch, còn lại theo cách kèo đo.
+ContractCardScene _sceneOf(ContractCardSnapshot snap, {DateTime? meetAt}) {
+  if (meetAt != null) return ContractCardScene.meet;
+  if (snap.metric == RunContractMetric.routeCompletion) {
+    return ContractCardScene.route;
+  }
+  if (_span(snap.startAt, snap.endAtExclusive)?.days == 1) {
+    return ContractCardScene.today;
+  }
+  return switch (snap.metric) {
+    RunContractMetric.distance => ContractCardScene.distance,
+    RunContractMetric.activityCount => ContractCardScene.count,
+    RunContractMetric.activeDays => ContractCardScene.days,
+    RunContractMetric.longestRun => ContractCardScene.longRun,
+    RunContractMetric.routeCompletion => ContractCardScene.route,
+  };
+}
+
+String _metricLabel(RunContractMetric metric) => switch (metric) {
+  RunContractMetric.distance => 'QUÃNG ĐƯỜNG',
+  RunContractMetric.activityCount => 'SỐ BUỔI',
+  RunContractMetric.activeDays => 'NGÀY CHẠY',
+  RunContractMetric.longestRun => 'BUỔI DÀI NHẤT',
+  RunContractMetric.routeCompletion => 'THEO TUYẾN',
 };
 
-/// Mặt trước: hình kèo làm nền, số chính là kết quả của chủ thẻ, hàng số liệu
-/// là mục tiêu, km tích luỹ và số người đạt. [scene] lấy từ kèo khi có (kèo
-/// hẹn gặp có hình riêng), không thì theo cách kèo đo.
-AchievementCardData contractCardData(ContractCard card, {KeoScene? scene}) {
+/// Mặt trước: tranh theo loại kèo, số chính là kết quả của chủ thẻ, dòng lịch
+/// là thời gian diễn ra, con dấu là phần trăm mục tiêu. [meetAt] lấy từ kèo
+/// khi là kèo hẹn gặp, vì ảnh chụp kèo trong thẻ không giữ giờ hẹn.
+AchievementCardData contractCardData(ContractCard card, {DateTime? meetAt}) {
   final snap = card.snapshot;
-  final (hero, unit) = _measure(snap.metric, snap.progressValue);
-  final end = snap.endAtExclusive;
-  final last = end == null
-      ? null
-      : _vn(end).subtract(const Duration(days: 1));
+  final metric = snap.metric;
+  final (hero, unit) = _measure(metric, snap.progressValue);
+  final span = _span(snap.startAt, snap.endAtExclusive);
+  final length = span == null ? _Length.other : _lengthOf(span);
+  final meet = meetAt == null ? null : _vn(meetAt);
+  final title = snap.title.isEmpty ? 'Kèo chạy' : snap.title;
+
+  final kind = switch ((meet, metric, length)) {
+    (_?, _, _) => 'KÈO HẸN CHẠY',
+    (_, RunContractMetric.routeCompletion, _) => 'KÈO THEO TUYẾN',
+    (_, _, _Length.day) => 'KÈO TRONG NGÀY',
+    (_, _, _Length.week) => 'KÈO TUẦN · ${_metricLabel(metric)}',
+    (_, _, _Length.month) => 'KÈO THÁNG · ${_metricLabel(metric)}',
+    _ => 'KÈO · ${_metricLabel(metric)}',
+  };
+  final when = switch ((meet, span)) {
+    (final at?, _) => _meetLine(at, prefix: 'HẸN '),
+    (_, null) => '',
+    (_, final span?) when span.days == 1 =>
+      '${_weekday(span.first)} ${_fullDay(span.first)}',
+    (_, final span?) when length == _Length.week =>
+      '${_weekday(span.first)} ${_day(span.first)} → '
+          '${_weekday(span.last)} ${_fullDay(span.last)}',
+    (_, final span?) => _range(span.first, span.last),
+  };
+
+  final over = snap.progressValue - snap.targetValue;
+  final achievers = (
+    value: '${snap.achievers}/${snap.participants}',
+    label: 'NGƯỜI ĐẠT',
+  );
+  final stats = [
+    (value: _target(metric, snap.targetValue), label: 'MỤC TIÊU'),
+    if (meet != null)
+      (value: '${snap.participants} người', label: 'ĐĂNG KÝ')
+    else if (metric == RunContractMetric.distance && over > 0)
+      (value: '+${runCardKm(over)} km', label: 'VƯỢT')
+    else
+      (value: runCardKm(card.km), label: 'KM TÍCH LUỸ'),
+    achievers,
+  ];
+
   return AchievementCardData(
     tier: card.tier,
     secret: card.secret,
-    art: ContractSceneArt(
-      scene: scene ?? _sceneOf(snap.metric),
-      seed: card.contractId,
+    art: ContractCardArt(
+      scene: _sceneOf(snap, meetAt: meetAt),
+      day: span?.first,
     ),
-    kind: 'KÈO HOÀN THÀNH',
+    kind: kind,
     hero: hero,
     heroUnit: unit,
-    title: snap.title.isEmpty ? 'Kèo chạy' : snap.title,
-    stats: [
-      (value: _target(snap.metric, snap.targetValue), label: 'MỤC TIÊU'),
-      (value: runCardKm(card.km), label: 'KM TÍCH LUỸ'),
-      (value: '${snap.achievers}/${snap.participants}', label: 'NGƯỜI ĐẠT'),
-    ],
+    title: title,
+    stats: stats,
+    period: when.isEmpty
+        ? null
+        : (text: when, span: span == null ? '' : '${span.days} NGÀY'),
+    stamp: snap.targetValue > 0
+        ? ContractCardStamp(
+            tier: card.tier,
+            pct: '${(snap.progressValue / snap.targetValue * 100).floor()}%',
+          )
+        : null,
+    backFace: ContractCardBack(
+      tier: card.tier,
+      title: title,
+      period: contractCardDateLine(
+        snap.startAt,
+        snap.endAtExclusive,
+        meetAt: meetAt,
+      ),
+    ),
     owner: (snap.displayName.isEmpty ? '3i member' : snap.displayName)
         .toUpperCase(),
     serial: '',
     desc: '',
-    meta: _period(snap),
-    date: last == null
-        ? ''
-        : '${_two(last.day)}.${_two(last.month)}.${last.year}',
+    meta: '',
+    date: span == null ? '' : _fullDay(span.last),
   );
 }
 
@@ -234,7 +325,15 @@ class _ContractCardPanelState extends ConsumerState<ContractCardPanel> {
           final at = _vn(widget.contract.finalizeAt);
           return Column(
             children: [
-              RunCardFrame(child: _faceDown(view.km)),
+              RunCardFrame(
+                child: _faceDown(
+                  km: view.km,
+                  chip:
+                      'CHỐT ${_two(at.hour)}:${_two(at.minute)} · '
+                      '${_two(at.day)}/${_two(at.month)}',
+                  locked: true,
+                ),
+              ),
               const SizedBox(height: 16),
               RunCardOddsTable(
                 title: 'TỈ LỆ CHO ${runCardKm(view.km)} KM TÍCH LUỸ',
@@ -253,11 +352,9 @@ class _ContractCardPanelState extends ConsumerState<ContractCardPanel> {
           return Column(
             children: [
               RunCardFrame(
-                child: RunCardFaceDown(
-                  km: null,
-                  kind: 'KÈO',
-                  title: widget.contract.title,
-                  failure: contractCardLockLabel(reason),
+                child: _faceDown(
+                  chip: contractCardLockLabel(reason),
+                  locked: true,
                 ),
               ),
               _Hint(contractCardLockText(reason)),
@@ -266,7 +363,9 @@ class _ContractCardPanelState extends ConsumerState<ContractCardPanel> {
         }
         return Column(
           children: [
-            RunCardFrame(child: _faceDown(view.km)),
+            RunCardFrame(
+              child: _faceDown(km: view.km, chip: _tapToFlip, onFlip: _roll),
+            ),
             const SizedBox(height: 16),
             RunCardOddsTable(
               title: 'TỈ LỆ CHO ${runCardKm(view.km)} KM TÍCH LUỸ',
@@ -294,10 +393,32 @@ class _ContractCardPanelState extends ConsumerState<ContractCardPanel> {
     );
   }
 
-  Widget _faceDown(double km) =>
-      RunCardFaceDown(km: km, kind: 'KÈO', title: widget.contract.title);
+  static const _tapToFlip = 'CHẠM ĐỂ LẬT';
+
+  Widget _faceDown({
+    required String chip,
+    double? km,
+    bool locked = false,
+    VoidCallback? onFlip,
+  }) {
+    final contract = widget.contract;
+    return ContractCardFaceDown(
+      title: contract.title,
+      period: contractCardDateLine(
+        contract.startAt,
+        contract.endAtExclusive,
+        meetAt: contract.meetAt,
+      ),
+      chip: chip,
+      km: km,
+      locked: locked,
+      onFlip: onFlip,
+    );
+  }
 
   Future<void> _roll() async {
+    // Chạm thẻ và nút Lật thẻ cùng gọi vào đây; đang lật thì bỏ qua.
+    if (_rolling) return;
     setState(() => _rolling = true);
     try {
       final card = await ref
@@ -317,10 +438,7 @@ class _ContractCardPanelState extends ConsumerState<ContractCardPanel> {
 
   /// [flip] khi vừa lật trong phiên này thì chạy hiệu ứng lật mặt.
   Widget _shown(BuildContext context, ContractCard card, {required bool flip}) {
-    final data = contractCardData(
-      card,
-      scene: KeoScene.forContract(widget.contract),
-    );
+    final data = contractCardData(card, meetAt: widget.contract.meetAt);
     final muted = Theme.of(
       context,
     ).colorScheme.onSurface.withValues(alpha: 0.6);
@@ -336,7 +454,9 @@ class _ContractCardPanelState extends ConsumerState<ContractCardPanel> {
       children: [
         if (flip)
           CardFlipReveal(
-            from: RunCardFrame(child: _faceDown(card.km)),
+            from: RunCardFrame(
+              child: _faceDown(km: card.km, chip: _tapToFlip),
+            ),
             to: shown,
           )
         else

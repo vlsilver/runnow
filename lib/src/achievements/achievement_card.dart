@@ -35,6 +35,7 @@ class AchievementCardData {
     this.secret,
     this.stats,
     this.quote,
+    this.period,
     this.tierLabel,
     this.artFollowsSkin = false,
   });
@@ -75,6 +76,10 @@ class AchievementCardData {
   /// Lời thoại in nghiêng dưới [hero] khi có [stats], vd. câu cửa miệng của
   /// bot. [title] rỗng thì chỉ còn lời thoại.
   final String? quote;
+
+  /// Dòng lịch dưới [title] khi có [stats]: thời gian diễn ra và nhãn độ dài
+  /// bên phải, ví dụ ("T2 19.10 → CN 25.10.2026", "7 NGÀY").
+  final ({String text, String span})? period;
 
   /// Tên bậc ở chân thẻ thay cho tên bậc chung, cho thẻ có thang bậc riêng
   /// mượn kim loại của bậc chung (MyBot: Bạc là khung bạc của Siêu hiếm).
@@ -482,6 +487,10 @@ class _Front extends StatelessWidget {
                       ),
                     ),
                   ],
+                  if (data.period case final period?) ...[
+                    const SizedBox(height: 6),
+                    _Period(period: period, accent: accent, ink: ink),
+                  ],
                   const SizedBox(height: 9),
                   SizedBox(
                     height: 1,
@@ -886,6 +895,62 @@ TextStyle _label(Color color, double size, Color shadow) => TextStyle(
   color: color,
   shadows: [Shadow(color: shadow, offset: const Offset(0, 1), blurRadius: 4)],
 );
+
+class _Period extends StatelessWidget {
+  const _Period({
+    required this.period,
+    required this.accent,
+    required this.ink,
+  });
+
+  final ({String text, String span}) period;
+  final Color accent;
+  final Color ink;
+
+  @override
+  Widget build(BuildContext context) {
+    const style = TextStyle(
+      fontFamily: _condensed,
+      fontWeight: FontWeight.w700,
+      fontSize: 11.5,
+      letterSpacing: 0.7,
+    );
+    return Row(
+      children: [
+        Icon(Icons.calendar_today_rounded, size: 11, color: accent),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            period.text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: style.copyWith(color: ink),
+          ),
+        ),
+        if (period.span.isNotEmpty) ...[
+          const SizedBox(width: 6),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: accent),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              child: Text(
+                period.span,
+                style: style.copyWith(
+                  fontSize: 9.5,
+                  letterSpacing: 1.1,
+                  color: accent,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
 
 class _Foot extends StatelessWidget {
   const _Foot({
