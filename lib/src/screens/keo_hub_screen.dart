@@ -1069,38 +1069,55 @@ class _RankSectionState extends ConsumerState<_RankSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        HubSectionHeader(
-          title: 'BXH tuần',
-          onMore: open,
-          action: Builder(
-            builder: (origin) => IconButton(
-              tooltip: 'Khoe BXH tuần',
-              onPressed: _sharing ? null : () => _share(origin),
-              icon: const Icon(Icons.ios_share_rounded, size: 20),
-            ),
-          ),
-        ),
+        HubSectionHeader(title: 'BXH tuần', onMore: open),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: RepaintBoundary(
-            key: _mountainKey,
-            child: Material(
-              color: context.runNowPalette.tint,
-              borderRadius: BorderRadius.circular(26),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: open,
-                child: RankMountain(
-                  ranked: ranked,
-                  myUid: uid,
-                  // Hồ sơ riêng tư không lên núi; dòng dưới đã nói lý do.
-                  myEntry: private ? null : myEntry,
-                  caption:
-                      '${_sharing ? '3i Run · BXH tuần' : 'Tuần này'} · ${clubRankingTimeLeftLabel(DateTime.now(), _range).toLowerCase()}',
-                  meByName: _sharing,
+          // Nút khoe đè lên góc khung nhưng nằm ngoài RepaintBoundary nên
+          // không lọt vào ảnh.
+          child: Stack(
+            children: [
+              RepaintBoundary(
+                key: _mountainKey,
+                child: Material(
+                  color: context.runNowPalette.tint,
+                  borderRadius: BorderRadius.circular(26),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: open,
+                    child: RankMountain(
+                      ranked: ranked,
+                      myUid: uid,
+                      // Hồ sơ riêng tư không lên núi; dòng dưới đã nói lý do.
+                      myEntry: private ? null : myEntry,
+                      caption:
+                          '${_sharing ? '3i Run · BXH tuần' : 'Tuần này'} · ${clubRankingTimeLeftLabel(DateTime.now(), _range).toLowerCase()}',
+                      meByName: _sharing,
+                    ),
+                  ),
                 ),
               ),
-            ),
+              Positioned(
+                right: 10,
+                bottom: 10,
+                child: Builder(
+                  builder: (origin) {
+                    final accent = context.runNowPalette.accent;
+                    return IconButton(
+                      tooltip: 'Khoe BXH tuần',
+                      onPressed: _sharing ? null : () => _share(origin),
+                      style: IconButton.styleFrom(
+                        backgroundColor: accent,
+                        foregroundColor: _onColor(accent),
+                        minimumSize: const Size.square(36),
+                        fixedSize: const Size.square(36),
+                        padding: EdgeInsets.zero,
+                      ),
+                      icon: const Icon(Icons.ios_share_rounded, size: 20),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         ),
         Padding(
