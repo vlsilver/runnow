@@ -34,12 +34,22 @@ func (s *RunCardStore) contractCardRef(uid, contractID string) *firestore.Docume
 	return s.db.Collection("users").Doc(uid).Collection("contractCards").Doc(contractID)
 }
 
+// contractCardMet trả phần participant của uid trong kèo d, và uid đã đạt mục
+// tiêu của chính mình chưa. Không tham gia thì p nil.
+func contractCardMet(d map[string]any, uid string) (p map[string]any, met bool) {
+	parts, _ := d["participants"].(map[string]any)
+	p, _ = parts[uid].(map[string]any)
+	if p == nil {
+		return nil, false
+	}
+	return p, contractMetTarget(stringValue(d["metric"]), number(p["progressValue"]), number(d["targetValue"]))
+}
+
 // contractCardEligible kiểm uid lật được thẻ của kèo d, trả phần participant
 // của uid.
 func contractCardEligible(d map[string]any, uid string) (map[string]any, error) {
-	parts, _ := d["participants"].(map[string]any)
-	p, ok := parts[uid].(map[string]any)
-	if !ok {
+	p, met := contractCardMet(d, uid)
+	if p == nil {
 		return nil, errContractCardNotFound
 	}
 	switch stringValue(d["status"]) {
@@ -49,7 +59,7 @@ func contractCardEligible(d map[string]any, uid string) (map[string]any, error) 
 	default:
 		return nil, errContractCardCanceled
 	}
-	if !contractMetTarget(stringValue(d["metric"]), number(p["progressValue"]), number(d["targetValue"])) {
+	if !met {
 		return nil, errContractCardFailed
 	}
 	return p, nil
@@ -127,17 +137,23 @@ func (s *RunCardStore) GetContractCard(ctx context.Context, uid, contractID stri
 		d := snap.Data()
 		p, err := contractCardEligible(d, uid)
 		if err != nil {
-			if e, ok := err.(*HTTPError); ok && e != errContractCardNotFound {
-				view = RunCardView{Reason: e.Code}
+			e, ok := err.(*HTTPError)
+			if !ok || e == errContractCardNotFound {
+				return err
+			}
+			view = RunCardView{Reason: e.Code}
+			// Kèo chưa chốt mà đã đạt thì cho xem trước tỉ lệ theo km hiện
+			// có, để biết tích thêm km trước giờ chốt thì tỉ lệ còn tăng.
+			var met bool
+			if p, met = contractCardMet(d, uid); e != errContractCardOpen || !met {
 				return nil
 			}
-			return err
 		}
 		km, err := s.contractCardKm(tx, uid, d, p)
 		if err != nil {
 			return err
 		}
-		view = RunCardView{Odds: runCardOddList(runCardOdds(km)), Km: km}
+		view.Odds, view.Km = runCardOddList(runCardOdds(km)), km
 		return nil
 	}, firestore.ReadOnly)
 	return view, err

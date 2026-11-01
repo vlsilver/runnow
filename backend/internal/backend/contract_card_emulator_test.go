@@ -122,9 +122,31 @@ func TestEmulatorContractCardKmFromCountedRuns(t *testing.T) {
 	}
 }
 
+func TestEmulatorContractCardOpenButMetShowsOdds(t *testing.T) {
+	// Kèo chưa chốt mà u1 đã đạt: GET cho xem trước tỉ lệ theo km hiện có (từ
+	// 30 km không còn bậc thường), nhưng chưa lật được.
+	h := runCardHarness(t, 0)
+	seedContract(t, h, "k1", map[string]any{"status": "active", "targetValue": 20.0}, map[string]float64{"u1": 30, "u2": 10})
+
+	r := h.call("u1", "GET", "/v1/contracts/k1/card", nil, "")
+	h.want(r, 200, "")
+	odds, _ := r.body["odds"].([]any)
+	if r.body["reason"] != "card_contract_open" || r.body["km"] != 30.0 || len(odds) != 5 ||
+		odds[0].(map[string]any)["percent"] != 0.0 {
+		t.Fatalf("u1 đã đạt: %s", r.raw)
+	}
+	h.want(h.call("u1", "POST", "/v1/contracts/k1/card", nil, ""), 409, "card_contract_open")
+
+	r = h.call("u2", "GET", "/v1/contracts/k1/card", nil, "")
+	h.want(r, 200, "")
+	if r.body["reason"] != "card_contract_open" || r.body["odds"] != nil {
+		t.Fatalf("u2 chưa đạt thì không có tỉ lệ: %s", r.raw)
+	}
+}
+
 func TestEmulatorContractCardOnlyWhenOwnTargetMet(t *testing.T) {
 	h := runCardHarness(t, 0)
-	seedContract(t, h, "open", map[string]any{"status": "active"}, map[string]float64{"u1": 40})
+	seedContract(t, h, "open", map[string]any{"status": "active"}, map[string]float64{"u1": 10})
 	seedContract(t, h, "cancel", map[string]any{"status": "cancelled"}, map[string]float64{"u1": 40})
 	// Chủ kèo hụt nên kèo trượt, nhưng u2 tự đạt 30 km thì vẫn lật được.
 	seedContract(t, h, "fail", map[string]any{"status": "failed"}, map[string]float64{"u1": 12, "u2": 30})
