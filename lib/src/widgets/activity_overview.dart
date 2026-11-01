@@ -19,6 +19,18 @@ String sessionWhenLabel(DateTime startedAt, DateTime now) {
   return '${DateFormat('dd/MM').format(local)} $time';
 }
 
+IconData activityKindIcon(ActivityKind kind) => switch (kind) {
+  ActivityKind.run => Icons.directions_run_rounded,
+  ActivityKind.trailRun => Icons.trending_up_rounded,
+  ActivityKind.virtualRun => Icons.directions_run_rounded,
+  ActivityKind.walk => Icons.directions_walk_rounded,
+  ActivityKind.hike => Icons.terrain_rounded,
+  ActivityKind.ride => Icons.directions_bike_rounded,
+  ActivityKind.swim => Icons.pool_rounded,
+  ActivityKind.gym => Icons.fitness_center_rounded,
+  ActivityKind.motorbike => Icons.two_wheeler_rounded,
+};
+
 String activityKindLabel(ActivityKind kind) => switch (kind) {
   ActivityKind.run => 'Chạy bộ',
   ActivityKind.trailRun => 'Chạy trail',

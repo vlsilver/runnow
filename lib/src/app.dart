@@ -48,6 +48,7 @@ import 'package:myrun/src/screens/settings_screen.dart';
 import 'package:myrun/src/screens/tracking_screen.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/web_layout.dart';
+import 'package:myrun/src/widgets/activity_overview.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
@@ -809,7 +810,7 @@ class _SyncedActivityRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(11),
               ),
               child: Icon(
-                _iconForKind(activity.kind),
+                activityKindIcon(activity.kind),
                 size: 19,
                 color: palette.accent,
               ),
@@ -883,18 +884,6 @@ class _SyncedActivityRow extends StatelessWidget {
       ),
     );
   }
-
-  IconData _iconForKind(ActivityKind kind) => switch (kind) {
-    ActivityKind.run => Icons.directions_run_rounded,
-    ActivityKind.trailRun => Icons.trending_up_rounded,
-    ActivityKind.virtualRun => Icons.directions_run_rounded,
-    ActivityKind.walk => Icons.directions_walk_rounded,
-    ActivityKind.hike => Icons.terrain_rounded,
-    ActivityKind.ride => Icons.directions_bike_rounded,
-    ActivityKind.swim => Icons.pool_rounded,
-    ActivityKind.gym => Icons.fitness_center_rounded,
-    ActivityKind.motorbike => Icons.two_wheeler_rounded,
-  };
 }
 
 /// Đồng bộ Apple Health lúc MỞ APP và mỗi khi app QUAY LẠI foreground — để buổi
