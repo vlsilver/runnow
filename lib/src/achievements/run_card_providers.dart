@@ -258,16 +258,18 @@ class RunCardPhotos {
     return image?.readAsBytes();
   }
 
-  /// Ghi đè ảnh gốc của thẻ [activityId], trả đường dẫn gửi kèm lệnh vẽ. Tên
-  /// file cố định vì backend chỉ nhận đúng đường dẫn này.
+  /// Ghi đè [file] của thẻ [activityId]: `src.jpg` là ảnh gốc, `style.jpg`
+  /// là ảnh mẫu phong cách. Trả đường dẫn gửi kèm lệnh vẽ. Tên file cố định
+  /// vì backend và storage rule chỉ nhận đúng hai tên này.
   Future<String> upload(
     String activityId,
     Uint8List bytes,
-    String contentType,
-  ) async {
+    String contentType, {
+    String file = 'src.jpg',
+  }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) throw StateError('Bạn chưa đăng nhập Firebase.');
-    final path = 'users/$uid/runCards/$activityId/src.jpg';
+    final path = 'users/$uid/runCards/$activityId/$file';
     await FirebaseStorage.instance
         .ref(path)
         .putData(bytes, SettableMetadata(contentType: contentType));

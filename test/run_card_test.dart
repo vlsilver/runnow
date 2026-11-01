@@ -162,10 +162,11 @@ class _Photos extends RunCardPhotos {
   Future<String> upload(
     String activityId,
     Uint8List bytes,
-    String contentType,
-  ) async {
-    uploads.add('$activityId $contentType ${bytes.length}');
-    return 'users/u1/runCards/$activityId/src.jpg';
+    String contentType, {
+    String file = 'src.jpg',
+  }) async {
+    uploads.add('$activityId $file $contentType ${bytes.length}');
+    return 'users/u1/runCards/$activityId/$file';
   }
 }
 
@@ -942,9 +943,33 @@ void main() {
     picker.bytes = _png;
     await _tapText(tester, 'Tải ảnh');
     await _consentAndDraw(tester, 'Vẽ bằng Anime cel');
-    expect(picker.uploads, ['r1 image/png ${_png.length}']);
+    expect(picker.uploads, ['r1 src.jpg image/png ${_png.length}']);
     expect(backend.artBodies, [
       {'style': 'anime_cel', 'photoPath': 'users/u1/runCards/r1/src.jpg'},
+    ]);
+  });
+
+  testWidgets('a custom style uploads the style image and draws from it', (
+    tester,
+  ) async {
+    final backend = _Backend()..styles = {..._styles, 'custom': true};
+    final picker = _Photos(_png);
+    await _pumpPanel(tester, backend, initial: _card(), picker: picker);
+    await _tapText(tester, 'Vẽ tranh nền');
+    await _tapText(tester, 'Ảnh mẫu');
+    expect(_drawEnabled(tester, 'Chọn một phong cách'), isFalse);
+
+    await _tapText(tester, 'Tải ảnh mẫu');
+    expect(
+      _drawEnabled(tester, 'Vẽ bằng ảnh mẫu của bạn'),
+      isFalse,
+      reason: 'ảnh mẫu cũng gửi cho Gemini nên phải đồng ý trước',
+    );
+    await _consentAndDraw(tester, 'Vẽ bằng ảnh mẫu của bạn');
+    expect(picker.uploads, ['r1 style.jpg image/png ${_png.length}']);
+    // Backend tự lấy style.jpg của thẻ, nên lệnh vẽ chỉ mang tên phong cách.
+    expect(backend.artBodies, [
+      {'style': 'custom'},
     ]);
   });
 
@@ -989,6 +1014,67 @@ void main() {
     expect(find.text('Vẽ bằng Anime cel'), findsOne);
     final note = await _noteField(tester);
     expect(tester.widget<TextField>(note).controller!.text, 'áo đỏ');
+  });
+
+  testWidgets('a lost style image asks for a new one before redrawing', (
+    tester,
+  ) async {
+    final backend = _Backend()..styles = {..._styles, 'custom': true};
+    final picker = _Photos(_png);
+    await _pumpPanel(
+      tester,
+      backend,
+      picker: picker,
+      initial: _card(
+        art: {
+          'status': 'failed',
+          'style': 'custom',
+          'attempt': 1,
+          'reason': 'style_photo_missing',
+        },
+      ),
+    );
+    expect(
+      find.text('Không tìm thấy ảnh mẫu. Tải lại ảnh mẫu rồi vẽ.'),
+      findsOne,
+    );
+    await _tapText(tester, 'Vẽ lại');
+    expect(_drawEnabled(tester, 'Chọn ảnh mẫu'), isFalse);
+
+    await _tapText(tester, 'Tải ảnh mẫu');
+    await _consentAndDraw(tester, 'Vẽ bằng ảnh mẫu của bạn');
+    expect(picker.uploads, ['r1 style.jpg image/png ${_png.length}']);
+    expect(backend.artBodies, [
+      {'style': 'custom'},
+    ]);
+  });
+
+  testWidgets('a failed custom draw redraws from the kept style image', (
+    tester,
+  ) async {
+    final backend = _Backend()..styles = {..._styles, 'custom': true};
+    final picker = _Photos(_png);
+    await _pumpPanel(
+      tester,
+      backend,
+      picker: picker,
+      initial: _card(
+        art: {
+          'status': 'failed',
+          'style': 'custom',
+          'attempt': 1,
+          'reason': 'budget',
+        },
+      ),
+    );
+    await _tapText(tester, 'Vẽ lại');
+    expect(find.text('Ảnh mẫu lần trước'), findsOne);
+    await _noteField(tester);
+    await _consentAndDraw(tester, 'Vẽ bằng ảnh mẫu của bạn');
+    expect(picker.uploads, isEmpty, reason: 'style.jpg cũ vẫn còn');
+    expect(backend.artBodies, [
+      {'style': 'custom'},
+    ]);
   });
 
   testWidgets('a stuck draw offers to send the same choice again', (

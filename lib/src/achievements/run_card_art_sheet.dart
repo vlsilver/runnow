@@ -27,6 +27,16 @@ String? runCardPhotoType(Uint8List bytes) {
   return null;
 }
 
+/// Phong cách vẽ theo ảnh mẫu người dùng tải lên. Backend không gửi nó trong
+/// danh sách mà chỉ bật cờ [ArtStyleList.custom]; ảnh mẫu nằm ở `style.jpg`
+/// của thẻ nên lệnh vẽ chỉ mang key.
+const _customStyle = ArtStyle(
+  key: 'custom',
+  name: 'ảnh mẫu của bạn',
+  family: 'custom',
+  swatch: [],
+);
+
 /// Số ký tự tối đa của mô tả thêm, đếm theo rune như runCardArtNoteMax ở
 /// backend. maxLength của TextField đếm theo grapheme nên chữ có dấu tổ hợp
 /// hay emoji sẽ lọt quá giới hạn của backend.
@@ -83,6 +93,14 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
   /// Ảnh vừa chọn trên máy, tải lên lúc bấm Vẽ.
   Uint8List? _upload;
   String? _uploadType;
+
+  /// Ảnh mẫu vừa chọn trên máy, tải lên `style.jpg` lúc bấm Vẽ.
+  Uint8List? _styleUpload;
+  String? _styleUploadType;
+
+  /// Lần vẽ theo ảnh mẫu trước hỏng mà ảnh mẫu còn trên Storage, vẽ lại được
+  /// không cần tải lại.
+  bool _styleKept = false;
   bool _consent = false;
   bool _sending = false;
   String? _error;
@@ -98,6 +116,8 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
     if (art?.status == RunCardArtStatus.failed) {
       _style = art!.style;
       if (art.reason != 'photo_missing') _photoPath = art.photoPath;
+      _styleKept =
+          art.style == _customStyle.key && art.reason != 'style_photo_missing';
       _note.text = art.note ?? '';
     }
   }
@@ -146,15 +166,27 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
     final families = [
       for (final f in list.families)
         if (list.styles.any((s) => s.family == f.key)) f,
+      if (list.custom)
+        ArtStyleFamily(key: _customStyle.family, label: 'Ảnh mẫu'),
     ];
-    final selected = list.styles.where((s) => s.key == _style).firstOrNull;
+    final selected = _style == _customStyle.key
+        ? (list.custom ? _customStyle : null)
+        : list.styles.where((s) => s.key == _style).firstOrNull;
     final family =
         _family ?? selected?.family ?? families.firstOrNull?.key ?? '';
     final shown = [
       for (final s in list.styles)
         if (s.family == family) s,
     ];
-    final ready = selected != null && (!_hasPhoto || _consent) && !_sending;
+    final custom = selected == _customStyle;
+    final missingStyleRef = custom && _styleUpload == null && !_styleKept;
+    // Ảnh mẫu cũng gửi cho Gemini nên cũng phải đồng ý.
+    final sendsImage = _hasPhoto || custom;
+    final ready =
+        selected != null &&
+        !missingStyleRef &&
+        (!sendsImage || _consent) &&
+        !_sending;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -196,11 +228,19 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
             children: [
-              _StyleGrid(
-                styles: shown,
-                selected: _style,
-                onTap: (key) => setState(() => _style = key),
-              ),
+              if (family == _customStyle.family)
+                _StyleRefPicker(
+                  selected: custom,
+                  bytes: _styleUpload,
+                  kept: _styleKept,
+                  onTap: _pickStyleRef,
+                )
+              else
+                _StyleGrid(
+                  styles: shown,
+                  selected: _style,
+                  onTap: (key) => setState(() => _style = key),
+                ),
               const SizedBox(height: 20),
               Text(
                 'ẢNH GỐC (KHÔNG BẮT BUỘC)',
@@ -211,7 +251,7 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
               ),
               const SizedBox(height: 8),
               _photoRow(),
-              if (_hasPhoto)
+              if (sendsImage)
                 CheckboxListTile(
                   value: _consent,
                   onChanged: _sending
@@ -219,8 +259,9 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
                       : (value) => setState(() => _consent = value ?? false),
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
-                  title: const Text(
-                    'Tôi có quyền dùng ảnh này và người trong ảnh đồng ý. '
+                  title: Text(
+                    'Tôi có quyền dùng ${_hasPhoto && custom ? 'các ảnh' : 'ảnh'} '
+                    'này và người trong ảnh đồng ý. '
                     'Ảnh được gửi cho Google Gemini để vẽ tranh.',
                   ),
                 ),
@@ -271,6 +312,8 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
                       ? 'Đang gửi...'
                       : selected == null
                       ? 'Chọn một phong cách'
+                      : missingStyleRef
+                      ? 'Chọn ảnh mẫu'
                       : 'Vẽ bằng ${selected.name}',
                 ),
               ),
@@ -334,30 +377,53 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
     });
   }
 
-  Future<void> _pick() async {
-    if (_sending) return;
+  /// Ảnh chọn trong thư viện, đã kiểm loại và cỡ; null khi huỷ hay ảnh không
+  /// dùng được (lý do nằm ở [_error]).
+  Future<({Uint8List bytes, String type})?> _pickImage() async {
+    if (_sending) return null;
     final Uint8List? bytes;
     try {
       bytes = await ref.read(runCardPhotosProvider).pick();
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) return null;
       setState(() => _error = 'Không mở được thư viện ảnh: $error');
-      return;
+      return null;
     }
-    if (bytes == null || !mounted) return;
+    if (bytes == null || !mounted) return null;
     final type = runCardPhotoType(bytes);
+    final error = type == null
+        ? 'Chỉ dùng được ảnh JPEG hoặc PNG.'
+        : bytes.length >= _maxPhotoBytes
+        ? 'Ảnh quá lớn, chọn ảnh dưới 8 MB.'
+        : null;
+    if (error != null) {
+      setState(() => _error = error);
+      return null;
+    }
+    return (bytes: bytes, type: type!);
+  }
+
+  Future<void> _pick() async {
+    final image = await _pickImage();
+    if (image == null) return;
     setState(() {
-      if (type == null) {
-        _error = 'Chỉ dùng được ảnh JPEG hoặc PNG.';
-      } else if (bytes!.length >= _maxPhotoBytes) {
-        _error = 'Ảnh quá lớn, chọn ảnh dưới 8 MB.';
-      } else {
-        _photoPath = null;
-        _upload = bytes;
-        _uploadType = type;
-        _consent = false;
-        _error = null;
-      }
+      _photoPath = null;
+      _upload = image.bytes;
+      _uploadType = image.type;
+      _consent = false;
+      _error = null;
+    });
+  }
+
+  Future<void> _pickStyleRef() async {
+    final image = await _pickImage();
+    if (image == null) return;
+    setState(() {
+      _style = _customStyle.key;
+      _styleUpload = image.bytes;
+      _styleUploadType = image.type;
+      _consent = false;
+      _error = null;
     });
   }
 
@@ -395,6 +461,18 @@ class _RunCardArtSheetState extends ConsumerState<RunCardArtSheet> {
         path = await ref
             .read(runCardPhotosProvider)
             .upload(widget.card.id, bytes, _uploadType!);
+      }
+      if (style == _customStyle) {
+        if (_styleUpload case final bytes?) {
+          await ref
+              .read(runCardPhotosProvider)
+              .upload(
+                widget.card.id,
+                bytes,
+                _styleUploadType!,
+                file: 'style.jpg',
+              );
+        }
       }
       final note = _note.text.trim();
       await ref
@@ -557,6 +635,81 @@ List<Color> _swatch(ArtStyle style, ColorScheme scheme) {
   return colors.length >= 2
       ? colors
       : [scheme.surfaceContainerHighest, scheme.surfaceContainerLow];
+}
+
+/// Ô tải ảnh mẫu phong cách, cùng dáng 2:3 với ô phong cách.
+class _StyleRefPicker extends StatelessWidget {
+  const _StyleRefPicker({
+    required this.selected,
+    required this.bytes,
+    required this.kept,
+    required this.onTap,
+  });
+
+  final bool selected;
+  final Uint8List? bytes;
+  final bool kept;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final radius = BorderRadius.circular(12);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = (constraints.maxWidth - 2 * 10) / 3;
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Semantics(
+              button: true,
+              selected: selected,
+              label: 'Ảnh mẫu phong cách',
+              child: InkWell(
+                borderRadius: radius,
+                onTap: onTap,
+                child: Container(
+                  width: width,
+                  height: width * 3 / 2,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerHighest,
+                    borderRadius: radius,
+                    border: Border.all(
+                      color: selected ? scheme.primary : scheme.outlineVariant,
+                      width: selected ? 3 : 1,
+                    ),
+                  ),
+                  child: switch (bytes) {
+                    final bytes? => Image.memory(bytes, fit: BoxFit.cover),
+                    null when kept => const _TileHint(
+                      Icons.image_outlined,
+                      'Ảnh mẫu lần trước',
+                    ),
+                    null => const _TileHint(
+                      Icons.add_photo_alternate_outlined,
+                      'Tải ảnh mẫu',
+                    ),
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '3i vẽ theo nét, màu và chất liệu của ảnh mẫu, không chép '
+                'nhân vật hay chữ trong ảnh. Chạm ô để chọn ảnh khác.',
+                style: TextStyle(
+                  color: scheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
 class _PhotoTile extends StatelessWidget {

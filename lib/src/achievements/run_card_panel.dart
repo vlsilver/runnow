@@ -372,6 +372,7 @@ String runCardArtFailText(String? reason) => switch (reason) {
   'budget' => 'Hôm nay 3i đã dùng hết hạn mức vẽ tranh. Mai thử lại nhé.',
   'blocked' => 'Model từ chối vẽ lần này. Thử phong cách khác hoặc bỏ ảnh gốc.',
   'photo_missing' => 'Không tìm thấy ảnh gốc. Chọn lại ảnh rồi vẽ.',
+  'style_photo_missing' => 'Không tìm thấy ảnh mẫu. Tải lại ảnh mẫu rồi vẽ.',
   'style_unavailable' => 'Phong cách này vừa bị tắt. Chọn phong cách khác.',
   _ => 'Vẽ tranh bị lỗi. Thử lại sau ít phút.',
 };
