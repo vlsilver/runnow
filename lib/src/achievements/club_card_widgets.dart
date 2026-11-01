@@ -245,6 +245,7 @@ void showClubCardViewer(
       CollectedGameCard() => 'Ma Sói',
       CollectedJourneyCard(:final card) => 'Hành trình · Level ${card.level}',
       CollectedRankCard() => 'BXH',
+      CollectedContractCard() => 'Kèo',
     },
   ],
   cardSize: achievementCardSize,

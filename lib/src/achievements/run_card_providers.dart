@@ -15,6 +15,7 @@ import 'package:myrun/src/hearts.dart';
 import 'package:myrun/src/journey/journey_card.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rank/rank_card.dart';
+import 'package:myrun/src/run_contracts/contract_card_models.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 
 /// Doc Firestore sang map thường: Timestamp thành DateTime, kể cả trong map
@@ -153,6 +154,26 @@ final journeyCardsProvider = StreamProvider.autoDispose<List<JourneyCard>>((
               doc.id,
               _plain(doc.data()) as Map<String, dynamic>,
             ),
+        ],
+      );
+});
+
+/// Thẻ Kèo đã lật, mới lật trước. Backend ghi lúc chủ thẻ lật, app chỉ đọc.
+final contractCardsProvider = StreamProvider.autoDispose<List<ContractCard>>((
+  ref,
+) {
+  final uid = ref.watch(firebaseUserProvider.select((user) => user.value?.uid));
+  if (uid == null) return Stream.value(const []);
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('contractCards')
+      .orderBy('rolledAt', descending: true)
+      .snapshots()
+      .map(
+        (snap) => [
+          for (final doc in snap.docs)
+            ContractCard.fromJson(_plain(doc.data()) as Map<String, dynamic>),
         ],
       );
 });

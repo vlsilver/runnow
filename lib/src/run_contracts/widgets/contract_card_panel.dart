@@ -229,12 +229,14 @@ CardShareSubject contractCardShareSubject(
       '\nChia sẻ từ 3i',
 );
 
-/// Xem thẻ 3D, lật hai mặt, khoe từ đó.
+/// Xem thẻ 3D, lật hai mặt, khoe từ đó. [reaction] là hàng tim khi mở từ thẻ
+/// đã khoe.
 Future<void> showContractCardViewer(
   BuildContext context,
   ContractCard card,
-  AchievementCardData data,
-) => showCardViewer(
+  AchievementCardData data, {
+  Widget? reaction,
+}) => showCardViewer(
   context,
   front: (pose) => AchievementCard(data: data, pose: pose),
   back: (pose) => AchievementCard(data: data, pose: pose, back: true),
@@ -246,6 +248,7 @@ Future<void> showContractCardViewer(
     subject: contractCardShareSubject(card, data),
     data: data,
   ),
+  reaction: reaction,
 );
 
 /// Chữ to trên lá khoá khi không lật được.

@@ -12,6 +12,8 @@ import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/journey/journey_card.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rank/rank_card.dart';
+import 'package:myrun/src/run_contracts/contract_card_models.dart';
+import 'package:myrun/src/run_contracts/widgets/contract_card_panel.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 
@@ -23,7 +25,7 @@ String runCardOwnerName(WidgetRef ref) =>
     '3i member';
 
 /// Một thẻ trong bộ: thẻ buổi chạy, thẻ Ma Sói của ván phe mình thắng, thẻ
-/// Hành trình của chặng đã về đích, hay thẻ BXH đã lật.
+/// Hành trình của chặng đã về đích, thẻ BXH hay thẻ Kèo đã lật.
 sealed class CollectedCard {
   const CollectedCard();
 
@@ -173,6 +175,38 @@ class CollectedRankCard extends CollectedCard {
   }) => showRankCardViewer(context, card, canShare: true, reaction: reaction);
 }
 
+class CollectedContractCard extends CollectedCard {
+  const CollectedContractCard(this.card);
+
+  final ContractCard card;
+
+  @override
+  String get id => 'contract-${card.contractId}';
+  @override
+  GameCardTier get tier => card.tier;
+  @override
+  DateTime? get at => card.rolledAt;
+  @override
+  String get title => 'Kèo · ${card.snapshot.title}';
+  @override
+  String get subtitle =>
+      '${gameCardTiers[tier]!.label} · ${runCardKm(card.km)} km';
+  @override
+  String get label =>
+      'Thẻ Kèo ${gameCardTiers[tier]!.label} ${card.snapshot.title}';
+
+  /// Thẻ in tên lúc lật, không theo tên hiện tại. Ảnh chụp kèo không giữ giờ
+  /// hẹn, nên kèo hẹn chạy ở đây không có dòng giờ hẹn.
+  @override
+  AchievementCardData data(String owner) => contractCardData(card);
+  @override
+  void open(
+    BuildContext context,
+    AchievementCardData data, {
+    Widget? reaction,
+  }) => showContractCardViewer(context, card, data, reaction: reaction);
+}
+
 /// Cả bộ thẻ, mới có trước. Một nguồn lỗi thì cả bộ báo lỗi chứ không hiện
 /// thiếu.
 final collectedCardsProvider =
@@ -181,7 +215,8 @@ final collectedCardsProvider =
       final games = ref.watch(gameCardsProvider);
       final journeys = ref.watch(journeyCardsProvider);
       final ranks = ref.watch(myRankCardsProvider);
-      for (final source in [runs, games, journeys, ranks]) {
+      final contracts = ref.watch(contractCardsProvider);
+      for (final source in [runs, games, journeys, ranks, contracts]) {
         if (source case AsyncError(:final error, :final stackTrace)) {
           return AsyncError(error, stackTrace);
         }
@@ -189,7 +224,8 @@ final collectedCardsProvider =
       if (!runs.hasValue ||
           !games.hasValue ||
           !journeys.hasValue ||
-          !ranks.hasValue) {
+          !ranks.hasValue ||
+          !contracts.hasValue) {
         return const AsyncLoading();
       }
       final cards = <CollectedCard>[
@@ -199,6 +235,7 @@ final collectedCardsProvider =
         // Thẻ còn úp chưa vào bộ: chủ thẻ lật ở mục Kỳ trước của BXH.
         for (final card in ranks.requireValue)
           if (card.revealed) CollectedRankCard(card),
+        for (final card in contracts.requireValue) CollectedContractCard(card),
       ];
       // Thẻ thiếu mốc thời gian xếp cuối.
       final never = DateTime.fromMillisecondsSinceEpoch(0);
@@ -209,7 +246,8 @@ final collectedCardsProvider =
 /// Câu khi bộ thẻ còn trống.
 const collectedCardsEmpty =
     'Chưa có thẻ nào. Lật thẻ sau buổi chạy, thắng một ván Ma Sói, về đích '
-    'một chặng Hành trình, hoặc vào top 10 BXH tuần, tháng để có thẻ đầu tiên.';
+    'một chặng Hành trình, đạt một kèo, hoặc vào top 10 BXH tuần, tháng để có '
+    'thẻ đầu tiên.';
 
 /// Thẻ thu nhỏ theo bề ngang [width]; chạm để xem 3D.
 class CollectedCardThumb extends StatelessWidget {

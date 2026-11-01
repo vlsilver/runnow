@@ -12,8 +12,12 @@ double _double(Object? value) => value is num ? value.toDouble() : 0;
 
 int _int(Object? value) => value is num ? value.toInt() : 0;
 
-DateTime? _date(Object? value) =>
-    value is String ? DateTime.tryParse(value) : null;
+/// API trả chuỗi RFC 3339; doc Firestore đọc qua `_plain` trả DateTime.
+DateTime? _date(Object? value) => switch (value) {
+  final DateTime d => d,
+  final String s => DateTime.tryParse(s),
+  _ => null,
+};
 
 Map<String, dynamic> _map(Object? value) =>
     value is Map ? value.cast<String, dynamic>() : const {};

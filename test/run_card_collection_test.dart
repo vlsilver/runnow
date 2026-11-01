@@ -8,6 +8,7 @@ import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/journey/journey_card.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rank/rank_card.dart';
+import 'package:myrun/src/run_contracts/contract_card_models.dart';
 
 RunCard _card(String id, String tier, int daysAgo) => RunCard.fromJson({
   'id': id,
@@ -28,6 +29,7 @@ Future<void> _pump(
   List<GamePlayerCard> games = const [],
   List<JourneyCard> journeys = const [],
   List<RankCard> ranks = const [],
+  List<ContractCard> contracts = const [],
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -36,6 +38,7 @@ Future<void> _pump(
         gameCardsProvider.overrideWith((ref) => Stream.value(games)),
         journeyCardsProvider.overrideWith((ref) => Stream.value(journeys)),
         myRankCardsProvider.overrideWith((ref) => Stream.value(ranks)),
+        contractCardsProvider.overrideWith((ref) => Stream.value(contracts)),
         userProfileProvider.overrideWith((ref) => Stream.value(null)),
       ],
       child: const MaterialApp(home: RunCardCollectionScreen()),
@@ -43,7 +46,7 @@ Future<void> _pump(
   );
   // Thẻ Thần thoại chạy hiệu ứng mãi, nên không chờ settle. Mỗi nguồn thẻ
   // cần một frame để có giá trị.
-  for (var i = 0; i < 4; i++) {
+  for (var i = 0; i < 5; i++) {
     await tester.pump();
   }
 }
@@ -206,6 +209,7 @@ void main() {
           ),
           journeyCardsProvider.overrideWith((ref) => Stream.value(const [])),
           myRankCardsProvider.overrideWith((ref) => Stream.value(const [])),
+          contractCardsProvider.overrideWith((ref) => Stream.value(const [])),
           userProfileProvider.overrideWith((ref) => Stream.value(null)),
         ],
         child: const MaterialApp(home: RunCardCollectionScreen()),
@@ -215,6 +219,45 @@ void main() {
     await tester.pump();
     expect(find.byType(CollectedCardThumb), findsNothing);
     expect(find.textContaining('Không tải được bộ thẻ'), findsOneWidget);
+  });
+
+  testWidgets('a kèo card joins the collection by flip time', (tester) async {
+    // Doc contractCards sau khi đọc từ Firestore: rolledAt là DateTime chứ
+    // không phải chuỗi như JSON của API.
+    final contract = ContractCard.fromJson({
+      'contractId': 'k1',
+      'tier': 'epic',
+      'km': 23.5,
+      'rolledAt': DateTime.utc(2026, 10, 22),
+      'snapshot': {
+        'title': 'Tuần 20 km',
+        'metric': 'distance',
+        'targetValue': 20,
+        'progressValue': 23.5,
+        'startAt': '2026-10-18T17:00:00Z',
+        'endAtExclusive': '2026-10-25T17:00:00Z',
+        'participants': 3,
+        'achievers': 2,
+        'displayName': 'An',
+      },
+    });
+    await _pump(
+      tester,
+      [_card('a', 'rare', 1), _card('c', 'rare', 3)],
+      contracts: [contract],
+    );
+    expect(_shown(tester), ['a', 'contract-k1', 'c']);
+    expect(find.text('Siêu hiếm · 1'), findsOneWidget);
+
+    await tester.tap(
+      find.byWidgetPredicate(
+        (w) => w is CollectedCardThumb && w.card.id == 'contract-k1',
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Kèo · 23,5 km'), findsOneWidget);
+    expect(find.text('Khoe thẻ'), findsOneWidget);
   });
 
   testWidgets('an empty collection says how to get a card', (tester) async {
