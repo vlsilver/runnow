@@ -260,8 +260,7 @@ class _RunContractDetailScreenState
           _MyProgressCard(contract: contract, participant: participant),
           // Hành trình nhóm xét đạt theo tổng cả nhóm, còn thẻ xét theo tiến
           // độ riêng từng người, nên loại kèo đó chưa có thẻ.
-          if (contract.status == RunContractStatus.completed ||
-              contract.status == RunContractStatus.failed) ...[
+          if (contractCardShown(contract, uid)) ...[
             const SizedBox(height: 20),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),

@@ -73,7 +73,10 @@ class _Backend {
   );
 }
 
-RunContract _contract() {
+RunContract _contract({
+  RunContractStatus status = RunContractStatus.completed,
+  Map<String, double> progress = const {},
+}) {
   final start = DateTime.utc(2026, 10, 18, 17);
   return RunContract(
     id: 'k1',
@@ -86,10 +89,18 @@ RunContract _contract() {
     startAt: start,
     endAtExclusive: start.add(const Duration(days: 7)),
     finalizeAt: start.add(const Duration(days: 7, hours: 6)),
-    status: RunContractStatus.completed,
+    status: status,
     visibility: RunContractVisibility.club,
     progressValue: 23.5,
-    participants: const {},
+    participants: {
+      for (final MapEntry(key: uid, value: value) in progress.entries)
+        uid: RunContractParticipant(
+          uid: uid,
+          progressValue: value,
+          joinedAt: start,
+          updatedAt: start,
+        ),
+    },
     createdAt: start,
     updatedAt: start,
   );
@@ -139,6 +150,40 @@ void main() {
     expect(find.textContaining('Huyền thoại · 23,5 km tích luỹ'), findsOneWidget);
   });
 
+  testWidgets('kèo chưa chốt mà đã đạt thì xem trước tỉ lệ, chưa lật được', (
+    tester,
+  ) async {
+    final backend = _Backend({
+      'card': null,
+      'reason': 'card_contract_open',
+      'km': 23.5,
+      'odds': _cardJson()['odds'],
+    });
+    await _pump(tester, backend);
+    expect(find.text('TỈ LỆ CHO 23,5 KM TÍCH LUỸ'), findsOneWidget);
+    // Kèo chốt 25/10 23:00 UTC, tức 06:00 26/10 giờ VN.
+    expect(
+      find.text(
+        'Kèo chốt lúc 06:00 26/10 rồi mới lật được thẻ. Tích thêm km trước '
+        'giờ đó thì tỉ lệ còn tăng.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('CHƯA CHỐT'), findsNothing);
+    expect(find.text('Lật thẻ'), findsNothing);
+    expect(backend.requests, ['GET /v1/contracts/k1/card']);
+  });
+
+  testWidgets('backend cũ báo chưa chốt mà không kèm tỉ lệ thì lá khoá', (
+    tester,
+  ) async {
+    final backend = _Backend({'card': null, 'reason': 'card_contract_open'});
+    await _pump(tester, backend);
+    expect(find.text('CHƯA CHỐT'), findsOneWidget);
+    expect(find.text('Kèo chốt xong mới lật được thẻ.'), findsOneWidget);
+    expect(find.text('Lật thẻ'), findsNothing);
+  });
+
   testWidgets('chưa đạt mục tiêu thì lá khoá, không có nút lật', (
     tester,
   ) async {
@@ -151,6 +196,18 @@ void main() {
     );
     expect(find.text('Lật thẻ'), findsNothing);
     expect(backend.requests, ['GET /v1/contracts/k1/card']);
+  });
+
+  test('đạt mục tiêu là có mục thẻ, kể cả khi kèo chưa chốt', () {
+    // Mục tiêu 20 km: u1 đạt 23,5, u2 mới 12.
+    const progress = {'u1': 23.5, 'u2': 12.0};
+    bool shown(RunContractStatus status, String uid) =>
+        contractCardShown(_contract(status: status, progress: progress), uid);
+    expect(shown(RunContractStatus.active, 'u1'), isTrue);
+    expect(shown(RunContractStatus.active, 'u2'), isFalse);
+    expect(shown(RunContractStatus.completed, 'u2'), isTrue);
+    expect(shown(RunContractStatus.failed, 'u2'), isTrue);
+    expect(shown(RunContractStatus.cancelled, 'u1'), isFalse);
   });
 
   test('thẻ kèo in kết quả kèo, mục tiêu, km tích luỹ và số người đạt', () {

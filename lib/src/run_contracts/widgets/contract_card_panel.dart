@@ -171,6 +171,16 @@ String contractCardLockText(String reason) => switch (reason) {
   _ => 'Chỉ người đạt mục tiêu của chính mình mới lật được thẻ kèo.',
 };
 
+/// Màn kèo có mục thẻ không. Kèo đang chạy thì đạt mục tiêu là app đã báo
+/// hoàn thành, nên hiện luôn để xem trước tỉ lệ dù chốt xong mới lật được.
+/// Kèo đã chốt thì hiện cho cả người hụt để biết vì sao không có thẻ.
+bool contractCardShown(RunContract contract, String? uid) =>
+    switch (contract.status) {
+      RunContractStatus.active => contract.completedBy(uid),
+      RunContractStatus.completed || RunContractStatus.failed => true,
+      RunContractStatus.cancelled => false,
+    };
+
 /// Thẻ kèo của chính mình, chỉ hỏi server khi màn kèo mở.
 final contractCardViewProvider = FutureProvider.autoDispose
     .family<ContractCardView, String>(
@@ -218,6 +228,26 @@ class _ContractCardPanelState extends ConsumerState<ContractCardPanel> {
       data: (view) {
         if (view.card case final card?) {
           return _shown(context, card, flip: false);
+        }
+        // Kèo chưa chốt mà đã đạt: backend gửi kèm tỉ lệ theo km hiện có.
+        if (view.reason != null && view.odds.isNotEmpty) {
+          final at = _vn(widget.contract.finalizeAt);
+          return Column(
+            children: [
+              RunCardFrame(child: _faceDown(view.km)),
+              const SizedBox(height: 16),
+              RunCardOddsTable(
+                title: 'TỈ LỆ CHO ${runCardKm(view.km)} KM TÍCH LUỸ',
+                odds: view.odds,
+              ),
+              const SizedBox(height: 8),
+              _Hint(
+                'Kèo chốt lúc ${_two(at.hour)}:${_two(at.minute)} '
+                '${_two(at.day)}/${_two(at.month)} rồi mới lật được thẻ. '
+                'Tích thêm km trước giờ đó thì tỉ lệ còn tăng.',
+              ),
+            ],
+          );
         }
         if (view.reason case final reason?) {
           return Column(
