@@ -438,6 +438,29 @@ service cloud.firestore {
       allow delete: if owns(uid) && !targetKey.matches('live_.*');
     }
 
+    // Emoji cổ vũ buổi live: mỗi người xem một document gồm emoji vừa bấm (để
+    // app báo người chạy) và số lần bấm từng emoji n (để thẻ buổi chạy hiện
+    // tổng). Mỗi lần bấm tăng đúng 1 ở emoji đó. Hai lần bấm của một người
+    // cách nhau ít nhất 3 giây để người chạy không bị báo dồn. sessionId trùng
+    // activityId của buổi chạy nên thẻ đọc thẳng được.
+    match /liveCheers/{sessionId}/by/{uid} {
+      function validCheer(before) {
+        let data = request.resource.data;
+        let cheers = ['👏', '🔥', '💪', '🐢', '🏁'];
+        return owns(uid)
+          && data.keys().hasOnly(['uid', 'emoji', 'n', 'at'])
+          && data.uid == uid
+          && data.emoji in cheers
+          && data.at == request.time
+          && data.n.diff(before).affectedKeys().hasOnly([data.emoji])
+          && data.n[data.emoji] == before.get(data.emoji, 0) + 1;
+      }
+      allow read: if signedIn();
+      allow create: if validCheer({});
+      allow update: if validCheer(resource.data.n)
+        && request.time > resource.data.at + duration.value(3, 's');
+    }
+
     // Thẻ chủ thẻ khoe với club: buổi chạy id {uid}_{activityId}, Ma Sói và
     // Hành trình id {uid}_{kind}_{id} có field kind. Backend chép
     // mặt thẻ (không đường chạy, không nhịp tim) qua API khoe/bỏ khoe.
