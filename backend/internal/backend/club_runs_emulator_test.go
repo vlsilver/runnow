@@ -36,6 +36,8 @@ func TestClubRunsEmulator(t *testing.T) {
 	seed(t, db, "users/noprofile/activities/n", run("n", "2026-10-25T10:00:00Z", nil))
 	seed(t, db, "users/pub/activities/a", run("a", "2026-10-24T08:00:00Z", nil))
 	seed(t, db, "users/pub/activities/dup", run("dup", "2026-10-24T07:00:00Z", map[string]any{"duplicateOfActivityId": "a"}))
+	// Dưới 1 km (đi vài bước, bấm nhầm) không lên feed.
+	seed(t, db, "users/pub/activities/short", run("short", "2026-10-24T05:00:00Z", map[string]any{"distanceMeters": 999.0}))
 	// b và c cùng giờ bắt đầu ở hai người khác nhau: sang trang không mất, không lặp.
 	seed(t, db, "users/pub/activities/b", run("b", "2026-10-23T06:00:00Z", nil))
 	seed(t, db, "users/pub2/activities/c", run("c", "2026-10-23T06:00:00Z", nil))

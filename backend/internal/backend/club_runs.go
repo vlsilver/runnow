@@ -12,6 +12,10 @@ import (
 // cursor để app đọc tiếp.
 const clubRunsScanRounds = 5
 
+// clubRunMinDistanceMeters: buổi ngắn hơn (đi vài bước, bấm nhầm, sync cả
+// quãng đi lại trong nhà) không lên feed club.
+const clubRunMinDistanceMeters = 1000
+
 // ClubRun là một buổi trong feed club, kèm uid người tập vì collection group
 // không cho biết doc thuộc ai nếu không nhìn đường dẫn.
 type ClubRun struct {
@@ -28,9 +32,9 @@ type ClubRunsPage struct {
 
 // ClubRuns trả buổi tập của những người để hồ sơ public, khớp với rules cho
 // đọc activities của hồ sơ public. Buổi 3i trùng buổi Strava
-// (duplicateOfActivityId) bị bỏ để một buổi không hiện hai lần. Đọc
-// collection group activities theo startedAt rồi lọc, nên cursor gồm
-// startedAt, uid và id buổi.
+// (duplicateOfActivityId) bị bỏ để một buổi không hiện hai lần; buổi dưới
+// clubRunMinDistanceMeters cũng bị bỏ. Đọc collection group activities theo
+// startedAt rồi lọc, nên cursor gồm startedAt, uid và id buổi.
 func (s *ActivityService) ClubRuns(ctx context.Context, cursor string, limit int) (ClubRunsPage, error) {
 	if limit < 1 || limit > activityPageMax {
 		return ClubRunsPage{}, invalidRequest()
@@ -67,7 +71,8 @@ func (s *ActivityService) ClubRuns(ctx context.Context, cursor string, limit int
 			data := d.Data()
 			afterStartedAt, after = stringValue(data["startedAt"]), d.Ref
 			owner := d.Ref.Parent.Parent
-			if owner == nil || !public[owner.ID] || stringValue(data["duplicateOfActivityId"]) != "" {
+			if owner == nil || !public[owner.ID] || stringValue(data["duplicateOfActivityId"]) != "" ||
+				number(data["distanceMeters"]) < clubRunMinDistanceMeters {
 				continue
 			}
 			out.Runs = append(out.Runs, ClubRun{OwnerUID: owner.ID, Activity: data})
