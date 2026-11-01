@@ -306,7 +306,12 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     // nhất (appConfig/tracking) thay vì mặc định.
     ref.watch(trackingConfigProvider);
     final roomId = _roomId;
+    var othersJoined = false;
     if (roomId != null) {
+      othersJoined = runRoomHasOthersJoined(
+        ref.watch(runRoomMembersProvider(roomId)).value ?? const [],
+        ref.watch(firebaseUserProvider).value?.uid,
+      );
       // Giữ giá trị cũ lúc doc phòng đang tải: phòng solo vừa mở đã gán sẵn ở
       // _openSoloRoom, gán null thì buổi live bị giấu trong chốc lát.
       if (ref.watch(runRoomProvider(roomId)).value case final room?) {
@@ -322,7 +327,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       // kiểu phòng rồi mới tắt, để phòng công khai giữ mặc định Live.
       if (_roomPrivacy != null && _roomOnly) _liveEnabled = false;
     }
-    final liveId = _liveEnabled ? _session?.id : null;
+    // Báo tim và cổ vũ cả khi tắt Live: người khác vẫn thấy buổi chạy ở trang
+    // Live và cổ vũ được, công tắc chỉ tắt việc báo lên group Telegram.
+    final liveId = _session?.id;
     if (liveId != null) {
       // Giữ danh sách thành viên để toast có tên, không rebuild màn này.
       ref.listen(membersProvider, (_, _) {});
@@ -607,6 +614,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                       runRoomShowsRunActions(
                         roomOnly: _roomOnly,
                         liveEnabled: _liveEnabled,
+                        othersJoined: othersJoined,
                       )) ...[
                     const SizedBox(height: 10),
                     RunRoomRunActions(roomId: roomId),

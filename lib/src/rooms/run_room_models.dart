@@ -75,11 +75,22 @@ bool runRoomSharesLivePhoto({
 }) => contractId != null || joinedRoomId != null;
 
 /// Thoại và emoji cổ vũ ở đáy màn chạy hiện khi đang bật Live. Phòng kín luôn
-/// tắt Live lên group và không có công tắc, nên vẫn hiện.
+/// tắt Live lên group và không có công tắc, nên vẫn hiện. Đang chạy cùng người
+/// khác thì cũng hiện, vì công tắc Live chỉ quyết việc báo lên group Telegram:
+/// tắt nó không được cắt thoại với người cùng phòng.
 bool runRoomShowsRunActions({
   required bool roomOnly,
   required bool liveEnabled,
-}) => roomOnly || liveEnabled;
+  required bool othersJoined,
+}) => roomOnly || liveEnabled || othersJoined;
+
+/// Trong phòng có người khác ngoài [myUid] đã vào chạy cùng. Người còn xin vào
+/// hay đã rời không tính.
+bool runRoomHasOthersJoined(Iterable<RunRoomMember> members, String? myUid) =>
+    members.any(
+      (member) =>
+          member.uid != myUid && member.state == RunRoomMemberState.joined,
+    );
 
 /// Số điểm tối đa của tuyến gửi lên phòng. Backend nhận tới 200; tuyến nằm
 /// trong doc phòng mà list phòng đọc cả doc, nên app gửi ít hơn.

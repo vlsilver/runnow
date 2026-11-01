@@ -448,17 +448,61 @@ void main() {
     'tắt Live thì ẩn thoại và emoji, phòng kín không có công tắc nên vẫn hiện',
     () {
       expect(
-        runRoomShowsRunActions(roomOnly: false, liveEnabled: true),
+        runRoomShowsRunActions(
+          roomOnly: false,
+          liveEnabled: true,
+          othersJoined: false,
+        ),
         isTrue,
       );
       expect(
-        runRoomShowsRunActions(roomOnly: false, liveEnabled: false),
+        runRoomShowsRunActions(
+          roomOnly: false,
+          liveEnabled: false,
+          othersJoined: false,
+        ),
         isFalse,
       );
       expect(
-        runRoomShowsRunActions(roomOnly: true, liveEnabled: false),
+        runRoomShowsRunActions(
+          roomOnly: true,
+          liveEnabled: false,
+          othersJoined: false,
+        ),
         isTrue,
       );
     },
   );
+
+  test('đang chạy cùng người khác thì tắt Live vẫn giữ thoại và emoji', () {
+    expect(
+      runRoomShowsRunActions(
+        roomOnly: false,
+        liveEnabled: false,
+        othersJoined: true,
+      ),
+      isTrue,
+    );
+  });
+
+  test('chỉ người khác đã vào phòng mới tính là chạy cùng', () {
+    RunRoomMember member(String uid, String state) =>
+        RunRoomMember.fromMap(uid, {'state': state});
+    expect(runRoomHasOthersJoined([member('me', 'joined')], 'me'), isFalse);
+    expect(
+      runRoomHasOthersJoined([
+        member('me', 'joined'),
+        member('b', 'requested'),
+        member('c', 'left'),
+      ], 'me'),
+      isFalse,
+    );
+    expect(
+      runRoomHasOthersJoined([
+        member('me', 'joined'),
+        member('b', 'joined'),
+      ], 'me'),
+      isTrue,
+    );
+  });
 }
