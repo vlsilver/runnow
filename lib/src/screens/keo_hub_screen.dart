@@ -1158,30 +1158,12 @@ class _RunsSection extends ConsumerWidget {
           title: 'Buổi chạy',
           onMore: () => context.push('/club-runs'),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: Material(
-            color: context.runNowPalette.tint,
-            borderRadius: BorderRadius.circular(26),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                for (final (i, item) in items.indexed) ...[
-                  if (i > 0)
-                    Divider(
-                      height: 1,
-                      indent: 66,
-                      endIndent: 14,
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.onSurface.withValues(alpha: 0.08),
-                    ),
-                  ClubRunTile(item: item),
-                ],
-              ],
-            ),
+        for (final item in items)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: ClubRunPost(item: item),
           ),
-        ),
+        const SizedBox(height: 2),
       ],
     );
   }

@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -47,20 +46,6 @@ Future<ClubRunsPage> fetchClubRuns(
   return clubRunsPageFromJson(
     await api.getClubRuns(cursor: cursor, limit: limit),
   );
-}
-
-/// "vừa xong", "25 phút trước", "16 giờ trước", "hôm qua", hoặc "25/10".
-String feedWhenLabel(DateTime startedAt, DateTime now) {
-  final local = startedAt.toLocal();
-  final ago = now.difference(local);
-  if (ago.inMinutes < 1) return 'vừa xong';
-  if (ago.inMinutes < 60) return '${ago.inMinutes} phút trước';
-  final today = DateTime(now.year, now.month, now.day);
-  final day = DateTime(local.year, local.month, local.day);
-  final daysAgo = today.difference(day).inDays;
-  if (daysAgo == 0) return '${ago.inHours} giờ trước';
-  if (daysAgo == 1) return 'hôm qua';
-  return DateFormat('dd/MM').format(local);
 }
 
 /// Dòng tổng cạnh tiêu đề ngày ở trang "Buổi chạy": "3 buổi · 16.3 km".

@@ -3,24 +3,6 @@ import 'package:myrun/src/club_runs.dart';
 import 'package:myrun/src/models.dart';
 
 void main() {
-  group('feedWhenLabel', () {
-    final now = DateTime(2026, 10, 30, 21, 0);
-
-    test('phút, giờ, hôm qua, rồi ngày tháng', () {
-      expect(
-        feedWhenLabel(DateTime(2026, 10, 30, 20, 59, 40), now),
-        'vừa xong',
-      );
-      expect(
-        feedWhenLabel(DateTime(2026, 10, 30, 20, 35), now),
-        '25 phút trước',
-      );
-      expect(feedWhenLabel(DateTime(2026, 10, 30, 4, 10), now), '16 giờ trước');
-      expect(feedWhenLabel(DateTime(2026, 10, 29, 23, 30), now), 'hôm qua');
-      expect(feedWhenLabel(DateTime(2026, 10, 25, 6), now), '25/10');
-    });
-  });
-
   test('tổng của ngày: số buổi và tổng km', () {
     ActivitySummary run(double meters) => ActivitySummary(
       id: '$meters',

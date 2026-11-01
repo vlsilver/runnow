@@ -19,12 +19,6 @@ const _runKinds = {
   ActivityKind.virtualRun,
 };
 
-/// Chạy thì ghi pace, môn khác ghi tên môn.
-String clubRunDetail(ActivitySummary activity) =>
-    _runKinds.contains(activity.kind)
-    ? formatPace(activity.paceSecondsPerKm).replaceAll(' /', '/')
-    : activityKindLabel(activity.kind).toLowerCase();
-
 /// Người tập của [item] và đường mở chi tiết buổi. Buổi của mình mở như buổi
 /// trong nhật ký.
 ({MemberProfile? member, bool isMe, String path}) _who(
@@ -44,78 +38,6 @@ String clubRunDetail(ActivitySummary activity) =>
     isMe: isMe,
     path: isMe ? '/activity/$id' : '/club/${item.ownerUid}/activity/$id',
   );
-}
-
-/// Một hàng ở mục "Buổi chạy" của Trang chủ: ai, bao giờ, rồi km, thời gian,
-/// pace và tim. Khối bao quanh và đường kẻ giữa các hàng do chỗ đặt vẽ.
-class ClubRunTile extends ConsumerWidget {
-  const ClubRunTile({required this.item, super.key});
-
-  final ClubRunItem item;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final who = _who(ref, item);
-    final activity = item.activity;
-    final muted = Theme.of(
-      context,
-    ).colorScheme.onSurface.withValues(alpha: 0.55);
-    final when = feedWhenLabel(activity.startedAt, DateTime.now());
-    final name = activity.name.trim();
-    return InkWell(
-      onTap: () => context.push(who.path),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
-        child: Row(
-          children: [
-            ClubAvatar(member: who.member, size: 40),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    who.isMe ? 'Bạn' : who.member?.displayName ?? 'Thành viên',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  Text(
-                    name.isEmpty ? when : '$when · $name',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: muted, fontSize: 12.5),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                _Km(meters: activity.distanceMeters, size: 24),
-                const SizedBox(height: 2),
-                Text(
-                  '${formatDuration(activity.movingTimeSeconds)} · '
-                  '${clubRunDetail(activity)}',
-                  style: TextStyle(
-                    color: muted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ],
-            ),
-            HeartButton(
-              target: runHeartTarget(item.ownerUid, activity.id),
-              size: 20,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 /// Một buổi ở trang "Buổi chạy": ai, giờ, tim, rồi km, môn, nguồn và pace,
