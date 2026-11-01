@@ -32,7 +32,7 @@ import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/club_run_row.dart';
 import 'package:myrun/src/widgets/live_bits.dart';
 import 'package:myrun/src/widgets/live_map_preview.dart';
-import 'package:myrun/src/widgets/rank_road.dart';
+import 'package:myrun/src/widgets/rank_mountain.dart';
 import 'package:myrun/src/widgets/keo_scene.dart';
 
 /// Trang đầu của app: ai trong club đang chạy, các kèo đang diễn ra, ai dẫn
@@ -1003,7 +1003,7 @@ class _InviteRow extends StatelessWidget {
 
 // ---------------------------------------------------------------- BXH TUẦN
 
-/// Top 5 BXH Chạy/Đi bộ tuần này trên đường đua và hạng của mình. Đọc
+/// Top 5 BXH Chạy/Đi bộ tuần này trên ngọn núi và hạng của mình. Đọc
 /// chung bảng với tab Club (đã tải sẵn lúc mở app). Tuần chưa ai có km thì
 /// ẩn.
 class _RankSection extends ConsumerWidget {
@@ -1027,7 +1027,8 @@ class _RankSection extends ConsumerWidget {
     if (ranked.isEmpty) return const SizedBox.shrink();
     final uid = ref.watch(firebaseUserProvider).value?.uid;
     final myIndex = ranked.indexWhere((member) => member.entry.uid == uid);
-    final private = entries.any((e) => e.uid == uid && !e.isPublic);
+    final myEntry = entries.where((e) => e.uid == uid).firstOrNull;
+    final private = myEntry != null && !myEntry.isPublic;
     void open() {
       ref.read(clubRankingSportProvider.notifier).state = _sport;
       ref.read(clubRankingRangeProvider.notifier).state = _range;
@@ -1046,24 +1047,25 @@ class _RankSection extends ConsumerWidget {
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: open,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 16, 12, 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    RankRoad(ranked: ranked, myUid: uid),
-                    const SizedBox(height: 14),
-                    _MyRankLine(
-                      me: myIndex < 0 ? null : ranked[myIndex],
-                      gap: myIndex < 0
-                          ? null
-                          : clubRankingGapLabel(ranked, myIndex, _sport),
-                      private: private,
-                    ),
-                  ],
-                ),
+              child: RankMountain(
+                ranked: ranked,
+                myUid: uid,
+                // Hồ sơ riêng tư không lên núi; dòng dưới đã nói lý do.
+                myEntry: private ? null : myEntry,
+                caption:
+                    'Tuần này · ${clubRankingTimeLeftLabel(DateTime.now(), _range).toLowerCase()}',
               ),
             ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: _MyRankLine(
+            me: myIndex < 0 ? null : ranked[myIndex],
+            gap: myIndex < 0
+                ? null
+                : clubRankingGapLabel(ranked, myIndex, _sport),
+            private: private,
           ),
         ),
       ],
@@ -1071,7 +1073,7 @@ class _RankSection extends ConsumerWidget {
   }
 }
 
-/// Dòng dưới đường đua: hạng của mình và còn bao xa để lên hạng.
+/// Dòng dưới ngọn núi: hạng của mình và còn bao xa để lên hạng.
 class _MyRankLine extends StatelessWidget {
   const _MyRankLine({
     required this.me,
