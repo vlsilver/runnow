@@ -13,6 +13,9 @@ class _FakeHearts implements HeartRepository {
       Stream.value(const Hearts(uids: ['me'], mine: true));
 
   @override
+  Future<int> count(String target) async => 1;
+
+  @override
   Future<void> like(String target) async => calls.add('like $target');
 
   @override

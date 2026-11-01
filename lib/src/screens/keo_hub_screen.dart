@@ -1171,7 +1171,7 @@ class _RunsSection extends ConsumerWidget {
   }
 }
 
-/// Thẻ club vừa khoe, xếp ngang.
+/// Thẻ club đang khoe, xếp ngang: bậc hiếm cao trước, rồi nhiều tim.
 class _CardsSection extends ConsumerWidget {
   const _CardsSection();
 
@@ -1180,7 +1180,7 @@ class _CardsSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final cards = ref.watch(clubCardsProvider);
+    final cards = ref.watch(rankedClubCardsProvider);
     if (cards.error case final error?) {
       debugPrint('Không tải được thẻ của club: $error');
       return _RetryRow(
@@ -1195,7 +1195,7 @@ class _CardsSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         HubSectionHeader(
-          title: 'Thẻ mới',
+          title: 'Thẻ nổi bật',
           onMore: () => context.push('/club-cards'),
         ),
         if (items.isEmpty)

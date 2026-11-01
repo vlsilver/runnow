@@ -11,6 +11,7 @@ import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/achievements/run_card_skin_choice.dart';
 import 'package:myrun/src/games/game_player_card.dart';
+import 'package:myrun/src/hearts.dart';
 import 'package:myrun/src/journey/journey_card.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rank/rank_card.dart';
@@ -74,6 +75,21 @@ final clubCardsProvider = StreamProvider.autoDispose<List<ClubCard>>((ref) {
             ?ClubCard.fromJson(_plain(doc.data()) as Map<String, dynamic>),
         ],
       );
+});
+
+/// Thẻ club xếp theo [rankClubCards]. Số tim đếm một lần mỗi khi danh sách
+/// thẻ đổi chứ không theo dõi, để thả tim không làm thẻ nhảy chỗ ngay dưới
+/// tay. Một lượt đếm lỗi thì cả danh sách lỗi, để mục thẻ hiện nút thử lại.
+final rankedClubCardsProvider = FutureProvider.autoDispose<List<ClubCard>>((
+  ref,
+) async {
+  final cards = await ref.watch(clubCardsProvider.future);
+  final repository = ref.watch(heartRepositoryProvider);
+  String target(ClubCard item) => cardHeartTarget(item.ownerUid, item.key);
+  final targets = [for (final item in cards) target(item)];
+  final counts = await Future.wait(targets.map(repository.count));
+  final hearts = Map.fromIterables(targets, counts);
+  return rankClubCards(cards, (item) => hearts[target(item)]!);
 });
 
 /// Tỉ lệ sẽ quay, hoặc lý do buổi này không lật được. Chỉ đọc khi chưa có thẻ.

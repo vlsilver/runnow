@@ -12,6 +12,9 @@ class _FakeHearts implements HeartRepository {
   Stream<Hearts> watch(String target) => Stream.value(Hearts.empty);
 
   @override
+  Future<int> count(String target) async => 0;
+
+  @override
   Future<void> like(String target) async {}
 
   @override

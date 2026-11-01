@@ -1,7 +1,6 @@
 import 'package:myrun/src/achievements/run_card_collection.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/games/game_player_card.dart';
-import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/journey/journey_card.dart';
 
 /// Thẻ một người khoe với club, doc clubCards/{ownerUid}_{key}. Cùng dạng doc
@@ -58,16 +57,19 @@ class ClubCard {
 CollectedCard? ownClubCard(Iterable<CollectedCard> mine, ClubCard item) =>
     mine.where((card) => card.id == item.card.id).firstOrNull;
 
-/// Thẻ từ bậc Hiếm trở lên, bậc cao trước; cùng bậc thì thẻ khoe mới trước.
-/// So cả sharedAt vì List.sort không giữ thứ tự sẵn có của phần tử bằng nhau.
-List<ClubCard> rareFirst(Iterable<ClubCard> cards) {
+/// Bậc hiếm cao trước; cùng bậc thì nhiều tim trước; vẫn bằng thì thẻ khoe
+/// mới trước. So cả sharedAt vì List.sort không giữ thứ tự sẵn có của phần tử
+/// bằng nhau.
+List<ClubCard> rankClubCards(
+  Iterable<ClubCard> cards,
+  int Function(ClubCard card) hearts,
+) {
   final epoch = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
-  return [
-    for (final item in cards)
-      if (item.card.tier != GameCardTier.common) item,
-  ]..sort((a, b) {
+  return [...cards]..sort((a, b) {
     final byTier = b.card.tier.index.compareTo(a.card.tier.index);
     if (byTier != 0) return byTier;
+    final byHearts = hearts(b).compareTo(hearts(a));
+    if (byHearts != 0) return byHearts;
     return (b.sharedAt ?? epoch).compareTo(a.sharedAt ?? epoch);
   });
 }

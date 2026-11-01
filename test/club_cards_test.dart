@@ -142,7 +142,7 @@ void main() {
   });
 
   test(
-    'tab Hiếm+: bỏ thẻ Thường, bậc cao trước, cùng bậc thì mới khoe trước',
+    'xếp thẻ: bậc cao trước, cùng bậc nhiều tim trước, rồi mới khoe trước',
     () {
       ClubCard card(String id, String tier, int day) => ClubCard.fromJson({
         'ownerUid': 'u1',
@@ -160,9 +160,15 @@ void main() {
         card('e', 'epic', 25),
         card('r3', 'rare', 24),
       ];
+      const hearts = {'c': 9, 'r1': 1, 'r2': 5, 'r3': 1, 'e': 2};
       expect(
-        [for (final item in rareFirst(all)) item.key],
-        ['m', 'l', 'e', 'r1', 'r2', 'r3'],
+        [
+          for (final item in rankClubCards(all, (c) => hearts[c.key] ?? 0))
+            item.key,
+        ],
+        // Thường 9 tim vẫn đứng cuối; r2 nhiều tim hơn r1; r1, r3 bằng tim
+        // thì r1 khoe mới hơn.
+        ['m', 'l', 'e', 'r2', 'r1', 'r3', 'c'],
       );
     },
   );

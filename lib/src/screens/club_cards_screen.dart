@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/achievements/club_card_widgets.dart';
 import 'package:myrun/src/achievements/club_card.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
+import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/providers.dart';
 
 /// Trang "Thẻ của club": thẻ mọi người đang khoe, chia ba tab.
@@ -26,10 +27,7 @@ class ClubCardsScreen extends ConsumerWidget {
       body = TabBarView(
         children: [
           _Grid(items: all, empty: 'Chưa ai khoe thẻ.'),
-          _Grid(
-            items: rareFirst(all),
-            empty: 'Chưa có thẻ hiếm nào được khoe.',
-          ),
+          const _RareTab(),
           _Grid(
             items: [
               for (final item in all)
@@ -59,6 +57,34 @@ class ClubCardsScreen extends ConsumerWidget {
         ),
         body: body,
       ),
+    );
+  }
+}
+
+/// Tab Hiếm+: thẻ từ bậc Hiếm trở lên, xếp theo bậc rồi số tim.
+class _RareTab extends ConsumerWidget {
+  const _RareTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ranked = ref.watch(rankedClubCardsProvider);
+    if (ranked.error case final error?) {
+      debugPrint('Không xếp được thẻ hiếm của club: $error');
+      return Center(
+        child: TextButton(
+          onPressed: () => ref.invalidate(clubCardsProvider),
+          child: const Text('Không tải được thẻ. Chạm để thử lại.'),
+        ),
+      );
+    }
+    final cards = ranked.value;
+    if (cards == null) return const Center(child: CircularProgressIndicator());
+    return _Grid(
+      items: [
+        for (final item in cards)
+          if (item.card.tier != GameCardTier.common) item,
+      ],
+      empty: 'Chưa có thẻ hiếm nào được khoe.',
     );
   }
 }

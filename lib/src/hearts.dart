@@ -59,6 +59,9 @@ List<String> newHeartUids(
 
 abstract interface class HeartRepository {
   Stream<Hearts> watch(String target);
+
+  /// Số tim đọc một lần, cho chỗ chỉ cần xếp thứ tự chứ không cần theo dõi.
+  Future<int> count(String target);
   Future<void> like(String target);
   Future<void> unlike(String target);
 }
@@ -95,6 +98,13 @@ class FirestoreHeartRepository implements HeartRepository {
       ];
       return heartsFrom(entries, myUid: _auth.currentUser?.uid);
     });
+  }
+
+  // Đếm bằng aggregate query: tốn một lượt đọc thay vì đọc từng document.
+  @override
+  Future<int> count(String target) async {
+    final snapshot = await _by(target).count().get();
+    return snapshot.count ?? 0;
   }
 
   @override
