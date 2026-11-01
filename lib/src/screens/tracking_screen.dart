@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/hearts.dart';
+import 'package:myrun/src/live_cheers.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/repository.dart';
@@ -267,6 +268,38 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       );
   }
 
+  /// Báo người đang chạy khi người xem live bấm emoji cổ vũ.
+  void _toastNewCheers(
+    List<LiveCheer>? previous,
+    AsyncValue<List<LiveCheer>> next,
+  ) {
+    if (next.error case final error?) {
+      debugPrint('Không đọc được cổ vũ buổi live: $error');
+      return;
+    }
+    final cheers = next.value;
+    final myUid = ref.read(firebaseUserProvider).value?.uid;
+    if (cheers == null || myUid == null || !mounted) return;
+    final fresh = newLiveCheers(previous, cheers, myUid: myUid);
+    if (fresh.isEmpty) return;
+    final latest = fresh.first;
+    final members = ref.read(membersProvider).value ?? const <MemberProfile>[];
+    final name =
+        members.where((member) => member.uid == latest.uid).firstOrNull
+            ?.displayName ??
+        'Một người';
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+          content: Text('$name ${latest.emoji}'),
+        ),
+      );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Giữ subscribe cấu hình tracking từ DB để lúc bấm Bắt đầu đã có giá trị mới
@@ -296,6 +329,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       ref.listen(
         heartsProvider(liveHeartTarget(liveId)),
         (previous, next) => _toastNewHearts(previous?.value, next),
+      );
+      ref.listen(
+        liveCheersProvider(liveId),
+        (previous, next) => _toastNewCheers(previous?.value, next),
       );
     }
     final snapshot = _snapshot;

@@ -13,6 +13,7 @@ import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/heart_button.dart';
 import 'package:myrun/src/widgets/live_bits.dart';
+import 'package:myrun/src/widgets/live_cheer_bar.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
 import 'package:myrun/src/widgets/map_tiles.dart';
 import 'package:myrun/src/widgets/photo_pin_marker.dart';
@@ -266,6 +267,7 @@ class _LiveSheet extends ConsumerWidget {
     final contractId = session.contractId;
     final note = _statusNote(session, DateTime.now());
     final heart = liveHeartTarget(session.id);
+    final mine = session.ownerUid == ref.watch(firebaseUserProvider).value?.uid;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: palette.background.withValues(alpha: 0.9),
@@ -344,6 +346,16 @@ class _LiveSheet extends ConsumerWidget {
                   ),
                 ),
               ],
+            ),
+            // Cổ vũ chỉ khi đang chạy: người chạy chỉ được báo lúc màn chạy
+            // còn mở.
+            if (note == null && !mine) ...[
+              const SizedBox(height: 12),
+              LiveCheerBar(sessionId: session.id),
+            ],
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: LiveCheerTotals(sessionId: session.id),
             ),
             if (contractId != null)
               _ContractChip(contractId: contractId, session: session),

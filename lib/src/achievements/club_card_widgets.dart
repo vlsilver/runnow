@@ -7,11 +7,13 @@ import 'package:myrun/src/achievements/club_card.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/hearts.dart';
+import 'package:myrun/src/live_cheers.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/club_run_row.dart';
 import 'package:myrun/src/widgets/heart_button.dart';
+import 'package:myrun/src/widgets/live_cheer_bar.dart';
 
 /// Chủ thẻ và tên in trên thẻ: thẻ của mình ghi "Bạn" ở dưới nhưng trên thẻ
 /// vẫn in tên. Danh sách thành viên đọc mọi publicProfiles, cả hồ sơ riêng
@@ -50,6 +52,7 @@ VoidCallback _onOpen(
       : null;
   final reaction = _CardHearts(
     target: cardHeartTarget(item.ownerUid, item.key),
+    liveSessionId: _liveSessionOf(item),
   );
   if (own == null) {
     return () => showClubCardViewer(context, item, data, reaction: reaction);
@@ -57,19 +60,33 @@ VoidCallback _onOpen(
   return () => own.open(context, own.data(owner.name), reaction: reaction);
 }
 
-/// Hàng tim ở màn xem thẻ: ai đã thả tim, và nút tim để mình thả.
+/// Buổi live của thẻ buổi chạy: id buổi live trùng activityId. Thẻ khác
+/// không có buổi live.
+String? _liveSessionOf(ClubCard item) =>
+    item.card is CollectedRunCard ? item.key : null;
+
+/// Hàng tim ở màn xem thẻ: ai đã thả tim, nút tim để mình thả, và tổng emoji
+/// người xem cổ vũ lúc chạy.
 class _CardHearts extends StatelessWidget {
-  const _CardHearts({required this.target});
+  const _CardHearts({required this.target, required this.liveSessionId});
 
   final String target;
+  final String? liveSessionId;
 
   @override
-  Widget build(BuildContext context) => Row(
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Expanded(
-        child: HeartCheerers(target: target, label: 'đã thả tim'),
+      if (liveSessionId case final id?) LiveCheerTotals(sessionId: id),
+      Row(
+        children: [
+          Expanded(
+            child: HeartCheerers(target: target, label: 'đã thả tim'),
+          ),
+          HeartButton(target: target, size: 26),
+        ],
       ),
-      HeartButton(target: target, size: 26),
     ],
   );
 }
@@ -126,6 +143,7 @@ class _ClubCardFace extends ConsumerWidget {
           data: data,
           member: owner.member,
           heartTarget: cardHeartTarget(item.ownerUid, item.key),
+          liveSessionId: _liveSessionOf(item),
           width: width,
         ),
       ),
@@ -141,12 +159,14 @@ class _CardFace extends StatelessWidget {
     required this.data,
     required this.member,
     required this.heartTarget,
+    required this.liveSessionId,
     required this.width,
   });
 
   final AchievementCardData data;
   final MemberProfile? member;
   final String heartTarget;
+  final String? liveSessionId;
   final double width;
 
   @override
@@ -197,6 +217,9 @@ class _CardFace extends StatelessWidget {
                   ),
                 ),
               ),
+              // Hai emoji được cổ vũ nhiều nhất lúc chạy, cùng nền tối như tim.
+              if (liveSessionId case final id?)
+                _CheerPill(sessionId: id, width: width),
             ],
           ),
         ),
@@ -227,3 +250,39 @@ void showClubCardViewer(
   cardSize: achievementCardSize,
   reaction: reaction,
 );
+
+/// Viên tổng cổ vũ dưới nút tim trên mặt thẻ. Chưa ai cổ vũ thì không hiện
+/// cả nền.
+class _CheerPill extends ConsumerWidget {
+  const _CheerPill({required this.sessionId, required this.width});
+
+  final String sessionId;
+  final double width;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cheers = ref.watch(liveCheersProvider(sessionId)).value ?? const [];
+    if (liveCheerTotals(cheers).isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: DecoratedBox(
+        decoration: ShapeDecoration(
+          shape: const StadiumBorder(),
+          color: RunNowGameTokens.nightBackground.withValues(alpha: 0.72),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          child: LiveCheerTotals(
+            sessionId: sessionId,
+            max: 2,
+            style: TextStyle(
+              color: RunNowGameTokens.nightInk,
+              fontSize: (width * 0.07).clamp(9.0, 12.0),
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
