@@ -75,6 +75,30 @@ func TestArtStylesHidesStyleThatIsOff(t *testing.T) {
 	}
 }
 
+// App hiện ô tải ảnh mẫu theo cờ custom; tắt phong cách ảnh mẫu ở backend thì ô
+// ẩn và lượt vẽ mới bị từ chối.
+func TestArtStylesCustomFlag(t *testing.T) {
+	b, err := json.Marshal(ArtStyles(artKindRun))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"custom":true`) {
+		t.Fatalf("thẻ chạy phải bật ô ảnh mẫu: %s", b)
+	}
+	if _, ok := artStyleFor("custom", artKindRun); !ok {
+		t.Fatal("thẻ chạy phải nhận lượt vẽ theo ảnh mẫu")
+	}
+	saved := artStyleCustom
+	t.Cleanup(func() { artStyleCustom = saved })
+	artStyleCustom.Off = true
+	if ArtStyles(artKindRun).Custom {
+		t.Fatal("đã tắt mà app vẫn thấy ô ảnh mẫu")
+	}
+	if _, ok := artStyleFor("custom", artKindRun); ok {
+		t.Fatal("đã tắt mà vẫn nhận lượt vẽ theo ảnh mẫu")
+	}
+}
+
 func TestArtStylesSendExampleOnlyWhenThereIsOne(t *testing.T) {
 	saved := artStyles
 	t.Cleanup(func() { artStyles = saved })

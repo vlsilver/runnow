@@ -19,6 +19,8 @@ type artLLM struct {
 	prompts []string
 	photos  [][]byte
 	mimes   []string
+	// inputs là mọi ảnh gửi kèm của từng lượt, theo thứ tự.
+	inputs  [][]string
 	err     error
 	blocked bool
 }
@@ -26,14 +28,17 @@ type artLLM struct {
 func (f *artLLM) Image(_ context.Context, parts []*genai.Part) (*genai.GenerateContentResponse, error) {
 	var photo []byte
 	var mime string
+	inputs := []string{}
 	for _, p := range parts {
 		if p.InlineData != nil {
 			photo, mime = p.InlineData.Data, p.InlineData.MIMEType
+			inputs = append(inputs, string(p.InlineData.Data))
 		}
 	}
 	f.prompts = append(f.prompts, parts[len(parts)-1].Text)
 	f.photos = append(f.photos, photo)
 	f.mimes = append(f.mimes, mime)
+	f.inputs = append(f.inputs, inputs)
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -323,6 +328,47 @@ func TestEmulatorRunCardArtNote(t *testing.T) {
 	e.want(e.call("u1", "POST", "/v1/activities/a3/card/art", map[string]any{"style": "anime_cel", "note": " \n "}, ""), 200, "")
 	if a := e.art("a3"); a["note"] != nil {
 		t.Fatalf("mô tả toàn khoảng trắng thì không lưu note: %v", a)
+	}
+}
+
+// Phong cách theo ảnh mẫu: chủ thẻ tải ảnh mẫu lên style.jpg của thẻ, model
+// nhận ảnh mẫu (sau ảnh nguồn nếu có) và câu dặn chỉ lấy phong cách.
+func TestEmulatorRunCardArtCustomStyle(t *testing.T) {
+	e := newArtEnv(t, map[string]any{})
+	e.card("a1", nil)
+
+	// Ảnh mẫu chưa lên tới Storage: báo style_photo_missing, không gọi model.
+	e.want(e.ask("a1", "custom", ""), 200, "")
+	e.draw(e.lastTask())
+	if art := e.art("a1"); art["status"] != "failed" || art["reason"] != "style_photo_missing" || len(e.gen.prompts) != 0 {
+		t.Fatalf("art = %v, model gọi %d lần", art, len(e.gen.prompts))
+	}
+
+	e.files.files["users/u1/runCards/a1/style.jpg"] = []byte("style-ref")
+	e.want(e.ask("a1", "custom", ""), 200, "")
+	e.draw(e.lastTask())
+	if art := e.art("a1"); art["status"] != "done" || art["style"] != "custom" || art["styleVersion"] != int64(1) {
+		t.Fatalf("art = %v", art)
+	}
+	if got := e.gen.inputs[0]; len(got) != 1 || got[0] != "style-ref" {
+		t.Fatalf("model nhận %q, muốn chỉ ảnh mẫu", got)
+	}
+	p := e.gen.prompts[0]
+	if !strings.Contains(p, "in the art style of the style reference image (the last attached image)") || !strings.Contains(p, "do not copy its characters") || strings.Contains(p, "Render it as ") {
+		t.Fatalf("prompt = %q", p)
+	}
+
+	// Có ảnh nguồn: model nhận ảnh nguồn trước, ảnh mẫu sau.
+	e.card("a2", map[string]any{"startedAt": "2026-10-25T10:00:00Z"})
+	e.files.files["users/u1/runCards/a2/src.jpg"] = []byte("run-photo")
+	e.files.files["users/u1/runCards/a2/style.jpg"] = []byte("style-ref-2")
+	e.want(e.ask("a2", "custom", "users/u1/runCards/a2/src.jpg"), 200, "")
+	e.draw(e.lastTask())
+	if got := e.gen.inputs[1]; len(got) != 2 || got[0] != "run-photo" || got[1] != "style-ref-2" {
+		t.Fatalf("model nhận %q, muốn ảnh nguồn rồi ảnh mẫu", got)
+	}
+	if p := e.gen.prompts[1]; !strings.HasPrefix(p, "Transform the provided photograph (the first attached image)") {
+		t.Fatalf("prompt = %q", p)
 	}
 }
 

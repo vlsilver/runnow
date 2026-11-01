@@ -124,13 +124,36 @@ var artStyles = []artStyle{
 	{Key: "analog_film", Version: 1, Name: "Film analog", Family: "photo", Medium: "an analog 35mm film photograph", Traits: "film grain, faded warm tones, soft light leaks and natural light", Fits: []artKind{artKindRun, artKindBot}, Swatch: []string{"#e9c46a", "#f4a261", "#8d99ae"}, Example: artExampleDir + "analog_film.jpg"},
 }
 
-// artStyleFor là phong cách đang bật, hợp với kind; ok false khi không có.
-func artStyleFor(key string, kind artKind) (artStyle, bool) {
+// artStyleCustom là phong cách theo ảnh mẫu chủ thẻ tự tải lên. Không có Medium
+// và Traits: model nhìn ảnh mẫu thay cho khối phong cách (artCustomStyleBlock).
+// App chỉ hiện ô tải ảnh mẫu khi ArtStyleList.Custom bật.
+var artStyleCustom = artStyle{Key: "custom", Version: 1, Name: "Ảnh mẫu của bạn", Fits: []artKind{artKindRun}}
+
+// artCustomStyleBlock thay câu "Render it as" khi vẽ theo ảnh mẫu. Ảnh mẫu luôn
+// là ảnh gửi kèm cuối, sau ảnh nguồn nếu có. Ảnh mẫu thường là tranh của người
+// khác nên chỉ lấy phong cách, không chép nhân vật, chữ hay bố cục.
+const artCustomStyleBlock = "Render it in the art style of the style reference image (the last attached image): match its medium, linework, brushwork, color palette, lighting and textures. " +
+	"Use that image only for style; do not copy its characters, faces, outfits, objects, text, logos or layout."
+
+// artStyleByKey tìm phong cách theo key, kể cả phong cách đã tắt.
+func artStyleByKey(key string) (artStyle, bool) {
+	if key == artStyleCustom.Key {
+		return artStyleCustom, true
+	}
 	i := slices.IndexFunc(artStyles, func(s artStyle) bool { return s.Key == key })
-	if i < 0 || artStyles[i].Off || !artStyles[i].fits(kind) {
+	if i < 0 {
 		return artStyle{}, false
 	}
 	return artStyles[i], true
+}
+
+// artStyleFor là phong cách đang bật, hợp với kind; ok false khi không có.
+func artStyleFor(key string, kind artKind) (artStyle, bool) {
+	s, ok := artStyleByKey(key)
+	if !ok || s.Off || !s.fits(kind) {
+		return artStyle{}, false
+	}
+	return s, true
 }
 
 // ArtStyleView là một phong cách trên màn chọn của app.
@@ -146,12 +169,14 @@ type ArtStyleView struct {
 type ArtStyleList struct {
 	Families []artFamily    `json:"families"`
 	Styles   []ArtStyleView `json:"styles"`
+	// Custom bật thì app hiện ô tải ảnh mẫu để vẽ theo phong cách "custom".
+	Custom bool `json:"custom"`
 }
 
 // ArtStyles là các phong cách đang bật cho kind, theo thứ tự nhóm rồi thứ tự
 // trong danh sách. Nhóm không còn phong cách nào thì bỏ.
 func ArtStyles(kind artKind) ArtStyleList {
-	out := ArtStyleList{Families: []artFamily{}, Styles: []ArtStyleView{}}
+	out := ArtStyleList{Families: []artFamily{}, Styles: []ArtStyleView{}, Custom: !artStyleCustom.Off && artStyleCustom.fits(kind)}
 	for _, f := range artFamilies {
 		n := len(out.Styles)
 		for _, s := range artStyles {
@@ -179,5 +204,9 @@ const artConstraintsBlock = "The artwork fills the whole canvas edge to edge as 
 
 // artPrompt ráp prompt từ phần việc cần vẽ (task), phong cách, bố cục.
 func artPrompt(task string, s artStyle, composition string) string {
-	return strings.Join([]string{task, "Render it as " + s.Medium + ": " + s.Traits + ".", composition, artConstraintsBlock}, " ")
+	style := "Render it as " + s.Medium + ": " + s.Traits + "."
+	if s.Key == artStyleCustom.Key {
+		style = artCustomStyleBlock
+	}
+	return strings.Join([]string{task, style, composition, artConstraintsBlock}, " ")
 }

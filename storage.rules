@@ -36,7 +36,8 @@ service firebase.storage {
       allow write: if false;
     }
 
-    // Thẻ buổi chạy: chủ thẻ tải ảnh nguồn src.jpg để vẽ lại; tranh art-{attempt}.png
+    // Thẻ buổi chạy: chủ thẻ tải ảnh nguồn src.jpg và ảnh mẫu phong cách style.jpg
+    // để vẽ lại; tranh art-{attempt}.png
     // backend ghi bằng admin SDK. Chủ thẻ xem hết; thẻ đang khoe với club
     // (còn doc clubCards) thì người khác xem được tranh, không xem được ảnh gốc.
     match /users/{userId}/runCards/{activityId}/{fileName} {
@@ -45,7 +46,7 @@ service firebase.storage {
           && fileName.matches('art-[0-9]+[.]png')
           && firestore.exists(/databases/(default)/documents/clubCards/$(userId + '_' + activityId)));
       allow create, update: if owns(userId)
-        && fileName == 'src.jpg'
+        && fileName in ['src.jpg', 'style.jpg']
         && request.resource.size < 8 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|png)');
       allow delete: if false;

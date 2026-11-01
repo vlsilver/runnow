@@ -25,7 +25,8 @@ import (
 //
 //	art.status       drawing | done | failed
 //	art.attempt      tăng mỗi lần khoá; task mang attempt, lệch thì bỏ
-//	art.reason       lý do hỏng: budget, blocked, model_error, photo_missing, style_unavailable
+//	art.reason       lý do hỏng: budget, blocked, model_error, photo_missing,
+//	                 style_photo_missing, style_unavailable
 //	art.path         users/{uid}/runCards/{activityId}/art-{attempt}.png khi done;
 //	                 mỗi lượt một tên vì app cache ảnh theo đường dẫn
 //
@@ -55,6 +56,9 @@ const (
 	runCardArtTimeout  = 120 * time.Second
 	runCardArtAspect   = "2:3"
 	runCardArtSrcPhoto = "src.jpg"
+	// runCardArtStylePhoto là ảnh mẫu chủ thẻ tải lên cho phong cách "custom";
+	// mỗi thẻ một file, nên app không gửi đường dẫn.
+	runCardArtStylePhoto = "style.jpg"
 )
 
 // runCardArtModels là các model ảnh admin chọn được để vẽ thẻ, đầu danh sách là
@@ -277,16 +281,25 @@ func (s *RunCardStore) DrawArt(ctx context.Context, t runCardArtTask) error {
 	if stringValue(art["status"]) != "drawing" || int64(number(art["attempt"])) != t.Attempt {
 		return nil
 	}
-	i := slices.IndexFunc(artStyles, func(st artStyle) bool { return st.Key == stringValue(art["style"]) })
-	if i < 0 {
+	style, ok := artStyleByKey(stringValue(art["style"]))
+	if !ok {
 		return s.finishArt(ctx, t, map[string]any{"status": "failed", "reason": "style_unavailable"})
 	}
-	style := artStyles[i]
 	var photo []byte
 	if path := stringValue(art["photoPath"]); path != "" {
 		photo, err = a.images.Get(ctx, path)
 		if errors.Is(err, errAgentImageMissing) {
 			return s.finishArt(ctx, t, map[string]any{"status": "failed", "reason": "photo_missing"})
+		}
+		if err != nil {
+			return err
+		}
+	}
+	var styleRef []byte
+	if style.Key == artStyleCustom.Key {
+		styleRef, err = a.images.Get(ctx, runCardArtPath(t.UID, t.ActivityID, runCardArtStylePhoto))
+		if errors.Is(err, errAgentImageMissing) {
+			return s.finishArt(ctx, t, map[string]any{"status": "failed", "reason": "style_photo_missing"})
 		}
 		if err != nil {
 			return err
@@ -300,8 +313,11 @@ func (s *RunCardStore) DrawArt(ctx context.Context, t runCardArtTask) error {
 	snapshot, _ := card["snapshot"].(map[string]any)
 	prompt := runCardArtPrompt(snapshot, style, len(photo) > 0, stringValue(art["note"]))
 	parts := []*genai.Part{}
-	if len(photo) > 0 {
-		parts = append(parts, &genai.Part{InlineData: &genai.Blob{MIMEType: photoMIME(photo), Data: photo}})
+	// Ảnh mẫu đứng sau ảnh nguồn: prompt gọi nó là ảnh gửi kèm cuối.
+	for _, img := range [][]byte{photo, styleRef} {
+		if len(img) > 0 {
+			parts = append(parts, &genai.Part{InlineData: &genai.Blob{MIMEType: photoMIME(img), Data: img}})
+		}
 	}
 	parts = append(parts, genai.NewPartFromText(prompt))
 	drawCtx, cancel := context.WithTimeout(ctx, runCardArtTimeout)
@@ -386,7 +402,12 @@ func imageRefusal(resp *genai.GenerateContentResponse) (finish, block string) {
 // mấy phần đó vẫn thắng khi mô tả đòi khác.
 func runCardArtPrompt(snapshot map[string]any, style artStyle, photo bool, note string) string {
 	if photo {
-		return artPrompt(withRunnerNote("Transform the provided photograph into the art style described below. "+
+		// Vẽ theo ảnh mẫu thì có hai ảnh gửi kèm, nên phải chỉ rõ ảnh nào là ảnh nguồn.
+		source := "the provided photograph"
+		if style.Key == artStyleCustom.Key {
+			source = "the provided photograph (the first attached image)"
+		}
+		return artPrompt(withRunnerNote("Transform "+source+" into the art style described below. "+
 			"Keep every person in it recognizable, with the same pose, body proportions, face, hairstyle and clothing colors; "+
 			"if there is no person, keep the main subject and layout.", note), style,
 			"Vertical composition. Keep the main subject in the middle of the frame; the top fifth and the bottom quarter stay calm and low-detail.")
