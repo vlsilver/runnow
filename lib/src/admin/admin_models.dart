@@ -43,6 +43,7 @@ class AgentConfig {
     required this.models,
     required this.usage,
     required this.version,
+    this.artModel,
   });
 
   factory AgentConfig.fromJson(Map<String, dynamic> json) {
@@ -71,6 +72,9 @@ class AgentConfig {
             : const {},
       ),
       version: '${json['version'] ?? ''}',
+      artModel: json['artModel'] is Map<String, dynamic>
+          ? AgentArtModel.fromJson(json['artModel'] as Map<String, dynamic>)
+          : null,
     );
   }
 
@@ -85,6 +89,9 @@ class AgentConfig {
   /// Gửi lại khi sửa để backend biết mình sửa trên bản nào. Rỗng là chưa ai
   /// lưu lần nào.
   final String version;
+
+  /// null khi backend chưa có mục này.
+  final AgentArtModel? artModel;
 
   AgentConfigField? field(String key) {
     for (final f in fields) {
@@ -182,6 +189,38 @@ class AgentModelPrice {
   final Map<String, num?> values;
 
   Map<String, dynamic> toJson() => {'model': model, ...values};
+}
+
+/// Model vẽ tranh thẻ buổi chạy. Admin chỉ chọn trong [options] backend gửi,
+/// vì backend chỉ nhận model đã vẽ thử thẻ.
+class AgentArtModel {
+  const AgentArtModel({
+    required this.label,
+    required this.help,
+    required this.value,
+    required this.defaultValue,
+    required this.options,
+  });
+
+  factory AgentArtModel.fromJson(Map<String, dynamic> json) => AgentArtModel(
+    label: '${json['label'] ?? ''}',
+    help: '${json['help'] ?? ''}',
+    value: '${json['value'] ?? ''}',
+    defaultValue: '${json['default'] ?? ''}',
+    options: [
+      if (json['options'] is List)
+        for (final o in json['options'] as List)
+          if (o is String) o,
+    ],
+  );
+
+  final String label;
+  final String help;
+
+  /// Rỗng là chưa chọn, bot vẽ bằng [defaultValue].
+  final String value;
+  final String defaultValue;
+  final List<String> options;
 }
 
 class AgentRunningModel {

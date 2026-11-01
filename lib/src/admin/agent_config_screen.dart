@@ -45,6 +45,7 @@ class _AgentConfigScreenState extends ConsumerState<AgentConfigScreen> {
   Future<void> _save({
     Map<String, num?>? values,
     List<AgentModelPrice>? prices,
+    String? artModel,
   }) async {
     final config = _config;
     if (config == null || _busy) return;
@@ -56,6 +57,7 @@ class _AgentConfigScreenState extends ConsumerState<AgentConfigScreen> {
             version: config.version,
             values: values,
             prices: prices,
+            artModel: artModel,
           );
       if (mounted) setState(() => _config = next);
     } on RunNowApiException catch (error) {
@@ -84,6 +86,35 @@ class _AgentConfigScreenState extends ConsumerState<AgentConfigScreen> {
     );
     if (result == null) return;
     await _save(values: {field.key: result.value});
+  }
+
+  /// Chọn lại model vẽ thẻ; Về mặc định gửi chuỗi rỗng để backend xoá lựa
+  /// chọn, sau này đổi mặc định thì bot theo.
+  Future<void> _editArtModel(AgentArtModel art) async {
+    final model = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text(art.label),
+        children: [
+          for (final option in art.options)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(option),
+              child: Row(
+                children: [
+                  Expanded(child: Text(option)),
+                  if (option == art.value) const Icon(Icons.check, size: 20),
+                ],
+              ),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(context).pop(''),
+            child: Text('Về mặc định (${art.defaultValue})'),
+          ),
+        ],
+      ),
+    );
+    if (model == null || model == art.value) return;
+    await _save(artModel: model);
   }
 
   /// [index] null là thêm dòng mới, [model] điền sẵn tên model.
@@ -178,6 +209,15 @@ class _AgentConfigScreenState extends ConsumerState<AgentConfigScreen> {
               field: field,
               onEdit: _busy ? null : () => _editField(field),
             ),
+          if (config.artModel case final art?) ...[
+            const SizedBox(height: 24),
+            Text('Vẽ thẻ', style: heading),
+            const SizedBox(height: 8),
+            _ArtModelCard(
+              art: art,
+              onEdit: _busy ? null : () => _editArtModel(art),
+            ),
+          ],
           const SizedBox(height: 24),
           Text('Giá model', style: heading),
           Text(
@@ -355,6 +395,61 @@ class _FieldCard extends StatelessWidget {
               ),
               IconButton(
                 tooltip: 'Sửa',
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: onEdit,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ArtModelCard extends StatelessWidget {
+  const _ArtModelCard({required this.art, required this.onEdit});
+
+  final AgentArtModel art;
+  final VoidCallback? onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = TextStyle(color: context.runNowPalette.textMuted);
+    return Card(
+      child: InkWell(
+        onTap: onEdit,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      art.label,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    if (art.help.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(art.help, style: muted),
+                    ],
+                    const SizedBox(height: 8),
+                    Text(
+                      art.value.isEmpty
+                          ? '${art.defaultValue} (mặc định)'
+                          : art.value,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Đổi model',
                 icon: const Icon(Icons.edit_outlined),
                 onPressed: onEdit,
               ),

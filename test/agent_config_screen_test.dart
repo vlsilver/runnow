@@ -96,6 +96,17 @@ class _ConfigBackend {
       'searchCalls': 1,
       'budgetHit': false,
     },
+    'artModel': {
+      'label': 'Model vẽ thẻ buổi chạy',
+      'help': 'Lượt vẽ kế dùng model mới.',
+      'value': '',
+      'default': 'gemini-nano-banana-2.1',
+      'options': [
+        'gemini-nano-banana-2.1',
+        'gemini-3-pro-image',
+        'gemini-2.5-flash-image',
+      ],
+    },
     'version': 'v1',
   });
 
@@ -149,6 +160,9 @@ class _ConfigBackend {
             }
           }
           if (body.containsKey('prices')) state['prices'] = body['prices'];
+          if (body['artModel'] case final String model) {
+            (state['artModel'] as Map)['value'] = model;
+          }
           state['version'] = 'v${patches.length + 1}';
           return json(state);
       }
@@ -372,6 +386,31 @@ void main() {
     await tester.tap(find.text('Xoá'));
     await tester.pumpAndSettle();
     expect(backend.patches.single, {'version': 'v1', 'prices': []});
+  });
+
+  testWidgets('art model: pick one, then back to default', (tester) async {
+    await pump(tester);
+    expect(find.text('Lượt vẽ kế dùng model mới.'), findsOneWidget);
+    expect(find.text('gemini-nano-banana-2.1 (mặc định)'), findsOneWidget);
+
+    await tester.tap(find.text('Model vẽ thẻ buổi chạy'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('gemini-3-pro-image'));
+    await tester.pumpAndSettle();
+    expect(backend.patches.single, {
+      'version': 'v1',
+      'artModel': 'gemini-3-pro-image',
+    });
+    expect(find.text('gemini-3-pro-image'), findsOneWidget);
+
+    // Về mặc định gửi chuỗi rỗng: backend xoá field, sau này đổi mặc định
+    // thì bot theo.
+    await tester.tap(find.text('Model vẽ thẻ buổi chạy'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Về mặc định (gemini-nano-banana-2.1)'));
+    await tester.pumpAndSettle();
+    expect(backend.patches.last, {'version': 'v2', 'artModel': ''});
+    expect(find.text('gemini-nano-banana-2.1 (mặc định)'), findsOneWidget);
   });
 
   testWidgets('config_changed reloads and tells the admin', (tester) async {

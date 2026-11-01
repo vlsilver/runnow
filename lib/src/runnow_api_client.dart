@@ -512,6 +512,7 @@ class RunNowApiClient {
     required String version,
     Map<String, num?>? values,
     List<AgentModelPrice>? prices,
+    String? artModel,
   }) async {
     final response = await _send(
       'PATCH',
@@ -519,6 +520,7 @@ class RunNowApiClient {
       body: {
         'version': version,
         'values': ?values,
+        'artModel': ?artModel,
         if (prices != null) 'prices': [for (final p in prices) p.toJson()],
       },
     );
