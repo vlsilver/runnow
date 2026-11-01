@@ -1214,6 +1214,9 @@ class _CardsSection extends ConsumerWidget {
             height: clubCardThumbHeight(_thumbWidth),
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
+              // List cao đúng bằng thẻ: cắt thì bóng thẻ chỉ còn lộ ở bốn góc
+              // ngoài đường bo, trông như viền tối vuông.
+              clipBehavior: Clip.none,
               padding: const EdgeInsets.symmetric(horizontal: 20),
               itemCount: items.length,
               separatorBuilder: (_, _) => const SizedBox(width: 12),

@@ -377,7 +377,6 @@ class RunNowAchievementTokens {
   static const gemEdge = Color(0x59000000);
   static const gemGlint = Color(0xCCFFFFFF);
   static const sweep = Color(0xFFFFFFFF);
-  static const rim = Color(0xB3000000);
 
   // Thẻ Ẩn pha ramp của hành về hai đầu này để ra tông sáng nhất, tối nhất.
   static const secretLift = Color(0xFFFFFFFF);

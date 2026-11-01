@@ -707,17 +707,6 @@ class _TrimPainter extends CustomPainter {
         }
       }
     }
-    // Mép ngoài tối mảnh để tranh sáng không loang ra nền.
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        card.deflate(0.7),
-        const Radius.circular(_radius - 0.7),
-      ),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.4
-        ..color = _T.rim,
-    );
   }
 
   @override
