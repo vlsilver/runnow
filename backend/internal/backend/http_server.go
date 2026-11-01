@@ -859,6 +859,28 @@ func (s *Server) apiRoutes() {
 		}
 		return writeJSON(w, 200, map[string]any{"card": card})
 	}))
+	s.route("GET /v1/contracts/{contractId}/card", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		id, err := pathDocID(r, "contractId")
+		if err != nil {
+			return err
+		}
+		view, err := s.deps.RunCards.GetContractCard(r.Context(), uid, id)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, view)
+	}))
+	s.route("POST /v1/contracts/{contractId}/card", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		id, err := pathDocID(r, "contractId")
+		if err != nil {
+			return err
+		}
+		card, err := s.deps.RunCards.RollContractCard(r.Context(), uid, id)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"card": card})
+	}))
 	s.route("POST /v1/activities/{activityId}/card/art", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		id, err := runCardActivityID(r)
 		if err != nil {

@@ -219,12 +219,14 @@ func runCardOddList(odds [5]int64) []RunCardOdd {
 
 // RunCardView là trả lời GET thẻ: Card khi đã lật; chưa lật thì Odds là tỉ lệ
 // từng bậc khi ra thẻ và Chance là phần trăm cơ hội ra thẻ, hoặc Reason khi
-// buổi này không lật được (kể cả đã lật mà trượt).
+// buổi này không lật được (kể cả đã lật mà trượt). Km chỉ thẻ kèo dùng: số km
+// tích luỹ đem ra tra bảng tỉ lệ.
 type RunCardView struct {
 	Card   map[string]any `json:"card"`
 	Odds   []RunCardOdd   `json:"odds,omitempty"`
 	Chance float64        `json:"chance,omitempty"`
 	Reason string         `json:"reason,omitempty"`
+	Km     float64        `json:"km,omitempty"`
 }
 
 type RunCardStore struct {

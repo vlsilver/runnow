@@ -100,6 +100,12 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // Thẻ Kèo: backend quay bậc khi người đạt kèo lật thẻ, client chỉ đọc.
+      match /contractCards/{contractId} {
+        allow read: if owns(userId);
+        allow write: if false;
+      }
+
       // Thẻ BXH: backend ghi lúc chốt kỳ. Ai đăng nhập cũng đọc, vì người khác
       // cần biết thẻ đã lật chưa. Chủ thẻ chỉ ghi được lúc lật: một lần, chỉ
       // revealedAt, và phải là giờ server.
