@@ -107,6 +107,54 @@ func TestEmulatorAgentAdminConfig(t *testing.T) {
 	}
 }
 
+// Admin chọn model vẽ thẻ trong danh sách; chuỗi rỗng đưa về model mặc định của
+// service. Bảng model cần khai giá hiện model đang vẽ thật.
+func TestEmulatorAgentAdminArtModel(t *testing.T) {
+	e := newAgentEnv(t)
+	e.srv = NewAPIServer(Config{AgentModel: "m-chat", AgentLearnModel: "m-chat", RunCardArtModel: "gemini-nano-banana-2.1"}, e.deps)
+	artModel := func(r apiResp) map[string]any {
+		t.Helper()
+		m, _ := r.body["artModel"].(map[string]any)
+		return m
+	}
+	artUse := func(r apiResp) any {
+		t.Helper()
+		for _, m := range anyList(r.body["models"]) {
+			if m.(map[string]any)["use"] == "Vẽ tranh thẻ buổi chạy" {
+				return m.(map[string]any)["model"]
+			}
+		}
+		return nil
+	}
+
+	r := e.call("an", "GET", "/v1/admin/agent-config", nil, "")
+	e.want(r, 200, "")
+	m := artModel(r)
+	if m["value"] != "" || m["default"] != "gemini-nano-banana-2.1" || m["label"] == "" || m["help"] == "" ||
+		len(anyList(m["options"])) != 3 || anyList(m["options"])[1] != "gemini-3-pro-image" || artUse(r) != "gemini-nano-banana-2.1" {
+		t.Fatalf("artModel lúc chưa chọn: %s", r.raw)
+	}
+
+	e.want(e.call("an", "PATCH", "/v1/admin/agent-config", map[string]any{"version": "", "artModel": "gemini-khong-co"}, ""), 400, "invalid_request")
+	if _, ok := e.doc("agentState/config")[runCardArtModelKey]; ok {
+		t.Fatal("model ngoài danh sách mà vẫn ghi")
+	}
+	e.want(e.call("cuong", "PATCH", "/v1/admin/agent-config", map[string]any{"version": "", "artModel": "gemini-3-pro-image"}, ""), 403, "not_admin")
+
+	r = e.call("an", "PATCH", "/v1/admin/agent-config", map[string]any{"version": "", "artModel": "gemini-3-pro-image"}, "")
+	e.want(r, 200, "")
+	if e.doc("agentState/config")[runCardArtModelKey] != "gemini-3-pro-image" || artModel(r)["value"] != "gemini-3-pro-image" || artUse(r) != "gemini-3-pro-image" {
+		t.Fatalf("sau khi chọn: %s", r.raw)
+	}
+
+	e.tick(time.Second)
+	r = e.call("an", "PATCH", "/v1/admin/agent-config", map[string]any{"version": r.body["version"], "artModel": ""}, "")
+	e.want(r, 200, "")
+	if _, ok := e.doc("agentState/config")[runCardArtModelKey]; ok || artModel(r)["value"] != "" || artUse(r) != "gemini-nano-banana-2.1" {
+		t.Fatalf("chuỗi rỗng phải đưa về mặc định: %s", r.raw)
+	}
+}
+
 // Ba giới hạn đếm theo tin lấy từ config ở task kế, không cần deploy.
 func TestEmulatorAgentLimitsFromConfig(t *testing.T) {
 	e := newAgentEnv(t)

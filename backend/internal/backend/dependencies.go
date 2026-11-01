@@ -206,9 +206,10 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 				}
 				// Tranh thẻ buổi chạy có trần chi phí riêng, để bot cá nhân tiêu hết
 				// trần không chặn vẽ thẻ và ngược lại.
-				artModel := config.RunCardArtModel
 				artBudget := NewRunCardArtBudget(db, adminNotifier(d.Games, telegram))
-				d.RunCards.SetArtist(budgetImageLLM{inner: genaiImageLLM{client: imageClient, model: artModel, aspect: runCardArtAspect}, model: artModel, budget: artBudget}, images, artModel)
+				d.RunCards.SetArtist(func(model string) agentImageLLM {
+					return budgetImageLLM{inner: genaiImageLLM{client: imageClient, model: model, aspect: runCardArtAspect}, model: model, budget: artBudget}
+				}, images, config.RunCardArtModel)
 				if d.ManagedBots != nil {
 					d.ManagedBots.images = images
 				}

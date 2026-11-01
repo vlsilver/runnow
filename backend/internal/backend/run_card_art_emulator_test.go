@@ -50,6 +50,7 @@ type artEnv struct {
 	*apiHarness
 	t      *testing.T
 	gen    *artLLM
+	models []string
 	files  *memImageStore
 	tasks  []PublishTask
 	alerts []string
@@ -72,7 +73,10 @@ func newArtEnv(t *testing.T, config map[string]any) *artEnv {
 		return nil
 	})
 	budget.now = func() time.Time { return e.clock }
-	cards.SetArtist(budgetImageLLM{inner: e.gen, model: "img-model", budget: budget}, e.files, "img-model")
+	cards.SetArtist(func(model string) agentImageLLM {
+		e.models = append(e.models, model)
+		return budgetImageLLM{inner: e.gen, model: model, budget: budget}
+	}, e.files, "img-model")
 	e.deps.EnqueueTask = func(_ context.Context, task PublishTask) (string, error) {
 		e.tasks = append(e.tasks, task)
 		return "created", nil
@@ -319,6 +323,26 @@ func TestEmulatorRunCardArtNote(t *testing.T) {
 	e.want(e.call("u1", "POST", "/v1/activities/a3/card/art", map[string]any{"style": "anime_cel", "note": " \n "}, ""), 200, "")
 	if a := e.art("a3"); a["note"] != nil {
 		t.Fatalf("mô tả toàn khoảng trắng thì không lưu note: %v", a)
+	}
+}
+
+// Admin chọn model vẽ trên trang Admin thì lượt vẽ kế dùng model đó, không cần
+// deploy. Doc bị sửa tay ra model ngoài danh sách thì vẽ bằng model mặc định.
+func TestEmulatorRunCardArtModelFromConfig(t *testing.T) {
+	e := newArtEnv(t, map[string]any{"runCardArtModel": "gemini-3-pro-image"})
+	e.card("a1", nil)
+	e.want(e.ask("a1", "anime_cel", ""), 200, "")
+	e.draw(e.lastTask())
+	if art := e.art("a1"); art["status"] != "done" || art["model"] != "gemini-3-pro-image" || e.models[0] != "gemini-3-pro-image" {
+		t.Fatalf("art = %v, model gọi %v", art, e.models)
+	}
+
+	seed(t, e.store.db, "agentState/config", map[string]any{"runCardArtModel": "gemini-khong-co", "llmPrices": artPrices})
+	e.card("a2", map[string]any{"startedAt": "2026-10-25T10:00:00Z"})
+	e.want(e.ask("a2", "anime_cel", ""), 200, "")
+	e.draw(e.lastTask())
+	if art := e.art("a2"); art["model"] != "img-model" || e.models[1] != "img-model" {
+		t.Fatalf("model lạ phải về mặc định: art = %v, model gọi %v", art, e.models)
 	}
 }
 

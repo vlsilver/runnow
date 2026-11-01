@@ -57,6 +57,38 @@ const (
 	runCardArtSrcPhoto = "src.jpg"
 )
 
+// runCardArtModels là các model ảnh admin chọn được để vẽ thẻ, đầu danh sách là
+// mặc định khi env RUN_CARD_ART_MODEL trống. Chỉ ghi model đã vẽ thử thẻ 2:3 ở
+// location global; thêm model mới cần deploy.
+var runCardArtModels = []string{"gemini-nano-banana-2.1", "gemini-3-pro-image", "gemini-2.5-flash-image"}
+
+// runCardArtModelOptions là các model chọn được, thêm model mặc định của service
+// nếu env đặt một model ngoài danh sách.
+func runCardArtModelOptions(fallback string) []string {
+	if fallback == "" || slices.Contains(runCardArtModels, fallback) {
+		return runCardArtModels
+	}
+	return append(slices.Clone(runCardArtModels), fallback)
+}
+
+// runCardArtModelIn là model vẽ thẻ đang hiệu lực: model admin chọn trong
+// agentState/config nếu nằm trong danh sách, không thì fallback. Doc bị sửa tay
+// ra model lạ thì log và vẽ bằng fallback, để gõ sai không tắt hẳn vẽ thẻ.
+func runCardArtModelIn(ctx context.Context, cfg map[string]any, fallback string) string {
+	model := stringValue(cfg[runCardArtModelKey])
+	if model == "" {
+		return fallback
+	}
+	if !slices.Contains(runCardArtModelOptions(fallback), model) {
+		slog.WarnContext(ctx, "run_card.art_model_invalid", "model", model)
+		return fallback
+	}
+	return model
+}
+
+// runCardArtModelKey là field của agentState/config giữ model admin chọn.
+const runCardArtModelKey = "runCardArtModel"
+
 var (
 	errRunCardNoCard     = &HTTPError{Status: http.StatusNotFound, Code: "card_not_found", Message: "Buổi này chưa lật thẻ."}
 	errRunCardBadStyle   = &HTTPError{Status: http.StatusBadRequest, Code: "invalid_style", Message: "Phong cách này không có hoặc đã tắt."}
@@ -214,14 +246,17 @@ func photoMIME(b []byte) string {
 
 // runCardArtist vẽ tranh thẻ trên service bot.
 type runCardArtist struct {
-	store  *RunCardStore
-	gen    agentImageLLM
+	store *RunCardStore
+	// gen trả client vẽ bằng model đã chọn, vì admin đổi được model giữa hai
+	// lượt vẽ.
+	gen    func(model string) agentImageLLM
 	images agentImageStore
-	model  string
+	// model là model mặc định, dùng khi admin chưa chọn (xem runCardArtModelIn).
+	model string
 }
 
 // SetArtist bật vẽ tranh thẻ. Chỉ gọi trên service có Gemini (bot).
-func (s *RunCardStore) SetArtist(gen agentImageLLM, images agentImageStore, model string) {
+func (s *RunCardStore) SetArtist(gen func(model string) agentImageLLM, images agentImageStore, model string) {
 	s.artist = &runCardArtist{store: s, gen: gen, images: images, model: model}
 }
 
@@ -257,6 +292,11 @@ func (s *RunCardStore) DrawArt(ctx context.Context, t runCardArtTask) error {
 			return err
 		}
 	}
+	cfg, err := getData(ctx, s.db.Collection("agentState").Doc("config"))
+	if err != nil {
+		return err
+	}
+	model := runCardArtModelIn(ctx, cfg, a.model)
 	snapshot, _ := card["snapshot"].(map[string]any)
 	prompt := runCardArtPrompt(snapshot, style, len(photo) > 0, stringValue(art["note"]))
 	parts := []*genai.Part{}
@@ -265,7 +305,7 @@ func (s *RunCardStore) DrawArt(ctx context.Context, t runCardArtTask) error {
 	}
 	parts = append(parts, genai.NewPartFromText(prompt))
 	drawCtx, cancel := context.WithTimeout(ctx, runCardArtTimeout)
-	resp, err := a.gen.Image(withLLMLabel(drawCtx, "run_card_art", t.UID), parts)
+	resp, err := a.gen(model).Image(withLLMLabel(drawCtx, "run_card_art", t.UID), parts)
 	cancel()
 	if errors.Is(err, errAgentOverBudget) {
 		return s.finishArt(ctx, t, map[string]any{"status": "failed", "reason": "budget"})
@@ -284,8 +324,8 @@ func (s *RunCardStore) DrawArt(ctx context.Context, t runCardArtTask) error {
 	if err := a.images.Put(ctx, path, img); err != nil {
 		return err
 	}
-	slog.InfoContext(ctx, "run_card.art", "uid", t.UID, "activityId", t.ActivityID, "style", style.Key, "photo", len(photo) > 0, "model", a.model)
-	return s.finishArt(ctx, t, map[string]any{"status": "done", "path": path, "model": a.model, "prompt": prompt, "styleVersion": style.Version})
+	slog.InfoContext(ctx, "run_card.art", "uid", t.UID, "activityId", t.ActivityID, "style", style.Key, "photo", len(photo) > 0, "model", model)
+	return s.finishArt(ctx, t, map[string]any{"status": "done", "path": path, "model": model, "prompt": prompt, "styleVersion": style.Version})
 }
 
 // finishArt ghi kết quả lên khoá đang giữ, nếu khoá vẫn là của task này.

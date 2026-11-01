@@ -199,11 +199,29 @@ type agentUsageToday struct {
 	BudgetHit   bool    `json:"budgetHit"`
 }
 
+// agentArtModel là ô chọn model vẽ thẻ buổi chạy trên trang Admin.
+type agentArtModel struct {
+	Label string `json:"label"`
+	Help  string `json:"help"`
+	// Value rỗng là chưa chọn, bot vẽ bằng Default.
+	Value   string   `json:"value"`
+	Default string   `json:"default"`
+	Options []string `json:"options"`
+}
+
+const (
+	agentArtModelLabel = "Model vẽ thẻ buổi chạy"
+	agentArtModelHelp  = "Model ảnh vẽ tranh nền cho thẻ buổi chạy. Lượt vẽ kế dùng model mới, không cần deploy; tranh đã vẽ giữ nguyên. " +
+		"Đổi model thì nhớ khai giá model đó ở bảng giá bên dưới, thiếu giá thì trần vẽ thẻ tính theo giá dự phòng, thấp hơn giá ảnh thật. " +
+		"Để trống là dùng model mặc định."
+)
+
 type AgentAdminConfig struct {
 	Fields      []agentConfigValue `json:"fields"`
 	PriceFields []agentConfigField `json:"priceFields"`
 	Prices      []agentPriceRow    `json:"prices"`
 	Models      []agentModelUse    `json:"models"`
+	ArtModel    agentArtModel      `json:"artModel"`
 	Usage       agentUsageToday    `json:"usage"`
 	// Version là lần admin lưu gần nhất; PATCH gửi lại để không ghi đè bản
 	// admin khác vừa lưu. Rỗng là chưa ai lưu.
@@ -214,6 +232,8 @@ type AgentConfigPatch struct {
 	Version string              `json:"version"`
 	Values  map[string]*float64 `json:"values"`
 	Prices  *[]agentPriceRow    `json:"prices"`
+	// ArtModel có mặt thì đổi model vẽ thẻ; chuỗi rỗng đưa về mặc định.
+	ArtModel *string `json:"artModel"`
 }
 
 func configVersion(cfg map[string]any) string {
@@ -232,8 +252,9 @@ func optionalNumber(m map[string]any, key string) *float64 {
 }
 
 // AdminConfig trả config cho trang Admin. models là các model bot cá nhân đang
-// chạy (lấy từ env của service, api và bot cùng mặc định AGENT_MODEL).
-func (s *AgentStore) AdminConfig(ctx context.Context, models []agentModelUse, wall time.Time) (AgentAdminConfig, error) {
+// chạy (lấy từ env của service, api và bot cùng mặc định AGENT_MODEL); model vẽ
+// thẻ thêm vào sau, theo model admin chọn hoặc artDefault.
+func (s *AgentStore) AdminConfig(ctx context.Context, models []agentModelUse, artDefault string, wall time.Time) (AgentAdminConfig, error) {
 	cfg, err := getData(ctx, s.configRef())
 	if err != nil {
 		return AgentAdminConfig{}, err
@@ -249,7 +270,16 @@ func (s *AgentStore) AdminConfig(ctx context.Context, models []agentModelUse, wa
 			Day: day, CostUsd: number(usage["costUsd"]), Calls: int64(number(usage["calls"])),
 			SearchCalls: int64(number(usage["searchCalls"])), BudgetHit: usage["budgetHitAt"] != nil,
 		},
+		ArtModel: agentArtModel{
+			Label: agentArtModelLabel, Help: agentArtModelHelp, Value: stringValue(cfg[runCardArtModelKey]),
+			Default: artDefault, Options: runCardArtModelOptions(artDefault),
+		},
 		Version: configVersion(cfg),
+	}
+	// Model vẽ thẻ có trần riêng nhưng dùng chung bảng giá, nên cũng phải có
+	// mặt; thiếu giá thì trần tính theo giá dự phòng, thấp hơn giá ảnh.
+	if art := runCardArtModelIn(ctx, cfg, artDefault); art != "" && !slices.ContainsFunc(models, func(u agentModelUse) bool { return u.Model == art }) {
+		models = append(slices.Clone(models), agentModelUse{Model: art, Use: "Vẽ tranh thẻ buổi chạy"})
 	}
 	for _, f := range agentConfigFields {
 		out.Fields = append(out.Fields, agentConfigValue{agentConfigField: f, Value: optionalNumber(cfg, f.Key)})
@@ -274,8 +304,18 @@ func (s *AgentStore) AdminConfig(ctx context.Context, models []agentModelUse, wa
 // SetAdminConfig lưu các field admin sửa. Giá trị nil đưa field về mặc định;
 // prices có mặt thì thay cả bảng giá. Version khác bản đang lưu thì từ chối, để
 // trang mở từ trước không ghi đè bản admin khác vừa lưu.
-func (s *AgentStore) SetAdminConfig(ctx context.Context, by string, patch AgentConfigPatch, wall time.Time) error {
+func (s *AgentStore) SetAdminConfig(ctx context.Context, by string, patch AgentConfigPatch, artDefault string, wall time.Time) error {
 	update := map[string]any{}
+	if patch.ArtModel != nil {
+		switch model := *patch.ArtModel; {
+		case model == "":
+			update[runCardArtModelKey] = firestore.Delete
+		case slices.Contains(runCardArtModelOptions(artDefault), model):
+			update[runCardArtModelKey] = model
+		default:
+			return agentConfigInvalid("Không có model vẽ %s trong danh sách.", model)
+		}
+	}
 	for key, v := range patch.Values {
 		f, ok := agentConfigFieldByKey(key)
 		if !ok {
@@ -325,7 +365,7 @@ func (s *AgentStore) SetAdminConfig(ctx context.Context, by string, patch AgentC
 			values[key] = *v
 		}
 	}
-	slog.InfoContext(ctx, "admin.agent_config_changed", "by", by, "values", values, "prices", patch.Prices != nil)
+	slog.InfoContext(ctx, "admin.agent_config_changed", "by", by, "values", values, "prices", patch.Prices != nil, "artModel", patch.ArtModel)
 	return nil
 }
 
@@ -365,9 +405,9 @@ func priceRowsForStore(rows []agentPriceRow) ([]any, error) {
 	return out, nil
 }
 
-// agentModelUses là các model tính tiền theo bảng llmPrices, để admin thấy model
-// nào chưa khai giá. Model vẽ thẻ có trần riêng nhưng dùng chung bảng giá, nên
-// cũng phải có mặt; thiếu giá thì trần tính theo giá dự phòng, thấp hơn giá ảnh.
+// agentModelUses là các model bot cá nhân tính tiền theo bảng llmPrices, để admin
+// thấy model nào chưa khai giá. Model vẽ thẻ do AdminConfig thêm, vì admin chọn
+// được nó trong config.
 func (s *Server) agentModelUses() []agentModelUse {
 	out := []agentModelUse{{Model: s.config.AgentModel, Use: "Trả lời chat riêng, nói trong phòng bot và tra web"}}
 	if s.config.AgentLearnModel == s.config.AgentModel {
@@ -375,16 +415,12 @@ func (s *Server) agentModelUses() []agentModelUse {
 	} else {
 		out = append(out, agentModelUse{Model: s.config.AgentLearnModel, Use: "Tự học về người dùng"})
 	}
-	art := s.config.RunCardArtModel
-	if art != "" && !slices.ContainsFunc(out, func(u agentModelUse) bool { return u.Model == art }) {
-		out = append(out, agentModelUse{Model: art, Use: "Vẽ tranh thẻ buổi chạy"})
-	}
 	return out
 }
 
 func (s *Server) agentConfigRoutes() {
 	read := func(w http.ResponseWriter, r *http.Request) error {
-		out, err := s.deps.Agents.AdminConfig(r.Context(), s.agentModelUses(), s.now())
+		out, err := s.deps.Agents.AdminConfig(r.Context(), s.agentModelUses(), s.config.RunCardArtModel, s.now())
 		if err != nil {
 			return err
 		}
@@ -404,7 +440,7 @@ func (s *Server) agentConfigRoutes() {
 		if decodeJSON(r, &body) != nil {
 			return invalidRequest()
 		}
-		if err := s.deps.Agents.SetAdminConfig(r.Context(), uid, body, s.now()); err != nil {
+		if err := s.deps.Agents.SetAdminConfig(r.Context(), uid, body, s.config.RunCardArtModel, s.now()); err != nil {
 			return err
 		}
 		return read(w, r)
