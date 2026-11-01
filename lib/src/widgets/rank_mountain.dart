@@ -96,6 +96,7 @@ class RankMountain extends StatelessWidget {
     required this.myUid,
     this.myEntry,
     this.caption,
+    this.meByName = false,
     super.key,
   });
 
@@ -104,6 +105,10 @@ class RankMountain extends StatelessWidget {
   final String? myUid;
   final LeaderboardEntry? myEntry;
   final String? caption;
+
+  /// Ghi tên thật thay cho "Bạn": ảnh khoe gửi ra ngoài, người xem không
+  /// phải mình.
+  final bool meByName;
 
   static const shown = 5;
   static const height = 296.0;
@@ -179,7 +184,9 @@ class RankMountain extends StatelessWidget {
                     height: 36,
                     child: _Label(
                       rank: rank == null ? '–' : '$rank',
-                      name: isMe ? 'Bạn' : climber.entry.displayName,
+                      name: isMe && !meByName
+                          ? 'Bạn'
+                          : climber.entry.displayName,
                       score: climber.score,
                       rankColor: rankColor,
                       nameColor: isMe ? me : onSurface,

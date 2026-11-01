@@ -25,6 +25,7 @@ import 'package:myrun/src/run_contracts/widgets/run_contract_card.dart'
     show runContractStateColor;
 import 'package:myrun/src/screens/run_contract_home_screen.dart'
     show ContractSyncAction, startCreateContract;
+import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/training_plan/training_plan_models.dart';
 import 'package:myrun/src/training_plan/training_plan_repository.dart';
@@ -1005,15 +1006,45 @@ class _InviteRow extends StatelessWidget {
 
 /// Top 5 BXH Chạy/Đi bộ tuần này trên ngọn núi và hạng của mình. Đọc
 /// chung bảng với tab Club (đã tải sẵn lúc mở app). Tuần chưa ai có km thì
-/// ẩn.
-class _RankSection extends ConsumerWidget {
+/// ẩn. Nút chia sẻ chụp đúng khung ngọn núi thành ảnh để khoe ra ngoài app.
+class _RankSection extends ConsumerStatefulWidget {
   const _RankSection();
 
+  @override
+  ConsumerState<_RankSection> createState() => _RankSectionState();
+}
+
+class _RankSectionState extends ConsumerState<_RankSection> {
   static const _sport = ClubRankingSport.run;
   static const _range = ClubRankingRange.currentWeek;
 
+  final _mountainKey = GlobalKey();
+  bool _sharing = false;
+
+  Future<void> _share(BuildContext origin) async {
+    // Vẽ lại bản để khoe (tên thật, có tên app) rồi mới chụp.
+    setState(() => _sharing = true);
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      if (!origin.mounted) return;
+      await shareDashboardCard(
+        cardKey: _mountainKey,
+        shareOriginContext: origin,
+        title: '3i BXH tuần · Chạy bộ',
+      );
+    } catch (error) {
+      debugPrint('Khoe BXH tuần lỗi: $error');
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Không thể chia sẻ: $error')));
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final board = ref.watch(totalKmLeaderboardProvider);
     if (board.error case final error?) {
       debugPrint('Không tải được BXH tuần: $error');
@@ -1038,22 +1069,36 @@ class _RankSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        HubSectionHeader(title: 'BXH tuần', onMore: open),
+        HubSectionHeader(
+          title: 'BXH tuần',
+          onMore: open,
+          action: Builder(
+            builder: (origin) => IconButton(
+              tooltip: 'Khoe BXH tuần',
+              onPressed: _sharing ? null : () => _share(origin),
+              icon: const Icon(Icons.ios_share_rounded, size: 20),
+            ),
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Material(
-            color: context.runNowPalette.tint,
-            borderRadius: BorderRadius.circular(26),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: open,
-              child: RankMountain(
-                ranked: ranked,
-                myUid: uid,
-                // Hồ sơ riêng tư không lên núi; dòng dưới đã nói lý do.
-                myEntry: private ? null : myEntry,
-                caption:
-                    'Tuần này · ${clubRankingTimeLeftLabel(DateTime.now(), _range).toLowerCase()}',
+          child: RepaintBoundary(
+            key: _mountainKey,
+            child: Material(
+              color: context.runNowPalette.tint,
+              borderRadius: BorderRadius.circular(26),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: open,
+                child: RankMountain(
+                  ranked: ranked,
+                  myUid: uid,
+                  // Hồ sơ riêng tư không lên núi; dòng dưới đã nói lý do.
+                  myEntry: private ? null : myEntry,
+                  caption:
+                      '${_sharing ? '3i Run · BXH tuần' : 'Tuần này'} · ${clubRankingTimeLeftLabel(DateTime.now(), _range).toLowerCase()}',
+                  meByName: _sharing,
+                ),
               ),
             ),
           ),
