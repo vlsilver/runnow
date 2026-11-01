@@ -63,6 +63,12 @@ String feedWhenLabel(DateTime startedAt, DateTime now) {
   return DateFormat('dd/MM').format(local);
 }
 
+/// Dòng tổng cạnh tiêu đề ngày ở trang "Buổi chạy": "3 buổi · 16.3 km".
+String clubRunsDayTotal(Iterable<ActivitySummary> runs) {
+  final meters = runs.fold<double>(0, (sum, run) => sum + run.distanceMeters);
+  return '${runs.length} buổi · ${(meters / 1000).toStringAsFixed(1)} km';
+}
+
 const _hubClubRunsLimit = 5;
 
 /// Mấy buổi mới nhất cho mục "Buổi chạy" ở trang Kèo.

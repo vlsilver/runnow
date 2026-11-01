@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/club_runs.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_overview.dart';
 import 'package:myrun/src/widgets/club_run_row.dart';
 
@@ -75,20 +76,30 @@ class _ClubRunsScreenState extends ConsumerState<ClubRunsScreen> {
   @override
   Widget build(BuildContext context) {
     final rows = <Widget>[];
-    String? day;
     final now = DateTime.now();
+    // Tổng mỗi ngày chỉ tính trên các buổi đã tải; ngày nằm vắt qua hai trang
+    // thì tổng tăng thêm khi trang sau về.
+    final days = <String, List<ClubRunItem>>{};
     for (final item in _items) {
-      final label = _dayLabel(item.activity.startedAt, now);
-      if (label != day) {
-        day = label;
-        rows.add(_DayHeader(label: label));
-      }
+      days
+          .putIfAbsent(_dayLabel(item.activity.startedAt, now), () => [])
+          .add(item);
+    }
+    for (final MapEntry(key: label, value: items) in days.entries) {
       rows.add(
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-          child: ClubRunPost(item: item),
+        _DayHeader(
+          label: label,
+          total: clubRunsDayTotal(items.map((item) => item.activity)),
         ),
       );
+      for (final item in items) {
+        rows.add(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: ClubRunPost(item: item),
+          ),
+        );
+      }
     }
     final Widget tail;
     if (_error != null) {
@@ -143,22 +154,34 @@ String _dayLabel(DateTime startedAt, DateTime now) {
 }
 
 class _DayHeader extends StatelessWidget {
-  const _DayHeader({required this.label});
+  const _DayHeader({required this.label, required this.total});
 
   final String label;
+  final String total;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: Theme.of(
-            context,
-          ).colorScheme.onSurface.withValues(alpha: 0.55),
-          fontWeight: FontWeight.w800,
-        ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
+            ),
+          ),
+          Text(
+            total,
+            style: TextStyle(
+              color: context.runNowPalette.textMuted,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }

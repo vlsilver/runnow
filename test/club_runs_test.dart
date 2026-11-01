@@ -21,6 +21,23 @@ void main() {
     });
   });
 
+  test('tổng của ngày: số buổi và tổng km', () {
+    ActivitySummary run(double meters) => ActivitySummary(
+      id: '$meters',
+      name: '',
+      kind: ActivityKind.run,
+      startedAt: DateTime(2026, 10, 30),
+      distanceMeters: meters,
+      movingTimeSeconds: 0,
+      elapsedTimeSeconds: 0,
+    );
+    // 8.2 + 5.1 + 3.0 = 16.3
+    expect(
+      clubRunsDayTotal([run(8200), run(5100), run(3000)]),
+      '3 buổi · 16.3 km',
+    );
+  });
+
   group('ClubRunItem.fromJson', () {
     test('lấy uid người tập và buổi, bỏ qua dòng hỏng', () {
       final page = clubRunsPageFromJson({
@@ -47,6 +64,32 @@ void main() {
       expect(run.activity.id, 'a1');
       expect(run.activity.kind, ActivityKind.run);
       expect(run.activity.distanceMeters, 8200);
+    });
+
+    test('đọc dáng tuyến; dáng hỏng thì bỏ dáng, giữ buổi', () {
+      Map<String, dynamic> run(String id, Object? sketch) => {
+        'ownerUid': 'u1',
+        'activity': {
+          'id': id,
+          'sportType': 'Run',
+          'startedAt': '2026-10-30T04:10:00Z',
+          'routeSketch': sketch,
+        },
+      };
+      final page = clubRunsPageFromJson({
+        'runs': [
+          run('ok', [0, 500, 1000, 500, 1000, 0]),
+          run('le', [0, 500, 1000]),
+          run('chu', [0, 'x']),
+          run('thieu', null),
+        ],
+      });
+      expect(page.runs.map((r) => r.activity.routeSketch).toList(), [
+        [0, 500, 1000, 500, 1000, 0],
+        null,
+        null,
+        null,
+      ]);
     });
 
     test('không có cursor là hết trang', () {

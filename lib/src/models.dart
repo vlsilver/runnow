@@ -561,6 +561,7 @@ class ActivitySummary {
     this.averageCadence,
     this.elevationGainMeters,
     this.polyline,
+    this.routeSketch,
     this.routePoints = const [],
     this.photos = const [],
     this.hydrated = false,
@@ -595,6 +596,7 @@ class ActivitySummary {
       averageCadence: (map['averageCadence'] as num?)?.toDouble(),
       elevationGainMeters: (map['elevationGainMeters'] as num?)?.toDouble(),
       polyline: map['polyline'] as String?,
+      routeSketch: _routeSketchFrom(map['routeSketch']),
       routePoints: rawRoutePoints
           .whereType<Map<String, dynamic>>()
           .map(RoutePoint.fromMap)
@@ -624,6 +626,10 @@ class ActivitySummary {
   final double? averageCadence;
   final double? elevationGainMeters;
   final String? polyline;
+
+  /// Dáng tuyến backend tính sẵn để vẽ nền thẻ danh sách: [x0, y0, x1, y1, ...],
+  /// chiều dài hơn là 0..1000, bắc ở trên. Không có toạ độ thật.
+  final List<int>? routeSketch;
   final List<RoutePoint> routePoints;
   final List<ActivityPhoto> photos;
   final bool hydrated;
@@ -637,6 +643,14 @@ class ActivitySummary {
   double get distanceKm => distanceMeters / 1000;
   double? get paceSecondsPerKm =>
       distanceMeters <= 0 ? null : movingTimeSeconds / distanceKm;
+}
+
+/// Dáng tuyến hỏng (lẻ phần tử, không phải số) thì bỏ dáng chứ không bỏ buổi:
+/// nó chỉ để trang trí.
+List<int>? _routeSketchFrom(Object? raw) {
+  if (raw is! List || raw.length < 4 || raw.length.isOdd) return null;
+  if (raw.any((v) => v is! num)) return null;
+  return [for (final v in raw) (v as num).toInt()];
 }
 
 class ActivityPhoto {
