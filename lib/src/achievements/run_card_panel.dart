@@ -64,7 +64,7 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
   Widget _unrolled(BuildContext context) {
     final view = ref.watch(runCardViewProvider(_id));
     final km = (widget.activity.distanceMeters / 100).round() / 10;
-    final faceDown = _CardFrame(
+    final faceDown = RunCardFrame(
       child: RunCardFaceDown(km: km, title: widget.activity.name),
     );
     return view.when(
@@ -91,7 +91,7 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
         if (view.reason case final reason?) {
           return Column(
             children: [
-              _CardFrame(
+              RunCardFrame(
                 child: RunCardFaceDown(
                   km: km,
                   title: widget.activity.name,
@@ -106,7 +106,10 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
           children: [
             faceDown,
             const SizedBox(height: 16),
-            _OddsTable(km: km, odds: view.odds),
+            RunCardOddsTable(
+              title: 'TỈ LỆ CHO BUỔI ${runCardKm(km)} KM',
+              odds: view.odds,
+            ),
             const SizedBox(height: 8),
             if (view.chance < 100)
               _Message(
@@ -167,14 +170,14 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
       label: 'Xem thẻ 3D',
       child: GestureDetector(
         onTap: () => showRunCardViewer(context, card, data),
-        child: _CardFrame(child: AchievementCard(data: data)),
+        child: RunCardFrame(child: AchievementCard(data: data)),
       ),
     );
     return Column(
       children: [
         if (_justRolled)
           CardFlipReveal(
-            from: _CardFrame(
+            from: RunCardFrame(
               child: RunCardFaceDown(km: km, title: card.snapshot.name),
             ),
             to: shown,
@@ -374,8 +377,8 @@ String runCardArtFailText(String? reason) => switch (reason) {
 };
 
 /// Thẻ vẽ ở kích thước gốc rồi thu theo bề ngang chỗ đặt, tối đa 300.
-class _CardFrame extends StatelessWidget {
-  const _CardFrame({required this.child});
+class RunCardFrame extends StatelessWidget {
+  const RunCardFrame({super.key, required this.child});
 
   final Widget child;
 
@@ -399,12 +402,17 @@ class RunCardFaceDown extends StatelessWidget {
     required this.km,
     required this.title,
     this.failure,
+    this.kind = 'BUỔI CHẠY',
     super.key,
   });
 
-  final double km;
+  /// Null thì bỏ dòng km, khi thẻ khoá mà không có số để in.
+  final double? km;
   final String title;
   final String? failure;
+
+  /// Loại thẻ in ở góc trên.
+  final String kind;
 
   @override
   Widget build(BuildContext context) {
@@ -453,7 +461,7 @@ class RunCardFaceDown extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('BUỔI CHẠY', style: label),
+                        Text(kind, style: label),
                         const Spacer(),
                         if (failure == null) ...[
                           Center(
@@ -474,17 +482,19 @@ class RunCardFaceDown extends StatelessWidget {
                           ),
                         ],
                         const Spacer(),
-                        Text(
-                          '${runCardKm(km)} KM',
-                          style: TextStyle(
-                            fontFamily: _condensed,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 30,
-                            height: 1,
-                            color: skin.hero,
+                        if (km case final km?) ...[
+                          Text(
+                            '${runCardKm(km)} KM',
+                            style: TextStyle(
+                              fontFamily: _condensed,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 30,
+                              height: 1,
+                              color: skin.hero,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
+                          const SizedBox(height: 4),
+                        ],
                         Text(
                           title,
                           maxLines: 2,
@@ -545,11 +555,11 @@ class _FailVeil extends StatelessWidget {
   }
 }
 
-/// Bảng tỉ lệ ra từng bậc cho buổi [km], bỏ các bậc 0%.
-class _OddsTable extends StatelessWidget {
-  const _OddsTable({required this.km, required this.odds});
+/// Bảng tỉ lệ ra từng bậc, bỏ các bậc 0%.
+class RunCardOddsTable extends StatelessWidget {
+  const RunCardOddsTable({super.key, required this.title, required this.odds});
 
-  final double km;
+  final String title;
   final List<RunCardOdd> odds;
 
   @override
@@ -560,7 +570,7 @@ class _OddsTable extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'TỈ LỆ CHO BUỔI ${runCardKm(km)} KM',
+          title,
           textAlign: TextAlign.center,
           style: theme.textTheme.labelMedium?.copyWith(
             color: muted,
