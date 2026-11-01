@@ -147,24 +147,12 @@ func (s *Server) telegramRoomMessage(ctx context.Context, update TelegramUpdate)
 // topic đó thành Phòng bot; "/phongbot tat" thì tắt. Bot API không có hàm liệt
 // kê topic, nên lấy message_thread_id từ chính tin gõ lệnh.
 func (s *Server) telegramRoomCommandText(ctx context.Context, update TelegramUpdate, arg string) (string, error) {
-	msg := update.Message
 	if s.deps == nil || s.deps.ManagedBots == nil || s.deps.Agents == nil || s.deps.TelegramLinks == nil || s.deps.Games == nil {
 		return "MyBot trên Telegram đang tắt.", nil
 	}
-	if strconv.FormatInt(msg.Chat.ID, 10) != s.config.TelegramChatID {
-		return "Lệnh này chỉ dùng trong group PSC.", nil
-	}
-	uid, err := s.deps.TelegramLinks.UIDForTelegram(ctx, msg.From.ID)
-	if err != nil {
-		return adminFailedText, err
-	}
-	if uid == "" {
-		return "Tài khoản Telegram này chưa liên kết với 3i Run.", nil
-	}
-	if err := s.deps.Games.RequireAdmin(ctx, uid); errors.Is(err, errNotAdmin) {
-		return "Lệnh này chỉ dành cho admin.", nil
-	} else if err != nil {
-		return adminFailedText, err
+	uid, refusal, err := s.pscAdmin(ctx, update)
+	if refusal != "" {
+		return refusal, err
 	}
 	thread := messageThreadID(update)
 	off := map[string]bool{"tat": true, "tắt": true, "off": true}[strings.ToLower(strings.TrimSpace(arg))]
@@ -181,4 +169,26 @@ func (s *Server) telegramRoomCommandText(ctx context.Context, update TelegramUpd
 		return "Đã tắt Phòng bot: các MyBot thôi nói trong topic.", nil
 	}
 	return "Topic này giờ là Phòng bot. MyBot nào đã được thêm vào PSC sẽ trò chuyện ở đây, còn 3i không trả lời trong topic này.", nil
+}
+
+// pscAdmin là uid của người gõ lệnh, khi họ gõ trong group PSC và là admin.
+// Không thì refusal là câu trả lời từ chối, kèm err khi đọc dữ liệu lỗi.
+func (s *Server) pscAdmin(ctx context.Context, update TelegramUpdate) (uid, refusal string, err error) {
+	msg := update.Message
+	if strconv.FormatInt(msg.Chat.ID, 10) != s.config.TelegramChatID {
+		return "", "Lệnh này chỉ dùng trong group PSC.", nil
+	}
+	uid, err = s.deps.TelegramLinks.UIDForTelegram(ctx, msg.From.ID)
+	if err != nil {
+		return "", adminFailedText, err
+	}
+	if uid == "" {
+		return "", "Tài khoản Telegram này chưa liên kết với 3i Run.", nil
+	}
+	if err := s.deps.Games.RequireAdmin(ctx, uid); errors.Is(err, errNotAdmin) {
+		return "", "Lệnh này chỉ dành cho admin.", nil
+	} else if err != nil {
+		return "", adminFailedText, err
+	}
+	return uid, "", nil
 }
