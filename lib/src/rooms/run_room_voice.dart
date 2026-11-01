@@ -44,6 +44,13 @@ class LiveKitVoiceLink implements VoiceLink {
       )
       ..on<lk.RoomDisconnectedEvent>((_) => onDropped());
     await room.connect(url, token);
+    if (!identical(_room, room)) {
+      // leave() chạy lúc đang nối thì không ai còn giữ phòng này, nên tự đóng
+      // ở đây, không thì phòng còn nối và micro vẫn bật dù nút đã tắt.
+      await room.disconnect();
+      await room.dispose();
+      throw StateError('Đã thoát thoại trong lúc đang nối');
+    }
     final local = room.localParticipant;
     if (local == null) throw StateError('LiveKit chưa có localParticipant');
     await local.setMicrophoneEnabled(true);
