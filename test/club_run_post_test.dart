@@ -66,6 +66,7 @@ void main() {
     );
     expect(find.byType(RouteSketchArt), findsOneWidget);
     expect(find.text('3I RUN'), findsOneWidget);
+    expect(find.byIcon(Icons.directions_run_rounded), findsOneWidget);
     expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
     expect(find.textContaining('18 m'), findsOneWidget);
   });
@@ -80,6 +81,8 @@ void main() {
       expect(find.byType(RouteSketchArt), findsNothing);
       expect(find.text('APPLE HEALTH'), findsOneWidget);
       expect(find.text('ĐI BỘ'), findsOneWidget);
+      expect(find.byIcon(Icons.directions_walk_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.directions_run_rounded), findsNothing);
       expect(find.byIcon(Icons.arrow_upward_rounded), findsNothing);
     },
   );

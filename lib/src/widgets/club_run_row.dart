@@ -192,7 +192,32 @@ class ClubRunPost extends ConsumerWidget {
                 children: [
                   Row(
                     children: [
-                      ClubAvatar(member: who.member, size: 36),
+                      // Icon môn ở góc avatar: lướt là biết chạy, đi bộ hay
+                      // đạp xe, cùng màu với nét tuyến.
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          ClubAvatar(member: who.member, size: 36),
+                          Positioned(
+                            right: -4,
+                            bottom: -4,
+                            child: Container(
+                              width: 20,
+                              height: 20,
+                              decoration: BoxDecoration(
+                                color: palette.glassStart,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: palette.border),
+                              ),
+                              child: Icon(
+                                activityKindIcon(activity.kind),
+                                size: 13,
+                                color: colors.stroke,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
