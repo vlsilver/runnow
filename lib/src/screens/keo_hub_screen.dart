@@ -33,7 +33,7 @@ import 'package:myrun/src/widgets/club_run_row.dart';
 import 'package:myrun/src/widgets/live_bits.dart';
 import 'package:myrun/src/widgets/live_map_preview.dart';
 import 'package:myrun/src/widgets/rank_road.dart';
-import 'package:myrun/src/widgets/hub_scene.dart';
+import 'package:myrun/src/widgets/keo_scene.dart';
 
 /// Trang đầu của app: ai trong club đang chạy, các kèo đang diễn ra, ai dẫn
 /// BXH tuần, thẻ vừa khoe, rồi các buổi chạy gần đây. Mục nào rỗng thì ẩn, riêng Kèo và Thẻ rỗng
@@ -615,12 +615,13 @@ List<RunContract> _mergeActive(
   });
 }
 
-/// Thẻ đứng ở hàng Kèo, nền là tranh [scene].
+/// Thẻ đứng ở hàng Kèo, nền là hình [scene], bố cục chọn theo [seed].
 class _MiniCard extends StatelessWidget {
   const _MiniCard({
     required this.child,
     required this.onTap,
     required this.scene,
+    required this.seed,
   });
 
   static const width = 164.0;
@@ -628,15 +629,17 @@ class _MiniCard extends StatelessWidget {
 
   final Widget child;
   final VoidCallback onTap;
-  final HubScene scene;
+  final KeoScene scene;
+  final String seed;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: width,
       height: height,
-      child: HubSceneCard(
+      child: KeoSceneCard(
         scene: scene,
+        seed: seed,
         onTap: onTap,
         padding: const EdgeInsets.all(14),
         child: child,
@@ -660,7 +663,8 @@ class _ContractMiniCard extends StatelessWidget {
     final joined = contract.participantFor(currentUid) != null;
     return _MiniCard(
       onTap: () => context.push('/contracts/${contract.id}'),
-      scene: _contractScene(contract.metric),
+      scene: KeoScene.forContract(contract),
+      seed: contract.id,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -717,7 +721,8 @@ class _RoomMiniCard extends StatelessWidget {
     final registered = myState != null;
     return _MiniCard(
       onTap: () => context.push('/rooms/${room.id}'),
-      scene: HubScene.map,
+      scene: KeoScene.live,
+      seed: room.id,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -792,14 +797,6 @@ class _RoomMiniCard extends StatelessWidget {
   }
 }
 
-HubScene _contractScene(RunContractMetric metric) => switch (metric) {
-  RunContractMetric.distance => HubScene.road,
-  RunContractMetric.activeDays => HubScene.sunrise,
-  RunContractMetric.activityCount => HubScene.city,
-  RunContractMetric.longestRun => HubScene.summit,
-  RunContractMetric.routeCompletion => HubScene.map,
-};
-
 class _CoachMiniCard extends StatelessWidget {
   const _CoachMiniCard({required this.plan, required this.onTap});
 
@@ -813,7 +810,8 @@ class _CoachMiniCard extends StatelessWidget {
     final color = context.runNowPalette.secondary;
     return _MiniCard(
       onTap: onTap,
-      scene: HubScene.track,
+      scene: KeoScene.activityCount,
+      seed: plan.id,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -849,22 +847,35 @@ class _GameMiniCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = KeoSceneColors.resolve(
+      context.runNowPalette,
+      KeoScene.werewolf,
+    ).accent;
     return _MiniCard(
       onTap: onTap,
-      scene: HubScene.werewolf,
+      scene: KeoScene.werewolf,
+      seed: game.id,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Text('🐺', style: TextStyle(fontSize: 34)),
-              const Spacer(),
+              Text(
+                'MA SÓI',
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(width: 8),
               if (game.hasTodo)
                 Container(
                   width: 9,
                   height: 9,
-                  decoration: const BoxDecoration(
-                    color: RunNowGameTokens.gold,
+                  decoration: BoxDecoration(
+                    color: accent,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -1323,10 +1334,10 @@ class _Joiners extends ConsumerWidget {
                 Positioned(
                   left: i * _step,
                   child: DecoratedBox(
-                    // Viền tối tách các avatar chồng lên nhau trên tranh.
-                    decoration: const BoxDecoration(
+                    // Viền màu nền hình tách các avatar chồng lên nhau.
+                    decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: RunNowHubSceneTokens.shade,
+                      color: Theme.of(context).colorScheme.surface,
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(1.5),
