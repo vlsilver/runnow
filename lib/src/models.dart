@@ -20,6 +20,7 @@ enum ActivitySource {
   strava('strava'),
   runnow('runnow'),
   appleHealth('apple_health'),
+  healthConnect('health_connect'),
   garmin('garmin');
 
   const ActivitySource(this.value);
@@ -28,6 +29,7 @@ enum ActivitySource {
     return switch (value) {
       'runnow' => ActivitySource.runnow,
       'apple_health' => ActivitySource.appleHealth,
+      'health_connect' => ActivitySource.healthConnect,
       'garmin' => ActivitySource.garmin,
       _ => ActivitySource.strava,
     };

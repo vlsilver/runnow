@@ -9,6 +9,21 @@ void main() {
     expect(isCountedNonStravaRun(_runNow('short', 499.9)), isFalse);
   });
 
+  // Backend coi Health Connect (Android) là nguồn phụ như Apple Health: buổi
+  // ngắn hơn 500 m không tính, và không đi qua đường hydrate của Strava.
+  test('Health Connect is a secondary source, not Strava', () {
+    final short = ActivitySummary.fromMap({
+      'id': 'health-1',
+      'sportType': 'Run',
+      'startedAt': '2026-07-05T01:00:00Z',
+      'distanceMeters': 300,
+      'source': 'health_connect',
+    });
+    expect(short.source, ActivitySource.healthConnect);
+    expect(isPotentialStravaRecording(short), isFalse);
+    expect(isCountedNonStravaRun(short), isFalse);
+  });
+
   test(
     'journal keeps overlapping RunNow session and links preferred Strava',
     () {
