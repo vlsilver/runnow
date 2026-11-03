@@ -214,6 +214,12 @@ func (s *RunCardStore) RequestArt(ctx context.Context, uid, activityID string, r
 				return nil
 			}
 		}
+		snapshot, _ := card["snapshot"].(map[string]any)
+		if yields, err := s.yieldsToRunNow(ctx, uid, activityFact(activityID, snapshot)); err != nil {
+			return err
+		} else if yields {
+			return errRunCardDuplicate
+		}
 		lock := map[string]any{"status": "drawing", "style": style.Key, "styleVersion": style.Version, "attempt": attempt + 1, "requestedAt": now}
 		if req.PhotoPath != "" {
 			lock["photoPath"] = req.PhotoPath

@@ -294,6 +294,11 @@ func (s *RunCardStore) Get(ctx context.Context, uid, activityID string) (RunCard
 	if err := runCardEligible(act); err != nil {
 		return RunCardView{Reason: err.(*HTTPError).Code}, nil
 	}
+	if yields, err := s.yieldsToRunNow(ctx, uid, activityFact(activityID, act)); err != nil {
+		return RunCardView{}, err
+	} else if yields {
+		return RunCardView{Reason: errRunCardDuplicate.Code}, nil
+	}
 	km := runCardKm(number(act["distanceMeters"]))
 	return RunCardView{
 		Odds:   runCardOddList(runCardOdds(km)),
@@ -354,6 +359,11 @@ func (s *RunCardStore) Roll(ctx context.Context, uid, activityID string) (map[st
 		fact := activityFact(activityID, act)
 		if fact.StartedAt.IsZero() {
 			return errRunCardNotRun
+		}
+		if yields, err := s.yieldsToRunNow(ctx, uid, fact); err != nil {
+			return err
+		} else if yields {
+			return errRunCardDuplicate
 		}
 		if dup, err := s.overlapsCard(tx, uid, fact); err != nil || dup {
 			if err == nil {
@@ -426,6 +436,30 @@ func (s *RunCardStore) overlapsCard(tx *firestore.Transaction, uid string, fact 
 			if d.Ref.ID != fact.ID && sameRun(fact, activityFact(d.Ref.ID, snapshot)) {
 				return true, nil
 			}
+		}
+	}
+	return false, nil
+}
+
+// yieldsToRunNow là buổi Garmin có buổi 3i cùng lần chạy và buổi 3i đó lật được
+// thẻ. 3i đứng trước Garmin như khi tính buổi chính thức, nên thẻ và tranh của
+// lần chạy thuộc về buổi 3i. Đọc ngoài transaction để buổi chạy mới sync về
+// không làm transaction lật thẻ hay vẽ phải chạy lại.
+func (s *RunCardStore) yieldsToRunNow(ctx context.Context, uid string, fact ActivityFact) (bool, error) {
+	if fact.Source != "garmin" {
+		return false, nil
+	}
+	end := fact.StartedAt.Add(time.Duration(max(fact.ElapsedTimeSeconds, fact.MovingTimeSeconds, 1)) * time.Second)
+	docs, err := s.db.Collection("users").Doc(uid).Collection("activities").
+		Where("startedAt", ">=", fact.StartedAt.Add(-stravaDuplicateSearchWindow).UTC().Format(time.RFC3339Nano)).
+		Where("startedAt", "<", end.UTC().Format(time.RFC3339Nano)).Documents(ctx).GetAll()
+	if err != nil {
+		return false, err
+	}
+	for _, d := range docs {
+		data := d.Data()
+		if stringValue(data["source"]) == "runnow" && runCardEligible(data) == nil && sameRun(fact, activityFact(d.Ref.ID, data)) {
+			return true, nil
 		}
 	}
 	return false, nil

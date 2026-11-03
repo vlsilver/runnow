@@ -167,6 +167,35 @@ func TestEmulatorRunCardRejects(t *testing.T) {
 	h.want(h.call("u1", "POST", "/v1/activities/later/card", nil, ""), 200, "")
 }
 
+func TestEmulatorRunCardGarminYieldsToRunNow(t *testing.T) {
+	h := runCardHarness(t, 0)
+	// Cùng lần chạy: đồng hồ bấm trước 10 phút, 3i về trước hay sau đều thế.
+	seedRun(t, h, "u1", "garmin", map[string]any{"source": "garmin"})
+	seedRun(t, h, "u1", "runnow", map[string]any{"source": "runnow", "startedAt": "2026-10-24T23:10:00Z"})
+
+	r := h.call("u1", "GET", "/v1/activities/garmin/card", nil, "")
+	h.want(r, 200, "")
+	if r.body["reason"] != "card_duplicate" || r.body["odds"] != nil {
+		t.Fatalf("GET buổi Garmin = %s, muốn reason card_duplicate", r.raw)
+	}
+	h.want(h.call("u1", "POST", "/v1/activities/garmin/card", nil, ""), 409, "card_duplicate")
+	h.want(h.call("u1", "POST", "/v1/activities/runnow/card", nil, ""), 200, "")
+
+	// Buổi 3i đi bộ cùng giờ không lật được thẻ nên buổi Garmin vẫn lật.
+	seedRun(t, h, "u1", "garmin2", map[string]any{"source": "garmin", "startedAt": "2026-10-26T00:00:00Z"})
+	seedRun(t, h, "u1", "walk", map[string]any{"source": "runnow", "sportType": "Walk", "startedAt": "2026-10-26T00:00:00Z"})
+	h.want(h.call("u1", "POST", "/v1/activities/garmin2/card", nil, ""), 200, "")
+
+	// Thẻ Garmin lật trước khi buổi 3i về thì giữ nguyên, gửi lại vẫn trả thẻ.
+	seedRun(t, h, "u1", "runnow2", map[string]any{"source": "runnow", "startedAt": "2026-10-26T00:00:00Z"})
+	h.want(h.call("u1", "POST", "/v1/activities/garmin2/card", nil, ""), 200, "")
+	r = h.call("u1", "GET", "/v1/activities/garmin2/card", nil, "")
+	h.want(r, 200, "")
+	if r.body["card"] == nil {
+		t.Fatalf("GET thẻ Garmin đã lật = %s", r.raw)
+	}
+}
+
 func TestEmulatorRunCardShortRunMissIsFinal(t *testing.T) {
 	// Mỗi lần lật quay hai số: bậc rồi cơ hội. 200000 vừa chạm ngưỡng 1/5 nên
 	// trượt; lần lật sau quay 0 (ra thẻ) nhưng buổi đã trượt thì không quay lại.

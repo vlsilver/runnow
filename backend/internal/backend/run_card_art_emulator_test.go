@@ -407,3 +407,34 @@ func TestEmulatorRunCardArtRejects(t *testing.T) {
 		t.Fatalf("yêu cầu bị từ chối không được đẩy task: %d", len(e.tasks))
 	}
 }
+
+func TestEmulatorRunCardArtGarminYieldsToRunNow(t *testing.T) {
+	e := newArtEnv(t, map[string]any{})
+	garmin := map[string]any{"source": "garmin"}
+	// Thẻ Garmin lật khi buổi 3i chưa về. Buổi 3i lệch 10 phút, vẫn cùng lần chạy.
+	e.card("garmin", garmin)
+	seedRun(t, e.apiHarness, "u1", "runnow", map[string]any{"source": "runnow", "startedAt": "2026-10-24T23:10:00Z"})
+
+	e.want(e.ask("garmin", "anime_cel", ""), 409, "card_duplicate")
+	if len(e.tasks) != 0 || e.art("garmin") != nil {
+		t.Fatalf("buổi Garmin trùng 3i không được khoá vẽ: tasks=%d art=%v", len(e.tasks), e.art("garmin"))
+	}
+
+	// Buổi 3i đi bộ cùng giờ không lật được thẻ nên không giành quyền vẽ.
+	e.card("walked", map[string]any{"source": "garmin", "startedAt": "2026-10-26T00:00:00Z"})
+	seedRun(t, e.apiHarness, "u1", "walk", map[string]any{"source": "runnow", "sportType": "Walk", "startedAt": "2026-10-26T00:00:00Z"})
+	e.want(e.ask("walked", "anime_cel", ""), 200, "")
+
+	// Buổi Garmin không trùng gì thì vẽ bình thường.
+	e.card("alone", map[string]any{"source": "garmin", "startedAt": "2026-10-27T00:00:00Z"})
+	e.want(e.ask("alone", "anime_cel", ""), 200, "")
+
+	// Đã vẽ xong trước khi buổi 3i về: tranh giữ nguyên, bấm lại vẫn trả thẻ.
+	e.draw(e.lastTask())
+	seedRun(t, e.apiHarness, "u1", "late", map[string]any{"source": "runnow", "startedAt": "2026-10-27T00:00:00Z"})
+	tasks := len(e.tasks)
+	e.want(e.ask("alone", "anime_cel", ""), 200, "")
+	if len(e.tasks) != tasks || e.art("alone")["status"] != "done" {
+		t.Fatalf("thẻ đã có tranh phải giữ nguyên: tasks=%d art=%v", len(e.tasks), e.art("alone"))
+	}
+}
