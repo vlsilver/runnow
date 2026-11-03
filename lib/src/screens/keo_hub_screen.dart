@@ -252,9 +252,39 @@ class _LiveSection extends ConsumerWidget {
           );
         },
       ),
-      _ => const SizedBox.shrink(),
+      _ => _loading(context),
     };
   }
+
+  /// Giữ đúng chỗ của dòng mời, là thứ thường hiện nhất, để Live về không đẩy các
+  /// mục dưới. Web không mời nên không có gì để giữ.
+  Widget _loading(BuildContext context) {
+    if (kIsWeb) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        HubSectionHeader(title: 'Live', onMore: () => context.push('/live')),
+        Visibility(
+          visible: false,
+          maintainState: true,
+          maintainAnimation: true,
+          maintainSize: true,
+          child: _invite(context),
+        ),
+      ],
+    );
+  }
+
+  Widget _invite(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    child: _InviteRow(
+      title: 'Chưa ai đang chạy live',
+      subtitle: 'Chạm để bắt đầu buổi chạy của bạn.',
+      icon: Icons.directions_run_rounded,
+      // Sang tab Chạy như nút ở thanh dưới, không mở thêm màn ghi.
+      onTap: () => StatefulNavigationShell.of(context).goBranch(2),
+    ),
+  );
 
   Widget _content(BuildContext context, LiveBoard board) {
     final cards = <Widget>[
@@ -280,16 +310,7 @@ class _LiveSection extends ConsumerWidget {
           action: summary.isEmpty ? null : _MutedLine(summary),
         ),
         if (cards.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _InviteRow(
-              title: 'Chưa ai đang chạy live',
-              subtitle: 'Chạm để bắt đầu buổi chạy của bạn.',
-              icon: Icons.directions_run_rounded,
-              // Sang tab Chạy như nút ở thanh dưới, không mở thêm màn ghi.
-              onTap: () => StatefulNavigationShell.of(context).goBranch(2),
-            ),
-          )
+          _invite(context)
         else if (cards.length == 1)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -632,7 +653,7 @@ class _KeoSection extends ConsumerWidget {
           title: 'Kèo đang chạy',
           onMore: () => context.push('/contracts'),
           // Rỗng thì dòng mời bên dưới đã có nút đặt kèo.
-          action: cards.isEmpty ? null : _AddButton(onTap: create),
+          action: cards.isEmpty && !loading ? null : _AddButton(onTap: create),
         ),
         if (error != null && cards.isEmpty)
           _RetryRow(
@@ -643,7 +664,7 @@ class _KeoSection extends ConsumerWidget {
             },
           )
         else if (loading && cards.isEmpty)
-          const SizedBox(height: _MiniCard.height)
+          const SizedBox(height: _MiniCard.height + 12)
         else if (cards.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1226,7 +1247,7 @@ class _MyRankLine extends StatelessWidget {
   });
 
   /// Cao cỡ này khi có hạng, là trường hợp thường gặp, để giữ chỗ lúc đang tải.
-  static const usualHeight = 56.0;
+  static const usualHeight = 51.0;
 
   final ClubRankedMember? me;
   final String? gap;

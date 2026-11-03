@@ -71,6 +71,35 @@ LeaderboardEntry _runner(String name, double km) {
   );
 }
 
+RunContract _contract() {
+  final start = DateTime.now().toUtc().subtract(const Duration(days: 1));
+  return RunContract(
+    id: 'keo',
+    creatorUid: 'u2',
+    title: 'Kèo tuần',
+    template: RunContractTemplate.custom,
+    metric: RunContractMetric.distance,
+    targetValue: 20,
+    periodType: RunContractPeriodType.weekly,
+    startAt: start,
+    endAtExclusive: start.add(const Duration(days: 7)),
+    finalizeAt: start.add(const Duration(days: 8)),
+    status: RunContractStatus.active,
+    visibility: RunContractVisibility.club,
+    progressValue: 0,
+    participants: {
+      'u2': RunContractParticipant(
+        uid: 'u2',
+        progressValue: 0,
+        joinedAt: start,
+        updatedAt: start,
+      ),
+    },
+    createdAt: start,
+    updatedAt: start,
+  );
+}
+
 ClubCard _card(String id, String tier) =>
     ClubCard.fromJson({'ownerUid': 'u1', 'activityId': id, 'tier': tier})!;
 
@@ -90,6 +119,8 @@ Future<_Fetches> _pumpHome(
   String? uid,
   Stream<List<ClubCard>>? cardStream,
   double height = 100,
+  Stream<List<RunRoom>>? publicRooms,
+  Future<RunContractPage>? clubContracts,
 }) async {
   tester.view.physicalSize = Size(400, height);
   tester.view.devicePixelRatio = 1;
@@ -110,7 +141,7 @@ Future<_Fetches> _pumpHome(
           (ref) => Stream.value(const <LiveTrackingSession>[]),
         ),
         publicRunRoomsProvider.overrideWith(
-          (ref) => Stream.value(const <RunRoom>[]),
+          (ref) => publicRooms ?? Stream.value(const <RunRoom>[]),
         ),
         myRunRoomsProvider.overrideWith(
           (ref) => Stream.value(const <RunRoomMembership>[]),
@@ -122,9 +153,12 @@ Future<_Fetches> _pumpHome(
         totalKmLeaderboardProvider.overrideWith(
           (ref) => leaderboard ?? Future.value(const <LeaderboardEntry>[]),
         ),
-        hubClubContractsProvider.overrideWith((ref) async {
+        hubClubContractsProvider.overrideWith((ref) {
           fetches.contracts++;
-          return const RunContractPage(contracts: [], hasMore: false);
+          return clubContracts ??
+              Future.value(
+                const RunContractPage(contracts: [], hasMore: false),
+              );
         }),
         hubClubRunsProvider.overrideWith((ref) async {
           fetches.runs++;
@@ -216,6 +250,41 @@ void main() {
     expect(hearts.counted.where((target) => target.contains('rare')), isEmpty);
   });
 
+  testWidgets('kèo về sau không đẩy các mục dưới xuống', (tester) async {
+    final page = Completer<RunContractPage>();
+    await _pumpHome(tester, clubContracts: page.future);
+    final header = find.text('Thẻ nổi bật', skipOffstage: false);
+    final before = tester.getTopLeft(header).dy;
+
+    page.complete(RunContractPage(contracts: [_contract()], hasMore: false));
+    await _settle(tester);
+
+    expect(find.text('Kèo tuần', skipOffstage: false), findsOneWidget);
+    expect(tester.getTopLeft(header).dy, before);
+  });
+
+  testWidgets('Live về sau không đẩy các mục dưới xuống', (tester) async {
+    final rooms = StreamController<List<RunRoom>>();
+    addTearDown(rooms.close);
+    await _pumpHome(tester, publicRooms: rooms.stream);
+    final header = find.text('Kèo đang chạy', skipOffstage: false);
+    final before = tester.getTopLeft(header).dy;
+
+    rooms.add(const []);
+    await _settle(tester);
+
+    expect(find.text('Chưa ai đang chạy live', skipOffstage: false), findsOne);
+    expect(tester.getTopLeft(header).dy, before);
+  });
+
+  testWidgets('Live đang tải thì chưa mời chạy', (tester) async {
+    final rooms = StreamController<List<RunRoom>>();
+    addTearDown(rooms.close);
+    await _pumpHome(tester, publicRooms: rooms.stream, height: 1400);
+
+    expect(find.text('Chưa ai đang chạy live').hitTestable(), findsNothing);
+  });
+
   testWidgets('BXH về sau không đẩy mục Thẻ xuống', (tester) async {
     final board = Completer<List<LeaderboardEntry>>();
     await _pumpHome(tester, leaderboard: board.future, uid: 'an');
@@ -262,7 +331,9 @@ void main() {
       expect(tester.binding.hasScheduledFrame, isFalse);
     });
 
-    testWidgets('mở trang mà thẻ đã trên màn hình thì chạy luôn', (tester) async {
+    testWidgets('mở trang mà thẻ đã trên màn hình thì chạy luôn', (
+      tester,
+    ) async {
       await _pumpHome(tester, cards: [_card('a1', 'mythic')], height: 1400);
 
       expect(motion(tester), isTrue);
