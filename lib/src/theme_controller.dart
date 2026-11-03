@@ -13,8 +13,12 @@ class ThemeController extends ChangeNotifier {
     _element = initialElement;
     _appearance = initialAppearance;
     _darkTone = initialDarkTone;
-    if (loadFromStorage) _load();
+    loaded = loadFromStorage ? _load() : Future<void>.value();
   }
+
+  /// Xong khi đã đọc lựa chọn đã lưu. Chờ nó trước khi vẽ khung đầu thì người
+  /// đã đổi theme không thấy màu mặc định trượt sang màu của mình lúc mở app.
+  late final Future<void> loaded;
 
   static const _elementKey = 'runnow_theme_element';
   static const _appearanceKey = 'runnow_theme_appearance';
@@ -78,12 +82,20 @@ class ThemeController extends ChangeNotifier {
   }
 
   Future<void> _load() async {
-    final values = await Future.wait([
-      _storage.read(key: _elementKey),
-      _storage.read(key: _appearanceKey),
-      _storage.read(key: _darkToneKey),
-      _storage.read(key: _paletteVersionKey),
-    ]);
+    final List<String?> values;
+    try {
+      values = await Future.wait([
+        _storage.read(key: _elementKey),
+        _storage.read(key: _appearanceKey),
+        _storage.read(key: _darkToneKey),
+        _storage.read(key: _paletteVersionKey),
+      ]);
+    } catch (error, stack) {
+      // App chờ bước này trước khi vẽ, nên keychain lỗi thì mở bằng theme mặc
+      // định chứ không kẹt ở màn trắng.
+      debugPrint('Theme load failed: $error\n$stack');
+      return;
+    }
     final loadedElement = switch (values[0]) {
       'metal' => RunNowElement.metal,
       'wood' => RunNowElement.wood,
