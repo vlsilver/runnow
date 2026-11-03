@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -39,11 +40,39 @@ import 'package:myrun/src/widgets/keo_scene.dart';
 /// Trang đầu của app: ai trong club đang chạy, các kèo đang diễn ra, ai dẫn
 /// BXH tuần, thẻ vừa khoe, rồi các buổi chạy gần đây. Mục nào rỗng thì ẩn, riêng Kèo và Thẻ rỗng
 /// thì còn một dòng mời đặt kèo, khoe thẻ.
-class KeoHubScreen extends ConsumerWidget {
+class KeoHubScreen extends ConsumerStatefulWidget {
   const KeoHubScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<KeoHubScreen> createState() => _KeoHubScreenState();
+}
+
+class _KeoHubScreenState extends ConsumerState<KeoHubScreen> {
+  late final AppLifecycleListener _lifecycle;
+
+  /// Các danh sách này đọc một lần qua API, không tự cập nhật như stream.
+  void _invalidateFetchedLists() {
+    ref.invalidate(hubClubContractsProvider);
+    ref.invalidate(gameListProvider);
+    ref.invalidate(hubClubRunsProvider);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // onRestart chỉ chạy khi app từ nền lên: kéo màn thông báo hay hộp thoại
+    // hệ thống thì không tải lại.
+    _lifecycle = AppLifecycleListener(onRestart: _invalidateFetchedLists);
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final connected = ref.watch(stravaConnectionProvider);
     final sync = ref.watch(syncControllerProvider);
     return Scaffold(
@@ -51,9 +80,7 @@ class KeoHubScreen extends ConsumerWidget {
         bottom: false,
         child: RefreshIndicator(
           onRefresh: () async {
-            ref.invalidate(hubClubContractsProvider);
-            ref.invalidate(gameListProvider);
-            ref.invalidate(hubClubRunsProvider);
+            _invalidateFetchedLists();
             ref.invalidate(stepLeaderboardDocsProvider);
             ref.invalidate(publicRunRoomsProvider);
             ref.invalidate(homeDigestProvider);
@@ -65,6 +92,9 @@ class KeoHubScreen extends ConsumerWidget {
                 );
           },
           child: ListView(
+            // Trang có ít mục và mỗi mục có giới hạn, nên giữ hết. Mục bị bỏ khi
+            // cuộn xa thì provider autoDispose của nó huỷ, cuộn về lại gọi API.
+            scrollCacheExtent: const ScrollCacheExtent.pixels(4000),
             padding: const EdgeInsets.fromLTRB(0, 6, 0, 130),
             children: [
               Padding(
