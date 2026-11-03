@@ -328,10 +328,12 @@ type garminPermissionChange struct {
 }
 
 // garminPush là một lần Garmin đẩy về. Một lần đẩy có thể chứa nhiều user.
-// Loại khác (activityDetails, moveIQActivities…) bị bỏ qua.
+// Loại khác (activityFiles, moveIQActivities…) bị bỏ qua. ActivityDetails đọc
+// từng phần tử sau, để một phần tử sai dạng không làm hỏng cả push.
 type garminPush struct {
 	Activities                []garminActivity         `json:"activities"`
 	ManuallyUpdatedActivities []garminActivity         `json:"manuallyUpdatedActivities"`
+	ActivityDetails           []json.RawMessage        `json:"activityDetails"`
 	Deregistrations           []garminUserRef          `json:"deregistrations"`
 	UserPermissionsChange     []garminPermissionChange `json:"userPermissionsChange"`
 }
@@ -490,7 +492,7 @@ func (s *GarminService) HandlePush(ctx context.Context, push garminPush) error {
 	now := s.now()
 	touched := map[string][]time.Time{}
 	stored, skipped := 0, 0
-	store := func(a garminActivity) error {
+	store := func(a garminActivity, detail map[string]any) error {
 		uid, err := uidFor(a.UserID)
 		if err != nil {
 			return err
@@ -499,6 +501,9 @@ func (s *GarminService) HandlePush(ctx context.Context, push garminPush) error {
 		if uid == "" || !ok {
 			skipped++
 			return nil
+		}
+		for k, v := range detail {
+			doc[k] = v
 		}
 		// Trùng với một buổi Strava đang có thì đánh dấu để leaderboard không đếm đôi.
 		if a.DistanceInMeters >= 500 {
@@ -520,7 +525,24 @@ func (s *GarminService) HandlePush(ctx context.Context, push garminPush) error {
 		return nil
 	}
 	for _, a := range append(push.Activities, push.ManuallyUpdatedActivities...) {
-		if err := store(a); err != nil {
+		if err := store(a, nil); err != nil {
+			return err
+		}
+	}
+	for _, raw := range push.ActivityDetails {
+		detail, keys, err := decodeGarminDetail(raw)
+		if err != nil {
+			// Garmin gửi lại thì vẫn sai dạng như vậy, nên ghi log rồi đi tiếp thay vì trả lỗi.
+			slog.WarnContext(ctx, "garmin.detail_invalid", "error", err)
+			skipped++
+			continue
+		}
+		a := detail.activity()
+		fields := garminDetailFields(detail.Samples, a.StartTimeInSeconds)
+		// Chỉ có tên trường và số lượng. Log này kiểm tên trường trên dữ liệu thật.
+		slog.InfoContext(ctx, "garmin.details", "keys", keys, "sampleKeys", garminSampleKeys(detail.Samples),
+			"samples", len(detail.Samples), "routePoints", len(anyList(fields["routePoints"])), "splits", len(anyList(fields["splits"])))
+		if err := store(a, fields); err != nil {
 			return err
 		}
 	}

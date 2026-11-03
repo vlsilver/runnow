@@ -208,6 +208,62 @@ func TestEmulatorGarminConnectThenPushStoresRuns(t *testing.T) {
 
 // Garmin trả về không kèm verifier là không cấp quyền: báo app và để lại dấu
 // vết, không đổi token.
+// Bản chi tiết có thể về trước hay sau bản số tổng, và về lại nhiều lần: doc vẫn
+// đủ trường, lần số tổng về sau không xoá tuyến. Một phần tử sai dạng không được
+// chặn các buổi đi cùng push.
+func TestEmulatorGarminDetailsFillRouteAndCharts(t *testing.T) {
+	h := newGarminHarness(t)
+	h.connect(t, "u1")
+	start := time.Date(2026, 10, 20, 23, 0, 0, 0, time.UTC)
+	const id = 21468990750
+	at := func(seconds int64) int64 { return start.Unix() + seconds }
+	detail := fmt.Sprintf(`{"activityDetails":[
+		{"userId":"g-1","summaryId":"s-%[1]d-detail","activityId":%[1]d,
+		 "summary":{"activityId":%[1]d,"activityType":"RUNNING","activityName":"Chạy sáng","startTimeInSeconds":%[2]d,"durationInSeconds":600,"distanceInMeters":1500},
+		 "samples":[
+			{"startTimeInSeconds":%[2]d,"latitudeInDegree":21.01,"longitudeInDegree":105.81,"totalDistanceInMeters":0,"movingDurationInSeconds":0,"heartRate":130},
+			{"startTimeInSeconds":%[3]d,"latitudeInDegree":21.02,"longitudeInDegree":105.82,"totalDistanceInMeters":1200,"movingDurationInSeconds":360,"heartRate":150},
+			{"startTimeInSeconds":%[4]d,"latitudeInDegree":21.03,"longitudeInDegree":105.83,"totalDistanceInMeters":1500,"movingDurationInSeconds":480,"heartRate":160}
+		 ]}]}`, id, at(0), at(360), at(480))
+	h.push(t, detail)
+
+	path := fmt.Sprintf("users/u1/activities/garmin-%d", id)
+	doc := h.data(t, path)
+	if doc == nil || doc["startedAt"] != start.Format(time.RFC3339Nano) || doc["source"] != "garmin" || doc["hydrated"] != true {
+		t.Fatalf("doc khi chi tiết về trước = %v", doc)
+	}
+	route, _ := doc["routePoints"].([]any)
+	if len(route) != 3 || doc["routeSketch"] == nil {
+		t.Fatalf("routePoints = %v, routeSketch = %v", doc["routePoints"], doc["routeSketch"])
+	}
+	splits, _ := doc["splits"].([]any)
+	if len(splits) != 2 {
+		t.Fatalf("splits = %v", doc["splits"])
+	}
+	streams, _ := doc["streams"].(map[string]any)
+	if streams["velocity_smooth"] == nil || streams["heartrate"] == nil || streams["distance"] == nil {
+		t.Fatalf("streams = %v", doc["streams"])
+	}
+
+	h.push(t, `{"activities":[`+garminRunJSON("g-1", id, "RUNNING", start, 1500)+`]}`)
+	doc = h.data(t, path)
+	if route, _ := doc["routePoints"].([]any); len(route) != 3 {
+		t.Fatalf("bản số tổng về sau làm mất tuyến: %v", doc["routePoints"])
+	}
+
+	h.push(t, detail)
+	if route, _ := h.data(t, path)["routePoints"].([]any); len(route) != 3 {
+		t.Fatalf("gửi lại chi tiết: %v", route)
+	}
+
+	mixed := `{"activities":[` + garminRunJSON("g-1", 21468990751, "RUNNING", start.Add(5*time.Hour), 5000) + `],` +
+		`"activityDetails":[{"userId":"g-1","summary":"không phải object"}]}`
+	h.push(t, mixed)
+	if h.data(t, "users/u1/activities/garmin-21468990751") == nil {
+		t.Fatal("phần tử chi tiết sai dạng chặn mất buổi đi cùng")
+	}
+}
+
 func TestEmulatorGarminCallbackWithoutVerifierIsReported(t *testing.T) {
 	h := newGarminHarness(t)
 	ctx := context.Background()
