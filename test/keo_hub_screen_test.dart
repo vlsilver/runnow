@@ -4,6 +4,7 @@ import 'package:firebase_auth_mocks/firebase_auth_mocks.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/club_card.dart';
 import 'package:myrun/src/achievements/club_card_widgets.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
@@ -88,8 +89,9 @@ Future<_Fetches> _pumpHome(
   Future<List<LeaderboardEntry>>? leaderboard,
   String? uid,
   Stream<List<ClubCard>>? cardStream,
+  double height = 100,
 }) async {
-  tester.view.physicalSize = const Size(400, 100);
+  tester.view.physicalSize = Size(400, height);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final fetches = _Fetches();
@@ -243,6 +245,62 @@ void main() {
 
     expect(find.byType(ClubCardThumb, skipOffstage: false), findsOneWidget);
     expect(position.maxScrollExtent, before);
+  });
+
+  group('hiệu ứng thẻ ở mục Thẻ nổi bật', () {
+    bool motion(WidgetTester tester) => TickerMode.valuesOf(
+      tester.element(find.byType(AchievementCard, skipOffstage: false)),
+    ).enabled;
+
+    ScrollPosition pagePosition(WidgetTester tester) =>
+        tester.state<ScrollableState>(find.byType(Scrollable).first).position;
+
+    testWidgets('thẻ ngoài màn hình không giữ app vẽ liên tục', (tester) async {
+      await _pumpHome(tester, cards: [_card('a1', 'mythic')]);
+
+      expect(motion(tester), isFalse);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    });
+
+    testWidgets('mở trang mà thẻ đã trên màn hình thì chạy luôn', (tester) async {
+      await _pumpHome(tester, cards: [_card('a1', 'mythic')], height: 1400);
+
+      expect(motion(tester), isTrue);
+    });
+
+    testWidgets('cuộn tới thẻ thì chạy, đang cuộn thì dừng', (tester) async {
+      await _pumpHome(tester, cards: [_card('a1', 'mythic')]);
+      final position = pagePosition(tester);
+      final header = find.text('Thẻ nổi bật', skipOffstage: false);
+
+      position.jumpTo(tester.getTopLeft(header).dy + position.pixels);
+      await _settle(tester);
+      expect(motion(tester), isTrue);
+
+      final drag = await tester.startGesture(const Offset(200, 50));
+      await drag.moveBy(const Offset(0, -30));
+      await _settle(tester);
+      expect(motion(tester), isFalse);
+
+      await drag.up();
+      await tester.pump(const Duration(seconds: 2));
+      await _settle(tester);
+      expect(motion(tester), isTrue);
+    });
+
+    testWidgets('cuộn khỏi thẻ thì dừng hẳn', (tester) async {
+      await _pumpHome(tester, cards: [_card('a1', 'mythic')]);
+      final position = pagePosition(tester);
+      final header = find.text('Thẻ nổi bật', skipOffstage: false);
+
+      position.jumpTo(tester.getTopLeft(header).dy + position.pixels);
+      await _settle(tester);
+      position.jumpTo(0);
+      await _settle(tester);
+
+      expect(motion(tester), isFalse);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    });
   });
 
   testWidgets('kéo màn thông báo xuống rồi thả không tải lại', (tester) async {

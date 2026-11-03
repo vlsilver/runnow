@@ -50,6 +50,46 @@ class KeoHubScreen extends ConsumerStatefulWidget {
 class _KeoHubScreenState extends ConsumerState<KeoHubScreen> {
   late final AppLifecycleListener _lifecycle;
 
+  /// Vệt sáng thẻ Thần thoại bắt cả trang vẽ lại mỗi frame, nên chỉ chạy khi mục
+  /// Thẻ đang hiện trên màn hình và trang đứng yên.
+  final _cardsMotion = ValueNotifier(false);
+  final _cardsKey = GlobalKey();
+  var _scrolling = false;
+
+  bool _onScroll(ScrollNotification notification) {
+    if (notification is ScrollStartNotification) {
+      _scrolling = true;
+    } else if (notification is ScrollEndNotification) {
+      _scrolling = false;
+    } else {
+      return false;
+    }
+    _syncCardsMotionAfterFrame();
+    return false;
+  }
+
+  /// Mục phía trên có dữ liệu thì mục Thẻ dời chỗ mà trang không cuộn.
+  bool _onMetricsChanged(ScrollMetricsNotification notification) {
+    _syncCardsMotionAfterFrame();
+    return false;
+  }
+
+  /// Hai thông báo trên có thể phát giữa lúc layout: chưa đo được vị trí, cũng
+  /// chưa được rebuild.
+  void _syncCardsMotionAfterFrame() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _cardsMotion.value = !_scrolling && _cardsOnScreen();
+    });
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
+  bool _cardsOnScreen() {
+    final box = _cardsKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return false;
+    final top = box.localToGlobal(Offset.zero).dy;
+    return top < MediaQuery.sizeOf(context).height && top + box.size.height > 0;
+  }
+
   /// Các danh sách này đọc một lần qua API, không tự cập nhật như stream.
   void _invalidateFetchedLists() {
     ref.invalidate(hubClubContractsProvider);
@@ -68,6 +108,7 @@ class _KeoHubScreenState extends ConsumerState<KeoHubScreen> {
   @override
   void dispose() {
     _lifecycle.dispose();
+    _cardsMotion.dispose();
     super.dispose();
   }
 
@@ -91,35 +132,41 @@ class _KeoHubScreenState extends ConsumerState<KeoHubScreen> {
                       const RunContractPage(contracts: [], hasMore: false),
                 );
           },
-          child: ListView(
-            // Trang có ít mục và mỗi mục có giới hạn, nên giữ hết. Mục bị bỏ khi
-            // cuộn xa thì provider autoDispose của nó huỷ, cuộn về lại gọi API.
-            scrollCacheExtent: const ScrollCacheExtent.pixels(4000),
-            padding: const EdgeInsets.fromLTRB(0, 6, 0, 130),
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 12, 14),
-                child: Row(
-                  children: [
-                    const Spacer(),
-                    if (connected)
-                      ContractSyncAction(
-                        syncing: sync.syncing,
-                        synced: sync.lastSyncSucceeded,
-                        onPressed: () => ref
-                            .read(syncControllerProvider)
-                            .startBackgroundSync(force: true),
-                      ),
-                  ],
-                ),
+          child: NotificationListener<ScrollMetricsNotification>(
+            onNotification: _onMetricsChanged,
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _onScroll,
+              child: ListView(
+                // Trang có ít mục và mỗi mục có giới hạn, nên giữ hết. Mục bị bỏ khi
+                // cuộn xa thì provider autoDispose của nó huỷ, cuộn về lại gọi API.
+                scrollCacheExtent: const ScrollCacheExtent.pixels(4000),
+                padding: const EdgeInsets.fromLTRB(0, 6, 0, 130),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 12, 14),
+                    child: Row(
+                      children: [
+                        const Spacer(),
+                        if (connected)
+                          ContractSyncAction(
+                            syncing: sync.syncing,
+                            synced: sync.lastSyncSucceeded,
+                            onPressed: () => ref
+                                .read(syncControllerProvider)
+                                .startBackgroundSync(force: true),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const HomeDigestCard(),
+                  const _LiveSection(),
+                  const _KeoSection(),
+                  const _RankSection(),
+                  _CardsSection(key: _cardsKey, motion: _cardsMotion),
+                  const _RunsSection(),
+                ],
               ),
-              const HomeDigestCard(),
-              const _LiveSection(),
-              const _KeoSection(),
-              const _RankSection(),
-              const _CardsSection(),
-              const _RunsSection(),
-            ],
+            ),
           ),
         ),
       ),
@@ -1273,7 +1320,10 @@ class _RunsSection extends ConsumerWidget {
 
 /// Thẻ club đang khoe, xếp ngang: bậc hiếm cao trước, rồi nhiều tim.
 class _CardsSection extends ConsumerWidget {
-  const _CardsSection();
+  const _CardsSection({required this.motion, super.key});
+
+  /// Thẻ có được chạy hiệu ứng lúc này không.
+  final ValueListenable<bool> motion;
 
   static const _shown = 10;
   static const _thumbWidth = 150.0;
@@ -1312,18 +1362,23 @@ class _CardsSection extends ConsumerWidget {
             ),
           )
         else
-          SizedBox(
-            height: clubCardThumbHeight(_thumbWidth),
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              // List cao đúng bằng thẻ: cắt thì bóng thẻ chỉ còn lộ ở bốn góc
-              // ngoài đường bo, trông như viền tối vuông.
-              clipBehavior: Clip.none,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: items.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 12),
-              itemBuilder: (context, i) =>
-                  ClubCardThumb(item: items[i], width: _thumbWidth),
+          ValueListenableBuilder(
+            valueListenable: motion,
+            builder: (context, enabled, child) =>
+                TickerMode(enabled: enabled, child: child!),
+            child: SizedBox(
+              height: clubCardThumbHeight(_thumbWidth),
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                // List cao đúng bằng thẻ: cắt thì bóng thẻ chỉ còn lộ ở bốn góc
+                // ngoài đường bo, trông như viền tối vuông.
+                clipBehavior: Clip.none,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                itemCount: items.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 12),
+                itemBuilder: (context, i) =>
+                    ClubCardThumb(item: items[i], width: _thumbWidth),
+              ),
             ),
           ),
       ],

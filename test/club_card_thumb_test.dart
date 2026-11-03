@@ -30,9 +30,10 @@ class _FakeCheers implements LiveCheerRepository {
 }
 
 void main() {
-  testWidgets('thẻ Thần thoại thu nhỏ không giữ app vẽ liên tục', (
-    tester,
-  ) async {
+  Future<void> pumpMythicThumb(
+    WidgetTester tester, {
+    required bool motion,
+  }) async {
     final mythic = ClubCard.fromJson({
       'ownerUid': 'u1',
       'activityId': 'a1',
@@ -48,14 +49,32 @@ void main() {
         ],
         child: MaterialApp(
           home: Scaffold(
-            body: Center(child: ClubCardThumb(item: mythic, width: 180)),
+            body: Center(
+              child: TickerMode(
+                enabled: motion,
+                child: ClubCardThumb(item: mythic, width: 180),
+              ),
+            ),
           ),
         ),
       ),
     );
     await tester.pump();
     await tester.pump();
+  }
 
-    expect(tester.binding.hasScheduledFrame, isFalse);
+  testWidgets('thẻ Thần thoại thu nhỏ có vệt sáng chạy', (tester) async {
+    await pumpMythicThumb(tester, motion: true);
+
+    expect(tester.binding.hasScheduledFrame, isTrue);
   });
+
+  testWidgets(
+    'tắt ticker thì thẻ Thần thoại thu nhỏ không giữ app vẽ liên tục',
+    (tester) async {
+      await pumpMythicThumb(tester, motion: false);
+
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    },
+  );
 }

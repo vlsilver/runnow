@@ -179,9 +179,7 @@ class _CardFace extends StatelessWidget {
         GameCardScaled(
           width: width,
           size: achievementCardSize,
-          // Vệt sáng Thần thoại chỉ chạy ở màn xem: ở đây nó bắt cả trang vẽ
-          // lại mỗi frame, kể cả lúc thẻ đã cuộn khỏi màn hình.
-          child: AchievementCard(data: data, animate: false),
+          child: AchievementCard(data: data),
         ),
         Positioned(
           top: inset,
