@@ -20,11 +20,16 @@ import 'package:myrun/src/training_plan/training_plan_models.dart';
 import 'package:myrun/src/training_plan/training_plan_repository.dart';
 
 class _FakeHearts implements HeartRepository {
+  final counted = <String>[];
+
   @override
   Stream<Hearts> watch(String target) => Stream.value(Hearts.empty);
 
   @override
-  Future<int> count(String target) async => 0;
+  Future<int> count(String target) async {
+    counted.add(target);
+    return 0;
+  }
 
   @override
   Future<void> like(String target) async {}
@@ -41,6 +46,9 @@ class _FakeCheers implements LiveCheerRepository {
   Future<void> send(String sessionId, String emoji) async {}
 }
 
+ClubCard _card(String id, String tier) =>
+    ClubCard.fromJson({'ownerUid': 'u1', 'activityId': id, 'tier': tier})!;
+
 /// Số lần trang chủ gọi từng nguồn danh sách.
 class _Fetches {
   var contracts = 0;
@@ -49,7 +57,11 @@ class _Fetches {
 
 /// Dựng trang chủ trong khung thấp: mục Kèo ở đầu và mục Buổi chạy ở cuối
 /// không cùng nằm trong vùng dựng sẵn mặc định của ListView.
-Future<_Fetches> _pumpHome(WidgetTester tester) async {
+Future<_Fetches> _pumpHome(
+  WidgetTester tester, {
+  List<ClubCard>? cards,
+  _FakeHearts? hearts,
+}) async {
   tester.view.physicalSize = const Size(400, 100);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -87,15 +99,9 @@ Future<_Fetches> _pumpHome(WidgetTester tester) async {
           return const <ClubRunItem>[];
         }),
         clubCardsProvider.overrideWith(
-          (ref) => Stream.value([
-            ClubCard.fromJson({
-              'ownerUid': 'u1',
-              'activityId': 'a1',
-              'tier': 'rare',
-            })!,
-          ]),
+          (ref) => Stream.value(cards ?? [_card('a1', 'rare')]),
         ),
-        heartRepositoryProvider.overrideWithValue(_FakeHearts()),
+        heartRepositoryProvider.overrideWithValue(hearts ?? _FakeHearts()),
         liveCheerRepositoryProvider.overrideWithValue(_FakeCheers()),
         stravaConnectionProvider.overrideWithValue(false),
         syncControllerProvider.overrideWith(
@@ -161,6 +167,21 @@ void main() {
     ]);
     expect(fetches.contracts, 2);
     expect(fetches.runs, 2);
+  });
+
+  testWidgets('chỉ đếm tim các thẻ còn có thể lọt 10 thẻ đầu', (tester) async {
+    final hearts = _FakeHearts();
+    await _pumpHome(
+      tester,
+      hearts: hearts,
+      cards: [
+        for (var i = 0; i < 10; i++) _card('legend$i', 'legendary'),
+        for (var i = 0; i < 5; i++) _card('rare$i', 'rare'),
+      ],
+    );
+
+    expect(hearts.counted, hasLength(10));
+    expect(hearts.counted.where((target) => target.contains('rare')), isEmpty);
   });
 
   testWidgets('kéo màn thông báo xuống rồi thả không tải lại', (tester) async {

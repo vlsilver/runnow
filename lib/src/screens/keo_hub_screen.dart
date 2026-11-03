@@ -1272,7 +1272,7 @@ class _CardsSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final cards = ref.watch(rankedClubCardsProvider);
+    final cards = ref.watch(topClubCardsProvider(_shown));
     if (cards.error case final error?) {
       debugPrint('Không tải được thẻ của club: $error');
       return _RetryRow(
@@ -1282,7 +1282,7 @@ class _CardsSection extends ConsumerWidget {
     }
     // Chưa tải xong thì chưa hiện gì, để dòng mời không nháy lên rồi biến mất.
     if (!cards.hasValue) return const SizedBox.shrink();
-    final items = cards.requireValue.take(_shown).toList();
+    final items = cards.requireValue;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

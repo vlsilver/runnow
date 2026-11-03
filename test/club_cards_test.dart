@@ -1,11 +1,93 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/achievements/club_card.dart';
 import 'package:myrun/src/achievements/run_card_collection.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
+import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/games/game_role_card.dart';
+import 'package:myrun/src/hearts.dart';
+
+class _CountingHearts implements HeartRepository {
+  _CountingHearts(this.hearts);
+
+  final Map<String, int> hearts;
+  final counted = <String>[];
+
+  @override
+  Stream<Hearts> watch(String target) => Stream.value(Hearts.empty);
+
+  @override
+  Future<int> count(String target) async {
+    counted.add(target);
+    return hearts[target] ?? 0;
+  }
+
+  @override
+  Future<void> like(String target) async {}
+
+  @override
+  Future<void> unlike(String target) async {}
+}
+
+ClubCard _card(String id, String tier) =>
+    ClubCard.fromJson({'ownerUid': 'u1', 'activityId': id, 'tier': tier})!;
 
 void main() {
+  test(
+    'top thẻ: bậc trước, tim sau; thẻ bậc thấp nhiều tim không chen vào',
+    () async {
+      final repository = _CountingHearts({
+        'card_u1_a': 1,
+        'card_u1_b': 5,
+        'card_u1_r': 99,
+      });
+      final container = ProviderContainer(
+        overrides: [
+          clubCardsProvider.overrideWith(
+            (ref) => Stream.value([
+              _card('r', 'rare'),
+              _card('a', 'legendary'),
+              _card('m', 'mythic'),
+              _card('b', 'legendary'),
+            ]),
+          ),
+          heartRepositoryProvider.overrideWithValue(repository),
+        ],
+      );
+      addTearDown(container.dispose);
+      final provider = topClubCardsProvider(2);
+      final subscription = container.listen(provider, (_, _) {});
+      addTearDown(subscription.close);
+
+      final top = await container.read(provider.future);
+
+      expect([for (final item in top) item.key], ['m', 'b']);
+      expect(repository.counted, isNot(contains('card_u1_r')));
+    },
+  );
+
+  group('clubCardsDecidingTop', () {
+    final mythic = _card('m', 'mythic');
+    final legendA = _card('a', 'legendary');
+    final legendB = _card('b', 'legendary');
+    final rare = _card('r', 'rare');
+    final all = [rare, legendA, mythic, legendB];
+
+    test('bỏ thẻ dưới bậc của thẻ cuối top', () {
+      expect(clubCardsDecidingTop(all, 2), [legendA, mythic, legendB]);
+    });
+
+    test('top chỉ gồm bậc cao nhất thì bỏ các bậc còn lại', () {
+      expect(clubCardsDecidingTop(all, 1), [mythic]);
+    });
+
+    test('ít thẻ hơn hay vừa đủ top thì giữ hết', () {
+      expect(clubCardsDecidingTop(all, 4), all);
+      expect(clubCardsDecidingTop(all, 10), all);
+    });
+  });
+
   test(
     'thẻ khoe: id là activityId, có chủ thẻ, tranh và không có đường chạy',
     () {

@@ -78,20 +78,39 @@ final clubCardsProvider = StreamProvider.autoDispose<List<ClubCard>>((ref) {
       );
 });
 
-/// Thẻ club xếp theo [rankClubCards]. Số tim đếm một lần mỗi khi danh sách
+/// Đếm tim rồi xếp theo [rankClubCards]. Số tim đếm một lần mỗi khi danh sách
 /// thẻ đổi chứ không theo dõi, để thả tim không làm thẻ nhảy chỗ ngay dưới
 /// tay. Một lượt đếm lỗi thì cả danh sách lỗi, để mục thẻ hiện nút thử lại.
-final rankedClubCardsProvider = FutureProvider.autoDispose<List<ClubCard>>((
-  ref,
+Future<List<ClubCard>> _rankByHearts(
+  HeartRepository repository,
+  Iterable<ClubCard> cards,
 ) async {
-  final cards = await ref.watch(clubCardsProvider.future);
-  final repository = ref.watch(heartRepositoryProvider);
   String target(ClubCard item) => cardHeartTarget(item.ownerUid, item.key);
   final targets = [for (final item in cards) target(item)];
   final counts = await Future.wait(targets.map(repository.count));
   final hearts = Map.fromIterables(targets, counts);
   return rankClubCards(cards, (item) => hearts[target(item)]!);
+}
+
+/// Toàn bộ thẻ club đã xếp, cho trang Thẻ của club.
+final rankedClubCardsProvider = FutureProvider.autoDispose<List<ClubCard>>((
+  ref,
+) async {
+  final cards = await ref.watch(clubCardsProvider.future);
+  return _rankByHearts(ref.watch(heartRepositoryProvider), cards);
 });
+
+/// Vài thẻ đầu của [rankedClubCardsProvider], cho mục Thẻ ở trang chủ. Chỉ đếm
+/// tim các thẻ còn có thể lọt top: mỗi lần đếm là một lượt gọi Firestore.
+final topClubCardsProvider = FutureProvider.autoDispose
+    .family<List<ClubCard>, int>((ref, limit) async {
+      final cards = await ref.watch(clubCardsProvider.future);
+      final ranked = await _rankByHearts(
+        ref.watch(heartRepositoryProvider),
+        clubCardsDecidingTop(cards, limit),
+      );
+      return ranked.take(limit).toList();
+    });
 
 /// Tỉ lệ sẽ quay, hoặc lý do buổi này không lật được. Chỉ đọc khi chưa có thẻ.
 final runCardViewProvider = FutureProvider.autoDispose

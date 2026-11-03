@@ -68,6 +68,16 @@ class ClubCard {
 CollectedCard? ownClubCard(Iterable<CollectedCard> mine, ClubCard item) =>
     mine.where((card) => card.id == item.card.id).firstOrNull;
 
+/// Các thẻ còn có thể lọt [limit] thẻ đầu của [rankClubCards]. Bậc hiếm xếp
+/// trước số tim, nên thẻ dưới bậc của thẻ thứ [limit] không cần đếm tim.
+Iterable<ClubCard> clubCardsDecidingTop(Iterable<ClubCard> cards, int limit) {
+  final tiers = [for (final item in cards) item.card.tier.index]
+    ..sort((a, b) => b.compareTo(a));
+  if (tiers.length <= limit) return cards;
+  final lowest = tiers[limit - 1];
+  return cards.where((item) => item.card.tier.index >= lowest);
+}
+
 /// Bậc hiếm cao trước; cùng bậc thì nhiều tim trước; vẫn bằng thì thẻ khoe
 /// mới trước. So cả sharedAt vì List.sort không giữ thứ tự sẵn có của phần tử
 /// bằng nhau.
