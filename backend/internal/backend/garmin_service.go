@@ -490,7 +490,7 @@ func (s *GarminService) HandlePush(ctx context.Context, push garminPush) error {
 	now := s.now()
 	touched := map[string][]time.Time{}
 	stored, skipped := 0, 0
-	for _, a := range append(push.Activities, push.ManuallyUpdatedActivities...) {
+	store := func(a garminActivity) error {
 		uid, err := uidFor(a.UserID)
 		if err != nil {
 			return err
@@ -498,7 +498,7 @@ func (s *GarminService) HandlePush(ctx context.Context, push garminPush) error {
 		doc, ok := garminActivityDoc(a, now)
 		if uid == "" || !ok {
 			skipped++
-			continue
+			return nil
 		}
 		// Trùng với một buổi Strava đang có thì đánh dấu để leaderboard không đếm đôi.
 		if a.DistanceInMeters >= 500 {
@@ -517,6 +517,12 @@ func (s *GarminService) HandlePush(ctx context.Context, push garminPush) error {
 		started, _ := time.Parse(time.RFC3339Nano, stringValue(doc["startedAt"]))
 		touched[uid] = append(touched[uid], started)
 		stored++
+		return nil
+	}
+	for _, a := range append(push.Activities, push.ManuallyUpdatedActivities...) {
+		if err := store(a); err != nil {
+			return err
+		}
 	}
 	for uid, instants := range touched {
 		// Cause kèm thời điểm: Cloud Tasks giữ tên task đã chạy một lúc, nên
