@@ -52,7 +52,6 @@ import 'package:myrun/src/widgets/activity_overview.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
-import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -475,9 +474,9 @@ class _AuthenticatedSessionState extends ConsumerState<_AuthenticatedSession> {
 
   @override
   Widget build(BuildContext context) {
-    // Coordinator kèo chạy 1 lần khi user ĐÃ đăng nhập — KHÔNG gate theo Strava:
-    // user chỉ dùng Apple Health / tự-track cũng phải được auto-link + recalc + tự
-    // chốt kèo quá hạn (đa-đối-tác: ai cũng tạo/tham gia kèo, không riêng Strava).
+    // Chạy 1 lần khi user đã đăng nhập. Gán buổi chạy vào kèo, tính lại tiến độ và
+    // chốt kèo là việc của backend (/tasks/recalc-contracts); đừng làm lại ở đây vì
+    // nghe activity của user nghĩa là kéo cả route lẫn streams về máy.
     final uid = ref.watch(firebaseUserProvider).value?.uid;
     if (uid != null && !_started) {
       _started = true;
@@ -490,60 +489,6 @@ class _AuthenticatedSessionState extends ConsumerState<_AuthenticatedSession> {
         // Chạy/Đi bộ + Bước chân.
         ref.read(stepLeaderboardDocsProvider);
         ref.read(leaderboardDocsProvider); // BXH Đạp xe
-        final controller = ref.read(runContractControllerProvider);
-        // Await .future để chắc kèo ĐÃ tải: coordinator chạy 1 lần lúc mở app; đọc
-        // .value lúc stream chưa emit sẽ ra rỗng → bỏ sót recalc/auto-link cả phiên.
-        List<RunContract> mine;
-        try {
-          mine =
-              [...await ref.read(myActiveContractsProvider.future)]
-                ..removeWhere((contract) => contract.completedBy(uid))
-                ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        } catch (_) {
-          return; // Firestore tạm gián đoạn — thử lại lần mở app kế tiếp.
-        }
-        if (mine.isEmpty) return;
-        // TỰ LINK buổi chạy vừa xong (chưa gán) vào kèo user tham gia — rồi vòng
-        // recalc bên dưới cộng luôn. Await .future để chắc activity đã tải. Lỗi bỏ qua.
-        try {
-          final recent = await ref.read(activitiesProvider.future);
-          if (recent.isNotEmpty) {
-            await controller.autoLinkUnassignedActivities(
-              activeContracts: mine,
-              recentActivities: recent,
-              currentUid: uid,
-            );
-          }
-        } catch (_) {}
-        for (final contract in mine) {
-          if (contract.creatorUid == uid) {
-            if (contractLifecycle(contract, DateTime.now()) ==
-                RunContractLifecycle.awaitingFinalize) {
-              // Tự chốt kèo quá hạn ngay khi owner mở app, thay vì bắt họ
-              // vào tận màn chi tiết kèo rồi bấm "Chốt kết quả" — lỗi (vd
-              // Strava sync tạm thời fail) bỏ qua an toàn, kèo vẫn ở
-              // awaitingFinalize và sẽ được thử lại ở lần mở app kế tiếp.
-              try {
-                await controller.finalize(contract);
-              } catch (_) {
-                // ignore, retried next app open
-              }
-            } else {
-              try {
-                await controller.recalculate(contract);
-              } catch (_) {
-                // ignore (vd Firestore tạm gián đoạn) — thử lại lần mở app
-                // kế tiếp; không để 1 kèo lỗi chặn tính lại các kèo còn lại.
-              }
-            }
-          } else {
-            try {
-              await controller.recalculateParticipant(contract);
-            } catch (_) {
-              // ignore, cùng lý do — xem comment ở nhánh recalculate() trên.
-            }
-          }
-        }
       });
     }
     return widget.child;

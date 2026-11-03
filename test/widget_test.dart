@@ -1,3 +1,4 @@
+import 'package:firebase_auth_mocks/firebase_auth_mocks.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/app.dart';
+import 'package:myrun/src/auth.dart';
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/profile_stats.dart';
@@ -18,11 +20,17 @@ import 'package:myrun/src/theme_controller.dart';
 void main() {
   var meReads = 0;
   var profileReads = 0;
+  var activityWatches = 0;
 
   /// Bật app ở cỡ điện thoại để dùng bottom nav (layout web rộng có rail
   /// riêng làm thay đổi cây widget/scroll). [agent] null là chưa tải được hồ
   /// sơ bot, như khi chưa đăng nhập.
-  Future<void> pumpApp(WidgetTester tester, {AgentMe? agent}) async {
+  Future<void> pumpApp(
+    WidgetTester tester, {
+    AgentMe? agent,
+    String? signedInUid,
+    List<RunContract> activeContracts = const [],
+  }) async {
     // Thẻ bot tự lắc mãi; giảm chuyển động thì thẻ đứng yên, chờ settle được.
     tester.platformDispatcher.accessibilityFeaturesTestValue =
         const FakeAccessibilityFeatures(disableAnimations: true);
@@ -35,7 +43,7 @@ void main() {
       ProviderScope(
         overrides: [
           activityRepositoryProvider.overrideWithValue(
-            DemoActivityRepository(),
+            _CountingActivities(() => activityWatches++),
           ),
           trainingGoalRepositoryProvider.overrideWithValue(
             DemoTrainingGoalRepository(
@@ -48,10 +56,11 @@ void main() {
           userProfileProvider.overrideWith(
             (ref) => Stream.value(UserProfile.demo),
           ),
+          stravaAuthProvider.overrideWith((ref) => _NoStrava()),
           stravaConnectionProvider.overrideWithValue(true),
           stravaConnectionLoadingProvider.overrideWithValue(false),
           myActiveContractsProvider.overrideWith(
-            (ref) => Stream.value(const []),
+            (ref) => Stream.value(activeContracts),
           ),
           runContractRepositoryProvider.overrideWithValue(
             _EmptyRunContractRepository(),
@@ -85,7 +94,12 @@ void main() {
           agentRoomPreviewProvider.overrideWith(
             (ref) async => (messages: const <AgentRoomMessage>[], bots: const <String>[]),
           ),
-          firebaseUserProvider.overrideWith((ref) => Stream.value(null)),
+          firebaseUserProvider.overrideWith(
+            (ref) => Stream.value(
+              signedInUid == null ? null : MockUser(uid: signedInUid),
+            ),
+          ),
+          pushControllerProvider.overrideWithValue(null),
           // Tab MyBot dựng client API ngay khi mở; client thật cần Firebase.
           // Hồ sơ bot đã override ở trên nên không request nào tới được đây.
           runNowApiClientProvider.overrideWithValue(
@@ -98,7 +112,7 @@ void main() {
             ),
           ),
         ],
-        child: const RunNowApp(requireAuthentication: false),
+        child: RunNowApp(requireAuthentication: signedInUid != null),
       ),
     );
     await tester.pumpAndSettle();
@@ -123,6 +137,47 @@ void main() {
     expect(find.byIcon(Icons.add_rounded), findsOneWidget);
     expect(find.text('Đặt kèo tuần này'), findsOneWidget);
     expect(find.text('Tổng quan'), findsNothing);
+  });
+
+  testWidgets('mở app có kèo đang chạy không nghe cả lịch sử buổi chạy', (
+    tester,
+  ) async {
+    final start = DateTime.utc(2026, 11, 2);
+    activityWatches = 0;
+    await pumpApp(
+      tester,
+      signedInUid: 'me',
+      activeContracts: [
+        RunContract(
+          id: 'keo',
+          creatorUid: 'me',
+          title: 'Kèo tuần',
+          template: RunContractTemplate.custom,
+          metric: RunContractMetric.distance,
+          targetValue: 20,
+          periodType: RunContractPeriodType.weekly,
+          startAt: start,
+          endAtExclusive: start.add(const Duration(days: 7)),
+          finalizeAt: start.add(const Duration(days: 8)),
+          status: RunContractStatus.active,
+          visibility: RunContractVisibility.club,
+          progressValue: 0,
+          participants: {
+            'me': RunContractParticipant(
+              uid: 'me',
+              progressValue: 0,
+              joinedAt: start,
+              updatedAt: start,
+            ),
+          },
+          createdAt: start,
+          updatedAt: start,
+        ),
+      ],
+    );
+
+    expect(find.text('Kèo tuần'), findsOneWidget);
+    expect(activityWatches, 0);
   });
 
   testWidgets('people without the bot keep the journey tab', (tester) async {
@@ -175,6 +230,25 @@ void main() {
     );
     expect(find.text('Marathon Athens'), findsOneWidget);
   });
+}
+
+/// Cổng đăng nhập chỉ nghe controller này; bản thật cần Firebase và app_links.
+class _NoStrava extends ChangeNotifier implements StravaAuthController {
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      super.noSuchMethod(invocation);
+}
+
+class _CountingActivities extends DemoActivityRepository {
+  _CountingActivities(this.onWatch);
+
+  final void Function() onWatch;
+
+  @override
+  Stream<List<ActivitySummary>> watchActivities({int? limit}) {
+    onWatch();
+    return super.watchActivities(limit: limit);
+  }
 }
 
 class _EmptyRunContractRepository implements RunContractRepository {
