@@ -95,7 +95,7 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
                 child: RunCardFaceDown(
                   km: km,
                   title: widget.activity.name,
-                  failure: runCardFailureLabel(reason),
+                  failureReason: reason,
                 ),
               ),
               _Message(runCardReasonText(reason)),
@@ -329,10 +329,13 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
   }
 }
 
-/// Chữ to trên lá úp khi buổi không ra thẻ: trượt là lật thất bại, còn lại
-/// (trùng buổi, không phải chạy bộ) là không có thẻ để lật.
-String runCardFailureLabel(String reason) =>
-    reason == 'card_missed' ? 'LẬT THẤT BẠI' : 'KHÔNG CÓ THẺ';
+/// Chữ to trên lá úp khi buổi này không tự có thẻ: trượt là lật thất bại, trùng
+/// buổi thì thẻ thuộc buổi chính, còn lại là không có thẻ để lật.
+String runCardFailureLabel(String reason) => switch (reason) {
+  'card_missed' => 'LẬT THẤT BẠI',
+  'card_duplicate' => 'ĐÃ MỞ Ở BUỔI CHÍNH',
+  _ => 'KHÔNG CÓ THẺ',
+};
 
 /// Câu cho người dùng ứng với mã lý do backend trả khi không lật được.
 String runCardReasonText(String reason) => switch (reason) {
@@ -340,8 +343,8 @@ String runCardReasonText(String reason) => switch (reason) {
     'Lần lật này không ra thẻ. Buổi ngắn chỉ có một phần cơ hội, chạy dài '
         'hơn để chắc có thẻ.',
   'card_duplicate' =>
-    'Buổi này trùng một buổi khác đã có thẻ (cùng lần chạy ghi ở hai nguồn), '
-        'nên không lật thêm được.',
+    'Lần chạy này ghi ở hai nguồn nên thẻ nằm ở buổi chính. Mở buổi đó để '
+        'lật và vẽ tranh.',
   _ => 'Chỉ buổi chạy bộ từ 500 m mới lật được thẻ.',
 };
 
@@ -396,13 +399,13 @@ class RunCardFrame extends StatelessWidget {
 }
 
 /// Thẻ úp: chưa biết bậc nên khung than chì trơn, dấu hỏi ở giữa. Có
-/// [failure] thì buổi này không ra thẻ: phủ tối cả mặt, icon và [failure]
-/// to ở giữa thay cho lời mời lật.
+/// [failureReason] (mã lý do backend trả) thì buổi này không tự có thẻ: phủ tối
+/// cả mặt, icon và chữ to ở giữa thay cho lời mời lật.
 class RunCardFaceDown extends StatelessWidget {
   const RunCardFaceDown({
     required this.km,
     required this.title,
-    this.failure,
+    this.failureReason,
     this.kind = 'BUỔI CHẠY',
     super.key,
   });
@@ -410,7 +413,7 @@ class RunCardFaceDown extends StatelessWidget {
   /// Null thì bỏ dòng km, khi thẻ khoá mà không có số để in.
   final double? km;
   final String title;
-  final String? failure;
+  final String? failureReason;
 
   /// Loại thẻ in ở góc trên.
   final String kind;
@@ -464,7 +467,7 @@ class RunCardFaceDown extends StatelessWidget {
                       children: [
                         Text(kind, style: label),
                         const Spacer(),
-                        if (failure == null) ...[
+                        if (failureReason == null) ...[
                           Center(
                             child: Text(
                               '?',
@@ -509,8 +512,8 @@ class RunCardFaceDown extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (failure case final failure?)
-                    _FailVeil(failure, skin: skin),
+                  if (failureReason case final reason?)
+                    _FailVeil(reason, skin: skin),
                 ],
               ),
             ),
@@ -524,9 +527,9 @@ class RunCardFaceDown extends StatelessWidget {
 /// Màn tối phủ cả mặt lá úp khi buổi chạy không ra thẻ, icon và chữ to ở
 /// giữa để nhìn là biết, không phải đọc dòng nhỏ bên dưới.
 class _FailVeil extends StatelessWidget {
-  const _FailVeil(this.text, {required this.skin});
+  const _FailVeil(this.reason, {required this.skin});
 
-  final String text;
+  final String reason;
   final RunCardSkin skin;
 
   @override
@@ -536,10 +539,16 @@ class _FailVeil extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.heart_broken_rounded, size: 84, color: skin.failInk),
+          Icon(
+            reason == 'card_duplicate'
+                ? Icons.check_circle_rounded
+                : Icons.heart_broken_rounded,
+            size: 84,
+            color: skin.failInk,
+          ),
           const SizedBox(height: 12),
           Text(
-            text,
+            runCardFailureLabel(reason),
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: _condensed,

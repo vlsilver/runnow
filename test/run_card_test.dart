@@ -646,13 +646,25 @@ void main() {
     expect(find.textContaining('Không lật được thẻ'), findsNothing);
   });
 
-  testWidgets('a duplicate run says why it has no card', (tester) async {
+  testWidgets('a duplicate run points to the main run, not a failure', (
+    tester,
+  ) async {
     final backend = _Backend()
       ..view = {'card': null, 'reason': 'card_duplicate'};
     await _pumpPanel(tester, backend);
-    expect(find.textContaining('trùng một buổi khác'), findsOneWidget);
+    expect(find.text('ĐÃ MỞ Ở BUỔI CHÍNH'), findsOneWidget);
+    expect(find.textContaining('thẻ nằm ở buổi chính'), findsOneWidget);
     expect(find.text('Lật thẻ'), findsNothing);
+    expect(find.text('KHÔNG CÓ THẺ'), findsNothing);
+    expect(find.byIcon(Icons.heart_broken_rounded), findsNothing);
+  });
+
+  testWidgets('a run that cannot have a card still says so', (tester) async {
+    final backend = _Backend()
+      ..view = {'card': null, 'reason': 'card_not_eligible'};
+    await _pumpPanel(tester, backend);
     expect(find.text('KHÔNG CÓ THẺ'), findsOneWidget);
+    expect(find.byIcon(Icons.heart_broken_rounded), findsOneWidget);
   });
 
   testWidgets('Khoe thẻ reuses the saved files and shares the chosen one', (

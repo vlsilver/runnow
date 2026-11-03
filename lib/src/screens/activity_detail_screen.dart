@@ -1385,7 +1385,10 @@ class _RunCardEntry extends ConsumerWidget {
         _ when !view.hasValue && !view.hasError => ('', ''),
         null => ('Chưa lật', 'Chạm để lật · mỗi buổi một lần'),
         'card_missed' => ('Không ra thẻ', 'Lần lật trượt · buổi này hết lượt'),
-        'card_duplicate' => ('Không có thẻ', 'Trùng buổi khác đã có thẻ'),
+        'card_duplicate' => (
+          'Đã mở ở buổi chính',
+          'Thẻ nằm ở buổi chính của lần chạy này',
+        ),
         _ => ('Không có thẻ', 'Buổi này không lật được thẻ'),
       };
       return _RunCardSection(
@@ -1399,7 +1402,7 @@ class _RunCardEntry extends ConsumerWidget {
             child: RunCardFaceDown(
               km: (activity.distanceMeters / 100).round() / 10,
               title: activity.name,
-              failure: reason == null ? null : runCardFailureLabel(reason),
+              failureReason: reason,
             ),
           ),
         ),
