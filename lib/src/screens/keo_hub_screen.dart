@@ -1085,7 +1085,9 @@ class _RankSectionState extends ConsumerState<_RankSection> {
     }
     final entries = board.value ?? const <LeaderboardEntry>[];
     final ranked = rankClubMembers(entries, _sport, _range);
-    if (ranked.isEmpty) return const SizedBox.shrink();
+    // Lúc đang tải thì vẽ núi trống giữ chỗ, để BXH về không đẩy các mục dưới.
+    final loading = !board.hasValue;
+    if (!loading && ranked.isEmpty) return const SizedBox.shrink();
     final uid = ref.watch(firebaseUserProvider).value?.uid;
     final myIndex = ranked.indexWhere((member) => member.entry.uid == uid);
     final myEntry = entries.where((e) => e.uid == uid).firstOrNull;
@@ -1126,39 +1128,42 @@ class _RankSectionState extends ConsumerState<_RankSection> {
                   ),
                 ),
               ),
-              Positioned(
-                right: 10,
-                bottom: 10,
-                child: Builder(
-                  builder: (origin) {
-                    final accent = context.runNowPalette.accent;
-                    return IconButton(
-                      tooltip: 'Khoe BXH tuần',
-                      onPressed: _sharing ? null : () => _share(origin),
-                      style: IconButton.styleFrom(
-                        backgroundColor: accent,
-                        foregroundColor: _onColor(accent),
-                        minimumSize: const Size.square(36),
-                        fixedSize: const Size.square(36),
-                        padding: EdgeInsets.zero,
-                      ),
-                      icon: const Icon(Icons.ios_share_rounded, size: 20),
-                    );
-                  },
+              if (!loading)
+                Positioned(
+                  right: 10,
+                  bottom: 10,
+                  child: Builder(
+                    builder: (origin) {
+                      final accent = context.runNowPalette.accent;
+                      return IconButton(
+                        tooltip: 'Khoe BXH tuần',
+                        onPressed: _sharing ? null : () => _share(origin),
+                        style: IconButton.styleFrom(
+                          backgroundColor: accent,
+                          foregroundColor: _onColor(accent),
+                          minimumSize: const Size.square(36),
+                          fixedSize: const Size.square(36),
+                          padding: EdgeInsets.zero,
+                        ),
+                        icon: const Icon(Icons.ios_share_rounded, size: 20),
+                      );
+                    },
+                  ),
                 ),
-              ),
             ],
           ),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: _MyRankLine(
-            me: myIndex < 0 ? null : ranked[myIndex],
-            gap: myIndex < 0
-                ? null
-                : clubRankingGapLabel(ranked, myIndex, _sport),
-            private: private,
-          ),
+          child: loading
+              ? const SizedBox(height: _MyRankLine.usualHeight)
+              : _MyRankLine(
+                  me: myIndex < 0 ? null : ranked[myIndex],
+                  gap: myIndex < 0
+                      ? null
+                      : clubRankingGapLabel(ranked, myIndex, _sport),
+                  private: private,
+                ),
         ),
       ],
     );
@@ -1172,6 +1177,9 @@ class _MyRankLine extends StatelessWidget {
     required this.gap,
     required this.private,
   });
+
+  /// Cao cỡ này khi có hạng, là trường hợp thường gặp, để giữ chỗ lúc đang tải.
+  static const usualHeight = 56.0;
 
   final ClubRankedMember? me;
   final String? gap;
@@ -1280,9 +1288,7 @@ class _CardsSection extends ConsumerWidget {
         onTap: () => ref.invalidate(clubCardsProvider),
       );
     }
-    // Chưa tải xong thì chưa hiện gì, để dòng mời không nháy lên rồi biến mất.
-    if (!cards.hasValue) return const SizedBox.shrink();
-    final items = cards.requireValue;
+    final items = cards.value;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1290,7 +1296,11 @@ class _CardsSection extends ConsumerWidget {
           title: 'Thẻ nổi bật',
           onMore: () => context.push('/club-cards'),
         ),
-        if (items.isEmpty)
+        // Chưa tải xong thì giữ chỗ trống: dòng mời không nháy lên rồi biến mất,
+        // thẻ về không đẩy mục dưới.
+        if (items == null)
+          SizedBox(height: clubCardThumbHeight(_thumbWidth))
+        else if (items.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: _InviteRow(

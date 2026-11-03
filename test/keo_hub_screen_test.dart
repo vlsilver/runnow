@@ -1,11 +1,16 @@
+import 'dart:async';
+
+import 'package:firebase_auth_mocks/firebase_auth_mocks.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/achievements/club_card.dart';
+import 'package:myrun/src/achievements/club_card_widgets.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/club_runs.dart';
 import 'package:myrun/src/games/game_providers.dart';
 import 'package:myrun/src/hearts.dart';
+import 'package:myrun/src/home_digest.dart';
 import 'package:myrun/src/live_cheers.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
@@ -46,6 +51,25 @@ class _FakeCheers implements LiveCheerRepository {
   Future<void> send(String sessionId, String emoji) async {}
 }
 
+LeaderboardEntry _runner(String name, double km) {
+  final stats = LeaderboardStats(
+    distanceMeters: km * 1000,
+    movingTimeSeconds: 0,
+    activityCount: 0,
+    activeDays: 0,
+    longestDistanceMeters: 0,
+    fastestPaceSecondsPerKm: null,
+  );
+  return LeaderboardEntry(
+    uid: name,
+    displayName: name,
+    visibility: ProfileVisibility.public,
+    rollingSevenDays: stats,
+    currentWeek: stats,
+    currentMonth: stats,
+  );
+}
+
 ClubCard _card(String id, String tier) =>
     ClubCard.fromJson({'ownerUid': 'u1', 'activityId': id, 'tier': tier})!;
 
@@ -61,6 +85,9 @@ Future<_Fetches> _pumpHome(
   WidgetTester tester, {
   List<ClubCard>? cards,
   _FakeHearts? hearts,
+  Future<List<LeaderboardEntry>>? leaderboard,
+  String? uid,
+  Stream<List<ClubCard>>? cardStream,
 }) async {
   tester.view.physicalSize = const Size(400, 100);
   tester.view.devicePixelRatio = 1;
@@ -69,7 +96,10 @@ Future<_Fetches> _pumpHome(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        firebaseUserProvider.overrideWith((ref) => Stream.value(null)),
+        firebaseUserProvider.overrideWith(
+          (ref) => Stream.value(uid == null ? null : MockUser(uid: uid)),
+        ),
+        homeDigestProvider.overrideWith((ref) => Stream.value(null)),
         membersProvider.overrideWith((ref) => Stream.value(const [])),
         myActiveContractsProvider.overrideWith(
           (ref) => Stream.value(const <RunContract>[]),
@@ -88,7 +118,7 @@ Future<_Fetches> _pumpHome(
         ),
         gameListProvider.overrideWith((ref) async => null),
         totalKmLeaderboardProvider.overrideWith(
-          (ref) async => const <LeaderboardEntry>[],
+          (ref) => leaderboard ?? Future.value(const <LeaderboardEntry>[]),
         ),
         hubClubContractsProvider.overrideWith((ref) async {
           fetches.contracts++;
@@ -99,7 +129,7 @@ Future<_Fetches> _pumpHome(
           return const <ClubRunItem>[];
         }),
         clubCardsProvider.overrideWith(
-          (ref) => Stream.value(cards ?? [_card('a1', 'rare')]),
+          (ref) => cardStream ?? Stream.value(cards ?? [_card('a1', 'rare')]),
         ),
         heartRepositoryProvider.overrideWithValue(hearts ?? _FakeHearts()),
         liveCheerRepositoryProvider.overrideWithValue(_FakeCheers()),
@@ -182,6 +212,37 @@ void main() {
 
     expect(hearts.counted, hasLength(10));
     expect(hearts.counted.where((target) => target.contains('rare')), isEmpty);
+  });
+
+  testWidgets('BXH về sau không đẩy mục Thẻ xuống', (tester) async {
+    final board = Completer<List<LeaderboardEntry>>();
+    await _pumpHome(tester, leaderboard: board.future, uid: 'an');
+    // Khung thấp nên hai mục này nằm trong vùng dựng sẵn, ngoài màn hình.
+    final header = find.text('Thẻ nổi bật', skipOffstage: false);
+    final before = tester.getTopLeft(header).dy;
+
+    board.complete([_runner('Bình', 20), _runner('an', 12)]);
+    await _settle(tester);
+
+    expect(find.text('Bình', skipOffstage: false), findsOneWidget);
+    // Dòng hạng cao theo font thật, nên chỉ đòi lệch không quá một dòng chữ.
+    expect(tester.getTopLeft(header).dy, moreOrLessEquals(before, epsilon: 20));
+  });
+
+  testWidgets('thẻ về sau không làm trang dài ra', (tester) async {
+    final cards = StreamController<List<ClubCard>>();
+    addTearDown(cards.close);
+    await _pumpHome(tester, cardStream: cards.stream);
+    final position = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position;
+    final before = position.maxScrollExtent;
+
+    cards.add([_card('a1', 'rare')]);
+    await _settle(tester);
+
+    expect(find.byType(ClubCardThumb, skipOffstage: false), findsOneWidget);
+    expect(position.maxScrollExtent, before);
   });
 
   testWidgets('kéo màn thông báo xuống rồi thả không tải lại', (tester) async {
