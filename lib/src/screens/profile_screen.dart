@@ -32,6 +32,34 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   ProfilePeriod _period = ProfilePeriod.week;
   ProfileMetric _metric = ProfileMetric.distance;
 
+  /// Trang hoặc kệ thẻ đang cuộn. Thẻ mới nhất ngừng đung đưa lúc này để
+  /// mỗi khung cuộn không phải vẽ lại cả thẻ 3D.
+  final _scrolling = ValueNotifier(false);
+  var _scrollActive = false;
+
+  @override
+  void dispose() {
+    _scrolling.dispose();
+    super.dispose();
+  }
+
+  bool _onScroll(ScrollNotification n) {
+    if (n is ScrollStartNotification) {
+      _scrollActive = true;
+    } else if (n is ScrollEndNotification) {
+      _scrollActive = false;
+    } else {
+      return false;
+    }
+    // Nội dung đổi cỡ thì list tự trôi về mép ngay giữa lúc layout, khi đó
+    // chưa được rebuild nên đợi hết frame mới báo.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scrolling.value = _scrollActive;
+    });
+    WidgetsBinding.instance.scheduleFrame();
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final profile = ref.watch(userProfileProvider).value;
@@ -50,33 +78,36 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 unawaited(ref.read(journalControllerProvider).ensureLoaded());
                 return ref.refresh(profileStatsProvider.future);
               },
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
-                children: [
-                  _Header(onSettings: () => context.push('/me/settings')),
-                  const SizedBox(height: 12),
-                  const _DailyQuoteCard(),
-                  const SizedBox(height: 14),
-                  _Identity(
-                    profile: profile,
-                    subtitle: _identitySubtitle(element, stats),
-                  ),
-                  const SizedBox(height: 16),
-                  if (stats == null && statsState.hasError)
-                    _LoadError(
-                      error: statsState.error!,
-                      onRetry: () => ref.invalidate(profileStatsProvider),
-                    )
-                  else if (stats == null)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 40),
-                      child: RunNowLoading(),
-                    )
-                  else if (stats.isEmpty)
-                    ..._empty(stats)
-                  else
-                    ..._content(stats),
-                ],
+              child: NotificationListener<ScrollNotification>(
+                onNotification: _onScroll,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+                  children: [
+                    _Header(onSettings: () => context.push('/me/settings')),
+                    const SizedBox(height: 12),
+                    const _DailyQuoteCard(),
+                    const SizedBox(height: 14),
+                    _Identity(
+                      profile: profile,
+                      subtitle: _identitySubtitle(element, stats),
+                    ),
+                    const SizedBox(height: 16),
+                    if (stats == null && statsState.hasError)
+                      _LoadError(
+                        error: statsState.error!,
+                        onRetry: () => ref.invalidate(profileStatsProvider),
+                      )
+                    else if (stats == null)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 40),
+                        child: RunNowLoading(),
+                      )
+                    else if (stats.isEmpty)
+                      ..._empty(stats)
+                    else
+                      ..._content(stats),
+                  ],
+                ),
               ),
             ),
           ),
@@ -96,7 +127,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   List<Widget> _content(ProfileStatsData stats) {
     final lifetime = stats.lifetime;
     return [
-      const _CardShelfSection(),
+      _CardShelfSection(scrolling: _scrolling),
       const SizedBox(height: 16),
       Row(
         children: [
@@ -1109,7 +1140,9 @@ const _shelfCardCount = 10;
 /// Bộ thẻ (buổi chạy và Ma Sói), đặt đầu Hồ sơ: thẻ mới nhất to và 3D, kèm số thẻ theo
 /// bậc, rồi hàng ngang các thẻ trước đó.
 class _CardShelfSection extends ConsumerWidget {
-  const _CardShelfSection();
+  const _CardShelfSection({required this.scrolling});
+
+  final ValueListenable<bool> scrolling;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1126,7 +1159,12 @@ class _CardShelfSection extends ConsumerWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _FeaturedCard(card: cards.first, owner: owner, all: cards),
+            _FeaturedCard(
+              card: cards.first,
+              owner: owner,
+              all: cards,
+              scrolling: scrolling,
+            ),
             if (rest.isNotEmpty) ...[
               const SizedBox(height: 16),
               SizedBox(
@@ -1180,11 +1218,13 @@ class _FeaturedCard extends StatelessWidget {
     required this.card,
     required this.owner,
     required this.all,
+    required this.scrolling,
   });
 
   final CollectedCard card;
   final String owner;
   final List<CollectedCard> all;
+  final ValueListenable<bool> scrolling;
 
   @override
   Widget build(BuildContext context) {
@@ -1196,11 +1236,15 @@ class _FeaturedCard extends StatelessWidget {
     }
     return Row(
       children: [
-        TiltFlipCard(
-          front: (pose) => AchievementCard(data: data, pose: pose),
-          back: (pose) => AchievementCard(data: data, pose: pose, back: true),
-          width: 150,
-          cardSize: achievementCardSize,
+        ValueListenableBuilder(
+          valueListenable: scrolling,
+          builder: (context, scrolling, _) => TiltFlipCard(
+            front: (pose) => AchievementCard(data: data, pose: pose),
+            back: (pose) => AchievementCard(data: data, pose: pose, back: true),
+            width: 150,
+            cardSize: achievementCardSize,
+            sway: !scrolling,
+          ),
         ),
         const SizedBox(width: 18),
         Expanded(

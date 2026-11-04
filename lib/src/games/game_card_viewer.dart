@@ -285,6 +285,7 @@ class TiltFlipCard extends StatefulWidget {
     this.cardSize = gameCardSize,
     this.captureKey,
     this.startBack = false,
+    this.sway = true,
   });
 
   final CardFaceBuilder front;
@@ -301,6 +302,10 @@ class TiltFlipCard extends StatefulWidget {
 
   /// Lá bắt đầu ở mặt sau.
   final bool startBack;
+
+  /// Lá tự đung đưa. Tắt thì lá đứng ở thế đang có, bật lại thì đưa tiếp
+  /// từ đó.
+  final bool sway;
 
   @override
   State<TiltFlipCard> createState() => TiltFlipCardState();
@@ -326,11 +331,26 @@ class TiltFlipCardState extends State<TiltFlipCard>
   late final AnimationController _sway = AnimationController(
     vsync: this,
     duration: const Duration(seconds: 6),
-  )..repeat();
+  );
 
   Offset _drag = Offset.zero;
   Offset _from = Offset.zero;
   bool _dragging = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.sway) _sway.repeat();
+  }
+
+  @override
+  void didUpdateWidget(TiltFlipCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.sway == oldWidget.sway) return;
+    // stop rồi repeat chạy tiếp từ giá trị đang có; tắt bằng TickerMode thì
+    // giờ vẫn trôi và lá nhảy lúc bật lại.
+    widget.sway ? _sway.repeat() : _sway.stop();
+  }
 
   @override
   void dispose() {

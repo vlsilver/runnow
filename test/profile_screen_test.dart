@@ -242,4 +242,29 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('Trang bộ thẻ'), findsOneWidget);
   });
+
+  testWidgets('thẻ mới nhất ngừng đung đưa trong lúc kéo kệ thẻ', (
+    tester,
+  ) async {
+    await pumpProfile(tester, cards: [for (var n = 1; n <= 6; n++) _card(n)]);
+    bool swaying() =>
+        tester.widget<TiltFlipCard>(find.byType(TiltFlipCard)).sway;
+    expect(swaying(), isTrue);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(CollectedCardThumb).first),
+    );
+    await gesture.moveBy(const Offset(-40, 0));
+    await gesture.moveBy(const Offset(-40, 0));
+    // Cờ cuộn đổi sau frame, thẻ dựng lại ở frame kế.
+    await tester.pump();
+    await tester.pump();
+    expect(swaying(), isFalse);
+
+    await gesture.up();
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(swaying(), isTrue);
+  });
 }
