@@ -100,6 +100,33 @@ void main() {
     expect(_shown(tester), ['a', 'b', 'c']);
   });
 
+  testWidgets('bộ thẻ dài chỉ dựng các thẻ gần màn hình', (tester) async {
+    await _pump(tester, [
+      for (var i = 0; i < 60; i++) _card('c$i', 'mythic', i),
+    ]);
+
+    final built = find.byType(CollectedCardThumb, skipOffstage: false);
+    expect(built, findsWidgets);
+    expect(tester.widgetList(built).length, lessThan(30));
+    expect(find.text('Tất cả · 60'), findsOneWidget);
+  });
+
+  testWidgets('cuộn bộ thẻ không dựng lại các thẻ đang hiện', (tester) async {
+    await _pump(tester, [for (var i = 0; i < 30; i++) _card('c$i', 'rare', i)]);
+    CollectedCardThumb thumb(String id) => tester.widget(
+      find.byWidgetPredicate((w) => w is CollectedCardThumb && w.card.id == id),
+    );
+    final before = thumb('c6');
+
+    // Kéo qua phần đầu trang để chính lưới cuộn, mỗi lần một ít như ngón tay.
+    for (var i = 0; i < 5; i++) {
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -60));
+      await tester.pump();
+    }
+
+    expect(identical(thumb('c6'), before), isTrue);
+  });
+
   testWidgets('Ma Sói cards join the collection by time and can be shown off', (
     tester,
   ) async {

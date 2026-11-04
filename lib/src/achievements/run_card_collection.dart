@@ -335,8 +335,9 @@ class _RunCardCollectionScreenState
         if (_tier == null || card.tier == _tier) card,
     ];
     int count(GameCardTier tier) => cards.where((c) => c.tier == tier).length;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+    const gap = 12.0;
+    final header = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Wrap(
           spacing: 8,
@@ -364,23 +365,45 @@ class _RunCardCollectionScreenState
           style: TextStyle(color: muted, fontSize: 12),
         ),
         const SizedBox(height: 12),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            const gap = 12.0;
-            final columns = (constraints.maxWidth / 170).floor().clamp(2, 5);
-            final width =
-                (constraints.maxWidth - gap * (columns - 1)) / columns;
-            return Wrap(
-              spacing: gap,
-              runSpacing: gap,
-              children: [
-                for (final card in shown)
-                  CollectedCardThumb(card: card, owner: owner, width: width),
-              ],
-            );
-          },
-        ),
       ],
+    );
+    const side = 16.0;
+    // Lưới lazy: bộ thẻ dài thì chỉ dựng thẻ gần màn hình, thẻ Thần thoại ở xa
+    // cũng không chạy hiệu ứng. Số cột tính theo bề ngang hộp chứ không theo
+    // SliverLayoutBuilder: sliver constraints đổi theo từng khung cuộn, dựng
+    // lại cả lưới mỗi khung.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final extent = constraints.maxWidth - side * 2;
+        final columns = (extent / 170).floor().clamp(2, 5);
+        final width = (extent - gap * (columns - 1)) / columns;
+        return CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(side, 8, side, 0),
+              sliver: SliverToBoxAdapter(child: header),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(side, 0, side, 32),
+              sliver: SliverGrid.builder(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  crossAxisSpacing: gap,
+                  mainAxisSpacing: gap,
+                  childAspectRatio:
+                      achievementCardSize.width / achievementCardSize.height,
+                ),
+                itemCount: shown.length,
+                itemBuilder: (context, i) => CollectedCardThumb(
+                  card: shown[i],
+                  owner: owner,
+                  width: width,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
