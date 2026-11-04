@@ -1383,22 +1383,23 @@ class _CardsSection extends ConsumerWidget {
             ),
           )
         else
-          ValueListenableBuilder(
-            valueListenable: motion,
-            builder: (context, enabled, child) =>
-                TickerMode(enabled: enabled, child: child!),
-            child: SizedBox(
-              height: clubCardThumbHeight(_thumbWidth),
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                // List cao đúng bằng thẻ: cắt thì bóng thẻ chỉ còn lộ ở bốn góc
-                // ngoài đường bo, trông như viền tối vuông.
-                clipBehavior: Clip.none,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: items.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 12),
-                itemBuilder: (context, i) =>
-                    ClubCardThumb(item: items[i], width: _thumbWidth),
+          SizedBox(
+            height: clubCardThumbHeight(_thumbWidth),
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              // List cao đúng bằng thẻ: cắt thì bóng thẻ chỉ còn lộ ở bốn góc
+              // ngoài đường bo, trông như viền tối vuông.
+              clipBehavior: Clip.none,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: items.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              // Dừng hiệu ứng ở từng thẻ chứ không bọc cả list: list cũng
+              // chạy quán tính bằng ticker, tắt chung thì buông tay là đứng.
+              itemBuilder: (context, i) => ValueListenableBuilder(
+                valueListenable: motion,
+                builder: (context, enabled, child) =>
+                    TickerMode(enabled: enabled, child: child!),
+                child: ClubCardThumb(item: items[i], width: _thumbWidth),
               ),
             ),
           ),

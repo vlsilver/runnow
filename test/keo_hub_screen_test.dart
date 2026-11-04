@@ -359,6 +359,29 @@ void main() {
       expect(motion(tester), isTrue);
     });
 
+    testWidgets('vuốt ngang thẻ rồi buông tay thì thẻ còn trôi tiếp', (
+      tester,
+    ) async {
+      await _pumpHome(
+        tester,
+        cards: [for (var i = 0; i < 8; i++) _card('r$i', 'rare')],
+        height: 1400,
+      );
+      final list = find.byWidgetPredicate(
+        (w) => w is Scrollable && w.axisDirection == AxisDirection.right,
+      );
+      final position = tester.state<ScrollableState>(list).position;
+
+      await tester.fling(list, const Offset(-100, 0), 1500);
+      final released = position.pixels;
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+
+      // Buông tay ở 1500 px/s: nửa giây sau thẻ phải đi thêm cả trăm px.
+      expect(position.pixels, greaterThan(released + 100));
+    });
+
     testWidgets('cuộn khỏi thẻ thì dừng hẳn', (tester) async {
       await _pumpHome(tester, cards: [_card('a1', 'mythic')]);
       final position = pagePosition(tester);
