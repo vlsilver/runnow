@@ -27,6 +27,9 @@ type GameSetting struct {
 	// EnabledIf: tuỳ chọn chỉ có tác dụng khi mọi điều kiện đúng; app làm mờ khi
 	// có điều kiện sai. Giá trị vẫn gửi lên được, server bỏ qua phần không tác dụng.
 	EnabledIf []GameSettingCondition `json:"enabledIf,omitempty"`
+	// Group là key của tab trên màn tạo ván (GameCreateOptions.Groups). Rỗng thì
+	// màn tạo ván theo tab không hiện; giá trị lấy theo kiểu ván dựng sẵn.
+	Group string `json:"group,omitempty"`
 }
 
 type GameSettingChoice struct {
@@ -89,7 +92,7 @@ func scheduleSetting(s GameSetting, set func(*werewolf.Schedule, int)) gameSetti
 // extendedRoleSetting bật một vai mở rộng (werewolf.ExtendedRoles); key là tên vai.
 func extendedRoleSetting(role werewolf.Role, label, desc string) gameSettingDef {
 	return gameSettingDef{
-		GameSetting: GameSetting{Key: string(role), Label: label, Description: desc, Type: settingToggle, Default: false},
+		GameSetting: GameSetting{Key: string(role), Label: label, Description: desc, Type: settingToggle, Default: false, Group: groupRoles},
 		keepDefault: true,
 		apply: func(c *werewolf.Config, v any) {
 			if v.(bool) {
@@ -109,7 +112,7 @@ func setSkillKm(c *werewolf.Config, role werewolf.Role, km float64) {
 var gameSettingDefs = []gameSettingDef{
 	{
 		GameSetting: GameSetting{Key: "extraWolves", Label: "Thêm sói", Type: settingNumber, Default: 0.0,
-			Min: f64(0), Max: f64(werewolf.MaxExtraWolves), Step: f64(1), Unit: "sói",
+			Min: f64(0), Max: f64(werewolf.MaxExtraWolves), Step: f64(1), Unit: "sói", Group: groupRoles,
 			Description: "Thêm sói so với số chuẩn theo số người: 10 người 2 sói, 11–16 người 3 sói, 17–20 người 4 sói, từ 21 người 5 sói. Sói thêm lấy chỗ của Dân. Sói không vượt 1/3 số người, phần thừa bị bỏ."},
 		keepDefault: true,
 		apply:       func(c *werewolf.Config, v any) { c.ExtraWolves = int(v.(float64)) },
@@ -124,13 +127,13 @@ var gameSettingDefs = []gameSettingDef{
 		keepDefault: true,
 		apply:       func(c *werewolf.Config, v any) { c.KmOff = v.(bool) },
 	},
-	scheduleSetting(GameSetting{Key: "startHour", Label: "Giờ mở vòng đầu", Default: 22.0, Min: f64(0), Max: f64(23), Step: f64(1), Unit: "giờ",
+	scheduleSetting(GameSetting{Key: "startHour", Label: "Giờ mở vòng đầu", Group: groupTime, Default: 22.0, Min: f64(0), Max: f64(23), Step: f64(1), Unit: "giờ",
 		Description: "Giờ trong ngày mở vòng đầu tiên, vòng mở là đêm bắt đầu. Các vòng sau nối tiếp ngay khi vòng trước chốt. Hết các vòng trong ngày thì bot không nhận lựa chọn nào, tới giờ này hôm sau mới chơi tiếp. Chỉ dùng khi không dùng km."},
 		func(s *werewolf.Schedule, n int) { s.StartHour = n }),
-	scheduleSetting(GameSetting{Key: "roundHours", Label: "Độ dài một vòng", Default: 24.0, Min: f64(werewolf.MinRoundHours), Max: f64(werewolf.MaxRoundHours), Step: f64(2), Unit: "tiếng",
+	scheduleSetting(GameSetting{Key: "roundHours", Label: "Độ dài một vòng", Group: groupRound, Default: 24.0, Min: f64(werewolf.MinRoundHours), Max: f64(werewolf.MaxRoundHours), Step: f64(2), Unit: "tiếng",
 		Description: "Một vòng gồm đêm, bản tin, đề cử và biểu quyết. Mọi mốc co theo vòng 24 tiếng: vòng 6 tiếng thì sói có 30 phút để cắn, đêm dài 3 tiếng, biểu quyết là 30 phút cuối vòng. Số vòng nhân độ dài không quá 24 tiếng. Chỉ dùng khi không dùng km."},
 		func(s *werewolf.Schedule, n int) { s.RoundHours = n }),
-	scheduleSetting(GameSetting{Key: "roundsPerDay", Label: "Số vòng mỗi ngày", Default: 1.0, Min: f64(1), Max: f64(24 / werewolf.MinRoundHours), Step: f64(1), Unit: "vòng",
+	scheduleSetting(GameSetting{Key: "roundsPerDay", Label: "Số vòng mỗi ngày", Group: groupTime, Default: 1.0, Min: f64(1), Max: f64(24 / werewolf.MinRoundHours), Step: f64(1), Unit: "vòng",
 		Description: "Số vòng chơi trong một ngày, nối nhau từ giờ mở vòng đầu. Ví dụ mở 6h, vòng 6 tiếng, 3 vòng thì chơi từ 6h tới 24h, các vòng mở lúc 6h, 12h, 18h. Số vòng nhân độ dài không quá 24 tiếng. Chỉ dùng khi không dùng km."},
 		func(s *werewolf.Schedule, n int) { s.Rounds = n }),
 	{
@@ -143,7 +146,7 @@ var gameSettingDefs = []gameSettingDef{
 	// skillKm đứng trước km riêng từng vai: gửi cả hai thì km riêng thắng.
 	{
 		GameSetting: GameSetting{Key: "skillKm", Label: "Km mở kỹ năng", Type: settingNumber, Default: 1.0,
-			Min: f64(0), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn,
+			Min: f64(0), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupKm,
 			Description: "Km Tiên tri, Bảo vệ, Phù thuỷ phải chạy trong khung 22h hôm trước tới 22h thì đêm đó mới dùng được kỹ năng; Thợ săn xét ở lần chốt 22h gần nhất. Để 0 là không cần km. Sói cắn không theo mức này."},
 		apply: func(c *werewolf.Config, v any) {
 			for _, r := range []werewolf.Role{werewolf.Seer, werewolf.Guard, werewolf.Witch, werewolf.Hunter} {
@@ -162,7 +165,7 @@ var gameSettingDefs = []gameSettingDef{
 		apply:       func(c *werewolf.Config, v any) { c.VillageGate = v.(bool) },
 	},
 	{
-		GameSetting: GameSetting{Key: "vote", Label: "Km và phiếu biểu quyết", Type: settingChoice, Default: string(werewolf.VoteCut), EnabledIf: kmOn,
+		GameSetting: GameSetting{Key: "vote", Label: "Km và phiếu biểu quyết", Type: settingChoice, Default: string(werewolf.VoteCut), EnabledIf: kmOn, Group: groupVote,
 			Description: "Km chốt 22h tác động lên phiếu Treo/Tha thế nào. Tính riêng từng phiên biểu quyết.",
 			Choices: []GameSettingChoice{
 				{Value: string(werewolf.VoteCut), Label: "Thiếu km thì mất phiếu", Description: "Số phiếu được tính bằng tổng km của người bỏ phiếu chia km một phiếu, làm tròn xuống. Thiếu thì người ít km nhất mất phiếu trước, kể cả người không bấm."},

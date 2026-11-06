@@ -102,6 +102,11 @@ const (
 	hunterNight   = 1 * time.Hour  // bị treo: bắn trong 22h–23h
 )
 
+// ReminderOffsets là lúc bot nhắc đề cử và nhắc biểu quyết, tính từ lúc mở đêm.
+func (c Config) ReminderOffsets() (nominate, vote time.Duration) {
+	return c.At(remindNominee), c.At(remindVote)
+}
+
 // Deadline là lúc chốt phase hiện tại, kể cả phần admin đã dời (Extend).
 func (st *State) Deadline() time.Time {
 	return st.NightAt.Add(st.Config.At(phaseEnd[st.Phase]) + st.extra())

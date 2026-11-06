@@ -245,12 +245,18 @@ type GameCreateOptions struct {
 	// Settings là các tuỳ chọn luật của ván, mỗi cái có tên và mô tả
 	// (game_settings.go). App gửi lại theo key trong CreateGameRequest.Settings.
 	Settings []GameSetting `json:"settings"`
+	// Groups, Presets, Round: phần trình bày của màn tạo ván theo tab
+	// (game_create_options.go). App cũ không đọc, vẫn vẽ Settings như cũ.
+	Groups  []GameSettingGroup `json:"groups"`
+	Presets []GamePreset       `json:"presets"`
+	Round   GameRoundPlan      `json:"round"`
 }
 
 type GameRoleOption struct {
-	Key     string `json:"key"`
-	Label   string `json:"label"`
-	Default bool   `json:"default"`
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+	Default     bool   `json:"default"`
 }
 
 type GameListItem struct {
@@ -282,11 +288,7 @@ func (s *GameStore) List(ctx context.Context, v GameViewer, wall time.Time) (Gam
 	if err != nil {
 		return GameList{}, err
 	}
-	out := GameList{Viewer: GameListViewer{CanCreate: cfg.isAdmin(v.UID)}, Items: []GameListItem{}}
-	out.CreateOptions.Settings = gameCreateSettings()
-	for _, r := range toggleRoles {
-		out.CreateOptions.Roles = append(out.CreateOptions.Roles, GameRoleOption{Key: string(r), Label: roleLabels[r], Default: true})
-	}
+	out := GameList{Viewer: GameListViewer{CanCreate: cfg.isAdmin(v.UID)}, CreateOptions: gameCreateOptions(), Items: []GameListItem{}}
 	docs, err := s.db.Collection("games").OrderBy("createdAt", firestore.Desc).Limit(gameListLimit).Documents(ctx).GetAll()
 	if err != nil {
 		return out, err
