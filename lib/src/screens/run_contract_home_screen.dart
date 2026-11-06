@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/games/game_card.dart';
 import 'package:myrun/src/games/game_providers.dart';
+import 'package:myrun/src/rooms/run_room_card.dart';
+import 'package:myrun/src/rooms/run_room_models.dart';
+import 'package:myrun/src/rooms/run_room_repository.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -181,16 +184,30 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
         ref.watch(publicCoachPlansProvider).value ?? const <TrainingPlan>[];
     final coachPlans = <TrainingPlan>[
       ?ownedCoach,
-      ...(publicCoaches.where((p) => p.id != ownedCoach?.id).toList()
-        ..sort((a, b) => (b.createdAt ?? DateTime(0)).compareTo(
-              a.createdAt ?? DateTime(0),
-            ))),
+      ...(publicCoaches.where((p) => p.id != ownedCoach?.id).toList()..sort(
+        (a, b) =>
+            (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)),
+      )),
     ];
 
     // Ván Ma Sói chỉ đọc value: API lỗi hay đang chờ thì không có card, list
     // kèo vẫn hiện như cũ.
-    final games =
-        ref.watch(gameListProvider).value?.items ?? const <GameListItem>[];
+    // Ván đã kết thúc thuộc mục Hoàn thành, đọc từ lịch sử ván của mình.
+    final games = switch (_filter) {
+      _ContractFilter.active => [
+        for (final game
+            in ref.watch(gameListProvider).value?.items ??
+                const <GameListItem>[])
+          if (!game.ended) game,
+      ],
+      _ContractFilter.completed =>
+        ref.watch(gameHistoryProvider).value ?? const <GameListItem>[],
+      _ContractFilter.failed => const <GameListItem>[],
+    };
+    // Phòng chạy chung đã xong cũng là việc đã làm, nằm ở Hoàn thành.
+    final rooms = _filter == _ContractFilter.completed
+        ? ref.watch(myEndedRunRoomsProvider).value ?? const <RunRoom>[]
+        : const <RunRoom>[];
 
     final keoBody = myActive.when(
       data: (mine) {
@@ -198,6 +215,7 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
           source: _pageSource,
           myContracts: mine,
           games: games,
+          rooms: rooms,
           coachPlans: coachPlans,
           currentUid: currentUid,
           currentProfile: profile,
@@ -210,11 +228,14 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
             if (_filter == filter) return;
             _filter = filter;
             ref.invalidate(gameListProvider);
+            ref.invalidate(gameHistoryProvider);
+            ref.invalidate(myEndedRunRoomsProvider);
             _loadFirstPage();
           },
           onLoadMore: _loadNextPage,
           onJoin: _joinContract,
           onOpenCoach: (plan) => context.push('/coach/${plan.id}'),
+          onOpenRoom: (room) => context.push('/rooms/${room.id}'),
           onOpenGame: (game) async {
             await context.push('/games/${game.id}');
             // Trong ván có thể đã đăng ký hay làm xong việc: đọc lại card.
@@ -420,6 +441,7 @@ class _ContractFeed extends StatelessWidget {
     required this.source,
     required this.myContracts,
     required this.games,
+    required this.rooms,
     required this.coachPlans,
     required this.currentUid,
     required this.currentProfile,
@@ -433,11 +455,13 @@ class _ContractFeed extends StatelessWidget {
     required this.onJoin,
     required this.onOpenCoach,
     required this.onOpenGame,
+    required this.onOpenRoom,
   });
 
   final AsyncValue<List<RunContract>> source;
   final List<RunContract> myContracts;
   final List<GameListItem> games;
+  final List<RunRoom> rooms;
   final List<TrainingPlan> coachPlans;
   final String? currentUid;
   final UserProfile? currentProfile;
@@ -451,6 +475,7 @@ class _ContractFeed extends StatelessWidget {
   final ValueChanged<RunContract> onJoin;
   final ValueChanged<TrainingPlan> onOpenCoach;
   final ValueChanged<GameListItem> onOpenGame;
+  final ValueChanged<RunRoom> onOpenRoom;
 
   @override
   Widget build(BuildContext context) {
@@ -483,11 +508,13 @@ class _ContractFeed extends StatelessWidget {
               final coachCards = filter == _ContractFilter.active
                   ? coachPlans
                   : const <TrainingPlan>[];
-              // Ván Ma Sói cũng chỉ ở "đang chạy", đứng trước coach card.
-              final gameCards = filter == _ContractFilter.active
-                  ? games
-                  : const <GameListItem>[];
-              if (visible.isEmpty && coachCards.isEmpty && gameCards.isEmpty) {
+              // Ván Ma Sói đã chia theo filter ở trên, đứng trước coach card.
+              final gameCards = games;
+              final roomCards = rooms;
+              if (visible.isEmpty &&
+                  coachCards.isEmpty &&
+                  gameCards.isEmpty &&
+                  roomCards.isEmpty) {
                 return ListView(
                   padding: EdgeInsets.fromLTRB(
                     wide ? 20 : 16,
@@ -514,6 +541,14 @@ class _ContractFeed extends StatelessWidget {
                               onTap: () => onOpenGame(game),
                             ),
                           ),
+                        for (final room in roomCards)
+                          SizedBox(
+                            width: 440,
+                            child: RunRoomDoneCard(
+                              room: room,
+                              onTap: () => onOpenRoom(room),
+                            ),
+                          ),
                         for (final plan in coachCards)
                           SizedBox(
                             width: 440,
@@ -536,9 +571,9 @@ class _ContractFeed extends StatelessWidget {
                   ],
                 );
               }
-              final lead = gameCards.length + coachCards.length;
-              final itemCount =
-                  lead + visible.length + (canLoadMore ? 1 : 0);
+              final lead =
+                  gameCards.length + roomCards.length + coachCards.length;
+              final itemCount = lead + visible.length + (canLoadMore ? 1 : 0);
               return ListView.separated(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 130),
                 itemCount: itemCount,
@@ -548,10 +583,18 @@ class _ContractFeed extends StatelessWidget {
                     final game = gameCards[index];
                     return GameCard(game: game, onTap: () => onOpenGame(game));
                   }
+                  final roomIndex = index - gameCards.length;
+                  if (roomIndex < roomCards.length) {
+                    final room = roomCards[roomIndex];
+                    return RunRoomDoneCard(
+                      room: room,
+                      onTap: () => onOpenRoom(room),
+                    );
+                  }
                   if (index < lead) {
                     return _coachCard(
                       context,
-                      coachCards[index - gameCards.length],
+                      coachCards[roomIndex - roomCards.length],
                       profiles,
                     );
                   }

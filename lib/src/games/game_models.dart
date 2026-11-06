@@ -187,6 +187,8 @@ class GameListItem {
   final DateTime? nextDeadline;
   final DateTime? updatedAt;
   final bool testMode;
+
+  bool get ended => status == 'ended';
 }
 
 class GameDetail {

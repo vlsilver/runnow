@@ -165,6 +165,12 @@ class RunNowApiClient {
     return GameList.fromJson(_jsonObject(response));
   }
 
+  /// Các ván đã kết thúc mà mình có chơi, mới tạo trước.
+  Future<List<GameListItem>> listGameHistory() async {
+    final response = await _send('GET', '/v1/games/history');
+    return GameList.fromJson(_jsonObject(response)).items;
+  }
+
   Future<GameDetail> getGame(String gameId) async {
     final response = await _send('GET', _gamePath(gameId));
     return GameDetail.fromJson(_jsonObject(response));

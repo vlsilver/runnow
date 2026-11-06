@@ -170,6 +170,50 @@ void main() {
       },
     );
 
+    test(
+      'phòng đã xong của mình: phòng group mình đã vào và đã đóng, trong 30 ngày, đóng sau trước',
+      () async {
+        Future<void> room(
+          String id,
+          String status,
+          DateTime closesAt, {
+          String kind = 'group',
+        }) => firestore.collection('runRooms').doc(id).set({
+          'title': id,
+          'privacy': 'private',
+          'kind': kind,
+          'status': status,
+          'closesAt': Timestamp.fromDate(closesAt),
+        });
+        final day = const Duration(days: 1);
+        await room('ended', 'ended', now.subtract(day * 2));
+        await member('ended', me, 'joined', now.subtract(day * 3));
+        // Quá giờ đóng mà backend chưa kịp đổi status thì cũng đã xong.
+        await room('overdue', 'open', now.subtract(const Duration(hours: 1)));
+        await member('overdue', me, 'joined', now.subtract(day));
+        await room('open', 'open', now.add(const Duration(hours: 2)));
+        await member(
+          'open',
+          me,
+          'joined',
+          now.subtract(const Duration(hours: 1)),
+        );
+        await room('solo', 'ended', now.subtract(day));
+        await firestore.collection('runRooms').doc('solo').update({
+          'kind': 'solo',
+        });
+        await member('solo', me, 'joined', now.subtract(day));
+        await room('left', 'ended', now.subtract(day));
+        await member('left', me, 'left', now.subtract(day));
+        await room('ancient', 'ended', now.subtract(day * 40));
+        await member('ancient', me, 'joined', now.subtract(day * 41));
+
+        final rooms = await repository.fetchMyEndedRooms(me, now);
+
+        expect(rooms.map((r) => r.id), ['overdue', 'ended']);
+      },
+    );
+
     test('phòng công khai: bỏ phòng solo, đọc được tuyến', () async {
       Future<void> room(String id, Map<String, dynamic> extra) =>
           firestore.collection('runRooms').doc(id).set({

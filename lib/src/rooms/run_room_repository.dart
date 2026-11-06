@@ -15,6 +15,7 @@ class RunRoomRepository {
   static const _messageLimit = 30;
   static const _liveLimit = 20;
   static const _myRoomsWindow = Duration(days: 8);
+  static const _endedRoomsWindow = Duration(days: 30);
 
   CollectionReference<Map<String, dynamic>> get _rooms =>
       _firestore.collection('runRooms');
@@ -68,6 +69,38 @@ class RunRoomRepository {
                   ),
             ],
           );
+
+  /// Phòng group [uid] đã vào và đã xong, đóng sau trước, cho mục kèo hoàn
+  /// thành. Phòng xong khi backend đã đóng hay đã quá giờ đóng. Lấy theo lần
+  /// ghi thành viên trong [_endedRoomsWindow]; phòng solo đi theo buổi live
+  /// của chủ nên không tính.
+  Future<List<RunRoom>> fetchMyEndedRooms(String uid, DateTime now) async {
+    final members = await _firestore
+        .collectionGroup('members')
+        .where('uid', isEqualTo: uid)
+        .where('state', isEqualTo: RunRoomMemberState.joined.name)
+        .where(
+          'updatedAt',
+          isGreaterThan: Timestamp.fromDate(now.subtract(_endedRoomsWindow)),
+        )
+        .get();
+    final docs = await Future.wait([
+      for (final doc in members.docs)
+        if (doc.reference.parent.parent case final room?) room.get(),
+    ]);
+    final rooms = [
+      for (final doc in docs)
+        if (doc.data() case final data?)
+          if (RunRoom.fromMap(doc.id, data) case final room
+              when room.kind == RunRoomKind.group && !room.isOpen(now))
+            room,
+    ];
+    rooms.sort(
+      (a, b) =>
+          (b.closesAt ?? DateTime(0)).compareTo(a.closesAt ?? DateTime(0)),
+    );
+    return rooms;
+  }
 
   /// Thành viên của mình, đọc được cả khi chưa vào phòng (để biết đang chờ
   /// duyệt hay bị từ chối). Null khi chưa từng xin vào.
@@ -170,6 +203,18 @@ final myRunRoomsProvider = StreamProvider.autoDispose<List<RunRoomMembership>>((
   final uid = ref.watch(firebaseUserProvider.select((u) => u.value?.uid));
   if (uid == null) return Stream.value(const []);
   return ref.watch(runRoomRepositoryProvider).watchMyRooms(uid, DateTime.now());
+});
+
+/// Phòng group mình đã chạy xong, cho mục kèo hoàn thành. Rỗng khi chưa đăng
+/// nhập.
+final myEndedRunRoomsProvider = FutureProvider.autoDispose<List<RunRoom>>((
+  ref,
+) {
+  final uid = ref.watch(firebaseUserProvider.select((u) => u.value?.uid));
+  if (uid == null) return const [];
+  return ref
+      .watch(runRoomRepositoryProvider)
+      .fetchMyEndedRooms(uid, DateTime.now());
 });
 
 final runRoomProvider = StreamProvider.autoDispose.family<RunRoom?, String>(
