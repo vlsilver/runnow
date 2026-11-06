@@ -14,7 +14,6 @@ import 'package:myrun/src/profile_stats.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/repository.dart';
 import 'package:myrun/src/screens/activity_hub_screen.dart';
-import 'package:myrun/src/screens/profile_screen.dart';
 import 'package:myrun/src/theme_controller.dart';
 
 /// Trả nhật ký mới trước, như Firestore; còn lại không dùng tới.
@@ -78,12 +77,11 @@ RunCard _card(int n, {String tier = 'rare'}) => RunCard.fromJson({
 });
 
 void main() {
-  Future<_JournalRepository> pumpProfile(
+  Future<_JournalRepository> pumpHub(
     WidgetTester tester, {
     List<RunCard> cards = const [],
     List<GamePlayerCard> games = const [],
     List<JourneyCard> journeys = const [],
-    Widget screen = const ProfileScreen(),
   }) async {
     tester.view.physicalSize = const Size(420, 4000);
     tester.view.devicePixelRatio = 1.0;
@@ -94,7 +92,7 @@ void main() {
     ]);
     final router = GoRouter(
       routes: [
-        GoRoute(path: '/', builder: (_, _) => screen),
+        GoRoute(path: '/', builder: (_, _) => const ActivityHubScreen()),
         GoRoute(
           path: '/journal',
           builder: (_, _) => const Scaffold(body: Text('Trang nhật ký')),
@@ -146,25 +144,10 @@ void main() {
     return repository;
   }
 
-  testWidgets('Hồ sơ leaves stats and journal to the Hoạt động tab', (
-    tester,
-  ) async {
-    final repository = await pumpProfile(tester);
-    expect(repository.pageReads, 0);
-    expect(find.text('Buổi 1'), findsNothing);
-    expect(find.text('TỔNG KM'), findsNothing);
-    // Cài đặt chỉ mở từ nút bánh răng, cuối trang không còn dòng riêng.
-    expect(find.text('Cài đặt'), findsNothing);
-    expect(find.byTooltip('Cài đặt'), findsOneWidget);
-  });
-
   testWidgets(
     'Hoạt động shows the five newest runs, the icon opens the journal',
     (tester) async {
-      final repository = await pumpProfile(
-        tester,
-        screen: const ActivityHubScreen(),
-      );
+      final repository = await pumpHub(tester);
       expect(repository.pageReads, 1);
       expect(find.text('TỔNG KM'), findsOneWidget);
       for (var n = 1; n <= 5; n++) {
@@ -180,7 +163,7 @@ void main() {
   );
 
   testWidgets('no cards yet says how to get one', (tester) async {
-    await pumpProfile(tester);
+    await pumpHub(tester);
     expect(find.text('BỘ THẺ'), findsOneWidget);
     expect(find.text(collectedCardsEmpty), findsOneWidget);
   });
@@ -188,7 +171,7 @@ void main() {
   testWidgets('the shelf leads the profile with the newest card in 3D', (
     tester,
   ) async {
-    await pumpProfile(
+    await pumpHub(
       tester,
       cards: [
         _card(1),
@@ -202,10 +185,19 @@ void main() {
     // Hai thẻ Hiếm, một thẻ Thần thoại.
     expect(find.text('×2'), findsOneWidget);
     expect(find.text('×1'), findsOneWidget);
+    // Châm ngôn mở đầu, rồi bộ thẻ, rồi các ô số liệu.
+    expect(
+      tester.getTopLeft(find.text('CHÂM NGÔN HÔM NAY')).dy,
+      lessThan(tester.getTopLeft(find.text('BỘ THẺ')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('BỘ THẺ')).dy,
+      lessThan(tester.getTopLeft(find.text('TỔNG KM')).dy),
+    );
   });
 
   testWidgets('a newer Ma Sói card leads the shelf', (tester) async {
-    await pumpProfile(
+    await pumpHub(
       tester,
       cards: [_card(2)],
       games: [
@@ -229,7 +221,7 @@ void main() {
   testWidgets('the shelf shows the ten newest cards and opens the rest', (
     tester,
   ) async {
-    await pumpProfile(tester, cards: [for (var n = 1; n <= 12; n++) _card(n)]);
+    await pumpHub(tester, cards: [for (var n = 1; n <= 12; n++) _card(n)]);
     expect(find.text('12 thẻ'), findsOneWidget);
     List<String> shown() => [
       for (final t in tester.widgetList<CollectedCardThumb>(
@@ -257,7 +249,7 @@ void main() {
   testWidgets('thẻ mới nhất ngừng đung đưa trong lúc kéo kệ thẻ', (
     tester,
   ) async {
-    await pumpProfile(tester, cards: [for (var n = 1; n <= 6; n++) _card(n)]);
+    await pumpHub(tester, cards: [for (var n = 1; n <= 6; n++) _card(n)]);
     bool swaying() =>
         tester.widget<TiltFlipCard>(find.byType(TiltFlipCard)).sway;
     expect(swaying(), isTrue);

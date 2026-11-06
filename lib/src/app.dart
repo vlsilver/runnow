@@ -44,7 +44,6 @@ import 'package:myrun/src/training_plan/coach_detail_screen.dart';
 import 'package:myrun/src/screens/run_contract_home_screen.dart';
 import 'package:myrun/src/screens/run_contract_route_create_screen.dart';
 import 'package:myrun/src/screens/profile_screen.dart';
-import 'package:myrun/src/screens/settings_screen.dart';
 import 'package:myrun/src/screens/tracking_screen.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/web_layout.dart';
@@ -124,9 +123,10 @@ final _router = GoRouter(
               path: '/me',
               builder: (context, state) => const ProfileScreen(),
               routes: [
+                // Cài đặt từng là màn riêng, giờ nằm ngay trong tab Hồ sơ.
                 GoRoute(
                   path: 'settings',
-                  builder: (context, state) => const SettingsScreen(),
+                  redirect: (context, state) => '/me',
                 ),
                 GoRoute(
                   path: 'cards',
@@ -175,8 +175,8 @@ final _router = GoRouter(
         ),
       ],
     ),
-    // Cài đặt từng là tab riêng ở /settings, giờ nằm dưới tab Hồ sơ.
-    GoRoute(path: '/settings', redirect: (context, state) => '/me/settings'),
+    // Cài đặt từng là tab riêng ở /settings, giờ nằm trong tab Hồ sơ.
+    GoRoute(path: '/settings', redirect: (context, state) => '/me'),
     GoRoute(
       path: '/settings/profile',
       redirect: (context, state) => '/profile',

@@ -23,9 +23,13 @@ final _telegramStatusProvider = FutureProvider.autoDispose<TelegramLinkStatus>(
 );
 
 /// Mỗi mục một dòng có trạng thái; bấm vào mở sheet chứa các thao tác của mục
-/// đó (kết nối, đồng bộ, ngắt).
+/// đó (kết nối, đồng bộ, ngắt). Là gốc của tab Hồ sơ, nên không có AppBar;
+/// [header] là phần đầu trang Hồ sơ đặt trên các mục.
 class SettingsScreen extends ConsumerWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({this.header = const [], super.key});
+
+  final List<Widget> header;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sync = ref.watch(syncControllerProvider);
@@ -45,14 +49,20 @@ class SettingsScreen extends ConsumerWidget {
     final googleAuth = ref.watch(authControllerProvider);
     final lastSynced = profile.value?.lastSyncedAt;
     return Scaffold(
-      appBar: AppBar(title: const Text('Cài đặt')),
       body: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 860),
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+            // Không có AppBar nên tự chừa tai thỏ.
+            padding: EdgeInsets.fromLTRB(
+              16,
+              8 + MediaQuery.paddingOf(context).top,
+              16,
+              110,
+            ),
             children: [
+              ...header,
               profile.when(
                 data: (user) => user == null
                     ? const SizedBox.shrink()

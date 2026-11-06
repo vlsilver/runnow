@@ -8,6 +8,8 @@ import 'package:http/testing.dart';
 import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/app.dart';
 import 'package:myrun/src/auth.dart';
+import 'package:myrun/src/garmin_controller.dart';
+import 'package:myrun/src/health_sync.dart';
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/profile_stats.dart';
@@ -58,6 +60,11 @@ void main() {
             (ref) => Stream.value(UserProfile.demo),
           ),
           stravaAuthProvider.overrideWith((ref) => _NoStrava()),
+          // Tab Hồ sơ là trang Cài đặt; bản thật của ba controller này cần
+          // Firebase hoặc plugin máy.
+          garminAuthProvider.overrideWith((ref) => _NoGarmin()),
+          authControllerProvider.overrideWith((ref) => _NoAuth()),
+          healthSyncProvider.overrideWith((ref) => _NoHealth()),
           stravaConnectionProvider.overrideWithValue(true),
           stravaConnectionLoadingProvider.overrideWithValue(false),
           myActiveContractsProvider.overrideWith(
@@ -222,7 +229,7 @@ void main() {
     await tester.tap(find.text('Hồ sơ'));
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
-    expect(find.byTooltip('Cài đặt'), findsOneWidget);
+    expect(find.text('Đăng xuất'), findsOneWidget);
     expect(find.byTooltip('MyBot'), findsNothing);
   });
 
@@ -250,26 +257,70 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
-  testWidgets('Hồ sơ keeps quote and cards, stats live in Hoạt động', (
+  testWidgets('Hồ sơ opens straight on settings, cards live in Hoạt động', (
     tester,
   ) async {
     await pumpApp(tester);
-    expect(find.text('Cài đặt'), findsNothing);
-
     await tester.tap(find.text('Hồ sơ'));
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
-    expect(find.byTooltip('Cài đặt'), findsOneWidget);
+    // Các mục cài đặt nằm ngay dưới danh tính, không qua nút bánh răng.
+    expect(find.text('Đăng xuất'), findsOneWidget);
+    expect(find.text('KẾT NỐI'), findsOneWidget);
+    expect(find.byTooltip('Cài đặt'), findsNothing);
+    expect(find.text('CHÂM NGÔN HÔM NAY'), findsNothing);
+    expect(find.text('BỘ THẺ'), findsNothing);
+
+    await tester.tap(find.text('Hoạt động'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
     expect(find.text('CHÂM NGÔN HÔM NAY'), findsOneWidget);
     // Bộ thẻ hiện cả khi chưa có buổi chạy nào.
     expect(find.text('BỘ THẺ'), findsOneWidget);
-    expect(find.text('Chưa có buổi chạy nào'), findsNothing);
-    expect(find.text('HÀNH TRÌNH'), findsNothing);
   });
 }
 
 /// Cổng đăng nhập chỉ nghe controller này; bản thật cần Firebase và app_links.
 class _NoStrava extends ChangeNotifier implements StravaAuthController {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoGarmin extends ChangeNotifier implements GarminController {
+  @override
+  bool get connected => false;
+  @override
+  bool get loading => false;
+  @override
+  bool get statusLoading => false;
+  @override
+  String? get errorMessage => null;
+  @override
+  DateTime? get lastPushAt => null;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoAuth extends ChangeNotifier implements AuthController {
+  @override
+  bool get loading => false;
+  @override
+  String? get errorMessage => null;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoHealth extends ChangeNotifier implements HealthSyncController {
+  @override
+  bool get available => false;
+  @override
+  bool get connected => false;
+  @override
+  bool get busy => false;
+  @override
+  String? get error => null;
+  @override
+  String get providerName => 'Apple Health';
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
