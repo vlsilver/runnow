@@ -83,7 +83,7 @@ func TestEmulatorBotWerewolfShowsOnlyPublicGame(t *testing.T) {
 	if want := map[string]int{"Sói": 2, "Tiên tri": 1, "Bảo vệ": 1, "Dân": 6}; !reflect.DeepEqual(v.Game.Deck, want) {
 		t.Fatalf("deck = %v", v.Game.Deck)
 	}
-	if v.Rules != gameRulesText || !strings.Contains(v.Roles["Tiên tri"], "Cần đủ 1 km") || strings.Contains(v.VoteRules, "X km") {
+	if v.Rules != gameRulesFor(ww.Config{}) || !strings.Contains(v.Roles["Tiên tri"], "Cần đủ 1 km") || strings.Contains(v.VoteRules, "X km") {
 		t.Fatalf("luật = %+v", v)
 	}
 
@@ -164,7 +164,7 @@ func TestEmulatorBotWerewolfWithoutGameStillHasRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Game != nil || v.NoGame == "" || v.Rules != gameRulesText || len(v.Roles) != len(roleRules) || !strings.Contains(v.VoteRules, "chia X km") {
+	if v.Game != nil || v.NoGame == "" || v.Rules != gameRulesFor(ww.Config{}) || len(v.Roles) != len(roleRules) || !strings.Contains(v.VoteRules, "chia X km") {
 		t.Fatalf("%+v", v)
 	}
 }

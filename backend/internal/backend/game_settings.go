@@ -67,6 +67,25 @@ func roleKmSetting(key string, role werewolf.Role, label, desc string) gameSetti
 	}
 }
 
+var kmOffOnly = []GameSettingCondition{{Key: "kmOff", Equals: true}}
+
+// scheduleSetting là một ô của lịch hoạt động. Ô không gửi giữ giá trị của lịch
+// gốc. Ván còn dùng km thì lịch không tác dụng (khung km cố định 22h) nên bỏ
+// qua; kmOff đứng trước trong gameSettingDefs nên lúc này c.KmOff đã áp.
+func scheduleSetting(s GameSetting, set func(*werewolf.Schedule, int)) gameSettingDef {
+	s.Type, s.EnabledIf = settingNumber, kmOffOnly
+	return gameSettingDef{GameSetting: s, apply: func(c *werewolf.Config, v any) {
+		if !c.KmOff {
+			return
+		}
+		if c.Schedule == nil {
+			def := werewolf.DefaultSchedule()
+			c.Schedule = &def
+		}
+		set(c.Schedule, int(v.(float64)))
+	}}
+}
+
 func setSkillKm(c *werewolf.Config, role werewolf.Role, km float64) {
 	if c.SkillKm == nil {
 		c.SkillKm = map[werewolf.Role]float64{}
@@ -88,6 +107,15 @@ var gameSettingDefs = []gameSettingDef{
 		keepDefault: true,
 		apply:       func(c *werewolf.Config, v any) { c.KmOff = v.(bool) },
 	},
+	scheduleSetting(GameSetting{Key: "startHour", Label: "Giờ mở vòng đầu", Default: 22.0, Min: f64(0), Max: f64(23), Step: f64(1), Unit: "giờ",
+		Description: "Giờ trong ngày mở vòng đầu tiên, vòng mở là đêm bắt đầu. Các vòng sau nối tiếp ngay khi vòng trước chốt. Hết các vòng trong ngày thì bot không nhận lựa chọn nào, tới giờ này hôm sau mới chơi tiếp. Chỉ dùng khi không dùng km."},
+		func(s *werewolf.Schedule, n int) { s.StartHour = n }),
+	scheduleSetting(GameSetting{Key: "roundHours", Label: "Độ dài một vòng", Default: 24.0, Min: f64(werewolf.MinRoundHours), Max: f64(werewolf.MaxRoundHours), Step: f64(2), Unit: "tiếng",
+		Description: "Một vòng gồm đêm, bản tin, đề cử và biểu quyết. Mọi mốc co theo vòng 24 tiếng: vòng 6 tiếng thì sói có 30 phút để cắn, đêm dài 3 tiếng, biểu quyết là 30 phút cuối vòng. Số vòng nhân độ dài không quá 24 tiếng. Chỉ dùng khi không dùng km."},
+		func(s *werewolf.Schedule, n int) { s.RoundHours = n }),
+	scheduleSetting(GameSetting{Key: "roundsPerDay", Label: "Số vòng mỗi ngày", Default: 1.0, Min: f64(1), Max: f64(24 / werewolf.MinRoundHours), Step: f64(1), Unit: "vòng",
+		Description: "Số vòng chơi trong một ngày, nối nhau từ giờ mở vòng đầu. Ví dụ mở 6h, vòng 6 tiếng, 3 vòng thì chơi từ 6h tới 24h, các vòng mở lúc 6h, 12h, 18h. Số vòng nhân độ dài không quá 24 tiếng. Chỉ dùng khi không dùng km."},
+		func(s *werewolf.Schedule, n int) { s.Rounds = n }),
 	{
 		GameSetting: GameSetting{Key: "wolfKm", Label: "Km để Sói cắn", Type: settingNumber, Default: 0.0,
 			Min: f64(0), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn,

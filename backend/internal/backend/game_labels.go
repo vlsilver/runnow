@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/vlsilver/runnow/backend/internal/werewolf"
 )
@@ -20,24 +21,25 @@ var roleLabels = map[werewolf.Role]string{
 }
 
 var roleRules = map[werewolf.Role]string{
-	werewolf.Wolf:     "Đêm nào cả phe cũng chọn một người để cắn, từ 22h tới 0h. Lựa chọn bấm sau cùng của phe được tính.",
+	werewolf.Wolf:     "Đêm nào cả phe cũng chọn một người để cắn, từ {night} tới {lock}. Lựa chọn bấm sau cùng của phe được tính.",
 	werewolf.Seer:     "Mỗi đêm soi một người để biết người đó là Sói hay Dân. Chọn một lần, có kết quả ngay.",
 	werewolf.Guard:    "Mỗi đêm bảo vệ một người khỏi bị sói cắn, được tự bảo vệ. Không chọn lại người của đêm trước.",
-	werewolf.Witch:    "Cả ván có một bình cứu và một bình độc, dùng từ 0h tới 10h. Bình cứu chỉ cứu người bị cắn đêm đó; chỉ tự cứu được ở đêm 1.",
+	werewolf.Witch:    "Cả ván có một bình cứu và một bình độc, dùng từ {lock} tới {dawn}. Bình cứu chỉ cứu người bị cắn đêm đó; chỉ tự cứu được ở đêm 1.",
 	werewolf.Hunter:   "Khi chết thì được bắn một người, trong khung giờ ngay sau lúc chết. Chết vì độc hoặc rời PSC thì không được bắn.",
-	werewolf.Cupid:    "Đêm 1 ghép hai người thành cặp đôi, ghép cả mình cũng được. Một người chết thì người kia chết theo. Quá 0h chưa ghép thì bot ghép thay.",
+	werewolf.Cupid:    "Đêm 1 ghép hai người thành cặp đôi, ghép cả mình cũng được. Một người chết thì người kia chết theo. Quá {lock} chưa ghép thì bot ghép thay.",
 	werewolf.Villager: "Thảo luận, đề cử và biểu quyết để tìm ra sói.",
 }
 
-const gameRulesText = "Mỗi vòng dài một ngày. 22h tới 10h là đêm: các vai có kỹ năng chọn người. 10h bản tin đêm, đề cử tới 20h; tối đa 3 người nhiều đề cử nhất lên giàn. 20h tới 22h biểu quyết Treo hay Tha từng người. 22h chốt phiếu và km.\n" +
+// Chữ giờ trong luật viết bằng {night}, {lock}…, clockText đổi theo lịch ván.
+const gameRulesText = scheduleDefaultText + " {night} tới {dawn} là đêm: các vai có kỹ năng chọn người. {dawn} bản tin đêm, đề cử tới {nominate}; tối đa 3 người nhiều đề cử nhất lên giàn. {nominate} tới {close} biểu quyết Treo hay Tha từng người. {close} chốt phiếu và km.\n" +
 	"Người bị treo chỉ lộ là phe Dân hay phe Sói, không lật lá bài, trừ khi còn được bắn một người thì lật. Chết cách khác thì lật lá bài. Hết ván lật bài tất cả.\n" +
 	gameKmLineCut +
 	"Dân thắng khi hết sói. Sói thắng khi số sói bằng số người còn lại. Cặp đôi Sói và Dân thắng khi chỉ còn hai người họ. Ván chạy tới khi có phe thắng, không giới hạn số vòng."
 
 // botVoteRulesText nói kỹ phần đề cử và đếm phiếu (step.go: pickNominee,
 // countVotes, voteCut) cho 3i, vì gameRulesText chỉ nói gọn cho màn hình app.
-const botVoteRulesText = "Đề cử: 20h tối đa 3 người nhiều đề cử nhất lên giàn, một đề cử là đủ; bằng đề cử ở suất cuối thì bốc thăm; không ai đề cử thì hôm đó không treo. Đề cử của người đã chết và đề cử nhắm vào người đã chết không tính.\n" +
-	"Biểu quyết: mỗi người lên giàn có một phiên Treo/Tha riêng, mọi phiên chốt cùng lúc 22h nên một ngày treo được tới 3 người. Người lên giàn không bỏ phiếu ở phiên của mình nhưng vẫn bỏ phiếu ở phiên người khác, kể cả khi chính họ bị treo. Treo khi phiếu Treo được tính nhiều hơn phiếu Tha, hoà thì tha. Người yêu bấm Treo người yêu mình thì phiếu đó không tính.\n" +
+const botVoteRulesText = "Đề cử: {nominate} tối đa 3 người nhiều đề cử nhất lên giàn, một đề cử là đủ; bằng đề cử ở suất cuối thì bốc thăm; không ai đề cử thì hôm đó không treo. Đề cử của người đã chết và đề cử nhắm vào người đã chết không tính.\n" +
+	"Biểu quyết: mỗi người lên giàn có một phiên Treo/Tha riêng, mọi phiên chốt cùng lúc {close} nên một ngày treo được tới 3 người. Người lên giàn không bỏ phiếu ở phiên của mình nhưng vẫn bỏ phiếu ở phiên người khác, kể cả khi chính họ bị treo. Treo khi phiếu Treo được tính nhiều hơn phiếu Tha, hoà thì tha. Người yêu bấm Treo người yêu mình thì phiếu đó không tính.\n" +
 	botVoteKmCut
 
 // Các câu về km trong luật đổi theo cấu hình của ván (werewolf.Config): km từng
@@ -53,16 +55,64 @@ const (
 
 // gameRulesFor là gameRulesText theo cấu hình của ván.
 func gameRulesFor(cfg werewolf.Config) string {
+	text := gameRulesText
 	switch cfg.VoteMode() {
 	case werewolf.VoteTop:
-		return strings.Replace(gameRulesText, gameKmLineCut, fmt.Sprintf(gameKmLineTop, topVotersText(cfg), formatKm(kmPerUnit(cfg))), 1)
+		text = strings.Replace(text, gameKmLineCut, fmt.Sprintf(gameKmLineTop, topVotersText(cfg), formatKm(kmPerUnit(cfg))), 1)
 	case werewolf.VoteFlat:
 		if cfg.KmOff {
-			return strings.Replace(strings.Replace(gameRulesText, gameKmLineCut, "", 1), "22h chốt phiếu và km.", "22h chốt phiếu.", 1)
+			text = strings.Replace(strings.Replace(text, gameKmLineCut, "", 1), "{close} chốt phiếu và km.", "{close} chốt phiếu.", 1)
+		} else {
+			text = strings.Replace(text, gameKmLineCut, gameKmLineFlat, 1)
 		}
-		return strings.Replace(gameRulesText, gameKmLineCut, gameKmLineFlat, 1)
 	}
-	return gameRulesText
+	text = strings.Replace(text, scheduleDefaultText, scheduleText(cfg), 1)
+	return clockText(text, ruleClock(cfg))
+}
+
+const scheduleDefaultText = "Mỗi vòng dài một ngày."
+
+// scheduleText là câu đầu luật: vòng dài bao lâu, mở lúc mấy giờ.
+func scheduleText(cfg werewolf.Config) string {
+	s := cfg.Schedule
+	if s == nil {
+		return scheduleDefaultText
+	}
+	starts := cfg.RoundStarts()
+	hours := make([]string, len(starts))
+	for i, h := range starts {
+		hours[i] = itoa(h) + "h"
+	}
+	if s.Rounds == 1 {
+		return fmt.Sprintf("Mỗi ngày một vòng dài %d tiếng, mở lúc %s; ngoài khung đó không nhận lựa chọn nào.", s.RoundHours, hours[0])
+	}
+	return fmt.Sprintf("Mỗi ngày %d vòng, mỗi vòng dài %d tiếng, mở lúc %s; ngoài khung đó không nhận lựa chọn nào. Giờ bên dưới là của vòng mở lúc %s, vòng khác lệch giờ tương ứng.",
+		s.Rounds, s.RoundHours, strings.Join(hours, ", "), hours[0])
+}
+
+// hm là giờ VN viết kiểu "22h", "6h30".
+func hm(t time.Time) string {
+	t = t.In(vietnam)
+	if t.Minute() == 0 {
+		return itoa(t.Hour()) + "h"
+	}
+	return fmt.Sprintf("%dh%02d", t.Hour(), t.Minute())
+}
+
+// clockText thay chữ giờ trong s bằng các mốc của vòng k. "{dawn sáng}" thêm
+// chữ "sáng" khi mốc đó rơi vào buổi sáng, như "10h sáng" của lịch gốc.
+func clockText(s string, k werewolf.RoundClock) string {
+	dawn, dawnPart := hm(k.Dawn), hm(k.Dawn)
+	if h := k.Dawn.In(vietnam).Hour(); h >= 4 && h <= 10 {
+		dawnPart += " sáng"
+	}
+	return strings.NewReplacer("{night}", hm(k.Night), "{lock}", hm(k.WolfLock), "{dawn sáng}", dawnPart, "{dawn}", dawn,
+		"{nominate}", hm(k.NominateClose), "{close}", hm(k.Close)).Replace(s)
+}
+
+// ruleClock là các mốc của vòng mở đầu tiên trong ngày, cho luật in sẵn.
+func ruleClock(cfg werewolf.Config) werewolf.RoundClock {
+	return cfg.Clock(time.Date(2026, 1, 1, cfg.RoundStarts()[0], 0, 0, 0, vietnam))
 }
 
 // botVoteRulesFor là botVoteRulesText theo cấu hình của ván.
@@ -74,7 +124,7 @@ func botVoteRulesFor(cfg werewolf.Config, x string) string {
 	case werewolf.VoteFlat:
 		km = botVoteKmFlat
 	}
-	return strings.ReplaceAll(strings.Replace(botVoteRulesText, botVoteKmCut, km, 1), "X km", x+" km")
+	return clockText(strings.ReplaceAll(strings.Replace(botVoteRulesText, botVoteKmCut, km, 1), "X km", x+" km"), ruleClock(cfg))
 }
 
 func topVotersText(cfg werewolf.Config) string {
@@ -84,12 +134,13 @@ func topVotersText(cfg werewolf.Config) string {
 	return "số người bằng số sói còn sống cộng 1"
 }
 
-// roleRulesFor là luật của vai role kèm câu km theo cấu hình của ván.
+// roleRulesFor là luật của vai role kèm câu km và giờ theo cấu hình của ván.
 func roleRulesFor(role werewolf.Role, cfg werewolf.Config, x string) string {
+	text := clockText(roleRules[role], ruleClock(cfg))
 	if line := roleKmLine(role, cfg, x); line != "" {
-		return roleRules[role] + " " + line
+		return text + " " + line
 	}
-	return roleRules[role]
+	return text
 }
 
 // roleKmLine là câu km của vai role; rỗng khi vai không có kỹ năng cần km hoặc
@@ -171,20 +222,25 @@ type actionText struct {
 const confirmOnce = "Chọn rồi không đổi được. Chắc chưa?"
 
 var actionTexts = map[werewolf.Kind]actionText{
-	werewolf.KindWolfBite:    {"Cắn", "Chọn người phe Sói cắn đêm nay. Lựa chọn bấm sau cùng của phe được tính. Khoá lúc 0h.", "single_target", ""},
+	werewolf.KindWolfBite:    {"Cắn", "Chọn người phe Sói cắn đêm nay. Lựa chọn bấm sau cùng của phe được tính. Khoá lúc {lock}.", "single_target", ""},
 	werewolf.KindSeerPeek:    {"Soi", "Chọn một người để biết là Sói hay Dân.", "single_target", confirmOnce},
 	werewolf.KindGuard:       {"Bảo vệ", "Chọn một người để đỡ cú cắn đêm nay. Không chọn lại người của đêm trước.", "single_target", ""},
 	werewolf.KindWitchSave:   {"Bình cứu", "Cứu người bị cắn đêm nay. Cả ván chỉ có một bình.", "confirm", ""},
 	werewolf.KindWitchPoison: {"Bình độc", "Chọn một người để giết. Cả ván chỉ có một bình.", "single_target", ""},
 	werewolf.KindHunterShoot: {"Bắn", "Bạn đã chết. Chọn một người bắn theo.", "single_target", confirmOnce},
 	werewolf.KindCupidPair:   {"Ghép đôi", "Chọn hai người thành cặp đôi. Một người chết thì người kia chết theo.", "two_targets", confirmOnce},
-	werewolf.KindNominate:    {"Đề cử", "Chọn một người lên giàn. Đổi được tới 20h.", "single_target", ""},
+	werewolf.KindNominate:    {"Đề cử", "Chọn một người lên giàn. Đổi được tới {nominate}.", "single_target", ""},
 	werewolf.KindVote:        voteText,
 	werewolf.KindVote2:       voteText,
 	werewolf.KindVote3:       voteText,
 }
 
-var voteText = actionText{"Biểu quyết", "Treo hay tha người đang lên giàn. Đổi được tới 22h.", "choice", ""}
+// actionHelp là dòng hướng dẫn của kind, giờ theo vòng đang chạy của ván.
+func actionHelp(st *werewolf.State, kind werewolf.Kind) string {
+	return clockText(actionTexts[kind].help, st.Config.Clock(st.NightAt))
+}
+
+var voteText = actionText{"Biểu quyết", "Treo hay tha người đang lên giàn. Đổi được tới {close}.", "choice", ""}
 
 // rejectTexts là lý do luật từ chối, dùng cho cả disabledReason lẫn body lỗi.
 var rejectTexts = map[werewolf.Reject]string{
@@ -251,10 +307,15 @@ func rejectHTTP(kind werewolf.Kind, err error) *HTTPError {
 
 var choiceLabels = map[string]string{werewolf.ChoiceHang: "Treo", werewolf.ChoiceSpare: "Tha"}
 
-func phaseLabel(round int, phase werewolf.Phase) string {
+// phaseLabel là tên lượt đang chạy. deadline là hạn của lượt đó; lúc chuẩn bị
+// thì nó là giờ mở đêm 1.
+func phaseLabel(round int, phase werewolf.Phase, deadline time.Time) string {
 	switch phase {
 	case werewolf.PhaseSetup:
-		return "Chuẩn bị, đêm 1 bắt đầu lúc 22h"
+		if deadline.IsZero() {
+			return "Chuẩn bị"
+		}
+		return "Chuẩn bị, đêm 1 bắt đầu lúc " + hm(deadline)
 	case werewolf.PhaseNight:
 		return "Đêm " + itoa(round) + ", sói đang chọn"
 	case werewolf.PhaseDawn:

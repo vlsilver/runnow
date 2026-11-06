@@ -57,7 +57,7 @@ func TestParseGameButtonRejectsTampered(t *testing.T) {
 
 // promptState: 4 người, xếp theo uid là a, b, c, d (vị trí 0..3 trong callback).
 func promptState() *ww.State {
-	return &ww.State{Round: 1, Phase: ww.PhaseNight, Players: map[string]*ww.Player{
+	return &ww.State{Round: 1, Phase: ww.PhaseNight, NightAt: time.Date(2026, 10, 12, 22, 0, 0, 0, vietnam), Players: map[string]*ww.Player{
 		"a": {Role: ww.Seer, Alive: true}, "b": {Role: ww.Wolf, Alive: true},
 		"c": {Role: ww.Cupid, Alive: true}, "d": {Role: ww.Villager, Alive: true},
 	}}

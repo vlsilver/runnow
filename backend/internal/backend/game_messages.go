@@ -133,6 +133,7 @@ func stepMessages(before, after *werewolf.State, evs []werewolf.Event) []gameMsg
 	if len(evs) == 1 && evs[0].Kind == werewolf.EventReminder {
 		return []gameMsg{{ChatKey: chatGroup, Template: tplReminder, Data: map[string]any{
 			"reason": evs[0].Reason, "phaseKey": before.PhaseKey(),
+			"deadline": before.Deadline().UTC().Format(time.RFC3339),
 		}}}
 	}
 	digest := map[string]any{

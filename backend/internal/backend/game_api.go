@@ -364,7 +364,7 @@ func phaseLabelOf(g map[string]any) string {
 	if strings.HasSuffix(stringValue(g["phaseKey"]), "/hunter") {
 		return "Thợ săn đang chọn người bắn"
 	}
-	return phaseLabel(int(number(g["round"])), werewolf.Phase(stringValue(g["phase"])))
+	return phaseLabel(int(number(g["round"])), werewolf.Phase(stringValue(g["phase"])), timeValue(g["deadline"]))
 }
 
 // nextDeadline là mốc khoá kế tiếp theo giờ thật: hạn đăng ký, hạn bắn của thợ
@@ -1230,11 +1230,11 @@ func meActions(st *werewolf.State, uid string, mine []werewolf.Action, raw map[w
 	out := []GameAction{}
 	for _, kind := range st.Available(uid) {
 		text := actionTexts[kind]
-		a := GameAction{Kind: string(kind), Label: text.label, Help: text.help, Input: text.input, ConfirmText: text.confirm, Options: []GameOption{}}
+		a := GameAction{Kind: string(kind), Label: text.label, Help: actionHelp(st, kind), Input: text.input, ConfirmText: text.confirm, Options: []GameOption{}}
 		if nominee := st.NomineeOf(kind); nominee != "" {
 			// Mỗi người lên giàn một thẻ biểu quyết, gọi theo tên để không nhầm phiên.
 			name := playerName(playerIndex(players), nominee)
-			a.Label, a.Help = "Biểu quyết: "+name, "Treo hay tha "+name+". Đổi được tới 22h."
+			a.Label, a.Help = "Biểu quyết: "+name, "Treo hay tha "+name+". Đổi được tới "+hm(st.Config.Clock(st.NightAt).Close)+"."
 		}
 		switch text.input {
 		case "choice":

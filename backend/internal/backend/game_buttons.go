@@ -174,7 +174,7 @@ func (v promptView) render() (string, map[string]any, error) {
 	if text.label == "" {
 		return "", nil, fmt.Errorf("hành động lạ %q", v.kind)
 	}
-	lines := []string{"<b>Tới lượt bạn: " + text.label + "</b>", html.EscapeString(text.help)}
+	lines := []string{"<b>Tới lượt bạn: " + text.label + "</b>", html.EscapeString(actionHelp(v.st, v.kind))}
 	names := func(uids []string) string {
 		out := make([]string, len(uids))
 		for i, uid := range uids {

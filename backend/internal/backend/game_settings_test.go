@@ -55,6 +55,9 @@ func TestGameSettingsRejected(t *testing.T) {
 		{"kmPerUnit": 0.0},
 		{"vote": "double"},
 		{"vote": 1.0},
+		{"kmOff": true, "roundHours": 5.0},
+		{"kmOff": true, "roundsPerDay": 7.0},
+		{"kmOff": true, "startHour": 24.0},
 	} {
 		var gc ww.Config
 		err := applyGameSettings(&gc, in)

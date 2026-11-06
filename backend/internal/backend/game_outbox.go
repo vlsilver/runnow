@@ -646,10 +646,11 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 		}
 	case tplReminder:
 		var d struct {
-			Reason string `json:"reason"`
+			Reason   string    `json:"reason"`
+			Deadline time.Time `json:"deadline"`
 		}
 		if err = json.Unmarshal([]byte(raw), &d); err == nil {
-			text, err = reminderText(d.Reason)
+			text, err = reminderText(d.Reason, d.Deadline)
 		}
 		if err == nil {
 			out.markup, err = r.kmButton()
@@ -726,30 +727,31 @@ func (r *outboxRenderer) startText(nightAt time.Time, wake []werewolf.Role) stri
 	text := fmt.Sprintf("<b>Ma Sói bắt đầu</b>\n%d người chơi: %s.\nĐêm 1 bắt đầu lúc %s. Bot đã nhắn riêng lá bài cho từng người.",
 		len(names), strings.Join(names, ", "), vnTime(nightAt))
 	if slices.Contains(wake, werewolf.Cupid) {
-		text += "\n" + wakeLines[werewolf.Cupid] + "\n" + gmHowTo
+		text += "\n" + clockText(wakeLines[werewolf.Cupid], r.cfg.Clock(nightAt)) + "\n" + gmHowTo
 	}
 	return text
 }
 
 // wakeLines: quản trò gọi từng vai dậy, kèm việc và hạn của vai đó (bảng 1.3).
-// Hạn ghi theo lịch chuẩn; lúc gọi thì admin chưa dời hạn được lượt mới.
+// Hạn ghi theo lịch của vòng (clockText); lúc gọi thì admin chưa dời hạn được
+// lượt mới.
 var wakeLines = map[werewolf.Role]string{
-	werewolf.Cupid: "Cupid thức dậy, chọn hai người để ghép đôi, chốt lúc 0h đêm 1.",
-	werewolf.Wolf:  "Sói thức dậy, cả phe chọn một người để cắn, chốt lúc 0h.",
-	werewolf.Guard: "Bảo vệ thức dậy, chọn một người để che, tới 10h sáng.",
-	werewolf.Seer:  "Tiên tri thức dậy, chọn một người để soi, tới 10h sáng.",
-	werewolf.Witch: "Phù thuỷ thức dậy, chọn cứu người hay dùng bình độc, tới 10h sáng.",
+	werewolf.Cupid: "Cupid thức dậy, chọn hai người để ghép đôi, chốt lúc {lock} đêm 1.",
+	werewolf.Wolf:  "Sói thức dậy, cả phe chọn một người để cắn, chốt lúc {lock}.",
+	werewolf.Guard: "Bảo vệ thức dậy, chọn một người để che, tới {dawn sáng}.",
+	werewolf.Seer:  "Tiên tri thức dậy, chọn một người để soi, tới {dawn sáng}.",
+	werewolf.Witch: "Phù thuỷ thức dậy, chọn cứu người hay dùng bình độc, tới {dawn sáng}.",
 }
 
-// witchLater: lúc 22h phù thuỷ chưa dậy, nhưng vẫn có số thứ tự của mình để
-// group thấy cả lượt đêm.
-const witchLater = "Phù thuỷ: 0h sói chốt xong thì quản trò gọi."
+// witchLater: lúc vào đêm phù thuỷ chưa dậy, nhưng vẫn có số thứ tự của mình
+// để group thấy cả lượt đêm.
+const witchLater = "Phù thuỷ: {lock} sói chốt xong thì quản trò gọi."
 
 const gmHowTo = "Ai có vai thì bấm trong tin 3i nhắn riêng hoặc trong app RunNow."
 
 // gmText là lời quản trò cuối bản tin khi vào đêm (22h) và lúc sói xong (0h).
 // Nó thay dòng "Tiếp theo", vì đã nói từng vai làm gì tới mấy giờ.
-func gmText(call string, round int, wake []werewolf.Role) []string {
+func gmText(call string, round int, wake []werewolf.Role, k werewolf.RoundClock) []string {
 	var lines []string
 	switch call {
 	case callNight:
@@ -759,12 +761,12 @@ func gmText(call string, round int, wake []werewolf.Role) []string {
 			if role == werewolf.Witch {
 				l = witchLater
 			}
-			lines = append(lines, fmt.Sprintf("%d. %s", i+1, l))
+			lines = append(lines, fmt.Sprintf("%d. %s", i+1, clockText(l, k)))
 		}
 	case callWitch:
 		lines = append(lines, "<b>Sói đã chốt, sói đi ngủ.</b>")
 		for _, role := range wake {
-			lines = append(lines, wakeLines[role])
+			lines = append(lines, clockText(wakeLines[role], k))
 		}
 	default:
 		return nil
@@ -837,7 +839,13 @@ func (r *outboxRenderer) digestText(raw string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	gm := gmText(d.Call, d.Round, d.Wake)
+	// Bản tin dựng ngay lúc sang lượt mới, chưa ai dời hạn lượt đó, nên trừ
+	// đi độ lệch của phase là ra giờ mở vòng.
+	clock := ruleClock(r.cfg)
+	if !d.Deadline.IsZero() {
+		clock = r.cfg.Clock(d.Deadline.Add(-r.cfg.PhaseOffset(d.Phase)))
+	}
+	gm := gmText(d.Call, d.Round, d.Wake, clock)
 	if len(item.Lines) == 0 && gm == nil {
 		return "", nil
 	}
@@ -865,7 +873,7 @@ func (r *outboxRenderer) digestText(raw string) (string, error) {
 			}
 		}
 	case !d.Deadline.IsZero():
-		lines = append(lines, "", fmt.Sprintf("Tiếp theo: %s, tới %s.", phaseLabel(d.Round, d.Phase), vnTime(d.Deadline)))
+		lines = append(lines, "", fmt.Sprintf("Tiếp theo: %s, tới %s.", phaseLabel(d.Round, d.Phase, d.Deadline), vnTime(d.Deadline)))
 	}
 	if d.Km != nil && !r.cfg.KmOff {
 		lines = append(lines, "", fmt.Sprintf("<b>Km chốt 22h, dùng cho đêm %d</b>", d.Round))
@@ -1051,14 +1059,23 @@ func aliveWolves(st *werewolf.State) int {
 	return n
 }
 
-func reminderText(reason string) (string, error) {
+// reminderText là tin nhắc trước khi lượt đóng. Tin xếp hàng trước khi có
+// deadline thì không chở giờ, nên in giờ của lịch gốc như trước.
+func reminderText(reason string, deadline time.Time) (string, error) {
 	switch reason {
 	case werewolf.ReminderNominate:
-		return "<b>Nhắc đề cử</b>\nĐề cử đóng lúc 20h. Ai chưa đề cử thì vào app RunNow để chọn.", nil
+		return "<b>Nhắc đề cử</b>\nĐề cử đóng lúc " + closeAt(deadline, "20h") + ". Ai chưa đề cử thì vào app RunNow để chọn.", nil
 	case werewolf.ReminderVote:
-		return "<b>Nhắc biểu quyết</b>\nBiểu quyết Treo hay Tha đóng lúc 22h. Ai chưa bỏ phiếu thì vào app RunNow.", nil
+		return "<b>Nhắc biểu quyết</b>\nBiểu quyết Treo hay Tha đóng lúc " + closeAt(deadline, "22h") + ". Ai chưa bỏ phiếu thì vào app RunNow.", nil
 	}
 	return "", fmt.Errorf("lý do nhắc lạ %q", reason)
+}
+
+func closeAt(deadline time.Time, old string) string {
+	if deadline.IsZero() {
+		return old
+	}
+	return hm(deadline)
 }
 
 var voidTexts = map[string]string{
