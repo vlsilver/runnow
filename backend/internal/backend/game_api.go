@@ -1155,9 +1155,11 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 	}
 	out.Actions = meActions(st, v.UID, mine, raw, players, gameNow(data, wall), clockOffset(data))
 	if me.Role == werewolf.Wolf && me.Alive {
-		if out.TeamKm, err = s.wolfTeamKm(ctx, g.Ref, data, st, wall); err != nil {
+		live, err := s.liveKm(ctx, g.Ref, data, st, wall)
+		if err != nil {
 			return out, err
 		}
+		out.TeamKm = wolfTeamKm(st, live)
 	}
 	return out, nil
 }

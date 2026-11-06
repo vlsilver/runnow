@@ -144,20 +144,16 @@ func sameDate(a, b time.Time) bool {
 }
 
 // wolfTeamKm là km của phe Sói cho một sói còn sống: tổng km chốt 22h gần nhất,
-// tổng km đang gom, và mức cần để cắn (WolfKm). Today nil ở ván thử. Phe cắn
-// không cần km thì nil.
-func (s *GameStore) wolfTeamKm(ctx context.Context, game *firestore.DocumentRef, data map[string]any, st *werewolf.State, wall time.Time) (*GameTeamKm, error) {
+// tổng km đang gom (live, nil ở ván thử thì Today nil), và mức cần để cắn
+// (WolfKm). Phe cắn không cần km thì nil.
+func wolfTeamKm(st *werewolf.State, live *liveKm) *GameTeamKm {
 	have, need := werewolf.WolfKm(st)
 	if need == 0 {
-		return nil, nil
+		return nil
 	}
 	out := &GameTeamKm{Label: "Km phe Sói", Last: have / 1000, Need: need / 1000, NeedLabel: "Cần " + formatKm(need/1000) + " km để cắn"}
-	live, err := s.liveKm(ctx, game, data, st, wall)
-	if err != nil {
-		return nil, err
-	}
 	if live == nil {
-		return out, nil
+		return out
 	}
 	var today float64
 	for _, uid := range sortedPlayers(st) {
@@ -167,5 +163,5 @@ func (s *GameStore) wolfTeamKm(ctx context.Context, game *firestore.DocumentRef,
 	}
 	today /= 1000
 	out.Today = &today
-	return out, nil
+	return out
 }
