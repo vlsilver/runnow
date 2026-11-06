@@ -153,7 +153,7 @@ var summaryVoidReasons = map[string]string{
 var eventIcons = map[werewolf.EventKind]string{
 	werewolf.EventNominee: "nominee", werewolf.EventVoteCut: "vote", werewolf.EventVoteBonus: "vote",
 	werewolf.EventVoteResult: "vote", werewolf.EventHunterTurn: "hunter", werewolf.EventRevealed: "reveal",
-	werewolf.EventWinner: "winner",
+	werewolf.EventWinner: "winner", werewolf.EventDeath: "death",
 }
 
 // eventItem là câu eventLine kèm icon và tag. Event không có trong eventIcons
@@ -168,11 +168,16 @@ func eventItem(e werewolf.Event, name func(string) string) (GameSummaryLine, boo
 		return GameSummaryLine{}, false
 	}
 	line := GameSummaryLine{Icon: icon, Text: text}
-	if e.Kind == werewolf.EventVoteResult && e.Reason != werewolf.ReasonNoTrial {
+	switch {
+	case e.Kind == werewolf.EventVoteResult && e.Reason != werewolf.ReasonNoTrial:
 		line.Tag = "THA"
 		if e.Hanged {
 			line.Tag = "TREO"
 		}
+	case e.Kind == werewolf.EventDeath:
+		line.Tag = "CHẾT"
+	case e.Kind == werewolf.EventNominee && (len(e.Targets) > 0 || e.UID != ""):
+		line.Tag = "GIÀN"
 	}
 	return line, true
 }

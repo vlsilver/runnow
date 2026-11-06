@@ -544,6 +544,11 @@ type GameFeedItem struct {
 	At    time.Time `json:"at"`
 	Title string    `json:"title"`
 	Lines []string  `json:"lines"`
+	// Entries là Lines kèm icon và tag, cùng câu và cùng thứ tự (icon như diễn
+	// lại của tổng kết, thêm pick cho từng lần bấm và peace cho đêm không ai chết).
+	Entries []GameSummaryLine `json:"entries"`
+	// Night: mục thuộc đêm, theo cùng mốc với diễn lại (summaryMoment).
+	Night bool `json:"night"`
 	// picks: mục diễn biến từng lần bấm (writePickFeed), không phải bản tin.
 	picks bool
 }
@@ -610,26 +615,28 @@ func feedItem(d map[string]any, players map[string]gamePlayerInfo) (GameFeedItem
 	}
 	// Hai lần bấm sát nhau có thể commit lệch thứ tự bấm.
 	slices.SortStableFunc(picks, func(a, b pick) int { return a.At.Compare(b.At) })
+	entries := []GameSummaryLine{}
 	for _, p := range picks {
 		item.picks = true
-		item.Lines = append(item.Lines, p.At.In(vietnam).Format("15:04")+" "+p.text(name))
+		entries = append(entries, GameSummaryLine{Icon: "pick", Text: p.At.In(vietnam).Format("15:04") + " " + p.text(name)})
 	}
 	deaths := 0
 	for _, e := range evs {
 		if e.Kind == werewolf.EventDeath {
 			deaths++
 		}
-		if line, ok := eventLine(e, name); ok {
-			item.Lines = append(item.Lines, line)
+		if line, ok := eventItem(e, name); ok {
+			entries = append(entries, line)
 		}
 	}
+	_, item.Night, _ = summaryMoment(stringValue(d["phaseKey"]))
 	switch {
 	case hunter:
 		item.Title = "Thợ săn bắn"
 	case phase == werewolf.PhaseDawn:
 		item.Title = fmt.Sprintf("Bản tin đêm %d", round)
 		if deaths == 0 {
-			item.Lines = append([]string{"Đêm qua không ai chết."}, item.Lines...)
+			entries = append([]GameSummaryLine{{Icon: "peace", Text: "Đêm qua không ai chết.", Tag: "AN TOÀN"}}, entries...)
 		}
 	case phase == werewolf.PhaseDay && item.picks:
 		item.Title = fmt.Sprintf("Diễn biến đề cử ngày %d", round)
@@ -641,6 +648,11 @@ func feedItem(d map[string]any, players map[string]gamePlayerInfo) (GameFeedItem
 		item.Title = fmt.Sprintf("Biểu quyết ngày %d", round)
 	default:
 		item.Title = fmt.Sprintf("Đêm %d", round)
+	}
+	// Lines là chữ của Entries, giữ cho app cũ.
+	item.Entries = entries
+	for _, e := range entries {
+		item.Lines = append(item.Lines, e.Text)
 	}
 	return item, nil
 }

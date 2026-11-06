@@ -105,7 +105,7 @@ func TestSummaryReplayShowsNightActions(t *testing.T) {
 			{Icon: "seer", Text: "Tiên tri SEER soi W1: Sói.", Tag: "SÓI"},
 		}},
 		{Title: "Ngày 1", Lines: []GameSummaryLine{
-			{Icon: "nominee", Text: "W1 lên giàn với 2 đề cử."},
+			{Icon: "nominee", Text: "W1 lên giàn với 2 đề cử.", Tag: "GIÀN"},
 			{Icon: "vote", Text: "Treo 5, Tha 0: W1 bị treo.", Tag: "TREO"},
 			{Icon: "death", Text: "W1 chết: bị treo. Lá bài: Sói."},
 			{Icon: "winner", Text: "Phe Dân thắng."},
@@ -155,7 +155,7 @@ func TestSummaryHunterShotAfterHangBelongsToThatDay(t *testing.T) {
 			{Icon: "void", Text: "Lượt bảo vệ của GUARD bị huỷ: chưa đủ km."},
 		}},
 		{Title: "Ngày 1", Lines: []GameSummaryLine{
-			{Icon: "nominee", Text: "HUNTER lên giàn với 3 đề cử."},
+			{Icon: "nominee", Text: "HUNTER lên giàn với 3 đề cử.", Tag: "GIÀN"},
 			{Icon: "vote", Text: "Treo 3, Tha 2: HUNTER bị treo.", Tag: "TREO"},
 			{Icon: "death", Text: "HUNTER chết: bị treo. Lá bài: Thợ săn."},
 			{Icon: "hunter", Text: "HUNTER là Thợ săn, được bắn một người."},

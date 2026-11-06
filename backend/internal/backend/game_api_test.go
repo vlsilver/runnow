@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -141,6 +142,52 @@ func TestFeedItemText(t *testing.T) {
 	}
 	if _, err := feedItem(map[string]any{"events": "{"}, names); err == nil {
 		t.Fatal("events hỏng mà không báo lỗi")
+	}
+}
+
+// entries là bản có cấu trúc của lines: cùng câu, cùng thứ tự, kèm icon và tag;
+// night cho app tô màu đêm/ngày, theo cùng mốc với diễn lại của tổng kết (lượt
+// bắn sau khi treo thuộc ngày đó). Câu chết chỉ nói lá bài, không nói vì sao chết.
+func TestFeedItemEntries(t *testing.T) {
+	names := map[string]gamePlayerInfo{"a": {name: "An"}, "b": {name: "Bình"}}
+	e := func(icon, text, tag string) GameSummaryLine { return GameSummaryLine{Icon: icon, Text: text, Tag: tag} }
+	cases := []struct {
+		key   string
+		evs   []ww.Event
+		night bool
+		want  []GameSummaryLine
+	}{
+		{"r2/dawn", nil, true, []GameSummaryLine{e("peace", "Đêm qua không ai chết.", "AN TOÀN")}},
+		{"r1/dawn", []ww.Event{{Kind: ww.EventDeath, UID: "a", Role: ww.Hunter, Cause: ww.CausePoison}, {Kind: ww.EventHunterTurn, UID: "a"}}, true,
+			[]GameSummaryLine{e("death", "An đã chết. Lá bài: Thợ săn.", "CHẾT"), e("hunter", "An là Thợ săn, được bắn một người.", "")}},
+		{"r1/day", []ww.Event{{Kind: ww.EventNominee, UID: "b", Counts: map[string]int{"b": 3}}}, false,
+			[]GameSummaryLine{e("nominee", "Bình lên giàn với 3 đề cử.", "GIÀN")}},
+		{"r3/day", []ww.Event{{Kind: ww.EventNominee}}, false,
+			[]GameSummaryLine{e("nominee", "Không ai được đề cử, hôm nay không ai lên giàn.", "")}},
+		{"r1/trial", []ww.Event{{Kind: ww.EventVoteResult, UID: "b", Hang: 4, Spare: 2, Hanged: true}, {Kind: ww.EventDeath, UID: "b", Role: ww.Wolf}}, false,
+			[]GameSummaryLine{e("vote", "Treo 4, Tha 2: Bình bị treo.", "TREO"), e("death", "Bình đã chết. Lá bài: Sói.", "CHẾT")}},
+		{"r2/night/hunter", []ww.Event{{Kind: ww.EventDeath, UID: "a", Role: ww.Seer}}, false,
+			[]GameSummaryLine{e("death", "An đã chết. Lá bài: Tiên tri.", "CHẾT")}},
+		{"r1/night", nil, true, []GameSummaryLine{}},
+	}
+	for _, c := range cases {
+		item, err := feedItem(feedDoc(t, c.key, c.evs...), names)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if item.Night != c.night || !reflect.DeepEqual(item.Entries, c.want) {
+			t.Errorf("%s: night %v entries %+v", c.key, item.Night, item.Entries)
+		}
+	}
+	// Câu theo từng lần bấm cũng có entry, cùng câu với lines.
+	d := feedDoc(t, "r1/day")
+	d["picks"] = []any{`{"at":"2026-10-16T09:05:00+07:00","uid":"a","kind":"nominate","targets":["b"]}`}
+	item, err := feedItem(d, names)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(item.Entries) != 1 || item.Entries[0].Icon != "pick" || item.Entries[0].Text != item.Lines[0] {
+		t.Fatalf("lần bấm: lines %q entries %+v", item.Lines, item.Entries)
 	}
 }
 
