@@ -18,7 +18,7 @@ import (
 var roleLabels = map[werewolf.Role]string{
 	werewolf.Wolf: "Sói", werewolf.Seer: "Tiên tri", werewolf.Guard: "Bảo vệ", werewolf.Witch: "Phù thuỷ",
 	werewolf.Hunter: "Thợ săn", werewolf.Cupid: "Cupid", werewolf.Villager: "Dân",
-	werewolf.Elder: "Già làng",
+	werewolf.Elder: "Già làng", werewolf.Idiot: "Kẻ ngốc",
 }
 
 var roleRules = map[werewolf.Role]string{
@@ -30,6 +30,7 @@ var roleRules = map[werewolf.Role]string{
 	werewolf.Cupid:    "Đêm 1 ghép hai người thành cặp đôi, ghép cả mình cũng được. Một người chết thì người kia chết theo. Quá {lock} chưa ghép thì bot ghép thay.",
 	werewolf.Villager: "Thảo luận, đề cử và biểu quyết để tìm ra sói.",
 	werewolf.Elder:    "Phe Dân. Chịu được một lần bị sói cắn: cú cắn đầu tiên không ai bảo vệ hay cứu thì bạn vẫn sống, chỉ mình bạn được báo. Cú cắn sau thì chết. Bị độc, bị treo hay bị bắn thì chết ngay.",
+	werewolf.Idiot:    "Phe Dân. Bị làng treo lần đầu thì bạn lật bài Kẻ ngốc và vẫn sống, nhưng từ đó mất quyền bỏ phiếu tới hết ván, vẫn đề cử được. Bị treo lần nữa thì chết. Bị cắn, bị độc hay bị bắn thì chết như thường.",
 }
 
 // Chữ giờ trong luật viết bằng {night}, {lock}…, clockText đổi theo lịch ván.
@@ -255,6 +256,7 @@ var rejectTexts = map[werewolf.Reject]string{
 	werewolf.ErrGuardRepeat:    "Không bảo vệ lại người của đêm trước.",
 	werewolf.ErrAlreadyUsed:    "Bạn đã dùng lượt này rồi.",
 	werewolf.ErrPaused:         "Ván đang tạm dừng.",
+	werewolf.ErrNoVote:         "Kẻ ngốc đã lật bài nên không được bỏ phiếu nữa.",
 }
 
 // rejectText riêng cho bình cứu: Precheck trả invalid_target khi không ai bị cắn.

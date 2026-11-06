@@ -41,7 +41,7 @@ var (
 // để admin so các bộ vai với nhau, không ảnh hưởng luật.
 var roleWeight = map[werewolf.Role]int{
 	werewolf.Villager: 1, werewolf.Wolf: -6, werewolf.Seer: 7, werewolf.Guard: 3,
-	werewolf.Witch: 4, werewolf.Hunter: 3, werewolf.Cupid: -3, werewolf.Elder: 3,
+	werewolf.Witch: 4, werewolf.Hunter: 3, werewolf.Cupid: -3, werewolf.Elder: 3, werewolf.Idiot: 2,
 }
 
 func balanceScore(roles []werewolf.Role) int {

@@ -688,6 +688,8 @@ func feedItem(d map[string]any, players map[string]gamePlayerInfo) (GameFeedItem
 			item.Lines = append(item.Lines, fmt.Sprintf("Treo %d, Tha %d: %s %s.", e.Hang, e.Spare, name(e.UID), verdict))
 		case werewolf.EventHunterTurn:
 			item.Lines = append(item.Lines, fmt.Sprintf("%s là Thợ săn, được bắn một người.", name(e.UID)))
+		case werewolf.EventRevealed:
+			item.Lines = append(item.Lines, fmt.Sprintf("%s lật bài %s nên không chết, từ giờ mất quyền bỏ phiếu.", name(e.UID), roleLabels[e.Role]))
 		case werewolf.EventWinner:
 			item.Lines = append(item.Lines, teamLabels[e.Team]+" thắng.")
 		}
@@ -787,8 +789,9 @@ type GamePlayer struct {
 	Name              string   `json:"name"`
 	AvatarURL         string   `json:"avatarUrl,omitempty"`
 	Alive             bool     `json:"alive"`
-	// RevealedRoleLabel là cái group đã biết về người chết: tên lá bài, hoặc
-	// chỉ "Phe Dân"/"Phe Sói" với người bị treo, khi đó không có RevealedCardURL.
+	// RevealedRoleLabel là cái group đã biết về lá bài: của người chết, hoặc của
+	// Kẻ ngốc đã lật mà còn sống; chỉ "Phe Dân"/"Phe Sói" với người bị treo, khi
+	// đó không có RevealedCardURL.
 	RevealedRoleLabel string   `json:"revealedRoleLabel,omitempty"`
 	RevealedCardURL   string   `json:"revealedCardUrl,omitempty"`
 	DeathRound        int      `json:"deathRound,omitempty"`

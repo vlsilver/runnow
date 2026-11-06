@@ -52,6 +52,8 @@ type Player struct {
 	// SurvivedRound là vòng Già làng thoát cú cắn đầu tiên; 0 là chưa thoát lần
 	// nào, cú cắn kế không giết.
 	SurvivedRound int `json:"survivedRound,omitempty"`
+	// Revealed: Kẻ ngốc đã lật bài khi bị treo lần đầu, còn sống nhưng mất phiếu.
+	Revealed bool `json:"revealed,omitempty"`
 }
 
 // HunterTurn là lượt bắn của thợ săn vừa chết (R5). Khung giờ do E5 giữ: 10h–12h
@@ -173,6 +175,13 @@ func (st *State) setNominees(uids []string) {
 func (st *State) alive(uid string) bool {
 	p := st.Players[uid]
 	return p != nil && p.Alive
+}
+
+// CanVote: uid còn sống và chưa mất phiếu. Kẻ ngốc đã lật bài thì mất phiếu tới
+// hết ván. Bot dùng để tính ai được chia phiếu theo km.
+func (st *State) CanVote(uid string) bool {
+	p := st.Players[uid]
+	return p != nil && p.Alive && !(p.Role == Idiot && p.Revealed)
 }
 
 func (st *State) role(uid string) Role {

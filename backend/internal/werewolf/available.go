@@ -41,7 +41,7 @@ func (st *State) Available(uid string) []Kind {
 				continue
 			}
 		case KindVote, KindVote2, KindVote3:
-			if nominee := st.NomineeOf(kind); nominee == "" || nominee == uid {
+			if nominee := st.NomineeOf(kind); nominee == "" || nominee == uid || !st.CanVote(uid) {
 				continue
 			}
 		}

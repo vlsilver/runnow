@@ -792,7 +792,7 @@ func (w *stepWrite) publicGame() map[string]any {
 		switch {
 		case roleHidden(st, uid):
 			revealedTeams[uid] = string(werewolf.Side(p.Role))
-		case !p.Alive || st.Phase == werewolf.PhaseEnded:
+		case !p.Alive || p.Revealed || st.Phase == werewolf.PhaseEnded:
 			revealed[uid] = string(p.Role)
 		}
 	}

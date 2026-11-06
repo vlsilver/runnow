@@ -23,6 +23,7 @@ const (
 	Villager Role = "villager"
 	// Vai mở rộng: chỉ có trong bộ bài khi admin bật (Config.Extended).
 	Elder Role = "elder"
+	Idiot Role = "idiot"
 )
 
 // specialRoles theo thứ tự thêm vào khi số người tăng (bảng 1.2).
@@ -30,7 +31,7 @@ var specialRoles = []Role{Seer, Guard, Witch, Hunter, Cupid}
 
 // extendedRoles là vai mở rộng, theo thứ tự thêm vào bộ bài. Mỗi vai bật lên
 // lấy chỗ của một Dân, nên ván không bật giữ nguyên bộ bài cũ.
-var extendedRoles = []Role{Elder}
+var extendedRoles = []Role{Elder, Idiot}
 
 // ExtendedRoles trả các vai mở rộng theo thứ tự cố định.
 func ExtendedRoles() []Role { return append([]Role(nil), extendedRoles...) }

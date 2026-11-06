@@ -226,7 +226,7 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 				}
 				game.Trials = append(game.Trials, BotTrial{Nominee: name(nominee), Votes: tally})
 				for _, uid := range aliveUIDs {
-					if uid != nominee && !chosen[uid] {
+					if uid != nominee && !chosen[uid] && !publicVoteLost(data, uid) {
 						pending[uid] = true
 					}
 				}
@@ -272,7 +272,7 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 				}
 				var voters []string
 				for _, uid := range aliveUIDs {
-					if uid != nominee {
+					if uid != nominee && !publicVoteLost(data, uid) {
 						voters = append(voters, uid)
 					}
 				}
@@ -312,6 +312,14 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 		game.News = append(game.News, BotWerewolfNews{At: vnTime(item.At), Title: item.Title, Lines: item.Lines})
 	}
 	return game, &cfg, nil
+}
+
+// publicVoteLost: người còn sống uid đã lật bài Kẻ ngốc trước group, nên mất
+// phiếu (werewolf.State.CanVote). Bot view không đọc state bí mật nên xét từ doc
+// công khai.
+func publicVoteLost(data map[string]any, uid string) bool {
+	_, role := revealedLabel(data, uid)
+	return role == werewolf.Idiot
 }
 
 // publicDeadWolves là số sói đã chết mà group biết: lá bài đã lật là Sói, hoặc

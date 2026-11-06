@@ -75,6 +75,7 @@ const (
 	ErrGuardRepeat    Reject = "guard_repeat"
 	ErrAlreadyUsed    Reject = "already_used"
 	ErrPaused         Reject = "paused"
+	ErrNoVote         Reject = "no_vote" // Kẻ ngốc đã lật bài
 )
 
 type kindRule struct {
@@ -222,6 +223,9 @@ func precheck(st *State, kind Kind, actor string, mine []Action, now time.Time) 
 		}
 		if !phaseOpen(rule.phases, st.Phase) || !st.windowOpen(kind, now) {
 			return ErrPhaseClosed
+		}
+		if IsVote(kind) && !st.CanVote(actor) {
+			return ErrNoVote
 		}
 	}
 	if kind == KindCupidPair && st.Round > 1 {

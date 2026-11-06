@@ -995,7 +995,7 @@ func (r *outboxRenderer) voteForecast(st *werewolf.State, km map[string]float64,
 	var voters []string
 	var total float64
 	for _, uid := range sortedPlayers(st) {
-		if _, alive := km[uid]; alive && uid != nominee {
+		if _, alive := km[uid]; alive && uid != nominee && st.CanVote(uid) {
 			voters = append(voters, uid)
 			total += km[uid]
 		}
@@ -1088,6 +1088,7 @@ var voidTexts = map[string]string{
 	werewolf.VoidNoPotion:    "đã dùng hết bình",
 	werewolf.VoidVoteCut:     "tổng km chưa đủ nên mất phiếu",
 	werewolf.VoidGameOver:    "ván đã kết thúc",
+	werewolf.VoidNoVote:      "Kẻ ngốc đã lật bài nên mất phiếu",
 }
 
 var causeTexts = map[werewolf.Cause]string{

@@ -151,6 +151,17 @@ func TestEmulatorBotWerewolfShowsOnlyPublicGame(t *testing.T) {
 		t.Fatalf("voteForecast = %+v", f)
 	}
 
+	// V1 lật bài Kẻ ngốc thì mất phiếu: không còn trong danh sách chưa bấm, và
+	// 7 người bỏ phiếu có 6 km nên chỉ W1 (0 km) mất phiếu.
+	seedMerge(t, g, map[string]any{"revealed": map[string]any{"v1": string(ww.Idiot)}})
+	v, _ = botWerewolfAt(t, g, at)
+	if got := sortedCopy(v.Game.NotChosenYet); !reflect.DeepEqual(got, []string{"GUARD", "HUNTER", "SEER", "V2", "V3", "W1", "W2", "WITCH"}) {
+		t.Fatalf("notChosenYet = %v", got)
+	}
+	if f := v.Game.Trials[0].VoteForecast; f.Voters != 7 || f.CountedIfNow != 6 || !reflect.DeepEqual(f.LoseVote, []string{"W1"}) || f.DrawAmong != nil {
+		t.Fatalf("voteForecast = %+v", f)
+	}
+
 	// Ván thử không phải ván của group.
 	seedMerge(t, g, map[string]any{"testMode": true})
 	if v, _ = botWerewolfAt(t, g, at); v.Game != nil || v.NoGame == "" {

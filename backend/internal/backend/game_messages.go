@@ -64,7 +64,7 @@ func publicEvent(st *werewolf.State, e werewolf.Event) (werewolf.Event, bool) {
 		}
 		e.Cause = ""
 		return e, true
-	case werewolf.EventNominee, werewolf.EventVoteCut, werewolf.EventVoteBonus, werewolf.EventVoteResult, werewolf.EventHunterTurn, werewolf.EventWinner:
+	case werewolf.EventNominee, werewolf.EventVoteCut, werewolf.EventVoteBonus, werewolf.EventVoteResult, werewolf.EventHunterTurn, werewolf.EventWinner, werewolf.EventRevealed:
 		return e, true
 	}
 	return werewolf.Event{}, false
@@ -72,10 +72,11 @@ func publicEvent(st *werewolf.State, e werewolf.Event) (werewolf.Event, bool) {
 
 // roleHidden: group chỉ biết người chết uid là Sói hay Dân, chưa biết lá bài.
 // Đó là người bị dân làng treo mà không còn việc gì làm; thợ săn bị treo được
-// mở lượt bắn thì đã lộ vai qua lượt bắn. Hết ván thì lật hết.
+// mở lượt bắn thì đã lộ vai qua lượt bắn, Kẻ ngốc bị treo lần hai thì đã lật
+// bài từ lần đầu. Hết ván thì lật hết.
 func roleHidden(st *werewolf.State, uid string) bool {
 	p := st.Players[uid]
-	return p != nil && !p.Alive && p.Cause == werewolf.CauseHang && !p.ShotOpened && st.Phase != werewolf.PhaseEnded
+	return p != nil && !p.Alive && p.Cause == werewolf.CauseHang && !p.ShotOpened && !p.Revealed && st.Phase != werewolf.PhaseEnded
 }
 
 // revealedLabel đọc từ doc game công khai (publicGame) cái group đã biết về

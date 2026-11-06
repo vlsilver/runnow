@@ -31,6 +31,7 @@ const (
 	EventVoid         EventKind = "void"          // UID = actor, Action, Reason (R19)
 	EventWinner       EventKind = "winner"        // Team, Reason
 	EventSurvived     EventKind = "survived"      // UID = Già làng vừa thoát cú cắn đầu tiên, chỉ người đó biết
+	EventRevealed     EventKind = "revealed"      // UID, Role = Kẻ ngốc bị treo lần đầu: lật bài, sống, mất phiếu
 )
 
 // Event là kết quả có cấu trúc của một bước, dùng để ghi events/{seq}, render
@@ -62,6 +63,7 @@ const (
 	VoidNoPotion    = "no_potion"
 	VoidVoteCut     = "vote_cut"
 	VoidGameOver    = "game_over"
+	VoidNoVote      = "no_vote"
 	ReasonNoChoice  = "no_choice"
 	ReasonNoTrial   = "nominee_left"
 )
@@ -413,6 +415,12 @@ func (r *resolver) resolveDay() {
 		}
 	}
 	for _, uid := range hanged {
+		// Kẻ ngốc bị treo lần đầu thì lật bài thay vì chết.
+		if p := r.st.Players[uid]; p.Role == Idiot && !p.Revealed {
+			p.Revealed = true
+			r.emit(Event{Kind: EventRevealed, UID: uid, Role: Idiot})
+			continue
+		}
 		r.kill(uid, CauseHang)
 	}
 	r.killLovers()
@@ -429,7 +437,7 @@ func (r *resolver) resolveDay() {
 func (r *resolver) countVotes(kind Kind, nominee string) bool {
 	var voters []string
 	for _, uid := range r.st.aliveUIDs() {
-		if uid != nominee {
+		if uid != nominee && r.st.CanVote(uid) {
 			voters = append(voters, uid)
 		}
 	}
@@ -457,6 +465,8 @@ func (r *resolver) countVotes(kind Kind, nominee string) bool {
 		switch {
 		case a.Actor == nominee:
 			r.void(a, VoidTargetDead)
+		case !r.st.CanVote(a.Actor):
+			r.void(a, VoidNoVote)
 		case isCut[a.Actor]:
 			r.void(a, VoidVoteCut)
 		case a.Choice == ChoiceHang && r.st.loverOf(a.Actor) == nominee:

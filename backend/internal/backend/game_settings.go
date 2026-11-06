@@ -116,6 +116,8 @@ var gameSettingDefs = []gameSettingDef{
 	},
 	extendedRoleSetting(werewolf.Elder, "Thêm Già làng",
 		"Một Dân thành Già làng. Già làng thuộc phe Dân, chịu được một lần bị sói cắn: cú cắn đầu tiên không ai bảo vệ hay cứu thì vẫn sống, sáng ra làng chỉ thấy đêm đó không ai chết. Cú cắn sau, bị độc, bị treo hay bị bắn thì chết như thường."),
+	extendedRoleSetting(werewolf.Idiot, "Thêm Kẻ ngốc",
+		"Một Dân thành Kẻ ngốc. Kẻ ngốc thuộc phe Dân: bị làng treo lần đầu thì lật bài cho cả làng thấy và vẫn sống, nhưng mất quyền bỏ phiếu tới hết ván. Bị treo lần nữa, bị cắn, bị độc hay bị bắn thì chết như thường."),
 	{
 		GameSetting: GameSetting{Key: "kmOff", Label: "Không dùng km", Type: settingToggle, Default: false,
 			Description: "Bật thì ván chơi như Ma Sói thường: kỹ năng không cần km, mỗi người một phiếu, group không hiện bảng km. Các tuỳ chọn km bên dưới hết tác dụng."},
