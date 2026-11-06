@@ -26,6 +26,7 @@ const (
 	EventWolvesTarget EventKind = "wolves_target" // UID = người bị cắn (rỗng: không ai), Reason
 	EventNominee      EventKind = "nominee"       // Targets = người lên giàn theo thứ tự phiên, UID = người đầu (rỗng: không ai), Counts, Draw
 	EventVoteCut      EventKind = "vote_cut"      // UID = người lên giàn của phiên, Targets = người mất phiếu, Draw
+	EventVoteBonus    EventKind = "vote_bonus"    // UID = người lên giàn của phiên, Targets = người được x2 phiếu, Draw
 	EventVoteResult   EventKind = "vote_result"   // UID, Hang, Spare, Hanged, Reason
 	EventHunterTurn   EventKind = "hunter_turn"   // UID
 	EventVoid         EventKind = "void"          // UID = actor, Action, Reason (R19)
@@ -425,13 +426,24 @@ func (r *resolver) countVotes(kind Kind, nominee string) bool {
 			voters = append(voters, uid)
 		}
 	}
-	cut, draw := r.voteCut(kind, voters)
-	if len(cut) > 0 {
-		r.emit(Event{Kind: EventVoteCut, UID: nominee, Targets: cut, Draw: draw})
-	}
-	isCut := map[string]bool{}
-	for _, uid := range cut {
-		isCut[uid] = true
+	isCut, double := map[string]bool{}, map[string]bool{}
+	switch r.st.Config.VoteMode() {
+	case VoteCut:
+		cut, draw := r.voteCut(kind, voters)
+		if len(cut) > 0 {
+			r.emit(Event{Kind: EventVoteCut, UID: nominee, Targets: cut, Draw: draw})
+		}
+		for _, uid := range cut {
+			isCut[uid] = true
+		}
+	case VoteTop:
+		top, draw := r.voteBonus(kind, voters)
+		if len(top) > 0 {
+			r.emit(Event{Kind: EventVoteBonus, UID: nominee, Targets: top, Draw: draw})
+		}
+		for _, uid := range top {
+			double[uid] = true
+		}
 	}
 	ev := Event{Kind: EventVoteResult, UID: nominee}
 	for _, a := range r.actionsOf(kind) {
@@ -443,9 +455,9 @@ func (r *resolver) countVotes(kind Kind, nominee string) bool {
 		case a.Choice == ChoiceHang && r.st.loverOf(a.Actor) == nominee:
 			r.void(a, VoidLoverTarget)
 		case a.Choice == ChoiceHang:
-			ev.Hang++
+			ev.Hang += weight(double[a.Actor])
 		case a.Choice == ChoiceSpare:
-			ev.Spare++
+			ev.Spare += weight(double[a.Actor])
 		}
 	}
 	ev.Hanged = ev.Hang > ev.Spare
@@ -470,6 +482,72 @@ func (r *resolver) voteCut(kind Kind, voters []string) (cut []string, draw bool)
 	cut = append(cut, tied[:plan.Need]...)
 	sort.Strings(cut)
 	return cut, draw
+}
+
+func weight(double bool) int {
+	if double {
+		return 2
+	}
+	return 1
+}
+
+// voteBonus chọn người được x2 phiếu của phiên kind theo PlanVoteBonus. Bằng km
+// ở suất cuối thì bốc thăm như voteCut, nhãn "vote-top".
+func (r *resolver) voteBonus(kind Kind, voters []string) (top []string, draw bool) {
+	plan := PlanVoteBonus(voters, r.st.Km, r.st.Config, r.st.aliveWolves())
+	top, tied := plan.Sure, plan.Tied
+	if plan.Need < len(tied) {
+		draw = true
+		purpose := "vote-top"
+		if kind != KindVote {
+			purpose += "/" + string(kind)
+		}
+		r.stream(purpose).shuffle(len(tied), func(i, j int) { tied[i], tied[j] = tied[j], tied[i] })
+	}
+	top = append(top, tied[:plan.Need]...)
+	sort.Strings(top)
+	return top, draw
+}
+
+// VoteBonusPlan là kết quả VoteTop trước bước bốc thăm: Sure chắc chắn được x2,
+// Need người trong Tied (bằng km ở suất cuối) được x2 theo bốc thăm.
+type VoteBonusPlan struct {
+	Top  int
+	Sure []string
+	Tied []string
+	Need int
+}
+
+// PlanVoteBonus: N = cfg.TopVoters, hoặc số sói còn sống + 1 khi để 0. Chỉ người
+// có km ≥ X mới vào top. km theo mét. Bot dùng để báo trước ai sẽ được x2.
+func PlanVoteBonus(voters []string, km map[string]float64, cfg Config, aliveWolves int) VoteBonusPlan {
+	n := cfg.TopVoters
+	if n == 0 {
+		n = aliveWolves + 1
+	}
+	plan := VoteBonusPlan{Top: n}
+	var eligible []string
+	for _, uid := range voters {
+		if km[uid] >= cfg.unitMeters() {
+			eligible = append(eligible, uid)
+		}
+	}
+	if len(eligible) <= n {
+		plan.Sure = eligible
+		return plan
+	}
+	sort.SliceStable(eligible, func(i, j int) bool { return km[eligible[i]] > km[eligible[j]] })
+	edge := km[eligible[n-1]]
+	for _, uid := range eligible {
+		switch v := km[uid]; {
+		case v > edge:
+			plan.Sure = append(plan.Sure, uid)
+		case v == edge:
+			plan.Tied = append(plan.Tied, uid)
+		}
+	}
+	plan.Need = n - len(plan.Sure)
+	return plan
 }
 
 // VoteCutPlan là kết quả R30 trước bước bốc thăm: Sure chắc chắn mất phiếu,

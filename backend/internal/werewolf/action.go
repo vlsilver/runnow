@@ -233,22 +233,48 @@ func precheck(st *State, kind Kind, actor string, mine []Action, now time.Time) 
 	return nil
 }
 
-// wolvesHaveKm: tổng km của sói còn sống ≥ X × số sói còn sống (R1).
+// wolvesHaveKm: còn sói sống, và tổng km của sói còn sống ≥ km mỗi sói × số
+// sói còn sống (R1). Km mỗi sói là 0 thì phe cắn tự do.
 func wolvesHaveKm(st *State) bool {
 	have, need := WolfKm(st)
-	return need > 0 && have >= need
+	return st.aliveWolves() > 0 && have >= need
 }
 
-// WolfKm trả tổng km (mét) của sói còn sống và mức phe cần (X × số sói còn
-// sống), để tin riêng cho sói nói được phe thiếu bao nhiêu.
+// WolfKm trả tổng km (mét) của sói còn sống và mức phe cần (km mỗi sói × số sói
+// còn sống), để tin riêng cho sói nói được phe thiếu bao nhiêu. need = 0 là phe
+// không cần km.
 func WolfKm(st *State) (have, need float64) {
 	for _, uid := range st.aliveUIDs() {
 		if st.role(uid) == Wolf {
 			have += st.Km[uid]
-			need += st.Config.unitMeters()
+			need += st.Config.SkillMeters(Wolf)
 		}
 	}
 	return have, need
+}
+
+func (st *State) aliveWolves() int {
+	n := 0
+	for _, uid := range st.aliveUIDs() {
+		if st.role(uid) == Wolf {
+			n++
+		}
+	}
+	return n
+}
+
+// kmRole: vai có kỹ năng cần km (bảng 1.3), nên SkillKm đặt được cho vai đó.
+// Thợ săn bắn khi chết cũng cần km (openHunterTurn).
+func kmRole(r Role) bool {
+	if r == Wolf || r == Hunter {
+		return true
+	}
+	for _, rule := range kindRules {
+		if rule.needsKm && rule.role == r {
+			return true
+		}
+	}
+	return false
 }
 
 // witchCanSave: có người bị cắn, và chỉ tự cứu được ở đêm 1 (R4).

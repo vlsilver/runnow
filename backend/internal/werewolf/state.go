@@ -221,8 +221,34 @@ func (c Config) unitMeters() float64 {
 	return c.KmPerUnit * 1000
 }
 
+// SkillMeters là km (mét) vai r cần cho một lượt kỹ năng; với Sói là km cho mỗi
+// sói còn sống. 0 là không cần km.
+func (c Config) SkillMeters(r Role) float64 {
+	if c.KmOff {
+		return 0
+	}
+	if km, ok := c.SkillKm[r]; ok {
+		return km * 1000
+	}
+	return c.unitMeters()
+}
+
+// hasKm: uid đủ km cho kỹ năng của vai mình. VillageGate thì vai không phải
+// sói xét km cả phe Dân.
 func (st *State) hasKm(uid string) bool {
-	return st.Km[uid] >= st.Config.unitMeters()
+	role := st.role(uid)
+	need := st.Config.SkillMeters(role)
+	if need == 0 || !st.Config.VillageGate || role == Wolf {
+		return st.Km[uid] >= need
+	}
+	have, n := 0.0, 0
+	for _, v := range st.aliveUIDs() {
+		if st.role(v) != Wolf {
+			have += st.Km[v]
+			n++
+		}
+	}
+	return have >= need*float64(n)
 }
 
 // TeamOf là phe của uid khi xét thắng thua: hai người trong cặp Sói–Dân thành
