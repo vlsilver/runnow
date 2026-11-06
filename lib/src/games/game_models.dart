@@ -13,6 +13,9 @@ class GameList {
     required this.canCreate,
     required this.roleOptions,
     this.settings = const [],
+    this.groups = const [],
+    this.presets = const [],
+    this.round,
     required this.items,
   });
 
@@ -23,6 +26,11 @@ class GameList {
       canCreate: viewer['canCreate'] == true,
       roleOptions: _list(createOptions['roles'], GameRoleOption.fromJson),
       settings: _list(createOptions['settings'], GameSetting.fromJson),
+      groups: _list(createOptions['groups'], GameSettingGroup.fromJson),
+      presets: _list(createOptions['presets'], GamePreset.fromJson),
+      round: createOptions['round'] is Map<String, dynamic>
+          ? GameRoundPlan.fromJson(createOptions['round'])
+          : null,
       items: _list(json['items'], GameListItem.fromJson),
     );
   }
@@ -32,7 +40,137 @@ class GameList {
 
   /// Tuỳ chọn luật của màn tạo ván, theo thứ tự backend gửi.
   final List<GameSetting> settings;
+
+  /// Tab của màn tạo ván. Backend cũ không gửi thì màn tạo ván vẽ danh sách
+  /// tuỳ chọn như trước.
+  final List<GameSettingGroup> groups;
+
+  /// Kiểu ván dựng sẵn, theo thứ tự backend gửi.
+  final List<GamePreset> presets;
+
+  /// Diễn biến một vòng cho tab Vòng chơi.
+  final GameRoundPlan? round;
   final List<GameListItem> items;
+}
+
+/// Một tab trên màn tạo ván (`createOptions.groups`). [offNote] hiện thay cho
+/// các tuỳ chọn của tab khi không tuỳ chọn nào đang có tác dụng.
+class GameSettingGroup {
+  const GameSettingGroup({
+    required this.key,
+    required this.label,
+    required this.icon,
+    this.offNote,
+  });
+
+  factory GameSettingGroup.fromJson(Map<String, dynamic> json) {
+    return GameSettingGroup(
+      key: _string(json['key']),
+      label: _string(json['label']),
+      icon: _string(json['icon']),
+      offNote: _optString(json['offNote']),
+    );
+  }
+
+  final String key;
+  final String label;
+  final String icon;
+  final String? offNote;
+}
+
+/// Kiểu ván dựng sẵn (`createOptions.presets`): chọn kiểu thì [roles] và
+/// [settings] thành giá trị của form, key vắng thì theo mặc định.
+class GamePreset {
+  const GamePreset({
+    required this.key,
+    required this.label,
+    required this.icon,
+    required this.summary,
+    this.details = const [],
+    this.isDefault = false,
+    this.roles = const {},
+    this.settings = const {},
+  });
+
+  factory GamePreset.fromJson(Map<String, dynamic> json) {
+    return GamePreset(
+      key: _string(json['key']),
+      label: _string(json['label']),
+      icon: _string(json['icon']),
+      summary: _string(json['summary']),
+      details: _strings(json['details']),
+      isDefault: json['default'] == true,
+      roles: {
+        for (final e in _map(json['roles']).entries)
+          if (e.value is bool) e.key: e.value as bool,
+      },
+      settings: {
+        for (final e in _map(json['settings']).entries)
+          if (e.value != null) e.key: e.value as Object,
+      },
+    );
+  }
+
+  final String key;
+  final String label;
+  final String icon;
+  final String summary;
+  final List<String> details;
+  final bool isDefault;
+  final Map<String, bool> roles;
+  final Map<String, Object> settings;
+}
+
+/// Diễn biến một vòng. Giờ tính từ lúc mở đêm theo vòng gốc 24 tiếng; vòng
+/// ngắn hơn thì co theo tỉ lệ.
+class GameRoundPlan {
+  const GameRoundPlan({
+    this.phases = const [],
+    this.reminders = const [],
+    this.start = '',
+  });
+
+  factory GameRoundPlan.fromJson(Map<String, dynamic> json) {
+    return GameRoundPlan(
+      phases: _list(json['phases'], GameRoundPhase.fromJson),
+      reminders: [
+        for (final m in json['reminders'] as List? ?? const [])
+          if (m is Map<String, dynamic>)
+            (label: _string(m['label']), at: (m['at'] as num? ?? 0).toDouble()),
+      ],
+      start: _string(json['start']),
+    );
+  }
+
+  final List<GameRoundPhase> phases;
+  final List<({String label, double at})> reminders;
+  final String start;
+}
+
+class GameRoundPhase {
+  const GameRoundPhase({
+    required this.key,
+    required this.label,
+    required this.description,
+    required this.from,
+    required this.to,
+  });
+
+  factory GameRoundPhase.fromJson(Map<String, dynamic> json) {
+    return GameRoundPhase(
+      key: _string(json['key']),
+      label: _string(json['label']),
+      description: _string(json['description']),
+      from: (json['from'] as num? ?? 0).toDouble(),
+      to: (json['to'] as num? ?? 0).toDouble(),
+    );
+  }
+
+  final String key;
+  final String label;
+  final String description;
+  final double from;
+  final double to;
 }
 
 class GameRoleOption {
@@ -40,6 +178,7 @@ class GameRoleOption {
     required this.key,
     required this.label,
     required this.defaultOn,
+    this.description = '',
   });
 
   factory GameRoleOption.fromJson(Map<String, dynamic> json) {
@@ -47,12 +186,14 @@ class GameRoleOption {
       key: _string(json['key']),
       label: _string(json['label']),
       defaultOn: json['default'] == true,
+      description: _string(json['description']),
     );
   }
 
   final String key;
   final String label;
   final bool defaultOn;
+  final String description;
 }
 
 /// Một tuỳ chọn trên màn tạo ván (`createOptions.settings`). App vẽ theo
@@ -71,6 +212,7 @@ class GameSetting {
     this.unit,
     this.choices = const [],
     this.enabledIf = const [],
+    this.group,
   });
 
   factory GameSetting.fromJson(Map<String, dynamic> json) {
@@ -92,6 +234,7 @@ class GameSetting {
             equals: c['equals'],
           ),
       ],
+      group: _optString(json['group']),
     );
   }
 
@@ -114,6 +257,10 @@ class GameSetting {
 
   /// Tuỳ chọn chỉ có tác dụng khi mọi điều kiện đúng với giá trị hiện tại.
   final List<({String key, Object? equals})> enabledIf;
+
+  /// Key của tab chứa tuỳ chọn ([GameSettingGroup]); null thì màn tạo ván
+  /// theo tab không hiện, giá trị theo kiểu ván.
+  final String? group;
 
   /// [values] là giá trị hiện tại theo key, đã gồm mặc định.
   bool enabledBy(Map<String, Object?> values) =>

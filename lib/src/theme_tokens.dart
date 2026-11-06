@@ -318,6 +318,13 @@ class RunNowMoonlitTokens {
   static const onAmber = Color(0xFF0B1222);
   static const danger = Color(0xFFFFB3A3);
 
+  // Bốn pha của một vòng trên màn tạo ván: đêm bạc lam, rạng sáng tím,
+  // ngày hổ phách, biểu quyết đỏ gạch.
+  static const phaseNight = Color(0xFF7E93C9);
+  static const phaseDawn = Color(0xFF9A7FD1);
+  static const phaseDay = amber;
+  static const phaseTrial = Color(0xFFD9765F);
+
   // Biểu tượng sói trong trăng: trăng hổ phách, bóng sói mực, viền nhũ.
   static const emblemCore = Color(0xFFFFE7B0);
   static const emblemRim = Color(0xFFC58918);
