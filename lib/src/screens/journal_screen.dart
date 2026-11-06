@@ -453,7 +453,6 @@ class _JournalPagedListState extends State<_JournalPagedList> {
               return _JournalPaginationFooter(
                 error: widget.error,
                 hasMore: widget.hasMore,
-                loadingMore: widget.loadingMore,
                 onRetry: widget.onLoadMore,
               );
             }
@@ -476,17 +475,19 @@ class _JournalPagedListState extends State<_JournalPagedList> {
   }
 }
 
+/// Cuối list: lỗi thì nút tải lại, hết trang thì khoảng trống, còn trang thì
+/// icon tải. Icon không bám theo từng request: tab thưa tự tải nhiều trang
+/// liền nhau, bật tắt theo request thì icon nháy giữa hai trang. Footer chỉ
+/// lộ ra khi đã gần đáy, mà gần đáy thì list đang tải tiếp.
 class _JournalPaginationFooter extends StatelessWidget {
   const _JournalPaginationFooter({
     required this.error,
     required this.hasMore,
-    required this.loadingMore,
     required this.onRetry,
   });
 
   final Object? error;
   final bool hasMore;
-  final bool loadingMore;
   final VoidCallback onRetry;
 
   @override
@@ -505,10 +506,8 @@ class _JournalPaginationFooter extends StatelessWidget {
     }
     return Padding(
       padding: const EdgeInsets.fromLTRB(0, 8, 0, 28),
-      child: Center(
-        child: loadingMore
-            ? const RunNowLoading(compact: true, label: 'Đang tải thêm')
-            : const SizedBox(height: 42),
+      child: const Center(
+        child: RunNowLoading(compact: true, label: 'Đang tải thêm'),
       ),
     );
   }
