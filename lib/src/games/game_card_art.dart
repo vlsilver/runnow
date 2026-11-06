@@ -413,49 +413,7 @@ class _EmblemPainter extends CustomPainter {
         maxY: 1,
         color: _T.starWhite,
       );
-      final r = size.width * 0.32;
-      paintMoon(canvas, center, r, core: p.core, rim: p.rim, glow: p.glow);
-      // Đồi và sói in bóng, cắt theo vành trăng.
-      canvas
-        ..save()
-        ..clipPath(Path()..addOval(Rect.fromCircle(center: center, radius: r)));
-      final dark = Paint()..color = p.dark;
-      final Offset(dx: cx, dy: cy) = center;
-      canvas.drawPath(
-        Path()
-          ..moveTo(cx - r, cy + r)
-          ..lineTo(cx - r, cy + r * 0.62)
-          ..quadraticBezierTo(
-            cx - r * 0.2,
-            cy + r * 0.5,
-            cx + r * 0.2,
-            cy + r * 0.66,
-          )
-          ..lineTo(cx + r, cy + r * 0.78)
-          ..lineTo(cx + r, cy + r)
-          ..close(),
-        dark,
-      );
-      final s = r * 1.15;
-      paintWolf(canvas, Offset(cx - s * 0.52, cy - s * 0.4), s, p.dark);
-      canvas
-        ..restore()
-        ..drawCircle(
-          center,
-          r + 6,
-          Paint()
-            ..color = foil
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 2,
-        )
-        ..drawCircle(
-          center,
-          r + 11,
-          Paint()
-            ..color = foil.withValues(alpha: foil.a * 0.7)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 0.8,
-        );
+      _paintWolfMoon(canvas, center, size.width * 0.32, p, foil);
       paintGrain(canvas, size, 60, alpha: 0.035);
     });
   }
@@ -463,4 +421,56 @@ class _EmblemPainter extends CustomPainter {
   @override
   bool shouldRepaint(_EmblemPainter old) =>
       old.team != team || old.foil != foil || !identical(old.skin, skin);
+}
+
+/// Trăng bán kính [r], đồi và sói in bóng cắt theo vành trăng, hai vòng nhũ
+/// ra tới r + 11.
+void _paintWolfMoon(
+  Canvas canvas,
+  Offset center,
+  double r,
+  _EmblemPalette p,
+  Color foil,
+) {
+  paintMoon(canvas, center, r, core: p.core, rim: p.rim, glow: p.glow);
+  canvas
+    ..save()
+    ..clipPath(Path()..addOval(Rect.fromCircle(center: center, radius: r)));
+  final dark = Paint()..color = p.dark;
+  final Offset(dx: cx, dy: cy) = center;
+  canvas.drawPath(
+    Path()
+      ..moveTo(cx - r, cy + r)
+      ..lineTo(cx - r, cy + r * 0.62)
+      ..quadraticBezierTo(
+        cx - r * 0.2,
+        cy + r * 0.5,
+        cx + r * 0.2,
+        cy + r * 0.66,
+      )
+      ..lineTo(cx + r, cy + r * 0.78)
+      ..lineTo(cx + r, cy + r)
+      ..close(),
+    dark,
+  );
+  final s = r * 1.15;
+  paintWolf(canvas, Offset(cx - s * 0.52, cy - s * 0.4), s, p.dark);
+  canvas
+    ..restore()
+    ..drawCircle(
+      center,
+      r + 6,
+      Paint()
+        ..color = foil
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    )
+    ..drawCircle(
+      center,
+      r + 11,
+      Paint()
+        ..color = foil.withValues(alpha: foil.a * 0.7)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8,
+    );
 }
