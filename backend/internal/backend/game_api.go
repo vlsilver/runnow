@@ -1017,6 +1017,7 @@ type GameMe struct {
 	Chats       []GameChatLink   `json:"chats"`
 	Actions     []GameAction     `json:"actions"`
 	AllRoles    []GameRoleReveal `json:"allRoles,omitempty"`
+	Summary     *GameSummary     `json:"summary,omitempty"` // cùng lúc với allRoles
 	TeamKm      *GameTeamKm      `json:"teamKm,omitempty"` // chỉ sói còn sống
 	// CardTier là bậc thẻ người gọi bốc được, có từ lúc chia bài. CardOwned true
 	// khi ván đã kết thúc và người gọi thuộc phe thắng: thẻ đã nằm trong
@@ -1145,7 +1146,8 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 			r := st.Players[uid].Role
 			out.AllRoles = append(out.AllRoles, GameRoleReveal{UID: uid, Name: name(uid), Role: string(r), RoleLabel: roleLabels[r], CardURL: cfg.cards[string(r)]})
 		}
-		return out, nil
+		out.Summary, err = s.loadSummary(ctx, g.Ref, st, name, cfg.cards)
+		return out, err
 	}
 	mine, raw, err := s.loadMine(ctx, g.Ref, st.Round, v.UID)
 	if err != nil {

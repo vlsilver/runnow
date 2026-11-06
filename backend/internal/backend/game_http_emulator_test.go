@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -471,6 +472,49 @@ func TestEmulatorGameMeAfterEndShowsAllRoles(t *testing.T) {
 	h.want(me, 200, "")
 	if roles := me.body["allRoles"].([]any); len(roles) != 10 || len(me.body["actions"].([]any)) != 0 {
 		t.Fatalf("me = %s", me.raw)
+	}
+}
+
+// Tổng kết đọc events/{seq} kể cả event riêng và inputs: người được bảo vệ chỉ
+// có trong inputs. Ván còn chạy thì /me không có tổng kết, vì nó lộ vai.
+func TestEmulatorGameMeAfterEndHasSummary(t *testing.T) {
+	g, h := runningAPIGame(t)
+	if me := h.call("v1", "GET", "/v1/games/"+g.id+"/me", nil, ""); me.body["summary"] != nil {
+		t.Fatalf("ván đang chạy mà có summary: %s", me.raw)
+	}
+	inputs := `{"actions":[{"kind":"guard","actor":"guard","targets":["v2"],"receivedAt":"2026-10-15T17:00:00Z"}]}`
+	seed(t, g.db, "games/"+g.id+"/events/100", map[string]any{"kind": "step", "seq": 100, "phaseKey": "r1/night",
+		"events": `[{"kind":"wolves_target","uid":"v1"}]`, "inputs": `{}`})
+	seed(t, g.db, "games/"+g.id+"/events/101", map[string]any{"kind": "step", "seq": 101, "phaseKey": "r1/dawn",
+		"events": `[{"kind":"death","uid":"v1","role":"villager","cause":"bite"}]`, "inputs": inputs})
+	seedMerge(t, g, map[string]any{"status": gameEnded})
+	st := g.state()
+	st.Phase, st.Winner = ww.PhaseEnded, ww.TeamVillage
+	st.Players["v1"].Alive = false
+	raw, _ := json.Marshal(st)
+	seed(t, g.db, "games/"+g.id+"/secret/state", map[string]any{"state": string(raw)})
+
+	me := h.call("v1", "GET", "/v1/games/"+g.id+"/me", nil, "")
+	h.want(me, 200, "")
+	var body struct {
+		Summary GameSummary `json:"summary"`
+	}
+	if err := json.Unmarshal(me.raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	want := []GameSummaryLine{
+		{Icon: "bite", Text: "Sói cắn V1."},
+		{Icon: "guard", Text: "Bảo vệ GUARD canh V2."},
+		{Icon: "death", Text: "V1 chết: bị sói cắn. Lá bài: Dân."},
+	}
+	if r := body.Summary.Replay; len(r) != 1 || r[0].Title != "Đêm 1" || !reflect.DeepEqual(r[0].Lines, want) {
+		t.Fatalf("replay = %+v", r)
+	}
+
+	// Doc events hỏng thì /me báo lỗi chứ không trả tổng kết thiếu bước.
+	seed(t, g.db, "games/"+g.id+"/events/102", map[string]any{"kind": "step", "seq": 102, "phaseKey": "r1/day", "events": "{"})
+	if bad := h.call("v1", "GET", "/v1/games/"+g.id+"/me", nil, ""); bad.status != 500 {
+		t.Fatalf("events hỏng: %d %s", bad.status, bad.raw)
 	}
 }
 
