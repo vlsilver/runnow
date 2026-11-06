@@ -1099,13 +1099,13 @@ class _Stat extends StatelessWidget {
   }
 }
 
-/// Quầng màu [color] ôm sát nét chữ: vài lớp bóng không lệch, nhoè dần ra.
+/// Quầng màu [color] ôm sát nét chữ: một lớp bóng không lệch, nhoè nhẹ ra.
 /// Chữ nổi trên mọi tranh mà không cần nền che tranh, nên tranh tràn hết thẻ.
-List<Shadow> _halo(Color color) => [
-  Shadow(color: color, blurRadius: 1.5),
-  Shadow(color: color, blurRadius: 3.5),
-  Shadow(color: color.withValues(alpha: 0.7), blurRadius: 9),
-];
+///
+/// Chỉ một lớp: mỗi lớp bóng là một lượt làm mờ riêng cho từng dòng chữ, vẽ
+/// lại mỗi frame (Impeller không cache raster). Ba lớp làm lưới thẻ giật khi
+/// cuộn, mà nhìn không khác một lớp vì chữ đã nằm trên phần tranh tối.
+List<Shadow> _halo(Color color) => [Shadow(color: color, blurRadius: 2.5)];
 
 /// Chữ trong [child] không tự đặt bóng thì mang quầng [color].
 class _Halo extends StatelessWidget {
