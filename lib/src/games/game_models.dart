@@ -618,6 +618,7 @@ class GameMe {
     this.cardVariant,
     this.cardOwned = false,
     this.cardRounds = 0,
+    this.summary,
   });
 
   factory GameMe.fromJson(Map<String, dynamic> json) {
@@ -641,6 +642,7 @@ class GameMe {
       cardVariant: _optString(json['cardVariant']),
       cardOwned: json['cardOwned'] == true,
       cardRounds: _int(json['cardRounds']),
+      summary: _obj(json['summary'], GameSummary.fromJson),
     );
   }
 
@@ -686,6 +688,168 @@ class GameMe {
 
   /// Số vòng ván đã đi, chỉ có khi ván đã kết thúc (lúc đó không còn phase).
   final int cardRounds;
+
+  /// Tổng kết ván, có cùng lúc với [allRoles]. Backend cũ không gửi thì null.
+  final GameSummary? summary;
+}
+
+/// Tổng kết ván đã xong: số liệu, danh hiệu, lật bài theo phe, diễn lại.
+class GameSummary {
+  const GameSummary({
+    required this.winner,
+    required this.winnerLabel,
+    required this.stats,
+    required this.titles,
+    required this.teams,
+    required this.replay,
+  });
+
+  factory GameSummary.fromJson(Map<String, dynamic> json) {
+    return GameSummary(
+      winner: _string(json['winner']),
+      winnerLabel: _string(json['winnerLabel']),
+      stats: _list(json['stats'], GameSummaryStat.fromJson),
+      titles: _list(json['titles'], GameSummaryTitle.fromJson),
+      teams: _list(json['teams'], GameSummaryTeam.fromJson),
+      replay: _list(json['replay'], GameSummarySection.fromJson),
+    );
+  }
+
+  final String winner;
+  final String winnerLabel;
+  final List<GameSummaryStat> stats;
+
+  /// Chỉ có danh hiệu nào có người đạt.
+  final List<GameSummaryTitle> titles;
+
+  /// Phe thắng đứng đầu.
+  final List<GameSummaryTeam> teams;
+
+  /// Từng đêm, từng ngày theo thứ tự xảy ra.
+  final List<GameSummarySection> replay;
+}
+
+class GameSummaryStat {
+  const GameSummaryStat({required this.label, required this.value});
+
+  factory GameSummaryStat.fromJson(Map<String, dynamic> json) {
+    return GameSummaryStat(
+      label: _string(json['label']),
+      value: _string(json['value']),
+    );
+  }
+
+  final String label;
+  final String value;
+}
+
+class GameSummaryTitle {
+  const GameSummaryTitle({
+    required this.key,
+    required this.label,
+    required this.name,
+    required this.value,
+  });
+
+  factory GameSummaryTitle.fromJson(Map<String, dynamic> json) {
+    return GameSummaryTitle(
+      key: _string(json['key']),
+      label: _string(json['label']),
+      name: _string(json['name']),
+      value: _string(json['value']),
+    );
+  }
+
+  /// runner, seer, guard; khoá lạ thì app vẽ icon mặc định.
+  final String key;
+  final String label;
+
+  /// Hoà thì tên nối bằng dấu phẩy.
+  final String name;
+  final String value;
+}
+
+class GameSummaryTeam {
+  const GameSummaryTeam({
+    required this.team,
+    required this.label,
+    required this.won,
+    required this.players,
+  });
+
+  factory GameSummaryTeam.fromJson(Map<String, dynamic> json) {
+    return GameSummaryTeam(
+      team: _string(json['team']),
+      label: _string(json['label']),
+      won: json['won'] == true,
+      players: _list(json['players'], GameSummaryPlayer.fromJson),
+    );
+  }
+
+  final String team;
+  final String label;
+  final bool won;
+  final List<GameSummaryPlayer> players;
+}
+
+class GameSummaryPlayer {
+  const GameSummaryPlayer({
+    required this.uid,
+    required this.name,
+    required this.roleLabel,
+    required this.alive,
+    required this.fate,
+    this.cardUrl,
+    this.causeLabel,
+    this.km,
+  });
+
+  factory GameSummaryPlayer.fromJson(Map<String, dynamic> json) {
+    return GameSummaryPlayer(
+      uid: _string(json['uid']),
+      name: _string(json['name']),
+      roleLabel: _string(json['roleLabel']),
+      alive: json['alive'] == true,
+      fate: _string(json['fate']),
+      cardUrl: _optString(json['cardUrl']),
+      causeLabel: _optString(json['causeLabel']),
+      km: _optString(json['km']),
+    );
+  }
+
+  final String uid;
+  final String name;
+  final String roleLabel;
+  final bool alive;
+
+  /// "Sống" hoặc lúc chết: "Đêm 2", "Ngày 3".
+  final String fate;
+  final String? cardUrl;
+  final String? causeLabel;
+
+  /// Km cả ván đã định dạng; ván tắt km thì null.
+  final String? km;
+}
+
+/// Một đêm hay một ngày trong phần diễn lại.
+class GameSummarySection {
+  const GameSummarySection({
+    required this.title,
+    required this.night,
+    required this.lines,
+  });
+
+  factory GameSummarySection.fromJson(Map<String, dynamic> json) {
+    return GameSummarySection(
+      title: _string(json['title']),
+      night: json['night'] == true,
+      lines: _list(json['lines'], GameLine.fromJson),
+    );
+  }
+
+  final String title;
+  final bool night;
+  final List<GameLine> lines;
 }
 
 class GamePotions {

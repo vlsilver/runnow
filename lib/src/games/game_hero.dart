@@ -36,9 +36,13 @@ class GameHero extends StatelessWidget {
     required this.detail,
     required this.closing,
     required this.serverNow,
+    this.rounds = 0,
   });
 
   final GameDetail detail;
+
+  /// Số vòng ván đã đi khi ván đã xong (`me.cardRounds`); 0 là không biết.
+  final int rounds;
 
   /// Đã qua hạn phase, đang chờ backend chốt.
   final bool closing;
@@ -53,7 +57,10 @@ class GameHero extends StatelessWidget {
     final startError = detail.startError;
     final table = detail.kmTable;
     final running = detail.status == 'running';
-    final title = closing
+    final winner = detail.status == 'ended' ? detail.winnerLabel : null;
+    final title = winner != null
+        ? '$winner thắng'.toUpperCase()
+        : closing
         ? 'ĐANG CHỐT…'
         : step >= 0
         ? _steps[step].$2.toUpperCase()
@@ -87,6 +94,8 @@ class GameHero extends StatelessWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     if (round > 0) _Chip('VÒNG $round'),
+                    if (winner != null && rounds > 0)
+                      _Chip('KẾT THÚC SAU $rounds VÒNG'),
                     if (detail.testMode) const _Chip('VÁN THỬ', faint: true),
                     if (phase != null && step >= 0 && !closing)
                       Text(
@@ -118,7 +127,7 @@ class GameHero extends StatelessWidget {
                     serverNow: serverNow,
                   ),
                 ),
-              if (detail.winnerLabel != null)
+              if (detail.winnerLabel != null && winner == null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                   child: Text(

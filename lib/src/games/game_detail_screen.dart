@@ -9,6 +9,7 @@ import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/games/game_action_card.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_detail_controller.dart';
+import 'package:myrun/src/games/game_ended.dart';
 import 'package:myrun/src/games/game_hero.dart';
 import 'package:myrun/src/games/game_journal.dart';
 import 'package:myrun/src/games/game_my_card.dart';
@@ -295,6 +296,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
             for (final r in me?.allRoles ?? const []) r.uid: r,
           };
           final kmTable = detail?.kmTable;
+          final summary = me?.summary;
           final myPlayer = detail?.players
               .where((p) => p.uid == myUid)
               .firstOrNull;
@@ -321,6 +323,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                               : const SizedBox.shrink(),
                           GameHero(
                             detail: detail,
+                            rounds: me?.cardRounds ?? 0,
                             closing: _controller.phaseClosing,
                             serverNow: _controller.serverNow,
                           ),
@@ -429,13 +432,33 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                             const SizedBox(height: 16),
                             _Tabs(
                               current: _tab,
-                              alive:
-                                  '${detail.players.where((p) => p.alive).length}'
-                                  '/${detail.players.length}',
+                              tabs: summary != null
+                                  ? [
+                                      ('TỔNG KẾT', null),
+                                      (
+                                        'LẬT BÀI',
+                                        '${summary.teams.fold(0, (n, t) => n + t.players.length)}',
+                                      ),
+                                      ('DIỄN LẠI', null),
+                                    ]
+                                  : [
+                                      (
+                                        'LÀNG',
+                                        '${detail.players.where((p) => p.alive).length}'
+                                            '/${detail.players.length}',
+                                      ),
+                                      ('NHẬT KÝ', null),
+                                    ],
                               onChanged: (tab) => setState(() => _tab = tab),
                             ),
                             const SizedBox(height: 12),
-                            if (_tab == 0) ...[
+                            if (summary != null)
+                              switch (_tab) {
+                                0 => GameEndedSummary(summary: summary),
+                                1 => GameEndedReveal(teams: summary.teams),
+                                _ => GameReplay(sections: summary.replay),
+                              }
+                            else if (_tab == 0) ...[
                               if (me != null) ...[
                                 GameKmGoals(
                                   goals: me.kmGoals,
@@ -582,18 +605,19 @@ class _Rules extends StatelessWidget {
   }
 }
 
-/// Hai tab dưới lá bài: Làng (cả làng và km) và Nhật ký (diễn biến ván).
+/// Tab dưới lá bài: Làng và Nhật ký khi ván chạy; Tổng kết, Lật bài, Diễn
+/// lại khi ván đã xong và có tổng kết.
 class _Tabs extends StatelessWidget {
   const _Tabs({
     required this.current,
-    required this.alive,
+    required this.tabs,
     required this.onChanged,
   });
 
   final int current;
 
-  /// Số người còn sống trên tổng, như 9/12.
-  final String alive;
+  /// Tên tab và số nhỏ kèm theo (như 9/12 người còn sống), null là không có.
+  final List<(String, String?)> tabs;
   final ValueChanged<int> onChanged;
 
   @override
@@ -673,9 +697,10 @@ class _Tabs extends StatelessWidget {
       ),
       child: Row(
         children: [
-          tab(0, 'LÀNG', alive),
-          const SizedBox(width: 4),
-          tab(1, 'NHẬT KÝ', null),
+          for (final (i, (label, badge)) in tabs.indexed) ...[
+            if (i > 0) const SizedBox(width: 4),
+            tab(i, label, badge),
+          ],
         ],
       ),
     );

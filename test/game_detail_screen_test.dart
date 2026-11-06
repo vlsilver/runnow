@@ -904,6 +904,107 @@ void main() {
       await close(tester);
     });
 
+    testWidgets('an ended game shows its summary, reveal and replay', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(2400, 9000);
+      addTearDown(tester.view.reset);
+      backend.game = {
+        ...running(),
+        'status': 'ended',
+        'statusLabel': 'Đã kết thúc',
+        'winner': 'village',
+        'winnerLabel': 'Phe Dân',
+      };
+      backend.me = {
+        'status': 'ended',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+        'cardRounds': 4,
+        'summary': {
+          'winner': 'village',
+          'winnerLabel': 'Phe Dân',
+          'stats': [
+            {'label': 'Km cả làng', 'value': '212 km'},
+          ],
+          'titles': [
+            {
+              'key': 'runner',
+              'label': 'Chạy nhiều nhất',
+              'uids': ['u3'],
+              'name': 'Ngọc',
+              'value': '38.2 km',
+            },
+          ],
+          'teams': [
+            {
+              'team': 'village',
+              'label': 'Phe Dân',
+              'won': true,
+              'players': [
+                {
+                  'uid': 'u3',
+                  'name': 'Ngọc',
+                  'role': 'cupid',
+                  'roleLabel': 'Cupid',
+                  'alive': true,
+                  'fate': 'Sống',
+                },
+              ],
+            },
+            {
+              'team': 'wolves',
+              'label': 'Phe Sói',
+              'won': false,
+              'players': [
+                {
+                  'uid': 'u2',
+                  'name': 'Bình',
+                  'role': 'wolf',
+                  'roleLabel': 'Sói',
+                  'alive': false,
+                  'fate': 'Ngày 1',
+                  'causeLabel': 'Bị treo',
+                },
+              ],
+            },
+          ],
+          'replay': [
+            {
+              'title': 'Đêm 1',
+              'night': true,
+              'lines': [
+                {'icon': 'bite', 'text': 'Sói cắn An.', 'tag': 'CỨU'},
+              ],
+            },
+          ],
+        },
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+
+      expect(find.text('PHE DÂN THẮNG'), findsOneWidget);
+      expect(find.text('KẾT THÚC SAU 4 VÒNG'), findsOneWidget);
+      expect(find.text('212 km'), findsOneWidget);
+      expect(find.text('CHẠY NHIỀU NHẤT'), findsOneWidget);
+      expect(find.text('LÀNG'), findsNothing);
+
+      await tester.tap(find.text('LẬT BÀI'));
+      await tester.pump();
+      expect(find.text('2'), findsOneWidget);
+      expect(find.text('Sói · Bị treo'), findsOneWidget);
+      expect(find.text('NGÀY 1'), findsOneWidget);
+      expect(find.text('Sói cắn An.'), findsNothing);
+
+      await tester.tap(find.text('DIỄN LẠI'));
+      await tester.pump();
+      expect(find.text('ĐÊM 1'), findsOneWidget);
+      expect(find.text('Sói cắn An.'), findsOneWidget);
+      expect(find.text('CỨU'), findsOneWidget);
+      await close(tester);
+    });
+
     testWidgets('a winner brags through the card share screen', (tester) async {
       // Byte giả: màn khoe không giải mã video, chỉ gửi đi.
       final video = Uint8List.fromList([0, 0, 0, 24, 102, 116, 121, 112]);
