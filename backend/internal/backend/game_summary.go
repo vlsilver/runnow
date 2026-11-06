@@ -149,11 +149,32 @@ var summaryVoidReasons = map[string]string{
 	werewolf.VoidGameOver: "ván đã hết",
 }
 
-// summaryEventIcons: icon của các câu lấy thẳng từ eventLine.
-var summaryEventIcons = map[werewolf.EventKind]string{
+// eventIcons: icon của các câu lấy thẳng từ eventLine (eventItem).
+var eventIcons = map[werewolf.EventKind]string{
 	werewolf.EventNominee: "nominee", werewolf.EventVoteCut: "vote", werewolf.EventVoteBonus: "vote",
 	werewolf.EventVoteResult: "vote", werewolf.EventHunterTurn: "hunter", werewolf.EventRevealed: "reveal",
 	werewolf.EventWinner: "winner",
+}
+
+// eventItem là câu eventLine kèm icon và tag. Event không có trong eventIcons
+// trả ok false.
+func eventItem(e werewolf.Event, name func(string) string) (GameSummaryLine, bool) {
+	icon, ok := eventIcons[e.Kind]
+	if !ok {
+		return GameSummaryLine{}, false
+	}
+	text, ok := eventLine(e, name)
+	if !ok {
+		return GameSummaryLine{}, false
+	}
+	line := GameSummaryLine{Icon: icon, Text: text}
+	if e.Kind == werewolf.EventVoteResult && e.Reason != werewolf.ReasonNoTrial {
+		line.Tag = "THA"
+		if e.Hanged {
+			line.Tag = "TREO"
+		}
+	}
+	return line, true
 }
 
 type summaryBuilder struct {
@@ -265,21 +286,12 @@ func (b *summaryBuilder) event(e werewolf.Event, title string, night bool) {
 		}
 		b.add(title, night, GameSummaryLine{Icon: "void", Text: fmt.Sprintf("Lượt %s của %s bị huỷ: %s.", kind, b.name(e.UID), reason)})
 	default:
-		icon, ok := summaryEventIcons[e.Kind]
+		line, ok := eventItem(e, b.name)
 		if !ok {
 			return
 		}
-		text, ok := eventLine(e, b.name)
-		if !ok {
-			return
-		}
-		line := GameSummaryLine{Icon: icon, Text: text}
-		if e.Kind == werewolf.EventVoteResult && e.Reason != werewolf.ReasonNoTrial {
-			line.Tag = "THA"
-			if e.Hanged {
-				line.Tag = "TREO"
-				b.hangs++
-			}
+		if line.Tag == "TREO" {
+			b.hangs++
 		}
 		b.add(title, night, line)
 	}
