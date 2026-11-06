@@ -107,15 +107,21 @@ class GameHero extends StatelessWidget {
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 92, 0),
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontFamily: gameTitleFont,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 40,
-                    height: 1,
-                    letterSpacing: 0.5,
-                    color: _M.ink,
+                // Tiêu đề dài như ĐANG MỞ ĐĂNG KÝ thu nhỏ cho vừa một dòng.
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    style: const TextStyle(
+                      fontFamily: gameTitleFont,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 40,
+                      height: 1,
+                      letterSpacing: 0.5,
+                      color: _M.ink,
+                    ),
                   ),
                 ),
               ),

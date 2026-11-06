@@ -540,6 +540,27 @@ void main() {
     FilledButton registerButton(WidgetTester tester) =>
         tester.widget(find.widgetWithText(FilledButton, 'Đăng ký'));
 
+    testWidgets('the lobby shows seats, closing time and requirements met', (
+      tester,
+    ) async {
+      backend.game = {
+        ...open([linked, notInPsc, appOk]),
+        'playerCount': 9,
+        'minPlayers': 10,
+        'maxPlayers': 16,
+        // Giờ địa phương, nên ra đúng 21:00 ở mọi múi giờ máy chạy test.
+        'registrationDeadline': DateTime(2026, 11, 8, 21).toIso8601String(),
+      };
+      await pumpScreen(tester);
+
+      expect(find.text('9 / 16 chỗ', findRichText: true), findsOneWidget);
+      expect(find.text('Cần ít nhất 10 để mở ván'), findsOneWidget);
+      expect(find.text('21:00'), findsOneWidget);
+      expect(find.text('đóng đăng ký · CN 08/11'), findsOneWidget);
+      expect(find.text('ĐỦ ĐIỀU KIỆN 2/3'), findsOneWidget);
+      await close(tester);
+    });
+
     testWidgets('lists what is missing and blocks registering', (tester) async {
       backend.game = open([linked, notInPsc, appOk]);
       await pumpScreen(tester);

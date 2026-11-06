@@ -418,7 +418,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                             if (detail.players.isNotEmpty) ...[
                               const SizedBox(height: 20),
                               _SectionTitle(
-                                'Người chơi',
+                                'ĐÃ VÀO SẢNH',
                                 trailing: '${detail.players.length} người',
                               ),
                               GameVillage(
@@ -525,8 +525,11 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   }
 }
 
-final _timeFormat = DateFormat('HH:mm dd/MM');
+final _clockFormat = DateFormat('HH:mm');
+final _dayFormat = DateFormat('dd/MM');
+const _weekdays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 
+/// Sảnh đăng ký: số chỗ đã có, giờ đóng, điều kiện vào ván và nút đăng ký.
 class _Registration extends StatelessWidget {
   const _Registration({
     required this.detail,
@@ -542,43 +545,155 @@ class _Registration extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    final deadline = detail.registrationDeadline;
-    final ready = detail.requirements.every((r) => r.ok);
-    return GlassPanel(
+    final deadline = detail.registrationDeadline?.toLocal();
+    final requirements = detail.requirements;
+    final met = requirements.where((r) => r.ok).length;
+    final ready = met == requirements.length;
+    final count = detail.playerCount;
+    return Container(
       padding: const EdgeInsets.all(16),
-      border: Border.all(color: palette.border),
+      decoration: BoxDecoration(
+        color: _M.panel,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _M.border),
+      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            '${detail.playerCount} người đã đăng ký · cần '
-            '${detail.minPlayers}–${detail.maxPlayers}',
-            style: TextStyle(fontWeight: FontWeight.w700, color: palette.ink),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: '$count',
+                            style: const TextStyle(
+                              fontSize: 40,
+                              color: _M.amberLight,
+                            ),
+                          ),
+                          TextSpan(
+                            text: ' / ${detail.maxPlayers} chỗ',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              color: _M.inkSoft,
+                            ),
+                          ),
+                        ],
+                      ),
+                      style: const TextStyle(
+                        fontFamily: gameTitleFont,
+                        fontWeight: FontWeight.w800,
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      count >= detail.minPlayers
+                          ? 'Đủ người để mở ván'
+                          : 'Cần ít nhất ${detail.minPlayers} để mở ván',
+                      style: const TextStyle(fontSize: 12, color: _M.muted),
+                    ),
+                  ],
+                ),
+              ),
+              if (deadline != null)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      _clockFormat.format(deadline),
+                      style: const TextStyle(
+                        fontFamily: gameTitleFont,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 24,
+                        height: 1,
+                        color: _M.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'đóng đăng ký · ${_weekdays[deadline.weekday - 1]} '
+                      '${_dayFormat.format(deadline)}',
+                      style: const TextStyle(fontSize: 12, color: _M.muted),
+                    ),
+                  ],
+                ),
+            ],
           ),
-          if (deadline != null)
-            Text(
-              'Đóng đăng ký ${_timeFormat.format(deadline.toLocal())}',
-              style: TextStyle(color: palette.textMuted),
-            ),
-          if (!detail.isRegistered)
-            for (final requirement in detail.requirements)
-              _RequirementRow(requirement: requirement, onOpenUrl: onOpenUrl),
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: detail.isRegistered
-                ? OutlinedButton(
-                    onPressed: busy ? null : onToggle,
-                    child: const Text('Huỷ đăng ký'),
-                  )
-                : FilledButton(
-                    onPressed: busy || !ready ? null : onToggle,
-                    child: const Text('Đăng ký'),
-                  ),
-          ),
+          _Slots(count: count, min: detail.minPlayers, max: detail.maxPlayers),
+          if (!detail.isRegistered && requirements.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(
+              'ĐỦ ĐIỀU KIỆN $met/${requirements.length}',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.2,
+                color: _M.inkSoft,
+              ),
+            ),
+            for (final requirement in requirements)
+              _RequirementRow(requirement: requirement, onOpenUrl: onOpenUrl),
+          ],
+          const SizedBox(height: 16),
+          detail.isRegistered
+              ? OutlinedButton(
+                  onPressed: busy ? null : onToggle,
+                  child: const Text('Huỷ đăng ký'),
+                )
+              : FilledButton(
+                  onPressed: busy || !ready ? null : onToggle,
+                  child: const Text('Đăng ký'),
+                ),
         ],
       ),
+    );
+  }
+}
+
+/// Dải chỗ ngồi: mỗi chỗ một vạch, chỗ đã có người sáng lên, vạch số người
+/// tối thiểu nhạt hơn khi chưa đủ.
+class _Slots extends StatelessWidget {
+  const _Slots({required this.count, required this.min, required this.max});
+
+  final int count;
+  final int min;
+  final int max;
+
+  @override
+  Widget build(BuildContext context) {
+    if (max <= 0) return const SizedBox.shrink();
+    return Row(
+      children: [
+        for (var i = 0; i < max; i++) ...[
+          if (i > 0) const SizedBox(width: 3),
+          Expanded(
+            child: Container(
+              height: 6,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(3),
+                color: i < count
+                    ? null
+                    : i < min
+                    ? _M.amberLine
+                    : _M.track,
+                gradient: i < count
+                    ? const LinearGradient(
+                        colors: [_M.amberDeep, _M.amberBright],
+                      )
+                    : null,
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
