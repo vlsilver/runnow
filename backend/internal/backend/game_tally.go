@@ -107,8 +107,10 @@ func (v tallyView) render() (string, map[string]any, error) {
 	if v.kind == werewolf.KindNominate {
 		lines = append(lines, "Bấm tên để đề cử, bấm người khác để đổi. Chọn trong app RunNow cũng được.")
 	} else {
-		lines = append(lines, "Bấm Treo hoặc Tha, đổi được tới hạn. Chọn trong app RunNow cũng được.",
-			"Số phiếu được tính chốt lúc 22h theo km của mỗi bên.")
+		lines = append(lines, "Bấm Treo hoặc Tha, đổi được tới hạn. Chọn trong app RunNow cũng được.")
+		if v.st.Config.VoteMode() != werewolf.VoteFlat {
+			lines = append(lines, "Số phiếu được tính chốt lúc 22h theo km của mỗi bên.")
+		}
 	}
 
 	button := func(label string, idx int) (map[string]any, error) {
