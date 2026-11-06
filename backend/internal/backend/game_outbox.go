@@ -798,7 +798,7 @@ func (r *outboxRenderer) cardText(uid string, role werewolf.Role, wolves []strin
 	if !ok {
 		return "", fmt.Errorf("vai lạ %q", role)
 	}
-	rules := strings.ReplaceAll(roleRules[role], "X km", formatKm(kmPerUnit(r.cfg))+" km")
+	rules := roleRulesFor(role, r.cfg, formatKm(kmPerUnit(r.cfg)))
 	lines := []string{"Lá bài của bạn: <b>" + label + "</b>", html.EscapeString(rules)}
 	var mates []string
 	for _, w := range wolves {
@@ -867,7 +867,7 @@ func (r *outboxRenderer) digestText(raw string) (string, error) {
 	case !d.Deadline.IsZero():
 		lines = append(lines, "", fmt.Sprintf("Tiếp theo: %s, tới %s.", phaseLabel(d.Round, d.Phase), vnTime(d.Deadline)))
 	}
-	if d.Km != nil {
+	if d.Km != nil && !r.cfg.KmOff {
 		lines = append(lines, "", fmt.Sprintf("<b>Km chốt 22h, dùng cho đêm %d</b>", d.Round))
 		lines = append(lines, r.kmBoard(d.Km)...)
 	}
@@ -891,7 +891,11 @@ func (r *outboxRenderer) kmBoard(km map[string]float64) []string {
 		}
 	}
 	u := formatKm(unit)
-	lines := []string{fmt.Sprintf("Có vai đêm thì cần đủ %s km mới dùng được kỹ năng. Sói tính chung cả phe: tổng km sói còn sống phải đủ %s km cho mỗi sói. Cupid không cần km.", u, u)}
+	head := fmt.Sprintf("Có vai đêm thì cần đủ %s km mới dùng được kỹ năng. Sói tính chung cả phe: tổng km sói còn sống phải đủ %s km cho mỗi sói. Cupid không cần km.", u, u)
+	if len(r.cfg.SkillKm) > 0 || r.cfg.VillageGate {
+		head = kmNeedsText(r.cfg)
+	}
+	lines := []string{head}
 	if len(enough) > 0 {
 		lines = append(lines, "Đủ km: "+strings.Join(enough, " · "))
 	}
@@ -903,9 +907,9 @@ func (r *outboxRenderer) kmBoard(km map[string]float64) []string {
 
 // kmButton là nút "Xem km của tôi" dưới tin group: ai bấm thì thấy km của mình
 // trong hộp thoại chỉ người đó thấy (PressButton, opKm). Ván không có id (test
-// render) thì không có nút.
+// render) hoặc ván tắt km thì không có nút.
 func (r *outboxRenderer) kmButton() (any, error) {
-	if r.gameID == "" {
+	if r.gameID == "" || r.cfg.KmOff {
 		return nil, nil
 	}
 	data, err := (gameButton{GameID: r.gameID, Op: opKm}).data()
@@ -936,7 +940,7 @@ func (r *outboxRenderer) renderReminder(ctx context.Context, key, raw string) (o
 // đã chốt (tin nhắc gửi trễ, ván đã sang đêm) hoặc ván thử, vì ván thử không
 // đọc buổi chạy thật (snapshotKmIfDue).
 func (r *outboxRenderer) liveKmLines(ctx context.Context) ([]string, error) {
-	if r.gameData["testMode"] == true {
+	if r.gameData["testMode"] == true || r.cfg.KmOff {
 		return nil, nil
 	}
 	st, err := r.state(ctx)
@@ -960,13 +964,17 @@ func (r *outboxRenderer) liveKmLines(ctx context.Context) ([]string, error) {
 		km[uid] = fk.Meters
 	}
 	lines := append([]string{"<b>Km tới " + now.In(vietnam).Format("15:04") + ", chốt lúc 22h</b>"}, r.kmBoard(km)...)
-	if st.Phase == werewolf.PhaseTrial {
+	mode := r.cfg.VoteMode()
+	if st.Phase == werewolf.PhaseTrial && mode != werewolf.VoteFlat {
 		nominees := st.TrialNominees()
 		for _, nominee := range nominees {
 			if p := st.Players[nominee]; p != nil && p.Alive {
 				lines = append(lines, r.voteForecast(st, km, nominee, len(nominees) > 1))
 			}
 		}
+	}
+	if mode == werewolf.VoteFlat {
+		return append(lines, "Km chốt 22h dùng cho kỹ năng đêm nay. Chạy xong mở app cho km kịp đồng bộ."), nil
 	}
 	return append(lines, "Km chốt 22h dùng cho biểu quyết tối nay và kỹ năng đêm nay. Chạy xong mở app cho km kịp đồng bộ."), nil
 }
@@ -984,11 +992,14 @@ func (r *outboxRenderer) voteForecast(st *werewolf.State, km map[string]float64,
 			total += km[uid]
 		}
 	}
-	plan := werewolf.PlanVoteCut(voters, km, r.cfg)
 	title := "Biểu quyết"
 	if named {
 		title += " " + r.names([]string{nominee})
 	}
+	if r.cfg.VoteMode() == werewolf.VoteTop {
+		return r.voteTopForecast(st, km, voters, title)
+	}
+	plan := werewolf.PlanVoteCut(voters, km, r.cfg)
 	text := fmt.Sprintf("%s nếu chốt bây giờ: %d người bỏ phiếu có tổng %s km, ", title, len(voters), formatKm(math.Floor(total/100)/10))
 	if plan.Allowed == len(voters) {
 		return text + fmt.Sprintf("đủ cho cả %d phiếu.", len(voters))
@@ -1005,6 +1016,39 @@ func (r *outboxRenderer) voteForecast(st *werewolf.State, km map[string]float64,
 		text += fmt.Sprintf(" Bốc thăm %d người mất phiếu trong: %s.", plan.Need, r.names(tied))
 	}
 	return text + " Ai chạy thêm trước 22h thì làng thêm phiếu."
+}
+
+// voteTopForecast là dự báo của luật top: ai được tính 2 phiếu nếu chốt bây giờ.
+func (r *outboxRenderer) voteTopForecast(st *werewolf.State, km map[string]float64, voters []string, title string) string {
+	plan := werewolf.PlanVoteBonus(voters, km, r.cfg, aliveWolves(st))
+	text := title + " nếu chốt bây giờ: "
+	u := formatKm(kmPerUnit(r.cfg))
+	if len(plan.Sure)+len(plan.Tied) == 0 {
+		return text + "chưa ai đủ " + u + " km để được tính 2 phiếu."
+	}
+	sure, tied := plan.Sure, plan.Tied
+	if plan.Need == len(tied) {
+		sure, tied = append(sure, tied...), nil
+	}
+	var parts []string
+	if len(sure) > 0 {
+		parts = append(parts, r.names(sure)+" được tính 2 phiếu")
+	}
+	if len(tied) > 0 {
+		parts = append(parts, fmt.Sprintf("bốc thăm %d người được tính 2 phiếu trong: %s", plan.Need, r.names(tied)))
+	}
+	return text + strings.Join(parts, "; ") + fmt.Sprintf(" (%d người chạy nhiều nhất, mỗi người đủ %s km).", plan.Top, u)
+}
+
+// aliveWolves là số sói còn sống, để tính N mặc định của luật top.
+func aliveWolves(st *werewolf.State) int {
+	n := 0
+	for _, p := range st.Players {
+		if p.Alive && p.Role == werewolf.Wolf {
+			n++
+		}
+	}
+	return n
 }
 
 func reminderText(reason string) (string, error) {

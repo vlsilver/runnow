@@ -242,6 +242,9 @@ type GameListViewer struct {
 
 type GameCreateOptions struct {
 	Roles []GameRoleOption `json:"roles"`
+	// Settings là các tuỳ chọn luật của ván, mỗi cái có tên và mô tả
+	// (game_settings.go). App gửi lại theo key trong CreateGameRequest.Settings.
+	Settings []GameSetting `json:"settings"`
 }
 
 type GameRoleOption struct {
@@ -280,6 +283,7 @@ func (s *GameStore) List(ctx context.Context, v GameViewer, wall time.Time) (Gam
 		return GameList{}, err
 	}
 	out := GameList{Viewer: GameListViewer{CanCreate: cfg.isAdmin(v.UID)}, Items: []GameListItem{}}
+	out.CreateOptions.Settings = gameCreateSettings()
 	for _, r := range toggleRoles {
 		out.CreateOptions.Roles = append(out.CreateOptions.Roles, GameRoleOption{Key: string(r), Label: roleLabels[r], Default: true})
 	}
@@ -659,6 +663,19 @@ func feedItem(d map[string]any, players map[string]gamePlayerInfo) (GameFeedItem
 				line += ", bốc thăm vì bằng km"
 			}
 			item.Lines = append(item.Lines, line+".")
+		case werewolf.EventVoteBonus:
+			names := make([]string, len(e.Targets))
+			for i, uid := range e.Targets {
+				names[i] = name(uid)
+			}
+			line := strings.Join(names, ", ") + " chạy nhiều nhất nên được tính 2 phiếu"
+			if e.UID != "" {
+				line = "Phiên " + name(e.UID) + ": " + line
+			}
+			if e.Draw {
+				line += ", bốc thăm vì bằng km"
+			}
+			item.Lines = append(item.Lines, line+".")
 		case werewolf.EventVoteResult:
 			if e.Reason == werewolf.ReasonNoTrial {
 				item.Lines = append(item.Lines, fmt.Sprintf("%s đã rời PSC, bỏ biểu quyết.", name(e.UID)))
@@ -817,6 +834,10 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 		return GameDetail{}, err
 	}
 	data := g.Data()
+	gc, err := gameConfigOf(data)
+	if err != nil {
+		return GameDetail{}, err
+	}
 	players, err := s.loadPlayers(ctx, g.Ref)
 	if err != nil {
 		return GameDetail{}, err
@@ -833,7 +854,7 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 	out := GameDetail{
 		ID: g.Ref.ID, Title: gameTitle, Status: apiStatus(data), StatusLabel: statusLabel(data),
 		TestMode: data["testMode"] == true, Version: int64(number(data["version"])), ServerNow: wall,
-		RulesText: gameRulesText, PlayerCount: len(players), MinPlayers: werewolf.MinPlayers, MaxPlayers: werewolf.MaxPlayers,
+		RulesText: gameRulesFor(gc), PlayerCount: len(players), MinPlayers: werewolf.MinPlayers, MaxPlayers: werewolf.MaxPlayers,
 		Feed: feed, Requirements: requirementsFor(link, v.AppVersion, cfg),
 		IsRegistered: registered, IsAdmin: cfg.isAdmin(v.UID), MinAppVersion: cfg.minAppVersion,
 		Winner: stringValue(data["winner"]),
@@ -857,9 +878,12 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 	}
 	out.RefreshAfterSeconds = refreshAfter(data, out.Phase, wall)
 
-	km, err := s.lastKm(ctx, g.Ref, data, players)
-	if err != nil {
-		return out, err
+	// Ván tắt km thì không có cột km nào.
+	var km map[string]float64
+	if !gc.KmOff {
+		if km, err = s.lastKm(ctx, g.Ref, data, players); err != nil {
+			return out, err
+		}
 	}
 	var st *werewolf.State
 	if stringValue(data["status"]) == gameRunning {
@@ -1089,7 +1113,7 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 		return "Người chơi"
 	}
 	out.Role, out.RoleLabel, out.Alive = string(me.Role), roleLabels[me.Role], me.Alive
-	out.RoleRules = strings.ReplaceAll(roleRules[me.Role], "X km", formatKm(kmPerUnit(st.Config))+" km")
+	out.RoleRules = roleRulesFor(me.Role, st.Config, formatKm(kmPerUnit(st.Config)))
 	out.CardURL, out.CardBackURL = cfg.cards[string(me.Role)], cfg.cards["back"]
 	out.CardTier = string(gameCardTier(st.Seed, v.UID))
 	out.CardVariant = gameCardVariant(st.Seed, v.UID)
@@ -1267,6 +1291,9 @@ type CreateGameRequest struct {
 	ChatID               string          `json:"chatId"`
 	ThreadID             int64           `json:"threadId"`
 	KmPerUnit            float64         `json:"kmPerUnit"`
+	// Settings: key → giá trị của các tuỳ chọn trong createOptions.settings.
+	// Key không gửi thì lấy mặc định.
+	Settings map[string]any `json:"settings"`
 }
 
 // Create mở ván mới, chỉ admin. Ván thật chạy trong PSC; ván thử phải chỉ ra
@@ -1289,6 +1316,9 @@ func (s *GameStore) Create(ctx context.Context, req CreateGameRequest, v GameVie
 		}
 	}
 	sort.Slice(gc.Disabled, func(i, j int) bool { return gc.Disabled[i] < gc.Disabled[j] })
+	if err := applyGameSettings(&gc, req.Settings); err != nil {
+		return "", err
+	}
 	if err := gc.Validate(); err != nil {
 		return "", &HTTPError{Status: http.StatusUnprocessableEntity, Code: "invalid_config", Message: "Cấu hình ván không hợp lệ: " + err.Error()}
 	}

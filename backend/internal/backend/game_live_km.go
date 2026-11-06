@@ -45,7 +45,7 @@ func liveKmRef(game *firestore.DocumentRef) *firestore.DocumentRef {
 // ván không chạy hoặc là ván thử, vì ván thử không đọc buổi chạy thật
 // (snapshotKmIfDue). Hai request cùng tính lại thì cùng ghi một kết quả.
 func (s *GameStore) liveKm(ctx context.Context, game *firestore.DocumentRef, data map[string]any, st *werewolf.State, wall time.Time) (*liveKm, error) {
-	if st == nil || data["testMode"] == true || stringValue(data["status"]) != gameRunning {
+	if st == nil || data["testMode"] == true || st.Config.KmOff || stringValue(data["status"]) != gameRunning {
 		return nil, nil
 	}
 	now := gameNow(data, wall)
@@ -108,7 +108,7 @@ func hasAllKeys(m map[string]float64, keys []string) bool {
 // kmTable là đầu cột và chú thích của bảng km trong app. Server ghi chữ để đổi
 // cách gọi mà không phải ra bản app mới.
 func kmTable(data map[string]any, st *werewolf.State, live *liveKm, wall time.Time) *GameKmTable {
-	if st == nil || stringValue(data["status"]) != gameRunning {
+	if st == nil || st.Config.KmOff || stringValue(data["status"]) != gameRunning {
 		return nil
 	}
 	now := gameNow(data, wall).In(vietnam)
@@ -117,6 +117,9 @@ func kmTable(data map[string]any, st *werewolf.State, live *liveKm, wall time.Ti
 		LastLabel: "Hôm qua · chốt 22h",
 		UnitKm:    kmPerUnit(st.Config),
 		Note:      "Km chốt lúc 22h, dùng cho biểu quyết và kỹ năng đêm ngay sau đó. Chạy xong mở app để km kịp đồng bộ.",
+	}
+	if st.Config.VoteMode() == werewolf.VoteFlat {
+		t.Note = "Km chốt lúc 22h, dùng cho kỹ năng đêm ngay sau đó. Chạy xong mở app để km kịp đồng bộ."
 	}
 	if sameDate(end.AddDate(0, 0, -1), now) {
 		t.LastLabel = "Hôm nay · chốt 22h"
@@ -141,9 +144,13 @@ func sameDate(a, b time.Time) bool {
 }
 
 // wolfTeamKm là km của phe Sói cho một sói còn sống: tổng km chốt 22h gần nhất,
-// tổng km đang gom, và mức cần để cắn (WolfKm). Today nil ở ván thử.
+// tổng km đang gom, và mức cần để cắn (WolfKm). Today nil ở ván thử. Phe cắn
+// không cần km thì nil.
 func (s *GameStore) wolfTeamKm(ctx context.Context, game *firestore.DocumentRef, data map[string]any, st *werewolf.State, wall time.Time) (*GameTeamKm, error) {
 	have, need := werewolf.WolfKm(st)
+	if need == 0 {
+		return nil, nil
+	}
 	out := &GameTeamKm{Label: "Km phe Sói", Last: have / 1000, Need: need / 1000, NeedLabel: "Cần " + formatKm(need/1000) + " km để cắn"}
 	live, err := s.liveKm(ctx, game, data, st, wall)
 	if err != nil {

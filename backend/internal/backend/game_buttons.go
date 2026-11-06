@@ -530,6 +530,9 @@ func (s *GameStore) kmAlert(ctx context.Context, gameData map[string]any, st *we
 	if !me.Alive {
 		return "Bạn đã chết nên km không còn tính trong ván.", nil
 	}
+	if st.Config.KmOff {
+		return "Ván này không dùng km.", nil
+	}
 	last := "Km chốt 22h gần nhất: " + formatKm(math.Floor(st.Km[uid]/100)/10) + " km."
 	if gameData["testMode"] == true { // ván thử không đọc buổi chạy thật (snapshotKmIfDue)
 		return "Ván thử không tính km chạy thật. " + last, nil
@@ -549,11 +552,12 @@ func (s *GameStore) kmAlert(ctx context.Context, gameData map[string]any, st *we
 	}
 	unit := kmPerUnit(st.Config)
 	lines := []string{
-		fmt.Sprintf("Tới %s bạn có %s km, chốt lúc 22h. Cần %s km để dùng kỹ năng đêm.",
-			now.In(vietnam).Format("15:04"), formatKm(math.Floor(mine/100)/10), formatKm(unit)),
+		fmt.Sprintf("Tới %s bạn có %s km, chốt lúc 22h.", now.In(vietnam).Format("15:04"), formatKm(math.Floor(mine/100)/10)) + mySkillKm(st.Config, me.Role),
 		last,
 	}
-	if me.Role == werewolf.Wolf {
+	if me.Role == werewolf.Wolf && st.Config.SkillMeters(werewolf.Wolf) == 0 {
+		lines = append(lines, "Phe Sói cắn không cần km.")
+	} else if me.Role == werewolf.Wolf {
 		var have float64
 		for _, other := range sortedPlayers(st) {
 			if p := st.Players[other]; p.Alive && p.Role == werewolf.Wolf {
@@ -568,6 +572,21 @@ func (s *GameStore) kmAlert(ctx context.Context, gameData map[string]any, st *we
 		lines = append(lines, "Phe Sói tới giờ: "+wolfKmShort(have, need, unit)+".")
 	}
 	return truncateUTF16(strings.Join(lines, "\n"), answerTextSize), nil
+}
+
+// mySkillKm là câu km kỹ năng trong hộp "Xem km của tôi". Ván không chỉnh km
+// từng vai thì nói chung một mức như trước; có chỉnh thì nói theo vai của
+// người bấm, vì hộp này chỉ người đó thấy.
+func mySkillKm(cfg werewolf.Config, role werewolf.Role) string {
+	x := formatKm(kmPerUnit(cfg))
+	if len(cfg.SkillKm) == 0 && !cfg.VillageGate {
+		return " Cần " + x + " km để dùng kỹ năng đêm."
+	}
+	switch role {
+	case werewolf.Seer, werewolf.Guard, werewolf.Witch, werewolf.Hunter:
+		return " " + roleKmLine(role, cfg, x)
+	}
+	return ""
 }
 
 func truncateUTF16(s string, limit int) string {

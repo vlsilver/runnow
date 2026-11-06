@@ -346,7 +346,9 @@ func (s *GameStore) snapshotKmIfDue(ctx context.Context, gameID string, wall tim
 		}
 		uid := refs[i].ID
 		doc := map[string]any{"frameEnd": end, "meters": 0.0, "source": "test", "createdAt": wall}
-		if !testMode {
+		if st.Config.KmOff {
+			doc["source"] = "off" // ván tắt km: không đọc buổi chạy, mốc vẫn cần để chốt
+		} else if !testMode {
 			fk, err := s.frameKm(ctx, uid, end)
 			if err != nil {
 				return fmt.Errorf("km của %s: %w", uid, err)

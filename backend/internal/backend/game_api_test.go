@@ -117,6 +117,10 @@ func TestFeedItemText(t *testing.T) {
 			{Kind: ww.EventDeath, UID: "a", Role: ww.Villager},
 		}, "Biểu quyết ngày 3", []string{"Treo 3, Tha 1: An bị treo.", "Phiên Chi: tổng km chưa đủ nên Bình mất phiếu.", "Treo 1, Tha 1: Chi được tha.", "An đã chết. Lá bài: Dân."}},
 		{"r4/trial", []ww.Event{{Kind: ww.EventVoteResult, UID: "c", Reason: ww.ReasonNoTrial}}, "Biểu quyết ngày 4", []string{"Chi đã rời PSC, bỏ biểu quyết."}},
+		{"r5/trial", []ww.Event{
+			{Kind: ww.EventVoteBonus, Targets: []string{"a", "c"}, Draw: true},
+			{Kind: ww.EventVoteBonus, UID: "c", Targets: []string{"b"}},
+		}, "Biểu quyết ngày 5", []string{"An, Chi chạy nhiều nhất nên được tính 2 phiếu, bốc thăm vì bằng km.", "Phiên Chi: Bình chạy nhiều nhất nên được tính 2 phiếu."}},
 		{"r2/night/hunter", []ww.Event{{Kind: ww.EventDeath, UID: "c", Role: ww.Seer}}, "Thợ săn bắn", []string{"Chi đã chết. Lá bài: Tiên tri."}},
 		{"r1/night", nil, "Đêm 1", []string{}},
 		{"r1/day", []ww.Event{{Kind: ww.EventDeath, UID: "zz", Role: ww.Villager}}, "Đề cử ngày 1", []string{"Người chơi đã chết. Lá bài: Dân."}},

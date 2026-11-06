@@ -39,6 +39,12 @@ type storeGame struct {
 // km của mọi người là 5 km.
 func newStoreGame(t *testing.T) *storeGame {
 	t.Helper()
+	return newStoreGameWith(t, ww.Config{})
+}
+
+// newStoreGameWith như newStoreGame nhưng Start với cấu hình cfg.
+func newStoreGameWith(t *testing.T, cfg ww.Config) *storeGame {
+	t.Helper()
 	db := emulatorDB(t)
 	g := &storeGame{t: t, db: db, store: NewGameStore(db, testPscChat), tg: map[string]string{}}
 	g.store.frameKm = func(_ context.Context, _ string, end time.Time) (FrameKm, error) {
@@ -56,7 +62,7 @@ func newStoreGame(t *testing.T) *storeGame {
 		seed(t, db, "games/"+id+"/players/"+uid, map[string]any{"uid": uid, "tgUserId": tg})
 		seed(t, db, "tgLinks/"+tg, map[string]any{"uid": uid, "inPsc": true})
 	}
-	g.start = ww.NewState(ww.Seed{3}, ww.Config{}, storeRoles(), msgStart)
+	g.start = ww.NewState(ww.Seed{3}, cfg, storeRoles(), msgStart)
 	if err := g.store.StartGame(ctx, id, g.start, msgStart); err != nil {
 		t.Fatal(err)
 	}
@@ -330,6 +336,26 @@ func TestEmulatorAdvanceStopsWhenKmFails(t *testing.T) {
 	}
 	if g.state().Phase != ww.PhaseSetup {
 		t.Fatal("km lỗi mà vẫn chốt")
+	}
+}
+
+// Ván tắt km: tới 22h vẫn chốt, không đọc buổi chạy của ai, mốc km ghi 0 m
+// với nguồn "off".
+func TestEmulatorKmOffSnapshotSkipsRuns(t *testing.T) {
+	g := newStoreGameWith(t, ww.Config{KmOff: true})
+	g.store.frameKm = func(context.Context, string, time.Time) (FrameKm, error) {
+		return FrameKm{}, errors.New("ván tắt km mà vẫn đọc buổi chạy")
+	}
+	g.advance(g.start.NightAt.Add(time.Minute))
+	if g.state().Phase == ww.PhaseSetup {
+		t.Fatal("ván tắt km mà không chốt đêm 1")
+	}
+	snap, err := g.ref("rounds/0/km/seer").Get(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := snap.Data(); d["source"] != "off" || d["meters"] != 0.0 {
+		t.Fatalf("mốc km = %v", d)
 	}
 }
 

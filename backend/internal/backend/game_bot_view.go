@@ -83,6 +83,11 @@ type BotVoteForecast struct {
 	LoseVote     []string `json:"loseVote,omitempty"`
 	DrawAmong    []string `json:"drawAmong,omitempty"`
 	DrawLose     int      `json:"drawLose,omitempty"`
+	// Luật top: ai được tính 2 phiếu; bằng km ở suất cuối thì bốc thăm
+	// DoubleDrawWin người trong DoubleDrawAmong.
+	DoubleVote      []string `json:"doubleVote,omitempty"`
+	DoubleDrawAmong []string `json:"doubleDrawAmong,omitempty"`
+	DoubleDrawWin   int      `json:"doubleDrawWin,omitempty"`
 }
 
 type BotWerewolfNews struct {
@@ -94,14 +99,18 @@ type BotWerewolfNews struct {
 // BotWerewolf trả luật và ván gameState/current. Ván thử có người giả và giờ
 // đẩy nhanh, không phải ván của group, nên coi như chưa có ván.
 func (s *GameStore) BotWerewolf(ctx context.Context, wall time.Time) (BotWerewolf, error) {
-	game, x, err := s.botGame(ctx, wall)
+	game, cfg, err := s.botGame(ctx, wall)
 	if err != nil {
 		return BotWerewolf{}, err
 	}
-	withX := func(text string) string { return strings.ReplaceAll(text, "X km", x+" km") }
-	out := BotWerewolf{Rules: gameRulesText, VoteRules: withX(botVoteRulesText), HowToPlay: botHowToPlayText, Roles: map[string]string{}, Game: game}
-	for role, rule := range roleRules {
-		out.Roles[roleLabels[role]] = withX(rule)
+	// Chưa có ván thì nói luật mặc định, ngưỡng km để "X".
+	gc, x := werewolf.Config{}, "X"
+	if cfg != nil {
+		gc, x = *cfg, formatKm(kmPerUnit(*cfg))
+	}
+	out := BotWerewolf{Rules: gameRulesFor(gc), VoteRules: botVoteRulesFor(gc, x), HowToPlay: botHowToPlayText, Roles: map[string]string{}, Game: game}
+	for role := range roleRules {
+		out.Roles[roleLabels[role]] = roleRulesFor(role, gc, x)
 	}
 	if game == nil {
 		out.NoGame = botNoGame
@@ -125,23 +134,20 @@ func (s *GameStore) botCurrentGame(ctx context.Context) (*firestore.DocumentSnap
 	return g, nil
 }
 
-// botGame dựng phần ván; nil là chưa có ván. x là ngưỡng km của ván, "X" khi
-// chưa có ván.
-func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGame, string, error) {
+// botGame dựng phần ván và trả cấu hình của ván; nil là chưa có ván.
+func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGame, *werewolf.Config, error) {
 	g, err := s.botCurrentGame(ctx)
 	if err != nil || g == nil {
-		return nil, "X", err
+		return nil, nil, err
 	}
 	data := g.Data()
 	cfg, err := gameConfigOf(data)
 	if err != nil {
-		return nil, "X", err
+		return nil, nil, err
 	}
-	x := formatKm(kmPerUnit(cfg))
-
 	players, err := s.loadPlayers(ctx, g.Ref)
 	if err != nil {
-		return nil, x, err
+		return nil, &cfg, err
 	}
 	index := playerIndex(players)
 	name := func(uid string) string { return playerName(index, uid) }
@@ -161,7 +167,7 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 	}
 	running := stringValue(data["status"]) == gameRunning
 	if !running && stringValue(data["status"]) != gameEnded {
-		return game, x, nil
+		return game, &cfg, nil
 	}
 
 	game.Deck = botDeck(int(number(data["playerCount"])), cfg)
@@ -202,7 +208,7 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 		if phase == werewolf.PhaseDay {
 			tally, chosen, err := s.botTally(ctx, g.Ref, round, werewolf.KindNominate, alive, "", name)
 			if err != nil {
-				return nil, x, err
+				return nil, &cfg, err
 			}
 			game.Nominations = tally
 			for _, uid := range aliveUIDs {
@@ -216,7 +222,7 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 				}
 				tally, chosen, err := s.botTally(ctx, g.Ref, round, kinds[i], alive, nominee, name)
 				if err != nil {
-					return nil, x, err
+					return nil, &cfg, err
 				}
 				game.Trials = append(game.Trials, BotTrial{Nominee: name(nominee), Votes: tally})
 				for _, uid := range aliveUIDs {
@@ -233,55 +239,71 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 		}
 	}
 
-	km, err := s.lastKm(ctx, g.Ref, data, players)
-	if err != nil {
-		return nil, x, err
-	}
-	if len(km) > 0 {
-		game.LastKm = map[string]string{}
-		for uid, meters := range km {
-			game.LastKm[name(uid)] = formatKm(meters/1000) + " km"
+	// Ván không dùng km thì không có gì về km để nói.
+	if !cfg.KmOff {
+		km, err := s.lastKm(ctx, g.Ref, data, players)
+		if err != nil {
+			return nil, &cfg, err
 		}
-	}
+		if len(km) > 0 {
+			game.LastKm = map[string]string{}
+			for uid, meters := range km {
+				game.LastKm[name(uid)] = formatKm(meters/1000) + " km"
+			}
+		}
 
-	if running {
-		frameEnd := nextKmFrameEnd(wall)
-		game.KmFrameEnd = vnTime(frameEnd)
-		live := map[string]float64{}
-		game.KmSinceLast22h = map[string]string{}
-		for _, uid := range aliveUIDs {
-			fk, err := s.frameKm(ctx, uid, frameEnd)
-			if err != nil {
-				return nil, x, err
-			}
-			live[uid] = fk.Meters
-			game.KmSinceLast22h[name(uid)] = formatKm(fk.Meters/1000) + " km"
-		}
-		for i := range game.Trials {
-			nominee := nominees[i]
-			if !alive[nominee] {
-				continue
-			}
-			var voters []string
+		if running {
+			frameEnd := nextKmFrameEnd(wall)
+			game.KmFrameEnd = vnTime(frameEnd)
+			live := map[string]float64{}
+			game.KmSinceLast22h = map[string]string{}
 			for _, uid := range aliveUIDs {
-				if uid != nominee {
-					voters = append(voters, uid)
+				fk, err := s.frameKm(ctx, uid, frameEnd)
+				if err != nil {
+					return nil, &cfg, err
+				}
+				live[uid] = fk.Meters
+				game.KmSinceLast22h[name(uid)] = formatKm(fk.Meters/1000) + " km"
+			}
+			for i := range game.Trials {
+				nominee := nominees[i]
+				if !alive[nominee] {
+					continue
+				}
+				var voters []string
+				for _, uid := range aliveUIDs {
+					if uid != nominee {
+						voters = append(voters, uid)
+					}
+				}
+				switch cfg.VoteMode() {
+				case werewolf.VoteCut:
+					plan := werewolf.PlanVoteCut(voters, live, cfg)
+					f := &BotVoteForecast{Voters: len(voters), CountedIfNow: plan.Allowed, LoseVote: names(plan.Sure)}
+					if plan.Need == len(plan.Tied) {
+						f.LoseVote = append(f.LoseVote, names(plan.Tied)...)
+					} else if plan.Need > 0 {
+						f.DrawAmong, f.DrawLose = names(plan.Tied), plan.Need
+					}
+					game.Trials[i].VoteForecast = f
+				case werewolf.VoteTop:
+					wolves := game.Deck[roleLabels[werewolf.Wolf]] - publicDeadWolves(data)
+					plan := werewolf.PlanVoteBonus(voters, live, cfg, wolves)
+					f := &BotVoteForecast{Voters: len(voters), CountedIfNow: len(voters), DoubleVote: names(plan.Sure)}
+					if plan.Need == len(plan.Tied) {
+						f.DoubleVote = append(f.DoubleVote, names(plan.Tied)...)
+					} else if plan.Need > 0 {
+						f.DoubleDrawAmong, f.DoubleDrawWin = names(plan.Tied), plan.Need
+					}
+					game.Trials[i].VoteForecast = f
 				}
 			}
-			plan := werewolf.PlanVoteCut(voters, live, cfg)
-			f := &BotVoteForecast{Voters: len(voters), CountedIfNow: plan.Allowed, LoseVote: names(plan.Sure)}
-			if plan.Need == len(plan.Tied) {
-				f.LoseVote = append(f.LoseVote, names(plan.Tied)...)
-			} else if plan.Need > 0 {
-				f.DrawAmong, f.DrawLose = names(plan.Tied), plan.Need
-			}
-			game.Trials[i].VoteForecast = f
 		}
 	}
 
 	feed, err := s.loadFeed(ctx, g.Ref, "", index)
 	if err != nil {
-		return nil, x, err
+		return nil, &cfg, err
 	}
 	for _, item := range feed.Items {
 		if item.picks {
@@ -289,7 +311,26 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 		}
 		game.News = append(game.News, BotWerewolfNews{At: vnTime(item.At), Title: item.Title, Lines: item.Lines})
 	}
-	return game, x, nil
+	return game, &cfg, nil
+}
+
+// publicDeadWolves là số sói đã chết mà group biết: lá bài đã lật là Sói, hoặc
+// bị treo và lộ phe Sói. Bot view không đọc state bí mật nên đếm từ đây.
+func publicDeadWolves(data map[string]any) int {
+	n := 0
+	revealed, _ := data["revealed"].(map[string]any)
+	for _, role := range revealed {
+		if werewolf.Role(stringValue(role)) == werewolf.Wolf {
+			n++
+		}
+	}
+	teams, _ := data["revealedTeams"].(map[string]any)
+	for uid, team := range teams {
+		if _, shown := revealed[uid]; !shown && werewolf.Team(stringValue(team)) == werewolf.TeamWolves {
+			n++
+		}
+	}
+	return n
 }
 
 // botDeck là bộ vai của ván n người theo werewolf.Composition; nil khi n người
@@ -464,6 +505,9 @@ func (s *GameStore) BotMyWerewolf(ctx context.Context, tg string, wall time.Time
 		cfg, err := gameConfigOf(g.Data())
 		if err != nil {
 			return BotMyWerewolf{}, err
+		}
+		if cfg.KmOff {
+			return out, nil
 		}
 		frameEnd := nextKmFrameEnd(wall)
 		fk, err := s.frameKm(ctx, uid, frameEnd)

@@ -64,7 +64,7 @@ func publicEvent(st *werewolf.State, e werewolf.Event) (werewolf.Event, bool) {
 		}
 		e.Cause = ""
 		return e, true
-	case werewolf.EventNominee, werewolf.EventVoteCut, werewolf.EventVoteResult, werewolf.EventHunterTurn, werewolf.EventWinner:
+	case werewolf.EventNominee, werewolf.EventVoteCut, werewolf.EventVoteBonus, werewolf.EventVoteResult, werewolf.EventHunterTurn, werewolf.EventWinner:
 		return e, true
 	}
 	return werewolf.Event{}, false

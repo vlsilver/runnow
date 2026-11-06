@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
+	"strings"
 
 	"github.com/vlsilver/runnow/backend/internal/werewolf"
 )
@@ -18,10 +20,10 @@ var roleLabels = map[werewolf.Role]string{
 }
 
 var roleRules = map[werewolf.Role]string{
-	werewolf.Wolf:     "Đêm nào cả phe cũng chọn một người để cắn, từ 22h tới 0h. Lựa chọn bấm sau cùng của phe được tính. Tổng km của sói còn sống phải đủ X km cho mỗi sói.",
-	werewolf.Seer:     "Mỗi đêm soi một người để biết người đó là Sói hay Dân. Chọn một lần, có kết quả ngay. Cần đủ X km.",
-	werewolf.Guard:    "Mỗi đêm bảo vệ một người khỏi bị sói cắn, được tự bảo vệ. Không chọn lại người của đêm trước. Cần đủ X km.",
-	werewolf.Witch:    "Cả ván có một bình cứu và một bình độc, dùng từ 0h tới 10h. Bình cứu chỉ cứu người bị cắn đêm đó; chỉ tự cứu được ở đêm 1. Cần đủ X km.",
+	werewolf.Wolf:     "Đêm nào cả phe cũng chọn một người để cắn, từ 22h tới 0h. Lựa chọn bấm sau cùng của phe được tính.",
+	werewolf.Seer:     "Mỗi đêm soi một người để biết người đó là Sói hay Dân. Chọn một lần, có kết quả ngay.",
+	werewolf.Guard:    "Mỗi đêm bảo vệ một người khỏi bị sói cắn, được tự bảo vệ. Không chọn lại người của đêm trước.",
+	werewolf.Witch:    "Cả ván có một bình cứu và một bình độc, dùng từ 0h tới 10h. Bình cứu chỉ cứu người bị cắn đêm đó; chỉ tự cứu được ở đêm 1.",
 	werewolf.Hunter:   "Khi chết thì được bắn một người, trong khung giờ ngay sau lúc chết. Chết vì độc hoặc rời PSC thì không được bắn.",
 	werewolf.Cupid:    "Đêm 1 ghép hai người thành cặp đôi, ghép cả mình cũng được. Một người chết thì người kia chết theo. Quá 0h chưa ghép thì bot ghép thay.",
 	werewolf.Villager: "Thảo luận, đề cử và biểu quyết để tìm ra sói.",
@@ -29,14 +31,126 @@ var roleRules = map[werewolf.Role]string{
 
 const gameRulesText = "Mỗi vòng dài một ngày. 22h tới 10h là đêm: các vai có kỹ năng chọn người. 10h bản tin đêm, đề cử tới 20h; tối đa 3 người nhiều đề cử nhất lên giàn. 20h tới 22h biểu quyết Treo hay Tha từng người. 22h chốt phiếu và km.\n" +
 	"Người bị treo chỉ lộ là phe Dân hay phe Sói, không lật lá bài, trừ khi còn được bắn một người thì lật. Chết cách khác thì lật lá bài. Hết ván lật bài tất cả.\n" +
-	"km trong khung 22h hôm qua tới 22h hôm nay quyết định có được dùng kỹ năng và có được bỏ phiếu không.\n" +
+	gameKmLineCut +
 	"Dân thắng khi hết sói. Sói thắng khi số sói bằng số người còn lại. Cặp đôi Sói và Dân thắng khi chỉ còn hai người họ. Ván chạy tới khi có phe thắng, không giới hạn số vòng."
 
 // botVoteRulesText nói kỹ phần đề cử và đếm phiếu (step.go: pickNominee,
 // countVotes, voteCut) cho 3i, vì gameRulesText chỉ nói gọn cho màn hình app.
 const botVoteRulesText = "Đề cử: 20h tối đa 3 người nhiều đề cử nhất lên giàn, một đề cử là đủ; bằng đề cử ở suất cuối thì bốc thăm; không ai đề cử thì hôm đó không treo. Đề cử của người đã chết và đề cử nhắm vào người đã chết không tính.\n" +
 	"Biểu quyết: mỗi người lên giàn có một phiên Treo/Tha riêng, mọi phiên chốt cùng lúc 22h nên một ngày treo được tới 3 người. Người lên giàn không bỏ phiếu ở phiên của mình nhưng vẫn bỏ phiếu ở phiên người khác, kể cả khi chính họ bị treo. Treo khi phiếu Treo được tính nhiều hơn phiếu Tha, hoà thì tha. Người yêu bấm Treo người yêu mình thì phiếu đó không tính.\n" +
-	"Phiếu theo km, tính riêng từng phiên: 22h cộng km (22h hôm qua tới 22h hôm nay) của mọi người còn sống trừ người lên giàn của phiên đó. Số phiếu được tính bằng tổng km chia X km, làm tròn xuống, không quá số người. Thiếu thì người ít km nhất mất phiếu trước, kể cả người không bấm; bằng km thì bốc thăm."
+	botVoteKmCut
+
+// Các câu về km trong luật đổi theo cấu hình của ván (werewolf.Config): km từng
+// vai, tắt km, luật phiếu. x là km một phiếu đã định dạng, "X" khi chưa có ván.
+const (
+	gameKmLineCut  = "km trong khung 22h hôm qua tới 22h hôm nay quyết định có được dùng kỹ năng và có được bỏ phiếu không.\n"
+	gameKmLineTop  = "km trong khung 22h hôm qua tới 22h hôm nay quyết định có được dùng kỹ năng không. Không ai mất phiếu; %s chạy nhiều nhất, mỗi người đủ %s km, được tính 2 phiếu.\n"
+	gameKmLineFlat = "km trong khung 22h hôm qua tới 22h hôm nay chỉ quyết định có được dùng kỹ năng không; phiếu nào cũng tính.\n"
+	botVoteKmCut   = "Phiếu theo km, tính riêng từng phiên: 22h cộng km (22h hôm qua tới 22h hôm nay) của mọi người còn sống trừ người lên giàn của phiên đó. Số phiếu được tính bằng tổng km chia X km, làm tròn xuống, không quá số người. Thiếu thì người ít km nhất mất phiếu trước, kể cả người không bấm; bằng km thì bốc thăm."
+	botVoteKmTop   = "Phiếu theo km, tính riêng từng phiên: không ai mất phiếu. 22h lấy km (22h hôm qua tới 22h hôm nay) của mọi người còn sống trừ người lên giàn của phiên đó; %s nhiều km nhất, mỗi người đủ X km, được tính 2 phiếu; bằng km ở suất cuối thì bốc thăm."
+	botVoteKmFlat  = "Mỗi người một phiếu, km không tác động lên phiếu."
+)
+
+// gameRulesFor là gameRulesText theo cấu hình của ván.
+func gameRulesFor(cfg werewolf.Config) string {
+	switch cfg.VoteMode() {
+	case werewolf.VoteTop:
+		return strings.Replace(gameRulesText, gameKmLineCut, fmt.Sprintf(gameKmLineTop, topVotersText(cfg), formatKm(kmPerUnit(cfg))), 1)
+	case werewolf.VoteFlat:
+		if cfg.KmOff {
+			return strings.Replace(strings.Replace(gameRulesText, gameKmLineCut, "", 1), "22h chốt phiếu và km.", "22h chốt phiếu.", 1)
+		}
+		return strings.Replace(gameRulesText, gameKmLineCut, gameKmLineFlat, 1)
+	}
+	return gameRulesText
+}
+
+// botVoteRulesFor là botVoteRulesText theo cấu hình của ván.
+func botVoteRulesFor(cfg werewolf.Config, x string) string {
+	km := botVoteKmCut
+	switch cfg.VoteMode() {
+	case werewolf.VoteTop:
+		km = fmt.Sprintf(botVoteKmTop, topVotersText(cfg))
+	case werewolf.VoteFlat:
+		km = botVoteKmFlat
+	}
+	return strings.ReplaceAll(strings.Replace(botVoteRulesText, botVoteKmCut, km, 1), "X km", x+" km")
+}
+
+func topVotersText(cfg werewolf.Config) string {
+	if cfg.TopVoters > 0 {
+		return fmt.Sprintf("%d người", cfg.TopVoters)
+	}
+	return "số người bằng số sói còn sống cộng 1"
+}
+
+// roleRulesFor là luật của vai role kèm câu km theo cấu hình của ván.
+func roleRulesFor(role werewolf.Role, cfg werewolf.Config, x string) string {
+	if line := roleKmLine(role, cfg, x); line != "" {
+		return roleRules[role] + " " + line
+	}
+	return roleRules[role]
+}
+
+// roleKmLine là câu km của vai role; rỗng khi vai không có kỹ năng cần km hoặc
+// ván tắt km.
+func roleKmLine(role werewolf.Role, cfg werewolf.Config, x string) string {
+	if cfg.KmOff {
+		return ""
+	}
+	need := skillKmText(role, cfg, x)
+	switch role {
+	case werewolf.Wolf:
+		if cfg.SkillMeters(werewolf.Wolf) == 0 {
+			return "Phe Sói cắn không cần km."
+		}
+		return "Tổng km của sói còn sống phải đủ " + need + " km cho mỗi sói."
+	case werewolf.Seer, werewolf.Guard, werewolf.Witch, werewolf.Hunter:
+		switch {
+		case cfg.SkillMeters(role) == 0:
+			return "Không cần km."
+		case cfg.VillageGate:
+			return "Tính chung cả phe Dân: tổng km người không phải sói còn sống phải đủ " + need + " km cho mỗi người."
+		}
+		return "Cần đủ " + need + " km."
+	}
+	return ""
+}
+
+// skillKmText là km vai role cần, đã định dạng; vai theo KmPerUnit thì là x.
+func skillKmText(role werewolf.Role, cfg werewolf.Config, x string) string {
+	if km, ok := cfg.SkillKm[role]; ok {
+		return formatKm(km)
+	}
+	return x
+}
+
+// kmNeedsText là câu đầu bảng km trong group: km từng kỹ năng cần, không nhắc
+// vai của ai.
+func kmNeedsText(cfg werewolf.Config) string {
+	x := formatKm(kmPerUnit(cfg))
+	var parts []string
+	for _, role := range []werewolf.Role{werewolf.Seer, werewolf.Guard, werewolf.Witch, werewolf.Hunter} {
+		if slices.Contains(cfg.Disabled, role) {
+			continue
+		}
+		if cfg.SkillMeters(role) == 0 {
+			parts = append(parts, roleLabels[role]+" không cần km")
+		} else {
+			parts = append(parts, roleLabels[role]+" "+skillKmText(role, cfg, x)+" km")
+		}
+	}
+	text := "Km cần cho kỹ năng: " + strings.Join(parts, ", ") + "."
+	if cfg.VillageGate {
+		text += " Phe Dân tính chung: tổng km người không phải sói còn sống phải đủ mức đó cho mỗi người."
+	}
+	if cfg.SkillMeters(werewolf.Wolf) == 0 {
+		text += " Sói cắn không cần km."
+	} else {
+		text += " Sói tính chung cả phe: tổng km sói còn sống phải đủ " + skillKmText(werewolf.Wolf, cfg, x) + " km cho mỗi sói."
+	}
+	return text + " Cupid không cần km."
+}
 
 // botHowToPlayText là cách bấm, để 3i chỉ đúng chỗ khi người chơi hỏi.
 const botHowToPlayText = "Mọi lựa chọn đều bằng nút, gõ chữ cho 3i không được tính. Kỹ năng ban đêm: bấm trong app 3i Run (mục Ma Sói) hoặc nút trong tin 3i nhắn riêng: chọn tên rồi bấm Chốt. Đề cử và biểu quyết: bấm nút trong topic Ma Sói của group hoặc trong app, đổi được tới hạn. Phe Sói bàn nhau trong chat phe Sói của app."
