@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
 
 	"github.com/vlsilver/runnow/backend/internal/werewolf"
 )
@@ -15,8 +16,9 @@ type GameSetting struct {
 	Key         string `json:"key"`
 	Label       string `json:"label"`
 	Description string `json:"description"`
-	// Type là "toggle" (bool), "number" (Min..Max, bước Step) hoặc "choice"
-	// (một trong Choices).
+	// Type là "toggle" (bool), "number" (Min..Max, bước Step), "choice" (một
+	// trong Choices) hoặc "phase" (như number: độ dài một pha, phút; app vẽ
+	// chung bốn pha thành vòng đồng hồ, app cũ không biết type này nên ẩn).
 	Type    string              `json:"type"`
 	Default any                 `json:"default"`
 	Min     *float64            `json:"min,omitempty"`
@@ -47,6 +49,7 @@ const (
 	settingToggle = "toggle"
 	settingNumber = "number"
 	settingChoice = "choice"
+	settingPhase  = "phase"
 )
 
 // gameSettingDef là một tuỳ chọn kèm cách áp vào werewolf.Config. keepDefault:
@@ -87,6 +90,40 @@ func scheduleSetting(s GameSetting, set func(*werewolf.Schedule, int)) gameSetti
 		}
 		set(c.Schedule, int(v.(float64)))
 	}}
+}
+
+// defaultPhases là độ dài (phút) bốn pha của lịch gốc: 22h–0h, 0h–10h,
+// 10h–20h, 20h–22h.
+var defaultPhases = []int{120, 600, 600, 120}
+
+// phaseSetting là ô độ dài một pha (phút), dùng cho cả ván km lẫn cổ điển.
+// App sửa pha nào thì gửi đủ bốn ô; ô không gửi lấy độ dài của lịch gốc. Độ dài
+// vòng là tổng bốn pha, đè lên roundHours (các ô pha đứng sau roundHours).
+// Ván km thì lịch giữ 22h, một vòng; Validate chặn nếu tổng khác 24 tiếng.
+func phaseSetting(i int, key, label, desc string) gameSettingDef {
+	return gameSettingDef{
+		GameSetting: GameSetting{Key: key, Label: label, Type: settingPhase, Group: groupRound, Unit: "phút",
+			Default: float64(defaultPhases[i]), Min: f64(werewolf.MinPhaseMinutes), Step: f64(werewolf.PhaseStepMinutes),
+			Max:         f64(24*60 - 3*werewolf.MinPhaseMinutes),
+			Description: desc + " Pha nào cũng ít nhất 1 tiếng. Ván dùng km thì bốn pha cộng lại phải đúng 24 tiếng, vì km chốt lúc 22h."},
+		apply: func(c *werewolf.Config, v any) {
+			if c.Schedule == nil {
+				def := werewolf.DefaultSchedule()
+				c.Schedule = &def
+			}
+			s := c.Schedule
+			if s.Phases == nil {
+				s.Phases = slices.Clone(defaultPhases)
+			}
+			s.Phases[i] = int(v.(float64))
+			total := 0
+			for _, m := range s.Phases {
+				total += m
+			}
+			// Tổng lệch giờ tròn thì Validate báo lỗi, vì RoundHours không khớp.
+			s.RoundHours = total / 60
+		},
+	}
 }
 
 // extendedRoleSetting bật một vai mở rộng (werewolf.ExtendedRoles); key là tên vai.
@@ -136,6 +173,10 @@ var gameSettingDefs = []gameSettingDef{
 	scheduleSetting(GameSetting{Key: "roundsPerDay", Label: "Số vòng mỗi ngày", Group: groupTime, Default: 1.0, Min: f64(1), Max: f64(24 / werewolf.MinRoundHours), Step: f64(1), Unit: "vòng",
 		Description: "Số vòng chơi trong một ngày, nối nhau từ giờ mở vòng đầu. Ví dụ mở 6h, vòng 6 tiếng, 3 vòng thì chơi từ 6h tới 24h, các vòng mở lúc 6h, 12h, 18h. Số vòng nhân độ dài không quá 24 tiếng. Chỉ dùng khi không dùng km."},
 		func(s *werewolf.Schedule, n int) { s.Rounds = n }),
+	phaseSetting(0, "nightMin", "Độ dài pha Đêm", "Sói chọn người cắn; Tiên tri soi, Bảo vệ che."),
+	phaseSetting(1, "dawnMin", "Độ dài pha Rạng sáng", "Phù thuỷ cứu hoặc độc; Tiên tri, Bảo vệ làm nốt."),
+	phaseSetting(2, "dayMin", "Độ dài pha Ngày", "Bot đăng bản tin đêm, cả làng bàn và đề cử lên giàn."),
+	phaseSetting(3, "trialMin", "Độ dài pha Biểu quyết", "Treo hay Tha từng người trên giàn."),
 	{
 		GameSetting: GameSetting{Key: "wolfKm", Label: "Km để Sói cắn", Type: settingNumber, Default: 0.0,
 			Min: f64(0), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupKm,
@@ -237,7 +278,7 @@ func (d gameSettingDef) check(v any) error {
 		if _, ok := v.(bool); !ok {
 			return invalidSetting(d.Key, "phải là bật hoặc tắt")
 		}
-	case settingNumber:
+	case settingNumber, settingPhase:
 		n, ok := v.(float64)
 		if !ok {
 			return invalidSetting(d.Key, "phải là số")

@@ -88,7 +88,18 @@ type Schedule struct {
 	StartHour  int `json:"startHour"`
 	RoundHours int `json:"roundHours"`
 	Rounds     int `json:"rounds"`
+	// Phases là độ dài (phút) của Đêm, Rạng sáng, Ngày, Biểu quyết, cộng lại
+	// đúng RoundHours. Có thì mốc trong mỗi pha co giãn theo pha đó của lịch
+	// gốc; nil thì cả vòng co giãn đều như trước.
+	Phases []int `json:"phases,omitempty"`
 }
+
+// Giới hạn của Phases: pha nào cũng ít nhất MinPhaseMinutes, dời theo bước
+// PhaseStepMinutes.
+const (
+	MinPhaseMinutes  = 60
+	PhaseStepMinutes = 30
+)
 
 // Giới hạn của Schedule. RoundHours chẵn thì một giờ của lịch gốc thành số
 // phút chẵn (RoundHours × 2,5 phút), mốc nào cũng tròn phút.
@@ -161,15 +172,20 @@ func (c Config) Validate() error {
 		if s.StartHour < 0 || s.StartHour > 23 {
 			return fmt.Errorf("giờ bắt đầu phải từ 0 tới 23: %v", s.StartHour)
 		}
-		if s.RoundHours < MinRoundHours || s.RoundHours > MaxRoundHours || s.RoundHours%2 != 0 {
+		// Có Phases thì mốc tính theo từng pha, không cần RoundHours chẵn.
+		if s.RoundHours < MinRoundHours || s.RoundHours > MaxRoundHours || (s.Phases == nil && s.RoundHours%2 != 0) {
 			return fmt.Errorf("mỗi vòng phải dài từ %d tới %d tiếng, số chẵn: %v", MinRoundHours, MaxRoundHours, s.RoundHours)
 		}
 		if s.Rounds < 1 || s.Rounds*s.RoundHours > 24 {
 			return fmt.Errorf("số vòng mỗi ngày phải từ 1, cả khung không quá 24 tiếng: %v vòng × %v tiếng", s.Rounds, s.RoundHours)
 		}
-		// Khung km đang cố định 22h hôm trước tới 22h, chưa khớp lịch riêng.
-		if !c.KmOff {
-			return errors.New("lịch riêng chỉ dùng được khi tắt km")
+		if err := s.validatePhases(); err != nil {
+			return err
+		}
+		// Km chốt theo khung 22h hôm trước tới 22h, nên ván km chỉ chia lại
+		// được giờ các pha, còn mở 22h, một vòng 24 tiếng mỗi ngày.
+		if !c.KmOff && (s.StartHour != 22 || s.RoundHours != 24 || s.Rounds != 1) {
+			return errors.New("ván dùng km phải mở 22h, mỗi ngày một vòng 24 tiếng")
 		}
 	}
 	for _, r := range c.Disabled {

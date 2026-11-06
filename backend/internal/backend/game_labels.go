@@ -78,7 +78,9 @@ const scheduleDefaultText = "Mỗi vòng dài một ngày."
 // scheduleText là câu đầu luật: vòng dài bao lâu, mở lúc mấy giờ.
 func scheduleText(cfg werewolf.Config) string {
 	s := cfg.Schedule
-	if s == nil {
+	// Lịch gốc chỉ chia lại pha (ván km) vẫn là một vòng một ngày mở 22h; giờ
+	// từng pha in ở các dòng sau.
+	if s == nil || (s.StartHour == 22 && s.RoundHours == 24 && s.Rounds == 1) {
 		return scheduleDefaultText
 	}
 	starts := cfg.RoundStarts()

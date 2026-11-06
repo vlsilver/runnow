@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -116,6 +117,22 @@ func TestGameCreateRoundPlan(t *testing.T) {
 	}
 	if round.Start == "" {
 		t.Fatal("thiếu câu ván bắt đầu thế nào")
+	}
+	// App kéo được từng pha qua ô setting của nó; giờ nhắc nằm ở 4/5 pha Ngày
+	// và giữa pha Biểu quyết, nên chia lại pha thì giờ nhắc dời theo.
+	var keys []string
+	for _, p := range round.Phases {
+		keys = append(keys, p.SettingKey)
+	}
+	if want := []string{"nightMin", "dawnMin", "dayMin", "trialMin"}; !reflect.DeepEqual(keys, want) {
+		t.Fatalf("ô setting của pha = %v", keys)
+	}
+	var in []string
+	for _, m := range round.Reminders {
+		in = append(in, fmt.Sprintf("%s@%g", m.Phase, m.Frac))
+	}
+	if want := []string{"day@0.8", "trial@0.5"}; !reflect.DeepEqual(in, want) {
+		t.Fatalf("giờ nhắc trong pha = %v", in)
 	}
 }
 

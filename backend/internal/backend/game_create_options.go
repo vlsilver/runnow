@@ -46,11 +46,17 @@ type GameRoundPhase struct {
 	Description string  `json:"description"`
 	From        float64 `json:"from"`
 	To          float64 `json:"to"`
+	// SettingKey là ô (type "phase") giữ độ dài pha này, để app cho kéo.
+	SettingKey string `json:"settingKey,omitempty"`
 }
 
+// GameRoundMark: At là giờ theo vòng gốc (app cũ co đều theo vòng). Phase và
+// Frac là chỗ của mốc trong pha chứa nó (0..1), để app tính lại khi chia pha.
 type GameRoundMark struct {
 	Label string  `json:"label"`
 	At    float64 `json:"at"`
+	Phase string  `json:"phase,omitempty"`
+	Frac  float64 `json:"frac,omitempty"`
 }
 
 const (
@@ -109,22 +115,31 @@ func gameRoundPlan() GameRoundPlan {
 	hours := func(d time.Duration) float64 { return d.Hours() }
 	at := func(p werewolf.Phase) float64 { return hours(base.PhaseOffset(p)) }
 	nominate, vote := base.ReminderOffsets()
+	phases := []GameRoundPhase{
+		{Key: "night", Label: "Đêm", From: 0, To: at(werewolf.PhaseNight), SettingKey: "nightMin",
+			Description: "Sói chọn người cắn. Tiên tri soi, Bảo vệ che. Đêm đầu Cupid ghép đôi."},
+		{Key: "dawn", Label: "Rạng sáng", From: at(werewolf.PhaseNight), To: at(werewolf.PhaseDawn), SettingKey: "dawnMin",
+			Description: "Phù thuỷ cứu người bị cắn hoặc độc một người. Tiên tri, Bảo vệ chưa làm thì làm nốt."},
+		{Key: "day", Label: "Ngày", From: at(werewolf.PhaseDawn), To: at(werewolf.PhaseDay), SettingKey: "dayMin",
+			Description: "Bot đăng bản tin đêm. Cả làng bàn và đề cử, tối đa 3 người lên giàn."},
+		{Key: "trial", Label: "Biểu quyết", From: at(werewolf.PhaseDay), To: at(werewolf.PhaseTrial), SettingKey: "trialMin",
+			Description: "Biểu quyết Treo hay Tha từng người trên giàn. Hết giờ thì chốt phiếu, vòng mới mở ngay."},
+	}
+	mark := func(label string, d time.Duration) GameRoundMark {
+		h := hours(d)
+		m := GameRoundMark{Label: label, At: h}
+		for _, p := range phases {
+			if h > p.From && h <= p.To {
+				m.Phase, m.Frac = p.Key, (h-p.From)/(p.To-p.From)
+				break
+			}
+		}
+		return m
+	}
 	return GameRoundPlan{
-		Phases: []GameRoundPhase{
-			{Key: "night", Label: "Đêm", From: 0, To: at(werewolf.PhaseNight),
-				Description: "Sói chọn người cắn. Tiên tri soi, Bảo vệ che. Đêm đầu Cupid ghép đôi."},
-			{Key: "dawn", Label: "Rạng sáng", From: at(werewolf.PhaseNight), To: at(werewolf.PhaseDawn),
-				Description: "Phù thuỷ cứu người bị cắn hoặc độc một người. Tiên tri, Bảo vệ chưa làm thì làm nốt."},
-			{Key: "day", Label: "Ngày", From: at(werewolf.PhaseDawn), To: at(werewolf.PhaseDay),
-				Description: "Bot đăng bản tin đêm. Cả làng bàn và đề cử, tối đa 3 người lên giàn."},
-			{Key: "trial", Label: "Biểu quyết", From: at(werewolf.PhaseDay), To: at(werewolf.PhaseTrial),
-				Description: "Biểu quyết Treo hay Tha từng người trên giàn. Hết giờ thì chốt phiếu, vòng mới mở ngay."},
-		},
-		Reminders: []GameRoundMark{
-			{Label: "Nhắc đề cử", At: hours(nominate)},
-			{Label: "Nhắc biểu quyết", At: hours(vote)},
-		},
-		Start: gameStartNote,
+		Phases:    phases,
+		Reminders: []GameRoundMark{mark("Nhắc đề cử", nominate), mark("Nhắc biểu quyết", vote)},
+		Start:     gameStartNote,
 	}
 }
 

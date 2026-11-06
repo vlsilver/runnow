@@ -43,6 +43,34 @@ func TestGameSettingsApplied(t *testing.T) {
 	}
 }
 
+// Bốn ô độ dài pha (phút). Ván km: lịch 22h, một vòng 24 tiếng, chia lại pha.
+// Ván cổ điển: độ dài vòng là tổng bốn pha, đè lên roundHours gửi kèm.
+func TestGameSettingsPhases(t *testing.T) {
+	var km ww.Config
+	if err := applyGameSettings(&km, map[string]any{"nightMin": 60.0, "dawnMin": 660.0, "dayMin": 600.0, "trialMin": 120.0}); err != nil {
+		t.Fatal(err)
+	}
+	if want := (ww.Schedule{StartHour: 22, RoundHours: 24, Rounds: 1, Phases: []int{60, 660, 600, 120}}); km.Schedule == nil || !reflect.DeepEqual(*km.Schedule, want) {
+		t.Fatalf("ván km = %+v", km.Schedule)
+	}
+	if err := km.Validate(); err != nil {
+		t.Fatal(err)
+	}
+
+	var classic ww.Config
+	err := applyGameSettings(&classic, map[string]any{"kmOff": true, "startHour": 6.0, "roundHours": 24.0, "roundsPerDay": 2.0,
+		"nightMin": 60.0, "dawnMin": 120.0, "dayMin": 240.0, "trialMin": 60.0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (ww.Schedule{StartHour: 6, RoundHours: 8, Rounds: 2, Phases: []int{60, 120, 240, 60}}); !reflect.DeepEqual(*classic.Schedule, want) {
+		t.Fatalf("ván cổ điển = %+v", classic.Schedule)
+	}
+	if err := classic.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // skillKm đặt một mức km cho cả bốn vai có kỹ năng; km riêng của vai gửi kèm
 // thì thắng. Sói không theo skillKm.
 func TestGameSettingsSkillKm(t *testing.T) {

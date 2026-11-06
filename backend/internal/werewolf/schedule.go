@@ -47,10 +47,48 @@ func (c Config) RoundLen() time.Duration {
 	return time.Duration(c.schedule().RoundHours) * time.Hour
 }
 
-// At đổi mốc d của lịch gốc 24 tiếng sang vòng của ván này. RoundHours chẵn
-// nên phép chia luôn ra số phút chẵn.
+// At đổi mốc d của lịch gốc 24 tiếng sang vòng của ván này. Không có Phases
+// thì cả vòng co giãn đều (RoundHours chẵn nên ra số phút chẵn). Có Phases thì
+// mốc nằm trong pha nào của lịch gốc co giãn theo pha đó của ván: nhắc đề cử ở
+// 4/5 pha Ngày, thợ săn bị treo bắn trong nửa đầu pha Đêm.
 func (c Config) At(d time.Duration) time.Duration {
-	return d / 24 * time.Duration(c.schedule().RoundHours)
+	s := c.schedule()
+	if s.Phases == nil {
+		return d / 24 * time.Duration(s.RoundHours)
+	}
+	var from, to time.Duration // đầu pha đang xét, của lịch gốc và của ván
+	for i, p := range phaseOrder {
+		baseEnd, end := phaseEnd[p], to+time.Duration(s.Phases[i])*time.Minute
+		if d <= baseEnd || i == len(phaseOrder)-1 {
+			frac := float64(d-from) / float64(baseEnd-from)
+			return to + time.Duration(frac*float64(end-to)).Round(time.Second)
+		}
+		from, to = baseEnd, end
+	}
+	panic("unreachable")
+}
+
+// phaseOrder là bốn pha của một vòng theo thứ tự, khớp thứ tự Schedule.Phases.
+var phaseOrder = []Phase{PhaseNight, PhaseDawn, PhaseDay, PhaseTrial}
+
+func (s Schedule) validatePhases() error {
+	if s.Phases == nil {
+		return nil
+	}
+	if len(s.Phases) != len(phaseOrder) {
+		return fmt.Errorf("lịch phải có đủ %d pha: %v", len(phaseOrder), s.Phases)
+	}
+	total := 0
+	for _, m := range s.Phases {
+		if m < MinPhaseMinutes || m%PhaseStepMinutes != 0 {
+			return fmt.Errorf("pha nào cũng ít nhất %d phút, theo bước %d phút: %v", MinPhaseMinutes, PhaseStepMinutes, s.Phases)
+		}
+		total += m
+	}
+	if total != s.RoundHours*60 {
+		return fmt.Errorf("bốn pha cộng lại %d phút, phải bằng vòng %d tiếng", total, s.RoundHours)
+	}
+	return nil
 }
 
 // RoundStarts là giờ (VN, 0–23) mở các vòng trong một ngày.
@@ -149,6 +187,17 @@ var nextPhase = map[Phase]Phase{
 // extendGap là thời gian tối thiểu còn lại cho lượt kế tiếp sau khi dời hạn.
 const extendGap = time.Hour
 
+// extendGap của ván: co đều thì là 1 giờ lịch gốc; lượt ngắn nhất (thợ săn bị
+// treo, 22h–23h) dài đúng chừng đó nên Max >= 0. Lịch có pha riêng thì At(1h)
+// thành nửa pha Đêm, không còn là một khoảng cố định, nên chừa nửa pha ngắn
+// nhất (30 phút): pha nào cũng >= 60 phút, lượt thợ săn bị treo >= 30 phút.
+func (c Config) extendGap() time.Duration {
+	if c.schedule().Phases != nil {
+		return MinPhaseMinutes / 2 * time.Minute
+	}
+	return c.At(extendGap)
+}
+
 var ErrExtendState = errors.New("ván không dời hạn được")
 
 // ExtendTooLong: dời quá mức để lượt sau còn extendGap. Max là phần còn dời được.
@@ -173,8 +222,7 @@ func Extend(st *State, d time.Duration) (*State, error) {
 	if st.Hunter != nil {
 		follow = st.NightAt.Add(at(phaseEnd[st.Phase]))
 	}
-	// Lượt ngắn nhất (thợ săn bị treo, 22h–23h) dài đúng extendGap, nên Max >= 0.
-	if closes, limit := st.TurnClose(), follow.Add(-at(extendGap)); closes.Add(d).After(limit) {
+	if closes, limit := st.TurnClose(), follow.Add(-st.Config.extendGap()); closes.Add(d).After(limit) {
 		return nil, &ExtendTooLong{Max: limit.Sub(closes)}
 	}
 	next := st.clone()
