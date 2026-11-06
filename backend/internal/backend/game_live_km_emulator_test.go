@@ -5,6 +5,7 @@ package backend
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -77,10 +78,21 @@ func TestEmulatorDetailLiveKmCached(t *testing.T) {
 	if tk := me.TeamKm; tk == nil || tk.Label != "Km phe Sói" || tk.Last != 10 || tk.Today == nil || *tk.Today != 1.5 || tk.Need != 2 || tk.NeedLabel != "Cần 2 km để cắn" {
 		t.Fatalf("teamKm của sói = %+v", me.TeamKm)
 	}
+	wantGoals := []GameKmGoal{
+		{Key: "vote", Label: "Giữ phiếu biểu quyết", NeedKm: 1, HaveKm: f64(1.2)},
+		{Key: "team_skill", Label: "Phe Sói cắn ở đêm tới", NeedKm: 2, HaveKm: f64(1.5)},
+	}
+	if !reflect.DeepEqual(me.KmGoals, wantGoals) {
+		t.Fatalf("kmGoals của sói = %+v", me.KmGoals)
+	}
 	if calls.Load() != 20 {
 		t.Fatalf("/me tính lại km dù bản giữ còn mới: %d lần", calls.Load())
 	}
-	if me, err := g.store.Me(ctx, g.id, GameViewer{UID: "v1"}, at); err != nil || me.TeamKm != nil {
+	me, err = g.store.Me(ctx, g.id, GameViewer{UID: "v1"}, at)
+	if err != nil || me.TeamKm != nil {
 		t.Fatalf("dân có teamKm = %+v, err %v", me.TeamKm, err)
+	}
+	if len(me.KmGoals) == 0 || me.KmGoals[0].Key != "vote" || me.KmGoals[0].HaveKm == nil || *me.KmGoals[0].HaveKm != 3 {
+		t.Fatalf("kmGoals của dân = %+v", me.KmGoals)
 	}
 }

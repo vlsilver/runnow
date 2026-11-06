@@ -1019,6 +1019,7 @@ type GameMe struct {
 	AllRoles    []GameRoleReveal `json:"allRoles,omitempty"`
 	Summary     *GameSummary     `json:"summary,omitempty"` // cùng lúc với allRoles
 	TeamKm      *GameTeamKm      `json:"teamKm,omitempty"` // chỉ sói còn sống
+	KmGoals     []GameKmGoal     `json:"kmGoals,omitempty"` // người còn sống, ván bật km
 	// CardTier là bậc thẻ người gọi bốc được, có từ lúc chia bài. CardOwned true
 	// khi ván đã kết thúc và người gọi thuộc phe thắng: thẻ đã nằm trong
 	// users/{uid}/gameCards. CardRounds là số vòng đã chơi, chỉ có khi ván đã
@@ -1154,13 +1155,17 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 		return out, err
 	}
 	out.Actions = meActions(st, v.UID, mine, raw, players, gameNow(data, wall), clockOffset(data))
-	if me.Role == werewolf.Wolf && me.Alive {
-		live, err := s.liveKm(ctx, g.Ref, data, st, wall)
-		if err != nil {
-			return out, err
-		}
+	if !me.Alive {
+		return out, nil
+	}
+	live, err := s.liveKm(ctx, g.Ref, data, st, wall)
+	if err != nil {
+		return out, err
+	}
+	if me.Role == werewolf.Wolf {
 		out.TeamKm = wolfTeamKm(st, live)
 	}
+	out.KmGoals = kmGoals(st, v.UID, live, out.TeamKm)
 	return out, nil
 }
 
