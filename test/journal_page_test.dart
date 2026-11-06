@@ -48,13 +48,13 @@ void main() {
                   'activities': [
                     _activity('c', 'Strava sáng', 'strava'),
                     _activity('b', '3i sáng', 'runnow', duplicateOf: 'c'),
-                    // Đi bộ ngắn từ Health không tính, nhật ký bỏ như trước.
+                    // Đi bộ chưa tới 500 m từ Health, nhật ký bỏ.
                     _activity(
                       'w',
                       'Đi bộ',
                       'apple_health',
                       sportType: 'Walk',
-                      distanceMeters: 800,
+                      distanceMeters: 300,
                     ),
                   ],
                   'cursor': '2026-10-23T06:00:00Z|w',
@@ -95,4 +95,51 @@ void main() {
       expect(second.hasMore, isFalse);
     },
   );
+
+  test('walks and rides from 3i, Garmin and Health show in the journal', () async {
+    final api = RunNowApiClient(
+      baseUri: Uri.parse('https://api.example.test'),
+      tokenProvider: ({required forceRefresh}) async => 'token',
+      httpClient: MockClient(
+        (request) async => http.Response.bytes(
+          utf8.encode(
+            jsonEncode({
+              'activities': [
+                _activity('w', 'Đi bộ 3i', 'runnow', sportType: 'Walk'),
+                _activity('r', 'Đạp xe Garmin', 'garmin', sportType: 'Ride'),
+                _activity(
+                  'h',
+                  'Leo núi Health',
+                  'apple_health',
+                  sportType: 'Hike',
+                ),
+                _activity(
+                  'short',
+                  'Đi bộ ngắn',
+                  'apple_health',
+                  sportType: 'Walk',
+                  distanceMeters: 499,
+                ),
+                _activity('swim', 'Bơi', 'apple_health', sportType: 'Swim'),
+              ],
+            }),
+          ),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      ),
+    );
+    addTearDown(api.close);
+    final repository = FirestoreStravaActivityRepository(
+      MockFirebaseAuth(signedIn: true, mockUser: MockUser(uid: 'me')),
+      FakeFirebaseFirestore(),
+      api,
+    );
+
+    final page = await repository.fetchJournalActivitiesPage(limit: 20);
+    expect(
+      [for (final e in page.entries) e.activity.name],
+      ['Đi bộ 3i', 'Đạp xe Garmin', 'Leo núi Health'],
+    );
+  });
 }

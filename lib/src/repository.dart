@@ -101,8 +101,7 @@ List<JournalActivityEntry> buildJournalActivityEntries(
   final duplicates = preferredStravaDuplicates(all);
   final entries = <JournalActivityEntry>[
     for (final activity in all)
-      if (activity.source == ActivitySource.strava ||
-          isCountedNonStravaRun(activity))
+      if (isJournalActivity(activity))
         JournalActivityEntry(
           activity: activity,
           preferredStravaActivityId: activity.source == ActivitySource.runnow
@@ -307,8 +306,7 @@ class FirestoreStravaActivityRepository implements ActivityRepository {
     return JournalActivityPage(
       entries: [
         for (final activity in activities)
-          if (activity.source == ActivitySource.strava ||
-              isCountedNonStravaRun(activity))
+          if (isJournalActivity(activity))
             JournalActivityEntry(
               activity: activity,
               preferredStravaActivityId:
