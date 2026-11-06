@@ -5,6 +5,7 @@ package werewolf
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 )
 
@@ -60,7 +61,26 @@ type Config struct {
 	// VillageGate: kỹ năng của vai không phải sói mở theo tổng km người không
 	// phải sói còn sống (đủ km của vai × số người đó), thay cho km từng người.
 	VillageGate bool `json:"villageGate,omitempty"`
+	// Schedule là khung giờ hoạt động; nil là lịch gốc: một vòng một ngày, mở
+	// đêm lúc 22h.
+	Schedule *Schedule `json:"schedule,omitempty"`
 }
+
+// Schedule: mỗi ngày Rounds vòng nối nhau, vòng đầu mở đêm lúc StartHour giờ
+// VN, mỗi vòng dài RoundHours tiếng; hết khung thì đợi tới StartHour hôm sau.
+// Các mốc trong vòng co giãn theo lịch gốc 24 tiếng (bảng 1.3).
+type Schedule struct {
+	StartHour  int `json:"startHour"`
+	RoundHours int `json:"roundHours"`
+	Rounds     int `json:"rounds"`
+}
+
+// Giới hạn của Schedule. RoundHours chẵn thì một giờ của lịch gốc thành số
+// phút chẵn (RoundHours × 2,5 phút), mốc nào cũng tròn phút.
+const (
+	MinRoundHours = 4
+	MaxRoundHours = 24
+)
 
 // VoteRule là cách km tác động lên phiếu biểu quyết. Giá trị chuỗi nằm trong
 // config của ván, đừng đổi.
@@ -112,6 +132,21 @@ func (c Config) Validate() error {
 		}
 		if km < 0 {
 			return fmt.Errorf("km của vai %q âm: %v", r, km)
+		}
+	}
+	if s := c.Schedule; s != nil {
+		if s.StartHour < 0 || s.StartHour > 23 {
+			return fmt.Errorf("giờ bắt đầu phải từ 0 tới 23: %v", s.StartHour)
+		}
+		if s.RoundHours < MinRoundHours || s.RoundHours > MaxRoundHours || s.RoundHours%2 != 0 {
+			return fmt.Errorf("mỗi vòng phải dài từ %d tới %d tiếng, số chẵn: %v", MinRoundHours, MaxRoundHours, s.RoundHours)
+		}
+		if s.Rounds < 1 || s.Rounds*s.RoundHours > 24 {
+			return fmt.Errorf("số vòng mỗi ngày phải từ 1, cả khung không quá 24 tiếng: %v vòng × %v tiếng", s.Rounds, s.RoundHours)
+		}
+		// Khung km đang cố định 22h hôm trước tới 22h, chưa khớp lịch riêng.
+		if !c.KmOff {
+			return errors.New("lịch riêng chỉ dùng được khi tắt km")
 		}
 	}
 	for _, r := range c.Disabled {

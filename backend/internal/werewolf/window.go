@@ -21,7 +21,7 @@ func (st *State) Window(kind Kind) (opens, closes time.Time) {
 			return time.Time{}, time.Time{}
 		}
 		if st.Hunter.Phase == PhaseDay {
-			return st.NightAt.Add(phaseStart[PhaseDay]), st.hunterClose()
+			return st.NightAt.Add(st.Config.At(phaseStart[PhaseDay])), st.hunterClose()
 		}
 		return st.NightAt, st.hunterClose()
 	}
@@ -34,15 +34,15 @@ func (st *State) Window(kind Kind) (opens, closes time.Time) {
 		first = rule.phases[1]
 	}
 	if first != PhaseSetup {
-		opens = st.NightAt.Add(phaseStart[first])
+		opens = st.NightAt.Add(st.Config.At(phaseStart[first]))
 	}
 	if IsVote(kind) {
-		opens = st.NightAt.Add(voteOpens)
+		opens = st.NightAt.Add(st.Config.At(voteOpens))
 	}
 	if last == st.Phase {
 		return opens, st.Deadline() // có cả phần admin dời hạn
 	}
-	return opens, st.NightAt.Add(phaseEnd[last])
+	return opens, st.NightAt.Add(st.Config.At(phaseEnd[last]))
 }
 
 // Precheck là Validate khi chưa chọn mục tiêu: lý do người chơi chưa bấm được

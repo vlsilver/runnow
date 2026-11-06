@@ -4,7 +4,6 @@ import (
 	"errors"
 	"math"
 	"sort"
-	"time"
 )
 
 // Inputs là những gì một lần chốt đọc từ Firestore.
@@ -410,7 +409,7 @@ func (r *resolver) resolveDay() {
 	}
 	r.killLovers()
 	r.st.Round++
-	r.st.NightAt = r.st.NightAt.Add(24 * time.Hour)
+	r.st.NightAt = r.st.Config.nextNight(r.st.NightAt)
 	r.st.Phase = PhaseNight
 	r.st.setNominees(nil)
 	r.openHunterTurn() // khung 22h–23h nằm trong đêm của vòng sau
