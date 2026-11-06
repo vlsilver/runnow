@@ -110,6 +110,20 @@ void main() {
     expect(find.text('?'), findsNothing);
   });
 
+  // Garmin và Strava cùng ghi một lần chạy: thẻ nằm ở buổi chính, buổi phụ
+  // chỉ cần một dòng báo, không chiếm chỗ bằng cả lá thẻ.
+  testWidgets('a duplicate run says in one line that the card is on the main '
+      'run', (tester) async {
+    await _pump(
+      tester,
+      _detail(ActivityKind.run),
+      view: const RunCardView(reason: 'card_duplicate'),
+    );
+    expect(find.text('Thẻ của lần chạy này nằm ở buổi chính'), findsOneWidget);
+    expect(find.byType(RunCardFaceDown), findsNothing);
+    expect(find.text('THẺ BUỔI CHẠY'), findsNothing);
+  });
+
   testWidgets('a flipped card shows on the page and taps flip its faces', (
     tester,
   ) async {

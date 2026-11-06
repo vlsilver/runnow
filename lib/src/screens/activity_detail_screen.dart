@@ -1381,14 +1381,13 @@ class _RunCardEntry extends ConsumerWidget {
       // provider này nên trượt xong ngoài màn đổi theo.
       final view = ref.watch(runCardViewProvider(activity.id));
       final reason = view.value?.reason;
+      // Buổi phụ của lần chạy hai nguồn cùng ghi: thẻ ở buổi chính, ở đây chỉ
+      // cần một dòng báo.
+      if (reason == 'card_duplicate') return const _RunCardOnMainRun();
       final (detail, hint) = switch (reason) {
         _ when !view.hasValue && !view.hasError => ('', ''),
         null => ('Chưa lật', 'Chạm để lật · mỗi buổi một lần'),
         'card_missed' => ('Không ra thẻ', 'Lần lật trượt · buổi này hết lượt'),
-        'card_duplicate' => (
-          'Đã mở ở buổi chính',
-          'Thẻ nằm ở buổi chính của lần chạy này',
-        ),
         _ => ('Không có thẻ', 'Buổi này không lật được thẻ'),
       };
       return _RunCardSection(
@@ -1421,6 +1420,33 @@ class _RunCardEntry extends ConsumerWidget {
         back: (pose) => AchievementCard(data: data, pose: pose, back: true),
         width: width,
         cardSize: achievementCardSize,
+      ),
+    );
+  }
+}
+
+class _RunCardOnMainRun extends StatelessWidget {
+  const _RunCardOnMainRun();
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = Theme.of(
+      context,
+    ).colorScheme.onSurface.withValues(alpha: 0.6);
+    return GlassPanel(
+      borderRadius: 0,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          Icon(Icons.style, size: 18, color: context.runNowPalette.secondary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Thẻ của lần chạy này nằm ở buổi chính',
+              style: TextStyle(color: muted, fontSize: 13),
+            ),
+          ),
+        ],
       ),
     );
   }
