@@ -233,6 +233,8 @@ class RunNowGameTokens {
   static const roleWitch = Color(0xFF9CC7C2);
   static const roleHunter = Color(0xFFD6AE80);
   static const roleCupid = Color(0xFFDBA3B6);
+  static const roleElder = Color(0xFFCFC6B4);
+  static const roleIdiot = Color(0xFFE2C46E);
   // Khung theo bậc: sắt, đồng, bạc, vàng, kim cương.
   static const graphiteEdge = Color(0xFF3A3C44);
   static const graphiteCore = Color(0xFF1E2027);

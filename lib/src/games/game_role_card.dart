@@ -66,6 +66,18 @@ const _roles = {
     RunNowGameTokens.roleCupid,
     'Một mũi tên, hai số phận chạy chung một đường.',
   ),
+  'elder': GameRoleStyle(
+    'Già làng',
+    'Phe Dân',
+    RunNowGameTokens.roleElder,
+    'Chạy đủ lâu để biết: một vết cắn chưa quật ngã được ai.',
+  ),
+  'idiot': GameRoleStyle(
+    'Kẻ ngốc',
+    'Phe Dân',
+    RunNowGameTokens.roleIdiot,
+    'Làng treo lên rồi mới biết treo nhầm. Mất phiếu, nhưng vẫn chạy.',
+  ),
 };
 
 class GameCardTierStyle {

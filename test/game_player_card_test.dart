@@ -52,6 +52,26 @@ void main() {
       expect(card.teamLabel, 'Phe Dân');
     });
 
+    test('names the extended roles on cards kept in the collection', () {
+      // Doc gameCards không có tên vai, app tự đặt tên theo khoá vai.
+      for (final (role, label) in const [
+        ('elder', 'Già làng'),
+        ('idiot', 'Kẻ ngốc'),
+      ]) {
+        final card = GamePlayerCard.fromJson('g', {
+          'tier': 'common',
+          'role': role,
+          'team': 'village',
+          'winner': 'village',
+          'alive': true,
+          'rounds': 3,
+          'playerCount': 12,
+        });
+        expect(card.label, label);
+        expect(card.teamLabel, 'Phe Dân');
+      }
+    });
+
     test('leaves optional fields empty when missing', () {
       final card = GamePlayerCard.fromJson('g2', {
         'tier': 'common',
