@@ -616,82 +616,11 @@ func feedItem(d map[string]any, players map[string]gamePlayerInfo) (GameFeedItem
 	}
 	deaths := 0
 	for _, e := range evs {
-		switch e.Kind {
-		case werewolf.EventDeath:
+		if e.Kind == werewolf.EventDeath {
 			deaths++
-			if e.Role == "" && e.Team != "" { // chỉ lộ phe (roleHidden)
-				item.Lines = append(item.Lines, fmt.Sprintf("%s đã chết, thuộc %s.", name(e.UID), teamLabels[e.Team]))
-			} else {
-				item.Lines = append(item.Lines, fmt.Sprintf("%s đã chết. Lá bài: %s.", name(e.UID), roleLabels[e.Role]))
-			}
-		case werewolf.EventNominee:
-			nominees := e.Targets
-			if len(nominees) == 0 && e.UID != "" {
-				nominees = []string{e.UID} // event ghi trước khi có nhiều phiên
-			}
-			switch len(nominees) {
-			case 0:
-				item.Lines = append(item.Lines, "Không ai được đề cử, hôm nay không ai lên giàn.")
-				continue
-			case 1:
-				line := fmt.Sprintf("%s lên giàn với %d đề cử", name(nominees[0]), e.Counts[nominees[0]])
-				if e.Draw {
-					line += ", bốc thăm vì hoà"
-				}
-				item.Lines = append(item.Lines, line+".")
-				continue
-			}
-			parts := make([]string, len(nominees))
-			for i, uid := range nominees {
-				parts[i] = fmt.Sprintf("%s (%d đề cử)", name(uid), e.Counts[uid])
-			}
-			line := fmt.Sprintf("%d người lên giàn: %s", len(nominees), strings.Join(parts, ", "))
-			if e.Draw {
-				line += ". Suất cuối bốc thăm vì hoà"
-			}
-			item.Lines = append(item.Lines, line+".")
-		case werewolf.EventVoteCut:
-			names := make([]string, len(e.Targets))
-			for i, uid := range e.Targets {
-				names[i] = name(uid)
-			}
-			line := fmt.Sprintf("Tổng km chưa đủ nên %s mất phiếu", strings.Join(names, ", "))
-			if e.UID != "" {
-				line = fmt.Sprintf("Phiên %s: tổng km chưa đủ nên %s mất phiếu", name(e.UID), strings.Join(names, ", "))
-			}
-			if e.Draw {
-				line += ", bốc thăm vì bằng km"
-			}
-			item.Lines = append(item.Lines, line+".")
-		case werewolf.EventVoteBonus:
-			names := make([]string, len(e.Targets))
-			for i, uid := range e.Targets {
-				names[i] = name(uid)
-			}
-			line := strings.Join(names, ", ") + " chạy nhiều nhất nên được tính 2 phiếu"
-			if e.UID != "" {
-				line = "Phiên " + name(e.UID) + ": " + line
-			}
-			if e.Draw {
-				line += ", bốc thăm vì bằng km"
-			}
-			item.Lines = append(item.Lines, line+".")
-		case werewolf.EventVoteResult:
-			if e.Reason == werewolf.ReasonNoTrial {
-				item.Lines = append(item.Lines, fmt.Sprintf("%s đã rời PSC, bỏ biểu quyết.", name(e.UID)))
-				continue
-			}
-			verdict := "được tha"
-			if e.Hanged {
-				verdict = "bị treo"
-			}
-			item.Lines = append(item.Lines, fmt.Sprintf("Treo %d, Tha %d: %s %s.", e.Hang, e.Spare, name(e.UID), verdict))
-		case werewolf.EventHunterTurn:
-			item.Lines = append(item.Lines, fmt.Sprintf("%s là Thợ săn, được bắn một người.", name(e.UID)))
-		case werewolf.EventRevealed:
-			item.Lines = append(item.Lines, fmt.Sprintf("%s lật bài %s nên không chết, từ giờ mất quyền bỏ phiếu.", name(e.UID), roleLabels[e.Role]))
-		case werewolf.EventWinner:
-			item.Lines = append(item.Lines, teamLabels[e.Team]+" thắng.")
+		}
+		if line, ok := eventLine(e, name); ok {
+			item.Lines = append(item.Lines, line)
 		}
 	}
 	switch {
@@ -714,6 +643,84 @@ func feedItem(d map[string]any, players map[string]gamePlayerInfo) (GameFeedItem
 		item.Title = fmt.Sprintf("Đêm %d", round)
 	}
 	return item, nil
+}
+
+// eventLine là câu bản tin của một event. Event không có câu (void, lovers…)
+// trả ok false.
+func eventLine(e werewolf.Event, name func(string) string) (string, bool) {
+	switch e.Kind {
+	case werewolf.EventDeath:
+		if e.Role == "" && e.Team != "" { // chỉ lộ phe (roleHidden)
+			return fmt.Sprintf("%s đã chết, thuộc %s.", name(e.UID), teamLabels[e.Team]), true
+		}
+		return fmt.Sprintf("%s đã chết. Lá bài: %s.", name(e.UID), roleLabels[e.Role]), true
+	case werewolf.EventNominee:
+		nominees := e.Targets
+		if len(nominees) == 0 && e.UID != "" {
+			nominees = []string{e.UID} // event ghi trước khi có nhiều phiên
+		}
+		switch len(nominees) {
+		case 0:
+			return "Không ai được đề cử, hôm nay không ai lên giàn.", true
+		case 1:
+			line := fmt.Sprintf("%s lên giàn với %d đề cử", name(nominees[0]), e.Counts[nominees[0]])
+			if e.Draw {
+				line += ", bốc thăm vì hoà"
+			}
+			return line + ".", true
+		}
+		parts := make([]string, len(nominees))
+		for i, uid := range nominees {
+			parts[i] = fmt.Sprintf("%s (%d đề cử)", name(uid), e.Counts[uid])
+		}
+		line := fmt.Sprintf("%d người lên giàn: %s", len(nominees), strings.Join(parts, ", "))
+		if e.Draw {
+			line += ". Suất cuối bốc thăm vì hoà"
+		}
+		return line + ".", true
+	case werewolf.EventVoteCut:
+		names := make([]string, len(e.Targets))
+		for i, uid := range e.Targets {
+			names[i] = name(uid)
+		}
+		line := fmt.Sprintf("Tổng km chưa đủ nên %s mất phiếu", strings.Join(names, ", "))
+		if e.UID != "" {
+			line = fmt.Sprintf("Phiên %s: tổng km chưa đủ nên %s mất phiếu", name(e.UID), strings.Join(names, ", "))
+		}
+		if e.Draw {
+			line += ", bốc thăm vì bằng km"
+		}
+		return line + ".", true
+	case werewolf.EventVoteBonus:
+		names := make([]string, len(e.Targets))
+		for i, uid := range e.Targets {
+			names[i] = name(uid)
+		}
+		line := strings.Join(names, ", ") + " chạy nhiều nhất nên được tính 2 phiếu"
+		if e.UID != "" {
+			line = "Phiên " + name(e.UID) + ": " + line
+		}
+		if e.Draw {
+			line += ", bốc thăm vì bằng km"
+		}
+		return line + ".", true
+	case werewolf.EventVoteResult:
+		if e.Reason == werewolf.ReasonNoTrial {
+			return fmt.Sprintf("%s đã rời PSC, bỏ biểu quyết.", name(e.UID)), true
+		}
+		verdict := "được tha"
+		if e.Hanged {
+			verdict = "bị treo"
+		}
+		return fmt.Sprintf("Treo %d, Tha %d: %s %s.", e.Hang, e.Spare, name(e.UID), verdict), true
+	case werewolf.EventHunterTurn:
+		return fmt.Sprintf("%s là Thợ săn, được bắn một người.", name(e.UID)), true
+	case werewolf.EventRevealed:
+		return fmt.Sprintf("%s lật bài %s nên không chết, từ giờ mất quyền bỏ phiếu.", name(e.UID), roleLabels[e.Role]), true
+	case werewolf.EventWinner:
+		return teamLabels[e.Team] + " thắng.", true
+	}
+	return "", false
 }
 
 // parsePhaseKey đọc "r3/day" hay "r3/day/hunter" (State.PhaseKey).
