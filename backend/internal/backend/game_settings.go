@@ -140,6 +140,17 @@ var gameSettingDefs = []gameSettingDef{
 		keepDefault: true,
 		apply:       func(c *werewolf.Config, v any) { setSkillKm(c, werewolf.Wolf, v.(float64)) },
 	},
+	// skillKm đứng trước km riêng từng vai: gửi cả hai thì km riêng thắng.
+	{
+		GameSetting: GameSetting{Key: "skillKm", Label: "Km mở kỹ năng", Type: settingNumber, Default: 1.0,
+			Min: f64(0), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn,
+			Description: "Km Tiên tri, Bảo vệ, Phù thuỷ phải chạy trong khung 22h hôm trước tới 22h thì đêm đó mới dùng được kỹ năng; Thợ săn xét ở lần chốt 22h gần nhất. Để 0 là không cần km. Sói cắn không theo mức này."},
+		apply: func(c *werewolf.Config, v any) {
+			for _, r := range []werewolf.Role{werewolf.Seer, werewolf.Guard, werewolf.Witch, werewolf.Hunter} {
+				setSkillKm(c, r, v.(float64))
+			}
+		},
+	},
 	roleKmSetting("seerKm", werewolf.Seer, "Km cho Tiên tri", "Km Tiên tri phải chạy trong khung 22h hôm trước tới 22h để soi được đêm đó. Để 0 là không cần km."),
 	roleKmSetting("guardKm", werewolf.Guard, "Km cho Bảo vệ", "Km Bảo vệ phải chạy trong khung 22h hôm trước tới 22h để bảo vệ được đêm đó. Để 0 là không cần km."),
 	roleKmSetting("witchKm", werewolf.Witch, "Km cho Phù thuỷ", "Km Phù thuỷ phải chạy trong khung 22h hôm trước tới 22h để dùng bình đêm đó. Để 0 là không cần km."),

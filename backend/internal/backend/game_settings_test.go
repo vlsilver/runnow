@@ -43,6 +43,19 @@ func TestGameSettingsApplied(t *testing.T) {
 	}
 }
 
+// skillKm đặt một mức km cho cả bốn vai có kỹ năng; km riêng của vai gửi kèm
+// thì thắng. Sói không theo skillKm.
+func TestGameSettingsSkillKm(t *testing.T) {
+	var gc ww.Config
+	if err := applyGameSettings(&gc, map[string]any{"skillKm": 2.0, "witchKm": 0.5}); err != nil {
+		t.Fatal(err)
+	}
+	want := map[ww.Role]float64{ww.Wolf: 0, ww.Seer: 2, ww.Guard: 2, ww.Witch: 0.5, ww.Hunter: 2}
+	if !reflect.DeepEqual(gc.SkillKm, want) {
+		t.Fatalf("SkillKm = %v, mong đợi %v", gc.SkillKm, want)
+	}
+}
+
 // Key lạ, sai kiểu, ngoài khoảng, số lẻ ở ô số nguyên, lựa chọn lạ: 422.
 func TestGameSettingsRejected(t *testing.T) {
 	for _, in := range []map[string]any{
