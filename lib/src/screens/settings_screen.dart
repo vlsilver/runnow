@@ -9,6 +9,7 @@ import 'package:myrun/src/games/telegram_link_controller.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
+import 'package:myrun/src/screens/avatar_crop_screen.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/theme_controller.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
@@ -715,8 +716,12 @@ class _AccountSectionState extends ConsumerState<_AccountSection> {
     final profile = widget.profile;
     setState(() => _uploadingAvatar = true);
     try {
-      final url = await ref.read(avatarRepositoryProvider).pickAndUpload();
-      if (url == null) return;
+      final avatars = ref.read(avatarRepositoryProvider);
+      final picked = await avatars.pickImage();
+      if (picked == null || !mounted) return;
+      final jpeg = await AvatarCropScreen.open(context, picked);
+      if (jpeg == null) return;
+      final url = await avatars.upload(jpeg);
       await ref
           .read(memberRepositoryProvider)
           .updateCurrentProfile(
