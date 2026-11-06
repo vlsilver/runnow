@@ -63,8 +63,9 @@ func TestGameCreatePresetValues(t *testing.T) {
 	}
 }
 
-// Tuỳ chọn có nhóm thì nhóm đó phải có; mỗi tab có ít nhất một tuỳ chọn, trừ
-// tab Vòng chơi chỉ cần lịch vòng.
+// App bản tab chỉ vẽ tuỳ chọn theo nhóm, nên tuỳ chọn nào cũng phải có nhóm và
+// nhóm đó phải có; mỗi tab có ít nhất một tuỳ chọn, trừ tab Vòng chơi chỉ cần
+// lịch vòng.
 func TestGameCreateGroups(t *testing.T) {
 	opts := gameCreateOptions()
 	groups := map[string]int{}
@@ -76,6 +77,7 @@ func TestGameCreateGroups(t *testing.T) {
 	}
 	for _, s := range opts.Settings {
 		if s.Group == "" {
+			t.Errorf("%s không có nhóm nên app không hiện", s.Key)
 			continue
 		}
 		if _, ok := groups[s.Group]; !ok {

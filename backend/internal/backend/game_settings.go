@@ -65,7 +65,7 @@ var kmOn = []GameSettingCondition{{Key: "kmOff", Equals: false}}
 func roleKmSetting(key string, role werewolf.Role, label, desc string) gameSettingDef {
 	return gameSettingDef{
 		GameSetting: GameSetting{Key: key, Label: label, Description: desc, Type: settingNumber, Default: 1.0,
-			Min: f64(0), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn},
+			Min: f64(0), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupKm},
 		apply: func(c *werewolf.Config, v any) { setSkillKm(c, role, v.(float64)) },
 	}
 }
@@ -122,7 +122,7 @@ var gameSettingDefs = []gameSettingDef{
 	extendedRoleSetting(werewolf.Idiot, "Thêm Kẻ ngốc",
 		"Một Dân thành Kẻ ngốc. Kẻ ngốc thuộc phe Dân: bị làng treo lần đầu thì lật bài cho cả làng thấy và vẫn sống, nhưng mất quyền bỏ phiếu tới hết ván. Bị treo lần nữa, bị cắn, bị độc hay bị bắn thì chết như thường."),
 	{
-		GameSetting: GameSetting{Key: "kmOff", Label: "Không dùng km", Type: settingToggle, Default: false,
+		GameSetting: GameSetting{Key: "kmOff", Label: "Không dùng km", Type: settingToggle, Default: false, Group: groupKm,
 			Description: "Bật thì ván chơi như Ma Sói thường: kỹ năng không cần km, mỗi người một phiếu, group không hiện bảng km. Các tuỳ chọn km bên dưới hết tác dụng."},
 		keepDefault: true,
 		apply:       func(c *werewolf.Config, v any) { c.KmOff = v.(bool) },
@@ -138,7 +138,7 @@ var gameSettingDefs = []gameSettingDef{
 		func(s *werewolf.Schedule, n int) { s.Rounds = n }),
 	{
 		GameSetting: GameSetting{Key: "wolfKm", Label: "Km để Sói cắn", Type: settingNumber, Default: 0.0,
-			Min: f64(0), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn,
+			Min: f64(0), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupKm,
 			Description: "Km mỗi sói còn sống phải góp, tính chung cả phe, thì phe Sói mới cắn được đêm đó. Để 0 là đêm nào sói cũng cắn được. Nên để 0: cắn mà cần km thì sáng ra có người chết là cả làng biết phe Sói đã đủ km, ráp với bảng km công khai là khoanh được sói."},
 		keepDefault: true,
 		apply:       func(c *werewolf.Config, v any) { setSkillKm(c, werewolf.Wolf, v.(float64)) },
@@ -159,7 +159,7 @@ var gameSettingDefs = []gameSettingDef{
 	roleKmSetting("witchKm", werewolf.Witch, "Km cho Phù thuỷ", "Km Phù thuỷ phải chạy trong khung 22h hôm trước tới 22h để dùng bình đêm đó. Để 0 là không cần km."),
 	roleKmSetting("hunterKm", werewolf.Hunter, "Km cho Thợ săn", "Km Thợ săn phải có ở lần chốt 22h gần nhất thì khi chết mới được bắn. Để 0 là không cần km."),
 	{
-		GameSetting: GameSetting{Key: "villageGate", Label: "Km chung cho phe Dân", Type: settingToggle, Default: false, EnabledIf: kmOn,
+		GameSetting: GameSetting{Key: "villageGate", Label: "Km chung cho phe Dân", Type: settingToggle, Default: false, EnabledIf: kmOn, Group: groupKm,
 			Description: "Bật thì Tiên tri, Bảo vệ, Phù thuỷ, Thợ săn không xét km của riêng mình mà xét tổng km của mọi người không phải sói còn sống: phải đủ km của vai nhân số người đó. Cả làng chạy thì vai mới dùng được. Đổi lại người có vai biết tổng km phe Dân, lấy tổng km công khai trừ đi là ra km phe Sói."},
 		keepDefault: true,
 		apply:       func(c *werewolf.Config, v any) { c.VillageGate = v.(bool) },
@@ -177,13 +177,13 @@ var gameSettingDefs = []gameSettingDef{
 	},
 	{
 		GameSetting: GameSetting{Key: "kmPerUnit", Label: "Km một phiếu", Type: settingNumber, Default: 1.0,
-			Min: f64(0.5), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn,
+			Min: f64(0.5), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupVote,
 			Description: "Với luật \"Thiếu km thì mất phiếu\": km cho mỗi phiếu được tính. Với luật \"Chạy nhiều được x2 phiếu\": km tối thiểu để vào nhóm x2. Không có tác dụng với luật \"Mỗi người một phiếu\"."},
 		apply: func(c *werewolf.Config, v any) { c.KmPerUnit = v.(float64) },
 	},
 	{
 		GameSetting: GameSetting{Key: "topVoters", Label: "Số người được x2 phiếu", Type: settingNumber, Default: 0.0,
-			Min: f64(0), Max: f64(10), Step: f64(1), Unit: "người",
+			Min: f64(0), Max: f64(10), Step: f64(1), Unit: "người", Group: groupVote,
 			EnabledIf:   []GameSettingCondition{{Key: "kmOff", Equals: false}, {Key: "vote", Equals: string(werewolf.VoteTop)}},
 			Description: "Chỉ dùng với luật \"Chạy nhiều được x2 phiếu\". Để 0 là bằng số sói còn sống cộng 1, để sói không chiếm hết các suất x2."},
 		apply: func(c *werewolf.Config, v any) { c.TopVoters = int(v.(float64)) },

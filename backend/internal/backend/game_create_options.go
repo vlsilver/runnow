@@ -68,9 +68,9 @@ var gameSettingGroups = []GameSettingGroup{
 		OffNote: "Ván đua km có vòng dài 24 tiếng. Muốn vòng ngắn hơn thì chọn kiểu Cổ điển."},
 	{Key: groupRoles, Label: "Vai", Icon: "people"},
 	{Key: groupVote, Label: "Phiếu", Icon: "vote",
-		OffNote: "Ván không dùng km: mỗi người một phiếu. Chọn Chuẩn PSC hay Chạy bung để chỉnh luật phiếu."},
-	{Key: groupKm, Label: "Km", Icon: "run",
-		OffNote: "Ván không dùng km: kỹ năng dùng tự do. Chọn Chuẩn PSC hay Chạy bung để chỉnh km."},
+		OffNote: "Ván không dùng km: mỗi người một phiếu. Tắt \"Không dùng km\" ở tab Km để chỉnh luật phiếu."},
+	// Tab Km không cần OffNote: "Không dùng km" nằm ở đây và luôn chỉnh được.
+	{Key: groupKm, Label: "Km", Icon: "run"},
 }
 
 var gamePresets = []GamePreset{
