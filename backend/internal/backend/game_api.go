@@ -309,13 +309,7 @@ func (s *GameStore) List(ctx context.Context, v GameViewer, wall time.Time) (Gam
 		if status == gameCancelled || status == gameEnded && wall.Sub(timeValue(g["updatedAt"])) > gameListKeepClosed {
 			continue
 		}
-		item := GameListItem{
-			ID: d.Ref.ID, Title: gameTitle, Status: apiStatus(g), StatusLabel: statusLabel(g),
-			PlayerCount: int(number(g["playerCount"])), MinPlayers: werewolf.MinPlayers, MaxPlayers: werewolf.MaxPlayers,
-			UpdatedAt: timeValue(g["updatedAt"]), TestMode: g["testMode"] == true,
-		}
-		item.Subtitle = gameSubtitle(g, item.PlayerCount)
-		item.NextDeadline = nextDeadline(g)
+		item := gameListItem(d.Ref.ID, g)
 		if registered && stringValue(g["status"]) == gameRunning {
 			if item.HasTodo, err = s.hasTodo(ctx, d.Ref, g, v.UID, wall); err != nil {
 				return out, err
@@ -324,6 +318,19 @@ func (s *GameStore) List(ctx context.Context, v GameViewer, wall time.Time) (Gam
 		out.Items = append(out.Items, item)
 	}
 	return out, nil
+}
+
+// gameListItem là thẻ của một ván trên danh sách, chưa gồm HasTodo vì cần đọc
+// thêm theo người xem.
+func gameListItem(id string, g map[string]any) GameListItem {
+	item := GameListItem{
+		ID: id, Title: gameTitle, Status: apiStatus(g), StatusLabel: statusLabel(g),
+		PlayerCount: int(number(g["playerCount"])), MinPlayers: werewolf.MinPlayers, MaxPlayers: werewolf.MaxPlayers,
+		UpdatedAt: timeValue(g["updatedAt"]), TestMode: g["testMode"] == true,
+	}
+	item.Subtitle = gameSubtitle(g, item.PlayerCount)
+	item.NextDeadline = nextDeadline(g)
+	return item
 }
 
 // apiStatus: store giữ pause bằng cờ paused để status không đổi khi resume;
