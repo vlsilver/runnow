@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
-import 'package:myrun/src/widgets/glass.dart';
 
 /// Km làm tròn xuống 0.1 như server làm khi so mốc: 0.96 km hiện 0.9 chứ
 /// không 1.0, để không ai thấy "đủ 1 km" mà vẫn bị chặn.
@@ -176,81 +175,6 @@ class GameKmStatusLabel extends StatelessWidget {
           fontWeight: FontWeight.w800,
           color: RunNowSemanticColors.danger,
         ),
-      ),
-    );
-  }
-}
-
-/// Card "Km của bạn" trên màn ván: km chốt 22h gần nhất và km đang gom của
-/// chính người xem.
-class GameMyKmCard extends StatelessWidget {
-  const GameMyKmCard({super.key, required this.table, required this.player});
-
-  final GameKmTable table;
-  final GamePlayer player;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    final muted = TextStyle(
-      fontSize: 13,
-      height: 1.45,
-      color: palette.textMuted,
-    );
-    final today = player.todayKm;
-    final missing = today == null ? null : gameKmMissing(today, table.unitKm);
-    return GlassPanel(
-      padding: const EdgeInsets.all(16),
-      border: Border.all(color: palette.border),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Km của bạn',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: palette.ink,
-            ),
-          ),
-          const SizedBox(height: 12),
-          if (!player.alive)
-            Text(
-              'Bạn đã chết nên km không còn tính trong ván.',
-              style: TextStyle(color: palette.textMuted),
-            )
-          else ...[
-            GameKmColumns(
-              lastLabel: table.lastLabel,
-              todayLabel: table.todayLabel,
-              rows: [
-                GameKmRow(
-                  label: 'Km',
-                  last: GameKmNumber(km: player.lastKm, empty: 'Chưa chốt'),
-                  today: GameKmNumber(km: today, highlight: true),
-                ),
-                GameKmRow(
-                  label: 'Mốc ${gameKmUnitText(table.unitKm)} km',
-                  last: GameKmStatusLabel(
-                    km: player.lastKm,
-                    unitKm: table.unitKm,
-                  ),
-                  today: GameKmStatusLabel(km: today, unitKm: table.unitKm),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (missing != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text(
-                  'Chạy thêm $missing km trước 22h để đủ mốc.',
-                  style: TextStyle(fontSize: 13, color: palette.ink),
-                ),
-              ),
-            Text(table.note, style: muted),
-          ],
-        ],
       ),
     );
   }

@@ -11,6 +11,7 @@ import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
 import 'package:myrun/src/games/game_card_art.dart';
+import 'package:myrun/src/games/game_journal.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_detail_screen.dart';
 import 'package:myrun/src/games/game_my_card.dart';
@@ -224,6 +225,8 @@ void main() {
     };
     await pumpScreen(tester);
     await tester.pump();
+    await tester.tap(find.text('NHẬT KÝ'));
+    await tester.pump();
 
     expect(find.text('09:01 An đề cử Bình.'), findsNothing);
     expect(find.text('09:30 Hà đề cử Bình.'), findsOneWidget);
@@ -239,6 +242,49 @@ void main() {
     await close(tester);
   });
 
+  testWidgets('the journal shows entries with their icon and tag', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(2400, 9000);
+    addTearDown(tester.view.reset);
+    backend.game = {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'running',
+      'statusLabel': 'Đang chơi',
+      'refreshAfterSeconds': 300,
+      'feed': {
+        'items': [
+          {
+            'seq': 8,
+            'at': '2026-10-17T15:00:00Z',
+            'title': 'Ngày 2',
+            'lines': ['Bình lên giàn với 3 phiếu.'],
+            'entries': [
+              {'icon': 'nominee', 'text': 'Bình lên giàn', 'tag': '3 PHIẾU'},
+            ],
+          },
+        ],
+      },
+    };
+    await pumpScreen(tester);
+    await tester.pump();
+    await tester.tap(find.text('NHẬT KÝ'));
+    await tester.pump();
+
+    expect(find.text('Bình lên giàn'), findsOneWidget);
+    expect(find.text('3 PHIẾU'), findsOneWidget);
+    expect(find.text('Bình lên giàn với 3 phiếu.'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(GameLineRow),
+        matching: find.byIcon(Icons.campaign_outlined),
+      ),
+      findsOneWidget,
+    );
+    await close(tester);
+  });
+
   testWidgets('shows closing instead of the old phase past deadline', (
     tester,
   ) async {
@@ -249,19 +295,21 @@ void main() {
       'statusLabel': 'Đang chơi',
       'refreshAfterSeconds': 300,
       'phase': {
-        'key': 'r2.day',
+        'key': 'r2/day',
         'label': 'Ngày 2: đề cử',
         'deadline': now.add(const Duration(minutes: 5)).toIso8601String(),
         'state': 'open',
       },
     };
     await pumpScreen(tester);
+    expect(find.text('VÒNG 2'), findsOneWidget);
+    expect(find.text('ĐỀ CỬ'), findsOneWidget);
     expect(find.text('Ngày 2: đề cử'), findsOneWidget);
 
     await elapse(tester, const Duration(minutes: 5));
 
     expect(find.text('Ngày 2: đề cử'), findsNothing);
-    expect(find.text('Đang chốt…'), findsOneWidget);
+    expect(find.text('ĐANG CHỐT…'), findsOneWidget);
     await close(tester);
   });
 
@@ -1176,7 +1224,8 @@ void main() {
       };
       await pumpScreen(tester);
 
-      expect(find.text('Chết vòng 2 · Thợ săn'), findsOneWidget);
+      expect(find.text('Chết vòng 2'), findsOneWidget);
+      expect(find.text('Thợ săn'), findsOneWidget);
       await close(tester);
     });
 
@@ -1217,8 +1266,8 @@ void main() {
       await pumpScreen(tester);
       await tester.pump();
 
-      expect(find.text('Đã chết · Sói'), findsOneWidget);
-      expect(find.text('Đã chết · Thợ săn'), findsOneWidget);
+      expect(find.text('Sói'), findsOneWidget);
+      expect(find.text('Thợ săn'), findsOneWidget);
       expect(find.text('Dân'), findsOneWidget);
       await close(tester);
     });
@@ -1367,10 +1416,10 @@ void main() {
       await close(tester);
     });
 
-    testWidgets('shows your km against the mark and both columns per player', (
+    testWidgets('shows today km per player and the km rule under the list', (
       tester,
     ) async {
-      // Danh sách người chơi nằm dưới card km; màn cao để ListView dựng đủ.
+      // Danh sách người chơi nằm dưới lá bài; màn cao để ListView dựng đủ.
       tester.view.physicalSize = const Size(2400, 9000);
       addTearDown(tester.view.reset);
       backend.game = game([
@@ -1399,33 +1448,97 @@ void main() {
       await pumpScreen(tester);
       await tester.pump();
 
-      expect(find.text('Km của bạn'), findsOneWidget);
-      expect(find.text('Thiếu 0.6'), findsOneWidget);
-      expect(
-        find.text('Chạy thêm 0.6 km trước 22h để đủ mốc.'),
-        findsOneWidget,
-      );
       expect(find.text('Km chốt lúc 22h.'), findsOneWidget);
-      // 0.96 km chưa đủ mốc 1 km nên không được hiện thành 1.0.
-      expect(find.text('0.9'), findsOneWidget);
-      expect(find.text('2.3'), findsOneWidget);
+      // Luật không cắt phiếu thì không có đường cắt.
+      expect(find.textContaining('MẤT PHIẾU'), findsNothing);
+      expect(find.text('0.4 km'), findsOneWidget);
+      expect(find.text('2.3 km'), findsOneWidget);
       expect(find.text('Bạn'), findsOneWidget);
       // Người chết không còn tính km, kể cả km đã chốt.
-      expect(find.text('5.0'), findsNothing);
+      expect(find.textContaining('5.0'), findsNothing);
       expect(find.text('Chết vòng 1'), findsOneWidget);
       await close(tester);
     });
 
-    testWidgets('without the table keeps one column of 22h km', (tester) async {
+    testWidgets(
+      'the cut line sits between who keeps the vote and who may not',
+      (tester) async {
+        tester.view.physicalSize = const Size(2400, 9000);
+        addTearDown(tester.view.reset);
+        backend.game = game([
+          {'uid': 'a', 'name': 'An', 'alive': true, 'todayKm': 0.5},
+          {'uid': 'c', 'name': 'Chi', 'alive': true, 'todayKm': 2},
+        ]);
+        backend.game['kmTable'] = {
+          ...table,
+          'unitLabel': 'giữ phiếu',
+          'cutLabel': 'Dưới 1 km · có thể mất phiếu',
+        };
+        await pumpScreen(tester);
+        await tester.pump();
+
+        final cut = find.text('DƯỚI 1 KM · CÓ THỂ MẤT PHIẾU');
+        expect(cut, findsOneWidget);
+        double y(Finder f) => tester.getTopLeft(f).dy;
+        expect(y(find.text('Chi')), lessThan(y(cut)));
+        expect(y(cut), lessThan(y(find.text('An'))));
+        expect(find.text('giữ phiếu'), findsOneWidget);
+        await close(tester);
+      },
+    );
+
+    testWidgets('without the table shows 22h km', (tester) async {
       backend.game = game([
         {'uid': 'u2', 'name': 'Chi', 'alive': true, 'lastKm': 0.96},
       ])..remove('kmTable');
       await pumpScreen(tester);
       await tester.pump();
 
-      expect(find.text('Km của bạn'), findsNothing);
-      expect(find.text('Km chốt'), findsOneWidget);
-      expect(find.text('0.9'), findsOneWidget);
+      // 0.96 km chưa đủ 1 km nên không được hiện thành 1.0.
+      expect(find.text('0.9 km'), findsOneWidget);
+      expect(find.text('xếp theo km hôm nay'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('km goals that give the role away show only face up', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(2400, 9000);
+      addTearDown(tester.view.reset);
+      backend.game = game([
+        {'uid': 'me', 'name': 'Nam', 'alive': true, 'todayKm': 1.4},
+      ]);
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'wolf',
+        'roleLabel': 'Sói',
+        'kmGoals': [
+          {
+            'key': 'vote',
+            'label': 'Giữ phiếu biểu quyết',
+            'needKm': 1,
+            'haveKm': 1.4,
+          },
+          {
+            'key': 'team_skill',
+            'label': 'Phe Sói cắn ở đêm tới',
+            'needKm': 2,
+            'haveKm': 1.2,
+          },
+        ],
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+
+      expect(find.text('Giữ phiếu biểu quyết · 1 km'), findsOneWidget);
+      expect(find.text('ĐỦ'), findsOneWidget);
+      expect(find.text('Phe Sói cắn ở đêm tới · 2 km'), findsNothing);
+
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+      expect(find.text('Phe Sói cắn ở đêm tới · 2 km'), findsOneWidget);
+      expect(find.text('còn 0.8 km'), findsOneWidget);
       await close(tester);
     });
 

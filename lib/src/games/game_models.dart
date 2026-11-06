@@ -296,6 +296,8 @@ class GameKmTable {
     required this.asOf,
     required this.unitKm,
     required this.note,
+    this.unitLabel,
+    this.cutLabel,
   });
 
   factory GameKmTable.fromJson(Map<String, dynamic> json) {
@@ -305,6 +307,8 @@ class GameKmTable {
       asOf: _date(json['asOf']),
       unitKm: (json['unitKm'] as num?)?.toDouble() ?? 1,
       note: _string(json['note']),
+      unitLabel: _optString(json['unitLabel']),
+      cutLabel: _optString(json['cutLabel']),
     );
   }
 
@@ -318,6 +322,14 @@ class GameKmTable {
   /// Mốc km cho một kỹ năng đêm hay một phiếu.
   final double unitKm;
   final String note;
+
+  /// Việc mốc [unitKm] quyết với phiếu ("giữ phiếu"); null khi km không đụng
+  /// tới phiếu.
+  final String? unitLabel;
+
+  /// Chữ của đường cắt ở mốc [unitKm]; null là luật phiếu không có ai mất
+  /// phiếu, nên danh sách không vẽ đường cắt.
+  final String? cutLabel;
 }
 
 /// Km của cả phe khi luật tính theo phe (phe Sói cắn), chỉ có trong `/me`.
@@ -506,6 +518,8 @@ class GameFeedItem {
     required this.at,
     required this.title,
     required this.lines,
+    this.entries = const [],
+    this.night = false,
   });
 
   factory GameFeedItem.fromJson(Map<String, dynamic> json) {
@@ -514,6 +528,8 @@ class GameFeedItem {
       at: _date(json['at']),
       title: _string(json['title']),
       lines: _strings(json['lines']),
+      entries: _list(json['entries'], GameLine.fromJson),
+      night: json['night'] == true,
     );
   }
 
@@ -521,6 +537,63 @@ class GameFeedItem {
   final DateTime? at;
   final String title;
   final List<String> lines;
+
+  /// [lines] kèm icon và tag, cùng câu, cùng thứ tự. Backend cũ không gửi
+  /// thì rỗng, app vẽ [lines].
+  final List<GameLine> entries;
+
+  /// Mục thuộc pha đêm.
+  final bool night;
+}
+
+/// Một câu có icon và tag ngắn, dùng ở nhật ký và diễn lại của tổng kết.
+/// Icon là khoá (bite, guard, seer, death, vote, pick, peace…); khoá lạ thì
+/// app vẽ chấm.
+class GameLine {
+  const GameLine({required this.icon, required this.text, this.tag});
+
+  factory GameLine.fromJson(Map<String, dynamic> json) {
+    return GameLine(
+      icon: _string(json['icon']),
+      text: _string(json['text']),
+      tag: _optString(json['tag']),
+    );
+  }
+
+  final String icon;
+  final String text;
+  final String? tag;
+}
+
+/// Một mốc km người xem đang nhắm tới (`me.kmGoals`): giữ phiếu, kỹ năng đêm.
+class GameKmGoal {
+  const GameKmGoal({
+    required this.key,
+    required this.label,
+    required this.needKm,
+    this.haveKm,
+  });
+
+  factory GameKmGoal.fromJson(Map<String, dynamic> json) {
+    return GameKmGoal(
+      key: _string(json['key']),
+      label: _string(json['label']),
+      needKm: (json['needKm'] as num?)?.toDouble() ?? 0,
+      haveKm: (json['haveKm'] as num?)?.toDouble(),
+    );
+  }
+
+  /// vote, vote_top, skill, team_skill.
+  final String key;
+  final String label;
+  final double needKm;
+
+  /// Km đang gom; null ở ván thử.
+  final double? haveKm;
+
+  /// Mốc của vai (kỹ năng đêm, km phe Sói) lộ vai nên chỉ hiện khi lá ngửa.
+  /// Chỉ mốc phiếu là của mọi người; khoá lạ coi như kín để không lộ vai.
+  bool get secret => key != 'vote' && key != 'vote_top';
 }
 
 /// Phần riêng của người đang xem: vai, bình thuốc, ghi chú, hành động.
@@ -540,6 +613,7 @@ class GameMe {
     required this.actions,
     required this.allRoles,
     this.teamKm,
+    this.kmGoals = const [],
     this.cardTier,
     this.cardVariant,
     this.cardOwned = false,
@@ -562,6 +636,7 @@ class GameMe {
       actions: _list(json['actions'], GameAction.fromJson),
       allRoles: _list(json['allRoles'], GameRoleReveal.fromJson),
       teamKm: _obj(json['teamKm'], GameTeamKm.fromJson),
+      kmGoals: _list(json['kmGoals'], GameKmGoal.fromJson),
       cardTier: _optString(json['cardTier']),
       cardVariant: _optString(json['cardVariant']),
       cardOwned: json['cardOwned'] == true,
@@ -594,6 +669,9 @@ class GameMe {
 
   /// Km của phe, chỉ sói còn sống mới có.
   final GameTeamKm? teamKm;
+
+  /// Mốc km người xem còn sống đang nhắm tới; ván tắt km thì rỗng.
+  final List<GameKmGoal> kmGoals;
 
   /// Khoá bậc thẻ Ma Sói (common … mythic), có từ lúc chia bài. Backend cũ
   /// không gửi thì null.
