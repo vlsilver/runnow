@@ -13,6 +13,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/profile_stats.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/repository.dart';
+import 'package:myrun/src/screens/activity_hub_screen.dart';
 import 'package:myrun/src/screens/profile_screen.dart';
 import 'package:myrun/src/theme_controller.dart';
 
@@ -82,6 +83,7 @@ void main() {
     List<RunCard> cards = const [],
     List<GamePlayerCard> games = const [],
     List<JourneyCard> journeys = const [],
+    Widget screen = const ProfileScreen(),
   }) async {
     tester.view.physicalSize = const Size(420, 4000);
     tester.view.devicePixelRatio = 1.0;
@@ -92,7 +94,7 @@ void main() {
     ]);
     final router = GoRouter(
       routes: [
-        GoRoute(path: '/', builder: (_, _) => const ProfileScreen()),
+        GoRoute(path: '/', builder: (_, _) => screen),
         GoRoute(
           path: '/journal',
           builder: (_, _) => const Scaffold(body: Text('Trang nhật ký')),
@@ -144,24 +146,38 @@ void main() {
     return repository;
   }
 
-  testWidgets('shows the five newest runs, the icon opens the journal', (
+  testWidgets('Hồ sơ leaves stats and journal to the Hoạt động tab', (
     tester,
   ) async {
     final repository = await pumpProfile(tester);
-    expect(repository.pageReads, 1);
-    for (var n = 1; n <= 5; n++) {
-      expect(find.text('Buổi $n'), findsOneWidget);
-    }
-    expect(find.text('Buổi 6'), findsNothing);
+    expect(repository.pageReads, 0);
+    expect(find.text('Buổi 1'), findsNothing);
+    expect(find.text('TỔNG KM'), findsNothing);
     // Cài đặt chỉ mở từ nút bánh răng, cuối trang không còn dòng riêng.
     expect(find.text('Cài đặt'), findsNothing);
     expect(find.byTooltip('Cài đặt'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Tất cả buổi chạy'));
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
-    expect(find.text('Trang nhật ký'), findsOneWidget);
   });
+
+  testWidgets(
+    'Hoạt động shows the five newest runs, the icon opens the journal',
+    (tester) async {
+      final repository = await pumpProfile(
+        tester,
+        screen: const ActivityHubScreen(),
+      );
+      expect(repository.pageReads, 1);
+      expect(find.text('TỔNG KM'), findsOneWidget);
+      for (var n = 1; n <= 5; n++) {
+        expect(find.text('Buổi $n'), findsOneWidget);
+      }
+      expect(find.text('Buổi 6'), findsNothing);
+
+      await tester.tap(find.byTooltip('Tất cả buổi chạy'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('Trang nhật ký'), findsOneWidget);
+    },
+  );
 
   testWidgets('no cards yet says how to get one', (tester) async {
     await pumpProfile(tester);
@@ -186,11 +202,6 @@ void main() {
     // Hai thẻ Hiếm, một thẻ Thần thoại.
     expect(find.text('×2'), findsOneWidget);
     expect(find.text('×1'), findsOneWidget);
-    // Bộ thẻ nằm trên các ô số liệu.
-    expect(
-      tester.getTopLeft(find.text('BỘ THẺ')).dy,
-      lessThan(tester.getTopLeft(find.text('TỔNG KM')).dy),
-    );
   });
 
   testWidgets('a newer Ma Sói card leads the shelf', (tester) async {

@@ -2,6 +2,7 @@ import 'package:firebase_auth_mocks/firebase_auth_mocks.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:myrun/src/agents/agent_providers.dart';
@@ -115,6 +116,11 @@ void main() {
         child: RunNowApp(requireAuthentication: signedInUid != null),
       ),
     );
+    // Router của app là biến toàn cục nên tab test trước để lại vẫn còn. Đưa
+    // về Trang chủ để test nào cũng bắt đầu như lúc mở app. Đợi một frame cho
+    // cổng đăng nhập dựng router.
+    await tester.pump();
+    GoRouter.of(tester.element(find.byType(Navigator).first)).go('/');
     await tester.pumpAndSettle();
   }
 
@@ -180,49 +186,29 @@ void main() {
     expect(activityWatches, 0);
   });
 
-  testWidgets('people without the bot keep the journey tab', (tester) async {
-    await pumpApp(tester, agent: agentMe(enabled: false));
-    expect(find.text('MyBot'), findsNothing);
-    expect(find.text('Hành Trình'), findsOneWidget);
-    expect(find.text('Chạy'), findsOneWidget);
-  });
-
-  testWidgets('bot users get MyBot in place of the journey tab', (
+  testWidgets('Hoạt động tab takes the MyBot slot and reloads stats', (
     tester,
   ) async {
     await pumpApp(tester, agent: agentMe(enabled: true));
-    expect(find.text('MyBot'), findsOneWidget);
+    expect(find.text('MyBot'), findsNothing);
     expect(find.text('Hành Trình'), findsNothing);
-    // Nút Chạy vẫn ở giữa thanh tab, đầu tab Kèo không có nút Chạy riêng.
-    expect(find.text('Chạy'), findsOneWidget);
-    expect(find.byTooltip('Bắt đầu chạy'), findsNothing);
-
-    // Bấm tab là đọc lại hồ sơ bot: chạy trong app xong mở tab thấy km mới.
-    final reads = meReads;
-    await tester.tap(find.text('MyBot'));
-    await tester.pumpAndSettle();
-    expect(meReads, reads + 1);
-    expect(find.text('SÓC'), findsOneWidget);
-    expect(find.text('Chat riêng'), findsOneWidget);
-    // Vẫn ở trong shell: thanh tab còn đó.
-    expect(find.text('Chạy'), findsOneWidget);
-  });
-
-  testWidgets('Hồ sơ tab replaces Cài đặt and reloads stats', (tester) async {
-    await pumpApp(tester);
-    expect(find.text('Cài đặt'), findsNothing);
 
     // Tab sống trong IndexedStack: bấm tab là đọc lại periodStats.
     final reads = profileReads;
-    await tester.tap(find.text('Hồ sơ'));
+    await tester.tap(find.text('Hoạt động'));
     // Chặng đang chạy nhấp nháy mãi, nên không chờ settle được.
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     expect(profileReads, reads + 1);
     expect(find.text('Chưa có buổi chạy nào'), findsOneWidget);
-    expect(find.byTooltip('Cài đặt'), findsOneWidget);
-    // Châm ngôn và các chặng hành trình nằm luôn trong Hồ sơ.
-    expect(find.text('CHÂM NGÔN HÔM NAY'), findsOneWidget);
+    // Mở lại tab cũng đọc lại, không chỉ lần đầu.
+    await tester.tap(find.text('Hồ sơ'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(find.text('Hoạt động').last);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(profileReads, reads + 2);
     await tester.scrollUntilVisible(
       find.text('Marathon Athens'),
       300,
@@ -230,13 +216,62 @@ void main() {
     );
     expect(find.text('Marathon Athens'), findsOneWidget);
   });
+
+  testWidgets('people without the bot get no MyBot button', (tester) async {
+    await pumpApp(tester, agent: agentMe(enabled: false));
+    await tester.tap(find.text('Hồ sơ'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byTooltip('Cài đặt'), findsOneWidget);
+    expect(find.byTooltip('MyBot'), findsNothing);
+  });
+
+  testWidgets('bot users open MyBot from the Hồ sơ header', (tester) async {
+    await pumpApp(tester, agent: agentMe(enabled: true));
+    // Nút Chạy vẫn ở giữa thanh tab, đầu tab Kèo không có nút Chạy riêng.
+    expect(find.text('Chạy'), findsOneWidget);
+    expect(find.byTooltip('Bắt đầu chạy'), findsNothing);
+    await tester.tap(find.text('Hồ sơ'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    // Mở là đọc lại hồ sơ bot: chạy trong app xong mở thấy km mới.
+    final reads = meReads;
+    await tester.tap(find.byTooltip('MyBot'));
+    await tester.pumpAndSettle();
+    expect(meReads, reads + 1);
+    expect(find.text('SÓC'), findsOneWidget);
+    expect(find.text('Chat riêng'), findsOneWidget);
+    // Vẫn ở trong shell: thanh tab còn đó.
+    expect(find.text('Chạy'), findsOneWidget);
+    // Branch Hồ sơ nhớ màn đang mở qua các test; trả về như lúc đầu.
+    await tester.pageBack();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('Hồ sơ keeps quote and cards, stats live in Hoạt động', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    expect(find.text('Cài đặt'), findsNothing);
+
+    await tester.tap(find.text('Hồ sơ'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byTooltip('Cài đặt'), findsOneWidget);
+    expect(find.text('CHÂM NGÔN HÔM NAY'), findsOneWidget);
+    // Bộ thẻ hiện cả khi chưa có buổi chạy nào.
+    expect(find.text('BỘ THẺ'), findsOneWidget);
+    expect(find.text('Chưa có buổi chạy nào'), findsNothing);
+    expect(find.text('HÀNH TRÌNH'), findsNothing);
+  });
 }
 
 /// Cổng đăng nhập chỉ nghe controller này; bản thật cần Firebase và app_links.
 class _NoStrava extends ChangeNotifier implements StravaAuthController {
   @override
-  dynamic noSuchMethod(Invocation invocation) =>
-      super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class _CountingActivities extends DemoActivityRepository {

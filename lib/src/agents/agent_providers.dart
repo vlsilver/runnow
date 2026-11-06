@@ -25,11 +25,10 @@ final agentMeProvider = FutureProvider.autoDispose<AgentMe?>(
   },
 );
 
-/// Có hiện tab MyBot không. Bot đã mở cho mọi người nên mặc định là có, kể cả
-/// lúc chưa tải xong (tránh vẽ tab Hành Trình rồi đổi sang MyBot) hay tải lỗi
-/// (tab MyBot tự báo lỗi). Chỉ khi backend trả `enabled=false` mới quay về tab
-/// Hành Trình.
-bool myBotTabVisible(WidgetRef ref) =>
+/// Có hiện lối vào MyBot ở Hồ sơ không. Bot đã mở cho mọi người nên mặc định
+/// là có, kể cả lúc chưa tải xong (tránh nút hiện muộn) hay tải lỗi (màn MyBot
+/// tự báo lỗi). Chỉ khi backend trả `enabled=false` mới ẩn.
+bool myBotVisible(WidgetRef ref) =>
     ref.watch(agentMeProvider).value?.enabled ?? true;
 
 /// Phòng bot nhìn từ tab MyBot: hai tin mới nhất không bị ẩn (cũ trước mới

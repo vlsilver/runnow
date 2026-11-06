@@ -12,7 +12,6 @@ import 'package:myrun/src/agents/agent_blocks_screen.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
 import 'package:myrun/src/agents/agent_group_facts_screen.dart';
 import 'package:myrun/src/agents/agent_images_screen.dart';
-import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/agents/agent_screen.dart';
 import 'package:myrun/src/agents/agent_setup_screen.dart';
 import 'package:myrun/src/app_update.dart';
@@ -31,6 +30,7 @@ import 'package:myrun/src/screens/club_cards_screen.dart';
 import 'package:myrun/src/screens/club_runs_screen.dart';
 import 'package:myrun/src/screens/club_screen.dart';
 import 'package:myrun/src/screens/journal_screen.dart';
+import 'package:myrun/src/screens/activity_hub_screen.dart';
 import 'package:myrun/src/screens/journey_hub_screen.dart';
 import 'package:myrun/src/screens/journey_screen.dart';
 import 'package:myrun/src/screens/keo_hub_screen.dart';
@@ -94,7 +94,7 @@ final _router = GoRouter(
           routes: [
             GoRoute(
               path: '/profile',
-              builder: (context, state) => const JourneyHubScreen(),
+              builder: (context, state) => const ActivityHubScreen(),
               routes: [
                 GoRoute(
                   path: 'journey/:campaignId',
@@ -132,6 +132,12 @@ final _router = GoRouter(
                   path: 'cards',
                   builder: (context, state) => const RunCardCollectionScreen(),
                 ),
+                // Màn MyBot tự vẽ tiêu đề to; AppBar chỉ để có nút back.
+                GoRoute(
+                  path: 'mybot',
+                  builder: (context, state) =>
+                      Scaffold(appBar: AppBar(), body: const AgentScreen()),
+                ),
               ],
             ),
           ],
@@ -146,20 +152,10 @@ final _router = GoRouter(
             ),
           ],
         ),
-        // Tab MyBot thế chỗ Hành Trình khi user được bật bot (myBotTabVisible).
-        // Branch thêm ở cuối nên index các tab cũ giữ nguyên.
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/mybot',
-              builder: (context, state) => const AgentScreen(),
-            ),
-          ],
-        ),
       ],
     ),
-    // Nhật ký và Hành trình của chính mình mở được từ nhiều tab (Hồ sơ, Club,
-    // Hành Trình), nên nằm ngoài shell: push đè lên tab đang đứng và luôn có
+    // Nhật ký và Hành trình của chính mình mở được từ nhiều tab (Hoạt động,
+    // Club), nên nằm ngoài shell: push đè lên tab đang đứng và luôn có
     // nút back. Route con của /profile chỉ giữ cho link cũ.
     GoRoute(
       path: '/journal',
@@ -313,7 +309,9 @@ final _router = GoRouter(
       builder: (context, state) =>
           GameDetailScreen(gameId: state.pathParameters['id']!),
     ),
-    GoRoute(path: '/agent', redirect: (context, state) => '/mybot'),
+    // MyBot từng là tab ở /mybot, giờ nằm dưới Hồ sơ; giữ link cũ.
+    GoRoute(path: '/mybot', redirect: (context, state) => '/me/mybot'),
+    GoRoute(path: '/agent', redirect: (context, state) => '/me/mybot'),
     GoRoute(
       path: '/agent/setup',
       builder: (context, state) => const AgentSetupScreen(),
@@ -891,7 +889,6 @@ class _Scaffold extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final admin = _showAdminTab(ref);
-    final myBot = myBotTabVisible(ref);
     final width = MediaQuery.sizeOf(context).width;
     // Ở tab Chạy (index 2) → ẩn nav dưới cho màn chạy chiếm trọn, tập trung.
     // Thoát bằng nút X trên màn Chạy (khi chưa bắt đầu) hoặc Stop/Discard.
@@ -903,7 +900,7 @@ class _Scaffold extends ConsumerWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _DesktopNavRail(shell: shell, admin: admin, myBot: myBot),
+              _DesktopNavRail(shell: shell, admin: admin),
               Expanded(
                 child: Align(
                   alignment: Alignment.topCenter,
@@ -974,48 +971,30 @@ class _Scaffold extends ConsumerWidget {
                         onTap: () => shell.goBranch(2),
                       ),
                     ),
-                  // Có bot thì MyBot thế chỗ Hành Trình; Hành Trình vẫn mở được
-                  // từ tab Hồ sơ.
-                  if (myBot)
-                    Expanded(
-                      child: _NavItem(
-                        selected: shell.currentIndex == 6,
-                        icon: Icons.smart_toy_outlined,
-                        selectedIcon: Icons.smart_toy_rounded,
-                        label: 'MyBot',
-                        // Tab luôn sống trong IndexedStack: đọc lại để chạy
-                        // xong mở tab là thấy km và số tin mới.
-                        onTap: () {
-                          ref.invalidate(agentMeProvider);
-                          shell.goBranch(6);
-                        },
-                      ),
-                    )
-                  else
-                    Expanded(
-                      child: _NavItem(
-                        selected: shell.currentIndex == 3,
-                        icon: Icons.map_outlined,
-                        selectedIcon: Icons.map_rounded,
-                        label: 'Hành Trình',
-                        onTap: () => shell.goBranch(3),
-                      ),
+                  Expanded(
+                    child: _NavItem(
+                      selected: shell.currentIndex == 3,
+                      icon: Icons.insights_outlined,
+                      selectedIcon: Icons.insights_rounded,
+                      label: 'Hoạt động',
+                      // Tab sống trong IndexedStack nên đọc lại số liệu và
+                      // nhật ký mỗi lần mở: chạy xong mở tab là thấy buổi mới.
+                      onTap: () {
+                        ref.invalidate(profileStatsProvider);
+                        unawaited(
+                          ref.read(journalControllerProvider).ensureLoaded(),
+                        );
+                        shell.goBranch(3);
+                      },
                     ),
+                  ),
                   Expanded(
                     child: _NavItem(
                       selected: shell.currentIndex == 4,
                       icon: Icons.person_outline,
                       selectedIcon: Icons.person,
                       label: 'Hồ sơ',
-                      // Như MyBot: tab sống trong IndexedStack nên đọc lại số
-                      // liệu và nhật ký mỗi lần mở.
-                      onTap: () {
-                        ref.invalidate(profileStatsProvider);
-                        unawaited(
-                          ref.read(journalControllerProvider).ensureLoaded(),
-                        );
-                        shell.goBranch(4);
-                      },
+                      onTap: () => shell.goBranch(4),
                     ),
                   ),
                   if (admin)
@@ -1039,15 +1018,10 @@ class _Scaffold extends ConsumerWidget {
 }
 
 class _DesktopNavRail extends StatelessWidget {
-  const _DesktopNavRail({
-    required this.shell,
-    required this.admin,
-    required this.myBot,
-  });
+  const _DesktopNavRail({required this.shell, required this.admin});
 
   final StatefulNavigationShell shell;
   final bool admin;
-  final bool myBot;
 
   @override
   Widget build(BuildContext context) {
@@ -1059,7 +1033,7 @@ class _DesktopNavRail extends StatelessWidget {
       0,
       1,
       if (!kIsWeb) 2,
-      if (myBot) 6 else 3,
+      3,
       4,
       if (admin) 5,
     ];
@@ -1080,18 +1054,11 @@ class _DesktopNavRail extends StatelessWidget {
           selectedIcon: Icon(Icons.directions_run_rounded),
           label: Text('Chạy'),
         ),
-      if (myBot)
-        const NavigationRailDestination(
-          icon: Icon(Icons.smart_toy_outlined),
-          selectedIcon: Icon(Icons.smart_toy_rounded),
-          label: Text('MyBot'),
-        )
-      else
-        const NavigationRailDestination(
-          icon: Icon(Icons.map_outlined),
-          selectedIcon: Icon(Icons.map_rounded),
-          label: Text('Hành Trình'),
-        ),
+      const NavigationRailDestination(
+        icon: Icon(Icons.insights_outlined),
+        selectedIcon: Icon(Icons.insights_rounded),
+        label: Text('Hoạt động'),
+      ),
       const NavigationRailDestination(
         icon: Icon(Icons.person_outline),
         selectedIcon: Icon(Icons.person),
