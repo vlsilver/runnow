@@ -785,6 +785,11 @@ type GameKmTable struct {
 	AsOf       *time.Time `json:"asOf,omitempty"` // lúc tính todayKm; nil ở ván thử
 	UnitKm     float64    `json:"unitKm"`         // mốc km cho một kỹ năng đêm, một phiếu
 	Note       string     `json:"note"`
+	// UnitLabel là việc mốc UnitKm quyết với phiếu ("giữ phiếu"); rỗng khi km
+	// không đụng tới phiếu. CutLabel là chữ của đường cắt ở mốc UnitKm, chỉ có
+	// khi người dưới mốc có thể mất phiếu.
+	UnitLabel string `json:"unitLabel,omitempty"`
+	CutLabel  string `json:"cutLabel,omitempty"`
 }
 
 // GameTeamKm là km của cả phe khi luật tính theo phe (phe Sói cắn).

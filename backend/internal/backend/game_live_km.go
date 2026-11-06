@@ -118,8 +118,16 @@ func kmTable(data map[string]any, st *werewolf.State, live *liveKm, wall time.Ti
 		UnitKm:    kmPerUnit(st.Config),
 		Note:      "Km chốt lúc 22h, dùng cho biểu quyết và kỹ năng đêm ngay sau đó. Chạy xong mở app để km kịp đồng bộ.",
 	}
-	if st.Config.VoteMode() == werewolf.VoteFlat {
+	switch st.Config.VoteMode() {
+	case werewolf.VoteFlat:
 		t.Note = "Km chốt lúc 22h, dùng cho kỹ năng đêm ngay sau đó. Chạy xong mở app để km kịp đồng bộ."
+	case werewolf.VoteTop:
+		t.UnitLabel = "tranh x2 phiếu"
+	case werewolf.VoteCut:
+		// Đủ mốc thì chắc giữ phiếu; dưới mốc chỉ mất khi tổng km không đủ
+		// phiếu cho mọi người (PlanVoteCut).
+		t.UnitLabel = "giữ phiếu"
+		t.CutLabel = "Dưới " + formatKm(t.UnitKm) + " km · có thể mất phiếu"
 	}
 	if sameDate(end.AddDate(0, 0, -1), now) {
 		t.LastLabel = "Hôm nay · chốt 22h"
