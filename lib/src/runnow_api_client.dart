@@ -223,8 +223,9 @@ class RunNowApiClient {
     body: {'seq': seq, 'block': block},
   );
 
-  /// Chỉ admin. [roles] là công tắc theo `createOptions.roles`. Ván thử phải
-  /// có [chatId] của group test. Trả id ván mới.
+  /// Chỉ admin. [roles] là công tắc theo `createOptions.roles`, [settings]
+  /// là giá trị theo key của `createOptions.settings`. Ván thử phải có
+  /// [chatId] của group test. Trả id ván mới.
   Future<String> createGame({
     required Map<String, bool> roles,
     DateTime? registrationDeadline,
@@ -232,6 +233,7 @@ class RunNowApiClient {
     String? chatId,
     int? threadId,
     double? kmPerUnit,
+    Map<String, Object>? settings,
   }) async {
     final response = await _send(
       'POST',
@@ -245,6 +247,7 @@ class RunNowApiClient {
         'chatId': ?chatId,
         'threadId': ?threadId,
         'kmPerUnit': ?kmPerUnit,
+        'settings': ?settings,
       },
     );
     return _jsonObject(response)['id'] as String;

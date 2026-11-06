@@ -37,6 +37,60 @@ Map<String, dynamic> _list({required bool canCreate}) => {
   'items': [],
 };
 
+// Ba kiểu tuỳ chọn backend gửi trong createOptions.settings.
+final _settings = [
+  {
+    'key': 'kmOff',
+    'label': 'Không dùng km',
+    'description': 'Kỹ năng không cần km, mỗi người một phiếu.',
+    'type': 'toggle',
+    'default': false,
+  },
+  {
+    'key': 'seerKm',
+    'label': 'Km cho Tiên tri',
+    'description': 'Km Tiên tri phải chạy để soi.',
+    'type': 'number',
+    'default': 1.0,
+    'min': 0,
+    'max': 2,
+    'step': 0.5,
+    'unit': 'km',
+    'enabledIf': [
+      {'key': 'kmOff', 'equals': false},
+    ],
+  },
+  {
+    'key': 'vote',
+    'label': 'Km và phiếu',
+    'description': 'Km tác động lên phiếu thế nào.',
+    'type': 'choice',
+    'default': 'cut',
+    'choices': [
+      {
+        'value': 'cut',
+        'label': 'Thiếu km thì mất phiếu',
+        'description': 'Ít km nhất mất phiếu trước.',
+      },
+      {
+        'value': 'flat',
+        'label': 'Mỗi người một phiếu',
+        'description': 'Km không tác động lên phiếu.',
+      },
+    ],
+    'enabledIf': [
+      {'key': 'kmOff', 'equals': false},
+    ],
+  },
+];
+
+Map<String, dynamic> _listWithSettings() =>
+    _list(canCreate: true)
+      ..['createOptions'] = {
+        ...(_list(canCreate: true)['createOptions'] as Map<String, dynamic>),
+        'settings': _settings,
+      };
+
 void main() {
   late FakeGameBackend backend;
 
@@ -147,6 +201,70 @@ void main() {
 
     expect(find.text('ID topic phải là số.'), findsOneWidget);
     expect(backend.calls, isNot(contains('POST /v1/games')));
+  });
+
+  testWidgets('shows every setting with its description', (tester) async {
+    backend.list = _listWithSettings();
+    await pumpScreen(tester);
+
+    for (final text in [
+      'Không dùng km',
+      'Kỹ năng không cần km, mỗi người một phiếu.',
+      'Km cho Tiên tri',
+      'Km Tiên tri phải chạy để soi.',
+      '1 km',
+      'Km và phiếu',
+      'Km tác động lên phiếu thế nào.',
+      'Thiếu km thì mất phiếu',
+      'Ít km nhất mất phiếu trước.',
+      'Mỗi người một phiếu',
+      'Km không tác động lên phiếu.',
+    ]) {
+      expect(find.text(text), findsOneWidget, reason: text);
+    }
+  });
+
+  testWidgets('sends only the settings the creator changed', (tester) async {
+    backend.list = _listWithSettings();
+    await pumpScreen(tester);
+
+    await tester.tap(find.byTooltip('Tăng Km cho Tiên tri'));
+    await tester.pump();
+    expect(find.text('1.5 km'), findsOneWidget);
+    await tester.tap(find.text('Mỗi người một phiếu'));
+    await tester.pump();
+    await tester.tap(find.text('Mở ván'));
+    await tester.pumpAndSettle();
+
+    final create = backend.requests.singleWhere(
+      (r) => r.method == 'POST' && r.url.path == '/v1/games',
+    );
+    expect((jsonDecode(create.body) as Map)['settings'], {
+      'seerKm': 1.5,
+      'vote': 'flat',
+    });
+  });
+
+  testWidgets('greys out and drops settings whose condition fails', (
+    tester,
+  ) async {
+    backend.list = _listWithSettings();
+    await pumpScreen(tester);
+
+    await tester.tap(find.byTooltip('Tăng Km cho Tiên tri'));
+    await tester.tap(find.text('Không dùng km'));
+    await tester.pump();
+    final plus = tester.widget<IconButton>(
+      find.widgetWithIcon(IconButton, Icons.add_rounded),
+    );
+    expect(plus.onPressed, isNull);
+    await tester.tap(find.text('Mở ván'));
+    await tester.pumpAndSettle();
+
+    final create = backend.requests.singleWhere(
+      (r) => r.method == 'POST' && r.url.path == '/v1/games',
+    );
+    expect((jsonDecode(create.body) as Map)['settings'], {'kmOff': true});
   });
 
   group('contract templates', () {

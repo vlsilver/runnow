@@ -12,6 +12,7 @@ class GameList {
   const GameList({
     required this.canCreate,
     required this.roleOptions,
+    this.settings = const [],
     required this.items,
   });
 
@@ -21,12 +22,16 @@ class GameList {
     return GameList(
       canCreate: viewer['canCreate'] == true,
       roleOptions: _list(createOptions['roles'], GameRoleOption.fromJson),
+      settings: _list(createOptions['settings'], GameSetting.fromJson),
       items: _list(json['items'], GameListItem.fromJson),
     );
   }
 
   final bool canCreate;
   final List<GameRoleOption> roleOptions;
+
+  /// Tuỳ chọn luật của màn tạo ván, theo thứ tự backend gửi.
+  final List<GameSetting> settings;
   final List<GameListItem> items;
 }
 
@@ -48,6 +53,91 @@ class GameRoleOption {
   final String key;
   final String label;
   final bool defaultOn;
+}
+
+/// Một tuỳ chọn trên màn tạo ván (`createOptions.settings`). App vẽ theo
+/// [type] và hiện [label], [description]; backend thêm tuỳ chọn thì app không
+/// phải sửa. [type] lạ thì app bỏ qua, backend tự áp giá trị mặc định.
+class GameSetting {
+  const GameSetting({
+    required this.key,
+    required this.label,
+    required this.description,
+    required this.type,
+    required this.defaultValue,
+    this.min,
+    this.max,
+    this.step,
+    this.unit,
+    this.choices = const [],
+    this.enabledIf = const [],
+  });
+
+  factory GameSetting.fromJson(Map<String, dynamic> json) {
+    return GameSetting(
+      key: _string(json['key']),
+      label: _string(json['label']),
+      description: _string(json['description']),
+      type: _string(json['type']),
+      defaultValue: json['default'],
+      min: (json['min'] as num?)?.toDouble(),
+      max: (json['max'] as num?)?.toDouble(),
+      step: (json['step'] as num?)?.toDouble(),
+      unit: _optString(json['unit']),
+      choices: _list(json['choices'], GameSettingChoice.fromJson),
+      enabledIf: [
+        for (final c in json['enabledIf'] as List? ?? const [])
+          (
+            key: _string((c as Map<String, dynamic>)['key']),
+            equals: c['equals'],
+          ),
+      ],
+    );
+  }
+
+  static const toggle = 'toggle';
+  static const number = 'number';
+  static const choice = 'choice';
+
+  final String key;
+  final String label;
+  final String description;
+  final String type;
+
+  /// bool với toggle, num với number, String với choice.
+  final Object? defaultValue;
+  final double? min;
+  final double? max;
+  final double? step;
+  final String? unit;
+  final List<GameSettingChoice> choices;
+
+  /// Tuỳ chọn chỉ có tác dụng khi mọi điều kiện đúng với giá trị hiện tại.
+  final List<({String key, Object? equals})> enabledIf;
+
+  /// [values] là giá trị hiện tại theo key, đã gồm mặc định.
+  bool enabledBy(Map<String, Object?> values) =>
+      enabledIf.every((c) => values[c.key] == c.equals);
+}
+
+class GameSettingChoice {
+  const GameSettingChoice({
+    required this.value,
+    required this.label,
+    required this.description,
+  });
+
+  factory GameSettingChoice.fromJson(Map<String, dynamic> json) {
+    return GameSettingChoice(
+      value: _string(json['value']),
+      label: _string(json['label']),
+      description: _string(json['description']),
+    );
+  }
+
+  final String value;
+  final String label;
+  final String description;
 }
 
 class GameListItem {

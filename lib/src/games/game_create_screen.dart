@@ -3,14 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_providers.dart';
+import 'package:myrun/src/games/game_settings_panel.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 
-/// Admin mở ván Ma Sói. Vai bật tắt được lấy từ `createOptions` của
-/// `GET /v1/games`, nên thêm vai ở backend thì app không phải sửa.
+/// Admin mở ván Ma Sói. Vai bật tắt được và tuỳ chọn luật lấy từ
+/// `createOptions` của `GET /v1/games`, nên thêm vai hay tuỳ chọn ở backend
+/// thì app không phải sửa.
 class GameCreateScreen extends ConsumerStatefulWidget {
   const GameCreateScreen({super.key});
 
@@ -20,6 +22,9 @@ class GameCreateScreen extends ConsumerStatefulWidget {
 
 class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   final _roles = <String, bool>{};
+
+  /// Chỉ giữ tuỳ chọn người tạo đã chỉnh; còn lại backend tự áp mặc định.
+  final _settings = <String, Object>{};
   DateTime? _deadline;
   bool _testMode = false;
   final _chatId = TextEditingController();
@@ -60,6 +65,23 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     });
   }
 
+  /// Giá trị hiện tại của mọi tuỳ chọn, chưa chỉnh thì lấy mặc định.
+  Map<String, Object?> _settingValues(List<GameSetting> settings) => {
+    for (final s in settings) s.key: _settings[s.key] ?? s.defaultValue,
+  };
+
+  /// Gửi tuỳ chọn đã chỉnh và đang có tác dụng; null khi không có.
+  Map<String, Object>? _settingsToSend(GameList list) {
+    final settings = list.settings.where(gameSettingSupported).toList();
+    final values = _settingValues(settings);
+    final out = {
+      for (final s in settings)
+        if (_settings.containsKey(s.key) && s.enabledBy(values))
+          s.key: _settings[s.key]!,
+    };
+    return out.isEmpty ? null : out;
+  }
+
   Future<void> _create(GameList list) async {
     final threadText = _threadId.text.trim();
     final threadId = threadText.isEmpty ? null : int.tryParse(threadText);
@@ -83,6 +105,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
             testMode: _testMode,
             chatId: _testMode ? _chatId.text.trim() : null,
             threadId: threadId,
+            settings: _settingsToSend(list),
           );
       ref.invalidate(gameListProvider);
       if (mounted) context.pushReplacement('/games/$id');
@@ -122,6 +145,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
 
   Widget _form(GameList list) {
     final deadline = _deadline;
+    final settings = list.settings.where(gameSettingSupported).toList();
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 48),
       children: [
@@ -140,6 +164,18 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
             ],
           ),
         ),
+        if (settings.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          GlassPanel(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: GameSettingsPanel(
+              settings: settings,
+              values: _settingValues(settings),
+              enabled: !_working,
+              onChanged: (key, value) => setState(() => _settings[key] = value),
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
         GlassPanel(
           padding: const EdgeInsets.symmetric(vertical: 8),
