@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
+import 'package:myrun/src/games/game_card_art.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_detail_screen.dart';
 import 'package:myrun/src/games/game_my_card.dart';
@@ -164,9 +165,7 @@ void main() {
     await close(tester);
   });
 
-  testWidgets('the page follows the app theme, the night scene stays night', (
-    tester,
-  ) async {
+  testWidgets('the page stays moonlit on a light app theme', (tester) async {
     backend.game = {
       'id': 'g1',
       'title': 'Ma Sói tuần 42',
@@ -174,22 +173,23 @@ void main() {
       'statusLabel': 'Đang chơi',
       'refreshAfterSeconds': 300,
     };
-    final app = buildRunNowTheme(
-      RunNowElement.fire,
-      appearance: RunNowAppearance.light,
+    await pumpScreen(
+      tester,
+      theme: buildRunNowTheme(
+        RunNowElement.fire,
+        appearance: RunNowAppearance.light,
+      ),
     );
-    await pumpScreen(tester, theme: app);
 
-    RunNowPalette paletteAt(Finder finder) =>
-        Theme.of(tester.element(finder)).extension<RunNowPalette>()!;
+    final theme = Theme.of(tester.element(find.byType(Scaffold)));
+    // Nền và nhấn của canvas ánh trăng: mực #020306, hổ phách #E5B04C.
+    expect(theme.brightness, Brightness.dark);
     expect(
-      paletteAt(find.byType(Scaffold)).background,
-      app.extension<RunNowPalette>()!.background,
+      theme.extension<RunNowPalette>()!.background,
+      const Color(0xFF020306),
     );
-    expect(
-      paletteAt(find.byType(GameMoon)).accent,
-      gameNightTheme().extension<RunNowPalette>()!.accent,
-    );
+    expect(theme.colorScheme.primary, const Color(0xFFE5B04C));
+    expect(find.byType(GameMoonEmblem), findsOneWidget);
     await close(tester);
   });
 

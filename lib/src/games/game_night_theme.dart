@@ -120,6 +120,129 @@ ThemeData gameNightTheme() {
   );
 }
 
+typedef _M = RunNowMoonlitTokens;
+
+/// Theme của trang ván Ma Sói: luôn tối, tông ánh trăng, không theo sáng/tối
+/// hay hành của app, vì trang ván là một bàn chơi riêng.
+ThemeData gameMoonlitTheme() {
+  final base = buildRunNowTheme(
+    RunNowElement.fire,
+    appearance: RunNowAppearance.dark,
+  );
+  final palette = base.extension<RunNowPalette>()!.copyWith(
+    accent: _M.amber,
+    accentDeep: _M.amberDeep,
+    secondary: _M.amberStrong,
+    tertiary: _M.amberBright,
+    ink: _M.ink,
+    tint: _M.lifted,
+    textMuted: _M.muted,
+    background: _M.page,
+    backgroundMid: _M.pageMid,
+    backgroundDeep: _M.page,
+    glassStart: _M.panelTop,
+    glassEnd: _M.panelBottom,
+    gridMinor: Colors.transparent,
+    gridMajor: Colors.transparent,
+    glowStrong: Colors.transparent,
+    glowSoft: Colors.transparent,
+    border: _M.border,
+    foreground: _M.ink,
+  );
+  final scheme = base.colorScheme.copyWith(
+    brightness: Brightness.dark,
+    primary: _M.amber,
+    onPrimary: _M.onAmber,
+    secondary: _M.amberStrong,
+    onSecondary: _M.onAmber,
+    secondaryContainer: _M.lifted,
+    onSecondaryContainer: _M.amberSoft,
+    error: _M.danger,
+    surface: _M.panel,
+    onSurface: _M.ink,
+    onSurfaceVariant: _M.muted,
+    outline: _M.borderStrong,
+    outlineVariant: _M.border,
+  );
+  final textTheme = base.textTheme.apply(
+    bodyColor: _M.ink,
+    displayColor: _M.ink,
+  );
+  return base.copyWith(
+    brightness: Brightness.dark,
+    colorScheme: scheme,
+    textTheme: textTheme,
+    extensions: [palette],
+    scaffoldBackgroundColor: _M.page,
+    canvasColor: _M.panel,
+    dividerColor: _M.divider,
+    appBarTheme: base.appBarTheme.copyWith(
+      backgroundColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      foregroundColor: _M.ink,
+      titleTextStyle: base.appBarTheme.titleTextStyle?.copyWith(
+        color: _M.ink,
+        fontSize: 17,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: _M.amber,
+        foregroundColor: _M.onAmber,
+        textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: _M.ink,
+        side: const BorderSide(color: _M.borderStrong, width: 1.5),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(foregroundColor: _M.amberSoft),
+    ),
+    progressIndicatorTheme: const ProgressIndicatorThemeData(color: _M.amber),
+    dialogTheme: const DialogThemeData(backgroundColor: _M.raised),
+    snackBarTheme: const SnackBarThemeData(
+      backgroundColor: _M.lifted,
+      contentTextStyle: TextStyle(color: _M.ink),
+    ),
+    expansionTileTheme: const ExpansionTileThemeData(
+      iconColor: _M.amber,
+      collapsedIconColor: _M.muted,
+      textColor: _M.ink,
+      collapsedTextColor: _M.ink,
+    ),
+  );
+}
+
+/// Nền trang ván: quầng xanh mực ở đỉnh tan dần vào đen.
+class GameMoonlitBackdrop extends StatelessWidget {
+  const GameMoonlitBackdrop({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment.topCenter,
+          radius: 1.4,
+          colors: [_M.pageTop, _M.pageMid, _M.page],
+          stops: [0, 0.45, 1],
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
 /// Nền đêm: quầng tím ở đỉnh tan dần vào mực.
 class GameNightBackdrop extends StatelessWidget {
   const GameNightBackdrop({super.key, required this.child, this.glow});

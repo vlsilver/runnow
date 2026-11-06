@@ -216,9 +216,7 @@ class RunNowGameTokens {
   static const dayMid = Color(0xFF1A1420);
   static const dayBottom = Color(0xFF120F18);
   static const dayBorder = Color(0x59E9C45A);
-  static const sunLight = Color(0xFFFFF7D6);
   static const sunMid = Color(0xFFF0C75E);
-  static const sunShade = Color(0xFFB98A24);
   static const cardFieldTop = Color(0xFF26272F);
   static const cardFieldBottom = Color(0xFF121318);
   static const cardArt = Color(0xFF0D0E14);
@@ -271,15 +269,61 @@ class RunNowGameTokens {
   static const backLineStrong = Color(0xCCE9C45A);
   static const backLine = Color(0x80E9C45A);
   static const backLineSoft = Color(0x40E9C45A);
-  static const moonLight = Color(0xFFFFFBE8);
-  static const moonMid = Color(0xFFE8DFC0);
-  static const moonShade = Color(0xFFB9AE8A);
-  static const moonGlow = Color(0xFFFFF8D6);
   static const holoClear = Color(0x00FFF0DC);
   static const holoCream = Color(0xFFFFE2C4);
   static const holoIce = Color(0xFFD6ECF0);
   static const holoPearl = Color(0xFFF2F0EA);
   static const sparkleWarm = Color(0xFFFFF6C8);
+}
+
+/// Trang ván Ma Sói tông ánh trăng: nền mực xanh đen, chữ trắng xám, nhấn hổ
+/// phách. Trang ván luôn tối, không theo sáng/tối hay hành của app.
+class RunNowMoonlitTokens {
+  const RunNowMoonlitTokens._();
+
+  static const pageTop = Color(0xFF0B101C);
+  static const pageMid = Color(0xFF05070C);
+  static const page = Color(0xFF020306);
+  static const panel = Color(0xFF090D16);
+  static const panelTop = Color(0xFF0A0F19);
+  static const panelBottom = Color(0xFF060910);
+  static const raised = Color(0xFF0C121F);
+  static const lifted = Color(0xFF101727);
+  static const heroTop = Color(0xFF151E33);
+  static const heroMid = Color(0xFF0A0E18);
+  static const heroBottom = Color(0xFF04060A);
+  static const tabBar = Color(0xF5090D16);
+  static const list = Color(0xD90A0E18);
+  static const well = Color(0x8C020306);
+  static const border = Color(0xFF1A253F);
+  static const borderStrong = Color(0xFF283A62);
+  static const divider = Color(0xFF131B2D);
+  static const ink = Color(0xFFE8EAEE);
+  static const inkSoft = Color(0xFFD6DAE2);
+  static const muted = Color(0xFFC0C5D1);
+  static const faint = Color(0xFF939CB1);
+  static const track = Color(0x1AECE7DD);
+  static const barLow = Color(0xFF253459);
+  static const amber = Color(0xFFE5B04C);
+  static const amberBright = Color(0xFFF9CC78);
+  static const amberStrong = Color(0xFFE2A533);
+  static const amberDeep = Color(0xFF9B6D16);
+  static const amberSoft = Color(0xFFFAD48E);
+  static const amberLight = Color(0xFFFBDDA4);
+  static const amberPale = Color(0xFFFCE5BA);
+  static const amberCream = Color(0xFFFDF0D8);
+  static const amberTint = Color(0x38E4AA3F);
+  static const amberLine = Color(0x59E4AA3F);
+  static const amberGlow = Color(0x408C6214);
+  static const onAmber = Color(0xFF0B1222);
+  static const danger = Color(0xFFFFB3A3);
+
+  // Biểu tượng sói trong trăng: trăng hổ phách, bóng sói mực, viền nhũ.
+  static const emblemCore = Color(0xFFFFE7B0);
+  static const emblemRim = Color(0xFFC58918);
+  static const emblemGlow = Color(0x33F2BE5C);
+  static const emblemDark = Color(0xFF05070C);
+  static const emblemFoil = Color(0xFFF9CC78);
 }
 
 /// Robot trên thẻ MyBot. Thân và kính giữ một màu ở mọi hành để nhìn ra cùng

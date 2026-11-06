@@ -474,3 +474,55 @@ void _paintWolfMoon(
         ..strokeWidth = 0.8,
     );
 }
+
+typedef _M = RunNowMoonlitTokens;
+
+const _moonlit = (
+  top: _M.raised,
+  bottom: _M.page,
+  core: _M.emblemCore,
+  rim: _M.emblemRim,
+  glow: _M.emblemGlow,
+  dark: _M.emblemDark,
+);
+
+/// Biểu tượng Ma Sói không theo phe: sói hú trong trăng hổ phách, nền trong
+/// suốt. Dùng ở header trang ván và mặt úp của lá bài, nên không lộ vai.
+class GameMoonEmblem extends StatelessWidget {
+  const GameMoonEmblem({super.key, required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Ma Sói',
+      child: RepaintBoundary(
+        child: CustomPaint(
+          size: Size.square(size),
+          painter: const _MoonEmblemPainter(),
+        ),
+      ),
+    );
+  }
+}
+
+class _MoonEmblemPainter extends CustomPainter {
+  const _MoonEmblemPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Vòng nhũ ngoài cùng ở r + 11 trên khung 200 của thiết kế: r = 70.
+    final r = size.shortestSide * 0.35;
+    final scale = r / 70;
+    canvas
+      ..save()
+      ..translate(size.width / 2, size.height / 2)
+      ..scale(scale);
+    _paintWolfMoon(canvas, Offset.zero, 70, _moonlit, _M.emblemFoil);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_MoonEmblemPainter old) => false;
+}
