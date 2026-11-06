@@ -8,6 +8,7 @@ import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/repository.dart';
 import 'package:myrun/src/screens/journal_screen.dart';
 import 'package:myrun/src/theme_controller.dart';
+import 'package:myrun/src/widgets/run_now_empty.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 
 /// Trả nhật ký theo trang, mới trước, như backend; còn lại không dùng tới.
@@ -149,7 +150,7 @@ void main() {
     await tester.tap(find.text('Đạp xe'));
     await tester.pumpAndSettle();
     expect(find.text('Đạp xe xa'), findsOneWidget);
-    expect(find.text('Chưa có hoạt động.'), findsNothing);
+    expect(find.byType(RunNowEmpty), findsNothing);
   });
 
   testWidgets('tab đang tự tải giữ icon tải liên tục giữa hai trang', (
@@ -175,5 +176,20 @@ void main() {
     repository.gates[1].complete();
     await tester.pump();
     expect(find.byType(RunNowLoading), findsOneWidget);
+  });
+
+  testWidgets('tab không có buổi nào báo rỗng bằng câu của tab đó', (
+    tester,
+  ) async {
+    await _pumpJournal(tester, [_activity('Chạy sáng', ActivityKind.run, 1)]);
+
+    await tester.tap(find.text('Đạp xe'));
+    await tester.pumpAndSettle();
+    expect(find.byType(RunNowEmpty), findsOneWidget);
+    expect(find.text('Chưa có buổi đạp xe nào'), findsOneWidget);
+
+    await tester.tap(find.text('Đi bộ'));
+    await tester.pumpAndSettle();
+    expect(find.text('Chưa có buổi đi bộ nào'), findsOneWidget);
   });
 }

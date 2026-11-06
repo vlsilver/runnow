@@ -18,6 +18,7 @@ import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
+import 'package:myrun/src/widgets/run_now_empty.dart';
 
 /// Tab Hồ sơ: đều đặn và tiến bộ của riêng buổi chạy, theo Ngày/Tuần/Tháng/
 /// Năm. Cài đặt nằm dưới `/me/settings`.
@@ -1108,7 +1109,7 @@ class _JournalSectionState extends ConsumerState<_JournalSection> {
         ],
       );
     } else {
-      body = _Muted('Chưa có buổi chạy nào.');
+      body = const RunNowEmpty(compact: true, message: 'Chưa có hoạt động nào');
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1153,7 +1154,13 @@ class _CardShelfSection extends ConsumerWidget {
           const RunNowLoading(compact: true, label: 'Đang mở bộ thẻ'),
       error: (error, _) => _Muted('Không tải được bộ thẻ: $error'),
       data: (cards) {
-        if (cards.isEmpty) return _Muted(collectedCardsEmpty);
+        if (cards.isEmpty) {
+          return const RunNowEmpty(
+            compact: true,
+            message: collectedCardsEmpty,
+            hint: collectedCardsEmptyHint,
+          );
+        }
         final owner = runCardOwnerName(ref);
         final rest = cards.skip(1).take(_shelfCardCount - 1).toList();
         return Column(

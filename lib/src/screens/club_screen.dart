@@ -17,6 +17,7 @@ import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
+import 'package:myrun/src/widgets/run_now_empty.dart';
 
 class ClubScreen extends ConsumerWidget {
   const ClubScreen({super.key});
@@ -441,22 +442,12 @@ class _RankingList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
     return GlassPanel(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       borderRadius: 22,
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: ranked.isEmpty
-          ? Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
-              child: Center(
-                child: Text(
-                  _emptyText(sport, range),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: palette.textMuted),
-                ),
-              ),
-            )
+          ? RunNowEmpty(compact: true, message: _emptyText(sport, range))
           : Column(
               children: [
                 for (var index = 0; index < ranked.length; index++) ...[

@@ -10,6 +10,7 @@ import 'package:myrun/src/steps_format.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/run_now_empty.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 
 class JournalScreen extends ConsumerStatefulWidget {
@@ -66,6 +67,11 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
                     ? const _JournalLoadingList()
                     : _JournalPagedList(
                         key: PageStorageKey(tab),
+                        emptyMessage: switch (tab) {
+                          JournalTab.run => 'Chưa có buổi chạy nào',
+                          JournalTab.walk => 'Chưa có buổi đi bộ nào',
+                          JournalTab.ride => 'Chưa có buổi đạp xe nào',
+                        },
                         rows: _mergeJournalRows(
                           tab: tab,
                           items: journal.items,
@@ -360,6 +366,7 @@ class _JournalPagedList extends StatefulWidget {
   const _JournalPagedList({
     super.key,
     required this.rows,
+    required this.emptyMessage,
     required this.error,
     required this.hasMore,
     required this.loadingMore,
@@ -368,6 +375,7 @@ class _JournalPagedList extends StatefulWidget {
   });
 
   final List<_JournalRow> rows;
+  final String emptyMessage;
   final Object? error;
   final bool hasMore;
   final bool loadingMore;
@@ -425,16 +433,18 @@ class _JournalPagedListState extends State<_JournalPagedList> {
         controller: _controller,
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          Padding(
-            padding: const EdgeInsets.all(32),
-            child: Center(
-              child: Text(
-                widget.error == null
-                    ? 'Chưa có hoạt động.'
-                    : 'Không thể tải nhật ký: ${widget.error}',
+          if (widget.error == null)
+            RunNowEmpty(
+              message: widget.emptyMessage,
+              hint: 'Buổi từ 3i, Strava, Garmin, Apple Health sẽ hiện ở đây.',
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.all(32),
+              child: Center(
+                child: Text('Không thể tải nhật ký: ${widget.error}'),
               ),
             ),
-          ),
         ],
       );
     }

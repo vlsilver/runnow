@@ -21,6 +21,7 @@ import 'package:myrun/src/widgets/live_route_view.dart';
 import 'package:myrun/src/widgets/photo_viewer.dart';
 import 'package:myrun/src/widgets/route_map.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
+import 'package:myrun/src/widgets/run_now_empty.dart';
 
 class RunContractDetailScreen extends ConsumerStatefulWidget {
   const RunContractDetailScreen({required this.contractId, super.key});
@@ -1418,12 +1419,9 @@ class _ContractPhotoAlbumLoader extends ConsumerWidget {
             for (final photo in item.activity.photos) photo.id: photo,
         }.values.toList();
         if (photos.isEmpty) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Text(
-              'Chưa có ảnh nào trong kèo này.',
-              style: TextStyle(color: context.runNowPalette.textMuted),
-            ),
+          return const RunNowEmpty(
+            compact: true,
+            message: 'Chưa có ảnh nào trong kèo này',
           );
         }
         return _ContractPhotoAlbum(photos: photos);

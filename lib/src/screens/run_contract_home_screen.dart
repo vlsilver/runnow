@@ -17,6 +17,7 @@ import 'package:myrun/src/training_plan/training_plan_repository.dart';
 import 'package:myrun/src/web_layout.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
+import 'package:myrun/src/widgets/run_now_empty.dart';
 
 class RunContractHomeScreen extends ConsumerStatefulWidget {
   const RunContractHomeScreen({super.key});
@@ -709,20 +710,8 @@ class _EmptyContracts extends StatelessWidget {
     };
     return GlassPanel(
       borderRadius: 0,
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          Icon(
-            Icons.flag_outlined,
-            size: 44,
-            color: context.runNowPalette.accent,
-          ),
-          const SizedBox(height: 12),
-          Text(title, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 6),
-          Text(subtitle),
-        ],
-      ),
+      padding: EdgeInsets.zero,
+      child: RunNowEmpty(message: title, hint: subtitle),
     );
   }
 }

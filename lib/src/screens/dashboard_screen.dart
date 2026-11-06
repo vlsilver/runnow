@@ -21,6 +21,7 @@ import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/nav_filter.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
+import 'package:myrun/src/widgets/run_now_empty.dart';
 import 'package:myrun/src/widgets/training_volume_chart.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -828,9 +829,10 @@ class _RecentActivitiesCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           if (recent.isEmpty)
-            Text(
-              'Chưa có hoạt động. Bấm đồng bộ để tải nhật ký Strava.',
-              style: TextStyle(color: onSurface.withValues(alpha: 0.6)),
+            const RunNowEmpty(
+              compact: true,
+              message: 'Chưa có hoạt động',
+              hint: 'Bấm đồng bộ để tải nhật ký Strava.',
             )
           else
             for (var index = 0; index < recent.take(4).length; index++)

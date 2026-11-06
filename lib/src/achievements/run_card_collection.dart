@@ -16,6 +16,7 @@ import 'package:myrun/src/run_contracts/contract_card_models.dart';
 import 'package:myrun/src/run_contracts/widgets/contract_card_panel.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
+import 'package:myrun/src/widgets/run_now_empty.dart';
 
 /// Tên in trên thẻ của chính mình.
 String runCardOwnerName(WidgetRef ref) =>
@@ -244,10 +245,12 @@ final collectedCardsProvider =
     });
 
 /// Câu khi bộ thẻ còn trống.
-const collectedCardsEmpty =
-    'Chưa có thẻ nào. Lật thẻ sau buổi chạy, thắng một ván Ma Sói, về đích '
-    'một chặng Hành trình, đạt một kèo, hoặc vào top 10 BXH tuần, tháng để có '
-    'thẻ đầu tiên.';
+const collectedCardsEmpty = 'Chưa có thẻ nào';
+
+/// Gợi ý cách có thẻ, đi kèm [collectedCardsEmpty].
+const collectedCardsEmptyHint =
+    'Lật thẻ sau buổi chạy, thắng một ván Ma Sói, về đích một chặng Hành '
+    'trình, đạt một kèo, hoặc vào top 10 BXH tuần, tháng để có thẻ đầu tiên.';
 
 /// Thẻ thu nhỏ theo bề ngang [width]; chạm để xem 3D.
 class CollectedCardThumb extends StatelessWidget {
@@ -320,7 +323,10 @@ class _RunCardCollectionScreenState
         loading: () => const Center(child: RunNowLoading()),
         error: (error, _) => _Note('Không tải được bộ thẻ: $error'),
         data: (cards) => cards.isEmpty
-            ? const _Note(collectedCardsEmpty)
+            ? const RunNowEmpty(
+                message: collectedCardsEmpty,
+                hint: collectedCardsEmptyHint,
+              )
             : _grid(cards, owner),
       ),
     );
