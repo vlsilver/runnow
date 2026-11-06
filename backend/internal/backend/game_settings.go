@@ -86,6 +86,19 @@ func scheduleSetting(s GameSetting, set func(*werewolf.Schedule, int)) gameSetti
 	}}
 }
 
+// extendedRoleSetting bật một vai mở rộng (werewolf.ExtendedRoles); key là tên vai.
+func extendedRoleSetting(role werewolf.Role, label, desc string) gameSettingDef {
+	return gameSettingDef{
+		GameSetting: GameSetting{Key: string(role), Label: label, Description: desc, Type: settingToggle, Default: false},
+		keepDefault: true,
+		apply: func(c *werewolf.Config, v any) {
+			if v.(bool) {
+				c.Extended = append(c.Extended, role)
+			}
+		},
+	}
+}
+
 func setSkillKm(c *werewolf.Config, role werewolf.Role, km float64) {
 	if c.SkillKm == nil {
 		c.SkillKm = map[werewolf.Role]float64{}
@@ -101,6 +114,8 @@ var gameSettingDefs = []gameSettingDef{
 		keepDefault: true,
 		apply:       func(c *werewolf.Config, v any) { c.ExtraWolves = int(v.(float64)) },
 	},
+	extendedRoleSetting(werewolf.Elder, "Thêm Già làng",
+		"Một Dân thành Già làng. Già làng thuộc phe Dân, chịu được một lần bị sói cắn: cú cắn đầu tiên không ai bảo vệ hay cứu thì vẫn sống, sáng ra làng chỉ thấy đêm đó không ai chết. Cú cắn sau, bị độc, bị treo hay bị bắn thì chết như thường."),
 	{
 		GameSetting: GameSetting{Key: "kmOff", Label: "Không dùng km", Type: settingToggle, Default: false,
 			Description: "Bật thì ván chơi như Ma Sói thường: kỹ năng không cần km, mỗi người một phiếu, group không hiện bảng km. Các tuỳ chọn km bên dưới hết tác dụng."},

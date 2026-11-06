@@ -1114,6 +1114,8 @@ func (r *outboxRenderer) privateText(evs []werewolf.Event, wolfShort string) str
 				line += ", " + c
 			}
 			lines = append(lines, line+".")
+		case werewolf.EventSurvived:
+			lines = append(lines, "Đêm qua sói cắn bạn nhưng Già làng chịu được một lần nên bạn vẫn sống. Cú cắn sau sẽ chết.")
 		case werewolf.EventLovers:
 			line := fmt.Sprintf("Bạn được ghép đôi với %s, lá bài %s. Một người chết thì người kia chết theo.", r.name(e.UID), roleLabels[e.Role])
 			if e.Draw {

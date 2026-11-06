@@ -49,6 +49,9 @@ type Player struct {
 	Cause      Cause `json:"cause,omitempty"`
 	// ShotOpened: thợ săn đã được mở lượt bắn (R5), giữ cả sau khi lượt đóng.
 	ShotOpened bool `json:"shotOpened,omitempty"`
+	// SurvivedRound là vòng Già làng thoát cú cắn đầu tiên; 0 là chưa thoát lần
+	// nào, cú cắn kế không giết.
+	SurvivedRound int `json:"survivedRound,omitempty"`
 }
 
 // HunterTurn là lượt bắn của thợ săn vừa chết (R5). Khung giờ do E5 giữ: 10h–12h
@@ -98,6 +101,7 @@ type State struct {
 // NewState dựng ván lúc Start, sau khi đã chia vai. Đêm 1 là FirstNight(start).
 func NewState(seed Seed, cfg Config, roles map[string]Role, start time.Time) *State {
 	cfg.Disabled = append([]Role(nil), cfg.Disabled...) // chụp cấu hình (R10)
+	cfg.Extended = append([]Role(nil), cfg.Extended...)
 	st := &State{Config: cfg, Seed: seed, Round: 1, Phase: PhaseSetup, NightAt: cfg.FirstNight(start), Players: map[string]*Player{}, SavePotion: true, PoisonPotion: true}
 	for uid, r := range roles {
 		st.Players[uid] = &Player{Role: r, Alive: true}

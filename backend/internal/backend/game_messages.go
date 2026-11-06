@@ -174,7 +174,7 @@ func stepMessages(before, after *werewolf.State, evs []werewolf.Event) []gameMsg
 	private := map[string][]werewolf.Event{}
 	for _, e := range evs {
 		switch e.Kind {
-		case werewolf.EventVoid, werewolf.EventDeath:
+		case werewolf.EventVoid, werewolf.EventDeath, werewolf.EventSurvived:
 			private[e.UID] = append(private[e.UID], e)
 		case werewolf.EventLovers:
 			// Mỗi người yêu được biết người kia và vai của người kia (R6).

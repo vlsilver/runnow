@@ -30,6 +30,7 @@ const (
 	EventHunterTurn   EventKind = "hunter_turn"   // UID
 	EventVoid         EventKind = "void"          // UID = actor, Action, Reason (R19)
 	EventWinner       EventKind = "winner"        // Team, Reason
+	EventSurvived     EventKind = "survived"      // UID = Già làng vừa thoát cú cắn đầu tiên, chỉ người đó biết
 )
 
 // Event là kết quả có cấu trúc của một bước, dùng để ghi events/{seq}, render
@@ -287,8 +288,15 @@ func (r *resolver) resolveNight() {
 		r.kill(poisoned, CausePoison)
 	}
 	// Bảo vệ và phù thuỷ cùng cứu một người thì người đó sống, bình vẫn mất (R15).
+	// Già làng thoát cú cắn đầu tiên không ai đỡ; được đỡ thì chưa mất lần thoát,
+	// vừa chết vì độc thì không còn gì để thoát.
 	if victim != "" && victim != guarded && !saved {
-		r.kill(victim, CauseBite)
+		if p := r.st.Players[victim]; p.Alive && p.Role == Elder && p.SurvivedRound == 0 {
+			p.SurvivedRound = r.st.Round
+			r.emit(Event{Kind: EventSurvived, UID: victim})
+		} else {
+			r.kill(victim, CauseBite)
+		}
 	}
 	r.killLovers()
 	r.st.Bitten = ""

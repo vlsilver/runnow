@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // Role là vai của một người chơi. Giá trị chuỗi được lưu vào Firestore, đừng đổi.
@@ -20,13 +21,24 @@ const (
 	Hunter   Role = "hunter"
 	Cupid    Role = "cupid"
 	Villager Role = "villager"
+	// Vai mở rộng: chỉ có trong bộ bài khi admin bật (Config.Extended).
+	Elder Role = "elder"
 )
 
 // specialRoles theo thứ tự thêm vào khi số người tăng (bảng 1.2).
 var specialRoles = []Role{Seer, Guard, Witch, Hunter, Cupid}
 
-// ValidRole: r là một trong các vai ở bảng 1.1.
-func ValidRole(r Role) bool { return r == Wolf || r == Villager || isSpecial(r) }
+// extendedRoles là vai mở rộng, theo thứ tự thêm vào bộ bài. Mỗi vai bật lên
+// lấy chỗ của một Dân, nên ván không bật giữ nguyên bộ bài cũ.
+var extendedRoles = []Role{Elder}
+
+// ExtendedRoles trả các vai mở rộng theo thứ tự cố định.
+func ExtendedRoles() []Role { return append([]Role(nil), extendedRoles...) }
+
+// ValidRole: r là một trong các vai ở bảng 1.1, hoặc vai mở rộng.
+func ValidRole(r Role) bool {
+	return r == Wolf || r == Villager || isSpecial(r) || slices.Contains(extendedRoles, r)
+}
 
 func isSpecial(r Role) bool {
 	for _, s := range specialRoles {
@@ -64,6 +76,8 @@ type Config struct {
 	// Schedule là khung giờ hoạt động; nil là lịch gốc: một vòng một ngày, mở
 	// đêm lúc 22h.
 	Schedule *Schedule `json:"schedule,omitempty"`
+	// Extended là các vai mở rộng admin bật, mỗi vai một lá thay cho một Dân.
+	Extended []Role `json:"extended,omitempty"`
 }
 
 // Schedule: mỗi ngày Rounds vòng nối nhau, vòng đầu mở đêm lúc StartHour giờ
@@ -125,6 +139,14 @@ func (c Config) Validate() error {
 	}
 	if c.TopVoters < 0 || c.TopVoters > MaxPlayers {
 		return fmt.Errorf("topVoters phải từ 0 tới %d: %v", MaxPlayers, c.TopVoters)
+	}
+	for i, r := range c.Extended {
+		if !slices.Contains(extendedRoles, r) {
+			return fmt.Errorf("vai %q không phải vai mở rộng", r)
+		}
+		if slices.Contains(c.Extended[:i], r) {
+			return fmt.Errorf("vai mở rộng %q bị bật hai lần", r)
+		}
 	}
 	for r, km := range c.SkillKm {
 		if !kmRole(r) {

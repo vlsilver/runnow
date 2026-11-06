@@ -3,6 +3,7 @@ package werewolf
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 )
 
@@ -41,6 +42,12 @@ func Composition(n int, cfg Config) ([]Role, error) {
 	}
 	for _, r := range specialRoles[:specials] {
 		if !cfg.disabled(r) {
+			roles = append(roles, r)
+		}
+	}
+	// Sói tối đa n/3 cộng 5 vai đặc biệt vẫn chừa chỗ cho mọi vai mở rộng khi n >= 10.
+	for _, r := range extendedRoles {
+		if slices.Contains(cfg.Extended, r) {
 			roles = append(roles, r)
 		}
 	}

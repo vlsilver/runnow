@@ -1183,6 +1183,9 @@ func (s *GameStore) notes(ctx context.Context, game *firestore.DocumentRef, st *
 	if partner := loverOf(st, uid); partner != "" {
 		notes = append(notes, GameNote{Round: 1, Text: fmt.Sprintf("Người yêu của bạn: %s (%s).", name(partner), roleLabels[st.Players[partner].Role])})
 	}
+	if me.Role == werewolf.Elder && me.SurvivedRound > 0 {
+		notes = append(notes, GameNote{Round: me.SurvivedRound, Text: "Bạn đã thoát một cú cắn của sói. Cú cắn sau sẽ chết."})
+	}
 	if me.Role == werewolf.Witch && me.Alive && st.Phase == werewolf.PhaseDawn {
 		text := "Đêm nay không ai bị cắn."
 		if st.Bitten != "" {
