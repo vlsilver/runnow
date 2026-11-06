@@ -534,6 +534,23 @@ func TestEmulatorGameListHidesOldClosedGames(t *testing.T) {
 	}
 }
 
+// Ván đã hết rời feed sau một ngày nhưng vẫn nằm trong lịch sử của người đã
+// chơi, để app hiện ở mục kèo hoàn thành. Người không chơi không thấy.
+func TestEmulatorGameHistoryListsEndedGamesIPlayed(t *testing.T) {
+	g, h := runningAPIGame(t)
+	if items := h.call("v1", "GET", "/v1/games/history", nil, "").body["items"].([]any); len(items) != 0 {
+		t.Fatalf("ván đang chạy mà vào lịch sử: %v", items)
+	}
+	seedMerge(t, g, map[string]any{"status": gameEnded, "updatedAt": time.Now().Add(-30 * 24 * time.Hour)})
+	items := h.call("v1", "GET", "/v1/games/history", nil, "").body["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["id"] != g.id || items[0].(map[string]any)["status"] != gameEnded {
+		t.Fatalf("người chơi: items = %v", items)
+	}
+	if items := h.call("outsider", "GET", "/v1/games/history", nil, "").body["items"].([]any); len(items) != 0 {
+		t.Fatalf("người ngoài: items = %v", items)
+	}
+}
+
 func TestEmulatorGameListHidesCancelledGames(t *testing.T) {
 	g, h := runningAPIGame(t)
 	if err := g.store.AdminCancel(context.Background(), g.id, "admin", time.Now()); err != nil {

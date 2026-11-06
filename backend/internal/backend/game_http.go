@@ -21,6 +21,13 @@ func (s *Server) gameRoutes() {
 		}
 		return writeJSON(w, 200, list)
 	}))
+	s.route("GET /v1/games/history", s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+		items, err := s.deps.Games.History(r.Context(), v)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"items": items})
+	}))
 	s.route("POST /v1/games", s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
 		var body CreateGameRequest
 		if err := decodeJSON(r, &body); err != nil {

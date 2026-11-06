@@ -320,6 +320,41 @@ func (s *GameStore) List(ctx context.Context, v GameViewer, wall time.Time) (Gam
 	return out, nil
 }
 
+// gameHistoryScan: số ván mới nhất History xét. Ván Ma Sói mở chừng một ván
+// một tuần, nên 50 ván là gần một năm.
+const gameHistoryScan = 50
+
+// History trả các ván đã kết thúc mà v đã đăng ký chơi, mới tạo trước, trong
+// gameHistoryScan ván mới nhất. App hiện ở mục kèo hoàn thành; khác List, ván
+// không rời danh sách sau gameListKeepClosed.
+func (s *GameStore) History(ctx context.Context, v GameViewer) ([]GameListItem, error) {
+	docs, err := s.db.Collection("games").OrderBy("createdAt", firestore.Desc).Limit(gameHistoryScan).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	var ended []*firestore.DocumentSnapshot
+	for _, d := range docs {
+		if stringValue(d.Data()["status"]) == gameEnded {
+			ended = append(ended, d)
+		}
+	}
+	refs := make([]*firestore.DocumentRef, len(ended))
+	for i, d := range ended {
+		refs[i] = d.Ref.Collection("players").Doc(v.UID)
+	}
+	mine, err := s.db.GetAll(ctx, refs)
+	if err != nil {
+		return nil, err
+	}
+	out := []GameListItem{}
+	for i, d := range ended {
+		if mine[i].Exists() {
+			out = append(out, gameListItem(d.Ref.ID, d.Data()))
+		}
+	}
+	return out, nil
+}
+
 // gameListItem là thẻ của một ván trên danh sách, chưa gồm HasTodo vì cần đọc
 // thêm theo người xem.
 func gameListItem(id string, g map[string]any) GameListItem {
