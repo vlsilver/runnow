@@ -23,7 +23,10 @@ import (
 // engine mỗi lần gọi, nên không có danh sách thành viên nào phải giữ cho khớp.
 
 const (
-	chatLovers    = "lovers"
+	chatLovers = "lovers"
+	// chatRoom là phòng chung của ván: có từ lúc tạo ván, cho mọi người đã
+	// đăng ký và admin, ván có Telegram hay không.
+	chatRoom      = "room"
 	chatPageSize  = 30
 	chatMaxRunes  = 1000
 	chatMinGap    = time.Second
@@ -42,7 +45,7 @@ var (
 	errChatNoMsg    = &HTTPError{Status: http.StatusNotFound, Code: "message_not_found", Message: "Không còn tin nhắn này."}
 )
 
-var chatLabels = map[string]string{chatWolves: "Phe Sói", chatLovers: "Cặp đôi"}
+var chatLabels = map[string]string{chatWolves: "Phe Sói", chatLovers: "Cặp đôi", chatRoom: "Phòng chung"}
 
 // chatMembers là người trong chat key, nil khi ván không có chat đó. Phe chỉ có
 // một người thì không có chat.
@@ -71,6 +74,37 @@ func chatAccess(st *werewolf.State, gameData map[string]any, key, uid string) (m
 		return false, false
 	}
 	return true, st.Players[uid].Alive && st.Phase != werewolf.PhaseEnded && !gameClosed(stringValue(gameData["status"]))
+}
+
+// roomAccess: người đã đăng ký và admin vào được phòng chung, kể cả trước khi
+// chia bài. Người đã chết chỉ đọc để không nói được với người còn sống; ván hết
+// hay đã huỷ thì ai cũng chỉ đọc.
+func roomAccess(st *werewolf.State, gameData map[string]any, uid string, registered, admin bool) (member, canSend bool) {
+	if !registered && !admin {
+		return false, false
+	}
+	if gameClosed(stringValue(gameData["status"])) {
+		return true, false
+	}
+	if st == nil {
+		return true, true
+	}
+	if st.Phase == werewolf.PhaseEnded {
+		return true, false
+	}
+	p, playing := st.Players[uid]
+	return true, !playing || p.Alive
+}
+
+// access là chatAccess cho chat phe và roomAccess cho phòng chung.
+func access(st *werewolf.State, gameData map[string]any, key, uid string, registered, admin bool) (member, canSend bool) {
+	if key == chatRoom {
+		return roomAccess(st, gameData, uid, registered, admin)
+	}
+	if !registered {
+		return false, false
+	}
+	return chatAccess(st, gameData, key, uid)
 }
 
 type GameChat struct {
@@ -113,14 +147,15 @@ func (s *GameStore) Chat(ctx context.Context, gameID, key, cursor, after string,
 	if err != nil {
 		return GameChat{}, err
 	}
-	if !registered {
+	admin := cfg.isAdmin(v.UID)
+	if !registered && !(key == chatRoom && admin) {
 		return GameChat{}, errNotGamePlayer
 	}
 	st, err := s.loadState(ctx, g.Ref)
 	if err != nil {
 		return GameChat{}, err
 	}
-	member, canSend := chatAccess(st, g.Data(), key, v.UID)
+	member, canSend := access(st, g.Data(), key, v.UID, registered, admin)
 	if !member {
 		return GameChat{}, errChatNotFound
 	}
@@ -217,7 +252,8 @@ func (s *GameStore) PostChat(ctx context.Context, gameID, key, text string, v Ga
 	if err != nil {
 		return false, err
 	}
-	if !registered {
+	admin := cfg.isAdmin(v.UID)
+	if !registered && !(key == chatRoom && admin) {
 		return false, errNotGamePlayer
 	}
 	game := g.Ref
@@ -228,18 +264,21 @@ func (s *GameStore) PostChat(ctx context.Context, gameID, key, text string, v Ga
 		if err != nil {
 			return err
 		}
+		var st *werewolf.State
 		sec, err := tx.Get(secretRef(game))
-		if status.Code(err) == codes.NotFound {
-			return errChatNotFound // chưa chia bài
-		}
-		if err != nil {
+		switch {
+		case status.Code(err) == codes.NotFound:
+			if key != chatRoom {
+				return errChatNotFound // chưa chia bài
+			}
+		case err != nil:
 			return err
+		default:
+			if st, err = decodeState(sec.Data()); err != nil {
+				return err
+			}
 		}
-		st, err := decodeState(sec.Data())
-		if err != nil {
-			return err
-		}
-		member, canSend := chatAccess(st, gd.Data(), key, v.UID)
+		member, canSend := access(st, gd.Data(), key, v.UID, registered, admin)
 		if !member {
 			return errChatNotFound
 		}

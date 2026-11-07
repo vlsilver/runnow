@@ -812,6 +812,8 @@ func parsePhaseKey(key string) (int, werewolf.Phase, bool) {
 // ---- Chi tiết ván ----
 
 type GameDetail struct {
+	// Room là phòng chung của ván khi người xem đã đăng ký hay là admin.
+	Room                 *GameChatLink     `json:"room,omitempty"`
 	ID                   string            `json:"id"`
 	Title                string            `json:"title"`
 	Status               string            `json:"status"`
@@ -988,6 +990,9 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 		if st, err = s.loadState(ctx, g.Ref); err != nil {
 			return out, err
 		}
+	}
+	if member, canSend := roomAccess(st, data, v.UID, registered, out.IsAdmin); member {
+		out.Room = &GameChatLink{Key: chatRoom, Label: chatLabels[chatRoom], CanSend: canSend}
 	}
 	live, err := s.liveKm(ctx, g.Ref, data, st, wall)
 	if err != nil {
