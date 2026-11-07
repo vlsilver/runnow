@@ -1201,7 +1201,7 @@ class GameAction {
   final String label;
   final String help;
 
-  /// single_target | two_targets | confirm | choice
+  /// single_target | two_targets | confirm | choice | dark
   final String input;
   final List<GameOption> options;
 
@@ -1221,6 +1221,11 @@ class GameOption {
     required this.id,
     required this.label,
     required this.avatarUrl,
+    this.description = '',
+    this.hint = '',
+    this.needsTarget = false,
+    this.targets = const [],
+    this.disabled = false,
   });
 
   factory GameOption.fromJson(Map<String, dynamic> json) {
@@ -1228,12 +1233,30 @@ class GameOption {
       id: _string(json['id']),
       label: _string(json['label']),
       avatarUrl: _optString(json['avatarUrl']),
+      description: _string(json['description']),
+      hint: _string(json['hint']),
+      needsTarget: json['needsTarget'] == true,
+      targets: _list(json['targets'], GameOption.fromJson),
+      disabled: json['disabled'] == true,
     );
   }
 
   final String id;
   final String label;
   final String? avatarUrl;
+
+  // Các field dưới chỉ có ở input "dark": mỗi option là một đặc quyền.
+  final String description;
+
+  /// Số lượt, ví dụ "Mỗi đêm".
+  final String hint;
+
+  /// Phải chọn một người trong [targets].
+  final bool needsTarget;
+  final List<GameOption> targets;
+
+  /// Hết lượt hoặc không còn ai để chọn.
+  final bool disabled;
 }
 
 class GameSelected {

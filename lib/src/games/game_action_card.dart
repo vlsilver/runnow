@@ -38,6 +38,9 @@ class _GameActionCardState extends State<GameActionCard> {
   /// Hai người đang chọn cho two_targets, chưa gửi.
   late List<String> _picked = _selectedTargets;
 
+  /// Đặc quyền cần người đang mở danh sách người (input dark), chưa gửi.
+  String? _power;
+
   List<String> get _selectedTargets => [...?widget.action.selected?.targets];
 
   @override
@@ -217,7 +220,12 @@ class _GameActionCardState extends State<GameActionCard> {
   static String? _summary(GameAction action) {
     final selected = action.selected;
     if (selected == null) return null;
-    final labels = {for (final o in action.options) o.id: o.label};
+    final labels = {
+      for (final o in action.options) ...{
+        o.id: o.label,
+        for (final t in o.targets) t.id: t.label,
+      },
+    };
     final names = [
       if (selected.choice case final choice? when choice.isNotEmpty)
         labels[choice] ?? choice,
@@ -291,9 +299,146 @@ class _GameActionCardState extends State<GameActionCard> {
               child: Text(action.label),
             ),
         ];
+      case 'dark':
+        final current = selected?.choice;
+        final open = _power ?? current;
+        return [
+          for (final power in action.options) ...[
+            _DarkPower(
+              power: power,
+              selected: power.id == current,
+              open: power.id == open,
+              onTap: !active || power.disabled
+                  ? null
+                  : () {
+                      if (power.needsTarget) {
+                        setState(() => _power = power.id);
+                      } else if (power.id != current) {
+                        _send(choice: power.id);
+                      }
+                    },
+            ),
+            if (power.id == open && power.needsTarget) ...[
+              const SizedBox(height: 6),
+              _OptionGrid(
+                children: [
+                  for (final t in power.targets)
+                    GameOptionButton(
+                      label: t.label,
+                      selected:
+                          power.id == current &&
+                          (selected?.targets.contains(t.id) ?? false),
+                      onPressed:
+                          !active ||
+                              (power.id == current &&
+                                  (selected?.targets.contains(t.id) ?? false))
+                          ? null
+                          : () => _send(choice: power.id, targets: [t.id]),
+                    ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 6),
+          ],
+        ];
       default:
         return const [Text('Bản app này chưa làm được việc này.')];
     }
+  }
+}
+
+/// Một đặc quyền của phe Sói: tên và số lượt; đang mở thì thêm một dòng tác
+/// dụng. Hết lượt thì mờ và không bấm được.
+class _DarkPower extends StatelessWidget {
+  const _DarkPower({
+    required this.power,
+    required this.selected,
+    required this.open,
+    required this.onTap,
+  });
+
+  final GameOption power;
+  final bool selected;
+  final bool open;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final dim = power.disabled;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: Opacity(
+        opacity: dim ? 0.45 : 1,
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: onTap,
+            child: Ink(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: selected || open
+                      ? palette.accent
+                      : Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.18),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        selected
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        size: 20,
+                        color: selected ? palette.accent : palette.textMuted,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          power.label,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: palette.ink,
+                          ),
+                        ),
+                      ),
+                      if (power.hint.isNotEmpty)
+                        Text(
+                          power.hint,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: palette.textMuted,
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (open && power.description.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 30, top: 4),
+                      child: Text(
+                        power.description,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          height: 1.4,
+                          color: palette.textMuted,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

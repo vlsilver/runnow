@@ -210,6 +210,87 @@ void main() {
     expect(find.text('Bỏ chọn'), findsOneWidget);
   });
 
+  testWidgets('dark picks a power, then its target when it needs one', (
+    tester,
+  ) async {
+    await pumpCard(
+      tester,
+      _action({
+        'input': 'dark',
+        'options': [
+          {
+            'id': 'cloak',
+            'label': 'Tàng Hình',
+            'description': 'Tiên tri soi sói này ra Dân.',
+            'hint': 'Mỗi sói 1 lần',
+            'needsTarget': true,
+            'targets': [
+              {'id': 'w2', 'label': 'Dũng'},
+            ],
+          },
+          {
+            'id': 'silent',
+            'label': 'Cắn Im Lặng',
+            'description': 'Chết sau biểu quyết.',
+            'hint': 'Mỗi đêm',
+          },
+          {
+            'id': 'pierce',
+            'label': 'Đột Biến',
+            'description': 'Xuyên Bảo vệ.',
+            'hint': '1 lần cả ván',
+            'disabled': true,
+          },
+        ],
+      }),
+    );
+
+    // Hết lượt thì không bấm được.
+    await tester.tap(find.text('Đột Biến'));
+    await tester.pump();
+    expect(sent, isEmpty);
+
+    // Cần người: mở danh sách người, chưa gửi.
+    expect(find.text('Dũng'), findsNothing);
+    await tester.tap(find.text('Tàng Hình'));
+    await tester.pump();
+    expect(sent, isEmpty);
+    expect(find.text('Tiên tri soi sói này ra Dân.'), findsOneWidget);
+    await tester.tap(find.text('Dũng'));
+    await tester.pump();
+    expect(sent, ['w2|cloak|false']);
+
+    // Không cần người thì gửi ngay.
+    await tester.tap(find.text('Cắn Im Lặng'));
+    await tester.pump();
+    expect(sent.last, '|silent|false');
+  });
+
+  testWidgets('dark names the chosen power and its target', (tester) async {
+    await pumpCard(
+      tester,
+      _action({
+        'input': 'dark',
+        'options': [
+          {
+            'id': 'frame',
+            'label': 'Vu Khống',
+            'needsTarget': true,
+            'targets': [
+              {'id': 'v1', 'label': 'Giang'},
+            ],
+          },
+        ],
+        'selected': {
+          'choice': 'frame',
+          'targets': ['v1'],
+        },
+      }),
+    );
+
+    expect(find.text('Đã chọn Vu Khống, Giang'), findsOneWidget);
+  });
+
   testWidgets('an unknown input says the app is too old for it', (
     tester,
   ) async {
