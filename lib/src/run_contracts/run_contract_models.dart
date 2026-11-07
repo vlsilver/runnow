@@ -150,6 +150,7 @@ enum RunContractTemplate {
   weekly10k('weekly_10k'),
   weekly3Runs('weekly_3_runs'),
   today2k('today_2k'),
+  meetup('meetup'),
   custom('custom');
 
   const RunContractTemplate(this.value);
@@ -159,6 +160,7 @@ enum RunContractTemplate {
     'weekly_10k' => RunContractTemplate.weekly10k,
     'weekly_3_runs' => RunContractTemplate.weekly3Runs,
     'today_2k' => RunContractTemplate.today2k,
+    'meetup' => RunContractTemplate.meetup,
     _ => RunContractTemplate.custom,
   };
 }
@@ -192,7 +194,25 @@ class RunContractDraft {
     this.journeyRouteId,
     this.mode = RunContractMode.individual,
     this.openEnded = false,
+    this.meetAt,
+    this.roomId,
   });
+
+  /// Kèo hẹn chạy: ai đăng ký phải chạy đủ [km] trong ngày hẹn (giờ máy). Kèo
+  /// phải public thì người khác mới đăng ký được.
+  factory RunContractDraft.meetup({
+    required DateTime meetAt,
+    required double km,
+  }) => RunContractDraft(
+    template: RunContractTemplate.meetup,
+    metric: RunContractMetric.distance,
+    targetValue: km,
+    period: RunContractPeriodType.custom,
+    visibility: RunContractVisibility.club,
+    customStart: DateTime(meetAt.year, meetAt.month, meetAt.day),
+    customEnd: DateTime(meetAt.year, meetAt.month, meetAt.day + 1),
+    meetAt: meetAt,
+  );
 
   factory RunContractDraft.weekly10k() => RunContractDraft(
     template: RunContractTemplate.weekly10k,
@@ -232,6 +252,12 @@ class RunContractDraft {
   final RunContractMode mode;
   final bool openEnded;
 
+  /// Giờ hẹn chạy chung của kèo hẹn; null với các kèo khác.
+  final DateTime? meetAt;
+
+  /// Phòng chạy live mở đúng giờ hẹn.
+  final String? roomId;
+
   bool get isJourney =>
       route != null && metric == RunContractMetric.distance;
 
@@ -249,6 +275,8 @@ class RunContractDraft {
     String? journeyRouteId,
     RunContractMode? mode,
     bool? openEnded,
+    DateTime? meetAt,
+    String? roomId,
   }) => RunContractDraft(
     template: template ?? this.template,
     metric: metric ?? this.metric,
@@ -263,6 +291,8 @@ class RunContractDraft {
     journeyRouteId: journeyRouteId ?? this.journeyRouteId,
     mode: mode ?? this.mode,
     openEnded: openEnded ?? this.openEnded,
+    meetAt: meetAt ?? this.meetAt,
+    roomId: roomId ?? this.roomId,
   );
 
   /// Số ngày active tối đa cho phép tùy theo khung thời gian.
@@ -398,6 +428,8 @@ class RunContract {
     this.journeyRouteId,
     this.mode = RunContractMode.individual,
     this.openEnded = false,
+    this.meetAt,
+    this.roomId,
   });
 
   factory RunContract.fromMap(Map<String, dynamic> map) {
@@ -457,6 +489,10 @@ class RunContract {
           : null,
       mode: RunContractMode.fromValue(map['mode'] as String?),
       openEnded: map['openEnded'] as bool? ?? false,
+      meetAt: _nullableDate(map['meetAt']),
+      roomId: (map['roomId'] as String?)?.isNotEmpty ?? false
+          ? map['roomId'] as String
+          : null,
     );
   }
 
@@ -489,6 +525,8 @@ class RunContract {
     journeyRouteId: journeyRouteId,
     mode: mode,
     openEnded: openEnded,
+    meetAt: meetAt,
+    roomId: roomId,
   );
 
   final String id;
@@ -525,6 +563,12 @@ class RunContract {
   /// true = kèo KHÔNG thời hạn (chạy tới khi chinh phục/không kết thúc). Khi đó
   /// bỏ qua [endAtExclusive]/[finalizeAt] về mặt hiển thị & finalize.
   final bool openEnded;
+
+  /// Giờ hẹn chạy chung (kèo hẹn); null với các kèo khác.
+  final DateTime? meetAt;
+
+  /// Phòng chạy live của kèo hẹn.
+  final String? roomId;
 
   /// Kèo HÀNH TRÌNH = có cung đường ([route]) + đếm theo quãng đường tích luỹ
   /// (km dồn dọc cung tới khi phủ hết chiều dài). Phân biệt với "Theo tuyến"

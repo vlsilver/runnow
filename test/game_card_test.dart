@@ -37,4 +37,33 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('Có việc cho bạn'), findsOneWidget);
   });
+
+  // Nền Ma Sói luôn là cảnh đêm, nên ở theme sáng chữ vẫn phải sáng.
+  testWidgets('keeps light text on the night scene in light theme', (
+    tester,
+  ) async {
+    final game = GameListItem.fromJson({
+      'id': 'g2',
+      'title': 'Làng Sương Mù',
+      'status': 'running',
+      'statusLabel': 'Đêm 2',
+      'playerCount': 8,
+      'maxPlayers': 12,
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildRunNowTheme(
+          RunNowElement.fire,
+          appearance: RunNowAppearance.light,
+        ),
+        home: Scaffold(
+          body: GameCard(game: game, onTap: () {}),
+        ),
+      ),
+    );
+    for (final text in ['Làng Sương Mù', 'Đêm 2']) {
+      final color = tester.widget<Text>(find.text(text)).style!.color!;
+      expect(color.computeLuminance(), greaterThan(0.5), reason: text);
+    }
+  });
 }

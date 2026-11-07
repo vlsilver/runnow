@@ -50,9 +50,10 @@ class AgentChatController<M extends AgentSeqMessage> extends ChangeNotifier {
   bool get waiting => _waiting;
   List<AgentRoomMember> get members => _members;
 
-  /// Tin mới trước.
+  /// Tin mới trước, bỏ tin ẩn (của người đã chặn).
   List<M> get messages =>
-      _messages.values.toList()..sort((a, b) => b.seq.compareTo(a.seq));
+      _messages.values.where((m) => !m.hidden).toList()
+        ..sort((a, b) => b.seq.compareTo(a.seq));
 
   void setActive(bool active) {
     if (_disposed) return;
@@ -129,6 +130,16 @@ class AgentChatController<M extends AgentSeqMessage> extends ChangeNotifier {
   Future<void> send(String text) async {
     await post(text);
     await refresh();
+  }
+
+  /// Đổi các tin đang có ngay trên máy, vd. ẩn tin của người vừa chặn: poll
+  /// chỉ đọc tin sau seq lớn nhất nên không tự đọc lại tin cũ.
+  void update(M Function(M message) change) {
+    if (_disposed) return;
+    for (final m in _messages.values.toList()) {
+      _messages[m.seq] = change(m);
+    }
+    notifyListeners();
   }
 
   Future<void> loadOlder() async {

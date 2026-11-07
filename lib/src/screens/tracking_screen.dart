@@ -11,10 +11,20 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/formatters.dart';
+import 'package:myrun/src/hearts.dart';
+import 'package:myrun/src/live_cheers.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/repository.dart';
+import 'package:myrun/src/rooms/live_board.dart';
+import 'package:myrun/src/rooms/run_room_actions.dart' show runRoomErrorText;
+import 'package:myrun/src/rooms/run_room_create_sheet.dart'
+    show runRoomMaxRunners;
+import 'package:myrun/src/rooms/run_room_models.dart';
+import 'package:myrun/src/rooms/run_room_repository.dart';
+import 'package:myrun/src/rooms/run_room_run_panel.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
+import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/tracking_draft_store.dart';
 import 'package:myrun/src/tracking_session.dart';
@@ -23,10 +33,18 @@ import 'package:myrun/src/widgets/route_map.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 class TrackingScreen extends ConsumerStatefulWidget {
-  const TrackingScreen({super.key, this.autoLock = true, this.contractId});
+  const TrackingScreen({
+    super.key,
+    this.autoLock = true,
+    this.contractId,
+    this.roomId,
+  });
 
   final bool autoLock;
   final String? contractId;
+
+  /// Chạy trong phòng: buổi live gắn roomId để người trong phòng thấy nhau.
+  final String? roomId;
 
   @override
   ConsumerState<TrackingScreen> createState() => _TrackingScreenState();
@@ -79,6 +97,16 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   var _autoLockStarted = false;
   var _persistingDraft = false;
   String? _contractId;
+  String? _roomId;
+  // Đọc từ phòng ở build; null khi chưa tải xong phòng.
+  RunRoomPrivacy? _roomPrivacy;
+  RunRoomKind? _roomKind;
+  String? _roomHostUid;
+  bool _roomJoined = false;
+  // Chạy riêng có nhận người chạy cùng không. Chọn trước khi bắt đầu; nhận
+  // thì lúc bắt đầu mở một phòng solo. Chỉ giữ trong màn này, như các cài
+  // đặt Live khác.
+  LiveJoinPolicy _joinPolicy = LiveJoinPolicy.approve;
   Future<void> _livePublishQueue = Future<void>.value();
   Future<void> _photoUploadQueue = Future<void>.value();
   DateTime? _lastDraftSavedAt;
@@ -128,6 +156,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   };
 
   String _activityNameFor(ActivityKind kind) => switch (kind) {
+    ActivityKind.walk => '3I Walk',
     ActivityKind.ride => '3I Ride',
     ActivityKind.motorbike => '3I Moto',
     _ => '3I Run',
@@ -141,11 +170,29 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   bool get _hasSession => _snapshot != null;
   bool get _gpsReady => _gpsReadyAnchor != null;
 
+  bool get _roomOnly => runRoomLiveRoomOnly(
+    roomId: _roomId,
+    kind: _roomKind,
+    privacy: _roomPrivacy,
+  );
+
+  bool get _canHostRunTogether => runRoomCanHostRunTogether(
+    roomId: widget.roomId,
+    isRun: _selectedKind == ActivityKind.run,
+    liveEnabled: _liveEnabled,
+  );
+
+  /// Dòng phụ của Live: trước khi chạy là lựa chọn, đang chạy chỉ hiện khi
+  /// phòng solo đã mở thật.
+  bool get _showRunTogether =>
+      _canHostRunTogether && (!_hasSession || _roomKind == RunRoomKind.solo);
+
 
   @override
   void initState() {
     super.initState();
     _contractId = widget.contractId;
+    _roomId = widget.roomId;
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _autoLockStarted) return;
@@ -184,11 +231,117 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     }
   }
 
+  /// Báo người đang chạy khi có người xem live thả tim.
+  void _toastNewHearts(Hearts? previous, AsyncValue<Hearts> next) {
+    if (next.error case final error?) {
+      debugPrint('Không đọc được tim buổi live: $error');
+      return;
+    }
+    final hearts = next.value;
+    final myUid = ref.read(firebaseUserProvider).value?.uid;
+    if (hearts == null || myUid == null || !mounted) return;
+    final uids = newHeartUids(previous, hearts, myUid: myUid);
+    if (uids.isEmpty) return;
+    final members = ref.read(membersProvider).value ?? const <MemberProfile>[];
+    final first =
+        members.where((member) => member.uid == uids.first).firstOrNull
+            ?.displayName ??
+        'Một người';
+    final text = uids.length == 1
+        ? '$first thả tim cho bạn'
+        : '$first và ${uids.length - 1} người nữa thả tim cho bạn';
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+          content: Row(
+            children: [
+              const Icon(Icons.favorite_rounded, color: RunNowDataColors.heart),
+              const SizedBox(width: 8),
+              Expanded(child: Text(text)),
+            ],
+          ),
+        ),
+      );
+  }
+
+  /// Báo người đang chạy khi người xem live bấm emoji cổ vũ.
+  void _toastNewCheers(
+    List<LiveCheer>? previous,
+    AsyncValue<List<LiveCheer>> next,
+  ) {
+    if (next.error case final error?) {
+      debugPrint('Không đọc được cổ vũ buổi live: $error');
+      return;
+    }
+    final cheers = next.value;
+    final myUid = ref.read(firebaseUserProvider).value?.uid;
+    if (cheers == null || myUid == null || !mounted) return;
+    final fresh = newLiveCheers(previous, cheers, myUid: myUid);
+    if (fresh.isEmpty) return;
+    final latest = fresh.first;
+    final members = ref.read(membersProvider).value ?? const <MemberProfile>[];
+    final name =
+        members.where((member) => member.uid == latest.uid).firstOrNull
+            ?.displayName ??
+        'Một người';
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+          content: Text('$name ${latest.emoji}'),
+        ),
+      );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Giữ subscribe cấu hình tracking từ DB để lúc bấm Bắt đầu đã có giá trị mới
     // nhất (appConfig/tracking) thay vì mặc định.
     ref.watch(trackingConfigProvider);
+    final roomId = _roomId;
+    var othersJoined = false;
+    if (roomId != null) {
+      othersJoined = runRoomHasOthersJoined(
+        ref.watch(runRoomMembersProvider(roomId)).value ?? const [],
+        ref.watch(firebaseUserProvider).value?.uid,
+      );
+      // Giữ giá trị cũ lúc doc phòng đang tải: phòng solo vừa mở đã gán sẵn ở
+      // _openSoloRoom, gán null thì buổi live bị giấu trong chốc lát.
+      if (ref.watch(runRoomProvider(roomId)).value case final room?) {
+        _roomPrivacy = room.privacy;
+        _roomKind = room.kind;
+        _roomHostUid = room.hostUid;
+      }
+      _roomJoined =
+          ref.watch(myRunRoomMemberProvider(roomId)).value?.state ==
+          RunRoomMemberState.joined;
+      // Phòng kín thì không báo lên group Telegram: người ngoài phòng không
+      // xem được buổi live mà tin trên group lại lộ ra là đang chạy. Chờ biết
+      // kiểu phòng rồi mới tắt, để phòng công khai giữ mặc định Live.
+      if (_roomPrivacy != null && _roomOnly) _liveEnabled = false;
+    }
+    // Báo tim và cổ vũ cả khi tắt Live: người khác vẫn thấy buổi chạy ở trang
+    // Live và cổ vũ được, công tắc chỉ tắt việc báo lên group Telegram.
+    final liveId = _session?.id;
+    if (liveId != null) {
+      // Giữ danh sách thành viên để toast có tên, không rebuild màn này.
+      ref.listen(membersProvider, (_, _) {});
+      ref.listen(
+        heartsProvider(liveHeartTarget(liveId)),
+        (previous, next) => _toastNewHearts(previous?.value, next),
+      );
+      ref.listen(
+        liveCheersProvider(liveId),
+        (previous, next) => _toastNewCheers(previous?.value, next),
+      );
+    }
     final snapshot = _snapshot;
     final isPublic =
         ref.watch(userProfileProvider).value?.visibility ==
@@ -270,6 +423,33 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                 ),
               ),
             ),
+          if (roomId == null && !_hasSession)
+            const Positioned(
+              top: 0,
+              left: 64,
+              right: 64,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: Center(child: _LiveNearbyPill()),
+                ),
+              ),
+            ),
+          if (roomId != null)
+            Positioned(
+              top: 0,
+              // Chừa chỗ nút đóng khi chưa chạy.
+              left: !_running && !_paused ? 64 : 12,
+              right: 12,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: RunRoomRunPanel(roomId: roomId),
+                ),
+              ),
+            ),
           Positioned(
             left: 0,
             right: 0,
@@ -344,7 +524,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                           ],
                         ),
                         // Live gom vào cùng card cho liền khối, không trôi nổi.
-                        if (isPublic && !_finished) ...[
+                        if (isPublic && !_finished && !_roomOnly) ...[
                           const SizedBox(height: 10),
                           Divider(
                             height: 1,
@@ -374,10 +554,16 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                    if (_liveEnabled)
+                                    if (_liveEnabled || _showRunTogether)
                                       Text(
-                                        'Báo mỗi ${_effectiveMilestoneKm}km'
-                                        '${_livePhotoEnabled ? ' · kèm ảnh' : ''}',
+                                        [
+                                          if (_liveEnabled)
+                                            'Báo mỗi ${_effectiveMilestoneKm}km'
+                                                '${_livePhotoEnabled ? ' · kèm ảnh' : ''}',
+                                          if (_showRunTogether)
+                                            'Chạy cùng: '
+                                                '${_joinPolicy.label.toLowerCase()}',
+                                        ].join(' · '),
                                         style: TextStyle(
                                           fontSize: 11,
                                           color: onSurface.withValues(
@@ -388,8 +574,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                   ],
                                 ),
                               ),
-                              // Nút cài đặt: chỉ hiện khi Live bật (có gì để chỉnh).
-                              if (_liveEnabled)
+                              // Nút cài đặt: chỉ hiện khi có gì để chỉnh.
+                              if (_liveEnabled || _canHostRunTogether)
                                 IconButton(
                                   visualDensity: VisualDensity.compact,
                                   icon: const Icon(Icons.tune_rounded, size: 20),
@@ -423,6 +609,15 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                         });
                       },
                     ),
+                  ],
+                  if (roomId != null &&
+                      runRoomShowsRunActions(
+                        roomOnly: _roomOnly,
+                        liveEnabled: _liveEnabled,
+                        othersJoined: othersJoined,
+                      )) ...[
+                    const SizedBox(height: 10),
+                    RunRoomRunActions(roomId: roomId),
                   ],
                   const SizedBox(height: 10),
                   _Controls(
@@ -467,6 +662,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         _snapshot = snapshot;
         _lastWarmupDebug = draft.gpsWarmup;
         _contractId = draft.contractId ?? widget.contractId;
+        _roomId = draft.roomId ?? widget.roomId;
         _message = snapshot.status == TrackingSessionStatus.finished
             ? 'Đang hoàn tất upload ảnh của buổi chạy.'
             : wasRunning
@@ -558,6 +754,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _setWakelock(true);
       unawaited(_persistDraft());
       unawaited(_publishLiveSnapshot(force: true));
+      unawaited(_openSoloRoom(session.id));
       HapticFeedback.mediumImpact();
     } catch (error) {
       if (!mounted) return;
@@ -802,8 +999,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       if (mounted) setState(() => _snapshot = next);
       await _persistDraft();
       await ref.read(trackingPhotoCaptureProvider).deleteLocal(draft.localPath);
-      final contractId = _contractId;
-      if (contractId != null) {
+      if (runRoomSharesLivePhoto(
+        contractId: _contractId,
+        joinedRoomId: _roomJoined ? _roomId : null,
+      )) {
         await ref
             .read(liveTrackingRepositoryProvider)
             .publishPhoto(sessionId: session.id, photo: uploaded);
@@ -869,6 +1068,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         force: true,
         status: LiveTrackingStatus.finished,
       );
+      unawaited(_endOwnSoloRoom());
       final photosUploaded = await _uploadPendingPhotos();
       final finalSnapshot = session.snapshot();
       final detail = finalSnapshot.toActivityDetail(
@@ -941,6 +1141,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             .finishSession(sessionId, LiveTrackingStatus.expired),
       );
     }
+    unawaited(_endOwnSoloRoom());
     await ref.read(trackingDraftStoreProvider).clear();
     for (final photo in localPhotos) {
       await ref.read(trackingPhotoCaptureProvider).deleteLocal(photo.localPath);
@@ -963,8 +1164,83 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _lastLivePublishedAt = null;
       _lastLivePublishedDistanceMeters = 0;
       _contractId = widget.contractId;
+      _roomId = widget.roomId;
+      _roomPrivacy = null;
+      _roomKind = null;
+      _roomHostUid = null;
       _message = message;
     });
+  }
+
+  /// Mở phòng solo cho buổi chạy riêng vừa bắt đầu để người trong club xin
+  /// chạy cùng. Không chặn việc ghi buổi chạy: lỗi chỉ báo snackbar.
+  Future<void> _openSoloRoom(String sessionId) async {
+    final privacy = _joinPolicy.roomPrivacy;
+    final uid = ref.read(firebaseUserProvider).value?.uid;
+    final isPublic =
+        ref.read(userProfileProvider).value?.visibility ==
+        ProfileVisibility.public;
+    // Hồ sơ riêng tư thì club không thấy buổi live, chẳng ai xin chạy cùng.
+    if (privacy == null || uid == null || !isPublic || !_canHostRunTogether) {
+      return;
+    }
+    final api = ref.read(runNowApiClientProvider);
+    final String roomId;
+    try {
+      roomId = await api.createRunRoom(
+        privacy: privacy.value,
+        maxRunners: runRoomMaxRunners,
+        kind: RunRoomKind.solo.name,
+      );
+    } catch (error) {
+      debugPrint('mở phòng chạy cùng: $error');
+      _showSnack('Chưa mở được chạy cùng: ${runRoomErrorText(error)}');
+      return;
+    }
+    // Buổi chạy đã xong hay bị bỏ trong lúc chờ: không ai còn chủ phòng này.
+    if (!mounted || _session?.id != sessionId || _finished) {
+      unawaited(_endRoom(api, roomId));
+      return;
+    }
+    setState(() {
+      _roomId = roomId;
+      _roomPrivacy = privacy;
+      _roomKind = RunRoomKind.solo;
+      _roomHostUid = uid;
+    });
+    unawaited(_persistDraft());
+  }
+
+  /// Đóng phòng solo mình mở cho buổi này, để người chạy cùng thấy buổi đã
+  /// xong thay vì phòng nằm mở tới hạn.
+  Future<void> _endOwnSoloRoom() async {
+    final roomId = _roomId;
+    final uid = ref.read(firebaseUserProvider).value?.uid;
+    if (roomId == null ||
+        _roomKind != RunRoomKind.solo ||
+        uid == null ||
+        _roomHostUid != uid) {
+      return;
+    }
+    await _endRoom(ref.read(runNowApiClientProvider), roomId);
+  }
+
+  Future<void> _endRoom(RunNowApiClient api, String roomId) async {
+    try {
+      await api.endRunRoom(roomId);
+    } catch (error) {
+      debugPrint('đóng phòng chạy cùng $roomId: $error');
+      _showSnack('Chưa đóng được phòng chạy cùng: ${runRoomErrorText(error)}');
+    }
+  }
+
+  void _showSnack(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(behavior: SnackBarBehavior.floating, content: Text(text)),
+      );
   }
 
   Future<void> _startRunningLocationStream() async {
@@ -987,6 +1263,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
               session: session,
               gpsWarmup: _lastWarmupDebug,
               contractId: _contractId,
+              roomId: _roomId,
             ),
           );
       _lastDraftSavedAt = DateTime.now();
@@ -1081,6 +1358,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             status: status ?? _liveStatusForSnapshot(snapshot),
             routePreview: _downsampleLiveRoute(snapshot.routePoints),
             contractId: _contractId,
+            // Chỉ gắn phòng khi đã vào: rules từ chối roomId của người ngoài
+            // phòng, gắn bừa thì mất luôn buổi live.
+            roomId: _roomJoined ? _roomId : null,
+            roomOnly: _roomOnly,
           );
       _lastLivePublishedAt = now;
       _lastLivePublishedDistanceMeters = snapshot.distanceMeters;
@@ -1220,6 +1501,57 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (_canHostRunTogether) ...[
+                    const Text(
+                      'CHẠY CÙNG',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Phòng mở lúc bấm Bắt đầu với quyền vào đã chọn; đang chạy
+                    // thì giữ nguyên tới hết buổi.
+                    if (!_hasSession)
+                      SegmentedButton<LiveJoinPolicy>(
+                        showSelectedIcon: false,
+                        segments: [
+                          for (final policy in LiveJoinPolicy.values)
+                            ButtonSegment(
+                              value: policy,
+                              label: Text(policy.label),
+                            ),
+                        ],
+                        selected: {_joinPolicy},
+                        onSelectionChanged: (s) =>
+                            update(() => _joinPolicy = s.first),
+                      )
+                    else
+                      Text(
+                        _roomKind == RunRoomKind.solo
+                            ? 'Đang nhận người chạy cùng · '
+                                  '${_joinPolicy.label.toLowerCase()}'
+                            : 'Buổi này không nhận người chạy cùng',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Bạn bè trong club thấy bạn ở trang Live và xin chạy cùng.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.55),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
                   const Text(
                     'CÀI ĐẶT LIVE',
                     style: TextStyle(
@@ -1248,9 +1580,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // Chạy: user chọn mốc. Đạp/xe máy: mốc CỐ ĐỊNH (10/20km) vì
-                    // quãng đường dài, mốc nhỏ sẽ spam group.
-                    if (_selectedKind == ActivityKind.run)
+                    // Chạy/đi bộ: user chọn mốc. Đạp/xe máy: mốc CỐ ĐỊNH (10/20km)
+                    // vì quãng đường dài, mốc nhỏ sẽ spam group.
+                    if (_selectedKind == ActivityKind.run ||
+                        _selectedKind == ActivityKind.walk)
                       SegmentedButton<int>(
                         showSelectedIcon: false,
                         segments: [
@@ -1574,8 +1907,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
 
 }
 
-/// Chọn môn trước khi bắt đầu: Chạy / Đạp / Xe máy. Đạp & xe máy có BXH riêng,
-/// KHÔNG cộng vào km chạy hay kèo.
+/// Chọn môn trước khi bắt đầu: Đi bộ / Chạy bộ / Đạp xe. Đi bộ chung BXH với
+/// chạy; đạp xe có BXH riêng. Chỉ chạy bộ cộng vào km chạy của kèo.
 class _SportPicker extends StatelessWidget {
   const _SportPicker({required this.selected, required this.onChanged});
 
@@ -1634,9 +1967,9 @@ class _SportPicker extends StatelessWidget {
       ),
       child: Row(
         children: [
-          seg(ActivityKind.run, Icons.directions_run_rounded, 'Chạy'),
-          seg(ActivityKind.ride, Icons.directions_bike_rounded, 'Đạp'),
-          seg(ActivityKind.motorbike, Icons.two_wheeler_rounded, 'Xe máy'),
+          seg(ActivityKind.walk, Icons.directions_walk_rounded, 'Đi bộ'),
+          seg(ActivityKind.run, Icons.directions_run_rounded, 'Chạy bộ'),
+          seg(ActivityKind.ride, Icons.directions_bike_rounded, 'Đạp xe'),
         ],
       ),
     );
@@ -1950,3 +2283,36 @@ class _DistanceReadout extends StatelessWidget {
   }
 }
 
+/// Rủ chạy cùng trước khi bắt đầu: có người đang live thì hiện số người, chạm
+/// vào trang Live để xin chạy cùng.
+class _LiveNearbyPill extends ConsumerWidget {
+  const _LiveNearbyPill();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final board = ref.watch(liveBoardProvider).value;
+    final count = board == null
+        ? 0
+        : board.liveRooms.length + board.solos.length;
+    if (count == 0) return const SizedBox.shrink();
+    final palette = context.runNowPalette;
+    return Material(
+      color: palette.ink,
+      shape: const StadiumBorder(),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: () => context.push('/live'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Text(
+            '$count đang Live · chạy cùng?',
+            style: TextStyle(
+              color: palette.accent,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

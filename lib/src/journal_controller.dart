@@ -6,7 +6,7 @@ import 'package:myrun/src/repository.dart';
 /// Giữ state trang Nhật ký (list + phân trang) trong 1 `ChangeNotifier` sống
 /// độc lập với vòng đời widget — trước đây state này nằm trong
 /// `_JournalScreenState`, nên mỗi lần rời màn rồi quay lại
-/// (`context.push('/profile/journal')` tạo widget mới) đều phải chờ lại
+/// (`context.push('/journal')` tạo widget mới) đều phải chờ lại
 /// đúng round-trip Firestore từ đầu, dù vừa mới xem xong (~2s mỗi lần bấm
 /// vào, theo báo cáo thực tế). Provider không autoDispose nên cache này
 /// sống suốt phiên app — [ensureLoaded] trả về ngay nếu đã có cache, đồng

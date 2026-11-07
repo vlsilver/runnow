@@ -32,7 +32,7 @@ class MemberProfileScreen extends ConsumerWidget {
         .maybeWhen(data: (user) => user?.uid, orElse: () => null);
     if (currentUid == uid) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) context.go('/profile');
+        if (context.mounted) context.pushReplacement('/journey');
       });
       return const Scaffold(body: SizedBox.shrink());
     }
@@ -73,7 +73,7 @@ class MemberJournalScreen extends ConsumerWidget {
         .maybeWhen(data: (user) => user?.uid, orElse: () => null);
     if (currentUid == uid) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) context.go('/profile/journal');
+        if (context.mounted) context.pushReplacement('/journal');
       });
       return const Scaffold(body: SizedBox.shrink());
     }

@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
+import 'package:myrun/src/widgets/map_tiles.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
@@ -35,11 +36,23 @@ const _assumedPaceSecondsPerKm = 370;
 enum _ImportKind { gpx, svg }
 
 class RunContractRouteCreateScreen extends ConsumerStatefulWidget {
-  const RunContractRouteCreateScreen({super.key, this.journey = false});
+  const RunContractRouteCreateScreen({
+    super.key,
+    this.journey = false,
+    this.pickOnly = false,
+    this.startWithGpx = false,
+  });
 
   /// true = tạo KÈO HÀNH TRÌNH (tích luỹ km để phủ hết chiều dài cung tự vẽ),
   /// false = "Theo tuyến" (phải chạy đúng tuyến N lần). Dùng chung công cụ vẽ.
   final bool journey;
+
+  /// Chỉ vẽ tuyến rồi pop về [RunContractRoute], không tạo kèo. Phòng chạy
+  /// dùng chế độ này để gắn tuyến.
+  final bool pickOnly;
+
+  /// Mở bộ chọn file GPX ngay khi vào màn.
+  final bool startWithGpx;
 
   @override
   ConsumerState<RunContractRouteCreateScreen> createState() =>
@@ -71,6 +84,11 @@ class _RunContractRouteCreateScreenState
   void initState() {
     super.initState();
     _loadInitialCenter();
+    if (widget.startWithGpx) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _importGpx();
+      });
+    }
   }
 
   @override
@@ -343,6 +361,10 @@ class _RunContractRouteCreateScreenState
 
   void _goToConfirm() {
     if (!_canContinue) return;
+    if (widget.pickOnly) {
+      Navigator.of(context).pop(_route());
+      return;
+    }
     if (!_titleEdited) {
       final km = (_distanceMeters / 1000).toStringAsFixed(1);
       _titleController.text = _journey ? 'Hành trình $km km' : 'Route $km km';
@@ -538,7 +560,9 @@ class _RunContractRouteCreateScreenState
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: _canContinue ? _goToConfirm : null,
-                    child: const Text('Tiếp tục'),
+                    child: Text(
+                      widget.pickOnly ? 'Dùng tuyến này' : 'Tiếp tục',
+                    ),
                   ),
                 ),
               ],
@@ -838,6 +862,17 @@ class _RunContractRouteCreateScreenState
     ];
   }
 
+  RunContractRoute _route() => RunContractRoute(
+    points: [
+      for (final point in _points)
+        RunContractRoutePoint(
+          latitude: point.latitude,
+          longitude: point.longitude,
+        ),
+    ],
+    distanceMeters: _distanceMeters,
+  );
+
   Future<void> _create() async {
     setState(() {
       _working = true;
@@ -845,16 +880,7 @@ class _RunContractRouteCreateScreenState
     });
     try {
       final title = _titleController.text.trim();
-      final route = RunContractRoute(
-        points: [
-          for (final point in _points)
-            RunContractRoutePoint(
-              latitude: point.latitude,
-              longitude: point.longitude,
-            ),
-        ],
-        distanceMeters: _distanceMeters,
-      );
+      final route = _route();
       final now = DateTime.now();
       final draft = _journey
           ? RunContractDraft(
@@ -925,16 +951,10 @@ class _RouteDrawingMap extends StatelessWidget {
   /// trên, tránh xung đột với việc bản đồ tự pan theo ngón tay.
   final bool interactive;
 
-  static const _lightTileTemplate =
-      'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-  static const _darkTileTemplate =
-      'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tileTemplate = isDark ? _darkTileTemplate : _lightTileTemplate;
     return FlutterMap(
       mapController: controller,
       options: MapOptions(
@@ -946,12 +966,7 @@ class _RouteDrawingMap extends StatelessWidget {
         ),
       ),
       children: [
-        TileLayer(
-          key: ValueKey(tileTemplate),
-          urlTemplate: tileTemplate,
-          userAgentPackageName: 'com.threei.run',
-          retinaMode: RetinaMode.isHighDensity(context),
-        ),
+        mapTileLayer(context, dark: isDark),
         const MapAttribution(),
         if (points.length >= 2)
           PolylineLayer(

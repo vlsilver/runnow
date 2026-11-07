@@ -22,3 +22,21 @@ final gameListProvider = FutureProvider.autoDispose<GameList?>(
     }
   },
 );
+
+/// Các ván đã kết thúc mình có chơi, cho mục kèo hoàn thành. Cùng cách đọc
+/// như [gameListProvider]: lỗi thì không có card, list kèo vẫn hiện.
+final gameHistoryProvider = FutureProvider.autoDispose<List<GameListItem>>(
+  retry: (_, _) => null,
+  (ref) async {
+    final uid = ref.watch(
+      firebaseUserProvider.select((user) => user.value?.uid),
+    );
+    if (uid == null) return const [];
+    try {
+      return await ref.watch(runNowApiClientProvider).listGameHistory();
+    } catch (error) {
+      debugPrint('Ma Sói: tải lịch sử ván lỗi: $error');
+      rethrow;
+    }
+  },
+);

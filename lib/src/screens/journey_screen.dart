@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/achievements/run_card_collection.dart';
+import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/formatters.dart';
+import 'package:myrun/src/journey/journey_card.dart';
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/journey/widgets/completion_stamp.dart';
 import 'package:myrun/src/journey/widgets/journey_map.dart';
@@ -50,7 +53,7 @@ class JourneyScreen extends ConsumerWidget {
             onPressed: () => context.push(
               _isViewingMember
                   ? '/club/${viewedMember!.uid}/journal'
-                  : '/profile/journal',
+                  : '/journal',
             ),
             icon: const Icon(Icons.list_alt_rounded),
           ),
@@ -330,6 +333,19 @@ class _JourneyBodyState extends ConsumerState<_JourneyBody> {
             onShowInfo: () => _openJourneyInfo(context, progress),
           ),
         ),
+        // Thẻ chỉ chủ đọc được, nên hành trình người khác không có lá.
+        if (widget.member == null)
+          Positioned(
+            left: 12,
+            bottom: 0,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _JourneyCardOnMap(campaignId: widget.campaignId),
+              ),
+            ),
+          ),
         if (progress.isComplete)
           Positioned(
             right: 12,
@@ -503,7 +519,7 @@ class _JourneyInfoSheet extends StatelessWidget {
                   width: double.infinity,
                   child: FilledButton.icon(
                     onPressed: () =>
-                        context.push('/profile/journey/${nextCampaign.value}'),
+                        context.push('/journey/${nextCampaign.value}'),
                     icon: const Icon(Icons.lock_open_rounded),
                     label: const Text('Mở khoá hành trình tiếp theo'),
                   ),
@@ -513,6 +529,44 @@ class _JourneyInfoSheet extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Thẻ của chặng nằm úp ở góc bản đồ khi backend đã trao; chạm để mở màn lật.
+class _JourneyCardOnMap extends ConsumerWidget {
+  const _JourneyCardOnMap({required this.campaignId});
+
+  final JourneyCampaignId campaignId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final card = ref
+        .watch(journeyCardsProvider)
+        .value
+        ?.where((card) => card.campaign == campaignId.value)
+        .firstOrNull;
+    if (card == null) return const SizedBox.shrink();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        JourneyCardFaceDown(
+          card: card,
+          owner: runCardOwnerName(ref),
+          width: 84,
+        ),
+        const SizedBox(height: 6),
+        GlassPanel(
+          borderRadius: 999,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          child: Text(
+            'Mở thẻ',
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -569,7 +623,7 @@ class _CompletionBanner extends StatelessWidget {
             iconSize: 22,
             onTap: () => context.push(
               viewedMember == null
-                  ? '/profile/journey/${nextCampaign.value}'
+                  ? '/journey/${nextCampaign.value}'
                   : '/club/${viewedMember.uid}/journey/${nextCampaign.value}',
             ),
           ),

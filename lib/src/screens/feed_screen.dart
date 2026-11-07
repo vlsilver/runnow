@@ -6,6 +6,7 @@ import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/prc_brand_mark.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
+import 'package:myrun/src/widgets/run_now_empty.dart';
 import 'package:myrun/src/widgets/strava_activity_link.dart';
 
 class FeedScreen extends ConsumerWidget {
@@ -18,14 +19,9 @@ class FeedScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Feed')),
       body: posts.when(
         data: (items) => items.isEmpty
-            ? const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text(
-                    'Chưa có bài đăng. Mở một hoạt động và chọn “Đăng lên feed”.',
-                    textAlign: TextAlign.center,
-                  ),
-                ),
+            ? const RunNowEmpty(
+                message: 'Chưa có bài đăng',
+                hint: 'Mở một hoạt động và chọn “Đăng lên feed”.',
               )
             : ListView.builder(
                 padding: const EdgeInsets.all(12),

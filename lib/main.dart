@@ -11,6 +11,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:myrun/src/app.dart';
 import 'package:myrun/src/config.dart';
 import 'package:myrun/src/legacy_strava_credentials.dart';
+import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/theme_controller.dart';
 
 /// Firebase web app config (run-now-79767). Mobile dùng google-services.json /
 /// GoogleService-Info.plist nên không cần options. apiKey web không phải secret.
@@ -31,6 +33,9 @@ Future<void> main() async {
   // (go_router đọc fragment rỗng → về '/'), khiến link chia sẻ activity không
   // vào đúng trang. Path strategy cũng khớp WEB_RETURN_URI (.../oauth) sẵn có.
   if (kIsWeb) usePathUrlStrategy();
+  // Đọc theme đã lưu song song với các bước init dưới, rồi chờ nó trước khi vẽ
+  // khung đầu: không thì app mở bằng màu mặc định rồi trượt sang màu đã chọn.
+  final themeController = ThemeController();
   await Firebase.initializeApp(options: kIsWeb ? _webFirebaseOptions : null);
   await _initRemoteConfig();
   // Best-effort: trên web các init này có thể chưa cấu hình (web client id),
@@ -45,7 +50,15 @@ Future<void> main() async {
   } catch (error, stack) {
     debugPrint('GoogleSignIn init failed: $error\n$stack');
   }
-  runApp(const ProviderScope(child: RunNowApp()));
+  await themeController.loaded;
+  runApp(
+    ProviderScope(
+      overrides: [
+        themeControllerProvider.overrideWith((ref) => themeController),
+      ],
+      child: const RunNowApp(),
+    ),
+  );
   unawaited(LegacyStravaCredentials.clear());
 }
 

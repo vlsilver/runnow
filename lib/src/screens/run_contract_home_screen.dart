@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/games/game_card.dart';
 import 'package:myrun/src/games/game_providers.dart';
+import 'package:myrun/src/rooms/run_room_card.dart';
+import 'package:myrun/src/rooms/run_room_models.dart';
+import 'package:myrun/src/rooms/run_room_repository.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -17,6 +20,7 @@ import 'package:myrun/src/training_plan/training_plan_repository.dart';
 import 'package:myrun/src/web_layout.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
+import 'package:myrun/src/widgets/run_now_empty.dart';
 
 class RunContractHomeScreen extends ConsumerStatefulWidget {
   const RunContractHomeScreen({super.key});
@@ -180,16 +184,30 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
         ref.watch(publicCoachPlansProvider).value ?? const <TrainingPlan>[];
     final coachPlans = <TrainingPlan>[
       ?ownedCoach,
-      ...(publicCoaches.where((p) => p.id != ownedCoach?.id).toList()
-        ..sort((a, b) => (b.createdAt ?? DateTime(0)).compareTo(
-              a.createdAt ?? DateTime(0),
-            ))),
+      ...(publicCoaches.where((p) => p.id != ownedCoach?.id).toList()..sort(
+        (a, b) =>
+            (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)),
+      )),
     ];
 
     // Ván Ma Sói chỉ đọc value: API lỗi hay đang chờ thì không có card, list
     // kèo vẫn hiện như cũ.
-    final games =
-        ref.watch(gameListProvider).value?.items ?? const <GameListItem>[];
+    // Ván đã kết thúc thuộc mục Hoàn thành, đọc từ lịch sử ván của mình.
+    final games = switch (_filter) {
+      _ContractFilter.active => [
+        for (final game
+            in ref.watch(gameListProvider).value?.items ??
+                const <GameListItem>[])
+          if (!game.ended) game,
+      ],
+      _ContractFilter.completed =>
+        ref.watch(gameHistoryProvider).value ?? const <GameListItem>[],
+      _ContractFilter.failed => const <GameListItem>[],
+    };
+    // Phòng chạy chung đã xong cũng là việc đã làm, nằm ở Hoàn thành.
+    final rooms = _filter == _ContractFilter.completed
+        ? ref.watch(myEndedRunRoomsProvider).value ?? const <RunRoom>[]
+        : const <RunRoom>[];
 
     final keoBody = myActive.when(
       data: (mine) {
@@ -197,6 +215,7 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
           source: _pageSource,
           myContracts: mine,
           games: games,
+          rooms: rooms,
           coachPlans: coachPlans,
           currentUid: currentUid,
           currentProfile: profile,
@@ -209,11 +228,14 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
             if (_filter == filter) return;
             _filter = filter;
             ref.invalidate(gameListProvider);
+            ref.invalidate(gameHistoryProvider);
+            ref.invalidate(myEndedRunRoomsProvider);
             _loadFirstPage();
           },
           onLoadMore: _loadNextPage,
           onJoin: _joinContract,
           onOpenCoach: (plan) => context.push('/coach/${plan.id}'),
+          onOpenRoom: (room) => context.push('/rooms/${room.id}'),
           onOpenGame: (game) async {
             await context.push('/games/${game.id}');
             // Trong ván có thể đã đăng ký hay làm xong việc: đọc lại card.
@@ -228,12 +250,12 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Kèo'),
+        title: const Text('Tất cả kèo'),
         actions: [
           if (connected)
             Padding(
               padding: const EdgeInsets.only(right: 10),
-              child: _ContractSyncAction(
+              child: ContractSyncAction(
                 syncing: sync.syncing,
                 synced: sync.lastSyncSucceeded,
                 onPressed: () => ref
@@ -245,44 +267,19 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
       ),
       floatingActionButton: FloatingActionButton.small(
         tooltip: 'Tạo kèo',
-        onPressed: () =>
-            _createContract(myActive.value ?? const [], currentUid),
+        onPressed: () async {
+          final created = await startCreateContract(
+            context,
+            ref,
+            myActive.value ?? const [],
+            currentUid,
+          );
+          if (created && mounted) await _loadFirstPage();
+        },
         child: const Icon(Icons.add_rounded),
       ),
       body: keoBody,
     );
-  }
-
-  Future<void> _createContract(
-    List<RunContract> myActive,
-    String? currentUid,
-  ) async {
-    // Ai cũng tạo được kèo — không cần kết nối Strava (chạy bằng 3i native cũng
-    // theo dõi được tiến độ). Chỉ chặn khi đang dở quá nhiều kèo.
-    final unfinished = myActive
-        .where((contract) => !contract.completedBy(currentUid))
-        .toList();
-    if (unfinished.length >= maxActiveRunContracts) {
-      // Ván Ma Sói không phải kèo, nên giới hạn số kèo không chặn admin mở ván.
-      final canCreateGame = ref.read(gameListProvider).value?.canCreate == true;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Bạn đang tham gia ${unfinished.length} kèo chưa hoàn thành. '
-            'Hãy chốt một kèo để tạo kèo mới.',
-          ),
-          action: canCreateGame
-              ? SnackBarAction(
-                  label: 'Mở ván Ma Sói',
-                  onPressed: () => context.push('/games/new'),
-                )
-              : null,
-        ),
-      );
-      return;
-    }
-    await context.push('/contracts/new');
-    if (mounted) await _loadFirstPage();
   }
 
   Future<void> _joinContract(RunContract contract) async {
@@ -304,13 +301,50 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
   }
 }
 
+/// Mở màn tạo kèo. Trả true khi đã mở (để màn gọi nạp lại danh sách), false
+/// khi bị chặn vì đang dở quá nhiều kèo.
+Future<bool> startCreateContract(
+  BuildContext context,
+  WidgetRef ref,
+  List<RunContract> myActive,
+  String? currentUid,
+) async {
+  // Ai cũng tạo được kèo — không cần kết nối Strava (chạy bằng 3i native cũng
+  // theo dõi được tiến độ). Chỉ chặn khi đang dở quá nhiều kèo.
+  final unfinished = myActive
+      .where((contract) => !contract.completedBy(currentUid))
+      .toList();
+  if (unfinished.length >= maxActiveRunContracts) {
+    // Ván Ma Sói không phải kèo, nên giới hạn số kèo không chặn admin mở ván.
+    final canCreateGame = ref.read(gameListProvider).value?.canCreate == true;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Bạn đang tham gia ${unfinished.length} kèo chưa hoàn thành. '
+          'Hãy chốt một kèo để tạo kèo mới.',
+        ),
+        action: canCreateGame
+            ? SnackBarAction(
+                label: 'Mở ván Ma Sói',
+                onPressed: () => context.push('/games/new'),
+              )
+            : null,
+      ),
+    );
+    return false;
+  }
+  await context.push('/contracts/new');
+  return true;
+}
+
 enum _ContractFilter { active, completed, failed }
 
-class _ContractSyncAction extends StatefulWidget {
-  const _ContractSyncAction({
+class ContractSyncAction extends StatefulWidget {
+  const ContractSyncAction({
     required this.syncing,
     required this.synced,
     required this.onPressed,
+    super.key,
   });
 
   final bool syncing;
@@ -318,10 +352,10 @@ class _ContractSyncAction extends StatefulWidget {
   final VoidCallback onPressed;
 
   @override
-  State<_ContractSyncAction> createState() => _ContractSyncActionState();
+  State<ContractSyncAction> createState() => _ContractSyncActionState();
 }
 
-class _ContractSyncActionState extends State<_ContractSyncAction>
+class _ContractSyncActionState extends State<ContractSyncAction>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
@@ -336,7 +370,7 @@ class _ContractSyncActionState extends State<_ContractSyncAction>
   }
 
   @override
-  void didUpdateWidget(covariant _ContractSyncAction oldWidget) {
+  void didUpdateWidget(covariant ContractSyncAction oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.syncing != widget.syncing) _syncAnimation();
   }
@@ -407,6 +441,7 @@ class _ContractFeed extends StatelessWidget {
     required this.source,
     required this.myContracts,
     required this.games,
+    required this.rooms,
     required this.coachPlans,
     required this.currentUid,
     required this.currentProfile,
@@ -420,11 +455,13 @@ class _ContractFeed extends StatelessWidget {
     required this.onJoin,
     required this.onOpenCoach,
     required this.onOpenGame,
+    required this.onOpenRoom,
   });
 
   final AsyncValue<List<RunContract>> source;
   final List<RunContract> myContracts;
   final List<GameListItem> games;
+  final List<RunRoom> rooms;
   final List<TrainingPlan> coachPlans;
   final String? currentUid;
   final UserProfile? currentProfile;
@@ -438,6 +475,7 @@ class _ContractFeed extends StatelessWidget {
   final ValueChanged<RunContract> onJoin;
   final ValueChanged<TrainingPlan> onOpenCoach;
   final ValueChanged<GameListItem> onOpenGame;
+  final ValueChanged<RunRoom> onOpenRoom;
 
   @override
   Widget build(BuildContext context) {
@@ -470,11 +508,13 @@ class _ContractFeed extends StatelessWidget {
               final coachCards = filter == _ContractFilter.active
                   ? coachPlans
                   : const <TrainingPlan>[];
-              // Ván Ma Sói cũng chỉ ở "đang chạy", đứng trước coach card.
-              final gameCards = filter == _ContractFilter.active
-                  ? games
-                  : const <GameListItem>[];
-              if (visible.isEmpty && coachCards.isEmpty && gameCards.isEmpty) {
+              // Ván Ma Sói đã chia theo filter ở trên, đứng trước coach card.
+              final gameCards = games;
+              final roomCards = rooms;
+              if (visible.isEmpty &&
+                  coachCards.isEmpty &&
+                  gameCards.isEmpty &&
+                  roomCards.isEmpty) {
                 return ListView(
                   padding: EdgeInsets.fromLTRB(
                     wide ? 20 : 16,
@@ -501,6 +541,14 @@ class _ContractFeed extends StatelessWidget {
                               onTap: () => onOpenGame(game),
                             ),
                           ),
+                        for (final room in roomCards)
+                          SizedBox(
+                            width: 440,
+                            child: RunRoomDoneCard(
+                              room: room,
+                              onTap: () => onOpenRoom(room),
+                            ),
+                          ),
                         for (final plan in coachCards)
                           SizedBox(
                             width: 440,
@@ -523,9 +571,9 @@ class _ContractFeed extends StatelessWidget {
                   ],
                 );
               }
-              final lead = gameCards.length + coachCards.length;
-              final itemCount =
-                  lead + visible.length + (canLoadMore ? 1 : 0);
+              final lead =
+                  gameCards.length + roomCards.length + coachCards.length;
+              final itemCount = lead + visible.length + (canLoadMore ? 1 : 0);
               return ListView.separated(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 130),
                 itemCount: itemCount,
@@ -535,10 +583,18 @@ class _ContractFeed extends StatelessWidget {
                     final game = gameCards[index];
                     return GameCard(game: game, onTap: () => onOpenGame(game));
                   }
+                  final roomIndex = index - gameCards.length;
+                  if (roomIndex < roomCards.length) {
+                    final room = roomCards[roomIndex];
+                    return RunRoomDoneCard(
+                      room: room,
+                      onTap: () => onOpenRoom(room),
+                    );
+                  }
                   if (index < lead) {
                     return _coachCard(
                       context,
-                      coachCards[index - gameCards.length],
+                      coachCards[roomIndex - roomCards.length],
                       profiles,
                     );
                   }
@@ -697,20 +753,8 @@ class _EmptyContracts extends StatelessWidget {
     };
     return GlassPanel(
       borderRadius: 0,
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          Icon(
-            Icons.flag_outlined,
-            size: 44,
-            color: context.runNowPalette.accent,
-          ),
-          const SizedBox(height: 12),
-          Text(title, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 6),
-          Text(subtitle),
-        ],
-      ),
+      padding: EdgeInsets.zero,
+      child: RunNowEmpty(message: title, hint: subtitle),
     );
   }
 }

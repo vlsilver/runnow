@@ -1,17 +1,28 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/games/game_action_card.dart';
+import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_detail_controller.dart';
+import 'package:myrun/src/games/game_ended.dart';
+import 'package:myrun/src/games/game_hero.dart';
+import 'package:myrun/src/games/game_journal.dart';
 import 'package:myrun/src/games/game_my_card.dart';
+import 'package:myrun/src/games/game_night_theme.dart';
+import 'package:myrun/src/games/game_player_card.dart';
+import 'package:myrun/src/games/game_role_card.dart';
+import 'package:myrun/src/games/game_skill_cards.dart';
+import 'package:myrun/src/games/game_village.dart';
 import 'package:myrun/src/games/telegram_link_controller.dart';
 import 'package:myrun/src/games/telegram_link_section.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
-import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -42,6 +53,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     with WidgetsBindingObserver {
   late final GameDetailController _controller;
   late final TelegramLinkController _telegram;
+  final _theme = gameMoonlitTheme();
   bool _registering = false;
   bool _starting = false;
   bool? _linked;
@@ -50,9 +62,24 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   /// thì úp lại, để quay lại không thấy vai đang ngửa.
   bool _faceUp = false;
 
+  /// Thẻ của ván này đã lật trên máy này chưa; null là đang đọc.
+  bool? _cardRevealed;
+
+  /// Vừa lật lúc lá đang ngửa thì chạy hiệu ứng lật một lần.
+  bool _justRevealed = false;
+
+  /// Tab dưới lá bài: 0 là Làng, 1 là Nhật ký.
+  int _tab = 0;
+
   @override
   void initState() {
     super.initState();
+    ref.listenManual(firebaseUserProvider.select((user) => user.value?.uid), (
+      _,
+      uid,
+    ) {
+      if (uid != null) unawaited(_loadReveal(uid));
+    }, fireImmediately: true);
     _controller = GameDetailController(
       api: ref.read(runNowApiClientProvider),
       gameId: widget.gameId,
@@ -94,7 +121,34 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   }
 
   void _turnFaceDown() {
-    if (_faceUp && mounted) setState(() => _faceUp = false);
+    if (_faceUp && mounted) {
+      setState(() {
+        _faceUp = false;
+        _justRevealed = false;
+      });
+    }
+  }
+
+  Future<void> _loadReveal(String uid) async {
+    final revealed = await ref
+        .read(gameCardRevealsProvider)
+        .revealed(uid, widget.gameId);
+    if (mounted) setState(() => _cardRevealed = revealed);
+  }
+
+  Future<void> _revealCard() async {
+    final uid = ref.read(firebaseUserProvider).value?.uid;
+    if (uid == null) return;
+    setState(() {
+      _cardRevealed = true;
+      _justRevealed = true;
+    });
+    try {
+      await ref.read(gameCardRevealsProvider).markRevealed(uid, widget.gameId);
+    } catch (error) {
+      // Không ghi được thì lần sau mở màn lá lại úp, bậc vẫn như cũ.
+      debugPrint('Ma Sói: ghi thẻ đã lật lỗi: $error');
+    }
   }
 
   @override
@@ -197,210 +251,297 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    return ListenableBuilder(
-      listenable: Listenable.merge([_controller, _telegram]),
-      builder: (context, _) {
-        final detail = _controller.detail;
-        final me = _controller.me;
-        // Vai của cả ván chỉ có trong /me sau khi ván kết thúc.
-        final reveals = {for (final r in me?.allRoles ?? const []) r.uid: r};
-        return Scaffold(
-          backgroundColor: palette.background,
-          appBar: AppBar(
-            title: Text(detail?.title ?? 'Ma Sói'),
-            backgroundColor: palette.background,
-            elevation: 0,
-          ),
-          body: detail == null
-              ? _controller.error == null
-                    ? const RunNowLoading(label: 'Đang tải ván')
-                    : _LoadError(
-                        error: _controller.error!,
-                        onRetry: _controller.refresh,
-                      )
-              : RefreshIndicator(
-                  onRefresh: _controller.refresh,
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 48),
-                    children: [
-                      // Giữ chỗ cố định để banner bật tắt không làm các mục
-                      // phía dưới đổi vị trí và mất state.
-                      _controller.error != null
-                          ? const _StaleBanner()
-                          : const SizedBox.shrink(),
-                      _Header(
-                        detail: detail,
-                        closing: _controller.phaseClosing,
-                      ),
-                      if (me != null && me.role != null) ...[
-                        const SizedBox(height: 12),
-                        GameMyCard(
-                          me: me,
-                          faceUp: _faceUp,
-                          onFlip: () => setState(() => _faceUp = !_faceUp),
-                          onOpenUrl: _openLink,
-                          onOpenChat: (key) {
-                            _turnFaceDown();
-                            context.push(
-                              '/games/${Uri.encodeComponent(widget.gameId)}'
-                              '/chat/${Uri.encodeComponent(key)}',
-                            );
-                          },
-                        ),
-                      ],
-                      if (_faceUp && me != null && me.actions.isNotEmpty) ...[
-                        const SizedBox(height: 20),
-                        const _SectionTitle('Việc của bạn'),
-                        for (final action in me.actions)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: GameActionCard(
-                              key: ValueKey(action.kind),
-                              action: action,
-                              serverNow: _controller.serverNow,
-                              onSubmit:
-                                  ({
-                                    targets = const [],
-                                    choice,
-                                    clear = false,
-                                  }) => _submit(
-                                    action.kind,
-                                    targets: targets,
-                                    choice: choice,
-                                    clear: clear,
-                                  ),
-                            ),
-                          ),
-                      ],
-                      if (detail.status == 'registering' ||
-                          detail.isRegistered) ...[
-                        const SizedBox(height: 12),
-                        TelegramLinkSection(
-                          controller: _telegram,
-                          onError: _showError,
-                        ),
-                      ],
-                      if (detail.status == 'registering') ...[
-                        const SizedBox(height: 12),
-                        _Registration(
-                          detail: detail,
-                          busy: _registering,
-                          onToggle: () =>
-                              _toggleRegistration(detail.isRegistered),
-                          onOpenUrl: _openLink,
-                        ),
-                      ],
-                      if (detail.isAdmin && detail.status == 'registering') ...[
-                        const SizedBox(height: 12),
-                        FilledButton.tonal(
-                          onPressed: _starting ? null : _start,
-                          child: Text(
-                            _starting ? 'Đang kiểm tra…' : 'Bắt đầu ván',
-                          ),
-                        ),
-                      ],
-                      if (detail.rulesText.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        _Rules(text: detail.rulesText),
-                      ],
-                      if (detail.players.isNotEmpty) ...[
-                        const SizedBox(height: 20),
-                        _SectionTitle('Người chơi (${detail.players.length})'),
-                        for (final player in detail.players)
-                          _PlayerRow(
-                            player: player,
-                            reveal: reveals[player.uid],
-                          ),
-                      ],
-                      const SizedBox(height: 20),
-                      const _SectionTitle('Diễn biến'),
-                      _Feed(
-                        items: _controller.feedItems,
-                        hasOlder: _controller.hasOlderFeed,
-                        loadingOlder: _controller.loadingOlder,
-                        onLoadOlder: _loadOlder,
-                      ),
-                    ],
-                  ),
-                ),
-        );
-      },
+  /// Thẻ Ma Sói của người xem: bậc bốc lúc chia bài, phe thắng giữ thẻ khi
+  /// ván kết thúc.
+  AchievementCardData _cardFor(
+    GameDetail detail,
+    GameMe me,
+    GamePlayer? player,
+  ) => gameCardData(
+    GamePlayerCard.fromMe(detail: detail, me: me, player: player),
+    owner: player?.name ?? 'Bạn',
+  );
+
+  void _openCard(GameDetail detail, GameMe me, GamePlayer? player) {
+    final card = GamePlayerCard.fromMe(detail: detail, me: me, player: player);
+    // Ván còn chạy mà mình còn sống thì vai còn bí mật.
+    final secret = detail.status != 'ended' && me.alive;
+    showGameCardViewer(
+      context,
+      card: card,
+      data: _cardFor(detail, me, player),
+      secret: secret,
+      chips: [
+        detail.statusLabel,
+        gameCardTiers[card.tier]!.label,
+        if (secret) 'Chỉ mình bạn thấy',
+      ],
     );
   }
-}
-
-final _timeFormat = DateFormat('HH:mm dd/MM');
-
-class _Header extends StatelessWidget {
-  const _Header({required this.detail, required this.closing});
-
-  final GameDetail detail;
-  final bool closing;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    final phase = detail.phase;
-    final deadline = phase?.deadline;
-    final startError = detail.startError;
-    return GlassPanel(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              _Chip(label: detail.statusLabel, color: palette.accent),
-              if (detail.testMode)
-                _Chip(label: 'Ván thử', color: palette.textMuted),
-            ],
-          ),
-          if (phase != null) ...[
-            const SizedBox(height: 12),
-            // Qua hạn thì không hiện phase cũ như còn mở.
-            Text(
-              closing ? 'Đang chốt…' : phase.label,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: palette.ink,
+    final myUid = ref.watch(
+      firebaseUserProvider.select((user) => user.value?.uid),
+    );
+    // Trang ván luôn tông ánh trăng, không theo sáng/tối của app.
+    return Theme(
+      data: _theme,
+      child: ListenableBuilder(
+        listenable: Listenable.merge([_controller, _telegram]),
+        builder: (context, _) {
+          final detail = _controller.detail;
+          final me = _controller.me;
+          // Vai của cả ván chỉ có trong /me sau khi ván kết thúc.
+          final reveals = <String, GameRoleReveal>{
+            for (final r in me?.allRoles ?? const []) r.uid: r,
+          };
+          final kmTable = detail?.kmTable;
+          final summary = me?.summary;
+          final myPlayer = detail?.players
+              .where((p) => p.uid == myUid)
+              .firstOrNull;
+          return GameMoonlitBackdrop(
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              appBar: AppBar(
+                title: Text(detail?.title ?? 'Ma Sói'),
+                actions: [
+                  if (detail != null && detail.setup.isNotEmpty)
+                    IconButton(
+                      tooltip: 'Thiết lập ván',
+                      icon: const Icon(Icons.tune_rounded),
+                      onPressed: () =>
+                          showGameSetupSheet(context, detail.setup),
+                    ),
+                ],
               ),
+              body: detail == null
+                  ? _controller.error == null
+                        ? const RunNowLoading(label: 'Đang tải ván')
+                        : _LoadError(
+                            error: _controller.error!,
+                            onRetry: _controller.refresh,
+                          )
+                  : RefreshIndicator(
+                      onRefresh: _controller.refresh,
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 48),
+                        children: [
+                          // Giữ chỗ cố định để banner bật tắt không làm các mục
+                          // phía dưới đổi vị trí và mất state.
+                          _controller.error != null
+                              ? const _StaleBanner()
+                              : const SizedBox.shrink(),
+                          GameHero(
+                            detail: detail,
+                            rounds: me?.cardRounds ?? 0,
+                            closing: _controller.phaseClosing,
+                            serverNow: _controller.serverNow,
+                          ),
+                          if (me != null && me.role != null) ...[
+                            const SizedBox(height: 16),
+                            GameMyCard(
+                              me: me,
+                              faceUp: _faceUp,
+                              kmTable: kmTable,
+                              running: detail.status == 'running',
+                              serverNow: _controller.serverNow,
+                              card: _cardFor(detail, me, myPlayer),
+                              onOpenCard: () => _openCard(detail, me, myPlayer),
+                              cardRevealed: _cardRevealed,
+                              justRevealed: _justRevealed,
+                              onRevealCard: _revealCard,
+                              onFlip: () => setState(() {
+                                _faceUp = !_faceUp;
+                                _justRevealed = false;
+                              }),
+                              onOpenUrl: _openLink,
+                              onOpenChat: (key) {
+                                _turnFaceDown();
+                                context.push(
+                                  '/games/${Uri.encodeComponent(widget.gameId)}'
+                                  '/chat/${Uri.encodeComponent(key)}',
+                                );
+                              },
+                            ),
+                          ],
+                          if (_faceUp &&
+                              me != null &&
+                              me.actions.isNotEmpty) ...[
+                            const SizedBox(height: 16),
+                            const _SectionTitle('Việc của bạn'),
+                            for (final action in me.actions)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: GameActionCard(
+                                  key: ValueKey(action.kind),
+                                  action: action,
+                                  serverNow: _controller.serverNow,
+                                  onSubmit:
+                                      ({
+                                        targets = const [],
+                                        choice,
+                                        clear = false,
+                                      }) => _submit(
+                                        action.kind,
+                                        targets: targets,
+                                        choice: choice,
+                                        clear: clear,
+                                      ),
+                                ),
+                              ),
+                          ],
+                          if (detail.status == 'registering') ...[
+                            const SizedBox(height: 12),
+                            TelegramLinkSection(
+                              controller: _telegram,
+                              onError: _showError,
+                            ),
+                          ],
+                          if (detail.status == 'registering') ...[
+                            const SizedBox(height: 12),
+                            _Registration(
+                              detail: detail,
+                              busy: _registering,
+                              onToggle: () =>
+                                  _toggleRegistration(detail.isRegistered),
+                              onOpenUrl: _openLink,
+                            ),
+                          ],
+                          if (detail.isAdmin &&
+                              detail.status == 'registering') ...[
+                            const SizedBox(height: 12),
+                            FilledButton.tonal(
+                              onPressed: _starting ? null : _start,
+                              child: Text(
+                                _starting ? 'Đang kiểm tra…' : 'Bắt đầu ván',
+                              ),
+                            ),
+                          ],
+                          // Lúc mở đăng ký thì luật nằm ngay dưới nút đăng ký;
+                          // ván chạy rồi thì xuống cuối, nhường chỗ cho ván.
+                          if (detail.status == 'registering' &&
+                              detail.rulesText.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            _Rules(text: detail.rulesText),
+                          ],
+                          if (detail.status == 'registering') ...[
+                            if (detail.players.isNotEmpty) ...[
+                              const SizedBox(height: 20),
+                              _SectionTitle(
+                                'ĐÃ VÀO SẢNH',
+                                trailing: '${detail.players.length} người',
+                              ),
+                              GameVillage(
+                                players: detail.players,
+                                reveals: reveals,
+                                table: null,
+                                myUid: myUid,
+                              ),
+                            ],
+                          ] else ...[
+                            const SizedBox(height: 16),
+                            _Tabs(
+                              current: _tab,
+                              tabs: summary != null
+                                  ? [
+                                      ('TỔNG KẾT', null),
+                                      (
+                                        'LẬT BÀI',
+                                        '${summary.teams.fold(0, (n, t) => n + t.players.length)}',
+                                      ),
+                                      ('DIỄN LẠI', null),
+                                    ]
+                                  : [
+                                      (
+                                        'LÀNG',
+                                        '${detail.players.where((p) => p.alive).length}'
+                                            '/${detail.players.length}',
+                                      ),
+                                      ('NHẬT KÝ', null),
+                                    ],
+                              onChanged: (tab) => setState(() => _tab = tab),
+                            ),
+                            const SizedBox(height: 12),
+                            if (summary != null)
+                              switch (_tab) {
+                                0 => GameEndedSummary(summary: summary),
+                                1 => GameEndedReveal(teams: summary.teams),
+                                _ => GameReplay(sections: summary.replay),
+                              }
+                            else if (_tab == 0) ...[
+                              if (me != null) ...[
+                                GameKmGoals(
+                                  goals: me.kmGoals,
+                                  faceUp: _faceUp,
+                                  table: kmTable,
+                                  myKm: myPlayer?.todayKm,
+                                ),
+                                if (me.kmGoals.isNotEmpty)
+                                  const SizedBox(height: 16),
+                              ],
+                              _SectionTitle(
+                                'LÀNG',
+                                trailing: kmTable == null
+                                    ? null
+                                    : 'xếp theo km hôm nay',
+                              ),
+                              GameVillage(
+                                players: detail.players,
+                                reveals: reveals,
+                                table: kmTable,
+                                myUid: myUid,
+                              ),
+                              if (kmTable != null && kmTable.note.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 10),
+                                  child: Text(
+                                    kmTable.note,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      height: 1.45,
+                                      color: RunNowMoonlitTokens.muted,
+                                    ),
+                                  ),
+                                ),
+                            ] else
+                              GameJournal(
+                                items: _controller.feedItems,
+                                hasOlder: _controller.hasOlderFeed,
+                                loadingOlder: _controller.loadingOlder,
+                                onLoadOlder: _loadOlder,
+                              ),
+                          ],
+                          if (detail.status != 'registering' &&
+                              detail.rulesText.isNotEmpty) ...[
+                            const SizedBox(height: 20),
+                            _Rules(text: detail.rulesText),
+                          ],
+                          if (detail.status != 'registering' &&
+                              detail.isRegistered) ...[
+                            const SizedBox(height: 12),
+                            TelegramLinkSection(
+                              controller: _telegram,
+                              onError: _showError,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
             ),
-            if (!closing && deadline != null)
-              Text(
-                'Hạn ${_timeFormat.format(deadline.toLocal())}',
-                style: TextStyle(color: palette.textMuted),
-              ),
-          ],
-          if (detail.winnerLabel != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              detail.winnerLabel!,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: palette.accent,
-              ),
-            ),
-          ],
-          if (startError != null && detail.status == 'registering') ...[
-            const SizedBox(height: 12),
-            Text(
-              startError.message,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-          ],
-        ],
+          );
+        },
       ),
     );
   }
 }
 
+final _clockFormat = DateFormat('HH:mm');
+final _dayFormat = DateFormat('dd/MM');
+const _weekdays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+
+/// Sảnh đăng ký: số chỗ đã có, giờ đóng, điều kiện vào ván và nút đăng ký.
 class _Registration extends StatelessWidget {
   const _Registration({
     required this.detail,
@@ -416,42 +557,155 @@ class _Registration extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    final deadline = detail.registrationDeadline;
-    final ready = detail.requirements.every((r) => r.ok);
-    return GlassPanel(
+    final deadline = detail.registrationDeadline?.toLocal();
+    final requirements = detail.requirements;
+    final met = requirements.where((r) => r.ok).length;
+    final ready = met == requirements.length;
+    final count = detail.playerCount;
+    return Container(
       padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _M.panel,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _M.border),
+      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            '${detail.playerCount} người đã đăng ký · cần '
-            '${detail.minPlayers}–${detail.maxPlayers}',
-            style: TextStyle(fontWeight: FontWeight.w700, color: palette.ink),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: '$count',
+                            style: const TextStyle(
+                              fontSize: 40,
+                              color: _M.amberLight,
+                            ),
+                          ),
+                          TextSpan(
+                            text: ' / ${detail.maxPlayers} chỗ',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              color: _M.inkSoft,
+                            ),
+                          ),
+                        ],
+                      ),
+                      style: const TextStyle(
+                        fontFamily: gameTitleFont,
+                        fontWeight: FontWeight.w800,
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      count >= detail.minPlayers
+                          ? 'Đủ người để mở ván'
+                          : 'Cần ít nhất ${detail.minPlayers} để mở ván',
+                      style: const TextStyle(fontSize: 12, color: _M.muted),
+                    ),
+                  ],
+                ),
+              ),
+              if (deadline != null)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      _clockFormat.format(deadline),
+                      style: const TextStyle(
+                        fontFamily: gameTitleFont,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 24,
+                        height: 1,
+                        color: _M.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'đóng đăng ký · ${_weekdays[deadline.weekday - 1]} '
+                      '${_dayFormat.format(deadline)}',
+                      style: const TextStyle(fontSize: 12, color: _M.muted),
+                    ),
+                  ],
+                ),
+            ],
           ),
-          if (deadline != null)
-            Text(
-              'Đóng đăng ký ${_timeFormat.format(deadline.toLocal())}',
-              style: TextStyle(color: palette.textMuted),
-            ),
-          if (!detail.isRegistered)
-            for (final requirement in detail.requirements)
-              _RequirementRow(requirement: requirement, onOpenUrl: onOpenUrl),
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: detail.isRegistered
-                ? OutlinedButton(
-                    onPressed: busy ? null : onToggle,
-                    child: const Text('Huỷ đăng ký'),
-                  )
-                : FilledButton(
-                    onPressed: busy || !ready ? null : onToggle,
-                    child: const Text('Đăng ký'),
-                  ),
-          ),
+          _Slots(count: count, min: detail.minPlayers, max: detail.maxPlayers),
+          if (!detail.isRegistered && requirements.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(
+              'ĐỦ ĐIỀU KIỆN $met/${requirements.length}',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.2,
+                color: _M.inkSoft,
+              ),
+            ),
+            for (final requirement in requirements)
+              _RequirementRow(requirement: requirement, onOpenUrl: onOpenUrl),
+          ],
+          const SizedBox(height: 16),
+          detail.isRegistered
+              ? OutlinedButton(
+                  onPressed: busy ? null : onToggle,
+                  child: const Text('Huỷ đăng ký'),
+                )
+              : FilledButton(
+                  onPressed: busy || !ready ? null : onToggle,
+                  child: const Text('Đăng ký'),
+                ),
         ],
       ),
+    );
+  }
+}
+
+/// Dải chỗ ngồi: mỗi chỗ một vạch, chỗ đã có người sáng lên, vạch số người
+/// tối thiểu nhạt hơn khi chưa đủ.
+class _Slots extends StatelessWidget {
+  const _Slots({required this.count, required this.min, required this.max});
+
+  final int count;
+  final int min;
+  final int max;
+
+  @override
+  Widget build(BuildContext context) {
+    if (max <= 0) return const SizedBox.shrink();
+    return Row(
+      children: [
+        for (var i = 0; i < max; i++) ...[
+          if (i > 0) const SizedBox(width: 3),
+          Expanded(
+            child: Container(
+              height: 6,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(3),
+                color: i < count
+                    ? null
+                    : i < min
+                    ? _M.amberLine
+                    : _M.track,
+                gradient: i < count
+                    ? const LinearGradient(
+                        colors: [_M.amberDeep, _M.amberBright],
+                      )
+                    : null,
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -464,6 +718,7 @@ class _Rules extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GlassPanel(
+      border: Border.all(color: context.runNowPalette.border),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
@@ -477,183 +732,141 @@ class _Rules extends StatelessWidget {
   }
 }
 
-class _PlayerRow extends StatelessWidget {
-  const _PlayerRow({required this.player, required this.reveal});
+/// Tab dưới lá bài: Làng và Nhật ký khi ván chạy; Tổng kết, Lật bài, Diễn
+/// lại khi ván đã xong và có tổng kết.
+class _Tabs extends StatelessWidget {
+  const _Tabs({
+    required this.current,
+    required this.tabs,
+    required this.onChanged,
+  });
 
-  final GamePlayer player;
-  final GameRoleReveal? reveal;
+  final int current;
+
+  /// Tên tab và số nhỏ kèm theo (như 9/12 người còn sống), null là không có.
+  final List<(String, String?)> tabs;
+  final ValueChanged<int> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    final avatar = player.avatarUrl;
-    final roleLabel = player.revealedRoleLabel ?? reveal?.roleLabel;
-    final cardUrl = player.revealedCardUrl ?? reveal?.cardUrl;
-    final details = [
-      if (!player.alive)
-        player.deathRound == null
-            ? 'Đã chết'
-            : 'Chết vòng ${player.deathRound}',
-      ?roleLabel,
-      if (player.lastKm != null) '${player.lastKm!.toStringAsFixed(1)} km',
-    ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Opacity(
-            opacity: player.alive ? 1 : 0.4,
-            child: CircleAvatar(
-              radius: 18,
-              backgroundImage: avatar == null
-                  ? null
-                  : cachedAvatarImage(context, avatar, 36),
-              child: avatar == null
-                  ? Text(
-                      player.name.isEmpty ? '?' : player.name[0].toUpperCase(),
-                    )
-                  : null,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  player.name,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: palette.ink,
-                    decoration: player.alive
-                        ? null
-                        : TextDecoration.lineThrough,
-                  ),
+    Widget tab(int index, String label, String? badge) {
+      final on = index == current;
+      return Expanded(
+        child: Semantics(
+          selected: on,
+          button: true,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => onChanged(index),
+            child: Container(
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: on ? _M.amberLine : Colors.transparent,
                 ),
-                if (details.isNotEmpty)
+                gradient: on
+                    ? const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [_M.heroTop, _M.heroMid],
+                      )
+                    : null,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   Text(
-                    details.join(' · '),
-                    style: TextStyle(fontSize: 13, color: palette.textMuted),
+                    label,
+                    style: TextStyle(
+                      fontFamily: gameTitleFont,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                      letterSpacing: 1.2,
+                      color: on ? _M.amberCream : _M.muted,
+                    ),
                   ),
-              ],
-            ),
-          ),
-          if (cardUrl != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: Image.network(
-                  cardUrl,
-                  width: 28,
-                  height: 40,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                ),
+                  if (badge != null) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5),
+                      height: 18,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: on ? _M.amberStrong : _M.track,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        badge,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: on ? _M.onAmber : _M.inkSoft,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
-          if (player.onTrial)
-            _Chip(
-              label: 'Lên giàn',
-              color: Theme.of(context).colorScheme.error,
-            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: _M.tabBar,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _M.border),
+      ),
+      child: Row(
+        children: [
+          for (final (i, (label, badge)) in tabs.indexed) ...[
+            if (i > 0) const SizedBox(width: 4),
+            tab(i, label, badge),
+          ],
         ],
       ),
     );
   }
 }
 
-class _Feed extends StatelessWidget {
-  const _Feed({
-    required this.items,
-    required this.hasOlder,
-    required this.loadingOlder,
-    required this.onLoadOlder,
-  });
+typedef _M = RunNowMoonlitTokens;
 
-  final List<GameFeedItem> items;
-  final bool hasOlder;
-  final bool loadingOlder;
-  final VoidCallback onLoadOlder;
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.text, {this.trailing});
+
+  final String text;
+  final String? trailing;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    if (items.isEmpty) {
-      return Text('Chưa có gì.', style: TextStyle(color: palette.textMuted));
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final item in items)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: palette.ink,
-                  ),
-                ),
-                if (item.at != null)
-                  Text(
-                    _timeFormat.format(item.at!.toLocal()),
-                    style: TextStyle(fontSize: 12, color: palette.textMuted),
-                  ),
-                for (final line in item.lines) Text(line),
-              ],
-            ),
-          ),
-        if (hasOlder)
-          Center(
-            child: TextButton(
-              onPressed: loadingOlder ? null : onLoadOlder,
-              child: Text(loadingOlder ? 'Đang tải…' : 'Xem cũ hơn'),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(text, style: Theme.of(context).textTheme.titleMedium),
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w800,
-          color: color,
-        ),
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: palette.ink,
+              ),
+            ),
+          ),
+          if (trailing != null)
+            Text(
+              trailing!,
+              style: TextStyle(fontSize: 12, color: palette.textMuted),
+            ),
+        ],
       ),
     );
   }

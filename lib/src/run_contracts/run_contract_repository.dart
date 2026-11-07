@@ -282,6 +282,8 @@ class FirestoreRunContractRepository implements RunContractRepository {
       if (draft.isJourney) 'mode': draft.mode.value,
       if (draft.journeyRouteId != null) 'journeyRouteId': draft.journeyRouteId,
       if (draft.openEnded) 'openEnded': true,
+      if (draft.meetAt case final meetAt?) 'meetAt': Timestamp.fromDate(meetAt),
+      'roomId': ?draft.roomId,
     });
     return contractRef.id;
   }
@@ -675,6 +677,7 @@ class FirestoreRunContractRepository implements RunContractRepository {
         'cancelledAt',
         'createdAt',
         'updatedAt',
+        'meetAt',
       ])
         if (data[field] is Timestamp)
           field: (data[field] as Timestamp).toDate(),

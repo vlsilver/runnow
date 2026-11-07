@@ -3,39 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:myrun/src/formatters.dart';
-import 'package:myrun/src/models.dart';
 import 'package:share_plus/share_plus.dart';
-
-String buildShareCaption(ActivitySummary activity) {
-  return [
-    activity.name,
-    '${formatDistance(activity.distanceMeters)} • ${formatDuration(activity.movingTimeSeconds)} • ${formatPace(activity.paceSecondsPerKm)}',
-    'Chia sẻ từ 3i',
-  ].join('\n');
-}
-
-Future<ShareResult> shareActivityRecap({
-  required GlobalKey recapKey,
-  required BuildContext shareButtonContext,
-  required ActivitySummary activity,
-}) async {
-  final boundary =
-      recapKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-  final renderBox = shareButtonContext.findRenderObject() as RenderBox?;
-  final sharePositionOrigin = renderBox == null
-      ? null
-      : renderBox.localToGlobal(Offset.zero) & renderBox.size;
-  final png = await captureRecapPng(boundary);
-  return SharePlus.instance.share(
-    ShareParams(
-      text: buildShareCaption(activity),
-      files: [XFile.fromData(png, mimeType: 'image/png')],
-      fileNameOverrides: ['3i-${activity.id}.png'],
-      sharePositionOrigin: sharePositionOrigin,
-    ),
-  );
-}
 
 Future<ShareResult> shareDashboardCard({
   required GlobalKey cardKey,
@@ -79,6 +47,48 @@ Future<ShareResult> shareJourneyCompletion({
           'từng buổi chạy thật, không hệ số!',
       files: [XFile.fromData(png, mimeType: 'image/png')],
       fileNameOverrides: ['3i-${_shareFileName(campaignName)}.png'],
+      sharePositionOrigin: sharePositionOrigin,
+    ),
+  );
+}
+
+/// Gửi một file khoe thẻ đã tạo sẵn (ảnh mặt trước, mặt sau hay lá xoay 3D).
+Future<ShareResult> shareCardFile({
+  required Uint8List bytes,
+  required String mimeType,
+  required String fileName,
+  required BuildContext shareOriginContext,
+  required String text,
+}) {
+  final renderBox = shareOriginContext.findRenderObject() as RenderBox?;
+  final sharePositionOrigin = renderBox == null
+      ? null
+      : renderBox.localToGlobal(Offset.zero) & renderBox.size;
+  return SharePlus.instance.share(
+    ShareParams(
+      text: text,
+      files: [XFile.fromData(bytes, mimeType: mimeType)],
+      fileNameOverrides: [fileName],
+      sharePositionOrigin: sharePositionOrigin,
+    ),
+  );
+}
+
+/// Ảnh bot vẽ: gửi đúng file PNG gốc trên Storage, không chụp lại màn xem
+/// (màn xem có viền đen và đang phóng to tuỳ tay người xem).
+Future<ShareResult> shareAgentImage({
+  required Uint8List png,
+  required BuildContext shareOriginContext,
+}) {
+  final renderBox = shareOriginContext.findRenderObject() as RenderBox?;
+  final sharePositionOrigin = renderBox == null
+      ? null
+      : renderBox.localToGlobal(Offset.zero) & renderBox.size;
+  return SharePlus.instance.share(
+    ShareParams(
+      text: 'MyBot vẽ cho mình trên 3i',
+      files: [XFile.fromData(png, mimeType: 'image/png')],
+      fileNameOverrides: ['3i-mybot-anh.png'],
       sharePositionOrigin: sharePositionOrigin,
     ),
   );

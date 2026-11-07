@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/widgets/split_pace_chart.dart';
 
 void main() {
-  testWidgets('renders split pace bars and average pace', (tester) async {
+  testWidgets('hiện pace từng km và km nhanh nhất', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
@@ -17,12 +17,11 @@ void main() {
       ),
     );
 
-    expect(find.text('PACE THEO KM'), findsOneWidget);
-    expect(find.text('TB 5:30 /km'), findsOneWidget);
-    expect(find.text('K1'), findsOneWidget);
-    expect(find.text('K2'), findsOneWidget);
+    expect(find.text('Từng km'), findsOneWidget);
+    expect(find.text('nhanh nhất km 2'), findsOneWidget);
+    expect(find.text('1'), findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
     expect(find.text('6:00'), findsOneWidget);
     expect(find.text('5:00'), findsOneWidget);
-    expect(find.text('Nhanh nhất'), findsOneWidget);
   });
 }

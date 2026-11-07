@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
+import 'package:myrun/src/widgets/map_tiles.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/journey/widgets/completion_stamp.dart';
@@ -8,10 +9,6 @@ import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/route_map.dart'
     show routeBounds, routePointAtDistance;
 
-const _lightTileTemplate =
-    'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-const _darkTileTemplate =
-    'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const _distanceCalculator = Distance();
 
 /// Zoom dùng khi người dùng bấm quay về vị trí hiện tại.
@@ -86,7 +83,6 @@ class _JourneyMapState extends State<JourneyMap> {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tileTemplate = isDark ? _darkTileTemplate : _lightTileTemplate;
     final route = widget.progress.route;
     final points = route.points;
     final coveredPoints = _coveredPolyline(
@@ -137,12 +133,7 @@ class _JourneyMapState extends State<JourneyMap> {
               ),
             ),
             children: [
-              TileLayer(
-                key: ValueKey(tileTemplate),
-                urlTemplate: tileTemplate,
-                userAgentPackageName: 'com.threei.run',
-                retinaMode: RetinaMode.isHighDensity(context),
-              ),
+              mapTileLayer(context, dark: isDark),
               const MapAttribution(),
               PolylineLayer(
                 polylines: [
