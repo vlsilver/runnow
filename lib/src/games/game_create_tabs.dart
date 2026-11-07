@@ -903,8 +903,247 @@ class GameRoleChip extends StatelessWidget {
   static IconData _roleIcon(String role) => switch (role) {
     'elder' => Icons.elderly_rounded,
     'idiot' => Icons.sentiment_very_satisfied_rounded,
+    'villager' => Icons.people_outline_rounded,
     _ => Icons.person_outline_rounded,
   };
+}
+
+/// Hai hay vài lựa chọn nằm ngang, ô đang chọn tô vàng.
+class GameCreateSegment extends StatelessWidget {
+  const GameCreateSegment({
+    super.key,
+    required this.labels,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final List<String> labels;
+  final int selected;
+
+  /// null thì không bấm được.
+  final ValueChanged<int>? onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final select = onSelect;
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: _M.raised,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _M.border),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < labels.length; i++)
+            Expanded(
+              child: Semantics(
+                selected: i == selected,
+                button: true,
+                child: Material(
+                  color: i == selected ? _M.amber : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: select == null || i == selected
+                        ? null
+                        : () => select(i),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Text(
+                        labels[i],
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: i == selected ? _M.onAmber : _M.muted,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bảng chia chuẩn theo số người, ô chứa [players] sáng lên.
+class GameDeckTiers extends StatelessWidget {
+  const GameDeckTiers({super.key, required this.plan, required this.players});
+
+  final GameDeckPlan plan;
+  final int players;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, box) {
+        const gap = 8.0;
+        final width = (box.maxWidth - gap * 2) / 3;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final t in plan.tiers)
+              SizedBox(
+                width: width,
+                child: _tier(t, players >= t.from && players <= t.to),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _tier(({int from, int to, int wolves, int specials}) t, bool on) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: on ? _M.amberTint : _M.raised,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: on ? _M.amberLine : _M.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${t.from == t.to ? t.from : '${t.from}–${t.to}'} người',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: on ? _M.amberBright : _M.ink,
+            ),
+          ),
+          Text(
+            '${t.wolves} sói · ${t.specials} vai',
+            style: const TextStyle(fontSize: 11.5, color: _M.faint),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Một vai trong bộ bài: icon, tên, số lá; có [onAdd]/[onRemove] thì hiện nút
+/// −/+ cạnh số. Vai 0 lá vẽ mờ.
+class GameDeckTile extends StatelessWidget {
+  const GameDeckTile({
+    super.key,
+    required this.role,
+    required this.label,
+    required this.count,
+    this.onAdd,
+    this.onRemove,
+    this.editable = false,
+  });
+
+  final String role;
+  final String label;
+  final int count;
+  final VoidCallback? onAdd;
+  final VoidCallback? onRemove;
+
+  /// Vẽ nút −/+ (nút không bấm được khi callback null).
+  final bool editable;
+
+  @override
+  Widget build(BuildContext context) {
+    final on = count > 0;
+    final wolf = role == 'wolf';
+    final color = !on
+        ? _M.faint.withValues(alpha: 0.5)
+        : wolf
+        ? _M.wolf
+        : _M.amberBright;
+    Widget button(String tip, IconData icon, VoidCallback? tap) => SizedBox(
+      width: 22,
+      height: 22,
+      child: IconButton(
+        tooltip: '$tip $label',
+        padding: EdgeInsets.zero,
+        iconSize: 14,
+        icon: Icon(icon),
+        color: _M.amberBright,
+        disabledColor: _M.faint.withValues(alpha: 0.4),
+        onPressed: tap,
+      ),
+    );
+    final number = Text(
+      '$count',
+      style: TextStyle(
+        fontSize: 17,
+        fontWeight: FontWeight.w800,
+        color: on ? _M.ink : _M.faint,
+      ),
+    );
+    return Container(
+      padding: const EdgeInsets.fromLTRB(4, 10, 4, 8),
+      decoration: BoxDecoration(
+        color: !on
+            ? Colors.transparent
+            : wolf
+            ? _M.wolfSoft
+            : _M.amberTint,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: !on
+              ? _M.border
+              : wolf
+              ? _M.wolfLine
+              : _M.amberLine,
+        ),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: on ? _M.well : Colors.transparent,
+              shape: BoxShape.circle,
+            ),
+            child: SizedBox.square(
+              dimension: 20,
+              child: _paintedRoles.contains(role)
+                  ? CustomPaint(painter: GameRoleIconPainter(role, color))
+                  : Icon(GameRoleChip._roleIcon(role), size: 19, color: color),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: on ? _M.ink : _M.faint,
+            ),
+          ),
+          const SizedBox(height: 2),
+          if (editable)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                button('Bớt', Icons.remove_rounded, onRemove),
+                const SizedBox(width: 4),
+                number,
+                const SizedBox(width: 4),
+                button('Thêm', Icons.add_rounded, onAdd),
+              ],
+            )
+          else
+            SizedBox(height: 22, child: Center(child: number)),
+        ],
+      ),
+    );
+  }
 }
 
 /// Diễn biến một vòng: thanh bốn pha và giờ từng pha theo giờ mở và độ dài vòng.

@@ -8,6 +8,8 @@
 // Go encode slice nil thành null, nên mọi list đọc null thành rỗng. Field
 // `omitempty` vắng mặt thì đọc thành null (chuỗi) hoặc false/0.
 
+import 'dart:math' as math;
+
 class GameList {
   const GameList({
     required this.canCreate,
@@ -16,6 +18,7 @@ class GameList {
     this.groups = const [],
     this.presets = const [],
     this.round,
+    this.deck,
     required this.items,
   });
 
@@ -30,6 +33,9 @@ class GameList {
       presets: _list(createOptions['presets'], GamePreset.fromJson),
       round: createOptions['round'] is Map<String, dynamic>
           ? GameRoundPlan.fromJson(createOptions['round'])
+          : null,
+      deck: createOptions['deck'] is Map<String, dynamic>
+          ? GameDeckPlan.fromJson(createOptions['deck'])
           : null,
       items: _list(json['items'], GameListItem.fromJson),
     );
@@ -50,6 +56,9 @@ class GameList {
 
   /// Diễn biến một vòng cho tab Vòng chơi.
   final GameRoundPlan? round;
+
+  /// Bộ bài theo số người cho tab Vai; backend cũ không gửi.
+  final GameDeckPlan? deck;
   final List<GameListItem> items;
 }
 
@@ -123,6 +132,78 @@ class GamePreset {
 
 /// Diễn biến một vòng. Giờ tính từ lúc mở đêm theo vòng gốc 24 tiếng; vòng
 /// ngắn hơn thì co theo tỉ lệ.
+/// Bộ bài của tab Vai (`createOptions.deck`). Theo số người: bot chia theo
+/// [tiers] lúc đủ người. Tự chỉnh: tuỳ chọn [wolvesKey] khác 0 là số sói,
+/// vai đặc biệt nào đang bật thì có đủ, Dân bù chỗ còn lại.
+class GameDeckPlan {
+  const GameDeckPlan({
+    this.note = '',
+    this.fixedNote = '',
+    this.wolvesKey = '',
+    this.preview = 12,
+    this.tiers = const [],
+  });
+
+  factory GameDeckPlan.fromJson(Map<String, dynamic> json) => GameDeckPlan(
+    note: _string(json['note']),
+    fixedNote: _string(json['fixedNote']),
+    wolvesKey: _string(json['wolvesKey']),
+    preview: (json['preview'] as num? ?? 12).toInt(),
+    tiers: [
+      for (final t in json['tiers'] as List? ?? const [])
+        if (t is Map<String, dynamic>)
+          (
+            from: (t['from'] as num? ?? 0).toInt(),
+            to: (t['to'] as num? ?? 0).toInt(),
+            wolves: (t['wolves'] as num? ?? 0).toInt(),
+            specials: (t['specials'] as num? ?? 0).toInt(),
+          ),
+    ],
+  );
+
+  final String note;
+  final String fixedNote;
+  final String wolvesKey;
+  final int preview;
+  final List<({int from, int to, int wolves, int specials})> tiers;
+
+  int get minPlayers => tiers.isEmpty ? preview : tiers.first.from;
+  int get maxPlayers => tiers.isEmpty ? preview : tiers.last.to;
+
+  ({int from, int to, int wolves, int specials})? tierOf(int n) =>
+      tiers.where((t) => n >= t.from && n <= t.to).firstOrNull;
+
+  /// Số lá từng vai khi chia cho [n] người, như werewolf.Composition: sói
+  /// không quá 1/3 số người; theo số người thì chỉ [specials] đầu theo bảng,
+  /// [wolves] khác 0 là tự chỉnh; vai tắt thành Dân; mỗi vai [extended] một lá
+  /// thay một Dân. Có cả `wolf` và `villager`.
+  Map<String, int> counts({
+    required int n,
+    required List<String> specials,
+    required bool Function(String role) on,
+    List<String> extended = const [],
+    int wolves = 0,
+    int extraWolves = 0,
+  }) {
+    final tier = tierOf(n);
+    final fixed = wolves > 0;
+    final w = math.min(
+      fixed ? wolves : (tier?.wolves ?? 0) + extraWolves,
+      n ~/ 3,
+    );
+    final first = fixed ? specials.length : (tier?.specials ?? 0);
+    final out = <String, int>{'wolf': w};
+    for (var i = 0; i < specials.length; i++) {
+      out[specials[i]] = i < first && on(specials[i]) ? 1 : 0;
+    }
+    for (final r in extended) {
+      out[r] = 1;
+    }
+    out['villager'] = n - out.values.fold(0, (a, b) => a + b);
+    return out;
+  }
+}
+
 class GameRoundPlan {
   const GameRoundPlan({
     this.phases = const [],

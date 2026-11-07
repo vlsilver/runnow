@@ -38,6 +38,9 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   /// Kiểu ván đang chọn; null là kiểu mặc định backend gửi.
   String? _presetKey;
   int _tab = 0;
+
+  /// Số người đang xem trước bộ bài; null là số backend gợi ý.
+  int? _deckPlayers;
   final _theme = gameMoonlitTheme();
   DateTime? _deadline;
   bool _testMode = false;
@@ -522,14 +525,20 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         ..add(GameCreateLabel('Đăng ký', trailing: why))
         ..add(_deadlineTile());
     }
+    final deck = list.deck;
     if (group.key == 'roles') {
-      out
-        ..add(GameCreateLabel('Bộ bài', trailing: why))
-        ..add(_roleGrid(list, live, values));
+      out.add(GameCreateLabel('Bộ bài', trailing: why));
+      if (deck != null) {
+        out.addAll(_deck(list, deck, live, values));
+      } else {
+        out.add(_roleGrid(list, live, values));
+      }
     }
     for (final s in live) {
       if (s.section != null) continue;
       if (group.key == 'roles' && s.type == GameSetting.toggle) continue;
+      // Có bộ bài thì số sói và vai thêm chỉnh ngay trong bộ bài.
+      if (group.key == 'roles' && deck != null) continue;
       if (shape != null) {
         // Độ dài vòng là tổng bốn pha trên vòng đồng hồ.
         if (s.key == 'roundHours') continue;
@@ -749,7 +758,15 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
           else if (cards.contains(s.key))
             card(s, items)
           else if (s.type != GameSetting.toggle)
-            plain(s),
+            // Khối đặc quyền chưa bật cái nào thì ô số của khối mờ đi.
+            Opacity(
+              opacity:
+                  items.any(power) &&
+                      !items.any((p) => power(p) && values[p.key] == true)
+                  ? 0.45
+                  : 1,
+              child: plain(s),
+            ),
         for (final s in items)
           if (s.type == GameSetting.toggle && !cards.contains(s.key))
             GamePowerCard(
@@ -763,6 +780,152 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
 
   static double _number(Object? v, double fallback) =>
       v is num ? v.toDouble() : fallback;
+
+  /// Bộ bài của tab Vai: chọn theo số người hay tự chỉnh, bảng chia chuẩn,
+  /// số người xem trước và số lá từng vai. Theo số người thì chỉ vai thêm
+  /// (tuỳ chọn bật tắt của tab Vai) có nút; tự chỉnh thì số sói vào tuỳ chọn
+  /// [GameDeckPlan.wolvesKey] và vai đặc biệt bật tắt như công tắc vai.
+  List<Widget> _deck(
+    GameList list,
+    GameDeckPlan deck,
+    List<GameSetting> live,
+    Map<String, Object?> values,
+  ) {
+    final n = (_deckPlayers ?? deck.preview).clamp(
+      deck.minPlayers,
+      deck.maxPlayers,
+    );
+    final wolves = _number(values[deck.wolvesKey], 0).round();
+    final fixed = wolves > 0;
+    final roles = list.roleOptions;
+    final extended = [
+      for (final s in live)
+        if (s.type == GameSetting.toggle && s.section == null) s,
+    ];
+    final counts = deck.counts(
+      n: n,
+      specials: [for (final o in roles) o.key],
+      on: (key) => _roleOn(list, roles.firstWhere((o) => o.key == key)),
+      extended: [
+        for (final s in extended)
+          if (values[s.key] == true) s.key,
+      ],
+      wolves: wolves,
+    );
+    final room = (counts['villager'] ?? 0) > 0;
+    final busy = _working;
+    void set(VoidCallback change) => busy ? null : setState(change);
+
+    void pickMode(int i) => set(() {
+      if (i == 0) {
+        _settings[deck.wolvesKey] = 0.0;
+        _roles.clear();
+        return;
+      }
+      // Tự chỉnh bắt đầu từ đúng bộ bài đang xem.
+      _settings[deck.wolvesKey] = (counts['wolf'] ?? 1).toDouble();
+      for (final o in roles) {
+        _roles[o.key] = counts[o.key] == 1;
+      }
+    });
+
+    final wolf = counts['wolf'] ?? 0;
+    final tiles = <Widget>[
+      GameDeckTile(
+        role: 'wolf',
+        label: 'Sói',
+        count: wolf,
+        editable: fixed,
+        onRemove: wolf > 1
+            ? () => set(() => _settings[deck.wolvesKey] = wolf - 1.0)
+            : null,
+        onAdd: wolf < n ~/ 3 && room
+            ? () => set(() => _settings[deck.wolvesKey] = wolf + 1.0)
+            : null,
+      ),
+      for (final o in roles)
+        GameDeckTile(
+          role: o.key,
+          label: o.label,
+          count: counts[o.key] ?? 0,
+          editable: fixed,
+          onRemove: counts[o.key] == 1
+              ? () => set(() => _roles[o.key] = false)
+              : null,
+          onAdd: counts[o.key] == 0 && room
+              ? () => set(() => _roles[o.key] = true)
+              : null,
+        ),
+      for (final s in extended)
+        GameDeckTile(
+          role: s.key,
+          label: s.label,
+          count: counts[s.key] ?? 0,
+          editable: true,
+          onRemove: values[s.key] == true
+              ? () => set(() => _settings[s.key] = false)
+              : null,
+          onAdd: values[s.key] != true && room
+              ? () => set(() => _settings[s.key] = true)
+              : null,
+        ),
+      GameDeckTile(
+        role: 'villager',
+        label: 'Dân',
+        count: counts['villager'] ?? 0,
+      ),
+    ];
+    return [
+      GameCreateSegment(
+        labels: const ['Theo số người chơi', 'Tự chỉnh'],
+        selected: fixed ? 1 : 0,
+        onSelect: busy ? null : pickMode,
+      ),
+      const SizedBox(height: 10),
+      Text(
+        fixed ? deck.fixedNote : deck.note,
+        style: const TextStyle(fontSize: 12.5, height: 1.45, color: _M.muted),
+      ),
+      const SizedBox(height: 10),
+      if (!fixed) ...[
+        GameDeckTiers(plan: deck, players: n),
+        const SizedBox(height: 12),
+      ],
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              fixed ? 'Số người' : 'Xem trước với',
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+          ),
+          GameSkillStepper(
+            label: 'số người',
+            value: n.toDouble(),
+            min: deck.minPlayers.toDouble(),
+            max: deck.maxPlayers.toDouble(),
+            step: 1,
+            unit: 'người',
+            small: true,
+            onChanged: (v) => setState(() => _deckPlayers = v.round()),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      LayoutBuilder(
+        builder: (context, box) {
+          const gap = 8.0;
+          final width = (box.maxWidth - gap * 3) / 4;
+          return Wrap(
+            spacing: gap,
+            runSpacing: gap,
+            children: [for (final t in tiles) SizedBox(width: width, child: t)],
+          );
+        },
+      ),
+      const SizedBox(height: 8),
+    ];
+  }
 
   /// Lưới vai: Sói luôn có, vai bật tắt được, rồi vai thêm (tuỳ chọn bật tắt
   /// của tab Vai).

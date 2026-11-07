@@ -334,6 +334,60 @@ Map<String, dynamic> _darkList() {
   return list;
 }
 
+// Backend gửi bộ bài theo số người (bảng 1.2) và tuỳ chọn số sói tự chỉnh.
+Map<String, dynamic> _deckList() {
+  final list = _tabbedList();
+  final options = list['createOptions'] as Map<String, dynamic>;
+  options['roles'] = [
+    for (final (k, l) in [
+      ('seer', 'Tiên tri'),
+      ('guard', 'Bảo vệ'),
+      ('witch', 'Phù thuỷ'),
+      ('hunter', 'Thợ săn'),
+      ('cupid', 'Cupid'),
+    ])
+      {'key': k, 'label': l, 'description': '', 'default': true},
+  ];
+  options['settings'] = <Object>[
+    {
+      'key': 'wolves',
+      'label': 'Số sói',
+      'description': '0 là theo số người.',
+      'type': 'number',
+      'default': 0,
+      'min': 0,
+      'max': 8,
+      'step': 1,
+      'unit': 'sói',
+      'group': 'roles',
+    },
+    {
+      'key': 'elder',
+      'label': 'Già làng',
+      'description': 'Chịu được một lần bị cắn.',
+      'type': 'toggle',
+      'default': false,
+      'group': 'roles',
+    },
+    ...(options['settings'] as List).where((s) => s['key'] != 'elder'),
+  ];
+  options['deck'] = {
+    'note': 'Bot chia lúc đủ người.',
+    'fixedNote': 'Chia đúng số lá đã chỉnh.',
+    'wolvesKey': 'wolves',
+    'preview': 12,
+    'tiers': [
+      {'from': 10, 'to': 10, 'wolves': 2, 'specials': 2},
+      {'from': 11, 'to': 11, 'wolves': 3, 'specials': 3},
+      {'from': 12, 'to': 12, 'wolves': 3, 'specials': 4},
+      {'from': 13, 'to': 16, 'wolves': 3, 'specials': 5},
+      {'from': 17, 'to': 20, 'wolves': 4, 'specials': 5},
+      {'from': 21, 'to': 24, 'wolves': 5, 'specials': 5},
+    ],
+  };
+  return list;
+}
+
 // Tab Kỹ năng theo luật km: chế độ có Chi tiết, thẻ km mỗi lượt có icon, dòng
 // con theo parent, thẻ vai theo role, Top bật bằng công tắc.
 Map<String, dynamic> _skillList() {
@@ -849,6 +903,82 @@ void main() {
       );
     });
 
+    // Số lá của một vai trên ô bộ bài.
+    String deckCount(WidgetTester tester, String label) {
+      final tile = tester.widget<GameDeckTile>(
+        find.ancestor(
+          of: find.text(label),
+          matching: find.byType(GameDeckTile),
+        ),
+      );
+      return '${tile.count}';
+    }
+
+    testWidgets('deck by player count previews the cards bot will deal', (
+      tester,
+    ) async {
+      backend.list = _deckList();
+      await pumpScreen(tester);
+      await tester.tap(find.text('Vai'));
+      await tester.pump();
+
+      expect(find.text('Bot chia lúc đủ người.'), findsOneWidget);
+      expect(find.text('13–16 người'), findsOneWidget);
+      expect(find.text('3 sói · 4 vai'), findsOneWidget);
+      // 12 người: 3 sói, 4 vai đầu, Cupid chưa có, 5 Dân.
+      expect(deckCount(tester, 'Sói'), '3');
+      expect(deckCount(tester, 'Cupid'), '0');
+      expect(deckCount(tester, 'Dân'), '5');
+      // Không còn ô "Số sói" riêng: số sói nằm trong bộ bài.
+      expect(find.widgetWithText(GameCreateStepper, 'Số sói'), findsNothing);
+
+      await tester.tap(find.byTooltip('Tăng số người'));
+      await tester.pump();
+      expect(deckCount(tester, 'Cupid'), '1');
+      await tester.tap(find.byTooltip('Thêm Già làng'));
+      await tester.pump();
+      expect(deckCount(tester, 'Già làng'), '1');
+      expect(deckCount(tester, 'Dân'), '4');
+      // Theo số người thì vai đặc biệt khoá, chỉ vai thêm có nút.
+      expect(find.byTooltip('Bớt Tiên tri'), findsNothing);
+
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+      expect(_createBody(backend)['settings'], {'elder': true});
+    });
+
+    testWidgets('fixed deck sends the wolves and roles shown', (tester) async {
+      backend.list = _deckList();
+      await pumpScreen(tester);
+      await tester.tap(find.text('Vai'));
+      await tester.pump();
+
+      // Chuyển sang tự chỉnh giữ đúng bộ bài đang xem (12 người: Cupid 0).
+      await tester.tap(find.text('Tự chỉnh'));
+      await tester.pump();
+      expect(find.text('Chia đúng số lá đã chỉnh.'), findsOneWidget);
+      expect(find.text('13–16 người'), findsNothing);
+      expect(deckCount(tester, 'Cupid'), '0');
+      await tester.tap(find.byTooltip('Thêm Sói'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Bớt Phù thuỷ'));
+      await tester.pump();
+      expect(deckCount(tester, 'Sói'), '4');
+      expect(deckCount(tester, 'Dân'), '5');
+
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+      final body = _createBody(backend);
+      expect(body['settings'], {'wolves': 4.0});
+      expect(body['roles'], {
+        'seer': true,
+        'guard': true,
+        'witch': false,
+        'hunter': true,
+        'cupid': false,
+      });
+    });
+
     testWidgets('wolf powers are cards in their own block, not role chips', (
       tester,
     ) async {
@@ -877,8 +1007,22 @@ void main() {
         lessThan(4),
       );
 
+      // Chưa bật đặc quyền nào thì "Km để mở" mờ.
+      double kmOpacity() => tester
+          .widget<Opacity>(
+            find
+                .ancestor(
+                  of: find.text('Km để mở'),
+                  matching: find.byType(Opacity),
+                )
+                .first,
+          )
+          .opacity;
+      expect(kmOpacity(), lessThan(1));
+
       await tester.tap(find.text('Phiếu Đôi'));
       await tester.pump();
+      expect(kmOpacity(), 1);
       await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
       expect(_createBody(backend)['settings'], {'darkVote': true});
