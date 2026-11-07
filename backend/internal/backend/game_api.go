@@ -1138,6 +1138,8 @@ type GameAction struct {
 	Enabled        bool          `json:"enabled"`
 	DisabledReason string        `json:"disabledReason,omitempty"`
 	ConfirmText    string        `json:"confirmText,omitempty"`
+	// Tally là bảng kiểm phiếu của đề cử, biểu quyết, sói bầu cắn (ván luật km).
+	Tally *GameTally `json:"tally,omitempty"`
 }
 
 type GameOption struct {
@@ -1247,6 +1249,9 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 		out.TeamKm = wolfTeamKm(st, live)
 	}
 	out.KmGoals = kmGoals(st, v.UID, live, out.TeamKm)
+	if err := s.attachTallies(ctx, g.Ref, st, out.Actions, players, live); err != nil {
+		return out, err
+	}
 	return out, nil
 }
 
