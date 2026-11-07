@@ -114,6 +114,12 @@ func (s *Server) managedBotUpdate(ctx context.Context, raw []byte) (map[string]a
 	if mb.Bot.ID == 0 || mb.User.ID == 0 {
 		return nil, true, nil
 	}
+	if uid, game, err := m.gameBotOwner(ctx, mb.User.ID, mb.Bot.ID); err != nil || game {
+		if err != nil {
+			return nil, true, err
+		}
+		return nil, true, s.linkGameBot(ctx, m, u.UpdateID, mb.User.ID, mb.Bot.ID, mb.Bot.Username, uid)
+	}
 	// Đọc trước Link: lỗi thì Telegram gửi lại update, còn đọc sau thì lần gửi
 	// lại Link không đổi gì nữa và mất lời mời.
 	roomOn, err := s.telegramRoomOn(ctx)
@@ -164,16 +170,27 @@ type childUpdate struct {
 	Message  *struct {
 		Text string `json:"text"`
 		Chat struct {
-			ID   int64  `json:"id"`
-			Type string `json:"type"`
-		} `json:"chat"`
-		From *managedUser `json:"from"`
-	} `json:"message"`
-	MyChatMember *struct {
-		Chat struct {
 			ID    int64  `json:"id"`
 			Type  string `json:"type"`
 			Title string `json:"title"`
+		} `json:"chat"`
+		From *managedUser `json:"from"`
+		// Topic của tin trong group có chia topic; tin ở General không có.
+		MessageThreadID int64 `json:"message_thread_id"`
+		IsTopicMessage  bool  `json:"is_topic_message"`
+		// Tin trong topic trỏ tới tin tạo topic, nơi có tên topic.
+		ReplyTo *struct {
+			ForumTopicCreated *struct {
+				Name string `json:"name"`
+			} `json:"forum_topic_created"`
+		} `json:"reply_to_message"`
+	} `json:"message"`
+	MyChatMember *struct {
+		Chat struct {
+			ID      int64  `json:"id"`
+			Type    string `json:"type"`
+			Title   string `json:"title"`
+			IsForum bool   `json:"is_forum"`
 		} `json:"chat"`
 		From          managedUser `json:"from"`
 		NewChatMember struct {
@@ -228,6 +245,9 @@ func (s *Server) routeChildUpdate(ctx context.Context, m *ManagedBotService, bot
 		slog.WarnContext(ctx, "mybot.child_retired", "botId", botID, "updateId", u.UpdateID)
 		_, err := m.publish(ctx, managedSyncTaskFor(botID, "retired"))
 		return err
+	}
+	if info.Kind == managedKindGame {
+		return s.gameBotChildUpdate(ctx, m, info, u)
 	}
 	if mc := u.MyChatMember; mc != nil {
 		return s.childMembership(ctx, m, info, u.UpdateID, mc.Chat.ID, mc.Chat.Type, mc.Chat.Title, mc.From.ID, mc.NewChatMember.Status)

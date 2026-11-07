@@ -492,6 +492,18 @@ func (s *Server) gameStart(w http.ResponseWriter, r *http.Request) error {
 		}
 		return m.InChat(), nil
 	}
+	// Ván của bot ván: 3i không ở group đó, bot ván hỏi. Không ghi tgLinks.inPsc
+	// vì đó là cờ của PSC.
+	if g, err := s.deps.Games.readStartGame(r.Context(), task.GameID); err == nil {
+		if bot := stringValue(g.Data()["botId"]); bot != "" {
+			if s.deps.ManagedBots == nil {
+				return fmt.Errorf("ván %s của bot ván %s mà bot service chưa có Managed Bots", task.GameID, bot)
+			}
+			inPsc = s.deps.ManagedBots.gameMemberCheck(bot, stringValue(g.Data()["chatId"]))
+		}
+	} else if !errors.Is(err, errGameNotFound) {
+		return err
+	}
 	out, err := s.deps.Games.RunStart(r.Context(), task.GameID, inPsc, time.Now())
 	if err != nil {
 		return err

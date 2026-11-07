@@ -952,7 +952,7 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 		ID: g.Ref.ID, Title: gameTitle, Status: apiStatus(data), StatusLabel: statusLabel(data),
 		TestMode: data["testMode"] == true, Version: int64(number(data["version"])), ServerNow: wall,
 		RulesText: gameRulesFor(gc), Setup: gameSetupFor(gc), PlayerCount: len(players), MinPlayers: werewolf.MinPlayers, MaxPlayers: werewolf.MaxPlayers,
-		Feed: feed, Requirements: requirementsFor(link, v.AppVersion, cfg, !gc.NoTelegram),
+		Feed: feed, Requirements: gameRequirements(link, v.AppVersion, cfg, data, gc),
 		IsRegistered: registered, IsAdmin: cfg.isAdmin(v.UID), MinAppVersion: cfg.minAppVersion,
 		Winner: stringValue(data["winner"]),
 	}
@@ -1457,6 +1457,9 @@ type CreateGameRequest struct {
 	ChatID               string          `json:"chatId"`
 	ThreadID             int64           `json:"threadId"`
 	KmPerUnit            float64         `json:"kmPerUnit"`
+	// Telegram: group và topic bot ván của người tạo đăng vào, thay cho PSC.
+	// Không gửi thì ván đăng vào PSC bằng 3i như bản app cũ.
+	Telegram *GameTelegramTarget `json:"telegram"`
 	// Settings: key → giá trị của các tuỳ chọn trong createOptions.settings.
 	// Key không gửi thì lấy mặc định.
 	Settings map[string]any `json:"settings"`
@@ -1493,6 +1496,12 @@ func (s *GameStore) Create(ctx context.Context, req CreateGameRequest, v GameVie
 	case gc.NoTelegram:
 		// Ván chỉ trong app: không có chat nào để outbox gửi vào.
 		in.ChatID, in.ThreadID = "", 0
+	case req.Telegram != nil:
+		bot, err := gameBotTarget(ctx, s.db, v.UID, *req.Telegram)
+		if err != nil {
+			return "", err
+		}
+		in.ChatID, in.ThreadID, in.BotID = req.Telegram.ChatID, req.Telegram.ThreadID, bot
 	case req.TestMode:
 		if strings.TrimSpace(req.ChatID) == "" {
 			return "", errTestModeNeedsChat
@@ -1558,7 +1567,7 @@ func (s *GameStore) Register(ctx context.Context, gameID string, v GameViewer, w
 		if err != nil {
 			return err
 		}
-		if reqs := requirementsFor(link, v.AppVersion, cfg, !gc.NoTelegram); !requirementsMet(reqs) {
+		if reqs := gameRequirements(link, v.AppVersion, cfg, g.Data(), gc); !requirementsMet(reqs) {
 			return &HTTPError{Status: http.StatusUnprocessableEntity, Code: "requirements_unmet", Message: "Bạn chưa đủ điều kiện đăng ký.", Extra: map[string]any{"requirements": reqs}}
 		}
 		if len(players) >= werewolf.MaxPlayers {

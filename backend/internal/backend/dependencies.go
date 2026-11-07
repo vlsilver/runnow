@@ -134,6 +134,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 	if config.MybotEnabled() {
 		d.ManagedBots = NewManagedBotService(db, telegram, config.TelegramBotUsername, config.TelegramWebhookSecret, config.PublicBaseURL, tasks.Publish)
 		d.ManagedBots.chatID = config.TelegramChatID
+		d.Games.groupBot = d.ManagedBots.gameOutbox
 		d.Accounts.managed = d.ManagedBots
 	} else if config.AgentTelegramBots {
 		slog.WarnContext(ctx, "dependencies.mybot_partial_config", "hasUsername", config.TelegramBotUsername != "", "hasWebhookSecret", config.TelegramWebhookSecret != "")

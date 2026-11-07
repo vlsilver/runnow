@@ -313,9 +313,10 @@ func (m TelegramChatMember) InChat() bool {
 }
 
 // GetChatMember hỏi trạng thái của userID trong chatID. Lỗi gì cũng trả ra để
-// task retry, kể cả 400: không đoán một lỗi lạ là "đã rời nhóm".
+// task retry, kể cả 400: không đoán một lỗi lạ là "đã rời nhóm". chatID truyền
+// vào nên chỉ cần token: client của bot con (withToken) không mang chatID.
 func (s *TelegramService) GetChatMember(ctx context.Context, chatID string, userID int64) (TelegramChatMember, error) {
-	if !s.Enabled() {
+	if s.botToken == "" {
 		return TelegramChatMember{}, errors.New("telegram chưa cấu hình")
 	}
 	payload, err := json.Marshal(map[string]any{"chat_id": chatID, "user_id": userID})

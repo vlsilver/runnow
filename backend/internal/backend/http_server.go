@@ -597,6 +597,7 @@ func (s *Server) apiRoutes() {
 	s.route("POST /v1/telegram/webhook", s.telegramWebhook)
 	s.mybotRoutes()
 	s.gameRoutes()
+	s.gameTgBotRoutes()
 	s.garminRoutes()
 	s.agentRoutes()
 	s.runRoomRoutes()

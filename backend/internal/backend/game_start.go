@@ -24,11 +24,14 @@ import (
 const (
 	excludeNotLinked = "not_linked"
 	excludeNotInPsc  = "not_in_psc"
+	// Ván của bot ván: lúc Start bot ván thấy người đó không ở group của ván.
+	excludeNotInGroup = "not_in_group"
 )
 
 var excludeLabels = map[string]string{
-	excludeNotLinked: "Chưa liên kết Telegram",
-	excludeNotInPsc:  "Không còn ở group PSC",
+	excludeNotLinked:  "Chưa liên kết Telegram",
+	excludeNotInPsc:   "Không còn ở group PSC",
+	excludeNotInGroup: "Không ở group của ván",
 }
 
 var (
@@ -112,8 +115,9 @@ func (s *GameStore) readStartGame(ctx context.Context, gameID string) (*firestor
 
 // startCandidates xét từng người đã đăng ký theo liên kết đang lưu: liên kết
 // có thể đã đổi hay bị huỷ từ lúc đăng ký. Người giả luôn đạt; ván không
-// Telegram thì không ai bị loại vì Telegram.
-func (s *GameStore) startCandidates(ctx context.Context, game *firestore.DocumentRef, telegram bool) ([]startCandidate, error) {
+// Telegram thì không ai bị loại vì Telegram; psc false (ván của bot ván) thì
+// không xét PSC, bot ván hỏi group của ván lúc Start.
+func (s *GameStore) startCandidates(ctx context.Context, game *firestore.DocumentRef, telegram, psc bool) ([]startCandidate, error) {
 	players, err := s.loadPlayers(ctx, game)
 	if err != nil {
 		return nil, err
@@ -128,7 +132,7 @@ func (s *GameStore) startCandidates(ctx context.Context, game *firestore.Documen
 			switch {
 			case !c.link.linked:
 				c.reason = excludeNotLinked
-			case !c.link.inPsc:
+			case psc && !c.link.inPsc:
 				c.reason = excludeNotInPsc
 			}
 		}
@@ -176,7 +180,7 @@ func (s *GameStore) StartPreview(ctx context.Context, gameID string) (StartPrevi
 	if err != nil {
 		return StartPreview{}, err
 	}
-	cands, err := s.startCandidates(ctx, g.Ref, !cfg.NoTelegram)
+	cands, err := s.startCandidates(ctx, g.Ref, !cfg.NoTelegram, gameInPsc(g.Data(), cfg))
 	if err != nil {
 		return StartPreview{}, err
 	}
@@ -289,7 +293,8 @@ type StartOutcome struct {
 	Excluded []StartExcluded `json:"excluded"`
 }
 
-// pscMembership hỏi Telegram một tg có đang ở PSC không, và ghi lại kết quả.
+// pscMembership hỏi Telegram một tg có đang ở group của ván không (PSC, hay
+// group của bot ván), và ghi lại kết quả nếu là PSC.
 type pscMembership func(ctx context.Context, tgUserID int64) (bool, error)
 
 // RunStart là phần của bot trong Start. Ván không còn starting (đã chạy, admin
@@ -311,9 +316,13 @@ func (s *GameStore) RunStart(ctx context.Context, gameID string, inPsc pscMember
 	if err != nil {
 		return out, err
 	}
-	cands, err := s.startCandidates(ctx, g.Ref, !cfg.NoTelegram)
+	cands, err := s.startCandidates(ctx, g.Ref, !cfg.NoTelegram, gameInPsc(g.Data(), cfg))
 	if err != nil {
 		return out, err
+	}
+	notIn := excludeNotInPsc
+	if !gameInPsc(g.Data(), cfg) {
+		notIn = excludeNotInGroup
 	}
 	roster := &startRoster{tgUserID: map[string]int64{}}
 	var uids []string
@@ -325,7 +334,7 @@ func (s *GameStore) RunStart(ctx context.Context, gameID string, inPsc pscMember
 			}
 			c.reason = ""
 			if !ok {
-				c.reason = excludeNotInPsc
+				c.reason = notIn
 			}
 			roster.tgUserID[c.player.uid] = c.link.tgUserID
 		}

@@ -116,6 +116,13 @@ func (s *GameStore) FlushGame(ctx context.Context, gameID string, tg outboxTeleg
 		return res, err
 	}
 	f := chatFlusher{db: s.db, game: game, gameID: gameID, tg: tg, r: r, owner: owner, now: now, res: &res}
+	if bot := stringValue(g.Data()["botId"]); bot != "" {
+		// 3i không ở group của bot ván, gửi thay là hỏng cả lượt; thà dừng.
+		if s.groupBot == nil {
+			return res, fmt.Errorf("ván %s đăng bằng bot ván %s mà service chưa có Managed Bots", gameID, bot)
+		}
+		f.group = s.groupBot(bot)
+	}
 	var errs []error
 	for _, c := range chats {
 		if err := f.flush(ctx, c.Ref.ID); err != nil {
@@ -202,10 +209,12 @@ type chatFlusher struct {
 	game   *firestore.DocumentRef
 	gameID string
 	tg     outboxTelegram
-	r      *outboxRenderer
-	owner  string
-	now    func() time.Time
-	res    *FlushResult
+	// group khác nil: tin của chatGroup đi bằng bot ván thay tg.
+	group outboxTelegram
+	r     *outboxRenderer
+	owner string
+	now   func() time.Time
+	res   *FlushResult
 }
 
 // flush claim chat rồi gửi lần lượt từ lastSentSeq+1 tới hết.
@@ -343,6 +352,12 @@ func (f *chatFlusher) deliver(ctx context.Context, key string, seq int64, msg, c
 	if at := timeValue(msg["origAt"]); !at.IsZero() && out.editID == 0 {
 		out.parts = withLateLabel(out.parts, at)
 	}
+	tg := f.tg
+	if key == chatGroup && f.group != nil {
+		// Bấm nút callback thì Telegram gửi về webhook bot ván, nơi chưa xử lý
+		// nút của ván: bỏ nút, người chơi xem km và lá bài trong app.
+		tg, out.markup = f.group, nil
+	}
 	var ids []int64
 	for i, part := range out.parts {
 		var markup any
@@ -351,9 +366,9 @@ func (f *chatFlusher) deliver(ctx context.Context, key string, seq int64, msg, c
 		}
 		var id int64
 		if out.editID != 0 {
-			err = f.tg.EditText(ctx, out.chatID, out.editID, part, true, markup)
+			err = tg.EditText(ctx, out.chatID, out.editID, part, true, markup)
 		} else {
-			id, err = f.tg.SendText(ctx, TelegramText{ChatID: out.chatID, ThreadID: out.threadID, Text: part, HTML: true, Markup: markup})
+			id, err = tg.SendText(ctx, TelegramText{ChatID: out.chatID, ThreadID: out.threadID, Text: part, HTML: true, Markup: markup})
 		}
 		switch outcome := classifySend(err); outcome {
 		case outcomeSent:

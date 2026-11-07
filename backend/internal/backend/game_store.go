@@ -33,6 +33,9 @@ type GameStore struct {
 	// beforeSubmit chỉ test đặt: chen một bước chốt vào giữa lúc PressButton đọc
 	// state và lúc transaction ghi action.
 	beforeSubmit func()
+	// groupBot trả client gửi tin group của ván có botId (bot ván); nil khi
+	// service không có Managed Bots.
+	groupBot func(botID string) outboxTelegram
 }
 
 func NewGameStore(db *firestore.Client, pscChatID string) *GameStore {
@@ -88,7 +91,9 @@ type NewGameInput struct {
 	CreatedBy string
 	ChatID    string
 	ThreadID  int64
-	Config    werewolf.Config
+	// BotID khác rỗng: bot ván gửi tin group thay 3i.
+	BotID  string
+	Config werewolf.Config
 	// RegistrationDeadline: quá hạn thì không đăng ký được nữa; zero là không hạn.
 	RegistrationDeadline time.Time
 	// StartAt: tới giờ thì tick tự bấm Start; zero là chờ chủ phòng bấm.
@@ -138,7 +143,7 @@ func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Ti
 		}
 		if err := tx.Create(ref, map[string]any{
 			"status": gameRegistering, "createdBy": in.CreatedBy, "createdAt": now,
-			"chatId": in.ChatID, "threadId": in.ThreadID, "testMode": in.Config.TestMode,
+			"chatId": in.ChatID, "threadId": in.ThreadID, "botId": in.BotID, "testMode": in.Config.TestMode,
 			"config": string(cfg), "version": 0, "eventSeq": 0, "feedSeq": 0, "updatedAt": now,
 			"registrationDeadline": deadline, "startAt": startAt, "playerCount": 0,
 		}); err != nil {
@@ -419,7 +424,7 @@ func (s *GameStore) advanceOnce(ctx context.Context, gameID string, wall time.Ti
 		if !st.Paused {
 			res.NextAt, res.TaskKey = st.NextAt().Add(-offset), st.TaskKey()
 		}
-		in, err := s.readInputs(tx, game, st, now)
+		in, err := s.readInputs(tx, game, st, now, stringValue(g.Data()["botId"]) == "")
 		if err != nil {
 			return err
 		}
@@ -460,7 +465,7 @@ func (s *GameStore) advanceOnce(ctx context.Context, gameID string, wall time.Ti
 
 // readInputs đọc trong transaction mọi thứ engine cần cho bước kế: action của
 // vòng hiện tại, snapshot km nếu bước này là mốc 22h, và người đã rời PSC.
-func (s *GameStore) readInputs(tx *firestore.Transaction, game *firestore.DocumentRef, st *werewolf.State, now time.Time) (werewolf.Inputs, error) {
+func (s *GameStore) readInputs(tx *firestore.Transaction, game *firestore.DocumentRef, st *werewolf.State, now time.Time, psc bool) (werewolf.Inputs, error) {
 	var in werewolf.Inputs
 	docs, err := tx.Documents(roundRef(game, st.Round).Collection("actions")).GetAll()
 	if err != nil {
@@ -493,13 +498,14 @@ func (s *GameStore) readInputs(tx *firestore.Transaction, game *firestore.Docume
 		}
 	}
 
-	in.Left, err = s.readLeft(tx, game, st)
+	in.Left, err = s.readLeft(tx, game, st, psc)
 	return in, err
 }
 
 // readLeft: người chơi còn sống mà tgLinks báo không còn ở PSC, hoặc không còn
 // liên kết (xoá tài khoản, R33). Người chơi giả của testMode không rời được.
-func (s *GameStore) readLeft(tx *firestore.Transaction, game *firestore.DocumentRef, st *werewolf.State) ([]string, error) {
+// psc false (ván của bot ván, group riêng) thì không xét inPsc, chỉ xét liên kết.
+func (s *GameStore) readLeft(tx *firestore.Transaction, game *firestore.DocumentRef, st *werewolf.State, psc bool) ([]string, error) {
 	uids := sortedPlayers(st)
 	var refs []*firestore.DocumentRef
 	for _, uid := range uids {
@@ -536,7 +542,7 @@ func (s *GameStore) readLeft(tx *firestore.Transaction, game *firestore.Document
 			return nil, err
 		}
 		for i, l := range links {
-			if !l.Exists() || l.Data()["inPsc"] != true || stringValue(l.Data()["uid"]) != linkUIDs[i] {
+			if !l.Exists() || (psc && l.Data()["inPsc"] != true) || stringValue(l.Data()["uid"]) != linkUIDs[i] {
 				left = append(left, linkUIDs[i])
 			}
 		}

@@ -202,6 +202,9 @@ type managedBotInfo struct {
 	UID       string
 	OwnerTgID int64
 	Retired   bool
+	// Kind "game" là bot ván (game_tgbot.go); rỗng là MyBot.
+	Kind     string
+	Username string
 }
 
 func readManagedBot(d *firestore.DocumentSnapshot) managedBotInfo {
@@ -210,7 +213,7 @@ func readManagedBot(d *firestore.DocumentSnapshot) managedBotInfo {
 	}
 	tg, _ := strconv.ParseInt(tgIDString(d.Data()["ownerTgId"]), 10, 64)
 	_, retired := d.Data()["replacedAt"]
-	return managedBotInfo{ID: d.Ref.ID, UID: stringValue(d.Data()["uid"]), OwnerTgID: tg, Retired: retired}
+	return managedBotInfo{ID: d.Ref.ID, UID: stringValue(d.Data()["uid"]), OwnerTgID: tg, Retired: retired, Kind: stringValue(d.Data()["kind"]), Username: stringValue(d.Data()["username"])}
 }
 
 // bot đọc managedBots/{botId}; không có thì ok false.
@@ -405,6 +408,9 @@ func (m *ManagedBotService) Sync(ctx context.Context, botID string) error {
 		}
 		slog.InfoContext(ctx, "mybot.webhook_removed", "botId", botID, "error", errString(err))
 		return nil
+	}
+	if info.Kind == managedKindGame {
+		return m.syncGameBot(ctx, info)
 	}
 	agent, err := getData(ctx, m.agentRef(info.UID))
 	if err != nil {
