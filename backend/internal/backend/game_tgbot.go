@@ -31,7 +31,7 @@ import (
 const (
 	managedKindGame  = "game"
 	gameBotIntentTTL = 30 * time.Minute
-	gameBotName      = "Quản trò Ma Sói"
+	gameBotName      = "Quản trò"
 	// gameBotCommand: chủ gõ trong topic để báo bot ván đăng vào đó.
 	gameBotCommand = "/van"
 )
@@ -78,7 +78,14 @@ func (m *ManagedBotService) StartGameBot(ctx context.Context, uid string) (strin
 	if _, err := m.gameIntentRef(tg).Set(ctx, map[string]any{"uid": uid, "expiresAt": m.now().Add(gameBotIntentTTL)}); err != nil {
 		return "", err
 	}
-	return managedCreateURL(m.username, suggestBotUsername("van", uid), gameBotName), nil
+	return managedCreateURL(m.username, gameBotUsername(m.now()), gameBotName), nil
+}
+
+// gameBotUsername là username gợi ý cho bot ván: quantro_3irun_<ngày tạo giờ
+// VN, ddmmyyyy>_bot. Username trên Telegram là duy nhất, nên hai người tạo
+// cùng ngày thì người sau phải sửa tên trên trang tạo bot của Telegram.
+func gameBotUsername(now time.Time) string {
+	return "quantro_3irun_" + now.In(vietnam).Format("02012006") + "_bot"
 }
 
 // gameBotOwner cho biết update managed_bot này có phải của bot ván không, và

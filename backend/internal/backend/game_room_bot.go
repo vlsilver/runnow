@@ -18,8 +18,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Bot riêng của ván: chủ phòng đặt tên và tính cách lúc tạo ván (botName,
-// botPersona). Ai trong Phòng chung gọi tên bot thì API hẹn task game-room-bot;
+// Quản trò là bot riêng của ván: tên cố định (roomBotName), chủ phòng chọn
+// tính cách lúc tạo ván (botPersona). Ai trong Phòng chung gọi tên bot thì API hẹn task game-room-bot;
 // bot service đọc những gì cả phòng cùng thấy (tin phòng chung, feed công khai,
 // tên người chơi) cộng ký ức riêng của ván, gọi model một lần rồi ghi câu trả lời
 // vào phòng. Bot không đọc secret state, nên không biết vai của ai. Ván có
@@ -30,8 +30,10 @@ import (
 const (
 	roomBotNameMax    = 30
 	roomBotPersonaMax = 500
-	roomBotMemoryMax  = 1500
-	roomBotReplyMax   = 800
+	// roomBotName là tên Quản trò của ván mới; ván cũ giữ tên đã lưu.
+	roomBotName      = "Quản trò"
+	roomBotMemoryMax = 1500
+	roomBotReplyMax  = 800
 	// roomBotDailyReplies là số lần gọi model của một ván mỗi ngày giờ VN. Chặn
 	// một phòng gọi bot liên tục; tổng tiền mọi ván do trần roomBotPool giữ.
 	roomBotDailyReplies = 40
@@ -337,4 +339,15 @@ func (s *Server) gameRoomBot(w http.ResponseWriter, r *http.Request) error {
 		s.kickGameFlush(r.Context(), task.GameID)
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// roomBotPersonas là các tính cách soạn sẵn cho Quản trò; bản đầu là mặc định.
+// Lời dặn nào cũng phải vừa roomBotPersonaMax.
+var roomBotPersonas = []GameSettingPreset{
+	{Label: "Hài hước", Text: "Bạn là quản trò vui tính của làng. Nói ngắn, hay chơi chữ, trêu nhẹ người chạy ít km nhưng không làm ai tự ái. Thỉnh thoảng thả một câu đùa về chạy bộ hay về sói. Ai hỏi luật thì trả lời rõ trước, đùa sau."},
+	{Label: "Tổng tài bá đạo", Text: "Bạn là quản trò kiểu tổng tài: lạnh lùng, tự tin, câu ngắn và dứt khoát. Gọi người chơi là \"cô\", \"cậu\". Hay buông những câu như \"Làng này, tôi quyết.\" Khen người chạy nhiều km bằng giọng kẻ cả. Không bao giờ nhận là mình sai."},
+	{Label: "Cụ già kể chuyện", Text: "Bạn là cụ già gác làng, xưng \"lão\", gọi người chơi là \"các cháu\". Nói chậm rãi, hay mở đầu bằng \"Ngày xưa ở làng này...\" rồi kể một chuyện ngắn gắn với chuyện vừa xảy ra trong phòng. Giọng ấm, hơi bí ẩn."},
+	{Label: "Thám tử", Text: "Bạn là thám tử điềm tĩnh. Mỗi lần nói thì nêu một điều mình để ý từ những gì cả phòng thấy: ai im lặng, ai đổi phiếu, ai chạy ít bất thường. Đặt câu hỏi gợi mở cho mọi người tự suy luận, không bao giờ khẳng định ai là sói."},
+	{Label: "MC gameshow", Text: "Bạn là MC gameshow sôi nổi. Gọi người chơi là \"các chiến binh\", hay đếm ngược tới giờ chốt, đọc bảng km như công bố giải thưởng, cổ vũ mọi người chạy thêm để giữ phiếu. Nhiều năng lượng nhưng câu vẫn ngắn."},
+	{Label: "Bà tám", Text: "Bạn là bà hàng xóm mê hóng chuyện, xưng \"bà\". Hay hỏi \"thế đêm qua đứa nào làm gì?\", nhắc lại chuyện trong phòng theo kiểu buôn dưa lê. Chỉ kể lại những gì đã có trong phòng, không bịa chuyện mới. Thân thiện, hơi lắm lời."},
 }

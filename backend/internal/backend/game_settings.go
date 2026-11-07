@@ -53,6 +53,14 @@ type GameSetting struct {
 	Parent string `json:"parent,omitempty"`
 	// Lines là số dòng của ô nhập "text"; 1 là ô một dòng.
 	Lines int `json:"lines,omitempty"`
+	// Presets là các giá trị soạn sẵn của ô "text": app vẽ thành chip, chạm thì
+	// điền Text vào ô cho người tạo sửa tiếp. App cũ bỏ qua, vẫn chỉ có ô nhập.
+	Presets []GameSettingPreset `json:"presets,omitempty"`
+}
+
+type GameSettingPreset struct {
+	Label string `json:"label"`
+	Text  string `json:"text"`
 }
 
 type GameSettingChoice struct {
@@ -94,6 +102,8 @@ const (
 type gameSettingDef struct {
 	GameSetting
 	keepDefault bool
+	// hidden: server vẫn nhận key này từ app cũ nhưng không gửi cho màn tạo ván.
+	hidden bool
 	// legacyChoices là giá trị còn nhận nhưng không hiện cho người tạo ván.
 	legacyChoices []string
 	apply         func(c *werewolf.Config, v any)
@@ -473,15 +483,19 @@ var gameSettingDefs = []gameSettingDef{
 		read:  func(c werewolf.Config) any { return !c.NoTelegram },
 	},
 	{
-		GameSetting: GameSetting{Key: "botName", Label: "Tên bot của ván", Type: settingText, Default: "Cú Đêm", Max: f64(roomBotNameMax), Lines: 1, Group: groupTalk,
-			Description: "Gọi tên này trong Phòng chung thì bot trả lời. Để trống là ván không có bot."},
+		// Ván nào cũng có Quản trò, tên cố định. App cũ còn gửi botName (kể cả
+		// chuỗi rỗng) thì nhận cho khỏi 422 nhưng bỏ qua. Ván tạo trước đó giữ
+		// tên đã lưu trong config.
+		GameSetting: GameSetting{Key: "botName", Label: "Tên bot của ván", Type: settingText, Default: roomBotName, Max: f64(roomBotNameMax), Lines: 1, Group: groupTalk},
 		keepDefault: true,
-		apply:       func(c *werewolf.Config, v any) { c.BotName = strings.TrimSpace(v.(string)) },
+		hidden:      true,
+		apply:       func(c *werewolf.Config, _ any) { c.BotName = roomBotName },
 		read:        textRead(func(c werewolf.Config) string { return c.BotName }),
 	},
 	{
-		GameSetting: GameSetting{Key: "botPersona", Label: "Tính cách bot", Type: settingText, Default: "", Max: f64(roomBotPersonaMax), Lines: 4, Group: groupTalk,
-			Description: "Bot nói chuyện theo tính cách này. Bot chỉ biết những gì cả phòng thấy, không biết vai của ai."},
+		GameSetting: GameSetting{Key: "botPersona", Label: "Tính cách Quản trò", Type: settingText, Default: roomBotPersonas[0].Text, Max: f64(roomBotPersonaMax), Lines: 4, Group: groupTalk,
+			Presets:     roomBotPersonas,
+			Description: "Quản trò nói chuyện theo lời dặn này. Quản trò chỉ biết những gì cả phòng thấy, không biết vai của ai."},
 		keepDefault: true,
 		apply:       func(c *werewolf.Config, v any) { c.BotPersona = strings.TrimSpace(v.(string)) },
 		read:        textRead(func(c werewolf.Config) string { return c.BotPersona }),
@@ -507,9 +521,11 @@ const (
 
 // gameCreateSettings là danh sách tuỳ chọn gửi cho màn tạo ván.
 func gameCreateSettings() []GameSetting {
-	out := make([]GameSetting, len(gameSettingDefs))
-	for i, d := range gameSettingDefs {
-		out[i] = d.GameSetting
+	out := make([]GameSetting, 0, len(gameSettingDefs))
+	for _, d := range gameSettingDefs {
+		if !d.hidden {
+			out = append(out, d.GameSetting)
+		}
 	}
 	return out
 }

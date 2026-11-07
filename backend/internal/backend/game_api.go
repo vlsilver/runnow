@@ -1496,6 +1496,16 @@ func (s *GameStore) Create(ctx context.Context, req CreateGameRequest, v GameVie
 	case gc.NoTelegram:
 		// Ván chỉ trong app: không có chat nào để outbox gửi vào.
 		in.ChatID, in.ThreadID = "", 0
+	case req.Telegram == nil && !req.TestMode:
+		// Ván PSC đăng vào topic Ma Sói admin đặt trong config; chưa đặt thì
+		// theo threadId app gửi như bản cũ.
+		thread, err := masoiThread(ctx, s.db)
+		if err != nil {
+			return "", err
+		}
+		if thread != 0 {
+			in.ThreadID = thread
+		}
 	case req.Telegram != nil:
 		bot, err := gameBotTarget(ctx, s.db, v.UID, *req.Telegram)
 		if err != nil {

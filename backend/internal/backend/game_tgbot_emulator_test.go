@@ -314,3 +314,36 @@ func TestEmulatorGameTgBotLeftIgnoresPsc(t *testing.T) {
 		t.Fatalf("w1 = %+v, mất liên kết thì vẫn rời", p)
 	}
 }
+
+// Ván PSC đăng vào topic Ma Sói admin đặt ở appConfig/telegram.masoiThreadId,
+// bỏ qua topic app gửi; chưa đặt thì theo app như bản cũ. Ván thử giữ topic
+// app gửi.
+func TestEmulatorGamePscUsesMasoiTopic(t *testing.T) {
+	e := newMybotEnv(t)
+	create := func(body map[string]any) map[string]any {
+		t.Helper()
+		r := e.call("an", "POST", "/v1/games", body, "")
+		if r.status != 201 {
+			t.Fatalf("tạo ván: %d %s", r.status, r.raw)
+		}
+		path := "games/" + stringValue(r.body["id"])
+		g := e.fsDoc(path)
+		// Mỗi lúc chỉ có một ván chưa kết thúc.
+		if _, err := e.store.db.Doc(path).Delete(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		return g
+	}
+	if g := create(map[string]any{"threadId": 7}); g["threadId"] != int64(7) {
+		t.Fatalf("chưa đặt topic: threadId = %v", g["threadId"])
+	}
+	if _, err := e.store.db.Doc("appConfig/telegram").Set(context.Background(), map[string]any{"masoiThreadId": 1664}); err != nil {
+		t.Fatal(err)
+	}
+	if g := create(map[string]any{"threadId": 7}); g["threadId"] != int64(1664) {
+		t.Fatalf("PSC: threadId = %v", g["threadId"])
+	}
+	if g := create(map[string]any{"testMode": true, "chatId": "-100555", "threadId": 7}); g["threadId"] != int64(7) || g["chatId"] != "-100555" {
+		t.Fatalf("ván thử: %v %v", g["chatId"], g["threadId"])
+	}
+}

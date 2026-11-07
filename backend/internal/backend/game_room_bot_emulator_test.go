@@ -34,7 +34,7 @@ func TestEmulatorRoomBotAnswersWhenCalled(t *testing.T) {
 		}
 		return `{"reply":"Chào cả nhà, 22h chia bài nha","memory":"u01 hỏi giờ chơi"}`, nil
 	})
-	id := e.createBotGame(map[string]any{"botName": "Cú Đêm", "botPersona": "Hay đùa, nói giọng miền Tây"})
+	id := e.createBotGame(map[string]any{"botPersona": "Hay đùa, nói giọng miền Tây"})
 	e.register(id, 1, 3)
 	path := "/v1/games/" + id + "/chats/room"
 
@@ -42,7 +42,7 @@ func TestEmulatorRoomBotAnswersWhenCalled(t *testing.T) {
 	if n := len(e.tasksTo("/tasks/game-room-bot")); n != 0 {
 		t.Fatalf("không gọi tên mà bot vẫn có %d task", n)
 	}
-	e.want(e.call(userOf(1), "POST", path, map[string]any{"text": "cú đêm ơi, tối nay mấy giờ?"}, ""), 200, "")
+	e.want(e.call(userOf(1), "POST", path, map[string]any{"text": "quản trò ơi, tối nay mấy giờ?"}, ""), 200, "")
 	tasks := e.tasksTo("/tasks/game-room-bot")
 	if len(tasks) != 1 || tasks[0].Queue != QueueBotInbound {
 		t.Fatalf("task bot = %+v", tasks)
@@ -56,17 +56,17 @@ func TestEmulatorRoomBotAnswersWhenCalled(t *testing.T) {
 		t.Fatalf("model được gọi %d lần, muốn 1", len(llm.calls))
 	}
 	c := llm.calls[0]
-	if !strings.Contains(c.system, "Cú Đêm") || !strings.Contains(c.system, "miền Tây") || !strings.Contains(c.input, "chiều nay mưa") || !strings.Contains(c.input, "cú đêm ơi, tối nay mấy giờ?") {
+	if !strings.Contains(c.system, "Quản trò") || !strings.Contains(c.system, "miền Tây") || !strings.Contains(c.input, "chiều nay mưa") || !strings.Contains(c.input, "quản trò ơi, tối nay mấy giờ?") {
 		t.Fatalf("prompt thiếu tính cách hay tin phòng:\n%s\n---\n%s", c.system, c.input)
 	}
 
 	r := e.call(userOf(2), "GET", path, nil, "")
 	e.want(r, 200, "")
 	msgs := chatMessages(t, r)
-	if len(msgs) != 3 || msgs[0]["name"] != "Cú Đêm" || msgs[0]["text"] != "Chào cả nhà, 22h chia bài nha" || msgs[0]["bot"] != true || msgs[0]["system"] != false {
+	if len(msgs) != 3 || msgs[0]["name"] != "Quản trò" || msgs[0]["text"] != "Chào cả nhà, 22h chia bài nha" || msgs[0]["bot"] != true || msgs[0]["system"] != false {
 		t.Fatalf("phòng chung = %s", r.raw)
 	}
-	if hint, _ := r.body["hint"].(string); !strings.Contains(hint, "Cú Đêm") {
+	if hint, _ := r.body["hint"].(string); !strings.Contains(hint, "Quản trò") {
 		t.Fatalf("hint = %v", r.body["hint"])
 	}
 
@@ -77,7 +77,7 @@ func TestEmulatorRoomBotAnswersWhenCalled(t *testing.T) {
 	}
 	var said int
 	for _, call := range e.tg.Calls("sendMessage") {
-		if text, _ := call.Params["text"].(string); strings.Contains(text, "<b>Cú Đêm</b>") && strings.Contains(text, "22h chia bài nha") {
+		if text, _ := call.Params["text"].(string); strings.Contains(text, "<b>Quản trò</b>") && strings.Contains(text, "22h chia bài nha") {
 			said++
 		}
 	}
@@ -85,7 +85,7 @@ func TestEmulatorRoomBotAnswersWhenCalled(t *testing.T) {
 		t.Fatalf("3i đăng thay bot %d lần, muốn 1: %+v", said, e.tg.Calls("sendMessage"))
 	}
 
-	e.want(e.call(userOf(3), "POST", path, map[string]any{"text": "Cú Đêm nhớ mình không"}, ""), 200, "")
+	e.want(e.call(userOf(3), "POST", path, map[string]any{"text": "Quản trò nhớ mình không"}, ""), 200, "")
 	tasks = e.tasksTo("/tasks/game-room-bot")
 	if rec := e.runTask(tasks[len(tasks)-1]); rec.Code != 200 {
 		t.Fatalf("game-room-bot: %d %s", rec.Code, rec.Body)
@@ -98,9 +98,9 @@ func TestEmulatorRoomBotAnswersWhenCalled(t *testing.T) {
 // Ván không Telegram: bot chỉ nói trong app, outbox không có tin của bot.
 func TestEmulatorRoomBotWithoutTelegram(t *testing.T) {
 	e, _, _ := roomBotEnv(t, func(_, _ string) (string, error) { return `{"reply":"Có mình đây","memory":""}`, nil })
-	id := e.createBotGame(map[string]any{"botName": "Cú", "telegram": false})
+	id := e.createBotGame(map[string]any{"telegram": false})
 	e.register(id, 1, 1)
-	e.want(e.call(userOf(1), "POST", "/v1/games/"+id+"/chats/room", map[string]any{"text": "Cú ơi"}, ""), 200, "")
+	e.want(e.call(userOf(1), "POST", "/v1/games/"+id+"/chats/room", map[string]any{"text": "Quản trò ơi"}, ""), 200, "")
 	if rec := e.runTask(e.tasksTo("/tasks/game-room-bot")[0]); rec.Code != 200 {
 		t.Fatalf("game-room-bot: %d %s", rec.Code, rec.Body)
 	}
@@ -117,11 +117,11 @@ func TestEmulatorRoomBotWithoutTelegram(t *testing.T) {
 func TestEmulatorRoomBotDailyCap(t *testing.T) {
 	e, llm, bot := roomBotEnv(t, func(_, _ string) (string, error) { return `{"reply":"Ừ","memory":""}`, nil })
 	bot.dailyReplies = 1
-	id := e.createBotGame(map[string]any{"botName": "Cú", "telegram": false})
+	id := e.createBotGame(map[string]any{"telegram": false})
 	e.register(id, 1, 3)
 	path := "/v1/games/" + id + "/chats/room"
 	for i := 1; i <= 3; i++ {
-		e.want(e.call(userOf(i), "POST", path, map[string]any{"text": "Cú ơi"}, ""), 200, "")
+		e.want(e.call(userOf(i), "POST", path, map[string]any{"text": "Quản trò ơi"}, ""), 200, "")
 		tasks := e.tasksTo("/tasks/game-room-bot")
 		if rec := e.runTask(tasks[len(tasks)-1]); rec.Code != 200 {
 			t.Fatalf("game-room-bot: %d %s", rec.Code, rec.Body)
@@ -141,13 +141,13 @@ func TestEmulatorRoomBotDailyCap(t *testing.T) {
 	}
 }
 
-// Không đặt tên thì ván không có bot: gọi gì cũng không có task.
-func TestEmulatorRoomBotOffWithoutName(t *testing.T) {
+// App cũ gửi tên bot rỗng để tắt bot: ván vẫn có Quản trò, gọi là có task.
+func TestEmulatorRoomBotOldAppEmptyName(t *testing.T) {
 	e, _, _ := roomBotEnv(t, func(_, _ string) (string, error) { return "", nil })
 	id := e.createBotGame(map[string]any{"botName": ""})
 	e.register(id, 1, 1)
-	e.want(e.call(userOf(1), "POST", "/v1/games/"+id+"/chats/room", map[string]any{"text": "Cú Đêm ơi"}, ""), 200, "")
-	if n := len(e.tasksTo("/tasks/game-room-bot")); n != 0 {
-		t.Fatalf("ván không có bot vẫn có %d task", n)
+	e.want(e.call(userOf(1), "POST", "/v1/games/"+id+"/chats/room", map[string]any{"text": "Quản trò ơi"}, ""), 200, "")
+	if n := len(e.tasksTo("/tasks/game-room-bot")); n != 1 {
+		t.Fatalf("Quản trò có %d task, muốn 1", n)
 	}
 }

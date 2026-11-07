@@ -103,7 +103,13 @@ func (d gameSettingDef) setupValue(v any) string {
 	case settingPhase:
 		return formatMinutes(int(v.(float64)))
 	case settingText:
-		return v.(string)
+		s := v.(string)
+		for _, p := range d.Presets {
+			if p.Text == s {
+				return p.Label
+			}
+		}
+		return s
 	case settingRoundPhases:
 		var rounds []string
 		for i, r := range v.([]any) {

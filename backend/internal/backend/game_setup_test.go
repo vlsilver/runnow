@@ -123,6 +123,10 @@ func TestGameSettingsReadBack(t *testing.T) {
 			t.Errorf("%s: thiếu read", d.Key)
 			continue
 		}
+		// Tuỳ chọn ẩn chỉ nhận cho app cũ, không áp giá trị gửi lên.
+		if d.hidden {
+			continue
+		}
 		in := map[string]any{"darkCloak": true, "topOn": true}
 		var v any
 		switch d.Type {

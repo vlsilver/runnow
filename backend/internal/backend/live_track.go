@@ -15,6 +15,7 @@ import (
 // lệnh. Topic bị xoá thì các hàm gửi tự rơi về General.
 //
 //	appConfig/telegram.liveTrackThreadId   thiếu là General
+//	appConfig/telegram.masoiThreadId       topic ván PSC; thiếu thì theo app
 
 const liveTrackCommand = "/livetrack"
 
@@ -29,6 +30,16 @@ func liveTrackThread(ctx context.Context, db *firestore.Client) (int64, error) {
 		return 0, err
 	}
 	return int64(number(cfg["liveTrackThreadId"])), nil
+}
+
+// masoiThread là topic Ma Sói của PSC, nơi ván PSC đăng; 0 là chưa đặt. Đặt
+// tay trong Firestore, không có lệnh Telegram.
+func masoiThread(ctx context.Context, db *firestore.Client) (int64, error) {
+	cfg, err := getData(ctx, liveTrackRef(db))
+	if err != nil {
+		return 0, err
+	}
+	return int64(number(cfg["masoiThreadId"])), nil
 }
 
 func (s *Server) liveTrackCommandText(ctx context.Context, update TelegramUpdate, arg string) (string, error) {
