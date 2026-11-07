@@ -436,6 +436,7 @@ class GameDetail {
     required this.taskKey,
     required this.startError,
     this.kmTable,
+    this.setup = const [],
   });
 
   factory GameDetail.fromJson(Map<String, dynamic> json) {
@@ -465,6 +466,7 @@ class GameDetail {
       taskKey: _optString(json['taskKey']),
       startError: _obj(json['startError'], GameStartError.fromJson),
       kmTable: _obj(json['kmTable'], GameKmTable.fromJson),
+      setup: _list(json['setup'], GameSetupSection.fromJson),
     );
   }
 
@@ -507,6 +509,9 @@ class GameDetail {
   /// Đầu cột bảng km hai cột (`lastKm`, `todayKm` của người chơi); null khi
   /// ván không chạy, lúc đó app hiện km chốt như cũ.
   final GameKmTable? kmTable;
+
+  /// Thiết lập ván đang áp, theo khối của màn tạo ván; rỗng khi backend cũ.
+  final List<GameSetupSection> setup;
 }
 
 class GameKmTable {
@@ -1265,6 +1270,49 @@ class GameAction {
 
   /// Bảng kiểm phiếu của đề cử, biểu quyết, sói bầu cắn; null ở ván luật cũ.
   final GameTally? tally;
+}
+
+/// Một khối của phần xem lại thiết lập ván.
+class GameSetupSection {
+  const GameSetupSection({required this.title, required this.items});
+
+  factory GameSetupSection.fromJson(Map<String, dynamic> json) {
+    return GameSetupSection(
+      title: _string(json['title']),
+      items: _list(json['items'], GameSetupItem.fromJson),
+    );
+  }
+
+  final String title;
+  final List<GameSetupItem> items;
+}
+
+/// Một tuỳ chọn đang áp; [value] backend viết sẵn kèm đơn vị. [sub] là dòng
+/// con của dòng có icon ngay trên.
+class GameSetupItem {
+  const GameSetupItem({
+    required this.key,
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.sub = false,
+  });
+
+  factory GameSetupItem.fromJson(Map<String, dynamic> json) {
+    return GameSetupItem(
+      key: _string(json['key']),
+      icon: _string(json['icon']),
+      label: _string(json['label']),
+      value: _string(json['value']),
+      sub: json['sub'] == true,
+    );
+  }
+
+  final String key;
+  final String icon;
+  final String label;
+  final String value;
+  final bool sub;
 }
 
 /// Ai chọn gì, phiếu nào được tính, bên nào đang dẫn và vì sao.

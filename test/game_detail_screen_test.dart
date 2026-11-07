@@ -166,6 +166,61 @@ void main() {
     await close(tester);
   });
 
+  testWidgets('the setup button shows the game settings in play', (
+    tester,
+  ) async {
+    backend.game = {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'running',
+      'statusLabel': 'Đang chơi',
+      'refreshAfterSeconds': 30,
+      'setup': [
+        {
+          'title': 'Km mỗi lượt',
+          'items': [
+            {
+              'key': 'kmPerUnit',
+              'icon': 'vote',
+              'label': 'Biểu quyết',
+              'value': '2 km',
+            },
+            {
+              'key': 'maxHang',
+              'label': 'Treo tối đa mỗi vòng',
+              'value': '2 người',
+              'sub': true,
+            },
+          ],
+        },
+      ],
+    };
+    await pumpScreen(tester);
+    await tester.tap(find.byTooltip('Thiết lập ván'));
+    await tester.pumpAndSettle();
+    expect(find.text('KM MỖI LƯỢT'), findsOneWidget);
+    expect(find.text('Biểu quyết'), findsOneWidget);
+    expect(find.text('2 km'), findsOneWidget);
+    expect(find.text('Treo tối đa mỗi vòng'), findsOneWidget);
+    expect(find.text('2 người'), findsOneWidget);
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    await close(tester);
+  });
+
+  testWidgets('no setup from an old backend, no setup button', (tester) async {
+    backend.game = {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'running',
+      'statusLabel': 'Đang chơi',
+      'refreshAfterSeconds': 30,
+    };
+    await pumpScreen(tester);
+    expect(find.byTooltip('Thiết lập ván'), findsNothing);
+    await close(tester);
+  });
+
   testWidgets('the page stays moonlit on a light app theme', (tester) async {
     backend.game = {
       'id': 'g1',

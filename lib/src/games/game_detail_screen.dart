@@ -16,6 +16,7 @@ import 'package:myrun/src/games/game_my_card.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/games/game_role_card.dart';
+import 'package:myrun/src/games/game_skill_cards.dart';
 import 'package:myrun/src/games/game_village.dart';
 import 'package:myrun/src/games/telegram_link_controller.dart';
 import 'package:myrun/src/games/telegram_link_section.dart';
@@ -303,7 +304,18 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
           return GameMoonlitBackdrop(
             child: Scaffold(
               backgroundColor: Colors.transparent,
-              appBar: AppBar(title: Text(detail?.title ?? 'Ma Sói')),
+              appBar: AppBar(
+                title: Text(detail?.title ?? 'Ma Sói'),
+                actions: [
+                  if (detail != null && detail.setup.isNotEmpty)
+                    IconButton(
+                      tooltip: 'Thiết lập ván',
+                      icon: const Icon(Icons.tune_rounded),
+                      onPressed: () =>
+                          showGameSetupSheet(context, detail.setup),
+                    ),
+                ],
+              ),
               body: detail == null
                   ? _controller.error == null
                         ? const RunNowLoading(label: 'Đang tải ván')
