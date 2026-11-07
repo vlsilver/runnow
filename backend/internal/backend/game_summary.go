@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -188,8 +189,8 @@ type summaryBuilder struct {
 	replay []GameSummarySection
 	fate   map[string]string
 	cause  map[string]werewolf.Cause
-	bitten string // người bị cắn của đêm đang xét
-	rounds int    // số vòng thật đã chơi, theo đêm/ngày cuối có bước
+	bitten []string // những người bị cắn của đêm đang xét
+	rounds int      // số vòng thật đã chơi, theo đêm/ngày cuối có bước
 	km     map[string]float64
 	// hangs: lần làng chốt Treo (kể cả Kẻ ngốc lật bài); wolvesHanged: số sói chết vì treo.
 	hangs, wolvesHanged int
@@ -235,7 +236,7 @@ func (b *summaryBuilder) nightChoices(step summaryStep, title string) {
 	}
 	for _, a := range guard {
 		line := GameSummaryLine{Icon: "guard", Text: fmt.Sprintf("%s %s canh %s.", roleLabels[werewolf.Guard], b.name(a.Actor), b.name(a.Targets[0]))}
-		if a.Targets[0] == b.bitten {
+		if slices.Contains(b.bitten, a.Targets[0]) {
 			line.Tag = "CỨU"
 			b.guardSaves[a.Actor]++
 		}
@@ -250,10 +251,17 @@ func (b *summaryBuilder) nightChoices(step summaryStep, title string) {
 		b.add(title, true, GameSummaryLine{Icon: "seer", Text: fmt.Sprintf("%s %s soi %s: %s.", roleLabels[werewolf.Seer], b.name(a.Actor), b.name(a.Targets[0]), side), Tag: strings.ToUpper(side)})
 	}
 	for _, a := range save {
-		if b.bitten == "" {
+		saved := ""
+		switch {
+		case len(a.Targets) > 0:
+			saved = a.Targets[0]
+		case len(b.bitten) == 1:
+			saved = b.bitten[0]
+		}
+		if saved == "" || !slices.Contains(b.bitten, saved) {
 			continue
 		}
-		b.add(title, true, GameSummaryLine{Icon: "witch", Text: fmt.Sprintf("%s %s cứu %s.", roleLabels[werewolf.Witch], b.name(a.Actor), b.name(b.bitten)), Tag: "CỨU"})
+		b.add(title, true, GameSummaryLine{Icon: "witch", Text: fmt.Sprintf("%s %s cứu %s.", roleLabels[werewolf.Witch], b.name(a.Actor), b.name(saved)), Tag: "CỨU"})
 	}
 }
 
@@ -269,10 +277,14 @@ func (b *summaryBuilder) event(e werewolf.Event, title string, night bool) {
 		}
 		b.add(title, night, GameSummaryLine{Icon: "lovers", Text: text})
 	case werewolf.EventWolvesTarget:
-		b.bitten = e.UID
+		b.bitten = biteTargets(e)
 		text := "Sói không cắn ai."
-		if e.UID != "" {
-			text = fmt.Sprintf("Sói cắn %s.", b.name(e.UID))
+		if len(b.bitten) > 0 {
+			names := make([]string, len(b.bitten))
+			for i, uid := range b.bitten {
+				names[i] = b.name(uid)
+			}
+			text = fmt.Sprintf("Sói cắn %s.", strings.Join(names, ", "))
 		}
 		b.add(title, night, GameSummaryLine{Icon: "bite", Text: text})
 	case werewolf.EventDark:

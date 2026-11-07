@@ -90,7 +90,11 @@ type State struct {
 	SavePotion   bool     `json:"savePotion"`       // còn bình cứu
 	PoisonPotion bool     `json:"poisonPotion"`     // còn bình độc
 	LastGuarded  string   `json:"lastGuarded"`      // lần bảo vệ hợp lệ gần nhất đã chốt (R3)
-	Bitten       string   `json:"bitten,omitempty"` // sói chốt lúc 0h; phù thuỷ thấy người này (R4)
+	// Bites là những người sói chốt cắn lúc 0h, phù thuỷ thấy họ (R4). Bitten là
+	// người đầu tiên: state ghi trước khi cắn được nhiều người chỉ có field
+	// này, và bản cũ của service vẫn đọc nó.
+	Bites  []string `json:"bites,omitempty"`
+	Bitten string   `json:"bitten,omitempty"`
 	// Nominees là những người lên giàn lúc 20h, theo thứ tự phiên biểu quyết
 	// (VoteKinds). Nominee là người đầu tiên: state ghi trước khi có nhiều
 	// người lên giàn chỉ có field này, và bản cũ của service vẫn đọc nó.
@@ -102,10 +106,12 @@ type State struct {
 
 	// Dark là đặc quyền phe Sói chốt lúc hết pha Đêm, có tác dụng tới lần chốt
 	// biểu quyết của vòng đó. DarkUsed đếm lượt đã dùng cả ván; Cloaked là sói
-	// đã được Tàng Hình. Delayed là người bị Cắn Im Lặng, chết sau biểu quyết.
+	// đã được Tàng Hình. Silenced là những người bị Cắn Im Lặng, chết sau biểu
+	// quyết; Delayed là người đầu tiên, giữ cho state cũ và bản cũ của service.
 	Dark     *DarkUse          `json:"dark,omitempty"`
 	DarkUsed map[DarkPower]int `json:"darkUsed,omitempty"`
 	Cloaked  []string          `json:"cloaked,omitempty"`
+	Silenced []string          `json:"silenced,omitempty"`
 	Delayed  string            `json:"delayed,omitempty"`
 }
 
@@ -191,6 +197,40 @@ func (st *State) setNominees(uids []string) {
 	if len(uids) > 0 {
 		st.Nominee = uids[0]
 	}
+}
+
+// BittenUIDs là những người sói chốt cắn đêm nay, theo thứ tự chốt.
+func (st *State) BittenUIDs() []string {
+	return legacyList(st.Bites, st.Bitten)
+}
+
+func (st *State) setBitten(uids []string) {
+	st.Bites, st.Bitten = uids, firstUID(uids)
+}
+
+func (st *State) delayedUIDs() []string {
+	return legacyList(st.Silenced, st.Delayed)
+}
+
+func (st *State) setDelayed(uids []string) {
+	st.Silenced, st.Delayed = uids, firstUID(uids)
+}
+
+func legacyList(list []string, one string) []string {
+	if len(list) > 0 {
+		return append([]string(nil), list...)
+	}
+	if one != "" {
+		return []string{one}
+	}
+	return nil
+}
+
+func firstUID(uids []string) string {
+	if len(uids) == 0 {
+		return ""
+	}
+	return uids[0]
 }
 
 func (st *State) alive(uid string) bool {

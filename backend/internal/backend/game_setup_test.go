@@ -54,6 +54,7 @@ Chế độ dùng kỹ năng = Riêng []
 Biểu quyết = 2 km [vote]
   Treo tối đa mỗi vòng = 2 người []
 Bầu cắn = 0 km [wolf]
+  Cắn tối đa mỗi vòng = 1 người []
 Soi = 1.5 km [seer]
 Che = 1 km [guard]
 Dùng thuốc = 1 km [witch]
@@ -91,6 +92,7 @@ Số vòng mỗi ngày = 3 vòng []
 Độ dài pha Biểu quyết = 30 phút []
 # Km mỗi lượt
 Treo tối đa mỗi vòng = 3 người []
+Cắn tối đa mỗi vòng = 1 người []
 `
 	if got := setupLines(gameSetupFor(c)); got != want {
 		t.Fatalf("setup:\n%s\nmong đợi:\n%s", got, want)

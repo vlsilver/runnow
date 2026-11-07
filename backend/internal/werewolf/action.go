@@ -12,7 +12,7 @@ const (
 	KindWolfBite    Kind = "wolf_bite"
 	KindSeerPeek    Kind = "seer_peek"
 	KindGuard       Kind = "guard"
-	KindWitchSave   Kind = "witch_save" // cứu người bị cắn đêm nay, không có target
+	KindWitchSave   Kind = "witch_save" // cứu người bị cắn đêm nay; target chỉ cần khi sói cắn nhiều người
 	KindWitchPoison Kind = "witch_poison"
 	KindHunterShoot Kind = "hunter_shoot"
 	KindCupidPair   Kind = "cupid_pair"
@@ -94,7 +94,7 @@ var kindRules = map[Kind]kindRule{
 	KindWolfBite:    {role: Wolf, phases: []Phase{PhaseNight}, targets: 1, changeable: true},
 	KindSeerPeek:    {role: Seer, phases: []Phase{PhaseNight, PhaseDawn}, targets: 1, needsKm: true},
 	KindGuard:       {role: Guard, phases: []Phase{PhaseNight, PhaseDawn}, targets: 1, changeable: true, needsKm: true},
-	KindWitchSave:   {role: Witch, phases: []Phase{PhaseDawn}, changeable: true, needsKm: true},
+	KindWitchSave:   {role: Witch, phases: []Phase{PhaseDawn}, anyTargets: true, changeable: true, needsKm: true},
 	KindWitchPoison: {role: Witch, phases: []Phase{PhaseDawn}, targets: 1, changeable: true, needsKm: true},
 	KindHunterShoot: {role: Hunter, targets: 1}, // mở theo State.Hunter, không theo phase
 	KindCupidPair:   {role: Cupid, phases: []Phase{PhaseSetup, PhaseNight}, targets: 2},
@@ -159,10 +159,16 @@ func validateKind(st *State, a Action, mine []Action) error {
 		if !st.SavePotion {
 			return ErrAlreadyUsed
 		}
-		if !witchCanSave(st, a.Actor) {
+		if len(a.Targets) > 1 {
 			return ErrInvalidTarget
 		}
-		if poison := findAction(mine, KindWitchPoison); poison != nil && poison.target() == st.Bitten {
+		// Sói cắn một người thì bình cứu không cần chọn ai; cắn nhiều người
+		// thì phải chọn một trong số đó.
+		saved := saveTarget(st, &a)
+		if saved == "" || !slices.Contains(WitchSaveTargets(st, a.Actor), saved) {
+			return ErrInvalidTarget
+		}
+		if poison := findAction(mine, KindWitchPoison); poison != nil && poison.target() == saved {
 			return ErrInvalidTarget
 		}
 	case KindWitchPoison:
@@ -172,7 +178,7 @@ func validateKind(st *State, a Action, mine []Action) error {
 		if t == a.Actor {
 			return ErrInvalidTarget
 		}
-		if findAction(mine, KindWitchSave) != nil && t == st.Bitten {
+		if save := findAction(mine, KindWitchSave); save != nil && t == saveTarget(st, save) {
 			return ErrInvalidTarget
 		}
 	case KindWolfDark:
@@ -300,12 +306,33 @@ func kmRole(r Role) bool {
 	return false
 }
 
-// witchCanSave: có người bị cắn, và chỉ tự cứu được ở đêm 1 (R4).
+// witchCanSave: có người bị cắn mà phù thuỷ cứu được (R4).
 func witchCanSave(st *State, witch string) bool {
-	if st.Bitten == "" {
-		return false
+	return len(WitchSaveTargets(st, witch)) > 0
+}
+
+// WitchSaveTargets là những người bị cắn đêm nay mà phù thuỷ cứu được: còn
+// sống, và chỉ tự cứu được ở đêm 1 (R4).
+func WitchSaveTargets(st *State, witch string) []string {
+	var out []string
+	for _, uid := range st.BittenUIDs() {
+		if st.alive(uid) && (uid != witch || st.Round == 1) {
+			out = append(out, uid)
+		}
 	}
-	return st.Bitten != witch || st.Round == 1
+	return out
+}
+
+// saveTarget là người bình cứu nhắm tới: target của action, hoặc người duy
+// nhất bị cắn khi action không chọn ai. Rỗng khi không xác định được.
+func saveTarget(st *State, a *Action) string {
+	if t := a.target(); t != "" {
+		return t
+	}
+	if bites := st.BittenUIDs(); len(bites) == 1 {
+		return bites[0]
+	}
+	return ""
 }
 
 func phaseOpen(phases []Phase, p Phase) bool {

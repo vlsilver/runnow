@@ -127,10 +127,14 @@ func parseGameButton(s string) (gameButton, bool) {
 	return b, true
 }
 
-// targetsNeeded: số người phải chọn cho một lượt bấm.
-func targetsNeeded(kind werewolf.Kind) int {
+// targetsNeeded: số người phải chọn cho một lượt bấm. Bình cứu chỉ phải chọn
+// khi sói cắn nhiều người.
+func targetsNeeded(st *werewolf.State, kind werewolf.Kind) int {
 	switch kind {
 	case werewolf.KindWitchSave:
+		if len(st.BittenUIDs()) > 1 {
+			return 1
+		}
 		return 0
 	case werewolf.KindCupidPair:
 		return 2
@@ -208,7 +212,7 @@ func (v promptView) render() (string, map[string]any, error) {
 	case hasSel && len(selected) > 0:
 		lines = append(lines, "Đang chọn: "+names(selected)+".")
 	}
-	need := targetsNeeded(v.kind)
+	need := targetsNeeded(v.st, v.kind)
 	confirming := len(v.pick) > 0 && len(v.pick) >= need
 	switch {
 	case confirming:
@@ -257,7 +261,7 @@ func (v promptView) render() (string, map[string]any, error) {
 		rows = append(rows, []map[string]any{ok, again})
 		return privateDM(lines), inlineKeyboard(rows), nil
 	}
-	if v.kind == werewolf.KindWitchSave {
+	if v.kind == werewolf.KindWitchSave && need == 0 {
 		b, err := button("Dùng bình cứu", opPick, nil)
 		if err != nil {
 			return "", nil, err
@@ -386,7 +390,7 @@ func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, u
 		}
 		targets = append(targets, order[n])
 	}
-	need := targetsNeeded(b.Kind)
+	need := targetsNeeded(st, b.Kind)
 	if len(targets) > need {
 		return ButtonReply{Text: buttonTexts.badTarget}, nil
 	}

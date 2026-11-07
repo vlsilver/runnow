@@ -87,6 +87,9 @@ type Config struct {
 	TopWeight int `json:"topWeight,omitempty"`
 	// MaxHang là số người lên giàn tối đa mỗi vòng, 1..MaxNominees; 0 là MaxNominees.
 	MaxHang int `json:"maxHang,omitempty"`
+	// MaxBite là số người phe Sói cắn tối đa mỗi vòng, 1..MaxBites; 0 là 1.
+	// Mỗi sói vẫn chọn một người, nên số người bị cắn không vượt số sói còn sống.
+	MaxBite int `json:"maxBite,omitempty"`
 	// VillageGate: kỹ năng của vai không phải sói mở theo tổng km người không
 	// phải sói còn sống (đủ km của vai × số người đó), thay cho km từng người.
 	VillageGate bool `json:"villageGate,omitempty"`
@@ -167,6 +170,17 @@ const (
 	MaxTopWeight = 5
 )
 
+// MaxBites là trần của Config.MaxBite.
+const MaxBites = 3
+
+// BiteSeats là số người phe Sói cắn tối đa mỗi vòng (MaxBite).
+func (c Config) BiteSeats() int {
+	if c.MaxBite == 0 {
+		return 1
+	}
+	return c.MaxBite
+}
+
 // NomineeSeats là số suất lên giàn mỗi vòng (MaxHang).
 func (c Config) NomineeSeats() int {
 	if c.MaxHang == 0 {
@@ -213,6 +227,9 @@ func (c Config) Validate() error {
 	}
 	if c.MaxHang < 0 || c.MaxHang > MaxNominees {
 		return fmt.Errorf("maxHang phải từ 0 tới %d: %v", MaxNominees, c.MaxHang)
+	}
+	if c.MaxBite < 0 || c.MaxBite > MaxBites {
+		return fmt.Errorf("maxBite phải từ 0 tới %d: %v", MaxBites, c.MaxBite)
 	}
 	for i, r := range c.Extended {
 		if !slices.Contains(extendedRoles, r) {

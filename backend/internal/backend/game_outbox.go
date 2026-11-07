@@ -1161,7 +1161,7 @@ func (r *outboxRenderer) privateText(evs []werewolf.Event, wolfShort string) str
 		case werewolf.EventWolvesTarget:
 			switch {
 			case e.UID != "":
-				lines = append(lines, fmt.Sprintf("Phe Sói chốt cắn %s.", r.name(e.UID)))
+				lines = append(lines, fmt.Sprintf("Phe Sói chốt cắn %s.", r.names(biteTargets(e))))
 			case e.Reason == werewolf.VoidNoKm && wolfShort != "":
 				lines = append(lines, "Phe Sói chưa đủ km nên đêm nay không cắn được ai: "+wolfShort+". Muốn cắn đêm sau thì cả phe chạy thêm trước 22h.")
 			case e.Reason == werewolf.VoidNoKm:

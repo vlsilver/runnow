@@ -184,6 +184,26 @@ func TestPromptViewWitchSaveDisabledAndClosed(t *testing.T) {
 	}
 }
 
+// Sói cắn hai người: tin Telegram của phù thuỷ hiện nút từng người bị cắn thay
+// cho nút Dùng bình cứu không kèm ai (nút đó sẽ bị từ chối).
+func TestPromptViewWitchSavePicksWhenTwoBitten(t *testing.T) {
+	st := promptState()
+	st.Bites, st.Bitten = []string{"b", "a"}, "b"
+	a := &GameAction{Kind: "witch_save", Enabled: true, Input: "single_target", Options: options("a", "b")}
+	v := promptView{gameID: "g1", turnKey: "r1", st: st, kind: ww.KindWitchSave, a: a, name: promptNames}
+	_, markup, err := v.render()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kb := keyboard(t, markup)
+	if len(kb) != 1 || len(kb[0]) != 2 || kb[0][0] != "An=m1|g1|r1|w|t|0" || kb[0][1] != "Bình <b>=m1|g1|r1|w|t|1" {
+		t.Fatalf("nút = %v", kb)
+	}
+	if targetsNeeded(st, ww.KindWitchSave) != 1 || targetsNeeded(promptState(), ww.KindWitchSave) != 0 {
+		t.Fatal("bình cứu: số người phải chọn sai")
+	}
+}
+
 func TestTruncateUTF16(t *testing.T) {
 	s := strings.Repeat("😀", 150) // 300 đơn vị UTF-16
 	got := truncateUTF16(s, answerTextSize)

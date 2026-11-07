@@ -187,7 +187,7 @@ func (st *State) PeekWith(target string, dark *DarkUse) Team {
 	return Side(st.role(target))
 }
 
-// lockDark (gọi trong lockWolves, sau khi đã có Bitten): chốt đặc quyền của
+// lockDark (gọi trong lockWolves, sau khi đã có Bites): chốt đặc quyền của
 // đêm và trừ lượt. Cắn Im Lặng, Đột Biến mà không ai bị cắn thì huỷ, không mất lượt.
 func (r *resolver) lockDark() {
 	r.st.Dark = nil
@@ -206,7 +206,7 @@ func (r *resolver) lockDark() {
 		}
 		return
 	}
-	if (use.Power == DarkSilent || use.Power == DarkPierce) && r.st.Bitten == "" {
+	if (use.Power == DarkSilent || use.Power == DarkPierce) && len(r.st.BittenUIDs()) == 0 {
 		for _, a := range picks {
 			r.void(a, VoidNoBite)
 		}

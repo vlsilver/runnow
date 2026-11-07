@@ -1313,8 +1313,12 @@ func (s *GameStore) notes(ctx context.Context, game *firestore.DocumentRef, st *
 	}
 	if me.Role == werewolf.Witch && me.Alive && st.Phase == werewolf.PhaseDawn {
 		text := "Đêm nay không ai bị cắn."
-		if st.Bitten != "" {
-			text = "Đêm nay sói cắn " + name(st.Bitten) + "."
+		if bites := st.BittenUIDs(); len(bites) > 0 {
+			names := make([]string, len(bites))
+			for i, b := range bites {
+				names[i] = name(b)
+			}
+			text = "Đêm nay sói cắn " + strings.Join(names, ", ") + "."
 		}
 		notes = append(notes, GameNote{Round: st.Round, Text: text})
 	}
@@ -1364,7 +1368,14 @@ func meActions(st *werewolf.State, uid string, mine []werewolf.Action, raw map[w
 			name := playerName(playerIndex(players), nominee)
 			a.Label, a.Help = "Biểu quyết: "+name, "Treo hay tha "+name+". Đổi được tới "+hm(st.Config.Clock(st.NightAt).Close)+"."
 		}
-		switch text.input {
+		input := text.input
+		// Sói cắn nhiều người thì bình cứu phải chọn cứu ai. App vẽ theo input
+		// nên app cũ cũng chọn được.
+		if kind == werewolf.KindWitchSave && len(st.BittenUIDs()) > 1 {
+			input = "single_target"
+			a.Input = input
+		}
+		switch input {
 		case "choice":
 			a.Options = append(a.Options, GameOption{ID: werewolf.ChoiceHang, Label: choiceLabels[werewolf.ChoiceHang]}, GameOption{ID: werewolf.ChoiceSpare, Label: choiceLabels[werewolf.ChoiceSpare]})
 		case "single_target", "two_targets":
@@ -1379,6 +1390,9 @@ func meActions(st *werewolf.State, uid string, mine []werewolf.Action, raw map[w
 					continue
 				}
 				if kind == werewolf.KindGuard && p.uid == st.LastGuarded {
+					continue
+				}
+				if kind == werewolf.KindWitchSave && !slices.Contains(werewolf.WitchSaveTargets(st, uid), p.uid) {
 					continue
 				}
 				a.Options = append(a.Options, GameOption{ID: p.uid, Label: p.name, AvatarURL: p.avatar})

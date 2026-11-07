@@ -72,6 +72,46 @@ const (
 	maxHangOld    = "tối đa 3 người nhiều đề cử nhất lên giàn"
 )
 
+// wolfPickText là câu phe Sói chốt cắn ai, theo luật km và MaxBite của ván.
+func wolfPickText(cfg werewolf.Config) string {
+	n := cfg.BiteSeats()
+	switch {
+	case n == 1 && cfg.KmTie():
+		return wolfPickVote
+	case n == 1:
+		return wolfPickOld
+	case cfg.KmTie():
+		return fmt.Sprintf("Mỗi sói một phiếu, tối đa %d người nhiều phiếu nhất bị cắn; bằng phiếu ở suất cuối thì nhóm phiếu chạy nhiều km hơn thắng, vẫn bằng thì bốc thăm.", n)
+	}
+	return fmt.Sprintf("Mỗi sói chọn một người; %d người khác nhau được chọn sau cùng bị cắn.", n)
+}
+
+// biteTargets là những người bị cắn của sự kiện wolves_target: Targets khi cắn
+// nhiều người, UID với sự kiện một người (cả sự kiện ghi trước khi có Targets).
+func biteTargets(e werewolf.Event) []string {
+	if len(e.Targets) > 0 {
+		return e.Targets
+	}
+	if e.UID != "" {
+		return []string{e.UID}
+	}
+	return nil
+}
+
+// biteCountText thay câu chọn một người của sói và bình cứu khi ván cắn được
+// nhiều người.
+func biteCountText(text string, cfg werewolf.Config) string {
+	if n := cfg.BiteSeats(); n > 1 {
+		text = strings.NewReplacer(
+			"cả phe cũng chọn một người để cắn", fmt.Sprintf("cả phe cũng chọn tối đa %d người để cắn", n),
+			"Bình cứu chỉ cứu người bị cắn đêm đó", "Bình cứu chỉ cứu một người bị cắn đêm đó",
+			"Cứu người bị cắn đêm nay.", "Chọn một người bị cắn đêm nay để cứu.",
+			"Chọn người phe Sói cắn đêm nay.", fmt.Sprintf("Chọn người phe Sói cắn đêm nay, phe cắn tối đa %d người.", n),
+		).Replace(text)
+	}
+	return text
+}
+
 // maxHangText là câu số người lên giàn theo MaxHang của ván.
 func maxHangText(cfg werewolf.Config) string {
 	return fmt.Sprintf("tối đa %d người nhiều đề cử nhất lên giàn", cfg.NomineeSeats())
@@ -191,9 +231,10 @@ func topVotersText(cfg werewolf.Config) string {
 // roleRulesFor là luật của vai role kèm câu km và giờ theo cấu hình của ván.
 func roleRulesFor(role werewolf.Role, cfg werewolf.Config, x string) string {
 	text := clockText(roleRules[role], ruleClock(cfg))
-	if role == werewolf.Wolf && cfg.KmTie() {
-		text = strings.Replace(text, wolfPickOld, wolfPickVote, 1)
+	if role == werewolf.Wolf {
+		text = strings.Replace(text, wolfPickOld, wolfPickText(cfg), 1)
 	}
+	text = biteCountText(text, cfg)
 	if line := roleKmLine(role, cfg, x); line != "" {
 		return text + " " + line
 	}
@@ -315,10 +356,10 @@ var actionTexts = map[werewolf.Kind]actionText{
 // actionHelp là dòng hướng dẫn của kind, giờ theo vòng đang chạy của ván.
 func actionHelp(st *werewolf.State, kind werewolf.Kind) string {
 	help := actionTexts[kind].help
-	if kind == werewolf.KindWolfBite && st.Config.KmTie() {
-		help = strings.Replace(help, wolfPickOld, wolfPickVote, 1)
+	if kind == werewolf.KindWolfBite {
+		help = strings.Replace(help, wolfPickOld, wolfPickText(st.Config), 1)
 	}
-	return clockText(help, st.Config.Clock(st.NightAt))
+	return clockText(biteCountText(help, st.Config), st.Config.Clock(st.NightAt))
 }
 
 var voteText = actionText{"Biểu quyết", "Treo hay tha người đang lên giàn. Đổi được tới {close}.", "choice", ""}

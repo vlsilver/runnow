@@ -3,6 +3,7 @@ package werewolf
 import (
 	"errors"
 	"math"
+	"slices"
 	"sort"
 )
 
@@ -22,7 +23,7 @@ type EventKind string
 const (
 	EventDeath        EventKind = "death"         // UID, Role, Cause
 	EventLovers       EventKind = "lovers"        // Targets; Draw = bot ghép thay Cupid
-	EventWolvesTarget EventKind = "wolves_target" // UID = người bị cắn (rỗng: không ai), Reason
+	EventWolvesTarget EventKind = "wolves_target" // UID = người bị cắn đầu tiên (rỗng: không ai), Targets = mọi người bị cắn khi nhiều hơn một, Reason
 	EventNominee      EventKind = "nominee"       // Targets = người lên giàn theo thứ tự phiên, UID = người đầu (rỗng: không ai), Counts, Draw
 	EventVoteCut      EventKind = "vote_cut"      // UID = người lên giàn của phiên, Targets = người mất phiếu, Draw
 	EventVoteBonus    EventKind = "vote_bonus"    // UID = người lên giàn của phiên, Targets = người được x2 phiếu, Draw
@@ -210,7 +211,7 @@ func (r *resolver) lockWolves() {
 	if r.st.Round == 1 {
 		r.pairLovers()
 	}
-	r.st.Bitten = ""
+	r.st.setBitten(nil)
 	if r.st.Config.KmTie() {
 		r.emit(r.wolfVote())
 		r.lockDark()
@@ -218,7 +219,7 @@ func (r *resolver) lockWolves() {
 		return
 	}
 	reason := ReasonNoChoice
-	var best *Action
+	var picks []Action
 	for _, a := range r.actionsOf(KindWolfBite) {
 		if !r.targetAlive(a) {
 			continue
@@ -227,29 +228,53 @@ func (r *resolver) lockWolves() {
 			r.void(a, VoidLoverTarget)
 			continue
 		}
-		// Sói chọn khác nhau thì bản bấm sau cùng thắng (C2); cùng giờ thì so uid
-		// để kết quả không phụ thuộc thứ tự đọc.
-		if best == nil || a.ReceivedAt.After(best.ReceivedAt) ||
-			(a.ReceivedAt.Equal(best.ReceivedAt) && a.Actor > best.Actor) {
-			a := a
-			best = &a
+		picks = append(picks, a)
+	}
+	// Sói chọn khác nhau thì các bản bấm sau cùng thắng (C2), tới BiteSeats
+	// người khác nhau; cùng giờ thì so uid để kết quả không phụ thuộc thứ tự đọc.
+	sort.SliceStable(picks, func(i, j int) bool {
+		if !picks[i].ReceivedAt.Equal(picks[j].ReceivedAt) {
+			return picks[i].ReceivedAt.After(picks[j].ReceivedAt)
+		}
+		return picks[i].Actor > picks[j].Actor
+	})
+	var chosen []Action
+	var bites []string
+	for _, a := range picks {
+		if len(bites) == r.st.Config.BiteSeats() {
+			break
+		}
+		if !slices.Contains(bites, a.target()) {
+			chosen = append(chosen, a)
+			bites = append(bites, a.target())
 		}
 	}
 	// Xét km trước lựa chọn: phe thiếu km thì không sói nào bấm được, nên
-	// best rỗng mà lý do vẫn phải là thiếu km.
+	// không có lựa chọn mà lý do vẫn phải là thiếu km.
 	switch {
 	case !wolvesHaveKm(r.st):
 		reason = VoidNoKm
-		if best != nil {
-			r.void(*best, VoidNoKm)
+		for _, a := range chosen {
+			r.void(a, VoidNoKm)
 		}
-	case best == nil:
+	case len(bites) == 0:
 	default:
-		r.st.Bitten, reason = best.target(), ""
+		r.st.setBitten(bites)
+		reason = ""
 	}
-	r.emit(Event{Kind: EventWolvesTarget, UID: r.st.Bitten, Reason: reason})
+	r.emit(biteEvent(r.st.BittenUIDs(), reason))
 	r.lockDark()
 	r.st.Phase = PhaseDawn
+}
+
+// biteEvent là sự kiện chốt cắn: UID là người đầu tiên như bản chỉ cắn một
+// người, Targets chỉ có khi cắn nhiều hơn một người.
+func biteEvent(bites []string, reason string) Event {
+	ev := Event{Kind: EventWolvesTarget, UID: firstUID(bites), Reason: reason}
+	if len(bites) > 1 {
+		ev.Targets = bites
+	}
+	return ev
 }
 
 // pairLovers: lấy lựa chọn của Cupid; quá 0h chưa ghép thì bot ghép ngẫu nhiên
@@ -294,10 +319,7 @@ func (r *resolver) pairLovers() {
 // cứu/độc → người yêu chết theo → lượt thợ săn.
 func (r *resolver) resolveNight() {
 	r.killLeavers()
-	victim := r.st.Bitten
-	if !r.st.alive(victim) {
-		victim = ""
-	}
+	victims := r.st.BittenUIDs()
 	guarded := r.guardTarget()
 	saved, poisoned := r.witchChoices()
 	// Độc tính trước cắn: thợ săn vừa bị cắn vừa bị độc thì chết vì độc và không
@@ -310,20 +332,27 @@ func (r *resolver) resolveNight() {
 	// vừa chết vì độc thì không còn gì để thoát.
 	// Đột Biến thì cú cắn xuyên qua Bảo vệ; Cắn Im Lặng thì người bị cắn chết
 	// sau lần chốt biểu quyết (resolveDay).
-	if victim != "" && (victim != guarded || r.st.darkIs(DarkPierce)) && !saved {
+	var silenced []string
+	for _, victim := range victims {
+		if !r.st.alive(victim) || (victim == guarded && !r.st.darkIs(DarkPierce)) || victim == saved {
+			continue
+		}
 		p := r.st.Players[victim]
 		switch {
-		case p.Alive && p.Role == Elder && p.SurvivedRound == 0:
+		case p.Role == Elder && p.SurvivedRound == 0:
 			p.SurvivedRound = r.st.Round
 			r.emit(Event{Kind: EventSurvived, UID: victim})
-		case p.Alive && r.st.darkIs(DarkSilent):
-			r.st.Delayed = victim
+		case r.st.darkIs(DarkSilent):
+			silenced = append(silenced, victim)
 		default:
 			r.kill(victim, CauseBite)
 		}
 	}
+	if len(silenced) > 0 {
+		r.st.setDelayed(silenced)
+	}
 	r.killLovers()
-	r.st.Bitten = ""
+	r.st.setBitten(nil)
 	r.st.Phase = PhaseDay
 	r.openHunterTurn()
 	r.finish()
@@ -347,8 +376,9 @@ func (r *resolver) guardTarget() string {
 	return ""
 }
 
-// witchChoices áp hai bình (R4) và trừ bình đã dùng.
-func (r *resolver) witchChoices() (saved bool, poisoned string) {
+// witchChoices áp hai bình (R4) và trừ bình đã dùng. saved là người được bình
+// cứu, rỗng khi không cứu.
+func (r *resolver) witchChoices() (saved, poisoned string) {
 	save := r.actionsOf(KindWitchSave)
 	poison := r.actionsOf(KindWitchPoison)
 	if len(save) > 0 {
@@ -356,14 +386,14 @@ func (r *resolver) witchChoices() (saved bool, poisoned string) {
 		switch {
 		case !r.st.SavePotion:
 			r.void(a, VoidNoPotion)
-		case !witchCanSave(r.st, a.Actor):
-			r.void(a, VoidInvalid)
-		case !r.st.alive(r.st.Bitten):
+		case !r.st.alive(saveTarget(r.st, &a)):
 			r.void(a, VoidTargetDead)
+		case !slices.Contains(WitchSaveTargets(r.st, a.Actor), saveTarget(r.st, &a)):
+			r.void(a, VoidInvalid)
 		case !r.st.hasKm(a.Actor):
 			r.void(a, VoidNoKm)
 		default:
-			r.st.SavePotion, saved = false, true
+			r.st.SavePotion, saved = false, saveTarget(r.st, &a)
 		}
 	}
 	if len(poison) > 0 {
@@ -372,7 +402,7 @@ func (r *resolver) witchChoices() (saved bool, poisoned string) {
 		case !r.st.PoisonPotion:
 			r.void(a, VoidNoPotion)
 		case !r.targetAlive(a):
-		case a.target() == a.Actor || (saved && a.target() == r.st.Bitten):
+		case a.target() == a.Actor || (saved != "" && a.target() == saved):
 			r.void(a, VoidInvalid)
 		case !r.st.hasKm(a.Actor):
 			r.void(a, VoidNoKm)
@@ -463,10 +493,10 @@ func (r *resolver) resolveDay() {
 		}
 		r.kill(uid, CauseHang)
 	}
-	if r.st.Delayed != "" {
-		r.kill(r.st.Delayed, CauseBite) // đã bị treo thì kill bỏ qua
-		r.st.Delayed = ""
+	for _, uid := range r.st.delayedUIDs() {
+		r.kill(uid, CauseBite) // đã bị treo thì kill bỏ qua
 	}
+	r.st.setDelayed(nil)
 	r.st.Dark = nil
 	r.killLovers()
 	r.st.Round++
@@ -606,9 +636,11 @@ func (r *resolver) wolfVote() Event {
 		return ev
 	}
 	ranked, same := r.rankVotes(counts, km, true, "wolf-bite")
-	ev.UID, ev.Reason, ev.Counts, ev.Km = ranked[0], "", counts, km
-	ev.Draw = len(ranked) > 1 && same(ranked[0], ranked[1])
-	r.st.Bitten = ev.UID
+	n := min(len(ranked), r.st.Config.BiteSeats())
+	r.st.setBitten(append([]string(nil), ranked[:n]...))
+	ev = biteEvent(r.st.BittenUIDs(), "")
+	ev.Counts, ev.Km = counts, km
+	ev.Draw = n < len(ranked) && same(ranked[n-1], ranked[n])
 	return ev
 }
 

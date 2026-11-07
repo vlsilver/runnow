@@ -109,6 +109,7 @@ func actionTally(st *werewolf.State, kind werewolf.Kind, acts []werewolf.Action,
 			return a.Targets[0]
 		}
 	case kind == werewolf.KindWolfBite:
+		t.Seats = st.Config.BiteSeats()
 		plan := werewolf.WolfVotePlan(st)
 		cut, t.Note = tallyCut(plan, names, "", cutLead(st.Config, st.Config.SkillMeters(werewolf.Wolf)))
 		pick = func(a werewolf.Action) string {

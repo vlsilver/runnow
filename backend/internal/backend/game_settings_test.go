@@ -15,7 +15,7 @@ func TestGameSettingsDefaults(t *testing.T) {
 	if err := applyGameSettings(&gc, nil); err != nil {
 		t.Fatal(err)
 	}
-	want := ww.Config{KmPerUnit: 2, Vote: ww.VoteCut, Ruleset: ww.RulesetKm, MaxHang: 3, BotName: "Quản trò", BotPersona: roomBotPersonas[0].Text,
+	want := ww.Config{KmPerUnit: 2, Vote: ww.VoteCut, Ruleset: ww.RulesetKm, MaxHang: 3, MaxBite: 1, BotName: "Quản trò", BotPersona: roomBotPersonas[0].Text,
 		SkillKm: map[ww.Role]float64{ww.Wolf: 0, ww.Seer: 1, ww.Guard: 1, ww.Witch: 1, ww.Hunter: 1}}
 	if !reflect.DeepEqual(gc, want) {
 		t.Fatalf("config = %+v, mong đợi %+v", gc, want)
@@ -26,13 +26,13 @@ func TestGameSettingsApplied(t *testing.T) {
 	var gc ww.Config
 	err := applyGameSettings(&gc, map[string]any{
 		"extraWolves": 1.0, "wolfKm": 2.0, "seerKm": 0.0, "guardKm": 1.5, "witchKm": 3.0, "hunterKm": 1.0,
-		"vote": "solo", "kmPerUnit": 2.5, "maxHang": 1.0, "topOn": true, "topVoters": 4.0, "topWeight": 3.0,
+		"vote": "solo", "kmPerUnit": 2.5, "maxHang": 1.0, "maxBite": 2.0, "topOn": true, "topVoters": 4.0, "topWeight": 3.0,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := ww.Config{
-		ExtraWolves: 1, KmPerUnit: 2.5, Ruleset: ww.RulesetKm, Vote: ww.VoteSolo, MaxHang: 1, TopVoters: 4, TopWeight: 3, BotName: "Quản trò", BotPersona: roomBotPersonas[0].Text,
+		ExtraWolves: 1, KmPerUnit: 2.5, Ruleset: ww.RulesetKm, Vote: ww.VoteSolo, MaxHang: 1, MaxBite: 2, TopVoters: 4, TopWeight: 3, BotName: "Quản trò", BotPersona: roomBotPersonas[0].Text,
 		SkillKm: map[ww.Role]float64{ww.Wolf: 2, ww.Seer: 0, ww.Guard: 1.5, ww.Witch: 3, ww.Hunter: 1},
 	}
 	if !reflect.DeepEqual(gc, want) {
