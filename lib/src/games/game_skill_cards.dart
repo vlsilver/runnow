@@ -522,39 +522,36 @@ class GameSkillCard extends StatelessWidget {
                           color: _M.ink,
                         ),
                       ),
-                      Row(
-                        children: [
-                          if (hint != null && hint.isNotEmpty)
-                            Flexible(
-                              child: Text(
-                                hint,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: _M.faint,
+                      // Hint dài xuống dòng, "Chi tiết" chạy liền sau.
+                      Text.rich(
+                        TextSpan(
+                          style: const TextStyle(fontSize: 12, color: _M.faint),
+                          children: [
+                            if (hint != null && hint.isNotEmpty)
+                              TextSpan(text: '$hint '),
+                            WidgetSpan(
+                              alignment: PlaceholderAlignment.middle,
+                              child: _DetailLink(
+                                label: s.label,
+                                onTap: () => showGameDetailSheet(
+                                  context,
+                                  title: s.label,
+                                  items: [
+                                    GameSettingDetail(
+                                      icon: icon,
+                                      title: s.label,
+                                      text: switch (s.warn) {
+                                        final w? when w.isNotEmpty =>
+                                          '${s.description}\n\n⚠ $w',
+                                        _ => s.description,
+                                      },
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
-                          _DetailLink(
-                            label: s.label,
-                            onTap: () => showGameDetailSheet(
-                              context,
-                              title: s.label,
-                              items: [
-                                GameSettingDetail(
-                                  icon: icon,
-                                  title: s.label,
-                                  text: switch (s.warn) {
-                                    final w? when w.isNotEmpty =>
-                                      '${s.description}\n\n⚠ $w',
-                                    _ => s.description,
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ],
                   ),

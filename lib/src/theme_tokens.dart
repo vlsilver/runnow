@@ -335,6 +335,14 @@ class RunNowMoonlitTokens {
   static const emblemGlow = Color(0x33F2BE5C);
   static const emblemDark = Color(0xFF05070C);
   static const emblemFoil = Color(0xFFF9CC78);
+
+  // Quầng sáng dưới nút mở ván.
+  static const ctaGlow = Color(0x4DE5B04C);
+
+  // Đặc quyền phe Sói đang bật: chữ và ô tích, nền, viền.
+  static const wolf = Color(0xFFF08A84);
+  static const wolfSoft = Color(0x29C2413B);
+  static const wolfLine = Color(0x8CC2413B);
 }
 
 /// Robot trên thẻ MyBot. Thân và kính giữ một màu ở mọi hành để nhìn ra cùng

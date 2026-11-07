@@ -414,26 +414,37 @@ class _PhaseRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
-          Icon(gamePhaseIcon(phase.key), size: 18, color: color),
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(gamePhaseIcon(phase.key), size: 16, color: _M.onMoon),
+          ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text.rich(
-              TextSpan(
-                children: [
-                  TextSpan(
-                    text: phase.label,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: _M.ink,
-                    ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  phase.label,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: _M.ink,
                   ),
-                  TextSpan(
-                    text: '  $from – $to',
-                    style: const TextStyle(color: _M.faint),
+                ),
+                Text(
+                  '$from – $to',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: _M.amberBright,
                   ),
-                ],
-              ),
-              style: const TextStyle(fontSize: 13.5),
+                ),
+              ],
             ),
           ),
           if (lockedEnd)

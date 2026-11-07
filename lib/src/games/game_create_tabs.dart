@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:myrun/src/games/game_card_art.dart';
 import 'package:myrun/src/games/game_models.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/theme_tokens.dart';
@@ -31,6 +32,172 @@ Widget gameKeyIcon(String key, {required Color color, double size = 20}) {
     );
   }
   return Icon(gameCreateIcon(key), size: size, color: color);
+}
+
+/// Đầu màn tạo ván: emblem trăng, tên hai dòng và dòng phụ.
+class GameCreateHeader extends StatelessWidget {
+  const GameCreateHeader({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        GameMoonEmblem(size: 72),
+        SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'MỞ VÁN\nMA SÓI',
+                style: TextStyle(
+                  fontFamily: 'Barlow Condensed',
+                  fontWeight: FontWeight.w800,
+                  fontSize: 32,
+                  height: .95,
+                  letterSpacing: .6,
+                  color: _M.ink,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'Chọn kiểu ván, hẹn giờ, mở.',
+                style: TextStyle(fontSize: 13, color: _M.muted),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Nút mở ván ghim dưới màn: nền hổ phách, icon trăng.
+class GameCreateOpenButton extends StatelessWidget {
+  const GameCreateOpenButton({
+    super.key,
+    required this.working,
+    required this.onPressed,
+  });
+
+  final bool working;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [_M.amberBright, _M.amber],
+        ),
+        boxShadow: const [
+          BoxShadow(color: _M.ctaGlow, blurRadius: 30, offset: Offset(0, 10)),
+        ],
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onPressed,
+          child: SizedBox(
+            height: 56,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.nightlight_round, size: 20, color: _M.onAmber),
+                const SizedBox(width: 8),
+                Text(
+                  working ? 'ĐANG MỞ…' : 'MỞ VÁN',
+                  style: const TextStyle(
+                    fontFamily: 'Barlow Condensed',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 22,
+                    letterSpacing: 3,
+                    color: _M.onAmber,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Dòng gọn có icon, nhãn, giá trị và mũi tên; chạm để mở sheet chỉnh.
+class GameCreateRow extends StatelessWidget {
+  const GameCreateRow({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _M.panel,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: _M.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: _M.amberTint,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 18, color: _M.amberBright),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: _M.ink,
+                  ),
+                ),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: _M.amberBright,
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: _M.faint,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Chữ nhãn nhỏ viết hoa của từng khối.
@@ -511,83 +678,119 @@ class _GamePowerCardState extends State<GamePowerCard> {
     final on = widget.on;
     final change = widget.onChanged;
     final warn = s.warn;
-    final meta = [
-      if (s.hint case final hint? when hint.isNotEmpty) hint.toUpperCase(),
-      if (warn != null && warn.isNotEmpty) '⚠ ĐỂ LỘ',
-    ].join(' · ');
+    final hint = s.hint;
+    final hasHint = hint != null && hint.isNotEmpty;
+    final exposes = warn != null && warn.isNotEmpty;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: on ? _M.amberTint : _M.raised,
+        color: on ? _M.wolfSoft : _M.raised,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
-          side: BorderSide(color: on ? _M.amber : _M.border),
+          side: BorderSide(color: on ? _M.wolfLine : _M.border),
         ),
+        clipBehavior: Clip.antiAlias,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Semantics(
-                    toggled: on,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: change == null ? null : () => change(!on),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
-                        child: Row(
+            Semantics(
+              toggled: on,
+              child: InkWell(
+                onTap: change == null ? null : () => change(!on),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 0, 8),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: _M.well,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: gameKeyIcon(
+                          s.icon ?? 'wolf',
+                          color: on ? _M.wolf : _M.faint,
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(
-                              on
-                                  ? Icons.check_circle_rounded
-                                  : Icons.radio_button_unchecked_rounded,
-                              size: 22,
-                              color: on ? _M.amber : _M.faint,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    s.label,
-                                    style: const TextStyle(
-                                      fontSize: 14.5,
-                                      fontWeight: FontWeight.w800,
-                                      color: _M.ink,
-                                    ),
-                                  ),
-                                  if (meta.isNotEmpty)
-                                    Text(
-                                      meta,
-                                      style: const TextStyle(
-                                        fontSize: 10.5,
-                                        letterSpacing: 0.8,
-                                        fontWeight: FontWeight.w800,
-                                        color: _M.faint,
-                                      ),
-                                    ),
-                                ],
+                            Text(
+                              s.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: on ? _M.ink : _M.muted,
                               ),
                             ),
+                            if (hasHint || exposes)
+                              Text.rich(
+                                TextSpan(
+                                  children: [
+                                    if (hasHint)
+                                      TextSpan(text: hint.toUpperCase()),
+                                    if (hasHint && exposes)
+                                      const TextSpan(text: ' · '),
+                                    if (exposes)
+                                      const TextSpan(
+                                        text: '⚠ ĐỂ LỘ',
+                                        style: TextStyle(color: _M.phaseTrial),
+                                      ),
+                                  ],
+                                ),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  letterSpacing: 0.55,
+                                  fontWeight: FontWeight.w700,
+                                  color: _M.faint,
+                                ),
+                              ),
                           ],
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          color: on ? _M.wolf : null,
+                          borderRadius: BorderRadius.circular(7),
+                          border: Border.all(
+                            color: on ? _M.wolf : _M.border,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: on
+                            ? const Icon(
+                                Icons.check_rounded,
+                                size: 16,
+                                color: _M.ink,
+                              )
+                            : null,
+                      ),
+                      IconButton(
+                        tooltip: _open
+                            ? 'Thu gọn ${s.label}'
+                            : 'Xem ${s.label}',
+                        icon: Icon(
+                          _open
+                              ? Icons.expand_less_rounded
+                              : Icons.expand_more_rounded,
+                        ),
+                        color: _M.faint,
+                        onPressed: () => setState(() => _open = !_open),
+                      ),
+                    ],
                   ),
                 ),
-                IconButton(
-                  tooltip: _open ? 'Thu gọn ${s.label}' : 'Xem ${s.label}',
-                  icon: Icon(
-                    _open
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
-                  ),
-                  color: _M.faint,
-                  onPressed: () => setState(() => _open = !_open),
-                ),
-              ],
+              ),
             ),
             if (_open)
               Padding(

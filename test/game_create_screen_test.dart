@@ -3,10 +3,12 @@ import 'dart:math' as math;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/games/game_create_screen.dart';
+import 'package:myrun/src/games/game_card_art.dart';
 import 'package:myrun/src/games/game_create_tabs.dart';
 import 'package:myrun/src/games/game_round_dial.dart';
 import 'package:myrun/src/games/game_skill_cards.dart';
@@ -500,7 +502,7 @@ void main() {
     await pumpScreen(tester);
 
     expect(find.text('Chỉ admin mở được ván Ma Sói.'), findsOneWidget);
-    expect(find.text('Mở ván'), findsNothing);
+    expect(find.text('MỞ VÁN'), findsNothing);
   });
 
   testWidgets('sends the roles from createOptions and opens the new game', (
@@ -520,7 +522,7 @@ void main() {
       find.widgetWithText(TextField, 'ID topic (không bắt buộc)'),
       '42',
     );
-    await tester.tap(find.text('Mở ván'));
+    await tester.tap(find.text('MỞ VÁN'));
     await tester.pumpAndSettle();
 
     final create = backend.requests.singleWhere(
@@ -543,11 +545,11 @@ void main() {
     );
     await pumpScreen(tester);
 
-    await tester.tap(find.text('Mở ván'));
+    await tester.tap(find.text('MỞ VÁN'));
     await tester.pumpAndSettle();
 
     expect(find.text('Đang có ván khác chạy.'), findsOneWidget);
-    expect(find.text('Mở ván'), findsOneWidget);
+    expect(find.text('MỞ VÁN'), findsOneWidget);
   });
 
   testWidgets('rejects a topic id that is not a number before sending', (
@@ -560,7 +562,7 @@ void main() {
       find.widgetWithText(TextField, 'ID topic (không bắt buộc)'),
       'abc',
     );
-    await tester.tap(find.text('Mở ván'));
+    await tester.tap(find.text('MỞ VÁN'));
     await tester.pump();
 
     expect(find.text('ID topic phải là số.'), findsOneWidget);
@@ -597,7 +599,7 @@ void main() {
     expect(find.text('1.5 km'), findsOneWidget);
     await tester.tap(find.text('Mỗi người một phiếu'));
     await tester.pump();
-    await tester.tap(find.text('Mở ván'));
+    await tester.tap(find.text('MỞ VÁN'));
     await tester.pumpAndSettle();
 
     final create = backend.requests.singleWhere(
@@ -622,7 +624,7 @@ void main() {
       find.widgetWithIcon(IconButton, Icons.add_rounded),
     );
     expect(plus.onPressed, isNull);
-    await tester.tap(find.text('Mở ván'));
+    await tester.tap(find.text('MỞ VÁN'));
     await tester.pumpAndSettle();
 
     final create = backend.requests.singleWhere(
@@ -653,7 +655,7 @@ void main() {
 
       await tester.tap(find.text('CỔ ĐIỂN'));
       await tester.pump();
-      await tester.tap(find.text('Mở ván'));
+      await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
 
       expect(_createBody(backend)['settings'], {'kmOff': true});
@@ -665,7 +667,7 @@ void main() {
 
       // Kiểu ván không còn dòng tóm tắt bên dưới.
       expect(find.text('Ván tuần quen thuộc'), findsNothing);
-      await tester.tap(find.text('Mở ván'));
+      await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
 
       expect(_createBody(backend).containsKey('settings'), isFalse);
@@ -687,7 +689,7 @@ void main() {
       await tester.pump();
       expect(find.text('1.5 km'), findsOneWidget);
       expect(selectedTile, findsNothing);
-      await tester.tap(find.text('Mở ván'));
+      await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
 
       expect(_createBody(backend)['settings'], {'skillKm': 1.5});
@@ -718,7 +720,7 @@ void main() {
       expect(find.textContaining('22h – 23h', findRichText: true), findsOne);
       expect(find.textContaining('9h – 10h', findRichText: true), findsOne);
       expect(find.text('Nhắc đề cử lúc 8h'), findsOneWidget);
-      await tester.tap(find.text('Mở ván'));
+      await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
 
       expect(_createBody(backend)['settings'], {
@@ -742,7 +744,7 @@ void main() {
         expect(find.textContaining('22h – 0h30', findRichText: true), findsOne);
         expect(find.textContaining('0h30 – 10h', findRichText: true), findsOne);
         expect(find.text('24h'), findsOneWidget);
-        await tester.tap(find.text('Mở ván'));
+        await tester.tap(find.text('MỞ VÁN'));
         await tester.pumpAndSettle();
 
         expect(_createBody(backend)['settings'], {
@@ -771,7 +773,7 @@ void main() {
       expect(find.text('8h'), findsOneWidget);
       expect(find.textContaining('22h – 23h', findRichText: true), findsOne);
       expect(find.textContaining('5h – 6h', findRichText: true), findsOne);
-      await tester.tap(find.text('Mở ván'));
+      await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
 
       expect(_createBody(backend)['settings'], {
@@ -835,7 +837,7 @@ void main() {
       await tester.tap(find.text('Xong'));
       await tester.pumpAndSettle();
       expect(find.textContaining('08:30 · '), findsOneWidget);
-      await tester.tap(find.text('Mở ván'));
+      await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
 
       final now = DateTime.now();
@@ -867,7 +869,7 @@ void main() {
 
       await tester.tap(find.text('Phiếu Đôi'));
       await tester.pump();
-      await tester.tap(find.text('Mở ván'));
+      await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
       expect(_createBody(backend)['settings'], {'darkVote': true});
     });
@@ -914,7 +916,7 @@ void main() {
         await tester.tapAt(const Offset(400, 40));
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Mở ván'));
+        await tester.tap(find.text('MỞ VÁN'));
         await tester.pumpAndSettle();
         expect(_createBody(backend)['settings'], {
           'vote': 'solo',
@@ -939,7 +941,7 @@ void main() {
       await tester.pump();
       expect(find.text('23h'), findsOneWidget);
       expect(find.textContaining('20h – 21h', findRichText: true), findsOne);
-      await tester.tap(find.text('Mở ván'));
+      await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
 
       expect(_createBody(backend)['settings'], {
@@ -966,7 +968,7 @@ void main() {
       // Vòng 24h (2h/10h/10h/2h) co còn 12h: 1h/5h/5h/1h từ 22h.
       expect(find.text('12h'), findsOneWidget);
       expect(find.textContaining('9h – 10h', findRichText: true), findsOne);
-      await tester.tap(find.text('Mở ván'));
+      await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
 
       expect(_createBody(backend)['settings'], {
@@ -1016,12 +1018,134 @@ void main() {
       await tester.tap(find.text('Cupid'));
       await tester.tap(find.text('Thêm Già làng'));
       await tester.pump();
-      await tester.tap(find.text('Mở ván'));
+      await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
 
       final body = _createBody(backend);
       expect(body['roles'], {'seer': true, 'cupid': false});
       expect(body['settings'], {'elder': true});
+    });
+
+    // Đầu màn theo bản thiết kế: emblem trăng, tên hai dòng, dòng phụ; nút
+    // mở ván viết hoa.
+    testWidgets('shows the moon header and the open button', (tester) async {
+      backend.list = _tabbedList();
+      await pumpScreen(tester);
+
+      expect(find.text('MỞ VÁN\nMA SÓI'), findsOneWidget);
+      expect(find.text('Chọn kiểu ván, hẹn giờ, mở.'), findsOneWidget);
+      expect(find.byType(GameMoonEmblem), findsOneWidget);
+      expect(find.byType(AppBar), findsNothing);
+
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+      expect(find.text('ván g9'), findsOneWidget);
+    });
+
+    testWidgets('the bot row edits where the bot posts in a sheet', (
+      tester,
+    ) async {
+      backend.list = _tabbedList();
+      await pumpScreen(tester);
+
+      expect(find.text('General'), findsOneWidget);
+      expect(find.text('Ván thử'), findsNothing);
+      await tester.tap(find.text('Bot đăng vào'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ván thử'));
+      await tester.pump();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Chat ID group test'),
+        '-1001',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'ID topic (không bắt buộc)'),
+        '42',
+      );
+      await tester.pump();
+      Navigator.of(tester.element(find.text('Ván thử'))).pop();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Ván thử · Topic 42'), findsOneWidget);
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+      final body = _createBody(backend);
+      expect(body['testMode'], isTrue);
+      expect(body['chatId'], '-1001');
+      expect(body['threadId'], 42);
+    });
+
+    // "Là gì?" nằm trên dòng tiêu đề khối đầu tab; tab km thì thẻ nào cũng có
+    // Chi tiết riêng nên không có.
+    testWidgets('puts "Là gì?" on the first block title of a tab', (
+      tester,
+    ) async {
+      backend.list = _phaseList();
+      await pumpScreen(tester);
+
+      for (final (tab, title) in [
+        ('Lịch', 'ĐĂNG KÝ'),
+        ('Vòng chơi', 'KÉO MỐC ĐỂ CHIA GIỜ'),
+        ('Vai', 'BỘ BÀI'),
+      ]) {
+        await tester.tap(find.text(tab));
+        await tester.pump();
+        final why = find.text('Là gì?');
+        expect(why, findsOneWidget, reason: tab);
+        expect(
+          (tester.getCenter(why).dy - tester.getCenter(find.text(title)).dy)
+              .abs(),
+          lessThan(4),
+          reason: tab,
+        );
+      }
+      await tester.tap(find.text('Km'));
+      await tester.pump();
+      expect(find.text('Là gì?'), findsNothing);
+    });
+
+    // Màn điện thoại hẹp: hint dài của thẻ kỹ năng xuống dòng, không bị cắt.
+    testWidgets('a long skill hint wraps instead of being cut', (tester) async {
+      const hint = 'Mọi người còn sống · km một phiếu, chạy nhiều phiếu nặng';
+      final list = _skillList();
+      final settings =
+          (list['createOptions'] as Map<String, dynamic>)['settings'] as List;
+      for (final s in settings.cast<Map<String, dynamic>>()) {
+        if (s['key'] == 'kmPerUnit') s['hint'] = hint;
+      }
+      backend.list = list;
+      await pumpScreen(tester);
+      tester.view.physicalSize = const Size(390, 1400);
+      await tester.pump();
+
+      await tester.tap(find.text('Km'));
+      await tester.pump();
+      final text = find.textContaining(hint);
+      expect(text, findsOneWidget);
+      final paragraph = tester.renderObject<RenderParagraph>(text);
+      expect(paragraph.didExceedMaxLines, isFalse);
+      expect(tester.getSize(text).height, greaterThan(20));
+    });
+
+    testWidgets('a toggle shows its hint under the label', (tester) async {
+      final list = _skillList();
+      final settings =
+          (list['createOptions'] as Map<String, dynamic>)['settings'] as List;
+      for (final s in settings.cast<Map<String, dynamic>>()) {
+        if (s['key'] == 'kmOff') {
+          s['hint'] = 'Chơi như Ma Sói thường';
+          s['group'] = 'km';
+        }
+      }
+      backend.list = list;
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Km'));
+      await tester.pump();
+      final label = tester.getRect(find.text('Không dùng km'));
+      final hint = tester.getRect(find.text('Chơi như Ma Sói thường'));
+      expect(hint.top, greaterThanOrEqualTo(label.bottom));
+      expect((hint.left - label.left).abs(), lessThan(1));
     });
 
     testWidgets('a backend without tabs gets the old form', (tester) async {

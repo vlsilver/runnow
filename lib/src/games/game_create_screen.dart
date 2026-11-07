@@ -213,25 +213,51 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
       child: Builder(
         builder: (context) {
           final palette = context.runNowPalette;
+          final form = switch (list) {
+            AsyncData(value: final list?) when list.canCreate => list,
+            _ => null,
+          };
           return Scaffold(
             backgroundColor: palette.background,
-            appBar: AppBar(
-              title: const Text('Mở ván Ma Sói'),
-              backgroundColor: palette.background,
-              elevation: 0,
-            ),
-            body: switch (list) {
-              AsyncData(value: final list?)
-                  when list.canCreate && list.groups.isNotEmpty =>
-                _tabbedForm(list),
-              AsyncData(value: final list?) when list.canCreate => _form(list),
-              AsyncData() => const _Message('Chỉ admin mở được ván Ma Sói.'),
-              AsyncError() => _Message(
-                'Chưa đọc được cấu hình ván.',
-                onRetry: () => ref.invalidate(gameListProvider),
+            body: SafeArea(
+              bottom: false,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  IconButton(
+                    tooltip: 'Quay lại',
+                    icon: const Icon(Icons.chevron_left_rounded, size: 28),
+                    onPressed: () => Navigator.maybePop(context),
+                  ),
+                  Expanded(
+                    child: switch (list) {
+                      _ when form != null && form.groups.isNotEmpty =>
+                        _tabbedForm(form),
+                      _ when form != null => _form(form),
+                      AsyncData() => const _Message(
+                        'Chỉ admin mở được ván Ma Sói.',
+                      ),
+                      AsyncError() => _Message(
+                        'Chưa đọc được cấu hình ván.',
+                        onRetry: () => ref.invalidate(gameListProvider),
+                      ),
+                      _ => const RunNowLoading(label: 'Đang tải'),
+                    },
+                  ),
+                ],
               ),
-              _ => const RunNowLoading(label: 'Đang tải'),
-            },
+            ),
+            bottomNavigationBar: form == null
+                ? null
+                : SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                      child: GameCreateOpenButton(
+                        working: _working,
+                        onPressed: _working ? null : () => _create(form),
+                      ),
+                    ),
+                  ),
           );
         },
       ),
@@ -243,8 +269,10 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     final settings = list.settings.where(gameSettingSupported).toList();
     final values = _settingValues(list);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 48),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       children: [
+        const GameCreateHeader(),
+        const SizedBox(height: 18),
         GlassPanel(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Column(
@@ -277,7 +305,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Column(children: [_deadlineTile(), ..._postFields()]),
         ),
-        ..._submit(list),
+        ..._submitError(),
       ],
     );
   }
@@ -304,42 +332,47 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   }
 
   /// Ván thử, chat id và topic bot đăng vào.
-  List<Widget> _postFields() => [
-    SwitchListTile(
-      title: const Text('Ván thử'),
-      subtitle: const Text('Chạy ở group test, chỉ admin và người test thấy'),
-      value: _testMode,
-      onChanged: _working ? null : (on) => setState(() => _testMode = on),
-    ),
-    if (_testMode)
+  /// Sheet gọi lại để vẽ lại chính nó; form cũ thì chỉ setState của màn.
+  List<Widget> _postFields({void Function(VoidCallback)? onChanged}) {
+    final update = onChanged ?? setState;
+    return [
+      SwitchListTile(
+        title: const Text('Ván thử'),
+        subtitle: const Text('Chạy ở group test, chỉ admin và người test thấy'),
+        value: _testMode,
+        onChanged: _working ? null : (on) => update(() => _testMode = on),
+      ),
+      if (_testMode)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: TextField(
+            controller: _chatId,
+            enabled: !_working,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Chat ID group test',
+              hintText: '-100…',
+            ),
+          ),
+        ),
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         child: TextField(
-          controller: _chatId,
+          controller: _threadId,
           enabled: !_working,
           keyboardType: TextInputType.number,
+          onChanged: (_) => update(() {}),
           decoration: const InputDecoration(
-            labelText: 'Chat ID group test',
-            hintText: '-100…',
+            labelText: 'ID topic (không bắt buộc)',
+            helperText: 'Bỏ trống thì bot đăng vào General',
           ),
         ),
       ),
-    Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      child: TextField(
-        controller: _threadId,
-        enabled: !_working,
-        keyboardType: TextInputType.number,
-        onChanged: (_) => setState(() {}),
-        decoration: const InputDecoration(
-          labelText: 'ID topic (không bắt buộc)',
-          helperText: 'Bỏ trống thì bot đăng vào General',
-        ),
-      ),
-    ),
-  ];
+    ];
+  }
 
-  List<Widget> _submit(GameList list) => [
+  /// Lỗi lúc mở ván, ngay trên nút mở ván ghim dưới màn.
+  List<Widget> _submitError() => [
     if (_error != null) ...[
       const SizedBox(height: 12),
       Text(
@@ -347,11 +380,6 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         style: TextStyle(color: Theme.of(context).colorScheme.error),
       ),
     ],
-    const SizedBox(height: 20),
-    FilledButton(
-      onPressed: _working ? null : () => _create(list),
-      child: Text(_working ? 'Đang mở ván…' : 'Mở ván'),
-    ),
   ];
 
   // ---- Form theo tab ----
@@ -362,8 +390,10 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     final groups = list.groups;
     final tab = _tab.clamp(0, groups.length - 1);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 40),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       children: [
+        const GameCreateHeader(),
+        const SizedBox(height: 18),
         if (list.presets.isNotEmpty) ...[
           GameCreateLabel(
             'Kiểu ván',
@@ -416,23 +446,40 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        GameCreatePanel(
-          child: Theme(
-            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-            child: ExpansionTile(
-              tilePadding: const EdgeInsets.symmetric(horizontal: 4),
-              childrenPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.send_rounded, color: _M.amberBright),
-              title: const Text('Bot đăng vào'),
-              subtitle: Text(_postSummary()),
-              children: _postFields(),
-            ),
-          ),
+        GameCreateRow(
+          icon: Icons.send_rounded,
+          label: 'Bot đăng vào',
+          value: _postSummary(),
+          onTap: _working ? null : _editPost,
         ),
-        ..._submit(list),
+        ..._submitError(),
       ],
     );
   }
+
+  /// Sheet chỉnh ván thử, chat id và topic; ghi thẳng vào state của màn.
+  Future<void> _editPost() => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: _M.panel,
+    showDragHandle: true,
+    builder: (sheet) => StatefulBuilder(
+      builder: (sheet, setSheet) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(sheet).bottom + 16,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: _postFields(
+            onChanged: (change) {
+              setState(change);
+              setSheet(() {});
+            },
+          ),
+        ),
+      ),
+    ),
+  );
 
   String _postSummary() {
     final thread = _threadId.text.trim();
@@ -456,21 +503,30 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     final offNote = group.offNote;
     final round = list.round;
     final shape = _roundShape(list, values);
-    final out = <Widget>[
-      Align(
-        alignment: Alignment.centerRight,
-        child: GameCreateLink(
-          'Là gì?',
-          onTap: () => showGameCreateSheet(
-            context,
-            title: group.label,
-            items: _explain(list, group, inGroup),
-          ),
-        ),
+    final why = GameCreateLink(
+      'Là gì?',
+      onTap: () => showGameCreateSheet(
+        context,
+        title: group.label,
+        items: _explain(list, group, inGroup),
       ),
+    );
+    // "Là gì?" nằm trên tiêu đề khối app tự vẽ ở đầu tab. Tab km không có vì
+    // thẻ nào cũng có Chi tiết riêng; tab lạ thì đặt riêng một hàng.
+    final out = <Widget>[
+      if (!const {'time', 'round', 'roles', 'km'}.contains(group.key))
+        Align(alignment: Alignment.centerRight, child: why),
     ];
-    if (group.key == 'time') out.add(_deadlineTile());
-    if (group.key == 'roles') out.add(_roleGrid(list, live, values));
+    if (group.key == 'time') {
+      out
+        ..add(GameCreateLabel('Đăng ký', trailing: why))
+        ..add(_deadlineTile());
+    }
+    if (group.key == 'roles') {
+      out
+        ..add(GameCreateLabel('Bộ bài', trailing: why))
+        ..add(_roleGrid(list, live, values));
+    }
     for (final s in live) {
       if (s.section != null) continue;
       if (group.key == 'roles' && s.type == GameSetting.toggle) continue;
@@ -496,6 +552,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     if (round != null && shape != null && group.key == 'round') {
       out
         ..add(const SizedBox(height: 8))
+        ..add(GameCreateLabel('Kéo mốc để chia giờ', trailing: why))
         ..add(
           GameRoundDial(
             plan: round,
@@ -511,6 +568,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         round.phases.isNotEmpty) {
       out
         ..add(const SizedBox(height: 14))
+        ..add(GameCreateLabel(group.label, trailing: why))
         ..add(
           GameRoundTimeline(
             plan: round,
@@ -744,7 +802,18 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
       ),
       GameSetting.toggle => SwitchListTile(
         contentPadding: EdgeInsets.zero,
-        title: Text(s.label),
+        dense: true,
+        title: Text(
+          s.label,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+        subtitle: switch (s.hint) {
+          final h? when h.isNotEmpty => Text(
+            h,
+            style: const TextStyle(fontSize: 12, color: _M.muted),
+          ),
+          _ => null,
+        },
         value: value == true,
         onChanged: _working
             ? null
