@@ -792,13 +792,13 @@ void main() {
 
         await tester.tap(find.text('Vòng chơi'));
         await tester.pump();
-        expect(find.text('24h'), findsOneWidget);
+        expect(find.text('24'), findsOneWidget);
         await tester.tap(find.byTooltip('Thêm Đêm'));
         await tester.pump();
         // Đêm dài thêm nửa tiếng, lấy từ Rạng sáng: 22h–0h30, rồi 0h30–10h.
         expect(find.textContaining('22h – 0h30', findRichText: true), findsOne);
         expect(find.textContaining('0h30 – 10h', findRichText: true), findsOne);
-        expect(find.text('24h'), findsOneWidget);
+        expect(find.text('24'), findsOneWidget);
         await tester.tap(find.text('MỞ VÁN'));
         await tester.pumpAndSettle();
 
@@ -825,7 +825,7 @@ void main() {
       await tester.tap(find.text('Vòng chơi'));
       await tester.pump();
       // 3 vòng chia 24 tiếng: vòng 8h, Đêm 22h–23h, Biểu quyết 5h–6h.
-      expect(find.text('8h'), findsOneWidget);
+      expect(find.text('8'), findsOneWidget);
       expect(find.textContaining('22h – 23h', findRichText: true), findsOne);
       expect(find.textContaining('5h – 6h', findRichText: true), findsOne);
       await tester.tap(find.text('MỞ VÁN'));
@@ -1129,7 +1129,7 @@ void main() {
       expect(find.byTooltip('Giảm Độ dài một vòng'), findsNothing);
       await tester.tap(find.byTooltip('Bớt Biểu quyết'));
       await tester.pump();
-      expect(find.text('23h'), findsOneWidget);
+      expect(find.text('23'), findsOneWidget);
       expect(find.textContaining('20h – 21h', findRichText: true), findsOne);
       await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
@@ -1141,6 +1141,70 @@ void main() {
         'dayMin': 600,
         'trialMin': 60,
       });
+    });
+
+    testWidgets('open and close rows move the round start and end', (
+      tester,
+    ) async {
+      backend.list = _phaseList();
+      await pumpScreen(tester);
+
+      // Ván km mở vòng lúc 22h và chốt sau đúng 24 tiếng: hai dòng khoá.
+      await tester.tap(find.text('Vòng chơi'));
+      await tester.pump();
+      IconButton button(String tip) => tester.widget<IconButton>(
+        find.ancestor(
+          of: find.byTooltip(tip),
+          matching: find.byType(IconButton),
+        ),
+      );
+      expect(button('Thêm Mở vòng').onPressed, isNull);
+      expect(button('Bớt Chốt vòng').onPressed, isNull);
+
+      // Cổ điển: mở muộn một tiếng thì Đêm ngắn đi, chốt sớm một tiếng thì
+      // Biểu quyết ngắn đi.
+      await tester.tap(find.text('CỔ ĐIỂN'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Thêm Mở vòng'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Bớt Chốt vòng'));
+      await tester.pump();
+      expect(find.textContaining('23h – 0h', findRichText: true), findsOne);
+      expect(find.textContaining('20h – 21h', findRichText: true), findsOne);
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+
+      expect(_createBody(backend)['settings'], {
+        'kmOff': true,
+        'startHour': 23,
+        'nightMin': 60,
+        'dawnMin': 600,
+        'dayMin': 600,
+        'trialMin': 60,
+      });
+    });
+
+    // Ván km khoá giờ mở: "Là gì?" của tab Vòng chơi nói vì sao; ván cổ điển
+    // chỉnh được nên không có dòng đó.
+    testWidgets('the round tab explains why a km game opens at a fixed hour', (
+      tester,
+    ) async {
+      backend.list = _phaseList();
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Vòng chơi'));
+      await tester.pump();
+      await tester.tap(find.text('Là gì?'));
+      await tester.pumpAndSettle();
+      expect(find.text('Ván đua km mở lúc 22h.'), findsOneWidget);
+      Navigator.of(tester.element(find.text('Ván đua km mở lúc 22h.'))).pop();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('CỔ ĐIỂN'));
+      await tester.pump();
+      await tester.tap(find.text('Là gì?'));
+      await tester.pumpAndSettle();
+      expect(find.text('Ván đua km mở lúc 22h.'), findsNothing);
     });
 
     testWidgets('a classic game picks 2 rounds first and its phases halve', (
@@ -1156,7 +1220,7 @@ void main() {
       await tester.tap(find.text('Vòng chơi'));
       await tester.pump();
       // Vòng 24h (2h/10h/10h/2h) co còn 12h: 1h/5h/5h/1h từ 22h.
-      expect(find.text('12h'), findsOneWidget);
+      expect(find.text('12'), findsOneWidget);
       expect(find.textContaining('9h – 10h', findRichText: true), findsOne);
       await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();

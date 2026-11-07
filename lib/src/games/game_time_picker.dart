@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:myrun/src/theme_tokens.dart';
 
-// Chọn giờ cho màn tạo ván: hạn đóng đăng ký (ngày, giờ, phút) và giờ mở vòng
-// đầu (lưới 24 giờ), cùng thẻ và ô chọn số vòng của tab Lịch.
+// Chọn giờ cho màn tạo ván: hạn đóng đăng ký và giờ chia bài (ngày, giờ,
+// phút), cùng thẻ và ô chọn số vòng.
 
 typedef _M = RunNowMoonlitTokens;
 
@@ -263,84 +263,6 @@ class _DeadlineSheetState extends State<_DeadlineSheet> {
                         : () => Navigator.pop<GameDeadlinePick>(context, (
                             at: at,
                           )),
-                    child: const Text('Xong'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Sheet chọn giờ mở vòng đầu trên lưới 24 giờ; đóng mà không chọn thì null.
-Future<int?> showGameHourSheet(
-  BuildContext context, {
-  required String title,
-  required int hour,
-}) {
-  return showModalBottomSheet<int>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: _M.panel,
-    showDragHandle: true,
-    builder: (context) => _HourSheet(title: title, hour: hour),
-  );
-}
-
-class _HourSheet extends StatefulWidget {
-  const _HourSheet({required this.title, required this.hour});
-
-  final String title;
-  final int hour;
-
-  @override
-  State<_HourSheet> createState() => _HourSheetState();
-}
-
-class _HourSheetState extends State<_HourSheet> {
-  late int _hour = widget.hour;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _SheetTitle(widget.title),
-            const SizedBox(height: 8),
-            Text(
-              '${_hour}h',
-              style: const TextStyle(
-                fontSize: 36,
-                fontWeight: FontWeight.w900,
-                color: _M.ink,
-              ),
-            ),
-            const SizedBox(height: 8),
-            GameHourGrid(
-              selected: _hour,
-              disabled: (_) => false,
-              onSelect: (h) => setState(() => _hour = h),
-            ),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop<int>(context),
-                    child: const Text('Huỷ'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () => Navigator.pop<int>(context, _hour),
                     child: const Text('Xong'),
                   ),
                 ),

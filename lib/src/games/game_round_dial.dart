@@ -147,9 +147,25 @@ IconData gamePhaseIcon(String key) => switch (key) {
   _ => Icons.schedule_rounded,
 };
 
+/// Dời giờ mở vòng [dir] tiếng ([dir] là -1 hoặc 1), giữ mốc cuối Đêm: mở muộn
+/// thì Đêm ngắn đi, mở sớm thì Đêm dài ra nhưng vòng không quá [maxTotal]. Trả
+/// (giờ mở mới tính bằng phút trong ngày, các pha), null khi không dời được.
+({int start, List<int> phases})? gameMoveStart(
+  int start,
+  List<int> phases,
+  int dir, {
+  required int maxTotal,
+}) {
+  final night = phases.first - dir * 60;
+  final total = phases.fold<int>(0, (a, p) => a + p) - dir * 60;
+  if (night < gameMinPhase || total > maxTotal) return null;
+  return (start: (start + dir * 60) % 1440, phases: [night, ...phases.skip(1)]);
+}
+
 /// Một vòng trên mặt đồng hồ 24 tiếng: bốn cung pha bắt đầu ở giờ mở đêm, kéo
-/// mốc giữa các pha để đổi độ dài. Dưới là từng pha với giờ và nút −/+.
-/// Ván km khoá mốc cuối ([lockEnd]) vì vòng phải chia đều 24 tiếng.
+/// mốc giữa các pha để đổi độ dài. Dưới là dòng Mở vòng, từng pha với giờ và
+/// nút −/+, rồi dòng Chốt vòng. Ván km khoá mốc cuối ([lockEnd]) vì vòng phải
+/// chia đều 24 tiếng.
 class GameRoundDial extends StatefulWidget {
   const GameRoundDial({
     super.key,
@@ -159,6 +175,7 @@ class GameRoundDial extends StatefulWidget {
     required this.lockEnd,
     required this.maxTotal,
     required this.onChanged,
+    this.onStart,
   });
 
   /// Tên, khoá, mốc gốc của pha và các mốc nhắc.
@@ -176,6 +193,9 @@ class GameRoundDial extends StatefulWidget {
 
   /// null thì không chỉnh được.
   final ValueChanged<List<int>>? onChanged;
+
+  /// Dời giờ mở vòng (phút trong ngày) cùng các pha; null thì giờ mở khoá.
+  final void Function(int start, List<int> phases)? onStart;
 
   @override
   State<GameRoundDial> createState() => _GameRoundDialState();
@@ -249,7 +269,6 @@ class _GameRoundDialState extends State<GameRoundDial> {
     final bounds = _bounds;
     final total = bounds.last;
     final start = widget.startMinute;
-    final base = [for (final p in plan.phases) (p.from, p.to)];
     final change = widget.onChanged;
     final keys = [for (final p in plan.phases) p.key];
     return Column(
@@ -257,7 +276,7 @@ class _GameRoundDialState extends State<GameRoundDial> {
       children: [
         Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 260),
+            constraints: const BoxConstraints(maxWidth: 280),
             child: AspectRatio(
               aspectRatio: 1,
               child: LayoutBuilder(
@@ -310,19 +329,40 @@ class _GameRoundDialState extends State<GameRoundDial> {
                                 color: _M.faint,
                               ),
                             ),
-                            Text(
-                              gameHours(total),
-                              style: const TextStyle(
-                                fontSize: 30,
-                                fontWeight: FontWeight.w800,
-                                color: _M.ink,
-                              ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.baseline,
+                              textBaseline: TextBaseline.alphabetic,
+                              children: [
+                                Text(
+                                  total % 60 == 0
+                                      ? '${total ~/ 60}'
+                                      : gameHours(total),
+                                  style: const TextStyle(
+                                    fontFamily: 'Barlow Condensed',
+                                    fontSize: 38,
+                                    height: 1.1,
+                                    fontWeight: FontWeight.w800,
+                                    color: _M.ink,
+                                  ),
+                                ),
+                                if (total % 60 == 0)
+                                  const Text(
+                                    ' tiếng',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: _M.muted,
+                                    ),
+                                  ),
+                              ],
                             ),
                             Text(
-                              'mở đêm ${gameClock(start.toDouble())}',
+                              '${gameClock(start.toDouble())} → '
+                              '${gameClock((start + total).toDouble())}',
                               style: const TextStyle(
                                 fontSize: 12,
-                                color: _M.amberBright,
+                                color: _M.faint,
                               ),
                             ),
                           ],
@@ -335,7 +375,41 @@ class _GameRoundDialState extends State<GameRoundDial> {
             ),
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 14,
+          runSpacing: 4,
+          children: [
+            for (final p in plan.phases)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: gamePhaseColor(p.key),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    p.label,
+                    style: const TextStyle(fontSize: 11.5, color: _M.muted),
+                  ),
+                ],
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _EdgeRow(
+          label: 'Mở vòng',
+          value: gameClock(start.toDouble()),
+          locked: widget.onStart == null,
+          onStep: _startStep,
+        ),
+        const Divider(height: 14, color: _M.border),
         for (var i = 0; i < phases.length; i++)
           _PhaseRow(
             phase: plan.phases[i],
@@ -353,24 +427,169 @@ class _GameRoundDialState extends State<GameRoundDial> {
                       lockEnd: widget.lockEnd,
                       maxTotal: widget.maxTotal,
                     );
-                    if (out != null) change(out);
+                    if (out == null) return false;
+                    change(out);
+                    return true;
                   },
           ),
-        if (plan.reminders.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              plan.reminders
-                  .map(
-                    (m) =>
-                        '${m.label} lúc '
-                        '${gameClock(start + gameMarkAt(base, phases, m.at))}',
-                  )
-                  .join(' · '),
-              style: const TextStyle(fontSize: 12, color: _M.muted),
+        const Divider(height: 14, color: _M.border),
+        _EdgeRow(
+          label: 'Chốt vòng',
+          value: gameClock((start + total).toDouble()),
+          locked: widget.lockEnd || change == null,
+          onStep: _endStep,
+        ),
+      ],
+    );
+  }
+
+  /// Nút −/+ của dòng Mở vòng; trả false khi bước đó không làm được, để nút mờ.
+  bool _startStep(int dir, {bool dryRun = false}) {
+    final onStart = widget.onStart;
+    if (onStart == null) return false;
+    final out = gameMoveStart(
+      widget.startMinute,
+      widget.phases,
+      dir,
+      maxTotal: widget.maxTotal,
+    );
+    if (out == null) return false;
+    if (!dryRun) onStart(out.start, out.phases);
+    return true;
+  }
+
+  /// Nút −/+ của dòng Chốt vòng: dời mốc cuối một tiếng.
+  bool _endStep(int dir, {bool dryRun = false}) {
+    final change = widget.onChanged;
+    if (change == null || widget.lockEnd) return false;
+    final out = gameMoveMark(
+      widget.phases,
+      widget.phases.length,
+      _bounds.last + dir * 60,
+      lockEnd: false,
+      maxTotal: widget.maxTotal,
+    );
+    if (out == null) return false;
+    if (!dryRun) change(out);
+    return true;
+  }
+}
+
+/// Dòng Mở vòng / Chốt vòng: giờ và nút −/+ dời một tiếng.
+class _EdgeRow extends StatelessWidget {
+  const _EdgeRow({
+    required this.label,
+    required this.value,
+    required this.locked,
+    required this.onStep,
+  });
+
+  final String label;
+  final String value;
+  final bool locked;
+  final bool Function(int dir, {bool dryRun}) onStep;
+
+  @override
+  Widget build(BuildContext context) {
+    bool can(int dir) => !locked && onStep(dir, dryRun: true);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              border: Border.all(color: _M.border),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: const Icon(
+              Icons.schedule_rounded,
+              size: 16,
+              color: _M.amberBright,
             ),
           ),
-      ],
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: _M.ink,
+              ),
+            ),
+          ),
+          if (locked)
+            const Padding(
+              padding: EdgeInsets.only(right: 6),
+              child: Icon(Icons.lock_rounded, size: 14, color: _M.faint),
+            ),
+          GameStepBox(
+            label: label,
+            value: value,
+            onDec: can(-1) ? () => onStep(-1) : null,
+            onInc: can(1) ? () => onStep(1) : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Ô −/+ có viền, giá trị ở giữa; nút null thì mờ.
+class GameStepBox extends StatelessWidget {
+  const GameStepBox({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.onDec,
+    required this.onInc,
+  });
+
+  /// Tên cho tooltip "Bớt …" / "Thêm …".
+  final String label;
+  final String value;
+  final VoidCallback? onDec;
+  final VoidCallback? onInc;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget button(String tip, IconData icon, VoidCallback? onTap) => IconButton(
+      tooltip: tip,
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+      padding: EdgeInsets.zero,
+      icon: Icon(icon, size: 16),
+      color: _M.amberBright,
+      onPressed: onTap,
+    );
+    return Container(
+      decoration: BoxDecoration(
+        color: _M.raised,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _M.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          button('Bớt $label', Icons.remove_rounded, onDec),
+          SizedBox(
+            width: 44,
+            child: Text(
+              value,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Barlow Condensed',
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: _M.amberBright,
+              ),
+            ),
+          ),
+          button('Thêm $label', Icons.add_rounded, onInc),
+        ],
+      ),
     );
   }
 }
@@ -404,7 +623,9 @@ class _PhaseRow extends StatelessWidget {
   final String to;
   final int length;
   final bool lockedEnd;
-  final ValueChanged<int>? onStep;
+
+  /// Bấm −/+; trả false khi không dời được.
+  final bool Function(int dir)? onStep;
 
   @override
   Widget build(BuildContext context) {
@@ -452,32 +673,14 @@ class _PhaseRow extends StatelessWidget {
               message: 'Ván km chốt lúc 22h',
               child: Icon(Icons.lock_rounded, size: 14, color: _M.faint),
             ),
-          IconButton(
-            tooltip: 'Bớt ${phase.label}',
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.remove_rounded, size: 18),
-            color: _M.amberBright,
-            onPressed: step == null || length <= gameMinPhase
+          const SizedBox(width: 6),
+          GameStepBox(
+            label: phase.label,
+            value: gameHours(length),
+            onDec: step == null || length <= gameMinPhase
                 ? null
                 : () => step(-1),
-          ),
-          SizedBox(
-            width: 44,
-            child: Text(
-              gameHours(length),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
-                color: _M.ink,
-              ),
-            ),
-          ),
-          IconButton(
-            tooltip: 'Thêm ${phase.label}',
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.add_rounded, size: 18),
-            color: _M.amberBright,
-            onPressed: step == null ? null : () => step(1),
+            onInc: step == null ? null : () => step(1),
           ),
         ],
       ),
@@ -502,7 +705,7 @@ class _DialPainter extends CustomPainter {
 
   static const _ring = 18.0;
 
-  static double _radius(Size size) => size.shortestSide / 2 - _ring / 2 - 10;
+  static double _radius(Size size) => size.shortestSide / 2 - _ring / 2 - 22;
 
   /// Tâm tay nắm của mốc ở phút [minute] trong ngày.
   static Offset handle(Size size, num minute) {
@@ -570,7 +773,7 @@ class _DialPainter extends CustomPainter {
         )..layout();
         tp.paint(
           canvas,
-          c + dir * (inner - 18) - Offset(tp.width / 2, tp.height / 2),
+          c + dir * (r + _ring / 2 + 12) - Offset(tp.width / 2, tp.height / 2),
         );
       }
     }

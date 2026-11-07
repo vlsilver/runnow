@@ -108,12 +108,6 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     setState(() => _startAt = at);
   }
 
-  Future<void> _pickStartHour(GameSetting s, int hour) async {
-    final pick = await showGameHourSheet(context, title: s.label, hour: hour);
-    if (pick == null || !mounted) return;
-    setState(() => _settings[s.key] = pick.toDouble());
-  }
-
   GamePreset? _preset(GameList list) {
     final presets = list.presets;
     return presets.where((p) => p.key == _presetKey).firstOrNull ??
@@ -619,12 +613,15 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     final offNote = group.offNote;
     final round = list.round;
     final shape = _roundShape(list, values);
+    final startHour = list.settings
+        .where((s) => s.key == 'startHour' && s.enabledBy(values))
+        .firstOrNull;
     final why = GameCreateLink(
       'Là gì?',
       onTap: () => showGameCreateSheet(
         context,
         title: group.label,
-        items: _explain(list, group, inGroup),
+        items: _explain(list, group, inGroup, startLocked: startHour == null),
       ),
     );
     // "Là gì?" nằm trên tiêu đề khối app tự vẽ ở đầu tab. Tab km không có vì
@@ -651,9 +648,10 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
       // Có bộ bài thì số sói và vai thêm chỉnh ngay trong bộ bài.
       if (group.key == 'roles' && deck != null) continue;
       if (shape != null) {
-        // Độ dài vòng là tổng bốn pha trên vòng đồng hồ.
-        if (s.key == 'roundHours') continue;
-        if (s.key == 'startHour' || s.key == 'roundsPerDay') {
+        // Độ dài vòng là tổng bốn pha, giờ mở là dòng Mở vòng dưới vòng đồng
+        // hồ, dù backend xếp nó ở tab nào.
+        if (s.key == 'roundHours' || s.key == 'startHour') continue;
+        if (s.key == 'roundsPerDay') {
           out.add(_scheduleWidget(s, shape, values));
           continue;
         }
@@ -661,7 +659,9 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
       out.add(_settingWidget(s, values));
     }
     out.addAll(_sections(list, live, values));
-    if (live.isEmpty && offNote != null) {
+    // Tab Lịch luôn có đăng ký và bắt đầu; lời giải thích giờ mở của ván km
+    // nằm ở "Là gì?" của tab Vòng chơi.
+    if (live.isEmpty && offNote != null && group.key != 'time') {
       out.add(GameCreateNote(icon: Icons.nightlight_round, text: offNote));
     }
     if (round != null && shape != null && group.key == 'round') {
@@ -676,6 +676,12 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
             lockEnd: shape.lockEnd,
             maxTotal: shape.maxTotal,
             onChanged: _working ? null : (p) => _setPhases(shape.keys, p),
+            onStart: _working || shape.lockEnd || startHour == null
+                ? null
+                : (start, phases) => setState(() {
+                    _settings[startHour.key] = (start ~/ 60).toDouble();
+                    _setPhases(shape.keys, phases);
+                  }),
           ),
         );
     } else if (round != null &&
@@ -695,27 +701,14 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     return out;
   }
 
-  /// Giờ mở vòng đầu và số vòng mỗi ngày của tab Lịch khi có vòng đồng hồ:
-  /// ván km chọn số vòng chia hết 24 tiếng, ván cổ điển chọn giờ mở và số vòng
-  /// vừa trong ngày.
+  /// Số vòng mỗi ngày khi có vòng đồng hồ: ván km chọn số vòng chia hết 24
+  /// tiếng, ván cổ điển chọn số vòng vừa trong ngày.
   Widget _scheduleWidget(
     GameSetting s,
     _RoundShape shape,
     Map<String, Object?> values,
   ) {
     void setRounds(int n) => setState(() => _settings[s.key] = n.toDouble());
-    if (s.key == 'startHour') {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: GameScheduleCard(
-          icon: Icons.nightlight_round,
-          caption: 'MỞ VÒNG ĐẦU LÚC',
-          title: '${shape.start ~/ 60}h',
-          subtitle: 'Chạm để đổi giờ',
-          onTap: _working ? null : () => _pickStartHour(s, shape.start ~/ 60),
-        ),
-      );
-    }
     final lo = (s.min ?? 1).round(), hi = (s.max ?? 6).round();
     // Ván km: vòng chia đều 24 tiếng. Ván cổ điển: chọn số vòng trước, vòng
     // dài hơn phần mỗi vòng được thì các pha co lại cho vừa (_roundShape).
@@ -1130,15 +1123,28 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   List<(String, String)> _explain(
     GameList list,
     GameSettingGroup group,
-    List<GameSetting> inGroup,
-  ) {
+    List<GameSetting> inGroup, {
+    required bool startLocked,
+  }) {
     final round = list.round;
+    // Giờ mở bị khoá (ván km) thì lời giải thích của tab chứa startHour nói
+    // vì sao, đặt cạnh dòng Mở vòng trên tab Vòng chơi.
+    final startGroup = list.settings
+        .where((s) => s.key == 'startHour')
+        .firstOrNull
+        ?.group;
+    final startNote = list.groups
+        .where((g) => g.key == startGroup)
+        .firstOrNull
+        ?.offNote;
     return [
       if (group.key == 'roles')
         for (final o in list.roleOptions)
           if (o.description.isNotEmpty) (o.label, o.description),
       if (group.key == 'round' && round != null)
         for (final p in round.phases) (p.label, p.description),
+      if (group.key == 'round' && startLocked && startNote != null)
+        ('Mở vòng', startNote),
       for (final s in inGroup) ...[
         (s.label, s.description),
         for (final c in s.choices) ('· ${c.label}', c.description),
