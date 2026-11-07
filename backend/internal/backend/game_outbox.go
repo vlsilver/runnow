@@ -843,7 +843,7 @@ func (r *outboxRenderer) digestText(raw string) (string, error) {
 	// đi độ lệch của phase là ra giờ mở vòng.
 	clock := ruleClock(r.cfg)
 	if !d.Deadline.IsZero() {
-		clock = r.cfg.Clock(d.Deadline.Add(-r.cfg.PhaseOffset(d.Phase)))
+		clock = r.cfg.Clock(r.cfg.NightOf(d.Deadline, d.Phase))
 	}
 	gm := gmText(d.Call, d.Round, d.Wake, clock)
 	if len(item.Lines) == 0 && gm == nil {

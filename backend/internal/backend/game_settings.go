@@ -77,6 +77,9 @@ const (
 	settingNumber = "number"
 	settingChoice = "choice"
 	settingPhase  = "phase"
+	// settingRoundPhases: danh sách bốn pha (phút) của từng vòng trong ngày.
+	// App cũ không biết loại này nên không vẽ, không gửi.
+	settingRoundPhases = "roundPhases"
 )
 
 // gameSettingDef là một tuỳ chọn kèm cách áp vào werewolf.Config. keepDefault:
@@ -197,6 +200,56 @@ func phaseSetting(i int, key, label, desc string) gameSettingDef {
 	}
 }
 
+// roundPhasesSetting là lịch pha riêng của từng vòng khi chơi nhiều vòng mỗi
+// ngày: phần tử i là bốn pha của vòng thứ i+1, theo thứ tự như các ô pha. Đứng
+// sau các ô pha và đè lên chúng: vòng 1 lấy làm Phases để ô pha đọc ngược ra
+// đúng. Số vòng và tổng mỗi vòng do Validate của engine kiểm.
+func roundPhasesSetting() gameSettingDef {
+	return gameSettingDef{
+		GameSetting: GameSetting{Key: "roundPhases", Label: "Lịch từng vòng", Type: settingRoundPhases, Group: groupRound, Unit: "phút",
+			Default: []any{[]any{120.0, 600.0, 600.0, 120.0}},
+			Min: f64(werewolf.MinPhaseMinutes), Step: f64(werewolf.PhaseStepMinutes), Max: f64(24*60 - 3*werewolf.MinPhaseMinutes),
+			Description: "Chơi nhiều vòng mỗi ngày thì mỗi vòng chia giờ bốn pha riêng. Vòng nào cũng dài như nhau, nên giờ mở các vòng giữ nguyên."},
+		apply: func(c *werewolf.Config, v any) {
+			if c.Schedule == nil {
+				def := werewolf.DefaultSchedule()
+				c.Schedule = &def
+			}
+			var rounds [][]int
+			for _, r := range v.([]any) {
+				var phases []int
+				for _, m := range r.([]any) {
+					phases = append(phases, int(m.(float64)))
+				}
+				rounds = append(rounds, phases)
+			}
+			s := c.Schedule
+			s.RoundPhases = rounds
+			s.Phases = slices.Clone(rounds[0])
+			total := 0
+			for _, m := range s.Phases {
+				total += m
+			}
+			s.RoundHours = total / 60
+		},
+		read: func(c werewolf.Config) any {
+			rounds := scheduleOf(c).RoundPhases
+			if rounds == nil {
+				return nil
+			}
+			out := make([]any, len(rounds))
+			for i, r := range rounds {
+				phases := make([]any, len(r))
+				for j, m := range r {
+					phases[j] = float64(m)
+				}
+				out[i] = phases
+			}
+			return out
+		},
+	}
+}
+
 // extendedRoleSetting bật một vai mở rộng (werewolf.ExtendedRoles); key là tên vai.
 func extendedRoleSetting(role werewolf.Role, label, desc string) gameSettingDef {
 	return gameSettingDef{
@@ -313,6 +366,7 @@ var gameSettingDefs = []gameSettingDef{
 	phaseSetting(1, "dawnMin", "Độ dài pha Rạng sáng", "Phù thuỷ cứu hoặc độc; Tiên tri, Bảo vệ làm nốt."),
 	phaseSetting(2, "dayMin", "Độ dài pha Ngày", "Bot đăng bản tin đêm, cả làng bàn và đề cử lên giàn."),
 	phaseSetting(3, "trialMin", "Độ dài pha Biểu quyết", "Treo hay Tha từng người trên giàn."),
+	roundPhasesSetting(),
 	{
 		GameSetting: GameSetting{Key: "vote", Label: "Chế độ dùng kỹ năng", Type: settingChoice, Default: string(werewolf.VoteCut), EnabledIf: kmOn, Group: groupKm,
 			Section:     sectionMode,
@@ -475,6 +529,23 @@ func (d gameSettingDef) check(v any) error {
 		}
 		if steps := (n - *d.Min) / *d.Step; math.Abs(steps-math.Round(steps)) > 1e-9 {
 			return invalidSetting(d.Key, "phải theo bước "+formatKm(*d.Step))
+		}
+	case settingRoundPhases:
+		rounds, ok := v.([]any)
+		if !ok || len(rounds) == 0 || len(rounds) > maxRoundsPerDay {
+			return invalidSetting(d.Key, fmt.Sprintf("phải là lịch của 1 tới %d vòng", maxRoundsPerDay))
+		}
+		for _, r := range rounds {
+			phases, ok := r.([]any)
+			if !ok || len(phases) != len(defaultPhases) {
+				return invalidSetting(d.Key, fmt.Sprintf("mỗi vòng phải có đủ %d pha", len(defaultPhases)))
+			}
+			for _, m := range phases {
+				n, ok := m.(float64)
+				if !ok || n < *d.Min || n > *d.Max || math.Mod(n, *d.Step) != 0 {
+					return invalidSetting(d.Key, fmt.Sprintf("pha nào cũng từ %s tới %s phút, theo bước %s", formatKm(*d.Min), formatKm(*d.Max), formatKm(*d.Step)))
+				}
+			}
 		}
 	case settingChoice:
 		s, ok := v.(string)

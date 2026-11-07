@@ -2,6 +2,7 @@ package backend
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -104,16 +105,20 @@ func TestGameSettingsReadBack(t *testing.T) {
 			t.Errorf("%s: thiếu read", d.Key)
 			continue
 		}
+		in := map[string]any{"darkCloak": true, "topOn": true}
 		var v any
 		switch d.Type {
 		case settingToggle:
 			v = true
 		case settingChoice:
 			v = d.Choices[len(d.Choices)-1].Value
+		case settingRoundPhases:
+			v = []any{[]any{60.0, 300.0, 300.0, 60.0}, []any{120.0, 240.0, 240.0, 120.0}}
+			in["roundsPerDay"] = 2.0
 		default:
 			v = *d.Max
 		}
-		in := map[string]any{"darkCloak": true, "topOn": true, d.Key: v}
+		in[d.Key] = v
 		for _, cond := range d.EnabledIf {
 			if cond.Key == "kmOff" {
 				in["kmOff"] = cond.Equals
@@ -123,7 +128,7 @@ func TestGameSettingsReadBack(t *testing.T) {
 		if err := applyGameSettings(&c, in); err != nil {
 			t.Fatalf("%s: %v", d.Key, err)
 		}
-		if got := d.read(c); got != v {
+		if got := d.read(c); !reflect.DeepEqual(got, v) {
 			t.Errorf("%s: áp %v, đọc lại %v", d.Key, v, got)
 		}
 	}

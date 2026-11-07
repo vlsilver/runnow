@@ -118,6 +118,10 @@ type Schedule struct {
 	// đúng RoundHours. Có thì mốc trong mỗi pha co giãn theo pha đó của lịch
 	// gốc; nil thì cả vòng co giãn đều như trước.
 	Phases []int `json:"phases,omitempty"`
+	// RoundPhases là bốn pha riêng của từng vòng trong ngày, theo thứ tự mở
+	// từ StartHour; có thì đè Phases. Vòng nào cũng dài đúng RoundHours, nên
+	// giờ mở các vòng không đổi, chỉ mốc trong vòng đổi.
+	RoundPhases [][]int `json:"roundPhases,omitempty"`
 }
 
 // Giới hạn của Phases: pha nào cũng ít nhất MinPhaseMinutes, dời theo bước
@@ -227,7 +231,7 @@ func (c Config) Validate() error {
 			return fmt.Errorf("giờ bắt đầu phải từ 0 tới 23: %v", s.StartHour)
 		}
 		// Có Phases thì mốc tính theo từng pha, không cần RoundHours chẵn.
-		if s.RoundHours < MinRoundHours || s.RoundHours > MaxRoundHours || (s.Phases == nil && s.RoundHours%2 != 0) {
+		if s.RoundHours < MinRoundHours || s.RoundHours > MaxRoundHours || (s.Phases == nil && s.RoundPhases == nil && s.RoundHours%2 != 0) {
 			return fmt.Errorf("mỗi vòng phải dài từ %d tới %d tiếng, số chẵn: %v", MinRoundHours, MaxRoundHours, s.RoundHours)
 		}
 		if s.Rounds < 1 || s.Rounds*s.RoundHours > 24 {

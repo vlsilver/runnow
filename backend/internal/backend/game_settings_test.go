@@ -105,6 +105,37 @@ func TestGameSettingsKmRoundsPerDay(t *testing.T) {
 	}
 }
 
+// Hai vòng mỗi ngày, mỗi vòng một lịch pha: roundPhases đè bốn ô pha, vòng 1
+// thành Phases để ô pha đọc ngược ra đúng. Sai hình thì 422.
+func TestGameSettingsRoundPhases(t *testing.T) {
+	var c ww.Config
+	err := applyGameSettings(&c, map[string]any{"roundsPerDay": 2.0, "nightMin": 60.0, "dawnMin": 300.0, "dayMin": 300.0, "trialMin": 60.0,
+		"roundPhases": []any{[]any{60.0, 300.0, 300.0, 60.0}, []any{120.0, 240.0, 240.0, 120.0}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := ww.Schedule{StartHour: 22, RoundHours: 12, Rounds: 2, Phases: []int{60, 300, 300, 60},
+		RoundPhases: [][]int{{60, 300, 300, 60}, {120, 240, 240, 120}}}
+	if !reflect.DeepEqual(*c.Schedule, want) {
+		t.Fatalf("lịch = %+v", c.Schedule)
+	}
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, v := range map[string]any{
+		"không phải danh sách": 60.0,
+		"thiếu pha":            []any{[]any{60.0, 300.0, 360.0}},
+		"lệch bước":            []any{[]any{75.0, 285.0, 300.0, 60.0}},
+		"quá 4 vòng":           []any{[]any{360.0}, []any{360.0}, []any{360.0}, []any{360.0}, []any{360.0}},
+	} {
+		var bad ww.Config
+		if err := applyGameSettings(&bad, map[string]any{"roundPhases": v}); err == nil {
+			t.Fatalf("%s: không bị từ chối", name)
+		}
+	}
+}
+
 // Top tắt thì bỏ qua số phiếu gửi kèm; bật mà không gửi thì x2. Hai luật phiếu
 // cũ vẫn nhận dù không còn hiện trên màn tạo ván.
 func TestGameSettingsTopAndLegacyVote(t *testing.T) {

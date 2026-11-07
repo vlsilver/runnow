@@ -2,6 +2,7 @@ package backend
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/vlsilver/runnow/backend/internal/werewolf"
 )
@@ -95,6 +96,16 @@ func (d gameSettingDef) setupValue(v any) string {
 		return s
 	case settingPhase:
 		return formatMinutes(int(v.(float64)))
+	case settingRoundPhases:
+		var rounds []string
+		for i, r := range v.([]any) {
+			var phases []string
+			for _, m := range r.([]any) {
+				phases = append(phases, formatMinutes(int(m.(float64))))
+			}
+			rounds = append(rounds, fmt.Sprintf("V%d %s", i+1, strings.Join(phases, " · ")))
+		}
+		return strings.Join(rounds, "; ")
 	}
 	n := v.(float64)
 	switch {

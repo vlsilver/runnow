@@ -49,6 +49,10 @@ func TestPhasesValidate(t *testing.T) {
 		"km mở 6h":          {Schedule: &Schedule{StartHour: 6, RoundHours: 24, Rounds: 1, Phases: []int{120, 600, 600, 120}}},
 		"km vòng 12 tiếng":  {Schedule: &Schedule{StartHour: 22, RoundHours: 12, Rounds: 1}},
 		"không pha thì lẻ":  {KmOff: true, Schedule: &Schedule{StartHour: 6, RoundHours: 7, Rounds: 1}},
+		"lịch riêng thiếu vòng": {Schedule: &Schedule{StartHour: 22, RoundHours: 12, Rounds: 2,
+			RoundPhases: [][]int{{60, 300, 300, 60}}}},
+		"vòng 2 lệch tổng": {Schedule: &Schedule{StartHour: 22, RoundHours: 12, Rounds: 2,
+			RoundPhases: [][]int{{60, 300, 300, 60}, {120, 240, 240, 60}}}},
 	}
 	for name, c := range bad {
 		if c.Validate() == nil {
@@ -88,5 +92,44 @@ func TestPhasesMarksFollowTheirPhase(t *testing.T) {
 	g.next()
 	if g.st.Phase != PhaseDay || !g.st.NextAt().Equal(at(16, 17, 36)) {
 		t.Fatalf("%s, nhắc đề cử = %s", g.st.Phase, g.st.NextAt())
+	}
+}
+
+// twoRounds: ván km hai vòng mỗi ngày, mỗi vòng một lịch pha. Vòng 1 22h–10h:
+// đêm 22h–23h, rạng sáng 23h–4h, ngày 4h–9h, biểu quyết 9h–10h. Vòng 2
+// 10h–22h: đêm 10h–12h, rạng sáng 12h–16h, ngày 16h–20h, biểu quyết 20h–22h.
+var twoRounds = Config{Schedule: &Schedule{StartHour: 22, RoundHours: 12, Rounds: 2,
+	RoundPhases: [][]int{{60, 300, 300, 60}, {120, 240, 240, 120}}}}
+
+func TestRoundPhasesDeadlines(t *testing.T) {
+	if err := twoRounds.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	g := &tg{t: t, st: NewState(Seed{7}, twoRounds, baseRoles(), testStart), actions: map[string]Action{}, km: map[string]float64{}}
+	want := []struct {
+		phase    Phase
+		deadline [3]int
+	}{
+		{PhaseSetup, [3]int{15, 22, 0}},
+		{PhaseNight, [3]int{15, 23, 0}}, {PhaseDawn, [3]int{16, 4, 0}}, {PhaseDay, [3]int{16, 9, 0}}, {PhaseTrial, [3]int{16, 10, 0}},
+		{PhaseNight, [3]int{16, 12, 0}}, {PhaseDawn, [3]int{16, 16, 0}}, {PhaseDay, [3]int{16, 20, 0}}, {PhaseTrial, [3]int{16, 22, 0}},
+		{PhaseNight, [3]int{16, 23, 0}},
+	}
+	for i, w := range want {
+		if d := at(w.deadline[0], w.deadline[1], w.deadline[2]); g.st.Phase != w.phase || !g.st.Deadline().Equal(d) {
+			t.Fatalf("bước %d: %s hạn %s, mong đợi %s hạn %s", i, g.st.Phase, g.st.Deadline(), w.phase, d)
+		}
+		g.next()
+	}
+}
+
+// Bản tin của bot tính ngược giờ mở đêm từ hạn phase: hạn Rạng sáng 16h thuộc
+// vòng 2 (mở 10h), không phải vòng 1 (rạng sáng dài 5 tiếng, sẽ ra 11h).
+func TestRoundPhasesNightOf(t *testing.T) {
+	if got, want := twoRounds.NightOf(at(16, 16, 0), PhaseDawn), at(16, 10, 0); !got.Equal(want) {
+		t.Fatalf("NightOf = %s, mong đợi %s", got, want)
+	}
+	if got, want := twoRounds.NightOf(at(16, 4, 0), PhaseDawn), at(15, 22, 0); !got.Equal(want) {
+		t.Fatalf("NightOf = %s, mong đợi %s", got, want)
 	}
 }

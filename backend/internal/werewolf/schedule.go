@@ -35,30 +35,56 @@ type RoundClock struct {
 
 // Clock là các mốc của vòng mở đêm lúc nightAt, chưa tính phần admin dời.
 func (c Config) Clock(nightAt time.Time) RoundClock {
-	at := func(p Phase) time.Time { return nightAt.Add(c.PhaseOffset(p)) }
+	at := func(p Phase) time.Time { return nightAt.Add(c.AtNight(nightAt, phaseEnd[p])) }
 	return RoundClock{Night: nightAt, WolfLock: at(PhaseNight), Dawn: at(PhaseDawn), NominateClose: at(PhaseDay), Close: at(PhaseTrial)}
 }
 
-// PhaseOffset là hạn của phase tính từ lúc mở đêm, chưa tính phần admin dời.
+// PhaseOffset là hạn của phase ở vòng đầu ngày, tính từ lúc mở đêm, chưa tính
+// phần admin dời.
 func (c Config) PhaseOffset(p Phase) time.Duration { return c.At(phaseEnd[p]) }
+
+// NightOf là giờ mở đêm của vòng có phase p chốt lúc deadline (chưa ai dời
+// hạn). Mỗi vòng trong ngày có thể có lịch pha riêng, nên thử từng vòng và lấy
+// vòng mà giờ mở rơi đúng vào nó.
+func (c Config) NightOf(deadline time.Time, p Phase) time.Time {
+	s := c.schedule()
+	for i := 0; i < s.Rounds; i++ {
+		night := deadline.Add(-c.at(s.phasesOf(i), phaseEnd[p]))
+		if s.slot(night) == i {
+			return night
+		}
+	}
+	return deadline.Add(-c.PhaseOffset(p))
+}
 
 // RoundLen là độ dài một vòng.
 func (c Config) RoundLen() time.Duration {
 	return time.Duration(c.schedule().RoundHours) * time.Hour
 }
 
-// At đổi mốc d của lịch gốc 24 tiếng sang vòng của ván này. Không có Phases
-// thì cả vòng co giãn đều (RoundHours chẵn nên ra số phút chẵn). Có Phases thì
-// mốc nằm trong pha nào của lịch gốc co giãn theo pha đó của ván: nhắc đề cử ở
-// 4/5 pha Ngày, thợ săn bị treo bắn trong nửa đầu pha Đêm.
+// At đổi mốc d của lịch gốc 24 tiếng sang vòng đầu ngày của ván này.
 func (c Config) At(d time.Duration) time.Duration {
+	return c.at(c.schedule().phasesOf(0), d)
+}
+
+// AtNight là At cho vòng mở đêm lúc nightAt, theo lịch pha của vòng đó.
+func (c Config) AtNight(nightAt time.Time, d time.Duration) time.Duration {
 	s := c.schedule()
-	if s.Phases == nil {
+	return c.at(s.phasesOf(s.slot(nightAt)), d)
+}
+
+// at đổi mốc d theo bốn pha phases. Không có pha thì cả vòng co giãn đều
+// (RoundHours chẵn nên ra số phút chẵn). Có pha thì mốc nằm trong pha nào của
+// lịch gốc co giãn theo pha đó của ván: nhắc đề cử ở 4/5 pha Ngày, thợ săn bị
+// treo bắn trong nửa đầu pha Đêm.
+func (c Config) at(phases []int, d time.Duration) time.Duration {
+	s := c.schedule()
+	if phases == nil {
 		return d / 24 * time.Duration(s.RoundHours)
 	}
 	var from, to time.Duration // đầu pha đang xét, của lịch gốc và của ván
 	for i, p := range phaseOrder {
-		baseEnd, end := phaseEnd[p], to+time.Duration(s.Phases[i])*time.Minute
+		baseEnd, end := phaseEnd[p], to+time.Duration(phases[i])*time.Minute
 		if d <= baseEnd || i == len(phaseOrder)-1 {
 			frac := float64(d-from) / float64(baseEnd-from)
 			return to + time.Duration(frac*float64(end-to)).Round(time.Second)
@@ -72,16 +98,29 @@ func (c Config) At(d time.Duration) time.Duration {
 var phaseOrder = []Phase{PhaseNight, PhaseDawn, PhaseDay, PhaseTrial}
 
 func (s Schedule) validatePhases() error {
-	if s.Phases == nil {
+	if s.RoundPhases != nil && len(s.RoundPhases) != s.Rounds {
+		return fmt.Errorf("lịch riêng có %d vòng, phải bằng số vòng mỗi ngày %d", len(s.RoundPhases), s.Rounds)
+	}
+	for _, phases := range append([][]int{s.Phases}, s.RoundPhases...) {
+		if err := s.validRound(phases); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validRound kiểm bốn pha của một vòng; nil là vòng co đều, hợp lệ.
+func (s Schedule) validRound(phases []int) error {
+	if phases == nil {
 		return nil
 	}
-	if len(s.Phases) != len(phaseOrder) {
-		return fmt.Errorf("lịch phải có đủ %d pha: %v", len(phaseOrder), s.Phases)
+	if len(phases) != len(phaseOrder) {
+		return fmt.Errorf("lịch phải có đủ %d pha: %v", len(phaseOrder), phases)
 	}
 	total := 0
-	for _, m := range s.Phases {
+	for _, m := range phases {
 		if m < MinPhaseMinutes || m%PhaseStepMinutes != 0 {
-			return fmt.Errorf("pha nào cũng ít nhất %d phút, theo bước %d phút: %v", MinPhaseMinutes, PhaseStepMinutes, s.Phases)
+			return fmt.Errorf("pha nào cũng ít nhất %d phút, theo bước %d phút: %v", MinPhaseMinutes, PhaseStepMinutes, phases)
 		}
 		total += m
 	}
@@ -89,6 +128,23 @@ func (s Schedule) validatePhases() error {
 		return fmt.Errorf("bốn pha cộng lại %d phút, phải bằng vòng %d tiếng", total, s.RoundHours)
 	}
 	return nil
+}
+
+// phasesOf là bốn pha của vòng thứ i trong ngày (từ 0); nil là co đều.
+func (s Schedule) phasesOf(i int) []int {
+	if i < len(s.RoundPhases) {
+		return s.RoundPhases[i]
+	}
+	return s.Phases
+}
+
+// slot là vòng thứ mấy trong ngày (từ 0) của vòng mở đêm lúc nightAt. Giờ mở
+// lệch khung (ván cũ, resume dời theo ngày nguyên thì không lệch) rơi về vòng
+// gần nhất phía trước.
+func (s Schedule) slot(nightAt time.Time) int {
+	local := nightAt.In(vietnam)
+	m := ((local.Hour()*60+local.Minute()-s.StartHour*60)%1440 + 1440) % 1440
+	return min(m/(s.RoundHours*60), s.Rounds-1)
 }
 
 // RoundStarts là giờ (VN, 0–23) mở các vòng trong một ngày.
@@ -147,8 +203,11 @@ func (c Config) ReminderOffsets() (nominate, vote time.Duration) {
 
 // Deadline là lúc chốt phase hiện tại, kể cả phần admin đã dời (Extend).
 func (st *State) Deadline() time.Time {
-	return st.NightAt.Add(st.Config.At(phaseEnd[st.Phase]) + st.extra())
+	return st.NightAt.Add(st.at(phaseEnd[st.Phase]) + st.extra())
 }
+
+// at là mốc d của vòng đang chơi, theo lịch pha của vòng đó.
+func (st *State) at(d time.Duration) time.Duration { return st.Config.AtNight(st.NightAt, d) }
 
 func (st *State) hunterClose() time.Time {
 	if st.Hunter == nil {
@@ -158,7 +217,7 @@ func (st *State) hunterClose() time.Time {
 	if st.Hunter.Phase == PhaseDay {
 		end = hunterDay
 	}
-	return st.NightAt.Add(st.Config.At(end) + st.extra())
+	return st.NightAt.Add(st.at(end) + st.extra())
 }
 
 // TurnClose là hạn của lượt đang mở: lượt bắn của thợ săn nếu đang có, không
@@ -192,7 +251,7 @@ const extendGap = time.Hour
 // thành nửa pha Đêm, không còn là một khoảng cố định, nên chừa nửa pha ngắn
 // nhất (30 phút): pha nào cũng >= 60 phút, lượt thợ săn bị treo >= 30 phút.
 func (c Config) extendGap() time.Duration {
-	if c.schedule().Phases != nil {
+	if s := c.schedule(); s.Phases != nil || s.RoundPhases != nil {
 		return MinPhaseMinutes / 2 * time.Minute
 	}
 	return c.At(extendGap)
@@ -214,13 +273,13 @@ func Extend(st *State, d time.Duration) (*State, error) {
 	if st.Phase == PhaseEnded || d <= 0 {
 		return nil, ErrExtendState
 	}
-	at := st.Config.At
-	follow := st.NightAt.Add(at(phaseEnd[nextPhase[st.Phase]]))
+	follow := st.NightAt.Add(st.at(phaseEnd[nextPhase[st.Phase]]))
 	if st.Phase == PhaseTrial {
-		follow = st.Config.nextNight(st.NightAt).Add(at(phaseEnd[PhaseNight]))
+		next := st.Config.nextNight(st.NightAt)
+		follow = next.Add(st.Config.AtNight(next, phaseEnd[PhaseNight]))
 	}
 	if st.Hunter != nil {
-		follow = st.NightAt.Add(at(phaseEnd[st.Phase]))
+		follow = st.NightAt.Add(st.at(phaseEnd[st.Phase]))
 	}
 	if closes, limit := st.TurnClose(), follow.Add(-st.Config.extendGap()); closes.Add(d).After(limit) {
 		return nil, &ExtendTooLong{Max: limit.Sub(closes)}
@@ -237,7 +296,7 @@ func (st *State) windowOpen(kind Kind, now time.Time) bool {
 	if !now.Before(st.Deadline()) || (st.Phase == PhaseNight && now.Before(st.NightAt)) {
 		return false
 	}
-	return !IsVote(kind) || !now.Before(st.NightAt.Add(st.Config.At(voteOpens)))
+	return !IsVote(kind) || !now.Before(st.NightAt.Add(st.at(voteOpens)))
 }
 
 const (
@@ -252,9 +311,9 @@ const EventReminder EventKind = "reminder"
 func (st *State) reminder() (string, time.Time, bool) {
 	switch st.Phase {
 	case PhaseDay:
-		return ReminderNominate, st.NightAt.Add(st.Config.At(remindNominee)), true
+		return ReminderNominate, st.NightAt.Add(st.at(remindNominee)), true
 	case PhaseTrial:
-		return ReminderVote, st.NightAt.Add(st.Config.At(remindVote)), true
+		return ReminderVote, st.NightAt.Add(st.at(remindVote)), true
 	}
 	return "", time.Time{}, false
 }
