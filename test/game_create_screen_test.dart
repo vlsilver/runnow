@@ -1411,6 +1411,8 @@ void main() {
       expect(find.text('Bot đăng vào'), findsNothing);
       await tester.tap(find.text('Giao tiếp'));
       await tester.pump();
+      // Ván thật: tab Giao tiếp không có công tắc ván thử.
+      expect(find.text('Ván thử'), findsNothing);
       await tester.enterText(
         find.widgetWithText(TextField, 'ID topic (không bắt buộc)'),
         '42',

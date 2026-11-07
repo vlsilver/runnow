@@ -486,16 +486,24 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
 
   /// Ván thử, chat id và topic bot đăng vào.
   /// Sheet gọi lại để vẽ lại chính nó; form cũ thì chỉ setState của màn.
-  List<Widget> _postFields({void Function(VoidCallback)? onChanged}) {
+  /// [testMode]: có công tắc ván thử. Tab Giao tiếp là màn tạo ván thật nên
+  /// không có; form cũ và sheet "Bot đăng vào" của backend cũ vẫn giữ.
+  List<Widget> _postFields({
+    void Function(VoidCallback)? onChanged,
+    bool testMode = true,
+  }) {
     final update = onChanged ?? setState;
     return [
-      SwitchListTile(
-        title: const Text('Ván thử'),
-        subtitle: const Text('Chạy ở group test, chỉ admin và người test thấy'),
-        value: _testMode,
-        onChanged: _working ? null : (on) => update(() => _testMode = on),
-      ),
-      if (_testMode)
+      if (testMode)
+        SwitchListTile(
+          title: const Text('Ván thử'),
+          subtitle: const Text(
+            'Chạy ở group test, chỉ admin và người test thấy',
+          ),
+          value: _testMode,
+          onChanged: _working ? null : (on) => update(() => _testMode = on),
+        ),
+      if (testMode && _testMode)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: TextField(
@@ -706,9 +714,9 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
       out.add(_settingWidget(s, values));
     }
     out.addAll(_sections(list, live, values));
-    // Tab Giao tiếp: ván thử, group và topic bot đăng, chỉ khi bật Telegram.
+    // Tab Giao tiếp: topic bot đăng, chỉ khi bật Telegram.
     if (group.key == 'talk' && values['telegram'] != false) {
-      out.addAll(_postFields());
+      out.addAll(_postFields(testMode: false));
     }
     // Tab Lịch luôn có đăng ký và bắt đầu; lời giải thích giờ mở của ván km
     // nằm ở "Là gì?" của tab Vòng chơi.
