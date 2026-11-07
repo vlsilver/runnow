@@ -193,29 +193,77 @@ func (s *GameStore) RequestStart(ctx context.Context, gameID, by string, wall ti
 		return 0, err
 	}
 	if preview.Count < werewolf.MinPlayers {
-		return 0, &HTTPError{Status: http.StatusUnprocessableEntity, Code: "not_enough_players",
-			Message: fmt.Sprintf("Mới có %d người đủ điều kiện, cần ít nhất %d.", preview.Count, werewolf.MinPlayers),
-			Extra:   map[string]any{"count": preview.Count, "willExclude": preview.WillExclude}}
+		return 0, notEnoughPlayers(preview)
 	}
-	game := s.gameRef(gameID)
 	var attempt int64
 	err = s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
-		g, err := tx.Get(game)
+		g, err := tx.Get(s.gameRef(gameID))
 		if err != nil {
 			return err
 		}
 		if st := stringValue(g.Data()["status"]); st != gameRegistering && st != gameStarting {
 			return errStartClosed
 		}
-		attempt = int64(number(g.Data()["startAttempt"])) + 1
-		return tx.Update(game, []firestore.Update{
-			{Path: "status", Value: gameStarting}, {Path: "startAttempt", Value: attempt},
-			{Path: "startRequestedBy", Value: by}, {Path: "startRequestedAt", Value: wall},
-			{Path: "startError", Value: nil}, {Path: "version", Value: firestore.Increment(1)},
-			{Path: "updatedAt", Value: wall},
-		})
+		attempt, err = markStarting(tx, g, by, wall)
+		return err
 	})
 	return attempt, err
+}
+
+// startDue: ván đang đăng ký có startAt đã tới.
+func startDue(g map[string]any, wall time.Time) bool {
+	t := timeValue(g["startAt"])
+	return stringValue(g["status"]) == gameRegistering && !t.IsZero() && !wall.Before(t)
+}
+
+// AutoStart là Start do tick bấm khi tới startAt; attempt 0 là không Start.
+// Transaction kiểm lại startDue nên hai tick chạy cùng lúc chỉ một cái Start.
+// Thiếu người thì bỏ startAt và ghi startError: ván chờ chủ phòng bấm Start.
+func (s *GameStore) AutoStart(ctx context.Context, gameID string, wall time.Time) (int64, error) {
+	g, err := s.readStartGame(ctx, gameID)
+	if err != nil || !startDue(g.Data(), wall) {
+		return 0, err
+	}
+	preview, err := s.StartPreview(ctx, gameID)
+	if err != nil {
+		return 0, err
+	}
+	var attempt int64
+	err = s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		attempt = 0
+		g, err := tx.Get(s.gameRef(gameID))
+		if err != nil || !startDue(g.Data(), wall) {
+			return err
+		}
+		if preview.Count < werewolf.MinPlayers {
+			return tx.Update(g.Ref, []firestore.Update{
+				{Path: "startAt", Value: nil},
+				{Path: "startError", Value: map[string]any{"code": "not_enough_players", "message": notEnoughPlayers(preview).Message, "at": wall}},
+				{Path: "version", Value: firestore.Increment(1)}, {Path: "updatedAt", Value: wall},
+			})
+		}
+		attempt, err = markStarting(tx, g, "auto", wall)
+		return err
+	})
+	return attempt, err
+}
+
+func notEnoughPlayers(p StartPreview) *HTTPError {
+	return &HTTPError{Status: http.StatusUnprocessableEntity, Code: "not_enough_players",
+		Message: fmt.Sprintf("Mới có %d người đủ điều kiện, cần ít nhất %d.", p.Count, werewolf.MinPlayers),
+		Extra:   map[string]any{"count": p.Count, "willExclude": p.WillExclude}}
+}
+
+// markStarting đưa ván sang starting với lượt Start mới. startAt bỏ đi: bot trả
+// ván về đăng ký thì chủ phòng bấm lại, tick không tự Start nữa.
+func markStarting(tx *firestore.Transaction, g *firestore.DocumentSnapshot, by string, wall time.Time) (int64, error) {
+	attempt := int64(number(g.Data()["startAttempt"])) + 1
+	return attempt, tx.Update(g.Ref, []firestore.Update{
+		{Path: "status", Value: gameStarting}, {Path: "startAttempt", Value: attempt},
+		{Path: "startRequestedBy", Value: by}, {Path: "startRequestedAt", Value: wall},
+		{Path: "startError", Value: nil}, {Path: "startAt", Value: nil},
+		{Path: "version", Value: firestore.Increment(1)}, {Path: "updatedAt", Value: wall},
+	})
 }
 
 // gameStartTask là payload của /tasks/game-start. Bot decode chặt, nên thêm

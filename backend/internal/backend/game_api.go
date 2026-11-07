@@ -30,6 +30,7 @@ var (
 	errRegistrationShut  = &HTTPError{Status: http.StatusConflict, Code: "phase_closed", Message: "Ván đã hết hạn đăng ký hoặc đã bắt đầu."}
 	errGameFull          = &HTTPError{Status: http.StatusConflict, Code: "game_full", Message: fmt.Sprintf("Ván đã đủ %d người.", werewolf.MaxPlayers)}
 	errInvalidDeadline   = &HTTPError{Status: http.StatusUnprocessableEntity, Code: "invalid_deadline", Message: "Hạn đăng ký phải ở sau lúc này."}
+	errInvalidStartAt    = &HTTPError{Status: http.StatusUnprocessableEntity, Code: "invalid_start_at", Message: "Giờ bắt đầu phải ở sau lúc này và không trước hạn đăng ký."}
 	errTestModeNeedsChat = &HTTPError{Status: http.StatusUnprocessableEntity, Code: "invalid_chat", Message: "Ván thử phải có chatId của group test."}
 )
 
@@ -821,6 +822,7 @@ type GameDetail struct {
 	MinPlayers           int               `json:"minPlayers"`
 	MaxPlayers           int               `json:"maxPlayers"`
 	RegistrationDeadline *time.Time        `json:"registrationDeadline"`
+	StartAt              *time.Time        `json:"startAt,omitempty"`
 	Feed                 GameFeed          `json:"feed"`
 	Requirements         []GameRequirement `json:"requirements"`
 	IsRegistered         bool              `json:"isRegistered"`
@@ -950,6 +952,9 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 	out.WinnerLabel = teamLabels[werewolf.Team(out.Winner)]
 	if t := timeValue(data["registrationDeadline"]); !t.IsZero() {
 		out.RegistrationDeadline = &t
+	}
+	if t := timeValue(data["startAt"]); !t.IsZero() && stringValue(data["status"]) == gameRegistering {
+		out.StartAt = &t
 	}
 	if out.IsAdmin && out.TestMode && stringValue(data["status"]) == gameRunning {
 		out.TaskKey = stringValue(data["taskKey"])
@@ -1437,6 +1442,7 @@ func darkHint(c werewolf.Config, p werewolf.DarkPower) string {
 type CreateGameRequest struct {
 	Roles                map[string]bool `json:"roles"`
 	RegistrationDeadline *time.Time      `json:"registrationDeadline"`
+	StartAt              *time.Time      `json:"startAt"` // tới giờ thì bot tự Start; không gửi thì chủ phòng bấm
 	TestMode             bool            `json:"testMode"`
 	ChatID               string          `json:"chatId"`
 	ThreadID             int64           `json:"threadId"`
@@ -1484,6 +1490,12 @@ func (s *GameStore) Create(ctx context.Context, req CreateGameRequest, v GameVie
 			return "", errInvalidDeadline
 		}
 		in.RegistrationDeadline = *req.RegistrationDeadline
+	}
+	if req.StartAt != nil {
+		if !req.StartAt.After(wall) || (req.RegistrationDeadline != nil && req.StartAt.Before(*req.RegistrationDeadline)) {
+			return "", errInvalidStartAt
+		}
+		in.StartAt = *req.StartAt
 	}
 	return s.CreateGame(ctx, in, wall)
 }

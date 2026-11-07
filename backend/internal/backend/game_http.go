@@ -390,6 +390,11 @@ func (s *Server) tickGame(ctx context.Context, wall time.Time) error {
 	if err != nil || id == "" {
 		return err
 	}
+	if st == gameRegistering {
+		if err := s.autoStartGame(ctx, id, wall); err != nil {
+			return fmt.Errorf("ván %s: %w", id, err)
+		}
+	}
 	if st == gameRunning {
 		res, err := s.advanceGame(ctx, id, wall)
 		if err != nil {
@@ -408,6 +413,22 @@ func (s *Server) tickGame(ctx context.Context, wall time.Time) error {
 		s.kickGameFlush(ctx, id)
 	}
 	return nil
+}
+
+// autoStartGame bấm Start thay chủ phòng khi tới startAt, rồi giao bot như route
+// Start. Enqueue lỗi thì ván nằm ở starting, chủ phòng bấm Start lại được.
+func (s *Server) autoStartGame(ctx context.Context, id string, wall time.Time) error {
+	publish := s.enqueueTask()
+	if publish == nil || s.config.GameInboundQueue == "" {
+		return nil
+	}
+	attempt, err := s.deps.Games.AutoStart(ctx, id, wall)
+	if err != nil || attempt == 0 {
+		return err
+	}
+	slog.InfoContext(ctx, "game.auto_start", "gameId", id, "attempt", attempt)
+	_, err = publish(ctx, gameStartTaskFor(id, attempt))
+	return err
 }
 
 // now là Dependencies.Now nếu có, không thì time.Now.

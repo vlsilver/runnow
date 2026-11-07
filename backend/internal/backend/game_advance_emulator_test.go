@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -233,5 +234,69 @@ func TestEmulatorTickAdvancesGame(t *testing.T) {
 	e.bot.ServeHTTP(rec, httptest.NewRequest("POST", "/tasks/schedule-tick", bytes.NewReader([]byte("{}"))))
 	if rec.Code != 500 {
 		t.Fatalf("ván lỗi mà tick trả %d", rec.Code)
+	}
+}
+
+// Ván hẹn giờ bắt đầu: tick tới startAt thì tự bấm Start như admin (đặt
+// starting, giao game-start cho bot) và bỏ startAt. Thiếu người thì không
+// Start, bỏ startAt và ghi startError để chủ phòng thấy rồi tự bấm.
+func TestEmulatorTickStartsGameAtStartAt(t *testing.T) {
+	startAt := time.Date(2026, 10, 15, 22, 0, 0, 0, vietnam)
+	for _, c := range []struct {
+		name    string
+		players int
+		status  string
+		starts  int
+	}{
+		{"đủ người", 10, gameStarting, 1},
+		{"thiếu người", 9, gameRegistering, 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			db := emulatorDB(t)
+			store := NewGameStore(db, testPscChat)
+			id, err := store.CreateGame(context.Background(), NewGameInput{CreatedBy: "admin", ChatID: "-100", StartAt: startAt}, msgStart)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := range c.players {
+				uid, tg := "p"+strconv.Itoa(i), strconv.Itoa(900000+i)
+				seed(t, db, "games/"+id+"/players/"+uid, map[string]any{"uid": uid, "tgUserId": tg})
+				seed(t, db, "tgLinks/"+tg, map[string]any{"uid": uid, "inPsc": true})
+				seed(t, db, "telegramLinks/"+uid, map[string]any{"tgUserId": tg})
+			}
+			e := newAdvanceEnv(t, &storeGame{t: t, db: db, store: store, id: id})
+			game := func() map[string]any {
+				snap, err := db.Doc("games/" + id).Get(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+				return snap.Data()
+			}
+
+			e.clock = startAt.Add(-time.Minute)
+			e.post("/tasks/schedule-tick", map[string]any{})
+			if game()["status"] != gameRegistering || len(e.tasksTo("/tasks/game-start")) != 0 {
+				t.Fatal("chưa tới giờ mà đã Start")
+			}
+
+			e.clock = startAt.Add(3 * time.Minute)
+			e.post("/tasks/schedule-tick", map[string]any{})
+			g := game()
+			if g["status"] != c.status || len(e.tasksTo("/tasks/game-start")) != c.starts {
+				t.Fatalf("status %v, %d game-start; mong đợi %s, %d", g["status"], len(e.tasksTo("/tasks/game-start")), c.status, c.starts)
+			}
+			if g["startAt"] != nil {
+				t.Fatalf("startAt còn %v sau khi tới giờ", g["startAt"])
+			}
+			if c.starts == 0 && startErrorOf(g) == nil {
+				t.Fatal("thiếu người mà không ghi startError")
+			}
+
+			// Tick sau không Start lại.
+			e.post("/tasks/schedule-tick", map[string]any{})
+			if len(e.tasksTo("/tasks/game-start")) != c.starts {
+				t.Fatal("tick sau lại Start")
+			}
+		})
 	}
 }

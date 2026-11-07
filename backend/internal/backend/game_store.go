@@ -91,6 +91,8 @@ type NewGameInput struct {
 	Config    werewolf.Config
 	// RegistrationDeadline: quá hạn thì không đăng ký được nữa; zero là không hạn.
 	RegistrationDeadline time.Time
+	// StartAt: tới giờ thì tick tự bấm Start; zero là chờ chủ phòng bấm.
+	StartAt time.Time
 }
 
 // CreateGame mở ván mới ở trạng thái đăng ký. Chỉ một ván được mở một lúc:
@@ -111,9 +113,12 @@ func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Ti
 	if err != nil {
 		return "", err
 	}
-	var deadline any
+	var deadline, startAt any
 	if !in.RegistrationDeadline.IsZero() {
 		deadline = in.RegistrationDeadline
+	}
+	if !in.StartAt.IsZero() {
+		startAt = in.StartAt
 	}
 	err = s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		cur, err := tx.Get(s.currentRef())
@@ -135,7 +140,7 @@ func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Ti
 			"status": gameRegistering, "createdBy": in.CreatedBy, "createdAt": now,
 			"chatId": in.ChatID, "threadId": in.ThreadID, "testMode": in.Config.TestMode,
 			"config": string(cfg), "version": 0, "eventSeq": 0, "feedSeq": 0, "updatedAt": now,
-			"registrationDeadline": deadline, "playerCount": 0,
+			"registrationDeadline": deadline, "startAt": startAt, "playerCount": 0,
 		}); err != nil {
 			return err
 		}

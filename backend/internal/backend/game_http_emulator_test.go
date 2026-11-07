@@ -224,6 +224,8 @@ func TestEmulatorGameRegistrationDeadlineAndFull(t *testing.T) {
 	h := newAPIHarness(t, NewGameStore(db, testPscChat))
 	setConfig(t, h, map[string]any{"adminUids": []any{"boss"}, "testerUids": []any{"t1"}})
 	h.want(h.call("boss", "POST", "/v1/games", map[string]any{"registrationDeadline": time.Now().Add(-time.Minute)}, ""), 422, "invalid_deadline")
+	h.want(h.call("boss", "POST", "/v1/games", map[string]any{"startAt": time.Now().Add(-time.Minute)}, ""), 422, "invalid_start_at")
+	h.want(h.call("boss", "POST", "/v1/games", map[string]any{"registrationDeadline": time.Now().Add(2 * time.Hour), "startAt": time.Now().Add(time.Hour)}, ""), 422, "invalid_start_at")
 	h.want(h.call("boss", "POST", "/v1/games", map[string]any{"testMode": true}, ""), 422, "invalid_chat")
 	r := h.call("boss", "POST", "/v1/games", map[string]any{"testMode": true, "chatId": "-1002222"}, "")
 	h.want(r, 201, "")
