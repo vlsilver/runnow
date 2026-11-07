@@ -88,6 +88,10 @@ type gameSettingDef struct {
 	// legacyChoices là giá trị còn nhận nhưng không hiện cho người tạo ván.
 	legacyChoices []string
 	apply         func(c *werewolf.Config, v any)
+	// read là giá trị đang áp trong c, cùng kiểu với giá trị app gửi; nil là
+	// tuỳ chọn không áp ở ván này (vai không có trong bộ bài, không thêm sói,
+	// không có đặc quyền nào cần km). Dùng cho phần xem lại thiết lập ván.
+	read func(c werewolf.Config) any
 }
 
 func f64(v float64) *float64 { return &v }
@@ -102,6 +106,12 @@ func roleKmSetting(key string, role werewolf.Role, label, desc string) gameSetti
 		// Luôn áp để km app hiện là km ván dùng, không lặng lẽ theo kmPerUnit.
 		keepDefault: true,
 		apply:       func(c *werewolf.Config, v any) { setSkillKm(c, role, v.(float64)) },
+		read: func(c werewolf.Config) any {
+			if slices.Contains(c.Disabled, role) {
+				return nil
+			}
+			return c.SkillMeters(role) / 1000
+		},
 	}
 }
 
@@ -110,9 +120,10 @@ var kmOffOnly = []GameSettingCondition{{Key: "kmOff", Equals: true}}
 // scheduleSetting là một ô của lịch hoạt động. Ô không gửi giữ giá trị của lịch
 // gốc. Ván còn dùng km thì lịch không tác dụng (khung km cố định 22h) nên bỏ
 // qua; kmOff đứng trước trong gameSettingDefs nên lúc này c.KmOff đã áp.
-func scheduleSetting(s GameSetting, set func(*werewolf.Schedule, int)) gameSettingDef {
+func scheduleSetting(s GameSetting, set func(*werewolf.Schedule, int), get func(werewolf.Schedule) int) gameSettingDef {
 	s.Type, s.EnabledIf = settingNumber, kmOffOnly
-	return gameSettingDef{GameSetting: s, apply: func(c *werewolf.Config, v any) {
+	read := func(c werewolf.Config) any { return float64(get(scheduleOf(c))) }
+	return gameSettingDef{GameSetting: s, read: read, apply: func(c *werewolf.Config, v any) {
 		if !c.KmOff {
 			return
 		}
@@ -144,6 +155,7 @@ func roundsPerDaySetting() gameSettingDef {
 				c.Schedule.RoundHours = 24 / n
 			}
 		},
+		read: func(c werewolf.Config) any { return float64(max(scheduleOf(c).Rounds, 1)) },
 	}
 }
 
@@ -178,6 +190,7 @@ func phaseSetting(i int, key, label, desc string) gameSettingDef {
 			// Tổng lệch giờ tròn thì Validate báo lỗi, vì RoundHours không khớp.
 			s.RoundHours = total / 60
 		},
+		read: func(c werewolf.Config) any { return float64(phasesOf(scheduleOf(c))[i]) },
 	}
 }
 
@@ -191,6 +204,7 @@ func extendedRoleSetting(role werewolf.Role, label, desc string) gameSettingDef 
 				c.Extended = append(c.Extended, role)
 			}
 		},
+		read: func(c werewolf.Config) any { return slices.Contains(c.Extended, role) },
 	}
 }
 
@@ -207,6 +221,7 @@ func darkSetting(key string, p werewolf.DarkPower, label, hint, desc, warn strin
 				c.Dark = append(c.Dark, p)
 			}
 		},
+		read: func(c werewolf.Config) any { return slices.Contains(c.Dark, p) },
 	}
 }
 
@@ -224,6 +239,12 @@ var gameSettingDefs = []gameSettingDef{
 			Description: "Thêm sói so với số chuẩn theo số người: 10 người 2 sói, 11–16 người 3 sói, 17–20 người 4 sói, từ 21 người 5 sói. Sói thêm lấy chỗ của Dân. Sói không vượt 1/3 số người, phần thừa bị bỏ."},
 		keepDefault: true,
 		apply:       func(c *werewolf.Config, v any) { c.ExtraWolves = int(v.(float64)) },
+		read: func(c werewolf.Config) any {
+			if c.ExtraWolves == 0 {
+				return nil
+			}
+			return float64(c.ExtraWolves)
+		},
 	},
 	extendedRoleSetting(werewolf.Elder, "Thêm Già làng",
 		"Một Dân thành Già làng. Già làng thuộc phe Dân, chịu được một lần bị sói cắn: cú cắn đầu tiên không ai bảo vệ hay cứu thì vẫn sống, sáng ra làng chỉ thấy đêm đó không ai chết. Cú cắn sau, bị độc, bị treo hay bị bắn thì chết như thường."),
@@ -250,19 +271,26 @@ var gameSettingDefs = []gameSettingDef{
 			Section: darkSection, Hint: "× số sói còn sống",
 			Description: "Đêm nào tổng km của sói còn sống đủ mức này nhân số sói thì đêm đó phe Sói dùng được một đặc quyền. Không đủ thì vẫn cắn bình thường. Ván không dùng km thì mỗi đặc quyền một lần cả ván."},
 		apply: func(c *werewolf.Config, v any) { c.DarkKm = v.(float64) },
+		read: func(c werewolf.Config) any {
+			if len(c.Dark) == 0 {
+				return nil
+			}
+			return c.DarkKm
+		},
 	},
 	{
 		GameSetting: GameSetting{Key: "kmOff", Label: "Không dùng km", Type: settingToggle, Default: false, Group: groupKm,
 			Description: "Bật thì ván chơi như Ma Sói thường: kỹ năng không cần km, mỗi người một phiếu, group không hiện bảng km. Các tuỳ chọn km bên dưới hết tác dụng."},
 		keepDefault: true,
 		apply:       func(c *werewolf.Config, v any) { c.KmOff = v.(bool) },
+		read:        func(c werewolf.Config) any { return c.KmOff },
 	},
 	scheduleSetting(GameSetting{Key: "startHour", Label: "Giờ mở vòng đầu", Group: groupTime, Default: 22.0, Min: f64(0), Max: f64(23), Step: f64(1), Unit: "giờ",
 		Description: "Giờ trong ngày mở vòng đầu tiên, vòng mở là đêm bắt đầu. Các vòng sau nối tiếp ngay khi vòng trước chốt. Hết các vòng trong ngày thì bot không nhận lựa chọn nào, tới giờ này hôm sau mới chơi tiếp. Chỉ dùng khi không dùng km."},
-		func(s *werewolf.Schedule, n int) { s.StartHour = n }),
+		func(s *werewolf.Schedule, n int) { s.StartHour = n }, func(s werewolf.Schedule) int { return s.StartHour }),
 	scheduleSetting(GameSetting{Key: "roundHours", Label: "Độ dài một vòng", Group: groupRound, Default: 24.0, Min: f64(werewolf.MinRoundHours), Max: f64(werewolf.MaxRoundHours), Step: f64(2), Unit: "tiếng",
 		Description: "Một vòng gồm đêm, bản tin, đề cử và biểu quyết. Mọi mốc co theo vòng 24 tiếng: vòng 6 tiếng thì sói có 30 phút để cắn, đêm dài 3 tiếng, biểu quyết là 30 phút cuối vòng. Số vòng nhân độ dài không quá 24 tiếng. Chỉ dùng khi không dùng km."},
-		func(s *werewolf.Schedule, n int) { s.RoundHours = n }),
+		func(s *werewolf.Schedule, n int) { s.RoundHours = n }, func(s werewolf.Schedule) int { return s.RoundHours }),
 	roundsPerDaySetting(),
 	phaseSetting(0, "nightMin", "Độ dài pha Đêm", "Sói chọn người cắn; Tiên tri soi, Bảo vệ che."),
 	phaseSetting(1, "dawnMin", "Độ dài pha Rạng sáng", "Phù thuỷ cứu hoặc độc; Tiên tri, Bảo vệ làm nốt."),
@@ -296,12 +324,14 @@ var gameSettingDefs = []gameSettingDef{
 		legacyChoices: []string{string(werewolf.VoteTop), string(werewolf.VoteFlat)},
 		keepDefault:   true,
 		apply:         func(c *werewolf.Config, v any) { c.Vote = werewolf.VoteRule(v.(string)) },
+		read:          func(c werewolf.Config) any { return string(c.VoteMode()) },
 	},
 	{
 		GameSetting: GameSetting{Key: "kmPerUnit", Label: "Biểu quyết", Hint: "Mọi người · km một phiếu", Type: settingNumber, Default: 1.0,
 			Min: f64(0.5), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupKm, Section: sectionKm, Icon: "vote",
 			Description: "Ai còn sống cũng được bỏ phiếu treo một người, kể cả Sói. Km ở đây là km cho một phiếu, tính theo chế độ đã chọn."},
 		apply: func(c *werewolf.Config, v any) { c.KmPerUnit = v.(float64) },
+		read:  func(c werewolf.Config) any { return kmPerUnit(c) },
 	},
 	{
 		GameSetting: GameSetting{Key: "maxHang", Label: "Treo tối đa mỗi vòng", Type: settingNumber, Default: float64(werewolf.MaxNominees),
@@ -309,6 +339,7 @@ var gameSettingDefs = []gameSettingDef{
 			Description: "Số người được lên giàn mỗi vòng, mỗi người một phiên Treo/Tha riêng."},
 		keepDefault: true,
 		apply:       func(c *werewolf.Config, v any) { c.MaxHang = int(v.(float64)) },
+		read:        func(c werewolf.Config) any { return float64(c.NomineeSeats()) },
 	},
 	{
 		GameSetting: GameSetting{Key: "wolfKm", Label: "Bầu cắn", Hint: "Phe Sói · km một phiếu", Type: settingNumber, Default: 0.0,
@@ -317,6 +348,7 @@ var gameSettingDefs = []gameSettingDef{
 			Description: "Mỗi đêm phe Sói cắn một người. Mỗi sói bầu một phiếu, ai nhiều phiếu nhất thì bị cắn; bằng phiếu thì bên có tổng km cao hơn thắng, vẫn bằng thì bốc thăm. Km ở đây là km cho một phiếu cắn, tính theo chế độ đã chọn. 0 là mọi sói đều có phiếu. Nên để 0: cắn mà cần km thì sáng ra có người chết là cả làng biết phe Sói đủ km, ráp với bảng km công khai là khoanh được sói."},
 		keepDefault: true,
 		apply:       func(c *werewolf.Config, v any) { setSkillKm(c, werewolf.Wolf, v.(float64)) },
+		read:        func(c werewolf.Config) any { return c.SkillMeters(werewolf.Wolf) / 1000 },
 	},
 	roleKmSetting("seerKm", werewolf.Seer, "Tiên tri soi", "Đủ km thì đêm đó soi được một người, biết là Sói hay Dân."),
 	roleKmSetting("guardKm", werewolf.Guard, "Bảo vệ che", "Đủ km thì đêm đó che được một người khỏi bị cắn."),
@@ -334,6 +366,7 @@ var gameSettingDefs = []gameSettingDef{
 				c.TopWeight = werewolf.MinTopWeight
 			}
 		},
+		read: func(c werewolf.Config) any { return c.TopWeight > 0 },
 	},
 	{
 		GameSetting: GameSetting{Key: "topVoters", Label: "Số người", Type: settingNumber, Default: 0.0,
@@ -342,6 +375,7 @@ var gameSettingDefs = []gameSettingDef{
 			Hint:        "0 là số sói + 1",
 			Description: "Để 0 là bằng số sói còn sống cộng 1, để sói không chiếm hết các suất."},
 		apply: func(c *werewolf.Config, v any) { c.TopVoters = int(v.(float64)) },
+		read:  func(c werewolf.Config) any { return float64(c.TopVoters) },
 	},
 	{
 		GameSetting: GameSetting{Key: "topWeight", Label: "Phiếu mỗi người", Type: settingNumber, Default: float64(werewolf.MinTopWeight),
@@ -353,6 +387,7 @@ var gameSettingDefs = []gameSettingDef{
 				c.TopWeight = int(v.(float64))
 			}
 		},
+		read: func(c werewolf.Config) any { return float64(max(c.TopWeight, werewolf.MinTopWeight)) },
 	},
 }
 
