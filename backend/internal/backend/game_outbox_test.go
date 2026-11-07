@@ -248,8 +248,8 @@ func TestPrivateDMsShowOnlyTheHeader(t *testing.T) {
 	add(night)
 	closes := time.Date(2026, 10, 12, 17, 0, 0, 0, time.UTC)
 	for kind := range actionTexts {
-		if kind == ww.KindNominate || kind == ww.KindVote {
-			continue // vào topic của group, không DM
+		if kind == ww.KindNominate || kind == ww.KindVote || appOnlyKind(kind) {
+			continue // vào topic của group hoặc chỉ chọn trong app, không DM
 		}
 		for _, a := range []*GameAction{nil, {Kind: string(kind), Enabled: true, ClosesAt: &closes, Options: options("a", "c")}} {
 			text, _, err := promptView{gameID: "g1", turnKey: "r1", st: promptState(), kind: kind, a: a, name: promptNames}.render()

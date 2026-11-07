@@ -30,6 +30,10 @@ var groupKinds = append([]werewolf.Kind{werewolf.KindNominate}, werewolf.VoteKin
 
 func groupKind(k werewolf.Kind) bool { return slices.Contains(groupKinds, k) }
 
+// appOnlyKind: việc chỉ chọn trong app, bot không gửi tin DM. Đặc quyền Sói có
+// danh sách đặc quyền rồi mới tới người, nút Telegram không gói vừa.
+func appOnlyKind(k werewolf.Kind) bool { return k == werewolf.KindWolfDark }
+
 // groupKindKeys là groupKinds dạng chuỗi, cho query Firestore theo kind.
 func groupKindKeys() []string {
 	out := make([]string, len(groupKinds))
@@ -298,7 +302,7 @@ func promptMessages(before, after *werewolf.State) []gameMsg {
 			}
 		}
 		for _, k := range after.Available(uid) {
-			if had[k] || groupKind(k) {
+			if had[k] || groupKind(k) || appOnlyKind(k) {
 				continue
 			}
 			msgs = append(msgs, gameMsg{ChatKey: dmChat(uid), Template: tplPrompt, Data: map[string]any{

@@ -239,6 +239,7 @@ var actionTexts = map[werewolf.Kind]actionText{
 	werewolf.KindHunterShoot: {"Bắn", "Bạn đã chết. Chọn một người bắn theo.", "single_target", confirmOnce},
 	werewolf.KindCupidPair:   {"Ghép đôi", "Chọn hai người thành cặp đôi. Một người chết thì người kia chết theo.", "two_targets", confirmOnce},
 	werewolf.KindNominate:    {"Đề cử", "Chọn một người lên giàn. Đổi được tới {nominate}.", "single_target", ""},
+	werewolf.KindWolfDark:    {"Đặc quyền", "Phe Sói chọn một đặc quyền cho đêm nay. Lựa chọn bấm sau cùng của phe được tính. Khoá lúc {lock}.", "dark", ""},
 	werewolf.KindVote:        voteText,
 	werewolf.KindVote2:       voteText,
 	werewolf.KindVote3:       voteText,
@@ -298,6 +299,14 @@ func wolfKmShort(have, need, unit float64) string {
 // disabledReason là lý do khoá nút trên thẻ hành động. Có state nên nút Cắn
 // thiếu km ghi được số của phe; rejectText thì không có state.
 func disabledReason(st *werewolf.State, kind werewolf.Kind, err error) string {
+	if kind == werewolf.KindWolfDark && errors.Is(err, werewolf.ErrKmInsufficient) {
+		have, _ := werewolf.WolfKm(st)
+		need := st.Config.DarkMeters() * float64(aliveWolves(st))
+		return "Phe Sói chưa mở đặc quyền: " + wolfKmShort(have, need, st.Config.DarkMeters()/1000) + "."
+	}
+	if kind == werewolf.KindWolfDark && errors.Is(err, werewolf.ErrAlreadyUsed) {
+		return "Phe Sói đã dùng hết đặc quyền."
+	}
 	if kind != werewolf.KindWolfBite || !errors.Is(err, werewolf.ErrKmInsufficient) {
 		return rejectText(kind, err)
 	}
@@ -313,6 +322,16 @@ func rejectHTTP(kind werewolf.Kind, err error) *HTTPError {
 		status = http.StatusConflict
 	}
 	return &HTTPError{Status: status, Code: err.Error(), Message: rejectText(kind, err)}
+}
+
+// darkTexts là tên và một câu tác dụng của từng đặc quyền phe Sói, hiện trên
+// thẻ chọn đặc quyền của app.
+var darkTexts = map[werewolf.DarkPower][2]string{
+	werewolf.DarkCloak:  {"Tàng Hình", "Tiên tri soi sói này ra Dân."},
+	werewolf.DarkFrame:  {"Vu Khống", "Tiên tri soi người này ra Sói."},
+	werewolf.DarkSilent: {"Cắn Im Lặng", "Người bị cắn chết sau phiên biểu quyết hôm sau."},
+	werewolf.DarkVote:   {"Phiếu Đôi", "Phiếu của sói này tính 2 ở phiên biểu quyết hôm sau."},
+	werewolf.DarkPierce: {"Đột Biến", "Cú cắn xuyên qua Bảo vệ."},
 }
 
 var choiceLabels = map[string]string{werewolf.ChoiceHang: "Treo", werewolf.ChoiceSpare: "Tha"}

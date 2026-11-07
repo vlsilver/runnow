@@ -32,6 +32,7 @@ const (
 	EventWinner       EventKind = "winner"        // Team, Reason
 	EventSurvived     EventKind = "survived"      // UID = Già làng vừa thoát cú cắn đầu tiên, chỉ người đó biết
 	EventRevealed     EventKind = "revealed"      // UID, Role = Kẻ ngốc bị treo lần đầu: lật bài, sống, mất phiếu
+	EventDark         EventKind = "dark"          // Reason = đặc quyền phe Sói vừa chốt, UID = mục tiêu (rỗng với Cắn Im Lặng, Đột Biến)
 )
 
 // Event là kết quả có cấu trúc của một bước, dùng để ghi events/{seq}, render
@@ -233,6 +234,7 @@ func (r *resolver) lockWolves() {
 		r.st.Bitten, reason = best.target(), ""
 	}
 	r.emit(Event{Kind: EventWolvesTarget, UID: r.st.Bitten, Reason: reason})
+	r.lockDark()
 	r.st.Phase = PhaseDawn
 }
 
@@ -292,11 +294,17 @@ func (r *resolver) resolveNight() {
 	// Bảo vệ và phù thuỷ cùng cứu một người thì người đó sống, bình vẫn mất (R15).
 	// Già làng thoát cú cắn đầu tiên không ai đỡ; được đỡ thì chưa mất lần thoát,
 	// vừa chết vì độc thì không còn gì để thoát.
-	if victim != "" && victim != guarded && !saved {
-		if p := r.st.Players[victim]; p.Alive && p.Role == Elder && p.SurvivedRound == 0 {
+	// Đột Biến thì cú cắn xuyên qua Bảo vệ; Cắn Im Lặng thì người bị cắn chết
+	// sau lần chốt biểu quyết (resolveDay).
+	if victim != "" && (victim != guarded || r.st.darkIs(DarkPierce)) && !saved {
+		p := r.st.Players[victim]
+		switch {
+		case p.Alive && p.Role == Elder && p.SurvivedRound == 0:
 			p.SurvivedRound = r.st.Round
 			r.emit(Event{Kind: EventSurvived, UID: victim})
-		} else {
+		case p.Alive && r.st.darkIs(DarkSilent):
+			r.st.Delayed = victim
+		default:
 			r.kill(victim, CauseBite)
 		}
 	}
@@ -423,6 +431,11 @@ func (r *resolver) resolveDay() {
 		}
 		r.kill(uid, CauseHang)
 	}
+	if r.st.Delayed != "" {
+		r.kill(r.st.Delayed, CauseBite) // đã bị treo thì kill bỏ qua
+		r.st.Delayed = ""
+	}
+	r.st.Dark = nil
 	r.killLovers()
 	r.st.Round++
 	r.st.NightAt = r.st.Config.nextNight(r.st.NightAt)
@@ -472,9 +485,9 @@ func (r *resolver) countVotes(kind Kind, nominee string) bool {
 		case a.Choice == ChoiceHang && r.st.loverOf(a.Actor) == nominee:
 			r.void(a, VoidLoverTarget)
 		case a.Choice == ChoiceHang:
-			ev.Hang += weight(double[a.Actor])
+			ev.Hang += r.voteWeight(a.Actor, double)
 		case a.Choice == ChoiceSpare:
-			ev.Spare += weight(double[a.Actor])
+			ev.Spare += r.voteWeight(a.Actor, double)
 		}
 	}
 	ev.Hanged = ev.Hang > ev.Spare
@@ -501,8 +514,10 @@ func (r *resolver) voteCut(kind Kind, voters []string) (cut []string, draw bool)
 	return cut, draw
 }
 
-func weight(double bool) int {
-	if double {
+// voteWeight: phiếu tính 2 khi người đó được x2 theo km (VoteTop) hoặc là sói
+// được Phiếu Đôi; có cả hai thì vẫn là 2.
+func (r *resolver) voteWeight(uid string, double map[string]bool) int {
+	if double[uid] || (r.st.darkIs(DarkVote) && r.st.Dark.Target == uid) {
 		return 2
 	}
 	return 1

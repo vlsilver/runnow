@@ -1,6 +1,9 @@
 package werewolf
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 // Giờ mở của từng phase, tính từ NightAt như phaseEnd. Setup mở lúc Start, mà
 // state không giữ giờ Start, nên không có ở đây.
@@ -60,6 +63,13 @@ func Precheck(st *State, kind Kind, actor string, mine []Action, now time.Time) 
 	case KindWolfBite:
 		if !wolvesHaveKm(st) {
 			return ErrKmInsufficient
+		}
+	case KindWolfDark:
+		if !st.DarkUnlocked() {
+			return ErrKmInsufficient
+		}
+		if !slices.ContainsFunc(st.Config.Dark, st.DarkLeft) {
+			return ErrAlreadyUsed
 		}
 	case KindWitchSave:
 		if !st.SavePotion {

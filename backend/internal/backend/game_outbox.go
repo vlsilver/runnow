@@ -1089,6 +1089,7 @@ var voidTexts = map[string]string{
 	werewolf.VoidVoteCut:     "tổng km chưa đủ nên mất phiếu",
 	werewolf.VoidGameOver:    "ván đã kết thúc",
 	werewolf.VoidNoVote:      "Kẻ ngốc đã lật bài nên mất phiếu",
+	werewolf.VoidNoBite:      "đêm đó phe Sói không cắn ai nên chưa dùng, vẫn còn lượt",
 }
 
 var causeTexts = map[werewolf.Cause]string{

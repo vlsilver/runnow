@@ -1132,6 +1132,14 @@ type GameOption struct {
 	ID        string `json:"id"`
 	Label     string `json:"label"`
 	AvatarURL string `json:"avatarUrl,omitempty"`
+	// Các field dưới chỉ có ở input "dark": mỗi option là một đặc quyền.
+	// Targets là người chọn được khi NeedsTarget; Hint là số lượt; Disabled là
+	// đặc quyền đã hết lượt hoặc không còn ai để chọn.
+	Description string       `json:"description,omitempty"`
+	Hint        string       `json:"hint,omitempty"`
+	NeedsTarget bool         `json:"needsTarget,omitempty"`
+	Targets     []GameOption `json:"targets,omitempty"`
+	Disabled    bool         `json:"disabled,omitempty"`
 }
 
 type GameSelected struct {
@@ -1338,6 +1346,8 @@ func meActions(st *werewolf.State, uid string, mine []werewolf.Action, raw map[w
 				}
 				a.Options = append(a.Options, GameOption{ID: p.uid, Label: p.name, AvatarURL: p.avatar})
 			}
+		case "dark":
+			a.Options = darkOptions(st, players)
 		}
 		if d, ok := raw[kind]; ok {
 			sel := &GameSelected{Choice: stringValue(d["choice"])}
@@ -1363,6 +1373,41 @@ func meActions(st *werewolf.State, uid string, mine []werewolf.Action, raw map[w
 		out = append(out, a)
 	}
 	return out
+}
+
+// darkOptions là các đặc quyền ván bật, theo thứ tự cố định, kèm người chọn
+// được cho đặc quyền cần mục tiêu.
+func darkOptions(st *werewolf.State, players []gamePlayerInfo) []GameOption {
+	var out []GameOption
+	for _, p := range werewolf.DarkPowers() {
+		if !slices.Contains(st.Config.Dark, p) {
+			continue
+		}
+		text := darkTexts[p]
+		o := GameOption{ID: string(p), Label: text[0], Description: text[1], Hint: darkHint(st.Config, p),
+			NeedsTarget: werewolf.DarkNeedsTarget(p), Disabled: !st.DarkLeft(p)}
+		if o.NeedsTarget {
+			for _, pl := range players {
+				if st.DarkTargetOK(p, pl.uid) {
+					o.Targets = append(o.Targets, GameOption{ID: pl.uid, Label: pl.name, AvatarURL: pl.avatar})
+				}
+			}
+			o.Disabled = o.Disabled || len(o.Targets) == 0
+		}
+		out = append(out, o)
+	}
+	return out
+}
+
+// darkHint là số lượt của đặc quyền p, theo DarkLeft và darkTargetOK.
+func darkHint(c werewolf.Config, p werewolf.DarkPower) string {
+	switch {
+	case c.KmOff || p == werewolf.DarkPierce:
+		return "1 lần cả ván"
+	case p == werewolf.DarkCloak:
+		return "Mỗi sói 1 lần"
+	}
+	return "Mỗi đêm"
 }
 
 // ---- Tạo ván, đăng ký ----

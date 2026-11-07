@@ -162,6 +162,19 @@ func extendedRoleSetting(role werewolf.Role, label, desc string) gameSettingDef 
 	}
 }
 
+// darkSetting bật một đặc quyền của phe Sói (werewolf.DarkPower).
+func darkSetting(key string, p werewolf.DarkPower, label, desc string) gameSettingDef {
+	return gameSettingDef{
+		GameSetting: GameSetting{Key: key, Label: label, Description: desc, Type: settingToggle, Default: false, Group: groupRoles},
+		keepDefault: true,
+		apply: func(c *werewolf.Config, v any) {
+			if v.(bool) {
+				c.Dark = append(c.Dark, p)
+			}
+		},
+	}
+}
+
 func setSkillKm(c *werewolf.Config, role werewolf.Role, km float64) {
 	if c.SkillKm == nil {
 		c.SkillKm = map[werewolf.Role]float64{}
@@ -181,6 +194,22 @@ var gameSettingDefs = []gameSettingDef{
 		"Một Dân thành Già làng. Già làng thuộc phe Dân, chịu được một lần bị sói cắn: cú cắn đầu tiên không ai bảo vệ hay cứu thì vẫn sống, sáng ra làng chỉ thấy đêm đó không ai chết. Cú cắn sau, bị độc, bị treo hay bị bắn thì chết như thường."),
 	extendedRoleSetting(werewolf.Idiot, "Thêm Kẻ ngốc",
 		"Một Dân thành Kẻ ngốc. Kẻ ngốc thuộc phe Dân: bị làng treo lần đầu thì lật bài cho cả làng thấy và vẫn sống, nhưng mất quyền bỏ phiếu tới hết ván. Bị treo lần nữa, bị cắn, bị độc hay bị bắn thì chết như thường."),
+	darkSetting("darkCloak", werewolf.DarkCloak, "Sói: Tàng Hình",
+		"Đêm đó phe Sói chọn một sói, Tiên tri soi sói này ra Dân. Mỗi sói một lần cả ván."),
+	darkSetting("darkFrame", werewolf.DarkFrame, "Sói: Vu Khống",
+		"Đêm đó phe Sói chọn một người không phải sói, Tiên tri soi người này ra Sói. Dùng được mỗi đêm."),
+	darkSetting("darkSilent", werewolf.DarkSilent, "Sói: Cắn Im Lặng",
+		"Người bị cắn không chết lúc sáng mà chết ngay sau phiên biểu quyết hôm sau, nên vẫn được bỏ phiếu. Phù thuỷ vẫn thấy và vẫn cứu được."),
+	darkSetting("darkVote", werewolf.DarkVote, "Sói: Phiếu Đôi",
+		"Đêm đó phe Sói chọn một sói, phiếu của sói này tính 2 ở phiên biểu quyết hôm sau."),
+	darkSetting("darkPierce", werewolf.DarkPierce, "Sói: Đột Biến",
+		"Cú cắn đêm đó xuyên qua Bảo vệ. Một lần cả ván."),
+	{
+		GameSetting: GameSetting{Key: "darkKm", Label: "Km mở đặc quyền Sói", Type: settingNumber, Default: 1.0,
+			Min: f64(0.5), Max: f64(werewolf.MaxDarkKm), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupRoles,
+			Description: "Đêm nào tổng km của sói còn sống đủ mức này nhân số sói thì đêm đó phe Sói dùng được một đặc quyền. Ván không dùng km thì mỗi đặc quyền một lần cả ván."},
+		apply: func(c *werewolf.Config, v any) { c.DarkKm = v.(float64) },
+	},
 	{
 		GameSetting: GameSetting{Key: "kmOff", Label: "Không dùng km", Type: settingToggle, Default: false, Group: groupKm,
 			Description: "Bật thì ván chơi như Ma Sói thường: kỹ năng không cần km, mỗi người một phiếu, group không hiện bảng km. Các tuỳ chọn km bên dưới hết tác dụng."},

@@ -79,6 +79,10 @@ type Config struct {
 	Schedule *Schedule `json:"schedule,omitempty"`
 	// Extended là các vai mở rộng admin bật, mỗi vai một lá thay cho một Dân.
 	Extended []Role `json:"extended,omitempty"`
+	// Dark là các đặc quyền phe Sói admin bật (dark.go). DarkKm là km mỗi sói
+	// còn sống cần để mở đặc quyền trong đêm; 0 là mặc định 1 km.
+	Dark   []DarkPower `json:"dark,omitempty"`
+	DarkKm float64     `json:"darkKm,omitempty"`
 }
 
 // Schedule: mỗi ngày Rounds vòng nối nhau, vòng đầu mở đêm lúc StartHour giờ
@@ -159,6 +163,9 @@ func (c Config) Validate() error {
 		if slices.Contains(c.Extended[:i], r) {
 			return fmt.Errorf("vai mở rộng %q bị bật hai lần", r)
 		}
+	}
+	if err := c.validateDark(); err != nil {
+		return err
 	}
 	for r, km := range c.SkillKm {
 		if !kmRole(r) {

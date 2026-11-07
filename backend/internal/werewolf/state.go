@@ -98,12 +98,21 @@ type State struct {
 
 	Hunter *HunterTurn `json:"hunter,omitempty"`
 	Winner Team        `json:"winner,omitempty"`
+
+	// Dark là đặc quyền phe Sói chốt lúc hết pha Đêm, có tác dụng tới lần chốt
+	// biểu quyết của vòng đó. DarkUsed đếm lượt đã dùng cả ván; Cloaked là sói
+	// đã được Tàng Hình. Delayed là người bị Cắn Im Lặng, chết sau biểu quyết.
+	Dark     *DarkUse          `json:"dark,omitempty"`
+	DarkUsed map[DarkPower]int `json:"darkUsed,omitempty"`
+	Cloaked  []string          `json:"cloaked,omitempty"`
+	Delayed  string            `json:"delayed,omitempty"`
 }
 
 // NewState dựng ván lúc Start, sau khi đã chia vai. Đêm 1 là FirstNight(start).
 func NewState(seed Seed, cfg Config, roles map[string]Role, start time.Time) *State {
 	cfg.Disabled = append([]Role(nil), cfg.Disabled...) // chụp cấu hình (R10)
 	cfg.Extended = append([]Role(nil), cfg.Extended...)
+	cfg.Dark = append([]DarkPower(nil), cfg.Dark...)
 	st := &State{Config: cfg, Seed: seed, Round: 1, Phase: PhaseSetup, NightAt: cfg.FirstNight(start), Players: map[string]*Player{}, SavePotion: true, PoisonPotion: true}
 	for uid, r := range roles {
 		st.Players[uid] = &Player{Role: r, Alive: true}
@@ -139,6 +148,17 @@ func (st *State) clone() *State {
 		h := *st.Hunter
 		c.Hunter = &h
 	}
+	if st.Dark != nil {
+		d := *st.Dark
+		c.Dark = &d
+	}
+	if st.DarkUsed != nil {
+		c.DarkUsed = make(map[DarkPower]int, len(st.DarkUsed))
+		for k, v := range st.DarkUsed {
+			c.DarkUsed[k] = v
+		}
+	}
+	c.Cloaked = append([]string(nil), st.Cloaked...)
 	return &c
 }
 
@@ -293,8 +313,10 @@ func (st *State) Winners() []string {
 }
 
 // Peek là kết quả soi của tiên tri: Sói hay Dân. Sói đang yêu vẫn ra Sói (R2).
+// Đặc quyền đã chốt của đêm (Tàng Hình, Vu Khống) đổi kết quả; trong pha Đêm
+// đặc quyền chưa chốt, caller dùng PeekWith với PendingDark.
 func (st *State) Peek(target string) Team {
-	return Side(st.role(target))
+	return st.PeekWith(target, st.Dark)
 }
 
 // Side là phe lộ ra khi chỉ nói Sói hay Dân chứ không nói vai: tiên tri soi,

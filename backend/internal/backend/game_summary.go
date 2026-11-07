@@ -140,13 +140,13 @@ func summaryMoment(phaseKey string) (title string, night bool, n int) {
 // và phiếu bị huỷ không kể: đã có câu cắn, câu lên giàn và câu mất phiếu.
 var summaryVoidKinds = map[werewolf.Kind]string{
 	werewolf.KindGuard: "bảo vệ", werewolf.KindSeerPeek: "soi", werewolf.KindWitchSave: "cứu",
-	werewolf.KindWitchPoison: "đầu độc", werewolf.KindCupidPair: "ghép đôi",
+	werewolf.KindWitchPoison: "đầu độc", werewolf.KindCupidPair: "ghép đôi", werewolf.KindWolfDark: "đặc quyền Sói",
 }
 
 var summaryVoidReasons = map[string]string{
 	werewolf.VoidActorDead: "người chọn đã chết", werewolf.VoidTargetDead: "người được chọn đã chết",
 	werewolf.VoidNoKm: "chưa đủ km", werewolf.VoidRepeat: "trùng người của đêm trước", werewolf.VoidNoPotion: "đã hết bình",
-	werewolf.VoidGameOver: "ván đã hết",
+	werewolf.VoidGameOver: "ván đã hết", werewolf.VoidNoBite: "đêm đó sói không cắn ai",
 }
 
 // eventIcons: icon của các câu lấy thẳng từ eventLine (eventItem).
@@ -210,9 +210,13 @@ func (b *summaryBuilder) add(title string, night bool, line GameSummaryLine) {
 // Lượt đã bị huỷ ở chính bước đó thì bỏ, phần huỷ do câu void kể.
 func (b *summaryBuilder) nightChoices(step summaryStep, title string) {
 	voided := map[string]bool{}
+	var dark *werewolf.DarkUse // Tàng Hình, Vu Khống chốt cùng bước, đổi kết quả soi
 	for _, e := range step.Events {
-		if e.Kind == werewolf.EventVoid {
+		switch e.Kind {
+		case werewolf.EventVoid:
 			voided[e.UID+"/"+string(e.Action)] = true
+		case werewolf.EventDark:
+			dark = &werewolf.DarkUse{Power: werewolf.DarkPower(e.Reason), Target: e.UID}
 		}
 	}
 	var guard, seer, save []werewolf.Action
@@ -239,7 +243,7 @@ func (b *summaryBuilder) nightChoices(step summaryStep, title string) {
 	}
 	for _, a := range seer {
 		side := "Dân"
-		if b.st.Peek(a.Targets[0]) == werewolf.TeamWolves {
+		if b.st.PeekWith(a.Targets[0], dark) == werewolf.TeamWolves {
 			side = "Sói"
 			b.seerFinds[a.Actor]++
 		}
@@ -269,6 +273,12 @@ func (b *summaryBuilder) event(e werewolf.Event, title string, night bool) {
 		text := "Sói không cắn ai."
 		if e.UID != "" {
 			text = fmt.Sprintf("Sói cắn %s.", b.name(e.UID))
+		}
+		b.add(title, night, GameSummaryLine{Icon: "bite", Text: text})
+	case werewolf.EventDark:
+		text := fmt.Sprintf("Sói dùng %s.", darkTexts[werewolf.DarkPower(e.Reason)][0])
+		if e.UID != "" {
+			text = fmt.Sprintf("Sói dùng %s lên %s.", darkTexts[werewolf.DarkPower(e.Reason)][0], b.name(e.UID))
 		}
 		b.add(title, night, GameSummaryLine{Icon: "bite", Text: text})
 	case werewolf.EventSurvived:

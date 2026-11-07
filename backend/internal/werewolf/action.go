@@ -17,6 +17,9 @@ const (
 	KindHunterShoot Kind = "hunter_shoot"
 	KindCupidPair   Kind = "cupid_pair"
 	KindNominate    Kind = "nominate"
+	// KindWolfDark: sói chọn đặc quyền của đêm (dark.go). Choice là đặc quyền,
+	// Targets tuỳ đặc quyền (0 hoặc 1 người).
+	KindWolfDark Kind = "wolf_dark"
 	// Mỗi người lên giàn có một phiên biểu quyết riêng, mỗi phiên một kind (để
 	// mỗi người một doc action cho mỗi phiên, và app gửi theo kind). Phiên đầu
 	// giữ "vote" của bản chỉ treo một người.
@@ -82,6 +85,7 @@ type kindRule struct {
 	role       Role // rỗng: ai còn sống cũng được
 	phases     []Phase
 	targets    int
+	anyTargets bool // số mục tiêu tuỳ lựa chọn, validateKind kiểm
 	changeable bool // đổi hoặc bỏ được trong cửa sổ (bảng 1.3)
 	needsKm    bool // km của chính người đó ≥ X
 }
@@ -95,6 +99,7 @@ var kindRules = map[Kind]kindRule{
 	KindHunterShoot: {role: Hunter, targets: 1}, // mở theo State.Hunter, không theo phase
 	KindCupidPair:   {role: Cupid, phases: []Phase{PhaseSetup, PhaseNight}, targets: 2},
 	KindNominate:    {phases: []Phase{PhaseDay}, targets: 1, changeable: true},
+	KindWolfDark:    {role: Wolf, phases: []Phase{PhaseNight}, anyTargets: true, changeable: true},
 	KindVote:        {phases: []Phase{PhaseTrial}, changeable: true},
 	KindVote2:       {phases: []Phase{PhaseTrial}, changeable: true},
 	KindVote3:       {phases: []Phase{PhaseTrial}, changeable: true},
@@ -116,7 +121,7 @@ func Validate(st *State, a Action, mine []Action, now time.Time) error {
 		}
 		return nil
 	}
-	if len(a.Targets) != rule.targets {
+	if !rule.anyTargets && len(a.Targets) != rule.targets {
 		return ErrInvalidTarget
 	}
 	seen := map[string]bool{}
@@ -170,6 +175,8 @@ func validateKind(st *State, a Action, mine []Action) error {
 		if findAction(mine, KindWitchSave) != nil && t == st.Bitten {
 			return ErrInvalidTarget
 		}
+	case KindWolfDark:
+		return validateDark(st, a)
 	case KindHunterShoot, KindNominate:
 		if t == a.Actor {
 			return ErrInvalidTarget

@@ -166,7 +166,11 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 			"lastTgUpdateId": max(lastTg, req.TgUpdateID), "phaseKey": st.PhaseKey(), "updatedAt": req.ReceivedAt,
 		}
 		if req.Kind == werewolf.KindSeerPeek {
-			res.Peek = st.Peek(req.Targets[0])
+			dark, err := pendingDark(tx, game, st)
+			if err != nil {
+				return err
+			}
+			res.Peek = st.PeekWith(req.Targets[0], dark)
 			doc["peek"] = string(res.Peek)
 		}
 		// Set ghi đè cả doc, nên voidReason của lựa chọn cũ (nếu có) cũng mất.
@@ -196,6 +200,39 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 	return res, err
 }
 
+// pendingDark là đặc quyền phe Sói có tác dụng lên lượt soi lúc này. Tiên tri
+// soi trong pha Đêm, lúc đặc quyền chưa chốt, nên lấy theo lựa chọn đang chờ của
+// sói còn sống (werewolf.PendingDark); ngoài pha Đêm thì theo bản đã chốt. Ván
+// không bật Tàng Hình hay Vu Khống thì không đọc gì thêm.
+func pendingDark(tx *firestore.Transaction, game *firestore.DocumentRef, st *werewolf.State) (*werewolf.DarkUse, error) {
+	if st.Phase != werewolf.PhaseNight {
+		return st.Dark, nil
+	}
+	if !slices.Contains(st.Config.Dark, werewolf.DarkCloak) && !slices.Contains(st.Config.Dark, werewolf.DarkFrame) {
+		return nil, nil
+	}
+	var refs []*firestore.DocumentRef
+	for _, uid := range sortedPlayers(st) {
+		if p := st.Players[uid]; p.Alive && p.Role == werewolf.Wolf {
+			refs = append(refs, actionRef(game, st.Round, uid, werewolf.KindWolfDark))
+		}
+	}
+	docs, err := tx.GetAll(refs)
+	if err != nil {
+		return nil, err
+	}
+	var acts []werewolf.Action
+	for _, d := range docs {
+		if !d.Exists() {
+			continue
+		}
+		if a, ok := decodeAction(d.Data()); ok {
+			acts = append(acts, a)
+		}
+	}
+	return werewolf.PendingDark(st, acts), nil
+}
+
 // actionMessages: lựa chọn riêng thì sửa tin DM của người đó; đề cử và biểu
 // quyết là công khai nên sửa tin đếm phiếu trong topic (W2b). Các tin này chỉ
 // chở (uid, kind), lúc gửi mới đọc lựa chọn đang lưu. Lựa chọn cắn còn vào chat
@@ -204,6 +241,9 @@ func actionMessages(a werewolf.Action) []gameMsg {
 	kind := map[string]any{"kind": string(a.Kind)}
 	if groupKind(a.Kind) {
 		return []gameMsg{{ChatKey: chatGroup, Template: tplTally, Data: kind}}
+	}
+	if appOnlyKind(a.Kind) {
+		return nil
 	}
 	return []gameMsg{{ChatKey: dmChat(a.Actor), Template: tplChoice, Data: kind}}
 }

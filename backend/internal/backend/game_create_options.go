@@ -97,8 +97,9 @@ var gamePresets = []GamePreset{
 			"Mỗi ngày một vòng, mở lúc 22h.",
 			"Không ai mất phiếu; người chạy nhiều nhất được tính 2 phiếu.",
 			"Tiên tri, Bảo vệ, Phù thuỷ, Thợ săn mỗi ngày cần 2 km để dùng kỹ năng. Sói cắn không cần km.",
+			"Phe Sói có Tàng Hình và Vu Khống để lừa Tiên tri, mở khi cả phe chạy đủ 1 km mỗi sói.",
 		},
-		Settings: map[string]any{string(werewolf.Elder): true, "vote": string(werewolf.VoteTop), "skillKm": 2.0}},
+		Settings: map[string]any{string(werewolf.Elder): true, "vote": string(werewolf.VoteTop), "skillKm": 2.0, "darkCloak": true, "darkFrame": true}},
 	{Key: "classic", Label: "Cổ điển", Icon: "moon",
 		Summary: "Ma Sói thường, không cần chạy",
 		Details: []string{
