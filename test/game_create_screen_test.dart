@@ -566,6 +566,7 @@ Map<String, dynamic> _createBody(FakeGameBackend backend) =>
 
 void main() {
   late FakeGameBackend backend;
+  late List<Uri> opened;
 
   Future<void> pumpScreen(WidgetTester tester) async {
     // Form dài hơn màn test mặc định 800x600.
@@ -577,7 +578,12 @@ void main() {
       routes: [
         GoRoute(
           path: '/games/new',
-          builder: (context, state) => const GameCreateScreen(),
+          builder: (context, state) => GameCreateScreen(
+            openUrl: (uri) async {
+              opened.add(uri);
+              return true;
+            },
+          ),
         ),
         GoRoute(
           path: '/games/:id',
@@ -602,6 +608,7 @@ void main() {
 
   setUp(() {
     backend = FakeGameBackend(() => DateTime.utc(2026, 10, 17, 14));
+    opened = [];
   });
 
   testWidgets('only admins get the form', (tester) async {
@@ -1413,6 +1420,9 @@ void main() {
       await tester.pump();
       // Ván thật: tab Giao tiếp không có công tắc ván thử.
       expect(find.text('Ván thử'), findsNothing);
+      // Backend chưa có bot ván (404): chỉ ô topic PSC như trước.
+      await tester.pump();
+      expect(find.text('Tải lại bot ván'), findsNothing);
       await tester.enterText(
         find.widgetWithText(TextField, 'ID topic (không bắt buộc)'),
         '42',
@@ -1456,6 +1466,103 @@ void main() {
       final body = _createBody(backend);
       expect((body['settings'] as Map)['telegram'], isFalse);
       expect(body.containsKey('threadId'), isFalse);
+    });
+
+    // Chỉ topic bot ván đã xác nhận mới chọn được; group bot chưa là admin
+    // thì không chọn được topic của nó.
+    testWidgets('the talk tab sends a topic the game bot confirmed', (
+      tester,
+    ) async {
+      backend.list = _talkList();
+      backend.gameTelegram = {
+        'telegramLinked': true,
+        'bot': {
+          'username': 'van_boss_bot',
+          'addUrl': 'https://t.me/van_boss_bot?startgroup=van',
+        },
+        'chats': [
+          {
+            'chatId': '-100777',
+            'title': 'CLB Chạy Đêm',
+            'admin': true,
+            'forum': true,
+            'topics': [
+              {'threadId': 42, 'name': 'Ma Sói'},
+            ],
+          },
+          {
+            'chatId': '-100888',
+            'title': 'Nhóm Cũ',
+            'admin': false,
+            'forum': false,
+            'topics': [
+              {'threadId': 0},
+            ],
+          },
+        ],
+      };
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Giao tiếp'));
+      for (var i = 0; i < 3; i++) {
+        await tester.pump();
+      }
+      // Đã gõ topic PSC rồi đổi ý: topic PSC không đi theo.
+      await tester.enterText(
+        find.widgetWithText(TextField, 'ID topic (không bắt buộc)'),
+        '5',
+      );
+      await tester.tap(find.text('Ma Sói'));
+      await tester.pump();
+      await tester.ensureVisible(find.text('Cả group'));
+      await tester.tap(find.text('Cả group'));
+      await tester.pump();
+      expect(find.text('ID topic (không bắt buộc)'), findsNothing);
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+      final body = _createBody(backend);
+      expect(body['telegram'], {'chatId': '-100777', 'threadId': 42});
+      expect(body.containsKey('threadId'), isFalse);
+    });
+
+    testWidgets('no game bot yet: the talk tab opens Telegram to create one', (
+      tester,
+    ) async {
+      backend.list = _talkList();
+      backend.gameTelegram = {
+        'telegramLinked': true,
+        'bot': null,
+        'chats': null,
+      };
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Giao tiếp'));
+      for (var i = 0; i < 3; i++) {
+        await tester.pump();
+      }
+      await tester.ensureVisible(find.text('Tạo bot ván'));
+      await tester.tap(find.text('Tạo bot ván'));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('POST /v1/games/telegram/bot'));
+      expect(opened, [Uri.parse(backend.gameBotCreateUrl)]);
+    });
+
+    testWidgets('game bot status fails: PSC topic stays, reload offered', (
+      tester,
+    ) async {
+      backend.list = _talkList();
+      backend.failures['GET /v1/games/telegram'] = (
+        500,
+        {'error': 'internal_error', 'message': 'Request failed'},
+      );
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Giao tiếp'));
+      for (var i = 0; i < 3; i++) {
+        await tester.pump();
+      }
+      expect(find.text('ID topic (không bắt buộc)'), findsOneWidget);
+      expect(find.text('Tải lại bot ván'), findsOneWidget);
     });
 
     testWidgets('the bot row edits where the bot posts in a sheet', (

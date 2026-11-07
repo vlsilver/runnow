@@ -241,11 +241,13 @@ class RunNowApiClient {
     int? threadId,
     double? kmPerUnit,
     Map<String, Object>? settings,
+    GameTelegramTarget? telegram,
   }) async {
     final response = await _send(
       'POST',
       '/v1/games',
       body: {
+        'telegram': ?telegram?.toJson(),
         'roles': roles,
         'registrationDeadline': ?registrationDeadline
             ?.toUtc()
@@ -259,6 +261,18 @@ class RunNowApiClient {
       },
     );
     return _jsonObject(response)['id'] as String;
+  }
+
+  /// Bot ván, group và topic bot đã xác nhận. 404 khi backend chưa có bot ván.
+  Future<GameTelegram> gameTelegram() async {
+    final response = await _send('GET', '/v1/games/telegram');
+    return GameTelegram.fromJson(_jsonObject(response));
+  }
+
+  /// Link Telegram để tạo bot ván; Telegram báo về thì backend nối bot.
+  Future<String> startGameBot() async {
+    final response = await _send('POST', '/v1/games/telegram/bot');
+    return _jsonObject(response)['createUrl'] as String;
   }
 
   Future<GameRegistration> registerForGame(String gameId) async {

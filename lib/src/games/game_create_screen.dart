@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_create_tabs.dart';
+import 'package:myrun/src/games/game_telegram_picker.dart';
 import 'package:myrun/src/games/game_skill_cards.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_providers.dart';
@@ -23,7 +24,10 @@ import 'package:myrun/src/widgets/run_now_loading.dart';
 /// kiểu ván ở backend thì app không phải sửa. Backend chưa gửi tab thì vẽ danh
 /// sách tuỳ chọn như cũ.
 class GameCreateScreen extends ConsumerStatefulWidget {
-  const GameCreateScreen({super.key});
+  const GameCreateScreen({super.key, this.openUrl});
+
+  /// Thay launchUrl trong test (mở Telegram để tạo, mời bot ván).
+  final Future<bool> Function(Uri uri)? openUrl;
 
   @override
   ConsumerState<GameCreateScreen> createState() => _GameCreateScreenState();
@@ -58,6 +62,9 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   bool _testMode = false;
   final _chatId = TextEditingController();
   final _threadId = TextEditingController();
+
+  /// Topic bot ván đã xác nhận mà ván đăng vào; null là group PSC.
+  GameTelegramTarget? _target;
   bool _working = false;
   String? _error;
 
@@ -253,7 +260,9 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
 
   Future<void> _create(GameList list) async {
     final telegram = _telegramOn(list);
-    final threadText = telegram ? _threadId.text.trim() : '';
+    // Chọn topic bot ván thì ô topic PSC không dùng tới.
+    final target = telegram && _hasTalkTab(list) ? _target : null;
+    final threadText = telegram && target == null ? _threadId.text.trim() : '';
     final threadId = threadText.isEmpty ? null : int.tryParse(threadText);
     if (threadText.isNotEmpty && threadId == null) {
       setState(() => _error = 'ID topic phải là số.');
@@ -281,6 +290,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
             chatId: _testMode && telegram ? _chatId.text.trim() : null,
             threadId: threadId,
             settings: _settingsToSend(list),
+            telegram: target,
           );
       ref.invalidate(gameListProvider);
       if (mounted) context.pushReplacement('/games/$id');
@@ -716,7 +726,15 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     out.addAll(_sections(list, live, values));
     // Tab Giao tiếp: topic bot đăng, chỉ khi bật Telegram.
     if (group.key == 'talk' && values['telegram'] != false) {
-      out.addAll(_postFields(testMode: false));
+      out.add(
+        GameTelegramPicker(
+          selected: _target,
+          onSelected: (target) => setState(() => _target = target),
+          pscFields: _postFields(testMode: false),
+          enabled: !_working,
+          openUrl: widget.openUrl,
+        ),
+      );
     }
     // Tab Lịch luôn có đăng ký và bắt đầu; lời giải thích giờ mở của ván km
     // nằm ở "Là gì?" của tab Vòng chơi.

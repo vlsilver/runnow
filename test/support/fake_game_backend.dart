@@ -31,6 +31,10 @@ class FakeGameBackend {
   /// Body của `GET /v1/games`.
   Map<String, dynamic> list = {'items': []};
 
+  /// GET /v1/games/telegram; null trả 404 như backend chưa có bot ván.
+  Map<String, dynamic>? gameTelegram;
+  String gameBotCreateUrl = 'https://t.me/newbot/Run3IBot/van_boss_bot';
+
   /// Trả cho `start?dryRun=true`.
   Map<String, dynamic> startPreview = {};
 
@@ -58,7 +62,14 @@ class FakeGameBackend {
         return _json(error, status);
       }
       Object body;
-      if (path == '/v1/games') {
+      if (path == '/v1/games/telegram') {
+        // null: backend chưa có bot ván.
+        final status = gameTelegram;
+        if (status == null) return _json({'error': 'not_found'}, 404);
+        body = status;
+      } else if (path == '/v1/games/telegram/bot') {
+        body = {'createUrl': gameBotCreateUrl};
+      } else if (path == '/v1/games') {
         body = request.method == 'POST' ? {'id': 'g9'} : list;
       } else if (path.endsWith('/start')) {
         if (request.url.queryParameters['dryRun'] == 'true') {

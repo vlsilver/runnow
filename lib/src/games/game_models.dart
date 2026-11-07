@@ -1738,6 +1738,113 @@ class TelegramLinkStatus {
   final bool inPsc;
 }
 
+/// Bot ván của chủ phòng và các group, topic bot đã xác nhận
+/// (GET /v1/games/telegram). Group và topic chỉ có khi Telegram báo cho bot:
+/// bot được thêm vào group, chủ gõ /van trong topic.
+class GameTelegram {
+  const GameTelegram({
+    required this.telegramLinked,
+    required this.bot,
+    required this.chats,
+  });
+
+  factory GameTelegram.fromJson(Map<String, dynamic> json) {
+    return GameTelegram(
+      telegramLinked: json['telegramLinked'] == true,
+      bot: _obj(json['bot'], GameTelegramBot.fromJson),
+      chats: _list(json['chats'], GameTelegramChat.fromJson),
+    );
+  }
+
+  final bool telegramLinked;
+  final GameTelegramBot? bot;
+  final List<GameTelegramChat> chats;
+}
+
+class GameTelegramBot {
+  const GameTelegramBot({
+    required this.username,
+    required this.setupError,
+    required this.addUrl,
+  });
+
+  factory GameTelegramBot.fromJson(Map<String, dynamic> json) {
+    return GameTelegramBot(
+      username: _string(json['username']),
+      setupError: _optString(json['setupError']),
+      addUrl: _string(json['addUrl']),
+    );
+  }
+
+  final String username;
+  final String? setupError;
+
+  /// Link mời bot vào group làm admin.
+  final String addUrl;
+}
+
+class GameTelegramChat {
+  const GameTelegramChat({
+    required this.chatId,
+    required this.title,
+    required this.admin,
+    required this.forum,
+    required this.topics,
+  });
+
+  factory GameTelegramChat.fromJson(Map<String, dynamic> json) {
+    return GameTelegramChat(
+      chatId: _string(json['chatId']),
+      title: _string(json['title']),
+      admin: json['admin'] == true,
+      forum: json['forum'] == true,
+      topics: _list(json['topics'], GameTelegramTopic.fromJson),
+    );
+  }
+
+  final String chatId;
+  final String title;
+
+  /// Bot là admin của group; chưa là admin thì tạo ván vào đây bị từ chối.
+  final bool admin;
+  final bool forum;
+  final List<GameTelegramTopic> topics;
+}
+
+class GameTelegramTopic {
+  const GameTelegramTopic({required this.threadId, required this.name});
+
+  factory GameTelegramTopic.fromJson(Map<String, dynamic> json) {
+    return GameTelegramTopic(
+      threadId: _int(json['threadId']),
+      name: _optString(json['name']),
+    );
+  }
+
+  /// 0 là General (hay cả group khi group không chia topic).
+  final int threadId;
+  final String? name;
+}
+
+/// Chỗ ván đăng, gửi trong POST /v1/games: group và topic bot ván đã xác nhận.
+class GameTelegramTarget {
+  const GameTelegramTarget({required this.chatId, required this.threadId});
+
+  final String chatId;
+  final int threadId;
+
+  Map<String, Object> toJson() => {'chatId': chatId, 'threadId': threadId};
+
+  @override
+  bool operator ==(Object other) =>
+      other is GameTelegramTarget &&
+      other.chatId == chatId &&
+      other.threadId == threadId;
+
+  @override
+  int get hashCode => Object.hash(chatId, threadId);
+}
+
 // null hay vắng mặt thì về giá trị rỗng. Có mặt mà sai kiểu là backend lệch
 // hợp đồng, nên để cast ném lỗi chứ không đổi thành rỗng.
 
