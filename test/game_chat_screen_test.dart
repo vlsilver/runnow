@@ -267,6 +267,32 @@ void main() {
     await close(tester);
   });
 
+  // Phòng chung có bot của ván: tin bot hiện tên bot, không báo cáo được;
+  // chữ mờ trong ô nhập là câu backend gửi.
+  testWidgets('shows the game bot and the backend hint', (tester) async {
+    final page = backend.chatPages['']!;
+    backend.chatPages[''] = {
+      ...page,
+      'hint': 'Gọi “Cú Đêm” để bot trả lời',
+      'messages': [
+        {..._msg(4, 'bot', 'Chào cả nhà'), 'name': 'Cú Đêm', 'bot': true},
+        ...(page['messages'] as List),
+      ],
+    };
+    await pumpScreen(tester);
+
+    expect(find.text('Cú Đêm'), findsOneWidget);
+    expect(find.byIcon(Icons.smart_toy_outlined), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).decoration!.hintText,
+      'Gọi “Cú Đêm” để bot trả lời',
+    );
+    await tester.longPress(find.text('Chào cả nhà'));
+    await tester.pumpAndSettle();
+    expect(find.text('Báo cáo tin này'), findsNothing);
+    await close(tester);
+  });
+
   testWidgets('covers the chat while the app is not in front', (tester) async {
     await pumpScreen(tester);
     // Sheet báo cáo có tên đồng đội nên cũng phải bị che.

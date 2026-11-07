@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 
 /// Body giống backend thật: UTF-8, `Content-Type: application/json` không kèm
@@ -39,6 +40,46 @@ void main() {
     expect(captured.headers['Authorization'], 'Bearer firebase-token');
     expect(status.connected, isTrue);
     expect(status.athleteId, '42');
+  });
+
+  test('mở phòng solo gửi kind, tuyến và không gửi tên', () async {
+    late http.Request captured;
+    final client = RunNowApiClient(
+      baseUri: Uri.parse('https://api.example.test'),
+      tokenProvider: ({required forceRefresh}) async => 'firebase-token',
+      httpClient: MockClient((request) async {
+        captured = request;
+        return _json({'id': 'room-1'}, 201);
+      }),
+    );
+    addTearDown(client.close);
+
+    final id = await client.createRunRoom(
+      privacy: 'private',
+      maxRunners: 8,
+      kind: 'solo',
+      route: RunContractRoute(
+        points: const [
+          RunContractRoutePoint(latitude: 21.05, longitude: 105.82),
+          RunContractRoutePoint(latitude: 21.06, longitude: 105.83),
+        ],
+        distanceMeters: 1500,
+      ),
+    );
+
+    expect(id, 'room-1');
+    expect(jsonDecode(captured.body), {
+      'privacy': 'private',
+      'maxRunners': 8,
+      'kind': 'solo',
+      'route': {
+        'points': [
+          {'lat': 21.05, 'lng': 105.82},
+          {'lat': 21.06, 'lng': 105.83},
+        ],
+        'distanceMeters': 1500,
+      },
+    });
   });
 
   test('retries once with a refreshed Firebase token after 401', () async {
@@ -605,6 +646,23 @@ void main() {
         }).tgUsername,
         isNull,
       );
+    });
+
+    test('push token goes to PUT then DELETE /v1/push-token', () async {
+      final client = gameClient((_) => {'ok': true});
+
+      await client.registerPushToken('fcm-token-1', 'ios');
+      await client.unregisterPushToken('fcm-token-1');
+
+      expect(requests[0].method, 'PUT');
+      expect(requests[0].url.path, '/v1/push-token');
+      expect(jsonDecode(requests[0].body), {
+        'token': 'fcm-token-1',
+        'platform': 'ios',
+      });
+      expect(requests[1].method, 'DELETE');
+      expect(requests[1].url.path, '/v1/push-token');
+      expect(jsonDecode(requests[1].body), {'token': 'fcm-token-1'});
     });
   });
 }

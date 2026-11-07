@@ -12,10 +12,13 @@ import 'package:url_launcher/url_launcher.dart';
 /// App Store Guideline 4.8: app chỉ dùng đăng nhập bên thứ ba (Google) làm
 /// cách đăng nhập duy nhất sẽ bị từ chối.
 class AuthController extends ChangeNotifier {
-  AuthController(this._auth, this._firestore);
+  AuthController(this._auth, this._firestore, {this.beforeSignOut});
 
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
+
+  /// Việc cần ID token của người đang đăng nhập, chạy ngay trước khi đăng xuất.
+  final Future<void> Function()? beforeSignOut;
   bool loading = false;
   String? errorMessage;
 
@@ -139,6 +142,7 @@ class AuthController extends ChangeNotifier {
 
   Future<void> signOut() async {
     await _run(() async {
+      await beforeSignOut?.call();
       try {
         await GoogleSignIn.instance.signOut();
       } catch (_) {

@@ -1,11 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/achievements/run_card_collection.dart';
+import 'package:myrun/src/achievements/run_card_providers.dart';
+import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/admin/admin_screen.dart';
+import 'package:myrun/src/agents/agent_blocks_screen.dart';
 import 'package:myrun/src/agents/agent_chat_screen.dart';
 import 'package:myrun/src/agents/agent_group_facts_screen.dart';
+import 'package:myrun/src/agents/agent_images_screen.dart';
 import 'package:myrun/src/agents/agent_screen.dart';
+import 'package:myrun/src/agents/agent_setup_screen.dart';
 import 'package:myrun/src/app_update.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_chat_screen.dart';
@@ -15,11 +23,18 @@ import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/health_sync.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/rooms/live_screen.dart';
+import 'package:myrun/src/rooms/run_room_screen.dart';
 import 'package:myrun/src/screens/activity_detail_screen.dart';
+import 'package:myrun/src/screens/club_cards_screen.dart';
+import 'package:myrun/src/screens/club_runs_screen.dart';
 import 'package:myrun/src/screens/club_screen.dart';
 import 'package:myrun/src/screens/journal_screen.dart';
+import 'package:myrun/src/screens/activity_hub_screen.dart';
 import 'package:myrun/src/screens/journey_hub_screen.dart';
 import 'package:myrun/src/screens/journey_screen.dart';
+import 'package:myrun/src/screens/keo_hub_screen.dart';
+import 'package:myrun/src/screens/live_viewer_screen.dart';
 import 'package:myrun/src/screens/member_profile_screen.dart';
 import 'package:myrun/src/screens/onboarding_screen.dart';
 import 'package:myrun/src/screens/public_activity_screen.dart';
@@ -28,14 +43,14 @@ import 'package:myrun/src/screens/run_contract_detail_screen.dart';
 import 'package:myrun/src/training_plan/coach_detail_screen.dart';
 import 'package:myrun/src/screens/run_contract_home_screen.dart';
 import 'package:myrun/src/screens/run_contract_route_create_screen.dart';
-import 'package:myrun/src/screens/settings_screen.dart';
+import 'package:myrun/src/screens/profile_screen.dart';
 import 'package:myrun/src/screens/tracking_screen.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/web_layout.dart';
+import 'package:myrun/src/widgets/activity_overview.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
-import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -46,7 +61,7 @@ final _router = GoRouter(
     StatefulShellRoute.indexedStack(
       builder: (context, state, shell) => _HealthSyncTrigger(
         child: AppUpdatePrompt(
-          child: _Scaffold(shell: shell, location: state.uri.path),
+          child: _Scaffold(shell: shell),
         ),
       ),
       branches: [
@@ -54,7 +69,7 @@ final _router = GoRouter(
           routes: [
             GoRoute(
               path: '/',
-              builder: (context, state) => const RunContractHomeScreen(),
+              builder: (context, state) => const KeoHubScreen(),
             ),
           ],
         ),
@@ -78,7 +93,7 @@ final _router = GoRouter(
           routes: [
             GoRoute(
               path: '/profile',
-              builder: (context, state) => const JourneyHubScreen(),
+              builder: (context, state) => const ActivityHubScreen(),
               routes: [
                 GoRoute(
                   path: 'journey/:campaignId',
@@ -92,11 +107,11 @@ final _router = GoRouter(
                 ),
                 GoRoute(
                   path: 'journal',
-                  builder: (context, state) => const JournalScreen(),
+                  redirect: (context, state) => '/journal',
                 ),
                 GoRoute(
                   path: 'stats',
-                  redirect: (context, state) => '/profile/journal',
+                  redirect: (context, state) => '/journal',
                 ),
               ],
             ),
@@ -105,12 +120,23 @@ final _router = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: '/settings',
-              builder: (context, state) => const SettingsScreen(),
+              path: '/me',
+              builder: (context, state) => const ProfileScreen(),
               routes: [
+                // Cài đặt từng là màn riêng, giờ nằm ngay trong tab Hồ sơ.
                 GoRoute(
-                  path: 'profile',
-                  redirect: (context, state) => '/profile',
+                  path: 'settings',
+                  redirect: (context, state) => '/me',
+                ),
+                GoRoute(
+                  path: 'cards',
+                  builder: (context, state) => const RunCardCollectionScreen(),
+                ),
+                // Màn MyBot tự vẽ tiêu đề to; AppBar chỉ để có nút back.
+                GoRoute(
+                  path: 'mybot',
+                  builder: (context, state) =>
+                      Scaffold(appBar: AppBar(), body: const AgentScreen()),
                 ),
               ],
             ),
@@ -128,7 +154,33 @@ final _router = GoRouter(
         ),
       ],
     ),
-    GoRoute(path: '/journal', redirect: (context, state) => '/profile/journal'),
+    // Nhật ký và Hành trình của chính mình mở được từ nhiều tab (Hoạt động,
+    // Club), nên nằm ngoài shell: push đè lên tab đang đứng và luôn có
+    // nút back. Route con của /profile chỉ giữ cho link cũ.
+    GoRoute(
+      path: '/journal',
+      builder: (context, state) => const JournalScreen(),
+    ),
+    GoRoute(
+      path: '/journey',
+      builder: (context, state) => const JourneyHubScreen(),
+      routes: [
+        GoRoute(
+          path: ':campaignId',
+          builder: (context, state) => JourneyScreen(
+            campaignId:
+                parseJourneyCampaignId(state.pathParameters['campaignId']) ??
+                JourneyCampaignId.xuyenViet,
+          ),
+        ),
+      ],
+    ),
+    // Cài đặt từng là tab riêng ở /settings, giờ nằm trong tab Hồ sơ.
+    GoRoute(path: '/settings', redirect: (context, state) => '/me'),
+    GoRoute(
+      path: '/settings/profile',
+      redirect: (context, state) => '/profile',
+    ),
     GoRoute(
       path: '/activity/:id',
       builder: (context, state) =>
@@ -149,6 +201,33 @@ final _router = GoRouter(
       path: '/tracking/live',
       builder: (context, state) =>
           TrackingScreen(contractId: state.extra as String?),
+    ),
+    // Chạy trong phòng: ngoài shell như /tracking/live, buổi live gắn roomId
+    // để người trong phòng thấy nhau.
+    GoRoute(
+      path: '/tracking/room/:roomId',
+      builder: (context, state) =>
+          TrackingScreen(roomId: state.pathParameters['roomId']),
+    ),
+    // Link mời (https://threei.run/rooms/{id}) mở thẳng route này trên web.
+    GoRoute(
+      path: '/rooms/:id',
+      builder: (context, state) =>
+          RunRoomScreen(roomId: state.pathParameters['id']!),
+    ),
+    GoRoute(path: '/live', builder: (context, state) => const LiveScreen()),
+    GoRoute(
+      path: '/live/:sessionId',
+      builder: (context, state) =>
+          LiveViewerScreen(sessionId: state.pathParameters['sessionId']!),
+    ),
+    GoRoute(
+      path: '/club-runs',
+      builder: (context, state) => const ClubRunsScreen(),
+    ),
+    GoRoute(
+      path: '/club-cards',
+      builder: (context, state) => const ClubCardsScreen(),
     ),
     GoRoute(
       path: '/club/:uid/activity/:id',
@@ -188,6 +267,10 @@ final _router = GoRouter(
     ),
     GoRoute(
       path: '/oauth',
+      builder: (context, state) => const KeoHubScreen(),
+    ),
+    GoRoute(
+      path: '/contracts',
       builder: (context, state) => const RunContractHomeScreen(),
     ),
     GoRoute(
@@ -226,7 +309,13 @@ final _router = GoRouter(
       builder: (context, state) =>
           GameDetailScreen(gameId: state.pathParameters['id']!),
     ),
-    GoRoute(path: '/agent', builder: (context, state) => const AgentScreen()),
+    // MyBot từng là tab ở /mybot, giờ nằm dưới Hồ sơ; giữ link cũ.
+    GoRoute(path: '/mybot', redirect: (context, state) => '/me/mybot'),
+    GoRoute(path: '/agent', redirect: (context, state) => '/me/mybot'),
+    GoRoute(
+      path: '/agent/setup',
+      builder: (context, state) => const AgentSetupScreen(),
+    ),
     GoRoute(
       path: '/agent/dm',
       builder: (context, state) => const AgentDMScreen(),
@@ -238,6 +327,24 @@ final _router = GoRouter(
     GoRoute(
       path: '/agent/group-facts',
       builder: (context, state) => const AgentGroupFactsScreen(),
+    ),
+    GoRoute(
+      path: '/agent/blocks',
+      builder: (context, state) => const AgentBlocksScreen(),
+    ),
+    GoRoute(
+      path: '/agent/images',
+      builder: (context, state) => const AgentImagesScreen(),
+    ),
+    GoRoute(
+      path: '/agent/memories',
+      builder: (context, state) =>
+          const AgentScreen(list: AgentListView.memories),
+    ),
+    GoRoute(
+      path: '/agent/learned',
+      builder: (context, state) =>
+          const AgentScreen(list: AgentListView.learned),
     ),
     GoRoute(
       path: '/games/:id/chat/:key',
@@ -262,6 +369,7 @@ class RunNowApp extends ConsumerWidget {
       appearance: themeController.appearance,
       darkTone: themeController.darkTone,
     );
+    final cardSkin = ref.watch(runCardSkinProvider);
     return MaterialApp.router(
       title: '3i Run',
       debugShowCheckedModeBanner: false,
@@ -277,7 +385,10 @@ class RunNowApp extends ConsumerWidget {
             : child!;
         // Nền phủ toàn màn; ràng buộc bề rộng do từng màn xử lý (shell có rail
         // riêng khi rộng, các màn nội dung tự gò cột giữa).
-        return RunNowBackdrop(child: content);
+        return RunCardSkinScope(
+          skin: cardSkin,
+          child: RunNowBackdrop(child: content),
+        );
       },
     );
   }
@@ -361,74 +472,21 @@ class _AuthenticatedSessionState extends ConsumerState<_AuthenticatedSession> {
 
   @override
   Widget build(BuildContext context) {
-    // Coordinator kèo chạy 1 lần khi user ĐÃ đăng nhập — KHÔNG gate theo Strava:
-    // user chỉ dùng Apple Health / tự-track cũng phải được auto-link + recalc + tự
-    // chốt kèo quá hạn (đa-đối-tác: ai cũng tạo/tham gia kèo, không riêng Strava).
+    // Chạy 1 lần khi user đã đăng nhập. Gán buổi chạy vào kèo, tính lại tiến độ và
+    // chốt kèo là việc của backend (/tasks/recalc-contracts); đừng làm lại ở đây vì
+    // nghe activity của user nghĩa là kéo cả route lẫn streams về máy.
     final uid = ref.watch(firebaseUserProvider).value?.uid;
     if (uid != null && !_started) {
       _started = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
+        ref.read(pushControllerProvider)?.handleTaps(_router.push);
         // Prefetch BXH ngay lúc mở app → tới lúc mở tab Club đã có sẵn, khỏi chờ
         // round-trip (số vẫn TƯƠI từ server, không phải disk-cache cũ). keepAlive
-        // giữ giá trị tới khi Club watch; stepLeaderboardDocs dùng chung Bước+Tổng.
-        ref.read(leaderboardEntriesProvider);
+        // giữ giá trị tới khi Club watch; stepLeaderboardDocs dùng chung
+        // Chạy/Đi bộ + Bước chân.
         ref.read(stepLeaderboardDocsProvider);
-        ref.read(leaderboardDocsProvider); // BXH Bơi + Gym
-        final controller = ref.read(runContractControllerProvider);
-        // Await .future để chắc kèo ĐÃ tải: coordinator chạy 1 lần lúc mở app; đọc
-        // .value lúc stream chưa emit sẽ ra rỗng → bỏ sót recalc/auto-link cả phiên.
-        List<RunContract> mine;
-        try {
-          mine =
-              [...await ref.read(myActiveContractsProvider.future)]
-                ..removeWhere((contract) => contract.completedBy(uid))
-                ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        } catch (_) {
-          return; // Firestore tạm gián đoạn — thử lại lần mở app kế tiếp.
-        }
-        if (mine.isEmpty) return;
-        // TỰ LINK buổi chạy vừa xong (chưa gán) vào kèo user tham gia — rồi vòng
-        // recalc bên dưới cộng luôn. Await .future để chắc activity đã tải. Lỗi bỏ qua.
-        try {
-          final recent = await ref.read(activitiesProvider.future);
-          if (recent.isNotEmpty) {
-            await controller.autoLinkUnassignedActivities(
-              activeContracts: mine,
-              recentActivities: recent,
-              currentUid: uid,
-            );
-          }
-        } catch (_) {}
-        for (final contract in mine) {
-          if (contract.creatorUid == uid) {
-            if (contractLifecycle(contract, DateTime.now()) ==
-                RunContractLifecycle.awaitingFinalize) {
-              // Tự chốt kèo quá hạn ngay khi owner mở app, thay vì bắt họ
-              // vào tận màn chi tiết kèo rồi bấm "Chốt kết quả" — lỗi (vd
-              // Strava sync tạm thời fail) bỏ qua an toàn, kèo vẫn ở
-              // awaitingFinalize và sẽ được thử lại ở lần mở app kế tiếp.
-              try {
-                await controller.finalize(contract);
-              } catch (_) {
-                // ignore, retried next app open
-              }
-            } else {
-              try {
-                await controller.recalculate(contract);
-              } catch (_) {
-                // ignore (vd Firestore tạm gián đoạn) — thử lại lần mở app
-                // kế tiếp; không để 1 kèo lỗi chặn tính lại các kèo còn lại.
-              }
-            }
-          } else {
-            try {
-              await controller.recalculateParticipant(contract);
-            } catch (_) {
-              // ignore, cùng lý do — xem comment ở nhánh recalculate() trên.
-            }
-          }
-        }
+        ref.read(leaderboardDocsProvider); // BXH Đạp xe
       });
     }
     return widget.child;
@@ -560,7 +618,7 @@ class _SyncedActivitiesSheetState extends State<_SyncedActivitiesSheet> {
                   child: OutlinedButton(
                     onPressed: () {
                       Navigator.of(context).pop();
-                      context.push('/profile/journal');
+                      context.push('/journal');
                     },
                     child: const Text('Xem Nhật ký'),
                   ),
@@ -670,7 +728,11 @@ class _SyncedActivityRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final isStrava = activity.source == ActivitySource.strava;
     final sourceColor = isStrava ? RunNowBrandColors.strava : palette.accent;
-    final sourceLabel = isStrava ? 'Strava' : 'Tự track';
+    final sourceLabel = switch (activity.source) {
+      ActivitySource.strava => 'Strava',
+      ActivitySource.garmin => 'Garmin',
+      _ => 'Tự track',
+    };
     final time = TimeOfDay.fromDateTime(activity.startedAt).format(context);
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return InkWell(
@@ -691,7 +753,7 @@ class _SyncedActivityRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(11),
               ),
               child: Icon(
-                _iconForKind(activity.kind),
+                activityKindIcon(activity.kind),
                 size: 19,
                 color: palette.accent,
               ),
@@ -765,18 +827,6 @@ class _SyncedActivityRow extends StatelessWidget {
       ),
     );
   }
-
-  IconData _iconForKind(ActivityKind kind) => switch (kind) {
-    ActivityKind.run => Icons.directions_run_rounded,
-    ActivityKind.trailRun => Icons.trending_up_rounded,
-    ActivityKind.virtualRun => Icons.directions_run_rounded,
-    ActivityKind.walk => Icons.directions_walk_rounded,
-    ActivityKind.hike => Icons.terrain_rounded,
-    ActivityKind.ride => Icons.directions_bike_rounded,
-    ActivityKind.swim => Icons.pool_rounded,
-    ActivityKind.gym => Icons.fitness_center_rounded,
-    ActivityKind.motorbike => Icons.two_wheeler_rounded,
-  };
 }
 
 /// Đồng bộ Apple Health lúc MỞ APP và mỗi khi app QUAY LẠI foreground — để buổi
@@ -833,9 +883,8 @@ bool _showAdminTab(WidgetRef ref) =>
     kIsWeb && ref.watch(adminSettingsProvider).value != null;
 
 class _Scaffold extends ConsumerWidget {
-  const _Scaffold({required this.shell, required this.location});
+  const _Scaffold({required this.shell});
   final StatefulNavigationShell shell;
-  final String location;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -893,20 +942,14 @@ class _Scaffold extends ConsumerWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // CHỈ hiện filter xếp hạng khi đang ở đúng màn Club gốc (/club).
-              // Khi push sang màn con (nhật ký member, chi tiết hoạt động…) thì
-              // ẩn — không để filter Club "dính" lại ở màn khác.
-              ClubNavFilter(
-                branchActive: shell.currentIndex == 1 && location == '/club',
-              ),
               Row(
                 children: [
                   Expanded(
                     child: _NavItem(
                       selected: shell.currentIndex == 0,
-                      icon: Icons.flag_outlined,
-                      selectedIcon: Icons.flag_rounded,
-                      label: 'Kèo',
+                      icon: Icons.home_outlined,
+                      selectedIcon: Icons.home_rounded,
+                      label: 'Trang chủ',
                       onTap: () => shell.goBranch(0),
                     ),
                   ),
@@ -921,26 +964,36 @@ class _Scaffold extends ConsumerWidget {
                   ),
                   if (!kIsWeb)
                     Expanded(
-                      child: _RunNavItem(
+                      child: _OrbNavItem(
                         selected: shell.currentIndex == 2,
+                        icon: Icons.directions_run_rounded,
+                        label: 'Chạy',
                         onTap: () => shell.goBranch(2),
                       ),
                     ),
                   Expanded(
                     child: _NavItem(
                       selected: shell.currentIndex == 3,
-                      icon: Icons.map_outlined,
-                      selectedIcon: Icons.map_rounded,
-                      label: 'Hành Trình',
-                      onTap: () => shell.goBranch(3),
+                      icon: Icons.insights_outlined,
+                      selectedIcon: Icons.insights_rounded,
+                      label: 'Hoạt động',
+                      // Tab sống trong IndexedStack nên đọc lại số liệu và
+                      // nhật ký mỗi lần mở: chạy xong mở tab là thấy buổi mới.
+                      onTap: () {
+                        ref.invalidate(profileStatsProvider);
+                        unawaited(
+                          ref.read(journalControllerProvider).ensureLoaded(),
+                        );
+                        shell.goBranch(3);
+                      },
                     ),
                   ),
                   Expanded(
                     child: _NavItem(
                       selected: shell.currentIndex == 4,
-                      icon: Icons.settings_outlined,
-                      selectedIcon: Icons.settings,
-                      label: 'Cài đặt',
+                      icon: Icons.person_outline,
+                      selectedIcon: Icons.person,
+                      label: 'Hồ sơ',
                       onTap: () => shell.goBranch(4),
                     ),
                   ),
@@ -976,12 +1029,19 @@ class _DesktopNavRail extends StatelessWidget {
     final extended = width >= 1240;
     final scheme = Theme.of(context).colorScheme;
     final onSurface = scheme.onSurface;
-    final branches = <int>[0, 1, if (!kIsWeb) 2, 3, 4, if (admin) 5];
+    final branches = <int>[
+      0,
+      1,
+      if (!kIsWeb) 2,
+      3,
+      4,
+      if (admin) 5,
+    ];
     final destinations = <NavigationRailDestination>[
       const NavigationRailDestination(
-        icon: Icon(Icons.flag_outlined),
-        selectedIcon: Icon(Icons.flag_rounded),
-        label: Text('Kèo'),
+        icon: Icon(Icons.home_outlined),
+        selectedIcon: Icon(Icons.home_rounded),
+        label: Text('Trang chủ'),
       ),
       const NavigationRailDestination(
         icon: Icon(Icons.groups_2_outlined),
@@ -995,14 +1055,14 @@ class _DesktopNavRail extends StatelessWidget {
           label: Text('Chạy'),
         ),
       const NavigationRailDestination(
-        icon: Icon(Icons.map_outlined),
-        selectedIcon: Icon(Icons.map_rounded),
-        label: Text('Hành Trình'),
+        icon: Icon(Icons.insights_outlined),
+        selectedIcon: Icon(Icons.insights_rounded),
+        label: Text('Hoạt động'),
       ),
       const NavigationRailDestination(
-        icon: Icon(Icons.settings_outlined),
-        selectedIcon: Icon(Icons.settings),
-        label: Text('Cài đặt'),
+        icon: Icon(Icons.person_outline),
+        selectedIcon: Icon(Icons.person),
+        label: Text('Hồ sơ'),
       ),
       if (admin)
         const NavigationRailDestination(
@@ -1150,10 +1210,18 @@ class _NavItem extends StatelessWidget {
   }
 }
 
-class _RunNavItem extends StatelessWidget {
-  const _RunNavItem({required this.selected, required this.onTap});
+/// Nút tròn nổi ở giữa thanh tab.
+class _OrbNavItem extends StatelessWidget {
+  const _OrbNavItem({
+    required this.selected,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   final bool selected;
+  final IconData icon;
+  final String label;
   final VoidCallback onTap;
 
   @override
@@ -1192,15 +1260,11 @@ class _RunNavItem extends StatelessWidget {
                 ),
               ),
             ),
-            child: Icon(
-              Icons.directions_run_rounded,
-              color: palette.glassStart,
-              size: 30,
-            ),
+            child: Icon(icon, color: palette.glassStart, size: 30),
           ),
           const SizedBox(height: 2),
           Text(
-            'Chạy',
+            label,
             style: TextStyle(
               color: selected
                   ? palette.secondary

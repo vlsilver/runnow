@@ -165,6 +165,21 @@ abstract final class RunNowDataColors {
   static const coachSheetDark = Color(0xff0e1a18);
 }
 
+/// Vàng, bạc, đồng của hạng 1–3 trên BXH Club. Không theo hành của app vì nó
+/// mã hoá huy chương; các hạng sau theo màu hành.
+abstract final class RunNowRankColors {
+  static const light = <Color>[
+    Color(0xffc48a06),
+    Color(0xff74839a),
+    Color(0xffb4632a),
+  ];
+  static const dark = <Color>[
+    Color(0xffe9a91e),
+    Color(0xffaeb9cb),
+    Color(0xffe08a50),
+  ];
+}
+
 /// Third-party brand colors are fixed by the provider, not by 3i themes.
 abstract final class RunNowBrandColors {
   static const strava = Color(0xfffc5200);
@@ -173,3 +188,653 @@ abstract final class RunNowBrandColors {
 // Màn "Hành Trình" dùng thẳng theme sáng/tối + 5 hành chung của app
 // (`context.runNowPalette`, xem `journey_hub_screen.dart`) nên không còn
 // bảng màu riêng ở đây nữa.
+
+/// Bàn chơi Ma Sói: tông đêm của màn ván và chất liệu lá bài khoe. Không
+/// theo hành hay sáng/tối của app, vì màn ván là một bàn chơi riêng.
+class RunNowGameTokens {
+  const RunNowGameTokens._();
+
+  static const nightBackground = Color(0xFF0B0B10);
+  static const nightSurface = Color(0xFF15151C);
+  static const nightGlow = Color(0xFF2A1A3E);
+  static const wolfGlow = Color(0xFF2E1416);
+  static const nightInk = Color(0xFFF4F2EC);
+  static const nightInkSoft = Color(0xFFE6E3DC);
+  static const nightMuted = Color(0xFFB9B5AD);
+  static const nightDanger = Color(0xFFFFB3A3);
+  static const gold = Color(0xFFF5D77A);
+  static const goldDeep = Color(0xFFE9C45A);
+  static const goldPale = Color(0xFFFFF1B8);
+  static const goldShade = Color(0xFFD8AE3C);
+  static const onGold = Color(0xFF1F1606);
+  static const heroTop = Color(0xFF1C1B3A);
+  static const heroMid = Color(0xFF120F1C);
+  static const heroBottom = Color(0xFF0D0C12);
+  static const heroBorder = Color(0x4DC7B8FF);
+  static const heroSub = Color(0xFFD9D2C0);
+  static const dayTop = Color(0xFF3B2A14);
+  static const dayMid = Color(0xFF1A1420);
+  static const dayBottom = Color(0xFF120F18);
+  static const dayBorder = Color(0x59E9C45A);
+  static const sunMid = Color(0xFFF0C75E);
+  static const cardFieldTop = Color(0xFF26272F);
+  static const cardFieldBottom = Color(0xFF121318);
+  static const cardArt = Color(0xFF0D0E14);
+  static const cardHills = Color(0xA605050A);
+  static const cardShadow = Color(0x80000000);
+  static const cardTextShadow = Color(0x73000000);
+  static const gemOutline = Color(0x59000000);
+  static const roleWolf = Color(0xFFE07A68);
+  static const roleVillager = Color(0xFFC4C9A4);
+  static const roleSeer = Color(0xFFB9ADDB);
+  static const roleGuard = Color(0xFFA3B9D4);
+  static const roleWitch = Color(0xFF9CC7C2);
+  static const roleHunter = Color(0xFFD6AE80);
+  static const roleCupid = Color(0xFFDBA3B6);
+  static const roleElder = Color(0xFFCFC6B4);
+  static const roleIdiot = Color(0xFFE2C46E);
+  // Khung theo bậc: sắt, đồng, bạc, vàng, kim cương.
+  static const graphiteEdge = Color(0xFF3A3C44);
+  static const graphiteCore = Color(0xFF1E2027);
+  static const gemGraphite = Color(0xFF8D8980);
+  static const bronzeEdge = Color(0xFF5A3519);
+  static const bronzeLight = Color(0xFFE2A86A);
+  static const bronzeDeep = Color(0xFF7A4A22);
+  static const bronzeBright = Color(0xFFC98A4B);
+  static const gemBronze = Color(0xFFD99A5E);
+  static const silverEdge = Color(0xFF7D828B);
+  static const silverLight = Color(0xFFDCDFE4);
+  static const silverDeep = Color(0xFF6F747D);
+  static const silverBright = Color(0xFFE4E7EC);
+  static const gemSilver = Color(0xFFD4D8DE);
+  static const goldEdge = Color(0xFF9C7C30);
+  static const foilDark = Color(0xFF7E5A12);
+  static const foilMid = Color(0xFFA8801E);
+  static const foilDeep = Color(0xFF8A6416);
+  // Kim cương chỉ trắng và xanh băng, sáng tối theo mặt cắt; không tán sắc.
+  static const diamondWhite = Color(0xFFFFFFFF);
+  static const diamondBright = Color(0xFFF4FAFF);
+  static const diamondIce = Color(0xFFDDEBF7);
+  static const diamondMist = Color(0xFFB9CCDB);
+  static const diamondShade = Color(0xFF8FA7BA);
+  static const diamondDeep = Color(0xFF5E7487);
+  static const gemDiamond = Color(0xFFE6F3FF);
+  static const backEdge = Color(0xFF3A3D48);
+  static const backLight = Color(0xFFA9ADB6);
+  static const backDeep = Color(0xFF2C2E36);
+  static const backBright = Color(0xFFC7CAD1);
+  static const backFieldTop = Color(0xFF1E2A4A);
+  static const backFieldBottom = Color(0xFF0C0F1C);
+  static const backRing = Color(0xFF8CC0FF);
+  static const backLineStrong = Color(0xCCE9C45A);
+  static const backLine = Color(0x80E9C45A);
+  static const backLineSoft = Color(0x40E9C45A);
+  static const holoClear = Color(0x00FFF0DC);
+  static const holoCream = Color(0xFFFFE2C4);
+  static const holoIce = Color(0xFFD6ECF0);
+  static const holoPearl = Color(0xFFF2F0EA);
+  static const sparkleWarm = Color(0xFFFFF6C8);
+}
+
+/// Trang ván Ma Sói tông ánh trăng: nền mực xanh đen, chữ trắng xám, nhấn hổ
+/// phách. Trang ván luôn tối, không theo sáng/tối hay hành của app.
+class RunNowMoonlitTokens {
+  const RunNowMoonlitTokens._();
+
+  static const pageTop = Color(0xFF0B101C);
+  static const pageMid = Color(0xFF05070C);
+  static const page = Color(0xFF020306);
+  static const panel = Color(0xFF090D16);
+  static const panelTop = Color(0xFF0A0F19);
+  static const panelBottom = Color(0xFF060910);
+  static const raised = Color(0xFF0C121F);
+  static const lifted = Color(0xFF101727);
+  static const heroTop = Color(0xFF151E33);
+  static const heroMid = Color(0xFF0A0E18);
+  static const heroBottom = Color(0xFF04060A);
+  static const tabBar = Color(0xF5090D16);
+  static const list = Color(0xD90A0E18);
+  static const well = Color(0x8C020306);
+  static const border = Color(0xFF1A253F);
+  static const borderStrong = Color(0xFF283A62);
+  static const divider = Color(0xFF131B2D);
+  static const ink = Color(0xFFE8EAEE);
+  static const inkSoft = Color(0xFFD6DAE2);
+  static const muted = Color(0xFFC0C5D1);
+  static const faint = Color(0xFF939CB1);
+  static const track = Color(0x1AECE7DD);
+  static const barLow = Color(0xFF253459);
+  static const amber = Color(0xFFE5B04C);
+  static const amberBright = Color(0xFFF9CC78);
+  static const amberStrong = Color(0xFFE2A533);
+  static const amberDeep = Color(0xFF9B6D16);
+  static const amberSoft = Color(0xFFFAD48E);
+  static const amberLight = Color(0xFFFBDDA4);
+  static const amberPale = Color(0xFFFCE5BA);
+  static const amberCream = Color(0xFFFDF0D8);
+  static const amberTint = Color(0x38E4AA3F);
+  static const amberLine = Color(0x59E4AA3F);
+  static const amberGlow = Color(0x408C6214);
+  static const onAmber = Color(0xFF0B1222);
+  static const danger = Color(0xFFFFB3A3);
+
+  // Bốn pha của một vòng trên màn tạo ván: đêm bạc lam, rạng sáng tím,
+  // ngày hổ phách, biểu quyết đỏ gạch.
+  static const phaseNight = Color(0xFF7E93C9);
+  // Kiểu ván không chạy (icon trăng) chọn thì sáng bạc lam thay hổ phách.
+  static const moon = Color(0xFF9FB4E0);
+  static const moonTint = Color(0x2E9FB4E0);
+  static const onMoon = Color(0xFF0A0F1A);
+  static const phaseDawn = Color(0xFF9A7FD1);
+  static const phaseDay = amber;
+  static const phaseTrial = Color(0xFFD9765F);
+
+  // Biểu tượng sói trong trăng: trăng hổ phách, bóng sói mực, viền nhũ.
+  static const emblemCore = Color(0xFFFFE7B0);
+  static const emblemRim = Color(0xFFC58918);
+  static const emblemGlow = Color(0x33F2BE5C);
+  static const emblemDark = Color(0xFF05070C);
+  static const emblemFoil = Color(0xFFF9CC78);
+
+  // Quầng sáng dưới nút mở ván.
+  static const ctaGlow = Color(0x4DE5B04C);
+
+  // Đặc quyền phe Sói đang bật: chữ và ô tích, nền, viền.
+  static const wolf = Color(0xFFF08A84);
+  static const wolfSoft = Color(0x29C2413B);
+  static const wolfLine = Color(0x8CC2413B);
+}
+
+/// Robot trên thẻ MyBot. Thân và kính giữ một màu ở mọi hành để nhìn ra cùng
+/// một con robot; mắt, ăng-ten và ngực lấy màu của hành.
+class RunNowBotTokens {
+  const RunNowBotTokens._();
+
+  static const shell = Color(0xFFE9EEF0);
+  static const shellShade = Color(0xFFC3CCD3);
+  static const visor = Color(0xFF10252B);
+  static const shadow = Color(0x73000000);
+  static const leg = Color(0xFF5A616B);
+
+  /// Robot của thẻ chưa có tên: một bóng tối có dấu hỏi.
+  static const ghost = Color(0xFF2A2F37);
+  static const ghostVisor = Color(0xFF1A1E24);
+  static const ghostInk = Color(0xFF4A515C);
+
+  /// Đồ theo kiểu bot: nón tiệc, tai nghe, mũ và còi, khăn quàng.
+  static const partyHat = Color(0xFFF06292);
+  static const partyGold = Color(0xFFFFD166);
+  static const headband = Color(0xFF2B2F36);
+  static const cap = Color(0xFFE8553D);
+  static const capBrim = Color(0xFFB8402C);
+  static const lanyard = Color(0xFFCFD5DB);
+  static const whistle = Color(0xFFF0C75E);
+  static const scarf = Color(0xFFFF8A5B);
+}
+
+/// Thẻ MyBot ngoài con robot. Trời từ bậc Bạc trở lên là phần thưởng của
+/// bậc nên giữ một màu ở mọi hành; nền màn lên bậc cũng vậy.
+class RunNowBotCardTokens {
+  const RunNowBotCardTokens._();
+
+  /// Trời theo bậc: Bạc bình minh, Vàng hoàng hôn, Foil cực quang. Bậc
+  /// Thường là đêm theo màu hành.
+  static const dawnTop = Color(0xFF1D2F4D);
+  static const dawnMid = Color(0xFF3F6690);
+  static const dawnBottom = Color(0xFFA9C0D6);
+  static const duskTop = Color(0xFF2B1D3A);
+  static const duskMid = Color(0xFF9C3F52);
+  static const duskBottom = Color(0xFFF0A35A);
+  static const auroraTop = Color(0xFF0B0A24);
+  static const auroraMid = Color(0xFF24145A);
+  static const auroraBottom = Color(0xFF0E3A4E);
+  static const auroraGreen = Color(0xFF50FFBE);
+  static const auroraPink = Color(0xFFFF78DC);
+  static const auroraViolet = Color(0xFFA078FF);
+  static const auroraBlue = Color(0xFF50E6FF);
+
+  /// Trăng của trời đêm (bậc Thường) và trời bình minh (bậc Bạc).
+  static const moon = Color(0xFFEEF3E8);
+  static const dawnMoon = Color(0xFFF4F1E6);
+
+  /// Mặt đất dưới chân trời, nơi khối chữ của mặt trước nằm.
+  static const ground = Color(0xFF0D1519);
+
+  /// Nền đêm sau huy hiệu ở mặt sau.
+  static const backTop = Color(0xFF0F171B);
+  static const backBottom = Color(0xFF070A0C);
+  static const sunCore = Color(0xFFFFF3C4);
+  static const sunHalo = Color(0xFFFFC36B);
+
+  static const revealGlow = Color(0xFF2A2416);
+  static const revealEdge = Color(0xFF121116);
+}
+
+/// Thẻ thành tích: tranh phủ cả thẻ, kim loại của bậc (sắt, đồng, bạc, vàng,
+/// kim cương) chỉ còn ở ô đá và viền trong. Tông đêm như lá Ma
+/// Sói, nhưng nền là ảnh thật nên chữ cần lớp tối phía dưới để đọc được.
+class RunNowAchievementTokens {
+  const RunNowAchievementTokens._();
+
+  static const accentCommon = Color(0xFFC3C8CF);
+  static const accentRare = Color(0xFFE2A86A);
+  static const accentEpic = Color(0xFFE3E8EE);
+  static const accentLegendary = Color(0xFFF3D27A);
+  static const accentMythic = Color(0xFFDDEFFF);
+
+  // Kim loại của bậc, mỗi thứ sáng, giữa, tối: ô đá, viền trong.
+  static const ironLight = Color(0xFF9AA1AA);
+  static const ironMid = Color(0xFF6B727C);
+  static const ironDark = Color(0xFF3A3F46);
+  static const bronzeLight = Color(0xFFF0C08A);
+  static const bronzeMid = Color(0xFFC98A4B);
+  static const bronzeDark = Color(0xFF7A4A22);
+  static const silverLight = Color(0xFFFFFFFF);
+  static const silverMid = Color(0xFFC9D0D8);
+  static const silverDark = Color(0xFF7E8690);
+  static const goldLight = Color(0xFFFFF1BD);
+  static const goldMid = Color(0xFFE2B85A);
+  static const goldDark = Color(0xFF8A6218);
+  static const diamondLight = Color(0xFFFFFFFF);
+  static const diamondMid = Color(0xFFDDEBF7);
+  static const diamondDark = Color(0xFF8FA7BA);
+  static const cartouche = Color(0x9E0A0A0E);
+  static const gemEdge = Color(0x59000000);
+  static const gemGlint = Color(0xCCFFFFFF);
+  static const sweep = Color(0xFFFFFFFF);
+
+  // Thẻ Ẩn pha ramp của hành về hai đầu này để ra tông sáng nhất, tối nhất.
+  static const secretLift = Color(0xFFFFFFFF);
+  static const secretDeep = Color(0xFF000000);
+
+  static const graphite1 = Color(0xFF50545D);
+  static const graphite2 = Color(0xFF2B2D33);
+  static const graphite3 = Color(0xFF454850);
+  static const graphite4 = Color(0xFF26282D);
+  static const starDiamond = Color(0xFFF2F9FF);
+
+  static const drop = Color(0x99000000);
+
+  static const sheen = Color(0x57FFFFFF);
+  static const sheenBronze = Color(0x57FFD6AA);
+  static const sheenGold = Color(0x5CFFF0CD);
+  static const sheenDiamond = Color(0x66EBF7FF);
+  static const sheenTail = Color(0x0FFFFFFF);
+
+  static const field = Color(0xFF0D0E14);
+  static const shade = Color(0xFF08090E);
+  static const hero = Color(0xFFF7F5EF);
+  static const textShadow = Color(0x99000000);
+
+  static const titleSilver1 = Color(0xFFFFFFFF);
+  static const titleSilver2 = Color(0xFFE6EBF0);
+  static const titleSilver3 = Color(0xFFA2ABB6);
+  static const titleGold1 = Color(0xFFFFF6D2);
+  static const titleGold2 = Color(0xFFF6D77F);
+  static const titleGold3 = Color(0xFFC08D2E);
+  static const titleBronze1 = Color(0xFFFBE2C6);
+  static const titleBronze2 = Color(0xFFD9A06A);
+  static const titleBronze3 = Color(0xFF8C5628);
+  static const titleDiamond1 = Color(0xFFFFFFFF);
+  static const titleDiamond2 = Color(0xFFDDEBF7);
+  static const titleDiamond3 = Color(0xFF9AB0C2);
+
+  static const backTop = Color(0xFF20244A);
+  static const backBottom = Color(0xFF0B0C14);
+  static const backRay = Color(0x09FFFFFF);
+  static const emblemRing = Color(0x0AFFFFFF);
+
+  // Nền "đường chạy" của thẻ buổi chạy: nền tối theo bậc, đường sáng màu bậc.
+  static const routeFieldCommon = Color(0xFF2A2F38);
+  static const routeFieldCommonEdge = Color(0xFF101217);
+  static const routeFieldRare = Color(0xFF3A2616);
+  static const routeFieldRareEdge = Color(0xFF120B06);
+  static const routeFieldEpic = Color(0xFF2B3038);
+  static const routeFieldEpicEdge = Color(0xFF0E1014);
+  static const routeFieldLegendary = Color(0xFF3D2C10);
+  static const routeFieldLegendaryEdge = Color(0xFF120D06);
+  static const routeGlowCommon = Color(0xFF9FB3C8);
+  static const routeGlowRare = Color(0xFFE2A86A);
+  static const routeGlowEpic = Color(0xFFE3E8EE);
+  static const routeGlowLegendary = Color(0xFFFFC65C);
+  static const routeFieldMythic = Color(0xFF1C2A38);
+  static const routeFieldMythicEdge = Color(0xFF06090E);
+  static const routeGlowMythic = Color(0xFFDDF0FF);
+  static const routeContour = Color(0x0FFFFFFF);
+  static const routeLine = Color(0xFFFFFFFF);
+  static const routeStart = Color(0xFF0B0B10);
+
+  // Con dấu đường chạy trên ảnh và mặt sau dữ liệu của thẻ buổi chạy.
+  static const stamp = Color(0xB808090E);
+  static const stampDrop = Color(0x73000000);
+  static const dataBack = Color(0xFF0D0F15);
+  static const dataMapEdge = Color(0x24FFFFFF);
+  static const dataGrid = Color(0x14FFFFFF);
+  static const dataLabel = Color(0xB8F4F2EC);
+
+  // Lá úp lật trượt: màn tối phủ cả mặt, chữ và icon đỏ nhạt.
+  static const failVeil = Color(0xB8070910);
+  static const failInk = Color(0xFFFF8A80);
+  static const dataCredit = Color(0x8CF4F2EC);
+
+  // Bộ màu thẻ sáng: ruột giấy, chữ mực. Màu bậc và chữ ánh lấy tông đậm để
+  // đọc được trên nền sáng; khung và holo của bậc dùng chung với bản tối.
+  static const paperShadow = Color(0x66FFFFFF);
+  static const paperRay = Color(0x0A000000);
+  static const paperRing = Color(0x0F000000);
+  static const paperMapEdge = Color(0x24000000);
+  static const paperGrid = Color(0x14000000);
+  static const paperLabel = Color(0xB816160F);
+  static const paperCredit = Color(0x8C16160F);
+  static const paperContour = Color(0x0F000000);
+  static const paperStamp = Color(0xB8F4F2EC);
+  static const paperVeil = Color(0xC7F4F2EC);
+  static const paperFailInk = Color(0xFFD9452F);
+  static const paperAccentCommon = Color(0xFF59606B);
+  static const paperAccentRare = Color(0xFF8A4E1C);
+  static const paperAccentEpic = Color(0xFF4A5462);
+  static const paperAccentLegendary = Color(0xFF9A6A10);
+  static const paperAccentMythic = Color(0xFF3C6A8E);
+  static const paperBronze1 = Color(0xFF6E3A12);
+  static const paperBronze2 = Color(0xFFA8682E);
+  static const paperBronze3 = Color(0xFF5A2E0C);
+  static const paperSilver1 = Color(0xFF3A434F);
+  static const paperSilver2 = Color(0xFF6B7684);
+  static const paperSilver3 = Color(0xFF2E3540);
+  static const paperGold1 = Color(0xFF6F4A0C);
+  static const paperGold2 = Color(0xFFA9781E);
+  static const paperGold3 = Color(0xFF5E400C);
+  static const paperDiamond1 = Color(0xFF2E4A63);
+  static const paperDiamond2 = Color(0xFF5F86A6);
+  static const paperDiamond3 = Color(0xFF23384C);
+  static const paperRouteCommon = Color(0xFFECEAE4);
+  static const paperRouteCommonEdge = Color(0xFFD6D2C8);
+  static const paperGlowCommon = Color(0xFF7C8896);
+  static const paperRouteRare = Color(0xFFF4E6D8);
+  static const paperRouteRareEdge = Color(0xFFE2CBB2);
+  static const paperGlowRare = Color(0xFFB06A2C);
+  static const paperRouteEpic = Color(0xFFECEEF1);
+  static const paperRouteEpicEdge = Color(0xFFD3D8DE);
+  static const paperGlowEpic = Color(0xFF6B7684);
+  static const paperRouteLegendary = Color(0xFFF6EBD2);
+  static const paperRouteLegendaryEdge = Color(0xFFE3CFA2);
+  static const paperGlowLegendary = Color(0xFFC98A12);
+  static const paperRouteMythic = Color(0xFFE6F0F8);
+  static const paperRouteMythicEdge = Color(0xFFCBDCEA);
+  static const paperGlowMythic = Color(0xFF4F86B5);
+}
+
+/// Tranh vẽ bằng code trên thẻ Ma Sói: mỗi phe một bầu trời. Phe Sói trăng
+/// máu, phe Dân trăng bạc trên làng thắp đèn, Cặp đôi trăng hồng. Màu giữ
+/// nguyên ở mọi bộ màu thẻ vì tranh là dấu hiệu của phe.
+class RunNowCardSceneTokens {
+  const RunNowCardSceneTokens._();
+
+  static const crater = Color(0x17000000);
+  static const grainLight = Color(0xFFFFFFFF);
+  static const grainDark = Color(0xFF000000);
+  static const starWhite = Color(0xFFFFFFFF);
+
+  static const wolvesSky1 = Color(0xFF12030A);
+  static const wolvesSky2 = Color(0xFF3A0B16);
+  static const wolvesSky3 = Color(0xFF1A0710);
+  static const wolvesSky4 = Color(0xFF07020A);
+  static const wolvesStar = Color(0xFFFFDCDC);
+  static const wolvesMoonCore = Color(0xFFFFB38A);
+  static const wolvesMoonRim = Color(0xFFB3241F);
+  static const wolvesMoonGlow = Color(0x80DC2828);
+  static const wolvesFog = Color(0x2EB42832);
+  static const wolvesPines = Color(0xFF230610);
+  static const wolvesRock = Color(0xFF0B0206);
+  static const wolvesClaw = Color(0xBFFF5A50);
+
+  static const villageSky1 = Color(0xFF060C1C);
+  static const villageSky2 = Color(0xFF14254A);
+  static const villageSky3 = Color(0xFF1D2F4F);
+  static const villageSky4 = Color(0xFF0A1020);
+  static const villageStar = Color(0xFFE6ECFF);
+  static const villageMoonCore = Color(0xFFF6F3E4);
+  static const villageMoonRim = Color(0xFFC9CDD9);
+  static const villageMoonGlow = Color(0x59C8D7FF);
+  static const villageEye = Color(0xFF1B2A4A);
+  static const villageFog = Color(0x29A0B4E6);
+  static const villagePines = Color(0xFF0D1730);
+  static const villageHouse = Color(0xFF070C18);
+  static const villageWindow = Color(0xFFFFC56B);
+  static const villageWolfEye = Color(0xFFFF5A4A);
+
+  static const loversSky1 = Color(0xFF14061A);
+  static const loversSky2 = Color(0xFF4A1640);
+  static const loversSky3 = Color(0xFF24102E);
+  static const loversSky4 = Color(0xFF0B0410);
+  static const loversStar = Color(0xFFFFE1F0);
+  static const loversMoonCore = Color(0xFFFFE0EC);
+  static const loversMoonRim = Color(0xFFE7779E);
+  static const loversMoonGlow = Color(0x66FF78AA);
+  static const loversArrow = Color(0xFF3A0F2C);
+  static const loversPines = Color(0xFF1E0A22);
+  static const loversHill = Color(0xFF0C0410);
+
+  // Mặt sau: sói hú trong vầng trăng của phe.
+  static const wolvesEmblemTop = Color(0xFF2B0711);
+  static const wolvesEmblemBottom = Color(0xFF0B0206);
+  static const wolvesEmblemGlow = Color(0x73DC2828);
+  static const wolvesEmblemDark = Color(0xFF14030A);
+  static const villageEmblemTop = Color(0xFF16264A);
+  static const villageEmblemBottom = Color(0xFF050A16);
+  static const villageEmblemRim = Color(0xFFC3C8D6);
+  static const villageEmblemDark = Color(0xFF0B1428);
+  static const loversEmblemTop = Color(0xFF3D1238);
+  static const loversEmblemBottom = Color(0xFF0D0412);
+  static const loversEmblemDark = Color(0xFF1C0818);
+
+  // Thẻ Hành trình: nền từng chặng, nét đường chạy, sọc dây huy chương.
+  static const marathonTop = Color(0xFF5A2C18);
+  static const marathonBottom = Color(0xFF2A120A);
+  static const marathonRoute = Color(0xFFFFD59A);
+  static const marathonRibbon = <Color>[
+    Color(0xFF1D4F9C),
+    Color(0xFFF7F7F2),
+    Color(0xFF1D4F9C),
+  ];
+  static const montBlancTop = Color(0xFF2C4560);
+  static const montBlancBottom = Color(0xFF101D2C);
+  static const montBlancRoute = Color(0xFFE8F3FF);
+  static const montBlancRibbon = <Color>[
+    Color(0xFFC8102E),
+    Color(0xFFF7F7F2),
+    Color(0xFFC8102E),
+  ];
+  static const xuyenVietTop = Color(0xFF145057);
+  static const xuyenVietBottom = Color(0xFF06222A);
+  static const xuyenVietRoute = Color(0xFFF7D266);
+  static const xuyenVietRibbon = <Color>[
+    Color(0xFFDA251D),
+    Color(0xFFFFCD00),
+    Color(0xFFDA251D),
+  ];
+  static const dongNamATop = Color(0xFF3E2268);
+  static const dongNamABottom = Color(0xFF160C2A);
+  static const dongNamARoute = Color(0xFFFFE0B8);
+  static const dongNamARibbon = <Color>[
+    Color(0xFF0039A6),
+    Color(0xFFFFCC00),
+    Color(0xFFD4001A),
+    Color(0xFFF7F7F2),
+  ];
+  static const journeyShade = Color(0xFF000000);
+  static const medalShine = Color(0xFFFFFFFF);
+  static const mapInk = Color(0xFFFBF8F1);
+
+  /// Nền thẻ BXH theo hạng 1..10: trên, dưới, quầng sáng sau huy chương.
+  /// Hạng 1–3 theo màu vàng, bạc, đồng; còn lại mỗi hạng một màu riêng.
+  static const rankTop = <Color>[
+    Color(0xFFE9A91E),
+    Color(0xFF8D9BB2),
+    Color(0xFFC8682A),
+    Color(0xFF14B3A1),
+    Color(0xFF3B82F6),
+    Color(0xFF8B5CF6),
+    Color(0xFFE8468F),
+    Color(0xFF6CB012),
+    Color(0xFFF47A1A),
+    Color(0xFF5B63F0),
+  ];
+  static const rankBottom = <Color>[
+    Color(0xFF4A2300),
+    Color(0xFF161D29),
+    Color(0xFF331103),
+    Color(0xFF032925),
+    Color(0xFF091A42),
+    Color(0xFF1C0D45),
+    Color(0xFF3F0A24),
+    Color(0xFF142A04),
+    Color(0xFF401802),
+    Color(0xFF111443),
+  ];
+  static const rankGlow = <Color>[
+    Color(0xFFFFE7A0),
+    Color(0xFFEAF0F8),
+    Color(0xFFFFCFA6),
+    Color(0xFFB8FFF4),
+    Color(0xFFC6DCFF),
+    Color(0xFFE2D5FF),
+    Color(0xFFFFCDE2),
+    Color(0xFFE2FFB8),
+    Color(0xFFFFD9B5),
+    Color(0xFFD3D6FF),
+  ];
+
+  /// Thẻ tháng ngả về trời đêm có sao.
+  static const rankNightTop = Color(0xFF0B0F2A);
+  static const rankNightBottom = Color(0xFF05060F);
+
+  /// Huy chương kim cương (bậc Thần thoại) đổ một dải mịn, không cắt cạnh
+  /// như khung thẻ, kèm quầng ngũ sắc.
+  static const rankDiamond = <Color>[
+    Color(0xFFFFFFFF),
+    Color(0xFFDDEBF7),
+    Color(0xFF9DB4C8),
+    Color(0xFFF4FAFF),
+    Color(0xFFB9CCDB),
+  ];
+  static const rankDiamondHalo = <Color>[
+    Color(0xFFFF9FD8),
+    Color(0xFF9FB4FF),
+    Color(0xFF7FF0DC),
+    Color(0xFFFFE98A),
+    Color(0xFFFF9FD8),
+  ];
+}
+
+/// Màu riêng của hình nền thẻ kèo (`keo_scene.dart`). Màu chính lấy từ dải
+/// màu của hành, ở đây chỉ còn những màu không theo hành.
+class RunNowKeoSceneTokens {
+  const RunNowKeoSceneTokens._();
+
+  /// Chữ phụ trên nền tối nhuốm màu hành; `darkMuted` của theme quá chìm.
+  static const darkMuted = Color(0xFFC4BFB5);
+  static const star = Color(0x8CFFFFFF);
+}
+
+/// Màu tranh trên mặt trước thẻ Kèo (`contract_card_art.dart`). Tranh luôn là
+/// cảnh tối để chữ sáng của khuôn thẻ đọc được, nên không theo bộ màu.
+class RunNowContractCardTokens {
+  const RunNowContractCardTokens._();
+
+  // Dùng chung giữa các cảnh.
+  static const star = Color(0xBFFFFFFF);
+  static const paper = Color(0xFFF4EFE6);
+  static const flagRed = Color(0xFFE63946);
+
+  // Quãng đường: cổng về đích lúc hoàng hôn.
+  static const duskTop = Color(0xFF1D1438);
+  static const duskMid = Color(0xFF5E2A57);
+  static const duskLow = Color(0xFFE2704A);
+  static const duskHorizon = Color(0xFFFFC07A);
+  static const duskGlow = Color(0xF2FFE2A8);
+  static const duskGlowEdge = Color(0x00FFB070);
+  static const duskSun = Color(0xFFFFE3AD);
+  static const duskHillFar = Color(0xFF3A1D46);
+  static const duskHillNear = Color(0xFF22122C);
+  static const duskRoad = Color(0xFF140C1B);
+  static const duskRoadEdge = Color(0x59FFCF8F);
+  static const duskDash = Color(0xFFFFD79A);
+  static const duskPost = Color(0xFF0E0812);
+  static const confettiTeal = Color(0xFF7AD1C6);
+
+  // Số buổi: sân điền kinh, gạch đếm buổi.
+  static const trackField = Color(0xFF123425);
+  static const trackStripe = Color(0xFF164330);
+  static const trackLane = Color(0xFFB4462E);
+  static const trackLine = Color(0xFFF6E9DC);
+  static const trackLineSoft = Color(0x80F6E9DC);
+  static const trackInfield = Color(0xFF1D5539);
+  static const trackTally = Color(0xFFF3E6C8);
+  static const trackChecker = Color(0xFF1D1812);
+  static const trackPanel = Color(0xFF0D2419);
+
+  // Số ngày chạy: bảy viên đá trong tuần.
+  static const daysTop = Color(0xFF0C2F3D);
+  static const daysMid = Color(0xFF2D6F73);
+  static const daysLow = Color(0xFFF0C069);
+  static const daysSun = Color(0xFFFFF0C2);
+  static const daysHillFar = Color(0xFF14505A);
+  static const daysHillNear = Color(0xFF0F3A44);
+  static const daysPanel = Color(0xFF0A2630);
+  static const daysStoneMissed = Color(0xB3F0C069);
+  static const daysLabel = Color(0xFFF3ECD8);
+
+  // Buổi dài nhất: đỉnh núi cắm cờ dưới trăng.
+  static const nightTop = Color(0xFF070F26);
+  static const nightMid = Color(0xFF1C2F63);
+  static const nightLow = Color(0xFF3B4F8A);
+  static const moon = Color(0xFFF3F0DD);
+  static const moonGlow = Color(0x80F3F0DD);
+  static const mountain = Color(0xFF0E1A3A);
+  static const mountainShade = Color(0xCC0A1229);
+  static const snow = Color(0xFFE6EDF8);
+  static const trail = Color(0xFFF5D77A);
+  static const nightPanel = Color(0xFF0B1430);
+
+  // Theo tuyến: bản đồ đường đồng mức.
+  static const mapField = Color(0xFF10241D);
+  static const mapContour = Color(0xBF2B5A47);
+  static const mapHill = Color(0xB33B7A60);
+  static const mapRouteCasing = Color(0xFF08130F);
+  static const mapRoute = Color(0xFFFF8A3D);
+  static const mapPanel = Color(0xFF0C1A16);
+
+  // Hẹn chạy: rạng sáng bên hồ.
+  static const dawnTop = Color(0xFF13213D);
+  static const dawnMid = Color(0xFF3D4F7F);
+  static const dawnLow = Color(0xFFF1A36A);
+  static const dawnSun = Color(0xFFFFD9A0);
+  static const dawnRipple = Color(0x8CFFD9A0);
+  static const lakeTop = Color(0xFF2C4068);
+  static const lakeBottom = Color(0xFF121C33);
+  static const shore = Color(0xFF0D1526);
+  static const clockFace = Color(0xFFF6EAD2);
+  static const meetPin = Color(0xFFFF6B6B);
+  static const meetPinDot = Color(0xFFFFF6EA);
+  static const runnerGreen = Color(0xFF58C888);
+  static const runnerGold = Color(0xFFF5D77A);
+  static const runnerBlue = Color(0xFF5FA0EE);
+  static const runnerCoral = Color(0xFFF4785C);
+  static const dawnPanel = Color(0xFF0F1628);
+
+  // Trong ngày: tờ lịch xé.
+  static const dayTop = Color(0xFF12355C);
+  static const dayMid = Color(0xFF4F86B8);
+  static const dayLow = Color(0xFFF7D9A0);
+  static const dayGlow = Color(0x8CFFF3D6);
+  static const daySun = Color(0xFFFFE7B0);
+  static const dayGround = Color(0xFF1D3F5E);
+  static const dayLane = Color(0x59F4EFE6);
+  static const calendarPage = Color(0xFFFBF6EC);
+  static const calendarInk = Color(0xFF0F2238);
+
+  // Nhãn trạng thái ở đáy thẻ úp: nền tối trong suốt nổi trên mọi bộ màu.
+  static const chip = Color(0x8C000000);
+  static const chipLine = Color(0x38FFFFFF);
+}

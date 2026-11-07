@@ -3,19 +3,44 @@ import 'package:myrun/src/models.dart';
 const minimumOfficialRunNowDistanceMeters = 500.0;
 const stravaDuplicateOverlapThreshold = 0.30;
 
-/// Buổi chạy từ nguồn PHỤ (3i native hoặc Apple Health) đủ điều kiện tính vào
-/// stats/kèo/journal: là Run + đủ cự ly tối thiểu. Strava xét riêng (luôn tính).
-/// (Tên cũ `isRunNowActivityDistanceEligible` — nay gồm cả apple_health.)
+/// Buổi chạy từ nguồn PHỤ (mọi nguồn trừ Strava: 3i native, Apple Health,
+/// Garmin) đủ điều kiện tính vào stats/kèo: là Run + đủ cự ly tối
+/// thiểu. Strava xét riêng (luôn tính). Khớp SelectOfficialActivities ở backend.
 bool isCountedNonStravaRun(ActivitySummary activity) =>
-    (activity.source == ActivitySource.runnow ||
-        activity.source == ActivitySource.appleHealth) &&
+    activity.source != ActivitySource.strava &&
     activity.kind == ActivityKind.run &&
     activity.distanceMeters >= minimumOfficialRunNowDistanceMeters;
 
+/// Ba tab của Nhật ký.
+enum JournalTab { run, walk, ride }
+
+/// Tab Nhật ký của một loại hoạt động; null là loại không có tab (bơi, gym,
+/// xe máy).
+JournalTab? journalTabOf(ActivityKind kind) => switch (kind) {
+  ActivityKind.run ||
+  ActivityKind.trailRun ||
+  ActivityKind.virtualRun => JournalTab.run,
+  ActivityKind.walk || ActivityKind.hike => JournalTab.walk,
+  ActivityKind.ride => JournalTab.ride,
+  ActivityKind.swim || ActivityKind.gym || ActivityKind.motorbike => null,
+};
+
+/// Buổi hiện trong Nhật ký: mọi buổi Strava như trước; buổi từ nguồn phụ thì
+/// phải thuộc một tab và đủ cự ly tối thiểu, giống luật tính buổi chạy.
+bool isJournalActivity(ActivitySummary activity) =>
+    activity.source == ActivitySource.strava ||
+    (journalTabOf(activity.kind) != null &&
+        activity.distanceMeters >= minimumOfficialRunNowDistanceMeters);
+
 /// Ưu tiên giữ khi hai buổi nguồn-phụ TRÙNG nhau: 3i native (có GPS/route) hơn
-/// Apple Health (chỉ cự ly + thời gian).
-int _nonStravaSourcePriority(ActivitySource source) =>
-    source == ActivitySource.runnow ? 2 : 1;
+/// Garmin (đồng hồ, có nhịp tim), Garmin hơn Apple Health (chỉ cự ly + thời
+/// gian). Garmin Connect hay ghi luôn buổi chạy sang Apple Health nên cặp
+/// Garmin – Apple Health là cặp trùng hay gặp nhất.
+int _nonStravaSourcePriority(ActivitySource source) => switch (source) {
+  ActivitySource.runnow => 3,
+  ActivitySource.garmin => 2,
+  _ => 1,
+};
 
 bool isPotentialStravaRecording(ActivitySummary activity) =>
     activity.source == ActivitySource.strava &&

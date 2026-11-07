@@ -179,6 +179,28 @@ void main() {
     },
   );
 
+  test('loaded xong thì đã có lựa chọn đã lưu', () async {
+    FlutterSecureStorage.setMockInitialValues({
+      'runnow_theme_element': 'fire',
+      'runnow_theme_appearance': 'dark',
+    });
+    final controller = ThemeController();
+
+    await controller.loaded;
+
+    expect(controller.element, RunNowElement.fire);
+    expect(controller.appearance, RunNowAppearance.dark);
+  });
+
+  test('đọc lựa chọn lỗi thì loaded vẫn xong và giữ mặc định', () async {
+    final controller = ThemeController(storage: _BrokenStorage());
+
+    await controller.loaded;
+
+    expect(controller.element, RunNowElement.water);
+    expect(controller.appearance, RunNowAppearance.light);
+  });
+
   test('legacy dark selection migrates from the foggy dim default', () async {
     FlutterSecureStorage.setMockInitialValues({
       'runnow_theme_element': 'fire',
@@ -193,4 +215,11 @@ void main() {
     expect(controller.appearance, RunNowAppearance.dark);
     expect(controller.darkTone, RunNowDarkTone.elemental);
   });
+}
+
+/// Keychain đọc lỗi, như máy vừa khôi phục từ bản sao lưu.
+class _BrokenStorage implements FlutterSecureStorage {
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      Future<String?>.error(StateError('keychain'));
 }

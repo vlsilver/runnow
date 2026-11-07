@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
@@ -8,18 +10,24 @@ class AvatarRepository {
   final FirebaseAuth _auth;
   final FirebaseStorage _storage;
 
-  /// Mở thư viện ảnh, upload ảnh đã chọn và trả về URL tải về. Trả `null`
-  /// nếu người dùng huỷ chọn ảnh.
-  Future<String?> pickAndUpload() async {
+  /// Mở thư viện ảnh và trả về ảnh đã chọn, `null` nếu người dùng huỷ.
+  ///
+  /// Ảnh còn qua màn cắt rồi mới tải lên, nên lấy đủ lớn để phóng to vài lần
+  /// vẫn nét ở cỡ avatar.
+  Future<Uint8List?> pickImage() async {
     final image = await ImagePicker().pickImage(
       source: ImageSource.gallery,
-      imageQuality: 82,
-      maxWidth: 800,
+      imageQuality: 90,
+      maxWidth: 2048,
+      maxHeight: 2048,
     );
-    if (image == null) return null;
+    return image?.readAsBytes();
+  }
+
+  /// Tải ảnh JPEG [bytes] lên và trả về URL tải về.
+  Future<String> upload(Uint8List bytes) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) throw StateError('Bạn chưa đăng nhập Firebase.');
-    final bytes = await image.readAsBytes();
     // Tên file có timestamp để mỗi lần đổi avatar sinh ra 1 URL mới, tránh
     // trình duyệt cache ảnh cũ khi ghi đè cùng 1 path.
     final path =

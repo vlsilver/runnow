@@ -1,0 +1,1630 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+import 'package:myrun/src/achievements/club_card_widgets.dart';
+import 'package:myrun/src/achievements/run_card_providers.dart';
+import 'package:myrun/src/club_ranking.dart';
+import 'package:myrun/src/club_runs.dart';
+import 'package:myrun/src/formatters.dart';
+import 'package:myrun/src/games/game_models.dart';
+import 'package:myrun/src/games/game_providers.dart';
+import 'package:myrun/src/home_digest.dart';
+import 'package:myrun/src/models.dart';
+import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/rooms/run_room_repository.dart';
+import 'package:myrun/src/rooms/live_board.dart';
+import 'package:myrun/src/rooms/run_room_models.dart';
+import 'package:myrun/src/rooms/run_room_route_sketch.dart';
+import 'package:myrun/src/run_contracts/run_contract_insights.dart';
+import 'package:myrun/src/run_contracts/run_contract_models.dart';
+import 'package:myrun/src/run_contracts/run_contract_period.dart';
+import 'package:myrun/src/run_contracts/run_contract_repository.dart';
+import 'package:myrun/src/run_contracts/widgets/run_contract_card.dart'
+    show runContractStateColor;
+import 'package:myrun/src/screens/run_contract_home_screen.dart'
+    show ContractSyncAction, startCreateContract;
+import 'package:myrun/src/share.dart';
+import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/training_plan/training_plan_models.dart';
+import 'package:myrun/src/training_plan/training_plan_repository.dart';
+import 'package:myrun/src/widgets/cached_avatar.dart';
+import 'package:myrun/src/widgets/club_run_row.dart';
+import 'package:myrun/src/widgets/live_bits.dart';
+import 'package:myrun/src/widgets/live_map_preview.dart';
+import 'package:myrun/src/widgets/rank_mountain.dart';
+import 'package:myrun/src/widgets/keo_scene.dart';
+
+/// Trang đầu của app: ai trong club đang chạy, các kèo đang diễn ra, ai dẫn
+/// BXH tuần, thẻ vừa khoe, rồi các buổi chạy gần đây. Mục nào rỗng thì ẩn, riêng Kèo và Thẻ rỗng
+/// thì còn một dòng mời đặt kèo, khoe thẻ.
+class KeoHubScreen extends ConsumerStatefulWidget {
+  const KeoHubScreen({super.key});
+
+  @override
+  ConsumerState<KeoHubScreen> createState() => _KeoHubScreenState();
+}
+
+class _KeoHubScreenState extends ConsumerState<KeoHubScreen> {
+  late final AppLifecycleListener _lifecycle;
+
+  /// Vệt sáng thẻ Thần thoại bắt cả trang vẽ lại mỗi frame, nên chỉ chạy khi mục
+  /// Thẻ đang hiện trên màn hình và trang đứng yên.
+  final _cardsMotion = ValueNotifier(false);
+  final _cardsKey = GlobalKey();
+  var _scrolling = false;
+
+  bool _onScroll(ScrollNotification notification) {
+    if (notification is ScrollStartNotification) {
+      _scrolling = true;
+    } else if (notification is ScrollEndNotification) {
+      _scrolling = false;
+    } else {
+      return false;
+    }
+    _syncCardsMotionAfterFrame();
+    return false;
+  }
+
+  /// Mục phía trên có dữ liệu thì mục Thẻ dời chỗ mà trang không cuộn.
+  bool _onMetricsChanged(ScrollMetricsNotification notification) {
+    _syncCardsMotionAfterFrame();
+    return false;
+  }
+
+  /// Hai thông báo trên có thể phát giữa lúc layout: chưa đo được vị trí, cũng
+  /// chưa được rebuild.
+  void _syncCardsMotionAfterFrame() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _cardsMotion.value = !_scrolling && _cardsOnScreen();
+    });
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
+  bool _cardsOnScreen() {
+    final box = _cardsKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return false;
+    final top = box.localToGlobal(Offset.zero).dy;
+    return top < MediaQuery.sizeOf(context).height && top + box.size.height > 0;
+  }
+
+  /// Các danh sách này đọc một lần qua API, không tự cập nhật như stream.
+  void _invalidateFetchedLists() {
+    ref.invalidate(hubClubContractsProvider);
+    ref.invalidate(gameListProvider);
+    ref.invalidate(hubClubRunsProvider);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // onRestart chỉ chạy khi app từ nền lên: kéo màn thông báo hay hộp thoại
+    // hệ thống thì không tải lại.
+    _lifecycle = AppLifecycleListener(onRestart: _invalidateFetchedLists);
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    _cardsMotion.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final connected = ref.watch(stravaConnectionProvider);
+    final sync = ref.watch(syncControllerProvider);
+    return Scaffold(
+      body: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          onRefresh: () async {
+            _invalidateFetchedLists();
+            ref.invalidate(stepLeaderboardDocsProvider);
+            ref.invalidate(publicRunRoomsProvider);
+            ref.invalidate(homeDigestProvider);
+            await ref
+                .read(hubClubContractsProvider.future)
+                .catchError(
+                  (Object _) =>
+                      const RunContractPage(contracts: [], hasMore: false),
+                );
+          },
+          child: NotificationListener<ScrollMetricsNotification>(
+            onNotification: _onMetricsChanged,
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _onScroll,
+              child: ListView(
+                // Trang có ít mục và mỗi mục có giới hạn, nên giữ hết. Mục bị bỏ khi
+                // cuộn xa thì provider autoDispose của nó huỷ, cuộn về lại gọi API.
+                scrollCacheExtent: const ScrollCacheExtent.pixels(4000),
+                padding: const EdgeInsets.fromLTRB(0, 6, 0, 130),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 12, 14),
+                    child: Row(
+                      children: [
+                        const Spacer(),
+                        if (connected)
+                          ContractSyncAction(
+                            syncing: sync.syncing,
+                            synced: sync.lastSyncSucceeded,
+                            onPressed: () => ref
+                                .read(syncControllerProvider)
+                                .startBackgroundSync(force: true),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const HomeDigestCard(),
+                  const _LiveSection(),
+                  const _KeoSection(),
+                  const _RankSection(),
+                  _CardsSection(key: _cardsKey, motion: _cardsMotion),
+                  const _RunsSection(),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Trang đầu của danh sách kèo club. Lỗi thì để mục Kèo báo, không nuốt.
+final hubClubContractsProvider = FutureProvider.autoDispose<RunContractPage>(
+  (ref) => ref
+      .watch(runContractRepositoryProvider)
+      .fetchClubContractsPage(limit: 20),
+);
+
+class HubSectionHeader extends StatelessWidget {
+  const HubSectionHeader({
+    required this.title,
+    this.onMore,
+    this.action,
+    super.key,
+  });
+
+  final String title;
+  final VoidCallback? onMore;
+
+  /// Nút cạnh tiêu đề, vd đặt kèo.
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return InkWell(
+      onTap: onMore,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 18, 16, 10),
+        child: Row(
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.2,
+              ),
+            ),
+            const Spacer(),
+            ?action,
+            if (onMore != null)
+              Icon(
+                Icons.chevron_right_rounded,
+                color: onSurface.withValues(alpha: 0.45),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------- LIVE
+
+/// Mục Live: phòng group đang chạy rồi người đang chạy riêng, chạm tiêu đề
+/// sang trang Live có cả phòng hẹn giờ.
+class _LiveSection extends ConsumerWidget {
+  const _LiveSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return switch (ref.watch(liveBoardProvider)) {
+      AsyncData(:final value) => _content(context, value),
+      // Live chỉ là phần thêm: lỗi thì báo một dòng, phần còn lại vẫn dùng
+      // được.
+      AsyncError(:final error) => Builder(
+        builder: (context) {
+          debugPrint('live board: $error');
+          return _RetryRow(
+            label: 'Không tải được ai đang chạy. Chạm để thử lại.',
+            onTap: () {
+              ref.invalidate(clubLiveSessionsProvider);
+              ref.invalidate(publicRunRoomsProvider);
+              ref.invalidate(myRunRoomsProvider);
+            },
+          );
+        },
+      ),
+      _ => _loading(context),
+    };
+  }
+
+  /// Giữ đúng chỗ của dòng mời, là thứ thường hiện nhất, để Live về không đẩy các
+  /// mục dưới. Web không mời nên không có gì để giữ.
+  Widget _loading(BuildContext context) {
+    if (kIsWeb) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        HubSectionHeader(title: 'Live', onMore: () => context.push('/live')),
+        Visibility(
+          visible: false,
+          maintainState: true,
+          maintainAnimation: true,
+          maintainSize: true,
+          child: _invite(context),
+        ),
+      ],
+    );
+  }
+
+  Widget _invite(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    child: _InviteRow(
+      title: 'Chưa ai đang chạy live',
+      subtitle: 'Chạm để bắt đầu buổi chạy của bạn.',
+      icon: Icons.directions_run_rounded,
+      // Sang tab Chạy như nút ở thanh dưới, không mở thêm màn ghi.
+      onTap: () => StatefulNavigationShell.of(context).goBranch(2),
+    ),
+  );
+
+  Widget _content(BuildContext context, LiveBoard board) {
+    final cards = <Widget>[
+      for (final room in board.liveRooms)
+        LiveRoomCard(room: room, myState: board.myStates[room.id]),
+      for (final solo in board.solos) LiveSessionCard(session: solo.session),
+    ];
+    // Chính mình đang live thì thôi mời. Web không có tab Chạy.
+    if (cards.isEmpty && (board.meLive || kIsWeb)) {
+      return const SizedBox.shrink();
+    }
+    final summary = [
+      if (board.solos.isNotEmpty) '${board.solos.length} đang chạy',
+      if (board.liveRooms.isNotEmpty) '${board.liveRooms.length} phòng',
+    ].join(' · ');
+    final width = MediaQuery.sizeOf(context).width - 60;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        HubSectionHeader(
+          title: 'Live',
+          onMore: () => context.push('/live'),
+          action: summary.isEmpty ? null : _MutedLine(summary),
+        ),
+        if (cards.isEmpty)
+          _invite(context)
+        else if (cards.length == 1)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: cards.single,
+          )
+        else
+          SizedBox(
+            height: LiveSessionCard.height,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: cards.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (context, index) =>
+                  SizedBox(width: width, child: cards[index]),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Thẻ phòng group đang chạy, cùng cỡ với [LiveSessionCard]: hình tuyến làm
+/// nền, tên phòng và số người ở tấm dưới.
+class LiveRoomCard extends StatelessWidget {
+  const LiveRoomCard({required this.room, this.myState, super.key});
+
+  final RunRoom room;
+  final RunRoomMemberState? myState;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final route = room.route;
+    final detail = [
+      room.hostName,
+      if (route != null) 'tuyến ${runRoomRouteKm(route)}',
+      switch (myState) {
+        RunRoomMemberState.joined => 'đã vào',
+        RunRoomMemberState.requested => 'chờ duyệt',
+        _ => runRoomAccessLabel(room.privacy).toLowerCase(),
+      },
+    ].join(' · ');
+    return SizedBox(
+      height: LiveSessionCard.height,
+      child: Material(
+        clipBehavior: Clip.antiAlias,
+        borderRadius: BorderRadius.circular(26),
+        color: palette.tint,
+        child: InkWell(
+          onTap: () => context.push('/rooms/${room.id}'),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [palette.tint, palette.glassStart],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: route != null
+                    ? RunRoomRouteSketch(
+                        route: route,
+                        color: palette.accent,
+                        strokeWidth: 4,
+                        padding: const EdgeInsets.fromLTRB(28, 56, 28, 76),
+                      )
+                    : Padding(
+                        padding: const EdgeInsets.only(bottom: 40),
+                        child: Icon(
+                          Icons.groups_rounded,
+                          size: 72,
+                          color: palette.accent.withValues(alpha: 0.35),
+                        ),
+                      ),
+              ),
+              const Positioned(
+                left: 14,
+                top: 14,
+                child: Row(
+                  children: [
+                    LiveBadge(),
+                    SizedBox(width: 6),
+                    _GlassPill(
+                      child: Text(
+                        'PHÒNG',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                left: 10,
+                right: 10,
+                bottom: 10,
+                child: _GlassPill(
+                  radius: 18,
+                  padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              room.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            Text(
+                              detail,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: onSurface.withValues(alpha: 0.55),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _BigNumber(
+                        value: '${room.runnerCount}',
+                        unit: '/${room.maxRunners}',
+                        size: 34,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class LiveSessionCard extends StatelessWidget {
+  const LiveSessionCard({required this.session, super.key});
+
+  static const height = 236.0;
+
+  final LiveTrackingSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return SizedBox(
+      height: height,
+      child: Material(
+        clipBehavior: Clip.antiAlias,
+        borderRadius: BorderRadius.circular(26),
+        color: palette.tint,
+        child: InkWell(
+          onTap: () => context.push('/live/${session.id}'),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [palette.tint, palette.glassStart],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: LiveMapPreview(
+                  session: session,
+                  // Chừa hàng nhãn LIVE ở trên và tấm tên, số km ở dưới.
+                  padding: const EdgeInsets.fromLTRB(28, 56, 28, 76),
+                ),
+              ),
+              Positioned(
+                left: 14,
+                right: 14,
+                top: 14,
+                child: Row(
+                  children: [
+                    const LiveBadge(),
+                    const Spacer(),
+                    _GlassPill(
+                      child: EverySecond(
+                        builder: (context, now) => Text(
+                          formatDuration(liveElapsedSeconds(session, now)),
+                          style: const TextStyle(
+                            fontFamily: 'Barlow Condensed',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                left: 10,
+                right: 10,
+                bottom: 10,
+                child: _GlassPill(
+                  radius: 18,
+                  padding: const EdgeInsets.fromLTRB(10, 9, 14, 9),
+                  child: Row(
+                    children: [
+                      _Avatar(
+                        url: session.ownerAvatarUrl,
+                        name: session.ownerName,
+                        size: 34,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              session.ownerName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            Text(
+                              formatPace(session.averagePaceSecondsPerKm),
+                              style: TextStyle(
+                                color: onSurface.withValues(alpha: 0.55),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _BigNumber(
+                        value: (session.distanceMeters / 1000).toStringAsFixed(
+                          2,
+                        ),
+                        unit: 'km',
+                        size: 34,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------- KÈO
+
+class _KeoSection extends ConsumerWidget {
+  const _KeoSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final uid = ref.watch(firebaseUserProvider).value?.uid;
+    final mine = ref.watch(myActiveContractsProvider);
+    final club = ref.watch(hubClubContractsProvider);
+    final games =
+        ref.watch(gameListProvider).value?.items ?? const <GameListItem>[];
+    final coach = ref.watch(coachPlanProvider).value;
+    final error = mine.error ?? club.error;
+    if (error != null) debugPrint('hub contracts: $error');
+    final contracts = _mergeActive(
+      club.value?.contracts ?? const [],
+      mine.value ?? const [],
+      uid,
+    );
+    final showCoach = coach != null && !coach.isDraft && !coach.completed;
+    final board = ref.watch(liveBoardProvider).value;
+    // Phòng của kèo "Hẹn chạy cùng" đã có thẻ kèo, không hiện lần nữa.
+    final linkedRooms = {for (final c in contracts) ?c.roomId};
+    final scheduled = [
+      for (final room in board?.upcomingRooms ?? const <RunRoom>[])
+        if (!linkedRooms.contains(room.id)) room,
+    ];
+    final loading =
+        (mine.isLoading && !mine.hasValue) ||
+        (club.isLoading && !club.hasValue);
+
+    Future<void> create() async {
+      final created = await startCreateContract(
+        context,
+        ref,
+        mine.value ?? const [],
+        uid,
+      );
+      if (created) ref.invalidate(hubClubContractsProvider);
+    }
+
+    final cards = <Widget>[
+      for (final room in scheduled)
+        _RoomMiniCard(room: room, myState: board?.myStates[room.id]),
+      for (final game in games)
+        _GameMiniCard(
+          game: game,
+          onTap: () async {
+            await context.push('/games/${game.id}');
+            ref.invalidate(gameListProvider);
+          },
+        ),
+      if (showCoach)
+        _CoachMiniCard(
+          plan: coach,
+          onTap: () => context.push('/coach/${coach.id}'),
+        ),
+      for (final contract in contracts)
+        _ContractMiniCard(contract: contract, currentUid: uid),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        HubSectionHeader(
+          title: 'Kèo đang chạy',
+          onMore: () => context.push('/contracts'),
+          // Rỗng thì dòng mời bên dưới đã có nút đặt kèo.
+          action: cards.isEmpty && !loading ? null : _AddButton(onTap: create),
+        ),
+        if (error != null && cards.isEmpty)
+          _RetryRow(
+            label: 'Không tải được kèo. Chạm để thử lại.',
+            onTap: () {
+              ref.invalidate(myActiveContractsProvider);
+              ref.invalidate(hubClubContractsProvider);
+            },
+          )
+        else if (loading && cards.isEmpty)
+          const SizedBox(height: _MiniCard.height + 12)
+        else if (cards.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _InviteRow(
+              title: 'Đặt kèo tuần này',
+              subtitle: 'tự đặt hay rủ club',
+              icon: Icons.add_rounded,
+              onTap: create,
+            ),
+          )
+        else
+          SizedBox(
+            height: _MiniCard.height + 12,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              itemCount: cards.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (context, index) => cards[index],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Kèo đang chạy của club cộng kèo của mình (bản của mình mới hơn). Kèo mình
+/// tham gia đứng trước, rồi kèo nào sắp hết hạn trước.
+List<RunContract> _mergeActive(
+  List<RunContract> club,
+  List<RunContract> mine,
+  String? uid,
+) {
+  final byId = {
+    for (final contract in club)
+      if (contract.isActive) contract.id: contract,
+  };
+  for (final contract in mine) {
+    if (contract.isActive) byId[contract.id] = contract;
+  }
+  int rank(RunContract c) => c.participantFor(uid) == null ? 1 : 0;
+  return byId.values.toList()..sort((a, b) {
+    final byMine = rank(a).compareTo(rank(b));
+    if (byMine != 0) return byMine;
+    if (a.openEnded != b.openEnded) return a.openEnded ? 1 : -1;
+    return a.endAtExclusive.compareTo(b.endAtExclusive);
+  });
+}
+
+/// Thẻ đứng ở hàng Kèo, nền là hình [scene], bố cục chọn theo [seed].
+class _MiniCard extends StatelessWidget {
+  const _MiniCard({
+    required this.child,
+    required this.onTap,
+    required this.scene,
+    required this.seed,
+  });
+
+  static const width = 164.0;
+  static const height = 208.0;
+
+  final Widget child;
+  final VoidCallback onTap;
+  final KeoScene scene;
+  final String seed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      height: height,
+      child: KeoSceneCard(
+        scene: scene,
+        seed: seed,
+        onTap: onTap,
+        padding: const EdgeInsets.all(14),
+        child: child,
+      ),
+    );
+  }
+}
+
+class _ContractMiniCard extends StatelessWidget {
+  const _ContractMiniCard({required this.contract, required this.currentUid});
+
+  final RunContract contract;
+  final String? currentUid;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final state = contractUiStateFor(contract, now, currentUid);
+    final color = runContractStateColor(context, state);
+    final percent = contractPercentFor(contract, currentUid);
+    final joined = contract.participantFor(currentUid) != null;
+    return _MiniCard(
+      onTap: () => context.push('/contracts/${contract.id}'),
+      scene: KeoScene.forContract(contract),
+      seed: contract.id,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Ring(
+            ratio: percent / 100,
+            color: color,
+            label: '${percent.clamp(0, 999).toStringAsFixed(0)}%',
+          ),
+          const Spacer(),
+          Text(
+            contract.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.2,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          _MutedLine(switch (contract.meetAt) {
+            // Kèo hẹn: trước giờ hẹn thì giờ hẹn và số người đăng ký mới là
+            // thứ cần biết.
+            final meetAt? =>
+              'hẹn ${DateFormat('HH:mm dd/MM').format(meetAt)} · '
+                  '${contract.participantCount} người',
+            null =>
+              joined
+                  ? (contract.openEnded
+                        ? 'không hạn'
+                        : timeLeftLabel(timeRemaining(contract, now)))
+                  : '${contract.participantCount} người · chưa vào',
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+/// Phòng hẹn giờ trong hàng Kèo: giờ hẹn to, chạm vào phòng để đăng ký.
+class _RoomMiniCard extends StatelessWidget {
+  const _RoomMiniCard({required this.room, required this.myState});
+
+  final RunRoom room;
+  final RunRoomMemberState? myState;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final now = DateTime.now();
+    final starts = room.startsAt!.toLocal();
+    final day = runRoomDayLabel(starts, now);
+    final weekday = runRoomWeekdayShort[starts.weekday - 1];
+    final registered = myState != null;
+    return _MiniCard(
+      onTap: () => context.push('/rooms/${room.id}'),
+      scene: KeoScene.live,
+      seed: room.id,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'PHÒNG LIVE',
+            style: TextStyle(
+              color: palette.accentDeep,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            DateFormat('HH:mm').format(starts),
+            style: const TextStyle(
+              fontFamily: 'Barlow Condensed',
+              fontSize: 34,
+              height: 1,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          _MutedLine(
+            (day == weekday ? day : '$day · $weekday').toUpperCase(),
+          ),
+          const Spacer(),
+          Text(
+            room.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.2,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: _MutedLine(
+                  '${room.runnerCount}/${room.maxRunners} đăng ký',
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: registered ? palette.tint : palette.ink,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  switch (myState) {
+                    RunRoomMemberState.requested => 'Chờ duyệt',
+                    null => 'Đăng ký',
+                    _ => 'Đã đăng ký',
+                  },
+                  style: TextStyle(
+                    color: registered ? palette.ink : palette.accent,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CoachMiniCard extends StatelessWidget {
+  const _CoachMiniCard({required this.plan, required this.onTap});
+
+  final TrainingPlan plan;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = plan.totalSessions;
+    final ratio = total == 0 ? 0.0 : plan.doneSessions / total;
+    final color = context.runNowPalette.secondary;
+    return _MiniCard(
+      onTap: onTap,
+      scene: KeoScene.activityCount,
+      seed: plan.id,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Ring(
+            ratio: ratio,
+            color: color,
+            label: '${plan.doneSessions}/$total',
+          ),
+          const Spacer(),
+          Text(
+            plan.goal,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.2,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          _Joiners(plan: plan),
+        ],
+      ),
+    );
+  }
+}
+
+class _GameMiniCard extends StatelessWidget {
+  const _GameMiniCard({required this.game, required this.onTap});
+
+  final GameListItem game;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = KeoSceneColors.resolve(
+      context.runNowPalette,
+      KeoScene.werewolf,
+    ).accent;
+    return _MiniCard(
+      onTap: onTap,
+      scene: KeoScene.werewolf,
+      seed: game.id,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'MA SÓI',
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (game.hasTodo)
+                Container(
+                  width: 9,
+                  height: 9,
+                  decoration: BoxDecoration(
+                    color: accent,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+            ],
+          ),
+          const Spacer(),
+          Text(
+            game.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: RunNowGameTokens.nightInk,
+              fontSize: 14,
+              height: 1.2,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            game.statusLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: RunNowGameTokens.nightMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Nút đặt kèo trên tiêu đề mục Kèo, để thấy ngay chứ không phải lướt tới
+/// cuối hàng thẻ.
+class _AddButton extends StatelessWidget {
+  const _AddButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.runNowPalette.accent;
+    return IconButton(
+      tooltip: 'Đặt kèo',
+      onPressed: onTap,
+      style: IconButton.styleFrom(
+        backgroundColor: accent,
+        foregroundColor: _onColor(accent),
+        minimumSize: const Size.square(32),
+        fixedSize: const Size.square(32),
+        padding: EdgeInsets.zero,
+      ),
+      icon: const Icon(Icons.add_rounded, size: 22),
+    );
+  }
+}
+
+/// Màu chữ, icon đọc được trên nền [background].
+Color _onColor(Color background) =>
+    ThemeData.estimateBrightnessForColor(background) == Brightness.dark
+    ? Colors.white
+    : Colors.black;
+
+/// Dòng mời ở mục còn rỗng: tiêu đề, dòng phụ và nút tròn bên phải.
+class _InviteRow extends StatelessWidget {
+  const _InviteRow({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+
+  /// null thì dòng chỉ để nhắc, chạm không đi đâu.
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return Material(
+      color: palette.glassStart,
+      borderRadius: BorderRadius.circular(22),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    _MutedLine(subtitle),
+                  ],
+                ),
+              ),
+              CircleAvatar(
+                radius: 19,
+                backgroundColor: palette.accent,
+                child: Icon(icon, color: _onColor(palette.accent)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------- bits
+
+// ---------------------------------------------------------------- BXH TUẦN
+
+/// Top 5 BXH Chạy/Đi bộ tuần này trên ngọn núi và hạng của mình. Đọc
+/// chung bảng với tab Club (đã tải sẵn lúc mở app). Tuần chưa ai có km thì
+/// ẩn. Nút chia sẻ chụp đúng khung ngọn núi thành ảnh để khoe ra ngoài app.
+class _RankSection extends ConsumerStatefulWidget {
+  const _RankSection();
+
+  @override
+  ConsumerState<_RankSection> createState() => _RankSectionState();
+}
+
+class _RankSectionState extends ConsumerState<_RankSection> {
+  static const _sport = ClubRankingSport.run;
+  static const _range = ClubRankingRange.currentWeek;
+
+  final _mountainKey = GlobalKey();
+  bool _sharing = false;
+
+  Future<void> _share(BuildContext origin) async {
+    // Vẽ lại bản để khoe (tên thật, có tên app) rồi mới chụp.
+    setState(() => _sharing = true);
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      if (!origin.mounted) return;
+      await shareDashboardCard(
+        cardKey: _mountainKey,
+        shareOriginContext: origin,
+        title: '3i BXH tuần · Chạy bộ',
+      );
+    } catch (error) {
+      debugPrint('Khoe BXH tuần lỗi: $error');
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Không thể chia sẻ: $error')));
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final board = ref.watch(totalKmLeaderboardProvider);
+    if (board.error case final error?) {
+      debugPrint('Không tải được BXH tuần: $error');
+      return _RetryRow(
+        label: 'Không tải được bảng xếp hạng. Chạm để thử lại.',
+        onTap: () => ref.invalidate(stepLeaderboardDocsProvider),
+      );
+    }
+    final entries = board.value ?? const <LeaderboardEntry>[];
+    final ranked = rankClubMembers(entries, _sport, _range);
+    // Lúc đang tải thì vẽ núi trống giữ chỗ, để BXH về không đẩy các mục dưới.
+    final loading = !board.hasValue;
+    if (!loading && ranked.isEmpty) return const SizedBox.shrink();
+    final uid = ref.watch(firebaseUserProvider).value?.uid;
+    final myIndex = ranked.indexWhere((member) => member.entry.uid == uid);
+    final myEntry = entries.where((e) => e.uid == uid).firstOrNull;
+    final private = myEntry != null && !myEntry.isPublic;
+    void open() {
+      ref.read(clubRankingSportProvider.notifier).state = _sport;
+      ref.read(clubRankingRangeProvider.notifier).state = _range;
+      StatefulNavigationShell.of(context).goBranch(1);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        HubSectionHeader(title: 'BXH tuần', onMore: open),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          // Nút khoe đè lên góc khung nhưng nằm ngoài RepaintBoundary nên
+          // không lọt vào ảnh.
+          child: Stack(
+            children: [
+              RepaintBoundary(
+                key: _mountainKey,
+                child: Material(
+                  color: context.runNowPalette.tint,
+                  borderRadius: BorderRadius.circular(26),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: open,
+                    child: RankMountain(
+                      ranked: ranked,
+                      myUid: uid,
+                      // Hồ sơ riêng tư không lên núi; dòng dưới đã nói lý do.
+                      myEntry: private ? null : myEntry,
+                      caption:
+                          '${_sharing ? '3i Run · BXH tuần' : 'Tuần này'} · ${clubRankingTimeLeftLabel(DateTime.now(), _range).toLowerCase()}',
+                      meByName: _sharing,
+                    ),
+                  ),
+                ),
+              ),
+              if (!loading)
+                Positioned(
+                  right: 10,
+                  bottom: 10,
+                  child: Builder(
+                    builder: (origin) {
+                      final accent = context.runNowPalette.accent;
+                      return IconButton(
+                        tooltip: 'Khoe BXH tuần',
+                        onPressed: _sharing ? null : () => _share(origin),
+                        style: IconButton.styleFrom(
+                          backgroundColor: accent,
+                          foregroundColor: _onColor(accent),
+                          minimumSize: const Size.square(36),
+                          fixedSize: const Size.square(36),
+                          padding: EdgeInsets.zero,
+                        ),
+                        icon: const Icon(Icons.ios_share_rounded, size: 20),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: loading
+              ? const SizedBox(height: _MyRankLine.usualHeight)
+              : _MyRankLine(
+                  me: myIndex < 0 ? null : ranked[myIndex],
+                  gap: myIndex < 0
+                      ? null
+                      : clubRankingGapLabel(ranked, myIndex, _sport),
+                  private: private,
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Dòng dưới ngọn núi: hạng của mình và còn bao xa để lên hạng.
+class _MyRankLine extends StatelessWidget {
+  const _MyRankLine({
+    required this.me,
+    required this.gap,
+    required this.private,
+  });
+
+  /// Cao cỡ này khi có hạng, là trường hợp thường gặp, để giữ chỗ lúc đang tải.
+  static const usualHeight = 51.0;
+
+  final ClubRankedMember? me;
+  final String? gap;
+
+  /// Hồ sơ riêng tư thì không lên BXH, nói rõ để không tưởng là thiếu km.
+  final bool private;
+
+  @override
+  Widget build(BuildContext context) {
+    final me = this.me;
+    final palette = context.runNowPalette;
+    if (me == null) {
+      return _MutedLine(
+        private
+            ? 'Hồ sơ của bạn đang riêng tư nên không lên BXH.'
+            : 'Tuần này bạn chưa có km nào. Chạy một buổi để lên bảng.',
+      );
+    }
+    return _GlassPill(
+      radius: 16,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Row(
+        children: [
+          Text(
+            '#${me.rank}',
+            style: TextStyle(
+              fontFamily: 'Barlow Condensed',
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: palette.accent,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Bạn',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                if (gap case final gap?) _MutedLine(gap),
+              ],
+            ),
+          ),
+          _BigNumber(
+            value: (me.score / 1000).toStringAsFixed(1),
+            unit: 'km',
+            size: 24,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------- BUỔI CHẠY
+
+class _RunsSection extends ConsumerWidget {
+  const _RunsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final runs = ref.watch(hubClubRunsProvider);
+    if (runs.error case final error?) {
+      debugPrint('Không tải được buổi chạy của club: $error');
+      return _RetryRow(
+        label: 'Không tải được buổi chạy. Chạm để thử lại.',
+        onTap: () => ref.invalidate(hubClubRunsProvider),
+      );
+    }
+    final items = runs.value ?? const <ClubRunItem>[];
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        HubSectionHeader(
+          title: 'Buổi chạy',
+          onMore: () => context.push('/club-runs'),
+        ),
+        for (final item in items)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: ClubRunPost(item: item),
+          ),
+        const SizedBox(height: 2),
+      ],
+    );
+  }
+}
+
+/// Thẻ club đang khoe, xếp ngang: bậc hiếm cao trước, rồi nhiều tim.
+class _CardsSection extends ConsumerWidget {
+  const _CardsSection({required this.motion, super.key});
+
+  /// Thẻ có được chạy hiệu ứng lúc này không.
+  final ValueListenable<bool> motion;
+
+  static const _shown = 10;
+  static const _thumbWidth = 150.0;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cards = ref.watch(topClubCardsProvider(_shown));
+    if (cards.error case final error?) {
+      debugPrint('Không tải được thẻ của club: $error');
+      return _RetryRow(
+        label: 'Không tải được thẻ. Chạm để thử lại.',
+        onTap: () => ref.invalidate(clubCardsProvider),
+      );
+    }
+    final items = cards.value;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        HubSectionHeader(
+          title: 'Thẻ nổi bật',
+          onMore: () => context.push('/club-cards'),
+        ),
+        // Chưa tải xong thì giữ chỗ trống: dòng mời không nháy lên rồi biến mất,
+        // thẻ về không đẩy mục dưới.
+        if (items == null)
+          SizedBox(height: clubCardThumbHeight(_thumbWidth))
+        else if (items.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _InviteRow(
+              title: 'Chưa ai có thẻ mới',
+              subtitle: 'chạy xong lật thẻ, thẻ tự lên đây',
+              icon: Icons.style_rounded,
+              // Bộ thẻ nằm ở tab Hồ sơ; chạm mà nhảy tab thì rời trang Kèo.
+              onTap: null,
+            ),
+          )
+        else
+          SizedBox(
+            height: clubCardThumbHeight(_thumbWidth),
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              // List cao đúng bằng thẻ: cắt thì bóng thẻ chỉ còn lộ ở bốn góc
+              // ngoài đường bo, trông như viền tối vuông.
+              clipBehavior: Clip.none,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: items.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              // Dừng hiệu ứng ở từng thẻ chứ không bọc cả list: list cũng
+              // chạy quán tính bằng ticker, tắt chung thì buông tay là đứng.
+              itemBuilder: (context, i) => ValueListenableBuilder(
+                valueListenable: motion,
+                builder: (context, enabled, child) =>
+                    TickerMode(enabled: enabled, child: child!),
+                child: ClubCardThumb(item: items[i], width: _thumbWidth),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _RetryRow extends StatelessWidget {
+  const _RetryRow({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(onPressed: onTap, child: Text(label)),
+      ),
+    );
+  }
+}
+
+class _Ring extends StatelessWidget {
+  const _Ring({required this.ratio, required this.color, required this.label});
+
+  final double ratio;
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return SizedBox.square(
+      dimension: 58,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          CircularProgressIndicator(
+            value: ratio.clamp(0.0, 1.0),
+            strokeWidth: 7,
+            strokeCap: StrokeCap.round,
+            color: color,
+            backgroundColor: onSurface.withValues(alpha: 0.2),
+          ),
+          Center(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontFamily: 'Barlow Condensed',
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Avatar những người đang theo giáo án, chủ giáo án đứng đầu.
+class _Joiners extends ConsumerWidget {
+  const _Joiners({required this.plan});
+
+  final TrainingPlan plan;
+
+  static const _size = 22.0;
+  static const _step = 15.0;
+  static const _shown = 4;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final members = {
+      for (final member in ref.watch(membersProvider).value ?? const [])
+        member.uid: member,
+    };
+    final uids = plan.participants.keys.toList()
+      ..sort((a, b) {
+        if (a == plan.ownerUid) return -1;
+        if (b == plan.ownerUid) return 1;
+        return a.compareTo(b);
+      });
+    if (uids.isEmpty) return const _MutedLine('giáo án');
+    final shown = uids.take(_shown).toList();
+    final more = uids.length - shown.length;
+    return Row(
+      children: [
+        SizedBox(
+          width: _size + (shown.length - 1) * _step,
+          height: _size,
+          child: Stack(
+            children: [
+              for (final (i, uid) in shown.indexed)
+                Positioned(
+                  left: i * _step,
+                  child: DecoratedBox(
+                    // Viền màu nền hình tách các avatar chồng lên nhau.
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Theme.of(context).colorScheme.surface,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(1.5),
+                      child: ClubAvatar(member: members[uid], size: _size - 3),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (more > 0) ...[const SizedBox(width: 6), _MutedLine('+$more')],
+      ],
+    );
+  }
+}
+
+class _MutedLine extends StatelessWidget {
+  const _MutedLine(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+        fontFamily: 'Barlow Condensed',
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.3,
+      ),
+    );
+  }
+}
+
+class _GlassPill extends StatelessWidget {
+  const _GlassPill({
+    required this.child,
+    this.radius = 999,
+    this.padding = const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+  });
+
+  final Widget child;
+  final double radius;
+  final EdgeInsets padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: palette.background.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: palette.border.withValues(alpha: 0.5)),
+      ),
+      child: Padding(padding: padding, child: child),
+    );
+  }
+}
+
+class _BigNumber extends StatelessWidget {
+  const _BigNumber({required this.value, required this.unit, this.size = 34});
+
+  final String value;
+  final String unit;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: value),
+          TextSpan(
+            text: ' $unit',
+            style: TextStyle(
+              fontSize: size * 0.44,
+              color: onSurface.withValues(alpha: 0.5),
+            ),
+          ),
+        ],
+      ),
+      style: TextStyle(
+        fontFamily: 'Barlow Condensed',
+        fontSize: size,
+        height: 0.95,
+        fontWeight: FontWeight.w800,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
+    );
+  }
+}
+
+class _Avatar extends StatelessWidget {
+  const _Avatar({required this.url, required this.name, this.size = 32});
+
+  final String? url;
+  final String name;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasUrl = url != null && url!.isNotEmpty;
+    return CircleAvatar(
+      radius: size / 2,
+      backgroundColor: context.runNowPalette.accent,
+      backgroundImage: hasUrl ? cachedAvatarImage(context, url!, size) : null,
+      child: hasUrl
+          ? null
+          : Text(
+              name.isEmpty ? '?' : name[0].toUpperCase(),
+              style: TextStyle(
+                fontSize: size * 0.38,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+    );
+  }
+}

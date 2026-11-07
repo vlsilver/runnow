@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/health_sync.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
@@ -9,6 +10,7 @@ import 'package:myrun/src/steps_format.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/run_now_empty.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 
 class JournalScreen extends ConsumerStatefulWidget {
@@ -19,30 +21,12 @@ class JournalScreen extends ConsumerStatefulWidget {
 }
 
 class _JournalScreenState extends ConsumerState<JournalScreen> {
-  final _scrollController = ScrollController();
-
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_loadMoreWhenNearBottom);
     // Trả về ngay nếu đã có cache từ lần vào trước trong phiên này (xem
     // JournalController) — chỉ lần đầu tiên mới thật sự chờ Firestore.
     Future.microtask(() => ref.read(journalControllerProvider).ensureLoaded());
-  }
-
-  @override
-  void dispose() {
-    _scrollController
-      ..removeListener(_loadMoreWhenNearBottom)
-      ..dispose();
-    super.dispose();
-  }
-
-  void _loadMoreWhenNearBottom() {
-    final position = _scrollController.position;
-    if (position.extentAfter < 700) {
-      ref.read(journalControllerProvider).loadNextPage();
-    }
   }
 
   @override
@@ -50,34 +34,59 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
     // Nhắc kết nối Strava đã có sẵn ở Cài đặt — không lặp lại banner này ở
     // đây nữa, tránh watch thêm profile/Strava-status chỉ để hiện 1 card.
     final journal = ref.watch(journalControllerProvider);
-    // Số bước theo ngày (Apple Health, chỉ iOS) — GỘP THẲNG vào timeline nhật ký
-    // như một loại thẻ khác, không tách tab. Lỗi/đang tải → coi như rỗng để không
-    // phá danh sách buổi chạy (vd rules stepDays chưa deploy).
+    // Số bước theo ngày (Apple Health, chỉ iOS) — gộp vào timeline tab Đi bộ
+    // như một loại thẻ khác. Lỗi/đang tải → coi như rỗng để không phá danh
+    // sách buổi (vd rules stepDays chưa deploy).
     final stepDays =
         ref.watch(myStepDaysProvider).asData?.value ?? const <StepDay>[];
-    return Scaffold(
-      appBar: AppBar(title: const Text('Nhật ký')),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.read(syncControllerProvider).startBackgroundSync(force: true);
-          await ref.read(journalControllerProvider).loadFirstPage();
-        },
-        child: journal.loadingInitial
-            ? const _JournalLoadingList()
-            : _JournalPagedList(
-                controller: _scrollController,
-                rows: _mergeJournalRows(
-                  items: journal.items,
-                  stepDays: stepDays,
-                  hasMore: journal.hasMore,
-                ),
-                error: journal.error,
-                hasMore: journal.hasMore,
-                loadingMore: journal.loadingMore,
-                onRetry: () =>
-                    ref.read(journalControllerProvider).loadNextPage(),
-                onStepTap: _openStepDetail,
+    Future<void> refresh() async {
+      ref.read(syncControllerProvider).startBackgroundSync(force: true);
+      await ref.read(journalControllerProvider).loadFirstPage();
+    }
+
+    void loadMore() => ref.read(journalControllerProvider).loadNextPage();
+    return DefaultTabController(
+      length: JournalTab.values.length,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Nhật ký'),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Chạy'),
+              Tab(text: 'Đi bộ'),
+              Tab(text: 'Đạp xe'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            for (final tab in JournalTab.values)
+              RefreshIndicator(
+                onRefresh: refresh,
+                child: journal.loadingInitial
+                    ? const _JournalLoadingList()
+                    : _JournalPagedList(
+                        key: PageStorageKey(tab),
+                        emptyMessage: switch (tab) {
+                          JournalTab.run => 'Chưa có buổi chạy nào',
+                          JournalTab.walk => 'Chưa có buổi đi bộ nào',
+                          JournalTab.ride => 'Chưa có buổi đạp xe nào',
+                        },
+                        rows: _mergeJournalRows(
+                          tab: tab,
+                          items: journal.items,
+                          stepDays: stepDays,
+                          hasMore: journal.hasMore,
+                        ),
+                        error: journal.error,
+                        hasMore: journal.hasMore,
+                        loadingMore: journal.loadingMore,
+                        onLoadMore: loadMore,
+                        onStepTap: _openStepDetail,
+                      ),
               ),
+          ],
+        ),
       ),
     );
   }
@@ -132,10 +141,12 @@ DateTime _stepSortAt(String key) {
   return DateTime(d.year, d.month, d.day, 23, 59, 59);
 }
 
-/// Trộn buổi chạy + thẻ bước thành 1 timeline giảm dần. Khi CÒN trang chưa tải,
-/// chỉ chèn thẻ bước có ngày ≥ buổi chạy cũ nhất đang hiện — buổi cũ hơn lộ dần
-/// khi cuộn, tránh reflow (thẻ bước cũ bị đẩy khi trang sau về). Tải hết → chèn hết.
+/// Timeline giảm dần của một tab: buổi thuộc tab đó, cộng thẻ bước nếu là tab
+/// Đi bộ. Khi CÒN trang chưa tải, chỉ chèn thẻ bước có ngày ≥ buổi cũ nhất đã
+/// tải (mọi loại, vì trang cắt theo thời gian) — ngày cũ hơn lộ dần khi cuộn,
+/// tránh reflow khi trang sau về. Tải hết → chèn hết.
 List<_JournalRow> _mergeJournalRows({
+  required JournalTab tab,
   required List<JournalActivityEntry> items,
   required List<StepDay> stepDays,
   required bool hasMore,
@@ -148,14 +159,17 @@ List<_JournalRow> _mergeJournalRows({
         '${oldest.month.toString().padLeft(2, '0')}-'
         '${oldest.day.toString().padLeft(2, '0')}';
   }
-  final steps = cutoff == null
+  final steps = tab != JournalTab.walk
+      ? const <StepDay>[]
+      : cutoff == null
       ? stepDays
       : [
           for (final d in stepDays)
             if (d.date.compareTo(cutoff) >= 0) d,
         ];
   return <_JournalRow>[
-    ...items.map(_ActivityJournalRow.new),
+    for (final entry in items)
+      if (journalTabOf(entry.activity.kind) == tab) _ActivityJournalRow(entry),
     ...steps.map(_StepJournalRow.new),
   ]..sort((a, b) => b.sortAt.compareTo(a.sortAt));
 }
@@ -341,44 +355,96 @@ class StepTimelineRow extends StatelessWidget {
   }
 }
 
-/// Timeline gộp buổi chạy + thẻ bước. Một cột duy nhất cho mọi bề rộng; màn rộng
-/// canh giữa (max 640) thay vì lưới 2 cột — thẻ chạy/thẻ bước cao thấp khác nhau.
-class _JournalPagedList extends StatelessWidget {
+/// Timeline một tab. Một cột duy nhất cho mọi bề rộng; màn rộng canh giữa (max
+/// 640) thay vì lưới 2 cột — thẻ chạy/thẻ bước cao thấp khác nhau.
+///
+/// Trang tải theo thời gian chứ không theo loại, nên một tab có thể chưa đủ
+/// dài để cuộn (vd trang đầu toàn buổi chạy, tab Đạp xe trống) dù backend còn
+/// trang. Sau mỗi frame, tab đang hiện còn ít hơn ~1 màn thì tự tải trang
+/// tiếp; dừng khi hết trang hoặc lỗi.
+class _JournalPagedList extends StatefulWidget {
   const _JournalPagedList({
-    required this.controller,
+    super.key,
     required this.rows,
+    required this.emptyMessage,
     required this.error,
     required this.hasMore,
     required this.loadingMore,
-    required this.onRetry,
+    required this.onLoadMore,
     required this.onStepTap,
   });
 
-  final ScrollController controller;
   final List<_JournalRow> rows;
+  final String emptyMessage;
   final Object? error;
   final bool hasMore;
   final bool loadingMore;
-  final VoidCallback onRetry;
+  final VoidCallback onLoadMore;
   final ValueChanged<StepDay> onStepTap;
 
   @override
+  State<_JournalPagedList> createState() => _JournalPagedListState();
+}
+
+class _JournalPagedListState extends State<_JournalPagedList> {
+  static const _loadAheadPixels = 700.0;
+
+  final _controller = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_loadMoreWhenNearBottom);
+  }
+
+  @override
+  void dispose() {
+    _controller
+      ..removeListener(_loadMoreWhenNearBottom)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _loadMoreWhenNearBottom() {
+    if (_controller.position.extentAfter < _loadAheadPixels) {
+      widget.onLoadMore();
+    }
+  }
+
+  void _fillShortTab() {
+    if (!mounted ||
+        !widget.hasMore ||
+        widget.loadingMore ||
+        widget.error != null ||
+        !_controller.hasClients) {
+      return;
+    }
+    if (_controller.position.extentAfter < _loadAheadPixels) {
+      widget.onLoadMore();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (rows.isEmpty) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fillShortTab());
+    final rows = widget.rows;
+    if (rows.isEmpty && !widget.hasMore) {
       return ListView(
-        controller: controller,
+        controller: _controller,
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          Padding(
-            padding: const EdgeInsets.all(32),
-            child: Center(
-              child: Text(
-                error == null
-                    ? 'Chưa có hoạt động.'
-                    : 'Không thể tải nhật ký: $error',
+          if (widget.error == null)
+            RunNowEmpty(
+              message: widget.emptyMessage,
+              hint: 'Buổi từ 3i, Strava, Garmin, Apple Health sẽ hiện ở đây.',
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.all(32),
+              child: Center(
+                child: Text('Không thể tải nhật ký: ${widget.error}'),
               ),
             ),
-          ),
         ],
       );
     }
@@ -388,17 +454,16 @@ class _JournalPagedList extends StatelessWidget {
             ? (constraints.maxWidth - 640) / 2
             : 12.0;
         return ListView.builder(
-          controller: controller,
+          controller: _controller,
           padding: EdgeInsets.fromLTRB(side, 16, side, 24),
           physics: const AlwaysScrollableScrollPhysics(),
           itemCount: rows.length + 1,
           itemBuilder: (context, index) {
             if (index >= rows.length) {
               return _JournalPaginationFooter(
-                error: error,
-                hasMore: hasMore,
-                loadingMore: loadingMore,
-                onRetry: onRetry,
+                error: widget.error,
+                hasMore: widget.hasMore,
+                onRetry: widget.onLoadMore,
               );
             }
             final row = rows[index];
@@ -409,7 +474,7 @@ class _JournalPagedList extends StatelessWidget {
               ),
               _StepJournalRow(:final day) => StepTimelineRow(
                 day: day,
-                onTap: () => onStepTap(day),
+                onTap: () => widget.onStepTap(day),
               ),
             };
             return RepaintBoundary(child: child);
@@ -420,17 +485,19 @@ class _JournalPagedList extends StatelessWidget {
   }
 }
 
+/// Cuối list: lỗi thì nút tải lại, hết trang thì khoảng trống, còn trang thì
+/// icon tải. Icon không bám theo từng request: tab thưa tự tải nhiều trang
+/// liền nhau, bật tắt theo request thì icon nháy giữa hai trang. Footer chỉ
+/// lộ ra khi đã gần đáy, mà gần đáy thì list đang tải tiếp.
 class _JournalPaginationFooter extends StatelessWidget {
   const _JournalPaginationFooter({
     required this.error,
     required this.hasMore,
-    required this.loadingMore,
     required this.onRetry,
   });
 
   final Object? error;
   final bool hasMore;
-  final bool loadingMore;
   final VoidCallback onRetry;
 
   @override
@@ -449,10 +516,8 @@ class _JournalPaginationFooter extends StatelessWidget {
     }
     return Padding(
       padding: const EdgeInsets.fromLTRB(0, 8, 0, 28),
-      child: Center(
-        child: loadingMore
-            ? const RunNowLoading(compact: true, label: 'Đang tải thêm')
-            : const SizedBox(height: 42),
+      child: const Center(
+        child: RunNowLoading(compact: true, label: 'Đang tải thêm'),
       ),
     );
   }
