@@ -43,6 +43,12 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   int? _deckPlayers;
   final _theme = gameMoonlitTheme();
   DateTime? _deadline;
+
+  /// Tab Lịch: đóng đăng ký theo giờ (mặc định) hay chủ phòng đóng; bắt đầu
+  /// theo giờ hay chủ phòng bấm (mặc định). Giờ chưa chọn thì lấy mặc định.
+  bool _deadlineOn = true;
+  bool _startOn = false;
+  DateTime? _startAt;
   bool _testMode = false;
   final _chatId = TextEditingController();
   final _threadId = TextEditingController();
@@ -60,6 +66,46 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     final pick = await showGameDeadlineSheet(context, initial: _deadline);
     if (pick == null || !mounted) return;
     setState(() => _deadline = pick.at);
+  }
+
+  /// Giờ [hour]:[minute] ngày mai.
+  static DateTime _tomorrowAt(int hour, int minute) {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day + 1, hour, minute);
+  }
+
+  /// Giờ đóng đăng ký; chưa chọn thì 21h mai.
+  DateTime get _deadlineAt => _deadline ?? _tomorrowAt(21, 0);
+
+  /// Giờ chia bài; chưa chọn thì 30 phút sau giờ đóng đăng ký.
+  DateTime get _startAtValue =>
+      _startAt ??
+      (_deadlineOn ? _deadlineAt : _tomorrowAt(21, 0)).add(
+        const Duration(minutes: 30),
+      );
+
+  Future<void> _pickTabDeadline() async {
+    final pick = await showGameDeadlineSheet(
+      context,
+      initial: _deadlineAt,
+      noneLabel: null,
+    );
+    final at = pick?.at;
+    if (at == null || !mounted) return;
+    setState(() => _deadline = at);
+  }
+
+  Future<void> _pickStartAt() async {
+    final pick = await showGameDeadlineSheet(
+      context,
+      initial: _startAtValue,
+      title: 'Bắt đầu ván',
+      after: _deadlineOn ? _deadlineAt : null,
+      noneLabel: null,
+    );
+    final at = pick?.at;
+    if (at == null || !mounted) return;
+    setState(() => _startAt = at);
   }
 
   Future<void> _pickStartHour(GameSetting s, int hour) async {
@@ -188,7 +234,12 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
               for (final option in list.roleOptions)
                 option.key: _roleOn(list, option),
             },
-            registrationDeadline: _deadline,
+            registrationDeadline: list.groups.isEmpty
+                ? _deadline
+                : _deadlineOn
+                ? _deadlineAt
+                : null,
+            startAt: list.groups.isNotEmpty && _startOn ? _startAtValue : null,
             testMode: _testMode,
             chatId: _testMode ? _chatId.text.trim() : null,
             threadId: threadId,
@@ -311,6 +362,68 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         ..._submitError(),
       ],
     );
+  }
+
+  /// Tab Lịch: đóng đăng ký và bắt đầu, mỗi khối chọn theo giờ hay để chủ
+  /// phòng tự làm.
+  List<Widget> _schedule(Map<String, Object?> values, Widget why) {
+    final now = DateTime.now();
+    final deadline = _deadlineAt;
+    final start = _startAtValue;
+    // Đêm 1 mở ở giờ mở vòng đầu tiên cách lúc chia bài ít nhất 2 tiếng.
+    final hour = _number(values['startHour'], 22).round();
+    final ready = start.add(const Duration(hours: 2));
+    var night1 = DateTime(ready.year, ready.month, ready.day, hour);
+    if (night1.isBefore(ready)) {
+      night1 = DateTime(night1.year, night1.month, night1.day + 1, hour);
+    }
+    String at(DateTime d) =>
+        '${DateFormat('HH:mm').format(d)} · ${gameDayLabel(d).replaceFirst(',', '')}';
+    return [
+      GameCreateLabel('Đăng ký', trailing: why),
+      GameCreateSegment(
+        labels: const ['Theo giờ', 'Chủ phòng đóng'],
+        selected: _deadlineOn ? 0 : 1,
+        onSelect: _working ? null : (i) => setState(() => _deadlineOn = i == 0),
+      ),
+      const SizedBox(height: 10),
+      if (_deadlineOn)
+        GameScheduleCard(
+          icon: Icons.event_rounded,
+          caption: 'ĐÓNG ĐĂNG KÝ',
+          title: at(deadline),
+          subtitle: gameUntil(deadline, now),
+          onTap: _working ? null : _pickTabDeadline,
+        )
+      else
+        const GameCreateManual(
+          icon: Icons.event_rounded,
+          text: 'Mở tới khi chủ phòng bắt đầu ván',
+        ),
+      const SizedBox(height: 10),
+      const GameCreateLabel('Bắt đầu'),
+      GameCreateSegment(
+        labels: const ['Theo giờ', 'Chủ phòng bấm'],
+        selected: _startOn ? 0 : 1,
+        onSelect: _working ? null : (i) => setState(() => _startOn = i == 0),
+      ),
+      const SizedBox(height: 10),
+      if (_startOn)
+        GameScheduleCard(
+          icon: Icons.nightlight_round,
+          caption: 'CHIA BÀI LÚC',
+          title: at(start),
+          subtitle:
+              '${gameUntil(start, now)} · Đêm 1 mở ${hour}h '
+              '${DateFormat('dd/MM').format(night1)}',
+          onTap: _working ? null : _pickStartAt,
+        )
+      else
+        const GameCreateManual(
+          icon: Icons.nightlight_round,
+          text: 'Chủ phòng bấm Bắt đầu khi đủ người',
+        ),
+    ];
   }
 
   Widget _deadlineTile() {
@@ -521,9 +634,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         Align(alignment: Alignment.centerRight, child: why),
     ];
     if (group.key == 'time') {
-      out
-        ..add(GameCreateLabel('Đăng ký', trailing: why))
-        ..add(_deadlineTile());
+      out.addAll(_schedule(values, why));
     }
     final deck = list.deck;
     if (group.key == 'roles') {
@@ -552,11 +663,6 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     out.addAll(_sections(list, live, values));
     if (live.isEmpty && offNote != null) {
       out.add(GameCreateNote(icon: Icons.nightlight_round, text: offNote));
-    }
-    if (round != null && group.key == 'time' && round.start.isNotEmpty) {
-      out
-        ..add(const SizedBox(height: 10))
-        ..add(GameCreateNote(icon: Icons.schedule_rounded, text: round.start));
     }
     if (round != null && shape != null && group.key == 'round') {
       out
@@ -1036,6 +1142,18 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
       for (final s in inGroup) ...[
         (s.label, s.description),
         for (final c in s.choices) ('· ${c.label}', c.description),
+      ],
+      if (group.key == 'time') ...[
+        (
+          'Đăng ký',
+          'Theo giờ: quá giờ này không ai vào thêm. Chủ phòng đóng: mở tới '
+              'lúc ván bắt đầu.',
+        ),
+        (
+          'Bắt đầu',
+          'Theo giờ: tới giờ bot chia bài, thiếu người thì ván chờ chủ phòng '
+              'bấm.',
+        ),
       ],
       if (group.key == 'time' && round != null && round.start.isNotEmpty)
         ('Bắt đầu và kết thúc', round.start),

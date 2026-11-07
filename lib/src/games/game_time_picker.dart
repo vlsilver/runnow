@@ -37,28 +37,46 @@ String _two(int v) => v.toString().padLeft(2, '0');
 /// chọn thì trả null.
 typedef GameDeadlinePick = ({DateTime? at});
 
-/// Sheet hạn đóng đăng ký: chọn nhanh, 14 ngày tới, giờ, phút. Giờ đã qua thì
-/// mờ và không bấm Xong được.
+/// Sheet chọn ngày giờ (hạn đóng đăng ký, giờ chia bài): chọn nhanh, 14 ngày
+/// tới, giờ, phút. Giờ không sau [after] (mặc định lúc này) thì mờ và không
+/// bấm Xong được. [noneLabel] null thì nút trái là Huỷ, đóng sheet trả null.
 Future<GameDeadlinePick?> showGameDeadlineSheet(
   BuildContext context, {
   DateTime? initial,
   DateTime? now,
+  String title = 'Đóng đăng ký',
+  DateTime? after,
+  String? noneLabel = 'Không đặt hạn',
 }) {
   return showModalBottomSheet<GameDeadlinePick>(
     context: context,
     isScrollControlled: true,
     backgroundColor: _M.panel,
     showDragHandle: true,
-    builder: (context) =>
-        _DeadlineSheet(initial: initial, now: now ?? DateTime.now()),
+    builder: (context) => _DeadlineSheet(
+      initial: initial,
+      now: now ?? DateTime.now(),
+      title: title,
+      after: after,
+      noneLabel: noneLabel,
+    ),
   );
 }
 
 class _DeadlineSheet extends StatefulWidget {
-  const _DeadlineSheet({required this.initial, required this.now});
+  const _DeadlineSheet({
+    required this.initial,
+    required this.now,
+    required this.title,
+    required this.after,
+    required this.noneLabel,
+  });
 
   final DateTime? initial;
   final DateTime now;
+  final String title;
+  final DateTime? after;
+  final String? noneLabel;
 
   @override
   State<_DeadlineSheet> createState() => _DeadlineSheetState();
@@ -77,6 +95,9 @@ class _DeadlineSheetState extends State<_DeadlineSheet> {
       DateTime(_today.year, _today.month, _today.day + day, hour, minute);
 
   bool _past(DateTime at) => !at.isAfter(widget.now);
+
+  bool _early(DateTime at) =>
+      _past(at) || (widget.after != null && !at.isAfter(widget.after!));
 
   @override
   void initState() {
@@ -105,7 +126,7 @@ class _DeadlineSheetState extends State<_DeadlineSheet> {
   @override
   Widget build(BuildContext context) {
     final at = _at(_day, _hour, _minute);
-    final past = _past(at);
+    final past = _early(at);
     final weekend = (6 - widget.now.weekday % 7 + 7) % 7;
     final quick = [
       ('Tối nay 21h', 0, 21),
@@ -121,7 +142,7 @@ class _DeadlineSheetState extends State<_DeadlineSheet> {
           shrinkWrap: true,
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
           children: [
-            const _SheetTitle('Đóng đăng ký'),
+            _SheetTitle(widget.title),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -146,7 +167,11 @@ class _DeadlineSheetState extends State<_DeadlineSheet> {
                         ),
                       ),
                       Text(
-                        past ? 'Giờ này đã qua' : gameUntil(at, widget.now),
+                        !past
+                            ? gameUntil(at, widget.now)
+                            : _past(at)
+                            ? 'Giờ này đã qua'
+                            : 'Phải sau giờ đóng đăng ký',
                         style: TextStyle(
                           fontSize: 12.5,
                           color: past ? _M.danger : _M.faint,
@@ -224,9 +249,10 @@ class _DeadlineSheetState extends State<_DeadlineSheet> {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () =>
-                        Navigator.pop<GameDeadlinePick>(context, (at: null)),
-                    child: const Text('Không đặt hạn'),
+                    onPressed: () => widget.noneLabel == null
+                        ? Navigator.pop<GameDeadlinePick>(context)
+                        : Navigator.pop<GameDeadlinePick>(context, (at: null)),
+                    child: Text(widget.noneLabel ?? 'Huỷ'),
                   ),
                 ),
                 const SizedBox(width: 10),

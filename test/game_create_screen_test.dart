@@ -878,7 +878,9 @@ void main() {
       backend.list = _phaseList();
       await pumpScreen(tester);
 
-      await tester.tap(find.text('Không hạn'));
+      // Mặc định đóng đăng ký theo giờ, 21h mai.
+      expect(find.textContaining('21:00 · '), findsOneWidget);
+      await tester.tap(find.text('ĐÓNG ĐĂNG KÝ'));
       await tester.pumpAndSettle();
       Finder inSheet(String text) => find.descendant(
         of: find.byType(BottomSheet),
@@ -900,6 +902,40 @@ void main() {
       expect(
         _createBody(backend)['registrationDeadline'],
         tomorrow.toUtc().toIso8601String(),
+      );
+    });
+
+    testWidgets('schedule tab: owner closes registration, start at a time', (
+      tester,
+    ) async {
+      backend.list = _phaseList();
+      await pumpScreen(tester);
+
+      // Chủ phòng đóng: không gửi hạn. Bắt đầu theo giờ: mặc định 30 phút sau
+      // giờ đóng đăng ký mặc định (21h mai), không có hạn thì vẫn 21:30 mai.
+      expect(find.text('Chủ phòng bấm Bắt đầu khi đủ người'), findsOneWidget);
+      await tester.tap(find.text('Chủ phòng đóng'));
+      await tester.pump();
+      expect(find.text('Mở tới khi chủ phòng bắt đầu ván'), findsOneWidget);
+      await tester.tap(find.text('Theo giờ').last);
+      await tester.pump();
+      expect(find.text('CHIA BÀI LÚC'), findsOneWidget);
+      expect(find.textContaining('21:30 · '), findsOneWidget);
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+
+      final now = DateTime.now();
+      final body = _createBody(backend);
+      expect(body.containsKey('registrationDeadline'), isFalse);
+      expect(
+        body['startAt'],
+        DateTime(
+          now.year,
+          now.month,
+          now.day + 1,
+          21,
+          30,
+        ).toUtc().toIso8601String(),
       );
     });
 

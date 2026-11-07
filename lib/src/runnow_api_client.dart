@@ -235,6 +235,7 @@ class RunNowApiClient {
   Future<String> createGame({
     required Map<String, bool> roles,
     DateTime? registrationDeadline,
+    DateTime? startAt,
     bool testMode = false,
     String? chatId,
     int? threadId,
@@ -249,6 +250,7 @@ class RunNowApiClient {
         'registrationDeadline': ?registrationDeadline
             ?.toUtc()
             .toIso8601String(),
+        'startAt': ?startAt?.toUtc().toIso8601String(),
         if (testMode) 'testMode': true,
         'chatId': ?chatId,
         'threadId': ?threadId,
