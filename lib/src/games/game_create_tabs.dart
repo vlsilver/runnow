@@ -16,6 +16,7 @@ IconData gameCreateIcon(String key) => switch (key) {
   'people' => Icons.groups_outlined,
   'vote' => Icons.how_to_vote_outlined,
   'run' => Icons.directions_run_rounded,
+  'chat' => Icons.forum_outlined,
   'bolt' => Icons.bolt_rounded,
   'cloak' => Icons.visibility_off_outlined,
   'frame' => Icons.theater_comedy_outlined,

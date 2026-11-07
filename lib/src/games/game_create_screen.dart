@@ -245,8 +245,15 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     _roundPhases.clear();
   });
 
+  /// Ván có đăng lên Telegram không; backend cũ không có công tắc thì có.
+  bool _telegramOn(GameList list) => _settingValues(list)['telegram'] != false;
+
+  /// Có tab Giao tiếp thì chỗ bot đăng nằm trong tab đó.
+  bool _hasTalkTab(GameList list) => list.groups.any((g) => g.key == 'talk');
+
   Future<void> _create(GameList list) async {
-    final threadText = _threadId.text.trim();
+    final telegram = _telegramOn(list);
+    final threadText = telegram ? _threadId.text.trim() : '';
     final threadId = threadText.isEmpty ? null : int.tryParse(threadText);
     if (threadText.isNotEmpty && threadId == null) {
       setState(() => _error = 'ID topic phải là số.');
@@ -270,8 +277,8 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
                 ? _deadlineAt
                 : null,
             startAt: list.groups.isNotEmpty && _startOn ? _startAtValue : null,
-            testMode: _testMode,
-            chatId: _testMode ? _chatId.text.trim() : null,
+            testMode: _testMode && telegram,
+            chatId: _testMode && telegram ? _chatId.text.trim() : null,
             threadId: threadId,
             settings: _settingsToSend(list),
           );
@@ -591,13 +598,15 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 12),
-        GameCreateRow(
-          icon: Icons.send_rounded,
-          label: 'Bot đăng vào',
-          value: _postSummary(),
-          onTap: _working ? null : _editPost,
-        ),
+        if (!_hasTalkTab(list)) ...[
+          const SizedBox(height: 12),
+          GameCreateRow(
+            icon: Icons.send_rounded,
+            label: 'Bot đăng vào',
+            value: _postSummary(),
+            onTap: _working ? null : _editPost,
+          ),
+        ],
         ..._submitError(),
       ],
     );
@@ -695,6 +704,10 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
       out.add(_settingWidget(s, values));
     }
     out.addAll(_sections(list, live, values));
+    // Tab Giao tiếp: ván thử, group và topic bot đăng, chỉ khi bật Telegram.
+    if (group.key == 'talk' && values['telegram'] != false) {
+      out.addAll(_postFields());
+    }
     // Tab Lịch luôn có đăng ký và bắt đầu; lời giải thích giờ mở của ván km
     // nằm ở "Là gì?" của tab Vòng chơi.
     if (live.isEmpty && offNote != null && group.key != 'time') {

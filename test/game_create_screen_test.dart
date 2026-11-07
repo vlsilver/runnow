@@ -314,6 +314,28 @@ Map<String, dynamic> _roundPhasesList() {
   return list;
 }
 
+// Backend có tab Giao tiếp với công tắc Telegram.
+Map<String, dynamic> _talkList() {
+  final list = _tabbedList();
+  final options = list['createOptions'] as Map<String, dynamic>;
+  options['groups'] = <Object>[
+    ...options['groups'] as List,
+    {'key': 'talk', 'label': 'Giao tiếp', 'icon': 'chat'},
+  ];
+  options['settings'] = <Object>[
+    ...options['settings'] as List,
+    {
+      'key': 'telegram',
+      'label': 'Telegram group',
+      'description': 'Bot 3i đăng tin vào group.',
+      'type': 'toggle',
+      'default': true,
+      'group': 'talk',
+    },
+  ];
+  return list;
+}
+
 // Backend gom đặc quyền phe Sói thành một khối (section) của tab Vai.
 Map<String, dynamic> _darkList() {
   final list = _tabbedList();
@@ -1368,6 +1390,42 @@ void main() {
       await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
       expect(find.text('ván g9'), findsOneWidget);
+    });
+
+    // Có tab Giao tiếp thì chỗ bot đăng nằm trong tab đó, không còn dòng Bot
+    // đăng vào ở chân mọi tab; tắt Telegram thì ẩn topic và gửi telegram tắt.
+    testWidgets('the talk tab holds where the bot posts', (tester) async {
+      backend.list = _talkList();
+      await pumpScreen(tester);
+
+      expect(find.text('Bot đăng vào'), findsNothing);
+      await tester.tap(find.text('Giao tiếp'));
+      await tester.pump();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'ID topic (không bắt buộc)'),
+        '42',
+      );
+      await tester.pump();
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+      expect(_createBody(backend)['threadId'], 42);
+    });
+
+    testWidgets('turning Telegram off hides the topic', (tester) async {
+      backend.list = _talkList();
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Giao tiếp'));
+      await tester.pump();
+      expect(find.text('ID topic (không bắt buộc)'), findsOneWidget);
+      await tester.tap(find.text('Telegram group'));
+      await tester.pump();
+      expect(find.text('ID topic (không bắt buộc)'), findsNothing);
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+      final body = _createBody(backend);
+      expect((body['settings'] as Map)['telegram'], isFalse);
+      expect(body.containsKey('threadId'), isFalse);
     });
 
     testWidgets('the bot row edits where the bot posts in a sheet', (
