@@ -307,6 +307,7 @@ class GameSetting {
     this.icon,
     this.parent,
     this.lines = 1,
+    this.presets = const [],
   });
 
   factory GameSetting.fromJson(Map<String, dynamic> json) {
@@ -336,6 +337,11 @@ class GameSetting {
       icon: _optString(json['icon']),
       parent: _optString(json['parent']),
       lines: (json['lines'] as num?)?.toInt() ?? 1,
+      presets: [
+        for (final p in json['presets'] as List? ?? const [])
+          if (p is Map<String, dynamic>)
+            (label: _string(p['label']), text: _string(p['text'])),
+      ],
     );
   }
 
@@ -390,6 +396,9 @@ class GameSetting {
 
   /// Số dòng của ô nhập [text].
   final int lines;
+
+  /// Giá trị soạn sẵn của ô [text]: chip chạm là điền [text] vào ô.
+  final List<({String label, String text})> presets;
 
   /// [values] là giá trị hiện tại theo key, đã gồm mặc định.
   bool enabledBy(Map<String, Object?> values) =>

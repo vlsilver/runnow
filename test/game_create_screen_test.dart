@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/games/game_create_screen.dart';
+import 'package:myrun/src/games/game_host_card.dart';
 import 'package:myrun/src/games/game_card_art.dart';
 import 'package:myrun/src/games/game_create_tabs.dart';
 import 'package:myrun/src/games/game_round_dial.dart';
@@ -345,6 +346,62 @@ Map<String, dynamic> _talkList() {
   ];
   return list;
 }
+
+// Backend có Quản trò: không còn ô tên bot, tính cách có bản soạn sẵn.
+const _funny = 'Bạn là quản trò vui tính của làng.';
+const _boss = 'Bạn là quản trò kiểu tổng tài.';
+
+Map<String, dynamic> _hostList() {
+  final list = _talkList();
+  final options = list['createOptions'] as Map<String, dynamic>;
+  options['settings'] = <Object>[
+    for (final s in options['settings'] as List)
+      if ((s as Map)['key'] != 'botName') s,
+    {
+      'key': 'botPersona',
+      'label': 'Tính cách Quản trò',
+      'description': '',
+      'type': 'text',
+      'default': _funny,
+      'max': 500,
+      'lines': 4,
+      'group': 'talk',
+      'presets': [
+        {'label': 'Hài hước', 'text': _funny},
+        {'label': 'Tổng tài bá đạo', 'text': _boss},
+      ],
+    },
+  ];
+  return list;
+}
+
+Map<String, dynamic> _readyTelegram() => {
+  'telegramLinked': true,
+  'bot': {
+    'username': 'quantro_3irun_08112026_bot',
+    'addUrl': 'https://t.me/quantro_3irun_08112026_bot?startgroup=van',
+  },
+  'chats': [
+    {
+      'chatId': '-100777',
+      'title': 'CLB Chạy Đêm',
+      'admin': true,
+      'forum': true,
+      'topics': [
+        {'threadId': 42, 'name': 'Ma Sói tuần 46'},
+      ],
+    },
+    {
+      'chatId': '-100888',
+      'title': 'Nhóm Cũ',
+      'admin': false,
+      'forum': false,
+      'topics': [
+        {'threadId': 0},
+      ],
+    },
+  ],
+};
 
 // Backend gom đặc quyền phe Sói thành một khối (section) của tab Vai.
 Map<String, dynamic> _darkList() {
@@ -1458,9 +1515,15 @@ void main() {
       await tester.tap(find.text('Giao tiếp'));
       await tester.pump();
       expect(find.text('ID topic (không bắt buộc)'), findsOneWidget);
-      await tester.tap(find.text('Telegram group'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(GameHostCard),
+          matching: find.byType(Switch),
+        ),
+      );
       await tester.pump();
       expect(find.text('ID topic (không bắt buộc)'), findsNothing);
+      expect(find.text('Trong app'), findsOneWidget);
       await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
       final body = _createBody(backend);
@@ -1468,38 +1531,74 @@ void main() {
       expect(body.containsKey('threadId'), isFalse);
     });
 
-    // Chỉ topic bot ván đã xác nhận mới chọn được; group bot chưa là admin
-    // thì không chọn được topic của nó.
+    // Group của bạn: chỉ topic bot ván đã xác nhận ở group bot là admin mới
+    // chọn được; chưa chọn topic thì nút Mở ván khoá và nói vì sao.
     testWidgets('the talk tab sends a topic the game bot confirmed', (
       tester,
     ) async {
-      backend.list = _talkList();
+      backend.list = _hostList();
+      backend.gameTelegram = _readyTelegram();
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Giao tiếp'));
+      for (var i = 0; i < 3; i++) {
+        await tester.pump();
+      }
+      expect(find.text('Trong app · PSC #Ma Sói'), findsOneWidget);
+      await tester.tap(find.text('Group của bạn'));
+      await tester.pump();
+      expect(find.text('@quantro_3irun_08112026_bot'), findsOneWidget);
+      expect(find.text('Bot chưa là admin'), findsOneWidget);
+      // Topic của group bot chưa là admin không có để chọn.
+      expect(find.text('Cả group'), findsNothing);
+      expect(find.text('Chọn topic để bot đăng'), findsOneWidget);
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pump();
+      expect(backend.calls, isNot(contains('POST /v1/games')));
+
+      await tester.ensureVisible(find.text('Ma Sói tuần 46'));
+      await tester.tap(find.text('Ma Sói tuần 46'));
+      await tester.pump();
+      expect(find.text('Chọn topic để bot đăng'), findsNothing);
+      expect(
+        find.text('Trong app · CLB Chạy Đêm #Ma Sói tuần 46'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+      final body = _createBody(backend);
+      expect(body['telegram'], {'chatId': '-100777', 'threadId': 42});
+      expect(body.containsKey('threadId'), isFalse);
+    });
+
+    // Group PSC: không còn ô ID topic, backend tự đăng vào topic Ma Sói.
+    testWidgets('PSC posts to the Ma Sói topic without a topic field', (
+      tester,
+    ) async {
+      backend.list = _hostList();
+      backend.gameTelegram = _readyTelegram();
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Giao tiếp'));
+      for (var i = 0; i < 3; i++) {
+        await tester.pump();
+      }
+      expect(find.text('ID topic (không bắt buộc)'), findsNothing);
+      expect(find.text('Ma Sói'), findsOneWidget);
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+      final body = _createBody(backend);
+      expect(body.containsKey('telegram'), isFalse);
+      expect(body.containsKey('threadId'), isFalse);
+    });
+
+    // Group của bạn mà chưa làm xong ba bước thì không mở ván được.
+    testWidgets('own group not set up blocks the open button', (tester) async {
+      backend.list = _hostList();
       backend.gameTelegram = {
         'telegramLinked': true,
-        'bot': {
-          'username': 'van_boss_bot',
-          'addUrl': 'https://t.me/van_boss_bot?startgroup=van',
-        },
-        'chats': [
-          {
-            'chatId': '-100777',
-            'title': 'CLB Chạy Đêm',
-            'admin': true,
-            'forum': true,
-            'topics': [
-              {'threadId': 42, 'name': 'Ma Sói'},
-            ],
-          },
-          {
-            'chatId': '-100888',
-            'title': 'Nhóm Cũ',
-            'admin': false,
-            'forum': false,
-            'topics': [
-              {'threadId': 0},
-            ],
-          },
-        ],
+        'bot': {'username': 'quantro_3irun_08112026_bot', 'addUrl': 'x'},
+        'chats': null,
       };
       await pumpScreen(tester);
 
@@ -1507,22 +1606,53 @@ void main() {
       for (var i = 0; i < 3; i++) {
         await tester.pump();
       }
-      // Đã gõ topic PSC rồi đổi ý: topic PSC không đi theo.
-      await tester.enterText(
-        find.widgetWithText(TextField, 'ID topic (không bắt buộc)'),
-        '5',
-      );
-      await tester.tap(find.text('Ma Sói'));
+      await tester.tap(find.text('Group của bạn'));
       await tester.pump();
-      await tester.ensureVisible(find.text('Cả group'));
-      await tester.tap(find.text('Cả group'));
+      expect(find.text('Mời vào group'), findsOneWidget);
+      expect(find.text('Làm xong 3 bước, hoặc chọn Group PSC'), findsOneWidget);
+      await tester.tap(find.text('MỞ VÁN'));
       await tester.pump();
-      expect(find.text('ID topic (không bắt buộc)'), findsNothing);
+      expect(backend.calls, isNot(contains('POST /v1/games')));
+    });
+
+    // Chip tính cách điền lời dặn soạn sẵn; sửa trong sheet là Tự viết.
+    testWidgets('persona chips fill the host prompt', (tester) async {
+      backend.list = _hostList();
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Giao tiếp'));
+      await tester.pump();
+      expect(find.text('Tên bot của ván'), findsNothing);
+      await tester.tap(find.text('Tổng tài bá đạo'));
+      await tester.pump();
       await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
-      final body = _createBody(backend);
-      expect(body['telegram'], {'chatId': '-100777', 'threadId': 42});
-      expect(body.containsKey('threadId'), isFalse);
+      expect((_createBody(backend)['settings'] as Map)['botPersona'], _boss);
+    });
+
+    testWidgets('editing the host prompt in the sheet is a custom one', (
+      tester,
+    ) async {
+      backend.list = _hostList();
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Giao tiếp'));
+      await tester.pump();
+      await tester.tap(find.text('Sửa lời dặn'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Lời dặn cho Quản trò'),
+        'Nói giọng miền Tây',
+      );
+      await tester.tap(find.text('Lưu'));
+      await tester.pumpAndSettle();
+      expect(find.text('Nói giọng miền Tây'), findsOneWidget);
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+      expect(
+        (_createBody(backend)['settings'] as Map)['botPersona'],
+        'Nói giọng miền Tây',
+      );
     });
 
     testWidgets('no game bot yet: the talk tab opens Telegram to create one', (
@@ -1540,6 +1670,8 @@ void main() {
       for (var i = 0; i < 3; i++) {
         await tester.pump();
       }
+      await tester.tap(find.text('Group của bạn'));
+      await tester.pump();
       await tester.ensureVisible(find.text('Tạo bot ván'));
       await tester.tap(find.text('Tạo bot ván'));
       await tester.pumpAndSettle();

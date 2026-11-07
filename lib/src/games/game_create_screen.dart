@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_create_tabs.dart';
+import 'package:myrun/src/games/game_host_card.dart';
 import 'package:myrun/src/games/game_telegram_picker.dart';
 import 'package:myrun/src/games/game_skill_cards.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
@@ -63,7 +64,9 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   final _chatId = TextEditingController();
   final _threadId = TextEditingController();
 
-  /// Topic bot ván đã xác nhận mà ván đăng vào; null là group PSC.
+  /// Tab Giao tiếp: Quản trò lên group của chủ phòng (bot ván) thay cho PSC,
+  /// và topic bot ván đã xác nhận mà ván đăng vào.
+  bool _ownGroup = false;
   GameTelegramTarget? _target;
   bool _working = false;
   String? _error;
@@ -258,10 +261,31 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   /// Có tab Giao tiếp thì chỗ bot đăng nằm trong tab đó.
   bool _hasTalkTab(GameList list) => list.groups.any((g) => g.key == 'talk');
 
+  /// Đang chọn group của bạn; backend chưa có bot ván thì luôn là PSC.
+  bool _own(GameList list) =>
+      _ownGroup &&
+      _hasTalkTab(list) &&
+      ref.read(gameTelegramProvider).value != null;
+
+  /// Vì sao nút Mở ván đang khoá; null là mở được.
+  String? _blocker(GameList list) {
+    if (!_hasTalkTab(list)) return null;
+    return gameTelegramBlocker(
+      telegramOn: _telegramOn(list),
+      own: _own(list),
+      tg: ref.watch(gameTelegramProvider).value,
+      selected: _target,
+    );
+  }
+
   Future<void> _create(GameList list) async {
     final telegram = _telegramOn(list);
+    if (_blocker(list) case final why?) {
+      setState(() => _error = '$why.');
+      return;
+    }
     // Chọn topic bot ván thì ô topic PSC không dùng tới.
-    final target = telegram && _hasTalkTab(list) ? _target : null;
+    final target = telegram && _own(list) ? _target : null;
     final threadText = telegram && target == null ? _threadId.text.trim() : '';
     final threadId = threadText.isEmpty ? null : int.tryParse(threadText);
     if (threadText.isNotEmpty && threadId == null) {
@@ -353,9 +377,38 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
                 : SafeArea(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                      child: GameCreateOpenButton(
-                        working: _working,
-                        onPressed: _working ? null : () => _create(form),
+                      child: Builder(
+                        builder: (context) {
+                          final why = _blocker(form);
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (why != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: Text(
+                                    why,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: _M.amberLight,
+                                    ),
+                                  ),
+                                ),
+                              Opacity(
+                                opacity: why == null ? 1 : 0.45,
+                                child: GameCreateOpenButton(
+                                  working: _working,
+                                  onPressed: _working || why != null
+                                      ? null
+                                      : () => _create(form),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -709,6 +762,8 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     }
     for (final s in live) {
       if (s.section != null) continue;
+      // Thẻ Quản trò vẽ công tắc Telegram và tính cách.
+      if (group.key == 'talk' && _hostKeys.contains(s.key)) continue;
       if (group.key == 'roles' && s.type == GameSetting.toggle) continue;
       // Có bộ bài thì số sói và vai thêm chỉnh ngay trong bộ bài.
       if (group.key == 'roles' && deck != null) continue;
@@ -724,17 +779,11 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
       out.add(_settingWidget(s, values));
     }
     out.addAll(_sections(list, live, values));
-    // Tab Giao tiếp: topic bot đăng, chỉ khi bật Telegram.
-    if (group.key == 'talk' && values['telegram'] != false) {
-      out.add(
-        GameTelegramPicker(
-          selected: _target,
-          onSelected: (target) => setState(() => _target = target),
-          pscFields: _postFields(testMode: false),
-          enabled: !_working,
-          openUrl: widget.openUrl,
-        ),
-      );
+    // Tab Giao tiếp: thẻ Quản trò (tính cách, lên Telegram), rồi Phòng chung
+    // và Thoại.
+    if (group.key == 'talk') {
+      out.insert(out.isEmpty ? 0 : 1, _hostCard(list, live, values));
+      out.add(const GameTalkChannels());
     }
     // Tab Lịch luôn có đăng ký và bắt đầu; lời giải thích giờ mở của ván km
     // nằm ở "Là gì?" của tab Vòng chơi.
@@ -780,6 +829,51 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         );
     }
     return out;
+  }
+
+  static const _hostKeys = {'telegram', 'botPersona'};
+
+  Widget _hostCard(
+    GameList list,
+    List<GameSetting> live,
+    Map<String, Object?> values,
+  ) {
+    GameSetting? setting(String key) =>
+        live.where((s) => s.key == key).firstOrNull;
+    final telegram = setting('telegram');
+    final persona = setting('botPersona');
+    final telegramOn = values['telegram'] != false;
+    final own = _own(list);
+    return GameHostCard(
+      summary: gameTelegramSummary(
+        telegramOn: telegramOn,
+        own: own,
+        tg: ref.watch(gameTelegramProvider).value,
+        selected: _target,
+      ),
+      persona: persona,
+      personaValue: switch (values['botPersona']) {
+        final String v => v,
+        _ => '',
+      },
+      onPersona: _working
+          ? null
+          : (v) => setState(() => _settings['botPersona'] = v),
+      telegram: telegram,
+      telegramOn: telegramOn,
+      onTelegram: _working
+          ? null
+          : (v) => setState(() => _settings['telegram'] = v),
+      telegramBody: GameTelegramPicker(
+        own: own,
+        onOwn: (v) => setState(() => _ownGroup = v),
+        selected: _target,
+        onSelected: (target) => setState(() => _target = target),
+        pscFields: _postFields(testMode: false),
+        enabled: !_working,
+        openUrl: widget.openUrl,
+      ),
+    );
   }
 
   /// Chip V1, V2… trên đồng hồ, đồng hồ của vòng đang chọn, các vòng khác vẽ
