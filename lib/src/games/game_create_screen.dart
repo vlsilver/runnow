@@ -653,9 +653,13 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
       for (final s in live)
         if (s.role == null || inDeck(s.role!)) s,
     ];
+    // Bật tắt của tab Vai là đặc quyền phe: vẽ thành dòng có ô tích dù có
+    // icon.
+    bool power(GameSetting s) =>
+        s.type == GameSetting.toggle && s.group == 'roles';
     final cards = {
       for (final s in shown)
-        if (s.icon != null) s.key,
+        if (s.icon != null && !power(s)) s.key,
     };
     final bySection = <String, List<GameSetting>>{};
     for (final s in shown) {
@@ -713,17 +717,41 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     return [
       for (final MapEntry(key: label, value: items) in bySection.entries) ...[
         const SizedBox(height: 12),
-        GameCreateLabel(label),
+        if (items.any(power))
+          GameCreateLabel(
+            label,
+            color: _M.phaseTrial,
+            leading: gameKeyIcon('wolf', color: _M.phaseTrial, size: 16),
+            trailing: GameCreateLink(
+              'Là gì?',
+              onTap: () => showGameCreateSheet(
+                context,
+                title: label,
+                items: [
+                  for (final s in items)
+                    (
+                      s.label,
+                      switch (s.warn) {
+                        final w? when w.isNotEmpty => '${s.description} ⚠ $w',
+                        _ => s.description,
+                      },
+                    ),
+                ],
+              ),
+            ),
+          )
+        else
+          GameCreateLabel(label),
         const SizedBox(height: 8),
         for (final s in items)
           if (s.parent != null && cards.contains(s.parent))
             const SizedBox.shrink()
-          else if (s.icon != null)
+          else if (cards.contains(s.key))
             card(s, items)
           else if (s.type != GameSetting.toggle)
             plain(s),
         for (final s in items)
-          if (s.type == GameSetting.toggle && s.icon == null)
+          if (s.type == GameSetting.toggle && !cards.contains(s.key))
             GamePowerCard(
               setting: s,
               on: values[s.key] == true,

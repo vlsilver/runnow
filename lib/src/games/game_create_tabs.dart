@@ -17,6 +17,10 @@ IconData gameCreateIcon(String key) => switch (key) {
   'vote' => Icons.how_to_vote_outlined,
   'run' => Icons.directions_run_rounded,
   'bolt' => Icons.bolt_rounded,
+  'cloak' => Icons.visibility_off_outlined,
+  'frame' => Icons.theater_comedy_outlined,
+  'silent' => Icons.volume_off_outlined,
+  'pierce' => Icons.shield_outlined,
   _ => Icons.tune_rounded,
 };
 
@@ -202,23 +206,32 @@ class GameCreateRow extends StatelessWidget {
 
 /// Chữ nhãn nhỏ viết hoa của từng khối.
 class GameCreateLabel extends StatelessWidget {
-  const GameCreateLabel(this.text, {super.key, this.trailing});
+  const GameCreateLabel(
+    this.text, {
+    super.key,
+    this.trailing,
+    this.leading,
+    this.color = _M.faint,
+  });
 
   final String text;
   final Widget? trailing;
+  final Widget? leading;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
+        if (leading case final l?) ...[l, const SizedBox(width: 6)],
         Expanded(
           child: Text(
             text.toUpperCase(),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
               letterSpacing: 1.4,
-              color: _M.faint,
+              color: color,
             ),
           ),
         ),

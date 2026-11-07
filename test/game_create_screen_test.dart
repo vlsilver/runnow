@@ -298,7 +298,7 @@ Map<String, dynamic> _phaseList() {
 Map<String, dynamic> _darkList() {
   final list = _tabbedList();
   final options = list['createOptions'] as Map<String, dynamic>;
-  const section = 'Phe Sói · Đặc quyền';
+  const section = 'Phe Sói · Đặc quyền hắc ám';
   options['settings'] = <Object>[
     ...options['settings'] as List,
     {
@@ -311,6 +311,7 @@ Map<String, dynamic> _darkList() {
       'section': section,
       'hint': 'Mỗi đêm',
       'warn': 'Bảng phiếu lộ có phiếu đôi.',
+      'icon': 'vote',
     },
     {
       'key': 'darkKm',
@@ -856,7 +857,7 @@ void main() {
 
       await tester.tap(find.text('Vai'));
       await tester.pump();
-      expect(find.text('PHE SÓI · ĐẶC QUYỀN'), findsOneWidget);
+      expect(find.text('PHE SÓI · ĐẶC QUYỀN HẮC ÁM'), findsOneWidget);
       expect(find.text('× số sói còn sống'), findsOneWidget);
       expect(find.widgetWithText(GameRoleChip, 'Phiếu Đôi'), findsNothing);
       expect(find.text('MỖI ĐÊM · ⚠ ĐỂ LỘ'), findsOneWidget);
@@ -866,6 +867,15 @@ void main() {
       await tester.pump();
       expect(find.text('Phiếu một sói tính 2.'), findsOneWidget);
       expect(find.text('Bảng phiếu lộ có phiếu đôi.'), findsOneWidget);
+      // Khối đặc quyền có "Là gì?" riêng trên tiêu đề, kể hết các đặc quyền.
+      final why = find.text('Là gì?');
+      expect(why, findsNWidgets(2));
+      expect(
+        (tester.getCenter(why.last).dy -
+                tester.getCenter(find.text('PHE SÓI · ĐẶC QUYỀN HẮC ÁM')).dy)
+            .abs(),
+        lessThan(4),
+      );
 
       await tester.tap(find.text('Phiếu Đôi'));
       await tester.pump();
