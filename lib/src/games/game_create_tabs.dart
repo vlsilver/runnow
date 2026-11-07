@@ -984,9 +984,13 @@ class GameCreateSegment extends StatelessWidget {
     required this.labels,
     required this.selected,
     required this.onSelect,
+    this.subs,
   });
 
   final List<String> labels;
+
+  /// Dòng nhỏ dưới từng nhãn, cùng thứ tự với [labels]; null thì một dòng.
+  final List<String>? subs;
   final int selected;
 
   /// null thì không bấm được.
@@ -1019,16 +1023,30 @@ class GameCreateSegment extends StatelessWidget {
                         : () => select(i),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: Text(
-                        labels[i],
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: i == selected ? _M.onAmber : _M.muted,
-                        ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            labels[i],
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: i == selected ? _M.onAmber : _M.muted,
+                            ),
+                          ),
+                          if (subs case final subs?)
+                            Text(
+                              subs[i],
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: i == selected ? _M.onAmber : _M.faint,
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ),

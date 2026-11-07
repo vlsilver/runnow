@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -38,6 +39,11 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   /// Kiểu ván đang chọn; null là kiểu mặc định backend gửi.
   String? _presetKey;
   int _tab = 0;
+
+  /// Vòng trong ngày đang chỉnh trên đồng hồ (0 là V1) và lịch pha riêng của
+  /// từng vòng từ V2; V1 là bốn ô pha.
+  int _round = 0;
+  final _roundPhases = <int, List<int>>{};
 
   /// Số người đang xem trước bộ bài; null là số backend gợi ý.
   int? _deckPlayers;
@@ -151,6 +157,16 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
       if (out.containsKey('roundsPerDay')) {
         out['roundsPerDay'] = shape.rounds.toDouble();
       }
+      // Chỉ gửi lịch từng vòng khi có vòng khác V1: backend chưa có ô này
+      // thì không gửi, ván cũ giữ một lịch cho mọi vòng.
+      if (_perRound(list, shape)) {
+        final rounds = [
+          for (var i = 0; i < shape.rounds; i++) _phasesOfRound(shape, i),
+        ];
+        if (rounds.any((r) => !listEquals(r, shape.phases))) {
+          out['roundPhases'] = rounds;
+        }
+      }
     }
     return out.isEmpty ? null : out;
   }
@@ -197,6 +213,24 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     );
   }
 
+  /// Backend nhận lịch riêng từng vòng và ngày có hơn một vòng.
+  bool _perRound(GameList list, _RoundShape shape) =>
+      shape.rounds > 1 && list.settings.any((s) => s.key == 'roundPhases');
+
+  /// Lịch pha của vòng [i] trong ngày. Vòng nào chưa chỉnh, hoặc lịch cũ
+  /// không còn khớp độ dài vòng (V1 đổi độ dài ở ván cổ điển), theo V1.
+  List<int> _phasesOfRound(_RoundShape shape, int i) {
+    final own = _roundPhases[i];
+    final total = shape.phases.fold<int>(0, (a, p) => a + p);
+    if (i == 0 ||
+        own == null ||
+        own.length != shape.phases.length ||
+        own.fold<int>(0, (a, p) => a + p) != total) {
+      return shape.phases;
+    }
+    return own;
+  }
+
   void _setPhases(List<String> keys, List<int> phases) => setState(() {
     for (var i = 0; i < keys.length; i++) {
       _settings[keys[i]] = phases[i].toDouble();
@@ -207,6 +241,8 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     _presetKey = preset.key;
     _settings.clear();
     _roles.clear();
+    _round = 0;
+    _roundPhases.clear();
   });
 
   Future<void> _create(GameList list) async {
@@ -667,8 +703,11 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     if (round != null && shape != null && group.key == 'round') {
       out
         ..add(const SizedBox(height: 8))
-        ..add(GameCreateLabel('Kéo mốc để chia giờ', trailing: why))
-        ..add(
+        ..add(GameCreateLabel('Kéo mốc để chia giờ', trailing: why));
+      if (_perRound(list, shape)) {
+        out.addAll(_perRoundDial(round, shape));
+      } else {
+        out.add(
           GameRoundDial(
             plan: round,
             phases: shape.phases,
@@ -684,6 +723,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
                   }),
           ),
         );
+      }
     } else if (round != null &&
         group.key == 'round' &&
         round.phases.isNotEmpty) {
@@ -701,6 +741,50 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     return out;
   }
 
+  /// Chip V1, V2… trên đồng hồ, đồng hồ của vòng đang chọn, các vòng khác vẽ
+  /// mờ. Vòng nối tiếp nhau và dài như V1 nên chỉ V1 dời được giờ mở và (ván
+  /// cổ điển) độ dài; từ V2 chỉ chia lại giờ bên trong vòng.
+  List<Widget> _perRoundDial(GameRoundPlan round, _RoundShape shape) {
+    final total = shape.phases.fold<int>(0, (a, p) => a + p);
+    final selected = _round.clamp(0, shape.rounds - 1);
+    int startOf(int i) => (shape.start + i * total) % (24 * 60);
+    return [
+      GameCreateSegment(
+        labels: [for (var i = 0; i < shape.rounds; i++) 'V${i + 1}'],
+        subs: [
+          for (var i = 0; i < shape.rounds; i++)
+            '${gameClock(startOf(i).toDouble())}–'
+                '${gameClock((startOf(i) + total).toDouble())}',
+        ],
+        selected: selected,
+        onSelect: _working ? null : (i) => setState(() => _round = i),
+      ),
+      const SizedBox(height: 12),
+      GameRoundDial(
+        plan: round,
+        phases: _phasesOfRound(shape, selected),
+        startMinute: startOf(selected),
+        lockEnd: shape.lockEnd || selected > 0,
+        maxTotal: selected > 0 ? total : shape.maxTotal,
+        title: 'VÒNG ${selected + 1}',
+        others: [
+          for (var i = 0; i < shape.rounds; i++)
+            if (i != selected)
+              (
+                start: startOf(i),
+                phases: _phasesOfRound(shape, i),
+                label: 'V${i + 1}',
+              ),
+        ],
+        onChanged: _working
+            ? null
+            : selected == 0
+            ? (p) => _setPhases(shape.keys, p)
+            : (p) => setState(() => _roundPhases[selected] = p),
+      ),
+    ];
+  }
+
   /// Số vòng mỗi ngày khi có vòng đồng hồ: ván km chọn số vòng chia hết 24
   /// tiếng, ván cổ điển chọn số vòng vừa trong ngày.
   Widget _scheduleWidget(
@@ -708,7 +792,11 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     _RoundShape shape,
     Map<String, Object?> values,
   ) {
-    void setRounds(int n) => setState(() => _settings[s.key] = n.toDouble());
+    void setRounds(int n) => setState(() {
+      _settings[s.key] = n.toDouble();
+      _round = 0;
+      _roundPhases.clear();
+    });
     final lo = (s.min ?? 1).round(), hi = (s.max ?? 6).round();
     // Ván km: vòng chia đều 24 tiếng. Ván cổ điển: chọn số vòng trước, vòng
     // dài hơn phần mỗi vòng được thì các pha co lại cho vừa (_roundShape).

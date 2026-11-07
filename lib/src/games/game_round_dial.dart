@@ -176,7 +176,16 @@ class GameRoundDial extends StatefulWidget {
     required this.maxTotal,
     required this.onChanged,
     this.onStart,
+    this.title = 'MỘT VÒNG',
+    this.others = const [],
   });
+
+  /// Chữ ở tâm, trên độ dài vòng.
+  final String title;
+
+  /// Các vòng khác trong ngày, vẽ mờ cạnh vòng đang chỉnh: giờ mở (phút
+  /// trong ngày), độ dài từng pha và nhãn ngắn.
+  final List<({int start, List<int> phases, String label})> others;
 
   /// Tên, khoá, mốc gốc của pha và các mốc nhắc.
   final GameRoundPlan plan;
@@ -315,14 +324,15 @@ class _GameRoundDialState extends State<GameRoundDial> {
                         start: start,
                         lockEnd: widget.lockEnd,
                         active: _dragging,
+                        others: widget.others,
                       ),
                       child: Center(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Text(
-                              'MỘT VÒNG',
-                              style: TextStyle(
+                            Text(
+                              widget.title,
+                              style: const TextStyle(
                                 fontSize: 10.5,
                                 letterSpacing: 1.4,
                                 fontWeight: FontWeight.w800,
@@ -695,6 +705,7 @@ class _DialPainter extends CustomPainter {
     required this.start,
     required this.lockEnd,
     required this.active,
+    required this.others,
   });
 
   final List<String> keys;
@@ -702,6 +713,7 @@ class _DialPainter extends CustomPainter {
   final int start;
   final bool lockEnd;
   final int? active;
+  final List<({int start, List<int> phases, String label})> others;
 
   static const _ring = 18.0;
 
@@ -727,6 +739,42 @@ class _DialPainter extends CustomPainter {
       ..strokeWidth = _ring;
     canvas.drawCircle(c, r, stroke..color = _M.track);
 
+    // Các vòng khác trong ngày: cung mờ và nhãn vòng bên trong vòng tròn.
+    var covered = 0;
+    for (final o in others) {
+      var from = o.start;
+      for (var i = 0; i < o.phases.length; i++) {
+        canvas.drawArc(
+          rect,
+          _angle(from) + 0.012,
+          o.phases[i] / 1440 * 2 * math.pi - 0.024,
+          false,
+          stroke..color = gamePhaseColor(keys[i]).withValues(alpha: 0.28),
+        );
+        from += o.phases[i];
+      }
+      final length = from - o.start;
+      covered += length;
+      final a = _angle(o.start + length / 2);
+      final tp = TextPainter(
+        text: TextSpan(
+          text: o.label,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: _M.faint,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(
+        canvas,
+        c +
+            Offset(math.cos(a), math.sin(a)) * (r - _ring - 14) -
+            Offset(tp.width / 2, tp.height / 2),
+      );
+    }
+
     var at = 0;
     for (var i = 0; i < phases.length; i++) {
       canvas.drawArc(
@@ -743,7 +791,7 @@ class _DialPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3
       ..color = _M.faint;
-    for (var m = at + 15; m < 1440 - 10; m += 30) {
+    for (var m = at + covered + 15; m < 1440 - 10; m += 30) {
       canvas.drawArc(
         rect,
         _angle(start + m),
@@ -823,6 +871,7 @@ class _DialPainter extends CustomPainter {
       old.start != start ||
       old.lockEnd != lockEnd ||
       old.active != active ||
+      old.others != others ||
       !_same(old.phases, phases) ||
       !_same(old.keys, keys);
 

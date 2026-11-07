@@ -294,6 +294,26 @@ Map<String, dynamic> _phaseList() {
   return list;
 }
 
+// Backend cho mỗi vòng trong ngày một lịch pha riêng (ô kiểu roundPhases).
+Map<String, dynamic> _roundPhasesList() {
+  final list = _phaseList();
+  final options = list['createOptions'] as Map<String, dynamic>;
+  options['settings'] = <Object>[
+    ...options['settings'] as List,
+    {
+      'key': 'roundPhases',
+      'label': 'Lịch từng vòng',
+      'description': 'Mỗi vòng chia giờ riêng.',
+      'type': 'roundPhases',
+      'default': [
+        [120, 600, 600, 120],
+      ],
+      'group': 'round',
+    },
+  ];
+  return list;
+}
+
 // Backend gom đặc quyền phe Sói thành một khối (section) của tab Vai.
 Map<String, dynamic> _darkList() {
   final list = _tabbedList();
@@ -838,6 +858,60 @@ void main() {
         'dayMin': 180,
         'trialMin': 60,
       });
+    });
+
+    // Hai vòng mỗi ngày: chip V1/V2 trên đồng hồ, chỉnh vòng 2 không đụng
+    // vòng 1, gửi lịch của cả hai vòng.
+    testWidgets('each round of the day gets its own phases', (tester) async {
+      backend.list = _roundPhasesList();
+      await pumpScreen(tester);
+
+      await tester.tap(find.bySemanticsLabel('2 vòng'));
+      await tester.pump();
+      await tester.tap(find.text('Vòng chơi'));
+      await tester.pump();
+      expect(find.text('V1'), findsOneWidget);
+      await tester.tap(find.text('V2'));
+      await tester.pump();
+      // Vòng 2 mở 10h, lịch như vòng 1: Đêm 10h–11h, Rạng sáng 11h–16h.
+      expect(find.textContaining('10h – 11h', findRichText: true), findsOne);
+      await tester.tap(find.byTooltip('Thêm Đêm'));
+      await tester.pump();
+      expect(find.textContaining('10h – 11h30', findRichText: true), findsOne);
+      expect(find.textContaining('11h30 – 16h', findRichText: true), findsOne);
+
+      await tester.tap(find.text('V1'));
+      await tester.pump();
+      expect(find.textContaining('22h – 23h', findRichText: true), findsOne);
+
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+      final settings = _createBody(backend)['settings'] as Map;
+      expect(settings['nightMin'], 60);
+      expect(settings['roundPhases'], [
+        [60, 300, 300, 60],
+        [90, 270, 300, 60],
+      ]);
+    });
+
+    // Backend chưa có lịch từng vòng thì không có chip, không gửi roundPhases.
+    testWidgets('an older backend keeps one schedule for every round', (
+      tester,
+    ) async {
+      backend.list = _phaseList();
+      await pumpScreen(tester);
+
+      await tester.tap(find.bySemanticsLabel('2 vòng'));
+      await tester.pump();
+      await tester.tap(find.text('Vòng chơi'));
+      await tester.pump();
+      expect(find.text('V2'), findsNothing);
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+      expect(
+        (_createBody(backend)['settings'] as Map).containsKey('roundPhases'),
+        isFalse,
+      );
     });
 
     testWidgets('dragging the end of the night on the dial moves it', (
