@@ -208,7 +208,7 @@ func roundPhasesSetting() gameSettingDef {
 	return gameSettingDef{
 		GameSetting: GameSetting{Key: "roundPhases", Label: "Lịch từng vòng", Type: settingRoundPhases, Group: groupRound, Unit: "phút",
 			Default: []any{[]any{120.0, 600.0, 600.0, 120.0}},
-			Min: f64(werewolf.MinPhaseMinutes), Step: f64(werewolf.PhaseStepMinutes), Max: f64(24*60 - 3*werewolf.MinPhaseMinutes),
+			Min:     f64(werewolf.MinPhaseMinutes), Step: f64(werewolf.PhaseStepMinutes), Max: f64(24*60 - 3*werewolf.MinPhaseMinutes),
 			Description: "Chơi nhiều vòng mỗi ngày thì mỗi vòng chia giờ bốn pha riêng. Vòng nào cũng dài như nhau, nên giờ mở các vòng giữ nguyên."},
 		apply: func(c *werewolf.Config, v any) {
 			if c.Schedule == nil {
@@ -459,6 +459,12 @@ var gameSettingDefs = []gameSettingDef{
 			}
 		},
 		read: func(c werewolf.Config) any { return float64(max(c.TopWeight, werewolf.MinTopWeight)) },
+	},
+	{
+		GameSetting: GameSetting{Key: "telegram", Label: "Telegram group", Hint: "Bot 3i đăng tin vào group", Type: settingToggle, Default: true, Group: groupTalk,
+			Description: "Bật thì bot 3i đăng diễn biến ván vào group Telegram và nhắn riêng cho từng người, người chơi phải liên kết Telegram để đăng ký. Tắt thì ván chỉ chơi trong app."},
+		apply: func(c *werewolf.Config, v any) { c.NoTelegram = !v.(bool) },
+		read:  func(c werewolf.Config) any { return !c.NoTelegram },
 	},
 }
 

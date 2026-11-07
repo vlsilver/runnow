@@ -584,6 +584,10 @@ func (r *outboxRenderer) names(uids []string) string {
 // tin của phe kín mà vào group chung là lộ. skip khác rỗng là không gửi được.
 func (r *outboxRenderer) target(key string) (outboxText, error) {
 	var out outboxText
+	if r.cfg.NoTelegram && (key == chatGroup || strings.HasPrefix(key, "dm:")) {
+		// Ván chỉ trong app: người chơi xem diễn biến và việc ban đêm trong app.
+		return outboxText{skip: "no_telegram_game"}, nil
+	}
 	if uid, ok := strings.CutPrefix(key, "dm:"); ok {
 		p, known := r.byUID[uid]
 		tg := tgIDString(p.data["tgUserId"])

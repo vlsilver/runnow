@@ -111,8 +111,9 @@ func (s *GameStore) readStartGame(ctx context.Context, gameID string) (*firestor
 }
 
 // startCandidates xét từng người đã đăng ký theo liên kết đang lưu: liên kết
-// có thể đã đổi hay bị huỷ từ lúc đăng ký. Người giả luôn đạt.
-func (s *GameStore) startCandidates(ctx context.Context, game *firestore.DocumentRef) ([]startCandidate, error) {
+// có thể đã đổi hay bị huỷ từ lúc đăng ký. Người giả luôn đạt; ván không
+// Telegram thì không ai bị loại vì Telegram.
+func (s *GameStore) startCandidates(ctx context.Context, game *firestore.DocumentRef, telegram bool) ([]startCandidate, error) {
 	players, err := s.loadPlayers(ctx, game)
 	if err != nil {
 		return nil, err
@@ -120,7 +121,7 @@ func (s *GameStore) startCandidates(ctx context.Context, game *firestore.Documen
 	out := make([]startCandidate, 0, len(players))
 	for _, p := range players {
 		c := startCandidate{player: p}
-		if !p.fake {
+		if !p.fake && telegram {
 			if c.link, err = s.readLink(ctxGetter(ctx), p.uid); err != nil {
 				return nil, err
 			}
@@ -175,7 +176,7 @@ func (s *GameStore) StartPreview(ctx context.Context, gameID string) (StartPrevi
 	if err != nil {
 		return StartPreview{}, err
 	}
-	cands, err := s.startCandidates(ctx, g.Ref)
+	cands, err := s.startCandidates(ctx, g.Ref, !cfg.NoTelegram)
 	if err != nil {
 		return StartPreview{}, err
 	}
@@ -306,7 +307,11 @@ func (s *GameStore) RunStart(ctx context.Context, gameID string, inPsc pscMember
 	if stringValue(g.Data()["status"]) != gameStarting {
 		return out, nil
 	}
-	cands, err := s.startCandidates(ctx, g.Ref)
+	cfg, err := gameConfigOf(g.Data())
+	if err != nil {
+		return out, err
+	}
+	cands, err := s.startCandidates(ctx, g.Ref, !cfg.NoTelegram)
 	if err != nil {
 		return out, err
 	}

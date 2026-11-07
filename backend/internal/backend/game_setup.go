@@ -48,7 +48,9 @@ func gameSetupFor(c werewolf.Config) []GameSetupSection {
 	shown := map[string]bool{}
 	for _, d := range gameSettingDefs {
 		v := values[d.Key]
-		if v == nil || !settingEnabled(d.EnabledIf, values) || v == false {
+		// Bật tắt chỉ hiện khi khác mặc định: phần lớn mặc định tắt nên hiện
+		// cái đang bật; Telegram mặc định bật nên chỉ hiện khi ván tắt nó.
+		if v == nil || !settingEnabled(d.EnabledIf, values) || (d.Type == settingToggle && v == d.Default) {
 			continue
 		}
 		title := d.Section
@@ -82,6 +84,9 @@ func settingEnabled(conds []GameSettingCondition, values map[string]any) bool {
 func (d gameSettingDef) setupValue(v any) string {
 	switch d.Type {
 	case settingToggle:
+		if v == false {
+			return "Tắt"
+		}
 		return "Bật"
 	case settingChoice:
 		s := v.(string)

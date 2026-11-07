@@ -58,6 +58,9 @@ type Config struct {
 	// Disabled là các vai đặc biệt admin tắt. Vai bị tắt thành Dân (R8).
 	Disabled []Role `json:"disabled,omitempty"`
 	TestMode bool   `json:"testMode,omitempty"`
+	// NoTelegram: ván chỉ chơi trong app. Bot không đăng gì lên Telegram,
+	// đăng ký không cần liên kết Telegram hay ở trong group.
+	NoTelegram bool `json:"noTelegram,omitempty"`
 	// ExtraWolves là số sói thêm so với bảng 1.2, lấy chỗ của Dân. Sói không
 	// vượt 1/3 số người, phần thừa bị bỏ.
 	ExtraWolves int `json:"extraWolves,omitempty"`

@@ -64,6 +64,7 @@ const (
 	groupRound = "round"
 	groupRoles = "roles"
 	groupKm    = "km"
+	groupTalk  = "talk"
 )
 
 var gameSettingGroups = []GameSettingGroup{
@@ -76,6 +77,8 @@ var gameSettingGroups = []GameSettingGroup{
 	// Tab Kỹ năng gom luật phiếu và km mỗi lượt; không cần OffNote vì "Không
 	// dùng km" nằm ở đây và luôn chỉnh được.
 	{Key: groupKm, Label: "Kỹ năng", Icon: "run"},
+	// Tab Giao tiếp: ván có đăng lên Telegram không, đăng vào topic nào.
+	{Key: groupTalk, Label: "Giao tiếp", Icon: "chat"},
 }
 
 var gamePresets = []GamePreset{

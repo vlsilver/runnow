@@ -97,6 +97,24 @@ Treo tối đa mỗi vòng = 3 người []
 	}
 }
 
+// Tắt Telegram: ván ghi NoTelegram và phần xem lại thiết lập nói rõ là tắt;
+// để mặc định (bật) thì không hiện dòng nào.
+func TestGameSetupTelegramOff(t *testing.T) {
+	var c werewolf.Config
+	if err := applyGameSettings(&c, map[string]any{"telegram": false}); err != nil {
+		t.Fatal(err)
+	}
+	if !c.NoTelegram {
+		t.Fatal("tắt Telegram mà config vẫn có Telegram")
+	}
+	if got := setupLines(gameSetupFor(c)); !strings.Contains(got, "# Giao tiếp\nTelegram group = Tắt []\n") {
+		t.Fatalf("setup:\n%s", got)
+	}
+	if got := setupLines(gameSetupFor(werewolf.Config{})); strings.Contains(got, "Telegram") {
+		t.Fatalf("Telegram mặc định vẫn hiện:\n%s", got)
+	}
+}
+
 // Mọi tuỳ chọn đọc lại đúng giá trị đã áp: tuỳ chọn mới thiếu read hay read
 // lệch apply thì phần xem lại thiết lập nói sai về ván.
 func TestGameSettingsReadBack(t *testing.T) {
