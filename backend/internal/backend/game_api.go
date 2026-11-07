@@ -768,7 +768,19 @@ func eventLine(e werewolf.Event, name func(string) string) (string, bool) {
 		if e.Hanged {
 			verdict = "bị treo"
 		}
-		return fmt.Sprintf("Treo %d, Tha %d: %s %s.", e.Hang, e.Spare, name(e.UID), verdict), true
+		// Ván luật km bằng phiếu thì nói bên nào hơn km hoặc bốc thăm; ván cũ
+		// không ghi km vào event nên vẫn ra câu cũ.
+		why := ""
+		switch {
+		case e.Hang != e.Spare || e.Hang == 0:
+		case e.Draw:
+			why = ", bằng cả km nên bốc thăm"
+		case e.HangKm > e.SpareKm:
+			why = fmt.Sprintf(", bên Treo chạy nhiều km hơn (%s – %s km)", formatKm(e.HangKm/1000), formatKm(e.SpareKm/1000))
+		case e.SpareKm > e.HangKm:
+			why = fmt.Sprintf(", bên Tha chạy nhiều km hơn (%s – %s km)", formatKm(e.SpareKm/1000), formatKm(e.HangKm/1000))
+		}
+		return fmt.Sprintf("Treo %d, Tha %d%s: %s %s.", e.Hang, e.Spare, why, name(e.UID), verdict), true
 	case werewolf.EventHunterTurn:
 		return fmt.Sprintf("%s là Thợ săn, được bắn một người.", name(e.UID)), true
 	case werewolf.EventRevealed:

@@ -40,12 +40,25 @@ type GameSetting struct {
 	Hint string `json:"hint,omitempty"`
 	// Warn là cái giá người tạo ván cần cân, ví dụ dấu vết công khai.
 	Warn string `json:"warn,omitempty"`
+	// Role: tuỳ chọn của một vai; app chỉ hiện khi vai đó có trong bộ bài.
+	Role string `json:"role,omitempty"`
 }
 
 type GameSettingChoice struct {
 	Value       string `json:"value"`
 	Label       string `json:"label"`
 	Description string `json:"description"`
+	// Hint là dòng ngắn dưới tên lựa chọn; Details là các dòng mở bằng nút Chi
+	// tiết. App cũ bỏ qua hai field này.
+	Hint    string              `json:"hint,omitempty"`
+	Details []GameSettingDetail `json:"details,omitempty"`
+}
+
+// GameSettingDetail là một dòng giải thích: Icon là key icon của app.
+type GameSettingDetail struct {
+	Icon  string `json:"icon"`
+	Title string `json:"title"`
+	Text  string `json:"text"`
 }
 
 type GameSettingCondition struct {
@@ -66,7 +79,9 @@ const (
 type gameSettingDef struct {
 	GameSetting
 	keepDefault bool
-	apply       func(c *werewolf.Config, v any)
+	// legacyChoices là giá trị còn nhận nhưng không hiện cho người tạo ván.
+	legacyChoices []string
+	apply         func(c *werewolf.Config, v any)
 }
 
 func f64(v float64) *float64 { return &v }
@@ -76,8 +91,11 @@ var kmOn = []GameSettingCondition{{Key: "kmOff", Equals: false}}
 func roleKmSetting(key string, role werewolf.Role, label, desc string) gameSettingDef {
 	return gameSettingDef{
 		GameSetting: GameSetting{Key: key, Label: label, Description: desc, Type: settingNumber, Default: 1.0,
-			Min: f64(0), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupKm},
-		apply: func(c *werewolf.Config, v any) { setSkillKm(c, role, v.(float64)) },
+			Min: f64(0), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupKm,
+			Section: sectionKm, Hint: roleLabels[role], Role: string(role)},
+		// Luôn áp để km app hiện là km ván dùng, không lặng lẽ theo kmPerUnit.
+		keepDefault: true,
+		apply:       func(c *werewolf.Config, v any) { setSkillKm(c, role, v.(float64)) },
 	}
 }
 
@@ -245,58 +263,99 @@ var gameSettingDefs = []gameSettingDef{
 	phaseSetting(2, "dayMin", "Độ dài pha Ngày", "Bot đăng bản tin đêm, cả làng bàn và đề cử lên giàn."),
 	phaseSetting(3, "trialMin", "Độ dài pha Biểu quyết", "Treo hay Tha từng người trên giàn."),
 	{
-		GameSetting: GameSetting{Key: "wolfKm", Label: "Km để Sói cắn", Type: settingNumber, Default: 0.0,
-			Min: f64(0), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupKm,
-			Description: "Km mỗi sói còn sống phải góp, tính chung cả phe, thì phe Sói mới cắn được đêm đó. Để 0 là đêm nào sói cũng cắn được. Nên để 0: cắn mà cần km thì sáng ra có người chết là cả làng biết phe Sói đã đủ km, ráp với bảng km công khai là khoanh được sói."},
-		keepDefault: true,
-		apply:       func(c *werewolf.Config, v any) { setSkillKm(c, werewolf.Wolf, v.(float64)) },
-	},
-	// skillKm đứng trước km riêng từng vai: gửi cả hai thì km riêng thắng.
-	{
-		GameSetting: GameSetting{Key: "skillKm", Label: "Km mở kỹ năng", Type: settingNumber, Default: 1.0,
-			Min: f64(0), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupKm,
-			Description: "Km Tiên tri, Bảo vệ, Phù thuỷ phải chạy trong khung 22h hôm trước tới 22h thì đêm đó mới dùng được kỹ năng; Thợ săn xét ở lần chốt 22h gần nhất. Để 0 là không cần km. Sói cắn không theo mức này."},
-		apply: func(c *werewolf.Config, v any) {
-			for _, r := range []werewolf.Role{werewolf.Seer, werewolf.Guard, werewolf.Witch, werewolf.Hunter} {
-				setSkillKm(c, r, v.(float64))
-			}
-		},
-	},
-	roleKmSetting("seerKm", werewolf.Seer, "Km cho Tiên tri", "Km Tiên tri phải chạy trong khung 22h hôm trước tới 22h để soi được đêm đó. Để 0 là không cần km."),
-	roleKmSetting("guardKm", werewolf.Guard, "Km cho Bảo vệ", "Km Bảo vệ phải chạy trong khung 22h hôm trước tới 22h để bảo vệ được đêm đó. Để 0 là không cần km."),
-	roleKmSetting("witchKm", werewolf.Witch, "Km cho Phù thuỷ", "Km Phù thuỷ phải chạy trong khung 22h hôm trước tới 22h để dùng bình đêm đó. Để 0 là không cần km."),
-	roleKmSetting("hunterKm", werewolf.Hunter, "Km cho Thợ săn", "Km Thợ săn phải có ở lần chốt 22h gần nhất thì khi chết mới được bắn. Để 0 là không cần km."),
-	{
-		GameSetting: GameSetting{Key: "villageGate", Label: "Km chung cho phe Dân", Type: settingToggle, Default: false, EnabledIf: kmOn, Group: groupKm,
-			Description: "Bật thì Tiên tri, Bảo vệ, Phù thuỷ, Thợ săn không xét km của riêng mình mà xét tổng km của mọi người không phải sói còn sống: phải đủ km của vai nhân số người đó. Cả làng chạy thì vai mới dùng được. Đổi lại người có vai biết tổng km phe Dân, lấy tổng km công khai trừ đi là ra km phe Sói."},
-		keepDefault: true,
-		apply:       func(c *werewolf.Config, v any) { c.VillageGate = v.(bool) },
-	},
-	{
-		GameSetting: GameSetting{Key: "vote", Label: "Km và phiếu biểu quyết", Type: settingChoice, Default: string(werewolf.VoteCut), EnabledIf: kmOn, Group: groupVote,
-			Description: "Km chốt 22h tác động lên phiếu Treo/Tha thế nào. Tính riêng từng phiên biểu quyết.",
+		GameSetting: GameSetting{Key: "vote", Label: "Chế độ dùng kỹ năng", Type: settingChoice, Default: string(werewolf.VoteCut), EnabledIf: kmOn, Group: groupKm,
+			Section:     sectionMode,
+			Description: "Km chốt 22h quyết định ai được bỏ phiếu và ai dùng được kỹ năng. Áp cho biểu quyết, sói bầu cắn và kỹ năng phe Dân.",
 			Choices: []GameSettingChoice{
-				{Value: string(werewolf.VoteCut), Label: "Thiếu km thì mất phiếu", Description: "Số phiếu được tính bằng tổng km của người bỏ phiếu chia km một phiếu, làm tròn xuống. Thiếu thì người ít km nhất mất phiếu trước, kể cả người không bấm."},
-				{Value: string(werewolf.VoteTop), Label: "Chạy nhiều được x2 phiếu", Description: "Không ai mất phiếu. Những người chạy nhiều nhất, mỗi người đủ km một phiếu, được tính 2 phiếu. Bằng km ở suất cuối thì bốc thăm."},
-				{Value: string(werewolf.VoteFlat), Label: "Mỗi người một phiếu", Description: "Km không tác động lên phiếu, chỉ dùng cho kỹ năng."},
+				{Value: string(werewolf.VoteCut), Label: "Theo nhóm", Hint: "Km cả nhóm chia ra số lượt",
+					Description: "Cộng km cả nhóm, chia cho km mỗi lượt ra số lượt được dùng. Thiếu thì người chạy ít nhất mất lượt trước.",
+					Details: []GameSettingDetail{
+						{Icon: "sum", Title: "Cách tính", Text: "Cộng km cả nhóm, chia cho km mỗi lượt: ra bao nhiêu thì bấy nhiêu lượt được dùng. Thiếu thì người chạy ít nhất mất lượt trước. Bằng km đúng ở ngưỡng thì bot bốc thăm."},
+						{Icon: "vote", Title: "Biểu quyết", Text: "10 người chạy tổng 7 km, 1 km một phiếu: 7 phiếu được tính, 3 người chạy ít nhất không được tính, kể cả người không bấm."},
+						{Icon: "people", Title: "Kỹ năng phe Dân", Text: "Cộng km phe Dân còn sống. Tiên tri, Bảo vệ, Phù thuỷ cần 1 km mỗi người, phe chạy 2 km: 2 vai dùng được, vai có km ít nhất mất lượt đêm đó."},
+						{Icon: "wolf", Title: "Sói cắn", Text: "Sói bầu người cắn, mỗi sói một phiếu. Cộng km cả phe Sói chia km một phiếu ra số phiếu được tính, sói chạy ít nhất mất phiếu trước. Ai nhiều phiếu nhất thì bị cắn."},
+						{Icon: "run", Title: "Bằng phiếu", Text: "Bên có tổng km cao hơn thắng. Vẫn bằng thì bốc thăm."},
+					}},
+				{Value: string(werewolf.VoteSolo), Label: "Riêng", Hint: "Ai đủ km người đó dùng",
+					Description: "Ai chạy đủ km của lượt thì người đó dùng, không phụ thuộc người khác.",
+					Details: []GameSettingDetail{
+						{Icon: "one", Title: "Cách tính", Text: "Ai chạy đủ km của lượt thì người đó dùng, không phụ thuộc người khác."},
+						{Icon: "vote", Title: "Biểu quyết", Text: "1 km một phiếu: ai chạy đủ 1 km thì phiếu được tính, chưa đủ thì phiếu không tính."},
+						{Icon: "seer", Title: "Kỹ năng", Text: "Tiên tri cần 1 km: tự chạy đủ 1 km thì đêm đó soi được."},
+						{Icon: "wolf", Title: "Sói cắn", Text: "Sói bầu người cắn, mỗi sói một phiếu. Sói nào tự chạy đủ km một phiếu thì phiếu đó được tính. Ai nhiều phiếu nhất thì bị cắn."},
+						{Icon: "run", Title: "Bằng phiếu", Text: "Bên có tổng km cao hơn thắng. Vẫn bằng thì bốc thăm."},
+					}},
 			}},
-		keepDefault: true,
-		apply:       func(c *werewolf.Config, v any) { c.Vote = werewolf.VoteRule(v.(string)) },
+		// Ván cũ và app cũ có thể còn gửi hai luật trước khi có Theo nhóm/Riêng.
+		legacyChoices: []string{string(werewolf.VoteTop), string(werewolf.VoteFlat)},
+		keepDefault:   true,
+		apply:         func(c *werewolf.Config, v any) { c.Vote = werewolf.VoteRule(v.(string)) },
 	},
 	{
-		GameSetting: GameSetting{Key: "kmPerUnit", Label: "Km một phiếu", Type: settingNumber, Default: 1.0,
-			Min: f64(0.5), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupVote,
-			Description: "Với luật \"Thiếu km thì mất phiếu\": km cho mỗi phiếu được tính. Với luật \"Chạy nhiều được x2 phiếu\": km tối thiểu để vào nhóm x2. Không có tác dụng với luật \"Mỗi người một phiếu\"."},
+		GameSetting: GameSetting{Key: "kmPerUnit", Label: "Biểu quyết", Hint: "Mọi người · km một phiếu", Type: settingNumber, Default: 1.0,
+			Min: f64(0.5), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupKm, Section: sectionKm,
+			Description: "Ai còn sống cũng được bỏ phiếu treo một người, kể cả Sói. Km ở đây là km cho một phiếu, tính theo chế độ đã chọn."},
 		apply: func(c *werewolf.Config, v any) { c.KmPerUnit = v.(float64) },
 	},
 	{
-		GameSetting: GameSetting{Key: "topVoters", Label: "Số người được x2 phiếu", Type: settingNumber, Default: 0.0,
-			Min: f64(0), Max: f64(10), Step: f64(1), Unit: "người", Group: groupVote,
-			EnabledIf:   []GameSettingCondition{{Key: "kmOff", Equals: false}, {Key: "vote", Equals: string(werewolf.VoteTop)}},
-			Description: "Chỉ dùng với luật \"Chạy nhiều được x2 phiếu\". Để 0 là bằng số sói còn sống cộng 1, để sói không chiếm hết các suất x2."},
+		GameSetting: GameSetting{Key: "maxHang", Label: "Treo tối đa mỗi vòng", Type: settingNumber, Default: float64(werewolf.MaxNominees),
+			Min: f64(1), Max: f64(float64(werewolf.MaxNominees)), Step: f64(1), Unit: "người", Group: groupKm, Section: sectionKm,
+			Description: "Số người được lên giàn mỗi vòng, mỗi người một phiên Treo/Tha riêng."},
+		keepDefault: true,
+		apply:       func(c *werewolf.Config, v any) { c.MaxHang = int(v.(float64)) },
+	},
+	{
+		GameSetting: GameSetting{Key: "wolfKm", Label: "Bầu cắn", Hint: "Phe Sói · km một phiếu", Type: settingNumber, Default: 0.0,
+			Min: f64(0), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupKm, Section: sectionKm,
+			Warn:        "Dễ lộ sói",
+			Description: "Mỗi đêm phe Sói cắn một người. Mỗi sói bầu một phiếu, ai nhiều phiếu nhất thì bị cắn; bằng phiếu thì bên có tổng km cao hơn thắng, vẫn bằng thì bốc thăm. Km ở đây là km cho một phiếu cắn, tính theo chế độ đã chọn. 0 là mọi sói đều có phiếu. Nên để 0: cắn mà cần km thì sáng ra có người chết là cả làng biết phe Sói đủ km, ráp với bảng km công khai là khoanh được sói."},
+		keepDefault: true,
+		apply:       func(c *werewolf.Config, v any) { setSkillKm(c, werewolf.Wolf, v.(float64)) },
+	},
+	roleKmSetting("seerKm", werewolf.Seer, "Tiên tri soi", "Đủ km thì đêm đó soi được một người, biết là Sói hay Dân."),
+	roleKmSetting("guardKm", werewolf.Guard, "Bảo vệ che", "Đủ km thì đêm đó che được một người khỏi bị cắn."),
+	roleKmSetting("witchKm", werewolf.Witch, "Phù thuỷ dùng thuốc", "Đủ km thì đêm đó dùng được bình cứu hoặc bình độc. Cả ván mỗi bình một lần."),
+	roleKmSetting("hunterKm", werewolf.Hunter, "Thợ săn bắn", "Ngã xuống mà đủ km ở lần chốt 22h gần nhất thì được bắn mang theo một người. Chết vì bình độc thì không bắn được."),
+	// topOn đứng trước topWeight: tắt thì TopWeight về 0, bật thì topWeight ghi đè.
+	{
+		GameSetting: GameSetting{Key: "topOn", Label: "Top N được x phiếu", Hint: "Người chạy nhiều nhất", Type: settingToggle, Default: false,
+			EnabledIf: kmOn, Group: groupKm, Section: sectionTop,
+			Description: "Người chạy nhiều nhất trong ngày được tính nhiều phiếu hơn, mỗi người phải đủ km một phiếu. Áp cho mọi người trong top, kể cả Sói: chỉ phe Dân được thì bảng phiếu công khai lộ ai là sói."},
+		keepDefault: true,
+		apply: func(c *werewolf.Config, v any) {
+			c.TopWeight = 0
+			if v.(bool) {
+				c.TopWeight = werewolf.MinTopWeight
+			}
+		},
+	},
+	{
+		GameSetting: GameSetting{Key: "topVoters", Label: "Số người", Type: settingNumber, Default: 0.0,
+			Min: f64(0), Max: f64(10), Step: f64(1), Unit: "người", Group: groupKm, Section: sectionTop,
+			EnabledIf:   []GameSettingCondition{{Key: "kmOff", Equals: false}, {Key: "topOn", Equals: true}},
+			Hint:        "0 là số sói + 1",
+			Description: "Để 0 là bằng số sói còn sống cộng 1, để sói không chiếm hết các suất."},
 		apply: func(c *werewolf.Config, v any) { c.TopVoters = int(v.(float64)) },
 	},
+	{
+		GameSetting: GameSetting{Key: "topWeight", Label: "Phiếu mỗi người", Type: settingNumber, Default: float64(werewolf.MinTopWeight),
+			Min: f64(werewolf.MinTopWeight), Max: f64(werewolf.MaxTopWeight), Step: f64(1), Unit: "phiếu", Group: groupKm, Section: sectionTop,
+			EnabledIf:   []GameSettingCondition{{Key: "kmOff", Equals: false}, {Key: "topOn", Equals: true}},
+			Description: "Mỗi người trong top được tính bấy nhiêu phiếu."},
+		apply: func(c *werewolf.Config, v any) {
+			if c.TopWeight > 0 {
+				c.TopWeight = int(v.(float64))
+			}
+		},
+	},
 }
+
+// Khối của tab Kỹ năng, theo thứ tự trên màn tạo ván.
+const (
+	sectionMode = "Chế độ dùng kỹ năng"
+	sectionKm   = "Km mỗi lượt"
+	sectionTop  = "Đặc quyền"
+)
 
 // gameCreateSettings là danh sách tuỳ chọn gửi cho màn tạo ván.
 func gameCreateSettings() []GameSetting {
@@ -314,6 +373,9 @@ func invalidSetting(key, why string) error {
 // applyGameSettings áp các tuỳ chọn app gửi lên vào c. Key lạ hay giá trị sai
 // kiểu, ngoài khoảng thì trả 422, không bỏ qua lặng lẽ.
 func applyGameSettings(c *werewolf.Config, in map[string]any) error {
+	// Chỉ ván mới đi qua đây nên mang đời luật mới nhất; ván đang chạy giữ
+	// Ruleset đã chụp lúc tạo.
+	c.Ruleset = werewolf.RulesetKm
 	known := map[string]bool{}
 	for _, d := range gameSettingDefs {
 		known[d.Key] = true
@@ -365,6 +427,9 @@ func (d gameSettingDef) check(v any) error {
 			if c.Value == s {
 				return nil
 			}
+		}
+		if slices.Contains(d.legacyChoices, s) {
+			return nil
 		}
 		return invalidSetting(d.Key, "không có lựa chọn này")
 	}

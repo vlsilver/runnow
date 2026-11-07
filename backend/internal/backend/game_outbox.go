@@ -666,7 +666,7 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 		if err = json.Unmarshal([]byte(raw), &d); err == nil {
 			short := ""
 			if d.WolfKm != nil {
-				short = wolfKmShort(d.WolfKm.Have, d.WolfKm.Need, kmPerUnit(r.cfg))
+				short = wolfNeedText(r.cfg, d.WolfKm.Have, d.WolfKm.Need, kmPerUnit(r.cfg))
 			}
 			text = r.privateText(d.Events, short)
 		}
@@ -900,7 +900,7 @@ func (r *outboxRenderer) kmBoard(km map[string]float64) []string {
 	}
 	u := formatKm(unit)
 	head := fmt.Sprintf("Có vai đêm thì cần đủ %s km mới dùng được kỹ năng. Sói tính chung cả phe: tổng km sói còn sống phải đủ %s km cho mỗi sói. Cupid không cần km.", u, u)
-	if len(r.cfg.SkillKm) > 0 || r.cfg.VillageGate {
+	if len(r.cfg.SkillKm) > 0 || r.cfg.VillageGate || r.cfg.KmTie() {
 		head = kmNeedsText(r.cfg)
 	}
 	lines := []string{head}
@@ -1008,6 +1008,13 @@ func (r *outboxRenderer) voteForecast(st *werewolf.State, km map[string]float64,
 		return r.voteTopForecast(st, km, voters, title)
 	}
 	plan := werewolf.PlanVoteCut(voters, km, r.cfg)
+	if r.cfg.VoteMode() == werewolf.VoteSolo {
+		text := fmt.Sprintf("%s nếu chốt bây giờ: %d/%d người đủ %s km nên được tính phiếu.", title, plan.Allowed, len(voters), formatKm(kmPerUnit(r.cfg)))
+		if len(plan.Sure) == 0 {
+			return text
+		}
+		return text + " Chưa đủ km: " + r.names(plan.Sure) + ". Chạy đủ trước 22h thì phiếu được tính."
+	}
 	text := fmt.Sprintf("%s nếu chốt bây giờ: %d người bỏ phiếu có tổng %s km, ", title, len(voters), formatKm(math.Floor(total/100)/10))
 	if plan.Allowed == len(voters) {
 		return text + fmt.Sprintf("đủ cho cả %d phiếu.", len(voters))

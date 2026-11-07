@@ -232,6 +232,20 @@ func TestRenderReminderVoteForecast(t *testing.T) {
 	if got := forecast(); strings.HasPrefix(got, "Biểu quyết") {
 		t.Fatalf("chưa ai lên giàn mà vẫn dự báo: %q", got)
 	}
+
+	// Riêng: không cộng km cả nhóm; ai chưa đủ 2,5 km thì mất phiếu, không bốc thăm.
+	st.Nominee = "f1"
+	st.Config.Ruleset, st.Config.Vote = ww.RulesetKm, ww.VoteSolo
+	r.cfg = st.Config
+	live = map[string]float64{"w1": 900, "w2": 3100, "s1": 2600}
+	if got := forecast(); got != "Biểu quyết nếu chốt bây giờ: 2/3 người đủ 2.5 km nên được tính phiếu. "+
+		"Chưa đủ km: An &lt;Sói&gt;. Chạy đủ trước 22h thì phiếu được tính." {
+		t.Fatalf("Riêng, thiếu km = %q", got)
+	}
+	live = map[string]float64{"w1": 2500, "w2": 3100, "s1": 2600}
+	if got := forecast(); got != "Biểu quyết nếu chốt bây giờ: 3/3 người đủ 2.5 km nên được tính phiếu." {
+		t.Fatalf("Riêng, đủ km = %q", got)
+	}
 }
 
 // Bấm "Xem km của tôi": người bấm thấy km đang gom tới mốc 22h kế tiếp, ngưỡng

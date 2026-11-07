@@ -21,6 +21,8 @@ func TestKmTableVoteLabels(t *testing.T) {
 		{"cut", ww.Config{KmPerUnit: 2}, "giữ phiếu", "Dưới 2 km · có thể mất phiếu"},
 		{"top", ww.Config{KmPerUnit: 2, Vote: ww.VoteTop}, "tranh x2 phiếu", ""},
 		{"flat", ww.Config{KmPerUnit: 2, Vote: ww.VoteFlat}, "", ""},
+		// Riêng: dưới mốc là chắc mất phiếu, không phụ thuộc người khác.
+		{"solo", ww.Config{KmPerUnit: 2, Vote: ww.VoteSolo, Ruleset: ww.RulesetKm}, "giữ phiếu", "Dưới 2 km · mất phiếu"},
 	}
 	for _, c := range cases {
 		got := kmTable(running, goalState(c.cfg), nil, wall)

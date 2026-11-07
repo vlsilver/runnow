@@ -7,14 +7,15 @@ import (
 	ww "github.com/vlsilver/runnow/backend/internal/werewolf"
 )
 
-// Không gửi settings (app cũ) thì ván mới theo luật cũ, trừ sói cắn không cần
-// km; km các vai vẫn theo KmPerUnit.
+// Không gửi settings (app cũ) thì ván mới theo luật km: Theo nhóm, mỗi vai
+// 1 km một lượt, sói nào cũng có phiếu cắn, tối đa 3 người lên giàn.
 func TestGameSettingsDefaults(t *testing.T) {
 	gc := ww.Config{KmPerUnit: 2}
 	if err := applyGameSettings(&gc, nil); err != nil {
 		t.Fatal(err)
 	}
-	want := ww.Config{KmPerUnit: 2, Vote: ww.VoteCut, SkillKm: map[ww.Role]float64{ww.Wolf: 0}}
+	want := ww.Config{KmPerUnit: 2, Vote: ww.VoteCut, Ruleset: ww.RulesetKm, MaxHang: 3,
+		SkillKm: map[ww.Role]float64{ww.Wolf: 0, ww.Seer: 1, ww.Guard: 1, ww.Witch: 1, ww.Hunter: 1}}
 	if !reflect.DeepEqual(gc, want) {
 		t.Fatalf("config = %+v, mong đợi %+v", gc, want)
 	}
@@ -24,13 +25,13 @@ func TestGameSettingsApplied(t *testing.T) {
 	var gc ww.Config
 	err := applyGameSettings(&gc, map[string]any{
 		"extraWolves": 1.0, "wolfKm": 2.0, "seerKm": 0.0, "guardKm": 1.5, "witchKm": 3.0, "hunterKm": 1.0,
-		"villageGate": true, "vote": "top", "kmPerUnit": 2.5, "topVoters": 4.0,
+		"vote": "solo", "kmPerUnit": 2.5, "maxHang": 1.0, "topOn": true, "topVoters": 4.0, "topWeight": 3.0,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := ww.Config{
-		ExtraWolves: 1, KmPerUnit: 2.5, VillageGate: true, Vote: ww.VoteTop, TopVoters: 4,
+		ExtraWolves: 1, KmPerUnit: 2.5, Ruleset: ww.RulesetKm, Vote: ww.VoteSolo, MaxHang: 1, TopVoters: 4, TopWeight: 3,
 		SkillKm: map[ww.Role]float64{ww.Wolf: 2, ww.Seer: 0, ww.Guard: 1.5, ww.Witch: 3, ww.Hunter: 1},
 	}
 	if !reflect.DeepEqual(gc, want) {
@@ -104,16 +105,27 @@ func TestGameSettingsKmRoundsPerDay(t *testing.T) {
 	}
 }
 
-// skillKm đặt một mức km cho cả bốn vai có kỹ năng; km riêng của vai gửi kèm
-// thì thắng. Sói không theo skillKm.
-func TestGameSettingsSkillKm(t *testing.T) {
-	var gc ww.Config
-	if err := applyGameSettings(&gc, map[string]any{"skillKm": 2.0, "witchKm": 0.5}); err != nil {
-		t.Fatal(err)
+// Top tắt thì bỏ qua số phiếu gửi kèm; bật mà không gửi thì x2. Hai luật phiếu
+// cũ vẫn nhận dù không còn hiện trên màn tạo ván.
+func TestGameSettingsTopAndLegacyVote(t *testing.T) {
+	cases := []struct {
+		in   map[string]any
+		vote ww.VoteRule
+		top  int
+	}{
+		{map[string]any{"topOn": false, "topWeight": 4.0}, ww.VoteCut, 0},
+		{map[string]any{"topOn": true}, ww.VoteCut, 2},
+		{map[string]any{"vote": "top"}, ww.VoteTop, 0},
+		{map[string]any{"vote": "flat"}, ww.VoteFlat, 0},
 	}
-	want := map[ww.Role]float64{ww.Wolf: 0, ww.Seer: 2, ww.Guard: 2, ww.Witch: 0.5, ww.Hunter: 2}
-	if !reflect.DeepEqual(gc.SkillKm, want) {
-		t.Fatalf("SkillKm = %v, mong đợi %v", gc.SkillKm, want)
+	for _, c := range cases {
+		var gc ww.Config
+		if err := applyGameSettings(&gc, c.in); err != nil {
+			t.Fatalf("%v: %v", c.in, err)
+		}
+		if gc.Vote != c.vote || gc.TopWeight != c.top {
+			t.Errorf("%v: vote %s, topWeight %d", c.in, gc.Vote, gc.TopWeight)
+		}
 	}
 }
 
@@ -129,6 +141,10 @@ func TestGameSettingsRejected(t *testing.T) {
 		{"kmPerUnit": 0.0},
 		{"vote": "double"},
 		{"vote": 1.0},
+		{"skillKm": 2.0},
+		{"villageGate": true},
+		{"maxHang": 4.0},
+		{"topOn": true, "topWeight": 6.0},
 		{"kmOff": true, "roundHours": 5.0},
 		{"kmOff": true, "roundsPerDay": 7.0},
 		{"kmOff": true, "startHour": 24.0},

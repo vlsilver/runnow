@@ -48,9 +48,17 @@ type Event struct {
 	Hang    int            `json:"hang,omitempty"`
 	Spare   int            `json:"spare,omitempty"`
 	Hanged  bool           `json:"hanged,omitempty"`
-	Draw    bool           `json:"draw,omitempty"`
-	Team    Team           `json:"team,omitempty"`
-	Reason  string         `json:"reason,omitempty"`
+	// HangKm, SpareKm: tổng km (mét) của người có phiếu Treo, Tha được tính.
+	// Km: tổng km (mét) của nhóm phiếu được tính cho từng người được chọn.
+	HangKm  float64            `json:"hangKm,omitempty"`
+	SpareKm float64            `json:"spareKm,omitempty"`
+	Km      map[string]float64 `json:"km,omitempty"`
+	// Weight: số phiếu mỗi người trong Targets của EventVoteBonus được tính
+	// (TopWeight); 0 là x2 của VoteTop.
+	Weight int    `json:"weight,omitempty"`
+	Draw   bool   `json:"draw,omitempty"`
+	Team   Team   `json:"team,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // Lý do huỷ action (voidReason) và lý do trong event.
@@ -203,6 +211,12 @@ func (r *resolver) lockWolves() {
 		r.pairLovers()
 	}
 	r.st.Bitten = ""
+	if r.st.Config.KmTie() {
+		r.emit(r.wolfVote())
+		r.lockDark()
+		r.st.Phase = PhaseDawn
+		return
+	}
 	reason := ReasonNoChoice
 	var best *Action
 	for _, a := range r.actionsOf(KindWolfBite) {
@@ -373,31 +387,49 @@ func (r *resolver) witchChoices() (saved bool, poisoned string) {
 // cử là đủ; bằng đề cử ở suất cuối thì bốc thăm. Không ai đề cử thì hôm nay
 // không treo. Đề cử của người đã chết hoặc nhắm vào người đã chết bị huỷ (R19).
 func (r *resolver) pickNominee() {
-	counts := map[string]int{}
+	counts, km := map[string]int{}, map[string]float64{}
 	for _, a := range r.actionsOf(KindNominate) {
 		if r.targetAlive(a) {
 			counts[a.target()]++
+			km[a.target()] += r.st.Km[a.Actor]
 		}
 	}
-	ranked := make([]string, 0, len(counts))
-	for uid := range counts {
-		ranked = append(ranked, uid)
-	}
-	sort.Strings(ranked)
-	// Xáo trước rồi xếp ổn định theo số đề cử: người bằng đề cử đứng theo thứ
-	// tự bốc thăm, nên suất cuối và thứ tự phiên đều tất định theo seed.
-	r.stream("nominee").shuffle(len(ranked), func(i, j int) { ranked[i], ranked[j] = ranked[j], ranked[i] })
-	sort.SliceStable(ranked, func(i, j int) bool { return counts[ranked[i]] > counts[ranked[j]] })
-	n := min(len(ranked), MaxNominees)
+	kmTie := r.st.Config.KmTie()
+	ranked, same := r.rankVotes(counts, km, kmTie, "nominee")
+	n := min(len(ranked), r.st.Config.NomineeSeats())
 	ev := Event{Kind: EventNominee, Counts: counts}
+	if kmTie && len(km) > 0 {
+		ev.Km = km
+	}
 	if n > 0 {
 		ev.UID, ev.Targets = ranked[0], ranked[:n]
-		ev.Draw = n < len(ranked) && counts[ranked[n-1]] == counts[ranked[n]]
+		ev.Draw = n < len(ranked) && same(ranked[n-1], ranked[n])
 		r.st.setNominees(append([]string(nil), ranked[:n]...))
 	}
 	r.emit(ev)
 	r.st.Phase = PhaseTrial
 	r.finish()
+}
+
+// rankVotes xếp các lựa chọn theo số phiếu, rồi (useKm) theo tổng km nhóm phiếu.
+// Xáo theo purpose trước rồi mới xếp ổn định, nên lựa chọn còn bằng nhau đứng
+// theo thứ tự bốc thăm, tất định theo seed. same(a, b): hai lựa chọn bằng nhau
+// tới bước bốc thăm.
+func (r *resolver) rankVotes(counts map[string]int, km map[string]float64, useKm bool, purpose string) (ranked []string, same func(a, b string) bool) {
+	ranked = make([]string, 0, len(counts))
+	for uid := range counts {
+		ranked = append(ranked, uid)
+	}
+	sort.Strings(ranked)
+	r.stream(purpose).shuffle(len(ranked), func(i, j int) { ranked[i], ranked[j] = ranked[j], ranked[i] })
+	before := func(a, b string) bool {
+		if counts[a] != counts[b] {
+			return counts[a] > counts[b]
+		}
+		return useKm && km[a] > km[b]
+	}
+	sort.SliceStable(ranked, func(i, j int) bool { return before(ranked[i], ranked[j]) })
+	return ranked, func(a, b string) bool { return !before(a, b) && !before(b, a) }
 }
 
 // resolveDay: 22h, theo R16: nhận snapshot km → người rời PSC → treo → người yêu
@@ -454,9 +486,9 @@ func (r *resolver) countVotes(kind Kind, nominee string) bool {
 			voters = append(voters, uid)
 		}
 	}
-	isCut, double := map[string]bool{}, map[string]bool{}
+	isCut, weight := map[string]bool{}, map[string]int{}
 	switch r.st.Config.VoteMode() {
-	case VoteCut:
+	case VoteCut, VoteSolo:
 		cut, draw := r.voteCut(kind, voters)
 		if len(cut) > 0 {
 			r.emit(Event{Kind: EventVoteCut, UID: nominee, Targets: cut, Draw: draw})
@@ -464,13 +496,29 @@ func (r *resolver) countVotes(kind Kind, nominee string) bool {
 		for _, uid := range cut {
 			isCut[uid] = true
 		}
+		// Top N được x phiếu (luật km) xét trên người còn phiếu.
+		if w := r.st.Config.TopWeight; w > 0 {
+			var kept []string
+			for _, uid := range voters {
+				if !isCut[uid] {
+					kept = append(kept, uid)
+				}
+			}
+			top, draw := r.voteBonus(kind, kept)
+			if len(top) > 0 {
+				r.emit(Event{Kind: EventVoteBonus, UID: nominee, Targets: top, Draw: draw, Weight: w})
+			}
+			for _, uid := range top {
+				weight[uid] = w
+			}
+		}
 	case VoteTop:
 		top, draw := r.voteBonus(kind, voters)
 		if len(top) > 0 {
 			r.emit(Event{Kind: EventVoteBonus, UID: nominee, Targets: top, Draw: draw})
 		}
 		for _, uid := range top {
-			double[uid] = true
+			weight[uid] = 2
 		}
 	}
 	ev := Event{Kind: EventVoteResult, UID: nominee}
@@ -485,12 +533,24 @@ func (r *resolver) countVotes(kind Kind, nominee string) bool {
 		case a.Choice == ChoiceHang && r.st.loverOf(a.Actor) == nominee:
 			r.void(a, VoidLoverTarget)
 		case a.Choice == ChoiceHang:
-			ev.Hang += r.voteWeight(a.Actor, double)
+			ev.Hang += r.voteWeight(a.Actor, weight)
+			ev.HangKm += r.st.Km[a.Actor]
 		case a.Choice == ChoiceSpare:
-			ev.Spare += r.voteWeight(a.Actor, double)
+			ev.Spare += r.voteWeight(a.Actor, weight)
+			ev.SpareKm += r.st.Km[a.Actor]
 		}
 	}
 	ev.Hanged = ev.Hang > ev.Spare
+	switch {
+	case !r.st.Config.KmTie():
+		// Ván cũ: hoà thì tha, event không mang km để bản tin không nói lý do km.
+		ev.HangKm, ev.SpareKm = 0, 0
+	case ev.Hang == ev.Spare && ev.Hang > 0 && ev.HangKm != ev.SpareKm:
+		ev.Hanged = ev.HangKm > ev.SpareKm
+	case ev.Hang == ev.Spare && ev.Hang > 0:
+		ev.Draw = true
+		ev.Hanged = r.stream("vote-tie/"+string(kind)).intn(2) == 0
+	}
 	r.emit(ev)
 	return ev.Hanged
 }
@@ -499,14 +559,18 @@ func (r *resolver) countVotes(kind Kind, nominee string) bool {
 // đúng ngưỡng thì bốc thăm bằng hash(seed, phaseKey, "vote-cut"); phiên sau
 // phiên đầu thêm tên kind vào nhãn để mỗi phiên bốc riêng.
 func (r *resolver) voteCut(kind Kind, voters []string) (cut []string, draw bool) {
-	plan := PlanVoteCut(voters, r.st.Km, r.st.Config)
+	purpose := "vote-cut"
+	if kind != KindVote {
+		purpose += "/" + string(kind)
+	}
+	return r.drawCut(PlanVoteCut(voters, r.st.Km, r.st.Config), purpose)
+}
+
+// drawCut: người mất phiếu của plan, bốc thăm trong nhóm bằng km ở ngưỡng.
+func (r *resolver) drawCut(plan VoteCutPlan, purpose string) (cut []string, draw bool) {
 	cut, tied := plan.Sure, plan.Tied
 	if plan.Need < len(tied) {
 		draw = true
-		purpose := "vote-cut"
-		if kind != KindVote {
-			purpose += "/" + string(kind)
-		}
 		r.stream(purpose).shuffle(len(tied), func(i, j int) { tied[i], tied[j] = tied[j], tied[i] })
 	}
 	cut = append(cut, tied[:plan.Need]...)
@@ -514,13 +578,69 @@ func (r *resolver) voteCut(kind Kind, voters []string) (cut []string, draw bool)
 	return cut, draw
 }
 
-// voteWeight: phiếu tính 2 khi người đó được x2 theo km (VoteTop) hoặc là sói
-// được Phiếu Đôi; có cả hai thì vẫn là 2.
-func (r *resolver) voteWeight(uid string, double map[string]bool) int {
-	if double[uid] || (r.st.darkIs(DarkVote) && r.st.Dark.Target == uid) {
-		return 2
+// wolfVote (luật km): mỗi sói một phiếu, phiếu bị loại theo km như biểu quyết
+// (WolfVotePlan). Mục tiêu nhiều phiếu nhất bị cắn; bằng phiếu thì nhóm phiếu có
+// tổng km cao hơn, vẫn bằng thì bốc thăm.
+func (r *resolver) wolfVote() Event {
+	ev := Event{Kind: EventWolvesTarget, Reason: ReasonNoChoice}
+	cutList, _ := r.drawCut(WolfVotePlan(r.st), "wolf-cut")
+	cut := map[string]bool{}
+	for _, uid := range cutList {
+		cut[uid] = true
 	}
-	return 1
+	counts, km := map[string]int{}, map[string]float64{}
+	for _, a := range r.actionsOf(KindWolfBite) {
+		switch {
+		case !r.targetAlive(a):
+		case a.target() == r.st.loverOf(a.Actor):
+			r.void(a, VoidLoverTarget)
+		case cut[a.Actor]:
+			r.void(a, VoidVoteCut)
+			ev.Reason = VoidNoKm
+		default:
+			counts[a.target()]++
+			km[a.target()] += r.st.Km[a.Actor]
+		}
+	}
+	if len(counts) == 0 {
+		return ev
+	}
+	ranked, same := r.rankVotes(counts, km, true, "wolf-bite")
+	ev.UID, ev.Reason, ev.Counts, ev.Km = ranked[0], "", counts, km
+	ev.Draw = len(ranked) > 1 && same(ranked[0], ranked[1])
+	r.st.Bitten = ev.UID
+	return ev
+}
+
+// WolfVotePlan (luật km): sói nào mất phiếu bầu cắn, theo chế độ của ván với km
+// mỗi phiếu của Sói: Theo nhóm như R30, Riêng thì sói chưa đủ km mất phiếu. Km
+// mỗi phiếu 0 hoặc luật phiếu khác thì không ai mất.
+func WolfVotePlan(st *State) VoteCutPlan {
+	var wolves []string
+	for _, uid := range st.aliveUIDs() {
+		if st.role(uid) == Wolf {
+			wolves = append(wolves, uid)
+		}
+	}
+	unit := st.Config.SkillMeters(Wolf)
+	switch {
+	case unit == 0:
+	case st.Config.VoteMode() == VoteCut:
+		return planCut(wolves, st.Km, unit)
+	case st.Config.VoteMode() == VoteSolo:
+		return planSolo(wolves, st.Km, unit)
+	}
+	return VoteCutPlan{Allowed: len(wolves)}
+}
+
+// voteWeight: số phiếu của uid theo km (weight: x2 của VoteTop hoặc TopWeight),
+// ít nhất 2 khi là sói được Phiếu Đôi; có cả hai thì lấy số lớn hơn.
+func (r *resolver) voteWeight(uid string, weight map[string]int) int {
+	w := max(1, weight[uid])
+	if r.st.darkIs(DarkVote) && r.st.Dark.Target == uid {
+		w = max(w, 2)
+	}
+	return w
 }
 
 // voteBonus chọn người được x2 phiếu của phiên kind theo PlanVoteBonus. Bằng km
@@ -595,13 +715,33 @@ type VoteCutPlan struct {
 // là người ít km nhất, kể cả người không bấm. km theo mét. Bot dùng để báo trước
 // ai sẽ mất phiếu nếu chốt với km hiện tại.
 func PlanVoteCut(voters []string, km map[string]float64, cfg Config) VoteCutPlan {
+	if cfg.VoteMode() == VoteSolo {
+		return planSolo(voters, km, cfg.unitMeters())
+	}
+	return planCut(voters, km, cfg.unitMeters())
+}
+
+// planSolo: người chưa đủ unit mét mất phiếu, không bốc thăm.
+func planSolo(voters []string, km map[string]float64, unit float64) VoteCutPlan {
+	var plan VoteCutPlan
+	for _, uid := range voters {
+		if km[uid] < unit {
+			plan.Sure = append(plan.Sure, uid)
+		}
+	}
+	plan.Allowed = len(voters) - len(plan.Sure)
+	return plan
+}
+
+// planCut: R30 với unit mét cho một phiếu.
+func planCut(voters []string, km map[string]float64, unit float64) VoteCutPlan {
 	var total float64
 	for _, uid := range voters {
 		total += km[uid]
 	}
 	// Cộng float có thể ra 2999.9999999 thay vì 3000; dung sai 1 µm không đổi được
 	// kết quả thật nào.
-	allowed := min(len(voters), int(math.Floor(total/cfg.unitMeters()+1e-9)))
+	allowed := min(len(voters), int(math.Floor(total/unit+1e-9)))
 	plan := VoteCutPlan{Allowed: allowed}
 	n := len(voters) - allowed
 	if n == 0 {

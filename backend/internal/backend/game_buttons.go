@@ -569,7 +569,7 @@ func (s *GameStore) kmAlert(ctx context.Context, gameData map[string]any, st *we
 			}
 		}
 		_, need := werewolf.WolfKm(st)
-		lines = append(lines, "Phe Sói tới giờ: "+wolfKmShort(have, need, unit)+".")
+		lines = append(lines, "Phe Sói tới giờ: "+wolfNeedText(st.Config, have, need, unit)+".")
 	}
 	return truncateUTF16(strings.Join(lines, "\n"), answerTextSize), nil
 }
@@ -579,7 +579,7 @@ func (s *GameStore) kmAlert(ctx context.Context, gameData map[string]any, st *we
 // người bấm, vì hộp này chỉ người đó thấy.
 func mySkillKm(cfg werewolf.Config, role werewolf.Role) string {
 	x := formatKm(kmPerUnit(cfg))
-	if len(cfg.SkillKm) == 0 && !cfg.VillageGate {
+	if len(cfg.SkillKm) == 0 && !cfg.VillageGate && !cfg.GroupSkills() {
 		return " Cần " + x + " km để dùng kỹ năng đêm."
 	}
 	switch role {

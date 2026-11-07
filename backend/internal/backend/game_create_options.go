@@ -63,7 +63,6 @@ const (
 	groupTime  = "time"
 	groupRound = "round"
 	groupRoles = "roles"
-	groupVote  = "vote"
 	groupKm    = "km"
 )
 
@@ -74,10 +73,9 @@ var gameSettingGroups = []GameSettingGroup{
 	// được cả ở ván km.
 	{Key: groupRound, Label: "Vòng chơi", Icon: "moon"},
 	{Key: groupRoles, Label: "Vai", Icon: "people"},
-	{Key: groupVote, Label: "Phiếu", Icon: "vote",
-		OffNote: "Ván không dùng km: mỗi người một phiếu. Tắt \"Không dùng km\" ở tab Km để chỉnh luật phiếu."},
-	// Tab Km không cần OffNote: "Không dùng km" nằm ở đây và luôn chỉnh được.
-	{Key: groupKm, Label: "Km", Icon: "run"},
+	// Tab Kỹ năng gom luật phiếu và km mỗi lượt; không cần OffNote vì "Không
+	// dùng km" nằm ở đây và luôn chỉnh được.
+	{Key: groupKm, Label: "Kỹ năng", Icon: "run"},
 }
 
 var gamePresets = []GamePreset{
@@ -86,8 +84,8 @@ var gamePresets = []GamePreset{
 		Details: []string{
 			"Sói, Dân và 5 vai: Tiên tri, Bảo vệ, Phù thuỷ, Thợ săn, Cupid.",
 			"Mỗi ngày một vòng, mở lúc 22h.",
-			"Thiếu km thì mất phiếu.",
-			"Tiên tri, Bảo vệ, Phù thuỷ, Thợ săn mỗi ngày cần 1 km để dùng kỹ năng. Sói cắn không cần km.",
+			"Km theo nhóm: cộng km cả nhóm chia ra số lượt, thiếu thì người chạy ít nhất mất lượt trước.",
+			"Mỗi phiếu và mỗi lượt kỹ năng cần 1 km. Sói nào cũng có phiếu bầu cắn.",
 		},
 		Settings: map[string]any{}},
 	{Key: "hard", Label: "Chạy bung", Icon: "bolt",
@@ -95,11 +93,13 @@ var gamePresets = []GamePreset{
 		Details: []string{
 			"Thêm Già làng vào 5 vai của ván chuẩn.",
 			"Mỗi ngày một vòng, mở lúc 22h.",
-			"Không ai mất phiếu; người chạy nhiều nhất được tính 2 phiếu.",
-			"Tiên tri, Bảo vệ, Phù thuỷ, Thợ săn mỗi ngày cần 2 km để dùng kỹ năng. Sói cắn không cần km.",
+			"Km riêng: ai tự chạy đủ km thì người đó được bỏ phiếu, dùng kỹ năng.",
+			"Người chạy nhiều nhất được tính 2 phiếu.",
+			"Tiên tri, Bảo vệ, Phù thuỷ, Thợ săn mỗi lượt cần 2 km. Sói nào cũng có phiếu bầu cắn.",
 			"Phe Sói có Tàng Hình và Vu Khống để lừa Tiên tri, mở khi cả phe chạy đủ 1 km mỗi sói.",
 		},
-		Settings: map[string]any{string(werewolf.Elder): true, "vote": string(werewolf.VoteTop), "skillKm": 2.0, "darkCloak": true, "darkFrame": true}},
+		Settings: map[string]any{string(werewolf.Elder): true, "vote": string(werewolf.VoteSolo), "topOn": true,
+			"seerKm": 2.0, "guardKm": 2.0, "witchKm": 2.0, "hunterKm": 2.0, "darkCloak": true, "darkFrame": true}},
 	{Key: "classic", Label: "Cổ điển", Icon: "moon",
 		Summary: "Ma Sói thường, không cần chạy",
 		Details: []string{

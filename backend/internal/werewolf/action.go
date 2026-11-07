@@ -247,18 +247,30 @@ func precheck(st *State, kind Kind, actor string, mine []Action, now time.Time) 
 // wolvesHaveKm: còn sói sống, và tổng km của sói còn sống ≥ km mỗi sói × số
 // sói còn sống (R1). Km mỗi sói là 0 thì phe cắn tự do.
 func wolvesHaveKm(st *State) bool {
+	if st.Config.KmTie() {
+		// Luật km: sói bầu, phiếu chỉ bị loại lúc chốt; còn ít nhất một phiếu
+		// được tính thì phe vẫn cắn được.
+		return st.aliveWolves() > 0 && WolfVotePlan(st).Allowed > 0
+	}
 	have, need := WolfKm(st)
 	return st.aliveWolves() > 0 && have >= need
 }
 
-// WolfKm trả tổng km (mét) của sói còn sống và mức phe cần (km mỗi sói × số sói
-// còn sống), để tin riêng cho sói nói được phe thiếu bao nhiêu. need = 0 là phe
-// không cần km.
+// WolfKm trả tổng km (mét) của sói còn sống và mức phe cần để cắn, để tin riêng
+// cho sói nói được phe thiếu bao nhiêu. Luật cũ cần km mỗi sói × số sói còn
+// sống; luật km chỉ cần đủ một phiếu (WolfVotePlan). need = 0 là không cần km.
 func WolfKm(st *State) (have, need float64) {
+	unit := st.Config.SkillMeters(Wolf)
 	for _, uid := range st.aliveUIDs() {
 		if st.role(uid) == Wolf {
 			have += st.Km[uid]
-			need += st.Config.SkillMeters(Wolf)
+			need += unit
+		}
+	}
+	if st.Config.KmTie() {
+		need = 0
+		if st.Config.VoteMode() == VoteCut && st.aliveWolves() > 0 {
+			need = unit
 		}
 	}
 	return have, need

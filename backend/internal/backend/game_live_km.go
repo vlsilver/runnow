@@ -128,6 +128,9 @@ func kmTable(data map[string]any, st *werewolf.State, live *liveKm, wall time.Ti
 		// phiếu cho mọi người (PlanVoteCut).
 		t.UnitLabel = "giữ phiếu"
 		t.CutLabel = "Dưới " + formatKm(t.UnitKm) + " km · có thể mất phiếu"
+	case werewolf.VoteSolo:
+		t.UnitLabel = "giữ phiếu"
+		t.CutLabel = "Dưới " + formatKm(t.UnitKm) + " km · mất phiếu"
 	}
 	if sameDate(end.AddDate(0, 0, -1), now) {
 		t.LastLabel = "Hôm nay · chốt 22h"

@@ -277,7 +277,7 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 					}
 				}
 				switch cfg.VoteMode() {
-				case werewolf.VoteCut:
+				case werewolf.VoteCut, werewolf.VoteSolo:
 					plan := werewolf.PlanVoteCut(voters, live, cfg)
 					f := &BotVoteForecast{Voters: len(voters), CountedIfNow: plan.Allowed, LoseVote: names(plan.Sure)}
 					if plan.Need == len(plan.Tied) {

@@ -92,6 +92,25 @@ func TestKmGoalsVillageGateHidesTeamSum(t *testing.T) {
 	}
 }
 
+// Luật km, Theo nhóm: kỹ năng phe Dân dùng chung km như villageGate nên không có
+// mốc riêng. Riêng: Tiên tri có mốc riêng, sói có mốc phiếu cắn của chính mình
+// thay cho mốc cả phe.
+func TestKmGoalsByKmMode(t *testing.T) {
+	vote := GameKmGoal{Key: "vote", Label: "Giữ phiếu biểu quyết", NeedKm: 1}
+	group := goalState(ww.Config{Ruleset: ww.RulesetKm, Vote: ww.VoteCut})
+	if got := kmGoals(group, "s1", nil, nil); !reflect.DeepEqual(got, []GameKmGoal{vote}) {
+		t.Errorf("Theo nhóm, Tiên tri: %+v", got)
+	}
+	solo := goalState(ww.Config{Ruleset: ww.RulesetKm, Vote: ww.VoteSolo, SkillKm: map[ww.Role]float64{ww.Wolf: 2}})
+	if got := kmGoals(solo, "s1", nil, nil); !reflect.DeepEqual(got, []GameKmGoal{vote, {Key: "skill", Label: "Soi ở đêm tới", NeedKm: 1}}) {
+		t.Errorf("Riêng, Tiên tri: %+v", got)
+	}
+	want := []GameKmGoal{vote, {Key: "skill", Label: "Có phiếu cắn ở đêm tới", NeedKm: 2}}
+	if got := kmGoals(solo, "w1", nil, wolfTeamKm(solo, nil)); !reflect.DeepEqual(got, want) {
+		t.Errorf("Riêng, sói: %+v", got)
+	}
+}
+
 // Không có mốc nào khi ván tắt km hay người gọi đã chết; Kẻ ngốc đã lật mất phiếu
 // nên không có mốc giữ phiếu.
 func TestKmGoalsNoneWhenNoKmOrNoVote(t *testing.T) {

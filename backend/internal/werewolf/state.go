@@ -2,6 +2,7 @@ package werewolf
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"time"
@@ -266,11 +267,14 @@ func (c Config) SkillMeters(r Role) float64 {
 	return c.unitMeters()
 }
 
-// hasKm: uid đủ km cho kỹ năng của vai mình. VillageGate thì vai không phải
-// sói xét km cả phe Dân.
+// hasKm: uid đủ km cho kỹ năng của vai mình. Ván luật km chọn Theo nhóm thì vai
+// phe Dân dùng chung km (skillCut); VillageGate là bản cũ của luật đó.
 func (st *State) hasKm(uid string) bool {
 	role := st.role(uid)
 	need := st.Config.SkillMeters(role)
+	if need > 0 && role != Wolf && st.Config.GroupSkills() {
+		return !slices.Contains(st.skillCut(uid), uid)
+	}
 	if need == 0 || !st.Config.VillageGate || role == Wolf {
 		return st.Km[uid] >= need
 	}
@@ -282,6 +286,39 @@ func (st *State) hasKm(uid string) bool {
 		}
 	}
 	return have >= need*float64(n)
+}
+
+// skillCut là các vai phe Dân mất lượt kỹ năng vòng này khi dùng chung km: km
+// phe Dân còn sống trả cho từng vai cần km, thiếu thì vai chạy ít nhất mất lượt
+// trước, bằng km thì bốc thăm. Km chốt một lần mỗi vòng nên kết quả giữ nguyên
+// từ đêm tới lúc Thợ săn bắn; asker là Thợ săn vừa chết thì vẫn được xét.
+func (st *State) skillCut(asker string) []string {
+	var total float64
+	var holders []string
+	for _, uid := range slices.Sorted(maps.Keys(st.Players)) {
+		p := st.Players[uid]
+		if p.Role == Wolf || (!p.Alive && uid != asker) {
+			continue
+		}
+		total += st.Km[uid]
+		if kmRole(p.Role) && st.Config.SkillMeters(p.Role) > 0 {
+			holders = append(holders, uid)
+		}
+	}
+	newStream(st.Seed, fmt.Sprintf("r%d", st.Round), "skill-cut").shuffle(len(holders), func(i, j int) {
+		holders[i], holders[j] = holders[j], holders[i]
+	})
+	sort.SliceStable(holders, func(i, j int) bool { return st.Km[holders[i]] < st.Km[holders[j]] })
+	var need float64
+	for _, uid := range holders {
+		need += st.Config.SkillMeters(st.role(uid))
+	}
+	cut := 0
+	// Dung sai 1 µm như planCut.
+	for ; cut < len(holders) && need > total+1e-6; cut++ {
+		need -= st.Config.SkillMeters(st.role(holders[cut]))
+	}
+	return holders[:cut]
 }
 
 // TeamOf là phe của uid khi xét thắng thua: hai người trong cặp Sói–Dân thành

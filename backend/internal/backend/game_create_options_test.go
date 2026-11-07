@@ -45,7 +45,7 @@ func TestGameCreatePresetsValid(t *testing.T) {
 	}
 }
 
-// Kiểu Cổ điển tắt km; Chạy bung thêm Già làng, x2 phiếu và 2 km kỹ năng.
+// Kiểu Cổ điển tắt km; Chạy bung thêm Già làng, km Riêng, Top x2 phiếu và 2 km kỹ năng.
 func TestGameCreatePresetValues(t *testing.T) {
 	byKey := map[string]GamePreset{}
 	for _, p := range gameCreateOptions().Presets {
@@ -59,7 +59,7 @@ func TestGameCreatePresetValues(t *testing.T) {
 	if err := applyGameSettings(&hard, byKey["hard"].Settings); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(hard.Extended, ww.Elder) || hard.Vote != ww.VoteTop || hard.SkillKm[ww.Seer] != 2 || hard.SkillKm[ww.Hunter] != 2 {
+	if !slices.Contains(hard.Extended, ww.Elder) || hard.Vote != ww.VoteSolo || hard.TopWeight != 2 || hard.SkillKm[ww.Seer] != 2 || hard.SkillKm[ww.Hunter] != 2 {
 		t.Fatalf("Chạy bung = %+v", hard)
 	}
 }

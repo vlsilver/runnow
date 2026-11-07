@@ -69,8 +69,14 @@ type Config struct {
 	SkillKm map[Role]float64 `json:"skillKm,omitempty"`
 	// Vote là cách km tác động lên phiếu biểu quyết; rỗng là VoteCut.
 	Vote VoteRule `json:"vote,omitempty"`
-	// TopVoters là số người được x2 phiếu của VoteTop; 0 là số sói còn sống + 1.
+	// TopVoters là số người được x2 phiếu của VoteTop, hoặc số người được
+	// TopWeight phiếu; 0 là số sói còn sống + 1.
 	TopVoters int `json:"topVoters,omitempty"`
+	// TopWeight (luật km): bật đặc quyền "Top N được x phiếu" chạy cùng VoteCut
+	// hoặc VoteSolo; 0 là tắt. Top tính trên người còn phiếu, gồm cả sói.
+	TopWeight int `json:"topWeight,omitempty"`
+	// MaxHang là số người lên giàn tối đa mỗi vòng, 1..MaxNominees; 0 là MaxNominees.
+	MaxHang int `json:"maxHang,omitempty"`
 	// VillageGate: kỹ năng của vai không phải sói mở theo tổng km người không
 	// phải sói còn sống (đủ km của vai × số người đó), thay cho km từng người.
 	VillageGate bool `json:"villageGate,omitempty"`
@@ -83,7 +89,20 @@ type Config struct {
 	// còn sống cần để mở đặc quyền trong đêm; 0 là mặc định 1 km.
 	Dark   []DarkPower `json:"dark,omitempty"`
 	DarkKm float64     `json:"darkKm,omitempty"`
+	// Ruleset là đời luật của ván. Ván tạo trước khi có field này là 0 và giữ
+	// luật cũ tới hết ván; ván mới mang RulesetKm.
+	Ruleset int `json:"ruleset,omitempty"`
 }
+
+// RulesetKm: mọi cuộc bầu (đề cử, Treo/Tha, sói bầu cắn) bằng phiếu thì nhóm
+// phiếu có tổng km cao hơn thắng, vẫn bằng thì bốc thăm; sói cắn theo phiếu bầu.
+const RulesetKm = 1
+
+func (c Config) KmTie() bool { return c.Ruleset >= RulesetKm }
+
+// GroupSkills: ván luật km chọn Theo nhóm thì vai phe Dân dùng chung km
+// (State.skillCut), thay cho VillageGate của ván cũ.
+func (c Config) GroupSkills() bool { return c.KmTie() && c.VoteMode() == VoteCut }
 
 // Schedule: mỗi ngày Rounds vòng nối nhau, vòng đầu mở đêm lúc StartHour giờ
 // VN, mỗi vòng dài RoundHours tiếng; hết khung thì đợi tới StartHour hôm sau.
@@ -124,7 +143,23 @@ const (
 	VoteTop VoteRule = "top"
 	// VoteFlat: km không tác động lên phiếu.
 	VoteFlat VoteRule = "flat"
+	// VoteSolo (luật km): ai đủ X km thì phiếu người đó được tính, không xét tổng.
+	VoteSolo VoteRule = "solo"
 )
+
+// Giới hạn của TopWeight.
+const (
+	MinTopWeight = 2
+	MaxTopWeight = 5
+)
+
+// NomineeSeats là số suất lên giàn mỗi vòng (MaxHang).
+func (c Config) NomineeSeats() int {
+	if c.MaxHang == 0 {
+		return MaxNominees
+	}
+	return c.MaxHang
+}
 
 // VoteMode là luật phiếu đang áp: tắt km thì luôn là VoteFlat.
 func (c Config) VoteMode() VoteRule {
@@ -149,12 +184,18 @@ func (c Config) Validate() error {
 		return fmt.Errorf("extraWolves phải từ 0 tới %d: %v", MaxExtraWolves, c.ExtraWolves)
 	}
 	switch c.Vote {
-	case "", VoteCut, VoteTop, VoteFlat:
+	case "", VoteCut, VoteTop, VoteFlat, VoteSolo:
 	default:
 		return fmt.Errorf("luật phiếu lạ %q", c.Vote)
 	}
 	if c.TopVoters < 0 || c.TopVoters > MaxPlayers {
 		return fmt.Errorf("topVoters phải từ 0 tới %d: %v", MaxPlayers, c.TopVoters)
+	}
+	if c.TopWeight != 0 && (c.TopWeight < MinTopWeight || c.TopWeight > MaxTopWeight) {
+		return fmt.Errorf("topWeight phải là 0 hoặc từ %d tới %d: %v", MinTopWeight, MaxTopWeight, c.TopWeight)
+	}
+	if c.MaxHang < 0 || c.MaxHang > MaxNominees {
+		return fmt.Errorf("maxHang phải từ 0 tới %d: %v", MaxNominees, c.MaxHang)
 	}
 	for i, r := range c.Extended {
 		if !slices.Contains(extendedRoles, r) {

@@ -39,7 +39,7 @@ func kmGoals(st *werewolf.State, uid string, live *liveKm, team *GameTeamKm) []G
 	unit := kmPerUnit(st.Config)
 	if st.CanVote(uid) {
 		switch st.Config.VoteMode() {
-		case werewolf.VoteCut:
+		case werewolf.VoteCut, werewolf.VoteSolo:
 			// Đủ X km thì chắc chắn giữ phiếu: người mất phiếu là n - floor(tổng/X)
 			// người ít km nhất, mà người có ≥ X km nằm trong số đó thì tổng ≥ (số
 			// được tính + 1)·X, trái với cách đếm.
@@ -56,10 +56,14 @@ func kmGoals(st *werewolf.State, uid string, live *liveKm, team *GameTeamKm) []G
 	// villageGate mở kỹ năng theo tổng km phe Dân: tổng đó trừ vào bảng km công
 	// khai là ra km phe Sói, nên không trả mốc này (câu luật của vai nói cách tính).
 	label, ok := skillGoalLabels[me.Role]
+	if me.Role == werewolf.Wolf && st.Config.KmTie() && st.Config.VoteMode() == werewolf.VoteSolo {
+		// Riêng: phiếu cắn của sói chỉ theo km của chính sói đó.
+		label, ok = "Có phiếu cắn ở đêm tới", true
+	}
 	if me.Role == werewolf.Witch && !st.SavePotion && !st.PoisonPotion {
 		ok = false
 	}
-	if ok && !st.Config.VillageGate {
+	if ok && !st.Config.VillageGate && !st.Config.GroupSkills() {
 		if need := st.Config.SkillMeters(me.Role) / 1000; need > 0 {
 			out = append(out, GameKmGoal{Key: "skill", Label: label, NeedKm: need, HaveKm: have})
 		}
