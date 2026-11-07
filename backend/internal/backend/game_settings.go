@@ -32,6 +32,14 @@ type GameSetting struct {
 	// Group là key của tab trên màn tạo ván (GameCreateOptions.Groups). Rỗng thì
 	// màn tạo ván theo tab không hiện; giá trị lấy theo kiểu ván dựng sẵn.
 	Group string `json:"group,omitempty"`
+	// Section là tên khối trong tab: các tuỳ chọn cùng Section vẽ chung một
+	// khối, ô bật tắt thành thẻ thu gọn (tên, Hint), chạm mở ra Description và
+	// Warn. Rỗng thì vẽ như thường. App cũ bỏ qua ba field này.
+	Section string `json:"section,omitempty"`
+	// Hint là nhãn ngắn trên thẻ, ví dụ số lượt.
+	Hint string `json:"hint,omitempty"`
+	// Warn là cái giá người tạo ván cần cân, ví dụ dấu vết công khai.
+	Warn string `json:"warn,omitempty"`
 }
 
 type GameSettingChoice struct {
@@ -98,7 +106,7 @@ func scheduleSetting(s GameSetting, set func(*werewolf.Schedule, int)) gameSetti
 // đều 24 tiếng thì Validate từ chối.
 func roundsPerDaySetting() gameSettingDef {
 	return gameSettingDef{
-		GameSetting: GameSetting{Key: "roundsPerDay", Label: "Số vòng mỗi ngày", Type: settingNumber, Group: groupRound,
+		GameSetting: GameSetting{Key: "roundsPerDay", Label: "Số vòng mỗi ngày", Type: settingNumber, Group: groupTime,
 			Default: 1.0, Min: f64(1), Max: f64(24 / werewolf.MinRoundHours), Step: f64(1), Unit: "vòng",
 			Description: "Số vòng chơi trong một ngày, nối nhau từ giờ mở vòng đầu. Ví dụ mở 6h, vòng 6 tiếng, 3 vòng thì chơi từ 6h tới 24h, các vòng mở lúc 6h, 12h, 18h. Ván dùng km mở vòng đầu lúc 22h và các vòng chia đều 24 tiếng (1, 2, 3, 4 hoặc 6 vòng); km chốt lúc 22h nên các vòng trong ngày dùng chung km của ngày chạy trước."},
 		apply: func(c *werewolf.Config, v any) {
@@ -162,10 +170,13 @@ func extendedRoleSetting(role werewolf.Role, label, desc string) gameSettingDef 
 	}
 }
 
+const darkSection = "Phe Sói · Đặc quyền"
+
 // darkSetting bật một đặc quyền của phe Sói (werewolf.DarkPower).
-func darkSetting(key string, p werewolf.DarkPower, label, desc string) gameSettingDef {
+func darkSetting(key string, p werewolf.DarkPower, label, hint, desc, warn string) gameSettingDef {
 	return gameSettingDef{
-		GameSetting: GameSetting{Key: key, Label: label, Description: desc, Type: settingToggle, Default: false, Group: groupRoles},
+		GameSetting: GameSetting{Key: key, Label: label, Description: desc, Type: settingToggle, Default: false, Group: groupRoles,
+			Section: darkSection, Hint: hint, Warn: warn},
 		keepDefault: true,
 		apply: func(c *werewolf.Config, v any) {
 			if v.(bool) {
@@ -194,20 +205,26 @@ var gameSettingDefs = []gameSettingDef{
 		"Một Dân thành Già làng. Già làng thuộc phe Dân, chịu được một lần bị sói cắn: cú cắn đầu tiên không ai bảo vệ hay cứu thì vẫn sống, sáng ra làng chỉ thấy đêm đó không ai chết. Cú cắn sau, bị độc, bị treo hay bị bắn thì chết như thường."),
 	extendedRoleSetting(werewolf.Idiot, "Thêm Kẻ ngốc",
 		"Một Dân thành Kẻ ngốc. Kẻ ngốc thuộc phe Dân: bị làng treo lần đầu thì lật bài cho cả làng thấy và vẫn sống, nhưng mất quyền bỏ phiếu tới hết ván. Bị treo lần nữa, bị cắn, bị độc hay bị bắn thì chết như thường."),
-	darkSetting("darkCloak", werewolf.DarkCloak, "Sói: Tàng Hình",
-		"Đêm đó phe Sói chọn một sói, Tiên tri soi sói này ra Dân. Mỗi sói một lần cả ván."),
-	darkSetting("darkFrame", werewolf.DarkFrame, "Sói: Vu Khống",
-		"Đêm đó phe Sói chọn một người không phải sói, Tiên tri soi người này ra Sói. Dùng được mỗi đêm."),
-	darkSetting("darkSilent", werewolf.DarkSilent, "Sói: Cắn Im Lặng",
-		"Người bị cắn không chết lúc sáng mà chết ngay sau phiên biểu quyết hôm sau, nên vẫn được bỏ phiếu. Phù thuỷ vẫn thấy và vẫn cứu được."),
-	darkSetting("darkVote", werewolf.DarkVote, "Sói: Phiếu Đôi",
-		"Đêm đó phe Sói chọn một sói, phiếu của sói này tính 2 ở phiên biểu quyết hôm sau."),
-	darkSetting("darkPierce", werewolf.DarkPierce, "Sói: Đột Biến",
-		"Cú cắn đêm đó xuyên qua Bảo vệ. Một lần cả ván."),
+	darkSetting("darkCloak", werewolf.DarkCloak, "Tàng Hình", "Mỗi sói 1 lần",
+		"Đêm đó phe Sói chọn một sói, Tiên tri soi sói này ra Dân.",
+		""),
+	darkSetting("darkFrame", werewolf.DarkFrame, "Vu Khống", "Mỗi đêm",
+		"Đêm đó phe Sói chọn một người không phải sói, Tiên tri soi người này ra Sói.",
+		""),
+	darkSetting("darkSilent", werewolf.DarkSilent, "Cắn Im Lặng", "Mỗi đêm",
+		"Người bị cắn không chết lúc sáng mà chết ngay sau phiên biểu quyết hôm sau, nên vẫn được bỏ phiếu. Phù thuỷ vẫn thấy và vẫn cứu được.",
+		"Có người chết sau biểu quyết là cả làng biết đêm trước phe Sói đủ km."),
+	darkSetting("darkVote", werewolf.DarkVote, "Phiếu Đôi", "Mỗi đêm",
+		"Đêm đó phe Sói chọn một sói, phiếu của sói này tính 2 ở phiên biểu quyết hôm sau.",
+		"Bảng phiếu công khai ghi ai chọn gì, nên tổng phiếu nhiều hơn số người là lộ có phiếu đôi ở phía đó."),
+	darkSetting("darkPierce", werewolf.DarkPierce, "Đột Biến", "1 lần cả ván",
+		"Cú cắn đêm đó xuyên qua Bảo vệ.",
+		"Bảo vệ thấy người chết đúng là người mình đã che, nên biết sói vừa dùng đặc quyền."),
 	{
-		GameSetting: GameSetting{Key: "darkKm", Label: "Km mở đặc quyền Sói", Type: settingNumber, Default: 1.0,
+		GameSetting: GameSetting{Key: "darkKm", Label: "Km để mở", Type: settingNumber, Default: 1.0,
 			Min: f64(0.5), Max: f64(werewolf.MaxDarkKm), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupRoles,
-			Description: "Đêm nào tổng km của sói còn sống đủ mức này nhân số sói thì đêm đó phe Sói dùng được một đặc quyền. Ván không dùng km thì mỗi đặc quyền một lần cả ván."},
+			Section: darkSection, Hint: "× số sói còn sống",
+			Description: "Đêm nào tổng km của sói còn sống đủ mức này nhân số sói thì đêm đó phe Sói dùng được một đặc quyền. Không đủ thì vẫn cắn bình thường. Ván không dùng km thì mỗi đặc quyền một lần cả ván."},
 		apply: func(c *werewolf.Config, v any) { c.DarkKm = v.(float64) },
 	},
 	{
