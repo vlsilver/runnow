@@ -92,6 +92,29 @@ func scheduleSetting(s GameSetting, set func(*werewolf.Schedule, int)) gameSetti
 	}}
 }
 
+// roundsPerDaySetting là số vòng mỗi ngày, dùng cho cả ván km. Ván km mở
+// 22h và các vòng cộng lại đúng 24 tiếng, nên vòng dài 24/số vòng; app gửi
+// kèm bốn pha thì các ô pha (đứng sau) đè lại độ dài vòng. Số vòng không chia
+// đều 24 tiếng thì Validate từ chối.
+func roundsPerDaySetting() gameSettingDef {
+	return gameSettingDef{
+		GameSetting: GameSetting{Key: "roundsPerDay", Label: "Số vòng mỗi ngày", Type: settingNumber, Group: groupRound,
+			Default: 1.0, Min: f64(1), Max: f64(24 / werewolf.MinRoundHours), Step: f64(1), Unit: "vòng",
+			Description: "Số vòng chơi trong một ngày, nối nhau từ giờ mở vòng đầu. Ví dụ mở 6h, vòng 6 tiếng, 3 vòng thì chơi từ 6h tới 24h, các vòng mở lúc 6h, 12h, 18h. Ván dùng km mở vòng đầu lúc 22h và các vòng chia đều 24 tiếng (1, 2, 3, 4 hoặc 6 vòng); km chốt lúc 22h nên các vòng trong ngày dùng chung km của ngày chạy trước."},
+		apply: func(c *werewolf.Config, v any) {
+			if c.Schedule == nil {
+				def := werewolf.DefaultSchedule()
+				c.Schedule = &def
+			}
+			n := int(v.(float64))
+			c.Schedule.Rounds = n
+			if !c.KmOff {
+				c.Schedule.RoundHours = 24 / n
+			}
+		},
+	}
+}
+
 // defaultPhases là độ dài (phút) bốn pha của lịch gốc: 22h–0h, 0h–10h,
 // 10h–20h, 20h–22h.
 var defaultPhases = []int{120, 600, 600, 120}
@@ -170,9 +193,7 @@ var gameSettingDefs = []gameSettingDef{
 	scheduleSetting(GameSetting{Key: "roundHours", Label: "Độ dài một vòng", Group: groupRound, Default: 24.0, Min: f64(werewolf.MinRoundHours), Max: f64(werewolf.MaxRoundHours), Step: f64(2), Unit: "tiếng",
 		Description: "Một vòng gồm đêm, bản tin, đề cử và biểu quyết. Mọi mốc co theo vòng 24 tiếng: vòng 6 tiếng thì sói có 30 phút để cắn, đêm dài 3 tiếng, biểu quyết là 30 phút cuối vòng. Số vòng nhân độ dài không quá 24 tiếng. Chỉ dùng khi không dùng km."},
 		func(s *werewolf.Schedule, n int) { s.RoundHours = n }),
-	scheduleSetting(GameSetting{Key: "roundsPerDay", Label: "Số vòng mỗi ngày", Group: groupTime, Default: 1.0, Min: f64(1), Max: f64(24 / werewolf.MinRoundHours), Step: f64(1), Unit: "vòng",
-		Description: "Số vòng chơi trong một ngày, nối nhau từ giờ mở vòng đầu. Ví dụ mở 6h, vòng 6 tiếng, 3 vòng thì chơi từ 6h tới 24h, các vòng mở lúc 6h, 12h, 18h. Số vòng nhân độ dài không quá 24 tiếng. Chỉ dùng khi không dùng km."},
-		func(s *werewolf.Schedule, n int) { s.Rounds = n }),
+	roundsPerDaySetting(),
 	phaseSetting(0, "nightMin", "Độ dài pha Đêm", "Sói chọn người cắn; Tiên tri soi, Bảo vệ che."),
 	phaseSetting(1, "dawnMin", "Độ dài pha Rạng sáng", "Phù thuỷ cứu hoặc độc; Tiên tri, Bảo vệ làm nốt."),
 	phaseSetting(2, "dayMin", "Độ dài pha Ngày", "Bot đăng bản tin đêm, cả làng bàn và đề cử lên giàn."),

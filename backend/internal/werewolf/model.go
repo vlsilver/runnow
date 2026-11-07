@@ -182,10 +182,11 @@ func (c Config) Validate() error {
 		if err := s.validatePhases(); err != nil {
 			return err
 		}
-		// Km chốt theo khung 22h hôm trước tới 22h, nên ván km chỉ chia lại
-		// được giờ các pha, còn mở 22h, một vòng 24 tiếng mỗi ngày.
-		if !c.KmOff && (s.StartHour != 22 || s.RoundHours != 24 || s.Rounds != 1) {
-			return errors.New("ván dùng km phải mở 22h, mỗi ngày một vòng 24 tiếng")
+		// Km chốt theo khung 22h hôm trước tới 22h, nên ván km mở vòng đầu lúc
+		// 22h và các vòng trong ngày cộng lại đúng 24 tiếng: vòng cuối chốt
+		// đúng mốc chốt km.
+		if !c.KmOff && (s.StartHour != 22 || s.Rounds*s.RoundHours != 24) {
+			return errors.New("ván dùng km phải mở vòng đầu lúc 22h, các vòng trong ngày cộng lại đúng 24 tiếng")
 		}
 	}
 	for _, r := range c.Disabled {

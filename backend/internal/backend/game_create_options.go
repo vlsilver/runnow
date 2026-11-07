@@ -69,9 +69,10 @@ const (
 
 var gameSettingGroups = []GameSettingGroup{
 	{Key: groupTime, Label: "Lịch", Icon: "clock",
-		OffNote: "Ván đua km chơi mỗi ngày một vòng, mở lúc 22h, vì km tính theo ngày chạy từ 22h hôm trước tới 22h. Muốn tự đặt giờ thì chọn kiểu Cổ điển."},
-	{Key: groupRound, Label: "Vòng chơi", Icon: "moon",
-		OffNote: "Ván đua km có vòng dài 24 tiếng. Muốn vòng ngắn hơn thì chọn kiểu Cổ điển."},
+		OffNote: "Ván đua km mở vòng đầu lúc 22h, vì km tính theo ngày chạy từ 22h hôm trước tới 22h. Muốn tự đặt giờ thì chọn kiểu Cổ điển."},
+	// Tab Vòng chơi không cần OffNote: số vòng mỗi ngày và giờ từng pha chỉnh
+	// được cả ở ván km.
+	{Key: groupRound, Label: "Vòng chơi", Icon: "moon"},
 	{Key: groupRoles, Label: "Vai", Icon: "people"},
 	{Key: groupVote, Label: "Phiếu", Icon: "vote",
 		OffNote: "Ván không dùng km: mỗi người một phiếu. Tắt \"Không dùng km\" ở tab Km để chỉnh luật phiếu."},

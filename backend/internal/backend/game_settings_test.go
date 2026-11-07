@@ -71,6 +71,39 @@ func TestGameSettingsPhases(t *testing.T) {
 	}
 }
 
+// Ván km chọn được số vòng mỗi ngày: app cũ chỉ gửi roundsPerDay thì vòng dài
+// 24/số vòng; app mới gửi kèm bốn pha cộng lại đúng 24/số vòng.
+func TestGameSettingsKmRoundsPerDay(t *testing.T) {
+	var old ww.Config
+	if err := applyGameSettings(&old, map[string]any{"roundsPerDay": 3.0}); err != nil {
+		t.Fatal(err)
+	}
+	if want := (ww.Schedule{StartHour: 22, RoundHours: 8, Rounds: 3}); old.Schedule == nil || !reflect.DeepEqual(*old.Schedule, want) {
+		t.Fatalf("ván km 3 vòng = %+v", old.Schedule)
+	}
+	if err := old.Validate(); err != nil {
+		t.Fatal(err)
+	}
+
+	var phased ww.Config
+	err := applyGameSettings(&phased, map[string]any{"roundsPerDay": 2.0, "nightMin": 60.0, "dawnMin": 240.0, "dayMin": 360.0, "trialMin": 60.0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (ww.Schedule{StartHour: 22, RoundHours: 12, Rounds: 2, Phases: []int{60, 240, 360, 60}}); !reflect.DeepEqual(*phased.Schedule, want) {
+		t.Fatalf("ván km 2 vòng có pha = %+v", phased.Schedule)
+	}
+	if err := phased.Validate(); err != nil {
+		t.Fatal(err)
+	}
+
+	// 5 vòng không chia đều 24 tiếng.
+	var five ww.Config
+	if err := applyGameSettings(&five, map[string]any{"roundsPerDay": 5.0}); err == nil && five.Validate() == nil {
+		t.Fatal("ván km 5 vòng mỗi ngày không bị từ chối")
+	}
+}
+
 // skillKm đặt một mức km cho cả bốn vai có kỹ năng; km riêng của vai gửi kèm
 // thì thắng. Sói không theo skillKm.
 func TestGameSettingsSkillKm(t *testing.T) {

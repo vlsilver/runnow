@@ -279,13 +279,24 @@ func (st *State) TaskKey() string {
 }
 
 // KmFrameEnd: lần chốt kế tiếp có cần snapshot km không, và khung kết thúc lúc
-// nào. Chỉ mốc 22h (mở đêm 1, chốt ngày) cần.
+// nào. Chỉ mở đêm 1 và chốt vòng cần. Ván km chốt km lúc 22h, nên vòng chốt
+// giữa ngày lấy khung kết thúc 22h gần nhất trước đó: các vòng trong ngày dùng
+// chung km của ngày chạy trước. Ván không dùng km thì khung là hạn chốt.
 func (st *State) KmFrameEnd() (time.Time, bool) {
 	// Lượt thợ săn chỉ mở trong day và night, nên không chen vào hai mốc này.
-	if st.Phase == PhaseSetup || st.Phase == PhaseTrial {
-		return st.Deadline(), true
+	if st.Phase != PhaseSetup && st.Phase != PhaseTrial {
+		return time.Time{}, false
 	}
-	return time.Time{}, false
+	end := st.Deadline()
+	if st.Config.KmOff {
+		return end, true
+	}
+	local := end.In(vietnam)
+	day22 := time.Date(local.Year(), local.Month(), local.Day(), 22, 0, 0, 0, vietnam)
+	if day22.After(local) {
+		day22 = day22.AddDate(0, 0, -1)
+	}
+	return day22, true
 }
 
 var ErrNotDue = errors.New("chưa tới hạn")

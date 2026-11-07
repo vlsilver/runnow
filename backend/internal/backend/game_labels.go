@@ -88,6 +88,10 @@ func scheduleText(cfg werewolf.Config) string {
 	for i, h := range starts {
 		hours[i] = itoa(h) + "h"
 	}
+	if !cfg.KmOff {
+		return fmt.Sprintf("Mỗi ngày %d vòng, mỗi vòng dài %d tiếng, mở lúc %s. Km chốt lúc 22h nên các vòng trong ngày dùng chung km của ngày chạy trước. Giờ bên dưới là của vòng mở lúc %s, vòng khác lệch giờ tương ứng.",
+			s.Rounds, s.RoundHours, strings.Join(hours, ", "), hours[0])
+	}
 	if s.Rounds == 1 {
 		return fmt.Sprintf("Mỗi ngày một vòng dài %d tiếng, mở lúc %s; ngoài khung đó không nhận lựa chọn nào.", s.RoundHours, hours[0])
 	}
