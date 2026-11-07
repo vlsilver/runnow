@@ -1225,6 +1225,7 @@ class GameAction {
     required this.enabled,
     required this.disabledReason,
     required this.confirmText,
+    this.tally,
   });
 
   factory GameAction.fromJson(Map<String, dynamic> json) {
@@ -1240,6 +1241,7 @@ class GameAction {
       enabled: json['enabled'] == true,
       disabledReason: _optString(json['disabledReason']),
       confirmText: _optString(json['confirmText']),
+      tally: _obj(json['tally'], GameTally.fromJson),
     );
   }
 
@@ -1260,6 +1262,95 @@ class GameAction {
 
   /// Có thì hỏi lại người chơi trước khi gửi.
   final String? confirmText;
+
+  /// Bảng kiểm phiếu của đề cử, biểu quyết, sói bầu cắn; null ở ván luật cũ.
+  final GameTally? tally;
+}
+
+/// Ai chọn gì, phiếu nào được tính, bên nào đang dẫn và vì sao.
+class GameTally {
+  const GameTally({
+    required this.rows,
+    required this.seats,
+    this.reason,
+    this.note,
+  });
+
+  factory GameTally.fromJson(Map<String, dynamic> json) {
+    return GameTally(
+      rows: _list(json['rows'], GameTallyRow.fromJson),
+      seats: (json['seats'] as num?)?.toInt() ?? 1,
+      reason: _optString(json['reason']),
+      note: _optString(json['note']),
+    );
+  }
+
+  final List<GameTallyRow> rows;
+
+  /// Số lựa chọn thắng: số suất lên giàn với đề cử, 1 với còn lại.
+  final int seats;
+
+  /// Vì sao hàng [GameTallyRow.lead] dẫn; null khi chưa có phiếu.
+  final String? reason;
+
+  /// Ai mất phiếu, ai được phiếu Top.
+  final String? note;
+}
+
+class GameTallyRow {
+  const GameTallyRow({
+    required this.id,
+    required this.label,
+    required this.votes,
+    required this.km,
+    required this.lead,
+    required this.voters,
+  });
+
+  factory GameTallyRow.fromJson(Map<String, dynamic> json) {
+    return GameTallyRow(
+      id: _string(json['id']),
+      label: _string(json['label']),
+      votes: (json['votes'] as num?)?.toInt() ?? 0,
+      km: (json['km'] as num?)?.toDouble() ?? 0,
+      lead: json['lead'] == true,
+      voters: _list(json['voters'], GameTallyVoter.fromJson),
+    );
+  }
+
+  final String id;
+  final String label;
+  final int votes;
+  final double km;
+  final bool lead;
+  final List<GameTallyVoter> voters;
+}
+
+class GameTallyVoter {
+  const GameTallyVoter({
+    required this.name,
+    required this.km,
+    this.cut = false,
+    this.weight = 0,
+  });
+
+  factory GameTallyVoter.fromJson(Map<String, dynamic> json) {
+    return GameTallyVoter(
+      name: _string(json['name']),
+      km: (json['km'] as num?)?.toDouble() ?? 0,
+      cut: json['cut'] == true,
+      weight: (json['weight'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  final String name;
+  final double km;
+
+  /// Phiếu không được tính.
+  final bool cut;
+
+  /// Lớn hơn 1 là phiếu Top.
+  final int weight;
 }
 
 class GameOption {

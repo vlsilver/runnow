@@ -327,4 +327,96 @@ void main() {
     expect(find.textContaining('Mở lúc '), findsOneWidget);
     expect(find.textContaining('Còn '), findsNothing);
   });
+
+  testWidgets('a vote tally shows votes, km, the lead and the cut voter', (
+    tester,
+  ) async {
+    await pumpCard(
+      tester,
+      _action({
+        'kind': 'vote',
+        'input': 'choice',
+        'choices': [
+          {'id': 'hang', 'label': 'Treo'},
+          {'id': 'spare', 'label': 'Tha'},
+        ],
+        'tally': {
+          'seats': 1,
+          'reason': 'Nhiều phiếu hơn',
+          'note': 'Mất phiếu vì ít km nhất: Chi.',
+          'rows': [
+            {
+              'id': 'hang',
+              'label': 'Treo Bình',
+              'votes': 2,
+              'km': 7.5,
+              'lead': true,
+              'voters': [
+                {'name': 'An', 'km': 4.2},
+                {'name': 'Dũng', 'km': 3.3},
+              ],
+            },
+            {
+              'id': 'spare',
+              'label': 'Tha',
+              'votes': 0,
+              'km': 0,
+              'lead': false,
+              'voters': [
+                {'name': 'Chi', 'km': 1, 'cut': true},
+              ],
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(find.text('KIỂM PHIẾU'), findsOneWidget);
+    expect(find.text('TREO'), findsOneWidget);
+    expect(find.text('THA'), findsNothing);
+    expect(find.text('7.5 km'), findsOneWidget);
+    expect(find.text('● Nhiều phiếu hơn'), findsOneWidget);
+    expect(find.text('Mất phiếu vì ít km nhất: Chi.'), findsOneWidget);
+    final cut = tester.widget<Text>(find.text('Chi · 1'));
+    expect(cut.style?.decoration, TextDecoration.lineThrough);
+    expect(
+      tester.widget<Text>(find.text('An · 4.2')).style?.decoration,
+      isNot(TextDecoration.lineThrough),
+    );
+    expect(find.text('CHỈ PHE SÓI'), findsNothing);
+  });
+
+  testWidgets('a wolf bite tally is marked for the wolves only', (
+    tester,
+  ) async {
+    await pumpCard(
+      tester,
+      _action({
+        'kind': 'wolf_bite',
+        'input': 'single_target',
+        'tally': {
+          'seats': 1,
+          'reason': 'Nhiều phiếu hơn',
+          'rows': [
+            {
+              'id': 'u1',
+              'label': 'An',
+              'votes': 2,
+              'km': 6,
+              'lead': true,
+              'voters': [],
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(find.text('CHỈ PHE SÓI'), findsOneWidget);
+    expect(find.text('CẮN'), findsOneWidget);
+  });
+
+  testWidgets('no tally, no table', (tester) async {
+    await pumpCard(tester, _action({'input': 'single_target'}));
+    expect(find.text('KIỂM PHIẾU'), findsNothing);
+  });
 }

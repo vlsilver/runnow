@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
+import 'package:myrun/src/games/game_tally_view.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
@@ -208,6 +209,10 @@ class _GameActionCardState extends State<GameActionCard> {
                   ),
                 ],
               ),
+            ],
+            if (action.tally case final tally?) ...[
+              const SizedBox(height: 14),
+              GameTallyView(kind: action.kind, tally: tally),
             ],
           ],
         ),
