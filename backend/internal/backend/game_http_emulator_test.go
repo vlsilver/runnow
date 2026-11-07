@@ -289,6 +289,23 @@ func seedMerge(t *testing.T, g *storeGame, data map[string]any) {
 	}
 }
 
+// withoutSetup là detail bỏ setup: setup là thiết lập chung của ván (icon và
+// nhãn vai của từng tuỳ chọn), không phải vai của ai.
+func withoutSetup(t *testing.T, body map[string]any) []byte {
+	t.Helper()
+	rest := map[string]any{}
+	for k, v := range body {
+		if k != "setup" {
+			rest[k] = v
+		}
+	}
+	raw, err := json.Marshal(rest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
 var roleKey = regexp.MustCompile(`"\w*[Rr]ole\w*"\s*:`)
 
 // L2 "Xong khi": JSON của GET /v1/games/{id} không có vai của người còn sống,
@@ -298,12 +315,13 @@ func TestEmulatorGameDetailHidesLivingRoles(t *testing.T) {
 	d := h.call("v1", "GET", "/v1/games/"+g.id, nil, "")
 	h.want(d, 200, "")
 	// uid của test trùng tên vai ("seer"), nên soi theo key và nhãn vai.
-	if m := roleKey.Find(d.raw); m != nil {
-		t.Fatalf("detail có key %s khi chưa ai chết: %s", m, d.raw)
+	raw := withoutSetup(t, d.body)
+	if m := roleKey.Find(raw); m != nil {
+		t.Fatalf("detail có key %s khi chưa ai chết: %s", m, raw)
 	}
 	for _, leak := range []string{`"seed"`, `"wolf"`, `"villager"`, `"Sói"`, `"Dân"`, "Tiên tri", "Phù thuỷ", "Bảo vệ", "Thợ săn"} {
-		if bytes.Contains(d.raw, []byte(leak)) {
-			t.Fatalf("detail lộ %s: %s", leak, d.raw)
+		if bytes.Contains(raw, []byte(leak)) {
+			t.Fatalf("detail lộ %s: %s", leak, raw)
 		}
 	}
 	for _, p := range d.body["players"].([]any) {
@@ -362,9 +380,10 @@ func TestEmulatorGameDetailHidesLivingRoles(t *testing.T) {
 	if top["title"] != "Bản tin đêm 1" || !strings.Contains(string(lines), "Lá bài: Thợ săn") || !strings.Contains(string(lines), "được bắn một người") {
 		t.Fatalf("feed[0] = %v", top)
 	}
+	raw = withoutSetup(t, d.body)
 	for _, leak := range []string{"Tiên tri", "Phù thuỷ", "Bảo vệ", `"wolf"`, `"villager"`} {
-		if bytes.Contains(d.raw, []byte(leak)) {
-			t.Fatalf("detail lộ %s sau khi có người chết: %s", leak, d.raw)
+		if bytes.Contains(raw, []byte(leak)) {
+			t.Fatalf("detail lộ %s sau khi có người chết: %s", leak, raw)
 		}
 	}
 
