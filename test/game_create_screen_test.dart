@@ -332,6 +332,16 @@ Map<String, dynamic> _talkList() {
       'default': true,
       'group': 'talk',
     },
+    {
+      'key': 'botName',
+      'label': 'Tên bot của ván',
+      'description': '',
+      'type': 'text',
+      'default': 'Cú Đêm',
+      'max': 30,
+      'lines': 1,
+      'group': 'talk',
+    },
   ];
   return list;
 }
@@ -1409,6 +1419,24 @@ void main() {
       await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
       expect(_createBody(backend)['threadId'], 42);
+    });
+
+    testWidgets('the talk tab names the game bot', (tester) async {
+      backend.list = _talkList();
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Giao tiếp'));
+      await tester.pump();
+      final name = find.widgetWithText(TextField, 'Tên bot của ván');
+      expect(
+        find.descendant(of: name, matching: find.text('Cú Đêm')),
+        findsOneWidget,
+      );
+      await tester.enterText(name, 'Bi Đen');
+      await tester.pump();
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+      expect((_createBody(backend)['settings'] as Map)['botName'], 'Bi Đen');
     });
 
     testWidgets('turning Telegram off hides the topic', (tester) async {

@@ -649,7 +649,9 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   ) {
     final inGroup = [
       for (final s in list.settings)
-        if (s.group == group.key && gameSettingSupported(s)) s,
+        if (s.group == group.key &&
+            (gameSettingSupported(s) || s.type == GameSetting.text))
+          s,
     ];
     final live = [
       for (final s in inGroup)
@@ -1209,6 +1211,12 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         onChanged: _working
             ? null
             : (v) => setState(() => _settings[s.key] = v),
+      ),
+      GameSetting.text => GameCreateTextField(
+        setting: s,
+        value: value is String ? value : '',
+        enabled: !_working,
+        onChanged: (v) => setState(() => _settings[s.key] = v),
       ),
       _ => GameCreateChoices(
         setting: s,

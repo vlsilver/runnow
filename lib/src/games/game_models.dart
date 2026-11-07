@@ -306,6 +306,7 @@ class GameSetting {
     this.role,
     this.icon,
     this.parent,
+    this.lines = 1,
   });
 
   factory GameSetting.fromJson(Map<String, dynamic> json) {
@@ -334,6 +335,7 @@ class GameSetting {
       role: _optString(json['role']),
       icon: _optString(json['icon']),
       parent: _optString(json['parent']),
+      lines: (json['lines'] as num?)?.toInt() ?? 1,
     );
   }
 
@@ -343,6 +345,9 @@ class GameSetting {
 
   /// Như [number], độ dài một pha (phút); vẽ chung bốn pha thành vòng đồng hồ.
   static const phase = 'phase';
+
+  /// Chữ tối đa [max] ký tự, ô nhập [lines] dòng.
+  static const text = 'text';
 
   final String key;
   final String label;
@@ -382,6 +387,9 @@ class GameSetting {
 
   /// Key của thẻ chứa tuỳ chọn này: vẽ thành dòng con trong thẻ đó.
   final String? parent;
+
+  /// Số dòng của ô nhập [text].
+  final int lines;
 
   /// [values] là giá trị hiện tại theo key, đã gồm mặc định.
   bool enabledBy(Map<String, Object?> values) =>
@@ -1234,6 +1242,7 @@ class GameChat {
     required this.messages,
     required this.cursor,
     this.hasNewer = false,
+    this.hint,
   });
 
   factory GameChat.fromJson(Map<String, dynamic> json) {
@@ -1244,11 +1253,15 @@ class GameChat {
       messages: _list(json['messages'], GameChatMessage.fromJson),
       cursor: _optString(json['cursor']),
       hasNewer: json['hasNewer'] == true,
+      hint: _optString(json['hint']),
     );
   }
 
   final String key;
   final String label;
+
+  /// Chữ mờ trong ô nhập; null thì app dùng câu của chat phe.
+  final String? hint;
 
   /// false khi người xem đã chết hoặc ván đã hết: chỉ đọc.
   final bool canSend;
@@ -1270,6 +1283,7 @@ class GameChatMessage {
     required this.system,
     required this.at,
     this.hidden = false,
+    this.bot = false,
   });
 
   factory GameChatMessage.fromJson(Map<String, dynamic> json) {
@@ -1281,6 +1295,7 @@ class GameChatMessage {
       system: json['system'] == true,
       at: _date(json['at']),
       hidden: json['hidden'] == true,
+      bot: json['bot'] == true,
     );
   }
 
@@ -1292,6 +1307,7 @@ class GameChatMessage {
     system: system,
     at: at,
     hidden: true,
+    bot: bot,
   );
 
   final int seq;
@@ -1301,6 +1317,9 @@ class GameChatMessage {
 
   /// Tin bot ghi (vd. một sói vừa chọn cắn), không phải người chơi gõ.
   final bool system;
+
+  /// Tin của bot riêng của ván trong phòng chung, [name] là tên bot.
+  final bool bot;
   final DateTime? at;
 
   /// Người xem đã chặn người gửi: không vẽ.

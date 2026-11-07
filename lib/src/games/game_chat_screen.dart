@@ -240,7 +240,7 @@ class _GameChatScreenState extends ConsumerState<GameChatScreen>
                           return _MessageRow(
                             message: m,
                             mine: mine,
-                            onLongPress: m.system || mine
+                            onLongPress: m.system || m.bot || mine
                                 ? null
                                 : () => _onLongPress(m),
                           );
@@ -253,6 +253,7 @@ class _GameChatScreenState extends ConsumerState<GameChatScreen>
                         controller: _input,
                         sending: _sending,
                         onSend: _send,
+                        hint: _controller.hint ?? 'Nhắn cho phe…',
                       )
                     : const _Banner(text: 'Bạn chỉ xem được chat này.'),
             ],
@@ -320,12 +321,27 @@ class _MessageRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (!mine)
-                  Text(
-                    message.name,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: palette.ink,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (message.bot) ...[
+                        Icon(
+                          Icons.smart_toy_outlined,
+                          size: 14,
+                          color: palette.accent,
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      Flexible(
+                        child: Text(
+                          message.name,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: palette.ink,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 // Text thường chứ không SelectableText: nhấn giữ là để báo cáo.
                 Text(message.text),
@@ -393,11 +409,13 @@ class _Composer extends StatelessWidget {
     required this.controller,
     required this.sending,
     required this.onSend,
+    required this.hint,
   });
 
   final TextEditingController controller;
   final bool sending;
   final VoidCallback onSend;
+  final String hint;
 
   @override
   Widget build(BuildContext context) {
@@ -415,10 +433,7 @@ class _Composer extends StatelessWidget {
                 maxLength: 1000,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => onSend(),
-                decoration: const InputDecoration(
-                  hintText: 'Nhắn cho phe…',
-                  counterText: '',
-                ),
+                decoration: InputDecoration(hintText: hint, counterText: ''),
               ),
             ),
             IconButton(

@@ -736,6 +736,59 @@ class GameCreateChoices extends StatelessWidget {
 /// Ô vai trong lưới vai: chạm để bật tắt.
 /// Thẻ bật tắt thu gọn của một khối tuỳ chọn (như đặc quyền phe Sói): tên,
 /// nhãn ngắn, dấu "ĐỂ LỘ" khi có cảnh báo; mở ra thì xem mô tả và cảnh báo.
+/// Ô nhập chữ cho tuỳ chọn kiểu text: tên là nhãn, mô tả là dòng dưới ô.
+class GameCreateTextField extends StatefulWidget {
+  const GameCreateTextField({
+    super.key,
+    required this.setting,
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final GameSetting setting;
+  final String value;
+  final bool enabled;
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<GameCreateTextField> createState() => _GameCreateTextFieldState();
+}
+
+class _GameCreateTextFieldState extends State<GameCreateTextField> {
+  late final _text = TextEditingController(text: widget.value);
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.setting;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: TextField(
+        controller: _text,
+        enabled: widget.enabled,
+        minLines: 1,
+        maxLines: s.lines,
+        maxLength: s.max?.toInt(),
+        textInputAction: s.lines > 1
+            ? TextInputAction.newline
+            : TextInputAction.done,
+        onChanged: widget.onChanged,
+        decoration: InputDecoration(
+          labelText: s.label,
+          helperText: s.description.isEmpty ? null : s.description,
+          helperMaxLines: 3,
+        ),
+      ),
+    );
+  }
+}
+
 class GamePowerCard extends StatefulWidget {
   const GamePowerCard({
     super.key,
