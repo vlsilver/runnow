@@ -26,9 +26,17 @@ type fakeTelegram struct {
 	script map[string][]tgReply
 	nextID int64
 	onCall func(tgCall)
+	// tokens là các token gọi được; revoked là token đã bị thay, gọi vào thì
+	// 401 như Telegram. managed là token hiện tại của từng bot con theo bot id,
+	// getManagedBotToken trả từ đây.
+	tokens  map[string]bool
+	revoked map[string]bool
+	managed map[int64]string
+	minted  int
 }
 
 type tgCall struct {
+	Token  string
 	Method string
 	Params map[string]any // JSON body; multipart/form thì là giá trị chuỗi, file ghi tên file
 }
@@ -42,7 +50,8 @@ const fakeTelegramToken = "fake-token"
 
 func newFakeTelegram(t *testing.T) *fakeTelegram {
 	t.Helper()
-	f := &fakeTelegram{token: fakeTelegramToken, script: map[string][]tgReply{}}
+	f := &fakeTelegram{token: fakeTelegramToken, script: map[string][]tgReply{},
+		tokens: map[string]bool{fakeTelegramToken: true}, revoked: map[string]bool{}, managed: map[int64]string{}}
 	srv := httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(srv.Close)
 	f.URL = srv.URL
@@ -54,6 +63,34 @@ func (f *fakeTelegram) service(chatID string) *TelegramService {
 	s := NewTelegramService(f.token, chatID)
 	s.apiBaseURL = f.URL
 	return s
+}
+
+// addManaged tạo token cho bot con botID, như lúc người dùng vừa tạo bot qua
+// bot quản lý. Gọi lại với cùng botID là thay token (replaceManagedBotToken):
+// token cũ từ đó trả 401.
+func (f *fakeTelegram) addManaged(botID int64) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if old, ok := f.managed[botID]; ok {
+		delete(f.tokens, old)
+		f.revoked[old] = true
+	}
+	f.minted++
+	tok := fmt.Sprintf("child-%d-%d", botID, f.minted)
+	f.managed[botID] = tok
+	f.tokens[tok] = true
+	return tok
+}
+
+// CallsBy như Calls nhưng chỉ lấy call bằng token tok.
+func (f *fakeTelegram) CallsBy(tok, method string) []tgCall {
+	var out []tgCall
+	for _, c := range f.Calls(method) {
+		if c.Token == tok {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // Then xếp các phản hồi cho những lần gọi method kế tiếp; hết kịch bản thì trả ok.
@@ -107,8 +144,20 @@ func tgError(code int, description string) string {
 }
 
 func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
-	method, ok := strings.CutPrefix(r.URL.Path, "/bot"+f.token+"/")
-	if !ok || method == "" {
+	rest, _ := strings.CutPrefix(r.URL.Path, "/bot")
+	tok, method, _ := strings.Cut(rest, "/")
+	f.mu.Lock()
+	known, revoked := f.tokens[tok], f.revoked[tok]
+	f.mu.Unlock()
+	if revoked {
+		params, _ := readTelegramParams(r)
+		f.mu.Lock()
+		f.calls = append(f.calls, tgCall{Token: tok, Method: method, Params: params})
+		f.mu.Unlock()
+		writeTelegram(w, tgReply{http.StatusUnauthorized, tgError(401, "Unauthorized")})
+		return
+	}
+	if !known || method == "" {
 		// Telegram trả 404 cho token sai; giữ đúng để test bắt được URL ghép sai.
 		writeTelegram(w, tgReply{http.StatusNotFound, tgError(404, "Not Found")})
 		return
@@ -120,7 +169,7 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	f.mu.Lock()
-	f.calls = append(f.calls, tgCall{Method: method, Params: params})
+	f.calls = append(f.calls, tgCall{Token: tok, Method: method, Params: params})
 	reply, scripted := tgReply{}, false
 	if q := f.script[method]; len(q) > 0 {
 		reply, scripted = q[0], true
@@ -137,8 +186,17 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 	writeTelegram(w, reply)
 }
 
-// okReply: send* trả Message có message_id tăng dần, method khác trả true.
+// okReply: send* trả Message có message_id tăng dần, getManagedBotToken trả
+// token hiện tại của bot con (chưa có thì 400), method khác trả true.
 func (f *fakeTelegram) okReply(method string, params map[string]any) tgReply {
+	if method == "getManagedBotToken" {
+		tok, ok := f.managed[int64(number(params["user_id"]))]
+		if !ok {
+			return tgBadRequest("Bad Request: bot not found")
+		}
+		b, _ := json.Marshal(map[string]any{"ok": true, "result": tok})
+		return tgReply{http.StatusOK, string(b)}
+	}
 	if !strings.HasPrefix(method, "send") {
 		return tgReply{http.StatusOK, `{"ok":true,"result":true}`}
 	}

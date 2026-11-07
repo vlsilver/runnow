@@ -1,6 +1,9 @@
 package werewolf
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 // Giờ mở của từng phase, tính từ NightAt như phaseEnd. Setup mở lúc Start, mà
 // state không giữ giờ Start, nên không có ở đây.
@@ -21,7 +24,7 @@ func (st *State) Window(kind Kind) (opens, closes time.Time) {
 			return time.Time{}, time.Time{}
 		}
 		if st.Hunter.Phase == PhaseDay {
-			return st.NightAt.Add(phaseStart[PhaseDay]), st.hunterClose()
+			return st.NightAt.Add(st.at(phaseStart[PhaseDay])), st.hunterClose()
 		}
 		return st.NightAt, st.hunterClose()
 	}
@@ -34,15 +37,15 @@ func (st *State) Window(kind Kind) (opens, closes time.Time) {
 		first = rule.phases[1]
 	}
 	if first != PhaseSetup {
-		opens = st.NightAt.Add(phaseStart[first])
+		opens = st.NightAt.Add(st.at(phaseStart[first]))
 	}
-	if kind == KindVote {
-		opens = st.NightAt.Add(voteOpens)
+	if IsVote(kind) {
+		opens = st.NightAt.Add(st.at(voteOpens))
 	}
 	if last == st.Phase {
 		return opens, st.Deadline() // có cả phần admin dời hạn
 	}
-	return opens, st.NightAt.Add(phaseEnd[last])
+	return opens, st.NightAt.Add(st.at(phaseEnd[last]))
 }
 
 // Precheck là Validate khi chưa chọn mục tiêu: lý do người chơi chưa bấm được
@@ -61,6 +64,13 @@ func Precheck(st *State, kind Kind, actor string, mine []Action, now time.Time) 
 		if !wolvesHaveKm(st) {
 			return ErrKmInsufficient
 		}
+	case KindWolfDark:
+		if !st.DarkUnlocked() {
+			return ErrKmInsufficient
+		}
+		if !slices.ContainsFunc(st.Config.Dark, st.DarkLeft) {
+			return ErrAlreadyUsed
+		}
 	case KindWitchSave:
 		if !st.SavePotion {
 			return ErrAlreadyUsed
@@ -72,11 +82,12 @@ func Precheck(st *State, kind Kind, actor string, mine []Action, now time.Time) 
 		if !st.PoisonPotion {
 			return ErrAlreadyUsed
 		}
-	case KindVote:
-		if st.Nominee == "" {
+	case KindVote, KindVote2, KindVote3:
+		nominee := st.NomineeOf(kind)
+		if nominee == "" {
 			return ErrPhaseClosed
 		}
-		if actor == st.Nominee {
+		if actor == nominee {
 			return ErrNotYourRole
 		}
 	}

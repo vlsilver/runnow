@@ -472,7 +472,7 @@ func TestEmulatorGameExtend(t *testing.T) {
 	}
 
 	// Sang trial (chốt 22h, đêm sau khoá 0h): chỉ còn dời được 60 phút.
-	g.advance(time.Date(2026, 10, 16, 17, 0, 0, 0, vietnam))
+	g.advance(time.Date(2026, 10, 16, 20, 0, 0, 0, vietnam))
 	if p := g.state().Phase; p != "trial" {
 		t.Fatalf("phase = %s", p)
 	}
@@ -609,5 +609,57 @@ func TestEmulatorGameStartDealFailedReverts(t *testing.T) {
 	se, _ := e.game(id)["startError"].(map[string]any)
 	if rec.Code != 200 || out.Result != "reverted" || se["code"] != "deal_failed" || e.game(id)["status"] != gameRegistering {
 		t.Fatalf("%d %s, startError %v", rec.Code, rec.Body, se)
+	}
+}
+
+// Ván không Telegram: người chưa liên kết vẫn đăng ký, Start không hỏi Telegram
+// và không loại ai, mọi tin của ván bỏ qua với lý do no_telegram_game.
+func TestEmulatorGameWithoutTelegram(t *testing.T) {
+	e := newStartEnv(t)
+	r := e.call("boss", "POST", "/v1/games", map[string]any{"roles": map[string]bool{"cupid": false}, "threadId": 42, "settings": map[string]any{"telegram": false}}, "")
+	e.want(r, 201, "")
+	id := r.body["id"].(string)
+	if g := e.game(id); g["chatId"] != "" || g["threadId"] != int64(0) {
+		t.Fatalf("ván không Telegram vẫn có chat: %v / %v", g["chatId"], g["threadId"])
+	}
+	for i := 1; i <= 10; i++ {
+		e.want(e.call(userOf(i), "POST", "/v1/games/"+id+"/registration", nil, ""), 200, "")
+	}
+	d := e.call(userOf(1), "GET", "/v1/games/"+id, nil, "")
+	e.want(d, 200, "")
+	if reqs := d.body["requirements"].([]any); len(reqs) != 1 || reqs[0].(map[string]any)["key"] != "app_version" {
+		t.Fatalf("requirements = %v", reqs)
+	}
+
+	r = e.call("boss", "POST", "/v1/games/"+id+"/start", nil, "")
+	e.want(r, 202, "")
+	rec := e.runTask(e.tasksTo("/tasks/game-start")[0])
+	var out StartOutcome
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if rec.Code != 200 || out.Result != "started" || out.Players != 10 || len(out.Excluded) != 0 {
+		t.Fatalf("game-start: %d %s", rec.Code, rec.Body)
+	}
+	if n := len(e.tg.Calls("getChatMember")); n != 0 {
+		t.Fatalf("ván không Telegram vẫn hỏi getChatMember %d lần", n)
+	}
+	for _, task := range e.tasksTo("/tasks/game-flush") {
+		if rec := e.runTask(task); rec.Code != 200 {
+			t.Fatalf("game-flush: %d %s", rec.Code, rec.Body)
+		}
+	}
+	if n := len(e.tg.Calls("sendMessage")); n != 0 {
+		t.Fatalf("ván không Telegram vẫn gửi %d tin", n)
+	}
+	docs, err := e.store.db.Collection("games").Doc(id).Collection("outbox").Documents(context.Background()).GetAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(docs) == 0 {
+		t.Fatal("không có tin nào trong outbox để kiểm")
+	}
+	for _, doc := range docs {
+		if doc.Data()["status"] != outboxSkipped || doc.Data()["skipReason"] != "no_telegram_game" {
+			t.Fatalf("outbox %s = %v", doc.Ref.ID, doc.Data())
+		}
 	}
 }

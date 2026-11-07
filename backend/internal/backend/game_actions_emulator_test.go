@@ -4,11 +4,14 @@ package backend
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"sync"
 	"testing"
 	"time"
+
+	"cloud.google.com/go/firestore"
 
 	ww "github.com/vlsilver/runnow/backend/internal/werewolf"
 )
@@ -226,5 +229,85 @@ func TestEmulatorActionPeekVillagerIsVillage(t *testing.T) {
 	g, at := nightGame(t)
 	if r := g.submit(ActionRequest{UID: "seer", Kind: ww.KindSeerPeek, Targets: []string{"v1"}, ReceivedAt: at(time.Minute)}); r.Peek != ww.TeamVillage {
 		t.Fatalf("soi v1: %+v", r)
+	}
+}
+
+// Mỗi lần đề cử hay biểu quyết đổi lựa chọn, bấm ở app hay Telegram, đều ra
+// một tin mới trong topic và một dòng trong mục diễn biến của pha. Bấm lại
+// đúng lựa chọn đang lưu thì không ra gì; rút khi chưa chọn cũng vậy.
+func TestEmulatorActionPickPostsToGroupAndFeed(t *testing.T) {
+	g, at := nightGame(t)
+	day := func(d time.Duration) time.Time { return at(12*time.Hour + d) } // 10h ngày 1
+	g.advance(day(time.Minute))
+	nominate := func(uid string, d time.Duration, update int64, clear bool, targets ...string) {
+		t.Helper()
+		r := g.submit(ActionRequest{UID: uid, Kind: ww.KindNominate, Targets: targets, Clear: clear, ReceivedAt: day(d), TgUpdateID: update})
+		if !r.Applied {
+			t.Fatalf("%s đề cử %v lúc +%v: %+v", uid, targets, d, r)
+		}
+	}
+	nominate("v1", 5*time.Minute, 0, false, "v2")
+	nominate("v1", 6*time.Minute, 200, false, "v2") // Telegram, không đổi gì
+	nominate("v1", 7*time.Minute, 201, false, "w1")
+	nominate("v1", 8*time.Minute, 0, true)
+	nominate("v2", 9*time.Minute, 0, true) // chưa chọn mà rút
+	nominate("v3", 10*time.Minute, 202, false, "v2")
+
+	g.advance(at(22*time.Hour + time.Minute)) // 20h: v2 lên giàn
+	vote := func(d time.Duration, update int64, choice string, clear bool) {
+		t.Helper()
+		r := g.submit(ActionRequest{UID: "v1", Kind: ww.KindVote, Choice: choice, Clear: clear, ReceivedAt: at(22*time.Hour + d), TgUpdateID: update})
+		if !r.Applied {
+			t.Fatalf("v1 bỏ phiếu %q lúc 20h+%v: %+v", choice, d, r)
+		}
+	}
+	vote(5*time.Minute, 300, ww.ChoiceHang, false)
+	vote(6*time.Minute, 0, "", true)
+
+	names := map[string]string{"v1": "An", "v2": "Bình", "v3": "Dũng", "w1": "Chi"}
+	players := map[string]gamePlayerInfo{}
+	for uid, name := range names {
+		players[uid] = gamePlayerInfo{uid: uid, name: name}
+	}
+	name := func(uid string) string { return names[uid] }
+
+	docs, err := g.db.Collection("games").Doc(g.id).Collection("outbox").Where("template", "==", tplPick).OrderBy("seq", firestore.Asc).Documents(context.Background()).GetAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var posted []string
+	for _, d := range docs {
+		var p pick
+		if err := json.Unmarshal([]byte(d.Data()["data"].(string)), &p); err != nil {
+			t.Fatal(err)
+		}
+		if d.Data()["chatKey"] != chatGroup {
+			t.Fatalf("tin pick vào %v, mong đợi group", d.Data()["chatKey"])
+		}
+		posted = append(posted, p.text(name))
+	}
+	want := []string{"An đề cử Bình.", "An đề cử Chi.", "An rút đề cử.", "Dũng đề cử Bình.", "An bỏ phiếu Treo Bình.", "An rút phiếu ở phiên Bình."}
+	if !reflect.DeepEqual(posted, want) {
+		t.Fatalf("tin trong topic:\n%q\nmong đợi\n%q", posted, want)
+	}
+
+	// Nhật ký: mục diễn biến biểu quyết mới nhất ở đầu, rồi kết quả đề cử lúc
+	// 20h, rồi mục diễn biến đề cử.
+	feed, err := g.store.loadFeed(context.Background(), g.db.Collection("games").Doc(g.id), "", players)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var titles []string
+	for _, item := range feed.Items {
+		titles = append(titles, item.Title)
+	}
+	if len(feed.Items) < 3 || !reflect.DeepEqual(titles[:3], []string{"Diễn biến biểu quyết ngày 1", "Đề cử ngày 1", "Diễn biến đề cử ngày 1"}) {
+		t.Fatalf("nhật ký = %q", titles)
+	}
+	if got, want := feed.Items[0].Lines, []string{"20:05 An bỏ phiếu Treo Bình.", "20:06 An rút phiếu ở phiên Bình."}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("diễn biến biểu quyết = %q", got)
+	}
+	if got, want := feed.Items[2].Lines, []string{"10:05 An đề cử Bình.", "10:07 An đề cử Chi.", "10:08 An rút đề cử.", "10:10 Dũng đề cử Bình."}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("diễn biến đề cử = %q", got)
 	}
 }

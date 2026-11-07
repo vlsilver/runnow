@@ -29,7 +29,7 @@ func TestNormalizeTrackedActivity(t *testing.T) {
 	}
 }
 
-// Đạp/xe máy track tay: PHẢI được nhận và GIỮ NGUYÊN sportType (trước đây bị ép
+// Đi bộ/đạp/xe máy track tay: PHẢI được nhận và GIỮ NGUYÊN sportType (trước đây bị ép
 // về "Run" → sai bảng xếp hạng). Môn khác (vd Swim) KHÔNG track tay được → loại.
 func TestNormalizeTrackedActivityPreservesAppRecordableSport(t *testing.T) {
 	startedAt := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
@@ -40,7 +40,7 @@ func TestNormalizeTrackedActivityPreservesAppRecordableSport(t *testing.T) {
 			"distanceMeters": 12000.0, "movingTimeSeconds": 1800, "elapsedTimeSeconds": 1900,
 		}
 	}
-	for _, sport := range []string{"Ride", "Motorbike"} {
+	for _, sport := range []string{"Walk", "Ride", "Motorbike"} {
 		got, err := normalizeTrackedActivity(base(sport))
 		if err != nil {
 			t.Fatalf("%s bị loại oan: %v", sport, err)
@@ -49,7 +49,7 @@ func TestNormalizeTrackedActivityPreservesAppRecordableSport(t *testing.T) {
 			t.Fatalf("sportType %s bị đổi thành %v (không được ép về Run)", sport, got["sportType"])
 		}
 	}
-	// Swim/Gym/Walk chỉ vào từ Health, không track tay → phải bị loại.
+	// Swim/Gym chỉ vào từ Health, không track tay → phải bị loại.
 	if _, err := normalizeTrackedActivity(base("Swim")); err == nil {
 		t.Fatal("Swim không phải môn track tay, phải bị loại")
 	}

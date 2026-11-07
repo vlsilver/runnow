@@ -87,17 +87,25 @@ func TestEmulatorTopicNominateAndVote(t *testing.T) {
 	}
 	prompt := e.lastGroup()
 	id := e.groupPromptID(ww.KindNominate)
-	if prompt.Method != "sendMessage" || !strings.HasPrefix(prompt.Params["text"].(string), "<b>Đề cử lên giàn, ngày 1</b>\nHạn: "+e.wall(time.Date(2026, 10, 16, 17, 0, 0, 0, vietnam))+".\nChưa ai được đề cử.\n") ||
+	if prompt.Method != "sendMessage" || !strings.HasPrefix(prompt.Params["text"].(string), "<b>Đề cử lên giàn, ngày 1</b>\nHạn: "+e.wall(time.Date(2026, 10, 16, 20, 0, 0, 0, vietnam))+".\nChưa ai được đề cử.\n") ||
 		strings.Join(buttonsOf(prompt), ",") != "GUARD,HUNTER,SEER,V2,V3,V4,W1,W2,WITCH" {
 		t.Fatalf("prompt đề cử = %v", prompt)
 	}
 	pick := buttonData(t, prompt, "W1")
 
 	edits := func() int { return len(e.tg.Calls("editMessageText")) }
-	wantEdit := func(lines ...string) {
+	// Mỗi lần bấm: sửa tin đếm phiếu, rồi đăng một tin mới kể ai vừa chọn gì.
+	wantEdit := func(posted string, lines ...string) {
 		t.Helper()
 		e.flush()
-		c := e.lastGroup()
+		calls := e.groupCalls()
+		if len(calls) < 2 {
+			t.Fatalf("group mới nhận %d tin", len(calls))
+		}
+		if c := calls[len(calls)-1]; c.Method != "sendMessage" || c.Params["text"] != posted {
+			t.Fatalf("tin mới = %v, mong đợi %q", c, posted)
+		}
+		c := calls[len(calls)-2]
 		text, _ := c.Params["text"].(string)
 		if c.Method != "editMessageText" || c.Params["message_id"] != id || !strings.Contains(text, "\n"+strings.Join(lines, "\n")+"\n") {
 			t.Fatalf("tin sửa = %v, mong đợi có %q", c, lines)
@@ -106,7 +114,7 @@ func TestEmulatorTopicNominateAndVote(t *testing.T) {
 	if text, _ := e.press(tg["v2"], pick); text != "Đã chọn W1." {
 		t.Fatalf("v2 đề cử = %q", text)
 	}
-	wantEdit("<b>W1</b>: 1 (V2)")
+	wantEdit("V2 đề cử W1.", "<b>W1</b>: 1 (V2)")
 
 	n := edits()
 	for _, c := range []struct{ uid, data, want string }{
@@ -130,19 +138,19 @@ func TestEmulatorTopicNominateAndVote(t *testing.T) {
 		t.Fatalf("v3 chưa đề cử mà hasTodo = %v", got)
 	}
 	e.h.want(e.h.call("v3", "POST", "/v1/games/"+e.id+"/actions", map[string]any{"kind": "nominate", "targets": []string{"w1"}}, ""), 200, "")
-	wantEdit("<b>W1</b>: 2 (V2, V3)")
+	wantEdit("V3 đề cử W1.", "<b>W1</b>: 2 (V2, V3)")
 	if got := todo("v3"); got != false {
 		t.Fatalf("v3 đã đề cử mà hasTodo = %v", got)
 	}
 
-	// Tin sửa ghi trước 17h mà gửi sau lần chốt thì vẽ số cuối, hết nút.
+	// Tin sửa ghi trước 20h mà gửi sau lần chốt thì vẽ số cuối, hết nút.
 	if text, _ := e.press(tg["v4"], pick); text != "Đã chọn W1." {
 		t.Fatalf("v4 đề cử = %q", text)
 	}
 	nominateID := id
 
-	// 17h: W1 lên giàn, topic có prompt biểu quyết. Bấm trước 20h thì bị từ chối.
-	e.advanceTo(time.Date(2026, 10, 16, 17, 0, 0, 0, vietnam))
+	// 20h: W1 lên giàn, topic có prompt biểu quyết, bấm được ngay.
+	e.advanceTo(time.Date(2026, 10, 16, 20, 0, 0, 0, vietnam))
 	e.flush()
 	var last tgCall
 	for _, c := range e.tg.Calls("editMessageText") {
@@ -151,25 +159,19 @@ func TestEmulatorTopicNominateAndVote(t *testing.T) {
 		}
 	}
 	if text, _ := last.Params["text"].(string); text != "<b>Đề cử lên giàn, ngày 1</b>\nĐã hết giờ.\n<b>W1</b>: 3 (V2, V3, V4)" || len(buttonsOf(last)) != 0 {
-		t.Fatalf("tin đề cử sau 17h = %v", last)
+		t.Fatalf("tin đề cử sau 20h = %v", last)
 	}
 	prompt = e.lastGroup()
 	id = e.groupPromptID(ww.KindVote)
-	if prompt.Method != "sendMessage" || !strings.HasPrefix(prompt.Params["text"].(string), "<b>Biểu quyết ngày 1: treo hay tha W1</b>\nMở lúc "+e.wall(time.Date(2026, 10, 16, 20, 0, 0, 0, vietnam))+
-		", hạn "+e.wall(time.Date(2026, 10, 16, 22, 0, 0, 0, vietnam))+".\n<b>Treo</b>: 0\n<b>Tha</b>: 0\n") ||
+	if prompt.Method != "sendMessage" || !strings.HasPrefix(prompt.Params["text"].(string), "<b>Biểu quyết ngày 1: treo hay tha W1</b>\nHạn: "+e.wall(time.Date(2026, 10, 16, 22, 0, 0, 0, vietnam))+".\n<b>Treo</b>: 0\n<b>Tha</b>: 0\n") ||
 		strings.Join(buttonsOf(prompt), ",") != "Treo,Tha" {
 		t.Fatalf("prompt biểu quyết = %v", prompt)
 	}
 	hang := buttonData(t, prompt, "Treo")
-	if text, _ := e.press(tg["v2"], hang); text != "Chưa tới giờ hoặc đã hết giờ." {
-		t.Fatalf("Treo lúc 17h30 = %q", text)
-	}
-
-	e.advanceTo(time.Date(2026, 10, 16, 20, 0, 0, 0, vietnam))
 	if text, _ := e.press(tg["v2"], hang); text != "Đã chọn Treo." {
 		t.Fatalf("v2 Treo = %q", text)
 	}
-	wantEdit("Hạn: "+e.wall(time.Date(2026, 10, 16, 22, 0, 0, 0, vietnam))+".", "<b>Treo</b>: 1 (V2)", "<b>Tha</b>: 0")
+	wantEdit("V2 bỏ phiếu Treo W1.", "Hạn: "+e.wall(time.Date(2026, 10, 16, 22, 0, 0, 0, vietnam))+".", "<b>Treo</b>: 1 (V2)", "<b>Tha</b>: 0")
 	n = edits()
 	if text, _ := e.press(tg["w1"], hang); text != "Người lên giàn không bỏ phiếu." {
 		t.Fatalf("người lên giàn bấm = %q", text)
@@ -179,19 +181,37 @@ func TestEmulatorTopicNominateAndVote(t *testing.T) {
 		t.Fatal("người lên giàn bấm mà tin vẫn bị sửa")
 	}
 	e.h.want(e.h.call("v3", "POST", "/v1/games/"+e.id+"/actions", map[string]any{"kind": "vote", "choice": "spare"}, ""), 200, "")
-	wantEdit("<b>Treo</b>: 1 (V2)", "<b>Tha</b>: 1 (V3)")
+	wantEdit("V3 bỏ phiếu Tha W1.", "<b>Treo</b>: 1 (V2)", "<b>Tha</b>: 1 (V3)")
 	if a := e.data("games/" + e.id + "/rounds/1/actions/v2_vote"); a["choice"] != ww.ChoiceHang || a["source"] != "telegram" {
 		t.Fatalf("action của v2 = %v", a)
 	}
+
+	// 22h: tin biểu quyết thành bản đã đóng, hết nút, dù bước 22h đã sang vòng 2
+	// và xoá người lên giàn.
+	voteID := id
+	e.advanceTo(time.Date(2026, 10, 16, 22, 0, 0, 0, vietnam))
+	e.flush()
+	if e.state().Round != 2 {
+		t.Fatalf("chưa sang vòng 2: %s", e.state().PhaseKey())
+	}
+	last = tgCall{}
+	for _, c := range e.tg.Calls("editMessageText") {
+		if c.Params["message_id"] == voteID {
+			last = c
+		}
+	}
+	if text, _ := last.Params["text"].(string); text != "<b>Biểu quyết ngày 1: treo hay tha W1</b>\nĐã hết giờ.\n<b>Treo</b>: 1 (V2)\n<b>Tha</b>: 1 (V3)" || len(buttonsOf(last)) != 0 {
+		t.Fatalf("tin biểu quyết sau 22h = %v", last)
+	}
 }
 
-// Prompt đề cử ghi lúc 10h mà tới sau 17h mới gửi thì bỏ, không đăng nút của
+// Prompt đề cử ghi lúc 10h mà tới sau 20h mới gửi thì bỏ, không đăng nút của
 // phase đã qua; tin sửa của nó cũng bỏ vì prompt chưa từng gửi.
 func TestEmulatorTopicLatePromptIsSkipped(t *testing.T) {
 	e := newButtonEnv(t)
 	e.advanceTo(time.Date(2026, 10, 16, 10, 0, 0, 0, vietnam))
 	e.h.want(e.h.call("v3", "POST", "/v1/games/"+e.id+"/actions", map[string]any{"kind": "nominate", "targets": []string{"w1"}}, ""), 200, "")
-	e.advanceTo(time.Date(2026, 10, 16, 17, 0, 0, 0, vietnam))
+	e.advanceTo(time.Date(2026, 10, 16, 20, 0, 0, 0, vietnam))
 	e.flush()
 	docs, err := e.db.Collection("games/"+e.id+"/outbox").Where("chatKey", "==", chatGroup).Documents(context.Background()).GetAll()
 	if err != nil {
@@ -201,12 +221,17 @@ func TestEmulatorTopicLatePromptIsSkipped(t *testing.T) {
 	for _, d := range docs {
 		m := d.Data()
 		if tpl := stringValue(m["template"]); tpl == tplPrompt || tpl == tplTally {
-			got[tpl+"/"+stringValue(m["data"])] = stringValue(m["status"]) + "/" + stringValue(m["skipReason"])
+			data := stringValue(m["data"])
+			if strings.Contains(data, `"close"`) {
+				data = "đóng"
+			}
+			got[tpl+"/"+data] = stringValue(m["status"]) + "/" + stringValue(m["skipReason"])
 		}
 	}
 	want := map[string]string{
 		`prompt/{"kind":"nominate","turnKey":"r1"}`: "skipped/closed",
 		`tally/{"kind":"nominate"}`:                 "skipped/no_prompt",
+		`tally/đóng`:                                "skipped/no_prompt",
 		`prompt/{"kind":"vote","turnKey":"r1"}`:     "sent/",
 	}
 	if !reflect.DeepEqual(got, want) {

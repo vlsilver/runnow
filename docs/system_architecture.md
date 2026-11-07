@@ -205,6 +205,7 @@ flowchart TB
 - `oauthStates`: OAuth state dùng một lần, TTL 10 phút.
 - `integrationEvents`: idempotency và trạng thái xử lý webhook, TTL 30 ngày.
 - `activityTombstones`: chặn event cũ làm sống lại activity đã xóa, TTL 30 ngày.
+- `pushTokens`: token FCM của từng máy, một token một chủ (máy đổi tài khoản thì token sang chủ mới). Bot gửi push qua queue `notifications`; `appConfig/push.off` tắt từng loại.
 
 ### Product collections
 

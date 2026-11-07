@@ -17,6 +17,10 @@ func TestR5HangedHunterShootsOnce(t *testing.T) {
 	g.reject(ErrAlreadyUsed, act(KindHunterShoot, "hunter", "v2"))
 	sameDeaths(t, g.next(), map[string]Cause{"v1": CauseShot})
 	g.reject(ErrPhaseClosed, act(KindHunterShoot, "hunter", "v2"))
+	// Lượt bắn đóng rồi vẫn nhớ là đã mở, vì vai đã lộ từ lúc mở lượt.
+	if g.st.Hunter != nil || !g.st.Players["hunter"].ShotOpened {
+		t.Fatalf("thợ săn đã được mở lượt bắn: %+v %+v", g.st.Hunter, g.st.Players["hunter"])
+	}
 }
 
 func TestR5PoisonedOrLowKmHunterCannotShoot(t *testing.T) {
@@ -32,7 +36,7 @@ func TestR5PoisonedOrLowKmHunterCannotShoot(t *testing.T) {
 
 	g = game13(t)
 	g.km["hunter"] = 999 // km lần chốt gần nhất (lúc treo) < X
-	if evs := g.hang("hunter"); find(evs, EventHunterTurn) != nil {
+	if evs := g.hang("hunter"); find(evs, EventHunterTurn) != nil || g.st.Players["hunter"].ShotOpened {
 		t.Fatal("thợ săn thiếu km không được bắn")
 	}
 }
