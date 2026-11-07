@@ -518,6 +518,7 @@ class GameDetail {
     required this.startError,
     this.kmTable,
     this.setup = const [],
+    this.room,
   });
 
   factory GameDetail.fromJson(Map<String, dynamic> json) {
@@ -548,6 +549,7 @@ class GameDetail {
       startError: _obj(json['startError'], GameStartError.fromJson),
       kmTable: _obj(json['kmTable'], GameKmTable.fromJson),
       setup: _list(json['setup'], GameSetupSection.fromJson),
+      room: _obj(json['room'], GameChatLink.fromJson),
     );
   }
 
@@ -593,6 +595,15 @@ class GameDetail {
 
   /// Thiết lập ván đang áp, theo khối của màn tạo ván; rỗng khi backend cũ.
   final List<GameSetupSection> setup;
+
+  /// Phòng chung của ván; null khi chưa đăng ký hay backend cũ.
+  final GameChatLink? room;
+
+  /// Ván đòi liên kết Telegram để đăng ký. Backend chưa gửi điều kiện thì
+  /// coi như có, như trước giờ.
+  bool get needsTelegram =>
+      requirements.isEmpty ||
+      requirements.any((r) => r.key == 'telegram_linked');
 }
 
 class GameKmTable {

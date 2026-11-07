@@ -416,6 +416,59 @@ void main() {
     await close(tester);
   });
 
+  // Ván không Telegram: không có phần liên kết Telegram; phòng chung mở được
+  // ngay lúc đăng ký.
+  testWidgets('a game without Telegram opens its room, no Telegram link', (
+    tester,
+  ) async {
+    backend.game = {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'registering',
+      'statusLabel': 'Đang mở đăng ký',
+      'refreshAfterSeconds': 300,
+      'isRegistered': true,
+      'requirements': [
+        {'key': 'app_version', 'ok': true, 'label': 'Bản app đủ mới'},
+      ],
+      'room': {'key': 'room', 'label': 'Phòng chung', 'canSend': true},
+    };
+    final router = GoRouter(
+      initialLocation: '/games/g1',
+      routes: [
+        GoRoute(
+          path: '/games/:id',
+          builder: (_, _) => GameDetailScreen(gameId: 'g1', clock: () => now),
+        ),
+        GoRoute(
+          path: '/games/:id/chat/:key',
+          builder: (_, state) => Text(
+            'chat ${state.pathParameters['id']}/'
+            '${state.pathParameters['key']}',
+          ),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          runNowApiClientProvider.overrideWithValue(backend.client()),
+          firebaseUserProvider.overrideWith((ref) => Stream.value(_FakeUser())),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Liên kết Telegram'), findsNothing);
+    await tester.ensureVisible(find.text('Phòng chung'));
+    await tester.tap(find.text('Phòng chung'));
+    await tester.pumpAndSettle();
+    expect(find.text('chat g1/room'), findsOneWidget);
+    await close(tester);
+  });
+
   testWidgets('shows why unlinking is refused mid-game', (tester) async {
     backend.game = {
       'id': 'g1',

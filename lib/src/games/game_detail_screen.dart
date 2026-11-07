@@ -120,6 +120,15 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     }
   }
 
+  /// Mở chat của ván; bài úp lại để quay về không lộ vai.
+  void _openChat(String key) {
+    _turnFaceDown();
+    context.push(
+      '/games/${Uri.encodeComponent(widget.gameId)}'
+      '/chat/${Uri.encodeComponent(key)}',
+    );
+  }
+
   void _turnFaceDown() {
     if (_faceUp && mounted) {
       setState(() {
@@ -339,6 +348,14 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                             closing: _controller.phaseClosing,
                             serverNow: _controller.serverNow,
                           ),
+                          if (detail.room case final room?) ...[
+                            const SizedBox(height: 12),
+                            FilledButton.tonalIcon(
+                              onPressed: () => _openChat(room.key),
+                              icon: const Icon(Icons.forum_outlined),
+                              label: Text(room.label),
+                            ),
+                          ],
                           if (me != null && me.role != null) ...[
                             const SizedBox(height: 16),
                             GameMyCard(
@@ -357,13 +374,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                                 _justRevealed = false;
                               }),
                               onOpenUrl: _openLink,
-                              onOpenChat: (key) {
-                                _turnFaceDown();
-                                context.push(
-                                  '/games/${Uri.encodeComponent(widget.gameId)}'
-                                  '/chat/${Uri.encodeComponent(key)}',
-                                );
-                              },
+                              onOpenChat: _openChat,
                             ),
                           ],
                           if (_faceUp &&
@@ -392,7 +403,8 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                                 ),
                               ),
                           ],
-                          if (detail.status == 'registering') ...[
+                          if (detail.status == 'registering' &&
+                              detail.needsTelegram) ...[
                             const SizedBox(height: 12),
                             TelegramLinkSection(
                               controller: _telegram,
