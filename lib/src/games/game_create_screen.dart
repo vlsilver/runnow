@@ -5,7 +5,9 @@ import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_create_tabs.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_providers.dart';
+import 'package:myrun/src/games/game_round_dial.dart';
 import 'package:myrun/src/games/game_settings_panel.dart';
+import 'package:myrun/src/games/game_time_picker.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
@@ -49,29 +51,15 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   }
 
   Future<void> _pickDeadline() async {
-    final now = DateTime.now();
-    final initial = _deadline ?? now.add(const Duration(days: 1));
-    final day = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: now,
-      lastDate: now.add(const Duration(days: 30)),
-    );
-    if (day == null || !mounted) return;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(initial),
-    );
-    if (time == null || !mounted) return;
-    setState(() {
-      _deadline = DateTime(
-        day.year,
-        day.month,
-        day.day,
-        time.hour,
-        time.minute,
-      );
-    });
+    final pick = await showGameDeadlineSheet(context, initial: _deadline);
+    if (pick == null || !mounted) return;
+    setState(() => _deadline = pick.at);
+  }
+
+  Future<void> _pickStartHour(GameSetting s, int hour) async {
+    final pick = await showGameHourSheet(context, title: s.label, hour: hour);
+    if (pick == null || !mounted) return;
+    setState(() => _settings[s.key] = pick.toDouble());
   }
 
   GamePreset? _preset(GameList list) {
@@ -108,8 +96,66 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
       for (final e in merged.entries)
         if (byKey[e.key]?.enabledBy(values) ?? true) e.key: e.value,
     };
+    // Gửi đủ bốn pha như đang vẽ, kể cả khi chưa chỉnh: không gửi thì backend
+    // co lịch gốc theo tỉ lệ, lệch với giờ app đã cho xem.
+    if (_roundShape(list, values) case final shape?) {
+      for (var i = 0; i < shape.keys.length; i++) {
+        out[shape.keys[i]] = shape.phases[i].toDouble();
+      }
+      if (out.containsKey('roundsPerDay')) {
+        out['roundsPerDay'] = shape.rounds.toDouble();
+      }
+    }
     return out.isEmpty ? null : out;
   }
+
+  /// Lịch một vòng khi backend cho chỉnh độ dài pha (pha có `settingKey`);
+  /// null là backend cũ. Ván km mở theo giờ gốc và vòng dài đúng 24 tiếng
+  /// chia số vòng, nên mốc cuối khoá.
+  _RoundShape? _roundShape(GameList list, Map<String, Object?> values) {
+    final round = list.round;
+    if (round == null || round.phases.isEmpty) return null;
+    final byKey = {for (final s in list.settings) s.key: s};
+    final keys = [for (final p in round.phases) p.settingKey ?? ''];
+    if (!keys.every((k) => byKey[k]?.type == GameSetting.phase)) return null;
+    const day = 24 * 60;
+    var rounds = _number(values['roundsPerDay'], 1).round().clamp(1, 24);
+    var phases = [for (final k in keys) _number(values[k], 0).round()];
+    final sum = phases.fold<int>(0, (a, p) => a + p);
+    if (values['kmOff'] != true) {
+      // Ván km chia đều 24 tiếng; số vòng lẻ (từ ván cổ điển) lùi về số chia
+      // hết gần nhất.
+      while (24 % rounds != 0) {
+        rounds--;
+      }
+      final total = day ~/ rounds;
+      if (sum != total) phases = gameFitPhases(phases, total);
+      return (
+        keys: keys,
+        phases: phases,
+        rounds: rounds,
+        start: (_number(byKey['startHour']?.defaultValue, 22) * 60).round(),
+        lockEnd: true,
+        maxTotal: total,
+      );
+    }
+    final maxTotal = day ~/ rounds ~/ 60 * 60;
+    if (sum > maxTotal) phases = gameFitPhases(phases, maxTotal);
+    return (
+      keys: keys,
+      phases: phases,
+      rounds: rounds,
+      start: (_number(values['startHour'], 22) * 60).round(),
+      lockEnd: false,
+      maxTotal: maxTotal,
+    );
+  }
+
+  void _setPhases(List<String> keys, List<int> phases) => setState(() {
+    for (var i = 0; i < keys.length; i++) {
+      _settings[keys[i]] = phases[i].toDouble();
+    }
+  });
 
   void _pickPreset(GamePreset preset) => setState(() {
     _presetKey = preset.key;
@@ -235,23 +281,20 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
 
   Widget _deadlineTile() {
     final deadline = _deadline;
-    return ListTile(
-      title: const Text('Hạn đăng ký'),
-      subtitle: Text(
-        deadline == null
-            ? 'Không hạn, admin tự bấm bắt đầu'
-            : DateFormat('HH:mm dd/MM').format(deadline),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: GameScheduleCard(
+        icon: Icons.event_rounded,
+        caption: 'ĐÓNG ĐĂNG KÝ',
+        title: deadline == null
+            ? 'Không hạn'
+            : '${DateFormat('HH:mm').format(deadline)} · '
+                  '${gameDayLabel(deadline)}',
+        subtitle: deadline == null
+            ? 'Admin tự bấm bắt đầu'
+            : gameUntil(deadline, DateTime.now()),
+        onTap: _working ? null : _pickDeadline,
       ),
-      trailing: deadline == null
-          ? const Icon(Icons.event_rounded)
-          : IconButton(
-              tooltip: 'Bỏ hạn',
-              icon: const Icon(Icons.close_rounded),
-              onPressed: _working
-                  ? null
-                  : () => setState(() => _deadline = null),
-            ),
-      onTap: _working ? null : _pickDeadline,
     );
   }
 
@@ -425,6 +468,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     ];
     final offNote = group.offNote;
     final round = list.round;
+    final shape = _roundShape(list, values);
     final out = <Widget>[
       Align(
         alignment: Alignment.centerRight,
@@ -441,9 +485,19 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     if (group.key == 'time') out.add(_deadlineTile());
     if (group.key == 'roles') out.add(_roleGrid(list, live, values));
     for (final s in live) {
+      if (s.section != null) continue;
       if (group.key == 'roles' && s.type == GameSetting.toggle) continue;
+      if (shape != null) {
+        // Độ dài vòng là tổng bốn pha trên vòng đồng hồ.
+        if (s.key == 'roundHours') continue;
+        if (s.key == 'startHour' || s.key == 'roundsPerDay') {
+          out.add(_scheduleWidget(s, shape));
+          continue;
+        }
+      }
       out.add(_settingWidget(s, values));
     }
+    out.addAll(_sections(live, values));
     if (live.isEmpty && offNote != null) {
       out.add(GameCreateNote(icon: Icons.nightlight_round, text: offNote));
     }
@@ -452,7 +506,22 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         ..add(const SizedBox(height: 10))
         ..add(GameCreateNote(icon: Icons.schedule_rounded, text: round.start));
     }
-    if (round != null && group.key == 'round' && round.phases.isNotEmpty) {
+    if (round != null && shape != null && group.key == 'round') {
+      out
+        ..add(const SizedBox(height: 8))
+        ..add(
+          GameRoundDial(
+            plan: round,
+            phases: shape.phases,
+            startMinute: shape.start,
+            lockEnd: shape.lockEnd,
+            maxTotal: shape.maxTotal,
+            onChanged: _working ? null : (p) => _setPhases(shape.keys, p),
+          ),
+        );
+    } else if (round != null &&
+        group.key == 'round' &&
+        round.phases.isNotEmpty) {
       out
         ..add(const SizedBox(height: 14))
         ..add(
@@ -464,6 +533,87 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         );
     }
     return out;
+  }
+
+  /// Giờ mở vòng đầu và số vòng mỗi ngày của tab Lịch khi có vòng đồng hồ:
+  /// ván km chọn số vòng chia hết 24 tiếng, ván cổ điển chọn giờ mở và số vòng
+  /// vừa trong ngày.
+  Widget _scheduleWidget(GameSetting s, _RoundShape shape) {
+    final total = shape.phases.fold<int>(0, (a, p) => a + p);
+    void setRounds(int n) => setState(() => _settings[s.key] = n.toDouble());
+    if (s.key == 'startHour') {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: GameScheduleCard(
+          icon: Icons.nightlight_round,
+          caption: 'MỞ VÒNG ĐẦU LÚC',
+          title: '${shape.start ~/ 60}h',
+          subtitle: 'Chạm để đổi giờ',
+          onTap: _working ? null : () => _pickStartHour(s, shape.start ~/ 60),
+        ),
+      );
+    }
+    if (shape.lockEnd) {
+      final lo = (s.min ?? 1).round(), hi = (s.max ?? 6).round();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            GameCreateLabel(s.label),
+            const SizedBox(height: 8),
+            GameRoundsSegments(
+              options: [
+                for (var n = lo; n <= hi; n++)
+                  if (24 % n == 0) n,
+              ],
+              selected: shape.rounds,
+              length: (n) => gameHours(24 * 60 ~/ n),
+              onSelect: _working ? null : setRounds,
+            ),
+          ],
+        ),
+      );
+    }
+    return GameCreateStepper(
+      label: s.label,
+      hint: 'Vòng ${gameHours(total)}',
+      value: shape.rounds.toDouble(),
+      min: s.min ?? 1,
+      max: (24 * 60 ~/ total).toDouble(),
+      step: 1,
+      unit: s.unit,
+      onChanged: _working ? null : (v) => setRounds(v.round()),
+    );
+  }
+
+  /// Tuỳ chọn cùng `section` vẽ thành một khối có nhãn, theo thứ tự backend
+  /// gửi: ô số trước, rồi thẻ bật tắt thu gọn được.
+  List<Widget> _sections(List<GameSetting> live, Map<String, Object?> values) {
+    final bySection = <String, List<GameSetting>>{};
+    for (final s in live) {
+      if (s.section case final section?) {
+        (bySection[section] ??= []).add(s);
+      }
+    }
+    return [
+      for (final MapEntry(key: label, value: items) in bySection.entries) ...[
+        const SizedBox(height: 12),
+        GameCreateLabel(label),
+        const SizedBox(height: 8),
+        for (final s in items)
+          if (s.type != GameSetting.toggle) _settingWidget(s, values),
+        for (final s in items)
+          if (s.type == GameSetting.toggle)
+            GamePowerCard(
+              setting: s,
+              on: values[s.key] == true,
+              onChanged: _working
+                  ? null
+                  : (v) => setState(() => _settings[s.key] = v),
+            ),
+      ],
+    ];
   }
 
   static double _number(Object? v, double fallback) =>
@@ -488,7 +638,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
               : () => setState(() => _roles[o.key] = !_roleOn(list, o)),
         ),
       for (final s in live)
-        if (s.type == GameSetting.toggle)
+        if (s.type == GameSetting.toggle && s.section == null)
           GameRoleChip(
             role: s.key,
             label: s.label,
@@ -522,6 +672,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         padding: const EdgeInsets.symmetric(vertical: 2),
         child: GameCreateStepper(
           label: s.label,
+          hint: s.hint,
           value: _number(value, s.min ?? 0),
           min: s.min ?? double.negativeInfinity,
           max: s.max ?? double.infinity,
@@ -574,6 +725,18 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
 }
 
 typedef _M = RunNowMoonlitTokens;
+
+/// Lịch một vòng khi có vòng đồng hồ: khoá của bốn ô pha, độ dài từng pha
+/// (phút), số vòng mỗi ngày đã khớp luật, giờ mở đêm (phút trong ngày), mốc
+/// cuối có khoá không và độ dài vòng tối đa.
+typedef _RoundShape = ({
+  List<String> keys,
+  List<int> phases,
+  int rounds,
+  int start,
+  bool lockEnd,
+  int maxTotal,
+});
 
 class _Message extends StatelessWidget {
   const _Message(this.text, {this.onRetry});

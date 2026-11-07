@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/games/game_create_screen.dart';
+import 'package:myrun/src/games/game_create_tabs.dart';
+import 'package:myrun/src/games/game_round_dial.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/run_contracts/run_contract_analytics.dart';
 import 'package:myrun/src/screens/run_contract_create_screen.dart';
@@ -245,6 +248,87 @@ Map<String, dynamic> _tabbedList() => {
   },
   'items': [],
 };
+
+// Backend cho chỉnh độ dài từng pha (ô kiểu phase, pha có settingKey) và số
+// vòng mỗi ngày.
+Map<String, dynamic> _phaseList() {
+  final list = _tabbedList();
+  final options = list['createOptions'] as Map<String, dynamic>;
+  const keys = ['nightMin', 'dawnMin', 'dayMin', 'trialMin'];
+  const lengths = [120, 600, 600, 120];
+  final phases = (options['round'] as Map<String, dynamic>)['phases'] as List;
+  for (var i = 0; i < keys.length; i++) {
+    (phases[i] as Map<String, dynamic>)['settingKey'] = keys[i];
+  }
+  options['settings'] = <Object>[
+    ...options['settings'] as List,
+    {
+      'key': 'roundsPerDay',
+      'label': 'Số vòng mỗi ngày',
+      'description': 'Số vòng trong một ngày.',
+      'type': 'number',
+      'default': 1,
+      'min': 1,
+      'max': 6,
+      'step': 1,
+      'unit': 'vòng',
+      'group': 'time',
+    },
+    for (var i = 0; i < keys.length; i++)
+      {
+        'key': keys[i],
+        'label': 'Độ dài pha ${i + 1}',
+        'description': 'Phút.',
+        'type': 'phase',
+        'default': lengths[i],
+        'min': 60,
+        'max': 1260,
+        'step': 30,
+        'unit': 'phút',
+        'group': 'round',
+      },
+  ];
+  return list;
+}
+
+// Backend gom đặc quyền phe Sói thành một khối (section) của tab Vai.
+Map<String, dynamic> _darkList() {
+  final list = _tabbedList();
+  final options = list['createOptions'] as Map<String, dynamic>;
+  const section = 'Phe Sói · Đặc quyền';
+  options['settings'] = <Object>[
+    ...options['settings'] as List,
+    {
+      'key': 'darkVote',
+      'label': 'Phiếu Đôi',
+      'description': 'Phiếu một sói tính 2.',
+      'type': 'toggle',
+      'default': false,
+      'group': 'roles',
+      'section': section,
+      'hint': 'Mỗi đêm',
+      'warn': 'Bảng phiếu lộ có phiếu đôi.',
+    },
+    {
+      'key': 'darkKm',
+      'label': 'Km để mở',
+      'description': 'Km mỗi sói.',
+      'type': 'number',
+      'default': 1,
+      'min': 0.5,
+      'max': 5,
+      'step': 0.5,
+      'unit': 'km',
+      'group': 'roles',
+      'section': section,
+      'hint': '× số sói còn sống',
+      'enabledIf': [
+        {'key': 'kmOff', 'equals': false},
+      ],
+    },
+  ];
+  return list;
+}
 
 Map<String, dynamic> _createBody(FakeGameBackend backend) =>
     jsonDecode(
@@ -507,6 +591,178 @@ void main() {
       expect(_createBody(backend)['settings'], {
         'kmOff': true,
         'roundHours': 12,
+      });
+    });
+
+    testWidgets(
+      'the round dial trades time between phases and sends all four',
+      (tester) async {
+        backend.list = _phaseList();
+        await pumpScreen(tester);
+
+        await tester.tap(find.text('Vòng chơi'));
+        await tester.pump();
+        expect(find.text('24h'), findsOneWidget);
+        await tester.tap(find.byTooltip('Thêm Đêm'));
+        await tester.pump();
+        // Đêm dài thêm nửa tiếng, lấy từ Rạng sáng: 22h–0h30, rồi 0h30–10h.
+        expect(find.textContaining('22h – 0h30', findRichText: true), findsOne);
+        expect(find.textContaining('0h30 – 10h', findRichText: true), findsOne);
+        expect(find.text('24h'), findsOneWidget);
+        await tester.tap(find.text('Mở ván'));
+        await tester.pumpAndSettle();
+
+        expect(_createBody(backend)['settings'], {
+          'nightMin': 150,
+          'dawnMin': 570,
+          'dayMin': 600,
+          'trialMin': 120,
+        });
+      },
+    );
+
+    testWidgets('more rounds a day shrink the km round and send the phases', (
+      tester,
+    ) async {
+      backend.list = _phaseList();
+      await pumpScreen(tester);
+
+      // Ván km chỉ chọn số vòng chia hết 24 tiếng: không có ô 5 vòng.
+      expect(find.bySemanticsLabel('5 vòng'), findsNothing);
+      expect(find.bySemanticsLabel('6 vòng'), findsOneWidget);
+      await tester.tap(find.bySemanticsLabel('3 vòng'));
+      await tester.pump();
+      await tester.tap(find.text('Vòng chơi'));
+      await tester.pump();
+      // 3 vòng chia 24 tiếng: vòng 8h, Đêm 22h–23h, Biểu quyết 5h–6h.
+      expect(find.text('8h'), findsOneWidget);
+      expect(find.textContaining('22h – 23h', findRichText: true), findsOne);
+      expect(find.textContaining('5h – 6h', findRichText: true), findsOne);
+      await tester.tap(find.text('Mở ván'));
+      await tester.pumpAndSettle();
+
+      expect(_createBody(backend)['settings'], {
+        'roundsPerDay': 3,
+        'nightMin': 60,
+        'dawnMin': 180,
+        'dayMin': 180,
+        'trialMin': 60,
+      });
+    });
+
+    testWidgets('dragging the end of the night on the dial moves it', (
+      tester,
+    ) async {
+      backend.list = _phaseList();
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Vòng chơi'));
+      await tester.pump();
+      final face = find.descendant(
+        of: find.byType(GameRoundDial),
+        matching: find.byType(CustomPaint),
+      );
+      final box = tester.getRect(face.first);
+      // Vòng nằm cách mép 19 điểm. Mốc cuối Đêm ở 0h, tức đỉnh mặt đồng hồ.
+      final r = box.width / 2 - 19;
+      Offset at(double hour) {
+        final a = hour / 24 * 2 * math.pi - math.pi / 2;
+        return box.center + Offset(math.cos(a), math.sin(a)) * r;
+      }
+
+      final drag = await tester.startGesture(at(0));
+      for (final h in [0.25, 0.5, 0.75, 1.0]) {
+        await drag.moveTo(at(h));
+        await tester.pump();
+      }
+      await drag.up();
+      await tester.pump();
+      // Đêm kéo tới 1h: Đêm 22h–1h, Rạng sáng 1h–10h.
+      expect(find.textContaining('22h – 1h', findRichText: true), findsOne);
+      expect(find.textContaining('1h – 10h', findRichText: true), findsOne);
+    });
+
+    testWidgets('the deadline sheet picks a day, hour and minute', (
+      tester,
+    ) async {
+      backend.list = _phaseList();
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Không hạn'));
+      await tester.pumpAndSettle();
+      Finder inSheet(String text) => find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.text(text),
+      );
+      await tester.tap(inSheet('MAI'));
+      await tester.tap(inSheet('8h'));
+      await tester.tap(inSheet(':30'));
+      await tester.pump();
+      expect(find.text('08:30'), findsOneWidget);
+      await tester.tap(find.text('Xong'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('08:30 · '), findsOneWidget);
+      await tester.tap(find.text('Mở ván'));
+      await tester.pumpAndSettle();
+
+      final now = DateTime.now();
+      final tomorrow = DateTime(now.year, now.month, now.day + 1, 8, 30);
+      expect(
+        _createBody(backend)['registrationDeadline'],
+        tomorrow.toUtc().toIso8601String(),
+      );
+    });
+
+    testWidgets('wolf powers are cards in their own block, not role chips', (
+      tester,
+    ) async {
+      backend.list = _darkList();
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Vai'));
+      await tester.pump();
+      expect(find.text('PHE SÓI · ĐẶC QUYỀN'), findsOneWidget);
+      expect(find.text('× số sói còn sống'), findsOneWidget);
+      expect(find.widgetWithText(GameRoleChip, 'Phiếu Đôi'), findsNothing);
+      expect(find.text('MỖI ĐÊM · ⚠ ĐỂ LỘ'), findsOneWidget);
+      // Mô tả và cảnh báo ẩn tới khi mở thẻ.
+      expect(find.text('Bảng phiếu lộ có phiếu đôi.'), findsNothing);
+      await tester.tap(find.byTooltip('Xem Phiếu Đôi'));
+      await tester.pump();
+      expect(find.text('Phiếu một sói tính 2.'), findsOneWidget);
+      expect(find.text('Bảng phiếu lộ có phiếu đôi.'), findsOneWidget);
+
+      await tester.tap(find.text('Phiếu Đôi'));
+      await tester.pump();
+      await tester.tap(find.text('Mở ván'));
+      await tester.pumpAndSettle();
+      expect(_createBody(backend)['settings'], {'darkVote': true});
+    });
+
+    testWidgets('a classic round loses a whole hour from its last phase', (
+      tester,
+    ) async {
+      backend.list = _phaseList();
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Cổ điển'));
+      await tester.pump();
+      await tester.tap(find.text('Vòng chơi'));
+      await tester.pump();
+      expect(find.byTooltip('Giảm Độ dài một vòng'), findsNothing);
+      await tester.tap(find.byTooltip('Bớt Biểu quyết'));
+      await tester.pump();
+      expect(find.text('23h'), findsOneWidget);
+      expect(find.textContaining('20h – 21h', findRichText: true), findsOne);
+      await tester.tap(find.text('Mở ván'));
+      await tester.pumpAndSettle();
+
+      expect(_createBody(backend)['settings'], {
+        'kmOff': true,
+        'nightMin': 120,
+        'dawnMin': 600,
+        'dayMin': 600,
+        'trialMin': 60,
       });
     });
 

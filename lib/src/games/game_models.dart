@@ -154,6 +154,7 @@ class GameRoundPhase {
     required this.description,
     required this.from,
     required this.to,
+    this.settingKey,
   });
 
   factory GameRoundPhase.fromJson(Map<String, dynamic> json) {
@@ -163,6 +164,7 @@ class GameRoundPhase {
       description: _string(json['description']),
       from: (json['from'] as num? ?? 0).toDouble(),
       to: (json['to'] as num? ?? 0).toDouble(),
+      settingKey: _optString(json['settingKey']),
     );
   }
 
@@ -171,6 +173,10 @@ class GameRoundPhase {
   final String description;
   final double from;
   final double to;
+
+  /// Key của tuỳ chọn kiểu [GameSetting.phase] giữ độ dài pha này (phút);
+  /// null là backend cũ, pha không chỉnh được.
+  final String? settingKey;
 }
 
 class GameRoleOption {
@@ -213,6 +219,9 @@ class GameSetting {
     this.choices = const [],
     this.enabledIf = const [],
     this.group,
+    this.section,
+    this.hint,
+    this.warn,
   });
 
   factory GameSetting.fromJson(Map<String, dynamic> json) {
@@ -235,12 +244,18 @@ class GameSetting {
           ),
       ],
       group: _optString(json['group']),
+      section: _optString(json['section']),
+      hint: _optString(json['hint']),
+      warn: _optString(json['warn']),
     );
   }
 
   static const toggle = 'toggle';
   static const number = 'number';
   static const choice = 'choice';
+
+  /// Như [number], độ dài một pha (phút); vẽ chung bốn pha thành vòng đồng hồ.
+  static const phase = 'phase';
 
   final String key;
   final String label;
@@ -261,6 +276,16 @@ class GameSetting {
   /// Key của tab chứa tuỳ chọn ([GameSettingGroup]); null thì màn tạo ván
   /// theo tab không hiện, giá trị theo kiểu ván.
   final String? group;
+
+  /// Tên khối trong tab; các tuỳ chọn cùng khối vẽ chung, ô bật tắt thành thẻ
+  /// thu gọn. null thì vẽ như thường.
+  final String? section;
+
+  /// Nhãn ngắn trên thẻ hoặc dưới tên, ví dụ số lượt.
+  final String? hint;
+
+  /// Cái giá người tạo ván cần cân, hiện khi mở thẻ.
+  final String? warn;
 
   /// [values] là giá trị hiện tại theo key, đã gồm mặc định.
   bool enabledBy(Map<String, Object?> values) =>

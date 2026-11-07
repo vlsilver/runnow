@@ -442,6 +442,146 @@ class GameCreateChoices extends StatelessWidget {
 }
 
 /// Ô vai trong lưới vai: chạm để bật tắt.
+/// Thẻ bật tắt thu gọn của một khối tuỳ chọn (như đặc quyền phe Sói): tên,
+/// nhãn ngắn, dấu "ĐỂ LỘ" khi có cảnh báo; mở ra thì xem mô tả và cảnh báo.
+class GamePowerCard extends StatefulWidget {
+  const GamePowerCard({
+    super.key,
+    required this.setting,
+    required this.on,
+    required this.onChanged,
+  });
+
+  final GameSetting setting;
+  final bool on;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  State<GamePowerCard> createState() => _GamePowerCardState();
+}
+
+class _GamePowerCardState extends State<GamePowerCard> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.setting;
+    final on = widget.on;
+    final change = widget.onChanged;
+    final warn = s.warn;
+    final meta = [
+      if (s.hint case final hint? when hint.isNotEmpty) hint.toUpperCase(),
+      if (warn != null && warn.isNotEmpty) '⚠ ĐỂ LỘ',
+    ].join(' · ');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: on ? _M.amberTint : _M.raised,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: on ? _M.amber : _M.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Semantics(
+                    toggled: on,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: change == null ? null : () => change(!on),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+                        child: Row(
+                          children: [
+                            Icon(
+                              on
+                                  ? Icons.check_circle_rounded
+                                  : Icons.radio_button_unchecked_rounded,
+                              size: 22,
+                              color: on ? _M.amber : _M.faint,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    s.label,
+                                    style: const TextStyle(
+                                      fontSize: 14.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: _M.ink,
+                                    ),
+                                  ),
+                                  if (meta.isNotEmpty)
+                                    Text(
+                                      meta,
+                                      style: const TextStyle(
+                                        fontSize: 10.5,
+                                        letterSpacing: 0.8,
+                                        fontWeight: FontWeight.w800,
+                                        color: _M.faint,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: _open ? 'Thu gọn ${s.label}' : 'Xem ${s.label}',
+                  icon: Icon(
+                    _open
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                  ),
+                  color: _M.faint,
+                  onPressed: () => setState(() => _open = !_open),
+                ),
+              ],
+            ),
+            if (_open)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(44, 0, 14, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      s.description,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        height: 1.45,
+                        color: _M.muted,
+                      ),
+                    ),
+                    if (warn != null && warn.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        warn,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          height: 1.45,
+                          color: _M.danger,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class GameRoleChip extends StatelessWidget {
   const GameRoleChip({
     super.key,
@@ -542,7 +682,7 @@ class GameRoundTimeline extends StatelessWidget {
                     flex: ((p.to - p.from) * 10).round().clamp(1, 1000),
                     child: Container(
                       margin: const EdgeInsets.symmetric(horizontal: 1),
-                      color: _phaseColor(p.key),
+                      color: gamePhaseColor(p.key),
                     ),
                   ),
               ],
@@ -559,7 +699,7 @@ class GameRoundTimeline extends StatelessWidget {
                 height: 10,
                 margin: const EdgeInsets.only(top: 5, right: 10),
                 decoration: BoxDecoration(
-                  color: _phaseColor(p.key),
+                  color: gamePhaseColor(p.key),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -613,15 +753,16 @@ class GameRoundTimeline extends StatelessWidget {
       ],
     );
   }
-
-  static Color _phaseColor(String key) => switch (key) {
-    'night' => _M.phaseNight,
-    'dawn' => _M.phaseDawn,
-    'day' => _M.phaseDay,
-    'trial' => _M.phaseTrial,
-    _ => _M.barLow,
-  };
 }
+
+/// Màu của pha theo khoá backend gửi; khoá lạ thì màu thanh thấp.
+Color gamePhaseColor(String key) => switch (key) {
+  'night' => _M.phaseNight,
+  'dawn' => _M.phaseDawn,
+  'day' => _M.phaseDay,
+  'trial' => _M.phaseTrial,
+  _ => _M.barLow,
+};
 
 /// Sheet giải thích: tiêu đề và các mục (tên, mô tả).
 Future<void> showGameCreateSheet(
