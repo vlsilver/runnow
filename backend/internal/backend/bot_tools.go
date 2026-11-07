@@ -412,8 +412,12 @@ func (t *BotTools) GetRecentRun(ctx context.Context, args map[string]any) (any, 
 		}
 		return map[string]any{"found": false, "reason": "tên trùng nhiều người", "candidates": names}, nil
 	}
-	member := matches[0]
+	return t.recentRun(ctx, matches[0], int(number(args["offset"])))
+}
 
+// recentRun là phần của GetRecentRun sau khi đã biết là ai. Bot cá nhân gọi
+// thẳng bằng uid của chủ, không qua bước khớp tên.
+func (t *BotTools) recentRun(ctx context.Context, member memberRow, offset int) (any, error) {
 	// startedAt lưu dạng chuỗi RFC3339; OrderBy chuỗi ~ theo thời gian, nhưng
 	// vẫn sort lại trong Go phòng lệch timezone. Lấy dư một ít rồi cắt.
 	docs, err := t.db.Collection("users").Doc(member.uid).Collection("activities").
@@ -441,7 +445,6 @@ func (t *BotTools) GetRecentRun(ctx context.Context, args map[string]any) (any, 
 	if len(runs) == 0 {
 		return map[string]any{"found": false, "member": member.Name, "reason": "chưa có buổi chạy nào"}, nil
 	}
-	offset := int(number(args["offset"]))
 	if offset < 0 {
 		offset = 0
 	}
@@ -636,11 +639,17 @@ type memberDayStats struct {
 	WalkKm   float64
 	Steps    int64
 	TotalKm  float64
+	// DayKm là km trong ngày cho hạn mức của bot cá nhân: số lớn hơn giữa buổi
+	// chính thức và quãng đường Apple Health, như khung km Ma Sói. Khác TotalKm
+	// ở chỗ buổi đi bộ Strava vẫn được tính.
+	DayKm float64
 }
 
-// memberDay tính số của uid trong ngày VN bắt đầu từ start (0h VN).
+// memberDay tính số của uid trong ngày VN bắt đầu từ start (0h VN). Hỏi ngày
+// đã qua thì buổi của các ngày sau không được tính vào.
 func (t *BotTools) memberDay(ctx context.Context, uid string, start time.Time) (memberDayStats, error) {
 	today := dateKey(start)
+	end := start.AddDate(0, 0, 1)
 
 	// Buổi chạy hôm nay → official (đã khử trùng) → km chạy + tổng official/ngày.
 	facts := []ActivityFact{}
@@ -661,7 +670,7 @@ func (t *BotTools) memberDay(ctx context.Context, uid string, start time.Time) (
 	var officialMeters, runMeters float64
 	runCount := 0
 	for _, f := range SelectOfficialActivities(facts) {
-		if f.StartedAt.Before(start) {
+		if f.StartedAt.Before(start) || !f.StartedAt.Before(end) {
 			continue
 		}
 		officialMeters += f.DistanceMeters
@@ -672,7 +681,7 @@ func (t *BotTools) memberDay(ctx context.Context, uid string, start time.Time) (
 	}
 
 	// stepDay hôm nay → đi-bộ-thuần (Apple − official) + số bước.
-	var walkMeters float64
+	var walkMeters, healthMeters float64
 	var steps int64
 	sdoc, err := t.db.Collection("users").Doc(uid).Collection("stepDays").Doc(today).Get(ctx)
 	if err != nil && status.Code(err) != codes.NotFound {
@@ -681,7 +690,8 @@ func (t *BotTools) memberDay(ctx context.Context, uid string, start time.Time) (
 	if err == nil && sdoc.Exists() {
 		m := sdoc.Data()
 		steps = int64(number(m["steps"]))
-		if w := number(m["distanceMeters"]) - officialMeters; w > 0 {
+		healthMeters = number(m["distanceMeters"])
+		if w := healthMeters - officialMeters; w > 0 {
 			walkMeters = w
 		}
 	}
@@ -690,6 +700,7 @@ func (t *BotTools) memberDay(ctx context.Context, uid string, start time.Time) (
 		RunKm: round2(runMeters / 1000), RunCount: runCount,
 		WalkKm: round2(walkMeters / 1000), Steps: steps,
 		TotalKm: round2((runMeters + walkMeters) / 1000),
+		DayKm:   round2(max(officialMeters, healthMeters) / 1000),
 	}, nil
 }
 
@@ -870,6 +881,11 @@ func (t *BotTools) GetMemberContracts(ctx context.Context, args map[string]any) 
 	if err != nil || resp != nil {
 		return resp, err
 	}
+	return t.memberContracts(ctx, uid, name)
+}
+
+// memberContracts là phần của GetMemberContracts sau khi đã biết là ai.
+func (t *BotTools) memberContracts(ctx context.Context, uid, name string) (any, error) {
 	cIter := t.db.Collection("runContracts").
 		Where("participantUids", "array-contains", uid).
 		Where("status", "==", "active").Documents(ctx)
@@ -900,7 +916,52 @@ func (t *BotTools) GetMemberContracts(ctx context.Context, args map[string]any) 
 			"progress": round2(progress),
 		})
 	}
-	return map[string]any{"found": true, "name": name, "contractCount": len(contracts), "contracts": contracts}, nil
+	plans, err := t.memberCoachPlans(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"found": true, "name": name, "contractCount": len(contracts), "contracts": contracts, "coachPlans": plans}, nil
+}
+
+// memberCoachPlans là các giáo án HLV uid đang theo. App xếp giáo án chung danh
+// sách với kèo nên người dùng gọi nó là kèo, nhưng nó nằm ở collection riêng
+// và tiến độ tính theo buổi tập chứ không theo chỉ tiêu. Chủ giáo án luôn có
+// trong participantUids nên một query lấy được cả giáo án mình lập lẫn giáo
+// án mình tham gia.
+func (t *BotTools) memberCoachPlans(ctx context.Context, uid string) ([]map[string]any, error) {
+	docs, err := t.db.Collection("coachPlans").Where("participantUids", "array-contains", uid).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	plans := []map[string]any{}
+	for _, doc := range docs {
+		d := doc.Data()
+		if stringValue(d["status"]) != "active" {
+			continue
+		}
+		sessions := 0
+		for _, day := range toAnySlice(d["days"]) {
+			if dm, ok := day.(map[string]any); ok && stringValue(dm["type"]) != "rest" {
+				sessions++
+			}
+		}
+		var done int
+		if parts, ok := d["participants"].(map[string]any); ok {
+			if pm, ok := parts[uid].(map[string]any); ok {
+				done = len(toAnySlice(pm["doneIndices"]))
+			}
+		}
+		plans = append(plans, map[string]any{
+			"goal":         stringValue(d["goal"]),
+			"goalKm":       number(d["goalDistanceKm"]),
+			"startDate":    stringValue(d["startDate"]),
+			"targetDate":   stringValue(d["targetDate"]),
+			"sessions":     sessions,
+			"doneSessions": done,
+			"mine":         stringValue(d["ownerUid"]) == uid,
+		})
+	}
+	return plans, nil
 }
 
 func toAnySlice(v any) []any {

@@ -37,7 +37,7 @@ func TestTelegramActivityAlertSendsHTMLMessage(t *testing.T) {
 		MovingTimeSeconds:   1812,
 		ElevationGainMeters: 24,
 	}
-	if err := service.SendActivityAlert(context.Background(), "vlsilver", "Morning Run", fact, "https://example.test/activity", ""); err != nil {
+	if err := service.SendActivityAlert(context.Background(), 0, "vlsilver", "Morning Run", fact, "https://example.test/activity", ""); err != nil {
 		t.Fatalf("SendActivityAlert: %v", err)
 	}
 
@@ -103,7 +103,7 @@ func TestActivityDetailURLPointsAtShareRoute(t *testing.T) {
 
 func TestTelegramActivityAlertSkipsWhenDisabled(t *testing.T) {
 	service := NewTelegramService("", "")
-	if err := service.SendActivityAlert(context.Background(), "runner", "Run", ActivityFact{}, "https://example.test", ""); err != nil {
+	if err := service.SendActivityAlert(context.Background(), 0, "runner", "Run", ActivityFact{}, "https://example.test", ""); err != nil {
 		t.Fatalf("SendActivityAlert disabled = %v", err)
 	}
 }
@@ -120,8 +120,8 @@ func TestTelegramTransportErrorDoesNotLeakToken(t *testing.T) {
 	service.apiBaseURL = baseURL
 	ctx := context.Background()
 	calls := map[string]error{
-		"SendActivityAlert":        service.SendActivityAlert(ctx, "a", "b", ActivityFact{}, "https://x.test", ""),
-		"SendActivityAnnouncement": service.SendActivityAnnouncement(ctx, "hi", "https://x.test"),
+		"SendActivityAlert":        service.SendActivityAlert(ctx, 0, "a", "b", ActivityFact{}, "https://x.test", ""),
+		"SendActivityAnnouncement": service.SendActivityAnnouncement(ctx, 0, "hi", "https://x.test"),
 		"SendChatMessage":          service.SendChatMessage(ctx, "chat", "hi"),
 		"SendPhoto":                service.SendPhoto(ctx, "chat", []byte("png"), "cap"),
 	}
@@ -175,6 +175,9 @@ func TestTelegramSendsThreadIDOnlyWhenInTopic(t *testing.T) {
 		service.SendChatMessageInThread(ctx, "-100", 0, "ở General"),
 		service.SendPhotoInThread(ctx, "-100", 7, []byte("png"), "ảnh topic"),
 		service.SendPhotoInThread(ctx, "-100", 0, []byte("png"), "ảnh General"),
+		service.SendActivityAlert(ctx, 7, "a", "b", ActivityFact{}, "https://x.test", ""),
+		service.SendActivityAnnouncement(ctx, 7, "hi", "https://x.test"),
+		service.SendActivityAlert(ctx, 0, "a", "b", ActivityFact{}, "https://x.test", ""),
 	} {
 		if err != nil {
 			t.Fatal(err)
@@ -183,10 +186,72 @@ func TestTelegramSendsThreadIDOnlyWhenInTopic(t *testing.T) {
 	if texts[0]["message_thread_id"] != "7" || photos[0]["message_thread_id"] != "7" {
 		t.Fatalf("thiếu thread id: text=%v photo=%v", texts[0], photos[0])
 	}
-	if _, ok := texts[1]["message_thread_id"]; ok {
-		t.Fatalf("General không được có thread id: %v", texts[1])
+	if texts[2]["message_thread_id"] != "7" || texts[3]["message_thread_id"] != "7" {
+		t.Fatalf("tin buổi chạy thiếu thread id: alert=%v announcement=%v", texts[2], texts[3])
+	}
+	for _, i := range []int{1, 4} {
+		if _, ok := texts[i]["message_thread_id"]; ok {
+			t.Fatalf("General không được có thread id: %v", texts[i])
+		}
 	}
 	if _, ok := photos[1]["message_thread_id"]; ok {
 		t.Fatalf("General không được có thread id: %v", photos[1])
+	}
+}
+
+// Telegram báo không thấy topic thì câu trả lời ra khung chat chính, không mất và không trả
+// lỗi (trả lỗi là task retry, gọi lại model mà vẫn hỏng). 400 khác thì vẫn lỗi.
+func TestTelegramResendsOutsideMissingThread(t *testing.T) {
+	var sent []string // "path thread=<id hoặc rỗng>"
+	reply := `{"ok":false,"error_code":400,"description":"Bad Request: message thread not found"}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		thread := ""
+		if strings.HasSuffix(r.URL.Path, "/sendPhoto") {
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				t.Fatalf("parse multipart: %v", err)
+			}
+			thread = r.FormValue("message_thread_id")
+		} else {
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if f, ok := body["message_thread_id"].(float64); ok {
+				thread = strconv.FormatInt(int64(f), 10)
+			}
+		}
+		sent = append(sent, r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]+" thread="+thread)
+		if thread != "" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(reply))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+	service := NewTelegramService("token", "chat")
+	service.apiBaseURL = server.URL
+	ctx := context.Background()
+
+	if err := service.SendChatMessageInThread(ctx, "42", 9, "trả lời"); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SendPhotoInThread(ctx, "42", 9, []byte("png"), "ảnh"); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SendActivityAlert(ctx, 9, "a", "b", ActivityFact{}, "https://x.test", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SendActivityAnnouncement(ctx, 9, "hi", "https://x.test"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"sendMessage thread=9", "sendMessage thread=", "sendPhoto thread=9", "sendPhoto thread=",
+		"sendMessage thread=9", "sendMessage thread=", "sendMessage thread=9", "sendMessage thread="}
+	if strings.Join(sent, "|") != strings.Join(want, "|") {
+		t.Fatalf("đã gửi %v, muốn %v", sent, want)
+	}
+
+	reply = `{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}`
+	sent = nil
+	if err := service.SendChatMessageInThread(ctx, "42", 9, "trả lời"); err == nil || len(sent) != 1 {
+		t.Fatalf("400 khác phải trả lỗi, không gửi lại: err=%v, đã gửi %v", err, sent)
 	}
 }

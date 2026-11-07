@@ -398,9 +398,9 @@ func TestEmulatorGameSimulation(t *testing.T) {
 		t.Fatalf("vòng 1 có %d action", n)
 	}
 
-	e.fire() // 15h nhắc đề cử
+	e.fire() // 18h nhắc đề cử
 	if st = e.fire(); st.Phase != ww.PhaseTrial || st.Nominee != w0 {
-		t.Fatalf("17h: phase %s, lên giàn %q", st.Phase, st.Nominee)
+		t.Fatalf("20h: phase %s, lên giàn %q", st.Phase, st.Nominee)
 	}
 	// 15 người còn lại cùng bấm Treo một lúc. Mong đợi: 22h w0 bị treo.
 	var voters []string
@@ -638,18 +638,18 @@ func (e *simEnv) flushErrors() *ww.State {
 	return st
 }
 
-// redeployBot: bot cũ kick flush cho mốc 15h rồi chết giữa lúc gửi, sau khi
+// redeployBot: bot cũ kick flush cho mốc 18h rồi chết giữa lúc gửi, sau khi
 // Telegram đã nhận tin mà trước khi ghi sent. Bản bot mới lên, lease 60 giây
 // của bot cũ hết hạn. Mong đợi: bot mới gửi lại đúng tin đó (Telegram không có
 // idempotency key nên người nhận thấy hai lần, 3.4 chấp nhận), các tin khác một
-// lần; task 17h do bot cũ hẹn vẫn chạy được trên bot mới.
+// lần; task 20h do bot cũ hẹn vẫn chạy được trên bot mới.
 func (e *simEnv) redeployBot() *ww.State {
 	e.t.Helper()
 	e.deliver = false
 	task, at := e.due(), e.g.state().NextAt()
 	e.setClock(at.Add(advanceDelay))
 	if rec := e.runTask(task); rec.Code != 200 {
-		e.t.Fatalf("game-advance 15h: %d %s", rec.Code, rec.Body)
+		e.t.Fatalf("game-advance 18h: %d %s", rec.Code, rec.Body)
 	}
 	flushes := e.tasksTo("/tasks/game-flush")
 	kick := flushes[len(flushes)-1]
@@ -703,7 +703,7 @@ func (e *simEnv) redeployBot() *ww.State {
 	e.setClock(at.Add(time.Minute))
 	st := e.g.state()
 	if st.Reminded != st.PhaseKey() {
-		e.t.Fatal("mốc 15h chưa nhắc")
+		e.t.Fatal("mốc 18h chưa nhắc")
 	}
 	return st
 }

@@ -44,6 +44,9 @@ func NormalizeActivity(a StravaActivity, hydrated bool, eventTime *int64) map[st
 		} else if a.Map.SummaryPolyline != nil && *a.Map.SummaryPolyline != "" {
 			out["polyline"] = *a.Map.SummaryPolyline
 		}
+		if sketch := activityRouteSketch(out); sketch != nil {
+			out["routeSketch"] = sketch
+		}
 	}
 	if hydrated {
 		out["hydrated"] = true

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -39,24 +40,32 @@ func TestAppVersionOK(t *testing.T) {
 
 func TestRequirementsForPscInvite(t *testing.T) {
 	cfg := gameConfig{pscInviteURL: "https://t.me/+abc"}
-	reqs := requirementsFor(viewerLink{linked: true}, "", cfg)
+	reqs := requirementsFor(viewerLink{linked: true}, "", cfg, true)
 	if a := reqs[1].Action; a == nil || a.Type != "open_url" || a.URL != "https://t.me/+abc" {
 		t.Fatalf("chưa ở PSC mà không có link vào group: %+v", reqs[1])
 	}
 	// Chưa liên kết thì chưa biết có ở PSC không; vẫn đưa link vì mở link khi đã ở trong group thì vô hại.
-	if a := requirementsFor(viewerLink{}, "", cfg)[1].Action; a == nil || a.URL != "https://t.me/+abc" {
+	if a := requirementsFor(viewerLink{}, "", cfg, true)[1].Action; a == nil || a.URL != "https://t.me/+abc" {
 		t.Fatalf("chưa liên kết mà không có link vào group: %+v", a)
 	}
-	if a := requirementsFor(viewerLink{linked: true, inPsc: true}, "", cfg)[1].Action; a != nil {
+	if a := requirementsFor(viewerLink{linked: true, inPsc: true}, "", cfg, true)[1].Action; a != nil {
 		t.Fatalf("đã ở PSC mà vẫn có action: %+v", a)
 	}
-	if a := requirementsFor(viewerLink{linked: true}, "", gameConfig{})[1].Action; a != nil {
+	if a := requirementsFor(viewerLink{linked: true}, "", gameConfig{}, true)[1].Action; a != nil {
 		t.Fatalf("config chưa có link mà vẫn có action: %+v", a)
 	}
 }
 
+// Ván không Telegram: chưa liên kết vẫn đăng ký được, chỉ còn điều kiện bản app.
+func TestRequirementsForNoTelegram(t *testing.T) {
+	reqs := requirementsFor(viewerLink{}, "1.2.0", gameConfig{minAppVersion: "1.2.0"}, false)
+	if len(reqs) != 1 || reqs[0].Key != "app_version" || !requirementsMet(reqs) {
+		t.Fatalf("điều kiện ván không Telegram = %+v", reqs)
+	}
+}
+
 func TestRequirementsFor(t *testing.T) {
-	reqs := requirementsFor(viewerLink{linked: true, inPsc: false}, "1.0.0", gameConfig{minAppVersion: "1.2.0"})
+	reqs := requirementsFor(viewerLink{linked: true, inPsc: false}, "1.0.0", gameConfig{minAppVersion: "1.2.0"}, true)
 	got := map[string]bool{}
 	for _, r := range reqs {
 		got[r.Key] = r.OK
@@ -68,10 +77,10 @@ func TestRequirementsFor(t *testing.T) {
 		t.Fatalf("action/label = %+v", reqs)
 	}
 	// inPsc chỉ tính khi đã liên kết.
-	if requirementsFor(viewerLink{inPsc: true}, "", gameConfig{})[1].OK {
+	if requirementsFor(viewerLink{inPsc: true}, "", gameConfig{}, true)[1].OK {
 		t.Fatal("chưa liên kết mà in_psc ok")
 	}
-	if !requirementsMet(requirementsFor(viewerLink{linked: true, inPsc: true}, "", gameConfig{})) {
+	if !requirementsMet(requirementsFor(viewerLink{linked: true, inPsc: true}, "", gameConfig{}, true)) {
 		t.Fatal("đủ điều kiện mà bị chặn")
 	}
 }
@@ -99,6 +108,10 @@ func TestFeedItemText(t *testing.T) {
 		{"r1/day", []ww.Event{{Kind: ww.EventNominee, UID: "b", Counts: map[string]int{"b": 3, "c": 3}, Draw: true}},
 			"Đề cử ngày 1", []string{"Bình lên giàn với 3 đề cử, bốc thăm vì hoà."}},
 		{"r3/day", []ww.Event{{Kind: ww.EventNominee}}, "Đề cử ngày 3", []string{"Không ai được đề cử, hôm nay không ai lên giàn."}},
+		{"r2/day", []ww.Event{{Kind: ww.EventNominee, UID: "c", Targets: []string{"c"}, Counts: map[string]int{"c": 2}}},
+			"Đề cử ngày 2", []string{"Chi lên giàn với 2 đề cử."}},
+		{"r4/day", []ww.Event{{Kind: ww.EventNominee, UID: "a", Targets: []string{"a", "c", "b"}, Counts: map[string]int{"a": 3, "b": 1, "c": 2, "zz": 1}, Draw: true}},
+			"Đề cử ngày 4", []string{"3 người lên giàn: An (3 đề cử), Chi (2 đề cử), Bình (1 đề cử). Suất cuối bốc thăm vì hoà."}},
 		{"r1/trial", []ww.Event{
 			{Kind: ww.EventVoteCut, Targets: []string{"a", "c"}},
 			{Kind: ww.EventVoteResult, UID: "b", Hang: 4, Spare: 2, Hanged: true},
@@ -106,7 +119,17 @@ func TestFeedItemText(t *testing.T) {
 			{Kind: ww.EventWinner, Team: ww.TeamVillage},
 		}, "Biểu quyết ngày 1", []string{"Tổng km chưa đủ nên An, Chi mất phiếu.", "Treo 4, Tha 2: Bình bị treo.", "Bình đã chết. Lá bài: Sói.", "Phe Dân thắng."}},
 		{"r2/trial", []ww.Event{{Kind: ww.EventVoteResult, UID: "b", Hang: 2, Spare: 2}}, "Biểu quyết ngày 2", []string{"Treo 2, Tha 2: Bình được tha."}},
+		{"r3/trial", []ww.Event{
+			{Kind: ww.EventVoteResult, UID: "a", Hang: 3, Spare: 1, Hanged: true},
+			{Kind: ww.EventVoteCut, UID: "c", Targets: []string{"b"}},
+			{Kind: ww.EventVoteResult, UID: "c", Hang: 1, Spare: 1},
+			{Kind: ww.EventDeath, UID: "a", Role: ww.Villager},
+		}, "Biểu quyết ngày 3", []string{"Treo 3, Tha 1: An bị treo.", "Phiên Chi: tổng km chưa đủ nên Bình mất phiếu.", "Treo 1, Tha 1: Chi được tha.", "An đã chết. Lá bài: Dân."}},
 		{"r4/trial", []ww.Event{{Kind: ww.EventVoteResult, UID: "c", Reason: ww.ReasonNoTrial}}, "Biểu quyết ngày 4", []string{"Chi đã rời PSC, bỏ biểu quyết."}},
+		{"r5/trial", []ww.Event{
+			{Kind: ww.EventVoteBonus, Targets: []string{"a", "c"}, Draw: true},
+			{Kind: ww.EventVoteBonus, UID: "c", Targets: []string{"b"}},
+		}, "Biểu quyết ngày 5", []string{"An, Chi chạy nhiều nhất nên được tính 2 phiếu, bốc thăm vì bằng km.", "Phiên Chi: Bình chạy nhiều nhất nên được tính 2 phiếu."}},
 		{"r2/night/hunter", []ww.Event{{Kind: ww.EventDeath, UID: "c", Role: ww.Seer}}, "Thợ săn bắn", []string{"Chi đã chết. Lá bài: Tiên tri."}},
 		{"r1/night", nil, "Đêm 1", []string{}},
 		{"r1/day", []ww.Event{{Kind: ww.EventDeath, UID: "zz", Role: ww.Villager}}, "Đề cử ngày 1", []string{"Người chơi đã chết. Lá bài: Dân."}},
@@ -127,6 +150,52 @@ func TestFeedItemText(t *testing.T) {
 	}
 	if _, err := feedItem(map[string]any{"events": "{"}, names); err == nil {
 		t.Fatal("events hỏng mà không báo lỗi")
+	}
+}
+
+// entries là bản có cấu trúc của lines: cùng câu, cùng thứ tự, kèm icon và tag;
+// night cho app tô màu đêm/ngày, theo cùng mốc với diễn lại của tổng kết (lượt
+// bắn sau khi treo thuộc ngày đó). Câu chết chỉ nói lá bài, không nói vì sao chết.
+func TestFeedItemEntries(t *testing.T) {
+	names := map[string]gamePlayerInfo{"a": {name: "An"}, "b": {name: "Bình"}}
+	e := func(icon, text, tag string) GameSummaryLine { return GameSummaryLine{Icon: icon, Text: text, Tag: tag} }
+	cases := []struct {
+		key   string
+		evs   []ww.Event
+		night bool
+		want  []GameSummaryLine
+	}{
+		{"r2/dawn", nil, true, []GameSummaryLine{e("peace", "Đêm qua không ai chết.", "AN TOÀN")}},
+		{"r1/dawn", []ww.Event{{Kind: ww.EventDeath, UID: "a", Role: ww.Hunter, Cause: ww.CausePoison}, {Kind: ww.EventHunterTurn, UID: "a"}}, true,
+			[]GameSummaryLine{e("death", "An đã chết. Lá bài: Thợ săn.", "CHẾT"), e("hunter", "An là Thợ săn, được bắn một người.", "")}},
+		{"r1/day", []ww.Event{{Kind: ww.EventNominee, UID: "b", Counts: map[string]int{"b": 3}}}, false,
+			[]GameSummaryLine{e("nominee", "Bình lên giàn với 3 đề cử.", "GIÀN")}},
+		{"r3/day", []ww.Event{{Kind: ww.EventNominee}}, false,
+			[]GameSummaryLine{e("nominee", "Không ai được đề cử, hôm nay không ai lên giàn.", "")}},
+		{"r1/trial", []ww.Event{{Kind: ww.EventVoteResult, UID: "b", Hang: 4, Spare: 2, Hanged: true}, {Kind: ww.EventDeath, UID: "b", Role: ww.Wolf}}, false,
+			[]GameSummaryLine{e("vote", "Treo 4, Tha 2: Bình bị treo.", "TREO"), e("death", "Bình đã chết. Lá bài: Sói.", "CHẾT")}},
+		{"r2/night/hunter", []ww.Event{{Kind: ww.EventDeath, UID: "a", Role: ww.Seer}}, false,
+			[]GameSummaryLine{e("death", "An đã chết. Lá bài: Tiên tri.", "CHẾT")}},
+		{"r1/night", nil, true, []GameSummaryLine{}},
+	}
+	for _, c := range cases {
+		item, err := feedItem(feedDoc(t, c.key, c.evs...), names)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if item.Night != c.night || !reflect.DeepEqual(item.Entries, c.want) {
+			t.Errorf("%s: night %v entries %+v", c.key, item.Night, item.Entries)
+		}
+	}
+	// Câu theo từng lần bấm cũng có entry, cùng câu với lines.
+	d := feedDoc(t, "r1/day")
+	d["picks"] = []any{`{"at":"2026-10-16T09:05:00+07:00","uid":"a","kind":"nominate","targets":["b"]}`}
+	item, err := feedItem(d, names)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(item.Entries) != 1 || item.Entries[0].Icon != "pick" || item.Entries[0].Text != item.Lines[0] {
+		t.Fatalf("lần bấm: lines %q entries %+v", item.Lines, item.Entries)
 	}
 }
 
@@ -205,5 +274,26 @@ func TestBalanceScoreByHand(t *testing.T) {
 		if got := balanceScore(roles); got != c.want {
 			t.Errorf("n=%d %v: %d, mong đợi %d", c.n, c.cfg.Disabled, got, c.want)
 		}
+	}
+}
+
+// Ba người lên giàn: mỗi phiên một thẻ biểu quyết gọi theo tên, đúng kind của
+// phiên, để app bản cũ (vẽ theo input, gửi theo kind) bỏ phiếu được từng phiên.
+// Người lên giàn không có thẻ của phiên mình.
+func TestMeActionsOneVoteCardPerNominee(t *testing.T) {
+	st := ww.NewState(ww.Seed{1}, ww.Config{}, msgRoles(), msgStart)
+	st.Phase, st.Nominees, st.Nominee = ww.PhaseTrial, []string{"v1", "w1", "seer"}, "v1"
+	players := []gamePlayerInfo{{uid: "v1", name: "An"}, {uid: "w1", name: "Bình"}, {uid: "seer", name: "Chi"}}
+	now := st.NightAt.Add(23 * time.Hour) // 21h hôm sau: trong khung biểu quyết
+	got := map[string]string{}
+	for _, a := range meActions(st, "w1", nil, nil, players, now, 0) {
+		if a.Input != "choice" || len(a.Options) != 2 || !a.Enabled {
+			t.Fatalf("thẻ = %+v", a)
+		}
+		got[a.Kind] = a.Label
+	}
+	want := map[string]string{"vote": "Biểu quyết: An", "vote3": "Biểu quyết: Chi"}
+	if len(got) != len(want) || got["vote"] != want["vote"] || got["vote3"] != want["vote3"] {
+		t.Fatalf("thẻ của w1 = %v, mong đợi %v", got, want)
 	}
 }

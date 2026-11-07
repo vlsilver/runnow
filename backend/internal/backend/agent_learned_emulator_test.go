@@ -60,7 +60,7 @@ func TestEmulatorAgentDMLearned(t *testing.T) {
 	if sys := e.llm.calls[0].system; strings.Contains(sys, "TỰ HỌC") || strings.Contains(sys, "BẠN BIẾT VỀ NHÓM") {
 		t.Fatalf("chưa học mà prompt có ký ức tự học:\n%s", sys)
 	}
-	wantList(t, "tool khi chưa học", toolNames(e.llm.calls[0]), "web_search", "remember", "update_memory", "forget")
+	wantList(t, "tool khi chưa học", toolNames(e.llm.calls[0]), "web_search", "remember", "update_memory", "forget", "get_owner_today", "get_owner_recent_run", "get_owner_contracts", "get_club_contracts")
 
 	seed(t, e.store.db, "telegramLinks/an", map[string]any{"tgUserId": int64(111)})
 	e.seedLearned("an", map[string]string{"f1": "An chạy hồ Tây"})
@@ -84,7 +84,7 @@ func TestEmulatorAgentDMLearned(t *testing.T) {
 			t.Errorf("prompt chat riêng có %q", leak)
 		}
 	}
-	wantList(t, "tool khi đã học", toolNames(e.llm.calls[0]), "web_search", "remember", "update_memory", "forget", "recall_person", "forget_learned")
+	wantList(t, "tool khi đã học", toolNames(e.llm.calls[0]), "web_search", "remember", "update_memory", "forget", "recall_person", "forget_learned", "get_owner_today", "get_owner_recent_run", "get_owner_contracts", "get_club_contracts")
 	if r := toolResult(t, e.llm.calls[1]); r["ok"] != true {
 		t.Fatalf("forget_learned: %v", r)
 	}
@@ -141,7 +141,7 @@ func TestEmulatorAgentRoomLearned(t *testing.T) {
 	if strings.Contains(sys, "Dũng đau gối") || strings.Contains(sys, "An:\n") || strings.Contains(sys, "[f1]") || strings.Contains(sys, "forget_learned") {
 		t.Errorf("prompt phòng:\n%s", sys)
 	}
-	wantList(t, "tool phòng", toolNames(e.llm.calls[0]), "web_search", "recall_person")
+	wantList(t, "tool phòng", toolNames(e.llm.calls[0]), "web_search", "recall_person", "get_club_contracts")
 	got := []string{}
 	for _, c := range e.llm.calls[1:] {
 		r := toolResult(t, c)
@@ -219,6 +219,92 @@ func TestEmulatorAgentLearnedAPI(t *testing.T) {
 	wantList(t, "group-facts sau xoá", factsOf(e.call("an", "GET", "/v1/agents/group-facts", nil, "")), "f2")
 	if l := e.doc("agentRooms/main/learnLog/forget-_group-f1"); l["by"] != "admin:an" || l["before"] != "Nhóm chạy 6h thứ 7" {
 		t.Fatalf("learnLog nhóm: %v", l)
+	}
+}
+
+// "Đừng học về tôi": bật thì xoá ký ức đã học và các lượt học sau bỏ tin của
+// người đó ở cả phòng bot lẫn Telegram đã liên kết; tắt thì học lại từ tin mới.
+func TestEmulatorAgentNoLearn(t *testing.T) {
+	e := newAgentEnv(t)
+	db := e.store.db
+	linkUser(t, e.apiHarness, "an", "111", true)
+	e.seedLearned("an", map[string]string{"f1": "An đau gối"})
+	e.seedLearned("tg-111", map[string]string{"f1": "An đi giày Pegasus"})
+	e.seedLearned("cuong", map[string]string{"f1": "Cường tập full"})
+	le := &learnEnv{t: t, db: db, llm: &fakeLearn{reply: addOne}, t0: e.clock}
+	le.svc = NewLearnService(e.deps.Agents, le.llm, "-100")
+	noLearn := func(uid string) any { return e.call(uid, "GET", "/v1/agents/me", nil, "").body["noLearn"] }
+
+	if v := noLearn("an"); v != false {
+		t.Fatalf("chưa bật mà noLearn = %v", v)
+	}
+	e.want(e.call("an", "POST", "/v1/agents/me/no-learn", map[string]any{}, ""), 400, "invalid_request")
+	e.want(e.call("dung", "POST", "/v1/agents/me/no-learn", map[string]any{"on": true}, ""), 403, "agent_disabled")
+	for i := 0; i < 2; i++ { // bấm lại sau lần lỗi giữa chừng
+		if r := e.call("an", "POST", "/v1/agents/me/no-learn", map[string]any{"on": true}, ""); r.status != 200 || r.body["noLearn"] != true {
+			t.Fatalf("bật: %d %s", r.status, r.raw)
+		}
+	}
+	for _, key := range []string{"an", "tg-111"} {
+		if doc := e.learned(key); len(doc) != 0 {
+			t.Fatalf("bật rồi mà còn ký ức %s: %v", key, doc)
+		}
+	}
+	if len(anyList(e.learned("cuong")["facts"])) != 1 {
+		t.Fatal("bật cho An mà mất ký ức của Cường")
+	}
+	r := e.call("an", "GET", "/v1/agents/me", nil, "")
+	if r.body["noLearn"] != true || len(anyList(r.body["learned"])) != 0 {
+		t.Fatalf("me sau khi bật: %s", r.raw)
+	}
+
+	at := e.clock.Add(-20 * time.Minute)
+	le.roomMsg(1, agentKindHuman, "an", "mình chạy hồ Tây", at)
+	le.roomMsg(2, agentKindHuman, "binh", "mình đau gối", at.Add(time.Minute))
+	le.tgMsg("t1", "user", "111", "An TG", "mình đăng ký VMM", at.Add(2*time.Minute))
+	le.tgMsg("t2", "user", "222", "Dũng", "mình đi được", at.Add(3*time.Minute))
+	le.mustRun(e.clock)
+	wantList(t, "scope được học", le.llm.scopes(), agentGroupScope, "Bình", "Dũng")
+	for _, leak := range []string{"hồ Tây", "VMM"} {
+		if strings.Contains(le.llm.calls[0].input, leak) {
+			t.Errorf("ký ức nhóm vẫn thấy tin của An %q:\n%s", leak, le.llm.calls[0].input)
+		}
+	}
+	for _, key := range []string{"an", "tg-111"} {
+		if doc := e.learned(key); len(doc) != 0 {
+			t.Fatalf("bật rồi mà vẫn học về An vào %s: %v", key, doc)
+		}
+	}
+	wantList(t, "ký ức Bình", le.factTexts("binh"), "f1 học: Bình: mình đau gối")
+
+	// Tắt: học từ tin mới, ký ức đã xoá và tin lúc đang bật không quay về.
+	if r := e.call("an", "POST", "/v1/agents/me/no-learn", map[string]any{"on": false}, ""); r.status != 200 || r.body["noLearn"] != false {
+		t.Fatalf("tắt: %d %s", r.status, r.raw)
+	}
+	if v := noLearn("an"); v != false {
+		t.Fatalf("tắt rồi mà noLearn = %v", v)
+	}
+	le.roomMsg(3, agentKindHuman, "an", "mình đổi sang chạy chủ nhật", e.clock.Add(time.Minute))
+	le.mustRun(e.clock.Add(30 * time.Minute))
+	wantList(t, "ký ức An sau khi tắt", le.factTexts("an"), "f1 học: An: mình đổi sang chạy chủ nhật")
+}
+
+// Xoá tài khoản gỡ uid khỏi danh sách "Đừng học về tôi", người khác giữ nguyên.
+func TestEmulatorAccountDeleteRemovesLearnOptOut(t *testing.T) {
+	db := emulatorDB(t)
+	accounts := &AccountService{db: db}
+	if err := accounts.removeLearnOptOut(context.Background(), "an"); err != nil {
+		t.Fatalf("chưa ai bật: %v", err)
+	}
+	seed(t, db, "agentState/learnOptOut", map[string]any{"uids": []any{"an", "binh"}})
+	for i := 0; i < 2; i++ {
+		if err := accounts.removeLearnOptOut(context.Background(), "an"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	optOut, err := learnOptOut(context.Background(), db)
+	if err != nil || optOut["an"] || !optOut["binh"] {
+		t.Fatalf("sau khi xoá An: %v %v", optOut, err)
 	}
 }
 

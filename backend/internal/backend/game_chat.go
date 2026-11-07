@@ -23,7 +23,10 @@ import (
 // engine mỗi lần gọi, nên không có danh sách thành viên nào phải giữ cho khớp.
 
 const (
-	chatLovers    = "lovers"
+	chatLovers = "lovers"
+	// chatRoom là phòng chung của ván: có từ lúc tạo ván, cho mọi người đã
+	// đăng ký và admin, ván có Telegram hay không.
+	chatRoom      = "room"
 	chatPageSize  = 30
 	chatMaxRunes  = 1000
 	chatMinGap    = time.Second
@@ -32,6 +35,9 @@ const (
 
 	// chatKindWolfPick: tin hệ thống khi một sói chọn hay bỏ chọn cắn (C2).
 	chatKindWolfPick = "wolf_pick"
+	// chatKindBot: tin của bot riêng của ván trong phòng chung; tên bot lưu
+	// ngay trong tin (field name).
+	chatKindBot = "bot"
 )
 
 var (
@@ -42,7 +48,7 @@ var (
 	errChatNoMsg    = &HTTPError{Status: http.StatusNotFound, Code: "message_not_found", Message: "Không còn tin nhắn này."}
 )
 
-var chatLabels = map[string]string{chatWolves: "Phe Sói", chatLovers: "Cặp đôi"}
+var chatLabels = map[string]string{chatWolves: "Phe Sói", chatLovers: "Cặp đôi", chatRoom: "Phòng chung"}
 
 // chatMembers là người trong chat key, nil khi ván không có chat đó. Phe chỉ có
 // một người thì không có chat.
@@ -73,6 +79,37 @@ func chatAccess(st *werewolf.State, gameData map[string]any, key, uid string) (m
 	return true, st.Players[uid].Alive && st.Phase != werewolf.PhaseEnded && !gameClosed(stringValue(gameData["status"]))
 }
 
+// roomAccess: người đã đăng ký và admin vào được phòng chung, kể cả trước khi
+// chia bài. Người đã chết chỉ đọc để không nói được với người còn sống; ván hết
+// hay đã huỷ thì ai cũng chỉ đọc.
+func roomAccess(st *werewolf.State, gameData map[string]any, uid string, registered, admin bool) (member, canSend bool) {
+	if !registered && !admin {
+		return false, false
+	}
+	if gameClosed(stringValue(gameData["status"])) {
+		return true, false
+	}
+	if st == nil {
+		return true, true
+	}
+	if st.Phase == werewolf.PhaseEnded {
+		return true, false
+	}
+	p, playing := st.Players[uid]
+	return true, !playing || p.Alive
+}
+
+// access là chatAccess cho chat phe và roomAccess cho phòng chung.
+func access(st *werewolf.State, gameData map[string]any, key, uid string, registered, admin bool) (member, canSend bool) {
+	if key == chatRoom {
+		return roomAccess(st, gameData, uid, registered, admin)
+	}
+	if !registered {
+		return false, false
+	}
+	return chatAccess(st, gameData, key, uid)
+}
+
 type GameChat struct {
 	Key      string            `json:"key"`
 	Label    string            `json:"label"`
@@ -81,6 +118,8 @@ type GameChat struct {
 	Cursor   string            `json:"cursor,omitempty"`
 	// HasNewer: trang after còn tin mới hơn, gọi tiếp với after là seq lớn nhất.
 	HasNewer bool `json:"hasNewer"`
+	// Hint là chữ mờ trong ô nhập, ví dụ cách gọi bot của phòng chung.
+	Hint string `json:"hint,omitempty"`
 }
 
 type GameChatMessage struct {
@@ -92,6 +131,8 @@ type GameChatMessage struct {
 	At     time.Time `json:"at"`
 	// Hidden: người xem đã chặn người gửi; Text rỗng, app không vẽ tin này.
 	Hidden bool `json:"hidden,omitempty"`
+	// Bot: tin của bot riêng của ván; app cũ vẽ như tin của một người tên Name.
+	Bot bool `json:"bot,omitempty"`
 }
 
 func chatRef(game *firestore.DocumentRef, key string) *firestore.DocumentRef {
@@ -113,14 +154,15 @@ func (s *GameStore) Chat(ctx context.Context, gameID, key, cursor, after string,
 	if err != nil {
 		return GameChat{}, err
 	}
-	if !registered {
+	admin := cfg.isAdmin(v.UID)
+	if !registered && !(key == chatRoom && admin) {
 		return GameChat{}, errNotGamePlayer
 	}
 	st, err := s.loadState(ctx, g.Ref)
 	if err != nil {
 		return GameChat{}, err
 	}
-	member, canSend := chatAccess(st, g.Data(), key, v.UID)
+	member, canSend := access(st, g.Data(), key, v.UID, registered, admin)
 	if !member {
 		return GameChat{}, errChatNotFound
 	}
@@ -146,6 +188,16 @@ func (s *GameStore) Chat(ctx context.Context, gameID, key, cursor, after string,
 		return GameChat{}, err
 	}
 	out := GameChat{Key: key, Label: chatLabels[key], CanSend: canSend, Messages: []GameChatMessage{}}
+	if key == chatRoom {
+		gc, err := gameConfigOf(g.Data())
+		if err != nil {
+			return GameChat{}, err
+		}
+		out.Hint = "Nhắn cho cả phòng…"
+		if gc.BotName != "" {
+			out.Hint = "Gọi “" + gc.BotName + "” để bot trả lời"
+		}
+	}
 	if after != "" {
 		if len(docs) > chatPageSize {
 			docs, out.HasNewer = docs[:chatPageSize], true
@@ -174,10 +226,13 @@ func (s *GameStore) Chat(ctx context.Context, gameID, key, cursor, after string,
 		m := d.Data()
 		msg := GameChatMessage{Seq: int64(number(m["seq"])), UID: stringValue(m["uid"]), Text: stringValue(m["text"]), At: timeValue(m["at"])}
 		msg.Name = name(msg.UID)
-		if kind := stringValue(m["kind"]); kind != "text" {
+		switch kind := stringValue(m["kind"]); {
+		case kind == chatKindBot:
+			msg.Name, msg.Bot = stringValue(m["name"]), true
+		case kind != "text":
 			msg.System = true
 			msg.Text = chatSystemText(kind, msg.Name, m, name)
-		} else if blocked[msg.UID] {
+		case blocked[msg.UID]:
 			msg.Hidden, msg.Text = true, ""
 		}
 		out.Messages = append(out.Messages, msg)
@@ -200,46 +255,57 @@ func chatSystemText(kind, actor string, m map[string]any, name func(string) stri
 	return ""
 }
 
+// ChatPosted là kết quả một lần gửi: Pinged khi có DM báo tin mới cần bot gửi,
+// BotSeq là seq của tin vừa gọi tên bot của ván (0 là không gọi).
+type ChatPosted struct {
+	Pinged bool
+	BotSeq int64
+}
+
 // PostChat ghi một tin của người chơi. Transaction đọc state để kiểm người gửi
 // còn trong phe và còn sống ngay lúc ghi, đọc doc chat để cấp seq và chặn gửi
-// dồn. Trả true khi có DM báo tin mới cần bot gửi.
-func (s *GameStore) PostChat(ctx context.Context, gameID, key, text string, v GameViewer, wall time.Time) (bool, error) {
+// dồn.
+func (s *GameStore) PostChat(ctx context.Context, gameID, key, text string, v GameViewer, wall time.Time) (ChatPosted, error) {
 	text = strings.TrimSpace(text)
 	if text == "" || utf8.RuneCountInString(text) > chatMaxRunes {
-		return false, errChatText
+		return ChatPosted{}, errChatText
 	}
 	text = maskProfanity(text)
 	cfg, err := s.loadConfig(ctx)
 	if err != nil {
-		return false, err
+		return ChatPosted{}, err
 	}
 	g, registered, err := s.readVisibleGame(ctx, gameID, cfg, v.UID)
 	if err != nil {
-		return false, err
+		return ChatPosted{}, err
 	}
-	if !registered {
-		return false, errNotGamePlayer
+	admin := cfg.isAdmin(v.UID)
+	if !registered && !(key == chatRoom && admin) {
+		return ChatPosted{}, errNotGamePlayer
 	}
 	game := g.Ref
-	var pinged bool
+	var out ChatPosted
 	err = s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
-		pinged = false
+		out = ChatPosted{}
 		gd, err := tx.Get(game)
 		if err != nil {
 			return err
 		}
+		var st *werewolf.State
 		sec, err := tx.Get(secretRef(game))
-		if status.Code(err) == codes.NotFound {
-			return errChatNotFound // chưa chia bài
-		}
-		if err != nil {
+		switch {
+		case status.Code(err) == codes.NotFound:
+			if key != chatRoom {
+				return errChatNotFound // chưa chia bài
+			}
+		case err != nil:
 			return err
+		default:
+			if st, err = decodeState(sec.Data()); err != nil {
+				return err
+			}
 		}
-		st, err := decodeState(sec.Data())
-		if err != nil {
-			return err
-		}
-		member, canSend := chatAccess(st, gd.Data(), key, v.UID)
+		member, canSend := access(st, gd.Data(), key, v.UID, registered, admin)
 		if !member {
 			return errChatNotFound
 		}
@@ -258,14 +324,23 @@ func (s *GameStore) PostChat(ctx context.Context, gameID, key, text string, v Ga
 		if err != nil {
 			return err
 		}
+		if key == chatRoom {
+			gc, err := gameConfigOf(gd.Data())
+			if err != nil {
+				return err
+			}
+			if mentionsName(text, gc.BotName) {
+				out.BotSeq = int64(number(c.data["seq"])) + 1
+			}
+		}
 		if err := c.write(tx, map[string]any{"uid": v.UID, "kind": "text", "text": text}, v.UID, msgs, wall); err != nil {
 			return err
 		}
 		w := stepWrite{tx: tx, game: game, gameData: gd.Data(), msgs: msgs, chats: chats, wall: wall}
-		pinged = len(msgs) > 0
+		out.Pinged = len(msgs) > 0
 		return w.writeOutbox(int64(number(gd.Data()["eventSeq"])))
 	})
-	return pinged, err
+	return out, err
 }
 
 // chatPost là doc chat đã đọc trong transaction, chờ ghi tin kế tiếp.

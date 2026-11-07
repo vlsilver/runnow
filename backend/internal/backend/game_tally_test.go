@@ -99,6 +99,21 @@ func TestTallyViewVote(t *testing.T) {
 }
 
 // Nút Treo/Tha đọc lại đúng thành vị trí trong voteChoices.
+// Phiếu không theo km (tắt km, hoặc mỗi người một phiếu) thì không nhắc km.
+func TestTallyViewVoteFlatNoKmLine(t *testing.T) {
+	for _, cfg := range []ww.Config{{KmOff: true}, {Vote: ww.VoteFlat}} {
+		v := tallyFixture(ww.KindVote, ww.PhaseTrial)
+		v.st.Config = cfg
+		text, _, err := v.render()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(text, "km") {
+			t.Fatalf("%+v: %q", cfg, text)
+		}
+	}
+}
+
 func TestGameButtonVoteRoundTrip(t *testing.T) {
 	b, ok := parseGameButton("m1|g1|r2|x|t|1")
 	if !ok || b.Kind != ww.KindVote || voteChoices[b.Idx[0]] != ww.ChoiceSpare {

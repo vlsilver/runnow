@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -223,6 +224,8 @@ func TestEmulatorGameRegistrationDeadlineAndFull(t *testing.T) {
 	h := newAPIHarness(t, NewGameStore(db, testPscChat))
 	setConfig(t, h, map[string]any{"adminUids": []any{"boss"}, "testerUids": []any{"t1"}})
 	h.want(h.call("boss", "POST", "/v1/games", map[string]any{"registrationDeadline": time.Now().Add(-time.Minute)}, ""), 422, "invalid_deadline")
+	h.want(h.call("boss", "POST", "/v1/games", map[string]any{"startAt": time.Now().Add(-time.Minute)}, ""), 422, "invalid_start_at")
+	h.want(h.call("boss", "POST", "/v1/games", map[string]any{"registrationDeadline": time.Now().Add(2 * time.Hour), "startAt": time.Now().Add(time.Hour)}, ""), 422, "invalid_start_at")
 	h.want(h.call("boss", "POST", "/v1/games", map[string]any{"testMode": true}, ""), 422, "invalid_chat")
 	r := h.call("boss", "POST", "/v1/games", map[string]any{"testMode": true, "chatId": "-1002222"}, "")
 	h.want(r, 201, "")
@@ -240,16 +243,17 @@ func TestEmulatorGameRegistrationDeadlineAndFull(t *testing.T) {
 		t.Fatalf("tester không thấy ván thử: %v", items)
 	}
 
-	// Đủ 16 người (giả) thì 409; bớt người giả thì đăng ký được.
-	h.want(h.call("u1", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 16}, ""), 403, "not_admin")
-	h.want(h.call("boss", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 16}, ""), 200, "")
+	// Đủ 24 người (giả) thì 409; bớt người giả thì đăng ký được.
+	h.want(h.call("u1", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 24}, ""), 403, "not_admin")
+	h.want(h.call("boss", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 25}, ""), 422, "invalid_count")
+	h.want(h.call("boss", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 24}, ""), 200, "")
 	h.want(h.call("t1", "POST", "/v1/games/"+id+"/registration", nil, ""), 409, "game_full")
-	h.want(h.call("boss", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 15}, ""), 200, "")
-	if r := h.call("t1", "POST", "/v1/games/"+id+"/registration", nil, ""); r.status != 200 || r.body["playerCount"] != 16.0 {
+	h.want(h.call("boss", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 23}, ""), 200, "")
+	if r := h.call("t1", "POST", "/v1/games/"+id+"/registration", nil, ""); r.status != 200 || r.body["playerCount"] != 24.0 {
 		t.Fatalf("đăng ký sau khi bớt người giả: %d %s", r.status, r.raw)
 	}
-	h.want(h.call("boss", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 14}, ""), 200, "")
-	if r := h.call("boss", "GET", "/v1/games", nil, ""); r.body["items"].([]any)[0].(map[string]any)["playerCount"] != 15.0 {
+	h.want(h.call("boss", "POST", "/v1/games/"+id+"/admin/fake-players", map[string]any{"count": 22}, ""), 200, "")
+	if r := h.call("boss", "GET", "/v1/games", nil, ""); r.body["items"].([]any)[0].(map[string]any)["playerCount"] != 23.0 {
 		t.Fatalf("playerCount của list sau khi bớt người giả: %s", r.raw)
 	}
 
@@ -287,6 +291,23 @@ func seedMerge(t *testing.T, g *storeGame, data map[string]any) {
 	}
 }
 
+// withoutSetup là detail bỏ setup: setup là thiết lập chung của ván (icon và
+// nhãn vai của từng tuỳ chọn), không phải vai của ai.
+func withoutSetup(t *testing.T, body map[string]any) []byte {
+	t.Helper()
+	rest := map[string]any{}
+	for k, v := range body {
+		if k != "setup" {
+			rest[k] = v
+		}
+	}
+	raw, err := json.Marshal(rest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
 var roleKey = regexp.MustCompile(`"\w*[Rr]ole\w*"\s*:`)
 
 // L2 "Xong khi": JSON của GET /v1/games/{id} không có vai của người còn sống,
@@ -296,12 +317,13 @@ func TestEmulatorGameDetailHidesLivingRoles(t *testing.T) {
 	d := h.call("v1", "GET", "/v1/games/"+g.id, nil, "")
 	h.want(d, 200, "")
 	// uid của test trùng tên vai ("seer"), nên soi theo key và nhãn vai.
-	if m := roleKey.Find(d.raw); m != nil {
-		t.Fatalf("detail có key %s khi chưa ai chết: %s", m, d.raw)
+	raw := withoutSetup(t, d.body)
+	if m := roleKey.Find(raw); m != nil {
+		t.Fatalf("detail có key %s khi chưa ai chết: %s", m, raw)
 	}
 	for _, leak := range []string{`"seed"`, `"wolf"`, `"villager"`, `"Sói"`, `"Dân"`, "Tiên tri", "Phù thuỷ", "Bảo vệ", "Thợ săn"} {
-		if bytes.Contains(d.raw, []byte(leak)) {
-			t.Fatalf("detail lộ %s: %s", leak, d.raw)
+		if bytes.Contains(raw, []byte(leak)) {
+			t.Fatalf("detail lộ %s: %s", leak, raw)
 		}
 	}
 	for _, p := range d.body["players"].([]any) {
@@ -360,15 +382,16 @@ func TestEmulatorGameDetailHidesLivingRoles(t *testing.T) {
 	if top["title"] != "Bản tin đêm 1" || !strings.Contains(string(lines), "Lá bài: Thợ săn") || !strings.Contains(string(lines), "được bắn một người") {
 		t.Fatalf("feed[0] = %v", top)
 	}
+	raw = withoutSetup(t, d.body)
 	for _, leak := range []string{"Tiên tri", "Phù thuỷ", "Bảo vệ", `"wolf"`, `"villager"`} {
-		if bytes.Contains(d.raw, []byte(leak)) {
-			t.Fatalf("detail lộ %s sau khi có người chết: %s", leak, d.raw)
+		if bytes.Contains(raw, []byte(leak)) {
+			t.Fatalf("detail lộ %s sau khi có người chết: %s", leak, raw)
 		}
 	}
 
-	// 17h: V2 lên giàn với một đề cử.
+	// 20h: V2 lên giàn với một đề cử.
 	g.act(1, ww.KindNominate, "v1", time.Date(2026, 10, 16, 11, 0, 0, 0, vietnam), "v2")
-	g.advance(time.Date(2026, 10, 16, 17, 0, 0, 0, vietnam))
+	g.advance(time.Date(2026, 10, 16, 20, 0, 0, 0, vietnam))
 	d = h.call("v1", "GET", "/v1/games/"+g.id, nil, "")
 	for _, p := range d.body["players"].([]any) {
 		pm := p.(map[string]any)
@@ -473,19 +496,92 @@ func TestEmulatorGameMeAfterEndShowsAllRoles(t *testing.T) {
 	}
 }
 
-// Ván đã huỷ hay đã hết chỉ nằm trên feed thêm một ngày, để mọi người kịp thấy
-// kết quả, rồi thôi chiếm chỗ trên các kèo đang chạy.
+// Tổng kết đọc events/{seq} kể cả event riêng và inputs: người được bảo vệ chỉ
+// có trong inputs. Ván còn chạy thì /me không có tổng kết, vì nó lộ vai.
+func TestEmulatorGameMeAfterEndHasSummary(t *testing.T) {
+	g, h := runningAPIGame(t)
+	if me := h.call("v1", "GET", "/v1/games/"+g.id+"/me", nil, ""); me.body["summary"] != nil {
+		t.Fatalf("ván đang chạy mà có summary: %s", me.raw)
+	}
+	inputs := `{"actions":[{"kind":"guard","actor":"guard","targets":["v2"],"receivedAt":"2026-10-15T17:00:00Z"}]}`
+	seed(t, g.db, "games/"+g.id+"/events/100", map[string]any{"kind": "step", "seq": 100, "phaseKey": "r1/night",
+		"events": `[{"kind":"wolves_target","uid":"v1"}]`, "inputs": `{}`})
+	seed(t, g.db, "games/"+g.id+"/events/101", map[string]any{"kind": "step", "seq": 101, "phaseKey": "r1/dawn",
+		"events": `[{"kind":"death","uid":"v1","role":"villager","cause":"bite"}]`, "inputs": inputs})
+	seedMerge(t, g, map[string]any{"status": gameEnded})
+	st := g.state()
+	st.Phase, st.Winner = ww.PhaseEnded, ww.TeamVillage
+	st.Players["v1"].Alive = false
+	raw, _ := json.Marshal(st)
+	seed(t, g.db, "games/"+g.id+"/secret/state", map[string]any{"state": string(raw)})
+
+	me := h.call("v1", "GET", "/v1/games/"+g.id+"/me", nil, "")
+	h.want(me, 200, "")
+	var body struct {
+		Summary GameSummary `json:"summary"`
+	}
+	if err := json.Unmarshal(me.raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	want := []GameSummaryLine{
+		{Icon: "bite", Text: "Sói cắn V1."},
+		{Icon: "guard", Text: "Bảo vệ GUARD canh V2."},
+		{Icon: "death", Text: "V1 chết: bị sói cắn. Lá bài: Dân."},
+	}
+	if r := body.Summary.Replay; len(r) != 1 || r[0].Title != "Đêm 1" || !reflect.DeepEqual(r[0].Lines, want) {
+		t.Fatalf("replay = %+v", r)
+	}
+
+	// Doc events hỏng thì /me báo lỗi chứ không trả tổng kết thiếu bước.
+	seed(t, g.db, "games/"+g.id+"/events/102", map[string]any{"kind": "step", "seq": 102, "phaseKey": "r1/day", "events": "{"})
+	if bad := h.call("v1", "GET", "/v1/games/"+g.id+"/me", nil, ""); bad.status != 500 {
+		t.Fatalf("events hỏng: %d %s", bad.status, bad.raw)
+	}
+}
+
+// Ván đã hết nằm trên feed thêm một ngày, để mọi người kịp thấy kết quả, rồi
+// thôi chiếm chỗ trên các kèo đang chạy. Ván bị huỷ không có kết quả gì để xem
+// nên rời feed ngay.
 func TestEmulatorGameListHidesOldClosedGames(t *testing.T) {
+	g, h := runningAPIGame(t)
+	seedMerge(t, g, map[string]any{"status": gameEnded, "updatedAt": time.Now()})
+	items := h.call("outsider", "GET", "/v1/games", nil, "").body["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["status"] != gameEnded {
+		t.Fatalf("vừa hết ván: items = %v", items)
+	}
+	seedMerge(t, g, map[string]any{"updatedAt": time.Now().Add(-25 * time.Hour)})
+	if items := h.call("outsider", "GET", "/v1/games", nil, "").body["items"].([]any); len(items) != 0 {
+		t.Fatalf("hết ván quá một ngày: items = %v", items)
+	}
+}
+
+// Ván đã hết rời feed sau một ngày nhưng vẫn nằm trong lịch sử của người đã
+// chơi, để app hiện ở mục kèo hoàn thành. Người không chơi không thấy.
+func TestEmulatorGameHistoryListsEndedGamesIPlayed(t *testing.T) {
+	g, h := runningAPIGame(t)
+	if items := h.call("v1", "GET", "/v1/games/history", nil, "").body["items"].([]any); len(items) != 0 {
+		t.Fatalf("ván đang chạy mà vào lịch sử: %v", items)
+	}
+	seedMerge(t, g, map[string]any{"status": gameEnded, "updatedAt": time.Now().Add(-30 * 24 * time.Hour)})
+	items := h.call("v1", "GET", "/v1/games/history", nil, "").body["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["id"] != g.id || items[0].(map[string]any)["status"] != gameEnded {
+		t.Fatalf("người chơi: items = %v", items)
+	}
+	if items := h.call("outsider", "GET", "/v1/games/history", nil, "").body["items"].([]any); len(items) != 0 {
+		t.Fatalf("người ngoài: items = %v", items)
+	}
+}
+
+func TestEmulatorGameListHidesCancelledGames(t *testing.T) {
 	g, h := runningAPIGame(t)
 	if err := g.store.AdminCancel(context.Background(), g.id, "admin", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	items := h.call("outsider", "GET", "/v1/games", nil, "").body["items"].([]any)
-	if len(items) != 1 || items[0].(map[string]any)["status"] != "cancelled" {
-		t.Fatalf("vừa huỷ: items = %v", items)
-	}
-	seedMerge(t, g, map[string]any{"updatedAt": time.Now().Add(-25 * time.Hour)})
 	if items := h.call("outsider", "GET", "/v1/games", nil, "").body["items"].([]any); len(items) != 0 {
-		t.Fatalf("huỷ quá một ngày: items = %v", items)
+		t.Fatalf("vừa huỷ mà còn trên feed: items = %v", items)
+	}
+	// Link thẳng tới ván vẫn mở được.
+	if d := h.call("outsider", "GET", "/v1/games/"+g.id, nil, ""); d.status != 200 || d.body["status"] != gameCancelled {
+		t.Fatalf("detail ván huỷ: %d %s", d.status, d.raw)
 	}
 }

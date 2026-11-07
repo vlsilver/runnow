@@ -136,9 +136,9 @@ func TestEmulatorGameChatPings(t *testing.T) {
 	t0 := time.Now()
 	post := func(uid string, at time.Time, wantPing bool) {
 		t.Helper()
-		pinged, err := g.store.PostChat(ctx, g.id, chatWolves, "tin của "+uid, GameViewer{UID: uid}, at)
-		if err != nil || pinged != wantPing {
-			t.Fatalf("%s gửi lúc +%s: pinged = %v, %v", uid, at.Sub(t0), pinged, err)
+		res, err := g.store.PostChat(ctx, g.id, chatWolves, "tin của "+uid, GameViewer{UID: uid}, at)
+		if err != nil || res.Pinged != wantPing {
+			t.Fatalf("%s gửi lúc +%s: pinged = %v, %v", uid, at.Sub(t0), res.Pinged, err)
 		}
 	}
 	post("w1", t0, true)
