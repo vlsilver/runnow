@@ -61,6 +61,9 @@ type Config struct {
 	// ExtraWolves là số sói thêm so với bảng 1.2, lấy chỗ của Dân. Sói không
 	// vượt 1/3 số người, phần thừa bị bỏ.
 	ExtraWolves int `json:"extraWolves,omitempty"`
+	// Wolves khác 0 là bộ bài tự chỉnh: đúng Wolves sói (không vượt 1/3 số
+	// người) và mọi vai đặc biệt không bị tắt, bỏ qua bảng 1.2 và ExtraWolves.
+	Wolves int `json:"wolves,omitempty"`
 	// KmOff: ván không dùng km. Kỹ năng không cần km, phiếu nào cũng tính.
 	KmOff bool `json:"kmOff,omitempty"`
 	// SkillKm là km một vai cần cho một lượt kỹ năng; với Sói là km cho mỗi sói
@@ -182,6 +185,9 @@ func (c Config) Validate() error {
 	}
 	if c.ExtraWolves < 0 || c.ExtraWolves > MaxExtraWolves {
 		return fmt.Errorf("extraWolves phải từ 0 tới %d: %v", MaxExtraWolves, c.ExtraWolves)
+	}
+	if c.Wolves < 0 || c.Wolves > MaxPlayers/3 {
+		return fmt.Errorf("wolves phải từ 0 tới %d: %v", MaxPlayers/3, c.Wolves)
 	}
 	switch c.Vote {
 	case "", VoteCut, VoteTop, VoteFlat, VoteSolo:

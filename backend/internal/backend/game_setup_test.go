@@ -37,7 +37,7 @@ func TestGameSetupKmGame(t *testing.T) {
 	}
 	want := `# Vai
 Thêm sói = 1 sói []
-Thêm Già làng = Bật []
+Già làng = Bật []
 # Phe Sói · Đặc quyền hắc ám
 Phiếu Đôi = Bật [vote]
 Km để mở = 1.5 km []

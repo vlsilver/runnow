@@ -175,6 +175,8 @@ func TestConfigValidateRejectsBadKnobs(t *testing.T) {
 	bad := []Config{
 		{ExtraWolves: 3},
 		{ExtraWolves: -1},
+		{Wolves: -1},
+		{Wolves: 9},
 		{SkillKm: map[Role]float64{Cupid: 1}},
 		{SkillKm: map[Role]float64{Villager: 1}},
 		{SkillKm: map[Role]float64{Seer: -1}},

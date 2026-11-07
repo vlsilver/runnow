@@ -249,9 +249,23 @@ var gameSettingDefs = []gameSettingDef{
 			return float64(c.ExtraWolves)
 		},
 	},
-	extendedRoleSetting(werewolf.Elder, "Thêm Già làng",
+	{
+		// Màn tạo ván vẽ ô này trong bộ bài tự chỉnh (GameDeckPlan.WolvesKey).
+		GameSetting: GameSetting{Key: deckWolvesKey, Label: "Số sói", Type: settingNumber, Default: 0.0,
+			Min: f64(0), Max: f64(werewolf.MaxPlayers / 3), Step: f64(1), Unit: "sói", Group: groupRoles,
+			Description: "Bộ bài tự chỉnh: chia đúng số sói này (không vượt 1/3 số người) và mọi vai đang bật, Dân bù chỗ còn lại. 0 là chia theo số người."},
+		keepDefault: true,
+		apply:       func(c *werewolf.Config, v any) { c.Wolves = int(v.(float64)) },
+		read: func(c werewolf.Config) any {
+			if c.Wolves == 0 {
+				return nil
+			}
+			return float64(c.Wolves)
+		},
+	},
+	extendedRoleSetting(werewolf.Elder, "Già làng",
 		"Một Dân thành Già làng. Già làng thuộc phe Dân, chịu được một lần bị sói cắn: cú cắn đầu tiên không ai bảo vệ hay cứu thì vẫn sống, sáng ra làng chỉ thấy đêm đó không ai chết. Cú cắn sau, bị độc, bị treo hay bị bắn thì chết như thường."),
-	extendedRoleSetting(werewolf.Idiot, "Thêm Kẻ ngốc",
+	extendedRoleSetting(werewolf.Idiot, "Kẻ ngốc",
 		"Một Dân thành Kẻ ngốc. Kẻ ngốc thuộc phe Dân: bị làng treo lần đầu thì lật bài cho cả làng thấy và vẫn sống, nhưng mất quyền bỏ phiếu tới hết ván. Bị treo lần nữa, bị cắn, bị độc hay bị bắn thì chết như thường."),
 	darkSetting("darkCloak", werewolf.DarkCloak, "cloak", "Sói Tàng Hình", "Mỗi sói 1 lần cả ván",
 		"Đêm đó phe Sói chọn một sói, Tiên tri soi sói này ra Dân.",

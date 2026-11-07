@@ -144,3 +144,24 @@ func TestGameCreateRoleDescriptions(t *testing.T) {
 		}
 	}
 }
+
+// Tab Vai hiện bảng chia chuẩn theo số người (bảng 1.2) và tuỳ chọn số sói
+// của bộ bài tự chỉnh.
+func TestGameCreateDeck(t *testing.T) {
+	deck := gameCreateOptions().Deck
+	want := []GameDeckTier{{10, 10, 2, 2}, {11, 11, 3, 3}, {12, 12, 3, 4}, {13, 16, 3, 5}, {17, 20, 4, 5}, {21, 24, 5, 5}}
+	if !reflect.DeepEqual(deck.Tiers, want) {
+		t.Fatalf("bảng chia = %v, mong đợi %v", deck.Tiers, want)
+	}
+	if deck.Note == "" || deck.FixedNote == "" || deck.Preview != 12 {
+		t.Fatalf("thiếu ghi chú hoặc số người xem trước: %+v", deck)
+	}
+	var gc ww.Config
+	if err := applyGameSettings(&gc, map[string]any{deck.WolvesKey: 4.0}); err != nil || gc.Wolves != 4 {
+		t.Fatalf("%s=4 → Wolves %d, %v", deck.WolvesKey, gc.Wolves, err)
+	}
+	gc = ww.Config{}
+	if err := applyGameSettings(&gc, nil); err != nil || gc.Wolves != 0 {
+		t.Fatalf("không gửi thì vẫn chia theo số người: Wolves %d, %v", gc.Wolves, err)
+	}
+}

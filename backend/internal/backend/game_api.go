@@ -250,6 +250,8 @@ type GameCreateOptions struct {
 	Groups  []GameSettingGroup `json:"groups"`
 	Presets []GamePreset       `json:"presets"`
 	Round   GameRoundPlan      `json:"round"`
+	// Deck là bảng chia bài theo số người cho tab Vai; app cũ không đọc.
+	Deck GameDeckPlan `json:"deck"`
 }
 
 type GameRoleOption struct {

@@ -145,6 +145,63 @@ func gameRoundPlan() GameRoundPlan {
 	}
 }
 
+// GameDeckPlan là bộ bài của tab Vai. Theo số người: bot chia lúc đủ người
+// theo Tiers, vai đặc biệt thêm theo thứ tự Roles. Tự chỉnh: người tạo đặt số
+// sói vào tuỳ chọn WolvesKey (khác 0) và bật tắt từng vai, Dân bù chỗ còn lại.
+// Preview là số người app lấy để xem trước bộ bài.
+type GameDeckPlan struct {
+	Note      string         `json:"note"`
+	FixedNote string         `json:"fixedNote"`
+	WolvesKey string         `json:"wolvesKey"`
+	Preview   int            `json:"preview"`
+	Tiers     []GameDeckTier `json:"tiers"`
+}
+
+// GameDeckTier: từ From tới To người thì chia Wolves sói và Specials vai đặc
+// biệt đầu tiên.
+type GameDeckTier struct {
+	From     int `json:"from"`
+	To       int `json:"to"`
+	Wolves   int `json:"wolves"`
+	Specials int `json:"specials"`
+}
+
+const deckWolvesKey = "wolves"
+
+// gameDeckPlan đọc bảng chia từ werewolf.Composition, nên bảng trên app luôn
+// khớp với lúc bot chia thật.
+func gameDeckPlan() GameDeckPlan {
+	plan := GameDeckPlan{
+		Note:      "Bot chia lúc đủ người, theo số người thật: đông thêm sói, thêm vai. Vai thêm theo thứ tự Tiên tri, Bảo vệ, Phù thuỷ, Thợ săn, Cupid. Già làng, Kẻ ngốc thì tự bật.",
+		FixedNote: "Chia đúng số lá đã chỉnh. Người thật nhiều hay ít hơn thì Dân bù vào.",
+		WolvesKey: deckWolvesKey,
+		Preview:   12,
+	}
+	for n := werewolf.MinPlayers; n <= werewolf.MaxPlayers; n++ {
+		roles, err := werewolf.Composition(n, werewolf.Config{})
+		if err != nil {
+			panic(err) // n luôn trong khoảng Composition nhận
+		}
+		var t GameDeckTier
+		for _, r := range roles {
+			switch r {
+			case werewolf.Wolf:
+				t.Wolves++
+			case werewolf.Villager:
+			default:
+				t.Specials++
+			}
+		}
+		if k := len(plan.Tiers) - 1; k >= 0 && plan.Tiers[k].Wolves == t.Wolves && plan.Tiers[k].Specials == t.Specials {
+			plan.Tiers[k].To = n
+			continue
+		}
+		t.From, t.To = n, n
+		plan.Tiers = append(plan.Tiers, t)
+	}
+	return plan
+}
+
 // gameCreateOptions là mọi thứ màn tạo ván cần, gửi kèm danh sách ván.
 func gameCreateOptions() GameCreateOptions {
 	out := GameCreateOptions{
@@ -152,6 +209,7 @@ func gameCreateOptions() GameCreateOptions {
 		Groups:   gameSettingGroups,
 		Presets:  gamePresets,
 		Round:    gameRoundPlan(),
+		Deck:     gameDeckPlan(),
 	}
 	clock := ruleClock(werewolf.Config{})
 	for _, r := range toggleRoles {

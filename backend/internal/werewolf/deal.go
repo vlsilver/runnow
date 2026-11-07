@@ -16,7 +16,8 @@ const (
 var ErrPlayerCount = errors.New("số người chơi phải từ 10 tới 24")
 
 // Composition trả bộ vai cho n người theo bảng 1.2, thêm cfg.ExtraWolves sói vào
-// chỗ của Dân, rồi áp công tắc (R8): vai bị tắt thành Dân, số sói giữ nguyên. dryRun của Start dùng để tính điểm cân bằng.
+// chỗ của Dân, rồi áp công tắc (R8): vai bị tắt thành Dân, số sói giữ nguyên.
+// cfg.Wolves khác 0 thì bỏ bảng: đúng số sói đó và đủ vai đặc biệt đang bật. dryRun của Start dùng để tính điểm cân bằng.
 func Composition(n int, cfg Config) ([]Role, error) {
 	if n < MinPlayers || n > MaxPlayers {
 		return nil, fmt.Errorf("%w (đang có %d)", ErrPlayerCount, n)
@@ -36,6 +37,9 @@ func Composition(n int, cfg Config) ([]Role, error) {
 		wolves = 4
 	}
 	wolves = min(wolves+cfg.ExtraWolves, n/3)
+	if cfg.Wolves > 0 {
+		wolves, specials = min(cfg.Wolves, n/3), len(specialRoles)
+	}
 	roles := make([]Role, 0, n)
 	for i := 0; i < wolves; i++ {
 		roles = append(roles, Wolf)
