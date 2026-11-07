@@ -21,6 +21,18 @@ IconData gameCreateIcon(String key) => switch (key) {
 
 const _paintedRoles = {'wolf', 'seer', 'guard', 'witch', 'hunter', 'cupid'};
 
+/// Icon theo khoá backend gửi, gồm cả vai: vai có tranh vẽ thì vẽ bằng
+/// [GameRoleIconPainter], còn lại theo [gameCreateIcon].
+Widget gameKeyIcon(String key, {required Color color, double size = 20}) {
+  if (_paintedRoles.contains(key)) {
+    return SizedBox.square(
+      dimension: size,
+      child: CustomPaint(painter: GameRoleIconPainter(key, color)),
+    );
+  }
+  return Icon(gameCreateIcon(key), size: size, color: color);
+}
+
 /// Chữ nhãn nhỏ viết hoa của từng khối.
 class GameCreateLabel extends StatelessWidget {
   const GameCreateLabel(this.text, {super.key, this.trailing});
@@ -111,61 +123,91 @@ class GamePresetTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
+    // Kiểu ván không chạy (icon trăng) sáng bạc lam, còn lại hổ phách.
+    final moon = preset.icon == 'moon';
+    final accent = moon ? _M.moon : _M.amber;
+    final tile = Semantics(
       selected: selected,
       button: true,
       child: Material(
-        color: selected ? _M.amberTint : _M.panel,
+        color: selected ? (moon ? _M.moonTint : _M.amberTint) : _M.panel,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: BorderSide(
-            color: selected ? _M.amber : _M.border,
-            width: selected ? 1.5 : 1,
+            color: selected ? accent : _M.border,
+            width: selected ? 2 : 1,
           ),
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(6, 12, 6, 10),
+            padding: const EdgeInsets.fromLTRB(6, 14, 6, 12),
             child: Column(
               children: [
                 Container(
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: selected ? _M.amber : _M.raised,
+                    color: selected ? accent : _M.raised,
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Icon(
                     gameCreateIcon(preset.icon),
                     size: 24,
-                    color: selected ? _M.onAmber : _M.muted,
+                    color: selected
+                        ? (moon ? _M.onMoon : _M.onAmber)
+                        : _M.muted,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  preset.label,
+                  preset.label.toUpperCase(),
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   style: TextStyle(
-                    fontSize: 14,
+                    fontFamily: 'Barlow Condensed',
+                    fontSize: 16,
+                    height: 1,
+                    letterSpacing: 0.6,
                     fontWeight: FontWeight.w800,
-                    color: selected ? _M.amberLight : _M.inkSoft,
+                    color: selected ? _M.ink : _M.inkSoft,
                   ),
                 ),
-                if (preset.isDefault) ...[
-                  const SizedBox(height: 2),
-                  const Text(
-                    'Mặc định',
-                    style: TextStyle(fontSize: 11, color: _M.faint),
-                  ),
-                ],
               ],
             ),
           ),
         ),
       ),
+    );
+    if (!preset.isDefault) return tile;
+    // Nhãn mặc định nằm vắt trên mép ô như board.
+    return Stack(
+      clipBehavior: Clip.none,
+      fit: StackFit.passthrough,
+      alignment: Alignment.topCenter,
+      children: [
+        tile,
+        Positioned(
+          top: -8,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: _M.amber,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Text(
+              'MẶC ĐỊNH',
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1,
+                color: _M.onAmber,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

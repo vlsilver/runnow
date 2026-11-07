@@ -1,8 +1,11 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_create_tabs.dart';
+import 'package:myrun/src/games/game_skill_cards.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_providers.dart';
 import 'package:myrun/src/games/game_round_dial.dart';
@@ -291,8 +294,10 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
             : '${DateFormat('HH:mm').format(deadline)} · '
                   '${gameDayLabel(deadline)}',
         subtitle: deadline == null
-            ? 'Admin tự bấm bắt đầu'
-            : gameUntil(deadline, DateTime.now()),
+            ? 'Chạm để đặt giờ đóng'
+            : '${gameUntil(deadline, DateTime.now())}, quá giờ này không ai '
+                  'vào thêm',
+        active: deadline != null,
         onTap: _working ? null : _pickDeadline,
       ),
     );
@@ -374,49 +379,31 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
                   ),
           ),
           const SizedBox(height: 6),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final (i, p) in list.presets.indexed) ...[
-                if (i > 0) const SizedBox(width: 8),
-                Expanded(
-                  child: GamePresetTile(
-                    preset: p,
-                    selected: !_edited && p.key == preset?.key,
-                    onTap: _working ? null : () => _pickPreset(p),
+          // Ba ô cao bằng nhau dù tên dài ngắn khác nhau.
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (i, p) in list.presets.indexed) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  Expanded(
+                    child: GamePresetTile(
+                      preset: p,
+                      selected: !_edited && p.key == preset?.key,
+                      onTap: _working ? null : () => _pickPreset(p),
+                    ),
                   ),
-                ),
+                ],
               ],
-            ],
-          ),
-          if (preset != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              _edited ? 'Đã chỉnh từ kiểu ${preset.label}' : preset.summary,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12.5, color: _M.muted),
             ),
-          ],
+          ),
           const SizedBox(height: 16),
         ],
         GameCreatePanel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              GameCreateLabel(
-                'Tuỳ chỉnh',
-                trailing: _edited
-                    ? const Text(
-                        'ĐÃ CHỈNH',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1,
-                          color: _M.amber,
-                        ),
-                      )
-                    : null,
-              ),
+              const GameCreateLabel('Tuỳ chỉnh'),
               const SizedBox(height: 8),
               GameCreateTabBar(
                 groups: groups,
@@ -491,13 +478,13 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         // Độ dài vòng là tổng bốn pha trên vòng đồng hồ.
         if (s.key == 'roundHours') continue;
         if (s.key == 'startHour' || s.key == 'roundsPerDay') {
-          out.add(_scheduleWidget(s, shape));
+          out.add(_scheduleWidget(s, shape, values));
           continue;
         }
       }
       out.add(_settingWidget(s, values));
     }
-    out.addAll(_sections(live, values));
+    out.addAll(_sections(list, live, values));
     if (live.isEmpty && offNote != null) {
       out.add(GameCreateNote(icon: Icons.nightlight_round, text: offNote));
     }
@@ -538,8 +525,11 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   /// Giờ mở vòng đầu và số vòng mỗi ngày của tab Lịch khi có vòng đồng hồ:
   /// ván km chọn số vòng chia hết 24 tiếng, ván cổ điển chọn giờ mở và số vòng
   /// vừa trong ngày.
-  Widget _scheduleWidget(GameSetting s, _RoundShape shape) {
-    final total = shape.phases.fold<int>(0, (a, p) => a + p);
+  Widget _scheduleWidget(
+    GameSetting s,
+    _RoundShape shape,
+    Map<String, Object?> values,
+  ) {
     void setRounds(int n) => setState(() => _settings[s.key] = n.toDouble());
     if (s.key == 'startHour') {
       return Padding(
@@ -553,64 +543,133 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         ),
       );
     }
-    if (shape.lockEnd) {
-      final lo = (s.min ?? 1).round(), hi = (s.max ?? 6).round();
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            GameCreateLabel(s.label),
-            const SizedBox(height: 8),
-            GameRoundsSegments(
-              options: [
-                for (var n = lo; n <= hi; n++)
-                  if (24 % n == 0) n,
-              ],
-              selected: shape.rounds,
-              length: (n) => gameHours(24 * 60 ~/ n),
-              onSelect: _working ? null : setRounds,
-            ),
-          ],
-        ),
-      );
+    final lo = (s.min ?? 1).round(), hi = (s.max ?? 6).round();
+    // Ván km: vòng chia đều 24 tiếng. Ván cổ điển: chọn số vòng trước, vòng
+    // dài hơn phần mỗi vòng được thì các pha co lại cho vừa (_roundShape).
+    final asked = [for (final k in shape.keys) _number(values[k], 0).round()];
+    final sum = asked.fold<int>(0, (a, p) => a + p);
+    int length(int n) {
+      if (shape.lockEnd) return 24 * 60 ~/ n;
+      return math.min(sum, 24 * 60 ~/ n ~/ 60 * 60);
     }
-    return GameCreateStepper(
-      label: s.label,
-      hint: 'Vòng ${gameHours(total)}',
-      value: shape.rounds.toDouble(),
-      min: s.min ?? 1,
-      max: (24 * 60 ~/ total).toDouble(),
-      step: 1,
-      unit: s.unit,
-      onChanged: _working ? null : (v) => setRounds(v.round()),
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          GameCreateLabel(s.label),
+          const SizedBox(height: 8),
+          GameRoundsSegments(
+            options: [
+              for (var n = lo; n <= hi; n++)
+                if (!shape.lockEnd || 24 % n == 0) n,
+            ],
+            selected: shape.rounds,
+            length: (n) => gameHours(length(n)),
+            onSelect: _working ? null : setRounds,
+          ),
+        ],
+      ),
     );
   }
 
   /// Tuỳ chọn cùng `section` vẽ thành một khối có nhãn, theo thứ tự backend
-  /// gửi: ô số trước, rồi thẻ bật tắt thu gọn được.
-  List<Widget> _sections(List<GameSetting> live, Map<String, Object?> values) {
+  /// gửi. Lựa chọn có nhãn ngắn thành thẻ chế độ; tuỳ chọn có icon thành thẻ
+  /// kỹ năng, dòng con (parent) nằm trong thẻ cha; tuỳ chọn của vai không có
+  /// trong bộ bài thì ẩn. Còn lại: ô số trước, rồi thẻ bật tắt thu gọn được.
+  List<Widget> _sections(
+    GameList list,
+    List<GameSetting> live,
+    Map<String, Object?> values,
+  ) {
+    bool inDeck(String role) {
+      if (role == 'wolf' || values[role] == true) return true;
+      for (final o in list.roleOptions) {
+        if (o.key == role) return _roleOn(list, o);
+      }
+      return false;
+    }
+
+    final shown = [
+      for (final s in live)
+        if (s.role == null || inDeck(s.role!)) s,
+    ];
+    final cards = {
+      for (final s in shown)
+        if (s.icon != null) s.key,
+    };
     final bySection = <String, List<GameSetting>>{};
-    for (final s in live) {
+    for (final s in shown) {
       if (s.section case final section?) {
         (bySection[section] ??= []).add(s);
       }
     }
+    void set(String key, Object v) => setState(() => _settings[key] = v);
+    Widget card(GameSetting s, List<GameSetting> items) {
+      final value = values[s.key];
+      final on = s.type == GameSetting.toggle
+          ? value == true
+          : _number(value, 0) > 0;
+      return GameSkillCard(
+        setting: s,
+        warn: on ? s.warn : null,
+        trailing: s.type == GameSetting.toggle
+            ? Switch(
+                value: value == true,
+                onChanged: _working ? null : (v) => set(s.key, v),
+              )
+            : GameSkillStepper(
+                label: s.label,
+                value: _number(value, s.min ?? 0),
+                min: s.min ?? double.negativeInfinity,
+                max: s.max ?? double.infinity,
+                step: s.step ?? 1,
+                unit: s.unit,
+                onChanged: _working ? null : (v) => set(s.key, v),
+              ),
+        children: [
+          for (final c in items)
+            if (c.parent == s.key && c.type == GameSetting.number)
+              GameSkillSubLine(
+                setting: c,
+                value: _number(values[c.key], c.min ?? 0),
+                onChanged: _working ? null : (v) => set(c.key, v),
+              ),
+        ],
+      );
+    }
+
+    Widget plain(GameSetting s) {
+      if (s.type == GameSetting.choice &&
+          s.choices.any((c) => c.hint != null)) {
+        return GameModeCards(
+          setting: s,
+          value: values[s.key],
+          onChanged: _working ? null : (v) => set(s.key, v),
+        );
+      }
+      return _settingWidget(s, values);
+    }
+
     return [
       for (final MapEntry(key: label, value: items) in bySection.entries) ...[
         const SizedBox(height: 12),
         GameCreateLabel(label),
         const SizedBox(height: 8),
         for (final s in items)
-          if (s.type != GameSetting.toggle) _settingWidget(s, values),
+          if (s.parent != null && cards.contains(s.parent))
+            const SizedBox.shrink()
+          else if (s.icon != null)
+            card(s, items)
+          else if (s.type != GameSetting.toggle)
+            plain(s),
         for (final s in items)
-          if (s.type == GameSetting.toggle)
+          if (s.type == GameSetting.toggle && s.icon == null)
             GamePowerCard(
               setting: s,
               on: values[s.key] == true,
-              onChanged: _working
-                  ? null
-                  : (v) => setState(() => _settings[s.key] = v),
+              onChanged: _working ? null : (v) => set(s.key, v),
             ),
       ],
     ];

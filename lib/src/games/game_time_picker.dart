@@ -364,6 +364,7 @@ class GameHourGrid extends StatelessWidget {
 }
 
 /// Thẻ lớn của tab Lịch: icon, nhãn nhỏ, giá trị, một dòng phụ; chạm để đổi.
+/// [active] false (chưa đặt gì) thì thẻ tối, icon xám.
 class GameScheduleCard extends StatelessWidget {
   const GameScheduleCard({
     super.key,
@@ -372,6 +373,7 @@ class GameScheduleCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.active = true,
   });
 
   final IconData icon;
@@ -379,54 +381,83 @@ class GameScheduleCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback? onTap;
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: _M.raised,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: _M.border),
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(16),
+      side: BorderSide(color: active ? _M.amberLine : _M.border),
+    );
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        shape: shape,
+        gradient: active
+            ? const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [_M.amberGlow, _M.panel],
+              )
+            : null,
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Icon(icon, color: _M.amberBright),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      caption,
-                      style: const TextStyle(
-                        fontSize: 10.5,
-                        letterSpacing: 1.2,
-                        fontWeight: FontWeight.w800,
-                        color: _M.faint,
-                      ),
-                    ),
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: _M.ink,
-                      ),
-                    ),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(fontSize: 12, color: _M.faint),
-                    ),
-                  ],
+      child: Material(
+        type: MaterialType.transparency,
+        shape: shape,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: active ? _M.amber : _M.raised,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 22,
+                    color: active ? _M.onAmber : _M.muted,
+                  ),
                 ),
-              ),
-              const Icon(Icons.chevron_right_rounded, color: _M.faint),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        caption,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          letterSpacing: 1.3,
+                          fontWeight: FontWeight.w700,
+                          color: _M.faint,
+                        ),
+                      ),
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontFamily: 'Barlow Condensed',
+                          fontSize: 22,
+                          height: 1.1,
+                          letterSpacing: 0.4,
+                          fontWeight: FontWeight.w800,
+                          color: _M.ink,
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(fontSize: 12, color: _M.faint),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded, color: _M.muted),
+              ],
+            ),
           ),
         ),
       ),

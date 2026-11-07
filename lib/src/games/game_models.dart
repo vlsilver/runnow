@@ -222,6 +222,9 @@ class GameSetting {
     this.section,
     this.hint,
     this.warn,
+    this.role,
+    this.icon,
+    this.parent,
   });
 
   factory GameSetting.fromJson(Map<String, dynamic> json) {
@@ -247,6 +250,9 @@ class GameSetting {
       section: _optString(json['section']),
       hint: _optString(json['hint']),
       warn: _optString(json['warn']),
+      role: _optString(json['role']),
+      icon: _optString(json['icon']),
+      parent: _optString(json['parent']),
     );
   }
 
@@ -287,6 +293,15 @@ class GameSetting {
   /// Cái giá người tạo ván cần cân, hiện khi mở thẻ.
   final String? warn;
 
+  /// Vai mà tuỳ chọn này chỉnh; có thì chỉ hiện khi bộ bài có vai đó.
+  final String? role;
+
+  /// Có thì vẽ thành thẻ kỹ năng với icon này.
+  final String? icon;
+
+  /// Key của thẻ chứa tuỳ chọn này: vẽ thành dòng con trong thẻ đó.
+  final String? parent;
+
   /// [values] là giá trị hiện tại theo key, đã gồm mặc định.
   bool enabledBy(Map<String, Object?> values) =>
       enabledIf.every((c) => values[c.key] == c.equals);
@@ -297,6 +312,8 @@ class GameSettingChoice {
     required this.value,
     required this.label,
     required this.description,
+    this.hint,
+    this.details = const [],
   });
 
   factory GameSettingChoice.fromJson(Map<String, dynamic> json) {
@@ -304,12 +321,41 @@ class GameSettingChoice {
       value: _string(json['value']),
       label: _string(json['label']),
       description: _string(json['description']),
+      hint: _optString(json['hint']),
+      details: _list(json['details'], GameSettingDetail.fromJson),
     );
   }
 
   final String value;
   final String label;
   final String description;
+
+  /// Một dòng ngắn dưới tên lựa chọn.
+  final String? hint;
+
+  /// Các mục giải thích hiện khi bấm "Chi tiết".
+  final List<GameSettingDetail> details;
+}
+
+class GameSettingDetail {
+  const GameSettingDetail({
+    required this.icon,
+    required this.title,
+    required this.text,
+  });
+
+  factory GameSettingDetail.fromJson(Map<String, dynamic> json) {
+    return GameSettingDetail(
+      icon: _string(json['icon']),
+      title: _string(json['title']),
+      text: _string(json['text']),
+    );
+  }
+
+  /// Tên biểu tượng do backend chọn; app không biết tên thì vẽ chấm.
+  final String icon;
+  final String title;
+  final String text;
 }
 
 class GameListItem {

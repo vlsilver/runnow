@@ -321,6 +321,10 @@ class RunNowMoonlitTokens {
   // Bốn pha của một vòng trên màn tạo ván: đêm bạc lam, rạng sáng tím,
   // ngày hổ phách, biểu quyết đỏ gạch.
   static const phaseNight = Color(0xFF7E93C9);
+  // Kiểu ván không chạy (icon trăng) chọn thì sáng bạc lam thay hổ phách.
+  static const moon = Color(0xFF9FB4E0);
+  static const moonTint = Color(0x2E9FB4E0);
+  static const onMoon = Color(0xFF0A0F1A);
   static const phaseDawn = Color(0xFF9A7FD1);
   static const phaseDay = amber;
   static const phaseTrial = Color(0xFFD9765F);

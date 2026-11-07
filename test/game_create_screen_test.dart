@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:myrun/src/games/game_create_screen.dart';
 import 'package:myrun/src/games/game_create_tabs.dart';
 import 'package:myrun/src/games/game_round_dial.dart';
+import 'package:myrun/src/games/game_skill_cards.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/run_contracts/run_contract_analytics.dart';
 import 'package:myrun/src/screens/run_contract_create_screen.dart';
@@ -330,6 +331,120 @@ Map<String, dynamic> _darkList() {
   return list;
 }
 
+// Tab Kỹ năng theo luật km: chế độ có Chi tiết, thẻ km mỗi lượt có icon, dòng
+// con theo parent, thẻ vai theo role, Top bật bằng công tắc.
+Map<String, dynamic> _skillList() {
+  final list = _tabbedList();
+  final options = list['createOptions'] as Map<String, dynamic>;
+  const kmOn = [
+    {'key': 'kmOff', 'equals': false},
+  ];
+  Map<String, Object> km(String key, String label, String hint, String icon) =>
+      {
+        'key': key,
+        'label': label,
+        'description': '$label mô tả.',
+        'type': 'number',
+        'default': 1,
+        'min': 0,
+        'max': 20,
+        'step': 0.5,
+        'unit': 'km',
+        'group': 'km',
+        'section': 'Km mỗi lượt',
+        'hint': hint,
+        'icon': icon,
+        'enabledIf': kmOn,
+      };
+  options['settings'] = <Object>[
+    for (final s in options['settings'] as List)
+      if ((s as Map)['key'] != 'skillKm') s,
+    {
+      'key': 'vote',
+      'label': 'Chế độ dùng kỹ năng',
+      'description': 'Km chốt 22h quyết định ai dùng được kỹ năng.',
+      'type': 'choice',
+      'default': 'cut',
+      'group': 'km',
+      'section': 'Chế độ dùng kỹ năng',
+      'enabledIf': kmOn,
+      'choices': [
+        {
+          'value': 'cut',
+          'label': 'Theo nhóm',
+          'hint': 'Km cả nhóm chia ra số lượt',
+          'description': 'Cộng km cả nhóm.',
+          'details': [
+            {'icon': 'sum', 'title': 'Cách tính', 'text': 'Cộng km cả nhóm.'},
+          ],
+        },
+        {
+          'value': 'solo',
+          'label': 'Riêng',
+          'hint': 'Ai đủ km người đó dùng',
+          'description': 'Ai đủ km thì dùng.',
+          'details': [
+            {'icon': 'one', 'title': 'Cách tính', 'text': 'Ai đủ km.'},
+          ],
+        },
+      ],
+    },
+    km('kmPerUnit', 'Biểu quyết', 'Mọi người · km một phiếu', 'vote'),
+    {
+      'key': 'maxHang',
+      'label': 'Treo tối đa mỗi vòng',
+      'description': 'Số người lên giàn mỗi vòng.',
+      'type': 'number',
+      'default': 3,
+      'min': 1,
+      'max': 3,
+      'step': 1,
+      'unit': 'người',
+      'group': 'km',
+      'section': 'Km mỗi lượt',
+      'parent': 'kmPerUnit',
+    },
+    {
+      ...km('wolfKm', 'Bầu cắn', 'Phe Sói · km một phiếu', 'wolf'),
+      'default': 0,
+      'warn': 'Dễ lộ sói',
+    },
+    {...km('seerKm', 'Tiên tri soi', 'Tiên tri', 'seer'), 'role': 'seer'},
+    {...km('hunterKm', 'Thợ săn bắn', 'Thợ săn', 'hunter'), 'role': 'hunter'},
+    {
+      'key': 'topOn',
+      'label': 'Top N được x phiếu',
+      'description': 'Người chạy nhiều nhất được nhiều phiếu hơn.',
+      'type': 'toggle',
+      'default': false,
+      'group': 'km',
+      'section': 'Đặc quyền',
+      'hint': 'Người chạy nhiều nhất',
+      'icon': 'bolt',
+      'enabledIf': kmOn,
+    },
+    {
+      'key': 'topWeight',
+      'label': 'Phiếu mỗi người',
+      'description': 'Mỗi người trong top được bấy nhiêu phiếu.',
+      'type': 'number',
+      'default': 2,
+      'min': 2,
+      'max': 5,
+      'step': 1,
+      'unit': 'phiếu',
+      'group': 'km',
+      'section': 'Đặc quyền',
+      'parent': 'topOn',
+      'enabledIf': [
+        {'key': 'kmOff', 'equals': false},
+        {'key': 'topOn', 'equals': true},
+      ],
+    },
+  ];
+  return list;
+}
+
 Map<String, dynamic> _createBody(FakeGameBackend backend) =>
     jsonDecode(
           backend.requests
@@ -517,11 +632,26 @@ void main() {
   });
 
   group('tabbed form', () {
+    testWidgets('only the default preset wears the default badge', (
+      tester,
+    ) async {
+      backend.list = _tabbedList();
+      await pumpScreen(tester);
+
+      final badge = find.text('MẶC ĐỊNH');
+      expect(badge, findsOneWidget);
+      // Nhãn vắt trên ô Chuẩn PSC, cùng cột và nằm trên mép ô.
+      final std = tester.getRect(find.text('CHUẨN PSC'));
+      final at = tester.getRect(badge);
+      expect((at.center.dx - std.center.dx).abs(), lessThan(1));
+      expect(at.bottom, lessThan(std.top));
+    });
+
     testWidgets('a preset fills the settings it sends', (tester) async {
       backend.list = _tabbedList();
       await pumpScreen(tester);
 
-      await tester.tap(find.text('Cổ điển'));
+      await tester.tap(find.text('CỔ ĐIỂN'));
       await tester.pump();
       await tester.tap(find.text('Mở ván'));
       await tester.pumpAndSettle();
@@ -533,27 +663,30 @@ void main() {
       backend.list = _tabbedList();
       await pumpScreen(tester);
 
-      expect(find.text('Ván tuần quen thuộc'), findsOneWidget);
-      expect(find.text('ĐÃ CHỈNH'), findsNothing);
+      // Kiểu ván không còn dòng tóm tắt bên dưới.
+      expect(find.text('Ván tuần quen thuộc'), findsNothing);
       await tester.tap(find.text('Mở ván'));
       await tester.pumpAndSettle();
 
       expect(_createBody(backend).containsKey('settings'), isFalse);
     });
 
-    testWidgets('an edit goes on top of the preset and marks the form', (
+    testWidgets('an edit goes on top of the preset and unselects its tile', (
       tester,
     ) async {
       backend.list = _tabbedList();
       await pumpScreen(tester);
+      final selectedTile = find.byWidgetPredicate(
+        (w) => w is GamePresetTile && w.selected,
+      );
+      expect(selectedTile, findsOneWidget);
 
       await tester.tap(find.text('Km'));
       await tester.pump();
       await tester.tap(find.byTooltip('Tăng Km mở kỹ năng'));
       await tester.pump();
       expect(find.text('1.5 km'), findsOneWidget);
-      expect(find.text('ĐÃ CHỈNH'), findsOneWidget);
-      expect(find.text('Đã chỉnh từ kiểu Chuẩn PSC'), findsOneWidget);
+      expect(selectedTile, findsNothing);
       await tester.tap(find.text('Mở ván'));
       await tester.pumpAndSettle();
 
@@ -574,7 +707,7 @@ void main() {
       expect(find.text('Nhắc đề cử lúc 18h'), findsOneWidget);
       expect(find.byTooltip('Giảm Độ dài một vòng'), findsNothing);
 
-      await tester.tap(find.text('Cổ điển'));
+      await tester.tap(find.text('CỔ ĐIỂN'));
       await tester.pump();
       for (var i = 0; i < 6; i++) {
         await tester.tap(find.byTooltip('Giảm Độ dài một vòng'));
@@ -739,13 +872,65 @@ void main() {
       expect(_createBody(backend)['settings'], {'darkVote': true});
     });
 
+    testWidgets(
+      'the skill tab draws mode cards, skill cards and nested lines',
+      (tester) async {
+        backend.list = _skillList();
+        await pumpScreen(tester);
+
+        await tester.tap(find.text('Km'));
+        await tester.pump();
+        expect(find.text('Km cả nhóm chia ra số lượt'), findsOneWidget);
+        expect(find.text('Ai đủ km người đó dùng'), findsOneWidget);
+        Finder inCard(String card, Finder f) => find.descendant(
+          of: find.widgetWithText(GameSkillCard, card),
+          matching: f,
+        );
+        expect(
+          inCard('Biểu quyết', find.text('Treo tối đa mỗi vòng')),
+          findsOneWidget,
+        );
+        // Chỉ vai có trong bộ bài mới có thẻ.
+        expect(find.text('Tiên tri soi'), findsOneWidget);
+        expect(find.text('Thợ săn bắn'), findsNothing);
+        // Bầu cắn 0 km thì chưa cảnh báo.
+        expect(find.text('⚠ Dễ lộ sói'), findsNothing);
+        expect(find.text('Phiếu mỗi người'), findsNothing);
+
+        await tester.tap(find.text('Riêng'));
+        await tester.tap(find.byTooltip('Tăng Bầu cắn'));
+        await tester.tap(inCard('Top N được x phiếu', find.byType(Switch)));
+        await tester.pump();
+        expect(find.text('⚠ Dễ lộ sói'), findsOneWidget);
+        expect(
+          inCard('Top N được x phiếu', find.text('Phiếu mỗi người')),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.text('Chi tiết').first);
+        await tester.pumpAndSettle();
+        expect(find.text('Cách tính'), findsOneWidget);
+        expect(find.text('Cộng km cả nhóm.'), findsWidgets);
+        await tester.tapAt(const Offset(400, 40));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Mở ván'));
+        await tester.pumpAndSettle();
+        expect(_createBody(backend)['settings'], {
+          'vote': 'solo',
+          'wolfKm': 0.5,
+          'topOn': true,
+        });
+      },
+    );
+
     testWidgets('a classic round loses a whole hour from its last phase', (
       tester,
     ) async {
       backend.list = _phaseList();
       await pumpScreen(tester);
 
-      await tester.tap(find.text('Cổ điển'));
+      await tester.tap(find.text('CỔ ĐIỂN'));
       await tester.pump();
       await tester.tap(find.text('Vòng chơi'));
       await tester.pump();
@@ -766,6 +951,45 @@ void main() {
       });
     });
 
+    testWidgets('a classic game picks 2 rounds first and its phases halve', (
+      tester,
+    ) async {
+      backend.list = _phaseList();
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('CỔ ĐIỂN'));
+      await tester.pump();
+      await tester.tap(find.bySemanticsLabel('2 vòng'));
+      await tester.pump();
+      await tester.tap(find.text('Vòng chơi'));
+      await tester.pump();
+      // Vòng 24h (2h/10h/10h/2h) co còn 12h: 1h/5h/5h/1h từ 22h.
+      expect(find.text('12h'), findsOneWidget);
+      expect(find.textContaining('9h – 10h', findRichText: true), findsOne);
+      await tester.tap(find.text('Mở ván'));
+      await tester.pumpAndSettle();
+
+      expect(_createBody(backend)['settings'], {
+        'kmOff': true,
+        'roundsPerDay': 2,
+        'nightMin': 60,
+        'dawnMin': 300,
+        'dayMin': 300,
+        'trialMin': 60,
+      });
+    });
+
+    testWidgets('the preset tiles are the same height', (tester) async {
+      backend.list = _tabbedList();
+      await pumpScreen(tester);
+
+      final heights = {
+        for (final t in tester.widgetList(find.byType(GamePresetTile)))
+          tester.getSize(find.byWidget(t)).height,
+      };
+      expect(heights, hasLength(1));
+    });
+
     testWidgets('a tab whose settings are all off shows its note', (
       tester,
     ) async {
@@ -777,7 +1001,7 @@ void main() {
       expect(find.text('Km mở kỹ năng'), findsOneWidget);
       expect(find.text('Ván không dùng km.'), findsNothing);
 
-      await tester.tap(find.text('Cổ điển'));
+      await tester.tap(find.text('CỔ ĐIỂN'));
       await tester.pump();
       expect(find.text('Km mở kỹ năng'), findsNothing);
       expect(find.text('Ván không dùng km.'), findsOneWidget);
