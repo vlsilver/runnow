@@ -701,6 +701,14 @@ func (r *outboxRenderer) render(key, tpl, raw string) (outboxText, error) {
 		if err = json.Unmarshal([]byte(raw), &p); err == nil {
 			text = p.text(r.name)
 		}
+	case tplBotSay:
+		var d struct {
+			Name string `json:"name"`
+			Text string `json:"text"`
+		}
+		if err = json.Unmarshal([]byte(raw), &d); err == nil {
+			text = "<b>" + html.EscapeString(d.Name) + "</b>\n" + html.EscapeString(d.Text)
+		}
 	case tplNight:
 		var d struct {
 			Round int `json:"round"`

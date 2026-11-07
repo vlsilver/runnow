@@ -61,6 +61,10 @@ type Config struct {
 	// NoTelegram: ván chỉ chơi trong app. Bot không đăng gì lên Telegram,
 	// đăng ký không cần liên kết Telegram hay ở trong group.
 	NoTelegram bool `json:"noTelegram,omitempty"`
+	// BotName, BotPersona: bot riêng của ván trong phòng chung, chủ phòng đặt
+	// tên và tính cách. Tên rỗng là ván không có bot.
+	BotName    string `json:"botName,omitempty"`
+	BotPersona string `json:"botPersona,omitempty"`
 	// ExtraWolves là số sói thêm so với bảng 1.2, lấy chỗ của Dân. Sói không
 	// vượt 1/3 số người, phần thừa bị bỏ.
 	ExtraWolves int `json:"extraWolves,omitempty"`

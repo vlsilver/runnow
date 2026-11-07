@@ -71,6 +71,7 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/schedule-tick", s.scheduleTick)
 	s.route("POST /tasks/agent-dm", s.agentDM)
 	s.route("POST /tasks/agent-turn", s.agentTurn)
+	s.route("POST "+roomBotPath, s.gameRoomBot)
 	s.route("POST /tasks/agent-learn", s.agentLearn)
 	s.route("POST /tasks/home-digest", s.homeDigest)
 	s.route("POST /tasks/rank-close", s.rankClose)

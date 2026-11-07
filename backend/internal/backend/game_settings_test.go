@@ -8,13 +8,14 @@ import (
 )
 
 // Không gửi settings (app cũ) thì ván mới theo luật km: Theo nhóm, mỗi vai
-// 1 km một lượt, sói nào cũng có phiếu cắn, tối đa 3 người lên giàn.
+// 1 km một lượt, sói nào cũng có phiếu cắn, tối đa 3 người lên giàn, có bot
+// tên Cú Đêm trong phòng chung.
 func TestGameSettingsDefaults(t *testing.T) {
 	gc := ww.Config{KmPerUnit: 2}
 	if err := applyGameSettings(&gc, nil); err != nil {
 		t.Fatal(err)
 	}
-	want := ww.Config{KmPerUnit: 2, Vote: ww.VoteCut, Ruleset: ww.RulesetKm, MaxHang: 3,
+	want := ww.Config{KmPerUnit: 2, Vote: ww.VoteCut, Ruleset: ww.RulesetKm, MaxHang: 3, BotName: "Cú Đêm",
 		SkillKm: map[ww.Role]float64{ww.Wolf: 0, ww.Seer: 1, ww.Guard: 1, ww.Witch: 1, ww.Hunter: 1}}
 	if !reflect.DeepEqual(gc, want) {
 		t.Fatalf("config = %+v, mong đợi %+v", gc, want)
@@ -31,7 +32,7 @@ func TestGameSettingsApplied(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := ww.Config{
-		ExtraWolves: 1, KmPerUnit: 2.5, Ruleset: ww.RulesetKm, Vote: ww.VoteSolo, MaxHang: 1, TopVoters: 4, TopWeight: 3,
+		ExtraWolves: 1, KmPerUnit: 2.5, Ruleset: ww.RulesetKm, Vote: ww.VoteSolo, MaxHang: 1, TopVoters: 4, TopWeight: 3, BotName: "Cú Đêm",
 		SkillKm: map[ww.Role]float64{ww.Wolf: 2, ww.Seer: 0, ww.Guard: 1.5, ww.Witch: 3, ww.Hunter: 1},
 	}
 	if !reflect.DeepEqual(gc, want) {

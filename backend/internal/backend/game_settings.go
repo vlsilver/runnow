@@ -5,6 +5,8 @@ import (
 	"math"
 	"net/http"
 	"slices"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/vlsilver/runnow/backend/internal/werewolf"
 )
@@ -17,8 +19,9 @@ type GameSetting struct {
 	Label       string `json:"label"`
 	Description string `json:"description"`
 	// Type là "toggle" (bool), "number" (Min..Max, bước Step), "choice" (một
-	// trong Choices) hoặc "phase" (như number: độ dài một pha, phút; app vẽ
-	// chung bốn pha thành vòng đồng hồ, app cũ không biết type này nên ẩn).
+	// trong Choices), "phase" (như number: độ dài một pha, phút; app vẽ
+	// chung bốn pha thành vòng đồng hồ, app cũ không biết type này nên ẩn) hoặc
+	// "text" (chuỗi tối đa Max ký tự, Lines dòng nhập; app cũ cũng ẩn).
 	Type    string              `json:"type"`
 	Default any                 `json:"default"`
 	Min     *float64            `json:"min,omitempty"`
@@ -48,6 +51,8 @@ type GameSetting struct {
 	// Parent là key của thẻ chứa tuỳ chọn này (cùng Section, đứng trước); app
 	// vẽ thành dòng con trong thẻ đó, thẻ cha ẩn thì vẽ như thường.
 	Parent string `json:"parent,omitempty"`
+	// Lines là số dòng của ô nhập "text"; 1 là ô một dòng.
+	Lines int `json:"lines,omitempty"`
 }
 
 type GameSettingChoice struct {
@@ -80,6 +85,7 @@ const (
 	// settingRoundPhases: danh sách bốn pha (phút) của từng vòng trong ngày.
 	// App cũ không biết loại này nên không vẽ, không gửi.
 	settingRoundPhases = "roundPhases"
+	settingText        = "text"
 )
 
 // gameSettingDef là một tuỳ chọn kèm cách áp vào werewolf.Config. keepDefault:
@@ -466,6 +472,30 @@ var gameSettingDefs = []gameSettingDef{
 		apply: func(c *werewolf.Config, v any) { c.NoTelegram = !v.(bool) },
 		read:  func(c werewolf.Config) any { return !c.NoTelegram },
 	},
+	{
+		GameSetting: GameSetting{Key: "botName", Label: "Tên bot của ván", Type: settingText, Default: "Cú Đêm", Max: f64(roomBotNameMax), Lines: 1, Group: groupTalk,
+			Description: "Gọi tên này trong Phòng chung thì bot trả lời. Để trống là ván không có bot."},
+		keepDefault: true,
+		apply:       func(c *werewolf.Config, v any) { c.BotName = strings.TrimSpace(v.(string)) },
+		read:        textRead(func(c werewolf.Config) string { return c.BotName }),
+	},
+	{
+		GameSetting: GameSetting{Key: "botPersona", Label: "Tính cách bot", Type: settingText, Default: "", Max: f64(roomBotPersonaMax), Lines: 4, Group: groupTalk,
+			Description: "Bot nói chuyện theo tính cách này. Bot chỉ biết những gì cả phòng thấy, không biết vai của ai."},
+		keepDefault: true,
+		apply:       func(c *werewolf.Config, v any) { c.BotPersona = strings.TrimSpace(v.(string)) },
+		read:        textRead(func(c werewolf.Config) string { return c.BotPersona }),
+	},
+}
+
+// textRead: ô chữ để trống thì không hiện ở phần xem lại thiết lập.
+func textRead(get func(werewolf.Config) string) func(werewolf.Config) any {
+	return func(c werewolf.Config) any {
+		if s := get(c); s != "" {
+			return s
+		}
+		return nil
+	}
 }
 
 // Khối của tab Kỹ năng, theo thứ tự trên màn tạo ván.
@@ -567,6 +597,17 @@ func (d gameSettingDef) check(v any) error {
 			return nil
 		}
 		return invalidSetting(d.Key, "không có lựa chọn này")
+	case settingText:
+		s, ok := v.(string)
+		if !ok {
+			return invalidSetting(d.Key, "phải là chữ")
+		}
+		if n := utf8.RuneCountInString(strings.TrimSpace(s)); n > int(*d.Max) {
+			return invalidSetting(d.Key, fmt.Sprintf("dài tối đa %d ký tự", int(*d.Max)))
+		}
+		if d.Lines == 1 && strings.ContainsAny(s, "\r\n") {
+			return invalidSetting(d.Key, "chỉ một dòng")
+		}
 	}
 	return nil
 }

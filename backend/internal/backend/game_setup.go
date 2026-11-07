@@ -48,9 +48,10 @@ func gameSetupFor(c werewolf.Config) []GameSetupSection {
 	shown := map[string]bool{}
 	for _, d := range gameSettingDefs {
 		v := values[d.Key]
-		// Bật tắt chỉ hiện khi khác mặc định: phần lớn mặc định tắt nên hiện
-		// cái đang bật; Telegram mặc định bật nên chỉ hiện khi ván tắt nó.
-		if v == nil || !settingEnabled(d.EnabledIf, values) || (d.Type == settingToggle && v == d.Default) {
+		// Bật tắt và ô chữ chỉ hiện khi khác mặc định: phần lớn mặc định tắt nên
+		// hiện cái đang bật; Telegram mặc định bật nên chỉ hiện khi ván tắt nó;
+		// tên bot mặc định đã có ở dòng nhắc trong phòng chung.
+		if v == nil || !settingEnabled(d.EnabledIf, values) || ((d.Type == settingToggle || d.Type == settingText) && v == d.Default) {
 			continue
 		}
 		title := d.Section
@@ -101,6 +102,8 @@ func (d gameSettingDef) setupValue(v any) string {
 		return s
 	case settingPhase:
 		return formatMinutes(int(v.(float64)))
+	case settingText:
+		return v.(string)
 	case settingRoundPhases:
 		var rounds []string
 		for i, r := range v.([]any) {

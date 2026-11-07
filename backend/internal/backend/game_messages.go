@@ -55,6 +55,7 @@ const (
 	tplPick     = "pick"      // group: tin mới cho một lần đề cử/biểu quyết (pick)
 	tplChatPing = "chat_ping" // dm: có tin mới trong chat phe ở app
 	tplNight    = "night"     // dm: vào đêm mà không có lượt mới (nightMessages)
+	tplBotSay   = "bot_say"   // group: 3i đăng thay bot của ván câu nó nói trong phòng chung
 )
 
 // publicEvent trả bản công khai của e, hoặc false nếu e chỉ dành cho người

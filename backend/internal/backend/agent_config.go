@@ -41,6 +41,11 @@ var agentConfigFields = []agentConfigField{
 			"0 là không giới hạn. Không tính 3i trong group Telegram, coach và vẽ thẻ buổi chạy (có trần riêng). Tiền tính theo bảng giá model bên dưới.",
 	},
 	{
+		Key: "roomBotDailyBudgetUsd", Label: "Trần tiền bot của ván Ma Sói mỗi ngày", Kind: "number", Unit: "USD/ngày", Min: 0, Max: 1000, Default: roomBotPool.capDefault,
+		Help: "Tổng tiền gọi AI của bot riêng mọi ván Ma Sói trong một ngày giờ VN. Mỗi ván còn giới hạn 40 lần trả lời mỗi ngày. " +
+			"Chạm trần thì bot các ván nói câu nghỉ tới 0h; admin đã liên kết Telegram nhận một tin báo. 0 là không giới hạn.",
+	},
+	{
 		Key: "runCardArtDailyBudgetUsd", Label: "Trần tiền vẽ thẻ buổi chạy mỗi ngày", Kind: "number", Unit: "USD/ngày", Min: 0, Max: 1000, Default: runCardArtPool.capDefault,
 		Help: "Tổng tiền gọi AI vẽ tranh cho thẻ buổi chạy trong một ngày giờ VN, mọi người cộng lại. Mỗi thẻ vẽ một lần. " +
 			"Chạm trần thì lượt vẽ mới báo hết lượt tới 0h, người dùng vẽ lại được hôm sau; admin đã liên kết Telegram nhận một tin báo. " +

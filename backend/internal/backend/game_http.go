@@ -75,12 +75,15 @@ func (s *Server) gameRoutes() {
 			return invalidRequest()
 		}
 		id := r.PathValue("id")
-		pinged, err := s.deps.Games.PostChat(r.Context(), id, r.PathValue("key"), body.Text, v, time.Now())
+		res, err := s.deps.Games.PostChat(r.Context(), id, r.PathValue("key"), body.Text, v, time.Now())
 		if err != nil {
 			return err
 		}
-		if pinged {
+		if res.Pinged {
 			s.kickGameFlush(r.Context(), id)
+		}
+		if res.BotSeq > 0 {
+			s.kickRoomBot(r.Context(), id, res.BotSeq)
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
 	}))

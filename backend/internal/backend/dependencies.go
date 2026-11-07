@@ -52,6 +52,9 @@ type Dependencies struct {
 	// ManagedBots là MyBot trên Telegram; nil khi chưa cấu hình bot quản lý
 	// (Config.MybotEnabled).
 	ManagedBots *ManagedBotService
+	// RoomBot là bot riêng của từng ván Ma Sói trong phòng chung; chỉ có trên
+	// service có Gemini (bot).
+	RoomBot *GameRoomBot
 	// Learn là task bot tự học ký ức; nil khi AGENT_LEARN chưa bật.
 	Learn *LearnService
 	// HomeDigest viết điểm tin buổi sáng; nil khi HOME_DIGEST chưa bật hay
@@ -178,6 +181,9 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 				d.AgentBrain.SetRoomOut(d.ManagedBots.roomOut)
 				d.AgentBrain.SetRoomNudge(d.ManagedBots.roomNudge)
 			}
+			// Bot của các ván có trần riêng, để ván đông người không làm bot cá
+			// nhân câm theo và ngược lại.
+			d.RoomBot = NewGameRoomBot(d.Games, budgetLearnLLM{inner: genaiLearnLLM{client: genaiClient, model: config.AgentModel}, model: config.AgentModel, budget: NewRoomBotBudget(db, adminNotifier(d.Games, telegram))})
 			if config.HomeDigest {
 				d.HomeDigest = NewHomeDigestService(db, genaiDigestWriter{client: genaiClient, model: config.GeminiModel}, config.GeminiModel)
 			}

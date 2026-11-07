@@ -133,6 +133,8 @@ func TestGameSettingsReadBack(t *testing.T) {
 		case settingRoundPhases:
 			v = []any{[]any{60.0, 300.0, 300.0, 60.0}, []any{120.0, 240.0, 240.0, 120.0}}
 			in["roundsPerDay"] = 2.0
+		case settingText:
+			v = "Bi"
 		default:
 			v = *d.Max
 		}
