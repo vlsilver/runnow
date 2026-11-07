@@ -42,6 +42,12 @@ type GameSetting struct {
 	Warn string `json:"warn,omitempty"`
 	// Role: tuỳ chọn của một vai; app chỉ hiện khi vai đó có trong bộ bài.
 	Role string `json:"role,omitempty"`
+	// Icon là tên biểu tượng; có thì app vẽ tuỳ chọn thành thẻ kỹ năng có nút
+	// Chi tiết mở Description.
+	Icon string `json:"icon,omitempty"`
+	// Parent là key của thẻ chứa tuỳ chọn này (cùng Section, đứng trước); app
+	// vẽ thành dòng con trong thẻ đó, thẻ cha ẩn thì vẽ như thường.
+	Parent string `json:"parent,omitempty"`
 }
 
 type GameSettingChoice struct {
@@ -92,7 +98,7 @@ func roleKmSetting(key string, role werewolf.Role, label, desc string) gameSetti
 	return gameSettingDef{
 		GameSetting: GameSetting{Key: key, Label: label, Description: desc, Type: settingNumber, Default: 1.0,
 			Min: f64(0), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupKm,
-			Section: sectionKm, Hint: roleLabels[role], Role: string(role)},
+			Section: sectionKm, Hint: roleLabels[role], Role: string(role), Icon: string(role)},
 		// Luôn áp để km app hiện là km ván dùng, không lặng lẽ theo kmPerUnit.
 		keepDefault: true,
 		apply:       func(c *werewolf.Config, v any) { setSkillKm(c, role, v.(float64)) },
@@ -293,20 +299,20 @@ var gameSettingDefs = []gameSettingDef{
 	},
 	{
 		GameSetting: GameSetting{Key: "kmPerUnit", Label: "Biểu quyết", Hint: "Mọi người · km một phiếu", Type: settingNumber, Default: 1.0,
-			Min: f64(0.5), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupKm, Section: sectionKm,
+			Min: f64(0.5), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupKm, Section: sectionKm, Icon: "vote",
 			Description: "Ai còn sống cũng được bỏ phiếu treo một người, kể cả Sói. Km ở đây là km cho một phiếu, tính theo chế độ đã chọn."},
 		apply: func(c *werewolf.Config, v any) { c.KmPerUnit = v.(float64) },
 	},
 	{
 		GameSetting: GameSetting{Key: "maxHang", Label: "Treo tối đa mỗi vòng", Type: settingNumber, Default: float64(werewolf.MaxNominees),
-			Min: f64(1), Max: f64(float64(werewolf.MaxNominees)), Step: f64(1), Unit: "người", Group: groupKm, Section: sectionKm,
+			Min: f64(1), Max: f64(float64(werewolf.MaxNominees)), Step: f64(1), Unit: "người", Group: groupKm, Section: sectionKm, Parent: "kmPerUnit",
 			Description: "Số người được lên giàn mỗi vòng, mỗi người một phiên Treo/Tha riêng."},
 		keepDefault: true,
 		apply:       func(c *werewolf.Config, v any) { c.MaxHang = int(v.(float64)) },
 	},
 	{
 		GameSetting: GameSetting{Key: "wolfKm", Label: "Bầu cắn", Hint: "Phe Sói · km một phiếu", Type: settingNumber, Default: 0.0,
-			Min: f64(0), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupKm, Section: sectionKm,
+			Min: f64(0), Max: f64(20), Step: f64(0.5), Unit: "km", EnabledIf: kmOn, Group: groupKm, Section: sectionKm, Icon: "wolf",
 			Warn:        "Dễ lộ sói",
 			Description: "Mỗi đêm phe Sói cắn một người. Mỗi sói bầu một phiếu, ai nhiều phiếu nhất thì bị cắn; bằng phiếu thì bên có tổng km cao hơn thắng, vẫn bằng thì bốc thăm. Km ở đây là km cho một phiếu cắn, tính theo chế độ đã chọn. 0 là mọi sói đều có phiếu. Nên để 0: cắn mà cần km thì sáng ra có người chết là cả làng biết phe Sói đủ km, ráp với bảng km công khai là khoanh được sói."},
 		keepDefault: true,
@@ -319,7 +325,7 @@ var gameSettingDefs = []gameSettingDef{
 	// topOn đứng trước topWeight: tắt thì TopWeight về 0, bật thì topWeight ghi đè.
 	{
 		GameSetting: GameSetting{Key: "topOn", Label: "Top N được x phiếu", Hint: "Người chạy nhiều nhất", Type: settingToggle, Default: false,
-			EnabledIf: kmOn, Group: groupKm, Section: sectionTop,
+			EnabledIf: kmOn, Group: groupKm, Section: sectionTop, Icon: "bolt",
 			Description: "Người chạy nhiều nhất trong ngày được tính nhiều phiếu hơn, mỗi người phải đủ km một phiếu. Áp cho mọi người trong top, kể cả Sói: chỉ phe Dân được thì bảng phiếu công khai lộ ai là sói."},
 		keepDefault: true,
 		apply: func(c *werewolf.Config, v any) {
@@ -331,7 +337,7 @@ var gameSettingDefs = []gameSettingDef{
 	},
 	{
 		GameSetting: GameSetting{Key: "topVoters", Label: "Số người", Type: settingNumber, Default: 0.0,
-			Min: f64(0), Max: f64(10), Step: f64(1), Unit: "người", Group: groupKm, Section: sectionTop,
+			Min: f64(0), Max: f64(10), Step: f64(1), Unit: "người", Group: groupKm, Section: sectionTop, Parent: "topOn",
 			EnabledIf:   []GameSettingCondition{{Key: "kmOff", Equals: false}, {Key: "topOn", Equals: true}},
 			Hint:        "0 là số sói + 1",
 			Description: "Để 0 là bằng số sói còn sống cộng 1, để sói không chiếm hết các suất."},
@@ -339,7 +345,7 @@ var gameSettingDefs = []gameSettingDef{
 	},
 	{
 		GameSetting: GameSetting{Key: "topWeight", Label: "Phiếu mỗi người", Type: settingNumber, Default: float64(werewolf.MinTopWeight),
-			Min: f64(werewolf.MinTopWeight), Max: f64(werewolf.MaxTopWeight), Step: f64(1), Unit: "phiếu", Group: groupKm, Section: sectionTop,
+			Min: f64(werewolf.MinTopWeight), Max: f64(werewolf.MaxTopWeight), Step: f64(1), Unit: "phiếu", Group: groupKm, Section: sectionTop, Parent: "topOn",
 			EnabledIf:   []GameSettingCondition{{Key: "kmOff", Equals: false}, {Key: "topOn", Equals: true}},
 			Description: "Mỗi người trong top được tính bấy nhiêu phiếu."},
 		apply: func(c *werewolf.Config, v any) {

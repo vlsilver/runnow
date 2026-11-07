@@ -164,6 +164,7 @@ func TestGameSettingsSchemaDescribed(t *testing.T) {
 	for _, s := range gameCreateSettings() {
 		keys[s.Key] = true
 	}
+	seen, section := map[string]bool{}, map[string]string{}
 	for _, s := range gameCreateSettings() {
 		if s.Label == "" || s.Description == "" {
 			t.Fatalf("%s thiếu tên hoặc mô tả", s.Key)
@@ -178,6 +179,11 @@ func TestGameSettingsSchemaDescribed(t *testing.T) {
 				t.Fatalf("%s phụ thuộc key lạ %s", s.Key, c.Key)
 			}
 		}
+		// Thẻ cha phải cùng khối và đứng trước để app lồng dòng con vào được.
+		if s.Parent != "" && (!seen[s.Parent] || section[s.Parent] != s.Section || s.Section == "") {
+			t.Fatalf("%s có thẻ cha %s không đứng trước trong cùng khối", s.Key, s.Parent)
+		}
+		seen[s.Key], section[s.Key] = true, s.Section
 		// Giá trị mặc định phải qua được chính bước kiểm của nó.
 		var gc ww.Config
 		if err := applyGameSettings(&gc, map[string]any{s.Key: s.Default}); err != nil {
