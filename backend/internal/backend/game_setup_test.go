@@ -38,12 +38,11 @@ func TestGameSetupKmGame(t *testing.T) {
 	want := `# Vai
 Thêm sói = 1 sói []
 Thêm Già làng = Bật []
-# Phe Sói · Đặc quyền
-Phiếu Đôi = Bật []
+# Phe Sói · Đặc quyền hắc ám
+Phiếu Đôi = Bật [vote]
 Km để mở = 1.5 km []
-# Lịch
-Số vòng mỗi ngày = 1 vòng []
 # Vòng chơi
+Số vòng mỗi ngày = 1 vòng []
 Độ dài pha Đêm = 2h []
 Độ dài pha Rạng sáng = 10h []
 Độ dài pha Ngày = 9h30 []
@@ -54,11 +53,11 @@ Chế độ dùng kỹ năng = Riêng []
 Biểu quyết = 2 km [vote]
   Treo tối đa mỗi vòng = 2 người []
 Bầu cắn = 0 km [wolf]
-Tiên tri soi = 1.5 km [seer]
-Bảo vệ che = 1 km [guard]
-Phù thuỷ dùng thuốc = 1 km [witch]
-Thợ săn bắn = 1 km [hunter]
-# Đặc quyền
+Soi = 1.5 km [seer]
+Che = 1 km [guard]
+Dùng thuốc = 1 km [witch]
+Bắn khi ngã = 1 km [hunter]
+# Đặc quyền phe Dân
 Top N được x phiếu = Bật [bolt]
   Số người = Số sói + 1 []
   Phiếu mỗi người = 3 phiếu []
@@ -82,9 +81,9 @@ func TestGameSetupKmOff(t *testing.T) {
 Không dùng km = Bật []
 # Lịch
 Giờ mở vòng đầu = 6h []
-Số vòng mỗi ngày = 3 vòng []
 # Vòng chơi
 Độ dài một vòng = 6h []
+Số vòng mỗi ngày = 3 vòng []
 Độ dài pha Đêm = 30 phút []
 Độ dài pha Rạng sáng = 2h30 []
 Độ dài pha Ngày = 2h30 []
