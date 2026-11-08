@@ -2,8 +2,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:intl/intl.dart';
-import 'package:myrun/src/config.dart';
 import 'package:myrun/src/games/game_card_art.dart';
+import 'package:myrun/src/games/game_links.dart';
 import 'package:myrun/src/games/game_models.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/share.dart';
@@ -12,11 +12,6 @@ import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:share_plus/share_plus.dart';
 
 typedef _M = RunNowMoonlitTokens;
-
-/// Link mở trang ván trên web 3i (hosting rewrite về app web), nên ai có link
-/// cũng vào được kể cả chưa cài app.
-Uri gameInviteLink(String gameId) =>
-    Uri.parse('${AppConfig.webBaseUrl}/games/${Uri.encodeComponent(gameId)}');
 
 /// Câu gửi kèm thiệp, có link vì ảnh thì không bấm được.
 String gameInviteCaption(GameDetail game) {
