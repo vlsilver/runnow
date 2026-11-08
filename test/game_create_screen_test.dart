@@ -1597,6 +1597,77 @@ void main() {
       expect(body.containsKey('threadId'), isFalse);
     });
 
+    // Group đang có ván chưa kết thúc thì không chọn được, mở ván bị chặn.
+    testWidgets('a group with an open game cannot be picked', (tester) async {
+      backend.list = _hostList();
+      final tg = _readyTelegram();
+      tg['chats'] = [
+        ...tg['chats'] as List,
+        {
+          'chatId': '-100999',
+          'title': 'Nhóm Bận',
+          'admin': true,
+          'forum': true,
+          'busy': true,
+          'topics': [
+            {'threadId': 7, 'name': 'Ván cũ'},
+          ],
+        },
+      ];
+      backend.gameTelegram = tg;
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Giao tiếp'));
+      for (var i = 0; i < 3; i++) {
+        await tester.pump();
+      }
+      await tester.tap(find.text('Group của bạn'));
+      await tester.pump();
+      final busy = find.text('Nhóm Bận · Ván cũ');
+      await tester.ensureVisible(busy);
+      expect(find.text('Đang có ván'), findsOneWidget);
+      await tester.tap(busy);
+      await tester.pump();
+      expect(find.text('Chọn topic để bot đăng'), findsOneWidget);
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pump();
+      expect(backend.calls, isNot(contains('POST /v1/games')));
+
+      final free = find.text('CLB Chạy Đêm · Ma Sói tuần 46');
+      await tester.ensureVisible(free);
+      await tester.tap(free);
+      await tester.pump();
+      expect(find.text('Chọn topic để bot đăng'), findsNothing);
+    });
+
+    // Mở phần group thì nhờ backend kiểm lại; kiểm xong thì đọc lại danh
+    // sách, group bot đã rời biến mất.
+    testWidgets('opening the picker re-checks the bot and reloads', (
+      tester,
+    ) async {
+      backend.list = _hostList();
+      backend.gameTelegram = _readyTelegram();
+      backend.gameTelegramCheckQueued = true;
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Giao tiếp'));
+      for (var i = 0; i < 3; i++) {
+        await tester.pump();
+      }
+      await tester.tap(find.text('Group của bạn'));
+      await tester.pump();
+      expect(backend.calls, contains('POST /v1/games/telegram/check'));
+      expect(find.text('Bot chưa là admin'), findsOneWidget);
+
+      backend.gameTelegram = {
+        ..._readyTelegram(),
+        'chats': [(_readyTelegram()['chats'] as List).first],
+      };
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pump();
+      expect(find.text('Bot chưa là admin'), findsNothing);
+    });
+
     // Group PSC: không còn ô ID topic, backend tự đăng vào topic Ma Sói.
     testWidgets('PSC posts to the Ma Sói topic without a topic field', (
       tester,

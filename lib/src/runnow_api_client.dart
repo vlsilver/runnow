@@ -269,6 +269,13 @@ class RunNowApiClient {
     return GameTelegram.fromJson(_jsonObject(response));
   }
 
+  /// Hẹn bot ván hỏi lại Telegram bot còn sống, còn ở group nào, còn là
+  /// admin không. Kết quả về sau vài giây, đọc lại bằng [gameTelegram].
+  Future<bool> checkGameTelegram() async {
+    final response = await _send('POST', '/v1/games/telegram/check');
+    return _jsonObject(response)['queued'] == true;
+  }
+
   /// Link Telegram để tạo bot ván; Telegram báo về thì backend nối bot.
   Future<String> startGameBot() async {
     final response = await _send('POST', '/v1/games/telegram/bot');
@@ -337,6 +344,14 @@ class RunNowApiClient {
     'POST',
     '${_gamePath(gameId)}/admin/extend',
     body: {'minutes': minutes},
+  );
+
+  /// Ván thử: đặt số người chơi giả về đúng [count]. Gọi lại với cùng số thì
+  /// không sinh thêm người.
+  Future<void> setFakePlayers(String gameId, {required int count}) => _send(
+    'POST',
+    '${_gamePath(gameId)}/admin/fake-players',
+    body: {'count': count},
   );
 
   /// Gửi lại các tin Telegram bị lỗi của ván. Trả số tin được gửi lại.

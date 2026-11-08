@@ -60,6 +60,20 @@ class _GameTelegramPickerState extends ConsumerState<GameTelegramPicker>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _check();
+  }
+
+  /// Bot có thể đã bị kick, group hay topic đã bị xoá mà không báo về: nhờ
+  /// backend hỏi lại Telegram, xong thì đọc lại danh sách.
+  Future<void> _check() async {
+    try {
+      if (!await ref.read(runNowApiClientProvider).checkGameTelegram()) return;
+    } catch (_) {
+      // Kiểm lại chỉ là làm mới; danh sách cũ vẫn dùng được, tạo ván vẫn kiểm.
+      return;
+    }
+    await Future<void>.delayed(const Duration(seconds: 3));
+    if (mounted) ref.invalidate(gameTelegramProvider);
   }
 
   @override
@@ -259,13 +273,14 @@ class _GameTelegramPickerState extends ConsumerState<GameTelegramPicker>
                     ? '${chat.title} · ${_topicLabel(chat, topic)}'
                     : _topicLabel(chat, topic),
                 hash: true,
+                tag: chat.busy ? 'Đang có ván' : null,
                 selected:
                     widget.selected ==
                     GameTelegramTarget(
                       chatId: chat.chatId,
                       threadId: topic.threadId,
                     ),
-                onTap: enabled
+                onTap: enabled && !chat.busy
                     ? () => widget.onSelected(
                         GameTelegramTarget(
                           chatId: chat.chatId,
@@ -339,6 +354,8 @@ String? gameTelegramBlocker({
         : 'Làm xong 3 bước';
   }
   if (selected == null) return 'Chọn topic để bot đăng';
+  final busy = tg.chats.any((c) => c.busy && c.chatId == selected.chatId);
+  if (busy) return 'Group này đang có ván, chọn group khác';
   return null;
 }
 
@@ -554,9 +571,13 @@ class _Option extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.hash = false,
+    this.tag,
   });
 
   final String label;
+
+  /// Nhãn ngắn bên phải; có nhãn mà không bấm được thì vẽ mờ.
+  final String? tag;
   final bool selected;
   final VoidCallback? onTap;
 
@@ -565,52 +586,64 @@ class _Option extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Semantics(
-        selected: selected,
-        button: true,
-        child: Material(
-          color: selected ? _M.amberTint : _M.raised,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-            side: BorderSide(color: selected ? _M.amber : _M.border),
-          ),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  if (hash) ...[
-                    const Text(
-                      '#',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                        color: _M.faint,
+    return Opacity(
+      opacity: tag != null && onTap == null ? 0.5 : 1,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Semantics(
+          selected: selected,
+          button: true,
+          child: Material(
+            color: selected ? _M.amberTint : _M.raised,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: selected ? _M.amber : _M.border),
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    if (hash) ...[
+                      const Text(
+                        '#',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          color: _M.faint,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: _M.ink,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    if (tag case final t?)
+                      Text(
+                        t,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: _M.faint,
+                        ),
+                      ),
+                    if (selected)
+                      const Icon(
+                        Icons.check_circle_rounded,
+                        size: 20,
+                        color: _M.amber,
+                      ),
                   ],
-                  Expanded(
-                    child: Text(
-                      label,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: _M.ink,
-                      ),
-                    ),
-                  ),
-                  if (selected)
-                    const Icon(
-                      Icons.check_circle_rounded,
-                      size: 20,
-                      color: _M.amber,
-                    ),
-                ],
+                ),
               ),
             ),
           ),

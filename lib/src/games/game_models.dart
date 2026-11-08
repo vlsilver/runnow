@@ -1817,6 +1817,7 @@ class GameTelegramChat {
     required this.admin,
     required this.forum,
     required this.topics,
+    this.busy = false,
   });
 
   factory GameTelegramChat.fromJson(Map<String, dynamic> json) {
@@ -1825,6 +1826,7 @@ class GameTelegramChat {
       title: _string(json['title']),
       admin: json['admin'] == true,
       forum: json['forum'] == true,
+      busy: json['busy'] == true,
       topics: _list(json['topics'], GameTelegramTopic.fromJson),
     );
   }
@@ -1835,6 +1837,9 @@ class GameTelegramChat {
   /// Bot là admin của group; chưa là admin thì tạo ván vào đây bị từ chối.
   final bool admin;
   final bool forum;
+
+  /// Group đang có ván chưa kết thúc; mỗi group chỉ một ván.
+  final bool busy;
   final List<GameTelegramTopic> topics;
 }
 

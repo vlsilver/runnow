@@ -609,6 +609,44 @@ void main() {
       await close(tester);
     });
 
+    // Ván thử thiếu người: admin thêm người giả bù đúng phần thiếu so với
+    // người thật; đủ rồi thì nút biến mất.
+    testWidgets('a test game fills up with fake players', (tester) async {
+      backend.game = {
+        ...registering(admin: true),
+        'testMode': true,
+        'minPlayers': 10,
+        'playerCount': 3,
+        'players': [
+          {'uid': 'u1', 'name': 'An'},
+          {'uid': 'u2', 'name': 'Bình'},
+          {'uid': 'fake-old', 'name': 'Giả cũ', 'fake': true},
+        ],
+      };
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Thêm người giả cho đủ 10'));
+      await tester.pumpAndSettle();
+      final sent = [
+        for (final r in backend.requests)
+          if (r.url.path == '/v1/games/g1/admin/fake-players')
+            jsonDecode(r.body),
+      ];
+      expect(sent, [
+        {'count': 8},
+      ]);
+      expect(find.text('Thêm người giả cho đủ 10'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('a real game has no fake players button', (tester) async {
+      backend.game = {...registering(admin: true), 'minPlayers': 10};
+      await pumpScreen(tester);
+
+      expect(find.textContaining('người giả'), findsNothing);
+      await close(tester);
+    });
+
     testWidgets('is hidden from players', (tester) async {
       backend.game = registering(admin: false);
       await pumpScreen(tester);

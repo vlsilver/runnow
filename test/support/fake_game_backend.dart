@@ -35,6 +35,9 @@ class FakeGameBackend {
   Map<String, dynamic>? gameTelegram;
   String gameBotCreateUrl = 'https://t.me/newbot/Run3IBot/van_boss_bot';
 
+  /// POST /v1/games/telegram/check: backend có hẹn kiểm không.
+  bool gameTelegramCheckQueued = false;
+
   /// Trả cho `start?dryRun=true`.
   Map<String, dynamic> startPreview = {};
 
@@ -67,6 +70,8 @@ class FakeGameBackend {
         final status = gameTelegram;
         if (status == null) return _json({'error': 'not_found'}, 404);
         body = status;
+      } else if (path == '/v1/games/telegram/check') {
+        body = {'queued': gameTelegramCheckQueued};
       } else if (path == '/v1/games/telegram/bot') {
         body = {'createUrl': gameBotCreateUrl};
       } else if (path == '/v1/games') {
@@ -152,6 +157,20 @@ class FakeGameBackend {
         } else {
           body = chatPages[request.url.queryParameters['cursor'] ?? '']!;
         }
+      } else if (path.endsWith('/admin/fake-players')) {
+        // Đặt tổng người giả về đúng count, giữ người thật.
+        final count = (jsonDecode(request.body) as Map)['count'] as int;
+        final real = [
+          for (final p in game['players'] as List? ?? const [])
+            if ((p as Map)['fake'] != true) p,
+        ];
+        final players = [
+          ...real,
+          for (var i = 0; i < count; i++)
+            {'uid': 'fake-$i', 'name': 'Giả $i', 'fake': true},
+        ];
+        game = {...game, 'players': players, 'playerCount': players.length};
+        body = {'count': count};
       } else if (path.endsWith('/feed')) {
         body = feedPages[request.url.queryParameters['cursor']]!;
       } else {

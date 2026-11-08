@@ -58,6 +58,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   final _theme = gameMoonlitTheme();
   bool _registering = false;
   bool _starting = false;
+  bool _faking = false;
   bool? _linked;
 
   /// Lá bài úp thì ẩn cả việc của vai. Rời màn (nền, app switcher, mở chat)
@@ -241,6 +242,25 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
       _showError(error);
     } finally {
       if (mounted) setState(() => _starting = false);
+    }
+  }
+
+  /// Ván thử: thêm người giả cho đủ số tối thiểu để Start.
+  Future<void> _fillFakes(GameDetail detail) async {
+    final real = detail.players.where((p) => !p.fake).length;
+    setState(() => _faking = true);
+    try {
+      await ref
+          .read(runNowApiClientProvider)
+          .setFakePlayers(
+            widget.gameId,
+            count: (detail.minPlayers - real).clamp(0, detail.maxPlayers),
+          );
+      await _controller.refresh();
+    } catch (error) {
+      _showError(error);
+    } finally {
+      if (mounted) setState(() => _faking = false);
     }
   }
 
@@ -440,6 +460,22 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                               onPressed: _starting ? null : _start,
                               child: Text(
                                 _starting ? 'Đang kiểm tra…' : 'Bắt đầu ván',
+                              ),
+                            ),
+                          ],
+                          if (detail.isAdmin &&
+                              detail.testMode &&
+                              detail.status == 'registering' &&
+                              detail.players.length < detail.minPlayers) ...[
+                            const SizedBox(height: 8),
+                            OutlinedButton(
+                              onPressed: _faking
+                                  ? null
+                                  : () => _fillFakes(detail),
+                              child: Text(
+                                _faking
+                                    ? 'Đang thêm…'
+                                    : 'Thêm người giả cho đủ ${detail.minPlayers}',
                               ),
                             ),
                           ],
