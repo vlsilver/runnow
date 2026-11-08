@@ -913,6 +913,8 @@ type GameDetail struct {
 	// KmTable là đầu cột của bảng km hai cột (players[].lastKm, players[].todayKm).
 	// Nil khi ván không chạy.
 	KmTable *GameKmTable `json:"kmTable,omitempty"`
+	// Lobby là tóm tắt luật ở sảnh; chỉ có khi ván đang mở đăng ký.
+	Lobby *GameLobby `json:"lobby,omitempty"`
 }
 
 type GameKmTable struct {
@@ -959,6 +961,8 @@ type GamePlayer struct {
 	LastKm            *float64 `json:"lastKm,omitempty"`
 	// TodayKm là km đang gom tới mốc 22h kế tiếp của người còn sống (kmTable).
 	TodayKm *float64 `json:"todayKm,omitempty"`
+	// VoteTag là nhãn số phiếu của người đang trong suất Top ("x2"); app cũ bỏ qua.
+	VoteTag string `json:"voteTag,omitempty"`
 	Fake              bool     `json:"fake,omitempty"`
 }
 
@@ -1027,6 +1031,11 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 		Winner: stringValue(data["winner"]),
 	}
 	out.WinnerLabel = teamLabels[werewolf.Team(out.Winner)]
+	if stringValue(data["status"]) == gameRegistering {
+		if out.Lobby, err = gameLobbyFor(gc, len(players)); err != nil {
+			return GameDetail{}, err
+		}
+	}
 	if t := timeValue(data["registrationDeadline"]); !t.IsZero() {
 		out.RegistrationDeadline = &t
 	}
@@ -1063,13 +1072,18 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 		}
 	}
 	if member, canSend := roomAccess(st, data, v.UID, registered, out.IsAdmin); member {
-		out.Room = &GameChatLink{Key: chatRoom, Label: chatLabels[chatRoom], CanSend: canSend}
+		latest, err := s.latestChatSeq(ctx, g.Ref, chatRoom)
+		if err != nil {
+			return out, err
+		}
+		out.Room = &GameChatLink{Key: chatRoom, Label: chatLabels[chatRoom], CanSend: canSend, LatestSeq: latest}
 	}
 	live, err := s.liveKm(ctx, g.Ref, data, st, wall)
 	if err != nil {
 		return out, err
 	}
 	out.KmTable = kmTable(data, st, live, wall)
+	voteTags := liveVoteTags(st, live)
 	nominees := gameNominees(data)
 	out.Players = make([]GamePlayer, 0, len(players))
 	for _, p := range players {
@@ -1085,6 +1099,7 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 		if m, ok := live.metersOf(p.uid); ok && gp.Alive {
 			k := m / 1000
 			gp.TodayKm = &k
+			gp.VoteTag = voteTags[p.uid]
 		}
 		out.Players = append(out.Players, gp)
 	}
@@ -1215,6 +1230,8 @@ type GameChatLink struct {
 	Key     string `json:"key"`
 	Label   string `json:"label"`
 	CanSend bool   `json:"canSend"`
+	// LatestSeq là seq tin mới nhất, để app biết có tin chưa đọc; 0 là chưa có tin.
+	LatestSeq int64 `json:"latestSeq,omitempty"`
 }
 
 type GameAction struct {

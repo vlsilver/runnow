@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -29,7 +30,7 @@ func (s *GameStore) loadSummary(ctx context.Context, game *firestore.DocumentRef
 		if stringValue(data["kind"]) != "step" {
 			continue
 		}
-		step := summaryStep{PhaseKey: stringValue(data["phaseKey"])}
+		step := summaryStep{PhaseKey: stringValue(data["phaseKey"]), At: timeValue(data["at"])}
 		if err := json.Unmarshal([]byte(stringValue(data["events"])), &step.Events); err != nil {
 			return nil, fmt.Errorf("events/%s: %w", d.Ref.ID, err)
 		}
@@ -49,9 +50,11 @@ func (s *GameStore) loadSummary(ctx context.Context, game *firestore.DocumentRef
 // người nên chỉ trả cùng chỗ với allRoles: /me của người trong ván, khi ván đã
 // kết thúc. Chữ do backend dựng; app chỉ render.
 type GameSummary struct {
-	Winner      string            `json:"winner"`
-	WinnerLabel string            `json:"winnerLabel"`
-	Stats       []GameSummaryStat `json:"stats"`
+	Winner      string `json:"winner"`
+	WinnerLabel string `json:"winnerLabel"`
+	// Subtitle là câu phụ dưới tên phe thắng: ván kết thúc thế nào, còn bao nhiêu người.
+	Subtitle string            `json:"subtitle,omitempty"`
+	Stats    []GameSummaryStat `json:"stats"`
 	// Titles chỉ có khi có người đạt (km > 0, soi ra sói, cứu được người).
 	Titles []GameSummaryTitle `json:"titles"`
 	Teams  []GameSummaryTeam  `json:"teams"`
@@ -74,8 +77,12 @@ type GameSummaryTitle struct {
 }
 
 type GameSummarySection struct {
-	Title string            `json:"title"` // "Đêm 1", "Ngày 1"
-	Night bool              `json:"night"`
+	Title string `json:"title"` // "Đêm 1", "Ngày 1"
+	Night bool   `json:"night"`
+	// Round nối đêm và ngày của cùng một vòng; Date (dd/MM, giờ Việt Nam) là
+	// ngày của bước đầu tiên trong mục, rỗng với event cũ không có giờ.
+	Round int               `json:"round,omitempty"`
+	Date  string            `json:"date,omitempty"`
 	Lines []GameSummaryLine `json:"lines"`
 }
 
@@ -86,6 +93,9 @@ type GameSummaryLine struct {
 	Icon string `json:"icon"`
 	Text string `json:"text"`
 	Tag  string `json:"tag,omitempty"`
+	// Hang, Spare là số phiếu của câu kết quả biểu quyết.
+	Hang  int `json:"hang,omitempty"`
+	Spare int `json:"spare,omitempty"`
 }
 
 // GameSummaryTeam là một phe khi lật bài, phe thắng đứng đầu.
@@ -113,6 +123,7 @@ type GameSummaryPlayer struct {
 // event của bước, inputs engine đã đọc.
 type summaryStep struct {
 	PhaseKey string
+	At       time.Time
 	Events   []werewolf.Event
 	Inputs   werewolf.Inputs
 }
@@ -191,6 +202,8 @@ type summaryBuilder struct {
 	cause  map[string]werewolf.Cause
 	bitten []string // những người bị cắn của đêm đang xét
 	rounds int      // số vòng thật đã chơi, theo đêm/ngày cuối có bước
+	round  int      // vòng của bước đang xét
+	date   string   // ngày của bước đang xét, dd/MM
 	km     map[string]float64
 	// hangs: lần làng chốt Treo (kể cả Kẻ ngốc lật bài); wolvesHanged: số sói chết vì treo.
 	hangs, wolvesHanged int
@@ -200,7 +213,7 @@ type summaryBuilder struct {
 
 func (b *summaryBuilder) add(title string, night bool, line GameSummaryLine) {
 	if n := len(b.replay); n == 0 || b.replay[n-1].Title != title {
-		b.replay = append(b.replay, GameSummarySection{Title: title, Night: night, Lines: []GameSummaryLine{}})
+		b.replay = append(b.replay, GameSummarySection{Title: title, Night: night, Round: b.round, Date: b.date, Lines: []GameSummaryLine{}})
 	}
 	last := &b.replay[len(b.replay)-1]
 	last.Lines = append(last.Lines, line)
@@ -320,6 +333,9 @@ func (b *summaryBuilder) event(e werewolf.Event, title string, night bool) {
 		if line.Tag == "TREO" {
 			b.hangs++
 		}
+		if e.Kind == werewolf.EventVoteResult {
+			line.Hang, line.Spare = e.Hang, e.Spare
+		}
 		b.add(title, night, line)
 	}
 }
@@ -352,7 +368,35 @@ func summaryTitle(key, label string, counts map[string]float64, uids []string, n
 	return []GameSummaryTitle{t}
 }
 
+func summaryDate(at time.Time) string {
+	if at.IsZero() {
+		return ""
+	}
+	return at.In(vietnam).Format("02/01")
+}
+
 func summaryKm(meters float64) string { return formatKm(meters/1000) + " km" }
+
+func summarySubtitle(st *werewolf.State, uids []string, wolvesHanged, alive int) string {
+	wolves := 0
+	for _, uid := range uids {
+		if st.Players[uid].Role == werewolf.Wolf {
+			wolves++
+		}
+	}
+	var how string
+	switch {
+	case st.Winner == werewolf.TeamWolves:
+		how = "Sói áp đảo làng"
+	case st.Winner == werewolf.TeamLovers:
+		how = "Cặp đôi sống tới cuối"
+	case wolvesHanged == wolves:
+		how = fmt.Sprintf("Treo đủ %d sói", wolves)
+	default:
+		how = fmt.Sprintf("Hạ đủ %d sói", wolves)
+	}
+	return fmt.Sprintf("%s · còn %d người sống", how, alive)
+}
 
 func buildSummary(st *werewolf.State, steps []summaryStep, name func(string) string, cards map[string]string) GameSummary {
 	s := GameSummary{Winner: string(st.Winner), WinnerLabel: teamLabels[st.Winner] + " thắng", Teams: []GameSummaryTeam{}}
@@ -361,6 +405,7 @@ func buildSummary(st *werewolf.State, steps []summaryStep, name func(string) str
 	for _, step := range steps {
 		title, night, n := summaryMoment(step.PhaseKey)
 		b.rounds = max(b.rounds, n)
+		b.round, b.date = n, summaryDate(step.At)
 		// Km chỉ có ở hai mốc chốt km (readInputs), mỗi khung một lần.
 		for uid, m := range step.Inputs.Km {
 			b.km[uid] += m
@@ -384,6 +429,7 @@ func buildSummary(st *werewolf.State, steps []summaryStep, name func(string) str
 		}
 		village += b.km[uid]
 	}
+	s.Subtitle = summarySubtitle(st, uids, b.wolvesHanged, len(uids)-dead)
 	s.Stats = []GameSummaryStat{{Label: "Số vòng", Value: strconv.Itoa(b.rounds)}, {Label: "Người chết", Value: fmt.Sprintf("%d/%d", dead, len(uids))}}
 	if kmOn {
 		s.Stats = append(s.Stats, GameSummaryStat{Label: "Km cả làng", Value: summaryKm(village)})

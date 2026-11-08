@@ -99,14 +99,14 @@ func TestSummaryReplayShowsNightActions(t *testing.T) {
 		p.vote("guard", ww.ChoiceHang), p.vote("witch", ww.ChoiceHang), p.vote("w1", ww.ChoiceSpare))
 
 	want := []GameSummarySection{
-		{Title: "Đêm 1", Night: true, Lines: []GameSummaryLine{
+		{Title: "Đêm 1", Round: 1, Night: true, Lines: []GameSummaryLine{
 			{Icon: "bite", Text: "Sói cắn V1."},
 			{Icon: "guard", Text: "Bảo vệ GUARD canh V1.", Tag: "CỨU"},
 			{Icon: "seer", Text: "Tiên tri SEER soi W1: Sói.", Tag: "SÓI"},
 		}},
-		{Title: "Ngày 1", Lines: []GameSummaryLine{
+		{Title: "Ngày 1", Round: 1, Lines: []GameSummaryLine{
 			{Icon: "nominee", Text: "W1 lên giàn với 2 đề cử.", Tag: "GIÀN"},
-			{Icon: "vote", Text: "Treo 5, Tha 0: W1 bị treo.", Tag: "TREO"},
+			{Icon: "vote", Text: "Treo 5, Tha 0: W1 bị treo.", Tag: "TREO", Hang: 5, Spare: 0},
 			{Icon: "death", Text: "W1 chết: bị treo. Lá bài: Sói."},
 			{Icon: "winner", Text: "Phe Dân thắng."},
 		}},
@@ -149,14 +149,14 @@ func TestSummaryHunterShotAfterHangBelongsToThatDay(t *testing.T) {
 
 	s := p.summary()
 	want := []GameSummarySection{
-		{Title: "Đêm 1", Night: true, Lines: []GameSummaryLine{
+		{Title: "Đêm 1", Round: 1, Night: true, Lines: []GameSummaryLine{
 			{Icon: "bite", Text: "Sói cắn V1."},
 			{Icon: "witch", Text: "Phù thuỷ WITCH cứu V1.", Tag: "CỨU"},
 			{Icon: "void", Text: "Lượt bảo vệ của GUARD bị huỷ: chưa đủ km."},
 		}},
-		{Title: "Ngày 1", Lines: []GameSummaryLine{
+		{Title: "Ngày 1", Round: 1, Lines: []GameSummaryLine{
 			{Icon: "nominee", Text: "HUNTER lên giàn với 3 đề cử.", Tag: "GIÀN"},
-			{Icon: "vote", Text: "Treo 3, Tha 2: HUNTER bị treo.", Tag: "TREO"},
+			{Icon: "vote", Text: "Treo 3, Tha 2: HUNTER bị treo.", Tag: "TREO", Hang: 3, Spare: 2},
 			{Icon: "death", Text: "HUNTER chết: bị treo. Lá bài: Thợ săn."},
 			{Icon: "hunter", Text: "HUNTER là Thợ săn, được bắn một người."},
 			{Icon: "death", Text: "W1 chết: trúng đạn thợ săn. Lá bài: Sói."},
@@ -192,6 +192,9 @@ func TestSummaryStatsAndTitles(t *testing.T) {
 	if !reflect.DeepEqual(s.Stats, wantStats) {
 		t.Fatalf("stats = %+v", s.Stats)
 	}
+	if want := "Treo đủ 1 sói · còn 4 người sống"; s.Subtitle != want {
+		t.Fatalf("subtitle = %q, muốn %q", s.Subtitle, want)
+	}
 	wantTitles := []GameSummaryTitle{
 		{Key: "runner", Label: "Chạy nhiều nhất", UIDs: []string{"v1"}, Name: "V1", Value: "24 km"},
 		{Key: "seer", Label: "Tiên tri tìm ra sói", UIDs: []string{"seer"}, Name: "SEER", Value: "1 sói"},
@@ -202,5 +205,65 @@ func TestSummaryStatsAndTitles(t *testing.T) {
 	}
 	if v1 := s.Teams[0].Players[2]; v1.UID != "v1" || v1.Km != "24 km" {
 		t.Fatalf("v1 = %+v", v1)
+	}
+}
+
+// Câu phụ không nói "treo" khi sói chết vì cách khác, và nói đúng phe thắng.
+func TestSummarySubtitleFollowsHowTheGameEnded(t *testing.T) {
+	t.Run("sói chết vì bình độc", func(t *testing.T) {
+		roles := map[string]ww.Role{"w1": ww.Wolf, "witch": ww.Witch, "v1": ww.Villager, "v2": ww.Villager, "v3": ww.Villager}
+		p := newSummaryPlay(t, ww.Config{Vote: ww.VoteFlat}, roles, map[string]float64{"witch": 5000})
+		p.step()
+		p.step()
+		p.step(act1(ww.KindWitchPoison, "witch", "w1"))
+		if want := "Hạ đủ 1 sói · còn 4 người sống"; p.summary().Subtitle != want {
+			t.Fatalf("subtitle = %q, muốn %q", p.summary().Subtitle, want)
+		}
+	})
+	t.Run("sói thắng", func(t *testing.T) {
+		roles := map[string]ww.Role{"w1": ww.Wolf, "v1": ww.Villager, "v2": ww.Villager}
+		p := newSummaryPlay(t, ww.Config{Vote: ww.VoteFlat}, roles, map[string]float64{"w1": 5000})
+		p.step()
+		p.step(act1(ww.KindWolfBite, "w1", "v1"))
+		p.step()
+		if want := "Sói áp đảo làng · còn 2 người sống"; p.summary().Subtitle != want {
+			t.Fatalf("subtitle = %q, muốn %q", p.summary().Subtitle, want)
+		}
+	})
+}
+
+// Diễn lại nhóm được theo vòng và vẽ được thanh Treo/Tha: mỗi mục biết vòng và
+// ngày của nó, câu kết quả phiếu mang đúng số phiếu engine đếm.
+func TestSummaryReplayKeepsRoundDateAndVoteCount(t *testing.T) {
+	roles := map[string]ww.Role{"w1": ww.Wolf, "v1": ww.Villager, "v2": ww.Villager, "v3": ww.Villager}
+	p := newSummaryPlay(t, ww.Config{}, roles, map[string]float64{"w1": 5000, "v1": 5000, "v2": 5000, "v3": 5000})
+	p.step()
+	p.step(act1(ww.KindWolfBite, "w1", "v1"))
+	p.step()
+	p.step(act1(ww.KindNominate, "v2", "v3"), act1(ww.KindNominate, "w1", "v3"))
+	p.step(p.vote("v2", ww.ChoiceHang), p.vote("w1", ww.ChoiceHang))
+	// 23h giờ Việt Nam ngày 16 là 16h UTC: ngày phải theo giờ Việt Nam.
+	for i := range p.steps {
+		p.steps[i].At = time.Date(2026, 10, 16+i, 23, 0, 0, 0, vietnam).UTC()
+	}
+
+	var votes []GameSummaryLine
+	got := map[string]GameSummarySection{}
+	for _, section := range p.summary().Replay {
+		got[section.Title] = section
+		for _, line := range section.Lines {
+			if line.Tag == "TREO" {
+				votes = append(votes, line)
+			}
+		}
+	}
+	if n := got["Đêm 1"]; n.Round != 1 || n.Date != "17/10" {
+		t.Fatalf("Đêm 1 = round %d date %q", n.Round, n.Date)
+	}
+	if d := got["Ngày 1"]; d.Round != 1 || d.Date != "19/10" {
+		t.Fatalf("Ngày 1 = round %d date %q", d.Round, d.Date)
+	}
+	if len(votes) != 1 || votes[0].Hang != 2 || votes[0].Spare != 0 {
+		t.Fatalf("câu phiếu = %+v", votes)
 	}
 }

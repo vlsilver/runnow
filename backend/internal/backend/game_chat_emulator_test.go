@@ -49,6 +49,30 @@ func TestEmulatorGameChatWolves(t *testing.T) {
 	h.want(h.call("w1", "GET", "/v1/games/"+g.id+"/chats/group", nil, ""), 404, "chat_not_found")
 }
 
+// Trang ván báo seq mới nhất của phòng chung để app biết có tin chưa đọc.
+func TestEmulatorGameDetailRoomLatestSeq(t *testing.T) {
+	g, h := runningAPIGame(t)
+	detail := "/v1/games/" + g.id
+	seq := func() any {
+		t.Helper()
+		r := h.call("w1", "GET", detail, nil, "")
+		h.want(r, 200, "")
+		room, ok := r.body["room"].(map[string]any)
+		if !ok {
+			t.Fatalf("trang ván thiếu room: %s", r.raw)
+		}
+		return room["latestSeq"]
+	}
+	if got := seq(); got != nil {
+		t.Fatalf("phòng chưa có tin mà latestSeq = %v", got)
+	}
+	h.want(h.call("w1", "POST", detail+"/chats/room", map[string]any{"text": "một"}, ""), 200, "")
+	h.want(h.call("v1", "POST", detail+"/chats/room", map[string]any{"text": "hai"}, ""), 200, "")
+	if got := seq(); got != float64(2) {
+		t.Fatalf("latestSeq = %v, muốn 2", got)
+	}
+}
+
 func meChats(t *testing.T, h *apiHarness, id, uid string) string {
 	t.Helper()
 	r := h.call(uid, "GET", "/v1/games/"+id+"/me", nil, "")

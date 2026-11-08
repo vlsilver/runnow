@@ -232,6 +232,24 @@ func cutLead(cfg werewolf.Config, unit float64) string {
 // (countVotes, PlanVoteBonus), và câu giải thích. Bằng km ở suất cuối thì chưa
 // ai được đánh dấu, câu nói là bốc thăm.
 func tallyTop(st *werewolf.State, voters []string, cut map[string]bool, km map[string]float64, w int, names func([]string) string) (map[string]int, string) {
+	plan, top := voteTopPlan(st, voters, cut, km)
+	weight := map[string]int{}
+	for _, uid := range top {
+		weight[uid] = w
+	}
+	var parts []string
+	if len(top) > 0 {
+		parts = append(parts, fmt.Sprintf("Top %d được %d phiếu: %s.", plan.Top, w, names(top)))
+	}
+	if plan.Need > 0 && plan.Need < len(plan.Tied) {
+		parts = append(parts, fmt.Sprintf("Bốc thăm %d suất Top trong: %s.", plan.Need, names(plan.Tied)))
+	}
+	return weight, strings.Join(parts, " ")
+}
+
+// voteTopPlan là suất Top xét trên người còn phiếu như engine, và những người
+// chắc có suất: bằng km ở suất cuối mà nhiều hơn số suất thì chưa ai chắc.
+func voteTopPlan(st *werewolf.State, voters []string, cut map[string]bool, km map[string]float64) (werewolf.VoteBonusPlan, []string) {
 	var kept []string
 	for _, uid := range voters {
 		if !cut[uid] {
@@ -249,18 +267,7 @@ func tallyTop(st *werewolf.State, voters []string, cut map[string]bool, km map[s
 	if plan.Need == len(plan.Tied) {
 		top = append(slices.Clone(top), plan.Tied...)
 	}
-	weight := map[string]int{}
-	for _, uid := range top {
-		weight[uid] = w
-	}
-	var parts []string
-	if len(top) > 0 {
-		parts = append(parts, fmt.Sprintf("Top %d được %d phiếu: %s.", plan.Top, w, names(top)))
-	}
-	if plan.Need > 0 && plan.Need < len(plan.Tied) {
-		parts = append(parts, fmt.Sprintf("Bốc thăm %d suất Top trong: %s.", plan.Need, names(plan.Tied)))
-	}
-	return weight, strings.Join(parts, " ")
+	return plan, top
 }
 
 func tallyNames(index map[string]gamePlayerInfo, uids []string) string {

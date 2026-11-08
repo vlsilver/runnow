@@ -139,6 +139,18 @@ func chatRef(game *firestore.DocumentRef, key string) *firestore.DocumentRef {
 	return game.Collection("chats").Doc(key)
 }
 
+// latestChatSeq là seq tin mới nhất của chat; chat chưa có tin thì 0.
+func (s *GameStore) latestChatSeq(ctx context.Context, game *firestore.DocumentRef, key string) (int64, error) {
+	d, err := chatRef(game, key).Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return int64(number(d.Data()["seq"])), nil
+}
+
 // Chat trả một trang tin, luôn mới trước. Không có tham số là trang mới nhất;
 // cursor (seq cuối của trang trước) lùi về tin cũ hơn; after lấy tối đa một
 // trang tin ngay sau seq đó, để poll lấp được đoạn app chưa có.

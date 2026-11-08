@@ -148,6 +148,36 @@ func kmTable(data map[string]any, st *werewolf.State, live *liveKm, wall time.Ti
 	return t
 }
 
+// liveVoteTags là nhãn "x2" của những người đang trong suất Top theo km đang
+// gom. Đây là dự đoán: lúc chốt engine còn trừ người lên giàn của từng phiên.
+// Ván không có suất Top hay không có km sống (ván thử) thì không ai có nhãn.
+func liveVoteTags(st *werewolf.State, live *liveKm) map[string]string {
+	if st == nil || live == nil || st.Config.KmOff {
+		return nil
+	}
+	weight := cardTopWeight(st.Config)
+	if weight == 0 {
+		return nil
+	}
+	var voters []string
+	for _, uid := range sortedPlayers(st) {
+		if st.Players[uid].Alive && st.CanVote(uid) {
+			voters = append(voters, uid)
+		}
+	}
+	var cut map[string]bool
+	if mode := st.Config.VoteMode(); mode == werewolf.VoteCut || mode == werewolf.VoteSolo {
+		plan := werewolf.PlanVoteCut(voters, live.Meters, st.Config)
+		cut, _ = tallyCut(plan, func([]string) string { return "" }, "", "")
+	}
+	_, top := voteTopPlan(st, voters, cut, live.Meters)
+	tags := make(map[string]string, len(top))
+	for _, uid := range top {
+		tags[uid] = fmt.Sprintf("x%d", weight)
+	}
+	return tags
+}
+
 func sameDate(a, b time.Time) bool {
 	ay, am, ad := a.In(vietnam).Date()
 	by, bm, bd := b.In(vietnam).Date()
