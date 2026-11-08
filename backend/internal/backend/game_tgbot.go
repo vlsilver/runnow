@@ -517,7 +517,10 @@ func (m *ManagedBotService) gameMembership(ctx context.Context, info managedBotI
 // ---- Route ----
 
 func (s *Server) gameTgBotRoutes() {
-	s.route("GET /v1/games/telegram", s.gameAdmin(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+	s.route("GET /v1/games/telegram", s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+		if err := s.deps.Games.RequireCanCreate(r.Context(), v); err != nil {
+			return err
+		}
 		if s.deps.ManagedBots == nil {
 			return errMybotOff
 		}
@@ -527,7 +530,10 @@ func (s *Server) gameTgBotRoutes() {
 		}
 		return writeJSON(w, 200, out)
 	}))
-	s.route("POST /v1/games/telegram/bot", s.gameAdmin(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+	s.route("POST /v1/games/telegram/bot", s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+		if err := s.deps.Games.RequireCanCreate(r.Context(), v); err != nil {
+			return err
+		}
 		if s.deps.ManagedBots == nil {
 			return errMybotOff
 		}

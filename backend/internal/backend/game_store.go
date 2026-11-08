@@ -52,6 +52,8 @@ const (
 	gameCancelled   = "cancelled"
 )
 
+var errTooManyGames = &HTTPError{Status: http.StatusConflict, Code: "too_many_games", Message: "Đang có nhiều ván Ma Sói quá, bạn đợi một ván kết thúc rồi mở nhé."}
+
 var errGameRunning = &HTTPError{Status: http.StatusConflict, Code: "game_running", Message: "Đang có ván Ma Sói chưa kết thúc."}
 
 // errKmNotReady: state đã sang mốc cần km mà snapshot chưa ghi (bước khác chốt
@@ -98,6 +100,10 @@ type NewGameInput struct {
 	RegistrationDeadline time.Time
 	// StartAt: tới giờ thì tick tự bấm Start; zero là chờ chủ phòng bấm.
 	StartAt time.Time
+	// UserGame: ván của user không phải admin. Không lấy gameState/current, và
+	// chỉ mở được khi số ván user chưa kết thúc còn dưới MaxUserGames.
+	UserGame     bool
+	MaxUserGames int
 }
 
 // CreateGame mở ván mới ở trạng thái đăng ký. Mỗi chat và mỗi chủ ván chỉ có
@@ -140,7 +146,7 @@ func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Ti
 			return err
 		}
 		chat := strings.TrimSpace(in.ChatID)
-		curID, curOpen := "", false
+		curID, curOpen, userGames := "", false, 0
 		if cur.Exists() {
 			curID = stringValue(cur.Data()["gameId"])
 		}
@@ -149,16 +155,22 @@ func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Ti
 				return errGameRunning
 			}
 			curOpen = curOpen || g.Ref.ID == curID
+			if g.Data()["userGame"] == true {
+				userGames++
+			}
+		}
+		if in.UserGame && userGames >= in.MaxUserGames {
+			return errTooManyGames
 		}
 		if err := tx.Create(ref, map[string]any{
 			"status": gameRegistering, "createdBy": in.CreatedBy, "createdAt": now,
 			"chatId": in.ChatID, "threadId": in.ThreadID, "botId": in.BotID, "testMode": in.Config.TestMode,
 			"config": string(cfg), "version": 0, "eventSeq": 0, "feedSeq": 0, "updatedAt": now,
-			"registrationDeadline": deadline, "startAt": startAt, "playerCount": 0,
+			"registrationDeadline": deadline, "startAt": startAt, "playerCount": 0, "userGame": in.UserGame,
 		}); err != nil {
 			return err
 		}
-		if curOpen && chat != s.pscChatID {
+		if in.UserGame || (curOpen && chat != s.pscChatID) {
 			return nil
 		}
 		return tx.Set(s.currentRef(), map[string]any{"gameId": ref.ID, "updatedAt": now})

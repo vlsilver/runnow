@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"maps"
 	"slices"
 	"sort"
 	"strconv"
@@ -53,13 +54,28 @@ type gameConfig struct {
 	minAppVersion   string
 	pscInviteURL    string            // link mời vào PSC, gắn vào mục in_psc khi chưa đạt
 	cards           map[string]string // vai → URL ảnh lá bài; "back" là mặt sau
+	// userGameMinAppVersion: user không phải admin mở được ván ở group của bot
+	// riêng từ bản app này; rỗng là chưa mở cho user. maxUserGames: số ván của
+	// user chưa kết thúc cùng lúc.
+	userGameMinAppVersion string
+	maxUserGames          int
 }
+
+// defaultMaxUserGames: tick chạy tuần tự mọi ván trong 40s, nên giữ số ván
+// mở cùng lúc nhỏ cho tới khi đo được thời gian một tick.
+const defaultMaxUserGames = 5
 
 func (c gameConfig) isAdmin(uid string) bool  { return c.admins[uid] }
 func (c gameConfig) isTester(uid string) bool { return c.admins[uid] || c.testers[uid] }
 
+// canCreate: admin mở mọi loại ván; user mở ván ở group của bot riêng khi
+// config đã mở cho bản app của họ (bản cũ chưa có luồng chọn group).
+func (c gameConfig) canCreate(v GameViewer) bool {
+	return c.isAdmin(v.UID) || (c.userGameMinAppVersion != "" && appVersionOK(v.AppVersion, c.userGameMinAppVersion))
+}
+
 func (s *GameStore) loadConfig(ctx context.Context) (gameConfig, error) {
-	cfg := gameConfig{admins: map[string]bool{}, testers: map[string]bool{}, cards: map[string]string{}}
+	cfg := gameConfig{admins: map[string]bool{}, testers: map[string]bool{}, cards: map[string]string{}, maxUserGames: defaultMaxUserGames}
 	doc, err := s.db.Collection("gameState").Doc("config").Get(ctx)
 	if status.Code(err) == codes.NotFound {
 		return cfg, nil
@@ -76,6 +92,10 @@ func (s *GameStore) loadConfig(ctx context.Context) (gameConfig, error) {
 	}
 	cfg.minAppVersion = strings.TrimSpace(stringValue(d["minAppVersion"]))
 	cfg.pscInviteURL = strings.TrimSpace(stringValue(d["pscInviteUrl"]))
+	cfg.userGameMinAppVersion = strings.TrimSpace(stringValue(d["userGameMinAppVersion"]))
+	if n, ok := d["maxUserGames"].(int64); ok {
+		cfg.maxUserGames = int(n)
+	}
 	if cards, ok := d["cards"].(map[string]any); ok {
 		for k, v := range cards {
 			cfg.cards[k] = stringValue(v)
@@ -244,6 +264,11 @@ type GameList struct {
 
 type GameListViewer struct {
 	CanCreate bool `json:"canCreate"`
+	// CanUsePsc, CanPickRoles: phần màn tạo ván chỉ admin dùng (đăng vào
+	// group PSC, ván thử; tắt bớt vai). User thường chỉ mở ván đủ vai ở group
+	// của bot riêng (Create). App cũ không đọc: lúc đó chỉ admin mở được ván.
+	CanUsePsc    bool `json:"canUsePsc"`
+	CanPickRoles bool `json:"canPickRoles"`
 }
 
 type GameCreateOptions struct {
@@ -288,16 +313,18 @@ const (
 	gameListKeepClosed = 24 * time.Hour
 )
 
-// List trả các ván trong 10 ván mới nhất còn đáng hiện: ván bị huỷ thì bỏ ngay
-// vì không có kết quả để xem, ván đã hết quá gameListKeepClosed thì bỏ. Ván thử
-// chỉ hiện với admin, người test và người đã đăng ký vào ván đó.
+// List trả tối đa 10 ván mới nhất còn đáng hiện: ván bị huỷ thì bỏ ngay vì
+// không có kết quả để xem, ván đã hết quá gameListKeepClosed thì bỏ. Ván thử
+// chỉ hiện với admin, người test và người đã đăng ký vào ván đó. Ván của user
+// chỉ hiện với admin, chủ ván và người đã đăng ký; người khác vào bằng link.
 func (s *GameStore) List(ctx context.Context, v GameViewer, wall time.Time) (GameList, error) {
 	cfg, err := s.loadConfig(ctx)
 	if err != nil {
 		return GameList{}, err
 	}
-	out := GameList{Viewer: GameListViewer{CanCreate: cfg.isAdmin(v.UID)}, CreateOptions: gameCreateOptions(), Items: []GameListItem{}}
-	docs, err := s.db.Collection("games").OrderBy("createdAt", firestore.Desc).Limit(gameListLimit).Documents(ctx).GetAll()
+	admin := cfg.isAdmin(v.UID)
+	out := GameList{Viewer: GameListViewer{CanCreate: cfg.canCreate(v), CanUsePsc: admin, CanPickRoles: admin}, CreateOptions: gameCreateOptions(), Items: []GameListItem{}}
+	docs, err := s.listCandidates(ctx)
 	if err != nil {
 		return out, err
 	}
@@ -315,6 +342,12 @@ func (s *GameStore) List(ctx context.Context, v GameViewer, wall time.Time) (Gam
 		if g["testMode"] == true && !cfg.isTester(v.UID) && !registered {
 			continue
 		}
+		if g["userGame"] == true && !cfg.isAdmin(v.UID) && !registered && stringValue(g["createdBy"]) != v.UID {
+			continue
+		}
+		if len(out.Items) == gameListLimit {
+			break
+		}
 		status := stringValue(g["status"])
 		if status == gameCancelled || status == gameEnded && wall.Sub(timeValue(g["updatedAt"])) > gameListKeepClosed {
 			continue
@@ -327,6 +360,34 @@ func (s *GameStore) List(ctx context.Context, v GameViewer, wall time.Time) (Gam
 		}
 		out.Items = append(out.Items, item)
 	}
+	return out, nil
+}
+
+// listCandidates là 10 ván mới nhất cộng 10 ván không phải của user mới nhất,
+// không trùng, mới tạo trước. Phần sau giữ ván PSC trên danh sách khi nhiều ván
+// user mới mở đẩy nó ra khỏi 10 ván mới nhất; ván tạo trước khi có field
+// userGame chỉ nằm ở phần đầu. Cần index games(userGame, createdAt desc).
+func (s *GameStore) listCandidates(ctx context.Context) ([]*firestore.DocumentSnapshot, error) {
+	games := s.db.Collection("games")
+	newest, err := games.OrderBy("createdAt", firestore.Desc).Limit(gameListLimit).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	shared, err := games.Where("userGame", "==", false).OrderBy("createdAt", firestore.Desc).Limit(gameListLimit).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var out []*firestore.DocumentSnapshot
+	for _, d := range append(newest, shared...) {
+		if !seen[d.Ref.ID] {
+			seen[d.Ref.ID] = true
+			out = append(out, d)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return timeValue(out[i].Data()["createdAt"]).After(timeValue(out[j].Data()["createdAt"]))
+	})
 	return out, nil
 }
 
@@ -834,6 +895,9 @@ type GameDetail struct {
 	Requirements         []GameRequirement `json:"requirements"`
 	IsRegistered         bool              `json:"isRegistered"`
 	IsAdmin              bool              `json:"isAdmin"`
+	// CanManage: người gọi là admin hoặc chủ ván, được Start, tạm dừng, chạy
+	// tiếp, gia hạn và huỷ ván này.
+	CanManage            bool              `json:"canManage"`
 	MinAppVersion        string            `json:"minAppVersion"`
 	Winner               string            `json:"winner,omitempty"`
 	WinnerLabel          string            `json:"winnerLabel,omitempty"`
@@ -966,7 +1030,8 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 	if out.IsAdmin && out.TestMode && stringValue(data["status"]) == gameRunning {
 		out.TaskKey = stringValue(data["taskKey"])
 	}
-	if out.IsAdmin {
+	out.CanManage = out.IsAdmin || stringValue(data["createdBy"]) == v.UID
+	if out.CanManage {
 		out.StartError = startErrorOf(data)
 	}
 	if stringValue(data["status"]) == gameRunning {
@@ -1479,14 +1544,20 @@ type CreateGameRequest struct {
 	Settings map[string]any `json:"settings"`
 }
 
-// Create mở ván mới, chỉ admin. Ván thật chạy trong PSC; ván thử phải chỉ ra
-// group test, CreateGame kiểm group đó không phải PSC.
+// Create mở ván mới. Admin mở được ván PSC, ván thử (group test, CreateGame kiểm
+// group đó không phải PSC) và ván ở group của bot riêng. User được mở
+// (gameConfig.canCreate) chỉ mở ván ở group của bot riêng, đủ bộ vai, và chỉ
+// khi số ván user chưa kết thúc còn dưới maxUserGames.
 func (s *GameStore) Create(ctx context.Context, req CreateGameRequest, v GameViewer, wall time.Time) (string, error) {
 	cfg, err := s.loadConfig(ctx)
 	if err != nil {
 		return "", err
 	}
-	if !cfg.isAdmin(v.UID) {
+	admin := cfg.isAdmin(v.UID)
+	if !cfg.canCreate(v) {
+		return "", errNotAdmin
+	}
+	if !admin && (req.TestMode || slices.Contains(slices.Collect(maps.Values(req.Roles)), false)) {
 		return "", errNotAdmin
 	}
 	gc := werewolf.Config{KmPerUnit: req.KmPerUnit, TestMode: req.TestMode}
@@ -1506,6 +1577,15 @@ func (s *GameStore) Create(ctx context.Context, req CreateGameRequest, v GameVie
 		return "", &HTTPError{Status: http.StatusUnprocessableEntity, Code: "invalid_config", Message: "Cấu hình ván không hợp lệ: " + err.Error()}
 	}
 	in := NewGameInput{CreatedBy: v.UID, ChatID: s.pscChatID, ThreadID: req.ThreadID, Config: gc}
+	if !admin {
+		if gc.NoTelegram || req.Telegram == nil {
+			return "", errTelegramRequired
+		}
+		if strings.TrimSpace(req.Telegram.ChatID) == s.pscChatID {
+			return "", errUserGameInPsc
+		}
+		in.UserGame, in.MaxUserGames = true, cfg.maxUserGames
+	}
 	switch {
 	case gc.NoTelegram:
 		// Ván chỉ trong app: không có chat nào để outbox gửi vào.
@@ -1622,6 +1702,11 @@ func (s *GameStore) Register(ctx context.Context, gameID string, v GameViewer, w
 	return res, err
 }
 
+var (
+	errTelegramRequired = &HTTPError{Status: http.StatusUnprocessableEntity, Code: "telegram_required", Message: "Chọn group và topic cho bot quản trò của bạn."}
+	errUserGameInPsc    = &HTTPError{Status: http.StatusUnprocessableEntity, Code: "telegram_chat", Message: "Ván của bạn không đăng vào group PSC được."}
+)
+
 var errInOtherGame = &HTTPError{Status: http.StatusConflict, Code: "in_other_game", Message: "Bạn đang ở một ván Ma Sói khác chưa kết thúc."}
 
 // inOtherOpenGame: uid có là người chơi của một ván chưa kết thúc khác gameID
@@ -1702,6 +1787,46 @@ func registrationOpen(g map[string]any, wall time.Time) error {
 	}
 	if t := timeValue(g["registrationDeadline"]); !t.IsZero() && !wall.Before(t) {
 		return errRegistrationShut
+	}
+	return nil
+}
+
+// RequireCanCreate trả 403 not_admin nếu v không mở được ván nào
+// (gameConfig.canCreate): thiết lập bot quản trò chỉ cho người mở được ván.
+func (s *GameStore) RequireCanCreate(ctx context.Context, v GameViewer) error {
+	cfg, err := s.loadConfig(ctx)
+	if err != nil {
+		return err
+	}
+	if !cfg.canCreate(v) {
+		return errNotAdmin
+	}
+	return nil
+}
+
+// RequireHost trả 403 not_admin nếu uid không phải admin cũng không phải người
+// tạo ván gameID. Ván không có hay id sai dạng cũng là 403 với người không phải
+// admin, như trước khi chủ ván có quyền: không lộ ván thử có tồn tại hay không.
+func (s *GameStore) RequireHost(ctx context.Context, gameID, uid string) error {
+	cfg, err := s.loadConfig(ctx)
+	if err != nil {
+		return err
+	}
+	if cfg.isAdmin(uid) {
+		return nil
+	}
+	if gameID == "" || len(gameID) > 64 || strings.Contains(gameID, "/") {
+		return errNotAdmin
+	}
+	g, err := s.gameRef(gameID).Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return errNotAdmin
+	}
+	if err != nil {
+		return err
+	}
+	if stringValue(g.Data()["createdBy"]) != uid {
+		return errNotAdmin
 	}
 	return nil
 }

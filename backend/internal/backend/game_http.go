@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/vlsilver/runnow/backend/internal/werewolf"
@@ -136,7 +139,7 @@ func (s *Server) gameRoutes() {
 	}))
 
 	// Start (2.4): dryRun trả ai sẽ bị loại; Start thật đặt starting rồi giao bot.
-	s.route("POST /v1/games/{id}/start", s.gameAdmin(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+	s.route("POST /v1/games/{id}/start", s.gameHost(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
 		id := r.PathValue("id")
 		if r.URL.Query().Get("dryRun") == "true" {
 			preview, err := s.deps.Games.StartPreview(r.Context(), id)
@@ -161,7 +164,7 @@ func (s *Server) gameRoutes() {
 		return writeJSON(w, 202, map[string]any{"status": gameStarting, "attempt": attempt})
 	}))
 	for _, action := range []string{"pause", "resume", "cancel"} {
-		s.route("POST /v1/games/{id}/admin/"+action, s.gameAdmin(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+		s.route("POST /v1/games/{id}/admin/"+action, s.gameHost(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
 			run := map[string]func(context.Context, string, string, time.Time) error{
 				"pause": s.deps.Games.AdminPause, "resume": s.deps.Games.AdminResume, "cancel": s.deps.Games.AdminCancel,
 			}[action]
@@ -177,7 +180,7 @@ func (s *Server) gameRoutes() {
 		}))
 	}
 
-	s.route("POST /v1/games/{id}/admin/extend", s.gameAdmin(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+	s.route("POST /v1/games/{id}/admin/extend", s.gameHost(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
 		var body struct {
 			Minutes int `json:"minutes"`
 		}
@@ -394,14 +397,32 @@ func (s *Server) tickGame(ctx context.Context, wall time.Time) error {
 	if err != nil {
 		return err
 	}
-	var errs []error
+	failed := map[string]error{}
 	for _, g := range games {
 		if err := s.tickOneGame(ctx, g.ID, g.Status, wall); err != nil {
-			errs = append(errs, fmt.Errorf("ván %s: %w", g.ID, err))
+			failed[g.ID] = err
 		}
 	}
-	return errors.Join(errs...)
+	if len(failed) == 0 {
+		return nil
+	}
+	return &tickGameErrors{byGame: failed}
 }
+
+// tickGameErrors là lỗi của từng ván trong một tick, để cảnh báo admin chỉ xét
+// ván chính.
+type tickGameErrors struct{ byGame map[string]error }
+
+func (e *tickGameErrors) Error() string {
+	ids := slices.Sorted(maps.Keys(e.byGame))
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = fmt.Sprintf("ván %s: %v", id, e.byGame[id])
+	}
+	return strings.Join(parts, "; ")
+}
+
+func (e *tickGameErrors) Unwrap() []error { return slices.Collect(maps.Values(e.byGame)) }
 
 func (s *Server) tickOneGame(ctx context.Context, id, st string, wall time.Time) error {
 	if st == gameRegistering {
@@ -473,6 +494,17 @@ func (s *Server) gameHandler(next func(http.ResponseWriter, *http.Request, GameV
 func (s *Server) gameAdmin(next func(http.ResponseWriter, *http.Request, GameViewer) error) handler {
 	return s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
 		if err := s.deps.Games.RequireAdmin(r.Context(), v.UID); err != nil {
+			return err
+		}
+		return next(w, r, v)
+	})
+}
+
+// gameHost cho admin hoặc chủ ván {id} (người tạo) đi tiếp; người khác 403
+// not_admin như gameAdmin.
+func (s *Server) gameHost(next func(http.ResponseWriter, *http.Request, GameViewer) error) handler {
+	return s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+		if err := s.deps.Games.RequireHost(r.Context(), r.PathValue("id"), v.UID); err != nil {
 			return err
 		}
 		return next(w, r, v)
