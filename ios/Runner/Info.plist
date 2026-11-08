@@ -34,6 +34,8 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>com.googleusercontent.apps.267607013114-3694vlec3np6l826qnlgja6ijaludugk</string>
+				<!-- Client iOS của project staging (run-with-me-3758a), cho bản build staging. -->
+				<string>com.googleusercontent.apps.517092416685-6vprkivhmcjt1cr68tofpvnjaiqkci4o</string>
 			</array>
 		</dict>
 	</array>
