@@ -1597,6 +1597,12 @@ func (s *GameStore) Register(ctx context.Context, gameID string, v GameViewer, w
 		if len(players) >= werewolf.MaxPlayers {
 			return errGameFull
 		}
+		if in, err := inOtherOpenGame(tx, s.db, gameID, v.UID); err != nil || in {
+			if err == nil {
+				err = errInOtherGame
+			}
+			return err
+		}
 		prof, err := getOptional(tx, s.db.Collection("publicProfiles").Doc(v.UID))
 		if err != nil {
 			return err
@@ -1614,6 +1620,37 @@ func (s *GameStore) Register(ctx context.Context, gameID string, v GameViewer, w
 		return tx.Update(game, []firestore.Update{{Path: "playerCount", Value: res.PlayerCount}, {Path: "updatedAt", Value: wall}})
 	})
 	return res, err
+}
+
+var errInOtherGame = &HTTPError{Status: http.StatusConflict, Code: "in_other_game", Message: "Bạn đang ở một ván Ma Sói khác chưa kết thúc."}
+
+// inOtherOpenGame: uid có là người chơi của một ván chưa kết thúc khác gameID
+// không. Đọc trong transaction của Register để hai lần đăng ký hai ván cùng lúc
+// không cùng lọt.
+func inOtherOpenGame(tx *firestore.Transaction, db *firestore.Client, gameID, uid string) (bool, error) {
+	games, err := tx.Documents(openGames(db)).GetAll()
+	if err != nil {
+		return false, err
+	}
+	var refs []*firestore.DocumentRef
+	for _, g := range games {
+		if g.Ref.ID != gameID {
+			refs = append(refs, g.Ref.Collection("players").Doc(uid))
+		}
+	}
+	if len(refs) == 0 {
+		return false, nil
+	}
+	players, err := tx.GetAll(refs)
+	if err != nil {
+		return false, err
+	}
+	for _, p := range players {
+		if p.Exists() {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // Unregister rút người gọi khỏi ván đang đăng ký. Chưa đăng ký thì coi như xong.

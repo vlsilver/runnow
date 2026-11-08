@@ -302,28 +302,21 @@ func (s *TelegramLinkService) UIDForTelegram(ctx context.Context, tgID int64) (s
 	return stringValue(d.Data()["uid"]), nil
 }
 
-// inActiveGame: có uid nào là người chơi của ván đang starting/running không.
+// inActiveGame: có uid nào là người chơi của một ván đang starting/running không.
 // Ván đang đăng ký thì chưa tính: lúc Start bot kiểm lại liên kết của từng người.
 func inActiveGame(tx *firestore.Transaction, db *firestore.Client, uids ...string) (bool, error) {
-	cur, err := getOptional(tx, db.Collection("gameState").Doc("current"))
-	if err != nil || !cur.Exists() {
+	games, err := tx.Documents(db.Collection("games").Where("status", "in", []string{gameStarting, gameRunning})).GetAll()
+	if err != nil || len(games) == 0 {
 		return false, err
 	}
-	id := stringValue(cur.Data()["gameId"])
-	if id == "" {
+	var refs []*firestore.DocumentRef
+	for _, g := range games {
+		for _, uid := range uids {
+			refs = append(refs, g.Ref.Collection("players").Doc(uid))
+		}
+	}
+	if len(refs) == 0 {
 		return false, nil
-	}
-	game := db.Collection("games").Doc(id)
-	g, err := getOptional(tx, game)
-	if err != nil || !g.Exists() {
-		return false, err
-	}
-	if st := stringValue(g.Data()["status"]); st != gameStarting && st != gameRunning {
-		return false, nil
-	}
-	refs := make([]*firestore.DocumentRef, len(uids))
-	for i, uid := range uids {
-		refs[i] = game.Collection("players").Doc(uid)
 	}
 	players, err := tx.GetAll(refs)
 	if err != nil {

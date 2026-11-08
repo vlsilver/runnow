@@ -208,7 +208,7 @@ func TestEmulatorActionOverwriteDropsVoidAndNeedsRunningGame(t *testing.T) {
 		t.Fatalf("voidReason còn: %v", d.Data())
 	}
 
-	id, err := g.store.CreateGame(context.Background(), NewGameInput{}, msgStart)
+	id, err := g.store.CreateGame(context.Background(), NewGameInput{CreatedBy: "admin"}, msgStart)
 	if err == nil {
 		t.Fatalf("tạo được ván %s", id)
 	}

@@ -100,8 +100,13 @@ type NewGameInput struct {
 	StartAt time.Time
 }
 
-// CreateGame mở ván mới ở trạng thái đăng ký. Chỉ một ván được mở một lúc:
-// gameState/current còn trỏ tới ván chưa kết thúc thì trả 409 game_running.
+// CreateGame mở ván mới ở trạng thái đăng ký. Mỗi chat và mỗi chủ ván chỉ có
+// một ván chưa kết thúc; trùng thì trả 409 game_running. Ván chưa có chat
+// (không đăng Telegram) chỉ bị chặn theo chủ ván.
+//
+// gameState/current là ván chính: cảnh báo admin, lệnh admin trong DM và ngữ
+// cảnh bot 3i đọc nó. Ván mới lấy con trỏ khi ván đang trỏ đã kết thúc, hoặc khi
+// ván mới ở PSC; ván group khác mở lúc PSC đang chơi thì không lấy mất.
 func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Time) (string, error) {
 	if in.Config.TestMode {
 		// Ván thử có người giả và lệnh admin đẩy giờ; chạy trong PSC là tin của nó
@@ -126,20 +131,24 @@ func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Ti
 		startAt = in.StartAt
 	}
 	err = s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
-		cur, err := tx.Get(s.currentRef())
-		if err != nil && status.Code(err) != codes.NotFound {
+		cur, err := getOptional(tx, s.currentRef())
+		if err != nil {
 			return err
 		}
+		open, err := tx.Documents(openGames(s.db)).GetAll()
+		if err != nil {
+			return err
+		}
+		chat := strings.TrimSpace(in.ChatID)
+		curID, curOpen := "", false
 		if cur.Exists() {
-			if id := stringValue(cur.Data()["gameId"]); id != "" {
-				g, err := tx.Get(s.gameRef(id))
-				if err != nil && status.Code(err) != codes.NotFound {
-					return err
-				}
-				if g.Exists() && !gameClosed(stringValue(g.Data()["status"])) {
-					return errGameRunning
-				}
+			curID = stringValue(cur.Data()["gameId"])
+		}
+		for _, g := range open {
+			if stringValue(g.Data()["createdBy"]) == in.CreatedBy || (chat != "" && strings.TrimSpace(stringValue(g.Data()["chatId"])) == chat) {
+				return errGameRunning
 			}
+			curOpen = curOpen || g.Ref.ID == curID
 		}
 		if err := tx.Create(ref, map[string]any{
 			"status": gameRegistering, "createdBy": in.CreatedBy, "createdAt": now,
@@ -148,6 +157,9 @@ func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Ti
 			"registrationDeadline": deadline, "startAt": startAt, "playerCount": 0,
 		}); err != nil {
 			return err
+		}
+		if curOpen && chat != s.pscChatID {
+			return nil
 		}
 		return tx.Set(s.currentRef(), map[string]any{"gameId": ref.ID, "updatedAt": now})
 	})
@@ -158,6 +170,12 @@ func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Ti
 }
 
 func gameClosed(status string) bool { return status == gameEnded || status == gameCancelled }
+
+// openGames là các ván chưa kết thúc. Lọc một field nên dùng index có sẵn; số
+// ván mở cùng lúc nhỏ nên đọc hết rồi lọc chat, chủ ván, người chơi trong code.
+func openGames(db *firestore.Client) firestore.Query {
+	return db.Collection("games").Where("status", "in", []string{gameRegistering, gameStarting, gameRunning})
+}
 
 // StartGame ghi state ban đầu (đã chia vai) và các tin mở ván. Chỉ chạy được
 // một lần: ván đã chạy thì trả 409.
@@ -286,6 +304,49 @@ func gameAdvanceTaskFor(gameID string, res AdvanceResult) PublishTask {
 		t.TaskID = StableTaskID("gameadv", gameID+res.TaskKey)
 	}
 	return t
+}
+
+// tickGameWindow: ván đã kết thúc quá ngần này thì tick thôi kick flush outbox
+// còn sót; tin Ma Sói trễ hơn một ngày không còn ý nghĩa.
+const tickGameWindow = 24 * time.Hour
+
+// TickGame là một ván tick cần xem và status lúc đọc.
+type TickGame struct{ ID, Status string }
+
+// TickGames là các ván tick cần xem: mọi ván chưa kết thúc, ván gameState/current
+// dù đã kết thúc (như trước khi có nhiều ván), và ván đã kết thúc trong
+// tickGameWindow (outbox có thể còn tin chờ). Không trùng id.
+func (s *GameStore) TickGames(ctx context.Context, wall time.Time) ([]TickGame, error) {
+	open, err := openGames(s.db).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	recent, err := s.db.Collection("games").Where("updatedAt", ">=", wall.Add(-tickGameWindow)).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	var out []TickGame
+	seen := map[string]bool{}
+	add := func(id, st string) {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			out = append(out, TickGame{ID: id, Status: st})
+		}
+	}
+	for _, g := range open {
+		add(g.Ref.ID, stringValue(g.Data()["status"]))
+	}
+	for _, g := range recent {
+		if st := stringValue(g.Data()["status"]); gameClosed(st) {
+			add(g.Ref.ID, st)
+		}
+	}
+	id, st, err := s.CurrentGame(ctx)
+	if err != nil {
+		return nil, err
+	}
+	add(id, st)
+	return out, nil
 }
 
 // CurrentGame là ván gameState/current trỏ tới và status của nó; chưa có ván

@@ -369,9 +369,9 @@ func TestEmulatorAdvanceNothingDue(t *testing.T) {
 	if n := g.count("events"); n != 1 {
 		t.Fatalf("%d event", n)
 	}
-	id, err := g.store.CreateGame(context.Background(), NewGameInput{}, msgStart)
+	id, err := g.store.CreateGame(context.Background(), NewGameInput{CreatedBy: "admin"}, msgStart)
 	if err == nil {
-		t.Fatalf("tạo được ván %s khi đang chạy ván khác", id)
+		t.Fatalf("chủ ván tạo được ván %s khi ván của mình đang chạy", id)
 	}
 }
 

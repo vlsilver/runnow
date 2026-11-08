@@ -613,24 +613,34 @@ func (s *GameStore) currentGameID(ctx context.Context) (string, error) {
 	return stringValue(cur.Data()["gameId"]), nil
 }
 
-// CardText là lá bài của uid trong ván hiện tại, cho /vai trong DM. Rỗng là
-// uid không ở trong ván nào đang chạy.
-func (s *GameStore) CardText(ctx context.Context, uid string) (string, error) {
-	id, err := s.currentGameID(ctx)
-	if err != nil || id == "" {
-		return "", err
-	}
-	game := s.gameRef(id)
-	g, err := game.Get(ctx)
-	if status.Code(err) == codes.NotFound {
-		return "", nil
-	}
+// runningGameOf là ván đang chạy có uid là người chơi; nil là không có. Một
+// người chỉ đăng ký được một ván chưa kết thúc (Register), nên lấy ván đầu tiên.
+func (s *GameStore) runningGameOf(ctx context.Context, uid string) (*firestore.DocumentSnapshot, error) {
+	games, err := s.db.Collection("games").Where("status", "==", gameRunning).Documents(ctx).GetAll()
 	if err != nil {
+		return nil, err
+	}
+	for _, g := range games {
+		_, err := g.Ref.Collection("players").Doc(uid).Get(ctx)
+		if status.Code(err) == codes.NotFound {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		return g, nil
+	}
+	return nil, nil
+}
+
+// CardText là lá bài của uid trong ván đang chạy có uid, cho /vai trong DM.
+// Rỗng là uid không ở trong ván nào đang chạy.
+func (s *GameStore) CardText(ctx context.Context, uid string) (string, error) {
+	g, err := s.runningGameOf(ctx, uid)
+	if err != nil || g == nil {
 		return "", err
 	}
-	if stringValue(g.Data()["status"]) != gameRunning {
-		return "", nil
-	}
+	game := g.Ref
 	st, err := s.loadState(ctx, game)
 	if err != nil || st == nil || st.Players[uid] == nil {
 		return "", err

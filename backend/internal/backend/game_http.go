@@ -382,26 +382,37 @@ func (s *Server) gameAdvance(w http.ResponseWriter, r *http.Request) error {
 	return writeJSON(w, 200, map[string]any{"steps": res.Steps, "status": res.Status, "taskKey": res.TaskKey, "nextAt": res.NextAt})
 }
 
-// tickGame là lưới an toàn của ván hiện tại: chạy bước quá hạn và hẹn lại
-// game-advance (task hẹn bị mất hay enqueue lỗi thì phase trễ tối đa một tick),
-// rồi kick flush nếu outbox còn tin chờ, kể cả ván đã kết thúc.
+// tickGame là lưới an toàn của mọi ván tick cần xem (GameStore.TickGames): chạy
+// bước quá hạn và hẹn lại game-advance (task hẹn bị mất hay enqueue lỗi thì phase
+// trễ tối đa một tick), rồi kick flush nếu outbox còn tin chờ, kể cả ván đã kết
+// thúc. Một ván lỗi không chặn ván khác; lỗi gom lại trả về cho tick báo 5xx.
 func (s *Server) tickGame(ctx context.Context, wall time.Time) error {
 	if s.deps.Games == nil {
 		return nil
 	}
-	id, st, err := s.deps.Games.CurrentGame(ctx)
-	if err != nil || id == "" {
+	games, err := s.deps.Games.TickGames(ctx, wall)
+	if err != nil {
 		return err
 	}
+	var errs []error
+	for _, g := range games {
+		if err := s.tickOneGame(ctx, g.ID, g.Status, wall); err != nil {
+			errs = append(errs, fmt.Errorf("ván %s: %w", g.ID, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (s *Server) tickOneGame(ctx context.Context, id, st string, wall time.Time) error {
 	if st == gameRegistering {
 		if err := s.autoStartGame(ctx, id, wall); err != nil {
-			return fmt.Errorf("ván %s: %w", id, err)
+			return err
 		}
 	}
 	if st == gameRunning {
 		res, err := s.advanceGame(ctx, id, wall)
 		if err != nil {
-			return fmt.Errorf("ván %s: %w", id, err)
+			return err
 		}
 		if res.Steps > 0 {
 			slog.WarnContext(ctx, "game.tick_stepped", "gameId", id, "steps", res.Steps, "nextKey", res.TaskKey)
@@ -410,7 +421,7 @@ func (s *Server) tickGame(ctx context.Context, wall time.Time) error {
 	}
 	pending, err := s.deps.Games.HasPendingOutbox(ctx, id)
 	if err != nil {
-		return fmt.Errorf("ván %s: %w", id, err)
+		return err
 	}
 	if pending {
 		s.kickGameFlush(ctx, id)
