@@ -262,67 +262,49 @@ class GameModeCards extends StatelessWidget {
 
 /// Thiết lập ván đang áp, đọc lại giữa ván: các khối như màn tạo ván, dòng
 /// có icon như thẻ kỹ năng, dòng con thụt vào dưới dòng cha.
-Future<void> showGameSetupSheet(
-  BuildContext context,
-  List<GameSetupSection> sections,
-) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: _M.panel,
-    showDragHandle: true,
-    builder: (context) => SafeArea(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.8,
-        ),
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-          children: [
-            const Text(
-              'Thiết lập ván',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                color: _M.ink,
-              ),
+class GameSetupSections extends StatelessWidget {
+  const GameSetupSections(this.sections, {super.key});
+
+  final List<GameSetupSection> sections;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final section in sections) ...[
+          const SizedBox(height: 18),
+          Text(
+            section.title.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 11,
+              letterSpacing: 1.4,
+              fontWeight: FontWeight.w800,
+              color: _M.faint,
             ),
-            for (final section in sections) ...[
-              const SizedBox(height: 18),
-              Text(
-                section.title.toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 11,
-                  letterSpacing: 1.4,
-                  fontWeight: FontWeight.w800,
-                  color: _M.faint,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: _M.raised,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: _M.border),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Column(
-                  children: [
-                    for (final (i, item) in section.items.indexed) ...[
-                      if (i > 0 && !item.sub)
-                        const Divider(height: 1, color: _M.divider),
-                      _SetupRow(item),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    ),
-  );
+          ),
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: _M.raised,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _M.border),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Column(
+              children: [
+                for (final (i, item) in section.items.indexed) ...[
+                  if (i > 0 && !item.sub)
+                    const Divider(height: 1, color: _M.divider),
+                  _SetupRow(item),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 }
 
 class _SetupRow extends StatelessWidget {

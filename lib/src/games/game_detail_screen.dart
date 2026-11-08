@@ -17,14 +17,13 @@ import 'package:myrun/src/games/game_my_card.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/games/game_role_card.dart';
-import 'package:myrun/src/games/game_skill_cards.dart';
+import 'package:myrun/src/games/game_rules_page.dart';
 import 'package:myrun/src/games/game_village.dart';
 import 'package:myrun/src/games/telegram_link_controller.dart';
 import 'package:myrun/src/games/telegram_link_section.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
-import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -348,12 +347,11 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                         onPressed: () => shareGame(context, detail),
                       ),
                     ),
-                  if (detail != null && detail.setup.isNotEmpty)
-                    IconButton(
-                      tooltip: 'Thiết lập ván',
-                      icon: const Icon(Icons.tune_rounded),
-                      onPressed: () =>
-                          showGameSetupSheet(context, detail.setup),
+                  if (detail != null && GameRulesPage.hasContent(detail))
+                    TextButton.icon(
+                      icon: const Icon(Icons.menu_book_rounded, size: 18),
+                      label: const Text('Luật'),
+                      onPressed: () => GameRulesPage.open(context, detail),
                     ),
                 ],
               ),
@@ -486,13 +484,6 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                               ),
                             ),
                           ],
-                          // Lúc mở đăng ký thì luật nằm ngay dưới nút đăng ký;
-                          // ván chạy rồi thì xuống cuối, nhường chỗ cho ván.
-                          if (detail.status == 'registering' &&
-                              detail.rulesText.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            _Rules(text: detail.rulesText),
-                          ],
                           if (detail.status == 'registering') ...[
                             if (detail.players.isNotEmpty) ...[
                               const SizedBox(height: 20),
@@ -579,11 +570,6 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                                 loadingOlder: _controller.loadingOlder,
                                 onLoadOlder: _loadOlder,
                               ),
-                          ],
-                          if (detail.status != 'registering' &&
-                              detail.rulesText.isNotEmpty) ...[
-                            const SizedBox(height: 20),
-                            _Rules(text: detail.rulesText),
                           ],
                           if (detail.status != 'registering' &&
                               detail.isRegistered) ...[
@@ -772,28 +758,6 @@ class _Slots extends StatelessWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-class _Rules extends StatelessWidget {
-  const _Rules({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassPanel(
-      border: Border.all(color: context.runNowPalette.border),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          title: const Text('Luật chơi'),
-          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          expandedCrossAxisAlignment: CrossAxisAlignment.start,
-          children: [SelectableText(text)],
-        ),
-      ),
     );
   }
 }

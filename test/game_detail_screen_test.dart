@@ -127,6 +127,11 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   }
 
+  Future<void> openRules(WidgetTester tester) async {
+    await tester.tap(find.text('Luật'));
+    await tester.pumpAndSettle();
+  }
+
   setUp(() {
     now = DateTime.utc(2026, 10, 17, 14);
     backend = FakeGameBackend(() => now);
@@ -154,19 +159,42 @@ void main() {
       'rulesText': 'Sói cắn mỗi đêm.',
     };
     await pumpScreen(tester);
-    await tester.tap(find.text('Luật chơi'));
-    await tester.pumpAndSettle();
+    expect(find.text('Sói cắn mỗi đêm.'), findsNothing);
+    await openRules(tester);
     expect(find.text('Sói cắn mỗi đêm.'), findsOneWidget);
+    expect(find.text('Thiết lập ván'), findsNothing);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
 
     backend.game['rulesText'] = 'Sói cắn mỗi đêm, trừ đêm đầu.';
     await elapse(tester, const Duration(seconds: 30));
+    await openRules(tester);
 
     expect(find.text('Sói cắn mỗi đêm.'), findsNothing);
     expect(find.text('Sói cắn mỗi đêm, trừ đêm đầu.'), findsOneWidget);
     await close(tester);
   });
 
-  testWidgets('the setup button shows the game settings in play', (
+  for (final status in ['registering', 'running', 'ended']) {
+    testWidgets('the rules button is on the bar while $status', (tester) async {
+      backend.game = {
+        'id': 'g1',
+        'title': 'Ma Sói tuần 42',
+        'status': status,
+        'statusLabel': status,
+        'refreshAfterSeconds': 30,
+        'rulesText': 'Sói cắn mỗi đêm.',
+      };
+      await pumpScreen(tester);
+      expect(
+        find.descendant(of: find.byType(AppBar), matching: find.text('Luật')),
+        findsOneWidget,
+      );
+      await close(tester);
+    });
+  }
+
+  testWidgets('rules card draws backend rows instead of the long text', (
     tester,
   ) async {
     backend.game = {
@@ -175,7 +203,91 @@ void main() {
       'status': 'running',
       'statusLabel': 'Đang chơi',
       'refreshAfterSeconds': 30,
+      'rulesText': 'Đoạn luật rất dài.',
+      'rulesCard': [
+        {
+          'title': 'Một vòng',
+          'items': [
+            {
+              'key': 'nominate',
+              'icon': 'day',
+              'label': '10h–20h',
+              'value': 'Đề cử, tối đa 2 người',
+            },
+          ],
+        },
+        {
+          'title': 'Lộ bài',
+          'items': [
+            {'key': 'reveal', 'label': '', 'value': 'Bị treo chỉ lộ phe.'},
+          ],
+        },
+      ],
+    };
+    await pumpScreen(tester);
+    await openRules(tester);
+
+    expect(find.text('MỘT VÒNG'), findsOneWidget);
+    expect(find.text('10h–20h'), findsOneWidget);
+    expect(find.text('Đề cử, tối đa 2 người'), findsOneWidget);
+    expect(find.text('Bị treo chỉ lộ phe.'), findsOneWidget);
+    expect(find.text('Đoạn luật rất dài.'), findsNothing);
+    await close(tester);
+  });
+
+  testWidgets('rules card draws each layout, unknown layout as a list', (
+    tester,
+  ) async {
+    Map<String, dynamic> section(String layout, String title) => {
+      'title': title,
+      'layout': layout,
+      'items': [
+        {
+          'key': title,
+          'icon': 'night',
+          'label': '$title nhãn',
+          'value': '$title chữ',
+        },
+      ],
+    };
+    backend.game = {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'running',
+      'statusLabel': 'Đang chơi',
+      'refreshAfterSeconds': 30,
+      'rulesCard': [
+        section('timeline', 'a'),
+        section('tiles', 'b'),
+        section('layout-mới', 'c'),
+      ],
+    };
+    await pumpScreen(tester);
+    await openRules(tester);
+
+    for (final t in ['a', 'b', 'c']) {
+      expect(find.text('$t nhãn'), findsOneWidget);
+      expect(find.text('$t chữ'), findsOneWidget);
+    }
+    expect(tester.takeException(), isNull);
+    await close(tester);
+  });
+
+  testWidgets('the rules page shows the game settings in play', (tester) async {
+    backend.game = {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'running',
+      'statusLabel': 'Đang chơi',
+      'refreshAfterSeconds': 30,
       'setup': [
+        {
+          'title': 'Vòng chơi',
+          'inRulesCard': true,
+          'items': [
+            {'key': 'rounds', 'label': 'Số vòng mỗi ngày', 'value': '1 vòng'},
+          ],
+        },
         {
           'title': 'Km mỗi lượt',
           'items': [
@@ -196,19 +308,21 @@ void main() {
       ],
     };
     await pumpScreen(tester);
-    await tester.tap(find.byTooltip('Thiết lập ván'));
-    await tester.pumpAndSettle();
+    await openRules(tester);
+    expect(find.text('Thiết lập ván'), findsOneWidget);
     expect(find.text('KM MỖI LƯỢT'), findsOneWidget);
+    expect(find.text('VÒNG CHƠI'), findsNothing);
+    expect(find.text('Số vòng mỗi ngày'), findsNothing);
     expect(find.text('Biểu quyết'), findsOneWidget);
     expect(find.text('2 km'), findsOneWidget);
     expect(find.text('Treo tối đa mỗi vòng'), findsOneWidget);
     expect(find.text('2 người'), findsOneWidget);
-    await tester.tapAt(const Offset(10, 10));
-    await tester.pumpAndSettle();
     await close(tester);
   });
 
-  testWidgets('no setup from an old backend, no setup button', (tester) async {
+  testWidgets('no rules and no setup from backend, no rules button', (
+    tester,
+  ) async {
     backend.game = {
       'id': 'g1',
       'title': 'Ma Sói tuần 42',
@@ -217,7 +331,7 @@ void main() {
       'refreshAfterSeconds': 30,
     };
     await pumpScreen(tester);
-    expect(find.byTooltip('Thiết lập ván'), findsNothing);
+    expect(find.text('Luật'), findsNothing);
     await close(tester);
   });
 

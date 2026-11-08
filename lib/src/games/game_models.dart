@@ -548,6 +548,7 @@ class GameDetail {
     required this.startError,
     this.kmTable,
     this.setup = const [],
+    this.rulesCard = const [],
     this.room,
   });
 
@@ -581,6 +582,7 @@ class GameDetail {
       startError: _obj(json['startError'], GameStartError.fromJson),
       kmTable: _obj(json['kmTable'], GameKmTable.fromJson),
       setup: _list(json['setup'], GameSetupSection.fromJson),
+      rulesCard: _list(json['rulesCard'], GameSetupSection.fromJson),
       room: _obj(json['room'], GameChatLink.fromJson),
     );
   }
@@ -630,6 +632,9 @@ class GameDetail {
 
   /// Thiết lập ván đang áp, theo khối của màn tạo ván; rỗng khi backend cũ.
   final List<GameSetupSection> setup;
+
+  /// Luật rút gọn backend viết sẵn; rỗng ở backend cũ thì app hiện [rulesText].
+  final List<GameSetupSection> rulesCard;
 
   /// Phòng chung của ván; null khi chưa đăng ký hay backend cũ.
   final GameChatLink? room;
@@ -1412,17 +1417,30 @@ class GameAction {
 
 /// Một khối của phần xem lại thiết lập ván.
 class GameSetupSection {
-  const GameSetupSection({required this.title, required this.items});
+  const GameSetupSection({
+    required this.title,
+    required this.items,
+    this.layout = '',
+    this.inRulesCard = false,
+  });
 
   factory GameSetupSection.fromJson(Map<String, dynamic> json) {
     return GameSetupSection(
       title: _string(json['title']),
       items: _list(json['items'], GameSetupItem.fromJson),
+      layout: _string(json['layout']),
+      inRulesCard: json['inRulesCard'] == true,
     );
   }
 
   final String title;
   final List<GameSetupItem> items;
+
+  /// Cách vẽ khối của thẻ luật: timeline, tiles; còn lại là danh sách.
+  final String layout;
+
+  /// Thẻ luật đã nói phần này nên trang Luật không vẽ lại.
+  final bool inRulesCard;
 }
 
 /// Một tuỳ chọn đang áp; [value] backend viết sẵn kèm đơn vị. [sub] là dòng
