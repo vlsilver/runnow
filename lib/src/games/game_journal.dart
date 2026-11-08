@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_hero.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/run_now_empty.dart';
 
 typedef _M = RunNowMoonlitTokens;
 
@@ -121,9 +122,10 @@ class _GameJournalState extends State<GameJournal> {
   Widget build(BuildContext context) {
     final items = widget.items;
     if (items.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(12),
-        child: Text('Chưa có gì.', style: TextStyle(color: _M.muted)),
+      return const RunNowEmpty(
+        compact: true,
+        message: 'Chưa có gì',
+        hint: 'Chuyện trong làng sẽ ghi ở đây',
       );
     }
     return Column(

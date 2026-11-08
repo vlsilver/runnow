@@ -62,7 +62,6 @@ void main() {
       alive: true,
     );
     expect(turn.state, GameTurnState.locked);
-    expect(turn.reason, 'Bạn chưa chạy đủ km.');
   });
 
   test('a window not open yet gives the earliest opening time', () {

@@ -7,12 +7,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/widgets/run_now_empty.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
 import 'package:myrun/src/games/game_card_art.dart';
 import 'package:myrun/src/games/game_journal.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
+import 'package:myrun/src/games/game_chat_seen.dart';
 import 'package:myrun/src/games/game_detail_screen.dart';
 import 'package:myrun/src/games/game_invite_share.dart';
 import 'package:myrun/src/games/game_links.dart';
@@ -71,6 +73,14 @@ final _png = base64Decode(
 );
 
 /// Kho thẻ đã lật trong bộ nhớ, như secure storage trên máy.
+class _MemoryChatSeen extends GameChatSeen {
+  _MemoryChatSeen(this.value);
+  int? value;
+
+  @override
+  Future<int?> seen(String uid, String gameId, String chatKey) async => value;
+}
+
 class _MemoryReveals extends GameCardReveals {
   _MemoryReveals({required this.revealedAll});
   final bool revealedAll;
@@ -104,7 +114,11 @@ void main() {
 
   setUpAll(() => SharePlatform.instance = share);
 
-  Future<void> pumpScreen(WidgetTester tester, {ThemeData? theme}) async {
+  Future<void> pumpScreen(
+    WidgetTester tester, {
+    ThemeData? theme,
+    GameChatSeen? chatSeen,
+  }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -113,6 +127,9 @@ void main() {
           pushControllerProvider.overrideWithValue(push),
           cardShareStoreProvider.overrideWithValue(shareStore),
           gameCardRevealsProvider.overrideWithValue(reveals),
+          gameChatSeenProvider.overrideWithValue(
+            chatSeen ?? _MemoryChatSeen(null),
+          ),
         ],
         child: MaterialApp(
           theme: theme,
@@ -140,14 +157,14 @@ void main() {
   }
 
   Future<void> openRules(WidgetTester tester) async {
-    await tester.tap(find.text('Luật'));
+    await tester.tap(find.byTooltip('Luật chơi'));
     await tester.pumpAndSettle();
   }
 
   setUp(() {
+    push = _SpyPush();
     now = DateTime.utc(2026, 10, 17, 14);
     backend = FakeGameBackend(() => now);
-    push = _SpyPush();
     opened = [];
     openOk = true;
     reveals = _MemoryReveals(revealedAll: true);
@@ -200,7 +217,10 @@ void main() {
       };
       await pumpScreen(tester);
       expect(
-        find.descendant(of: find.byType(AppBar), matching: find.text('Luật')),
+        find.descendant(
+          of: find.byType(AppBar),
+          matching: find.byTooltip('Luật chơi'),
+        ),
         findsOneWidget,
       );
       await close(tester);
@@ -333,6 +353,30 @@ void main() {
     await close(tester);
   });
 
+  testWidgets('before night one the hero waits for the first night', (
+    tester,
+  ) async {
+    backend.game = {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'running',
+      'statusLabel': 'Đang chơi',
+      'refreshAfterSeconds': 300,
+      'phase': {
+        'key': 'r1/setup',
+        'label': 'Chuẩn bị, đêm 1 bắt đầu lúc 22h',
+        'deadline': now.add(const Duration(hours: 5)).toIso8601String(),
+        'state': 'open',
+      },
+    };
+    await pumpScreen(tester);
+    expect(find.text('CHUẨN BỊ'), findsOneWidget);
+    expect(find.textContaining('thì vào đêm 1'), findsOneWidget);
+    expect(find.textContaining('thì chốt'), findsNothing);
+    expect(find.text('Biểu quyết'), findsOneWidget);
+    await close(tester);
+  });
+
   testWidgets('no rules and no setup from backend, no rules button', (
     tester,
   ) async {
@@ -344,7 +388,7 @@ void main() {
       'refreshAfterSeconds': 30,
     };
     await pumpScreen(tester);
-    expect(find.text('Luật'), findsNothing);
+    expect(find.byTooltip('Luật chơi'), findsNothing);
     await close(tester);
   });
 
@@ -373,6 +417,22 @@ void main() {
     );
     expect(theme.colorScheme.primary, const Color(0xFFE5B04C));
     expect(find.byType(GameMoonEmblem), findsOneWidget);
+    await close(tester);
+  });
+
+  testWidgets('an empty journal shows the empty state', (tester) async {
+    backend.game = {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'running',
+      'statusLabel': 'Đang chơi',
+      'refreshAfterSeconds': 300,
+    };
+    await pumpScreen(tester);
+    await tester.tap(find.text('NHẬT KÝ'));
+    await tester.pumpAndSettle();
+    expect(find.byType(RunNowEmptyIcon), findsOneWidget);
+    expect(find.text('Chưa có gì'), findsOneWidget);
     await close(tester);
   });
 
@@ -590,8 +650,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Liên kết Telegram'), findsNothing);
-    await tester.ensureVisible(find.text('Phòng chung'));
-    await tester.tap(find.text('Phòng chung'));
+    await tester.tap(find.byTooltip('Phòng chung'));
     await tester.pumpAndSettle();
     expect(find.text('chat g1/room'), findsOneWidget);
     await close(tester);
@@ -803,7 +862,7 @@ void main() {
       backend.game = registering(admin: false);
       await pumpScreen(tester);
 
-      expect(find.text('Đăng ký'), findsOneWidget);
+      expect(find.text('VÀO VÁN'), findsOneWidget);
       expect(find.text('Bắt đầu ván'), findsNothing);
       await close(tester);
     });
@@ -849,7 +908,9 @@ void main() {
       expect(share.shared.length, before);
 
       await tester.tap(find.text('Gửi lời mời'));
-      await tester.runAsync(() => Future<void>.delayed(const Duration(seconds: 1)));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(seconds: 1)),
+      );
       await tester.pumpAndSettle();
 
       final sent = share.shared.last;
@@ -888,7 +949,7 @@ void main() {
     };
 
     FilledButton registerButton(WidgetTester tester) =>
-        tester.widget(find.widgetWithText(FilledButton, 'Đăng ký'));
+        tester.widget(find.widgetWithText(FilledButton, 'VÀO VÁN'));
 
     testWidgets('the lobby shows seats, closing time and requirements met', (
       tester,
@@ -903,10 +964,11 @@ void main() {
       };
       await pumpScreen(tester);
 
-      expect(find.text('9 / 16 chỗ', findRichText: true), findsOneWidget);
-      expect(find.text('Cần ít nhất 10 để mở ván'), findsOneWidget);
+      expect(find.text('9'), findsOneWidget);
+      expect(find.text('/ 16 chỗ'), findsOneWidget);
+      expect(find.text('cần ít nhất 10 để mở ván'), findsOneWidget);
       expect(find.text('21:00'), findsOneWidget);
-      expect(find.text('đóng đăng ký · CN 08/11'), findsOneWidget);
+      expect(find.text('đóng đăng ký · CN'), findsOneWidget);
       expect(find.text('ĐỦ ĐIỀU KIỆN 2/3'), findsOneWidget);
       await close(tester);
     });
@@ -995,7 +1057,7 @@ void main() {
       await pumpScreen(tester);
       backend.game = open([linked, notInPsc, appOk]);
 
-      await tester.tap(find.text('Đăng ký'));
+      await tester.tap(find.text('VÀO VÁN'));
       await tester.pump();
       await tester.pump();
 
@@ -1039,7 +1101,7 @@ void main() {
       await pumpScreen(tester);
       expect(push.asks, 0);
 
-      await tester.tap(find.text('Đăng ký'));
+      await tester.tap(find.text('VÀO VÁN'));
       await tester.pump();
       await tester.pump();
 
@@ -1057,7 +1119,7 @@ void main() {
       expect(find.text('Đang ở trong group PSC'), findsNothing);
       expect(find.text('Huỷ đăng ký'), findsOneWidget);
       // Chưa chia vai thì /me chưa có role: chưa có lá bài.
-      expect(find.textContaining('Lá bài của bạn'), findsNothing);
+      expect(find.text('LÁ BÀI CỦA BẠN'), findsNothing);
       await close(tester);
     });
   });
@@ -1083,7 +1145,7 @@ void main() {
         'alive': true,
         'role': 'seer',
         'roleLabel': 'Tiên tri',
-        'roleRules': 'Mỗi đêm soi một người.',
+        'roleRules': 'Mỗi đêm soi một người. Giữ kín kết quả.',
         'notes': [
           {'round': 1, 'text': 'An là Dân'},
         ],
@@ -1095,30 +1157,108 @@ void main() {
       await tester.pump();
 
       expect(find.text(faceDown), findsOneWidget);
-      expect(find.text('Tiên tri'), findsNothing);
+      expect(find.byTooltip('Thêm'), findsNothing);
       expect(find.text('Vòng 1: An là Dân'), findsNothing);
 
       await tester.tap(find.text(faceDown));
       await tester.pumpAndSettle();
-      expect(find.text('Tiên tri'), findsWidgets);
-      expect(find.text('Mỗi đêm soi một người.'), findsNothing);
+      expect(find.byTooltip('Thêm'), findsOneWidget);
+      expect(find.text('Giữ kín kết quả'), findsNothing);
       expect(find.text('Vòng 1: An là Dân'), findsOneWidget);
 
+      await tester.tap(find.byTooltip('Thêm'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Là gì?'));
       await tester.pumpAndSettle();
-      expect(find.text('Mỗi đêm soi một người.'), findsOneWidget);
+      expect(find.text('Giữ kín kết quả'), findsOneWidget);
       await tester.tapAt(const Offset(4, 4));
       await tester.pumpAndSettle();
-      expect(find.text('Mỗi đêm soi một người.'), findsNothing);
+      expect(find.text('Giữ kín kết quả'), findsNothing);
 
       await tester.tap(find.text('Vào nhóm Sói'));
       await tester.pump();
       expect(opened, [Uri.parse('https://t.me/+wolves')]);
 
-      await tester.tap(find.byTooltip('Úp lá bài'));
+      await tester.tap(find.byTooltip('Thêm'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Úp lá bài'));
       await tester.pumpAndSettle();
       expect(find.text(faceDown), findsOneWidget);
-      expect(find.text('Tiên tri'), findsNothing);
+      expect(find.byTooltip('Thêm'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('with nothing to do the face says who you are', (tester) async {
+      FlutterSecureStorage.setMockInitialValues({});
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+        'roleRules': 'Mỗi đêm soi một người. Soi trúng Sói thì giữ kín.',
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+
+      expect(find.text('TIÊN TRI'), findsWidgets);
+      expect(find.text('Mỗi đêm soi một người'), findsOneWidget);
+      expect(find.text('Soi trúng Sói thì giữ kín'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('a very long peeked name stays inside its chip', (
+      tester,
+    ) async {
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+        'notes': [
+          {'round': 1, 'text': 'Đêm 1: ${'Võ Thị Thu Trang ' * 12}là Sói.'},
+        ],
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text(' · SÓI'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('a seer sees each peek as a chip, not a note line', (
+      tester,
+    ) async {
+      backend.game = running();
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+        'notes': [
+          {'round': 1, 'text': 'Đêm 1: An là Dân.'},
+          {'round': 2, 'text': 'Đêm 2: Khoa là Sói.'},
+          {'round': 2, 'text': 'Bạn đã thoát một cú cắn của sói.'},
+        ],
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+
+      expect(find.text(' · Dân'), findsOneWidget);
+      expect(find.text(' · SÓI'), findsOneWidget);
+      expect(find.textContaining('Đêm 1: An'), findsNothing);
+      expect(
+        find.text('Vòng 2: Bạn đã thoát một cú cắn của sói.'),
+        findsOneWidget,
+      );
       await close(tester);
     });
 
@@ -1139,9 +1279,8 @@ void main() {
       await tester.tap(find.text(faceDown));
       await tester.pumpAndSettle();
 
-      final face = tester
-          .widget<AchievementCard>(find.byType(AchievementCard))
-          .data;
+      await tester.tap(find.byTooltip('Thêm'));
+      await tester.pumpAndSettle();
       expect(find.text('Là gì?'), findsNothing);
       await tester.tap(find.text('Bộ màu'));
       await tester.pumpAndSettle();
@@ -1149,10 +1288,8 @@ void main() {
           .widget<RunCardSkinSheet>(find.byType(RunCardSkinSheet))
           .sample;
       expect(sample.tier, GameCardTier.rare);
-      expect(
-        [sample.title, sample.hero, sample.owner],
-        [face.title, face.hero, face.owner],
-      );
+      expect(sample.owner, 'BẠN');
+      expect(sample.hero, 'TIÊN TRI');
 
       // Sheet mặc theme app, không mượn kính gần trong suốt của theme đêm.
       final sheetContext = tester.element(find.byType(RunCardSkinSheet));
@@ -1195,7 +1332,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Vai đã ngửa, nhưng thẻ còn úp nên chưa biết bậc.
-      expect(find.text('Tiên tri'), findsWidgets);
+      expect(find.byTooltip('Thêm'), findsOneWidget);
       expect(find.byType(AchievementCard), findsNothing);
       expect(reveals.marked, isEmpty);
 
@@ -1347,6 +1484,7 @@ void main() {
         'summary': {
           'winner': 'village',
           'winnerLabel': 'Phe Dân',
+          'subtitle': 'Treo đủ 3 sói · còn 5 người sống',
           'stats': [
             {'label': 'Km cả làng', 'value': '212 km'},
           ],
@@ -1408,14 +1546,16 @@ void main() {
 
       expect(find.text('PHE DÂN THẮNG'), findsOneWidget);
       expect(find.text('KẾT THÚC SAU 4 VÒNG'), findsOneWidget);
+      expect(find.text('Treo đủ 3 sói · còn 5 người sống'), findsOneWidget);
       expect(find.text('212 km'), findsOneWidget);
-      expect(find.text('CHẠY NHIỀU NHẤT'), findsOneWidget);
+      expect(find.text('Chạy nhiều nhất'), findsOneWidget);
       expect(find.text('LÀNG'), findsNothing);
 
       await tester.tap(find.text('LẬT BÀI'));
       await tester.pump();
       expect(find.text('2'), findsOneWidget);
-      expect(find.text('Sói · Bị treo'), findsOneWidget);
+      expect(find.text('Bình'), findsOneWidget);
+      expect(find.text('Sói'), findsOneWidget);
       expect(find.text('NGÀY 1'), findsOneWidget);
       expect(find.text('Sói cắn An.'), findsNothing);
 
@@ -1424,6 +1564,180 @@ void main() {
       expect(find.text('ĐÊM 1'), findsOneWidget);
       expect(find.text('Sói cắn An.'), findsOneWidget);
       expect(find.text('CỨU'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('the header shrinks and the tabs stay when scrolling', (
+      tester,
+    ) async {
+      backend.game = {
+        ...running(),
+        'players': [
+          for (var i = 0; i < 40; i++)
+            {'uid': 'u$i', 'name': 'Người $i', 'alive': true},
+        ],
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      const sticky = ValueKey('game-sticky-header');
+      expect(find.byKey(sticky), findsNothing);
+
+      await tester.drag(find.text('Người 1'), const Offset(0, -900));
+      await tester.pumpAndSettle();
+      final tabs = find.descendant(
+        of: find.byKey(sticky),
+        matching: find.text('NHẬT KÝ'),
+      );
+      expect(tabs, findsOneWidget);
+
+      // Đổi tab lúc đang dính thì nội dung mới bắt đầu ngay dưới hàng tab.
+      await tester.tap(tabs);
+      await tester.pumpAndSettle();
+      expect(find.text('Người 39'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('the chat button marks unread messages', (tester) async {
+      backend.game = {
+        ...running(),
+        'room': {
+          'key': 'room',
+          'label': 'Phòng chung',
+          'canSend': true,
+          'latestSeq': 3,
+        },
+      };
+      await pumpScreen(tester, chatSeen: _MemoryChatSeen(2));
+      await tester.pump();
+      expect(find.bySemanticsLabel('Có tin mới'), findsOneWidget);
+      await close(tester);
+
+      await pumpScreen(tester, chatSeen: _MemoryChatSeen(3));
+      await tester.pump();
+      expect(find.bySemanticsLabel('Có tin mới'), findsNothing);
+      await close(tester);
+
+      // Chưa đọc được máy đã xem tới đâu thì không báo bừa.
+      await pumpScreen(tester, chatSeen: _MemoryChatSeen(null));
+      await tester.pump();
+      expect(find.bySemanticsLabel('Có tin mới'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('an ended game does not ask to link Telegram', (tester) async {
+      backend.game = {
+        ...running(),
+        'status': 'ended',
+        'statusLabel': 'Đã kết thúc',
+      };
+      backend.me = {'status': 'ended', 'alive': true, 'role': 'seer'};
+      await pumpScreen(tester);
+      await tester.pump();
+
+      expect(find.text('Liên kết Telegram'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('the replay groups a round and shows the vote split', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(2400, 9000);
+      addTearDown(tester.view.reset);
+      backend.game = {
+        ...running(),
+        'status': 'ended',
+        'statusLabel': 'Đã kết thúc',
+      };
+      backend.me = {
+        'status': 'ended',
+        'alive': true,
+        'role': 'seer',
+        'summary': {
+          'winner': 'village',
+          'winnerLabel': 'Phe Dân',
+          'replay': [
+            {
+              'title': 'Đêm 2',
+              'night': true,
+              'round': 2,
+              'date': '16/10',
+              'lines': [
+                {'icon': 'death', 'text': 'An ngã xuống.'},
+              ],
+            },
+            {
+              'title': 'Ngày 2',
+              'night': false,
+              'round': 2,
+              'date': '17/10',
+              'lines': [
+                {
+                  'icon': 'vote',
+                  'text': 'Làng treo Bình.',
+                  'hang': 7,
+                  'spare': 2,
+                },
+                {'icon': 'death', 'text': 'Bình ngã xuống.'},
+              ],
+            },
+          ],
+        },
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+
+      await tester.tap(find.text('DIỄN LẠI'));
+      await tester.pump();
+      expect(find.text('VÒNG 2 · 16–17/10 · 2 người ngã'), findsOneWidget);
+      expect(find.text('ĐÊM 2'), findsOneWidget);
+      expect(find.text('Treo 7'), findsOneWidget);
+      expect(find.text('Tha 2'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('a winner claims the card from the face-up block', (
+      tester,
+    ) async {
+      backend.game = {
+        ...running(),
+        'status': 'ended',
+        'statusLabel': 'Đã kết thúc',
+      };
+      backend.me = {
+        'status': 'ended',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+        'cardTier': 'rare',
+        'cardOwned': true,
+        'cardRounds': 3,
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      expect(find.text('NHẬN THẺ'), findsNothing);
+
+      await tester.tap(find.text('Chạm để lật'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.text('Thắng · sống tới cuối'), findsOneWidget);
+      expect(find.text('NHẬN THẺ'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('a voter in the top slots shows the backend vote tag', (
+      tester,
+    ) async {
+      backend.game = {
+        ...running(),
+        'players': [
+          {'uid': 'u2', 'name': 'Bình', 'alive': true, 'voteTag': 'x2'},
+        ],
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+
+      expect(find.text('x2'), findsOneWidget);
       await close(tester);
     });
 
@@ -1524,11 +1838,11 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            pushControllerProvider.overrideWithValue(null),
             runNowApiClientProvider.overrideWithValue(backend.client()),
             firebaseUserProvider.overrideWith(
               (ref) => Stream.value(_FakeUser()),
             ),
-            pushControllerProvider.overrideWithValue(null),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),
@@ -1568,13 +1882,13 @@ void main() {
       await tester.pump();
       await tester.tap(find.text(faceDown));
       await tester.pumpAndSettle();
-      expect(find.text('Tiên tri'), findsWidgets);
+      expect(find.byTooltip('Thêm'), findsOneWidget);
 
       // App switcher của iOS chụp màn lúc inactive.
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       await tester.pumpAndSettle();
       expect(find.text(faceDown), findsOneWidget);
-      expect(find.text('Tiên tri'), findsNothing);
+      expect(find.byTooltip('Thêm'), findsNothing);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await close(tester);
     });
@@ -1606,11 +1920,11 @@ void main() {
 
       // Người ngồi cạnh đọc được "Cắn" là biết người này là sói; ban đêm
       // dân không có việc gì, nên có mục này thôi cũng đã lộ.
-      expect(find.text('Cắn'), findsNothing);
+      expect(find.text('Chọn người phe Sói cắn đêm nay'), findsNothing);
 
       await tester.tap(find.text(faceDown));
       await tester.pumpAndSettle();
-      expect(find.text('Cắn'), findsOneWidget);
+      expect(find.text('Chọn người phe Sói cắn đêm nay'), findsOneWidget);
       await close(tester);
     });
 
@@ -1640,19 +1954,19 @@ void main() {
       };
       await pumpScreen(tester);
       await tester.pump();
-      expect(find.text('Tới giờ của bạn'), findsNothing);
+      expect(find.text('TỚI LƯỢT BẠN'), findsNothing);
 
       await tester.tap(find.text(faceDown));
       await tester.pumpAndSettle();
-      expect(find.text('Tới giờ của bạn'), findsOneWidget);
+      expect(find.text('TỚI LƯỢT BẠN'), findsOneWidget);
       expect(
         find.textContaining('Còn 1 giờ 5 phút · khoá lúc'),
         findsOneWidget,
       );
 
       await elapse(tester, const Duration(hours: 1, minutes: 10));
-      expect(find.text('Tới giờ của bạn'), findsNothing);
-      expect(find.text('Giờ này bạn nghỉ'), findsOneWidget);
+      expect(find.text('TỚI LƯỢT BẠN'), findsNothing);
+      expect(find.text('GIỜ NÀY BẠN NGHỈ'), findsOneWidget);
       await close(tester);
     });
 
@@ -1680,7 +1994,7 @@ void main() {
       await pumpScreen(tester);
       await tester.tap(find.text(faceDown));
       await tester.pumpAndSettle();
-      expect(find.text('Chưa tới giờ của bạn'), findsOneWidget);
+      expect(find.text('CHƯA TỚI GIỜ'), findsOneWidget);
       await close(tester);
 
       backend.me = {
@@ -1692,7 +2006,7 @@ void main() {
       await pumpScreen(tester);
       await tester.tap(find.text(faceDown));
       await tester.pumpAndSettle();
-      expect(find.text('Bạn đã bị loại'), findsOneWidget);
+      expect(find.text('BẠN ĐÃ BỊ LOẠI'), findsOneWidget);
       await close(tester);
     });
 
@@ -1724,7 +2038,7 @@ void main() {
       await pumpScreen(tester);
       await tester.pump();
 
-      expect(find.textContaining('Lá bài của bạn'), findsNothing);
+      expect(find.text('LÁ BÀI CỦA BẠN'), findsNothing);
       expect(backend.calls, isNot(contains('GET /v1/games/g1/me')));
       await close(tester);
     });
@@ -1840,12 +2154,18 @@ void main() {
       );
       expect(inCard, findsOneWidget);
 
+      // Một việc thì câu hỏi nằm cạnh lá bài, không lặp tiêu đề dưới nút.
+      expect(find.text('Chọn một người lên giàn'), findsOneWidget);
+      expect(find.text('Đề cử'), findsNothing);
+
       // Bấm trượt cạnh nút chọn người thì lá bài không được úp xuống.
-      await tester.ensureVisible(find.text('Đề cử'));
+      await tester.ensureVisible(find.text('Bình'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Đề cử'));
+      await tester.tapAt(
+        tester.getCenter(find.text('Bình')) + const Offset(180, 0),
+      );
       await tester.pumpAndSettle();
-      expect(find.byTooltip('Úp lá bài'), findsOneWidget);
+      expect(find.byTooltip('Thêm'), findsOneWidget);
       await close(tester);
     });
 
@@ -2086,6 +2406,119 @@ void main() {
       await close(tester);
     });
 
+    Map<String, Object?> witchAction(
+      String kind,
+      String label,
+      String closes,
+    ) => {
+      'kind': kind,
+      'label': label,
+      'help': '',
+      'input': 'single_target',
+      'enabled': true,
+      'opensAt': '2026-10-17T13:00:00Z',
+      'closesAt': closes,
+      'options': [
+        {'id': 'u2', 'label': 'Bình'},
+      ],
+    };
+
+    testWidgets('a trial game carries no trial label on screen', (
+      tester,
+    ) async {
+      backend.game = {
+        ...game([
+          {'uid': 'me', 'name': 'Nam', 'alive': true},
+        ]),
+        'testMode': true,
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+
+      expect(find.text('VÁN THỬ'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('a locked task states its reason only once', (tester) async {
+      backend.game = game([
+        {'uid': 'me', 'name': 'Nam', 'alive': true},
+      ]);
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'seer',
+        'roleLabel': 'Tiên tri',
+        'actions': [
+          {
+            ...witchAction('seer_check', 'Soi', '2026-10-17T15:05:00Z'),
+            'help': 'Chọn một người để soi.',
+            'enabled': false,
+            'disabledReason': 'Chưa đủ km.',
+          },
+        ],
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+
+      expect(find.text('CHƯA BẤM ĐƯỢC'), findsOneWidget);
+      expect(find.text('Chưa đủ km.'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('two tasks sharing a window show the time once', (
+      tester,
+    ) async {
+      backend.game = game([
+        {'uid': 'me', 'name': 'Nam', 'alive': true},
+      ]);
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'witch',
+        'roleLabel': 'Phù thuỷ',
+        'actions': [
+          witchAction('witch_save', 'Cứu', '2026-10-17T15:05:00Z'),
+          witchAction('witch_poison', 'Độc', '2026-10-17T15:05:00Z'),
+        ],
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Còn 1 giờ 5 phút'), findsOneWidget);
+      expect(find.textContaining('khoá lúc'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('two tasks closing at different times each keep their time', (
+      tester,
+    ) async {
+      backend.game = game([
+        {'uid': 'me', 'name': 'Nam', 'alive': true},
+      ]);
+      backend.me = {
+        'status': 'running',
+        'alive': true,
+        'role': 'witch',
+        'roleLabel': 'Phù thuỷ',
+        'actions': [
+          witchAction('witch_save', 'Cứu', '2026-10-17T15:05:00Z'),
+          witchAction('witch_poison', 'Độc', '2026-10-17T16:05:00Z'),
+        ],
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Còn 1 giờ 5 phút'), findsNWidgets(2));
+      expect(find.text('Còn 2 giờ 5 phút'), findsOneWidget);
+      await close(tester);
+    });
+
     testWidgets('wolves see the team km only on the face-up card', (
       tester,
     ) async {
@@ -2119,9 +2552,18 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Km phe Sói'), findsOneWidget);
       expect(find.text('Thiếu 0.8'), findsOneWidget);
+      const detail = 'Phe cần thêm 0.8 km trước 22h thì đêm nay mới cắn được.';
+      expect(find.text(detail), findsNothing);
+      expect(find.text('Cần 2 km để cắn'), findsNothing);
+
+      await tester.tap(find.text('Km phe Sói'));
+      await tester.pumpAndSettle();
+      expect(find.text(detail), findsOneWidget);
+      expect(find.text('Cần 2 km để cắn'), findsOneWidget);
       expect(
-        find.text('Phe cần thêm 0.8 km trước 22h thì đêm nay mới cắn được.'),
+        find.text('Km phe Sói'),
         findsOneWidget,
+        reason: 'chạm dòng km chỉ mở chi tiết, lá bài vẫn ngửa',
       );
       await close(tester);
     });

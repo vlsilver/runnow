@@ -340,6 +340,8 @@ class RunNowMoonlitTokens {
   static const ctaGlow = Color(0x4DE5B04C);
 
   // Đặc quyền phe Sói đang bật: chữ và ô tích, nền, viền.
+  static const telegram = Color(0xFF229ED9);
+  static const onTelegram = Color(0xFFFFFFFF);
   static const wolf = Color(0xFFF08A84);
   static const wolfSoft = Color(0x29C2413B);
   static const wolfLine = Color(0x8CC2413B);

@@ -406,7 +406,7 @@ class _VillagerRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 7),
         child: Row(
           children: [
-            _Avatar(player: player, isMe: isMe),
+            GameVillagerAvatar(player: player, isMe: isMe),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -463,6 +463,23 @@ class _VillagerRow extends StatelessWidget {
                   ),
                 ),
               ),
+            if (player.voteTag case final tag?)
+              Container(
+                margin: const EdgeInsets.only(left: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: _M.amber,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  tag,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: _M.onAmber,
+                  ),
+                ),
+              ),
             if (right.isNotEmpty)
               Container(
                 constraints: const BoxConstraints(minWidth: 56),
@@ -490,11 +507,17 @@ class _VillagerRow extends StatelessWidget {
   }
 }
 
-class _Avatar extends StatelessWidget {
-  const _Avatar({required this.player, required this.isMe});
+class GameVillagerAvatar extends StatelessWidget {
+  const GameVillagerAvatar({
+    super.key,
+    required this.player,
+    required this.isMe,
+    this.size = 40,
+  });
 
   final GamePlayer player;
   final bool isMe;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -507,8 +530,8 @@ class _Avatar extends StatelessWidget {
         ? _M.amberStrong
         : _M.border;
     final circle = Container(
-      width: 40,
-      height: 40,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: isMe ? _M.lifted : _M.raised,
@@ -516,7 +539,7 @@ class _Avatar extends StatelessWidget {
         image: avatar == null
             ? null
             : DecorationImage(
-                image: cachedAvatarImage(context, avatar, 40),
+                image: cachedAvatarImage(context, avatar, size),
                 fit: BoxFit.cover,
                 colorFilter: player.alive
                     ? null
@@ -528,7 +551,7 @@ class _Avatar extends StatelessWidget {
           ? Text(
               player.name.isEmpty ? '?' : player.name[0].toUpperCase(),
               style: TextStyle(
-                fontSize: 15,
+                fontSize: size * 0.375,
                 fontWeight: FontWeight.w800,
                 color: isMe ? _M.amber : _M.ink,
               ),

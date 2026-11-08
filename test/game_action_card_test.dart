@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/games/game_action_card.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -42,6 +43,41 @@ void main() {
   setUp(() {
     sent = [];
     now = DateTime.utc(2026, 10, 17, 14);
+  });
+
+  testWidgets('two choices are the big buttons, picked one is marked', (
+    tester,
+  ) async {
+    await pumpCard(
+      tester,
+      _action({
+        'input': 'choice',
+        'options': [
+          {'id': 'hang', 'label': 'Treo'},
+          {'id': 'spare', 'label': 'Tha'},
+        ],
+        'selected': {'choice': 'spare'},
+      }),
+    );
+
+    expect(find.text('TREO'), findsOneWidget);
+    expect(find.text('THA'), findsOneWidget);
+    Finder button(String label) => find.ancestor(
+      of: find.text(label),
+      matching: find.byType(GameOptionButton),
+    );
+    expect(tester.getSize(button('TREO')).height, 56);
+    expect(
+      find.descendant(
+        of: button('THA'),
+        matching: find.byIcon(Icons.check_rounded),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('TREO'));
+    await tester.pump();
+    expect(sent, ['|hang|false']);
   });
 
   testWidgets('single target sends the picked person, whatever the kind', (
@@ -145,7 +181,7 @@ void main() {
       }),
     );
 
-    await tester.tap(find.text('Treo'));
+    await tester.tap(find.text('TREO'));
     await tester.pump();
     expect(sent, ['|hang|false']);
   });
@@ -418,5 +454,31 @@ void main() {
   testWidgets('no tally, no table', (tester) async {
     await pumpCard(tester, _action({'input': 'single_target'}));
     expect(find.text('KIỂM PHIẾU'), findsNothing);
+  });
+
+  testWidgets('a long player name wraps instead of being cut on the button', (
+    tester,
+  ) async {
+    const name = 'An Binh Chi Ha';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 130,
+              child: GameOptionButton(
+                label: name,
+                selected: false,
+                onPressed: () {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final text = tester.renderObject<RenderParagraph>(find.text(name));
+    expect(text.didExceedMaxLines, isFalse);
+    expect(tester.takeException(), isNull);
   });
 }

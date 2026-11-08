@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/config.dart';
 import 'package:myrun/src/games/game_chat_controller.dart';
+import 'package:myrun/src/games/game_chat_seen.dart';
 import 'package:myrun/src/games/game_chat_terms.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -37,6 +40,9 @@ class _GameChatScreenState extends ConsumerState<GameChatScreen>
 
   OverlayEntry? _cover;
 
+  /// Seq lớn nhất đã ghi là đã đọc trong lần mở này.
+  int _seenSeq = 0;
+
   @override
   void initState() {
     super.initState();
@@ -44,13 +50,25 @@ class _GameChatScreenState extends ConsumerState<GameChatScreen>
       api: ref.read(runNowApiClientProvider),
       gameId: widget.gameId,
       chatKey: widget.chatKey,
-    );
+    )..addListener(_markSeen);
     WidgetsBinding.instance.addObserver(this);
     ref.read(gameChatTermsProvider).accepted().then((accepted) {
       if (!mounted) return;
       setState(() => _termsAccepted = accepted);
       if (accepted) _controller.setActive(true);
     });
+  }
+
+  void _markSeen() {
+    final newest = _controller.newestSeq;
+    final uid = ref.read(firebaseUserProvider).value?.uid;
+    if (uid == null || newest <= _seenSeq) return;
+    _seenSeq = newest;
+    unawaited(
+      ref
+          .read(gameChatSeenProvider)
+          .markSeen(uid, widget.gameId, widget.chatKey, newest),
+    );
   }
 
   Future<void> _acceptTerms() async {

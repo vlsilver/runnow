@@ -29,6 +29,23 @@ int gameStepOf(String? phaseKey) {
   return _steps.indexWhere((s) => s.$1 == parts[1]);
 }
 
+/// Lúc chuẩn bị (`r1/setup`): đã chia bài, chưa vào đêm 1.
+bool gameIsPreparing(String? phaseKey) =>
+    (phaseKey ?? '').split('/').elementAtOrNull(1) == 'setup';
+
+/// Tên lớn của trang ván, dùng chung cho header đầy đủ và header thu gọn.
+String _heroTitle(GameDetail detail, {required bool closing}) {
+  final phase = detail.phase;
+  final step = gameStepOf(phase?.key);
+  if (detail.status == 'ended' && detail.winnerLabel != null) {
+    return '${detail.winnerLabel} thắng'.toUpperCase();
+  }
+  if (closing) return 'ĐANG CHỐT…';
+  if (gameIsPreparing(phase?.key)) return 'CHUẨN BỊ';
+  if (step >= 0) return _steps[step].$2.toUpperCase();
+  return (phase?.label ?? detail.statusLabel).toUpperCase();
+}
+
 /// Header trang ván: vòng, bước đang chạy, giờ chốt, ba ô số và dải đồi.
 class GameHero extends StatelessWidget {
   const GameHero({
@@ -37,9 +54,13 @@ class GameHero extends StatelessWidget {
     required this.closing,
     required this.serverNow,
     this.rounds = 0,
+    this.subtitle = '',
   });
 
   final GameDetail detail;
+
+  /// Câu phụ khi ván đã xong (`summary.subtitle`), rỗng là không có.
+  final String subtitle;
 
   /// Số vòng ván đã đi khi ván đã xong (`me.cardRounds`); 0 là không biết.
   final int rounds;
@@ -52,19 +73,17 @@ class GameHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final phase = detail.phase;
     final step = gameStepOf(phase?.key);
+    final preparing = gameIsPreparing(phase?.key);
     final round = gameRoundOf(phase?.key);
     final deadline = phase?.deadline;
     final startError = detail.startError;
     final table = detail.kmTable;
     final running = detail.status == 'running';
     final winner = detail.status == 'ended' ? detail.winnerLabel : null;
-    final title = winner != null
-        ? '$winner thắng'.toUpperCase()
-        : closing
-        ? 'ĐANG CHỐT…'
-        : step >= 0
-        ? _steps[step].$2.toUpperCase()
-        : (phase?.label ?? detail.statusLabel).toUpperCase();
+    final title = _heroTitle(detail, closing: closing);
+    if (winner != null) {
+      return _EndedHero(title: title, rounds: rounds, subtitle: subtitle);
+    }
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -94,9 +113,6 @@ class GameHero extends StatelessWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     if (round > 0) _Chip('VÒNG $round'),
-                    if (winner != null && rounds > 0)
-                      _Chip('KẾT THÚC SAU $rounds VÒNG'),
-                    if (detail.testMode) const _Chip('VÁN THỬ', faint: true),
                     if (phase != null && step >= 0 && !closing)
                       Text(
                         phase.label,
@@ -117,7 +133,7 @@ class GameHero extends StatelessWidget {
                     style: const TextStyle(
                       fontFamily: gameTitleFont,
                       fontWeight: FontWeight.w800,
-                      fontSize: 40,
+                      fontSize: 42,
                       height: 1,
                       letterSpacing: 0.5,
                       color: _M.ink,
@@ -131,6 +147,7 @@ class GameHero extends StatelessWidget {
                   child: GameCountdown(
                     deadline: deadline,
                     serverNow: serverNow,
+                    ending: preparing ? 'thì vào đêm 1' : 'thì chốt',
                   ),
                 ),
               if (detail.winnerLabel != null && winner == null)
@@ -153,7 +170,7 @@ class GameHero extends StatelessWidget {
                     style: const TextStyle(color: _M.danger),
                   ),
                 ),
-              if (step >= 0) ...[
+              if (step >= 0 || preparing) ...[
                 const SizedBox(height: 14),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -209,28 +226,190 @@ class GameHero extends StatelessWidget {
   }
 }
 
+/// Header khi ván đã có phe thắng: trăng, số vòng, tên phe, ở giữa.
+class _EndedHero extends StatelessWidget {
+  const _EndedHero({
+    required this.title,
+    required this.rounds,
+    required this.subtitle,
+  });
+
+  final String title;
+  final int rounds;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 22, 16, 18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _M.amberLine),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [_M.heroTop, _M.heroMid, _M.heroBottom],
+          stops: [0, 0.55, 1],
+        ),
+        boxShadow: const [
+          BoxShadow(color: _M.amberGlow, blurRadius: 50, offset: Offset(0, 20)),
+        ],
+      ),
+      child: Column(
+        children: [
+          const GameMoonEmblem(size: 84),
+          if (rounds > 0) ...[
+            const SizedBox(height: 6),
+            Text(
+              'KẾT THÚC SAU $rounds VÒNG',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 3,
+                color: _M.amber,
+              ),
+            ),
+          ],
+          const SizedBox(height: 6),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: ShaderMask(
+              blendMode: BlendMode.srcIn,
+              shaderCallback: (bounds) => const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [_M.amberBright, _M.amber, _M.amberDeep],
+                stops: [0, 0.7, 1],
+              ).createShader(bounds),
+              child: Text(
+                title,
+                maxLines: 1,
+                style: const TextStyle(
+                  fontFamily: gameTitleFont,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 44,
+                  height: 0.95,
+                  letterSpacing: 0.5,
+                  color: _M.ink,
+                ),
+              ),
+            ),
+          ),
+          if (subtitle.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 13, color: _M.inkSoft),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Header thu gọn hiện khi header đầy đủ đã cuộn khỏi màn.
+class GameHeroBar extends StatelessWidget {
+  const GameHeroBar({
+    super.key,
+    required this.detail,
+    required this.closing,
+    required this.serverNow,
+    this.rounds = 0,
+  });
+
+  static const height = 58.0;
+
+  final GameDetail detail;
+  final bool closing;
+  final DateTime Function() serverNow;
+  final int rounds;
+
+  @override
+  Widget build(BuildContext context) {
+    final ended = detail.status == 'ended' && detail.winnerLabel != null;
+    final round = gameRoundOf(detail.phase?.key);
+    final deadline = detail.phase?.deadline;
+    final detailLine = ended
+        ? (rounds > 0 ? 'sau $rounds vòng' : null)
+        : (round > 0 ? 'Vòng $round' : null);
+    return Container(
+      height: height,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _M.amberLine),
+        gradient: const LinearGradient(
+          colors: [_M.heroTop, _M.heroMid, _M.heroBottom],
+          stops: [0, 0.6, 1],
+        ),
+      ),
+      child: Row(
+        children: [
+          const GameMoonEmblem(size: 40),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _heroTitle(detail, closing: closing),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: gameTitleFont,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
+                    height: 1,
+                    letterSpacing: 0.5,
+                    color: ended ? _M.amberSoft : _M.ink,
+                  ),
+                ),
+                if (detailLine != null)
+                  Text(
+                    detailLine,
+                    style: const TextStyle(fontSize: 11, color: _M.inkSoft),
+                  ),
+              ],
+            ),
+          ),
+          if (!ended && !closing && deadline != null)
+            GameCountdown(
+              deadline: deadline,
+              serverNow: serverNow,
+              clockOnly: true,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Chip extends StatelessWidget {
-  const _Chip(this.label, {this.faint = false});
+  const _Chip(this.label);
 
   final String label;
-  final bool faint;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
       decoration: BoxDecoration(
-        color: faint ? _M.track : _M.amberTint,
+        color: _M.amberTint,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: faint ? _M.border : _M.amberLine),
+        border: Border.all(color: _M.amberLine),
       ),
       child: Text(
         label,
         style: TextStyle(
-          fontSize: 12,
+          fontSize: 13,
           fontWeight: FontWeight.w700,
-          letterSpacing: 1.4,
-          color: faint ? _M.inkSoft : _M.amberPale,
+          letterSpacing: 1.6,
+          color: _M.amberPale,
         ),
       ),
     );
@@ -243,10 +422,17 @@ class GameCountdown extends StatefulWidget {
     super.key,
     required this.deadline,
     required this.serverNow,
+    this.ending = 'thì chốt',
+    this.clockOnly = false,
   });
 
+  /// Chỉ hiện giờ đếm ngược, cho header thu gọn.
+  final bool clockOnly;
   final DateTime deadline;
   final DateTime Function() serverNow;
+
+  /// Phần câu sau giờ, như "tới 22:00 thì chốt".
+  final String ending;
 
   @override
   State<GameCountdown> createState() => _GameCountdownState();
@@ -278,6 +464,19 @@ class _GameCountdownState extends State<GameCountdown> {
     String two(int n) => n.toString().padLeft(2, '0');
     final clock =
         '${seconds ~/ 3600}:${two(seconds ~/ 60 % 60)}:${two(seconds % 60)}';
+    if (widget.clockOnly) {
+      return Text(
+        clock,
+        style: const TextStyle(
+          fontFamily: gameTitleFont,
+          fontWeight: FontWeight.w700,
+          fontSize: 22,
+          height: 1,
+          color: _M.amberCream,
+          fontFeatures: [FontFeature.tabularFigures()],
+        ),
+      );
+    }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
@@ -296,7 +495,7 @@ class _GameCountdownState extends State<GameCountdown> {
         const SizedBox(width: 8),
         Flexible(
           child: Text(
-            'tới $at thì chốt',
+            'tới $at ${widget.ending}',
             style: const TextStyle(fontSize: 12, color: _M.inkSoft),
           ),
         ),
@@ -305,7 +504,8 @@ class _GameCountdownState extends State<GameCountdown> {
   }
 }
 
-/// Thanh bước của một ngày: bước hiện tại hổ phách, các bước khác mờ.
+/// Thanh bước của một ngày: bước hiện tại hổ phách, các bước khác mờ. Lúc
+/// chuẩn bị [current] là -1 nên cả bốn bước đều mờ.
 class _Steps extends StatelessWidget {
   const _Steps({required this.current});
 

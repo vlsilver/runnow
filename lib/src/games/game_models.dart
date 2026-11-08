@@ -547,6 +547,7 @@ class GameDetail {
     required this.taskKey,
     required this.startError,
     this.kmTable,
+    this.lobby,
     this.setup = const [],
     this.rulesCard = const [],
     this.room,
@@ -581,6 +582,7 @@ class GameDetail {
       taskKey: _optString(json['taskKey']),
       startError: _obj(json['startError'], GameStartError.fromJson),
       kmTable: _obj(json['kmTable'], GameKmTable.fromJson),
+      lobby: _obj(json['lobby'], GameLobby.fromJson),
       setup: _list(json['setup'], GameSetupSection.fromJson),
       rulesCard: _list(json['rulesCard'], GameSetupSection.fromJson),
       room: _obj(json['room'], GameChatLink.fromJson),
@@ -630,6 +632,9 @@ class GameDetail {
   /// ván không chạy, lúc đó app hiện km chốt như cũ.
   final GameKmTable? kmTable;
 
+  /// Tóm tắt luật ở sảnh; backend cũ không gửi.
+  final GameLobby? lobby;
+
   /// Thiết lập ván đang áp, theo khối của màn tạo ván; rỗng khi backend cũ.
   final List<GameSetupSection> setup;
 
@@ -644,6 +649,48 @@ class GameDetail {
   bool get needsTelegram =>
       requirements.isEmpty ||
       requirements.any((r) => r.key == 'telegram_linked');
+}
+
+class GameLobby {
+  const GameLobby({required this.facts, required this.roles});
+
+  factory GameLobby.fromJson(Map<String, dynamic> json) {
+    return GameLobby(
+      facts: _list(json['facts'], GameLobbyFact.fromJson),
+      roles: _list(json['roles'], GameLobbyRole.fromJson),
+    );
+  }
+
+  final List<GameLobbyFact> facts;
+  final List<GameLobbyRole> roles;
+}
+
+class GameLobbyFact {
+  const GameLobbyFact({required this.value, required this.label});
+
+  factory GameLobbyFact.fromJson(Map<String, dynamic> json) {
+    return GameLobbyFact(
+      value: _string(json['value']),
+      label: _string(json['label']),
+    );
+  }
+
+  final String value;
+  final String label;
+}
+
+class GameLobbyRole {
+  const GameLobbyRole({required this.label, this.extended = false});
+
+  factory GameLobbyRole.fromJson(Map<String, dynamic> json) {
+    return GameLobbyRole(
+      label: _string(json['label']),
+      extended: json['extended'] == true,
+    );
+  }
+
+  final String label;
+  final bool extended;
 }
 
 class GameKmTable {
@@ -758,6 +805,7 @@ class GamePlayer {
     required this.lastKm,
     required this.fake,
     this.todayKm,
+    this.voteTag,
   });
 
   factory GamePlayer.fromJson(Map<String, dynamic> json) {
@@ -774,6 +822,7 @@ class GamePlayer {
       lastKm: (json['lastKm'] as num?)?.toDouble(),
       fake: json['fake'] == true,
       todayKm: (json['todayKm'] as num?)?.toDouble(),
+      voteTag: _optString(json['voteTag']),
     );
   }
 
@@ -792,6 +841,9 @@ class GamePlayer {
 
   /// Km đang gom tới mốc 22h kế tiếp; null với người đã chết hay ván thử.
   final double? todayKm;
+
+  /// Nhãn số phiếu của người đang trong suất Top ("x2").
+  final String? voteTag;
 }
 
 class GameRequirement {
@@ -907,19 +959,31 @@ class GameFeedItem {
 /// Icon là khoá (bite, guard, seer, death, vote, pick, peace…); khoá lạ thì
 /// app vẽ chấm.
 class GameLine {
-  const GameLine({required this.icon, required this.text, this.tag});
+  const GameLine({
+    required this.icon,
+    required this.text,
+    this.tag,
+    this.hang = 0,
+    this.spare = 0,
+  });
 
   factory GameLine.fromJson(Map<String, dynamic> json) {
     return GameLine(
       icon: _string(json['icon']),
       text: _string(json['text']),
       tag: _optString(json['tag']),
+      hang: _int(json['hang']),
+      spare: _int(json['spare']),
     );
   }
 
   final String icon;
   final String text;
   final String? tag;
+
+  /// Số phiếu Treo, Tha của câu kết quả biểu quyết; 0 ở mọi câu khác.
+  final int hang;
+  final int spare;
 }
 
 /// Một mốc km người xem đang nhắm tới (`me.kmGoals`): giữ phiếu, kỹ năng đêm.
@@ -1055,6 +1119,7 @@ class GameSummary {
   const GameSummary({
     required this.winner,
     required this.winnerLabel,
+    this.subtitle = '',
     required this.stats,
     required this.titles,
     required this.teams,
@@ -1065,6 +1130,7 @@ class GameSummary {
     return GameSummary(
       winner: _string(json['winner']),
       winnerLabel: _string(json['winnerLabel']),
+      subtitle: _string(json['subtitle']),
       stats: _list(json['stats'], GameSummaryStat.fromJson),
       titles: _list(json['titles'], GameSummaryTitle.fromJson),
       teams: _list(json['teams'], GameSummaryTeam.fromJson),
@@ -1074,6 +1140,9 @@ class GameSummary {
 
   final String winner;
   final String winnerLabel;
+
+  /// Ván kết thúc thế nào; backend cũ không gửi thì rỗng.
+  final String subtitle;
   final List<GameSummaryStat> stats;
 
   /// Chỉ có danh hiệu nào có người đạt.
@@ -1156,6 +1225,7 @@ class GameSummaryPlayer {
     required this.roleLabel,
     required this.alive,
     required this.fate,
+    this.role = '',
     this.cardUrl,
     this.causeLabel,
     this.km,
@@ -1166,6 +1236,7 @@ class GameSummaryPlayer {
       uid: _string(json['uid']),
       name: _string(json['name']),
       roleLabel: _string(json['roleLabel']),
+      role: _string(json['role']),
       alive: json['alive'] == true,
       fate: _string(json['fate']),
       cardUrl: _optString(json['cardUrl']),
@@ -1177,6 +1248,9 @@ class GameSummaryPlayer {
   final String uid;
   final String name;
   final String roleLabel;
+
+  /// Khoá vai: wolf, seer, …
+  final String role;
   final bool alive;
 
   /// "Sống" hoặc lúc chết: "Đêm 2", "Ngày 3".
@@ -1194,6 +1268,8 @@ class GameSummarySection {
     required this.title,
     required this.night,
     required this.lines,
+    this.round = 0,
+    this.date,
   });
 
   factory GameSummarySection.fromJson(Map<String, dynamic> json) {
@@ -1201,12 +1277,20 @@ class GameSummarySection {
       title: _string(json['title']),
       night: json['night'] == true,
       lines: _list(json['lines'], GameLine.fromJson),
+      round: _int(json['round']),
+      date: _optString(json['date']),
     );
   }
 
   final String title;
   final bool night;
   final List<GameLine> lines;
+
+  /// Vòng của mục; 0 với backend cũ.
+  final int round;
+
+  /// Ngày của mục, dd/MM.
+  final String? date;
 }
 
 class GamePotions {
@@ -1250,6 +1334,7 @@ class GameChatLink {
     required this.key,
     required this.label,
     required this.canSend,
+    this.latestSeq = 0,
   });
 
   factory GameChatLink.fromJson(Map<String, dynamic> json) {
@@ -1257,9 +1342,12 @@ class GameChatLink {
       key: _string(json['key']),
       label: _string(json['label']),
       canSend: json['canSend'] == true,
+      latestSeq: (json['latestSeq'] as num?)?.toInt() ?? 0,
     );
   }
 
+  /// Seq tin mới nhất, để biết có tin chưa đọc; backend cũ không gửi thì 0.
+  final int latestSeq;
   final String key;
   final String label;
   final bool canSend;

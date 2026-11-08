@@ -1,17 +1,18 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
+import 'package:myrun/src/games/game_chat_seen.dart';
 import 'package:myrun/src/games/game_detail_controller.dart';
 import 'package:myrun/src/games/game_dialog.dart';
 import 'package:myrun/src/games/game_ended.dart';
 import 'package:myrun/src/games/game_hero.dart';
 import 'package:myrun/src/games/game_journal.dart';
+import 'package:myrun/src/games/game_lobby.dart';
 import 'package:myrun/src/games/game_my_card.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_player_card.dart';
@@ -55,7 +56,6 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   late final TelegramLinkController _telegram;
   final _theme = gameMoonlitTheme();
   bool _registering = false;
-  bool _pushAsked = false;
   bool _starting = false;
   bool _faking = false;
   bool? _linked;
@@ -73,6 +73,24 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   /// Tab dưới lá bài: 0 là Làng, 1 là Nhật ký.
   int _tab = 0;
 
+  /// Tin phòng chung máy này đã đọc; null là chưa biết thì không báo tin mới.
+  int? _roomSeen;
+  bool _roomSeenRequested = false;
+  bool _pushAsked = false;
+
+  final _scroll = ScrollController();
+  final _heroKey = GlobalKey();
+  final _tabsKey = GlobalKey();
+
+  /// Vị trí trong nội dung cuộn, giữ lại vì ListView bỏ widget ở xa màn.
+  double? _heroEnd;
+  double? _tabsAt;
+  bool _collapsed = false;
+  bool _tabsStuck = false;
+
+  /// Khoảng từ đỉnh màn tới hàng tab khi tab đang dính.
+  static const _stickyOffset = 4.0 + GameHeroBar.height + 8.0;
+
   @override
   void initState() {
     super.initState();
@@ -82,11 +100,15 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     ) {
       if (uid != null) unawaited(_loadReveal(uid));
     }, fireImmediately: true);
-    _controller = GameDetailController(
-      api: ref.read(runNowApiClientProvider),
-      gameId: widget.gameId,
-      clock: widget.clock,
-    )..addListener(_askForPushIfJoined);
+    _controller =
+        GameDetailController(
+            api: ref.read(runNowApiClientProvider),
+            gameId: widget.gameId,
+            clock: widget.clock,
+          )
+          ..addListener(_requestRoomSeen)
+          ..addListener(_askForPushIfJoined);
+    _scroll.addListener(_syncSticky);
     _telegram = TelegramLinkController(
       api: ref.read(runNowApiClientProvider),
       openUrl: widget.openUrl,
@@ -94,21 +116,6 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     WidgetsBinding.instance.addObserver(this);
     _controller.setActive(true);
     _telegram.load();
-  }
-
-  /// Người vào ván từ bản app chưa biết hỏi quyền thì chưa bao giờ được hỏi.
-  void _askForPushIfJoined() {
-    final detail = _controller.detail;
-    if (detail == null || !detail.isRegistered || detail.status == 'ended') {
-      return;
-    }
-    _askForPush();
-  }
-
-  void _askForPush() {
-    if (_pushAsked) return;
-    _pushAsked = true;
-    unawaited(ref.read(pushControllerProvider)?.askAfterJoining());
   }
 
   /// Vừa liên kết xong thì requirements của ván đổi: đọc lại ván.
@@ -138,11 +145,110 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   }
 
   /// Mở chat của ván; bài úp lại để quay về không lộ vai.
-  void _openChat(String key) {
+  Future<void> _openChat(String key) async {
     _turnFaceDown();
-    context.push(
+    await context.push(
       '/games/${Uri.encodeComponent(widget.gameId)}'
       '/chat/${Uri.encodeComponent(key)}',
+    );
+    if (mounted && key == _controller.detail?.room?.key) {
+      await _readRoomSeen(key);
+    }
+  }
+
+  /// Đọc một lần khi đã biết phòng chung và người dùng.
+  /// Người vào ván từ bản app chưa biết hỏi quyền thì chưa bao giờ được hỏi.
+  void _askForPushIfJoined() {
+    final detail = _controller.detail;
+    if (detail == null || !detail.isRegistered || detail.status == 'ended') {
+      return;
+    }
+    _askForPush();
+  }
+
+  void _askForPush() {
+    if (_pushAsked) return;
+    _pushAsked = true;
+    unawaited(ref.read(pushControllerProvider)?.askAfterJoining());
+  }
+
+  void _requestRoomSeen() {
+    final key = _controller.detail?.room?.key;
+    if (key == null || _roomSeenRequested) return;
+    if (ref.read(firebaseUserProvider).value?.uid == null) return;
+    _roomSeenRequested = true;
+    unawaited(_readRoomSeen(key));
+  }
+
+  Future<void> _readRoomSeen(String key) async {
+    final uid = ref.read(firebaseUserProvider).value?.uid;
+    if (uid == null) return;
+    final seen = await ref
+        .read(gameChatSeenProvider)
+        .seen(uid, widget.gameId, key);
+    if (mounted) setState(() => _roomSeen = seen);
+  }
+
+  /// Vị trí đầu [box] trong nội dung cuộn, không phụ thuộc đang cuộn tới đâu.
+  double _contentY(RenderBox box) =>
+      RenderAbstractViewport.of(box).getOffsetToReveal(box, 0).offset;
+
+  void _syncSticky() {
+    if (!_scroll.hasClients) return;
+    if (_heroKey.currentContext?.findRenderObject() case final RenderBox hero
+        when hero.hasSize) {
+      _heroEnd = _contentY(hero) + hero.size.height;
+    }
+    if (_tabsKey.currentContext?.findRenderObject() case final RenderBox tabs
+        when tabs.hasSize) {
+      _tabsAt = _contentY(tabs);
+    }
+    final heroEnd = _heroEnd;
+    final tabsAt = _tabsAt;
+    if (heroEnd == null || tabsAt == null) return;
+    final offset = _scroll.offset;
+    final stuck = offset >= tabsAt - _stickyOffset;
+    final collapsed = stuck || offset >= heroEnd;
+    if (stuck != _tabsStuck || collapsed != _collapsed) {
+      setState(() {
+        _tabsStuck = stuck;
+        _collapsed = collapsed;
+      });
+    }
+  }
+
+  /// Đổi tab lúc đang dính thì nội dung mới bắt đầu ngay dưới hàng tab.
+  void _selectTab(int tab) {
+    setState(() => _tab = tab);
+    final tabsAt = _tabsAt;
+    if (!_tabsStuck || tabsAt == null) return;
+    _scroll.jumpTo(tabsAt - _stickyOffset);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncSticky();
+    });
+  }
+
+  Widget _tabsFor(GameDetail detail, GameSummary? summary) {
+    return _Tabs(
+      current: _tab,
+      tabs: summary != null
+          ? [
+              ('TỔNG KẾT', null),
+              (
+                'LẬT BÀI',
+                '${summary.teams.fold(0, (n, t) => n + t.players.length)}',
+              ),
+              ('DIỄN LẠI', _replayBadge(summary)),
+            ]
+          : [
+              (
+                'LÀNG',
+                '${detail.players.where((p) => p.alive).length}'
+                    '/${detail.players.length}',
+              ),
+              ('NHẬT KÝ', null),
+            ],
+      onChanged: _selectTab,
     );
   }
 
@@ -180,6 +286,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _scroll.dispose();
     _controller.dispose();
     _telegram.dispose();
     super.dispose();
@@ -311,6 +418,23 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     owner: player?.name ?? 'Bạn',
   );
 
+  bool _hasTelegramRow(GameDetail detail) =>
+      !detail.isRegistered &&
+      detail.requirements.any((r) => r.key == gameTelegramRequirement);
+
+  String? _replayBadge(GameSummary summary) {
+    final rounds = gameReplayRounds(summary.replay).length;
+    return rounds == 0 ? null : '$rounds';
+  }
+
+  Future<void> _linkTelegram() async {
+    try {
+      await _telegram.link();
+    } catch (error) {
+      _showError(error);
+    }
+  }
+
   void _openCard(GameDetail detail, GameMe me, GamePlayer? player) {
     final card = GamePlayerCard.fromMe(detail: detail, me: me, player: player);
     // Ván còn chạy mà mình còn sống thì vai còn bí mật.
@@ -354,24 +478,49 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
             child: Scaffold(
               backgroundColor: Colors.transparent,
               appBar: AppBar(
-                title: Text(detail?.title ?? 'Ma Sói'),
+                title: Text(
+                  detail?.title ?? 'Ma Sói',
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 actions: [
                   // Ván của user không hiện ở danh sách chung, nên chủ ván
                   // gửi link cho bạn bè vào đăng ký.
                   if (detail != null && detail.status == 'registering')
                     Builder(
-                      builder: (context) => IconButton(
+                      builder: (context) => _HeaderButton(
                         tooltip: 'Mời bạn',
-                        icon: const Icon(Icons.ios_share_rounded),
+                        icon: Icons.ios_share_rounded,
                         onPressed: () => showGameInvite(context, detail),
                       ),
                     ),
-                  if (detail != null && GameRulesPage.hasContent(detail))
-                    TextButton.icon(
-                      icon: const Icon(Icons.menu_book_rounded, size: 18),
-                      label: const Text('Luật'),
-                      onPressed: () => GameRulesPage.open(context, detail),
+                  if (detail != null && summary != null)
+                    Builder(
+                      builder: (context) => _HeaderButton(
+                        tooltip: 'Chia sẻ tóm tắt',
+                        icon: Icons.ios_share_rounded,
+                        onPressed: () =>
+                            shareGameSummary(context, detail.title, summary),
+                      ),
                     ),
+                  if (detail?.room case final room?)
+                    _HeaderButton(
+                      tooltip: room.label,
+                      icon: Icons.chat_bubble_outline_rounded,
+                      dot: room.latestSeq > (_roomSeen ?? room.latestSeq),
+                      onPressed: () => _openChat(room.key),
+                    ),
+                  if (detail != null && GameRulesPage.hasContent(detail))
+                    Builder(
+                      builder: (context) => _HeaderButton(
+                        tooltip: 'Luật chơi',
+                        icon: Icons.info_outline_rounded,
+                        onPressed: () => GameRulesPage.open(context, detail),
+                      ),
+                    ),
+                  const SizedBox(width: 16),
                 ],
               ),
               body: detail == null
@@ -381,199 +530,232 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                             error: _controller.error!,
                             onRetry: _controller.refresh,
                           )
-                  : RefreshIndicator(
-                      onRefresh: _controller.refresh,
-                      child: ListView(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 48),
-                        children: [
-                          // Giữ chỗ cố định để banner bật tắt không làm các mục
-                          // phía dưới đổi vị trí và mất state.
-                          _controller.error != null
-                              ? const _StaleBanner()
-                              : const SizedBox.shrink(),
-                          GameHero(
-                            detail: detail,
-                            rounds: me?.cardRounds ?? 0,
-                            closing: _controller.phaseClosing,
-                            serverNow: _controller.serverNow,
-                          ),
-                          if (detail.room case final room?) ...[
-                            const SizedBox(height: 12),
-                            FilledButton.tonalIcon(
-                              onPressed: () => _openChat(room.key),
-                              icon: const Icon(Icons.forum_outlined),
-                              label: Text(room.label),
-                            ),
-                          ],
-                          if (me != null && me.role != null) ...[
-                            const SizedBox(height: 16),
-                            GameMyCard(
-                              me: me,
-                              faceUp: _faceUp,
-                              kmTable: kmTable,
-                              running: detail.status == 'running',
-                              serverNow: _controller.serverNow,
-                              onAction: _submit,
-                              card: _cardFor(detail, me, myPlayer),
-                              onOpenCard: () => _openCard(detail, me, myPlayer),
-                              cardRevealed: _cardRevealed,
-                              justRevealed: _justRevealed,
-                              onRevealCard: _revealCard,
-                              onFlip: () => setState(() {
-                                _faceUp = !_faceUp;
-                                _justRevealed = false;
-                              }),
-                              onOpenUrl: _openLink,
-                              onOpenChat: _openChat,
-                            ),
-                          ],
-                          if (detail.status == 'registering' &&
-                              detail.needsTelegram) ...[
-                            TelegramLinkSection(
-                              controller: _telegram,
-                              onError: _showError,
-                            ),
-                          ],
-                          if (detail.status == 'registering') ...[
-                            const SizedBox(height: 12),
-                            _Registration(
-                              detail: detail,
-                              busy: _registering,
-                              onToggle: () =>
-                                  _toggleRegistration(detail.isRegistered),
-                              onOpenUrl: _openLink,
-                            ),
-                          ],
-                          if (detail.canManage &&
-                              detail.status == 'registering') ...[
-                            const SizedBox(height: 12),
-                            FilledButton.tonal(
-                              onPressed:
-                                  _starting ||
-                                      detail.playerCount < detail.minPlayers
-                                  ? null
-                                  : _start,
-                              child: Text(
-                                _starting
-                                    ? 'Đang kiểm tra…'
-                                    : detail.playerCount < detail.minPlayers
-                                    ? 'Bắt đầu ván (${detail.playerCount}/${detail.minPlayers})'
-                                    : 'Bắt đầu ván',
-                              ),
-                            ),
-                          ],
-                          if (detail.isAdmin &&
-                              detail.testMode &&
-                              detail.status == 'registering' &&
-                              detail.playerCount < detail.minPlayers) ...[
-                            const SizedBox(height: 8),
-                            OutlinedButton(
-                              onPressed: _faking
-                                  ? null
-                                  : () => _fillFakes(detail),
-                              child: Text(
-                                _faking
-                                    ? 'Đang thêm…'
-                                    : 'Thêm người giả cho đủ ${detail.minPlayers}',
-                              ),
-                            ),
-                          ],
-                          if (detail.status == 'registering') ...[
-                            if (detail.players.isNotEmpty) ...[
-                              const SizedBox(height: 20),
-                              _SectionTitle(
-                                'ĐÃ VÀO SẢNH',
-                                trailing: '${detail.players.length} người',
-                              ),
-                              GameVillage(
-                                players: detail.players,
-                                reveals: reveals,
-                                table: null,
-                                myUid: myUid,
-                              ),
-                            ],
-                          ] else ...[
-                            const SizedBox(height: 16),
-                            _Tabs(
-                              current: _tab,
-                              tabs: summary != null
-                                  ? [
-                                      ('TỔNG KẾT', null),
-                                      (
-                                        'LẬT BÀI',
-                                        '${summary.teams.fold(0, (n, t) => n + t.players.length)}',
-                                      ),
-                                      ('DIỄN LẠI', null),
-                                    ]
-                                  : [
-                                      (
-                                        'LÀNG',
-                                        '${detail.players.where((p) => p.alive).length}'
-                                            '/${detail.players.length}',
-                                      ),
-                                      ('NHẬT KÝ', null),
-                                    ],
-                              onChanged: (tab) => setState(() => _tab = tab),
-                            ),
-                            const SizedBox(height: 12),
-                            if (summary != null)
-                              switch (_tab) {
-                                0 => GameEndedSummary(summary: summary),
-                                1 => GameEndedReveal(teams: summary.teams),
-                                _ => GameReplay(sections: summary.replay),
-                              }
-                            else if (_tab == 0) ...[
-                              if (me != null) ...[
-                                GameKmGoals(
-                                  goals: me.kmGoals,
-                                  faceUp: _faceUp,
-                                  table: kmTable,
-                                  myKm: myPlayer?.todayKm,
+                  : Stack(
+                      children: [
+                        RefreshIndicator(
+                          onRefresh: _controller.refresh,
+                          child: ListView(
+                            controller: _scroll,
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 48),
+                            children: [
+                              // Giữ chỗ cố định để banner bật tắt không làm các mục
+                              // phía dưới đổi vị trí và mất state.
+                              _controller.error != null
+                                  ? const _StaleBanner()
+                                  : const SizedBox.shrink(),
+                              if (detail.status == 'registering')
+                                GameLobbyHero(detail: detail)
+                              else
+                                GameHero(
+                                  key: _heroKey,
+                                  detail: detail,
+                                  subtitle: summary?.subtitle ?? '',
+                                  rounds: me?.cardRounds ?? 0,
+                                  closing: _controller.phaseClosing,
+                                  serverNow: _controller.serverNow,
                                 ),
-                                if (me.kmGoals.isNotEmpty)
-                                  const SizedBox(height: 16),
+                              if (me != null && me.role != null) ...[
+                                const SizedBox(height: 14),
+                                GameMyCard(
+                                  me: me,
+                                  faceUp: _faceUp,
+                                  kmTable: kmTable,
+                                  running: detail.status == 'running',
+                                  serverNow: _controller.serverNow,
+                                  onAction: _submit,
+                                  card: _cardFor(detail, me, myPlayer),
+                                  onOpenCard: () =>
+                                      _openCard(detail, me, myPlayer),
+                                  cardRevealed: _cardRevealed,
+                                  justRevealed: _justRevealed,
+                                  onRevealCard: _revealCard,
+                                  onFlip: () => setState(() {
+                                    _faceUp = !_faceUp;
+                                    _justRevealed = false;
+                                  }),
+                                  onOpenUrl: _openLink,
+                                  onOpenChat: _openChat,
+                                ),
                               ],
-                              _SectionTitle(
-                                'LÀNG',
-                                trailing: kmTable == null
-                                    ? null
-                                    : 'xếp theo km hôm nay',
-                              ),
-                              GameVillage(
-                                players: detail.players,
-                                reveals: reveals,
-                                table: kmTable,
-                                myUid: myUid,
-                              ),
-                              if (kmTable != null && kmTable.note.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 10),
+                              if (detail.status == 'registering') ...[
+                                if (detail.lobby?.roles case final roles?
+                                    when roles.isNotEmpty) ...[
+                                  const SizedBox(height: 16),
+                                  GameLobbyRoles(roles: roles),
+                                ],
+                                if (!detail.isRegistered &&
+                                    detail.requirements.isNotEmpty) ...[
+                                  const SizedBox(height: 16),
+                                  GameLobbyRequirements(
+                                    requirements: detail.requirements,
+                                    onOpenUrl: _openLink,
+                                    onLinkTelegram:
+                                        detail.needsTelegram && !_telegram.busy
+                                        ? _linkTelegram
+                                        : null,
+                                    waitingTelegram: _telegram.waiting,
+                                  ),
+                                ],
+                                if (detail.needsTelegram &&
+                                    !_hasTelegramRow(detail))
+                                  TelegramLinkSection(
+                                    controller: _telegram,
+                                    onError: _showError,
+                                  ),
+                                if (detail.players.isNotEmpty ||
+                                    !detail.isRegistered) ...[
+                                  const SizedBox(height: 18),
+                                  GameLobbyPlayers(
+                                    players: detail.players,
+                                    myUid: myUid,
+                                    showJoinSlot: !detail.isRegistered,
+                                    onJoin:
+                                        _registering ||
+                                            detail.requirements.any(
+                                              (r) => !r.ok,
+                                            )
+                                        ? null
+                                        : () => _toggleRegistration(false),
+                                  ),
+                                ],
+                                const SizedBox(height: 18),
+                                GameLobbyJoin(
+                                  detail: detail,
+                                  busy: _registering,
+                                  onToggle: () =>
+                                      _toggleRegistration(detail.isRegistered),
+                                ),
+                              ],
+                              if (detail.canManage &&
+                                  detail.status == 'registering') ...[
+                                const SizedBox(height: 12),
+                                FilledButton.tonal(
+                                  onPressed:
+                                      _starting ||
+                                          detail.playerCount < detail.minPlayers
+                                      ? null
+                                      : _start,
                                   child: Text(
-                                    kmTable.note,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      height: 1.45,
-                                      color: RunNowMoonlitTokens.muted,
-                                    ),
+                                    _starting
+                                        ? 'Đang kiểm tra…'
+                                        : detail.playerCount < detail.minPlayers
+                                        ? 'Bắt đầu ván (${detail.playerCount}/${detail.minPlayers})'
+                                        : 'Bắt đầu ván',
                                   ),
                                 ),
-                            ] else
-                              GameJournal(
-                                items: _controller.feedItems,
-                                hasOlder: _controller.hasOlderFeed,
-                                loadingOlder: _controller.loadingOlder,
-                                onLoadOlder: _loadOlder,
+                              ],
+                              if (detail.isAdmin &&
+                                  detail.testMode &&
+                                  detail.status == 'registering' &&
+                                  detail.playerCount < detail.minPlayers) ...[
+                                const SizedBox(height: 8),
+                                OutlinedButton(
+                                  onPressed: _faking
+                                      ? null
+                                      : () => _fillFakes(detail),
+                                  child: Text(
+                                    _faking
+                                        ? 'Đang thêm…'
+                                        : 'Thêm người giả cho đủ ${detail.minPlayers}',
+                                  ),
+                                ),
+                              ],
+                              if (detail.status != 'registering') ...[
+                                const SizedBox(height: 14),
+                                KeyedSubtree(
+                                  key: _tabsKey,
+                                  child: _tabsFor(detail, summary),
+                                ),
+                                const SizedBox(height: 14),
+                                if (summary != null)
+                                  switch (_tab) {
+                                    0 => GameEndedSummary(summary: summary),
+                                    1 => GameEndedReveal(teams: summary.teams),
+                                    _ => GameReplay(sections: summary.replay),
+                                  }
+                                else if (_tab == 0) ...[
+                                  if (me != null) ...[
+                                    GameKmGoals(
+                                      goals: me.kmGoals,
+                                      faceUp: _faceUp,
+                                      table: kmTable,
+                                      myKm: myPlayer?.todayKm,
+                                    ),
+                                    if (me.kmGoals.isNotEmpty)
+                                      const SizedBox(height: 14),
+                                  ],
+                                  _SectionTitle(
+                                    'LÀNG',
+                                    trailing: kmTable == null
+                                        ? null
+                                        : 'xếp theo km hôm nay',
+                                  ),
+                                  GameVillage(
+                                    players: detail.players,
+                                    reveals: reveals,
+                                    table: kmTable,
+                                    myUid: myUid,
+                                  ),
+                                  if (kmTable != null &&
+                                      kmTable.note.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 10),
+                                      child: Text(
+                                        kmTable.note,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          height: 1.45,
+                                          color: RunNowMoonlitTokens.muted,
+                                        ),
+                                      ),
+                                    ),
+                                ] else
+                                  GameJournal(
+                                    items: _controller.feedItems,
+                                    hasOlder: _controller.hasOlderFeed,
+                                    loadingOlder: _controller.loadingOlder,
+                                    onLoadOlder: _loadOlder,
+                                  ),
+                              ],
+                              if (detail.status != 'registering' &&
+                                  detail.status != 'ended' &&
+                                  detail.isRegistered) ...[
+                                TelegramLinkSection(
+                                  controller: _telegram,
+                                  onError: _showError,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        if (detail.status != 'registering')
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 150),
+                              layoutBuilder: (current, previous) => Stack(
+                                alignment: Alignment.topCenter,
+                                children: [...previous, ?current],
                               ),
-                          ],
-                          if (detail.status != 'registering' &&
-                              detail.isRegistered) ...[
-                            TelegramLinkSection(
-                              controller: _telegram,
-                              onError: _showError,
+                              child: _collapsed
+                                  ? _StickyHeader(
+                                      key: const ValueKey('game-sticky-header'),
+                                      bar: GameHeroBar(
+                                        detail: detail,
+                                        rounds: me?.cardRounds ?? 0,
+                                        closing: _controller.phaseClosing,
+                                        serverNow: _controller.serverNow,
+                                      ),
+                                      tabs: _tabsStuck
+                                          ? _tabsFor(detail, summary)
+                                          : null,
+                                    )
+                                  : const SizedBox.shrink(),
                             ),
-                          ],
-                        ],
-                      ),
+                          ),
+                      ],
                     ),
             ),
           );
@@ -583,181 +765,93 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   }
 }
 
-final _clockFormat = DateFormat('HH:mm');
-final _dayFormat = DateFormat('dd/MM');
-const _weekdays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+/// Header thu gọn và hàng tab, đè lên nội dung đang cuộn.
+class _StickyHeader extends StatelessWidget {
+  const _StickyHeader({super.key, required this.bar, required this.tabs});
 
-/// Sảnh đăng ký: số chỗ đã có, giờ đóng, điều kiện vào ván và nút đăng ký.
-class _Registration extends StatelessWidget {
-  const _Registration({
-    required this.detail,
-    required this.busy,
-    required this.onToggle,
-    required this.onOpenUrl,
+  final Widget bar;
+  final Widget? tabs;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: _M.page.withValues(alpha: 0.92),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            bar,
+            if (tabs case final tabs?) ...[const SizedBox(height: 8), tabs],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Nút vuông trên header ván, [dot] là chấm báo có tin mới.
+class _HeaderButton extends StatelessWidget {
+  const _HeaderButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+    this.dot = false,
   });
 
-  final GameDetail detail;
-  final bool busy;
-  final VoidCallback onToggle;
-  final ValueChanged<String> onOpenUrl;
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onPressed;
+  final bool dot;
 
   @override
   Widget build(BuildContext context) {
-    final deadline = detail.registrationDeadline?.toLocal();
-    final requirements = detail.requirements;
-    final met = requirements.where((r) => r.ok).length;
-    final ready = met == requirements.length;
-    final count = detail.playerCount;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _M.panel,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _M.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: Stack(
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: '$count',
-                            style: const TextStyle(
-                              fontSize: 40,
-                              color: _M.amberLight,
-                            ),
-                          ),
-                          TextSpan(
-                            text: ' / ${detail.maxPlayers} chỗ',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              color: _M.inkSoft,
-                            ),
-                          ),
-                        ],
-                      ),
-                      style: const TextStyle(
-                        fontFamily: gameTitleFont,
-                        fontWeight: FontWeight.w800,
-                        height: 1,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      count >= detail.minPlayers
-                          ? 'Đủ người để mở ván'
-                          : 'Cần ít nhất ${detail.minPlayers} để mở ván',
-                      style: const TextStyle(fontSize: 12, color: _M.muted),
-                    ),
-                  ],
-                ),
+          IconButton(
+            tooltip: tooltip,
+            onPressed: onPressed,
+            iconSize: 20,
+            style: IconButton.styleFrom(
+              fixedSize: const Size.square(44),
+              minimumSize: const Size.square(44),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              foregroundColor: RunNowMoonlitTokens.ink,
+              backgroundColor: RunNowMoonlitTokens.heroMid.withValues(
+                alpha: 0.8,
               ),
-              if (deadline != null)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      _clockFormat.format(deadline),
-                      style: const TextStyle(
-                        fontFamily: gameTitleFont,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 24,
-                        height: 1,
-                        color: _M.ink,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'đóng đăng ký · ${_weekdays[deadline.weekday - 1]} '
-                      '${_dayFormat.format(deadline)}',
-                      style: const TextStyle(fontSize: 12, color: _M.muted),
-                    ),
-                  ],
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _Slots(count: count, min: detail.minPlayers, max: detail.maxPlayers),
-          if (!detail.isRegistered && requirements.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Text(
-              'ĐỦ ĐIỀU KIỆN $met/${requirements.length}',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.2,
-                color: _M.inkSoft,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: RunNowMoonlitTokens.border),
               ),
             ),
-            for (final requirement in requirements)
-              _RequirementRow(requirement: requirement, onOpenUrl: onOpenUrl),
-          ],
-          const SizedBox(height: 16),
-          detail.isRegistered
-              ? OutlinedButton(
-                  onPressed: busy ? null : onToggle,
-                  child: const Text('Huỷ đăng ký'),
-                )
-              : FilledButton(
-                  onPressed: busy || !ready ? null : onToggle,
-                  child: const Text('Đăng ký'),
+            icon: Icon(icon),
+          ),
+          if (dot)
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Semantics(
+                label: 'Có tin mới',
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _M.amberStrong,
+                  ),
                 ),
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-/// Dải chỗ ngồi: mỗi chỗ một vạch, chỗ đã có người sáng lên, vạch số người
-/// tối thiểu nhạt hơn khi chưa đủ.
-class _Slots extends StatelessWidget {
-  const _Slots({required this.count, required this.min, required this.max});
-
-  final int count;
-  final int min;
-  final int max;
-
-  @override
-  Widget build(BuildContext context) {
-    if (max <= 0) return const SizedBox.shrink();
-    return Row(
-      children: [
-        for (var i = 0; i < max; i++) ...[
-          if (i > 0) const SizedBox(width: 3),
-          Expanded(
-            child: Container(
-              height: 6,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(3),
-                color: i < count
-                    ? null
-                    : i < min
-                    ? _M.amberLine
-                    : _M.track,
-                gradient: i < count
-                    ? const LinearGradient(
-                        colors: [_M.amberDeep, _M.amberBright],
-                      )
-                    : null,
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-/// Tab dưới lá bài: Làng và Nhật ký khi ván chạy; Tổng kết, Lật bài, Diễn
-/// lại khi ván đã xong và có tổng kết.
 class _Tabs extends StatelessWidget {
   const _Tabs({
     required this.current,
@@ -845,6 +939,13 @@ class _Tabs extends StatelessWidget {
         color: _M.tabBar,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: _M.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.45),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -939,72 +1040,6 @@ class _LoadError extends StatelessWidget {
 
 /// Một điều kiện đăng ký. Nút theo `action.type` của backend; link_telegram
 /// không có nút ở đây vì phần Telegram ngay trên đã có nút liên kết.
-class _RequirementRow extends StatelessWidget {
-  const _RequirementRow({required this.requirement, required this.onOpenUrl});
-
-  final GameRequirement requirement;
-  final ValueChanged<String> onOpenUrl;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    final action = requirement.action;
-    final url = action?.url;
-    final Widget? trailing = switch (action?.type) {
-      'open_url' when url != null => TextButton(
-        onPressed: () => onOpenUrl(url),
-        child: const Text('Mở'),
-      ),
-      'update_app' when url != null => TextButton(
-        onPressed: () => onOpenUrl(url),
-        child: const Text('Cập nhật'),
-      ),
-      _ => null,
-    };
-    final hint = action?.type == 'update_app' && url == null
-        ? _updateHint()
-        : null;
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(
-        children: [
-          Icon(
-            requirement.ok
-                ? Icons.check_circle_rounded
-                : Icons.radio_button_unchecked_rounded,
-            size: 20,
-            color: requirement.ok ? palette.accent : palette.textMuted,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(requirement.label, style: TextStyle(color: palette.ink)),
-                if (hint != null)
-                  Text(
-                    hint,
-                    style: TextStyle(fontSize: 12, color: palette.textMuted),
-                  ),
-              ],
-            ),
-          ),
-          ?trailing,
-        ],
-      ),
-    );
-  }
-
-  static String _updateHint() {
-    if (kIsWeb) return 'Tải lại trang để lấy bản mới.';
-    return switch (defaultTargetPlatform) {
-      TargetPlatform.iOS => 'Cập nhật app trên App Store.',
-      TargetPlatform.android => 'Cập nhật app trên Google Play.',
-      _ => 'Cập nhật app lên bản mới.',
-    };
-  }
-}
-
 class _StartPreviewBody extends StatelessWidget {
   const _StartPreviewBody({required this.preview});
 

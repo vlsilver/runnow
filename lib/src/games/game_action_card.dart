@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_dialog.dart';
+import 'package:myrun/src/games/game_hero.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_tally_view.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -30,9 +31,17 @@ class GameActionCard extends StatefulWidget {
     required this.action,
     required this.serverNow,
     required this.onSubmit,
+    this.showHeader = true,
+    this.showTime = true,
   });
 
   final GameAction action;
+
+  /// false khi đầu khối lá bài đã ghi việc này rồi.
+  final bool showHeader;
+
+  /// false khi đầu khối lá bài đã ghi giờ chung của mọi việc.
+  final bool showTime;
 
   /// Giờ server ước tính; đếm ngược theo mốc này chứ không theo đồng hồ máy.
   final DateTime Function() serverNow;
@@ -121,48 +130,55 @@ class _GameActionCardState extends State<GameActionCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  action.label,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: palette.ink,
+          if (widget.showHeader) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    action.label,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: palette.ink,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              _Window(
+                if (widget.showTime) ...[
+                  const SizedBox(width: 8),
+                  _Window(
+                    opensAt: opensAt,
+                    closesAt: closesAt,
+                    now: now,
+                    live: live,
+                  ),
+                ],
+              ],
+            ),
+            if (widget.showTime &&
+                !notYet &&
+                opensAt != null &&
+                closesAt != null) ...[
+              const SizedBox(height: 10),
+              _TimeLeft(
                 opensAt: opensAt,
                 closesAt: closesAt,
                 now: now,
                 live: live,
               ),
             ],
-          ),
-          if (!notYet && opensAt != null && closesAt != null) ...[
-            const SizedBox(height: 10),
-            _TimeLeft(
-              opensAt: opensAt,
-              closesAt: closesAt,
-              now: now,
-              live: live,
-            ),
-          ],
-          if (action.help.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              action.help,
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.4,
-                color: palette.foreground,
+            if (action.help.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                action.help,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  color: palette.foreground,
+                ),
               ),
-            ),
+            ],
+            const SizedBox(height: 12),
           ],
-          const SizedBox(height: 12),
           ..._input(action, active),
           if (!action.enabled && action.disabledReason != null) ...[
             const SizedBox(height: 10),
@@ -237,12 +253,17 @@ class _GameActionCardState extends State<GameActionCard> {
         final current = choice
             ? selected?.choice
             : selected?.targets.firstOrNull;
+        // Hai lựa chọn kiểu Treo/Tha là nút lớn; danh sách người thì lưới nhỏ.
+        final big = choice && action.options.length == 2;
         return [
           _OptionGrid(
+            columns: big ? 2 : 3,
             children: [
-              for (final option in action.options)
+              for (final (i, option) in action.options.indexed)
                 GameOptionButton(
-                  label: option.label,
+                  label: big ? option.label.toUpperCase() : option.label,
+                  big: big,
+                  filled: big && current == null && i == 0,
                   selected: option.id == current,
                   onPressed: !active || option.id == current
                       ? null
@@ -437,16 +458,17 @@ class _DarkPower extends StatelessWidget {
 
 /// Lưới ba cột cho các lựa chọn, như artboard "Cắn ai đêm nay".
 class _OptionGrid extends StatelessWidget {
-  const _OptionGrid({required this.children});
+  const _OptionGrid({required this.children, this.columns = 3});
 
   final List<Widget> children;
+  final int columns;
 
   @override
   Widget build(BuildContext context) {
     const gap = 8.0;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = (constraints.maxWidth - gap * 2) / 3;
+        final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
         return Wrap(
           spacing: gap,
           runSpacing: gap,
@@ -459,6 +481,9 @@ class _OptionGrid extends StatelessWidget {
   }
 }
 
+/// Tên dài hơn chừng này thì thu chữ cho vừa hai dòng trong ô 3 cột.
+const _longNameLength = 10;
+
 /// Một lựa chọn trong lưới: đang chọn thì nền vàng foil, còn lại viền kính.
 class GameOptionButton extends StatelessWidget {
   const GameOptionButton({
@@ -466,38 +491,89 @@ class GameOptionButton extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onPressed,
+    this.big = false,
+    this.filled = false,
   });
 
   final String label;
   final bool selected;
   final VoidCallback? onPressed;
 
+  /// Nút lớn chữ Barlow cho các lựa chọn kiểu Treo/Tha.
+  final bool big;
+
+  /// Tô vàng dù chưa chọn: nút chính khi chưa bỏ phiếu.
+  final bool filled;
+
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
+    final foil = selected || filled;
+    final color = foil
+        ? big
+              ? Colors.white
+              : Theme.of(context).colorScheme.onPrimary
+        : palette.ink.withValues(alpha: onPressed == null ? 0.45 : 1);
+    // Tên người hay trùng họ, cắt một dòng thì các nút giống hệt nhau.
+    final longName = !big && label.length > _longNameLength;
     final text = Text(
       label,
-      maxLines: 1,
+      maxLines: big ? 1 : 2,
+      textAlign: TextAlign.center,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
-        fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
-        color: selected
-            ? Theme.of(context).colorScheme.onPrimary
-            : palette.ink.withValues(alpha: onPressed == null ? 0.45 : 1),
+        fontFamily: big ? gameTitleFont : null,
+        fontSize: big
+            ? 22
+            : longName
+            ? 13
+            : null,
+        height: longName ? 1.15 : null,
+        letterSpacing: big ? 1.5 : null,
+        fontWeight: selected || big ? FontWeight.w800 : FontWeight.w700,
+        color: color,
       ),
     );
+    final radius = BorderRadius.circular(big ? 14 : 12);
     return Semantics(
       button: true,
       selected: selected,
       child: Material(
         type: MaterialType.transparency,
         child: Ink(
-          height: 44,
+          height: big ? 56 : 44,
           decoration: BoxDecoration(
-            gradient: selected ? gameAccentFoil(palette) : null,
-            borderRadius: BorderRadius.circular(12),
-            border: selected
+            gradient: !foil
                 ? null
+                : big
+                ? const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      RunNowMoonlitTokens.amberStrong,
+                      RunNowMoonlitTokens.amberDeep,
+                    ],
+                  )
+                : gameAccentFoil(palette),
+            boxShadow: foil && big
+                ? [
+                    BoxShadow(
+                      color: RunNowMoonlitTokens.amberStrong.withValues(
+                        alpha: 0.4,
+                      ),
+                      blurRadius: 22,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                : null,
+            borderRadius: radius,
+            border: foil
+                ? null
+                : big
+                ? Border.all(
+                    color: RunNowMoonlitTokens.borderStrong,
+                    width: 1.5,
+                  )
                 : Border.all(
                     color: Theme.of(
                       context,
@@ -505,12 +581,22 @@ class GameOptionButton extends StatelessWidget {
                   ),
           ),
           child: InkWell(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: radius,
             onTap: onPressed,
             child: Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: text,
+                // Nút chính cũng tô vàng, nên nút đã chọn phải có dấu riêng.
+                child: big && selected
+                    ? Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.check_rounded, size: 20, color: color),
+                          const SizedBox(width: 4),
+                          Flexible(child: text),
+                        ],
+                      )
+                    : text,
               ),
             ),
           ),

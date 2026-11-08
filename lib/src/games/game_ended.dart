@@ -1,10 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:myrun/src/games/game_hero.dart';
 import 'package:myrun/src/games/game_journal.dart';
+import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:share_plus/share_plus.dart';
 
 typedef _M = RunNowMoonlitTokens;
+
+/// Chia sẻ tóm tắt ván dạng chữ.
+Future<void> shareGameSummary(
+  BuildContext context,
+  String title,
+  GameSummary summary,
+) {
+  final box = context.findRenderObject() as RenderBox?;
+  final text = [
+    title,
+    if (summary.winnerLabel.isNotEmpty) '${summary.winnerLabel} thắng',
+    for (final stat in summary.stats) '${stat.label}: ${stat.value}',
+    'Chia sẻ từ 3i',
+  ].join('\n');
+  return SharePlus.instance.share(
+    ShareParams(
+      text: text,
+      subject: title,
+      sharePositionOrigin: box == null
+          ? null
+          : box.localToGlobal(Offset.zero) & box.size,
+    ),
+  );
+}
 
 /// Tab Tổng kết: số liệu cả ván và danh hiệu.
 class GameEndedSummary extends StatelessWidget {
@@ -18,37 +44,68 @@ class GameEndedSummary extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (stats.isNotEmpty)
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final width = (constraints.maxWidth - 8) / 2;
-              return Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final stat in stats)
-                    SizedBox(
-                      width: width,
-                      child: _StatTile(stat: stat),
-                    ),
-                ],
-              );
-            },
-          ),
+        if (stats.isNotEmpty) _StatRows(stats: stats),
         if (summary.titles.isNotEmpty) ...[
           const SizedBox(height: 18),
           const _Head('DANH HIỆU'),
           const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: _M.list,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _M.border),
-            ),
-            child: Column(
+          _TitleCards(titles: summary.titles),
+        ],
+      ],
+    );
+  }
+}
+
+/// Mỗi hàng 4 ô số. Số dài tự thu nhỏ để không xuống dòng.
+class _StatRows extends StatelessWidget {
+  const _StatRows({required this.stats});
+
+  final List<GameSummaryStat> stats;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Grid(
+      count: stats.length,
+      columns: 4,
+      spacing: 6,
+      itemBuilder: (i) => _StatTile(stat: stats[i]),
+    );
+  }
+}
+
+/// Lưới chia đều cột, các ô cùng hàng cao bằng nhau.
+class _Grid extends StatelessWidget {
+  const _Grid({
+    required this.count,
+    required this.columns,
+    required this.spacing,
+    required this.itemBuilder,
+  });
+
+  final int count;
+  final int columns;
+  final double spacing;
+  final Widget Function(int index) itemBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var row = 0; row * columns < count; row++) ...[
+          if (row > 0) SizedBox(height: spacing),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final title in summary.titles) _TitleRow(title: title),
+                for (var col = 0; col < columns; col++) ...[
+                  if (col > 0) SizedBox(width: spacing),
+                  Expanded(
+                    child: row * columns + col < count
+                        ? itemBuilder(row * columns + col)
+                        : const SizedBox.shrink(),
+                  ),
+                ],
               ],
             ),
           ),
@@ -66,29 +123,33 @@ class _StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
       decoration: BoxDecoration(
         color: _M.panel,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _M.border),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            stat.value,
-            style: const TextStyle(
-              fontFamily: gameTitleFont,
-              fontWeight: FontWeight.w800,
-              fontSize: 30,
-              height: 1,
-              color: _M.amberLight,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              stat.value,
+              maxLines: 1,
+              style: const TextStyle(
+                fontFamily: gameTitleFont,
+                fontWeight: FontWeight.w800,
+                fontSize: 26,
+                height: 1,
+                color: _M.amberLight,
+              ),
             ),
           ),
           const SizedBox(height: 4),
           Text(
             stat.label,
-            style: const TextStyle(fontSize: 12, color: _M.muted),
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 11, color: _M.muted),
           ),
         ],
       ),
@@ -103,55 +164,72 @@ IconData _titleIcon(String key) => switch (key) {
   _ => Icons.emoji_events_outlined,
 };
 
-class _TitleRow extends StatelessWidget {
-  const _TitleRow({required this.title});
+class _TitleCards extends StatelessWidget {
+  const _TitleCards({required this.titles});
+
+  final List<GameSummaryTitle> titles;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Grid(
+      count: titles.length,
+      columns: 3,
+      spacing: 8,
+      itemBuilder: (i) => _TitleCard(title: titles[i]),
+    );
+  }
+}
+
+class _TitleCard extends StatelessWidget {
+  const _TitleCard({required this.title});
 
   final GameSummaryTitle title;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: _M.list,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _M.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 36,
-            height: 36,
+            width: 40,
+            height: 40,
             alignment: Alignment.center,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
+            decoration: BoxDecoration(
               color: _M.amberTint,
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(_titleIcon(title.key), size: 19, color: _M.amberPale),
+            child: Icon(_titleIcon(title.key), size: 20, color: _M.amberPale),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title.label.toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.2,
-                    color: _M.muted,
-                  ),
-                ),
-                Text(
-                  title.name,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: _M.ink,
-                  ),
-                ),
-              ],
+          const SizedBox(height: 8),
+          Text(
+            title.label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, color: _M.muted),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            title.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: _M.ink,
             ),
           ),
-          const SizedBox(width: 8),
+          const Spacer(),
           Text(
             title.value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontFamily: gameTitleFont,
               fontWeight: FontWeight.w700,
@@ -229,81 +307,147 @@ class _TeamBlock extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          for (final player in team.players) _RevealRow(player: player),
+          _Grid(
+            count: team.players.length,
+            columns: 4,
+            spacing: 6,
+            itemBuilder: (i) => _RevealTile(player: team.players[i]),
+          ),
         ],
       ),
     );
   }
 }
 
-class _RevealRow extends StatelessWidget {
-  const _RevealRow({required this.player});
+class _RevealTile extends StatelessWidget {
+  const _RevealTile({required this.player});
 
   final GameSummaryPlayer player;
 
   @override
   Widget build(BuildContext context) {
-    final cause = player.causeLabel;
-    final km = player.km;
+    final accent = player.role.isEmpty
+        ? _M.amberStrong
+        : gameRoleAccent(player.role);
     return Opacity(
       opacity: player.alive ? 1 : 0.75,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _M.raised,
-                border: Border.all(
-                  color: player.alive ? _M.amberStrong : _M.divider,
-                  width: 2,
-                ),
-              ),
-              child: Text(
-                player.name.isEmpty ? '?' : player.name[0].toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: _M.ink,
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    player.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+      child: Column(
+        children: [
+          SizedBox(
+            width: 56,
+            height: 56,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _M.raised,
+                    border: Border.all(color: accent, width: 2),
+                  ),
+                  child: Text(
+                    player.name.isEmpty ? '?' : player.name[0].toUpperCase(),
                     style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
                       color: _M.ink,
                     ),
                   ),
-                  Text(
-                    [player.roleLabel, ?cause, ?km].join(' · '),
-                    style: const TextStyle(fontSize: 12, color: _M.amberSoft),
+                ),
+                Positioned(
+                  right: -6,
+                  bottom: -4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: player.alive ? _M.panel : _M.lifted,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: _M.list, width: 2),
+                    ),
+                    child: Text(
+                      player.fate.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        color: player.alive ? _M.amberPale : _M.inkSoft,
+                      ),
+                    ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            _Pill(player.fate.toUpperCase(), strong: player.alive),
-          ],
-        ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            player.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: _M.ink,
+            ),
+          ),
+          Text(
+            player.roleLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, color: accent),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// Tab Diễn lại: từng đêm, từng ngày, cả việc làm trong đêm.
+/// Các mục liền nhau cùng một vòng. Mục của backend cũ không có số vòng nên
+/// đứng riêng với `round == 0`.
+class GameReplayRound {
+  const GameReplayRound(this.round, this.sections);
+
+  final int round;
+  final List<GameSummarySection> sections;
+
+  int get deaths => [
+    for (final section in sections) ...section.lines,
+  ].where((line) => line.icon == 'death').length;
+
+  /// `16/10`, hoặc `16–17/10` khi vòng đi qua hai ngày cùng tháng.
+  String? get dateRange {
+    final dates = [for (final section in sections) ?section.date];
+    if (dates.isEmpty) return null;
+    final first = dates.first;
+    final last = dates.last;
+    if (first == last) return first;
+    final firstDay = first.split('/').first;
+    if (first.endsWith(last.substring(last.indexOf('/')))) {
+      return '$firstDay–$last';
+    }
+    return '$first–$last';
+  }
+}
+
+/// Vòng có số thứ tự của mục diễn lại, giữ nguyên thứ tự backend gửi.
+List<GameReplayRound> gameReplayRounds(List<GameSummarySection> sections) {
+  final rounds = <GameReplayRound>[];
+  for (final section in sections) {
+    if (section.round <= 0) continue;
+    if (rounds.lastOrNull case final last? when last.round == section.round) {
+      last.sections.add(section);
+    } else {
+      rounds.add(GameReplayRound(section.round, [section]));
+    }
+  }
+  return rounds;
+}
+
+/// Tab Diễn lại: gộp theo vòng; backend cũ không có vòng thì vẽ từng mục.
 class GameReplay extends StatelessWidget {
   const GameReplay({super.key, required this.sections});
 
@@ -311,38 +455,160 @@ class GameReplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final rounds = gameReplayRounds(sections);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final section in sections)
-          Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-            decoration: BoxDecoration(
-              color: _M.list,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _M.border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  section.title.toUpperCase(),
-                  style: TextStyle(
-                    fontFamily: gameTitleFont,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                    letterSpacing: 1,
-                    color: section.night ? _M.inkSoft : _M.amberLight,
+        for (final section in sections.where((s) => s.round <= 0))
+          _ReplayBlock(
+            title: section.title.toUpperCase(),
+            highlight: !section.night,
+            children: [_SectionLines(section: section)],
+          ),
+        for (final round in rounds)
+          _ReplayBlock(
+            title: [
+              'VÒNG ${round.round}',
+              ?round.dateRange,
+              if (round.deaths > 0) '${round.deaths} người ngã',
+            ].join(' · '),
+            highlight: true,
+            children: [
+              for (final section in round.sections) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    section.title.toUpperCase(),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
+                      color: _M.muted,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 2),
-                for (final line in section.lines)
-                  GameLineRow(line: line, night: section.night),
+                _SectionLines(section: section),
               ],
-            ),
+            ],
           ),
       ],
+    );
+  }
+}
+
+class _ReplayBlock extends StatelessWidget {
+  const _ReplayBlock({
+    required this.title,
+    required this.highlight,
+    required this.children,
+  });
+
+  final String title;
+  final bool highlight;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+      decoration: BoxDecoration(
+        color: _M.list,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _M.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontFamily: gameTitleFont,
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+              letterSpacing: 1,
+              color: highlight ? _M.amberLight : _M.inkSoft,
+            ),
+          ),
+          const SizedBox(height: 2),
+          ...children,
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionLines extends StatelessWidget {
+  const _SectionLines({required this.section});
+
+  final GameSummarySection section;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final line in section.lines) ...[
+          GameLineRow(line: line, night: section.night),
+          if (line.hang + line.spare > 0)
+            _VoteBar(hang: line.hang, spare: line.spare),
+        ],
+      ],
+    );
+  }
+}
+
+/// Thanh tỉ lệ phiếu Treo và Tha của một câu kết quả biểu quyết.
+class _VoteBar extends StatelessWidget {
+  const _VoteBar({required this.hang, required this.spare});
+
+  final int hang;
+  final int spare;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(42, 0, 0, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: SizedBox(
+              height: 6,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (hang > 0)
+                    Expanded(
+                      flex: hang,
+                      child: const ColoredBox(color: _M.amber),
+                    ),
+                  if (spare > 0)
+                    Expanded(
+                      flex: spare,
+                      child: const ColoredBox(color: _M.track),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Treo $hang',
+                style: const TextStyle(fontSize: 11, color: _M.amberSoft),
+              ),
+              Text(
+                'Tha $spare',
+                style: const TextStyle(fontSize: 11, color: _M.muted),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

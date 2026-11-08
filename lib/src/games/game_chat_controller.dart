@@ -50,6 +50,10 @@ class GameChatController extends ChangeNotifier {
   bool get hasOlder => _hasOlder;
   bool get loadingOlder => _loadingOlder;
 
+  /// Seq lớn nhất đã tải, 0 là chưa có tin.
+  int get newestSeq =>
+      _messages.keys.fold(0, (newest, seq) => seq > newest ? seq : newest);
+
   /// Tin mới trước, bỏ tin của người đã chặn.
   List<GameChatMessage> get messages =>
       _messages.values.where((m) => !m.hidden).toList()

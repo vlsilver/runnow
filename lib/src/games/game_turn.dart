@@ -2,8 +2,19 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:myrun/src/games/game_hero.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
+
+/// Tách chữ backend gửi thành từng ý ngắn, để không hiện cả đoạn dài. Chỉ cắt
+/// ở dấu chấm hay hai chấm có khoảng trắng phía sau, nên 22:00 và 1.5 km còn
+/// nguyên.
+List<String> gameRuleLines(String text) => [
+  for (final part in text.split(RegExp(r'(?<=[.:])\s+')))
+    if (part.replaceAll(RegExp(r'[.:]+$'), '').trim() case final line
+        when line.isNotEmpty)
+      line[0].toUpperCase() + line.substring(1),
+];
 
 enum GameTurnState {
   /// Có việc đang mở và bấm được.
@@ -23,14 +34,13 @@ enum GameTurnState {
 }
 
 class GameTurn {
-  const GameTurn(this.state, {this.at, this.reason});
+  const GameTurn(this.state, {this.at});
 
   final GameTurnState state;
 
   /// [GameTurnState.now]: lúc khoá sớm nhất; [GameTurnState.later]: lúc mở sớm
   /// nhất.
   final DateTime? at;
-  final String? reason;
 }
 
 /// Giờ này có phải giờ của người chơi không, suy từ `me.actions`. Backend chỉ
@@ -54,10 +64,7 @@ GameTurn gameTurnOf(
     return GameTurn(GameTurnState.now, at: closes.firstOrNull);
   }
   if (inWindow.isNotEmpty) {
-    return GameTurn(
-      GameTurnState.locked,
-      reason: inWindow.map((a) => a.disabledReason).nonNulls.firstOrNull,
-    );
+    return const GameTurn(GameTurnState.locked);
   }
   final opens = [
     for (final a in actions)
@@ -67,9 +74,9 @@ GameTurn gameTurnOf(
   return GameTurn(alive ? GameTurnState.rest : GameTurnState.out);
 }
 
-/// Dải trạng thái trên mặt lá: tới giờ của mình chưa, tới mấy giờ. Tự tính
+/// Đầu khối lá bài: tới giờ của mình chưa, việc đó là gì, tới mấy giờ. Tự tính
 /// lại theo giờ server mỗi 20 giây, để cửa sổ mở hay đóng mà màn chưa tải lại
-/// thì dải vẫn đổi.
+/// thì chữ vẫn đổi.
 class GameTurnBanner extends StatefulWidget {
   const GameTurnBanner({
     super.key,
@@ -106,106 +113,83 @@ class _GameTurnBannerState extends State<GameTurnBanner> {
     final palette = context.runNowPalette;
     final now = widget.serverNow();
     final turn = gameTurnOf(widget.actions, now: now, alive: widget.alive);
-    final (
-      Color tone,
-      IconData icon,
-      String title,
-      String? detail,
-    ) = switch (turn.state) {
+    final (String title, String? detail) = switch (turn.state) {
       GameTurnState.now => (
-        RunNowSemanticColors.success,
-        Icons.bolt_rounded,
-        'Tới giờ của bạn',
+        'TỚI LƯỢT BẠN',
         turn.at == null
             ? null
             : 'Còn ${_left(turn.at!.difference(now))}'
                   ' · khoá lúc ${_clock(turn.at!, now)}',
       ),
-      GameTurnState.locked => (
-        palette.accent,
-        Icons.lock_clock_rounded,
-        'Tới giờ nhưng chưa bấm được',
-        turn.reason,
-      ),
+      // Lý do đã nằm trong ô khoá của từng việc ngay bên dưới.
+      GameTurnState.locked => ('CHƯA BẤM ĐƯỢC', null),
       GameTurnState.later => (
-        palette.foreground,
-        Icons.schedule_rounded,
-        'Chưa tới giờ của bạn',
+        'CHƯA TỚI GIỜ',
         'Mở lúc ${_clock(turn.at!, now)}',
       ),
-      GameTurnState.rest => (
-        palette.foreground,
-        Icons.bedtime_rounded,
-        'Giờ này bạn nghỉ',
-        null,
-      ),
-      GameTurnState.out => (
-        palette.textMuted,
-        Icons.visibility_rounded,
-        'Bạn đã bị loại',
-        'Vẫn xem được diễn biến tới hết ván.',
-      ),
+      GameTurnState.rest => ('GIỜ NÀY BẠN NGHỈ', null),
+      GameTurnState.out => ('BẠN ĐÃ BỊ LOẠI', null),
     };
     final live = turn.state == GameTurnState.now;
+    final tone = live ? palette.accent : palette.textMuted;
+    // Nhiều việc thì mỗi việc tự có tiêu đề bên dưới.
+    final question = widget.actions.length == 1
+        ? gameRuleLines(widget.actions.single.help).firstOrNull
+        : null;
     return Semantics(
       liveRegion: true,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        decoration: BoxDecoration(
-          color: tone.withValues(alpha: live ? 0.14 : 0.07),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: tone.withValues(alpha: live ? 0.5 : 0.22)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: tone.withValues(alpha: live ? 0.22 : 0.12),
-                boxShadow: live
-                    ? [
-                        BoxShadow(
-                          color: tone.withValues(alpha: 0.45),
-                          blurRadius: 12,
-                        ),
-                      ]
-                    : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: tone),
               ),
-              child: Icon(icon, size: 18, color: tone),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: live ? tone : palette.ink,
-                    ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontFamily: gameTitleFont,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.4,
+                    color: tone,
                   ),
-                  if (detail != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      detail,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        height: 1.35,
-                        color: palette.textMuted,
-                      ),
-                    ),
-                  ],
-                ],
+                ),
+              ),
+            ],
+          ),
+          if (question != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              question,
+              style: TextStyle(
+                fontSize: 18,
+                height: 1.25,
+                fontWeight: FontWeight.w700,
+                color: palette.ink,
               ),
             ),
           ],
-        ),
+          // Đang tới lượt thì giờ chốt đã nằm ở header.
+          if (detail != null && !(live && question != null)) ...[
+            const SizedBox(height: 6),
+            Text(
+              detail,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.35,
+                color: palette.textMuted,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
