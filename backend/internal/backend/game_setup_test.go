@@ -167,3 +167,22 @@ func TestGameSetupLegacyVote(t *testing.T) {
 		t.Fatalf("setup ván cũ:\n%s", got)
 	}
 }
+
+// Khối Vòng chơi đã có trên thẻ luật nên trang Luật không vẽ lại; các khối khác
+// thẻ luật không có.
+func TestSetupMarksSectionsAlreadyOnRulesCard(t *testing.T) {
+	var marked, rest []string
+	for _, s := range gameSetupFor(werewolf.Config{}) {
+		if s.InRulesCard {
+			marked = append(marked, s.Title)
+		} else {
+			rest = append(rest, s.Title)
+		}
+	}
+	if len(marked) != 1 || marked[0] != "Vòng chơi" {
+		t.Fatalf("khối đã có trên thẻ luật = %q", marked)
+	}
+	if len(rest) == 0 {
+		t.Fatal("không còn khối nào cho trang Luật")
+	}
+}

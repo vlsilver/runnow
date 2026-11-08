@@ -7,11 +7,20 @@ import (
 	"github.com/vlsilver/runnow/backend/internal/werewolf"
 )
 
+// Cách app vẽ một khối; rỗng là danh sách từng dòng.
+const (
+	setupLayoutTimeline = "timeline"
+	setupLayoutTiles    = "tiles"
+)
+
 // GameSetupSection là một khối của phần xem lại thiết lập ván, cùng tên khối
 // và thứ tự với màn tạo ván.
 type GameSetupSection struct {
-	Title string          `json:"title"`
-	Items []GameSetupItem `json:"items"`
+	Title  string          `json:"title"`
+	Layout string          `json:"layout,omitempty"`
+	Items  []GameSetupItem `json:"items"`
+	// InRulesCard: thẻ luật đã nói phần này nên trang Luật không vẽ lại.
+	InRulesCard bool `json:"inRulesCard,omitempty"`
 }
 
 // GameSetupItem là một tuỳ chọn đang áp: Value đã viết sẵn kèm đơn vị. Sub là
@@ -62,7 +71,7 @@ func gameSetupFor(c werewolf.Config) []GameSetupSection {
 		if !ok {
 			i = len(out)
 			at[title] = i
-			out = append(out, GameSetupSection{Title: title})
+			out = append(out, GameSetupSection{Title: title, InRulesCard: d.Group == groupRound})
 		}
 		shown[d.Key] = true
 		out[i].Items = append(out[i].Items, GameSetupItem{

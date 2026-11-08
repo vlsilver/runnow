@@ -125,6 +125,16 @@ func topWeightFor(cfg werewolf.Config) string {
 	return fmt.Sprintf(topWeightText, topVotersText(cfg), cfg.TopWeight)
 }
 
+// topWeightLine là câu Top N được x phiếu với số km thật, có dấu cách đầu câu,
+// rỗng khi tắt.
+func topWeightLine(cfg werewolf.Config) string {
+	top := topWeightFor(cfg)
+	if top == "" {
+		return ""
+	}
+	return strings.ReplaceAll(strings.TrimSuffix(top, "; bằng km ở suất cuối thì bốc thăm."), "X km", formatKm(kmPerUnit(cfg))+" km")
+}
+
 // gameRulesFor là gameRulesText theo cấu hình của ván.
 func gameRulesFor(cfg werewolf.Config) string {
 	text := gameRulesText
@@ -138,8 +148,7 @@ func gameRulesFor(cfg werewolf.Config) string {
 			text = strings.Replace(text, gameKmLineCut, gameKmLineFlat, 1)
 		}
 	}
-	if top := topWeightFor(cfg); top != "" {
-		line := strings.ReplaceAll(strings.TrimSuffix(top, "; bằng km ở suất cuối thì bốc thăm."), "X km", formatKm(kmPerUnit(cfg))+" km")
+	if line := topWeightLine(cfg); line != "" {
 		text = strings.Replace(text, strings.TrimSuffix(gameKmLineCut, "\n"), strings.TrimSuffix(gameKmLineCut, ".\n")+";"+line+".", 1)
 	}
 	text = strings.Replace(text, maxHangOld, maxHangText(cfg), 1)

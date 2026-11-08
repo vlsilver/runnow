@@ -906,6 +906,8 @@ type GameDetail struct {
 	// Setup là thiết lập ván đang áp, để người chơi xem lại giữa ván. App cũ
 	// bỏ qua.
 	Setup []GameSetupSection `json:"setup,omitempty"`
+	// RulesCard là luật rút gọn để app vẽ thẻ; RulesText vẫn là bản đầy đủ.
+	RulesCard []GameSetupSection `json:"rulesCard,omitempty"`
 	// StartError chỉ trả cho admin: lần Start gần nhất bị bot trả về đăng ký.
 	StartError *GameStartError `json:"startError,omitempty"`
 	// KmTable là đầu cột của bảng km hai cột (players[].lastKm, players[].todayKm).
@@ -1019,7 +1021,7 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 	out := GameDetail{
 		ID: g.Ref.ID, Title: gameTitle, Status: apiStatus(data), StatusLabel: statusLabel(data),
 		TestMode: data["testMode"] == true, Version: int64(number(data["version"])), ServerNow: wall,
-		RulesText: gameRulesFor(gc), Setup: gameSetupFor(gc), PlayerCount: len(players), MinPlayers: werewolf.MinPlayers, MaxPlayers: werewolf.MaxPlayers,
+		RulesText: gameRulesFor(gc), RulesCard: gameRulesCardFor(gc), Setup: gameSetupFor(gc), PlayerCount: len(players), MinPlayers: werewolf.MinPlayers, MaxPlayers: werewolf.MaxPlayers,
 		Feed: feed, Requirements: gameRequirements(link, v.AppVersion, cfg, data, gc, dm),
 		IsRegistered: registered, IsAdmin: cfg.isAdmin(v.UID), MinAppVersion: cfg.minAppVersion,
 		Winner: stringValue(data["winner"]),
