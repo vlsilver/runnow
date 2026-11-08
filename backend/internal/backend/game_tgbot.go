@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"cloud.google.com/go/firestore"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/vlsilver/runnow/backend/internal/werewolf"
 )
@@ -40,6 +42,7 @@ var (
 	errGameBotNoLink  = &HTTPError{Status: http.StatusConflict, Code: "telegram_not_linked", Message: "Liên kết Telegram trong app trước."}
 	errGameBotMissing = &HTTPError{Status: http.StatusUnprocessableEntity, Code: "telegram_bot", Message: "Tạo bot ván trước."}
 	errGameBotChat    = &HTTPError{Status: http.StatusUnprocessableEntity, Code: "telegram_chat", Message: "Bot ván chưa ở group này hoặc chưa là admin."}
+	errGameBotBroken  = &HTTPError{Status: http.StatusUnprocessableEntity, Code: "telegram_bot", Message: "Bot quản trò đang lỗi, có thể đã bị xoá. Tạo lại bot quản trò."}
 	errGameBotTopic   = &HTTPError{Status: http.StatusUnprocessableEntity, Code: "telegram_topic", Message: "Gõ /van trong topic đó để bot nhận topic trước."}
 )
 
@@ -208,6 +211,87 @@ func (m *ManagedBotService) syncGameBot(ctx context.Context, info managedBotInfo
 	return nil
 }
 
+// CheckGameChats hỏi Telegram trạng thái của bot ván botID ở từng group đã
+// ghi, phòng sự kiện my_chat_member bị lỡ hay group đã bị xoá. Telegram trả
+// 400 hay 403 (group không còn, bot bị kick) thì coi là bot đã rời group. Chạy
+// sau Sync: bot đang lỗi (setupError) thì mọi câu hỏi đều lỗi, nên không hỏi
+// để khỏi gỡ hết group của một bot chỉ tạm hỏng.
+func (m *ManagedBotService) CheckGameChats(ctx context.Context, botID string) error {
+	info, ok, err := m.bot(ctx, botID)
+	if err != nil || !ok || info.Retired || info.Kind != managedKindGame {
+		return err
+	}
+	ptr, err := getData(ctx, m.gameBotRef(info.UID))
+	if err != nil || stringValue(ptr["botId"]) != info.ID || stringValue(ptr["setupError"]) != "" {
+		return err
+	}
+	self, err := strconv.ParseInt(info.ID, 10, 64)
+	if err != nil {
+		return err
+	}
+	docs, err := m.botRef(info.ID).Collection("chats").Where("status", "in", []string{"member", "administrator"}).Documents(ctx).GetAll()
+	if err != nil {
+		return err
+	}
+	for _, d := range docs {
+		var mem TelegramChatMember
+		err := m.callBot(ctx, info.ID, func(tg *TelegramService) error {
+			// callAPI chứ không GetChatMember: cần TelegramAPIError để tách lỗi
+			// 4xx (group không còn) khỏi lỗi mạng.
+			return tg.callAPI(ctx, "getChatMember", map[string]any{"chat_id": d.Ref.ID, "user_id": self}, &mem)
+		})
+		status := mem.Status
+		if err != nil {
+			if !permanentTelegramErr(err) {
+				return err
+			}
+			status = "left"
+		}
+		if status == "" || status == stringValue(d.Data()["status"]) {
+			continue
+		}
+		slog.InfoContext(ctx, "game.bot_chat_checked", "botId", info.ID, "chatId", d.Ref.ID, "status", status, "error", errString(err))
+		if err := setGameChatStatus(ctx, d.Ref, status, m.now()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// setGameChatStatus ghi trạng thái mới của bot ở một group; rời group thì bỏ
+// luôn các topic đã xác nhận, vì vào lại phải /van lại.
+func setGameChatStatus(ctx context.Context, ref *firestore.DocumentRef, status string, at time.Time) error {
+	ups := []firestore.Update{{Path: "status", Value: status}, {Path: "at", Value: at}}
+	if status != "member" && status != "administrator" {
+		ups = append(ups, firestore.Update{Path: "topics", Value: firestore.Delete})
+	}
+	_, err := ref.Update(ctx, ups)
+	return err
+}
+
+// gameTargetGone: bot ván gửi vào group của ván mà Telegram báo group hay
+// topic không còn. Gỡ chỗ đó khỏi danh sách chọn của chủ, để ván sau không
+// chọn lại. Lỗi khác (thiếu quyền, tin sai) thì không gỡ.
+func gameTargetGone(ctx context.Context, db *firestore.Client, botID, chatID string, thread int64, te *TelegramAPIError, at time.Time) error {
+	ref := db.Collection("managedBots").Doc(botID).Collection("chats").Doc(chatID)
+	switch {
+	case thread != 0 && strings.Contains(te.Description, "message thread not found"):
+		_, err := ref.Update(ctx, []firestore.Update{{FieldPath: firestore.FieldPath{"topics", strconv.FormatInt(thread, 10)}, Value: firestore.Delete}})
+		return gameChatMissingOK(err)
+	case te.Status == 403 || te.MigrateTo != 0 || strings.Contains(te.Description, "chat not found"):
+		return gameChatMissingOK(setGameChatStatus(ctx, ref, "left", at))
+	}
+	return nil
+}
+
+// gameChatMissingOK: group chưa từng ghi thì không có gì để gỡ.
+func gameChatMissingOK(err error) error {
+	if status.Code(err) == codes.NotFound {
+		return nil
+	}
+	return err
+}
+
 // resyncGameBot hẹn Sync bot ván botID. Sync đọc state hiện tại nên chạy thừa
 // không sao.
 func (m *ManagedBotService) resyncGameBot(ctx context.Context, botID string) error {
@@ -247,6 +331,9 @@ func gameBotTarget(ctx context.Context, db *firestore.Client, uid string, t Game
 	botID := stringValue(ptr["botId"])
 	if botID == "" {
 		return "", errGameBotMissing
+	}
+	if stringValue(ptr["setupError"]) != "" {
+		return "", errGameBotBroken
 	}
 	if _, err := strconv.ParseInt(t.ChatID, 10, 64); err != nil {
 		return "", errGameBotChat
@@ -391,6 +478,9 @@ type GameBotChat struct {
 	Title  string `json:"title"`
 	Admin  bool   `json:"admin"`
 	Forum  bool   `json:"forum"`
+	// Busy: group đang có ván chưa kết thúc (của ai cũng vậy). Mỗi group chỉ
+	// một ván, nên app không cho chọn group này.
+	Busy bool `json:"busy"`
 	// Topics là nơi chủ đã gõ /van, mới nhất trước; threadId 0 là General hay
 	// group không chia topic.
 	Topics []GameBotTopic `json:"topics"`
@@ -649,6 +739,13 @@ func (s *Server) gameTgBotRoutes() {
 		if err != nil {
 			return err
 		}
+		busy, err := s.deps.Games.busyChats(r.Context())
+		if err != nil {
+			return err
+		}
+		for i := range out.Chats {
+			out.Chats[i].Busy = busy[out.Chats[i].ChatID]
+		}
 		return writeJSON(w, 200, out)
 	}))
 	s.route("POST /v1/games/telegram/bot", s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
@@ -664,4 +761,41 @@ func (s *Server) gameTgBotRoutes() {
 		}
 		return writeJSON(w, 200, map[string]any{"createUrl": u})
 	}))
+	s.route("POST /v1/games/telegram/check", s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+		if err := s.deps.Games.RequireCanCreate(r.Context(), v); err != nil {
+			return err
+		}
+		if s.deps.ManagedBots == nil {
+			return errMybotOff
+		}
+		queued, err := s.deps.ManagedBots.CheckGameBot(r.Context(), v.UID)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 202, map[string]any{"queued": queued})
+	}))
+}
+
+// gameCheckWindow: app mở màn chọn nhiều lần trong khoảng này thì chỉ một lần
+// kiểm, vì mỗi lần kiểm hỏi Telegram một lần cho mỗi group.
+const gameCheckWindow = time.Minute
+
+// CheckGameBot hẹn Sync bot ván của uid để hỏi lại Telegram bot còn sống, còn
+// ở group nào, còn là admin không. Chưa có bot thì không hẹn gì.
+func (m *ManagedBotService) CheckGameBot(ctx context.Context, uid string) (bool, error) {
+	ptr, err := getData(ctx, m.gameBotRef(uid))
+	if err != nil {
+		return false, err
+	}
+	botID := stringValue(ptr["botId"])
+	if botID == "" {
+		return false, nil
+	}
+	window := m.now().Truncate(gameCheckWindow).Unix()
+	task := managedSyncTaskFor(botID, "check-"+strconv.FormatInt(window, 10))
+	task.Payload = managedSyncTask{BotID: botID, CheckChats: true}
+	if _, err := m.publish(ctx, task); err != nil {
+		return false, err
+	}
+	return true, nil
 }

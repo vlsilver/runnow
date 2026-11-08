@@ -377,6 +377,8 @@ func (m *ManagedBotService) unlinkAgent(tx *firestore.Transaction, uid, botID st
 
 type managedSyncTask struct {
 	BotID string `json:"botId"`
+	// CheckChats: sau Sync, bot ván hỏi lại Telegram từng group đã ghi.
+	CheckChats bool `json:"checkChats,omitempty"`
 }
 
 // managedSyncTaskFor: key rỗng là không đặt TaskID, mỗi lần gọi một task (đổi

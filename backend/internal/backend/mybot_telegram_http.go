@@ -350,6 +350,11 @@ func (s *Server) managedBotSync(w http.ResponseWriter, r *http.Request) error {
 	if err := s.deps.ManagedBots.Sync(r.Context(), task.BotID); err != nil {
 		return err
 	}
+	if task.CheckChats {
+		if err := s.deps.ManagedBots.CheckGameChats(r.Context(), task.BotID); err != nil {
+			return err
+		}
+	}
 	return writeJSON(w, 200, map[string]any{"ok": true})
 }
 

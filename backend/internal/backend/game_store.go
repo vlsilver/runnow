@@ -192,6 +192,22 @@ func openGames(db *firestore.Client) firestore.Query {
 	return db.Collection("games").Where("status", "in", []string{gameRegistering, gameStarting, gameRunning})
 }
 
+// busyChats là các chat đang có ván chưa kết thúc. CreateGame giữ luật một
+// chat một ván; app dùng cái này để không cho chọn chat đang bận.
+func (s *GameStore) busyChats(ctx context.Context) (map[string]bool, error) {
+	open, err := openGames(s.db).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for _, g := range open {
+		if chat := strings.TrimSpace(stringValue(g.Data()["chatId"])); chat != "" {
+			out[chat] = true
+		}
+	}
+	return out, nil
+}
+
 // StartGame ghi state ban đầu (đã chia vai) và các tin mở ván. Chỉ chạy được
 // một lần: ván đã chạy thì trả 409.
 func (s *GameStore) StartGame(ctx context.Context, gameID string, st *werewolf.State, now time.Time) error {

@@ -117,6 +117,7 @@ func (s *GameStore) FlushGame(ctx context.Context, gameID string, tg outboxTeleg
 	}
 	f := chatFlusher{db: s.db, game: game, gameID: gameID, tg: tg, r: r, owner: owner, now: now, res: &res}
 	if bot := stringValue(g.Data()["botId"]); bot != "" {
+		f.botID = bot
 		// Ván của bot ván thì bot đó gửi mọi tin, cả group lẫn nhắn riêng: 3i
 		// gửi thay là sai quản trò, nên thà dừng.
 		if s.gameBot == nil {
@@ -209,11 +210,13 @@ type chatFlusher struct {
 	db     *firestore.Client
 	game   *firestore.DocumentRef
 	gameID string
-	tg     outboxTelegram
-	r      *outboxRenderer
-	owner  string
-	now    func() time.Time
-	res    *FlushResult
+	// botID là bot ván của ván; "" là 3i.
+	botID string
+	tg    outboxTelegram
+	r     *outboxRenderer
+	owner string
+	now   func() time.Time
+	res   *FlushResult
 }
 
 // flush claim chat rồi gửi lần lượt từ lastSentSeq+1 tới hết.
@@ -381,6 +384,11 @@ func (f *chatFlusher) deliver(ctx context.Context, key string, seq int64, msg, c
 				if strings.HasPrefix(key, "dm:") {
 					// 403: người chơi chặn bot; chat not found: chưa từng mở chat với bot.
 					res["dmBlocked"] = te.Status == 403 || strings.Contains(te.Description, "chat not found")
+				}
+				if key == chatGroup && f.botID != "" {
+					if goneErr := gameTargetGone(ctx, f.db, f.botID, out.chatID, out.threadID, te, f.now()); goneErr != nil {
+						return delivery{}, outcomeRetry, goneErr
+					}
 				}
 			}
 			if len(ids) > 0 {
