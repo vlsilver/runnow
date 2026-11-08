@@ -640,6 +640,34 @@ void main() {
       await close(tester);
     });
 
+    // Chưa đủ người thì nút mờ và nói còn thiếu bao nhiêu; đủ thì bấm được.
+    testWidgets('the start button is off until enough players joined', (
+      tester,
+    ) async {
+      backend.game = {...registering(admin: true), 'playerCount': 7};
+      await pumpScreen(tester);
+
+      final off = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Bắt đầu ván (7/8)'),
+      );
+      expect(off.onPressed, isNull);
+      expect(starts(), isEmpty);
+      await close(tester);
+    });
+
+    testWidgets('the start button works at exactly the minimum', (
+      tester,
+    ) async {
+      backend.game = {...registering(admin: true), 'playerCount': 8};
+      await pumpScreen(tester);
+
+      final on = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Bắt đầu ván'),
+      );
+      expect(on.onPressed, isNotNull);
+      await close(tester);
+    });
+
     testWidgets('is hidden from players', (tester) async {
       backend.game = registering(admin: false);
       await pumpScreen(tester);

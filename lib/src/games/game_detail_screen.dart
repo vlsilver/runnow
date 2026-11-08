@@ -456,16 +456,24 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                               detail.status == 'registering') ...[
                             const SizedBox(height: 12),
                             FilledButton.tonal(
-                              onPressed: _starting ? null : _start,
+                              onPressed:
+                                  _starting ||
+                                      detail.playerCount < detail.minPlayers
+                                  ? null
+                                  : _start,
                               child: Text(
-                                _starting ? 'Đang kiểm tra…' : 'Bắt đầu ván',
+                                _starting
+                                    ? 'Đang kiểm tra…'
+                                    : detail.playerCount < detail.minPlayers
+                                    ? 'Bắt đầu ván (${detail.playerCount}/${detail.minPlayers})'
+                                    : 'Bắt đầu ván',
                               ),
                             ),
                           ],
                           if (detail.isAdmin &&
                               detail.testMode &&
                               detail.status == 'registering' &&
-                              detail.players.length < detail.minPlayers) ...[
+                              detail.playerCount < detail.minPlayers) ...[
                             const SizedBox(height: 8),
                             OutlinedButton(
                               onPressed: _faking
