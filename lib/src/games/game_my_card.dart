@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
+import 'package:myrun/src/games/game_action_card.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_km_table.dart';
 import 'package:myrun/src/games/game_role_card.dart';
@@ -12,9 +13,9 @@ import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
 
-/// Lá bài của người xem, lấy từ `/me`. Úp hay ngửa là do màn chi tiết giữ,
-/// vì việc của vai nằm ngoài lá cũng phải ẩn theo. Ghi chú, bình thuốc, link
-/// nhóm và lối vào chat phe là thông tin riêng của lá nên chỉ hiện khi lật.
+/// Lá bài của người xem, lấy từ `/me`. Úp hay ngửa là do màn chi tiết giữ.
+/// Nút hành động, ghi chú, bình thuốc, link nhóm và lối vào chat phe đều lộ
+/// vai nên chỉ hiện khi lật.
 class GameMyCard extends StatelessWidget {
   const GameMyCard({
     super.key,
@@ -30,11 +31,13 @@ class GameMyCard extends StatelessWidget {
     required this.onRevealCard,
     required this.running,
     required this.serverNow,
+    required this.onAction,
     this.kmTable,
   });
 
   final GameMe me;
   final bool faceUp;
+  final GameActionRunner onAction;
 
   /// Ván đang chạy thì mặt lá có dải "tới giờ của bạn chưa".
   final bool running;
@@ -84,6 +87,7 @@ class GameMyCard extends StatelessWidget {
                     kmTable: kmTable,
                     running: running,
                     serverNow: serverNow,
+                    onAction: onAction,
                     onFlip: onFlip,
                     onOpenCard: onOpenCard,
                     cardRevealed: cardRevealed,
@@ -148,6 +152,7 @@ class _Face extends StatelessWidget {
     required this.kmTable,
     required this.running,
     required this.serverNow,
+    required this.onAction,
     required this.onFlip,
     required this.onOpenCard,
     required this.cardRevealed,
@@ -162,6 +167,7 @@ class _Face extends StatelessWidget {
   final GameKmTable? kmTable;
   final bool running;
   final DateTime Function() serverNow;
+  final GameActionRunner onAction;
   final VoidCallback onFlip;
   final VoidCallback onOpenCard;
   final bool? cardRevealed;
@@ -326,6 +332,35 @@ class _Face extends StatelessWidget {
             ),
           ],
         ),
+        if (me.actions.isNotEmpty)
+          // Cả khối lá bài chạm là úp, nên phải chặn ở đây: bấm trượt cạnh nút
+          // chọn người mà lá úp xuống thì mất luôn lựa chọn đang dở.
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {},
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final action in me.actions) ...[
+                  const SizedBox(height: 14),
+                  Divider(height: 1, color: palette.border),
+                  const SizedBox(height: 14),
+                  GameActionCard(
+                    key: ValueKey(action.kind),
+                    action: action,
+                    serverNow: serverNow,
+                    onSubmit: ({targets = const [], choice, clear = false}) =>
+                        onAction(
+                          action.kind,
+                          targets: targets,
+                          choice: choice,
+                          clear: clear,
+                        ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         for (final note in me.notes)
           Padding(
             padding: const EdgeInsets.only(top: 8),

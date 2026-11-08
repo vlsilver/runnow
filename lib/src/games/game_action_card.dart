@@ -7,14 +7,23 @@ import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_tally_view.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
-import 'package:myrun/src/widgets/glass.dart';
 
 typedef GameActionSubmit =
     Future<void> Function({List<String> targets, String? choice, bool clear});
 
+/// Gửi một việc theo `kind`, cho nơi vẽ nhiều [GameActionCard] một lúc.
+typedef GameActionRunner =
+    Future<void> Function(
+      String kind, {
+      List<String> targets,
+      String? choice,
+      bool clear,
+    });
+
 /// Một việc người chơi làm được lúc này. Vẽ theo `input` và `options` của
 /// backend, không theo `kind`, nên backend thêm kind mới thì app vẫn vẽ được.
-/// Lỗi của [onSubmit] do màn hình báo; card chỉ mở lại nút.
+/// Lỗi của [onSubmit] do màn hình báo; card chỉ mở lại nút. Không có khung
+/// riêng vì nằm trong khối lá bài.
 class GameActionCard extends StatefulWidget {
   const GameActionCard({
     super.key,
@@ -109,108 +118,92 @@ class _GameActionCardState extends State<GameActionCard> {
     final summary = _summary(action);
     return Opacity(
       opacity: notYet ? 0.72 : 1,
-      child: GlassPanel(
-        padding: const EdgeInsets.all(16),
-        border: Border.all(
-          color: live ? palette.accent.withValues(alpha: 0.5) : palette.border,
-        ),
-        gradient: live
-            ? LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  palette.accent.withValues(alpha: 0.12),
-                  palette.accent.withValues(alpha: 0.02),
-                ],
-              )
-            : null,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    action.label,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: palette.ink,
-                    ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  action.label,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: palette.ink,
                   ),
                 ),
-                const SizedBox(width: 8),
-                _Window(
-                  opensAt: opensAt,
-                  closesAt: closesAt,
-                  now: now,
-                  live: live,
-                ),
-              ],
-            ),
-            if (!notYet && opensAt != null && closesAt != null) ...[
-              const SizedBox(height: 10),
-              _TimeLeft(
+              ),
+              const SizedBox(width: 8),
+              _Window(
                 opensAt: opensAt,
                 closesAt: closesAt,
                 now: now,
                 live: live,
               ),
             ],
-            if (action.help.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                action.help,
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.4,
-                  color: palette.foreground,
-                ),
+          ),
+          if (!notYet && opensAt != null && closesAt != null) ...[
+            const SizedBox(height: 10),
+            _TimeLeft(
+              opensAt: opensAt,
+              closesAt: closesAt,
+              now: now,
+              live: live,
+            ),
+          ],
+          if (action.help.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              action.help,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.4,
+                color: palette.foreground,
               ),
-            ],
-            const SizedBox(height: 12),
-            ..._input(action, active),
-            if (!action.enabled && action.disabledReason != null) ...[
-              const SizedBox(height: 10),
-              _Locked(reason: action.disabledReason!),
-            ] else if (selected != null && action.enabled) ...[
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  if (summary != null) ...[
-                    const Icon(
-                      Icons.check_circle_rounded,
-                      size: 16,
-                      color: RunNowSemanticColors.success,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        summary,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: palette.ink,
-                        ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          ..._input(action, active),
+          if (!action.enabled && action.disabledReason != null) ...[
+            const SizedBox(height: 10),
+            _Locked(reason: action.disabledReason!),
+          ] else if (selected != null && action.enabled) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                if (summary != null) ...[
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    size: 16,
+                    color: RunNowSemanticColors.success,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      summary,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: palette.ink,
                       ),
                     ),
-                  ] else
-                    const Spacer(),
-                  TextButton(
-                    onPressed: _sending ? null : () => _send(clear: true),
-                    child: const Text('Bỏ chọn'),
                   ),
-                ],
-              ),
-            ],
-            if (action.tally case final tally?) ...[
-              const SizedBox(height: 14),
-              GameTallyView(kind: action.kind, tally: tally),
-            ],
+                ] else
+                  const Spacer(),
+                TextButton(
+                  onPressed: _sending ? null : () => _send(clear: true),
+                  child: const Text('Bỏ chọn'),
+                ),
+              ],
+            ),
           ],
-        ),
+          if (action.tally case final tally?) ...[
+            const SizedBox(height: 14),
+            GameTallyView(kind: action.kind, tally: tally),
+          ],
+        ],
       ),
     );
   }

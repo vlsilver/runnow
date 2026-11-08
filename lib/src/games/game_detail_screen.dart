@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
-import 'package:myrun/src/games/game_action_card.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_detail_controller.dart';
 import 'package:myrun/src/games/game_dialog.dart';
@@ -397,6 +396,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                               kmTable: kmTable,
                               running: detail.status == 'running',
                               serverNow: _controller.serverNow,
+                              onAction: _submit,
                               card: _cardFor(detail, me, myPlayer),
                               onOpenCard: () => _openCard(detail, me, myPlayer),
                               cardRevealed: _cardRevealed,
@@ -409,32 +409,6 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                               onOpenUrl: _openLink,
                               onOpenChat: _openChat,
                             ),
-                          ],
-                          if (_faceUp &&
-                              me != null &&
-                              me.actions.isNotEmpty) ...[
-                            const SizedBox(height: 16),
-                            const _SectionTitle('Việc của bạn'),
-                            for (final action in me.actions)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: GameActionCard(
-                                  key: ValueKey(action.kind),
-                                  action: action,
-                                  serverNow: _controller.serverNow,
-                                  onSubmit:
-                                      ({
-                                        targets = const [],
-                                        choice,
-                                        clear = false,
-                                      }) => _submit(
-                                        action.kind,
-                                        targets: targets,
-                                        choice: choice,
-                                        clear: clear,
-                                      ),
-                                ),
-                              ),
                           ],
                           if (detail.status == 'registering' &&
                               detail.needsTelegram) ...[

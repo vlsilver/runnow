@@ -1550,12 +1550,10 @@ void main() {
 
       // Người ngồi cạnh đọc được "Cắn" là biết người này là sói; ban đêm
       // dân không có việc gì, nên có mục này thôi cũng đã lộ.
-      expect(find.text('Việc của bạn'), findsNothing);
       expect(find.text('Cắn'), findsNothing);
 
       await tester.tap(find.text(faceDown));
       await tester.pumpAndSettle();
-      expect(find.text('Việc của bạn'), findsOneWidget);
       expect(find.text('Cắn'), findsOneWidget);
       await close(tester);
     });
@@ -1771,13 +1769,35 @@ void main() {
       };
     });
 
+    testWidgets('the actions live in the card block, under the card', (
+      tester,
+    ) async {
+      await pumpScreen(tester);
+      await tester.pump();
+      await tester.tap(find.text(faceDown));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Việc của bạn'), findsNothing);
+      final inCard = find.descendant(
+        of: find.byType(GameMyCard),
+        matching: find.text('Bình'),
+      );
+      expect(inCard, findsOneWidget);
+
+      // Bấm trượt cạnh nút chọn người thì lá bài không được úp xuống.
+      await tester.ensureVisible(find.text('Đề cử'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Đề cử'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Úp lá bài'), findsOneWidget);
+      await close(tester);
+    });
+
     testWidgets('sends the pick for the action kind', (tester) async {
       await pumpScreen(tester);
       await tester.pump();
       await tester.tap(find.text(faceDown));
       await tester.pumpAndSettle();
-      expect(find.text('Việc của bạn'), findsOneWidget);
-
       await tester.ensureVisible(find.text('Bình'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Bình'));
