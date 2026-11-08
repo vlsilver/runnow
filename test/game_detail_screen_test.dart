@@ -14,6 +14,7 @@ import 'package:myrun/src/games/game_card_art.dart';
 import 'package:myrun/src/games/game_journal.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_detail_screen.dart';
+import 'package:myrun/src/games/game_invite_share.dart';
 import 'package:myrun/src/games/game_my_card.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_role_card.dart';
@@ -816,6 +817,30 @@ void main() {
 
       expect(find.byTooltip('Mời bạn'), findsOneWidget);
       expect(gameInviteLink('g1').toString(), 'https://threei.run/games/g1');
+      await close(tester);
+    });
+
+    testWidgets('the invite goes out as a picture with the link in the text', (
+      tester,
+    ) async {
+      backend.game = registering(admin: false);
+      await pumpScreen(tester);
+      final before = share.shared.length;
+
+      await tester.tap(find.byTooltip('Mời bạn'));
+      await tester.pumpAndSettle();
+      expect(find.byType(GameInviteCard), findsOneWidget);
+      expect(share.shared.length, before);
+
+      await tester.tap(find.text('Gửi lời mời'));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(seconds: 1)));
+      await tester.pumpAndSettle();
+
+      final sent = share.shared.last;
+      expect(share.shared.length, before + 1);
+      expect(sent.text, 'Còn 7 chỗ. Vào không?\nhttps://threei.run/games/g1');
+      expect(sent.files!.single.mimeType, 'image/png');
+      expect(find.byType(GameInviteCard), findsNothing);
       await close(tester);
     });
   });

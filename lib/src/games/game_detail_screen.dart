@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
-import 'package:myrun/src/config.dart';
 import 'package:myrun/src/games/game_action_card.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_detail_controller.dart';
@@ -17,6 +16,7 @@ import 'package:myrun/src/games/game_my_card.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/games/game_role_card.dart';
+import 'package:myrun/src/games/game_invite_share.dart';
 import 'package:myrun/src/games/game_rules_page.dart';
 import 'package:myrun/src/games/game_village.dart';
 import 'package:myrun/src/games/telegram_link_controller.dart';
@@ -25,7 +25,6 @@ import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Màn chi tiết một ván Ma Sói. Mọi chữ (trạng thái, phase, luật, feed) lấy
@@ -344,7 +343,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                       builder: (context) => IconButton(
                         tooltip: 'Mời bạn',
                         icon: const Icon(Icons.ios_share_rounded),
-                        onPressed: () => shareGame(context, detail),
+                        onPressed: () => showGameInvite(context, detail),
                       ),
                     ),
                   if (detail != null && GameRulesPage.hasContent(detail))
@@ -1060,23 +1059,4 @@ class _StartPreviewDialog extends StatelessWidget {
             ],
     );
   }
-}
-
-/// Link mở trang ván trên web 3i (hosting rewrite về app web), nên ai có link
-/// cũng vào được kể cả chưa cài app.
-Uri gameInviteLink(String gameId) =>
-    Uri.parse('${AppConfig.webBaseUrl}/games/${Uri.encodeComponent(gameId)}');
-
-Future<void> shareGame(BuildContext context, GameDetail game) {
-  final box = context.findRenderObject() as RenderBox?;
-  return SharePlus.instance.share(
-    ShareParams(
-      text:
-          'Vào ván Ma Sói "${game.title}" trên 3i:\n'
-          '${gameInviteLink(game.id)}',
-      sharePositionOrigin: box == null
-          ? null
-          : box.localToGlobal(Offset.zero) & box.size,
-    ),
-  );
 }
