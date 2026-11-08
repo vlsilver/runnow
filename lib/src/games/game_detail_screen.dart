@@ -55,6 +55,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   late final TelegramLinkController _telegram;
   final _theme = gameMoonlitTheme();
   bool _registering = false;
+  bool _pushAsked = false;
   bool _starting = false;
   bool _faking = false;
   bool? _linked;
@@ -85,7 +86,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
       api: ref.read(runNowApiClientProvider),
       gameId: widget.gameId,
       clock: widget.clock,
-    );
+    )..addListener(_askForPushIfJoined);
     _telegram = TelegramLinkController(
       api: ref.read(runNowApiClientProvider),
       openUrl: widget.openUrl,
@@ -93,6 +94,21 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     WidgetsBinding.instance.addObserver(this);
     _controller.setActive(true);
     _telegram.load();
+  }
+
+  /// Người vào ván từ bản app chưa biết hỏi quyền thì chưa bao giờ được hỏi.
+  void _askForPushIfJoined() {
+    final detail = _controller.detail;
+    if (detail == null || !detail.isRegistered || detail.status == 'ended') {
+      return;
+    }
+    _askForPush();
+  }
+
+  void _askForPush() {
+    if (_pushAsked) return;
+    _pushAsked = true;
+    unawaited(ref.read(pushControllerProvider)?.askAfterJoining());
   }
 
   /// Vừa liên kết xong thì requirements của ván đổi: đọc lại ván.
@@ -176,6 +192,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
         await _controller.unregister();
       } else {
         await _controller.register();
+        _askForPush();
       }
     } catch (error) {
       _showError(error);

@@ -20,6 +20,7 @@ import 'package:myrun/src/games/game_my_card.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/push.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:share_plus_platform_interface/share_plus_platform_interface.dart';
 
@@ -84,10 +85,18 @@ class _MemoryReveals extends GameCardReveals {
       marked.add('$uid/$gameId');
 }
 
+class _SpyPush extends Fake implements PushController {
+  int asks = 0;
+
+  @override
+  Future<void> askAfterJoining() async => asks++;
+}
+
 void main() {
   late DateTime now;
   late _MemoryReveals reveals;
   late FakeGameBackend backend;
+  late _SpyPush push;
   late List<Uri> opened;
   late bool openOk;
   late CardShareStore shareStore;
@@ -101,6 +110,7 @@ void main() {
         overrides: [
           runNowApiClientProvider.overrideWithValue(backend.client()),
           firebaseUserProvider.overrideWith((ref) => Stream.value(_FakeUser())),
+          pushControllerProvider.overrideWithValue(push),
           cardShareStoreProvider.overrideWithValue(shareStore),
           gameCardRevealsProvider.overrideWithValue(reveals),
         ],
@@ -137,6 +147,7 @@ void main() {
   setUp(() {
     now = DateTime.utc(2026, 10, 17, 14);
     backend = FakeGameBackend(() => now);
+    push = _SpyPush();
     opened = [];
     openOk = true;
     reveals = _MemoryReveals(revealedAll: true);
@@ -570,6 +581,7 @@ void main() {
         overrides: [
           runNowApiClientProvider.overrideWithValue(backend.client()),
           firebaseUserProvider.overrideWith((ref) => Stream.value(_FakeUser())),
+          pushControllerProvider.overrideWithValue(null),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -990,6 +1002,48 @@ void main() {
       expect(find.text('Bạn chưa đủ điều kiện đăng ký.'), findsOneWidget);
       expect(find.text('Đang ở trong group PSC'), findsOneWidget);
       expect(registerButton(tester).onPressed, isNull);
+      await close(tester);
+    });
+
+    testWidgets('asks for notifications when opening a game already joined', (
+      tester,
+    ) async {
+      backend.game = {
+        ...open([linked, appOk]),
+        'isRegistered': true,
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+
+      expect(push.asks, 1);
+      await close(tester);
+    });
+
+    testWidgets('does not ask for notifications on a game that ended', (
+      tester,
+    ) async {
+      backend.game = {
+        ...open([linked, appOk]),
+        'status': 'ended',
+        'isRegistered': true,
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+
+      expect(push.asks, 0);
+      await close(tester);
+    });
+
+    testWidgets('asks for notifications after joining', (tester) async {
+      backend.game = open([linked, appOk]);
+      await pumpScreen(tester);
+      expect(push.asks, 0);
+
+      await tester.tap(find.text('Đăng ký'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(push.asks, 1);
       await close(tester);
     });
 
@@ -1474,6 +1528,7 @@ void main() {
             firebaseUserProvider.overrideWith(
               (ref) => Stream.value(_FakeUser()),
             ),
+            pushControllerProvider.overrideWithValue(null),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),

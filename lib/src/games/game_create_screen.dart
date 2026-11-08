@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -327,6 +329,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
             telegram: target,
           );
       ref.invalidate(gameListProvider);
+      unawaited(ref.read(pushControllerProvider)?.askAfterJoining());
       if (mounted) context.pushReplacement('/games/$id');
     } catch (error) {
       if (!mounted) return;

@@ -63,7 +63,7 @@ Future<bool> joinRunRoom(
 
 /// Sau khi tạo hay vào phòng: xin quyền thông báo để báo duyệt và nhắc giờ.
 void askRoomPushPermission(WidgetRef ref) =>
-    unawaited(ref.read(pushControllerProvider)?.askForRooms());
+    unawaited(ref.read(pushControllerProvider)?.askAfterJoining());
 
 /// Chạy một thao tác phòng (duyệt, mời ra, rời, kết thúc), lỗi thì báo.
 Future<bool> runRoomAction(

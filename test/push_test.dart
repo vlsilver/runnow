@@ -16,6 +16,10 @@ class _FakeMessaging implements PushMessaging {
   /// Người dùng trả lời hộp thoại hỏi quyền thế này.
   final PushPermission answer;
   String? current = 'fcm-a';
+
+  /// Các lần gọi token() đầu tiên trả theo danh sách này, hết thì trả [current].
+  final firstTokens = <String?>[];
+  int tokenCalls = 0;
   int asked = 0;
   final refresh = StreamController<String>.broadcast();
   final tapStream = StreamController<Map<String, dynamic>>.broadcast();
@@ -31,7 +35,10 @@ class _FakeMessaging implements PushMessaging {
   }
 
   @override
-  Future<String?> token() async => current;
+  Future<String?> token() async {
+    tokenCalls++;
+    return firstTokens.isEmpty ? current : firstTokens.removeAt(0);
+  }
 
   @override
   Stream<String> get tokenRefresh => refresh.stream;
@@ -44,6 +51,17 @@ class _FakeMessaging implements PushMessaging {
 }
 
 void main() {
+  test('a game push opens that game', () {
+    expect(
+      pushLocation({'kind': 'game_started', 'gameId': 'g 1'}),
+      '/games/g%201',
+    );
+  });
+
+  test('a game push without a game opens nothing', () {
+    expect(pushLocation({'kind': 'game_started'}), isNull);
+  });
+
   late List<http.Request> requests;
   late RunNowApiClient api;
 
@@ -64,7 +82,13 @@ void main() {
   ];
 
   PushController controller(MockFirebaseAuth auth, _FakeMessaging fcm) {
-    final c = PushController(auth, api, fcm, 'ios');
+    final c = PushController(
+      auth,
+      api,
+      fcm,
+      'ios',
+      tokenRetryDelay: Duration.zero,
+    );
     addTearDown(c.dispose);
     return c;
   }
@@ -90,13 +114,40 @@ void main() {
     expect(notAsked.asked, 0);
   });
 
+  test('a token that is not ready yet is fetched again', () async {
+    final fcm = _FakeMessaging(PushPermission.notAsked)
+      ..firstTokens.addAll([null, null]);
+    final push = controller(MockFirebaseAuth(signedIn: true), fcm);
+    await pumpEventQueue();
+
+    await push.askAfterJoining();
+
+    expect(calls(), [
+      [
+        'PUT',
+        {'token': 'fcm-a', 'platform': 'ios'},
+      ],
+    ]);
+  });
+
+  test('a token that never comes registers nothing and stops', () async {
+    final fcm = _FakeMessaging(PushPermission.notAsked)..current = null;
+    final push = controller(MockFirebaseAuth(signedIn: true), fcm);
+    await pumpEventQueue();
+
+    await push.askAfterJoining();
+
+    expect(calls(), isEmpty);
+    expect(fcm.tokenCalls, lessThan(10));
+  });
+
   test('joining a room asks once, then registers if allowed', () async {
     final fcm = _FakeMessaging(PushPermission.notAsked);
     final push = controller(MockFirebaseAuth(signedIn: true), fcm);
     await pumpEventQueue();
 
-    await push.askForRooms();
-    await push.askForRooms();
+    await push.askAfterJoining();
+    await push.askAfterJoining();
     expect(fcm.asked, 1);
     expect(calls(), [
       [
@@ -111,8 +162,8 @@ void main() {
       answer: PushPermission.denied,
     );
     final refused = controller(MockFirebaseAuth(signedIn: true), refuses);
-    await refused.askForRooms();
-    await refused.askForRooms();
+    await refused.askAfterJoining();
+    await refused.askAfterJoining();
     expect(refuses.asked, 1);
     expect(calls(), isEmpty);
   });

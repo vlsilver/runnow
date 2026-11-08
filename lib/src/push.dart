@@ -80,6 +80,13 @@ class FirebasePushMessaging implements PushMessaging {
 /// Màn cần mở khi chạm vào thông báo; null nếu thông báo không trỏ tới đâu.
 String? pushLocation(Map<String, dynamic> data) {
   final kind = data['kind'];
+  final gameId = data['gameId'];
+  if (kind is String &&
+      kind.startsWith('game_') &&
+      gameId is String &&
+      gameId.isNotEmpty) {
+    return '/games/${Uri.encodeComponent(gameId)}';
+  }
   final roomId = data['roomId'];
   if (kind is String &&
       kind.startsWith('room_') &&
@@ -91,11 +98,17 @@ String? pushLocation(Map<String, dynamic> data) {
 }
 
 /// Giữ token FCM của máy gắn với người đang đăng nhập. Không hỏi quyền lúc mở
-/// app: hỏi lúc người dùng tạo hay vào phòng chạy ([askForRooms]), khi họ hiểu
+/// app: hỏi lúc người dùng vào phòng chạy hay ván ([askAfterJoining]), khi họ hiểu
 /// vì sao app cần báo. Lỗi đăng ký chỉ log: không có push thì app vẫn dùng
 /// được, lần mở app hay vào phòng sau sẽ đăng ký lại.
 class PushController {
-  PushController(this._auth, this._api, this._messaging, this._platform) {
+  PushController(
+    this._auth,
+    this._api,
+    this._messaging,
+    this._platform, {
+    this._tokenRetryDelay = const Duration(seconds: 2),
+  }) {
     _authSubscription = _auth.authStateChanges().listen((user) {
       if (user == null) {
         _registered = null;
@@ -113,6 +126,8 @@ class PushController {
   final RunNowApiClient _api;
   final PushMessaging _messaging;
   final String _platform;
+  final Duration _tokenRetryDelay;
+  static const _tokenAttempts = 5;
   StreamSubscription<User?>? _authSubscription;
   StreamSubscription<String>? _refreshSubscription;
   StreamSubscription<Map<String, dynamic>>? _tapSubscription;
@@ -125,9 +140,17 @@ class PushController {
     await _registerCurrent();
   }
 
+  /// iOS chưa có APNs token thì chưa lấy được token FCM, và lần đó không báo lại
+  /// nếu token FCM không đổi. Thử thêm vài lần, hết lượt thì chờ lần mở app sau.
   Future<void> _registerCurrent() async {
-    final token = await _messaging.token();
-    if (token != null) await _register(token);
+    for (var attempt = 1; attempt <= _tokenAttempts; attempt++) {
+      if (_auth.currentUser == null) return;
+      final token = await _messaging.token();
+      if (token != null) return _register(token);
+      if (attempt < _tokenAttempts) {
+        await Future<void>.delayed(_tokenRetryDelay);
+      }
+    }
   }
 
   Future<void> _register(String token) async {
@@ -136,9 +159,9 @@ class PushController {
     _registered = token;
   }
 
-  /// Gọi sau khi người dùng tạo hay vào phòng chạy. Chỉ hỏi quyền nếu chưa hỏi
+  /// Gọi sau khi người dùng tạo hay vào phòng chạy, ván. Chỉ hỏi quyền nếu chưa hỏi
   /// lần nào; đã từ chối thì thôi, hệ điều hành cũng không hiện hỏi lại.
-  Future<void> askForRooms() => _guard(() async {
+  Future<void> askAfterJoining() => _guard(() async {
     var permission = await _messaging.permission();
     if (permission == PushPermission.notAsked) {
       permission = await _messaging.requestPermission();

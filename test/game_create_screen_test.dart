@@ -14,6 +14,7 @@ import 'package:myrun/src/games/game_create_tabs.dart';
 import 'package:myrun/src/games/game_round_dial.dart';
 import 'package:myrun/src/games/game_skill_cards.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/push.dart';
 import 'package:myrun/src/run_contracts/run_contract_analytics.dart';
 import 'package:myrun/src/screens/run_contract_create_screen.dart';
 
@@ -621,7 +622,18 @@ Map<String, dynamic> _createBody(FakeGameBackend backend) =>
         )
         as Map<String, dynamic>;
 
+class _SpyPush extends Fake implements PushController {
+  int asks = 0;
+
+  @override
+  Future<void> askAfterJoining() async => asks++;
+}
+
 void main() {
+  late _SpyPush push;
+
+  setUp(() => push = _SpyPush());
+
   late FakeGameBackend backend;
   late List<Uri> opened;
 
@@ -654,6 +666,7 @@ void main() {
         overrides: [
           runNowApiClientProvider.overrideWithValue(backend.client()),
           firebaseUserProvider.overrideWith((ref) => Stream.value(_FakeUser())),
+          pushControllerProvider.overrideWithValue(push),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -706,6 +719,7 @@ void main() {
       'threadId': 42,
     });
     expect(find.text('ván g9'), findsOneWidget);
+    expect(push.asks, 1);
   });
 
   testWidgets('shows the backend reason and stays on the form', (tester) async {
