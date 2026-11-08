@@ -437,7 +437,6 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                           ],
                           if (detail.status == 'registering' &&
                               detail.needsTelegram) ...[
-                            const SizedBox(height: 12),
                             TelegramLinkSection(
                               controller: _telegram,
                               onError: _showError,
@@ -580,7 +579,6 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                           ],
                           if (detail.status != 'registering' &&
                               detail.isRegistered) ...[
-                            const SizedBox(height: 12),
                             TelegramLinkSection(
                               controller: _telegram,
                               onError: _showError,

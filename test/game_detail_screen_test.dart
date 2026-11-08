@@ -411,7 +411,7 @@ void main() {
     };
     await elapse(tester, const Duration(seconds: 3));
 
-    expect(find.text('Đã liên kết @an.'), findsOneWidget);
+    expect(find.text('Liên kết Telegram'), findsNothing);
     expect(gameReads, hasLength(2));
     await close(tester);
   });
@@ -469,7 +469,8 @@ void main() {
     await close(tester);
   });
 
-  testWidgets('shows why unlinking is refused mid-game', (tester) async {
+  // Đã liên kết thì màn ván không còn dòng liên kết, huỷ nằm ở Cài đặt.
+  testWidgets('a linked player sees no Telegram row', (tester) async {
     backend.game = {
       'id': 'g1',
       'title': 'Ma Sói tuần 42',
@@ -483,19 +484,11 @@ void main() {
       'displayName': 'An',
       'inPsc': true,
     };
-    backend.failures['DELETE /v1/telegram/link'] = (
-      409,
-      {'error': 'in_game', 'message': 'Đang trong ván, chưa huỷ được.'},
-    );
     await pumpScreen(tester);
 
-    await tester.tap(find.text('Không phải bạn? Huỷ'));
-    await tester.pump();
-    await tester.pump();
-
-    expect(find.text('Đang trong ván, chưa huỷ được.'), findsOneWidget);
-    expect(find.text('Đã liên kết @an.'), findsOneWidget);
-    expect(backend.calls.where((c) => c == 'GET /v1/games/g1'), hasLength(1));
+    expect(find.textContaining('@an'), findsNothing);
+    expect(find.text('Không phải bạn? Huỷ'), findsNothing);
+    expect(find.text('Liên kết Telegram'), findsNothing);
     await close(tester);
   });
 
@@ -525,7 +518,7 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('Đã liên kết @an.'), findsOneWidget);
+    expect(find.text('Liên kết Telegram'), findsNothing);
     await close(tester);
   });
 
