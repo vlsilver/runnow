@@ -8,8 +8,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 typedef _M = RunNowMoonlitTokens;
 
-/// Bot ván và chỗ đã xác nhận. Lỗi thì [GameTelegramPicker] lùi về ô topic
-/// PSC như trước; 404 là backend chưa có bot ván.
+/// Bot ván và chỗ đã xác nhận. Lỗi thì [GameTelegramPicker] chỉ còn group
+/// PSC; 404 là backend chưa có bot ván.
 final gameTelegramProvider = FutureProvider.autoDispose<GameTelegram>(
   retry: (_, _) => null,
   (ref) => ref.watch(runNowApiClientProvider).gameTelegram(),
@@ -26,21 +26,19 @@ class GameTelegramPicker extends ConsumerStatefulWidget {
     required this.onOwn,
     required this.selected,
     required this.onSelected,
-    required this.pscFields,
     required this.enabled,
     this.openUrl,
   });
 
   /// Đang chọn "Group của bạn".
   final bool own;
+
   final ValueChanged<bool> onOwn;
 
   /// Topic đã chọn ở group của bạn.
   final GameTelegramTarget? selected;
   final ValueChanged<GameTelegramTarget?> onSelected;
 
-  /// Ô topic PSC, chỉ hiện khi backend chưa có bot ván.
-  final List<Widget> pscFields;
   final bool enabled;
 
   /// Thay launchUrl trong test.
@@ -105,7 +103,9 @@ class _GameTelegramPickerState extends ConsumerState<GameTelegramPicker>
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ...widget.pscFields,
+          // Backend tự đăng ván PSC vào topic Ma Sói theo config, bỏ qua topic
+          // app gửi, nên không có ô ID topic để điền.
+          ..._psc(choosable: false),
           if (failed)
             Align(
               alignment: Alignment.centerLeft,
@@ -127,17 +127,22 @@ class _GameTelegramPickerState extends ConsumerState<GameTelegramPicker>
           onSelect: enabled ? (i) => widget.onOwn(i == 1) : null,
         ),
         const SizedBox(height: 12),
-        if (widget.own) ..._ownSteps(tg, enabled) else ..._psc(),
+        if (widget.own) ..._ownSteps(tg, enabled) else ..._psc(choosable: true),
         if (_error case final e?) _ErrorText(e),
       ],
     );
   }
 
-  List<Widget> _psc() => const [
-    _GroupLine(title: 'Group PSC', chip: '3i đăng'),
-    SizedBox(height: 8),
-    _Option(label: 'Ma Sói', selected: true, onTap: null, hash: true),
-    _Hint('Ván PSC luôn đăng vào topic Ma Sói. Chỉ admin thấy lựa chọn này.'),
+  /// [choosable]: có nút chọn giữa PSC và group của bạn, chỉ admin thấy.
+  List<Widget> _psc({required bool choosable}) => [
+    const _GroupLine(title: 'Group PSC', chip: '3i đăng'),
+    const SizedBox(height: 8),
+    const _Option(label: 'Ma Sói', selected: true, onTap: null, hash: true),
+    _Hint(
+      choosable
+          ? 'Ván PSC luôn đăng vào topic Ma Sói. Chỉ admin thấy lựa chọn này.'
+          : 'Ván PSC luôn đăng vào topic Ma Sói.',
+    ),
   ];
 
   /// Ba bước đưa Quản trò lên group của bạn: tạo bot, mời bot làm admin, gõ
@@ -276,6 +281,9 @@ class _GameTelegramPickerState extends ConsumerState<GameTelegramPicker>
           ),
         ),
       step3,
+      // Telegram chỉ cho bot nhắn riêng người đã Start nó; người chơi mới
+      // Start 3i lúc liên kết, nên DM của ván vẫn đi qua 3i.
+      const _Hint('Lá bài và nhắc lượt gửi riêng qua bot 3i.'),
     ];
   }
 }

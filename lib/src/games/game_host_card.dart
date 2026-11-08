@@ -142,17 +142,7 @@ class _GameHostCardState extends State<GameHostCard> {
                 decoration: const BoxDecoration(
                   border: Border(left: BorderSide(color: _M.border, width: 2)),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    widget.telegramBody,
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Tin nhắn riêng (lá bài, nhắc lượt) vẫn do 3i gửi.',
-                      style: TextStyle(fontSize: 12, color: _M.faint),
-                    ),
-                  ],
-                ),
+                child: widget.telegramBody,
               ),
             ],
           ],

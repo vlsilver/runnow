@@ -547,26 +547,19 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     );
   }
 
-  /// Ván thử, chat id và topic bot đăng vào.
+  /// Ván thử, chat id và topic bot đăng vào: form cũ và sheet "Bot đăng vào"
+  /// của backend cũ. Tab Giao tiếp không dùng (backend tự chọn topic PSC).
   /// Sheet gọi lại để vẽ lại chính nó; form cũ thì chỉ setState của màn.
-  /// [testMode]: có công tắc ván thử. Tab Giao tiếp là màn tạo ván thật nên
-  /// không có; form cũ và sheet "Bot đăng vào" của backend cũ vẫn giữ.
-  List<Widget> _postFields({
-    void Function(VoidCallback)? onChanged,
-    bool testMode = true,
-  }) {
+  List<Widget> _postFields({void Function(VoidCallback)? onChanged}) {
     final update = onChanged ?? setState;
     return [
-      if (testMode)
-        SwitchListTile(
-          title: const Text('Ván thử'),
-          subtitle: const Text(
-            'Chạy ở group test, chỉ admin và người test thấy',
-          ),
-          value: _testMode,
-          onChanged: _working ? null : (on) => update(() => _testMode = on),
-        ),
-      if (testMode && _testMode)
+      SwitchListTile(
+        title: const Text('Ván thử'),
+        subtitle: const Text('Chạy ở group test, chỉ admin và người test thấy'),
+        value: _testMode,
+        onChanged: _working ? null : (on) => update(() => _testMode = on),
+      ),
+      if (_testMode)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: TextField(
@@ -869,7 +862,6 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         onOwn: (v) => setState(() => _ownGroup = v),
         selected: _target,
         onSelected: (target) => setState(() => _target = target),
-        pscFields: _postFields(testMode: false),
         enabled: !_working,
         openUrl: widget.openUrl,
       ),

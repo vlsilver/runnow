@@ -1477,17 +1477,15 @@ void main() {
       await tester.pump();
       // Ván thật: tab Giao tiếp không có công tắc ván thử.
       expect(find.text('Ván thử'), findsNothing);
-      // Backend chưa có bot ván (404): chỉ ô topic PSC như trước.
+      // Backend chưa có bot ván (404): ván PSC vào topic Ma Sói backend đặt,
+      // không có ô ID topic để điền.
       await tester.pump();
       expect(find.text('Tải lại bot ván'), findsNothing);
-      await tester.enterText(
-        find.widgetWithText(TextField, 'ID topic (không bắt buộc)'),
-        '42',
-      );
-      await tester.pump();
+      expect(find.text('ID topic (không bắt buộc)'), findsNothing);
+      expect(find.text('Ma Sói'), findsOneWidget);
       await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
-      expect(_createBody(backend)['threadId'], 42);
+      expect(_createBody(backend).containsKey('threadId'), isFalse);
     });
 
     testWidgets('the talk tab names the game bot', (tester) async {
@@ -1514,7 +1512,7 @@ void main() {
 
       await tester.tap(find.text('Giao tiếp'));
       await tester.pump();
-      expect(find.text('ID topic (không bắt buộc)'), findsOneWidget);
+      expect(find.text('Ma Sói'), findsOneWidget);
       await tester.tap(
         find.descendant(
           of: find.byType(GameHostCard),
@@ -1522,7 +1520,7 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.text('ID topic (không bắt buộc)'), findsNothing);
+      expect(find.text('Ma Sói'), findsNothing);
       expect(find.text('Trong app'), findsOneWidget);
       await tester.tap(find.text('MỞ VÁN'));
       await tester.pumpAndSettle();
@@ -1545,9 +1543,16 @@ void main() {
         await tester.pump();
       }
       expect(find.text('Trong app · PSC #Ma Sói'), findsOneWidget);
+      // Ván PSC chỉ có 3i, không có bot thứ hai để nói "vẫn do 3i gửi".
+      expect(find.textContaining('bot 3i'), findsNothing);
       await tester.tap(find.text('Group của bạn'));
       await tester.pump();
       expect(find.text('@quantro_3irun_08112026_bot'), findsOneWidget);
+      // Group của bạn: bot ván đăng group, tin riêng vẫn qua 3i.
+      expect(
+        find.text('Lá bài và nhắc lượt gửi riêng qua bot 3i.'),
+        findsOneWidget,
+      );
       expect(find.text('Bot chưa là admin'), findsOneWidget);
       // Topic của group bot chưa là admin không có để chọn.
       expect(find.text('Cả group'), findsNothing);
@@ -1693,7 +1698,8 @@ void main() {
       for (var i = 0; i < 3; i++) {
         await tester.pump();
       }
-      expect(find.text('ID topic (không bắt buộc)'), findsOneWidget);
+      expect(find.text('ID topic (không bắt buộc)'), findsNothing);
+      expect(find.text('Ma Sói'), findsOneWidget);
       expect(find.text('Tải lại bot ván'), findsOneWidget);
     });
 
