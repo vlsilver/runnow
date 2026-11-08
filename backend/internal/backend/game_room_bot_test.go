@@ -85,3 +85,31 @@ func TestRoomBotCreateOptions(t *testing.T) {
 		t.Fatalf("thiết lập:\n%s", got)
 	}
 }
+
+// Quản trò đọc luật đúng cấu hình của ván: giờ, số người lên giàn, cách đếm
+// phiếu, vai có trong ván và thiết lập km.
+func TestRoomBotRulesFollowConfig(t *testing.T) {
+	cfg := werewolf.Config{Ruleset: werewolf.RulesetKm, MaxHang: 1, Disabled: []werewolf.Role{werewolf.Cupid}, Extended: []werewolf.Role{werewolf.Elder},
+		SkillKm: map[werewolf.Role]float64{werewolf.Seer: 3}}
+	got := roomBotRules(cfg)
+	for _, s := range []string{
+		"10h bản tin đêm, đề cử tới 20h; tối đa 1 người nhiều đề cử nhất lên giàn",
+		"Người lên giàn không bỏ phiếu ở phiên của mình",
+		"- Tiên tri: Mỗi đêm soi một người",
+		"Cần 3 km",
+		"- Già làng: Phe Dân. Chịu được một lần bị sói cắn",
+		"Treo tối đa mỗi vòng: 1 người",
+	} {
+		if !strings.Contains(got, s) {
+			t.Errorf("thiếu %q trong:\n%s", s, got)
+		}
+	}
+	for _, s := range []string{"- Cupid:", "- Kẻ ngốc:"} {
+		if strings.Contains(got, s) {
+			t.Errorf("vai không có trong ván vẫn nói %q:\n%s", s, got)
+		}
+	}
+	if got != roomBotRules(cfg) {
+		t.Error("luật đổi thứ tự giữa hai lần dựng")
+	}
+}

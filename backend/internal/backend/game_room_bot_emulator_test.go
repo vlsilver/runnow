@@ -56,6 +56,9 @@ func TestEmulatorRoomBotAnswersWhenCalled(t *testing.T) {
 		t.Fatalf("model được gọi %d lần, muốn 1", len(llm.calls))
 	}
 	c := llm.calls[0]
+	if !strings.Contains(c.system, "Người lên giàn không bỏ phiếu ở phiên của mình") {
+		t.Fatalf("prompt thiếu luật của ván:\n%s", c.system)
+	}
 	if !strings.Contains(c.system, "Quản trò") || !strings.Contains(c.system, "miền Tây") || !strings.Contains(c.input, "chiều nay mưa") || !strings.Contains(c.input, "quản trò ơi, tối nay mấy giờ?") {
 		t.Fatalf("prompt thiếu tính cách hay tin phòng:\n%s\n---\n%s", c.system, c.input)
 	}
