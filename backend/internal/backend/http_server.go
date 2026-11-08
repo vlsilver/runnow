@@ -79,6 +79,7 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/managed-send", s.managedSend)
 	s.route("POST "+runCardArtQueuePath, s.runCardArt)
 	s.route("POST "+roomPushPath, s.roomPush)
+	s.route("POST "+gamePushPath, s.gamePush)
 }
 
 // roomPush: task push của phòng chạy, hẹn từ RunRoomStore.notify.

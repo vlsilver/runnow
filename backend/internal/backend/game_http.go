@@ -557,6 +557,7 @@ func (s *Server) gameStart(w http.ResponseWriter, r *http.Request) error {
 	if out.Result != "reverted" {
 		s.kickGameFlush(r.Context(), task.GameID)
 		s.kickGameAdvance(r.Context(), task.GameID)
+		s.kickGamePush(r.Context(), gamePushStarted, task.GameID)
 	}
 	return writeJSON(w, 200, out)
 }

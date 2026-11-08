@@ -25,6 +25,7 @@ type startEnv struct {
 	*apiHarness
 	tg  *fakeTelegram
 	bot http.Handler
+	fcm *fakePushSender
 
 	mu         sync.Mutex
 	tasks      []PublishTask
@@ -40,7 +41,9 @@ func newStartEnv(t *testing.T) *startEnv {
 	h.cfg.GameInboundQueue = "game-inbound"
 	h.deps.EnqueueTask = e.publish
 	h.srv = NewAPIServer(h.cfg, h.deps)
-	e.bot = NewBotServer(Config{GameInboundQueue: "game-inbound"}, &Dependencies{Firestore: db, Games: h.store, TelegramLinks: h.deps.TelegramLinks, Telegram: e.tg.service("-100psc"), EnqueueTask: e.publish})
+	push, fcm := newFakePush(db)
+	e.fcm = fcm
+	e.bot = NewBotServer(Config{GameInboundQueue: "game-inbound"}, &Dependencies{Push: push, Firestore: db, Games: h.store, TelegramLinks: h.deps.TelegramLinks, Telegram: e.tg.service("-100psc"), EnqueueTask: e.publish})
 	setConfig(t, h, map[string]any{"adminUids": []any{"boss"}})
 	return e
 }
