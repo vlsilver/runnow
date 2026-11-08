@@ -1007,7 +1007,7 @@ void main() {
     });
   });
 
-  const faceDown = 'Đang úp. Chạm để xem vai, việc cần làm và chat phe.';
+  const faceDown = 'Chạm để lật';
 
   group('my card', () {
     Map<String, dynamic> running({bool registered = true}) => {
@@ -1046,16 +1046,24 @@ void main() {
       await tester.tap(find.text(faceDown));
       await tester.pumpAndSettle();
       expect(find.text('Tiên tri'), findsWidgets);
-      expect(find.text('Mỗi đêm soi một người.'), findsOneWidget);
+      expect(find.text('Mỗi đêm soi một người.'), findsNothing);
       expect(find.text('Vòng 1: An là Dân'), findsOneWidget);
+
+      await tester.tap(find.text('Là gì?'));
+      await tester.pumpAndSettle();
+      expect(find.text('Mỗi đêm soi một người.'), findsOneWidget);
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pumpAndSettle();
+      expect(find.text('Mỗi đêm soi một người.'), findsNothing);
 
       await tester.tap(find.text('Vào nhóm Sói'));
       await tester.pump();
       expect(opened, [Uri.parse('https://t.me/+wolves')]);
 
-      await tester.tap(find.text('Chạm ra ngoài lá bài để úp lại.'));
+      await tester.tap(find.byTooltip('Úp lá bài'));
       await tester.pumpAndSettle();
-      expect(find.text('Mỗi đêm soi một người.'), findsNothing);
+      expect(find.text(faceDown), findsOneWidget);
+      expect(find.text('Tiên tri'), findsNothing);
       await close(tester);
     });
 
@@ -1079,7 +1087,8 @@ void main() {
       final face = tester
           .widget<AchievementCard>(find.byType(AchievementCard))
           .data;
-      await tester.tap(find.text('Bộ màu thẻ'));
+      expect(find.text('Là gì?'), findsNothing);
+      await tester.tap(find.text('Bộ màu'));
       await tester.pumpAndSettle();
       final sample = tester
           .widget<RunCardSkinSheet>(find.byType(RunCardSkinSheet))

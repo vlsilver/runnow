@@ -6,6 +6,7 @@ import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_km_table.dart';
 import 'package:myrun/src/games/game_role_card.dart';
+import 'package:myrun/src/games/game_skill_cards.dart';
 import 'package:myrun/src/games/game_turn.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
@@ -83,6 +84,7 @@ class GameMyCard extends StatelessWidget {
                     kmTable: kmTable,
                     running: running,
                     serverNow: serverNow,
+                    onFlip: onFlip,
                     onOpenCard: onOpenCard,
                     cardRevealed: cardRevealed,
                     justRevealed: justRevealed,
@@ -109,8 +111,7 @@ class _Back extends StatelessWidget {
         const GameCardScaled(width: 90, child: GameCardBack()),
         const SizedBox(width: 14),
         Expanded(
-          // Ai có vai cũng thấy đúng câu này, nên câu chữ không lộ ai có việc
-          // ban đêm hay có chat phe.
+          // Ai có vai cũng thấy đúng hai dòng này, nên câu chữ không lộ vai.
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -120,15 +121,6 @@ class _Back extends StatelessWidget {
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
                   color: palette.ink,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Đang úp. Chạm để xem vai, việc cần làm và chat phe.',
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.45,
-                  color: palette.textMuted,
                 ),
               ),
               const SizedBox(height: 6),
@@ -156,6 +148,7 @@ class _Face extends StatelessWidget {
     required this.kmTable,
     required this.running,
     required this.serverNow,
+    required this.onFlip,
     required this.onOpenCard,
     required this.cardRevealed,
     required this.justRevealed,
@@ -169,6 +162,7 @@ class _Face extends StatelessWidget {
   final GameKmTable? kmTable;
   final bool running;
   final DateTime Function() serverNow;
+  final VoidCallback onFlip;
   final VoidCallback onOpenCard;
   final bool? cardRevealed;
   final bool justRevealed;
@@ -179,7 +173,7 @@ class _Face extends StatelessWidget {
   /// Chỗ thẻ trong mặt lá: úp trung tính (lá úp không có khung theo bậc) cho
   /// tới khi người chơi lật, rồi mới là thẻ thật.
   Widget _cardSlot(RunNowPalette palette) {
-    const width = 140.0;
+    const width = 104.0;
     const back = GameCardScaled(width: width, child: GameCardBack());
     final shown = GameCardScaled(
       width: width,
@@ -222,6 +216,7 @@ class _Face extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final potions = me.potions;
+    final roleRules = me.roleRules;
     // Màu vai pha cho nền đêm của lá bài; nền sáng thì hạ độ sáng để chữ
     // còn đọc được mà vẫn giữ sắc của vai.
     final roleAccent = gameRoleAccent(me.role ?? '');
@@ -232,6 +227,10 @@ class _Face extends StatelessWidget {
       fontSize: 13,
       height: 1.45,
       color: palette.foreground,
+    );
+    final linkStyle = TextButton.styleFrom(
+      padding: EdgeInsets.zero,
+      visualDensity: VisualDensity.compact,
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -245,17 +244,39 @@ class _Face extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    me.roleLabel ?? '',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      color: accent,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          me.roleLabel ?? '',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: accent,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Úp lá bài',
+                        onPressed: onFlip,
+                        iconSize: 20,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 40,
+                          height: 40,
+                        ),
+                        color: palette.textMuted,
+                        icon: const Icon(Icons.visibility_off_outlined),
+                      ),
+                    ],
                   ),
-                  if (me.roleRules != null) ...[
+                  if (running) ...[
                     const SizedBox(height: 6),
-                    Text(me.roleRules!, style: body),
+                    GameTurnBanner(
+                      actions: me.actions,
+                      alive: me.alive,
+                      serverNow: serverNow,
+                    ),
                   ],
                   if (potions != null) ...[
                     const SizedBox(height: 6),
@@ -265,40 +286,46 @@ class _Face extends StatelessWidget {
                       style: body.copyWith(color: palette.ink),
                     ),
                   ],
-                  const SizedBox(height: 10),
-                  Text(
-                    'Chạm thẻ để xem to, xoay 3D',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: palette.accent,
-                    ),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 14,
+                    children: [
+                      if (roleRules != null)
+                        TextButton.icon(
+                          onPressed: () => showGameDetailSheet(
+                            context,
+                            title: me.roleLabel ?? '',
+                            items: [
+                              GameSettingDetail(
+                                icon: me.role ?? '',
+                                title: 'Cách chơi',
+                                text: roleRules,
+                              ),
+                            ],
+                          ),
+                          style: linkStyle,
+                          icon: const Icon(
+                            Icons.help_outline_rounded,
+                            size: 18,
+                          ),
+                          label: const Text('Là gì?'),
+                        ),
+                      // Thẻ Ẩn luôn mặc màu hành của nó.
+                      if (card.secret == null)
+                        TextButton.icon(
+                          onPressed: () =>
+                              showRunCardSkinSheet(context, sample: card),
+                          style: linkStyle,
+                          icon: const Icon(Icons.palette_outlined, size: 18),
+                          label: const Text('Bộ màu'),
+                        ),
+                    ],
                   ),
-                  // Thẻ Ẩn luôn mặc màu hành của nó.
-                  if (card.secret == null)
-                    TextButton.icon(
-                      onPressed: () =>
-                          showRunCardSkinSheet(context, sample: card),
-                      style: TextButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      icon: const Icon(Icons.palette_outlined, size: 18),
-                      label: const Text('Bộ màu thẻ'),
-                    ),
                 ],
               ),
             ),
           ],
         ),
-        if (running) ...[
-          const SizedBox(height: 14),
-          GameTurnBanner(
-            actions: me.actions,
-            alive: me.alive,
-            serverNow: serverNow,
-          ),
-        ],
         for (final note in me.notes)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -341,11 +368,6 @@ class _Face extends StatelessWidget {
               label: Text('Chat ${chat.label}'),
             ),
           ),
-        const SizedBox(height: 10),
-        Text(
-          'Chạm ra ngoài lá bài để úp lại.',
-          style: TextStyle(fontSize: 12, color: palette.textMuted),
-        ),
       ],
     );
   }

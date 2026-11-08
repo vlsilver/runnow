@@ -137,7 +137,7 @@ class _GameTurnBannerState extends State<GameTurnBanner> {
         palette.foreground,
         Icons.bedtime_rounded,
         'Giờ này bạn nghỉ',
-        'Vai của bạn không có việc ở giai đoạn này.',
+        null,
       ),
       GameTurnState.out => (
         palette.textMuted,
