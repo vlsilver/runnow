@@ -678,8 +678,10 @@ void main() {
 
       await tester.tap(find.text('Bắt đầu ván'));
       await tester.pumpAndSettle();
-      expect(find.text('8 người sẽ chơi, cần 8–16.'), findsOneWidget);
-      expect(find.text('Bình: chưa liên kết Telegram'), findsOneWidget);
+      expect(find.text('người chơi'), findsOneWidget);
+      expect(find.textContaining('cần 8–16'), findsNothing);
+      expect(find.text('Bình'), findsOneWidget);
+      expect(find.text('chưa liên kết Telegram'), findsOneWidget);
       expect(starts(), ['dryRun=true']);
 
       await tester.tap(find.text('Bắt đầu'));
@@ -708,6 +710,7 @@ void main() {
       await tester.tap(find.text('Bắt đầu ván'));
       await tester.pumpAndSettle();
       expect(find.text('Chưa bắt đầu được'), findsOneWidget);
+      expect(find.text('người · cần 8–16'), findsOneWidget);
       expect(find.text('Bắt đầu'), findsNothing);
 
       await tester.tap(find.text('Đóng'));

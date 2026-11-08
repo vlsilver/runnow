@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:myrun/src/games/game_dialog.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_tally_view.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -71,24 +72,18 @@ class _GameActionCardState extends State<GameActionCard> {
   }) async {
     final confirmText = widget.action.confirmText;
     if (!clear && confirmText != null) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(widget.action.label),
-          content: Text(confirmText),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Thôi'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Chắc'),
-            ),
-          ],
+      final ok = await showGameConfirm(
+        context,
+        title: widget.action.label,
+        body: Text(
+          confirmText,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: RunNowMoonlitTokens.muted),
         ),
+        confirmLabel: 'Chắc',
+        cancelLabel: 'Thôi',
       );
-      if (ok != true || !mounted) return;
+      if (!ok || !mounted) return;
     }
     setState(() => _sending = true);
     try {

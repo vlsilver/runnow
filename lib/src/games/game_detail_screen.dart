@@ -9,6 +9,7 @@ import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/games/game_action_card.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_detail_controller.dart';
+import 'package:myrun/src/games/game_dialog.dart';
 import 'package:myrun/src/games/game_ended.dart';
 import 'package:myrun/src/games/game_hero.dart';
 import 'package:myrun/src/games/game_journal.dart';
@@ -229,11 +230,14 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     try {
       final preview = await api.previewGameStart(widget.gameId);
       if (!mounted) return;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (_) => _StartPreviewDialog(preview: preview),
+      final confirmed = await showGameConfirm(
+        context,
+        title: preview.canStart ? 'Bắt đầu ván?' : 'Chưa bắt đầu được',
+        body: _StartPreviewBody(preview: preview),
+        confirmLabel: preview.canStart ? 'Bắt đầu' : null,
+        cancelLabel: preview.canStart ? 'Thôi' : 'Đóng',
       );
-      if (confirmed != true) return;
+      if (!confirmed) return;
       await api.startGame(widget.gameId);
       await _controller.refresh();
     } catch (error) {
@@ -1010,53 +1014,93 @@ class _RequirementRow extends StatelessWidget {
   }
 }
 
-class _StartPreviewDialog extends StatelessWidget {
-  const _StartPreviewDialog({required this.preview});
+class _StartPreviewBody extends StatelessWidget {
+  const _StartPreviewBody({required this.preview});
 
   final GameStartPreview preview;
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(preview.canStart ? 'Bắt đầu ván?' : 'Chưa bắt đầu được'),
-      content: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '${preview.count} người sẽ chơi, cần '
-              '${preview.minPlayers}–${preview.maxPlayers}.',
-            ),
-            if (preview.willExclude.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const Text(
-                'Sẽ bị loại:',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-              for (final excluded in preview.willExclude)
-                Text('${excluded.name}: ${excluded.reasonLabel}'),
-            ],
-          ],
+    return Column(
+      children: [
+        Text(
+          '${preview.count}',
+          style: TextStyle(
+            fontFamily: gameTitleFont,
+            fontSize: 64,
+            height: 1,
+            fontWeight: FontWeight.w800,
+            color: preview.canStart
+                ? RunNowMoonlitTokens.amberBright
+                : RunNowMoonlitTokens.danger,
+          ),
         ),
-      ),
-      actions: preview.canStart
-          ? [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Thôi'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Bắt đầu'),
-              ),
-            ]
-          : [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Đóng'),
-              ),
-            ],
+        const SizedBox(height: 2),
+        Text(
+          preview.canStart
+              ? 'người chơi'
+              : 'người · cần ${preview.minPlayers}–${preview.maxPlayers}',
+          style: const TextStyle(
+            fontSize: 13.5,
+            color: RunNowMoonlitTokens.faint,
+          ),
+        ),
+        if (preview.willExclude.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: RunNowMoonlitTokens.well,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: RunNowMoonlitTokens.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'SẼ BỊ LOẠI',
+                  style: TextStyle(
+                    fontSize: 11,
+                    letterSpacing: 1.4,
+                    fontWeight: FontWeight.w800,
+                    color: RunNowMoonlitTokens.faint,
+                  ),
+                ),
+                for (final excluded in preview.willExclude)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            excluded.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: RunNowMoonlitTokens.ink,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Text(
+                            excluded.reasonLabel,
+                            textAlign: TextAlign.end,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              color: RunNowMoonlitTokens.danger,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
