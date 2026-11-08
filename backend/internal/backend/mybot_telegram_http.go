@@ -197,6 +197,12 @@ type childUpdate struct {
 			Status string `json:"status"`
 		} `json:"new_chat_member"`
 	} `json:"my_chat_member"`
+	// Nút bấm trong tin của bot ván (Ma Sói); MyBot không gửi nút.
+	CallbackQuery *struct {
+		ID   string      `json:"id"`
+		From managedUser `json:"from"`
+		Data string      `json:"data"`
+	} `json:"callback_query"`
 }
 
 // mybotChildWebhook nhận update của mọi bot con. Secret là HMAC theo botId,
@@ -219,20 +225,29 @@ func (s *Server) mybotChildWebhook(w http.ResponseWriter, r *http.Request) error
 		return nil
 	}
 	s.serveMybot(r.Context(), w, func(ctx context.Context) (map[string]any, error) {
-		return nil, s.routeChildUpdate(ctx, m, botID, body)
+		return s.routeChildUpdate(ctx, m, botID, body)
 	})
 	return nil
 }
 
-func (s *Server) routeChildUpdate(ctx context.Context, m *ManagedBotService, botID string, body []byte) error {
+// routeChildUpdate trả câu trả lời gửi ngay trong response webhook (chỉ bot ván
+// dùng: trả lời nút và /vai), nil là không trả lời gì.
+func (s *Server) routeChildUpdate(ctx context.Context, m *ManagedBotService, botID string, body []byte) (map[string]any, error) {
 	var u childUpdate
 	if json.Unmarshal(body, &u) != nil {
-		return nil
+		return nil, nil
 	}
 	info, ok, err := m.bot(ctx, botID)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	if ok && !info.Retired && info.Kind == managedKindGame {
+		return s.gameBotChildUpdate(ctx, m, info, u)
+	}
+	return nil, s.routeMybotUpdate(ctx, m, botID, info, ok, u)
+}
+
+func (s *Server) routeMybotUpdate(ctx context.Context, m *ManagedBotService, botID string, info managedBotInfo, ok bool, u childUpdate) error {
 	if !ok {
 		// Secret đúng nghĩa là webhook này do mình đặt, mà bản ghi đã mất (chủ
 		// xoá tài khoản): hẹn Sync để gỡ webhook.
@@ -245,9 +260,6 @@ func (s *Server) routeChildUpdate(ctx context.Context, m *ManagedBotService, bot
 		slog.WarnContext(ctx, "mybot.child_retired", "botId", botID, "updateId", u.UpdateID)
 		_, err := m.publish(ctx, managedSyncTaskFor(botID, "retired"))
 		return err
-	}
-	if info.Kind == managedKindGame {
-		return s.gameBotChildUpdate(ctx, m, info, u)
 	}
 	if mc := u.MyChatMember; mc != nil {
 		return s.childMembership(ctx, m, info, u.UpdateID, mc.Chat.ID, mc.Chat.Type, mc.Chat.Title, mc.From.ID, mc.NewChatMember.Status)

@@ -194,28 +194,39 @@ func (s *Server) commandReply(ctx context.Context, update TelegramUpdate) (map[s
 		// Lá bài không bao giờ hiện trong group.
 		return reply("Nhắn /vai riêng cho 3i để xem lá bài của bạn.", false), true, nil
 	}
+	text, html, err := s.cardReply(ctx, msg.From.ID, "")
+	if text == "" {
+		return nil, true, err
+	}
+	return reply(text, html), true, err
+}
+
+// cardReply là câu trả lời /vai nhắn riêng bot host (botId của bot ván, rỗng
+// là 3i): lá bài trong ván của bot đó. text rỗng kèm lỗi là lỗi tạm thời, không
+// trả lời để webhook trả 5xx và Telegram gửi lại.
+func (s *Server) cardReply(ctx context.Context, tgID int64, host string) (text string, html bool, err error) {
 	const failed = "Chưa xem được lá bài lúc này, bạn thử lại sau nhé."
 	if s.deps == nil || s.deps.Games == nil || s.deps.TelegramLinks == nil {
-		slog.ErrorContext(ctx, "telegram.card_unconfigured", "updateId", update.UpdateID)
-		return reply(failed, false), true, nil
+		slog.ErrorContext(ctx, "telegram.card_unconfigured", "host", host)
+		return failed, false, nil
 	}
-	uid, err := s.deps.TelegramLinks.UIDForTelegram(ctx, msg.From.ID)
+	uid, err := s.deps.TelegramLinks.UIDForTelegram(ctx, tgID)
 	if err == nil && uid == "" {
-		return reply("Tài khoản Telegram này chưa liên kết với RunNow. Mở app RunNow để lấy mã liên kết.", false), true, nil
+		return "Tài khoản Telegram này chưa liên kết với RunNow. Mở app RunNow để lấy mã liên kết.", false, nil
 	}
 	var card string
 	if err == nil {
-		card, err = s.deps.Games.CardText(ctx, uid)
+		card, err = s.deps.Games.CardText(ctx, uid, host)
 	}
 	switch {
 	case err != nil && transientEnqueueErr(err):
-		return nil, true, err
+		return "", false, err
 	case err != nil:
-		return reply(failed, false), true, err
+		return failed, false, err
 	case card == "":
-		return reply("Bạn chưa ở trong ván Ma Sói nào.", false), true, nil
+		return "Bạn chưa ở trong ván Ma Sói nào của quản trò này.", false, nil
 	}
-	return reply(card, true), true, nil
+	return card, true, nil
 }
 
 // callbackReply trả answerCallbackQuery cho mọi nút: không trả lời thì nút cứ
@@ -239,30 +250,46 @@ func (s *Server) callbackReply(ctx context.Context, update TelegramUpdate) (map[
 		return answer(text, false), err
 	}
 	b, ok := parseGameButton(cq.Data)
-	if !ok || s.deps == nil || s.deps.Games == nil || s.deps.TelegramLinks == nil {
+	if !ok {
 		return answer("Nút này chưa dùng được.", false), nil
 	}
-	uid, err := s.deps.TelegramLinks.UIDForTelegram(ctx, cq.From.ID)
-	if err == nil && uid == "" {
-		return answer("Tài khoản Telegram này chưa liên kết với RunNow.", false), nil
+	reply, err := s.pressGameButton(ctx, b, cq.From.ID, "", update.UpdateID, received)
+	return gameButtonAnswer(answer, reply, err)
+}
+
+// pressGameButton xử lý nút Ma Sói bấm ở bot host (botId của bot ván, rỗng là
+// 3i). Nút huỷ ván của admin chỉ có ở 3i.
+func (s *Server) pressGameButton(ctx context.Context, b gameButton, tgID int64, host string, updateID int64, received time.Time) (ButtonReply, error) {
+	if s.deps == nil || s.deps.Games == nil || s.deps.TelegramLinks == nil || (b.Op == opCancel && host != "") {
+		return ButtonReply{Text: "Nút này chưa dùng được."}, nil
 	}
-	if err == nil && b.Op == opCancel {
+	uid, err := s.deps.TelegramLinks.UIDForTelegram(ctx, tgID)
+	if err != nil {
+		return ButtonReply{}, err
+	}
+	if uid == "" {
+		return ButtonReply{Text: "Tài khoản Telegram này chưa liên kết với RunNow."}, nil
+	}
+	if b.Op == opCancel {
 		// Admin có thể không chơi ván, nên không đi qua PressButton.
 		text, err := s.cancelButtonReply(ctx, b.GameID, uid)
-		return answer(text, true), err
+		return ButtonReply{Text: text, Alert: true}, err
 	}
-	var reply ButtonReply
-	if err == nil {
-		reply, err = s.deps.Games.PressButton(ctx, b, uid, update.UpdateID, received)
+	reply, err := s.deps.Games.PressButton(ctx, b, uid, host, updateID, received)
+	if err == nil && reply.Wrote {
+		s.kickGameFlush(ctx, b.GameID)
 	}
+	return reply, err
+}
+
+// gameButtonAnswer đổi kết quả bấm nút thành answerCallbackQuery. Lỗi tạm thời
+// thì không trả lời, để webhook trả 5xx và Telegram gửi lại cùng update_id.
+func gameButtonAnswer(answer func(string, bool) map[string]any, reply ButtonReply, err error) (map[string]any, error) {
 	switch {
 	case err != nil && transientEnqueueErr(err):
 		return nil, err
 	case err != nil:
 		return answer("Chưa làm được lúc này, bạn thử lại sau nhé.", false), err
-	}
-	if reply.Wrote {
-		s.kickGameFlush(ctx, b.GameID)
 	}
 	return answer(reply.Text, reply.Alert), nil
 }

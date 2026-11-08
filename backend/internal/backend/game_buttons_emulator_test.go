@@ -399,7 +399,7 @@ func TestEmulatorVaiCommandAndCardButton(t *testing.T) {
 		t.Fatalf("/vai chưa liên kết = %q", text)
 	}
 	linkUser(t, e.h, "stranger", "777", true)
-	if text := vai("777")["text"].(string); text != "Bạn chưa ở trong ván Ma Sói nào." {
+	if text := vai("777")["text"].(string); text != "Bạn chưa ở trong ván Ma Sói nào của quản trò này." {
 		t.Fatalf("/vai người ngoài = %q", text)
 	}
 
@@ -436,7 +436,7 @@ func TestEmulatorVaiCommandAndCardButton(t *testing.T) {
 
 	// Ván đã kết thúc thì /vai không còn lá bài.
 	seedMerge(t, e.storeGame, map[string]any{"status": gameEnded})
-	if text := vai(e.storeGame.tg["w1"])["text"].(string); text != "Bạn chưa ở trong ván Ma Sói nào." {
+	if text := vai(e.storeGame.tg["w1"])["text"].(string); text != "Bạn chưa ở trong ván Ma Sói nào của quản trò này." {
 		t.Fatalf("/vai sau khi hết ván = %q", text)
 	}
 }

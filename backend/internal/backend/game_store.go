@@ -33,9 +33,12 @@ type GameStore struct {
 	// beforeSubmit chỉ test đặt: chen một bước chốt vào giữa lúc PressButton đọc
 	// state và lúc transaction ghi action.
 	beforeSubmit func()
-	// groupBot trả client gửi tin group của ván có botId (bot ván); nil khi
-	// service không có Managed Bots.
-	groupBot func(botID string) outboxTelegram
+	// gameBot trả client gửi tin của ván có botId (bot ván), cả group lẫn nhắn
+	// riêng; nil khi service không có Managed Bots.
+	gameBot func(botID string) outboxTelegram
+	// resyncGameBot hẹn đặt lại webhook bot ván botID; nil khi không có Managed
+	// Bots.
+	resyncGameBot func(ctx context.Context, botID string) error
 }
 
 func NewGameStore(db *firestore.Client, pscChatID string) *GameStore {

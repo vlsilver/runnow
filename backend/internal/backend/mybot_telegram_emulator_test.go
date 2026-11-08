@@ -55,6 +55,10 @@ func newMybotEnv(t *testing.T) *mybotEnv {
 	e.m.now = func() time.Time { return e.clock }
 	e.m.chatID = cfg.TelegramChatID
 	e.deps.ManagedBots = e.m
+	// Như dependencies.go: Games hẹn đặt lại webhook bot ván qua Managed Bots.
+	if e.deps.Games != nil {
+		e.deps.Games.resyncGameBot = e.m.resyncGameBot
+	}
 	// Giữ cfg ở harness để lần dựng lại api sau (vd imagesOn) không mất cờ MyBot.
 	e.cfg = cfg
 	e.srv = NewAPIServer(cfg, e.deps)

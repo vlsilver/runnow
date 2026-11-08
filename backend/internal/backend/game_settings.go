@@ -485,8 +485,8 @@ var gameSettingDefs = []gameSettingDef{
 		read: func(c werewolf.Config) any { return float64(max(c.TopWeight, werewolf.MinTopWeight)) },
 	},
 	{
-		GameSetting: GameSetting{Key: "telegram", Label: "Telegram group", Hint: "Bot 3i đăng tin vào group", Type: settingToggle, Default: true, Group: groupTalk,
-			Description: "Bật thì bot 3i đăng diễn biến ván vào group Telegram và nhắn riêng cho từng người, người chơi phải liên kết Telegram để đăng ký. Tắt thì ván chỉ chơi trong app."},
+		GameSetting: GameSetting{Key: "telegram", Label: "Telegram group", Hint: "Bot quản trò đăng tin vào group", Type: settingToggle, Default: true, Group: groupTalk,
+			Description: "Bật thì bot quản trò đăng diễn biến ván vào group Telegram và nhắn riêng cho từng người, người chơi phải liên kết Telegram để đăng ký. Tắt thì ván chỉ chơi trong app."},
 		apply: func(c *werewolf.Config, v any) { c.NoTelegram = !v.(bool) },
 		read:  func(c werewolf.Config) any { return !c.NoTelegram },
 	},

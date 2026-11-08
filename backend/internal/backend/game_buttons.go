@@ -324,9 +324,10 @@ type ButtonReply struct {
 }
 
 var buttonTexts = struct {
-	gone, ended, notStarted, notPlayer, stale, badTarget, more, confirm, reset, kept string
+	gone, otherHost, ended, notStarted, notPlayer, stale, badTarget, more, confirm, reset, kept string
 }{
 	gone:       "Ván này không còn.",
+	otherHost:  "Nút này của quản trò khác, bạn bấm trong tin của bot quản trò ván đó.",
 	ended:      "Ván đã kết thúc.",
 	notStarted: "Ván chưa chia bài.",
 	notPlayer:  "Bạn không ở trong ván này.",
@@ -341,8 +342,11 @@ var buttonTexts = struct {
 // PressButton xử lý một cú bấm của uid. Lựa chọn đủ người (và đã chốt nếu là
 // lượt chọn một lần) thì đi qua SubmitAction như app; còn lại chỉ ghi một tin
 // sửa prompt để vẽ bước kế tiếp. Lỗi Firestore thì trả lỗi để webhook quyết
-// 5xx hay 200.
-func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, updateID int64, received time.Time) (ButtonReply, error) {
+// 5xx hay 200. host là bot nhận cú bấm: botId của bot ván, rỗng là 3i. Mỗi
+// ván chỉ nhận nút qua đúng bot quản trò của nó; nhờ vậy update_id (đếm riêng
+// từng bot) của một ván luôn cùng một dãy, chặn bấm lại theo lastTgUpdateId
+// vẫn đúng.
+func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid, host string, updateID int64, received time.Time) (ButtonReply, error) {
 	game := s.gameRef(b.GameID)
 	g, err := game.Get(ctx)
 	if status.Code(err) == codes.NotFound {
@@ -350,6 +354,9 @@ func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, u
 	}
 	if err != nil {
 		return ButtonReply{}, err
+	}
+	if stringValue(g.Data()["botId"]) != host {
+		return ButtonReply{Text: buttonTexts.otherHost}, nil
 	}
 	st, err := s.loadState(ctx, game)
 	if err != nil {
@@ -613,14 +620,18 @@ func (s *GameStore) currentGameID(ctx context.Context) (string, error) {
 	return stringValue(cur.Data()["gameId"]), nil
 }
 
-// runningGameOf là ván đang chạy có uid là người chơi; nil là không có. Một
-// người chỉ đăng ký được một ván chưa kết thúc (Register), nên lấy ván đầu tiên.
-func (s *GameStore) runningGameOf(ctx context.Context, uid string) (*firestore.DocumentSnapshot, error) {
+// runningGameOf là ván đang chạy của bot host (botId của bot ván, rỗng là 3i)
+// có uid là người chơi; nil là không có. Mỗi người chỉ ở một ván chưa kết thúc
+// của mỗi quản trò (Register), nên lấy ván đầu tiên.
+func (s *GameStore) runningGameOf(ctx context.Context, uid, host string) (*firestore.DocumentSnapshot, error) {
 	games, err := s.db.Collection("games").Where("status", "==", gameRunning).Documents(ctx).GetAll()
 	if err != nil {
 		return nil, err
 	}
 	for _, g := range games {
+		if stringValue(g.Data()["botId"]) != host {
+			continue
+		}
 		_, err := g.Ref.Collection("players").Doc(uid).Get(ctx)
 		if status.Code(err) == codes.NotFound {
 			continue
@@ -633,10 +644,10 @@ func (s *GameStore) runningGameOf(ctx context.Context, uid string) (*firestore.D
 	return nil, nil
 }
 
-// CardText là lá bài của uid trong ván đang chạy có uid, cho /vai trong DM.
-// Rỗng là uid không ở trong ván nào đang chạy.
-func (s *GameStore) CardText(ctx context.Context, uid string) (string, error) {
-	g, err := s.runningGameOf(ctx, uid)
+// CardText là lá bài của uid trong ván đang chạy của bot host, cho /vai nhắn
+// riêng bot đó. Rỗng là uid không ở trong ván nào đang chạy của bot này.
+func (s *GameStore) CardText(ctx context.Context, uid, host string) (string, error) {
+	g, err := s.runningGameOf(ctx, uid, host)
 	if err != nil || g == nil {
 		return "", err
 	}

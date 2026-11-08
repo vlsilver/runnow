@@ -121,11 +121,11 @@ func TestEmulatorCardTextFindsPlayersGameOutsidePointer(t *testing.T) {
 	if _, err := g.db.Doc("games/"+g.id).Update(context.Background(), []firestore.Update{{Path: "status", Value: gameEnded}}); err != nil {
 		t.Fatal(err)
 	}
-	text, err := g.store.CardText(context.Background(), "seer")
+	text, err := g.store.CardText(context.Background(), "seer", "")
 	if err != nil || text == "" {
 		t.Fatalf("/vai của người chơi ván %s = %q, %v", other, text, err)
 	}
-	if text, err := g.store.CardText(context.Background(), "nobody"); err != nil || text != "" {
+	if text, err := g.store.CardText(context.Background(), "nobody", ""); err != nil || text != "" {
 		t.Fatalf("/vai của người không chơi = %q, %v", text, err)
 	}
 }
@@ -142,8 +142,9 @@ func TestEmulatorLinkChangeBlockedInGameOutsidePointer(t *testing.T) {
 	wantHTTP(t, e.links.Unlink(context.Background(), "uA"), 409, "in_game")
 }
 
-// Một người chỉ ở một ván chưa kết thúc: đã đăng ký ván PSC thì không đăng ký
-// được ván ở group khác; ván PSC kết thúc thì đăng ký được.
+// Mỗi quản trò giữ một ván chưa kết thúc của một người: đã đăng ký ván PSC thì
+// không đăng ký được ván 3i khác, ván PSC kết thúc thì được; ván của bot ván thì
+// đăng ký được song song với ván 3i, nhưng không hai ván cùng bot ván.
 func TestEmulatorRegisterBlockedWhileInOtherOpenGame(t *testing.T) {
 	db := emulatorDB(t)
 	store := NewGameStore(db, testPscChat)
@@ -165,4 +166,20 @@ func TestEmulatorRegisterBlockedWhileInOtherOpenGame(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.want(h.call("u1", "POST", "/v1/games/"+other+"/registration", nil, "1.5.0"), 200, "")
+
+	seed(t, db, "managedBots/9001", map[string]any{"kind": managedKindGame, "uid": "an", "username": "van_an_bot"})
+	seed(t, db, "managedBots/9001/dms/7001", map[string]any{"open": true})
+	bot1, err := store.CreateGame(context.Background(), NewGameInput{CreatedBy: "chu", ChatID: "-1003333", BotID: "9001", UserGame: true, MaxUserGames: 5}, msgStart)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Mỗi chủ chỉ mở một ván chưa kết thúc nên API không tạo được ván thứ hai
+	// cùng bot; seed thẳng để giữ luật ở Register.
+	seed(t, db, "games/oldbot", map[string]any{"status": gameRunning, "botId": "9001"})
+	seed(t, db, "games/oldbot/players/u1", map[string]any{"alive": true})
+	h.want(h.call("u1", "POST", "/v1/games/"+bot1+"/registration", nil, "1.5.0"), 409, "in_other_game")
+	if _, err := db.Doc("games/oldbot").Update(context.Background(), []firestore.Update{{Path: "status", Value: gameEnded}}); err != nil {
+		t.Fatal(err)
+	}
+	h.want(h.call("u1", "POST", "/v1/games/"+bot1+"/registration", nil, "1.5.0"), 200, "")
 }

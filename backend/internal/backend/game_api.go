@@ -1012,11 +1012,15 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 	if err != nil {
 		return GameDetail{}, err
 	}
+	dm, err := s.readGameBotDM(ctxGetter(ctx), data, link)
+	if err != nil {
+		return GameDetail{}, err
+	}
 	out := GameDetail{
 		ID: g.Ref.ID, Title: gameTitle, Status: apiStatus(data), StatusLabel: statusLabel(data),
 		TestMode: data["testMode"] == true, Version: int64(number(data["version"])), ServerNow: wall,
 		RulesText: gameRulesFor(gc), Setup: gameSetupFor(gc), PlayerCount: len(players), MinPlayers: werewolf.MinPlayers, MaxPlayers: werewolf.MaxPlayers,
-		Feed: feed, Requirements: gameRequirements(link, v.AppVersion, cfg, data, gc),
+		Feed: feed, Requirements: gameRequirements(link, v.AppVersion, cfg, data, gc, dm),
 		IsRegistered: registered, IsAdmin: cfg.isAdmin(v.UID), MinAppVersion: cfg.minAppVersion,
 		Winner: stringValue(data["winner"]),
 	}
@@ -1606,6 +1610,13 @@ func (s *GameStore) Create(ctx context.Context, req CreateGameRequest, v GameVie
 			return "", err
 		}
 		in.ChatID, in.ThreadID, in.BotID = req.Telegram.ChatID, req.Telegram.ThreadID, bot
+		// Webhook bot đặt từ bản trước không nhận callback_query, nên nút trong tin
+		// bot ván không tới. Hẹn trước khi ghi ván: hẹn lỗi thì chưa có ván nào.
+		if s.resyncGameBot != nil {
+			if err := s.resyncGameBot(ctx, bot); err != nil {
+				return "", err
+			}
+		}
 	case req.TestMode:
 		if strings.TrimSpace(req.ChatID) == "" {
 			return "", errTestModeNeedsChat
@@ -1671,13 +1682,17 @@ func (s *GameStore) Register(ctx context.Context, gameID string, v GameViewer, w
 		if err != nil {
 			return err
 		}
-		if reqs := gameRequirements(link, v.AppVersion, cfg, g.Data(), gc); !requirementsMet(reqs) {
+		dm, err := s.readGameBotDM(txGetter(tx), g.Data(), link)
+		if err != nil {
+			return err
+		}
+		if reqs := gameRequirements(link, v.AppVersion, cfg, g.Data(), gc, dm); !requirementsMet(reqs) {
 			return &HTTPError{Status: http.StatusUnprocessableEntity, Code: "requirements_unmet", Message: "Bạn chưa đủ điều kiện đăng ký.", Extra: map[string]any{"requirements": reqs}}
 		}
 		if len(players) >= werewolf.MaxPlayers {
 			return errGameFull
 		}
-		if in, err := inOtherOpenGame(tx, s.db, gameID, v.UID); err != nil || in {
+		if in, err := inOtherOpenGame(tx, s.db, gameID, stringValue(g.Data()["botId"]), v.UID); err != nil || in {
 			if err == nil {
 				err = errInOtherGame
 			}
@@ -1707,19 +1722,21 @@ var (
 	errUserGameInPsc    = &HTTPError{Status: http.StatusUnprocessableEntity, Code: "telegram_chat", Message: "Ván của bạn không đăng vào group PSC được."}
 )
 
-var errInOtherGame = &HTTPError{Status: http.StatusConflict, Code: "in_other_game", Message: "Bạn đang ở một ván Ma Sói khác chưa kết thúc."}
+var errInOtherGame = &HTTPError{Status: http.StatusConflict, Code: "in_other_game", Message: "Bạn đang ở một ván Ma Sói khác của quản trò này chưa kết thúc."}
 
-// inOtherOpenGame: uid có là người chơi của một ván chưa kết thúc khác gameID
-// không. Đọc trong transaction của Register để hai lần đăng ký hai ván cùng lúc
-// không cùng lọt.
-func inOtherOpenGame(tx *firestore.Transaction, db *firestore.Client, gameID, uid string) (bool, error) {
+// inOtherOpenGame: uid có là người chơi của một ván chưa kết thúc khác gameID,
+// cùng quản trò host ("" là 3i), không. Mỗi quản trò chỉ giữ một ván của mỗi
+// người: nút, /vai và lá bài đi theo bot, nên hai ván cùng bot thì không biết
+// người chơi đang nói ván nào. Đọc trong transaction của Register để hai lần
+// đăng ký hai ván cùng lúc không cùng lọt.
+func inOtherOpenGame(tx *firestore.Transaction, db *firestore.Client, gameID, host, uid string) (bool, error) {
 	games, err := tx.Documents(openGames(db)).GetAll()
 	if err != nil {
 		return false, err
 	}
 	var refs []*firestore.DocumentRef
 	for _, g := range games {
-		if g.Ref.ID != gameID {
+		if g.Ref.ID != gameID && stringValue(g.Data()["botId"]) == host {
 			refs = append(refs, g.Ref.Collection("players").Doc(uid))
 		}
 	}

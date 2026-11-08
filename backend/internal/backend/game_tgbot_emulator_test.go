@@ -5,6 +5,7 @@ package backend
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -41,7 +42,8 @@ func TestEmulatorGameTgBotLinksBesideMybot(t *testing.T) {
 		t.Fatalf("MyBot bị gỡ: %v", old)
 	}
 	hooks := e.tg.CallsBy(tok, "setWebhook")
-	if len(hooks) != 1 || hooks[0].Params["url"] != "https://api.test/v1/telegram/managed/9001/webhook" {
+	if len(hooks) != 1 || hooks[0].Params["url"] != "https://api.test/v1/telegram/managed/9001/webhook" ||
+		!slices.Contains(hooks[0].Params["allowed_updates"].([]any), any("callback_query")) {
 		t.Fatalf("setWebhook bot ván = %+v", hooks)
 	}
 	st := e.call("an", "GET", "/v1/games/telegram", nil, "")
@@ -188,7 +190,7 @@ func TestEmulatorGameTgBotCreateChecksTarget(t *testing.T) {
 	}
 	e.want(e.call("an", "POST", "/v1/games", game("-100777", 42), ""), 422, "telegram_bot")
 
-	e.linkGameBot("an", "5001", 9001)
+	tok := e.linkGameBot("an", "5001", 9001)
 	e.child(9001, memberUpd(1, -100777, 5001, "administrator", "Nhóm chạy"))
 	e.child(9001, memberUpd(2, -100999, 5001, "member", "Nhóm phụ"))
 	e.child(9001, vanMsg(3, -100777, 5001, 42, "/van", "Ma Sói"))
@@ -199,9 +201,15 @@ func TestEmulatorGameTgBotCreateChecksTarget(t *testing.T) {
 	e.want(e.call("an", "POST", "/v1/games", game("-100777", 43), ""), 422, "telegram_topic")
 	e.want(e.call("an", "POST", "/v1/games", game("-100777", 0), ""), 422, "telegram_topic")
 
+	hooks := len(e.tg.CallsBy(tok, "setWebhook"))
 	r := e.call("an", "POST", "/v1/games", game("-100777", 42), "")
 	if r.status != 201 {
 		t.Fatalf("tạo ván: %d %s", r.status, r.raw)
+	}
+	// Bot đặt webhook từ bản trước không nhận callback_query: tạo ván đặt lại.
+	e.drain()
+	if n := len(e.tg.CallsBy(tok, "setWebhook")); n != hooks+1 {
+		t.Fatalf("tạo ván không đặt lại webhook bot ván: %d → %d", hooks, n)
 	}
 	g := e.fsDoc("games/" + stringValue(r.body["id"]))
 	if g["chatId"] != "-100777" || g["threadId"] != int64(42) || g["botId"] != "9001" {
@@ -209,13 +217,12 @@ func TestEmulatorGameTgBotCreateChecksTarget(t *testing.T) {
 	}
 }
 
-// Ván có botId: tin group đi bằng bot ván vào đúng group và topic của ván, bỏ
-// nút callback (callback tới webhook bot ván, bản này chưa xử lý); tin riêng
-// vẫn đi bằng 3i.
-func TestEmulatorGameTgBotOutboxSendsGroupViaGameBot(t *testing.T) {
+// Ván có botId: bot ván gửi mọi tin của ván, tin group vào đúng group và topic
+// của ván, tin riêng tới người chơi; 3i không gửi gì.
+func TestEmulatorGameTgBotOutboxSendsAllViaGameBot(t *testing.T) {
 	e := newOutboxEnv(t)
 	m := NewManagedBotService(e.db, e.tg.service(""), "Run3IBot", mybotRoot, "https://api.test", nil)
-	e.store.groupBot = m.gameOutbox
+	e.store.gameBot = m.gameOutbox
 	tok := e.tg.addManaged(9001)
 	seed(t, e.db, "managedBots/9001", map[string]any{"kind": managedKindGame, "uid": "an", "ownerTgId": int64(5001)})
 	if _, err := e.db.Doc("games/"+outboxGame).Update(context.Background(), []firestore.Update{
@@ -229,17 +236,22 @@ func TestEmulatorGameTgBotOutboxSendsGroupViaGameBot(t *testing.T) {
 		t.Fatalf("flush = %+v", res)
 	}
 
-	group := e.tg.CallsBy(tok, "sendMessage")
-	if len(group) != 1 {
+	sent := e.tg.CallsBy(tok, "sendMessage")
+	if len(sent) != 2 {
 		t.Fatalf("bot ván gửi = %+v", e.tg.Calls("sendMessage"))
 	}
-	p := group[0].Params
-	if p["chat_id"] != "-100g" || p["message_thread_id"] != float64(5) || p["reply_markup"] != nil {
-		t.Fatalf("tin group = %v", p)
+	byChat := map[any]map[string]any{}
+	for _, c := range sent {
+		byChat[c.Params["chat_id"]] = c.Params
 	}
-	dm := e.tg.CallsBy(fakeTelegramToken, "sendMessage")
-	if len(dm) != 1 || dm[0].Params["chat_id"] != "71" {
-		t.Fatalf("3i gửi = %+v", dm)
+	if p := byChat["-100g"]; p == nil || p["message_thread_id"] != float64(5) {
+		t.Fatalf("tin group = %+v", sent)
+	}
+	if byChat["71"] == nil {
+		t.Fatalf("tin riêng = %+v", sent)
+	}
+	if n := len(e.tg.CallsBy(fakeTelegramToken, "sendMessage")); n != 0 {
+		t.Fatalf("3i gửi %d tin", n)
 	}
 }
 
@@ -248,7 +260,7 @@ func TestEmulatorGameTgBotOutboxSendsGroupViaGameBot(t *testing.T) {
 func TestEmulatorGameTgBotStartChecksGameGroup(t *testing.T) {
 	e := newStartEnv(t)
 	m := NewManagedBotService(e.store.db, e.tg.service("-100psc"), "Run3IBot", mybotRoot, "https://api.test", e.publish)
-	e.store.groupBot = m.gameOutbox
+	e.store.gameBot = m.gameOutbox
 	e.bot = NewBotServer(Config{GameInboundQueue: "game-inbound"}, &Dependencies{Firestore: e.store.db, Games: e.store,
 		TelegramLinks: e.deps.TelegramLinks, Telegram: e.tg.service("-100psc"), EnqueueTask: e.publish, ManagedBots: m})
 	tok := e.tg.addManaged(9001)
@@ -261,6 +273,7 @@ func TestEmulatorGameTgBotStartChecksGameGroup(t *testing.T) {
 	id := r.body["id"].(string)
 	for i := 1; i <= 12; i++ {
 		linkUser(t, e.apiHarness, userOf(i), tgOf(i), false)
+		seed(t, e.store.db, "managedBots/9001/dms/"+tgOf(i), map[string]any{"open": true})
 		e.want(e.call(userOf(i), "POST", "/v1/games/"+id+"/registration", nil, ""), 200, "")
 	}
 

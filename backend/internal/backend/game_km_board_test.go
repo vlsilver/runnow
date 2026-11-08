@@ -38,7 +38,7 @@ func TestRenderNightDigestKmBoard(t *testing.T) {
 	})
 	want := "<b>Đêm 1 buông xuống, cả làng đi ngủ.</b>\nQuản trò gọi lần lượt:\n" +
 		"1. Sói thức dậy, cả phe chọn một người để cắn, chốt lúc 0h.\n" +
-		"Ai có vai thì bấm trong tin 3i nhắn riêng hoặc trong app RunNow.\n\n" +
+		"Ai có vai thì bấm trong tin quản trò nhắn riêng hoặc trong app 3i Run.\n\n" +
 		"<b>Km chốt 22h, dùng cho đêm 1</b>\n" +
 		"Có vai đêm thì cần đủ 2.5 km mới dùng được kỹ năng. Sói tính chung cả phe: tổng km sói còn sống phải đủ 2.5 km cho mỗi sói. Cupid không cần km.\n" +
 		"Đủ km: Chi 7.3 · An &lt;Sói&gt; 2.5\n" +

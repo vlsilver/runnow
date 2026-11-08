@@ -5,6 +5,7 @@ package backend
 import (
 	"context"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -120,6 +121,12 @@ func TestEmulatorUserGameHiddenFromPublicList(t *testing.T) {
 	}
 	h.want(h.call("binh", "GET", "/v1/games/"+id, nil, "1.13.0"), 200, "")
 	linkUser(t, h, "binh", "7002", false)
+	r := h.call("binh", "POST", "/v1/games/"+id+"/registration", nil, "1.13.0")
+	h.want(r, 422, "requirements_unmet")
+	if !strings.Contains(string(r.raw), `"key":"bot_dm","ok":false,"label":"Đã nhắn /start cho @van_an_bot","action":{"type":"open_url","url":"https://t.me/van_an_bot?start=van"}`) {
+		t.Fatalf("chưa /start bot ván: %s", r.raw)
+	}
+	seed(t, h.store.db, "managedBots/9001/dms/7002", map[string]any{"open": true})
 	h.want(h.call("binh", "POST", "/v1/games/"+id+"/registration", nil, "1.13.0"), 200, "")
 	if !listed("binh") {
 		t.Fatal("đã đăng ký mà không thấy ván trong danh sách")

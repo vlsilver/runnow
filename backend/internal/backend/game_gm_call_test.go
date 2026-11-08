@@ -130,7 +130,7 @@ func TestPublicGameHangShowsTeamOnly(t *testing.T) {
 
 func TestRenderGameMasterCalls(t *testing.T) {
 	r := testRenderer()
-	howTo := "Ai có vai thì bấm trong tin 3i nhắn riêng hoặc trong app RunNow."
+	howTo := "Ai có vai thì bấm trong tin quản trò nhắn riêng hoặc trong app 3i Run."
 
 	// 22h đêm 1 không có gì công khai: trước đây không gửi, giờ có lời quản trò.
 	out := renderOne(t, r, chatGroup, tplDigest, map[string]any{

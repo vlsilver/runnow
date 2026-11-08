@@ -117,11 +117,12 @@ func (s *GameStore) FlushGame(ctx context.Context, gameID string, tg outboxTeleg
 	}
 	f := chatFlusher{db: s.db, game: game, gameID: gameID, tg: tg, r: r, owner: owner, now: now, res: &res}
 	if bot := stringValue(g.Data()["botId"]); bot != "" {
-		// 3i không ở group của bot ván, gửi thay là hỏng cả lượt; thà dừng.
-		if s.groupBot == nil {
+		// Ván của bot ván thì bot đó gửi mọi tin, cả group lẫn nhắn riêng: 3i
+		// gửi thay là sai quản trò, nên thà dừng.
+		if s.gameBot == nil {
 			return res, fmt.Errorf("ván %s đăng bằng bot ván %s mà service chưa có Managed Bots", gameID, bot)
 		}
-		f.group = s.groupBot(bot)
+		f.tg = s.gameBot(bot)
 	}
 	var errs []error
 	for _, c := range chats {
@@ -209,12 +210,10 @@ type chatFlusher struct {
 	game   *firestore.DocumentRef
 	gameID string
 	tg     outboxTelegram
-	// group khác nil: tin của chatGroup đi bằng bot ván thay tg.
-	group outboxTelegram
-	r     *outboxRenderer
-	owner string
-	now   func() time.Time
-	res   *FlushResult
+	r      *outboxRenderer
+	owner  string
+	now    func() time.Time
+	res    *FlushResult
 }
 
 // flush claim chat rồi gửi lần lượt từ lastSentSeq+1 tới hết.
@@ -353,11 +352,6 @@ func (f *chatFlusher) deliver(ctx context.Context, key string, seq int64, msg, c
 		out.parts = withLateLabel(out.parts, at)
 	}
 	tg := f.tg
-	if key == chatGroup && f.group != nil {
-		// Bấm nút callback thì Telegram gửi về webhook bot ván, nơi chưa xử lý
-		// nút của ván: bỏ nút, người chơi xem km và lá bài trong app.
-		tg, out.markup = f.group, nil
-	}
 	var ids []int64
 	for i, part := range out.parts {
 		var markup any
@@ -774,7 +768,7 @@ var wakeLines = map[werewolf.Role]string{
 // để group thấy cả lượt đêm.
 const witchLater = "Phù thuỷ: {lock} sói chốt xong thì quản trò gọi."
 
-const gmHowTo = "Ai có vai thì bấm trong tin 3i nhắn riêng hoặc trong app RunNow."
+const gmHowTo = "Ai có vai thì bấm trong tin quản trò nhắn riêng hoặc trong app 3i Run."
 
 // gmText là lời quản trò cuối bản tin khi vào đêm (22h) và lúc sói xong (0h).
 // Nó thay dòng "Tiếp theo", vì đã nói từng vai làm gì tới mấy giờ.

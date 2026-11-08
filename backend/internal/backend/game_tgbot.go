@@ -185,12 +185,15 @@ func (m *ManagedBotService) LinkGameBot(ctx context.Context, ownerTg, botID int6
 	return res, err
 }
 
+// gameAllowedUpdates: bot ván nhận thêm nút bấm của người chơi so với MyBot.
+var gameAllowedUpdates = []string{"message", "my_chat_member", "callback_query"}
+
 // syncGameBot đặt webhook cho bot ván. Tên bot do chủ đặt lúc tạo trên
 // Telegram nên không đặt lại.
 func (m *ManagedBotService) syncGameBot(ctx context.Context, info managedBotInfo) error {
 	err := m.callBot(ctx, info.ID, func(tg *TelegramService) error {
 		return setupCall(ctx, tg, info.ID, "setWebhook", map[string]any{
-			"url": m.childWebhookURL(info.ID), "secret_token": m.childSecret(info.ID), "allowed_updates": managedAllowedUpdates,
+			"url": m.childWebhookURL(info.ID), "secret_token": m.childSecret(info.ID), "allowed_updates": gameAllowedUpdates,
 		})
 	})
 	if err != nil {
@@ -203,6 +206,13 @@ func (m *ManagedBotService) syncGameBot(ctx context.Context, info managedBotInfo
 		return err
 	}
 	return nil
+}
+
+// resyncGameBot hẹn Sync bot ván botID. Sync đọc state hiện tại nên chạy thừa
+// không sao.
+func (m *ManagedBotService) resyncGameBot(ctx context.Context, botID string) error {
+	_, err := m.publish(ctx, managedSyncTaskFor(botID, ""))
+	return err
 }
 
 func (m *ManagedBotService) recordGameSetup(ctx context.Context, info managedBotInfo, setupErr error) error {
@@ -261,9 +271,39 @@ func gameInPsc(g map[string]any, cfg werewolf.Config) bool {
 	return !cfg.NoTelegram && stringValue(g["botId"]) == ""
 }
 
-// gameRequirements là điều kiện đăng ký của ván g: như requirementsFor, bỏ
-// điều kiện ở PSC với ván của bot ván.
-func gameRequirements(link viewerLink, appVersion string, cfg gameConfig, g map[string]any, gc werewolf.Config) []GameRequirement {
+// gameBotDM là tin nhắn riêng giữa người xem và bot ván của ván g: bot chỉ
+// nhắn riêng được người đã /start nó, nên đây là một điều kiện đăng ký.
+type gameBotDM struct {
+	username string
+	open     bool
+}
+
+// readGameBotDM đọc gameBotDM của người xem với ván g. Ván 3i trả nil. Chưa liên
+// kết Telegram thì chưa biết tg id nên coi như chưa mở.
+func (s *GameStore) readGameBotDM(get docGetter, g map[string]any, link viewerLink) (*gameBotDM, error) {
+	botID := stringValue(g["botId"])
+	if botID == "" {
+		return nil, nil
+	}
+	bot, err := get(s.db.Collection("managedBots").Doc(botID))
+	if err != nil {
+		return nil, err
+	}
+	dm := &gameBotDM{username: stringValue(bot.Data()["username"])}
+	if !link.linked {
+		return dm, nil
+	}
+	snap, err := get(s.db.Collection("managedBots").Doc(botID).Collection("dms").Doc(strconv.FormatInt(link.tgUserID, 10)))
+	if err != nil {
+		return nil, err
+	}
+	dm.open = snap.Exists() && snap.Data()["open"] == true
+	return dm, nil
+}
+
+// gameRequirements là điều kiện đăng ký của ván g: như requirementsFor. Ván của
+// bot ván thay điều kiện ở PSC bằng điều kiện đã /start bot ván (dm khác nil).
+func gameRequirements(link viewerLink, appVersion string, cfg gameConfig, g map[string]any, gc werewolf.Config, dm *gameBotDM) []GameRequirement {
 	reqs := requirementsFor(link, appVersion, cfg, !gc.NoTelegram)
 	if gc.NoTelegram || gameInPsc(g, gc) {
 		return reqs
@@ -272,7 +312,19 @@ func gameRequirements(link viewerLink, appVersion string, cfg gameConfig, g map[
 	for _, r := range reqs {
 		if r.Key != "in_psc" {
 			out = append(out, r)
+			continue
 		}
+		if dm == nil {
+			continue
+		}
+		req := GameRequirement{Key: "bot_dm", OK: dm.open, Label: "Đã nhắn /start cho bot quản trò"}
+		if dm.username != "" {
+			req.Label = "Đã nhắn /start cho @" + dm.username
+			if !dm.open {
+				req.Action = &RequirementAction{Type: "open_url", URL: "https://t.me/" + dm.username + "?start=van"}
+			}
+		}
+		out = append(out, req)
 	}
 	return out
 }
@@ -416,14 +468,41 @@ func (s *Server) linkGameBot(ctx context.Context, m *ManagedBotService, updateID
 	return err
 }
 
-// gameBotChildUpdate là update tới webhook của bot ván.
-func (s *Server) gameBotChildUpdate(ctx context.Context, m *ManagedBotService, info managedBotInfo, u childUpdate) error {
-	if mc := u.MyChatMember; mc != nil && mc.Chat.Type != "private" {
-		return m.gameMembership(ctx, info, u.UpdateID, strconv.FormatInt(mc.Chat.ID, 10), mc.Chat.Type, mc.Chat.Title, mc.Chat.IsForum, mc.From.ID, mc.NewChatMember.Status)
+// gameBotChildUpdate là update tới webhook của bot ván. Bot ván là quản trò
+// của ván nó đăng: nhận nút bấm và tin nhắn riêng của người chơi ván đó; trong
+// group chỉ nhận /van của chủ. Câu trả lời trả thẳng trong response webhook.
+func (s *Server) gameBotChildUpdate(ctx context.Context, m *ManagedBotService, info managedBotInfo, u childUpdate) (map[string]any, error) {
+	if cq := u.CallbackQuery; cq != nil {
+		answer := func(text string, alert bool) map[string]any {
+			r := map[string]any{"method": "answerCallbackQuery", "callback_query_id": cq.ID, "text": truncateUTF16(text, answerTextSize)}
+			if alert {
+				r["show_alert"] = true
+			}
+			return r
+		}
+		b, ok := parseGameButton(cq.Data)
+		if !ok {
+			return answer("Nút này chưa dùng được.", false), nil
+		}
+		reply, err := s.pressGameButton(ctx, b, cq.From.ID, info.ID, u.UpdateID, time.Now())
+		return gameButtonAnswer(answer, reply, err)
+	}
+	if mc := u.MyChatMember; mc != nil {
+		if mc.Chat.Type == "private" {
+			// Chat riêng chỉ báo khi người dùng chặn (kicked) hay bỏ chặn bot.
+			return nil, m.setGameDM(ctx, info.ID, mc.Chat.ID, mc.NewChatMember.Status != "kicked")
+		}
+		return nil, m.gameMembership(ctx, info, u.UpdateID, strconv.FormatInt(mc.Chat.ID, 10), mc.Chat.Type, mc.Chat.Title, mc.Chat.IsForum, mc.From.ID, mc.NewChatMember.Status)
 	}
 	msg := u.Message
-	if msg == nil || msg.From == nil || msg.From.ID != info.OwnerTgID || msg.Chat.Type == "private" || !gameBotCommandFor(msg.Text, info.Username) {
-		return nil
+	if msg == nil || msg.From == nil || msg.From.IsBot {
+		return nil, nil
+	}
+	if msg.Chat.Type == "private" {
+		return s.gameBotPrivate(ctx, m, info, msg.Chat.ID, msg.From.ID, msg.Text)
+	}
+	if msg.From.ID != info.OwnerTgID || !gameBotCommandFor(msg.Text, info.Username) {
+		return nil, nil
 	}
 	var thread int64
 	if msg.IsTopicMessage {
@@ -434,9 +513,51 @@ func (s *Server) gameBotChildUpdate(ctx context.Context, m *ManagedBotService, i
 		name = msg.ReplyTo.ForumTopicCreated.Name
 	}
 	if err := m.confirmGameTopic(ctx, info, u.UpdateID, strconv.FormatInt(msg.Chat.ID, 10), thread, name); err != nil {
-		return &mybotRetryErr{err}
+		return nil, &mybotRetryErr{err}
 	}
-	return nil
+	return nil, nil
+}
+
+const (
+	gameBotStartText = "Đã mở tin nhắn riêng với quản trò. Khi ván bắt đầu, lá bài và nút chọn của bạn sẽ gửi ở đây. Nhắn /vai để xem lại lá bài."
+	gameBotHelpText  = "Mình là quản trò Ma Sói của ván này. Nhắn /vai để xem lá bài; mọi lựa chọn bấm nút trong tin mình gửi hoặc trong app 3i Run."
+)
+
+// gameBotPrivate: người dùng nhắn riêng bot ván. Nhắn được nghĩa là chat riêng
+// đã mở, nên ghi lại để Register biết bot nhắn riêng được người này.
+func (s *Server) gameBotPrivate(ctx context.Context, m *ManagedBotService, info managedBotInfo, chatID, tgID int64, text string) (map[string]any, error) {
+	if err := m.setGameDM(ctx, info.ID, tgID, true); err != nil {
+		return nil, err
+	}
+	reply := func(text string, html bool) map[string]any {
+		r := map[string]any{"method": "sendMessage", "chat_id": chatID, "text": text}
+		if html {
+			r["parse_mode"] = "HTML"
+		}
+		return r
+	}
+	switch cmd, _ := parseBotCommand(text, info.Username); cmd {
+	case "/start":
+		return reply(gameBotStartText, false), nil
+	case "/vai":
+		text, html, err := s.cardReply(ctx, tgID, info.ID)
+		if text == "" {
+			return nil, err
+		}
+		return reply(text, html), err
+	}
+	return reply(gameBotHelpText, false), nil
+}
+
+// gameDMRef: bot ván botID nhắn riêng được người Telegram tgID không. Telegram
+// chỉ cho bot nhắn người đã nhắn nó trước và chưa chặn nó.
+func (m *ManagedBotService) gameDMRef(botID string, tgID int64) *firestore.DocumentRef {
+	return m.botRef(botID).Collection("dms").Doc(strconv.FormatInt(tgID, 10))
+}
+
+func (m *ManagedBotService) setGameDM(ctx context.Context, botID string, tgID int64, open bool) error {
+	_, err := m.gameDMRef(botID, tgID).Set(ctx, map[string]any{"open": open, "updatedAt": m.now()})
+	return err
 }
 
 // gameBotCommandFor: text là lệnh /van, gõ trống hay kèm @username của bot
