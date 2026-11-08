@@ -617,6 +617,34 @@ void main() {
       expect(find.text('Bắt đầu ván'), findsNothing);
       await close(tester);
     });
+
+    // Chủ ván không phải admin: backend gửi canManage.
+    testWidgets('shows for the host of the game', (tester) async {
+      backend.game = registering(admin: false)..['canManage'] = true;
+      await pumpScreen(tester);
+
+      expect(find.text('Bắt đầu ván'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('canManage false hides it even from an admin', (tester) async {
+      backend.game = registering(admin: true)..['canManage'] = false;
+      await pumpScreen(tester);
+
+      expect(find.text('Bắt đầu ván'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('anyone can share the game link while it is open', (
+      tester,
+    ) async {
+      backend.game = registering(admin: false);
+      await pumpScreen(tester);
+
+      expect(find.byTooltip('Mời bạn'), findsOneWidget);
+      expect(gameInviteLink('g1').toString(), 'https://threei.run/games/g1');
+      await close(tester);
+    });
   });
 
   group('requirements', () {

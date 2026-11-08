@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
+import 'package:myrun/src/config.dart';
 import 'package:myrun/src/games/game_action_card.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_detail_controller.dart';
@@ -25,6 +26,7 @@ import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Màn chi tiết một ván Ma Sói. Mọi chữ (trạng thái, phase, luật, feed) lấy
@@ -221,7 +223,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     ).showSnackBar(const SnackBar(content: Text('Không mở được link.')));
   }
 
-  /// Chạy dryRun trước để admin thấy ai sẽ bị loại, đồng ý rồi mới Start.
+  /// Chạy dryRun trước để chủ ván thấy ai sẽ bị loại, đồng ý rồi mới Start.
   Future<void> _start() async {
     final api = ref.read(runNowApiClientProvider);
     setState(() => _starting = true);
@@ -316,6 +318,16 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
               appBar: AppBar(
                 title: Text(detail?.title ?? 'Ma Sói'),
                 actions: [
+                  // Ván của user không hiện ở danh sách chung, nên chủ ván
+                  // gửi link cho bạn bè vào đăng ký.
+                  if (detail != null && detail.status == 'registering')
+                    Builder(
+                      builder: (context) => IconButton(
+                        tooltip: 'Mời bạn',
+                        icon: const Icon(Icons.ios_share_rounded),
+                        onPressed: () => shareGame(context, detail),
+                      ),
+                    ),
                   if (detail != null && detail.setup.isNotEmpty)
                     IconButton(
                       tooltip: 'Thiết lập ván',
@@ -421,7 +433,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                               onOpenUrl: _openLink,
                             ),
                           ],
-                          if (detail.isAdmin &&
+                          if (detail.canManage &&
                               detail.status == 'registering') ...[
                             const SizedBox(height: 12),
                             FilledButton.tonal(
@@ -1042,4 +1054,23 @@ class _StartPreviewDialog extends StatelessWidget {
             ],
     );
   }
+}
+
+/// Link mở trang ván trên web 3i (hosting rewrite về app web), nên ai có link
+/// cũng vào được kể cả chưa cài app.
+Uri gameInviteLink(String gameId) =>
+    Uri.parse('${AppConfig.webBaseUrl}/games/${Uri.encodeComponent(gameId)}');
+
+Future<void> shareGame(BuildContext context, GameDetail game) {
+  final box = context.findRenderObject() as RenderBox?;
+  return SharePlus.instance.share(
+    ShareParams(
+      text:
+          'Vào ván Ma Sói "${game.title}" trên 3i:\n'
+          '${gameInviteLink(game.id)}',
+      sharePositionOrigin: box == null
+          ? null
+          : box.localToGlobal(Offset.zero) & box.size,
+    ),
+  );
 }

@@ -23,6 +23,7 @@ class GameTelegramPicker extends ConsumerStatefulWidget {
   const GameTelegramPicker({
     super.key,
     required this.own,
+    this.canUsePsc = true,
     required this.onOwn,
     required this.selected,
     required this.onSelected,
@@ -33,6 +34,8 @@ class GameTelegramPicker extends ConsumerStatefulWidget {
   /// Đang chọn "Group của bạn".
   final bool own;
 
+  /// Chọn được group PSC. Không thì chỉ có group của bạn, không có nút chọn.
+  final bool canUsePsc;
   final ValueChanged<bool> onOwn;
 
   /// Topic đã chọn ở group của bạn.
@@ -105,7 +108,12 @@ class _GameTelegramPickerState extends ConsumerState<GameTelegramPicker>
         children: [
           // Backend tự đăng ván PSC vào topic Ma Sói theo config, bỏ qua topic
           // app gửi, nên không có ô ID topic để điền.
-          ..._psc(choosable: false),
+          if (widget.canUsePsc)
+            ..._psc(choosable: false)
+          else if (status.isLoading)
+            const _Hint('Đang tải bot quản trò…')
+          else
+            const _ErrorText('Chưa tải được bot quản trò của bạn.'),
           if (failed)
             Align(
               alignment: Alignment.centerLeft,
@@ -121,12 +129,14 @@ class _GameTelegramPickerState extends ConsumerState<GameTelegramPicker>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        GameCreateSegment(
-          labels: const ['Group PSC', 'Group của bạn'],
-          selected: widget.own ? 1 : 0,
-          onSelect: enabled ? (i) => widget.onOwn(i == 1) : null,
-        ),
-        const SizedBox(height: 12),
+        if (widget.canUsePsc) ...[
+          GameCreateSegment(
+            labels: const ['Group PSC', 'Group của bạn'],
+            selected: widget.own ? 1 : 0,
+            onSelect: enabled ? (i) => widget.onOwn(i == 1) : null,
+          ),
+          const SizedBox(height: 12),
+        ],
         if (widget.own) ..._ownSteps(tg, enabled) else ..._psc(choosable: true),
         if (_error case final e?) _ErrorText(e),
       ],
@@ -314,13 +324,20 @@ String? gameTelegramBlocker({
   required bool own,
   required GameTelegram? tg,
   required GameTelegramTarget? selected,
+  bool canUsePsc = true,
 }) {
   if (!telegramOn || !own) return null;
   if (tg == null || !tg.telegramLinked) {
-    return 'Liên kết Telegram, hoặc tắt Telegram';
+    return canUsePsc
+        ? 'Liên kết Telegram, hoặc tắt Telegram'
+        : 'Liên kết Telegram';
   }
   final ready = tg.chats.any((c) => c.admin && c.topics.isNotEmpty);
-  if (tg.bot == null || !ready) return 'Làm xong 3 bước, hoặc chọn Group PSC';
+  if (tg.bot == null || !ready) {
+    return canUsePsc
+        ? 'Làm xong 3 bước, hoặc chọn Group PSC'
+        : 'Làm xong 3 bước';
+  }
   if (selected == null) return 'Chọn topic để bot đăng';
   return null;
 }

@@ -1153,6 +1153,27 @@ void main() {
       expect(_createBody(backend)['settings'], {'elder': true});
     });
 
+    // User thường mở ván đủ vai: không có Tự chỉnh, bộ bài theo số người.
+    testWidgets('a user who cannot pick roles keeps every role', (
+      tester,
+    ) async {
+      backend.list = _deckList()
+        ..['viewer'] = {'canCreate': true, 'canPickRoles': false};
+      await pumpScreen(tester);
+      await tester.tap(find.text('Vai'));
+      await tester.pump();
+
+      await tester.tap(find.text('Tự chỉnh'));
+      await tester.pump();
+      expect(find.text('Chia đúng số lá đã chỉnh.'), findsNothing);
+      expect(find.text('Bot chia lúc đủ người.'), findsOneWidget);
+
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+      final roles = _createBody(backend)['roles'] as Map;
+      expect(roles.values, everyElement(isTrue));
+    });
+
     testWidgets('fixed deck sends the wolves and roles shown', (tester) async {
       backend.list = _deckList();
       await pumpScreen(tester);
@@ -1618,6 +1639,63 @@ void main() {
       await tester.tap(find.text('MỞ VÁN'));
       await tester.pump();
       expect(backend.calls, isNot(contains('POST /v1/games')));
+    });
+
+    // User thường: ván chỉ đăng qua bot riêng, không có lựa chọn Group PSC,
+    // không tắt được Telegram.
+    testWidgets('a user without PSC posts only through their own bot', (
+      tester,
+    ) async {
+      backend.list = _hostList()
+        ..['viewer'] = {
+          'canCreate': true,
+          'canUsePsc': false,
+          'canPickRoles': false,
+        };
+      backend.gameTelegram = _readyTelegram();
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Giao tiếp'));
+      for (var i = 0; i < 3; i++) {
+        await tester.pump();
+      }
+      expect(find.text('Group PSC'), findsNothing);
+      expect(find.text('Group của bạn'), findsNothing);
+      expect(find.text('@quantro_3irun_08112026_bot'), findsOneWidget);
+      expect(find.text('Chọn topic để bot đăng'), findsOneWidget);
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pump();
+      expect(backend.calls, isNot(contains('POST /v1/games')));
+
+      await tester.ensureVisible(find.text('Ma Sói tuần 46'));
+      await tester.tap(find.text('Ma Sói tuần 46'));
+      await tester.pump();
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+      expect(_createBody(backend)['telegram'], {
+        'chatId': '-100777',
+        'threadId': 42,
+      });
+    });
+
+    testWidgets('a user without PSC sees the setup steps without PSC', (
+      tester,
+    ) async {
+      backend.list = _hostList()
+        ..['viewer'] = {'canCreate': true, 'canUsePsc': false};
+      backend.gameTelegram = {
+        'telegramLinked': true,
+        'bot': {'username': 'quantro_3irun_08112026_bot', 'addUrl': 'x'},
+        'chats': null,
+      };
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Giao tiếp'));
+      for (var i = 0; i < 3; i++) {
+        await tester.pump();
+      }
+      expect(find.text('Mời vào group'), findsOneWidget);
+      expect(find.text('Làm xong 3 bước'), findsOneWidget);
     });
 
     // Chip tính cách điền lời dặn soạn sẵn; sửa trong sheet là Tự viết.

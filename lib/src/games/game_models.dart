@@ -13,6 +13,8 @@ import 'dart:math' as math;
 class GameList {
   const GameList({
     required this.canCreate,
+    this.canUsePsc = true,
+    this.canPickRoles = true,
     required this.roleOptions,
     this.settings = const [],
     this.groups = const [],
@@ -27,6 +29,9 @@ class GameList {
     final createOptions = _map(json['createOptions']);
     return GameList(
       canCreate: viewer['canCreate'] == true,
+      // Backend cũ không gửi hai cờ này, lúc đó chỉ admin mở được ván.
+      canUsePsc: viewer['canUsePsc'] != false,
+      canPickRoles: viewer['canPickRoles'] != false,
       roleOptions: _list(createOptions['roles'], GameRoleOption.fromJson),
       settings: _list(createOptions['settings'], GameSetting.fromJson),
       groups: _list(createOptions['groups'], GameSettingGroup.fromJson),
@@ -42,6 +47,13 @@ class GameList {
   }
 
   final bool canCreate;
+
+  /// Đăng ván vào group PSC hay chạy ván thử. Không có thì ván phải đăng qua
+  /// bot riêng vào group của người tạo.
+  final bool canUsePsc;
+
+  /// Tắt bớt vai. Không có thì ván đủ mọi vai.
+  final bool canPickRoles;
   final List<GameRoleOption> roleOptions;
 
   /// Tuỳ chọn luật của màn tạo ván, theo thứ tự backend gửi.
@@ -528,6 +540,7 @@ class GameDetail {
     required this.requirements,
     required this.isRegistered,
     required this.isAdmin,
+    this.canManage = false,
     required this.minAppVersion,
     required this.winner,
     required this.winnerLabel,
@@ -559,6 +572,8 @@ class GameDetail {
       requirements: _list(json['requirements'], GameRequirement.fromJson),
       isRegistered: json['isRegistered'] == true,
       isAdmin: json['isAdmin'] == true,
+      // Backend cũ không gửi canManage, lúc đó chỉ admin điều khiển ván.
+      canManage: (json['canManage'] ?? json['isAdmin']) == true,
       minAppVersion: _string(json['minAppVersion']),
       winner: _optString(json['winner']),
       winnerLabel: _optString(json['winnerLabel']),
@@ -596,6 +611,9 @@ class GameDetail {
   final List<GameRequirement> requirements;
   final bool isRegistered;
   final bool isAdmin;
+
+  /// Bắt đầu ván được: admin hoặc chủ ván.
+  final bool canManage;
   final String minAppVersion;
   final String? winner;
   final String? winnerLabel;

@@ -262,15 +262,25 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   bool _hasTalkTab(GameList list) => list.groups.any((g) => g.key == 'talk');
 
   /// Đang chọn group của bạn; backend chưa có bot ván thì luôn là PSC.
+  /// Không dùng được PSC thì luôn là group của bạn.
   bool _own(GameList list) =>
-      _ownGroup &&
+      (_ownGroup || !list.canUsePsc) &&
       _hasTalkTab(list) &&
       ref.read(gameTelegramProvider).value != null;
 
   /// Vì sao nút Mở ván đang khoá; null là mở được.
   String? _blocker(GameList list) {
     if (!_hasTalkTab(list)) return null;
+    if (!list.canUsePsc) {
+      if (!_telegramOn(list)) {
+        return 'Bật Telegram để bot quản trò của bạn đăng ván';
+      }
+      if (ref.watch(gameTelegramProvider).value == null) {
+        return 'Chưa tải được bot quản trò';
+      }
+    }
     return gameTelegramBlocker(
+      canUsePsc: list.canUsePsc,
       telegramOn: _telegramOn(list),
       own: _own(list),
       tg: ref.watch(gameTelegramProvider).value,
@@ -435,7 +445,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
                 SwitchListTile(
                   title: Text(option.label),
                   value: _roleOn(list, option),
-                  onChanged: _working
+                  onChanged: _working || !list.canPickRoles
                       ? null
                       : (on) => setState(() => _roles[option.key] = on),
                 ),
@@ -854,11 +864,13 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
           : (v) => setState(() => _settings['botPersona'] = v),
       telegram: telegram,
       telegramOn: telegramOn,
-      onTelegram: _working
+      // Ván của user thường luôn đăng qua bot riêng nên không tắt Telegram.
+      onTelegram: _working || !list.canUsePsc
           ? null
           : (v) => setState(() => _settings['telegram'] = v),
       telegramBody: GameTelegramPicker(
         own: own,
+        canUsePsc: list.canUsePsc,
         onOwn: (v) => setState(() => _ownGroup = v),
         selected: _target,
         onSelected: (target) => setState(() => _target = target),
@@ -1163,10 +1175,10 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
           label: o.label,
           count: counts[o.key] ?? 0,
           editable: fixed,
-          onRemove: counts[o.key] == 1
+          onRemove: counts[o.key] == 1 && list.canPickRoles
               ? () => set(() => _roles[o.key] = false)
               : null,
-          onAdd: counts[o.key] == 0 && room
+          onAdd: counts[o.key] == 0 && room && list.canPickRoles
               ? () => set(() => _roles[o.key] = true)
               : null,
         ),
@@ -1193,7 +1205,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
       GameCreateSegment(
         labels: const ['Theo số người chơi', 'Tự chỉnh'],
         selected: fixed ? 1 : 0,
-        onSelect: busy ? null : pickMode,
+        onSelect: busy || !list.canPickRoles ? null : pickMode,
       ),
       const SizedBox(height: 10),
       Text(
@@ -1255,7 +1267,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
           role: o.key,
           label: o.label,
           on: _roleOn(list, o),
-          onTap: _working
+          onTap: _working || !list.canPickRoles
               ? null
               : () => setState(() => _roles[o.key] = !_roleOn(list, o)),
         ),
