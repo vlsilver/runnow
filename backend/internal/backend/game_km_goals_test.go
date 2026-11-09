@@ -19,11 +19,11 @@ func goalState(cfg ww.Config) *ww.State {
 
 func TestKmGoalsSeerUnderVoteCut(t *testing.T) {
 	st := goalState(ww.Config{})
-	live := &liveKm{Meters: map[string]float64{"s1": 1400, "v1": 3000, "v2": 200, "w1": 900}}
+	live := &liveKm{Meters: map[string]float64{"s1": 1400, "v1": 3000, "v2": 200, "w1": 900}, Recent: map[string]float64{"s1": 2100}}
 	got := kmGoals(st, "s1", live, nil)
 	want := []GameKmGoal{
 		{Key: "vote", Label: "Giữ phiếu biểu quyết", NeedKm: 1, HaveKm: f64(1.4)},
-		{Key: "skill", Label: "Soi ở đêm tới", NeedKm: 1, HaveKm: f64(1.4)},
+		{Key: "skill", Label: "Soi ở đêm tới", NeedKm: 1, HaveKm: f64(2.1)},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("goals = %+v", got)
@@ -34,11 +34,11 @@ func TestKmGoalsSeerUnderVoteCut(t *testing.T) {
 func TestKmGoalsWolfBiteIsTeamTotal(t *testing.T) {
 	st := goalState(ww.Config{SkillKm: map[ww.Role]float64{ww.Wolf: 2}})
 	st.Players["w2"] = &ww.Player{Role: ww.Wolf, Alive: true}
-	live := &liveKm{Meters: map[string]float64{"w1": 900, "w2": 2500, "v1": 5000}}
+	live := &liveKm{Meters: map[string]float64{"w1": 900, "w2": 2500, "v1": 5000}, Recent: map[string]float64{"w1": 1000, "w2": 3000, "v1": 7000}}
 	got := kmGoals(st, "w1", live, wolfTeamKm(st, live))
 	want := []GameKmGoal{
 		{Key: "vote", Label: "Giữ phiếu biểu quyết", NeedKm: 1, HaveKm: f64(0.9)},
-		{Key: "team_skill", Label: "Phe Sói cắn ở đêm tới", NeedKm: 4, HaveKm: f64(3.4)},
+		{Key: "team_skill", Label: "Phe Sói cắn ở đêm tới", NeedKm: 4, HaveKm: f64(4)},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("goals = %+v", got)

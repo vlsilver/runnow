@@ -50,6 +50,31 @@ var errGameNotRunning = werewolf.ErrPhaseClosed
 
 var errStaleButton = errors.New("stale_button")
 
+// skillLiveKm là km sống để xét kỹ năng của req. Đọc ngoài transaction vì có thể
+// phải gọi đọc km của cả ván; nil khi kind không xét km lúc bấm hoặc ván không đọc
+// buổi chạy thật. Đọc lỗi thì trả lỗi: coi là 0 km sẽ từ chối oan.
+func (s *GameStore) skillLiveKm(ctx context.Context, game *firestore.DocumentRef, req ActionRequest) (*liveKm, error) {
+	if req.Clear || !werewolf.UsesSkillKm(req.Kind) {
+		return nil, nil
+	}
+	g, err := game.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if stringValue(g.Data()["status"]) != gameRunning {
+		return nil, nil
+	}
+	sec, err := secretRef(game).Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	st, err := decodeState(sec.Data())
+	if err != nil {
+		return nil, err
+	}
+	return s.liveKm(ctx, game, g.Data(), st, req.ReceivedAt)
+}
+
 func actionRef(game *firestore.DocumentRef, round int, uid string, kind werewolf.Kind) *firestore.DocumentRef {
 	return roundRef(game, round).Collection("actions").Doc(uid + "_" + string(kind))
 }
@@ -62,7 +87,11 @@ func actionRef(game *firestore.DocumentRef, round int, uid string, kind werewolf
 func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (ActionResult, error) {
 	game := s.gameRef(req.GameID)
 	var res ActionResult
-	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+	live, err := s.skillLiveKm(ctx, game, req)
+	if err != nil {
+		return res, err
+	}
+	err = s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		res = ActionResult{}
 		g, err := tx.Get(game)
 		if err != nil {
@@ -131,7 +160,8 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 		}
 
 		a := werewolf.Action{Kind: req.Kind, Actor: req.UID, Targets: req.Targets, Choice: req.Choice, Clear: req.Clear, ReceivedAt: now}
-		if err := werewolf.Validate(st, a, mine, now); err != nil {
+		view, kmChecked := live.skillView(st)
+		if err := werewolf.Validate(view, a, mine, now); err != nil {
 			var reject werewolf.Reject
 			if !errors.As(err, &reject) {
 				return err
@@ -162,11 +192,11 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 		}
 		doc := map[string]any{
 			"uid": req.UID, "kind": string(req.Kind), "targets": req.Targets, "choice": req.Choice,
-			"cleared": req.Clear, "receivedAt": now, "source": req.Source,
+			"cleared": req.Clear, "receivedAt": now, "source": req.Source, "kmChecked": kmChecked,
 			"lastTgUpdateId": max(lastTg, req.TgUpdateID), "phaseKey": st.PhaseKey(), "updatedAt": req.ReceivedAt,
 		}
 		if req.Kind == werewolf.KindSeerPeek {
-			dark, err := pendingDark(tx, game, st)
+			dark, err := pendingDark(tx, game, view)
 			if err != nil {
 				return err
 			}

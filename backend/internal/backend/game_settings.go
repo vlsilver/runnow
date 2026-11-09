@@ -404,7 +404,7 @@ var gameSettingDefs = []gameSettingDef{
 	{
 		GameSetting: GameSetting{Key: "vote", Label: "Chế độ dùng kỹ năng", Type: settingChoice, Default: string(werewolf.VoteCut), EnabledIf: kmOn, Group: groupKm,
 			Section:     sectionMode,
-			Description: "Km ở lần chốt quyết định ai được bỏ phiếu và ai dùng được kỹ năng. Áp cho biểu quyết, sói bầu cắn và kỹ năng phe Dân.",
+			Description: "Km 24 tiếng tới lúc chốt phiếu quyết định ai được bỏ phiếu và sói nào có phiếu cắn; km 24 tiếng tới lúc dùng quyết định ai dùng được kỹ năng phe Dân.",
 			Choices: []GameSettingChoice{
 				{Value: string(werewolf.VoteCut), Label: "Theo nhóm", Hint: "Km cả nhóm chia ra số lượt",
 					Description: "Cộng km cả nhóm, chia cho km mỗi lượt ra số lượt được dùng. Thiếu thì người chạy ít nhất mất lượt trước.",
@@ -466,7 +466,7 @@ var gameSettingDefs = []gameSettingDef{
 	roleKmSetting("seerKm", werewolf.Seer, "Soi", "Đủ km thì đêm đó soi được một người, biết là Sói hay Dân."),
 	roleKmSetting("guardKm", werewolf.Guard, "Che", "Đủ km thì đêm đó che được một người khỏi bị cắn."),
 	roleKmSetting("witchKm", werewolf.Witch, "Dùng thuốc", "Đủ km thì đêm đó dùng được bình cứu hoặc bình độc. Cả ván mỗi bình một lần."),
-	roleKmSetting("hunterKm", werewolf.Hunter, "Bắn khi ngã", "Ngã xuống mà đủ km ở lần chốt gần nhất thì được bắn mang theo một người. Chết vì bình độc thì không bắn được."),
+	roleKmSetting("hunterKm", werewolf.Hunter, "Bắn khi ngã", "Ngã xuống mà đủ km 24 tiếng tới lúc bắn thì được bắn mang theo một người. Chết vì bình độc thì không bắn được."),
 	// topOn đứng trước topWeight: tắt thì TopWeight về 0, bật thì topWeight ghi đè.
 	{
 		GameSetting: GameSetting{Key: "topOn", Label: "Top N được x phiếu", Hint: "Người chạy nhiều nhất", Type: settingToggle, Default: false,

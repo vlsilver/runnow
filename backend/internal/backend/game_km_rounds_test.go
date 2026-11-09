@@ -21,8 +21,8 @@ func TestKmTableFollowsTheRoundFrame(t *testing.T) {
 		wall              time.Time
 		last, today, note string
 	}{
-		{time.Date(2026, 10, 23, 8, 0, 0, 0, vietnam), "Hôm qua · chốt 22h", "Từ 10h qua · tới 08:00", "Km chốt lúc 10h,"},
-		{time.Date(2026, 10, 23, 15, 40, 0, 0, vietnam), "Hôm nay · chốt 10h", "Từ 22h qua · tới 15:40", "Km chốt lúc 22h,"},
+		{time.Date(2026, 10, 23, 8, 0, 0, 0, vietnam), "Hôm qua · chốt 22h", "Từ 10h qua · tới 08:00", "Biểu quyết tính km tới 10h,"},
+		{time.Date(2026, 10, 23, 15, 40, 0, 0, vietnam), "Hôm nay · chốt 10h", "Từ 22h qua · tới 15:40", "Biểu quyết tính km tới 22h,"},
 	} {
 		live := &liveKm{AsOf: c.wall}
 		tb := kmTable(data, st, live, c.wall)
@@ -32,14 +32,14 @@ func TestKmTableFollowsTheRoundFrame(t *testing.T) {
 	}
 }
 
-// Luật nói một cách cho mọi ván: 24 tiếng trước giờ chốt.
+// Luật nói một cách cho mọi ván: phiếu tới lúc chốt, kỹ năng tới lúc dùng.
 func TestRulesTextFollowsKmFrame(t *testing.T) {
 	two := gameRulesFor(twoRoundsFrom(22))
-	if !strings.Contains(two, "24 tiếng trước giờ chốt") || strings.Contains(two, "hôm qua tới") || strings.Contains(two, "dùng chung km") {
+	if !strings.Contains(two, "km 24 tiếng tới lúc chốt phiếu") || !strings.Contains(two, "24 tiếng tới lúc dùng") || strings.Contains(two, "hôm qua tới") || strings.Contains(two, "dùng chung km") {
 		t.Fatalf("luật hai vòng = %q", two)
 	}
 	open6 := gameRulesFor(ww.Config{Schedule: &ww.Schedule{StartHour: 6, RoundHours: 24, Rounds: 1}})
-	if !strings.Contains(open6, "24 tiếng trước giờ chốt") || strings.Contains(open6, "{kmWindow}") {
+	if !strings.Contains(open6, "24 tiếng tới lúc dùng") || strings.Contains(open6, "{kmWindow}") {
 		t.Fatalf("luật mở 6h = %q", open6)
 	}
 	if bot := botVoteRulesFor(twoRoundsFrom(6), "2"); strings.Contains(bot, "{kmWindow}") || strings.Contains(bot, "22h hôm qua") {

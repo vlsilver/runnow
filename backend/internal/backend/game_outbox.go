@@ -905,7 +905,7 @@ func (r *outboxRenderer) digestText(raw string) (string, error) {
 		lines = append(lines, "", fmt.Sprintf("Tiếp theo: %s, tới %s.", phaseLabel(d.Round, d.Phase, d.Deadline), vnTime(d.Deadline)))
 	}
 	if d.Km != nil && !r.cfg.KmOff {
-		lines = append(lines, "", fmt.Sprintf("<b>Km vừa chốt, dùng cho đêm %d</b>", d.Round))
+		lines = append(lines, "", "<b>Km vừa chốt, kỹ năng đêm nay tính tới lúc dùng</b>")
 		lines = append(lines, r.kmBoard(d.Km)...)
 	}
 	return strings.Join(lines, "\n"), nil
@@ -1011,9 +1011,9 @@ func (r *outboxRenderer) liveKmLines(ctx context.Context) ([]string, error) {
 		}
 	}
 	if mode == werewolf.VoteFlat {
-		return append(lines, "Km chốt "+hm(frame.End)+" dùng cho kỹ năng đêm kế tiếp. Chạy xong mở app cho km kịp đồng bộ."), nil
+		return append(lines, "Kỹ năng tính km 24 tiếng tới lúc dùng. Chạy xong mở app cho km kịp đồng bộ."), nil
 	}
-	return append(lines, "Km chốt "+hm(frame.End)+" dùng cho biểu quyết lúc đó và kỹ năng đêm kế tiếp. Chạy xong mở app cho km kịp đồng bộ."), nil
+	return append(lines, "Biểu quyết tính km tới "+hm(frame.End)+", kỹ năng tính 24 tiếng tới lúc dùng. Chạy xong mở app cho km kịp đồng bộ."), nil
 }
 
 // voteForecast là R30 áp lên km tới giờ (km của người còn sống): nếu chốt bây
@@ -1097,7 +1097,7 @@ func aliveWolves(st *werewolf.State) int {
 }
 
 // reminderText là tin nhắc trước khi lượt đóng. Tin xếp hàng trước khi có
-// deadline thì không chở giờ, nên in giờ của lịch gốc như trước.
+// deadline thì không chở giờ, nên không in giờ nào.
 func reminderText(reason string, deadline time.Time) (string, error) {
 	switch reason {
 	case werewolf.ReminderNominate:

@@ -143,9 +143,9 @@ func TestKmRulesWolfKmNeedIsOneVote(t *testing.T) {
 	if have, need := WolfKm(g.st); have != 3500 || need != 4000 {
 		t.Fatalf("WolfKm = %v, %v", have, need)
 	}
-	g.reject(ErrKmInsufficient, act(KindWolfBite, "w1", "v1"))
-	g.st.Km["w3"] = 1000
-	g.do(KindWolfBite, "w1", "v1")
+	if e := bite(g, [2]string{"w1", "v1"}); e == nil || e.Reason != VoidNoKm || e.WolfHave != 3500 || e.WolfNeed != 4000 {
+		t.Fatalf("thiếu 500 m cho một phiếu: %+v", e)
+	}
 }
 
 // Km mỗi phiếu 0: sói nào cũng có phiếu dù không chạy.

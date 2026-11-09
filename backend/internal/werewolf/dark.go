@@ -195,11 +195,12 @@ func (r *resolver) lockDark() {
 	for _, a := range r.actionsOf(KindWolfDark) {
 		picks = append(picks, a)
 	}
-	use := PendingDark(r.st, picks)
+	atLock := r.st.WithKm(r.biteKm())
+	use := PendingDark(atLock, picks)
 	if use == nil {
 		for _, a := range picks {
 			reason := VoidInvalid
-			if !r.st.DarkUnlocked() {
+			if !atLock.DarkUnlocked() {
 				reason = VoidNoKm
 			}
 			r.void(a, reason)

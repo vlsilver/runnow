@@ -54,6 +54,8 @@ type Action struct {
 	Choice     string    `json:"choice,omitempty"`
 	Clear      bool      `json:"clear,omitempty"` // bỏ lựa chọn đang có
 	ReceivedAt time.Time `json:"receivedAt"`
+	// KmChecked: đã đủ km lúc bấm (24 tiếng tới lúc đó), bước chốt không xét lại.
+	KmChecked bool `json:"kmChecked,omitempty"`
 }
 
 func (a Action) target() string {
@@ -61,6 +63,12 @@ func (a Action) target() string {
 		return ""
 	}
 	return a.Targets[0]
+}
+
+// UsesSkillKm: Validate và Precheck của kind đọc km, nên phải đưa km tới lúc bấm
+// vào (State.WithKm) thì mới đúng luật.
+func UsesSkillKm(kind Kind) bool {
+	return kindRules[kind].needsKm || kind == KindWolfDark
 }
 
 // Reject là lỗi luật, mã khớp mục 3.8 để API trả thẳng cho app.
@@ -96,7 +104,7 @@ var kindRules = map[Kind]kindRule{
 	KindGuard:       {role: Guard, phases: []Phase{PhaseNight, PhaseDawn}, targets: 1, changeable: true, needsKm: true},
 	KindWitchSave:   {role: Witch, phases: []Phase{PhaseDawn}, anyTargets: true, changeable: true, needsKm: true},
 	KindWitchPoison: {role: Witch, phases: []Phase{PhaseDawn}, targets: 1, changeable: true, needsKm: true},
-	KindHunterShoot: {role: Hunter, targets: 1}, // mở theo State.Hunter, không theo phase
+	KindHunterShoot: {role: Hunter, targets: 1, needsKm: true}, // mở theo State.Hunter, không theo phase
 	KindCupidPair:   {role: Cupid, phases: []Phase{PhaseSetup, PhaseNight}, targets: 2},
 	KindNominate:    {phases: []Phase{PhaseDay}, targets: 1, changeable: true},
 	KindWolfDark:    {role: Wolf, phases: []Phase{PhaseNight}, anyTargets: true, changeable: true},
@@ -143,9 +151,6 @@ func validateKind(st *State, a Action, mine []Action) error {
 	case KindWolfBite:
 		if t == st.loverOf(a.Actor) {
 			return ErrLoverTarget
-		}
-		if !wolvesHaveKm(st) {
-			return ErrKmInsufficient
 		}
 	case KindSeerPeek:
 		if t == a.Actor {
@@ -252,24 +257,26 @@ func precheck(st *State, kind Kind, actor string, mine []Action, now time.Time) 
 
 // wolvesHaveKm: còn sói sống, và tổng km của sói còn sống ≥ km mỗi sói × số
 // sói còn sống (R1). Km mỗi sói là 0 thì phe cắn tự do.
-func wolvesHaveKm(st *State) bool {
+func wolvesHaveKm(st *State, km map[string]float64) bool {
 	if st.Config.KmTie() {
 		// Luật km: sói bầu, phiếu chỉ bị loại lúc chốt; còn ít nhất một phiếu
 		// được tính thì phe vẫn cắn được.
-		return st.aliveWolves() > 0 && WolfVotePlan(st).Allowed > 0
+		return st.aliveWolves() > 0 && WolfVotePlan(st, km).Allowed > 0
 	}
-	have, need := WolfKm(st)
+	have, need := wolfKmIn(st, km)
 	return st.aliveWolves() > 0 && have >= need
 }
 
 // WolfKm trả tổng km (mét) của sói còn sống và mức phe cần để cắn, để tin riêng
 // cho sói nói được phe thiếu bao nhiêu. Luật cũ cần km mỗi sói × số sói còn
 // sống; luật km chỉ cần đủ một phiếu (WolfVotePlan). need = 0 là không cần km.
-func WolfKm(st *State) (have, need float64) {
+func WolfKm(st *State) (have, need float64) { return wolfKmIn(st, st.Km) }
+
+func wolfKmIn(st *State, km map[string]float64) (have, need float64) {
 	unit := st.Config.SkillMeters(Wolf)
 	for _, uid := range st.aliveUIDs() {
 		if st.role(uid) == Wolf {
-			have += st.Km[uid]
+			have += km[uid]
 			need += unit
 		}
 	}

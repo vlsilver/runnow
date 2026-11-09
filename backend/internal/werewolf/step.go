@@ -14,6 +14,9 @@ type Inputs struct {
 	// Km là snapshot km (mét) vừa chốt lúc 22h. Chỉ bước mở đêm 1 và bước chốt
 	// ngày dùng; bước khác bỏ qua.
 	Km map[string]float64 `json:"km,omitempty"`
+	// BiteKm là km (mét) 24 tiếng tới lúc chốt cắn, chỉ bước chốt cắn dùng. Nil
+	// khi ván không đọc buổi chạy thật (ván thử) thì xét theo State.Km.
+	BiteKm map[string]float64 `json:"biteKm,omitempty"`
 	// Left là người đã rời PSC hoặc xoá tài khoản tính tới lúc chốt (R33).
 	Left []string `json:"left,omitempty"`
 }
@@ -60,6 +63,10 @@ type Event struct {
 	Draw   bool   `json:"draw,omitempty"`
 	Team   Team   `json:"team,omitempty"`
 	Reason string `json:"reason,omitempty"`
+	// WolfHave, WolfNeed: km (mét) phe Sói có và cần lúc chốt cắn, khi không cắn
+	// được vì thiếu km.
+	WolfHave float64 `json:"wolfHave,omitempty"`
+	WolfNeed float64 `json:"wolfNeed,omitempty"`
 }
 
 // Lý do huỷ action (voidReason) và lý do trong event.
@@ -157,11 +164,12 @@ func (r *resolver) killLovers() {
 
 // openHunterTurn (gọi sau khi đã sang phase mới, vì E5 tính khung theo phase
 // đó): thợ săn chết trong bước này được bắn, trừ khi chết vì độc hay
-// rời PSC (R5, C4), hoặc km lần chốt gần nhất < X.
+// rời PSC (R5, C4). Km xét lúc bắn (Validate), nên ngã mà còn thiếu km thì vẫn
+// kịp chạy thêm trong lượt.
 func (r *resolver) openHunterTurn() {
 	for _, uid := range r.died {
 		p := r.st.Players[uid]
-		if p.Role != Hunter || p.Cause == CausePoison || p.Cause == CauseLeft || !r.st.hasKm(uid) {
+		if p.Role != Hunter || p.Cause == CausePoison || p.Cause == CauseLeft {
 			continue
 		}
 		r.st.Hunter = &HunterTurn{UID: uid, Phase: r.st.Phase}
@@ -252,7 +260,7 @@ func (r *resolver) lockWolves() {
 	// Xét km trước lựa chọn: phe thiếu km thì không sói nào bấm được, nên
 	// không có lựa chọn mà lý do vẫn phải là thiếu km.
 	switch {
-	case !wolvesHaveKm(r.st):
+	case !wolvesHaveKm(r.st, r.biteKm()):
 		reason = VoidNoKm
 		for _, a := range chosen {
 			r.void(a, VoidNoKm)
@@ -262,7 +270,11 @@ func (r *resolver) lockWolves() {
 		r.st.setBitten(bites)
 		reason = ""
 	}
-	r.emit(biteEvent(r.st.BittenUIDs(), reason))
+	ev := biteEvent(r.st.BittenUIDs(), reason)
+	if reason == VoidNoKm {
+		ev.WolfHave, ev.WolfNeed = wolfKmIn(r.st, r.biteKm())
+	}
+	r.emit(ev)
 	r.lockDark()
 	r.st.Phase = PhaseDawn
 }
@@ -358,6 +370,12 @@ func (r *resolver) resolveNight() {
 	r.finish()
 }
 
+// skillKmOK: kỹ năng đã qua kiểm km lúc bấm thì giữ; action chưa có dấu (ván thử,
+// hoặc bấm trước khi có luật này) xét km đã chốt.
+func (r *resolver) skillKmOK(a Action) bool {
+	return a.KmChecked || r.st.hasKm(a.Actor)
+}
+
 // guardTarget trả người được bảo vệ đêm nay. Lần bảo vệ hợp lệ mới được ghi làm
 // "đêm trước" cho R3; lần bị huỷ thì không.
 func (r *resolver) guardTarget() string {
@@ -366,7 +384,7 @@ func (r *resolver) guardTarget() string {
 		case !r.targetAlive(a):
 		case a.target() == r.st.LastGuarded:
 			r.void(a, VoidRepeat)
-		case !r.st.hasKm(a.Actor):
+		case !r.skillKmOK(a):
 			r.void(a, VoidNoKm)
 		default:
 			r.st.LastGuarded = a.target()
@@ -390,7 +408,7 @@ func (r *resolver) witchChoices() (saved, poisoned string) {
 			r.void(a, VoidTargetDead)
 		case !slices.Contains(WitchSaveTargets(r.st, a.Actor), saveTarget(r.st, &a)):
 			r.void(a, VoidInvalid)
-		case !r.st.hasKm(a.Actor):
+		case !r.skillKmOK(a):
 			r.void(a, VoidNoKm)
 		default:
 			r.st.SavePotion, saved = false, saveTarget(r.st, &a)
@@ -404,7 +422,7 @@ func (r *resolver) witchChoices() (saved, poisoned string) {
 		case !r.targetAlive(a):
 		case a.target() == a.Actor || (saved != "" && a.target() == saved):
 			r.void(a, VoidInvalid)
-		case !r.st.hasKm(a.Actor):
+		case !r.skillKmOK(a):
 			r.void(a, VoidNoKm)
 		default:
 			r.st.PoisonPotion, poisoned = false, a.target()
@@ -608,12 +626,22 @@ func (r *resolver) drawCut(plan VoteCutPlan, purpose string) (cut []string, draw
 	return cut, draw
 }
 
+// biteKm là km xét ở bước chốt cắn: 24 tiếng tới lúc chốt, hoặc km của lần chốt
+// gần nhất khi ván không đọc buổi chạy thật.
+func (r *resolver) biteKm() map[string]float64 {
+	if r.in.BiteKm != nil {
+		return r.in.BiteKm
+	}
+	return r.st.Km
+}
+
 // wolfVote (luật km): mỗi sói một phiếu, phiếu bị loại theo km như biểu quyết
 // (WolfVotePlan). Mục tiêu nhiều phiếu nhất bị cắn; bằng phiếu thì nhóm phiếu có
 // tổng km cao hơn, vẫn bằng thì bốc thăm.
 func (r *resolver) wolfVote() Event {
 	ev := Event{Kind: EventWolvesTarget, Reason: ReasonNoChoice}
-	cutList, _ := r.drawCut(WolfVotePlan(r.st), "wolf-cut")
+	biteKm := r.biteKm()
+	cutList, _ := r.drawCut(WolfVotePlan(r.st, biteKm), "wolf-cut")
 	cut := map[string]bool{}
 	for _, uid := range cutList {
 		cut[uid] = true
@@ -629,10 +657,13 @@ func (r *resolver) wolfVote() Event {
 			ev.Reason = VoidNoKm
 		default:
 			counts[a.target()]++
-			km[a.target()] += r.st.Km[a.Actor]
+			km[a.target()] += biteKm[a.Actor]
 		}
 	}
 	if len(counts) == 0 {
+		if ev.Reason == VoidNoKm {
+			ev.WolfHave, ev.WolfNeed = wolfKmIn(r.st, biteKm)
+		}
 		return ev
 	}
 	ranked, same := r.rankVotes(counts, km, true, "wolf-bite")
@@ -647,7 +678,7 @@ func (r *resolver) wolfVote() Event {
 // WolfVotePlan (luật km): sói nào mất phiếu bầu cắn, theo chế độ của ván với km
 // mỗi phiếu của Sói: Theo nhóm như R30, Riêng thì sói chưa đủ km mất phiếu. Km
 // mỗi phiếu 0 hoặc luật phiếu khác thì không ai mất.
-func WolfVotePlan(st *State) VoteCutPlan {
+func WolfVotePlan(st *State, km map[string]float64) VoteCutPlan {
 	var wolves []string
 	for _, uid := range st.aliveUIDs() {
 		if st.role(uid) == Wolf {
@@ -658,9 +689,9 @@ func WolfVotePlan(st *State) VoteCutPlan {
 	switch {
 	case unit == 0:
 	case st.Config.VoteMode() == VoteCut:
-		return planCut(wolves, st.Km, unit)
+		return planCut(wolves, km, unit)
 	case st.Config.VoteMode() == VoteSolo:
-		return planSolo(wolves, st.Km, unit)
+		return planSolo(wolves, km, unit)
 	}
 	return VoteCutPlan{Allowed: len(wolves)}
 }

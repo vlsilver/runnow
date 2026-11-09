@@ -23,7 +23,7 @@ func TestR5HangedHunterShootsOnce(t *testing.T) {
 	}
 }
 
-func TestR5PoisonedOrLowKmHunterCannotShoot(t *testing.T) {
+func TestR5PoisonedHunterCannotShoot(t *testing.T) {
 	g := game13(t)
 	g.do(KindWolfBite, "w1", "hunter") // vừa bị cắn vừa bị độc: chết vì độc (C4)
 	g.next()
@@ -33,12 +33,6 @@ func TestR5PoisonedOrLowKmHunterCannotShoot(t *testing.T) {
 		t.Fatalf("thợ săn bị độc không được bắn: %+v", evs)
 	}
 	g.reject(ErrPhaseClosed, act(KindHunterShoot, "hunter", "w1"))
-
-	g = game13(t)
-	g.km["hunter"] = 999 // km lần chốt gần nhất (lúc treo) < X
-	if evs := g.hang("hunter"); find(evs, EventHunterTurn) != nil || g.st.Players["hunter"].ShotOpened {
-		t.Fatal("thợ săn thiếu km không được bắn")
-	}
 }
 
 func TestR6CupidPairsOnceAndLoversDieTogether(t *testing.T) {

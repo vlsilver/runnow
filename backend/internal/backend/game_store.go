@@ -433,11 +433,11 @@ func (s *GameStore) snapshotKmIfDue(ctx context.Context, gameID string, wall tim
 	if err != nil {
 		return err
 	}
-	frame, ok := st.DueKmFrame()
-	if !ok || st.Paused || now.Before(frame.End) {
+	frame, closes, col, ok := dueKmSnapshot(st, testMode)
+	if !ok || st.Paused || now.Before(closes) {
 		return nil
 	}
-	refs := kmRefs(game, st)
+	refs := kmRefs(game, st, col)
 	existing, err := s.db.GetAll(ctx, refs)
 	if err != nil {
 		return err
@@ -464,11 +464,31 @@ func (s *GameStore) snapshotKmIfDue(ctx context.Context, gameID string, wall tim
 	return nil
 }
 
-func kmRefs(game *firestore.DocumentRef, st *werewolf.State) []*firestore.DocumentRef {
-	col := roundRef(game, kmRound(st)).Collection("km")
+const (
+	kmCol     = "km"     // km lúc chốt phiếu (và mở đêm 1)
+	biteKmCol = "biteKm" // km lúc chốt cắn
+)
+
+// dueKmSnapshot: bước chốt kế tiếp cần snapshot km nào, khung nào, ghi vào đâu,
+// và từ lúc nào. Ván thử không có snapshot cắn vì km của ván thử do admin ghi vào
+// lần chốt phiếu (Inputs.BiteKm nil thì engine xét km đó).
+func dueKmSnapshot(st *werewolf.State, testMode bool) (frame werewolf.KmFrame, closes time.Time, col string, ok bool) {
+	if frame, ok = st.DueKmFrame(); ok {
+		return frame, frame.End, kmCol, true
+	}
+	if frame, ok = st.DueBiteFrame(); ok && !testMode {
+		return frame, st.Deadline(), biteKmCol, true
+	}
+	return werewolf.KmFrame{}, time.Time{}, "", false
+}
+
+// kmRefs lấy đủ mọi người chơi, kể cả ở snapshot cắn, để danh sách doc không lộ
+// ai là sói.
+func kmRefs(game *firestore.DocumentRef, st *werewolf.State, col string) []*firestore.DocumentRef {
+	c := roundRef(game, kmRound(st)).Collection(col)
 	var refs []*firestore.DocumentRef
 	for _, uid := range sortedPlayers(st) {
-		refs = append(refs, col.Doc(uid))
+		refs = append(refs, c.Doc(uid))
 	}
 	return refs
 }
@@ -516,7 +536,7 @@ func (s *GameStore) advanceOnce(ctx context.Context, gameID string, wall time.Ti
 		if !st.Paused {
 			res.NextAt, res.TaskKey = st.NextAt().Add(-offset), st.TaskKey()
 		}
-		in, err := s.readInputs(tx, game, st, now, stringValue(g.Data()["botId"]) == "")
+		in, err := s.readInputs(tx, game, st, now, stringValue(g.Data()["botId"]) == "", g.Data()["testMode"] == true)
 		if err != nil {
 			return err
 		}
@@ -557,7 +577,7 @@ func (s *GameStore) advanceOnce(ctx context.Context, gameID string, wall time.Ti
 
 // readInputs đọc trong transaction mọi thứ engine cần cho bước kế: action của
 // vòng hiện tại, snapshot km nếu bước này là mốc 22h, và người đã rời PSC.
-func (s *GameStore) readInputs(tx *firestore.Transaction, game *firestore.DocumentRef, st *werewolf.State, now time.Time, psc bool) (werewolf.Inputs, error) {
+func (s *GameStore) readInputs(tx *firestore.Transaction, game *firestore.DocumentRef, st *werewolf.State, now time.Time, psc, testMode bool) (werewolf.Inputs, error) {
 	var in werewolf.Inputs
 	docs, err := tx.Documents(roundRef(game, st.Round).Collection("actions")).GetAll()
 	if err != nil {
@@ -576,17 +596,22 @@ func (s *GameStore) readInputs(tx *firestore.Transaction, game *firestore.Docume
 		return a.Actor+string(a.Kind) < b.Actor+string(b.Kind)
 	})
 
-	if frame, ok := st.DueKmFrame(); ok && !now.Before(frame.End) {
-		kms, err := tx.GetAll(kmRefs(game, st))
+	if _, closes, col, ok := dueKmSnapshot(st, testMode); ok && !now.Before(closes) {
+		kms, err := tx.GetAll(kmRefs(game, st, col))
 		if err != nil {
 			return in, err
 		}
-		in.Km = map[string]float64{}
+		meters := map[string]float64{}
 		for _, d := range kms {
 			if !d.Exists() {
 				return in, errKmNotReady
 			}
-			in.Km[d.Ref.ID] = number(d.Data()["meters"])
+			meters[d.Ref.ID] = number(d.Data()["meters"])
+		}
+		if col == biteKmCol {
+			in.BiteKm = meters
+		} else {
+			in.Km = meters
 		}
 	}
 
@@ -659,7 +684,7 @@ func decodeAction(d map[string]any) (werewolf.Action, bool) {
 	if d["cleared"] == true {
 		return werewolf.Action{}, false
 	}
-	a := werewolf.Action{Kind: werewolf.Kind(stringValue(d["kind"])), Actor: stringValue(d["uid"]), Choice: stringValue(d["choice"])}
+	a := werewolf.Action{KmChecked: d["kmChecked"] == true, Kind: werewolf.Kind(stringValue(d["kind"])), Actor: stringValue(d["uid"]), Choice: stringValue(d["choice"])}
 	if t, ok := d["receivedAt"].(time.Time); ok {
 		a.ReceivedAt = t
 	}

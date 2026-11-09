@@ -1345,13 +1345,16 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 	if err != nil {
 		return out, err
 	}
-	out.Actions = meActions(st, v.UID, mine, raw, players, gameNow(data, wall), clockOffset(data))
+	var live *liveKm
+	if me.Alive || (st.Hunter != nil && st.Hunter.UID == v.UID) {
+		if live, err = s.liveKm(ctx, g.Ref, data, st, wall); err != nil {
+			return out, err
+		}
+	}
+	view, _ := live.skillView(st)
+	out.Actions = meActions(view, v.UID, mine, raw, players, gameNow(data, wall), clockOffset(data))
 	if !me.Alive {
 		return out, nil
-	}
-	live, err := s.liveKm(ctx, g.Ref, data, st, wall)
-	if err != nil {
-		return out, err
 	}
 	if me.Role == werewolf.Wolf {
 		out.TeamKm = wolfTeamKm(st, live)

@@ -165,8 +165,8 @@ func stepMessages(before, after *werewolf.State, evs []werewolf.Event) []gameMsg
 		}
 	}
 	if call == callNight {
-		// Km vừa chốt 22h là km của kỹ năng đêm nay; chở theo bản tin để group
-		// biết ai đủ km mà không phải mở app.
+		// Km vừa chốt chở theo bản tin để group biết ai đang đủ km mà không phải
+		// mở app; kỹ năng tính lại tới lúc dùng.
 		km := map[string]float64{}
 		for _, uid := range sortedPlayers(after) {
 			if after.Players[uid].Alive {
@@ -207,10 +207,7 @@ func stepMessages(before, after *werewolf.State, evs []werewolf.Event) []gameMsg
 		data := map[string]any{"phaseKey": before.PhaseKey(), "events": private[uid]}
 		for _, e := range private[uid] {
 			if e.Kind == werewolf.EventWolvesTarget && e.Reason == werewolf.VoidNoKm {
-				// Bước 0h không đổi km và chưa giết người bị cắn, nên after là phe
-				// lúc xét km, kể cả người rời PSC vừa bị loại.
-				have, need := werewolf.WolfKm(after)
-				data["wolfKm"] = map[string]float64{"have": have, "need": need}
+				data["wolfKm"] = map[string]float64{"have": e.WolfHave, "need": e.WolfNeed}
 			}
 		}
 		msgs = append(msgs, gameMsg{ChatKey: dmChat(uid), Template: tplPrivate, Data: data})

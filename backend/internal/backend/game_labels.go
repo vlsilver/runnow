@@ -60,9 +60,9 @@ const botVoteRulesText = "Đề cử: {nominate} tối đa 3 người nhiều đ
 // Các câu về km trong luật đổi theo cấu hình của ván (werewolf.Config): km từng
 // vai, tắt km, luật phiếu. x là km một phiếu đã định dạng, "X" khi chưa có ván.
 const (
-	gameKmLineCut  = "km trong khung {kmWindow} quyết định có được dùng kỹ năng và có được bỏ phiếu không.\n"
-	gameKmLineTop  = "km trong khung {kmWindow} quyết định có được dùng kỹ năng không. Không ai mất phiếu; %s chạy nhiều nhất, mỗi người đủ %s km, được tính 2 phiếu.\n"
-	gameKmLineFlat = "km trong khung {kmWindow} chỉ quyết định có được dùng kỹ năng không; phiếu nào cũng tính.\n"
+	gameKmLineCut  = "km 24 tiếng tới lúc chốt phiếu quyết định có được bỏ phiếu không, km 24 tiếng tới lúc dùng quyết định có được dùng kỹ năng không.\n"
+	gameKmLineTop  = "km 24 tiếng tới lúc dùng quyết định có được dùng kỹ năng không. Không ai mất phiếu; %s chạy nhiều nhất, mỗi người đủ %s km, được tính 2 phiếu.\n"
+	gameKmLineFlat = "km 24 tiếng tới lúc dùng chỉ quyết định có được dùng kỹ năng không; phiếu nào cũng tính.\n"
 	botVoteKmCut   = "Phiếu theo km, tính riêng từng phiên: {close} cộng km ({kmWindow}) của mọi người còn sống trừ người lên giàn của phiên đó. Số phiếu được tính bằng tổng km chia X km, làm tròn xuống, không quá số người. Thiếu thì người ít km nhất mất phiếu trước, kể cả người không bấm; bằng km thì bốc thăm."
 	botVoteKmTop   = "Phiếu theo km, tính riêng từng phiên: không ai mất phiếu. {close} lấy km ({kmWindow}) của mọi người còn sống trừ người lên giàn của phiên đó; %s nhiều km nhất, mỗi người đủ X km, được tính 2 phiếu; bằng km ở suất cuối thì bốc thăm."
 	botVoteKmFlat  = "Mỗi người một phiếu, km không tác động lên phiếu."
@@ -176,7 +176,7 @@ func scheduleText(cfg werewolf.Config) string {
 		hours[i] = itoa(h) + "h"
 	}
 	if !cfg.KmOff {
-		return fmt.Sprintf("Mỗi ngày %d vòng, mỗi vòng dài %d tiếng, mở lúc %s. Km tính 24 tiếng trước mỗi lần chốt. %s",
+		return fmt.Sprintf("Mỗi ngày %d vòng, mỗi vòng dài %d tiếng, mở lúc %s. Phiếu tính km 24 tiếng tới lúc chốt, kỹ năng tính tới lúc dùng. %s",
 			s.Rounds, s.RoundHours, strings.Join(hours, ", "), otherRoundsText(cfg, starts))
 	}
 	if s.Rounds == 1 {
@@ -265,6 +265,9 @@ func roleRulesFor(role werewolf.Role, cfg werewolf.Config, x string) string {
 	return text
 }
 
+// wolfKmWhen nói mốc tính km của phe Sói, khác kỹ năng phe Dân tính tới lúc dùng.
+const wolfKmWhen = "Km tính 24 tiếng tới lúc chốt cắn."
+
 // groupSkillRule là cách chia km chung của phe Dân ở chế độ Theo nhóm
 // (werewolf.State.skillCut).
 const groupSkillRule = "tổng km người không phải sói còn sống trả cho từng vai cần km, thiếu thì vai chạy ít nhất mất lượt trước, bằng km thì bốc thăm"
@@ -284,11 +287,11 @@ func roleKmLine(role werewolf.Role, cfg werewolf.Config, x string) string {
 		case cfg.SkillMeters(werewolf.Wolf) == 0:
 			return "Phe Sói cắn không cần km."
 		case cfg.KmTie() && cfg.VoteMode() == werewolf.VoteSolo:
-			return "Sói nào tự chạy đủ " + need + " km thì phiếu đó được tính."
+			return "Sói nào tự chạy đủ " + need + " km thì phiếu đó được tính. " + wolfKmWhen
 		case cfg.KmTie():
-			return "Phiếu theo km: tổng km của sói còn sống chia " + need + " km ra số phiếu được tính, thiếu thì sói ít km nhất mất phiếu trước."
+			return "Phiếu theo km: tổng km của sói còn sống chia " + need + " km ra số phiếu được tính, thiếu thì sói ít km nhất mất phiếu trước. " + wolfKmWhen
 		}
-		return "Tổng km của sói còn sống phải đủ " + need + " km cho mỗi sói."
+		return "Tổng km của sói còn sống phải đủ " + need + " km cho mỗi sói. " + wolfKmWhen
 	case werewolf.Seer, werewolf.Guard, werewolf.Witch, werewolf.Hunter:
 		switch {
 		case cfg.SkillMeters(role) == 0:
@@ -410,11 +413,6 @@ func rejectText(kind werewolf.Kind, err error) string {
 	if werewolf.IsVote(kind) && errors.Is(err, werewolf.ErrNotYourRole) {
 		return "Người lên giàn không bỏ phiếu."
 	}
-	// Cắn xét km chung của phe (wolvesHaveKm), còn app hiện km riêng từng người:
-	// chỉ ghi "Chưa đủ km" thì sói có km riêng đủ ngưỡng tưởng app lỗi.
-	if kind == werewolf.KindWolfBite && errors.Is(err, werewolf.ErrKmInsufficient) {
-		return "Phe Sói chưa đủ km. Sói tính chung cả phe: tổng km của sói còn sống phải đủ ngưỡng km cho mỗi sói, km riêng của bạn đủ thì vẫn chưa cắn được."
-	}
 	var r werewolf.Reject
 	if errors.As(err, &r) {
 		if t, ok := rejectTexts[r]; ok {
@@ -441,7 +439,7 @@ func wolfNeedText(cfg werewolf.Config, have, need, unit float64) string {
 	return wolfKmShort(have, need, unit)
 }
 
-// disabledReason là lý do khoá nút trên thẻ hành động. Có state nên nút Cắn
+// disabledReason là lý do khoá nút trên thẻ hành động. Có state nên nút đặc quyền
 // thiếu km ghi được số của phe; rejectText thì không có state.
 func disabledReason(st *werewolf.State, kind werewolf.Kind, err error) string {
 	if kind == werewolf.KindWolfDark && errors.Is(err, werewolf.ErrKmInsufficient) {
@@ -452,12 +450,7 @@ func disabledReason(st *werewolf.State, kind werewolf.Kind, err error) string {
 	if kind == werewolf.KindWolfDark && errors.Is(err, werewolf.ErrAlreadyUsed) {
 		return "Phe Sói đã dùng hết đặc quyền."
 	}
-	if kind != werewolf.KindWolfBite || !errors.Is(err, werewolf.ErrKmInsufficient) {
-		return rejectText(kind, err)
-	}
-	have, need := werewolf.WolfKm(st)
-	return "Phe Sói chưa đủ km: " + wolfNeedText(st.Config, have, need, kmPerUnit(st.Config)) + ". " +
-		"Sói tính chung cả phe nên km riêng của bạn đủ thì vẫn chưa cắn được. Km đã chốt, muốn cắn đêm sau thì cả phe chạy thêm trước lần chốt tới."
+	return rejectText(kind, err)
 }
 
 // rejectHTTP: lỗi luật trả 409/422, không bao giờ 5xx, để app không retry (3.8).

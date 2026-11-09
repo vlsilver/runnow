@@ -39,7 +39,7 @@ func TestRenderNightDigestKmBoard(t *testing.T) {
 	want := "<b>Đêm 1 buông xuống, cả làng đi ngủ.</b>\nQuản trò gọi lần lượt:\n" +
 		"1. Sói thức dậy, cả phe chọn một người để cắn, chốt lúc 0h.\n" +
 		"Ai có vai thì bấm trong tin quản trò nhắn riêng hoặc trong app 3i Run.\n\n" +
-		"<b>Km vừa chốt, dùng cho đêm 1</b>\n" +
+		"<b>Km vừa chốt, kỹ năng đêm nay tính tới lúc dùng</b>\n" +
 		"Có vai đêm thì cần đủ 2.5 km mới dùng được kỹ năng. Sói tính chung cả phe: tổng km sói còn sống phải đủ 2.5 km cho mỗi sói. Cupid không cần km.\n" +
 		"Đủ km: Chi 7.3 · An &lt;Sói&gt; 2.5\n" +
 		"Chưa đủ: Bình &amp; Co 2.4 · Giả 0"
@@ -87,20 +87,16 @@ func TestGroupMessagesCarryKmButton(t *testing.T) {
 
 // Sói có km riêng đủ ngưỡng mà phe chưa đủ tổng km thì nút Cắn nói rõ là thiếu
 // km của cả phe, không để người chơi tưởng mình đã đủ mà app lỗi.
-func TestWolfBiteDisabledReasonNamesTeamKm(t *testing.T) {
+// Km của sói chỉ xét lúc chốt cắn, nên phe đang thiếu km vẫn bấm được.
+func TestWolfBiteStaysOpenWhenShortOfKm(t *testing.T) {
 	st := ww.NewState(ww.Seed{1}, ww.Config{}, msgRoles(), msgStart)
 	night, _, err := ww.Step(st, ww.Inputs{Km: map[string]float64{"w1": 1200}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	acts := meActions(night, "w1", nil, nil, nil, night.NightAt.Add(time.Hour), 0)
-	if len(acts) != 1 || acts[0].Kind != string(ww.KindWolfBite) || acts[0].Enabled {
+	if len(acts) != 1 || acts[0].Kind != string(ww.KindWolfBite) || !acts[0].Enabled || acts[0].DisabledReason != "" {
 		t.Fatalf("w1 = %+v", acts)
-	}
-	want := "Phe Sói chưa đủ km: cả phe có 1.2 km, cần 2 km (1 km cho mỗi sói còn sống). " +
-		"Sói tính chung cả phe nên km riêng của bạn đủ thì vẫn chưa cắn được. Km đã chốt, muốn cắn đêm sau thì cả phe chạy thêm trước lần chốt tới."
-	if acts[0].DisabledReason != want {
-		t.Fatalf("lý do = %q", acts[0].DisabledReason)
 	}
 }
 
@@ -169,7 +165,7 @@ func TestRenderReminderLiveKm(t *testing.T) {
 		"Có vai đêm thì cần đủ 2.5 km mới dùng được kỹ năng. Sói tính chung cả phe: tổng km sói còn sống phải đủ 2.5 km cho mỗi sói. Cupid không cần km.\n" +
 		"Đủ km: Bình &amp; Co 3.1 · Chi 2.6\n" +
 		"Chưa đủ: An &lt;Sói&gt; 0.9\n" +
-		"Km chốt 22h dùng cho biểu quyết lúc đó và kỹ năng đêm kế tiếp. Chạy xong mở app cho km kịp đồng bộ."
+		"Biểu quyết tính km tới 22h, kỹ năng tính 24 tiếng tới lúc dùng. Chạy xong mở app cho km kịp đồng bộ."
 	if got, err := render(); err != nil || got != want {
 		t.Fatalf("18h = %q, %v", got, err)
 	}
@@ -257,16 +253,20 @@ func TestKmAlert(t *testing.T) {
 	st.Km = map[string]float64{"w1": 3100, "v1": 1990}
 	st.Players["w3"].Alive = false
 	live := map[string]float64{"w1": 1250, "w2": 2499, "w3": 9000, "v1": 2600}
+	recent := map[string]float64{"w1": 1000, "w2": 2000, "v1": 1100} // 24 tiếng tới 16h
 	var readErr error
 	var ends []time.Time
 	s := &GameStore{frameKm: func(_ context.Context, uid string, _, end time.Time) (FrameKm, error) {
 		ends = append(ends, end)
+		if end.Hour() == 16 {
+			return FrameKm{Meters: recent[uid]}, readErr
+		}
 		return FrameKm{Meters: live[uid]}, readErr
 	}}
 	wall := time.Date(2026, 10, 24, 15, 7, 0, 0, vietnam)
 
 	got, err := s.kmAlert(context.Background(), nil, st, "v1", wall)
-	want := "Tới 15:07 bạn có 2.6 km, chốt lúc 22h. Cần 2.5 km để dùng kỹ năng đêm.\nKm chốt 22h gần nhất: 1.9 km."
+	want := "Tới 15:07 bạn có 2.6 km, chốt lúc 22h. Cần 2.5 km để dùng kỹ năng đêm.\n24 tiếng tới lúc này: 1.1 km, kỹ năng tính số này.\nKm chốt 22h gần nhất: 1.9 km."
 	if err != nil || got != want {
 		t.Fatalf("dân = %q, %v", got, err)
 	}
@@ -276,7 +276,7 @@ func TestKmAlert(t *testing.T) {
 
 	got, err = s.kmAlert(context.Background(), nil, st, "w1", wall)
 	want = "Tới 15:07 bạn có 1.2 km, chốt lúc 22h. Cần 2.5 km để dùng kỹ năng đêm.\nKm chốt 22h gần nhất: 3.1 km.\n" +
-		"Phe Sói tới giờ: cả phe có 3.7 km, cần 5 km (2.5 km cho mỗi sói còn sống)."
+		"Phe Sói tới giờ: cả phe có 3 km, cần 5 km (2.5 km cho mỗi sói còn sống)."
 	if err != nil || got != want {
 		t.Fatalf("sói = %q, %v", got, err)
 	}

@@ -12,18 +12,22 @@ import (
 )
 
 // Bảng km trong app: km tới giờ của người còn sống lấy từ games/{id}/live/km,
-// chỉ tính lại khi bản giữ đã cũ 5 phút; sói thấy thêm km của phe trong /me.
+// chỉ tính lại khi bản giữ đã cũ 1 phút; sói thấy thêm km của phe trong /me.
 func TestEmulatorDetailLiveKmCached(t *testing.T) {
 	g := newStoreGame(t)
 	g.advance(time.Date(2026, 10, 15, 22, 0, 0, 0, vietnam)) // chốt 5 km mỗi người
 	var calls atomic.Int32
 	live := map[string]float64{"w1": 1200, "w2": 300, "v1": 2500}
+	recent := map[string]float64{"w1": 2000, "w2": 1000, "v1": 2500}
 	g.store.frameKm = func(_ context.Context, uid string, _, end time.Time) (FrameKm, error) {
 		calls.Add(1)
-		if !end.Equal(time.Date(2026, 10, 16, 22, 0, 0, 0, vietnam)) {
-			return FrameKm{}, fmt.Errorf("khung %v", end)
+		switch {
+		case end.Equal(time.Date(2026, 10, 16, 22, 0, 0, 0, vietnam)):
+			return FrameKm{FrameEnd: end, Meters: live[uid]}, nil
+		case end.Equal(time.Date(2026, 10, 16, 16, 0, 0, 0, vietnam)):
+			return FrameKm{FrameEnd: end, Meters: recent[uid]}, nil
 		}
-		return FrameKm{FrameEnd: end, Meters: live[uid]}, nil
+		return FrameKm{}, fmt.Errorf("khung %v", end)
 	}
 	ctx := context.Background()
 	at := time.Date(2026, 10, 16, 15, 40, 0, 0, vietnam)
@@ -58,34 +62,34 @@ func TestEmulatorDetailLiveKmCached(t *testing.T) {
 			t.Fatalf("%s: hôm qua %q, hôm nay %q; mong đợi %v", uid, last, today, want)
 		}
 	}
-	if calls.Load() != 10 {
-		t.Fatalf("lần đầu tính %d người, mong đợi 10", calls.Load())
+	if calls.Load() != 20 { // 10 người, mỗi người hai khung
+		t.Fatalf("lần đầu đọc %d lần, mong đợi 20", calls.Load())
 	}
 
-	if d := detail(at.Add(4 * time.Minute)); calls.Load() != 10 || d.KmTable.TodayLabel != "Hôm nay · tới 15:40" {
-		t.Fatalf("trong 5 phút vẫn tính lại: %d lần, %q", calls.Load(), d.KmTable.TodayLabel)
+	if d := detail(at.Add(59 * time.Second)); calls.Load() != 20 || d.KmTable.TodayLabel != "Hôm nay · tới 15:40" {
+		t.Fatalf("trong 1 phút vẫn tính lại: %d lần, %q", calls.Load(), d.KmTable.TodayLabel)
 	}
 	live["v1"] = 3000
-	d = detail(at.Add(5 * time.Minute))
-	if _, today := km(d, "v1"); calls.Load() != 20 || today != "3" || d.KmTable.TodayLabel != "Hôm nay · tới 15:45" {
-		t.Fatalf("sau 5 phút: %d lần, v1 %q, %q", calls.Load(), today, d.KmTable.TodayLabel)
+	d = detail(at.Add(time.Minute))
+	if _, today := km(d, "v1"); calls.Load() != 40 || today != "3" || d.KmTable.TodayLabel != "Hôm nay · tới 15:41" {
+		t.Fatalf("sau 1 phút: %d lần, v1 %q, %q", calls.Load(), today, d.KmTable.TodayLabel)
 	}
 
-	me, err := g.store.Me(ctx, g.id, GameViewer{UID: "w1"}, at.Add(5*time.Minute))
+	me, err := g.store.Me(ctx, g.id, GameViewer{UID: "w1"}, at.Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tk := me.TeamKm; tk == nil || tk.Label != "Km phe Sói" || tk.Last != 10 || tk.Today == nil || *tk.Today != 1.5 || tk.Need != 2 || tk.NeedLabel != "Cần 2 km để cắn" {
+	if tk := me.TeamKm; tk == nil || tk.Label != "Km phe Sói" || tk.Last != 10 || tk.Today == nil || *tk.Today != 3 || tk.Need != 2 || tk.NeedLabel != "Cần 2 km để cắn" {
 		t.Fatalf("teamKm của sói = %+v", me.TeamKm)
 	}
 	wantGoals := []GameKmGoal{
 		{Key: "vote", Label: "Giữ phiếu biểu quyết", NeedKm: 1, HaveKm: f64(1.2)},
-		{Key: "team_skill", Label: "Phe Sói cắn ở đêm tới", NeedKm: 2, HaveKm: f64(1.5)},
+		{Key: "team_skill", Label: "Phe Sói cắn ở đêm tới", NeedKm: 2, HaveKm: f64(3)},
 	}
 	if !reflect.DeepEqual(me.KmGoals, wantGoals) {
 		t.Fatalf("kmGoals của sói = %+v", me.KmGoals)
 	}
-	if calls.Load() != 20 {
+	if calls.Load() != 40 {
 		t.Fatalf("/me tính lại km dù bản giữ còn mới: %d lần", calls.Load())
 	}
 	me, err = g.store.Me(ctx, g.id, GameViewer{UID: "v1"}, at)

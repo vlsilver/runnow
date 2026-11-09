@@ -15,16 +15,19 @@ import (
 )
 
 // liveKmMaxAge là tuổi tối đa của km sống đã giữ. App poll Detail 15–300 giây
-// một lần, mỗi người chơi tốn ba lần đọc (LoadFrameKm), nên cả ván dùng chung
-// một bản tính và chỉ tính lại sau mốc này.
-const liveKmMaxAge = 5 * time.Minute
+// một lần, mỗi người chơi tốn sáu lần đọc (hai lần LoadFrameKm), nên cả ván dùng
+// chung một bản tính và chỉ tính lại sau mốc này.
+const liveKmMaxAge = time.Minute
 
-// liveKm là km khung đang gom của người còn sống, theo mét, tính lúc AsOf (giờ
-// của ván).
+// liveKm là km của người còn sống theo mét, tính lúc AsOf (giờ của ván). Meters
+// là km khung đang gom tới lần chốt phiếu kế tiếp; Recent là km 24 tiếng tới lúc
+// này (werewolf.KmFrameUntil), số xét kỹ năng.
 type liveKm struct {
-	AsOf     time.Time          `firestore:"asOf"`
-	FrameEnd time.Time          `firestore:"frameEnd"`
-	Meters   map[string]float64 `firestore:"meters"`
+	AsOf      time.Time          `firestore:"asOf"`
+	FrameEnd  time.Time          `firestore:"frameEnd"`
+	Meters    map[string]float64 `firestore:"meters"`
+	RecentEnd time.Time          `firestore:"recentEnd"`
+	Recent    map[string]float64 `firestore:"recent"`
 }
 
 // metersOf là km sống của uid; nil-safe để chỗ gọi không phải tách ván thử.
@@ -34,6 +37,24 @@ func (l *liveKm) metersOf(uid string) (float64, bool) {
 	}
 	m, ok := l.Meters[uid]
 	return m, ok
+}
+
+// recentOf là km 24 tiếng tới lúc này của uid; nil-safe như metersOf.
+func (l *liveKm) recentOf(uid string) (float64, bool) {
+	if l == nil {
+		return 0, false
+	}
+	m, ok := l.Recent[uid]
+	return m, ok
+}
+
+// skillView là st nhìn theo km 24 tiếng tới lúc này, để xét kỹ năng. checked
+// false khi không có km sống (ván thử, ván tắt km): lúc đó xét km đã chốt.
+func (l *liveKm) skillView(st *werewolf.State) (view *werewolf.State, checked bool) {
+	if l == nil {
+		return st, false
+	}
+	return st.WithKm(l.Recent), true
 }
 
 func liveKmRef(game *firestore.DocumentRef) *firestore.DocumentRef {
@@ -49,41 +70,66 @@ func (s *GameStore) liveKm(ctx context.Context, game *firestore.DocumentRef, dat
 		return nil, nil
 	}
 	now := gameNow(data, wall)
-	frame := st.Config.KmFrameAt(now)
-	end := frame.End
-	var alive []string
+	frame, recent := st.Config.KmFrameAt(now), werewolf.KmFrameUntil(now)
+	var uids []string
 	for _, uid := range sortedPlayers(st) {
-		if st.Players[uid].Alive {
-			alive = append(alive, uid)
+		// Thợ săn đã ngã vẫn cần km để bắn.
+		if st.Players[uid].Alive || (st.Hunter != nil && st.Hunter.UID == uid) {
+			uids = append(uids, uid)
 		}
 	}
-	snap, err := liveKmRef(game).Get(ctx)
-	switch {
-	case status.Code(err) == codes.NotFound:
-	case err != nil:
+	kept, err := readLiveKm(ctx, game)
+	if err != nil {
 		return nil, err
-	default:
-		var kept liveKm
-		if err := snap.DataTo(&kept); err != nil {
-			return nil, err
-		}
-		if kept.FrameEnd.Equal(end) && now.Sub(kept.AsOf) < liveKmMaxAge && hasAllKeys(kept.Meters, alive) {
-			return &kept, nil
-		}
+	}
+	if kept != nil && kept.FrameEnd.Equal(frame.End) && kept.RecentEnd.Equal(recent.End) && now.Sub(kept.AsOf) < liveKmMaxAge &&
+		hasAllKeys(kept.Meters, uids) && hasAllKeys(kept.Recent, uids) {
+		return kept, nil
 	}
 
-	out := liveKm{AsOf: now, FrameEnd: end, Meters: make(map[string]float64, len(alive))}
+	out := liveKm{AsOf: now, FrameEnd: frame.End, RecentEnd: recent.End}
+	if out.Meters, err = s.metersIn(ctx, uids, frame); err != nil {
+		return nil, err
+	}
+	if out.Recent, err = s.metersIn(ctx, uids, recent); err != nil {
+		return nil, err
+	}
+	if _, err := liveKmRef(game).Set(ctx, out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// readLiveKm trả nil khi chưa có bản giữ nào.
+func readLiveKm(ctx context.Context, game *firestore.DocumentRef) (*liveKm, error) {
+	snap, err := liveKmRef(game).Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var kept liveKm
+	if err := snap.DataTo(&kept); err != nil {
+		return nil, err
+	}
+	return &kept, nil
+}
+
+// metersIn đọc km khung frame của từng uid, song song có giới hạn.
+func (s *GameStore) metersIn(ctx context.Context, uids []string, frame werewolf.KmFrame) (map[string]float64, error) {
+	out := make(map[string]float64, len(uids))
 	var mu sync.Mutex
 	group, gctx := errgroup.WithContext(ctx)
 	group.SetLimit(8)
-	for _, uid := range alive {
+	for _, uid := range uids {
 		group.Go(func() error {
 			fk, err := s.frameKm(gctx, uid, frame.Start, frame.End)
 			if err != nil {
 				return fmt.Errorf("km của %s: %w", uid, err)
 			}
 			mu.Lock()
-			out.Meters[uid] = fk.Meters
+			out[uid] = fk.Meters
 			mu.Unlock()
 			return nil
 		})
@@ -91,10 +137,7 @@ func (s *GameStore) liveKm(ctx context.Context, game *firestore.DocumentRef, dat
 	if err := group.Wait(); err != nil {
 		return nil, err
 	}
-	if _, err := liveKmRef(game).Set(ctx, out); err != nil {
-		return nil, err
-	}
-	return &out, nil
+	return out, nil
 }
 
 func hasAllKeys(m map[string]float64, keys []string) bool {
@@ -119,11 +162,11 @@ func kmTable(data map[string]any, st *werewolf.State, live *liveKm, wall time.Ti
 	t := &GameKmTable{
 		LastLabel: "Hôm qua · chốt " + hm(lastClose),
 		UnitKm:    kmPerUnit(st.Config),
-		Note:      "Km chốt lúc " + closes + ", dùng cho biểu quyết và kỹ năng đêm ngay sau đó. Chạy xong mở app để km kịp đồng bộ.",
+		Note:      "Biểu quyết tính km tới " + closes + ", kỹ năng tính 24 tiếng tới lúc dùng. Chạy xong mở app để km kịp đồng bộ.",
 	}
 	switch st.Config.VoteMode() {
 	case werewolf.VoteFlat:
-		t.Note = "Km chốt lúc " + closes + ", dùng cho kỹ năng đêm ngay sau đó. Chạy xong mở app để km kịp đồng bộ."
+		t.Note = "Kỹ năng tính km 24 tiếng tới lúc dùng. Chạy xong mở app để km kịp đồng bộ."
 	case werewolf.VoteTop:
 		t.UnitLabel = "tranh x2 phiếu"
 	case werewolf.VoteCut:
@@ -191,9 +234,9 @@ func sameDate(a, b time.Time) bool {
 	return ay == by && am == bm && ad == bd
 }
 
-// wolfTeamKm là km của phe Sói cho một sói còn sống: tổng km chốt 22h gần nhất,
-// tổng km đang gom (live, nil ở ván thử thì Today nil), và mức cần để cắn
-// (WolfKm). Phe cắn không cần km thì nil.
+// wolfTeamKm là km của phe Sói cho một sói còn sống: tổng km chốt gần nhất, tổng
+// km 24 tiếng tới lúc này (live, nil ở ván thử thì Today nil), và mức cần để
+// cắn (WolfKm). Phe cắn không cần km thì nil.
 func wolfTeamKm(st *werewolf.State, live *liveKm) *GameTeamKm {
 	have, need := werewolf.WolfKm(st)
 	if need == 0 {
@@ -206,7 +249,7 @@ func wolfTeamKm(st *werewolf.State, live *liveKm) *GameTeamKm {
 	var today float64
 	for _, uid := range sortedPlayers(st) {
 		if p := st.Players[uid]; p.Alive && p.Role == werewolf.Wolf {
-			today += live.Meters[uid]
+			today += live.Recent[uid]
 		}
 	}
 	today /= 1000

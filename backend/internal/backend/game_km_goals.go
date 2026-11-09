@@ -4,14 +4,14 @@ import (
 	"github.com/vlsilver/runnow/backend/internal/werewolf"
 )
 
-// GameKmGoal là một mốc km người gọi đang nhắm tới, tính tới lần chốt km 22h kế
-// tiếp: mốc đó quyết định phiếu ở phiên treo và kỹ năng của đêm ngay sau. App vẽ
-// thanh HaveKm/NeedKm theo Label; Key để app chọn icon, gặp khoá lạ thì vẽ mặc định.
+// GameKmGoal là một mốc km người gọi đang nhắm tới. Mốc phiếu tính tới lần chốt
+// phiếu kế tiếp, mốc kỹ năng và cắn tính 24 tiếng tới lúc này. App vẽ thanh
+// HaveKm/NeedKm theo Label; Key để app chọn icon, gặp khoá lạ thì vẽ mặc định.
 type GameKmGoal struct {
 	Key    string  `json:"key"` // vote | vote_top | skill | team_skill
 	Label  string  `json:"label"`
 	NeedKm float64 `json:"needKm"`
-	// HaveKm là km đang gom tới mốc chốt; nil ở ván thử (không đọc buổi chạy thật).
+	// HaveKm: nil ở ván thử (không đọc buổi chạy thật).
 	HaveKm *float64 `json:"haveKm,omitempty"`
 }
 
@@ -34,6 +34,11 @@ func kmGoals(st *werewolf.State, uid string, live *liveKm, team *GameTeamKm) []G
 	if m, ok := live.metersOf(uid); ok {
 		k := m / 1000
 		have = &k
+	}
+	var recent *float64
+	if m, ok := live.recentOf(uid); ok {
+		k := m / 1000
+		recent = &k
 	}
 	var out []GameKmGoal
 	unit := kmPerUnit(st.Config)
@@ -65,7 +70,7 @@ func kmGoals(st *werewolf.State, uid string, live *liveKm, team *GameTeamKm) []G
 	}
 	if ok && !st.Config.VillageGate && !st.Config.GroupSkills() {
 		if need := st.Config.SkillMeters(me.Role) / 1000; need > 0 {
-			out = append(out, GameKmGoal{Key: "skill", Label: label, NeedKm: need, HaveKm: have})
+			out = append(out, GameKmGoal{Key: "skill", Label: label, NeedKm: need, HaveKm: recent})
 		}
 	}
 	return out

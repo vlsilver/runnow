@@ -77,8 +77,9 @@ func TestPrecheckReasonsBeforeTarget(t *testing.T) {
 	if err := Precheck(g.st, KindSeerPeek, "seer", nil, now); !errors.Is(err, ErrKmInsufficient) {
 		t.Fatalf("999 m: %v", err)
 	}
+	// Km của sói chỉ xét lúc chốt cắn, nên thiếu km vẫn bấm được.
 	g.st.Km = map[string]float64{}
-	if err := Precheck(g.st, KindWolfBite, "w1", nil, now); !errors.Is(err, ErrKmInsufficient) {
+	if err := Precheck(g.st, KindWolfBite, "w1", nil, now); err != nil {
 		t.Fatalf("sói thiếu km: %v", err)
 	}
 

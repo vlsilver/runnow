@@ -92,7 +92,7 @@ func cardKm(cfg werewolf.Config) []GameSetupItem {
 		decides = "Dùng kỹ năng và bỏ phiếu"
 	}
 	items := []GameSetupItem{
-		{Key: "kmWindow", Icon: "km", Label: "Tính km", Value: kmWindowText},
+		{Key: "kmWindow", Icon: "km", Label: "Tính km", Value: "24 tiếng tới lúc chốt phiếu hoặc dùng kỹ năng"},
 		{Key: "kmDecides", Icon: "skill", Label: "Km quyết định", Value: decides},
 	}
 	switch cfg.VoteMode() {

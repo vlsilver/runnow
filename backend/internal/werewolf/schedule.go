@@ -385,6 +385,27 @@ func (c Config) KmFrameAt(at time.Time) KmFrame {
 	return KmFrame{Start: end.Add(-KmFrameLen), End: end}
 }
 
+// KmFrameUntil là khung 24 tiếng tới at. Số Health chỉ có theo giờ nên khung phải
+// tròn giờ: làm tròn lên để buổi chạy trong giờ đang dở vẫn được tính, đổi lại phần
+// đầu khung hụt dưới một tiếng.
+func KmFrameUntil(at time.Time) KmFrame {
+	end := at.Truncate(time.Hour)
+	if end.Before(at) {
+		end = end.Add(time.Hour)
+	}
+	return KmFrame{Start: end.Add(-KmFrameLen), End: end}
+}
+
+// DueBiteFrame: lần chốt kế tiếp là chốt cắn thì cần km của khung 24 tiếng tới
+// lúc đó. Lượt thợ săn chen trong đêm thì chốt lượt đó trước. Admin dời hạn lẻ
+// phút thì khung làm tròn lên như KmFrameUntil.
+func (st *State) DueBiteFrame() (KmFrame, bool) {
+	if st.Phase != PhaseNight || st.Hunter != nil || st.Config.KmOff {
+		return KmFrame{}, false
+	}
+	return KmFrameUntil(st.Deadline()), true
+}
+
 // LastKmClose là lần chốt liền trước khung f, cũng là lúc vòng đang chơi mở.
 func (c Config) LastKmClose(f KmFrame) time.Time {
 	return f.End.Add(-c.RoundLen())

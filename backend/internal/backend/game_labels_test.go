@@ -69,7 +69,7 @@ func TestSkillKmTextByMode(t *testing.T) {
 		t.Errorf("bảng km: %s", needs)
 	}
 	soloWolf := ww.Config{Ruleset: ww.RulesetKm, Vote: ww.VoteSolo, SkillKm: map[ww.Role]float64{ww.Wolf: 2}}
-	if got := roleKmLine(ww.Wolf, soloWolf, "1"); got != "Sói nào tự chạy đủ 2 km thì phiếu đó được tính." {
+	if got := roleKmLine(ww.Wolf, soloWolf, "1"); got != "Sói nào tự chạy đủ 2 km thì phiếu đó được tính. Km tính 24 tiếng tới lúc chốt cắn." {
 		t.Errorf("Riêng, sói: %s", got)
 	}
 	if mySkillKm(group, ww.Seer) == " Cần 1 km để dùng kỹ năng đêm." {

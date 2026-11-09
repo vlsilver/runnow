@@ -49,9 +49,9 @@ const (
 	tallyDraw      = "Bằng phiếu, bằng km · bốc thăm"
 )
 
-// attachTallies gắn bảng kiểm phiếu vào các action có bảng. Biểu quyết chốt lúc
-// 22h nên dùng km tới giờ (live; ván thử không có thì km chốt gần nhất), còn đề
-// cử và cắn chốt bằng km 22h trước (st.Km).
+// attachTallies gắn bảng kiểm phiếu vào các action có bảng. Biểu quyết dùng km
+// đang gom tới lần chốt phiếu, cắn dùng km 24 tiếng tới lúc này (ván thử không có
+// km sống thì km chốt gần nhất), còn đề cử dùng km chốt gần nhất (st.Km).
 func (s *GameStore) attachTallies(ctx context.Context, game *firestore.DocumentRef, st *werewolf.State, acts []GameAction, players []gamePlayerInfo, live *liveKm) error {
 	if !st.Config.KmTie() {
 		return nil
@@ -72,8 +72,12 @@ func (s *GameStore) attachTallies(ctx context.Context, game *firestore.DocumentR
 			}
 		}
 		km := st.Km
-		if werewolf.IsVote(kind) && live != nil {
+		switch {
+		case live == nil:
+		case werewolf.IsVote(kind):
 			km = live.Meters
+		case kind == werewolf.KindWolfBite:
+			km = live.Recent
 		}
 		acts[i].Tally = actionTally(st, kind, round, km, players)
 	}
@@ -81,8 +85,7 @@ func (s *GameStore) attachTallies(ctx context.Context, game *firestore.DocumentR
 }
 
 // actionTally dựng bảng kiểm phiếu của kind từ các lựa chọn đang lưu của vòng.
-// km (mét) là km bước chốt sẽ dùng: km chốt 22h trước với đề cử và cắn, km tới
-// giờ với biểu quyết (chốt lúc 22h). nil khi kind không có bảng hoặc ván luật cũ.
+// km (mét) là km bước chốt sẽ dùng, hoặc số gần nhất với nó (attachTallies). nil khi kind không có bảng hoặc ván luật cũ.
 func actionTally(st *werewolf.State, kind werewolf.Kind, acts []werewolf.Action, km map[string]float64, players []gamePlayerInfo) *GameTally {
 	if !st.Config.KmTie() {
 		return nil
@@ -110,7 +113,7 @@ func actionTally(st *werewolf.State, kind werewolf.Kind, acts []werewolf.Action,
 		}
 	case kind == werewolf.KindWolfBite:
 		t.Seats = st.Config.BiteSeats()
-		plan := werewolf.WolfVotePlan(st)
+		plan := werewolf.WolfVotePlan(st, km)
 		cut, t.Note = tallyCut(plan, names, "", cutLead(st.Config, st.Config.SkillMeters(werewolf.Wolf)))
 		pick = func(a werewolf.Action) string {
 			if st.Players[a.Actor].Role != werewolf.Wolf || len(a.Targets) != 1 {

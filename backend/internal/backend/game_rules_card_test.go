@@ -26,7 +26,7 @@ func TestRulesCardDefaultGame(t *testing.T) {
 		"Một vòng | 10h–20h | Đề cử, tối đa 3 người lên giàn",
 		"Một vòng | 20h–22h | Biểu quyết Treo hay Tha",
 		"Một vòng | 22h | Chốt phiếu và km",
-		"Km | Tính km | 24 tiếng trước giờ chốt",
+		"Km | Tính km | 24 tiếng tới lúc chốt phiếu hoặc dùng kỹ năng",
 		"Km | Km quyết định | Dùng kỹ năng và bỏ phiếu",
 		"Lộ bài | Bị treo | Chỉ lộ phe",
 		"Lộ bài | Chết cách khác | Lật bài",
@@ -99,7 +99,7 @@ func TestRulesCardFollowsConfig(t *testing.T) {
 		{name: "ba vòng có km", cfg: ww.Config{Schedule: &ww.Schedule{StartHour: 22, RoundHours: 8, Rounds: 3}},
 			has: []string{
 				"Một vòng |  | Mỗi ngày 3 vòng, mỗi vòng 8 tiếng, mở lúc 22h, 6h, 14h.",
-				"Km | Tính km | 24 tiếng trước giờ chốt",
+				"Km | Tính km | 24 tiếng tới lúc chốt phiếu hoặc dùng kỹ năng",
 			}},
 		{name: "một vòng ngắn không km", cfg: ww.Config{KmOff: true, Schedule: &ww.Schedule{StartHour: 20, RoundHours: 2, Rounds: 1}},
 			has: []string{"Một vòng |  | Mỗi ngày một vòng 2 tiếng, mở lúc 20h."}, noKmBox: true},

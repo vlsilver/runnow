@@ -111,10 +111,10 @@ func TestKmAlertFollowsConfig(t *testing.T) {
 		t.Fatalf("tắt km = %q, đọc km %d lần", got, reads)
 	}
 	cfg := ww.Config{KmPerUnit: 2.5, SkillKm: map[ww.Role]float64{ww.Wolf: 0, ww.Seer: 3}}
-	if got := alert(cfg, "s1"); got != "Tới 15:07 bạn có 1.2 km, chốt lúc 22h. Cần đủ 3 km.\nKm chốt 22h gần nhất: 0 km." {
+	if got := alert(cfg, "s1"); got != "Tới 15:07 bạn có 1.2 km, chốt lúc 22h. Cần đủ 3 km.\n24 tiếng tới lúc này: 1.2 km, kỹ năng tính số này.\nKm chốt 22h gần nhất: 0 km." {
 		t.Fatalf("tiên tri = %q", got)
 	}
-	if got := alert(cfg, "v1"); got != "Tới 15:07 bạn có 1.2 km, chốt lúc 22h.\nKm chốt 22h gần nhất: 0 km." {
+	if got := alert(cfg, "v1"); got != "Tới 15:07 bạn có 1.2 km, chốt lúc 22h.\n24 tiếng tới lúc này: 1.2 km, kỹ năng tính số này.\nKm chốt 22h gần nhất: 0 km." {
 		t.Fatalf("dân = %q", got)
 	}
 	if got := alert(cfg, "w1"); got != "Tới 15:07 bạn có 1.2 km, chốt lúc 22h.\nKm chốt 22h gần nhất: 0 km.\nPhe Sói cắn không cần km." {
@@ -160,7 +160,7 @@ func TestVoteBonusIsPublic(t *testing.T) {
 // nói km dùng cho kỹ năng.
 func TestReminderVoteFlatNoForecast(t *testing.T) {
 	got := reminderAt(t, ww.Config{KmPerUnit: 2.5, Vote: ww.VoteFlat}, ww.PhaseTrial, "f1", map[string]float64{"w1": 900})()
-	if strings.Contains(got, "Biểu quyết nếu chốt") || !strings.HasSuffix(got, "\nKm chốt 22h dùng cho kỹ năng đêm kế tiếp. Chạy xong mở app cho km kịp đồng bộ.") {
+	if strings.Contains(got, "Biểu quyết nếu chốt") || !strings.HasSuffix(got, "\nKỹ năng tính km 24 tiếng tới lúc dùng. Chạy xong mở app cho km kịp đồng bộ.") {
 		t.Fatalf("flat = %q", got)
 	}
 }

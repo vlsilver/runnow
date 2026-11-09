@@ -411,8 +411,8 @@ func TestEmulatorStartGameNeedsRegisteredPlayers(t *testing.T) {
 	}
 }
 
-// Ván km hai vòng: mỗi lần chốt đọc đúng 24 tiếng trước giờ chốt, các khung
-// chồng nửa ngày lên nhau.
+// Ván km hai vòng 12 tiếng: chốt phiếu và chốt cắn (hết Đêm, sau 1 tiếng) mỗi lần
+// đọc đúng 24 tiếng trước giờ chốt, các khung chồng nhau.
 func TestEmulatorMultiRoundKmFramesAre24Hours(t *testing.T) {
 	g := newStoreGameWith(t, ww.Config{Schedule: &ww.Schedule{StartHour: 22, RoundHours: 12, Rounds: 2}})
 	type frame struct{ start, end time.Time }
@@ -429,7 +429,9 @@ func TestEmulatorMultiRoundKmFramesAre24Hours(t *testing.T) {
 	}
 	want := []frame{
 		{night.Add(-24 * time.Hour), night},
+		{night.Add(-23 * time.Hour), night.Add(time.Hour)},
 		{night.Add(-12 * time.Hour), night.Add(12 * time.Hour)},
+		{night.Add(-11 * time.Hour), night.Add(13 * time.Hour)},
 		{night, night.Add(24 * time.Hour)},
 	}
 	if len(seen) != len(want) {
@@ -494,12 +496,24 @@ func TestEmulatorEveryPresetCloseFrames(t *testing.T) {
 				if preset == "classic" {
 					want = nil
 				}
-				if len(seen) != len(want) {
-					t.Fatalf("đọc km %d lần, muốn %d: %v", len(seen), len(want), seen)
+				// Giữa hai lần chốt phiếu có đúng một lần đọc km cho chốt cắn.
+				wantReads := len(want)*2 - 1
+				if preset == "classic" {
+					wantReads = 0
 				}
-				for i := range want {
-					if !seen[i][0].Equal(want[i][0]) || !seen[i][1].Equal(want[i][1]) {
-						t.Fatalf("lần chốt %d: %v, muốn %v", i, seen[i], want[i])
+				if len(seen) != wantReads {
+					t.Fatalf("đọc km %d lần, muốn %d: %v", len(seen), wantReads, seen)
+				}
+				for i, frame := range seen {
+					if i%2 == 0 {
+						w := want[i/2]
+						if !frame[0].Equal(w[0]) || !frame[1].Equal(w[1]) {
+							t.Fatalf("lần chốt phiếu %d: %v, muốn %v", i/2, frame, w)
+						}
+						continue
+					}
+					if frame[1].Sub(frame[0]) != 24*time.Hour || !frame[1].After(want[i/2][1]) || !frame[1].Before(want[i/2+1][1]) {
+						t.Fatalf("lần chốt cắn sau phiếu %d: %v", i/2, frame)
 					}
 				}
 				for k := range c.rounds + 1 {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -417,7 +418,15 @@ func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid, host str
 			return ButtonReply{}, err
 		}
 		a := werewolf.Action{Kind: b.Kind, Actor: uid, Targets: targets, ReceivedAt: gameNow(g.Data(), received)}
-		if err := werewolf.Validate(st, a, mine, a.ReceivedAt); err != nil {
+		view := st
+		if werewolf.UsesSkillKm(b.Kind) {
+			live, err := s.liveKm(ctx, game, g.Data(), st, received)
+			if err != nil {
+				return ButtonReply{}, err
+			}
+			view, _ = live.skillView(st)
+		}
+		if err := werewolf.Validate(view, a, mine, a.ReceivedAt); err != nil {
 			var reject werewolf.Reject
 			if !errors.As(err, &reject) {
 				return ButtonReply{}, err
@@ -533,8 +542,8 @@ func (s *GameStore) cardAlert(ctx context.Context, game *firestore.DocumentRef, 
 	return truncateUTF16(text, answerTextSize), nil
 }
 
-// kmAlert là km của người bấm "Xem km của tôi": km đang gom tới mốc chốt kế tiếp
-// (đọc lúc bấm) và km chốt gần nhất. Sói thấy thêm km đang gom của cả phe,
+// kmAlert là km của người bấm "Xem km của tôi": km đang gom tới lần chốt phiếu kế
+// tiếp, km 24 tiếng tới lúc này (số xét kỹ năng) và km chốt gần nhất. Sói thấy thêm km cả phe,
 // vì sói cắn được hay không là theo tổng của phe chứ không theo km riêng.
 func (s *GameStore) kmAlert(ctx context.Context, gameData map[string]any, st *werewolf.State, uid string, wall time.Time) (string, error) {
 	me := st.Players[uid]
@@ -546,18 +555,19 @@ func (s *GameStore) kmAlert(ctx context.Context, gameData map[string]any, st *we
 	}
 	now := gameNow(gameData, wall)
 	frame := st.Config.KmFrameAt(now)
+	recent := werewolf.KmFrameUntil(now)
 	last := "Km chốt " + hm(st.Config.LastKmClose(frame)) + " gần nhất: " + formatKm(math.Floor(st.Km[uid]/100)/10) + " km."
 	if gameData["testMode"] == true { // ván thử không đọc buổi chạy thật (snapshotKmIfDue)
 		return "Ván thử không tính km chạy thật. " + last, nil
 	}
-	live := func(uid string) (float64, error) {
-		fk, err := s.frameKm(ctx, uid, frame.Start, frame.End)
+	live := func(uid string, f werewolf.KmFrame) (float64, error) {
+		fk, err := s.frameKm(ctx, uid, f.Start, f.End)
 		if err != nil {
 			return 0, fmt.Errorf("km của %s: %w", uid, err)
 		}
 		return fk.Meters, nil
 	}
-	mine, err := live(uid)
+	mine, err := live(uid, frame)
 	if err != nil {
 		return "", err
 	}
@@ -566,13 +576,21 @@ func (s *GameStore) kmAlert(ctx context.Context, gameData map[string]any, st *we
 		fmt.Sprintf("Tới %s bạn có %s km, chốt lúc %s.", now.In(vietnam).Format("15:04"), formatKm(math.Floor(mine/100)/10), hm(frame.End)) + mySkillKm(st.Config, me.Role),
 		last,
 	}
+	if me.Role != werewolf.Wolf {
+		// Sói xem số của cả phe ở dòng dưới; hộp thoại nút chỉ chứa 200 ký tự.
+		mineRecent, err := live(uid, recent)
+		if err != nil {
+			return "", err
+		}
+		lines = slices.Insert(lines, 1, "24 tiếng tới lúc này: "+formatKm(math.Floor(mineRecent/100)/10)+" km, kỹ năng tính số này.")
+	}
 	if me.Role == werewolf.Wolf && st.Config.SkillMeters(werewolf.Wolf) == 0 {
 		lines = append(lines, "Phe Sói cắn không cần km.")
 	} else if me.Role == werewolf.Wolf {
 		var have float64
 		for _, other := range sortedPlayers(st) {
 			if p := st.Players[other]; p.Alive && p.Role == werewolf.Wolf {
-				m, err := live(other)
+				m, err := live(other, recent)
 				if err != nil {
 					return "", err
 				}

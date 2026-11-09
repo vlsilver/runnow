@@ -19,7 +19,10 @@ func TestR1WolvesNeedTotalKmOfXPerAliveWolf(t *testing.T) {
 	g := newGame(t, baseRoles())
 	g.km["w1"], g.km["w2"], g.km["w3"] = 1000, 1000, 999 // 2999 m < 3 × 1000 m
 	g.next()
-	g.reject(ErrKmInsufficient, act(KindWolfBite, "w1", "v1"))
+	g.do(KindWolfBite, "w1", "v1")
+	if e := find(g.next(), EventWolvesTarget); e == nil || e.Reason != VoidNoKm || e.WolfHave != 2999 || e.WolfNeed != 3000 {
+		t.Fatalf("sự kiện = %+v", e)
+	}
 
 	g = newGame(t, baseRoles())
 	g.km["w1"], g.km["w2"], g.km["w3"] = 3000, 0, 0 // đúng 3000 m: đủ, km dồn cho một sói cũng được

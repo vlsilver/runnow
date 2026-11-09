@@ -60,10 +60,6 @@ func Precheck(st *State, kind Kind, actor string, mine []Action, now time.Time) 
 		return ErrKmInsufficient
 	}
 	switch kind {
-	case KindWolfBite:
-		if !wolvesHaveKm(st) {
-			return ErrKmInsufficient
-		}
 	case KindWolfDark:
 		if !st.DarkUnlocked() {
 			return ErrKmInsufficient

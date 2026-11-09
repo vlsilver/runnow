@@ -307,6 +307,14 @@ func (c Config) SkillMeters(r Role) float64 {
 	return c.unitMeters()
 }
 
+// WithKm là st nhìn theo km khác, để xét kỹ năng theo km tới lúc bấm mà không
+// đổi km đã chốt của ván. Bản sao nông, chỉ dùng để đọc.
+func (st *State) WithKm(km map[string]float64) *State {
+	view := *st
+	view.Km = km
+	return &view
+}
+
 // hasKm: uid đủ km cho kỹ năng của vai mình. Ván luật km chọn Theo nhóm thì vai
 // phe Dân dùng chung km (skillCut); VillageGate là bản cũ của luật đó.
 func (st *State) hasKm(uid string) bool {
