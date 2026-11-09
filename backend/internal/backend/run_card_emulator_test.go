@@ -14,6 +14,7 @@ func runCardHarness(t *testing.T, rolls ...int64) *apiHarness {
 	t.Helper()
 	db := emulatorDB(t)
 	h := newAPIHarness(t, NewGameStore(db, testPscChat))
+	h.deps.Activities = NewActivityService(db, nil, nil, nil, nil, "", "")
 	var mu sync.Mutex
 	h.deps.RunCards = &RunCardStore{db: db, now: func() time.Time { return time.Date(2026, 10, 25, 1, 0, 0, 0, time.UTC) }, roll: func() (int64, error) {
 		mu.Lock()
@@ -30,7 +31,7 @@ func runCardHarness(t *testing.T, rolls ...int64) *apiHarness {
 func seedRun(t *testing.T, h *apiHarness, uid, id string, extra map[string]any) {
 	t.Helper()
 	m := map[string]any{"id": id, "name": "Buổi " + id, "source": "strava", "sportType": "Run", "startedAt": "2026-10-24T23:00:00Z",
-		"distanceMeters": 23500.0, "movingTimeSeconds": 7200, "elapsedTimeSeconds": 7500,
+		"distanceMeters": 23500.0, "movingTimeSeconds": 7200, "elapsedTimeSeconds": 7500, "streamsHydrated": true, "streamsVersion": 4,
 		"routePoints": []any{map[string]any{"latitude": 21.03, "longitude": 105.85}, map[string]any{"latitude": 21.04, "longitude": 105.86}},
 		"splits":      []any{map[string]any{"distanceMeters": 1000.0, "movingTimeSeconds": 300.0}}}
 	for k, v := range extra {
@@ -281,5 +282,19 @@ func TestEmulatorRunCardUnflippedList(t *testing.T) {
 	}
 	if want := []string{"open1", "open2", "threeI"}; !slices.Equal(ids, want) {
 		t.Fatalf("buổi chưa lật = %v, muốn %v", ids, want)
+	}
+}
+
+func TestEmulatorRunCardKeepsPaceFromStreams(t *testing.T) {
+	// 23,5 km nên bước 1 km: 300 s rồi 360 s.
+	h := runCardHarness(t, 820000, 0, 999999)
+	seedRun(t, h, "u1", "a1", map[string]any{"streams": map[string]any{
+		"distance": []any{0.0, 1000.0, 2000.0}, "time": []any{0.0, 300.0, 660.0},
+	}})
+	r := h.call("u1", "POST", "/v1/activities/a1/card", nil, "")
+	h.want(r, 200, "")
+	pace := r.body["card"].(map[string]any)["snapshot"].(map[string]any)["pace"].(map[string]any)
+	if pace["stepMeters"] != 1000.0 || !slices.Equal(pace["secondsPerKm"].([]any), []any{300.0, 360.0}) {
+		t.Fatalf("pace = %v", pace)
 	}
 }

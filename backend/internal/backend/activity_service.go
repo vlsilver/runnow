@@ -682,6 +682,33 @@ func (s *ActivityService) Hydrate(ctx context.Context, uid, activityID string) e
 	return s.fetchAndUpsert(ctx, uid, activityID, time.Now().Unix(), true)
 }
 
+// runCardNeedsStreams báo buổi Strava chưa nạp stream. Webhook chỉ ghi phần tóm
+// tắt, stream chỉ về khi mở chi tiết buổi.
+func runCardNeedsStreams(data map[string]any) bool {
+	return stringValue(data["source"]) == "strava" &&
+		(data["streamsHydrated"] != true || int(number(data["streamsVersion"])) != 4)
+}
+
+// HydrateForCard nạp stream của buổi Strava ngay trước khi lật, vì snapshot thẻ
+// chụp một lần rồi giữ nguyên. Strava lỗi thì chỉ ghi log: thẻ vẫn lật được và
+// biểu đồ về lại pace từng km.
+func (s *ActivityService) HydrateForCard(ctx context.Context, uid, activityID string) error {
+	snap, err := s.db.Collection("users").Doc(uid).Collection("activities").Doc(activityID).Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !runCardNeedsStreams(snap.Data()) {
+		return nil
+	}
+	if err := s.fetchAndUpsert(ctx, uid, activityID, time.Now().Unix(), true); err != nil {
+		slog.WarnContext(ctx, "run_card.hydrate_failed", "uid", uid, "activityId", activityID, "error", err)
+	}
+	return nil
+}
+
 func (s *ActivityService) fetchAndUpsert(ctx context.Context, uid, activityID string, eventTime int64, includeStreams bool) error {
 	tombRef := s.db.Collection("activityTombstones").Doc(uid + "_" + activityID)
 	tomb, err := tombRef.Get(ctx)

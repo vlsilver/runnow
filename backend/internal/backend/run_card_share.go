@@ -27,7 +27,7 @@ func publicProfile(data map[string]any) bool {
 
 // clubCardSnapshotKeys là những field snapshot được khoe. Liệt kê field được
 // phép chứ không liệt kê field cấm, để field mới thêm vào snapshot không tự lộ.
-var clubCardSnapshotKeys = []string{"name", "sportType", "source", "startedAt", "distanceMeters", "movingTimeSeconds", "elapsedTimeSeconds", "elevationGainMeters", "splits"}
+var clubCardSnapshotKeys = []string{"name", "sportType", "source", "startedAt", "distanceMeters", "movingTimeSeconds", "elapsedTimeSeconds", "elevationGainMeters", "splits", "pace"}
 
 func (s *RunCardStore) clubCardRef(uid, activityID string) *firestore.DocumentRef {
 	return s.db.Collection("clubCards").Doc(uid + "_" + activityID)

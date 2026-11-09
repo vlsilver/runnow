@@ -2,7 +2,9 @@ package backend
 
 import (
 	"errors"
+	"reflect"
 	"testing"
+	"time"
 )
 
 func TestRunCardOddsAtAnchorsAndMidpoints(t *testing.T) {
@@ -162,5 +164,124 @@ func TestRunCardVariantSplitsTheSecretSliceByElement(t *testing.T) {
 		if got := runCardVariant(c.r); got != c.want {
 			t.Errorf("r %d: %q, muốn %q", c.r, got, c.want)
 		}
+	}
+}
+
+func TestRunCardPaceStepFollowsTheKmOnTheCard(t *testing.T) {
+	cases := []struct {
+		km   float64
+		want float64
+	}{{1, 200}, {3, 200}, {3.1, 500}, {6, 500}, {9.9, 500}, {10, 1000}, {42.2, 1000}}
+	for _, c := range cases {
+		if got := runCardPaceStep(c.km); got != c.want {
+			t.Errorf("%v km: bước %v, muốn %v", c.km, got, c.want)
+		}
+	}
+}
+
+func paceInput(meters float64, distance, seconds []any) map[string]any {
+	return map[string]any{"distanceMeters": meters, "streams": map[string]any{"distance": distance, "time": seconds}}
+}
+
+func paceValues(t *testing.T, got map[string]any) []any {
+	t.Helper()
+	if got == nil {
+		t.Fatal("không có chuỗi pace")
+	}
+	return got["secondsPerKm"].([]any)
+}
+
+func TestRunCardPaceSamplesByDistance(t *testing.T) {
+	// 60 s, 70 s, 60 s, 60 s, 50 s cho mỗi 200 m.
+	got := runCardPace(paceInput(1000, []any{0.0, 200.0, 400.0, 600.0, 800.0, 1000.0}, []any{0.0, 60.0, 130.0, 190.0, 250.0, 300.0}))
+	if got["stepMeters"] != 200.0 || !reflect.DeepEqual(paceValues(t, got), []any{300.0, 350.0, 300.0, 300.0, 250.0}) {
+		t.Fatalf("pace = %v", got)
+	}
+}
+
+func TestRunCardPaceSplitsASampleAcrossTheStepBoundary(t *testing.T) {
+	// Đoạn 0-300 m mất 90 s: 200 m đầu 60 s, 100 m sau 30 s. Đoạn 300-400 m mất
+	// 40 s nên bước thứ hai là 70 s cho 200 m.
+	got := runCardPace(paceInput(400, []any{0.0, 300.0, 400.0}, []any{0.0, 90.0, 130.0}))
+	if !reflect.DeepEqual(paceValues(t, got), []any{300.0, 350.0}) {
+		t.Fatalf("pace = %v", got)
+	}
+}
+
+func TestRunCardPaceLeavesOutStoppedTime(t *testing.T) {
+	// Đứng 300 s ở mét 200 (đi thêm 5 m). Bước hai chỉ tính 195 m trong 60 s:
+	// 60 / 195 * 1000 = 307,69 s/km.
+	got := runCardPace(paceInput(400, []any{0.0, 200.0, 205.0, 400.0}, []any{0.0, 60.0, 360.0, 420.0}))
+	if !reflect.DeepEqual(paceValues(t, got), []any{300.0, 307.7}) {
+		t.Fatalf("pace = %v", got)
+	}
+}
+
+func TestRunCardPaceDropsAShortLastStep(t *testing.T) {
+	// 80 m cuối chưa tới nửa bước 200 m.
+	got := runCardPace(paceInput(480, []any{0.0, 200.0, 400.0, 480.0}, []any{0.0, 60.0, 120.0, 150.0}))
+	if !reflect.DeepEqual(paceValues(t, got), []any{300.0, 300.0}) {
+		t.Fatalf("pace = %v", got)
+	}
+}
+
+func TestRunCardPaceNeedsTwoAlignedStreams(t *testing.T) {
+	cases := map[string]map[string]any{
+		"không có stream": {"distanceMeters": 1000.0},
+		"lệch độ dài":     paceInput(1000, []any{0.0, 500.0, 1000.0}, []any{0.0, 150.0}),
+		"chỉ đủ một bước": paceInput(200, []any{0.0, 200.0}, []any{0.0, 60.0}),
+		"quãng đi lùi":    paceInput(1000, []any{1000.0, 0.0}, []any{0.0, 300.0}),
+		"quãng âm":        paceInput(1000, []any{-500.0, -100.0}, []any{0.0, 100.0}),
+	}
+	for name, input := range cases {
+		if got := runCardPace(input); got != nil {
+			t.Errorf("%s: pace = %v, muốn không có", name, got)
+		}
+	}
+}
+
+func TestRunCardPaceIsBoundedOnHugeDistance(t *testing.T) {
+	// Stream của buổi tự ghi do app gửi lên, không tin được cự ly.
+	got := runCardPace(paceInput(1e12, []any{0.0, 1e12}, []any{0.0, 1e8}))
+	if n := len(paceValues(t, got)); n != runCardSplitsMax {
+		t.Fatalf("%d điểm, muốn %d", n, runCardSplitsMax)
+	}
+}
+
+func TestRunCardSnapshotCarriesPaceOnlyWhenItExists(t *testing.T) {
+	withStreams := paceInput(400, []any{0.0, 200.0, 400.0}, []any{0.0, 60.0, 120.0})
+	if _, ok := runCardSnapshot(withStreams)["pace"]; !ok {
+		t.Fatal("có stream mà snapshot thiếu pace")
+	}
+	if _, ok := runCardSnapshot(map[string]any{"distanceMeters": 400.0})["pace"]; ok {
+		t.Fatal("không có stream thì snapshot không được có pace")
+	}
+}
+
+func TestRunCardNeedsStreamsOnlyForUnhydratedStrava(t *testing.T) {
+	cases := []struct {
+		name string
+		data map[string]any
+		want bool
+	}{
+		{"strava chưa nạp", map[string]any{"source": "strava", "streamsHydrated": false}, true},
+		{"strava thiếu cờ", map[string]any{"source": "strava"}, true},
+		{"strava bản stream cũ", map[string]any{"source": "strava", "streamsHydrated": true, "streamsVersion": int64(3)}, true},
+		{"strava đã nạp", map[string]any{"source": "strava", "streamsHydrated": true, "streamsVersion": int64(4)}, false},
+		{"buổi tự ghi bị bỏ stream", map[string]any{"source": "runnow", "streamsHydrated": false}, false},
+		{"garmin", map[string]any{"source": "garmin"}, false},
+	}
+	for _, c := range cases {
+		if got := runCardNeedsStreams(c.data); got != c.want {
+			t.Errorf("%s: %v, muốn %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestClubCardShowsThePaceChart(t *testing.T) {
+	pace := map[string]any{"stepMeters": 500.0, "secondsPerKm": []any{300.0, 310.0}}
+	doc := clubCardDoc("u1", "a1", map[string]any{"snapshot": map[string]any{"pace": pace}}, time.Now())
+	if !reflect.DeepEqual(doc["snapshot"].(map[string]any)["pace"], pace) {
+		t.Fatalf("snapshot khoe = %v", doc["snapshot"])
 	}
 }

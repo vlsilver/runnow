@@ -135,6 +135,8 @@ const (
 	// tem đường chạy và bản đồ mặt sau không cần mịn hơn, buổi siêu dài vẫn vừa.
 	runCardRoutePoints = 80
 	runCardSplitsMax   = 150
+	// runCardStoppedSpeed (m/s) là ngưỡng coi như đang đứng, khoảng 33 phút/km.
+	runCardStoppedSpeed = 0.5
 )
 
 var (
@@ -162,6 +164,9 @@ func runCardKm(meters float64) float64 { return math.Round(meters/100) / 10 }
 // runCardSnapshot chép số liệu buổi chạy cần để vẽ hai mặt thẻ.
 func runCardSnapshot(data map[string]any) map[string]any {
 	out := map[string]any{"route": runCardRoute(data["routePoints"]), "splits": runCardSplits(data["splits"])}
+	if pace := runCardPace(data); pace != nil {
+		out["pace"] = pace
+	}
 	for _, k := range []string{"name", "sportType", "source", "startedAt"} {
 		if v := stringValue(data[k]); v != "" {
 			out[k] = v
@@ -203,6 +208,61 @@ func runCardSplits(raw any) []any {
 		out = append(out, map[string]any{"distanceMeters": d, "movingTimeSeconds": s})
 	}
 	return out
+}
+
+// runCardPaceStep là khoảng cách giữa hai điểm trên biểu đồ pace, theo số km in
+// trên thẻ.
+func runCardPaceStep(km float64) float64 {
+	switch {
+	case km <= 3:
+		return 200
+	case km < 10:
+		return 500
+	}
+	return 1000
+}
+
+// runCardPace tính pace theo từng bước cự ly từ stream, để thẻ vẽ được biểu đồ
+// mịn hơn pace từng km. Không có stream dùng được thì trả nil.
+//
+// Stream "time" tính cả lúc dừng, nên mẫu chậm hơn runCardStoppedSpeed bị bỏ cả
+// thời gian lẫn quãng. Một mẫu vắt qua ranh giới bước thì chia theo tỉ lệ quãng.
+func runCardPace(data map[string]any) map[string]any {
+	streams, _ := data["streams"].(map[string]any)
+	distances, seconds := anyList(streams["distance"]), anyList(streams["time"])
+	if len(distances) < 2 || len(distances) != len(seconds) {
+		return nil
+	}
+	step := runCardPaceStep(runCardKm(number(data["distanceMeters"])))
+	// Cự ly lấy từ stream app gửi lên, nên số bước phải có trần.
+	var moving, meters [runCardSplitsMax]float64
+	for i := 1; i < len(distances); i++ {
+		from, to := number(distances[i-1]), number(distances[i])
+		walked, spent := to-from, number(seconds[i])-number(seconds[i-1])
+		if from < 0 || walked <= 0 || spent <= 0 || walked/spent < runCardStoppedSpeed {
+			continue
+		}
+		for at := from; at < to; {
+			bucket := int(at / step)
+			if bucket >= runCardSplitsMax {
+				break
+			}
+			next := min(to, float64(bucket+1)*step)
+			meters[bucket] += next - at
+			moving[bucket] += spent * (next - at) / walked
+			at = next
+		}
+	}
+	paces := []any{}
+	for i := range meters {
+		if meters[i] >= step/2 {
+			paces = append(paces, math.Round(moving[i]/meters[i]*10000)/10)
+		}
+	}
+	if len(paces) < 2 {
+		return nil
+	}
+	return map[string]any{"stepMeters": step, "secondsPerKm": paces}
 }
 
 type RunCardOdd struct {

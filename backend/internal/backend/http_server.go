@@ -863,6 +863,9 @@ func (s *Server) apiRoutes() {
 		if err != nil {
 			return err
 		}
+		if err := s.deps.Activities.HydrateForCard(r.Context(), uid, id); err != nil {
+			return err
+		}
 		card, err := s.deps.RunCards.Roll(r.Context(), uid, id)
 		if err != nil {
 			return err
