@@ -176,14 +176,26 @@ func scheduleText(cfg werewolf.Config) string {
 		hours[i] = itoa(h) + "h"
 	}
 	if !cfg.KmOff {
-		return fmt.Sprintf("Mỗi ngày %d vòng, mỗi vòng dài %d tiếng, mở lúc %s. Km tính 24 tiếng trước mỗi lần chốt. Giờ bên dưới là của vòng mở lúc %s, vòng khác lệch giờ tương ứng.",
-			s.Rounds, s.RoundHours, strings.Join(hours, ", "), hours[0])
+		return fmt.Sprintf("Mỗi ngày %d vòng, mỗi vòng dài %d tiếng, mở lúc %s. Km tính 24 tiếng trước mỗi lần chốt. %s",
+			s.Rounds, s.RoundHours, strings.Join(hours, ", "), otherRoundsText(cfg, starts))
 	}
 	if s.Rounds == 1 {
 		return fmt.Sprintf("Mỗi ngày một vòng dài %d tiếng, mở lúc %s; ngoài khung đó không nhận lựa chọn nào.", s.RoundHours, hours[0])
 	}
-	return fmt.Sprintf("Mỗi ngày %d vòng, mỗi vòng dài %d tiếng, mở lúc %s; ngoài khung đó không nhận lựa chọn nào. Giờ bên dưới là của vòng mở lúc %s, vòng khác lệch giờ tương ứng.",
-		s.Rounds, s.RoundHours, strings.Join(hours, ", "), hours[0])
+	return fmt.Sprintf("Mỗi ngày %d vòng, mỗi vòng dài %d tiếng, mở lúc %s; ngoài khung đó không nhận lựa chọn nào. %s",
+		s.Rounds, s.RoundHours, strings.Join(hours, ", "), otherRoundsText(cfg, starts))
+}
+
+// otherRoundsText in mốc của các vòng sau vòng đầu, vì mỗi vòng có thể có lịch
+// pha riêng; vòng đầu in ở phần luật ngay sau câu này.
+func otherRoundsText(cfg werewolf.Config, starts []int) string {
+	var sb strings.Builder
+	for _, hour := range starts[1:] {
+		k := cfg.Clock(time.Date(2026, 1, 1, hour, 0, 0, 0, vietnam))
+		fmt.Fprintf(&sb, "Vòng mở lúc %s: đêm %s tới %s, đề cử tới %s, biểu quyết tới %s. ",
+			hm(k.Night), hm(k.Night), hm(k.Dawn), hm(k.NominateClose), hm(k.Close))
+	}
+	return sb.String() + "Giờ bên dưới là của vòng mở lúc " + itoa(starts[0]) + "h."
 }
 
 // hm là giờ VN viết kiểu "22h", "6h30".

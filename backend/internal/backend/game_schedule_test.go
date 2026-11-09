@@ -17,7 +17,7 @@ func TestGameRulesFollowSchedule(t *testing.T) {
 	if got := gameRulesFor(ww.Config{}); !strings.HasPrefix(got, "Mỗi vòng dài một ngày. 22h tới 10h là đêm: các vai có kỹ năng chọn người. 10h bản tin đêm, đề cử tới 20h; tối đa 3 người nhiều đề cử nhất lên giàn. 20h tới 22h biểu quyết Treo hay Tha từng người. 22h chốt phiếu và km.\n") {
 		t.Fatalf("lịch gốc = %q", got)
 	}
-	want := "Mỗi ngày 3 vòng, mỗi vòng dài 6 tiếng, mở lúc 6h, 12h, 18h; ngoài khung đó không nhận lựa chọn nào. Giờ bên dưới là của vòng mở lúc 6h, vòng khác lệch giờ tương ứng. " +
+	want := "Mỗi ngày 3 vòng, mỗi vòng dài 6 tiếng, mở lúc 6h, 12h, 18h; ngoài khung đó không nhận lựa chọn nào. Vòng mở lúc 12h: đêm 12h tới 15h, đề cử tới 17h30, biểu quyết tới 18h. Vòng mở lúc 18h: đêm 18h tới 21h, đề cử tới 23h30, biểu quyết tới 0h. Giờ bên dưới là của vòng mở lúc 6h. " +
 		"6h tới 9h là đêm: các vai có kỹ năng chọn người. 9h bản tin đêm, đề cử tới 11h30; tối đa 3 người nhiều đề cử nhất lên giàn. 11h30 tới 12h biểu quyết Treo hay Tha từng người. 12h chốt phiếu.\n"
 	if got := gameRulesFor(threeShifts); !strings.HasPrefix(got, want) {
 		t.Fatalf("3 vòng = %q", got)
@@ -190,5 +190,21 @@ func TestRoleAndVoteRulesFollowSchedule(t *testing.T) {
 	got := botVoteRulesFor(threeShifts, "1")
 	if !strings.HasPrefix(got, "Đề cử: 11h30 tối đa 3 người") || !strings.Contains(got, "mọi phiên chốt cùng lúc 12h") {
 		t.Fatalf("luật phiếu = %q", got)
+	}
+}
+
+// Vòng có lịch pha riêng: luật gửi bot phải in đúng giờ của từng vòng, không
+// suy từ vòng đầu. Vòng 22h: 120 + 240 phút đêm tới 4h, 300 phút Ngày tới 9h,
+// 60 phút biểu quyết tới 10h.
+func TestGameRulesListEveryRoundClock(t *testing.T) {
+	cfg := ww.Config{Schedule: &ww.Schedule{StartHour: 10, RoundHours: 12, Rounds: 2,
+		RoundPhases: [][]int{{60, 300, 300, 60}, {120, 240, 300, 60}}}}
+	got := gameRulesFor(cfg)
+	want := "Vòng mở lúc 22h: đêm 22h tới 4h, đề cử tới 9h, biểu quyết tới 10h. Giờ bên dưới là của vòng mở lúc 10h. 10h tới 16h là đêm"
+	if !strings.Contains(got, want) {
+		t.Fatalf("luật = %q", got)
+	}
+	if strings.Contains(got, "lệch giờ") {
+		t.Fatalf("còn câu lệch giờ: %q", got)
 	}
 }
