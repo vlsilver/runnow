@@ -496,6 +496,16 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                         onPressed: () => showGameInvite(context, detail),
                       ),
                     ),
+                  if (detail != null &&
+                      detail.status == 'running' &&
+                      summary == null)
+                    Builder(
+                      builder: (context) => _HeaderButton(
+                        tooltip: 'Chia sẻ ván',
+                        icon: Icons.ios_share_rounded,
+                        onPressed: () => showGameLive(context, detail),
+                      ),
+                    ),
                   if (detail != null && summary != null)
                     Builder(
                       builder: (context) => _HeaderButton(

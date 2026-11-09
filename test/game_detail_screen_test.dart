@@ -930,6 +930,7 @@ void main() {
     ) async {
       backend.game = registering(admin: false);
       await pumpScreen(tester);
+      expect(find.byTooltip('Chia sẻ ván'), findsNothing);
       final before = share.shared.length;
 
       await tester.tap(find.byTooltip('Mời bạn'));
@@ -950,6 +951,42 @@ void main() {
       expect(find.byType(GameInviteCard), findsNothing);
       await close(tester);
     });
+  });
+
+  testWidgets('a running game can be shared as a picture', (tester) async {
+    backend.game = {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'running',
+      'statusLabel': 'Đang chơi',
+      'refreshAfterSeconds': 30,
+      'phase': {'key': 'day', 'label': 'Ngày 3', 'state': 'open'},
+      'players': [
+        {'uid': 'a', 'name': 'An', 'alive': true},
+        {'uid': 'b', 'name': 'Bình', 'alive': false},
+      ],
+    };
+    await pumpScreen(tester);
+    expect(find.byTooltip('Mời bạn'), findsNothing);
+    final before = share.shared.length;
+
+    await tester.tap(find.byTooltip('Chia sẻ ván'));
+    await tester.pumpAndSettle();
+    expect(find.byType(GameLiveCard), findsOneWidget);
+
+    await tester.tap(find.text('Chia sẻ'));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(seconds: 1)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(share.shared.length, before + 1);
+    expect(
+      share.shared.last.text,
+      'Ngày 3. Còn 1/2 người sống, ai là sói?\nhttps://threei.run/games/g1',
+    );
+    expect(share.shared.last.files!.single.mimeType, 'image/png');
+    await close(tester);
   });
 
   group('requirements', () {

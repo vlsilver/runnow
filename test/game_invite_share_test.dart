@@ -9,30 +9,69 @@ GameDetail _game({
   DateTime? deadline,
   List<String> players = const [],
   bool km = true,
-}) =>
-    GameDetail.fromJson({
-      'id': 'g1',
-      'title': 'Đêm trăng PSC',
-      'status': 'registering',
-      'statusLabel': 'Đang mở đăng ký',
-      'refreshAfterSeconds': 300,
-      'playerCount': count,
-      'minPlayers': 8,
-      'maxPlayers': max,
-      'registrationDeadline': deadline?.toUtc().toIso8601String(),
-      'players': [
-        for (final name in players) {'uid': name, 'name': name, 'alive': true},
-      ],
-      'rulesCard': [
-        if (km)
-          {
-            'title': 'Km',
-            'items': [
-              {'key': 'kmWindow', 'label': 'Tính km', 'value': '22h'},
-            ],
-          },
-      ],
-    });
+}) => GameDetail.fromJson({
+  'id': 'g1',
+  'title': 'Đêm trăng PSC',
+  'status': 'registering',
+  'statusLabel': 'Đang mở đăng ký',
+  'refreshAfterSeconds': 300,
+  'playerCount': count,
+  'minPlayers': 8,
+  'maxPlayers': max,
+  'registrationDeadline': deadline?.toUtc().toIso8601String(),
+  'players': [
+    for (final name in players) {'uid': name, 'name': name, 'alive': true},
+  ],
+  'rulesCard': [
+    if (km)
+      {
+        'title': 'Km',
+        'items': [
+          {'key': 'kmWindow', 'label': 'Tính km', 'value': '22h'},
+        ],
+      },
+  ],
+});
+
+GameDetail _running({
+  int alive = 8,
+  int dead = 2,
+  List<String?> deadRoles = const [],
+  String? phase = 'Đêm 2, sói đang chọn',
+  bool km = true,
+}) => GameDetail.fromJson({
+  'id': 'g1',
+  'title': 'Đêm trăng PSC',
+  'status': 'running',
+  'statusLabel': 'Đang chơi',
+  'refreshAfterSeconds': 30,
+  'phase': phase == null
+      ? null
+      : {
+          'key': 'night',
+          'label': phase,
+          'deadline': DateTime(2026, 11, 9, 20, 30).toUtc().toIso8601String(),
+          'state': 'open',
+        },
+  if (km)
+    'kmTable': {
+      'lastLabel': 'Chốt',
+      'todayLabel': 'Tới giờ',
+      'unitKm': 1,
+      'note': '',
+    },
+  'players': [
+    for (var i = 0; i < alive; i++)
+      {'uid': 'a$i', 'name': 'Sống$i', 'alive': true, if (km) 'todayKm': 5.4},
+    for (var i = 0; i < dead; i++)
+      {
+        'uid': 'd$i',
+        'name': 'Ngã$i',
+        'alive': false,
+        'revealedRoleLabel': i < deadRoles.length ? deadRoles[i] : 'Tiên tri',
+      },
+  ],
+});
 
 void main() {
   group('gameInviteCaption', () {
@@ -64,12 +103,114 @@ void main() {
     });
   });
 
+  group('gameLiveCaption', () {
+    const link = 'https://threei.run/games/g1';
+
+    test('says the phase and who is still alive', () {
+      expect(
+        gameLiveCaption(_running()),
+        'Đêm 2, sói đang chọn. Còn 8/10 người sống, ai là sói?\n$link',
+      );
+    });
+
+    test('still reads well without a phase', () {
+      expect(
+        gameLiveCaption(_running(phase: null)),
+        'Ma Sói đang chơi. Còn 8/10 người sống, ai là sói?\n$link',
+      );
+    });
+  });
+
+  group('GameLiveCard', () {
+    Future<void> pump(WidgetTester tester, GameDetail game) =>
+        tester.pumpWidget(
+          MaterialApp(
+            home: Center(child: GameLiveCard(game: game)),
+          ),
+        );
+
+    testWidgets('shows the phase, the survivors and the village km', (
+      tester,
+    ) async {
+      await pump(tester, _running());
+
+      expect(find.text('ĐANG CHƠI'), findsOneWidget);
+      expect(find.text('Đêm 2'), findsOneWidget);
+      expect(find.text('sói đang chọn'), findsOneWidget);
+      expect(find.text('Đêm trăng PSC'), findsOneWidget);
+      expect(find.text('8/10'), findsOneWidget);
+      expect(find.text('còn sống'), findsOneWidget);
+      expect(find.text('43'), findsOneWidget); // 8 × 5,4 km = 43,2
+      expect(find.text('km cả làng'), findsOneWidget);
+    });
+
+    testWidgets('a phase with no detail is just the headline', (tester) async {
+      await pump(tester, _running(phase: 'Chuẩn bị'));
+
+      expect(find.text('Chuẩn bị'), findsOneWidget);
+      expect(find.text('Đêm trăng PSC'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('counts the dead and the wolves the village knows are dead', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        _running(
+          alive: 6,
+          dead: 4,
+          // Sói lộ lá bài, Sói bị treo chỉ lộ phe, một Dân, một người chưa lộ.
+          deadRoles: ['Sói', 'Phe Sói', 'Phe Dân', null],
+        ),
+      );
+
+      expect(find.text('6/10'), findsOneWidget);
+      expect(find.text('4'), findsOneWidget);
+      expect(find.text('đã ngủm'), findsOneWidget);
+      expect(find.text('2'), findsOneWidget);
+      expect(find.text('sói đã ngủm'), findsOneWidget);
+    });
+
+    testWidgets('a game without km shows when the phase closes', (
+      tester,
+    ) async {
+      await pump(tester, _running(km: false));
+
+      expect(find.text('km cả làng'), findsNothing);
+      expect(find.text('20:30'), findsOneWidget);
+      expect(find.text('chốt lượt này'), findsOneWidget);
+    });
+
+    testWidgets('never shows a revealed role or anyone km', (tester) async {
+      await pump(tester, _running());
+
+      expect(find.textContaining('Tiên tri'), findsNothing);
+      expect(find.textContaining('5,4'), findsNothing);
+    });
+
+    testWidgets('a full village fits the fixed card', (tester) async {
+      await pump(
+        tester,
+        _running(
+          alive: 20,
+          dead: 4,
+          phase: 'Chuẩn bị, đêm 1 bắt đầu lúc 22:00',
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(tester.getSize(find.byType(GameLiveCard)), const Size(320, 400));
+    });
+  });
+
   group('GameInviteCard', () {
-    Future<void> pump(WidgetTester tester, GameDetail game) => tester.pumpWidget(
-      MaterialApp(
-        home: Center(child: GameInviteCard(game: game)),
-      ),
-    );
+    Future<void> pump(WidgetTester tester, GameDetail game) =>
+        tester.pumpWidget(
+          MaterialApp(
+            home: Center(child: GameInviteCard(game: game)),
+          ),
+        );
 
     testWidgets('shows the game, its seats and when it closes', (tester) async {
       await pump(tester, _game(deadline: DateTime(2026, 11, 9, 20)));

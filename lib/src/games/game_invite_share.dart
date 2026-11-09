@@ -25,6 +25,15 @@ String gameInviteCaption(GameDetail game) {
   return '$hook\n${gameInviteLink(game.id)}';
 }
 
+/// Câu gửi kèm thẻ ván đang chơi. Chỉ dùng tin ai cũng thấy: pha và số người
+/// còn sống, không nói vai.
+String gameLiveCaption(GameDetail game) {
+  final alive = game.players.where((p) => p.alive).length;
+  return '${game.phase?.label ?? 'Ma Sói đang chơi'}. '
+      'Còn $alive/${game.players.length} người sống, ai là sói?\n'
+      '${gameInviteLink(game.id)}';
+}
+
 String _closing(DateTime d) => '${_hour.format(d)} ${_shortDay(d)}';
 
 /// `T2 09/11`, `CN 08/11`.
@@ -43,28 +52,62 @@ Future<void> showGameInvite(BuildContext context, GameDetail game) async {
     await SharePlus.instance.share(ShareParams(text: gameInviteCaption(game)));
     return;
   }
+  await _showShareSheet(
+    context,
+    card: GameInviteCard(game: game),
+    caption: gameInviteCaption(game),
+    button: 'Gửi lời mời',
+  );
+}
+
+/// Như [showGameInvite], cho ván đang chơi.
+Future<void> showGameLive(BuildContext context, GameDetail game) async {
+  if (kIsWeb) {
+    await SharePlus.instance.share(ShareParams(text: gameLiveCaption(game)));
+    return;
+  }
+  await _showShareSheet(
+    context,
+    card: GameLiveCard(game: game),
+    caption: gameLiveCaption(game),
+    button: 'Chia sẻ',
+  );
+}
+
+Future<void> _showShareSheet(
+  BuildContext context, {
+  required Widget card,
+  required String caption,
+  required String button,
+}) {
   final theme = Theme.of(context);
-  await showModalBottomSheet<void>(
+  return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: _M.panel,
     builder: (_) => Theme(
       data: theme,
-      child: _GameInviteSheet(game: game),
+      child: _GameShareSheet(card: card, caption: caption, button: button),
     ),
   );
 }
 
-class _GameInviteSheet extends StatefulWidget {
-  const _GameInviteSheet({required this.game});
+class _GameShareSheet extends StatefulWidget {
+  const _GameShareSheet({
+    required this.card,
+    required this.caption,
+    required this.button,
+  });
 
-  final GameDetail game;
+  final Widget card;
+  final String caption;
+  final String button;
 
   @override
-  State<_GameInviteSheet> createState() => _GameInviteSheetState();
+  State<_GameShareSheet> createState() => _GameShareSheetState();
 }
 
-class _GameInviteSheetState extends State<_GameInviteSheet> {
+class _GameShareSheetState extends State<_GameShareSheet> {
   final _cardKey = GlobalKey();
   var _sending = false;
 
@@ -82,15 +125,15 @@ class _GameInviteSheetState extends State<_GameInviteSheet> {
         mimeType: 'image/png',
         fileName: '3i-ma-soi.png',
         shareOriginContext: buttonContext,
-        text: gameInviteCaption(widget.game),
+        text: widget.caption,
       );
       navigator.pop();
     } catch (e, stack) {
-      debugPrint('Gửi thiệp mời lỗi: $e\n$stack');
+      debugPrint('Gửi thẻ ván lỗi: $e\n$stack');
       if (!mounted) return;
       setState(() => _sending = false);
       messenger.showSnackBar(
-        const SnackBar(content: Text('Chưa gửi được thiệp, thử lại nhé.')),
+        const SnackBar(content: Text('Chưa gửi được ảnh, thử lại nhé.')),
       );
     }
   }
@@ -110,10 +153,7 @@ class _GameInviteSheetState extends State<_GameInviteSheet> {
               child: FittedBox(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
-                  child: RepaintBoundary(
-                    key: _cardKey,
-                    child: GameInviteCard(game: widget.game),
-                  ),
+                  child: RepaintBoundary(key: _cardKey, child: widget.card),
                 ),
               ),
             ),
@@ -125,7 +165,7 @@ class _GameInviteSheetState extends State<_GameInviteSheet> {
                   foregroundColor: _M.onAmber,
                 ),
                 onPressed: _sending ? null : () => _send(buttonContext),
-                child: const Text('Gửi lời mời'),
+                child: Text(widget.button),
               ),
             ),
           ],
@@ -249,6 +289,192 @@ class GameInviteCard extends StatelessWidget {
   }
 }
 
+/// Thẻ khoe ván đang chơi để rủ người khác. Chỉ có tin công khai: pha, ai còn
+/// sống và tổng km cả làng, không có vai hay km từng người. Cỡ cố định như
+/// thiệp mời.
+class GameLiveCard extends StatelessWidget {
+  const GameLiveCard({super.key, required this.game});
+
+  final GameDetail game;
+
+  // Nhãn BE trả cho người đã lộ: lá bài, hoặc chỉ phe nếu bị treo. Người chưa
+  // lộ không được đếm, để thẻ không nói hơn những gì cả làng đã biết.
+  static const _wolfLabels = {'Sói', 'Phe Sói'};
+
+  static const _maxFaces = 24;
+  static const _faceSize = 28.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final village = [
+      ...game.players.where((p) => p.alive),
+      ...game.players.where((p) => !p.alive),
+    ].take(_maxFaces);
+    final alive = game.players.where((p) => p.alive).length;
+    final km = game.kmTable == null
+        ? 0.0
+        : game.players.fold<double>(0, (sum, p) => sum + (p.todayKm ?? 0));
+    final deadline = game.phase?.deadline?.toLocal();
+    final dead = game.players.length - alive;
+    final deadWolves = game.players
+        .where((p) => !p.alive && _wolfLabels.contains(p.revealedRoleLabel))
+        .length;
+    final stats = [
+      _Stat(value: '$alive/${game.players.length}', label: 'còn sống'),
+      _Stat(value: '$dead', label: 'đã ngủm'),
+      _Stat(value: '$deadWolves', label: 'sói đã ngủm'),
+      if (km > 0)
+        _Stat(value: '${km.round()}', label: 'km cả làng')
+      else if (deadline != null)
+        _Stat(value: _hour.format(deadline), label: 'chốt lượt này'),
+    ];
+    // Nhãn pha từ BE có dạng "Đêm 2, sói đang chọn": số đêm làm chữ lớn.
+    final label = game.phase?.label ?? game.statusLabel;
+    final comma = label.indexOf(', ');
+    final headline = comma < 0 ? label : label.substring(0, comma);
+    final detail = comma < 0 ? null : label.substring(comma + 2);
+    return MediaQuery.withNoTextScaling(
+      child: SizedBox(
+        width: 320,
+        height: 400,
+        child: Material(
+          type: MaterialType.transparency,
+          child: GameMoonlitBackdrop(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text.rich(
+                        TextSpan(
+                          text: 'MA SÓI',
+                          style: TextStyle(
+                            fontSize: 13,
+                            letterSpacing: 2,
+                            fontWeight: FontWeight.w800,
+                            color: _M.amberBright,
+                          ),
+                          children: [
+                            TextSpan(
+                              text: '  3i',
+                              style: TextStyle(
+                                letterSpacing: 0,
+                                color: _M.faint,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _M.amber,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: const Text(
+                          'ĐANG CHƠI',
+                          style: TextStyle(
+                            fontSize: 11,
+                            letterSpacing: 1,
+                            fontWeight: FontWeight.w900,
+                            color: _M.onAmber,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const GameMoonEmblem(size: 64),
+                  const SizedBox(height: 8),
+                  Text(
+                    headline,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 34,
+                      height: 1.15,
+                      fontWeight: FontWeight.w900,
+                      color: _M.ink,
+                    ),
+                  ),
+                  if (detail != null)
+                    Text(
+                      detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: _M.amberBright,
+                      ),
+                    ),
+                  const SizedBox(height: 2),
+                  Text(
+                    game.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 14, color: _M.muted),
+                  ),
+                  const Spacer(),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final p in village)
+                        Opacity(
+                          opacity: p.alive ? 1 : 0.28,
+                          child: _face(
+                            context,
+                            player: p,
+                            size: _faceSize,
+                            text: _initial(p),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: _M.raised,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _M.border),
+                    ),
+                    child: SizedBox(
+                      height: 60,
+                      child: Row(
+                        children: [
+                          for (final (i, stat) in stats.indexed) ...[
+                            if (i > 0)
+                              const VerticalDivider(
+                                width: 1,
+                                thickness: 1,
+                                color: _M.border,
+                              ),
+                            stat,
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Stat extends StatelessWidget {
   const _Stat({required this.value, required this.label});
 
@@ -259,22 +485,25 @@ class _Stat extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 9),
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.w900,
-                color: _M.amberBright,
+        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Column(
+            children: [
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w900,
+                  color: _M.amberBright,
+                ),
               ),
-            ),
-            Text(
-              label,
-              style: const TextStyle(fontSize: 12, color: _M.faint),
-            ),
-          ],
+              Text(
+                label,
+                style: const TextStyle(fontSize: 12, color: _M.faint),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -309,38 +538,50 @@ class _Faces extends StatelessWidget {
     );
   }
 
-  Widget _circle(BuildContext context, GamePlayer? player) {
-    final avatar = player?.avatarUrl;
-    final text = player == null
-        ? '+$more'
-        : player.name.isEmpty
-        ? '?'
-        : player.name[0].toUpperCase();
-    return Container(
-      width: _size,
-      height: _size,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: _M.lifted,
-        border: Border.all(color: _M.page, width: 2),
-        image: avatar == null
-            ? null
-            : DecorationImage(
-                image: cachedAvatarImage(context, avatar, _size),
-                fit: BoxFit.cover,
-              ),
-      ),
-      child: avatar != null
+  Widget _circle(BuildContext context, GamePlayer? player) => _face(
+    context,
+    player: player,
+    size: _size,
+    text: player == null ? '+$more' : _initial(player),
+  );
+}
+
+String _initial(GamePlayer player) =>
+    player.name.isEmpty ? '?' : player.name[0].toUpperCase();
+
+/// Avatar tròn của một người; không có ảnh thì là [text]. [player] null là ô
+/// đếm số người còn lại.
+Widget _face(
+  BuildContext context, {
+  required GamePlayer? player,
+  required double size,
+  required String text,
+}) {
+  final avatar = player?.avatarUrl;
+  return Container(
+    width: size,
+    height: size,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      color: _M.lifted,
+      border: Border.all(color: _M.page, width: 2),
+      image: avatar == null
           ? null
-          : Text(
-              text,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: player == null ? _M.amberBright : _M.ink,
-              ),
+          : DecorationImage(
+              image: cachedAvatarImage(context, avatar, size),
+              fit: BoxFit.cover,
             ),
-    );
-  }
+    ),
+    child: avatar != null
+        ? null
+        : Text(
+            text,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: player == null ? _M.amberBright : _M.ink,
+            ),
+          ),
+  );
 }
