@@ -963,6 +963,9 @@ type GamePlayer struct {
 	TodayKm *float64 `json:"todayKm,omitempty"`
 	// VoteTag là nhãn số phiếu của người đang trong suất Top ("x2"); app cũ bỏ qua.
 	VoteTag string `json:"voteTag,omitempty"`
+	// RecentKm là km 24 tiếng tới lúc này của người trong sảnh; chỉ có khi
+	// ván đang mở đăng ký, người giả không có. App cũ bỏ qua.
+	RecentKm *float64 `json:"recentKm,omitempty"`
 	Fake              bool     `json:"fake,omitempty"`
 }
 
@@ -1103,7 +1106,36 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 		}
 		out.Players = append(out.Players, gp)
 	}
+	if stringValue(data["status"]) == gameRegistering && !gc.KmOff {
+		if err := s.fillRecentKm(ctx, g.Ref, data, out.Players, wall); err != nil {
+			return GameDetail{}, err
+		}
+	}
 	return out, nil
+}
+
+// fillRecentKm gắn km 24 tiếng gần nhất cho người thật; người giả để nil.
+func (s *GameStore) fillRecentKm(ctx context.Context, game *firestore.DocumentRef, data map[string]any, players []GamePlayer, wall time.Time) error {
+	var uids []string
+	for _, p := range players {
+		if !p.Fake {
+			uids = append(uids, p.UID)
+		}
+	}
+	if len(uids) == 0 {
+		return nil
+	}
+	recent, err := s.lobbyKm(ctx, game, data, uids, wall)
+	if err != nil {
+		return err
+	}
+	for i := range players {
+		if m, ok := recent[players[i].UID]; ok {
+			km := m / 1000
+			players[i].RecentKm = &km
+		}
+	}
+	return nil
 }
 
 // refreshAfter là số giây app nên đợi trước khi tải lại: ngay sau hạn kế tiếp

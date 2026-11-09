@@ -100,6 +100,28 @@ func (s *GameStore) liveKm(ctx context.Context, game *firestore.DocumentRef, dat
 	return &out, nil
 }
 
+// lobbyKm là km 24 tiếng tới lúc này của người đã đăng ký, giữ cùng chỗ và cùng
+// tuổi với km sống. Ván chưa bắt đầu chưa có state nên không qua được liveKm.
+func (s *GameStore) lobbyKm(ctx context.Context, game *firestore.DocumentRef, data map[string]any, uids []string, wall time.Time) (map[string]float64, error) {
+	now := gameNow(data, wall)
+	frame := werewolf.KmFrameUntil(now)
+	kept, err := readLiveKm(ctx, game)
+	if err != nil {
+		return nil, err
+	}
+	if kept != nil && kept.RecentEnd.Equal(frame.End) && now.Sub(kept.AsOf) < liveKmMaxAge && hasAllKeys(kept.Recent, uids) {
+		return kept.Recent, nil
+	}
+	recent, err := s.metersIn(ctx, uids, frame)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := liveKmRef(game).Set(ctx, liveKm{AsOf: now, RecentEnd: frame.End, Recent: recent}); err != nil {
+		return nil, err
+	}
+	return recent, nil
+}
+
 // readLiveKm trả nil khi chưa có bản giữ nào.
 func readLiveKm(ctx context.Context, game *firestore.DocumentRef) (*liveKm, error) {
 	snap, err := liveKmRef(game).Get(ctx)
