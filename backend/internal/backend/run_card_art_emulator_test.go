@@ -3,8 +3,12 @@
 package backend
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"math"
 	"strings"
 	"testing"
@@ -294,6 +298,43 @@ func TestEmulatorRunCardArtPhoto(t *testing.T) {
 	e.draw(e.lastTask())
 	if art := e.art("a2"); art["status"] != "done" || e.gen.mimes[1] != "image/png" {
 		t.Fatalf("art = %v, mime %q", art, e.gen.mimes[1])
+	}
+}
+
+func TestEmulatorRunCardArtPlain(t *testing.T) {
+	e := newArtEnv(t, map[string]any{})
+	own := "users/u1/activities/a1/photos/p1.jpg"
+	src := "users/u1/runCards/a1/src.jpg"
+	e.card("a1", map[string]any{"photos": []any{map[string]any{"id": "p1", "storagePath": own}}})
+
+	// Phải có ảnh, và phải là ảnh app đã cắt cho thẻ.
+	e.want(e.ask("a1", "plain", ""), 400, "invalid_photo")
+	e.want(e.ask("a1", "plain", own), 400, "invalid_photo")
+
+	// Ảnh hỏng thì báo photo_invalid, lần sau tải ảnh khác vẫn dùng được.
+	e.files.files[src] = []byte("không phải ảnh")
+	e.want(e.ask("a1", "plain", src), 200, "")
+	e.draw(e.lastTask())
+	if art := e.art("a1"); art["status"] != "failed" || art["reason"] != "photo_invalid" {
+		t.Fatalf("art = %v", art)
+	}
+
+	var jpg bytes.Buffer
+	if err := jpeg.Encode(&jpg, image.NewRGBA(image.Rect(0, 0, 6, 9)), nil); err != nil {
+		t.Fatal(err)
+	}
+	e.files.files[src] = jpg.Bytes()
+	e.want(e.ask("a1", "plain", src), 200, "")
+	e.draw(e.lastTask())
+	art := e.art("a1")
+	if art["status"] != "done" || art["path"] != "users/u1/runCards/a1/art-2.png" || art["style"] != "plain" {
+		t.Fatalf("art = %v", art)
+	}
+	if _, err := png.Decode(bytes.NewReader(e.files.files["users/u1/runCards/a1/art-2.png"])); err != nil {
+		t.Fatalf("tranh phải là PNG: %v", err)
+	}
+	if len(e.gen.prompts) != 0 || len(e.models) != 0 {
+		t.Fatalf("dùng thẳng ảnh mà vẫn gọi model: %v, %v", e.gen.prompts, e.models)
 	}
 }
 

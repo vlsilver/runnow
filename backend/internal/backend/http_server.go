@@ -840,6 +840,13 @@ func (s *Server) apiRoutes() {
 		}
 		return writeJSON(w, 200, page)
 	}))
+	s.route("GET /v1/cards/unflipped", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		activities, err := s.deps.RunCards.Unflipped(r.Context(), uid)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"activities": activities})
+	}))
 	s.route("GET /v1/activities/{activityId}/card", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		id, err := runCardActivityID(r)
 		if err != nil {

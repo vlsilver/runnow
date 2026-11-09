@@ -129,6 +129,11 @@ var artStyles = []artStyle{
 // App chỉ hiện ô tải ảnh mẫu khi ArtStyleList.Custom bật.
 var artStyleCustom = artStyle{Key: "custom", Version: 1, Name: "Ảnh mẫu của bạn", Fits: []artKind{artKindRun}}
 
+// artStylePlain đặt thẳng ảnh chủ thẻ làm nền, không qua model nên không tốn
+// hạn mức vẽ. App chỉ hiện lựa chọn này khi ArtStyleList.Plain bật; đặt Off thì
+// tắt được mà không cần cập nhật app.
+var artStylePlain = artStyle{Key: "plain", Version: 1, Name: "Ảnh gốc", Fits: []artKind{artKindRun}}
+
 // artCustomStyleBlock thay câu "Render it as" khi vẽ theo ảnh mẫu. Ảnh mẫu luôn
 // là ảnh gửi kèm cuối, sau ảnh nguồn nếu có. Ảnh mẫu thường là tranh của người
 // khác nên chỉ lấy phong cách, không chép nhân vật, chữ hay bố cục.
@@ -137,8 +142,11 @@ const artCustomStyleBlock = "Render it in the art style of the style reference i
 
 // artStyleByKey tìm phong cách theo key, kể cả phong cách đã tắt.
 func artStyleByKey(key string) (artStyle, bool) {
-	if key == artStyleCustom.Key {
+	switch key {
+	case artStyleCustom.Key:
 		return artStyleCustom, true
+	case artStylePlain.Key:
+		return artStylePlain, true
 	}
 	i := slices.IndexFunc(artStyles, func(s artStyle) bool { return s.Key == key })
 	if i < 0 {
@@ -171,12 +179,14 @@ type ArtStyleList struct {
 	Styles   []ArtStyleView `json:"styles"`
 	// Custom bật thì app hiện ô tải ảnh mẫu để vẽ theo phong cách "custom".
 	Custom bool `json:"custom"`
+	// Plain bật thì app cho dùng thẳng ảnh làm nền, không phong cách.
+	Plain bool `json:"plain"`
 }
 
 // ArtStyles là các phong cách đang bật cho kind, theo thứ tự nhóm rồi thứ tự
 // trong danh sách. Nhóm không còn phong cách nào thì bỏ.
 func ArtStyles(kind artKind) ArtStyleList {
-	out := ArtStyleList{Families: []artFamily{}, Styles: []ArtStyleView{}, Custom: !artStyleCustom.Off && artStyleCustom.fits(kind)}
+	out := ArtStyleList{Families: []artFamily{}, Styles: []ArtStyleView{}, Custom: !artStyleCustom.Off && artStyleCustom.fits(kind), Plain: !artStylePlain.Off && artStylePlain.fits(kind)}
 	for _, f := range artFamilies {
 		n := len(out.Styles)
 		for _, s := range artStyles {

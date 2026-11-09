@@ -1,9 +1,13 @@
 package backend
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	"image/png"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -26,11 +30,12 @@ import (
 //	art.status       drawing | done | failed
 //	art.attempt      tăng mỗi lần khoá; task mang attempt, lệch thì bỏ
 //	art.reason       lý do hỏng: budget, blocked, model_error, photo_missing,
-//	                 style_photo_missing, style_unavailable
+//	                 style_photo_missing, style_unavailable, photo_invalid
 //	art.path         users/{uid}/runCards/{activityId}/art-{attempt}.png khi done;
 //	                 mỗi lượt một tên vì app cache ảnh theo đường dẫn
 //
-// Mọi lượt vẽ đi qua trần chi phí ngày riêng runCardArtDailyBudgetUsd.
+// Mọi lượt vẽ đi qua trần chi phí ngày riêng runCardArtDailyBudgetUsd, trừ
+// phong cách "plain" vì nó không gọi model.
 //
 // Số lần vẽ lại một thẻ hỏng không có giới hạn, theo thẻ hay theo người đều
 // không. Một người cứ vẽ lại ảnh bị model từ chối thì tiêu được hết trần chung,
@@ -59,6 +64,9 @@ const (
 	// runCardArtStylePhoto là ảnh mẫu chủ thẻ tải lên cho phong cách "custom";
 	// mỗi thẻ một file, nên app không gửi đường dẫn.
 	runCardArtStylePhoto = "style.jpg"
+	// runCardArtPlainMaxSide chặn file vài MB mà giải nén ra hàng GB. App gửi
+	// ảnh đã cắt theo tỉ lệ thẻ, ngang tối đa 1080.
+	runCardArtPlainMaxSide = 2048
 )
 
 // runCardArtModels là các model ảnh admin chọn được để vẽ thẻ, đầu danh sách là
@@ -182,6 +190,11 @@ func (s *RunCardStore) RequestArt(ctx context.Context, uid, activityID string, r
 	if err := s.checkPhoto(ctx, uid, activityID, req.PhotoPath); err != nil {
 		return nil, err
 	}
+	// Chỉ nhận src.jpg vì app đã xoay đúng chiều và cắt theo thẻ ở đó; ảnh buổi chạy
+	// còn nguyên EXIF nên giải mã ra có thể nằm ngang.
+	if style.Key == artStylePlain.Key && req.PhotoPath != runCardArtPath(uid, activityID, runCardArtSrcPhoto) {
+		return nil, errRunCardBadPhoto
+	}
 	ref := s.cardRef(uid, activityID)
 	var card map[string]any
 	var task *runCardArtTask
@@ -301,6 +314,9 @@ func (s *RunCardStore) DrawArt(ctx context.Context, t runCardArtTask) error {
 			return err
 		}
 	}
+	if style.Key == artStylePlain.Key {
+		return s.finishPlainArt(ctx, t, photo)
+	}
 	var styleRef []byte
 	if style.Key == artStyleCustom.Key {
 		styleRef, err = a.images.Get(ctx, runCardArtPath(t.UID, t.ActivityID, runCardArtStylePhoto))
@@ -348,6 +364,43 @@ func (s *RunCardStore) DrawArt(ctx context.Context, t runCardArtTask) error {
 	}
 	slog.InfoContext(ctx, "run_card.art", "uid", t.UID, "activityId", t.ActivityID, "style", style.Key, "photo", len(photo) > 0, "model", model)
 	return s.finishArt(ctx, t, map[string]any{"status": "done", "path": path, "model": model, "prompt": prompt, "styleVersion": style.Version})
+}
+
+// finishPlainArt lấy ảnh chủ thẻ làm tranh. Ảnh hỏng thì ghi "failed" chứ không
+// trả lỗi, vì chạy lại task cũng không đọc được.
+func (s *RunCardStore) finishPlainArt(ctx context.Context, t runCardArtTask, photo []byte) error {
+	img, err := runCardPlainImage(photo)
+	if err != nil {
+		slog.WarnContext(ctx, "run_card.art_photo_invalid", "uid", t.UID, "activityId", t.ActivityID, "error", err)
+		return s.finishArt(ctx, t, map[string]any{"status": "failed", "reason": "photo_invalid"})
+	}
+	path := runCardArtPath(t.UID, t.ActivityID, fmt.Sprintf("art-%d.png", t.Attempt))
+	if err := s.artist.images.Put(ctx, path, img); err != nil {
+		return err
+	}
+	slog.InfoContext(ctx, "run_card.art", "uid", t.UID, "activityId", t.ActivityID, "style", artStylePlain.Key)
+	return s.finishArt(ctx, t, map[string]any{"status": "done", "path": path, "styleVersion": artStylePlain.Version})
+}
+
+// runCardPlainImage giải mã rồi mã hoá lại thành PNG. Tranh thẻ được khoe cho
+// người khác xem còn ảnh gốc thì không, nên phải bỏ metadata như vị trí GPS.
+func runCardPlainImage(src []byte) ([]byte, error) {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(src))
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Width > runCardArtPlainMaxSide || cfg.Height > runCardArtPlainMaxSide {
+		return nil, fmt.Errorf("ảnh %dx%d quá lớn", cfg.Width, cfg.Height)
+	}
+	img, _, err := image.Decode(bytes.NewReader(src))
+	if err != nil {
+		return nil, err
+	}
+	var out bytes.Buffer
+	if err := png.Encode(&out, img); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
 }
 
 // finishArt ghi kết quả lên khoá đang giữ, nếu khoá vẫn là của task này.

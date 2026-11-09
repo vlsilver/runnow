@@ -99,6 +99,25 @@ func TestArtStylesCustomFlag(t *testing.T) {
 	}
 }
 
+// Tắt dùng thẳng ảnh ở backend thì app cũ lẫn mới đều không gửi được lượt mới.
+func TestArtStylesPlainFlag(t *testing.T) {
+	if !ArtStyles(artKindRun).Plain {
+		t.Fatal("thẻ chạy phải cho dùng thẳng ảnh")
+	}
+	if _, ok := artStyleFor("plain", artKindRun); !ok {
+		t.Fatal("thẻ chạy phải nhận phong cách plain")
+	}
+	saved := artStylePlain
+	t.Cleanup(func() { artStylePlain = saved })
+	artStylePlain.Off = true
+	if ArtStyles(artKindRun).Plain {
+		t.Fatal("đã tắt mà app vẫn thấy lựa chọn dùng thẳng ảnh")
+	}
+	if _, ok := artStyleFor("plain", artKindRun); ok {
+		t.Fatal("đã tắt mà vẫn nhận phong cách plain")
+	}
+}
+
 func TestArtStylesSendExampleOnlyWhenThereIsOne(t *testing.T) {
 	saved := artStyles
 	t.Cleanup(func() { artStyles = saved })

@@ -4,6 +4,7 @@ package backend
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -244,4 +245,41 @@ func TestEmulatorArtStyles(t *testing.T) {
 	}
 	h.want(h.call("u1", "GET", "/v1/art-styles?kind=werewolf", nil, ""), 400, "")
 	h.want(h.call("u1", "GET", "/v1/art-styles", nil, ""), 400, "")
+}
+
+func TestEmulatorRunCardUnflippedList(t *testing.T) {
+	// Buổi 23,5 km luôn ra thẻ (số cơ hội 0). Buổi 800 m chỉ có 20% cơ hội, số
+	// 999999 là trượt.
+	h := runCardHarness(t, 820000, 0, 10000, 820000, 999999, 10000)
+	at := func(day, minute int) string {
+		return time.Date(2026, 10, day, 1, minute, 0, 0, time.UTC).Format(time.RFC3339)
+	}
+	seedRun(t, h, "u1", "open1", map[string]any{"startedAt": at(24, 0)})
+	seedRun(t, h, "u1", "open2", map[string]any{"startedAt": at(23, 0)})
+	seedRun(t, h, "u1", "carded", map[string]any{"startedAt": at(22, 0)})
+	seedRun(t, h, "u1", "sameAsCarded", map[string]any{"startedAt": at(22, 5), "source": "garmin"})
+	seedRun(t, h, "u1", "missed", map[string]any{"startedAt": at(21, 0), "distanceMeters": 800.0})
+	seedRun(t, h, "u1", "walk", map[string]any{"startedAt": at(20, 0), "sportType": "Walk"})
+	seedRun(t, h, "u1", "tooShort", map[string]any{"startedAt": at(19, 0), "distanceMeters": 300.0})
+	seedRun(t, h, "u1", "stravaDup", map[string]any{"startedAt": at(18, 0), "duplicateOfActivityId": "open1"})
+	seedRun(t, h, "u1", "garminCopy", map[string]any{"startedAt": at(17, 0), "source": "garmin"})
+	seedRun(t, h, "u1", "threeI", map[string]any{"startedAt": at(17, 1), "source": "runnow"})
+	seedRun(t, h, "u2", "other", map[string]any{"startedAt": at(25, 0)})
+
+	h.want(h.call("u1", "POST", "/v1/activities/carded/card", nil, ""), 200, "")
+	h.want(h.call("u1", "POST", "/v1/activities/missed/card", nil, ""), 409, "card_missed")
+
+	r := h.call("u1", "GET", "/v1/cards/unflipped", nil, "")
+	h.want(r, 200, "")
+	var ids []string
+	for _, item := range r.body["activities"].([]any) {
+		activity := item.(map[string]any)
+		ids = append(ids, activity["id"].(string))
+		if activity["routePoints"] != nil {
+			t.Fatalf("danh sách không được kèm route: %s", r.raw)
+		}
+	}
+	if want := []string{"open1", "open2", "threeI"}; !slices.Equal(ids, want) {
+		t.Fatalf("buổi chưa lật = %v, muốn %v", ids, want)
+	}
 }

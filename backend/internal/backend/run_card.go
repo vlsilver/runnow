@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/big"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -457,12 +458,96 @@ func (s *RunCardStore) yieldsToRunNow(ctx context.Context, uid string, fact Acti
 		return false, err
 	}
 	for _, d := range docs {
-		data := d.Data()
-		if stringValue(data["source"]) == "runnow" && runCardEligible(data) == nil && sameRun(fact, activityFact(d.Ref.ID, data)) {
+		if runNowOwnsRun(fact, d.Ref.ID, d.Data()) {
 			return true, nil
 		}
 	}
 	return false, nil
+}
+
+// runNowOwnsRun là buổi data của 3i lật được thẻ và cùng lần chạy với buổi Garmin fact.
+func runNowOwnsRun(fact ActivityFact, id string, data map[string]any) bool {
+	return fact.Source == "garmin" && stringValue(data["source"]) == "runnow" &&
+		runCardEligible(data) == nil && sameRun(fact, activityFact(id, data))
+}
+
+// runCardUnflippedScan chặn số buổi gần nhất xét cho danh sách chưa lật: người
+// có lịch sử Strava vài năm không làm một lần mở Bộ thẻ đọc cả nghìn doc.
+const runCardUnflippedScan = 200
+
+// Unflipped là các buổi trong runCardUnflippedScan buổi gần nhất của uid còn lật
+// được thẻ, mới trước. Cùng luật với Roll: chưa lật, chưa trượt, đủ điều kiện,
+// không trùng một lần chạy đã lật, không nhường thẻ cho buổi 3i.
+func (s *RunCardStore) Unflipped(ctx context.Context, uid string) ([]map[string]any, error) {
+	docs, err := s.db.Collection("users").Doc(uid).Collection("activities").
+		Select(slices.Concat(activityListFields, []string{"photos"})...).
+		OrderBy("startedAt", firestore.Desc).
+		Limit(runCardUnflippedScan).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(docs))
+	if len(docs) == 0 {
+		return out, nil
+	}
+	oldest := activityFact(docs[len(docs)-1].Ref.ID, docs[len(docs)-1].Data()).StartedAt
+	rolled, err := s.rolledSince(ctx, uid, oldest)
+	if err != nil {
+		return nil, err
+	}
+	activities := make(map[string]map[string]any, len(docs))
+	for _, d := range docs {
+		activities[d.Ref.ID] = d.Data()
+	}
+	for _, d := range docs {
+		data := d.Data()
+		if _, done := rolled[d.Ref.ID]; done || runCardEligible(data) != nil {
+			continue
+		}
+		fact := activityFact(d.Ref.ID, data)
+		if fact.StartedAt.IsZero() || coveredByRoll(fact, rolled) || yieldsAmong(fact, activities) {
+			continue
+		}
+		out = append(out, data)
+	}
+	return out, nil
+}
+
+// rolledSince là các lượt lật của uid, ra thẻ hay trượt, bắt đầu từ một ngày
+// trước since: lượt sớm hơn nữa không chạm được buổi nào từ since trở đi.
+func (s *RunCardStore) rolledSince(ctx context.Context, uid string, since time.Time) (map[string]ActivityFact, error) {
+	out := map[string]ActivityFact{}
+	for _, coll := range []string{"runCards", "runCardMisses"} {
+		docs, err := s.db.Collection("users").Doc(uid).Collection(coll).
+			Where("startedAt", ">=", since.Add(-24*time.Hour)).
+			Select("snapshot").Documents(ctx).GetAll()
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range docs {
+			snapshot, _ := d.Data()["snapshot"].(map[string]any)
+			out[d.Ref.ID] = activityFact(d.Ref.ID, snapshot)
+		}
+	}
+	return out, nil
+}
+
+func coveredByRoll(fact ActivityFact, rolled map[string]ActivityFact) bool {
+	for _, roll := range rolled {
+		if sameRun(fact, roll) {
+			return true
+		}
+	}
+	return false
+}
+
+func yieldsAmong(fact ActivityFact, activities map[string]map[string]any) bool {
+	for id, data := range activities {
+		if runNowOwnsRun(fact, id, data) {
+			return true
+		}
+	}
+	return false
 }
 
 // runCardActivityID là activityId trên path, đã chặn những tên Firestore không

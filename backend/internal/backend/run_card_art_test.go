@@ -1,6 +1,10 @@
 package backend
 
 import (
+	"bytes"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"strings"
 	"testing"
 	"time"
@@ -75,5 +79,62 @@ func TestRunCardTimeOfDayUsesVietnamHour(t *testing.T) {
 	}
 	if got := runCardTimeOfDay(time.Time{}); got != "in soft daylight" {
 		t.Errorf("không có giờ: %q", got)
+	}
+}
+
+func plainJPEG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for i := range img.Pix {
+		img.Pix[i] = 200
+	}
+	var out bytes.Buffer
+	if err := jpeg.Encode(&out, img, nil); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
+}
+
+// Tranh được khoe cho người khác nên không được mang theo EXIF của ảnh gốc.
+func TestRunCardPlainImageDropsMetadata(t *testing.T) {
+	src := plainJPEG(t, 6, 9)
+	payload := []byte("Exif\x00\x00GPS-10.77,106.70")
+	app1 := append([]byte{0xFF, 0xE1, 0, byte(len(payload) + 2)}, payload...)
+	withExif := append(append(append([]byte{}, src[:2]...), app1...), src[2:]...)
+
+	out, err := runCardPlainImage(withExif)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(out, []byte("GPS-10.77")) {
+		t.Fatal("tranh còn giữ EXIF của ảnh gốc")
+	}
+	img, err := png.Decode(bytes.NewReader(out))
+	if err != nil {
+		t.Fatalf("tranh phải là PNG: %v", err)
+	}
+	if b := img.Bounds(); b.Dx() != 6 || b.Dy() != 9 {
+		t.Fatalf("tranh %dx%d, muốn 6x9", b.Dx(), b.Dy())
+	}
+}
+
+func TestRunCardPlainImageRejectsBadInput(t *testing.T) {
+	if _, err := runCardPlainImage([]byte("không phải ảnh")); err == nil {
+		t.Fatal("file không phải ảnh phải bị từ chối")
+	}
+	// 2049 x 1: nhỏ vài byte mà vượt cạnh tối đa 2048.
+	var huge bytes.Buffer
+	if err := png.Encode(&huge, image.NewGray(image.Rect(0, 0, 2049, 1))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runCardPlainImage(huge.Bytes()); err == nil {
+		t.Fatal("ảnh quá cạnh tối đa phải bị từ chối")
+	}
+	var edge bytes.Buffer
+	if err := png.Encode(&edge, image.NewGray(image.Rect(0, 0, 2048, 1))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runCardPlainImage(edge.Bytes()); err != nil {
+		t.Fatalf("ảnh đúng cạnh tối đa phải qua: %v", err)
 	}
 }
