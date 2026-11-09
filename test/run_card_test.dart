@@ -560,6 +560,51 @@ void main() {
   testWidgets('route art draws the run as a bright line across the card', (
     tester,
   ) async {
+  test('the fine pace line is read only when it can draw a line', () {
+    final pace = RunCardPace.fromJson({
+      'stepMeters': 500,
+      'secondsPerKm': [300, 310.5],
+    })!;
+    expect(pace.stepMeters, 500);
+    expect(pace.secondsPerKm, [300, 310.5]);
+    expect(RunCardPace.fromJson(null), isNull);
+    expect(
+      RunCardPace.fromJson({
+        'stepMeters': 500,
+        'secondsPerKm': [300],
+      }),
+      isNull,
+    );
+    expect(
+      RunCardPace.fromJson({
+        'stepMeters': 0,
+        'secondsPerKm': [300, 310],
+      }),
+      isNull,
+    );
+  });
+
+  test('the chart title names the step it draws', () {
+    RunCardPace pace(int step) =>
+        RunCardPace(stepMeters: step, secondsPerKm: const [300, 310]);
+    expect(runCardPaceTitle(null), 'PACE MỖI KM');
+    expect(runCardPaceTitle(pace(200)), 'PACE MỖI 200 M');
+    expect(runCardPaceTitle(pace(500)), 'PACE MỖI 500 M');
+    expect(runCardPaceTitle(pace(1000)), 'PACE MỖI KM');
+  });
+
+  test('the mark sits inside the km the header calls fastest', () {
+    // Km 2 nhanh nhất, gồm điểm 2 và 3 ở bước 500 m. Điểm 0 nhanh hơn hẳn nhưng
+    // nằm ở km 1 nên không được đánh dấu.
+    const paces = [240.0, 330.0, 310.0, 300.0, 340.0, 335.0];
+    expect(
+      runCardPaceMark(paces, kmPaces: const [320, 305, 338], stepMeters: 500),
+      3,
+    );
+    expect(runCardPaceMark(paces, kmPaces: const [], stepMeters: 500), 0);
+    expect(runCardPaceMark(paces, kmPaces: const [320, 305]), 0);
+  });
+
     // Đường thẳng bắc–nam: hình vẽ nằm giữa thẻ theo chiều ngang, trong khoảng
     // trống phía trên khối chữ.
     final luma = await _paintArt(tester, const [
@@ -608,6 +653,40 @@ void main() {
   testWidgets('a run without GPS or splits has a back without map or chart', (
     tester,
   ) async {
+  testWidgets('the back draws the fine line when the card has one', (
+    tester,
+  ) async {
+    final json = _cardJson(
+      tier: 'mythic',
+      route: const [
+        {'lat': 21.0, 'lng': 105.8},
+        {'lat': 21.01, 'lng': 105.8},
+      ],
+      splits: const [
+        {'distanceMeters': 1000, 'movingTimeSeconds': 330},
+        {'distanceMeters': 1000, 'movingTimeSeconds': 320},
+      ],
+    );
+    (json['snapshot'] as Map)['pace'] = {
+      'stepMeters': 500,
+      'secondsPerKm': [335, 325, 322, 318],
+    };
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: AchievementCard(
+            data: runCardData(RunCard.fromJson(json), owner: 'An'),
+            back: true,
+            animate: false,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('PACE MỖI 500 M'), findsOneWidget);
+    expect(find.text('NHANH NHẤT · KM 2 · 5:20'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
     await tester.pumpWidget(
       MaterialApp(
         home: Center(

@@ -282,6 +282,37 @@ List<double> runCardSplitPaces(List<RunCardSplit> splits) => [
     if (s.distanceMeters >= _minSplitMeters) s.paceSecondsPerKm,
 ];
 
+int _fastest(List<double> paces, int from, int to) {
+  var fast = from;
+  for (var i = from + 1; i < to; i++) {
+    if (paces[i] < paces[fast]) fast = i;
+  }
+  return fast;
+}
+
+/// Tiêu đề biểu đồ theo bước của đường đang vẽ.
+String runCardPaceTitle(RunCardPace? pace) =>
+    pace == null || pace.stepMeters >= 1000
+    ? 'PACE MỖI KM'
+    : 'PACE MỖI ${pace.stepMeters} M';
+
+/// Điểm được đánh dấu trên đường [paces]. Dòng "NHANH NHẤT" tính theo km, nên
+/// đường mịn đánh dấu điểm nhanh nhất nằm trong đúng km đó. Không biết km nào
+/// nhanh nhất thì lấy điểm nhanh nhất cả đường.
+int runCardPaceMark(
+  List<double> paces, {
+  required List<double> kmPaces,
+  int? stepMeters,
+}) {
+  if (stepMeters != null && kmPaces.length > 1) {
+    final km = _fastest(kmPaces, 0, kmPaces.length);
+    final from = km * 1000 ~/ stepMeters;
+    final to = math.min((km + 1) * 1000 ~/ stepMeters, paces.length);
+    if (from < to) return _fastest(paces, from, to);
+  }
+  return _fastest(paces, 0, paces.length);
+}
+
 /// Mặt sau thẻ buổi chạy: bản đồ thật kèm đường chạy, pace từng km và ba số
 /// chính. Buổi không có GPS thì bỏ bản đồ, không có từng km thì bỏ biểu đồ.
 class RunCardBack extends StatelessWidget {
@@ -295,7 +326,8 @@ class RunCardBack extends StatelessWidget {
     final skin = RunCardSkin.of(context);
     final accent = skin.accent(card.tier);
     final glow = skin.glow(card.tier);
-    final paces = runCardSplitPaces(snap.splits);
+    final kmPaces = runCardSplitPaces(snap.splits);
+    final paces = snap.pace?.secondsPerKm ?? kmPaces;
     final start = (snap.startedAt ?? card.rolledAt ?? DateTime.now()).toLocal();
     final foot = TextStyle(
       fontFamily: _condensed,
@@ -342,13 +374,22 @@ class RunCardBack extends StatelessWidget {
               ),
             if (paces.length > 1) ...[
               const SizedBox(height: 10),
-              _PaceHeader(paces: paces, skin: skin),
+              _PaceHeader(
+                title: runCardPaceTitle(snap.pace),
+                kmPaces: kmPaces,
+                skin: skin,
+              ),
               const SizedBox(height: 6),
               Expanded(
                 flex: 4,
                 child: CustomPaint(
                   painter: _PaceChartPainter(
                     paces: paces,
+                    mark: runCardPaceMark(
+                      paces,
+                      kmPaces: kmPaces,
+                      stepMeters: snap.pace?.stepMeters,
+                    ),
                     glow: glow,
                     skin: skin,
                   ),
@@ -493,17 +534,19 @@ class _BackMap extends StatelessWidget {
 }
 
 class _PaceHeader extends StatelessWidget {
-  const _PaceHeader({required this.paces, required this.skin});
+  const _PaceHeader({
+    required this.title,
+    required this.kmPaces,
+    required this.skin,
+  });
 
-  final List<double> paces;
+  final String title;
+  final List<double> kmPaces;
   final RunCardSkin skin;
 
   @override
   Widget build(BuildContext context) {
-    var fast = 0;
-    for (var i = 1; i < paces.length; i++) {
-      if (paces[i] < paces[fast]) fast = i;
-    }
+    final fast = _fastest(kmPaces, 0, kmPaces.length);
     TextStyle label(Color color) => TextStyle(
       fontFamily: _condensed,
       fontWeight: FontWeight.w700,
@@ -515,32 +558,56 @@ class _PaceHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
-          Text('PACE MỖI KM', style: label(skin.dataLabel)),
+          Text(title, style: label(skin.dataLabel)),
           const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'NHANH NHẤT · KM ${fast + 1} · ${_pace(paces[fast])}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.end,
-              style: label(skin.hero),
+          if (kmPaces.length > 1)
+            Expanded(
+              child: Text(
+                'NHANH NHẤT · KM ${fast + 1} · ${_pace(kmPaces[fast])}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
+                style: label(skin.hero),
+              ),
             ),
-          ),
         ],
       ),
     );
   }
 }
 
-/// Pace từng km: km nhanh hơn thì cao hơn, chấm sáng ở km nhanh nhất.
+/// Đường cong đi qua đúng từng điểm (Catmull-Rom). Điểm điều khiển bị kẹp trong
+/// khoảng cao thấp của đoạn để đường không vọt quá giá trị thật.
+void _curveThrough(Path path, List<Offset> points) {
+  double within(double y, Offset a, Offset b) =>
+      y.clamp(math.min(a.dy, b.dy), math.max(a.dy, b.dy));
+  for (var i = 0; i + 1 < points.length; i++) {
+    final before = points[math.max(i - 1, 0)];
+    final from = points[i];
+    final to = points[i + 1];
+    final after = points[math.min(i + 2, points.length - 1)];
+    path.cubicTo(
+      from.dx + (to.dx - before.dx) / 6,
+      within(from.dy + (to.dy - before.dy) / 6, from, to),
+      to.dx - (after.dx - from.dx) / 6,
+      within(to.dy - (after.dy - from.dy) / 6, from, to),
+      to.dx,
+      to.dy,
+    );
+  }
+}
+
+/// Pace dọc buổi chạy: đoạn nhanh hơn thì cao hơn, chấm sáng ở điểm [mark].
 class _PaceChartPainter extends CustomPainter {
   _PaceChartPainter({
     required this.paces,
+    required this.mark,
     required this.glow,
     required this.skin,
   });
 
   final List<double> paces;
+  final int mark;
   final Color glow;
   final RunCardSkin skin;
 
@@ -560,9 +627,7 @@ class _PaceChartPainter extends CustomPainter {
       area.top + (paces[i] - lo) / (hi - lo) * area.height,
     );
     final line = Path()..moveTo(at(0).dx, at(0).dy);
-    for (var i = 1; i < paces.length; i++) {
-      line.lineTo(at(i).dx, at(i).dy);
-    }
+    _curveThrough(line, [for (var i = 0; i < paces.length; i++) at(i)]);
     final fill = Path.from(line)
       ..lineTo(area.right, area.bottom)
       ..lineTo(area.left, area.bottom)
@@ -585,18 +650,15 @@ class _PaceChartPainter extends CustomPainter {
           ..strokeWidth = 2
           ..color = skin.routeLine,
       );
-    var fast = 0;
-    for (var i = 1; i < paces.length; i++) {
-      if (paces[i] < paces[fast]) fast = i;
-    }
     canvas
-      ..drawCircle(at(fast), 4.5, Paint()..color = glow)
-      ..drawCircle(at(fast), 4.5, _stroke(skin.routeLine, 2));
+      ..drawCircle(at(mark), 4.5, Paint()..color = glow)
+      ..drawCircle(at(mark), 4.5, _stroke(skin.routeLine, 2));
   }
 
   @override
   bool shouldRepaint(_PaceChartPainter old) =>
       old.glow != glow ||
+      old.mark != mark ||
       !identical(old.skin, skin) ||
       !identical(old.paces, paces);
 }

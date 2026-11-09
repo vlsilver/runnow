@@ -79,6 +79,28 @@ class RunCardSplit {
   double get paceSecondsPerKm => movingTimeSeconds / (distanceMeters / 1000);
 }
 
+/// Pace theo từng bước cự ly để vẽ biểu đồ mịn. Bước do server chọn theo cự ly
+/// buổi chạy.
+class RunCardPace {
+  const RunCardPace({required this.stepMeters, required this.secondsPerKm});
+
+  /// Trả null khi dữ liệu không đủ vẽ một đường: thẻ lật trước khi có field
+  /// này, hoặc buổi không có stream.
+  static RunCardPace? fromJson(Map<String, dynamic>? json) {
+    final step = _int(json?['stepMeters']);
+    final paces = [
+      if (json?['secondsPerKm'] case final List values)
+        for (final v in values)
+          if (v is num && v > 0) v.toDouble(),
+    ];
+    if (step <= 0 || paces.length < 2) return null;
+    return RunCardPace(stepMeters: step, secondsPerKm: paces);
+  }
+
+  final int stepMeters;
+  final List<double> secondsPerKm;
+}
+
 /// Số liệu buổi chạy chụp lại lúc lật, để thẻ còn nguyên khi buổi bị xoá hay
 /// sửa sau đó.
 class RunCardSnapshot {
@@ -93,6 +115,7 @@ class RunCardSnapshot {
     this.startedAt,
     this.elevationGainMeters,
     this.averageHeartRate,
+    this.pace,
   });
 
   factory RunCardSnapshot.fromJson(Map<String, dynamic> json) =>
@@ -112,6 +135,7 @@ class RunCardSnapshot {
                 LatLng(lat.toDouble(), lng.toDouble()),
         ],
         splits: _list(json['splits'], RunCardSplit.fromJson),
+        pace: RunCardPace.fromJson(_map(json['pace'])),
       );
 
   final String name;
@@ -126,6 +150,7 @@ class RunCardSnapshot {
   /// Tối đa 80 điểm; rỗng khi buổi không có GPS.
   final List<LatLng> route;
   final List<RunCardSplit> splits;
+  final RunCardPace? pace;
 }
 
 enum RunCardArtStatus { drawing, done, failed }
