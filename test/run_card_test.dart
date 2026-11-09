@@ -14,10 +14,13 @@ import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card.dart';
 import 'package:myrun/src/achievements/run_card_art_steps.dart';
+import 'package:myrun/src/achievements/run_card_collection.dart';
+import 'package:myrun/src/achievements/run_card_flow.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
+import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
@@ -557,9 +560,6 @@ void main() {
     expect(paces, [330, 320]);
   });
 
-  testWidgets('route art draws the run as a bright line across the card', (
-    tester,
-  ) async {
   test('the fine pace line is read only when it can draw a line', () {
     final pace = RunCardPace.fromJson({
       'stepMeters': 500,
@@ -605,6 +605,9 @@ void main() {
     expect(runCardPaceMark(paces, kmPaces: const [320, 305]), 0);
   });
 
+  testWidgets('route art draws the run as a bright line across the card', (
+    tester,
+  ) async {
     // Đường thẳng bắc–nam: hình vẽ nằm giữa thẻ theo chiều ngang, trong khoảng
     // trống phía trên khối chữ.
     final luma = await _paintArt(tester, const [
@@ -650,9 +653,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a run without GPS or splits has a back without map or chart', (
-    tester,
-  ) async {
   testWidgets('the back draws the fine line when the card has one', (
     tester,
   ) async {
@@ -687,6 +687,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('a run without GPS or splits has a back without map or chart', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Center(
@@ -1048,6 +1051,111 @@ void main() {
     expect(find.byType(RunCardArtSteps), findsNothing);
     expect(find.text('Đang vẽ tranh nền'), findsNothing);
     expect(find.text('Vẽ lại'), findsNothing, reason: 'vừa gửi thì chưa kẹt');
+  });
+
+  Future<void> openCollected(WidgetTester tester, RunCard card) async {
+    StorageImage.debugPutDownloadUrl(_runPhotoPath, 'https://x.test/p.jpg');
+    tester.view.physicalSize = const Size(402, 874);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          runNowApiClientProvider.overrideWithValue(_Backend().client()),
+          runCardsProvider.overrideWith((ref) => Stream.value(const [])),
+          userProfileProvider.overrideWith((ref) => Stream.value(null)),
+          activityDetailProvider.overrideWith(
+            (ref, id) async =>
+                ActivityDetail(summary: _run(photos: [_runPhoto])),
+          ),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) {
+                final collected = CollectedRunCard(card);
+                return TextButton(
+                  onPressed: () =>
+                      collected.open(context, collected.data('An')),
+                  child: const Text('mở'),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('mở'));
+    await _settle(tester);
+  }
+
+  testWidgets('a card without art offers to draw and opens the draw steps', (
+    tester,
+  ) async {
+    await openCollected(tester, _card());
+    expect(find.text('Khoe thẻ'), findsOneWidget);
+    expect(find.byIcon(Icons.touch_app_rounded), findsOneWidget);
+    expect(find.textContaining('chạm để lật'), findsNothing);
+    expect(
+      tester.getCenter(find.text('Vẽ nền')).dy,
+      tester.getCenter(find.text('Khoe thẻ')).dy,
+    );
+
+    await tester.tap(find.text('Vẽ nền'));
+    await _settle(tester);
+    await _settle(tester);
+
+    expect(find.byType(GameCardViewer), findsNothing);
+    expect(find.byType(RunCardDrawScreen), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is StorageImage && w.path == _runPhotoPath,
+      ),
+      findsWidgets,
+      reason: 'ảnh buổi chạy phải có trong bước chọn ảnh',
+    );
+  });
+
+  testWidgets('a failed drawing offers to draw again from the viewer', (
+    tester,
+  ) async {
+    await openCollected(
+      tester,
+      _card(art: const {'status': 'failed', 'style': 'oil', 'attempt': 1}),
+    );
+    expect(find.text('Vẽ lại'), findsOneWidget);
+    expect(find.text('Vẽ nền'), findsNothing);
+  });
+
+  testWidgets('a drawn or drawing card has no draw button in the viewer', (
+    tester,
+  ) async {
+    await openCollected(tester, _card(art: _done));
+    expect(find.text('Vẽ nền'), findsNothing);
+    expect(find.text('Vẽ lại'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+
+    await openCollected(
+      tester,
+      _card(art: const {'status': 'drawing', 'style': 'oil', 'attempt': 1}),
+    );
+    expect(find.text('Vẽ nền'), findsNothing);
+    expect(find.text('Vẽ lại'), findsNothing);
+  });
+
+  testWidgets('drawing from the viewer on the result step opens the steps', (
+    tester,
+  ) async {
+    await _pumpPanel(tester, _Backend(), initial: _card());
+    await tester.tap(find.byType(AchievementCard));
+    await _settle(tester);
+
+    await tester.tap(find.text('Vẽ nền'));
+    await _settle(tester);
+
+    expect(find.byType(GameCardViewer), findsNothing);
+    expect(find.byType(RunCardArtSteps), findsOneWidget);
   });
 
   testWidgets('a photo goes on the card as is when no style is chosen', (

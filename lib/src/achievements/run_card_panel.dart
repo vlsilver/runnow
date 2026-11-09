@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
@@ -274,24 +272,24 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
     final km = card.km;
     final glow = runCardGlow(card.tier);
     final art = card.art;
-    // Chưa vẽ hay vẽ hỏng mới có nút vẽ.
-    final drawLabel = switch (art?.status) {
-      null => 'Vẽ tranh nền',
-      RunCardArtStatus.failed => 'Vẽ lại',
-      _ => null,
-    };
+    final drawLabel = runCardDrawLabel(card, fresh: 'Vẽ tranh nền');
     final drawing = art?.status == RunCardArtStatus.drawing && !_stuck(art!);
     final shown = Semantics(
       button: true,
       label: 'Xem thẻ 3D',
       child: GestureDetector(
-        onTap: () => showRunCardViewer(context, card, data),
+        onTap: () => showRunCardViewer(
+          context,
+          card,
+          data,
+          onDraw: () => setState(() => _drawing = true),
+        ),
         child: RunCardFrame(
           child: Stack(
             children: [
               AchievementCard(data: data),
               if (drawing) const Positioned.fill(child: _DrawingSheen()),
-              if (_justRolled) const Positioned.fill(child: _TapHint()),
+              if (_justRolled) const Positioned.fill(child: CardTapHint()),
             ],
           ),
         ),
@@ -444,12 +442,22 @@ String _percent(double p) => p == p.roundToDouble()
     ? p.toStringAsFixed(0)
     : p.toStringAsFixed(1).replaceAll('.', ',');
 
-/// Xem thẻ 3D, lật hai mặt, khoe từ đó.
+/// Nhãn nút vẽ: chưa vẽ hay vẽ hỏng mới có, đang vẽ hay vẽ xong thì null.
+String? runCardDrawLabel(RunCard card, {String fresh = 'Vẽ nền'}) =>
+    switch (card.art?.status) {
+      null => fresh,
+      RunCardArtStatus.failed => 'Vẽ lại',
+      _ => null,
+    };
+
+/// Xem thẻ 3D, lật hai mặt, khoe từ đó. Có [onDraw] thì thẻ chưa có nền hiện
+/// thêm nút vẽ.
 void showRunCardViewer(
   BuildContext context,
   RunCard card,
   AchievementCardData data, {
   Widget? reaction,
+  VoidCallback? onDraw,
 }) => showCardViewer(
   context,
   front: (pose) => AchievementCard(data: data, pose: pose),
@@ -457,6 +465,14 @@ void showRunCardViewer(
   chips: [gameCardTiers[card.tier]!.label, '${runCardKm(card.km)} km'],
   cardSize: achievementCardSize,
   reaction: reaction,
+  action: switch ((runCardDrawLabel(card), onDraw)) {
+    (final label?, final onDraw?) => (
+      label: label,
+      icon: Icons.brush_outlined,
+      onPressed: onDraw,
+    ),
+    _ => null,
+  },
   // Mở màn khoe từ trong màn xem để nó nằm trên màn xem.
   onShare: (_, origin) => showRunCardShare(origin, card: card, data: data),
 );
@@ -712,87 +728,6 @@ class _StageSpinner extends StatelessWidget {
   @override
   Widget build(BuildContext context) =>
       const CircularProgressIndicator(strokeWidth: 2, color: _T.titleGold2);
-}
-
-/// Ngón tay chạm thử lên thẻ vừa lật để gợi ý chạm vào xem 3D, chạy vài nhịp
-/// rồi tự tắt.
-class _TapHint extends StatefulWidget {
-  const _TapHint();
-
-  @override
-  State<_TapHint> createState() => _TapHintState();
-}
-
-class _TapHintState extends State<_TapHint>
-    with SingleTickerProviderStateMixin {
-  static const _taps = 3;
-
-  late final _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 3000),
-  )..forward();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ExcludeSemantics(
-      child: IgnorePointer(
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, _) {
-            final t = _controller.value;
-            if (t >= 1) return const SizedBox.shrink();
-            final beat = (t * _taps) % 1;
-            // Ngón hạ xuống nửa đầu nhịp, vòng sóng toả ra nửa sau.
-            final press = beat < 0.5 ? beat * 2 : 1.0;
-            final ripple = beat < 0.5 ? 0.0 : (beat - 0.5) * 2;
-            final fade = (math.min(t, 1 - t) * 10).clamp(0.0, 1.0);
-            return Opacity(
-              opacity: fade,
-              child: Center(
-                child: SizedBox.square(
-                  dimension: 120,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Container(
-                        width: 40 + 70 * ripple,
-                        height: 40 + 70 * ripple,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: _T.hero.withValues(alpha: 1 - ripple),
-                            width: 2,
-                          ),
-                        ),
-                      ),
-                      Transform.translate(
-                        offset: Offset(8, 22 - 12 * press),
-                        child: Transform.scale(
-                          scale: 1.1 - 0.15 * press,
-                          child: const Icon(
-                            Icons.touch_app_rounded,
-                            size: 64,
-                            color: _T.hero,
-                            shadows: [Shadow(color: _T.drop, blurRadius: 12)],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
 }
 
 /// Vệt sáng lướt qua thẻ trong lúc đang làm tranh nền.

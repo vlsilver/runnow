@@ -79,7 +79,13 @@ class CollectedRunCard extends CollectedCard {
     BuildContext context,
     AchievementCardData data, {
     Widget? reaction,
-  }) => showRunCardViewer(context, card, data, reaction: reaction);
+  }) => showRunCardViewer(
+    context,
+    card,
+    data,
+    reaction: reaction,
+    onDraw: () => showRunCardDraw(context, card),
+  );
 }
 
 class CollectedGameCard extends CollectedCard {

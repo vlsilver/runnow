@@ -60,6 +60,7 @@ Future<void> showCardViewer(
   Widget? locked,
   bool startBack = false,
   Widget? reaction,
+  CardViewerAction? action,
 }) {
   return Navigator.of(context).push(
     PageRouteBuilder<void>(
@@ -77,6 +78,7 @@ Future<void> showCardViewer(
           locked: locked,
           startBack: startBack,
           reaction: reaction,
+          action: action,
         ),
       ),
       transitionsBuilder: (_, animation, _, child) =>
@@ -84,6 +86,13 @@ Future<void> showCardViewer(
     ),
   );
 }
+
+/// Nút phụ phía trên nút khoe. Bấm thì đóng màn xem rồi chạy [onPressed].
+typedef CardViewerAction = ({
+  String label,
+  IconData icon,
+  VoidCallback onPressed,
+});
 
 class GameCardViewer extends StatefulWidget {
   const GameCardViewer({
@@ -97,6 +106,7 @@ class GameCardViewer extends StatefulWidget {
     this.locked,
     this.startBack = false,
     this.reaction,
+    this.action,
   });
 
   final CardFaceBuilder front;
@@ -118,6 +128,7 @@ class GameCardViewer extends StatefulWidget {
 
   /// Hàng tim của thẻ đã khoe lên club, ngay dưới lá. Null thì không có.
   final Widget? reaction;
+  final CardViewerAction? action;
 
   @override
   State<GameCardViewer> createState() => _GameCardViewerState();
@@ -226,14 +237,19 @@ class _GameCardViewerState extends State<GameCardViewer>
                 child: Center(
                   child: _closed
                       ? const SizedBox.shrink()
-                      : TiltFlipCard(
-                          key: _card,
-                          front: widget.front,
-                          back: widget.back,
-                          width: cardWidth,
-                          cardSize: widget.cardSize,
-                          captureKey: _captureKey,
-                          startBack: widget.startBack,
+                      : Stack(
+                          children: [
+                            TiltFlipCard(
+                              key: _card,
+                              front: widget.front,
+                              back: widget.back,
+                              width: cardWidth,
+                              cardSize: widget.cardSize,
+                              captureKey: _captureKey,
+                              startBack: widget.startBack,
+                            ),
+                            const Positioned.fill(child: CardTapHint()),
+                          ],
                         ),
                 ),
               ),
@@ -242,20 +258,41 @@ class _GameCardViewerState extends State<GameCardViewer>
                   padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
                   child: reaction,
                 ),
-              const Text(
-                'Kéo để xoay · chạm để lật',
-                style: TextStyle(fontSize: 13, color: gameNightMuted),
-              ),
               const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: widget.onShare != null
-                    ? _shareButton()
-                    : widget.locked ?? const SizedBox.shrink(),
+                child: _bottomBar(),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _bottomBar() {
+    final primary = widget.onShare != null
+        ? _shareButton()
+        : widget.locked ?? const SizedBox.shrink();
+    final action = widget.action;
+    if (action == null) return primary;
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                action.onPressed();
+              },
+              icon: Icon(action.icon),
+              label: Text(action.label),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: primary),
+        ],
       ),
     );
   }
@@ -268,6 +305,86 @@ class _GameCardViewerState extends State<GameCardViewer>
           onPressed: _sharing ? null : () => _share(buttonContext),
           icon: const Icon(Icons.ios_share_rounded),
           label: Text(_sharing ? 'Đang tạo ảnh…' : 'Khoe thẻ'),
+        ),
+      ),
+    );
+  }
+}
+
+/// Ngón tay chạm thử lên thẻ để gợi ý chạm vào được, chạy vài nhịp rồi tự tắt.
+class CardTapHint extends StatefulWidget {
+  const CardTapHint({super.key});
+
+  @override
+  State<CardTapHint> createState() => _CardTapHintState();
+}
+
+class _CardTapHintState extends State<CardTapHint>
+    with SingleTickerProviderStateMixin {
+  static const _taps = 3;
+
+  late final _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 3000),
+  )..forward();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: IgnorePointer(
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            final t = _controller.value;
+            if (t >= 1) return const SizedBox.shrink();
+            final beat = (t * _taps) % 1;
+            // Ngón hạ xuống nửa đầu nhịp, vòng sóng toả ra nửa sau.
+            final press = beat < 0.5 ? beat * 2 : 1.0;
+            final ripple = beat < 0.5 ? 0.0 : (beat - 0.5) * 2;
+            final fade = (math.min(t, 1 - t) * 10).clamp(0.0, 1.0);
+            return Opacity(
+              opacity: fade,
+              child: Center(
+                child: SizedBox.square(
+                  dimension: 120,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        width: 40 + 70 * ripple,
+                        height: 40 + 70 * ripple,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: RunNowAchievementTokens.hero.withValues(alpha: 1 - ripple),
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      Transform.translate(
+                        offset: Offset(8, 22 - 12 * press),
+                        child: Transform.scale(
+                          scale: 1.1 - 0.15 * press,
+                          child: const Icon(
+                            Icons.touch_app_rounded,
+                            size: 64,
+                            color: RunNowAchievementTokens.hero,
+                            shadows: [Shadow(color: RunNowAchievementTokens.drop, blurRadius: 12)],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
