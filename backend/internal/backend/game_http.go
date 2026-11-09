@@ -142,7 +142,7 @@ func (s *Server) gameRoutes() {
 	s.route("POST /v1/games/{id}/start", s.gameHost(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
 		id := r.PathValue("id")
 		if r.URL.Query().Get("dryRun") == "true" {
-			preview, err := s.deps.Games.StartPreview(r.Context(), id)
+			preview, err := s.deps.Games.StartPreview(r.Context(), id, s.now())
 			if err != nil {
 				return err
 			}
@@ -152,7 +152,7 @@ func (s *Server) gameRoutes() {
 		if publish == nil || s.config.GameInboundQueue == "" {
 			return &HTTPError{Status: http.StatusServiceUnavailable, Code: "tasks_unavailable", Message: "Chưa cấu hình queue game-inbound."}
 		}
-		attempt, err := s.deps.Games.RequestStart(r.Context(), id, v.UID, time.Now())
+		attempt, err := s.deps.Games.RequestStart(r.Context(), id, v.UID, s.now())
 		if err != nil {
 			return err
 		}

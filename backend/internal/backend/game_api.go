@@ -1652,6 +1652,9 @@ func (s *GameStore) Create(ctx context.Context, req CreateGameRequest, v GameVie
 		if !req.StartAt.After(wall) || (req.RegistrationDeadline != nil && req.StartAt.Before(*req.RegistrationDeadline)) {
 			return "", errInvalidStartAt
 		}
+		if reason := startClosedReason(in.Config, *req.StartAt); reason != "" {
+			return "", startNotInDay(reason)
+		}
 		in.StartAt = *req.StartAt
 	}
 	return s.CreateGame(ctx, in, wall)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -56,13 +57,15 @@ func balanceScore(roles []werewolf.Role) int {
 }
 
 type StartPreview struct {
-	WillExclude  []StartExcluded `json:"willExclude"`
-	Players      []StartPlayer   `json:"players"`
-	Count        int             `json:"count"`
-	MinPlayers   int             `json:"minPlayers"`
-	MaxPlayers   int             `json:"maxPlayers"`
-	CanStart     bool            `json:"canStart"`
-	BalanceScore *int            `json:"balanceScore"`
+	WillExclude []StartExcluded `json:"willExclude"`
+	Players     []StartPlayer   `json:"players"`
+	Count       int             `json:"count"`
+	MinPlayers  int             `json:"minPlayers"`
+	MaxPlayers  int             `json:"maxPlayers"`
+	CanStart    bool            `json:"canStart"`
+	// StartClosed khác rỗng là chưa tới giờ được Start, kèm chữ để app in nguyên văn.
+	StartClosed  string `json:"startClosed,omitempty"`
+	BalanceScore *int   `json:"balanceScore"`
 }
 
 type StartExcluded struct {
@@ -168,7 +171,7 @@ func gameConfigOf(g map[string]any) (werewolf.Config, error) {
 
 // StartPreview là dryRun của Start: ai sẽ bị loại và vì sao, bảng uid ↔ @tg để
 // admin soát. Theo inPsc đang lưu; lúc Start thật bot hỏi lại Telegram.
-func (s *GameStore) StartPreview(ctx context.Context, gameID string) (StartPreview, error) {
+func (s *GameStore) StartPreview(ctx context.Context, gameID string, wall time.Time) (StartPreview, error) {
 	g, err := s.readStartGame(ctx, gameID)
 	if err != nil {
 		return StartPreview{}, err
@@ -184,7 +187,27 @@ func (s *GameStore) StartPreview(ctx context.Context, gameID string) (StartPrevi
 	if err != nil {
 		return StartPreview{}, err
 	}
-	return previewOf(cands, cfg), nil
+	out := previewOf(cands, cfg)
+	out.StartClosed = startClosedReason(cfg, wall)
+	return out, nil
+}
+
+// startClosedReason là lý do chưa Start được lúc at, rỗng là được. Ván chỉ bắt
+// đầu trong pha Ngày theo lịch của nó; ván thử có đồng hồ riêng nên không xét.
+func startClosedReason(cfg werewolf.Config, at time.Time) string {
+	if cfg.TestMode || cfg.InDayPhase(at) {
+		return ""
+	}
+	clocks := cfg.RoundClocks(at)
+	windows := make([]string, len(clocks))
+	for i, k := range clocks {
+		windows[i] = hm(k.Dawn) + "–" + hm(k.NominateClose)
+	}
+	return "Ván này chỉ bắt đầu được trong pha Ngày: " + strings.Join(windows, ", ") + "."
+}
+
+func startNotInDay(reason string) *HTTPError {
+	return &HTTPError{Status: http.StatusUnprocessableEntity, Code: "start_not_in_day", Message: reason}
 }
 
 // RequestStart đặt status=starting và trả số lần Start, để TaskID của mỗi lần
@@ -193,9 +216,12 @@ func (s *GameStore) StartPreview(ctx context.Context, gameID string) (StartPrevi
 // lại (enqueue lần trước lỗi) thì được; bot chỉ chạy khi còn starting, nên hai
 // task cùng chạy thì một bên thấy ván đã chạy và thôi.
 func (s *GameStore) RequestStart(ctx context.Context, gameID, by string, wall time.Time) (int64, error) {
-	preview, err := s.StartPreview(ctx, gameID)
+	preview, err := s.StartPreview(ctx, gameID, wall)
 	if err != nil {
 		return 0, err
+	}
+	if preview.StartClosed != "" {
+		return 0, startNotInDay(preview.StartClosed)
 	}
 	if preview.Count < werewolf.MinPlayers {
 		return 0, notEnoughPlayers(preview)
@@ -223,15 +249,23 @@ func startDue(g map[string]any, wall time.Time) bool {
 
 // AutoStart là Start do tick bấm khi tới startAt; attempt 0 là không Start.
 // Transaction kiểm lại startDue nên hai tick chạy cùng lúc chỉ một cái Start.
-// Thiếu người thì bỏ startAt và ghi startError: ván chờ chủ phòng bấm Start.
+// Thiếu người hay ngoài pha Ngày thì bỏ startAt và ghi startError: ván chờ chủ
+// phòng bấm Start.
 func (s *GameStore) AutoStart(ctx context.Context, gameID string, wall time.Time) (int64, error) {
 	g, err := s.readStartGame(ctx, gameID)
 	if err != nil || !startDue(g.Data(), wall) {
 		return 0, err
 	}
-	preview, err := s.StartPreview(ctx, gameID)
+	preview, err := s.StartPreview(ctx, gameID, wall)
 	if err != nil {
 		return 0, err
+	}
+	var failure *HTTPError
+	switch {
+	case preview.StartClosed != "":
+		failure = startNotInDay(preview.StartClosed)
+	case preview.Count < werewolf.MinPlayers:
+		failure = notEnoughPlayers(preview)
 	}
 	var attempt int64
 	err = s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
@@ -240,10 +274,10 @@ func (s *GameStore) AutoStart(ctx context.Context, gameID string, wall time.Time
 		if err != nil || !startDue(g.Data(), wall) {
 			return err
 		}
-		if preview.Count < werewolf.MinPlayers {
+		if failure != nil {
 			return tx.Update(g.Ref, []firestore.Update{
 				{Path: "startAt", Value: nil},
-				{Path: "startError", Value: map[string]any{"code": "not_enough_players", "message": notEnoughPlayers(preview).Message, "at": wall}},
+				{Path: "startError", Value: map[string]any{"code": failure.Code, "message": failure.Message, "at": wall}},
 				{Path: "version", Value: firestore.Increment(1)}, {Path: "updatedAt", Value: wall},
 			})
 		}

@@ -85,4 +85,69 @@ func TestKmRoundsValidate(t *testing.T) {
 			t.Fatalf("lịch km %+v không bị từ chối", s)
 		}
 	}
+	good := []Schedule{
+		{StartHour: 22, RoundHours: 12, Rounds: 2},
+		{StartHour: 6, RoundHours: 8, Rounds: 3},
+		{StartHour: 6, RoundHours: 24, Rounds: 1},
+	}
+	for _, s := range good {
+		s := s
+		if err := (Config{Schedule: &s}).Validate(); err != nil {
+			t.Fatalf("lịch km %+v bị từ chối: %v", s, err)
+		}
+	}
+}
+
+// Pha Ngày tính theo lịch của từng ván, giờ mong đợi tính tay từ các pha.
+func TestInDayPhaseFollowsSchedule(t *testing.T) {
+	vn := func(day, hour, minute int) time.Time { return time.Date(2026, 10, day, hour, minute, 0, 0, vietnam) }
+	// Hai vòng 12 tiếng co đều: vòng mở 10h có Ngày 16h–21h, vòng mở 22h có Ngày 4h–9h.
+	twoRounds := Config{Schedule: &Schedule{StartHour: 10, RoundHours: 12, Rounds: 2}}
+	// Mở 6h: Đêm 1 tiếng, Rạng sáng 2 tiếng, Ngày 15 tiếng tới 0h, Biểu quyết 6 tiếng.
+	custom := Config{Schedule: &Schedule{StartHour: 6, RoundHours: 24, Rounds: 1, Phases: []int{60, 120, 900, 360}}}
+	for _, c := range []struct {
+		name string
+		cfg  Config
+		at   time.Time
+		want bool
+	}{
+		{"mặc định, vừa vào Ngày", Config{}, vn(23, 10, 0), true},
+		{"mặc định, sát hết Ngày", Config{}, vn(23, 19, 59), true},
+		{"mặc định, Rạng sáng", Config{}, vn(23, 9, 59), false},
+		{"mặc định, Biểu quyết", Config{}, vn(23, 20, 0), false},
+		{"mặc định, Đêm", Config{}, vn(23, 23, 0), false},
+		{"hai vòng, Ngày vòng 10h", twoRounds, vn(23, 16, 0), true},
+		{"hai vòng, hết Ngày vòng 10h", twoRounds, vn(23, 21, 0), false},
+		{"hai vòng, Ngày vòng 22h", twoRounds, vn(23, 8, 59), true},
+		{"hai vòng, hết Ngày vòng 22h", twoRounds, vn(23, 9, 0), false},
+		{"hai vòng, Rạng sáng vòng 22h", twoRounds, vn(23, 3, 59), false},
+		{"tự chỉnh, Ngày qua nửa đêm", custom, vn(23, 23, 30), true},
+		{"tự chỉnh, hết Ngày lúc 0h", custom, vn(24, 0, 0), false},
+		{"tự chỉnh, vừa vào Ngày", custom, vn(23, 9, 0), true},
+		{"tự chỉnh, Rạng sáng", custom, vn(23, 8, 59), false},
+	} {
+		if got := c.cfg.InDayPhase(c.at); got != c.want {
+			t.Errorf("%s: InDayPhase = %v, muốn %v", c.name, got, c.want)
+		}
+	}
+}
+
+// Ván không km có thể chừa giờ trống giữa các vòng: 3 vòng 6 tiếng từ 6h, pha
+// Ngày mỗi vòng dài từ 3 tiếng sau giờ mở tới 5 tiếng rưỡi sau giờ mở.
+func TestInDayPhaseNoKmRoundsWithGap(t *testing.T) {
+	vn := func(hour, minute int) time.Time { return time.Date(2026, 10, 23, hour, minute, 0, 0, vietnam) }
+	cfg := Config{KmOff: true, Schedule: &Schedule{StartHour: 6, RoundHours: 6, Rounds: 3}}
+	for _, c := range []struct {
+		at   time.Time
+		want bool
+	}{
+		{vn(9, 0), true}, {vn(11, 29), true}, {vn(11, 30), false},
+		{vn(15, 0), true}, {vn(14, 59), false},
+		{vn(21, 0), true}, {vn(23, 29), true}, {vn(23, 30), false},
+		{vn(3, 0), false}, // giờ trống, không vòng nào mở
+	} {
+		if got := cfg.InDayPhase(c.at); got != c.want {
+			t.Errorf("%s: InDayPhase = %v, muốn %v", c.at.Format("15:04"), got, c.want)
+		}
+	}
 }

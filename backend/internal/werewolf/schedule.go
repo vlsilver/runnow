@@ -27,6 +27,31 @@ func (c Config) schedule() Schedule {
 	return *c.Schedule
 }
 
+// InDayPhase: lúc at có nằm trong pha Ngày của một vòng theo lịch ván không. Xét
+// cả hôm trước vì vòng mở hôm trước có thể kéo qua nửa đêm.
+func (c Config) InDayPhase(at time.Time) bool {
+	for _, day := range []time.Time{at.Add(-24 * time.Hour), at} {
+		for _, k := range c.RoundClocks(day) {
+			if !at.Before(k.Dawn) && at.Before(k.NominateClose) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// RoundClocks là các mốc của những vòng tính từ giờ mở đầu của ngày VN chứa day.
+func (c Config) RoundClocks(day time.Time) []RoundClock {
+	s := c.schedule()
+	local := day.In(vietnam)
+	first := time.Date(local.Year(), local.Month(), local.Day(), s.StartHour, 0, 0, 0, vietnam)
+	out := make([]RoundClock, s.Rounds)
+	for i := range out {
+		out[i] = c.Clock(first.Add(time.Duration(i*s.RoundHours) * time.Hour))
+	}
+	return out
+}
+
 // RoundClock là giờ các mốc của một vòng, để in cho người chơi. Biểu quyết mở
 // đúng lúc đề cử đóng.
 type RoundClock struct {

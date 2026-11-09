@@ -241,7 +241,7 @@ func TestEmulatorTickAdvancesGame(t *testing.T) {
 // starting, giao game-start cho bot) và bỏ startAt. Thiếu người thì không
 // Start, bỏ startAt và ghi startError để chủ phòng thấy rồi tự bấm.
 func TestEmulatorTickStartsGameAtStartAt(t *testing.T) {
-	startAt := time.Date(2026, 10, 15, 22, 0, 0, 0, vietnam)
+	startAt := time.Date(2026, 10, 15, 15, 0, 0, 0, vietnam)
 	for _, c := range []struct {
 		name    string
 		players int
