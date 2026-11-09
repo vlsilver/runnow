@@ -296,7 +296,10 @@ class GameSetupSections extends StatelessWidget {
                 for (final (i, item) in section.items.indexed) ...[
                   if (i > 0 && !item.sub)
                     const Divider(height: 1, color: _M.divider),
-                  _SetupRow(item),
+                  _SetupRow(
+                    item,
+                    reserveIcon: section.items.any((e) => e.icon.isNotEmpty),
+                  ),
                 ],
               ],
             ),
@@ -308,9 +311,13 @@ class GameSetupSections extends StatelessWidget {
 }
 
 class _SetupRow extends StatelessWidget {
-  const _SetupRow(this.item);
+  const _SetupRow(this.item, {required this.reserveIcon});
 
   final GameSetupItem item;
+
+  /// Khối có dòng mang icon thì dòng không icon chừa ô để chữ thẳng hàng; khối
+  /// không có icon nào mà chừa thì thành khoảng trống như thiếu icon.
+  final bool reserveIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -319,7 +326,7 @@ class _SetupRow extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(sub ? 40 : 0, sub ? 0 : 10, 0, 10),
       child: Row(
         children: [
-          if (!sub) ...[
+          if (!sub && reserveIcon) ...[
             if (item.icon.isNotEmpty)
               _iconBox(
                 item.icon,
