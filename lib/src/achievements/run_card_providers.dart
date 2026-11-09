@@ -1,11 +1,15 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/club_card.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
@@ -13,6 +17,7 @@ import 'package:myrun/src/achievements/run_card_skin_choice.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/hearts.dart';
 import 'package:myrun/src/journey/journey_card.dart';
+import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rank/rank_card.dart';
 import 'package:myrun/src/run_contracts/contract_card_models.dart';
@@ -100,17 +105,24 @@ final rankedClubCardsProvider = FutureProvider.autoDispose<List<ClubCard>>((
   return _rankByHearts(ref.watch(heartRepositoryProvider), cards);
 });
 
-/// Vài thẻ đầu của [rankedClubCardsProvider], cho mục Thẻ ở trang chủ. Chỉ đếm
-/// tim các thẻ còn có thể lọt top: mỗi lần đếm là một lượt gọi Firestore.
-final topClubCardsProvider = FutureProvider.autoDispose
+/// Vài thẻ khoe mới nhất, cho mục Thẻ nổi bật ở trang Kèo.
+final latestClubCardsProvider = FutureProvider.autoDispose
     .family<List<ClubCard>, int>((ref, limit) async {
       final cards = await ref.watch(clubCardsProvider.future);
-      final ranked = await _rankByHearts(
-        ref.watch(heartRepositoryProvider),
-        clubCardsDecidingTop(cards, limit),
-      );
-      return ranked.take(limit).toList();
+      return cards.take(limit).toList();
     });
+
+/// Các buổi còn lật được thẻ, cho filter Chưa lật ở Bộ thẻ. Backend tính vì lượt
+/// trượt và luật buổi trùng không nằm ở app.
+final unflippedRunsProvider = FutureProvider.autoDispose<List<ActivitySummary>>(
+  (ref) async {
+    final runs = await ref.watch(runNowApiClientProvider).getUnflippedRuns();
+    return [
+      for (final run in runs)
+        ActivitySummary.fromMap(run, includeRoutePoints: false),
+    ];
+  },
+);
 
 /// Tỉ lệ sẽ quay, hoặc lý do buổi này không lật được. Chỉ đọc khi chưa có thẻ.
 final runCardViewProvider = FutureProvider.autoDispose
@@ -262,6 +274,13 @@ final runCardStylesProvider = FutureProvider<ArtStyleList>(
   (ref) => ref.watch(runNowApiClientProvider).getRunCardStyles(),
 );
 
+/// Ảnh buổi chạy tải về để cắt; rộng hơn giới hạn 8 MB của ảnh tải lên vì ảnh
+/// buổi chạy không đi qua giới hạn đó.
+const _maxPhotoDownload = 10 * 1024 * 1024;
+
+/// Ngang của ảnh sau khi cắt, đủ nét cho thẻ ngang 300 trên màn 3x.
+const _cardPhotoWidth = 1080.0;
+
 /// Ảnh gốc người dùng tải lên cho tranh thẻ.
 class RunCardPhotos {
   const RunCardPhotos();
@@ -275,6 +294,51 @@ class RunCardPhotos {
       imageQuality: 85,
     );
     return image?.readAsBytes();
+  }
+
+  /// Tải ảnh buổi chạy về để cắt theo khung thẻ.
+  Future<Uint8List> download(String path) async {
+    final bytes = await FirebaseStorage.instance
+        .ref(path)
+        .getData(_maxPhotoDownload);
+    if (bytes == null) throw StateError('Không tải được ảnh.');
+    return bytes;
+  }
+
+  /// Cắt ảnh theo tỉ lệ thẻ quanh [focus], y như `BoxFit.cover` đang xem trên
+  /// thẻ, ngang tối đa [_cardPhotoWidth] và không phóng to. Trả PNG: vẽ lại
+  /// nên đã xoay đúng chiều và không còn EXIF.
+  Future<Uint8List> cropToCard(Uint8List bytes, Alignment focus) async {
+    final codec = await ui.instantiateImageCodec(bytes);
+    final image = (await codec.getNextFrame()).image;
+    codec.dispose();
+    final whole =
+        Offset.zero & Size(image.width.toDouble(), image.height.toDouble());
+    final fitted = applyBoxFit(BoxFit.cover, whole.size, achievementCardSize);
+    final source = focus.inscribe(fitted.source, whole);
+    final width = math.min(source.width, _cardPhotoWidth).roundToDouble();
+    final target = Size(
+      width,
+      (width / achievementCardSize.aspectRatio).roundToDouble(),
+    );
+    final recorder = ui.PictureRecorder();
+    Canvas(recorder).drawImageRect(
+      image,
+      source,
+      Offset.zero & target,
+      Paint()..filterQuality = FilterQuality.high,
+    );
+    final picture = recorder.endRecording();
+    final framed = await picture.toImage(
+      target.width.toInt(),
+      target.height.toInt(),
+    );
+    final data = await framed.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    picture.dispose();
+    framed.dispose();
+    if (data == null) throw StateError('Không cắt được ảnh.');
+    return data.buffer.asUint8List();
   }
 
   /// Ghi đè [file] của thẻ [activityId]: `src.jpg` là ảnh gốc, `style.jpg`

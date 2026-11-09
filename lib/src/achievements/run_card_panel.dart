@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card.dart';
-import 'package:myrun/src/achievements/run_card_art_sheet.dart';
+import 'package:myrun/src/achievements/run_card_art_steps.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
+import 'package:myrun/src/achievements/run_card_stage.dart';
 import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
 import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
@@ -16,6 +17,8 @@ import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 
+export 'package:myrun/src/achievements/run_card_stage.dart' show RunCardFrame;
+
 typedef _T = RunNowAchievementTokens;
 const _condensed = 'Barlow Condensed';
 
@@ -23,15 +26,23 @@ const _condensed = 'Barlow Condensed';
 /// phút cho lệch đồng hồ rồi mới mời vẽ lại.
 const _artStuckAfter = Duration(minutes: 4);
 
-/// Thẻ của một buổi chạy của chính mình: chưa lật thì úp thẻ kèm tỉ lệ và nút
-/// lật; lật rồi thì hiện thẻ, chọn mặt để khoe.
+/// Các bước trên một thẻ, mỗi bước gọn một màn không phải cuộn: lật, xem kết
+/// quả, rồi vẽ tranh nền.
 class RunCardPanel extends ConsumerStatefulWidget {
-  const RunCardPanel({super.key, required this.activity, required this.owner});
+  const RunCardPanel({
+    super.key,
+    required this.activity,
+    required this.owner,
+    required this.onDone,
+  });
 
   final ActivitySummary activity;
 
   /// Tên in trên thẻ.
   final String owner;
+
+  /// Xong thẻ này, đóng màn.
+  final VoidCallback onDone;
 
   @override
   ConsumerState<RunCardPanel> createState() => _RunCardPanelState();
@@ -41,45 +52,120 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
   bool _rolling = false;
   bool _redrawing = false;
 
-  /// Thẻ vừa lật trong phiên này thì chạy hiệu ứng lật mặt; mở lại thẻ cũ thì
-  /// hiện thẳng.
+  /// Đang ở các bước vẽ tranh nền.
+  bool _drawing = false;
+
+  /// Vừa bấm lật trong phiên này: kết quả hiện ra thì chạy hiệu ứng lật mặt,
+  /// mở lại thẻ cũ thì hiện thẳng. Bật trước khi gọi API vì doc thẻ có thể về
+  /// trước response.
   bool _justRolled = false;
 
+  String? _rollError;
+
   String get _id => widget.activity.id;
+
+  /// Đã bấm lật mà kết quả chưa hiện thì không cho lật nữa.
+  bool get _busy => _rolling || _justRolled;
+
+  double get _km => (widget.activity.distanceMeters / 100).round() / 10;
 
   @override
   Widget build(BuildContext context) {
     final card = ref.watch(runCardProvider(_id));
-    return card.when(
-      data: (card) =>
-          card == null ? _unrolled(context) : _rolled(context, card),
-      loading: () => const Padding(
-        padding: EdgeInsets.all(32),
-        child: Center(child: CircularProgressIndicator()),
-      ),
-      error: (error, _) => _Message('Không tải được thẻ: $error'),
+    final rolled = card.asData?.value;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            children: [
+              IconButton(
+                tooltip: 'Đóng',
+                color: _T.hero,
+                onPressed: widget.onDone,
+                icon: const Icon(Icons.close_rounded),
+              ),
+              const Spacer(),
+              if (rolled != null && !_drawing)
+                IconButton(
+                  tooltip: 'Khoe thẻ',
+                  color: _T.hero,
+                  onPressed: () => showRunCardShare(
+                    context,
+                    card: rolled,
+                    data: runCardData(rolled, owner: widget.owner),
+                  ),
+                  icon: const Icon(Icons.ios_share),
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: card.when(
+              data: (card) =>
+                  card == null ? _unrolled(context) : _rolled(context, card),
+              loading: () => const Center(child: _StageSpinner()),
+              error: (error, _) =>
+                  Center(child: _Message('Không tải được thẻ: $error')),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Thẻ ở giữa, co theo chỗ còn lại; chữ và nút dồn xuống đáy để nút chính
+  /// luôn ở cùng một chỗ giữa các bước.
+  Widget _step({
+    required Widget card,
+    Color? glow,
+    List<Widget> details = const [],
+    List<Widget> actions = const [],
+  }) {
+    return Column(
+      children: [
+        Expanded(
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              if (glow != null)
+                Positioned.fill(
+                  child: _RevealGlow(color: glow, animate: _justRolled),
+                ),
+              card,
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        ...details,
+        if (details.isNotEmpty) const SizedBox(height: 14),
+        ...actions,
+      ],
     );
   }
 
   Widget _unrolled(BuildContext context) {
     final view = ref.watch(runCardViewProvider(_id));
-    final km = (widget.activity.distanceMeters / 100).round() / 10;
+    final title = widget.activity.name;
     final faceDown = RunCardFrame(
-      child: RunCardFaceDown(km: km, title: widget.activity.name),
+      child: RunCardFaceDown(km: _km, title: title),
     );
     return view.when(
-      loading: () => Column(
-        children: [
-          faceDown,
-          const SizedBox(height: 20),
-          const CircularProgressIndicator(),
+      loading: () => _step(
+        card: faceDown,
+        actions: const [
+          SizedBox(height: 54, child: Center(child: _StageSpinner())),
         ],
       ),
-      error: (error, _) => Column(
-        children: [
-          faceDown,
-          _Message('Không tải được tỉ lệ: $error'),
-          TextButton(
+      error: (error, _) => _step(
+        card: faceDown,
+        details: [_Message('Không tải được tỉ lệ: $error')],
+        actions: [
+          FilledButton(
+            style: stagePrimaryButton,
             onPressed: () => ref.invalidate(runCardViewProvider(_id)),
             child: const Text('Thử lại'),
           ),
@@ -87,49 +173,60 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
       ),
       data: (view) {
         // Thẻ vừa có ở chỗ khác (máy khác lật) thì stream sẽ tự đổi.
-        if (view.card != null) return faceDown;
+        if (view.card != null) return _step(card: faceDown);
         if (view.reason case final reason?) {
-          return Column(
-            children: [
-              RunCardFrame(
-                child: RunCardFaceDown(
-                  km: km,
-                  title: widget.activity.name,
-                  failureReason: reason,
-                ),
-              ),
-              _Message(runCardReasonText(reason)),
-            ],
+          final failed = RunCardFrame(
+            child: RunCardFaceDown(
+              km: _km,
+              title: title,
+              failureReason: reason,
+            ),
+          );
+          return _step(
+            card: _justRolled
+                ? CardFlipReveal(from: faceDown, to: failed)
+                : failed,
+            details: [_Message(runCardReasonText(reason))],
           );
         }
-        return Column(
-          children: [
-            faceDown,
-            const SizedBox(height: 16),
-            RunCardOddsTable(
-              title: 'TỈ LỆ CHO BUỔI ${runCardKm(km)} KM',
-              odds: view.odds,
+        return _step(
+          card: Semantics(
+            button: true,
+            label: 'Lật thẻ buổi $title',
+            child: GestureDetector(
+              onTap: _busy ? null : _roll,
+              child: faceDown,
             ),
-            const SizedBox(height: 8),
-            if (view.chance < 100)
-              _Message(
-                'Buổi này có ${_percent(view.chance)}% cơ hội ra thẻ. Trượt '
-                'thì buổi này không lật lại được.',
-              )
-            else
-              const _Message(
-                'Mỗi buổi chạy chỉ lật một lần, không lật lại được.',
+          ),
+          details: [
+            if (_rollError case final error?) ...[
+              _Message(error),
+              const SizedBox(height: 10),
+            ],
+            _OddsStrip(odds: view.odds),
+            if (view.chance < 100) ...[
+              const SizedBox(height: 10),
+              Text(
+                '${_percent(view.chance)}% cơ hội ra thẻ · trượt là hết lượt',
+                textAlign: TextAlign.center,
+                style: stageHint,
               ),
-            const SizedBox(height: 12),
+            ],
+          ],
+          actions: [
             FilledButton.icon(
-              onPressed: _rolling ? null : _roll,
-              icon: _rolling
+              style: stagePrimaryButton,
+              onPressed: _busy ? null : _roll,
+              icon: _busy
                   ? const SizedBox.square(
                       dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: _T.shade,
+                      ),
                     )
                   : const Icon(Icons.flip_rounded),
-              label: Text(_rolling ? 'Đang lật...' : 'Lật thẻ'),
+              label: Text(_busy ? 'Đang lật...' : 'Lật thẻ'),
             ),
           ],
         );
@@ -138,11 +235,14 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
   }
 
   Future<void> _roll() async {
-    setState(() => _rolling = true);
+    setState(() {
+      _rolling = true;
+      _justRolled = true;
+      _rollError = null;
+    });
     try {
       await ref.read(runNowApiClientProvider).rollRunCard(_id);
       // Thẻ hiện khi stream doc báo về, thường ngay sau đó.
-      if (mounted) setState(() => _justRolled = true);
     } catch (error) {
       if (!mounted) return;
       // Trượt là kết quả, không phải lỗi: view tải lại sẽ báo trượt.
@@ -150,9 +250,11 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
         ref.invalidate(runCardViewProvider(_id));
         return;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Không lật được thẻ: $error')));
+      // Báo ngay trên màn chứ không dùng snackbar: snackbar che mất nút lật.
+      setState(() {
+        _justRolled = false;
+        _rollError = 'Không lật được thẻ: $error';
+      });
       ref.invalidate(runCardViewProvider(_id));
     } finally {
       if (mounted) setState(() => _rolling = false);
@@ -160,142 +262,131 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
   }
 
   Widget _rolled(BuildContext context, RunCard card) {
+    if (_drawing) {
+      return RunCardArtSteps(
+        card: card,
+        photos: widget.activity.photos,
+        owner: widget.owner,
+        onClose: () => setState(() => _drawing = false),
+      );
+    }
     final data = runCardData(card, owner: widget.owner);
     final km = card.km;
-    final muted = Theme.of(
-      context,
-    ).colorScheme.onSurface.withValues(alpha: 0.6);
+    final glow = runCardGlow(card.tier);
+    final art = card.art;
+    // Chưa vẽ hay vẽ hỏng mới có nút vẽ.
+    final drawLabel = switch (art?.status) {
+      null => 'Vẽ tranh nền',
+      RunCardArtStatus.failed => 'Vẽ lại',
+      _ => null,
+    };
+    final drawing = art?.status == RunCardArtStatus.drawing && !_stuck(art!);
     final shown = Semantics(
       button: true,
       label: 'Xem thẻ 3D',
       child: GestureDetector(
         onTap: () => showRunCardViewer(context, card, data),
-        child: RunCardFrame(child: AchievementCard(data: data)),
+        child: RunCardFrame(
+          child: Stack(
+            children: [
+              AchievementCard(data: data),
+              if (drawing) const Positioned.fill(child: _DrawingSheen()),
+              if (_justRolled) const Positioned.fill(child: _TapHint()),
+            ],
+          ),
+        ),
       ),
     );
-    return Column(
-      children: [
-        if (_justRolled)
-          CardFlipReveal(
-            from: RunCardFrame(
-              child: RunCardFaceDown(km: km, title: card.snapshot.name),
-            ),
-            to: shown,
-          )
-        else
-          shown,
-        const SizedBox(height: 10),
-        Text(
-          '${gameCardTiers[card.tier]!.label} · ${runCardKm(km)} km · '
-          'chạm thẻ để xem 3D',
-          style: TextStyle(color: muted),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Đã lưu vào Bộ thẻ trong Hồ sơ.',
-          style: TextStyle(color: muted, fontSize: 12),
-        ),
-        const SizedBox(height: 14),
-        ..._artStatus(card, muted),
-        // Nút vẽ và nút khoe chung một hàng cho đỡ tốn chỗ; đang vẽ hay vẽ
-        // xong thì chỉ còn nút khoe.
-        Row(
-          children: [
-            if (_drawButton(card) case final draw?) ...[
-              Expanded(child: draw),
-              const SizedBox(width: 10),
-            ],
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: () =>
-                    showRunCardShare(context, card: card, data: data),
-                icon: const Icon(Icons.ios_share),
-                label: const Text('Khoe thẻ'),
+    return _step(
+      glow: glow,
+      card: _justRolled
+          ? CardFlipReveal(
+              from: RunCardFrame(
+                child: RunCardFaceDown(km: km, title: card.snapshot.name),
               ),
-            ),
-            // Thẻ Ẩn luôn mặc màu hành của nó, bộ màu chọn ở đây không đổi
-            // được thẻ này.
-            if (card.secret == null) ...[
-              const SizedBox(width: 10),
-              IconButton.outlined(
-                tooltip: 'Bộ màu thẻ',
-                onPressed: () => showRunCardSkinSheet(context, sample: data),
-                icon: const Icon(Icons.palette_outlined),
-              ),
-            ],
-          ],
-        ),
-        if (card.art == null) ...[
-          const SizedBox(height: 6),
-          Text(
-            'Chọn một phong cách. Vẽ xong thì cố định.',
-            style: TextStyle(color: muted, fontSize: 12),
+              to: shown,
+            )
+          : shown,
+      details: [
+        Text(
+          gameCardTiers[card.tier]!.label.toUpperCase(),
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: _condensed,
+            fontWeight: FontWeight.w800,
+            fontSize: 30,
+            height: 1,
+            letterSpacing: 1.6,
+            color: glow,
           ),
-        ],
+        ),
+        ..._artStatus(card),
+      ],
+      actions: [
+        // Giữ chiều cao hàng nút để thẻ không nhảy khi vẽ xong.
+        SizedBox(
+          height: 54,
+          child: Row(
+            children: [
+              // Thẻ Ẩn luôn mặc màu hành của nó, bộ màu chọn ở đây không đổi
+              // được thẻ này.
+              if (card.secret == null) ...[
+                RunCardSkinButton(
+                  ring: stageLine,
+                  onPressed: () => showRunCardSkinSheet(context, sample: data),
+                ),
+                const SizedBox(width: 10),
+              ],
+              if (drawLabel case final label?)
+                Expanded(
+                  child: FilledButton.icon(
+                    style: stagePrimaryButton,
+                    onPressed: _openDraw,
+                    icon: const Icon(Icons.auto_awesome_rounded),
+                    label: Text(label),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ],
     );
   }
 
-  /// Nút mở sheet chọn phong cách: chưa vẽ hay vẽ hỏng mới có.
-  Widget? _drawButton(RunCard card) {
-    void choose() => showRunCardArtSheet(
-      context,
-      card: card,
-      photos: widget.activity.photos,
-    );
-    return switch (card.art?.status) {
-      null => OutlinedButton.icon(
-        onPressed: choose,
-        icon: const Icon(Icons.brush_outlined),
-        label: const Text('Vẽ tranh nền'),
-      ),
-      RunCardArtStatus.failed => FilledButton.tonalIcon(
-        onPressed: choose,
-        icon: const Icon(Icons.brush_outlined),
-        label: const Text('Vẽ lại'),
-      ),
-      _ => null,
-    };
+  /// Về sau bước vẽ thì thẻ hiện thẳng, không lật lại lần nữa.
+  void _openDraw() {
+    // Lần trước đã tải thì hiện bản đó ngay và tải lại ngầm.
+    ref.invalidate(runCardStylesProvider);
+    setState(() {
+      _drawing = true;
+      _justRolled = false;
+    });
   }
 
-  /// Trạng thái tranh nền dưới thẻ: đang vẽ hay vẽ hỏng. Chưa vẽ thì chỉ có
-  /// nút, vẽ xong thì không còn gì để báo.
-  List<Widget> _artStatus(RunCard card, Color muted) {
-    final hint = TextStyle(color: muted, fontSize: 12);
+  /// Dòng dưới thẻ khi tranh có chuyện: vẽ hỏng hay chờ quá lâu. Đang vẽ bình
+  /// thường thì thẻ tự có ánh sáng lướt qua, không cần chữ.
+  List<Widget> _artStatus(RunCard card) {
     final art = card.art;
     return switch (art?.status) {
-      null || RunCardArtStatus.done => const [],
-      RunCardArtStatus.drawing => [
+      RunCardArtStatus.drawing when _stuck(art!) => [
+        const SizedBox(height: 8),
         Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const SizedBox.square(
-              dimension: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
+            Text('Lâu quá chưa xong', style: stageHint),
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: _T.titleGold2),
+              onPressed: _redrawing ? null : () => _redraw(art),
+              child: const Text('Vẽ lại'),
             ),
-            const SizedBox(width: 8),
-            const Flexible(child: Text('Đang vẽ tranh nền')),
           ],
         ),
-        const SizedBox(height: 4),
-        if (_stuck(art!)) ...[
-          Text('Lâu quá chưa xong, có thể lần vẽ bị kẹt.', style: hint),
-          TextButton(
-            onPressed: _redrawing ? null : () => _redraw(art),
-            child: const Text('Vẽ lại'),
-          ),
-        ] else
-          Text(
-            'Thoát ra cũng được, vẽ xong thẻ tự cập nhật.',
-            textAlign: TextAlign.center,
-            style: hint,
-          ),
-        const SizedBox(height: 14),
       ],
       RunCardArtStatus.failed => [
+        const SizedBox(height: 8),
         _Message(runCardArtFailText(art!.reason)),
-        const SizedBox(height: 10),
       ],
+      _ => const [],
     };
   }
 
@@ -375,28 +466,11 @@ String runCardArtFailText(String? reason) => switch (reason) {
   'budget' => 'Hôm nay 3i đã dùng hết hạn mức vẽ tranh. Mai thử lại nhé.',
   'blocked' => 'Model từ chối vẽ lần này. Thử phong cách khác hoặc bỏ ảnh gốc.',
   'photo_missing' => 'Không tìm thấy ảnh gốc. Chọn lại ảnh rồi vẽ.',
+  'photo_invalid' => 'Ảnh này không dùng được. Chọn ảnh khác.',
   'style_photo_missing' => 'Không tìm thấy ảnh mẫu. Tải lại ảnh mẫu rồi vẽ.',
   'style_unavailable' => 'Phong cách này vừa bị tắt. Chọn phong cách khác.',
   _ => 'Vẽ tranh bị lỗi. Thử lại sau ít phút.',
 };
-
-/// Thẻ vẽ ở kích thước gốc rồi thu theo bề ngang chỗ đặt, tối đa 300.
-class RunCardFrame extends StatelessWidget {
-  const RunCardFrame({super.key, required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) => GameCardScaled(
-        width: math.min(achievementCardSize.width, constraints.maxWidth),
-        size: achievementCardSize,
-        child: child,
-      ),
-    );
-  }
-}
 
 /// Thẻ úp: chưa biết bậc nên khung than chì trơn, dấu hỏi ở giữa. Có
 /// [failureReason] (mã lý do backend trả) thì buổi này không tự có thẻ: phủ tối
@@ -626,14 +700,249 @@ class _Message extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Text(text, textAlign: TextAlign.center, style: stageHint),
+    );
+  }
+}
+
+class _StageSpinner extends StatelessWidget {
+  const _StageSpinner();
+
+  @override
+  Widget build(BuildContext context) =>
+      const CircularProgressIndicator(strokeWidth: 2, color: _T.titleGold2);
+}
+
+/// Ngón tay chạm thử lên thẻ vừa lật để gợi ý chạm vào xem 3D, chạy vài nhịp
+/// rồi tự tắt.
+class _TapHint extends StatefulWidget {
+  const _TapHint();
+
+  @override
+  State<_TapHint> createState() => _TapHintState();
+}
+
+class _TapHintState extends State<_TapHint>
+    with SingleTickerProviderStateMixin {
+  static const _taps = 3;
+
+  late final _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 3000),
+  )..forward();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: IgnorePointer(
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            final t = _controller.value;
+            if (t >= 1) return const SizedBox.shrink();
+            final beat = (t * _taps) % 1;
+            // Ngón hạ xuống nửa đầu nhịp, vòng sóng toả ra nửa sau.
+            final press = beat < 0.5 ? beat * 2 : 1.0;
+            final ripple = beat < 0.5 ? 0.0 : (beat - 0.5) * 2;
+            final fade = (math.min(t, 1 - t) * 10).clamp(0.0, 1.0);
+            return Opacity(
+              opacity: fade,
+              child: Center(
+                child: SizedBox.square(
+                  dimension: 120,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        width: 40 + 70 * ripple,
+                        height: 40 + 70 * ripple,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: _T.hero.withValues(alpha: 1 - ripple),
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      Transform.translate(
+                        offset: Offset(8, 22 - 12 * press),
+                        child: Transform.scale(
+                          scale: 1.1 - 0.15 * press,
+                          child: const Icon(
+                            Icons.touch_app_rounded,
+                            size: 64,
+                            color: _T.hero,
+                            shadows: [Shadow(color: _T.drop, blurRadius: 12)],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
+    );
+  }
+}
+
+/// Vệt sáng lướt qua thẻ trong lúc đang làm tranh nền.
+class _DrawingSheen extends StatefulWidget {
+  const _DrawingSheen();
+
+  @override
+  State<_DrawingSheen> createState() => _DrawingSheenState();
+}
+
+class _DrawingSheenState extends State<_DrawingSheen>
+    with SingleTickerProviderStateMixin {
+  late final _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.stop();
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            final x = -2.0 + 4.0 * _controller.value;
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment(x - 0.7, -1),
+                  end: Alignment(x + 0.7, 1),
+                  colors: [
+                    _T.hero.withValues(alpha: 0),
+                    _T.hero.withValues(alpha: 0.32),
+                    _T.hero.withValues(alpha: 0),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// Quầng màu của bậc thẻ loé lên sau lá vừa lật.
+class _RevealGlow extends StatelessWidget {
+  const _RevealGlow({required this.color, required this.animate});
+
+  final Color color;
+  final bool animate;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: animate ? 0 : 1, end: 1),
+        duration: const Duration(milliseconds: 700),
+        curve: Curves.easeOut,
+        builder: (context, t, _) => DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              radius: 0.75,
+              colors: [
+                color.withValues(alpha: 0.5 * t),
+                color.withValues(alpha: 0),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Tỉ lệ từng bậc gói trong một dải màu và một hàng số, bỏ các bậc 0%.
+class _OddsStrip extends StatelessWidget {
+  const _OddsStrip({required this.odds});
+
+  final List<RunCardOdd> odds;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = [
+      for (final odd in odds)
+        if (odd.percent > 0) odd,
+    ];
+    return Column(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: SizedBox(
+            height: 6,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final odd in shown)
+                  Expanded(
+                    flex: (odd.percent * 10).round().clamp(1, 1000),
+                    child: ColoredBox(color: runCardGlow(odd.tier)),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            for (final odd in shown)
+              Expanded(
+                child: Column(
+                  children: [
+                    Text(
+                      '${odd.percent.toStringAsFixed(1).replaceAll('.', ',')}%',
+                      style: TextStyle(
+                        color: runCardGlow(odd.tier),
+                        fontWeight: FontWeight.w800,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      gameCardTiers[odd.tier]!.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: stageHint.copyWith(fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

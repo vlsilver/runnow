@@ -54,23 +54,31 @@ String _pace(double secondsPerKm) {
 
 /// Dữ liệu thẻ dựng từ snapshot server. Nền là tranh đã vẽ, chưa có tranh thì
 /// là đường chạy phát sáng màu bậc. Có tranh thì đường chạy thu về con dấu
-/// tròn góc trên.
-AchievementCardData runCardData(RunCard card, {required String owner}) {
+/// tròn góc trên. [previewArt] mặc thử một nền chưa vẽ thật, như ảnh ví dụ lúc
+/// chọn phong cách.
+AchievementCardData runCardData(
+  RunCard card, {
+  required String owner,
+  Widget? previewArt,
+}) {
   final snap = card.snapshot;
   final start = (snap.startedAt ?? card.rolledAt ?? DateTime.now()).toLocal();
   final climb = snap.elevationGainMeters?.round() ?? 0;
   final artPath = card.artPath;
+  final hasArt = artPath != null || previewArt != null;
   return AchievementCardData(
     tier: card.tier,
     secret: card.secret,
-    art: artPath == null
-        ? RunRouteArt(points: snap.route, tier: card.tier)
-        : StoragePhoto(path: artPath, cacheWidth: 960),
-    stamp: artPath != null && snap.route.length > 1
-        ? RunRouteStamp(points: snap.route, tier: card.tier)
+    art:
+        previewArt ??
+        (artPath == null
+            ? RunRouteArt(points: snap.route, tier: card.tier)
+            : StoragePhoto(path: artPath, cacheWidth: 960)),
+    stamp: hasArt && snap.route.length > 1
+        ? RunRouteStamp(points: snap.route)
         : null,
     backFace: RunCardBack(card: card),
-    artFollowsSkin: artPath == null,
+    artFollowsSkin: !hasArt,
     kind: 'BUỔI CHẠY',
     hero: runCardKm(card.km),
     title: snap.name.isEmpty ? 'Buổi chạy' : snap.name,
@@ -211,10 +219,7 @@ class _RouteArtPainter extends CustomPainter {
     );
     if (route.isEmpty) return;
     final path = _pathOf(route);
-    canvas
-      ..drawPath(path, _stroke(glow.withValues(alpha: 0.22), 16))
-      ..drawPath(path, _stroke(glow.withValues(alpha: 0.45), 7))
-      ..drawPath(path, _stroke(skin.routeLine, 2.6));
+    canvas.drawPath(path, _stroke(skin.routeLine, 2.6));
 
     final ring = _stroke(skin.routeLine, 2.4);
     canvas
@@ -234,30 +239,24 @@ class _RouteArtPainter extends CustomPainter {
 /// Con dấu tròn: đường chạy thu nhỏ, đặt trên tranh để thẻ vẫn là của buổi
 /// chạy này.
 class RunRouteStamp extends StatelessWidget {
-  const RunRouteStamp({super.key, required this.points, required this.tier});
+  const RunRouteStamp({super.key, required this.points});
 
   final List<LatLng> points;
-  final GameCardTier tier;
 
   @override
   Widget build(BuildContext context) {
     final skin = RunCardSkin.of(context);
     return CustomPaint(
-      painter: _StampPainter(
-        points: points,
-        glow: skin.glow(tier),
-        line: skin.routeLine,
-      ),
+      painter: _StampPainter(points: points, line: skin.routeLine),
       child: const SizedBox.expand(),
     );
   }
 }
 
 class _StampPainter extends CustomPainter {
-  _StampPainter({required this.points, required this.glow, required this.line});
+  _StampPainter({required this.points, required this.line});
 
   final List<LatLng> points;
-  final Color glow;
   final Color line;
 
   @override
@@ -265,14 +264,12 @@ class _StampPainter extends CustomPainter {
     final route = _fitRoute(points, (Offset.zero & size).deflate(13));
     if (route.isEmpty) return;
     final path = _pathOf(route);
-    canvas
-      ..drawPath(path, _stroke(glow.withValues(alpha: 0.35), 6))
-      ..drawPath(path, _stroke(line, 2.2));
+    canvas.drawPath(path, _stroke(line, 2.2));
   }
 
   @override
   bool shouldRepaint(_StampPainter old) =>
-      old.glow != glow || old.line != line || !identical(old.points, points);
+      old.line != line || !identical(old.points, points);
 }
 
 /// Đoạn lẻ cuối ngắn hơn thế này thì bỏ khỏi biểu đồ: pace của vài chục mét
@@ -447,11 +444,6 @@ class _BackMap extends StatelessWidget {
                   mapTileLayer(context, dark: skin.darkMap),
                   PolylineLayer(
                     polylines: [
-                      Polyline(
-                        points: points,
-                        color: glow.withValues(alpha: 0.35),
-                        strokeWidth: 10,
-                      ),
                       Polyline(
                         points: points,
                         color: skin.routeLine,

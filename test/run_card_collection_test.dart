@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card_collection.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
+import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/journey/journey_card.dart';
+import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rank/rank_card.dart';
 import 'package:myrun/src/run_contracts/contract_card_models.dart';
@@ -30,6 +33,9 @@ Future<void> _pump(
   List<JourneyCard> journeys = const [],
   List<RankCard> ranks = const [],
   List<ContractCard> contracts = const [],
+  List<ActivitySummary> unflipped = const [],
+  Object? unflippedError,
+  VoidCallback? onFetchUnflipped,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -40,6 +46,15 @@ Future<void> _pump(
         myRankCardsProvider.overrideWith((ref) => Stream.value(ranks)),
         contractCardsProvider.overrideWith((ref) => Stream.value(contracts)),
         userProfileProvider.overrideWith((ref) => Stream.value(null)),
+        unflippedRunsProvider.overrideWith((ref) async {
+          onFetchUnflipped?.call();
+          if (unflippedError case final error?) throw error;
+          return unflipped;
+        }),
+        runCardProvider.overrideWith((ref, id) => Stream.value(null)),
+        runCardViewProvider.overrideWith(
+          (ref, id) async => const RunCardView(chance: 100),
+        ),
       ],
       child: const MaterialApp(home: RunCardCollectionScreen()),
     ),
@@ -71,31 +86,123 @@ List<String> _shown(WidgetTester tester) => [
     t.card.id,
 ];
 
+ActivitySummary _run(String id, double km) => ActivitySummary(
+  id: id,
+  name: 'Buổi $id',
+  kind: ActivityKind.run,
+  startedAt: DateTime(2026, 11, 2),
+  distanceMeters: km * 1000,
+  movingTimeSeconds: 3000,
+  elapsedTimeSeconds: 3000,
+);
+
+/// Pill bậc [label] đang hiện đúng số thẻ [count].
+Finder _pill(String label, int count) =>
+    find.text('$label $count', findRichText: true);
+
 void main() {
+  group('filter Chưa lật', () {
+    testWidgets('hiện mặt úp của các buổi chưa lật, ẩn thẻ đã có', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        [_card('c', 'common', 0)],
+        unflipped: [_run('a', 10.2), _run('b', 5)],
+      );
+
+      await tester.tap(find.text('Chưa lật 2', findRichText: true));
+      await tester.pump();
+
+      expect(find.byType(RunCardFaceDown), findsNWidgets(2));
+      expect(find.byType(AchievementCard), findsNothing);
+      expect(find.text('10,2 KM'), findsOneWidget);
+    });
+
+    testWidgets('chưa có thẻ nào mà còn buổi chưa lật thì vẫn có filter', (
+      tester,
+    ) async {
+      await _pump(tester, const [], unflipped: [_run('a', 10)]);
+
+      expect(find.text(collectedCardsEmpty), findsNothing);
+      expect(find.text('Chưa lật 1', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('hết buổi chưa lật thì filter không chọn được', (tester) async {
+      await _pump(tester, [_card('c', 'common', 0)]);
+
+      await tester.tap(find.text('Chưa lật 0', findRichText: true));
+      await tester.pump();
+      expect(_shown(tester), ['c']);
+    });
+
+    testWidgets('tải lỗi thì báo trong filter, thẻ đã có vẫn xem được', (
+      tester,
+    ) async {
+      await _pump(tester, [
+        _card('c', 'common', 0),
+      ], unflippedError: Exception('mạng'));
+
+      expect(find.byType(AchievementCard), findsOneWidget);
+      await tester.tap(find.text('Chưa lật'));
+      await tester.pump();
+      expect(find.text('Không tải được. Chạm để thử lại.'), findsOneWidget);
+    });
+
+    testWidgets('chạm thẻ úp mở màn lật, đóng màn thì tải lại danh sách', (
+      tester,
+    ) async {
+      var fetches = 0;
+      await _pump(
+        tester,
+        [_card('c', 'common', 0)],
+        unflipped: [_run('a', 10)],
+        onFetchUnflipped: () => fetches++,
+      );
+      await tester.tap(find.text('Chưa lật 1', findRichText: true));
+      await tester.pump();
+      expect(fetches, 1);
+
+      await tester.tap(find.byType(RunCardFaceDown));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(RunCardPanel), findsOneWidget);
+
+      Navigator.of(tester.element(find.byType(RunCardPanel))).pop();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(fetches, 2);
+    });
+  });
+
   testWidgets('cards keep the newest-first order and filter by tier', (
     tester,
   ) async {
+    // Đủ ngang để mọi pill cùng nằm trên màn, không phải cuộn hàng filter.
+    tester.view.physicalSize = const Size(1600, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await _pump(tester, [
       _card('a', 'rare', 1),
       _card('b', 'mythic', 2),
       _card('c', 'rare', 3),
     ]);
     expect(_shown(tester), ['a', 'b', 'c']);
-    expect(find.text('Tất cả · 3'), findsOneWidget);
-    expect(find.text('Thần thoại · 1'), findsOneWidget);
-    expect(find.text('Hiếm · 2'), findsOneWidget);
+    expect(find.text('Đã có 3', findRichText: true), findsOneWidget);
+    expect(_pill('Thần thoại', 1), findsOneWidget);
+    expect(_pill('Hiếm', 2), findsOneWidget);
 
     // Bậc chưa có thẻ vẫn hiện nhưng không chọn được.
-    final common = tester.widget<ChoiceChip>(
-      find.widgetWithText(ChoiceChip, 'Thường · 0'),
-    );
-    expect(common.onSelected, isNull);
+    expect(_pill('Siêu hiếm', 0), findsOneWidget);
+    await tester.tap(_pill('Siêu hiếm', 0));
+    await tester.pump();
+    expect(_shown(tester), ['a', 'b', 'c']);
 
-    await tester.tap(find.text('Hiếm · 2'));
+    await tester.tap(_pill('Hiếm', 2));
     await tester.pump();
     expect(_shown(tester), ['a', 'c']);
 
-    await tester.tap(find.text('Tất cả · 3'));
+    await tester.tap(find.text('Tất cả', findRichText: true));
     await tester.pump();
     expect(_shown(tester), ['a', 'b', 'c']);
   });
@@ -108,7 +215,7 @@ void main() {
     final built = find.byType(CollectedCardThumb, skipOffstage: false);
     expect(built, findsWidgets);
     expect(tester.widgetList(built).length, lessThan(30));
-    expect(find.text('Tất cả · 60'), findsOneWidget);
+    expect(find.text('Đã có 60', findRichText: true), findsOneWidget);
   });
 
   testWidgets('cuộn bộ thẻ không dựng lại các thẻ đang hiện', (tester) async {
@@ -136,8 +243,8 @@ void main() {
       games: [_game('g', 'epic', 2)],
     );
     expect(_shown(tester), ['a', 'masoi-g', 'c']);
-    expect(find.text('Tất cả · 3'), findsOneWidget);
-    expect(find.text('Siêu hiếm · 1'), findsOneWidget);
+    expect(find.text('Đã có 3', findRichText: true), findsOneWidget);
+    expect(_pill('Siêu hiếm', 1), findsOneWidget);
 
     await tester.tap(
       find.byWidgetPredicate(
@@ -170,7 +277,7 @@ void main() {
       ],
     );
     expect(_shown(tester), ['a', 'journey-mont_blanc', 'c']);
-    expect(find.text('Siêu hiếm · 1'), findsOneWidget);
+    expect(_pill('Siêu hiếm', 1), findsOneWidget);
 
     await tester.tap(
       find.byWidgetPredicate(
@@ -238,6 +345,7 @@ void main() {
           myRankCardsProvider.overrideWith((ref) => Stream.value(const [])),
           contractCardsProvider.overrideWith((ref) => Stream.value(const [])),
           userProfileProvider.overrideWith((ref) => Stream.value(null)),
+          unflippedRunsProvider.overrideWith((ref) async => const []),
         ],
         child: const MaterialApp(home: RunCardCollectionScreen()),
       ),
@@ -274,7 +382,7 @@ void main() {
       contracts: [contract],
     );
     expect(_shown(tester), ['a', 'contract-k1', 'c']);
-    expect(find.text('Siêu hiếm · 1'), findsOneWidget);
+    expect(_pill('Siêu hiếm', 1), findsOneWidget);
 
     await tester.tap(
       find.byWidgetPredicate(

@@ -305,12 +305,14 @@ class ArtStyleList {
     required this.families,
     required this.styles,
     this.custom = false,
+    this.plain = false,
   });
 
   factory ArtStyleList.fromJson(Map<String, dynamic> json) => ArtStyleList(
     families: _list(json['families'], ArtStyleFamily.fromJson),
     styles: _list(json['styles'], ArtStyle.fromJson),
     custom: json['custom'] == true,
+    plain: json['plain'] == true,
   );
 
   final List<ArtStyleFamily> families;
@@ -318,4 +320,7 @@ class ArtStyleList {
 
   /// Backend nhận vẽ theo ảnh mẫu người dùng tải lên (phong cách `custom`).
   final bool custom;
+
+  /// Backend nhận dùng thẳng ảnh làm nền, không phong cách (key `plain`).
+  final bool plain;
 }

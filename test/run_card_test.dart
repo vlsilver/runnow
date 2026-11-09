@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -12,7 +13,7 @@ import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card.dart';
-import 'package:myrun/src/achievements/run_card_art_sheet.dart';
+import 'package:myrun/src/achievements/run_card_art_steps.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/achievements/card_share.dart';
@@ -154,9 +155,23 @@ class _Photos extends RunCardPhotos {
 
   Uint8List? bytes;
   final uploads = <String>[];
+  final downloads = <String>[];
+  final focuses = <Alignment>[];
 
   @override
   Future<Uint8List?> pick() async => bytes;
+
+  @override
+  Future<Uint8List> download(String path) async {
+    downloads.add(path);
+    return _png;
+  }
+
+  @override
+  Future<Uint8List> cropToCard(Uint8List bytes, Alignment focus) async {
+    focuses.add(focus);
+    return bytes;
+  }
 
   @override
   Future<String> upload(
@@ -308,7 +323,13 @@ Future<void> _pumpPanel(
   List<ActivityPhoto> photos = const [],
   _Photos? picker,
   CardShareStore? shareStore,
+  List<RunCard> collection = const [],
+  VoidCallback? onDone,
 }) async {
+  tester.view.physicalSize = const Size(402, 874);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -317,6 +338,7 @@ Future<void> _pumpPanel(
           shareStore ?? _MemoryShareStore(),
         ),
         runCardPhotosProvider.overrideWithValue(picker ?? _Photos()),
+        runCardsProvider.overrideWith((ref) => Stream.value(collection)),
         runCardProvider('r1').overrideWith((ref) async* {
           yield initial;
           yield* backend.cards.stream;
@@ -324,11 +346,10 @@ Future<void> _pumpPanel(
       ],
       child: MaterialApp(
         home: Scaffold(
-          body: SingleChildScrollView(
-            child: RunCardPanel(
-              activity: _run(photos: photos),
-              owner: 'An',
-            ),
+          body: RunCardPanel(
+            activity: _run(photos: photos),
+            owner: 'An',
+            onDone: onDone ?? () {},
           ),
         ),
       ),
@@ -354,7 +375,7 @@ Future<void> _tapText(WidgetTester tester, String text) async {
   await _settle(tester);
 }
 
-/// Ô mô tả thêm của sheet vẽ, cuộn tới cho nó được dựng.
+/// Ô mô tả thêm ở bước xác nhận, cuộn tới cho nó được dựng.
 Future<Finder> _noteField(WidgetTester tester) async {
   final field = find.widgetWithText(TextField, 'Mô tả thêm');
   await tester.scrollUntilVisible(
@@ -362,7 +383,7 @@ Future<Finder> _noteField(WidgetTester tester) async {
     200,
     scrollable: find
         .descendant(
-          of: find.byType(RunCardArtSheet),
+          of: find.byType(RunCardArtSteps),
           matching: find.byWidgetPredicate(
             (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
           ),
@@ -372,31 +393,46 @@ Future<Finder> _noteField(WidgetTester tester) async {
   return field;
 }
 
-/// Nút Vẽ ở chân sheet có bật không.
-bool _drawEnabled(WidgetTester tester, String label) => tester
-    .widget<ButtonStyleButton>(
-      find.ancestor(
-        of: find.text(label),
-        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
-      ),
-    )
-    .enabled;
+Future<void> _tapTip(WidgetTester tester, String tooltip) async {
+  await tester.tap(find.byTooltip(tooltip));
+  await _settle(tester);
+}
 
-/// Đồng ý gửi ảnh, bấm Vẽ ở chân sheet rồi xác nhận trong dialog.
-Future<void> _consentAndDraw(WidgetTester tester, String label) async {
+Future<void> _next(WidgetTester tester) => _tapTip(tester, 'Tiếp');
+
+/// Từ thẻ vẽ hỏng đi tới bước chọn phong cách.
+Future<void> _openRedraw(WidgetTester tester) async {
+  await _tapText(tester, 'Vẽ lại');
+  await _next(tester);
+}
+
+bool _navEnabled(WidgetTester tester, String tooltip) =>
+    tester
+        .widget<IconButton>(
+          find.ancestor(
+            of: find.byTooltip(tooltip),
+            matching: find.byType(IconButton),
+          ),
+        )
+        .onPressed !=
+    null;
+
+/// Từ màn kết quả đi tới bước chọn phong cách.
+Future<void> _openStyles(WidgetTester tester) async {
+  await _tapText(tester, 'Vẽ tranh nền');
+  await _next(tester);
+}
+
+/// Tích đồng ý rồi bấm nút cuối.
+Future<void> _consentAndSend(WidgetTester tester, String tooltip) async {
   await tester.ensureVisible(find.byType(Checkbox));
   await tester.pump();
   await tester.tap(find.byType(Checkbox));
   await tester.pump();
-  await _confirmDraw(tester, label);
+  await _tapTip(tester, tooltip);
 }
 
-Future<void> _confirmDraw(WidgetTester tester, String label) async {
-  await _tapText(tester, label);
-  expect(find.text('$label?'), findsOne);
-  await tester.tap(find.widgetWithText(FilledButton, 'Vẽ'));
-  await _settle(tester);
-}
+const _srcPath = 'users/u1/runCards/r1/src.jpg';
 
 void main() {
   setUpAll(() => SharePlatform.instance = share);
@@ -595,7 +631,6 @@ void main() {
     final backend = _Backend();
     await _pumpPanel(tester, backend);
     expect(find.text('LẬT ĐỂ XEM ĐỘ HIẾM'), findsOneWidget);
-    expect(find.text('TỈ LỆ CHO BUỔI 15,0 KM'), findsOneWidget);
     // Bậc 0% không hiện.
     expect(find.text('Thường'), findsNothing);
     expect(find.text('63,5%'), findsOneWidget);
@@ -610,13 +645,48 @@ void main() {
       'POST /v1/activities/r1/card',
     ]);
     expect(find.text('Lật thẻ'), findsNothing);
-    expect(find.textContaining('Thần thoại · 15,0 km'), findsOneWidget);
-    expect(find.text('Khoe thẻ'), findsOneWidget);
-    // Nút vẽ và nút khoe chung một hàng, vẽ bên trái.
-    final draw = tester.getCenter(find.text('Vẽ tranh nền'));
-    final share = tester.getCenter(find.text('Khoe thẻ'));
-    expect(draw.dy, share.dy);
-    expect(draw.dx, lessThan(share.dx));
+    // Khoe là một nút ở góc phải trên, không còn nút Xong.
+    expect(find.byTooltip('Khoe thẻ'), findsOneWidget);
+    expect(find.text('Khoe thẻ'), findsNothing);
+    expect(find.text('Xong'), findsNothing);
+    final share = tester.getCenter(find.byTooltip('Khoe thẻ'));
+    final close = tester.getCenter(find.byTooltip('Đóng'));
+    expect(share.dy, close.dy);
+    expect(share.dx, greaterThan(close.dx));
+    expect(find.text('Vẽ tranh nền'), findsOneWidget);
+  });
+
+  testWidgets('X closes the screen', (tester) async {
+    var closed = 0;
+    await _pumpPanel(
+      tester,
+      _Backend(),
+      initial: _card(),
+      onDone: () => closed++,
+    );
+    await _tapTip(tester, 'Đóng');
+    expect(closed, 1);
+  });
+
+  testWidgets('a finger shows how to touch a just-flipped card, then leaves', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    await _pumpPanel(tester, backend);
+    await tester.tap(find.text('Lật thẻ'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(find.byIcon(Icons.touch_app_rounded), findsOneWidget);
+    expect(find.textContaining('chạm thẻ'), findsNothing);
+
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pump();
+    expect(find.byIcon(Icons.touch_app_rounded), findsNothing);
+  });
+
+  testWidgets('reopening an old card shows no finger', (tester) async {
+    await _pumpPanel(tester, _Backend(), initial: _card());
+    expect(find.byIcon(Icons.touch_app_rounded), findsNothing);
   });
 
   testWidgets('a short run shows its chance and a miss is final', (
@@ -632,6 +702,8 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('Lật thẻ'));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 800));
+    // Hiệu ứng lật chạy từ lúc view báo trượt, sau lần tải lại.
     await tester.pump(const Duration(milliseconds: 800));
     expect(backend.requests, [
       'GET /v1/activities/r1/card',
@@ -686,7 +758,7 @@ void main() {
     await _pumpPanel(tester, backend, initial: card, shareStore: store);
     expect(backend.requests, isEmpty, reason: 'đã có thẻ thì không hỏi tỉ lệ');
 
-    await _tapText(tester, 'Khoe thẻ');
+    await _tapTip(tester, 'Khoe thẻ');
     await _settle(tester);
     expect(store.saves, 0, reason: 'có sẵn thì không tạo lại');
     for (final label in ['Mặt trước', 'Mặt sau', 'Video 3D']) {
@@ -731,7 +803,7 @@ void main() {
       ..saved['r1/${runCardShareKey(card, owner, skin: fire)}'] = files(2);
     await _pumpPanel(tester, _Backend(), initial: card, shareStore: store);
 
-    await _tapText(tester, 'Khoe thẻ');
+    await _tapTip(tester, 'Khoe thẻ');
     await _settle(tester);
     await tester.tap(find.byTooltip('Hỏa'));
     await _settle(tester);
@@ -762,7 +834,7 @@ void main() {
     await _pumpPanel(tester, _Backend(), initial: card, shareStore: store);
     expect(find.byTooltip('Bộ màu thẻ'), findsNothing);
 
-    await _tapText(tester, 'Khoe thẻ');
+    await _tapTip(tester, 'Khoe thẻ');
     await _settle(tester);
     expect(store.saves, 0, reason: 'mở đúng file của bộ màu hành Thủy');
     expect(find.byTooltip('Hỏa'), findsNothing, reason: 'không có chọn bộ màu');
@@ -806,14 +878,14 @@ void main() {
   });
 
   testWidgets(
-    'reopening the style sheet shows the last styles at once and refreshes them',
+    'reopening the steps shows the last styles at once and refreshes them',
     (tester) async {
       final backend = _Backend();
       await _pumpPanel(tester, backend, initial: _card());
-      await _tapText(tester, 'Vẽ tranh nền');
+      await _openStyles(tester);
       expect(find.text('Sơn dầu'), findsOne);
-      Navigator.of(tester.element(find.text('Sơn dầu'))).pop();
-      await _settle(tester);
+      await _tapTip(tester, 'Quay lại');
+      await _tapTip(tester, 'Quay lại');
 
       backend.stylesGate = Completer<void>();
       backend.styles = {
@@ -829,15 +901,8 @@ void main() {
           },
         ],
       };
-      await _tapText(tester, 'Vẽ tranh nền');
+      await _openStyles(tester);
       expect(find.text('Sơn dầu'), findsOne, reason: 'hiện ngay bản lần trước');
-      expect(
-        find.descendant(
-          of: find.byType(RunCardArtSheet),
-          matching: find.byType(CircularProgressIndicator),
-        ),
-        findsNothing,
-      );
       expect(find.text('Thuỷ mặc'), findsNothing);
 
       backend.stylesGate!.complete();
@@ -854,19 +919,28 @@ void main() {
     },
   );
 
-  testWidgets('a card without art draws with a style and a run photo', (
+  testWidgets('a run photo plus a style crops, uploads, then draws', (
     tester,
   ) async {
     final backend = _Backend();
-    await _pumpPanel(tester, backend, initial: _card(), photos: [_runPhoto]);
-    await _tapText(tester, 'Vẽ tranh nền');
+    final picker = _Photos();
+    await _pumpPanel(
+      tester,
+      backend,
+      initial: _card(),
+      photos: [_runPhoto],
+      picker: picker,
+    );
+    await _openStyles(tester);
 
-    expect(find.text('Thẻ Siêu hiếm · vẽ một lần, xong là cố định'), findsOne);
-    expect(find.text('Hội hoạ'), findsOne);
+    expect(find.text('Chọn style'), findsOne);
     expect(find.text('Nhóm trống'), findsNothing);
-    expect(find.text('Sơn dầu'), findsOne);
     expect(find.text('Anime cel'), findsNothing, reason: 'khác nhóm đang mở');
-    expect(_drawEnabled(tester, 'Chọn một phong cách'), isFalse);
+    expect(
+      _navEnabled(tester, 'Tiếp'),
+      isFalse,
+      reason: 'backend chưa bật dùng thẳng ảnh thì phải chọn phong cách',
+    );
     expect(
       find.byWidgetPredicate(
         (w) => w is StorageImage && w.path == 'artStyles/examples/oil.jpg',
@@ -876,23 +950,126 @@ void main() {
     );
 
     await _tapText(tester, 'Sơn dầu');
-    expect(_drawEnabled(tester, 'Vẽ bằng Sơn dầu'), isTrue);
-
-    await tester.tap(find.bySemanticsLabel('Ảnh buổi chạy'));
-    await tester.pump();
+    expect(find.text('Sơn dầu'), findsNWidgets(2), reason: 'tên hiện giữa nav');
+    await _next(tester);
     expect(
-      _drawEnabled(tester, 'Vẽ bằng Sơn dầu'),
+      _navEnabled(tester, 'Vẽ'),
       isFalse,
       reason: 'có ảnh thì phải đồng ý gửi ảnh trước',
     );
+    expect(find.textContaining('Google Gemini'), findsOne);
 
-    await _consentAndDraw(tester, 'Vẽ bằng Sơn dầu');
+    await _consentAndSend(tester, 'Vẽ');
+    expect(picker.downloads, [_runPhotoPath]);
+    expect(picker.focuses, [Alignment.center]);
+    expect(picker.uploads, ['r1 src.jpg image/png ${_png.length}']);
     expect(backend.artBodies, [
-      {'style': 'oil', 'photoPath': _runPhotoPath},
+      {'style': 'oil', 'photoPath': _srcPath},
     ]);
-    expect(find.text('Chọn phong cách'), findsNothing, reason: 'sheet đóng');
-    expect(find.text('Đang vẽ tranh nền'), findsOne);
+    expect(find.byType(RunCardArtSteps), findsNothing);
+    expect(find.text('Đang vẽ tranh nền'), findsNothing);
     expect(find.text('Vẽ lại'), findsNothing, reason: 'vừa gửi thì chưa kẹt');
+  });
+
+  testWidgets('a photo goes on the card as is when no style is chosen', (
+    tester,
+  ) async {
+    final backend = _Backend()..styles = {..._styles, 'plain': true};
+    final picker = _Photos(_png);
+    await _pumpPanel(tester, backend, initial: _card(), picker: picker);
+    await _tapText(tester, 'Vẽ tranh nền');
+    await tester.tap(find.bySemanticsLabel('Tải ảnh'));
+    await _settle(tester);
+    await _next(tester);
+
+    expect(find.text('Không style'), findsNWidgets(2), reason: 'mặc định chọn');
+    await _next(tester);
+    expect(find.widgetWithText(TextField, 'Mô tả thêm'), findsNothing);
+    expect(find.textContaining('Gemini'), findsNothing, reason: 'không gửi đi');
+    expect(_navEnabled(tester, 'Dùng ảnh này'), isFalse);
+
+    await _consentAndSend(tester, 'Dùng ảnh này');
+    expect(picker.uploads, ['r1 src.jpg image/png ${_png.length}']);
+    expect(backend.artBodies, [
+      {'style': 'plain', 'photoPath': _srcPath},
+    ]);
+  });
+
+  testWidgets('without a photo a style is required', (tester) async {
+    final backend = _Backend()..styles = {..._styles, 'plain': true};
+    await _pumpPanel(tester, backend, initial: _card());
+    await _openStyles(tester);
+
+    expect(find.text('Không style'), findsNothing);
+    expect(_navEnabled(tester, 'Tiếp'), isFalse);
+  });
+
+  testWidgets('dragging the card reframes the photo that gets uploaded', (
+    tester,
+  ) async {
+    final backend = _Backend()..styles = {..._styles, 'plain': true};
+    final picker = _Photos();
+    await _pumpPanel(
+      tester,
+      backend,
+      initial: _card(),
+      photos: [_runPhoto],
+      picker: picker,
+    );
+    await _openStyles(tester);
+
+    await tester.drag(find.byType(AchievementCard), const Offset(0, -60));
+    await _settle(tester);
+    await _next(tester);
+    await _consentAndSend(tester, 'Dùng ảnh này');
+
+    expect(
+      picker.focuses.single.y,
+      greaterThan(0),
+      reason: 'kéo lên xem phần dưới',
+    );
+    expect(picker.focuses.single.x, 0);
+  });
+
+  test('style usage counts only finished drawings from the list', () {
+    RunCard drawn(String style, {String status = 'done'}) => _card(
+      art: {'status': status, 'style': style, 'attempt': 1, 'path': 'x.png'},
+    );
+    expect(
+      runCardStyleUsage([
+        drawn('oil'),
+        drawn('anime_cel'),
+        drawn('anime_cel'),
+        drawn('anime_cel', status: 'failed'),
+        drawn('oil', status: 'drawing'),
+        drawn('plain'),
+        drawn('custom'),
+        _card(),
+      ]),
+      {'oil': 1, 'anime_cel': 2},
+    );
+  });
+
+  testWidgets('styles used most come first under Hay dùng', (tester) async {
+    RunCard drawn(String style) => _card(
+      art: {'status': 'done', 'style': style, 'attempt': 1, 'path': 'x.png'},
+    );
+    final backend = _Backend();
+    await _pumpPanel(
+      tester,
+      backend,
+      initial: _card(),
+      collection: [drawn('oil'), drawn('anime_cel'), drawn('anime_cel')],
+    );
+    await _openStyles(tester);
+    await _settle(tester);
+    await _tapText(tester, 'Hay dùng');
+
+    expect(
+      tester.getCenter(find.text('Anime cel')).dx,
+      lessThan(tester.getCenter(find.text('Sơn dầu')).dx),
+    );
+    expect(find.text('2'), findsOne, reason: 'số lần dùng ở góc ô');
   });
 
   testWidgets('a note goes with the draw, trimmed and capped at 200 runes', (
@@ -900,8 +1077,9 @@ void main() {
   ) async {
     final backend = _Backend();
     await _pumpPanel(tester, backend, initial: _card());
-    await _tapText(tester, 'Vẽ tranh nền');
+    await _openStyles(tester);
     await _tapText(tester, 'Sơn dầu');
+    await _next(tester);
     final note = await _noteField(tester);
 
     await tester.enterText(note, 'ệ' * 201);
@@ -914,28 +1092,10 @@ void main() {
     expect(find.text('200/200'), findsOne);
 
     await tester.enterText(note, '  áo đỏ, chạy cùng chú chó  ');
-    await _confirmDraw(tester, 'Vẽ bằng Sơn dầu');
+    await _tapTip(tester, 'Vẽ');
     expect(backend.artBodies, [
       {'style': 'oil', 'note': 'áo đỏ, chạy cùng chú chó'},
     ]);
-  });
-
-  testWidgets('the style sheet keeps one height whichever group is open', (
-    tester,
-  ) async {
-    // Màn cao để nhóm một phong cách không tự lấp đầy sheet.
-    tester.view.physicalSize = const Size(400, 1600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    await _pumpPanel(tester, _Backend(), initial: _card());
-    await _tapText(tester, 'Vẽ tranh nền');
-    final sheet = find.byType(RunCardArtSheet);
-    expect(tester.getSize(sheet).height, 1600 * 0.88);
-
-    await _tapText(tester, 'Anime');
-    expect(find.text('Anime cel'), findsOne);
-    expect(tester.getSize(sheet).height, 1600 * 0.88);
   });
 
   testWidgets('an uploaded PNG goes up before the draw request', (
@@ -945,19 +1105,23 @@ void main() {
     final picker = _Photos(utf8.encode('GIF89a....'));
     await _pumpPanel(tester, backend, initial: _card(), picker: picker);
     await _tapText(tester, 'Vẽ tranh nền');
-    await _tapText(tester, 'Anime');
-    await _tapText(tester, 'Anime cel');
 
-    await _tapText(tester, 'Tải ảnh');
+    await tester.tap(find.bySemanticsLabel('Tải ảnh'));
+    await _settle(tester);
     expect(find.text('Chỉ dùng được ảnh JPEG hoặc PNG.'), findsOne);
-    expect(find.byType(Checkbox), findsNothing, reason: 'GIF không được nhận');
 
     picker.bytes = _png;
-    await _tapText(tester, 'Tải ảnh');
-    await _consentAndDraw(tester, 'Vẽ bằng Anime cel');
+    await tester.tap(find.bySemanticsLabel('Tải ảnh'));
+    await _settle(tester);
+    await _next(tester);
+    await _tapText(tester, 'Anime');
+    await _tapText(tester, 'Anime cel');
+    await _next(tester);
+    await _consentAndSend(tester, 'Vẽ');
+    expect(picker.downloads, isEmpty, reason: 'ảnh đã có trên máy');
     expect(picker.uploads, ['r1 src.jpg image/png ${_png.length}']);
     expect(backend.artBodies, [
-      {'style': 'anime_cel', 'photoPath': 'users/u1/runCards/r1/src.jpg'},
+      {'style': 'anime_cel', 'photoPath': _srcPath},
     ]);
   });
 
@@ -967,17 +1131,17 @@ void main() {
     final backend = _Backend()..styles = {..._styles, 'custom': true};
     final picker = _Photos(_png);
     await _pumpPanel(tester, backend, initial: _card(), picker: picker);
-    await _tapText(tester, 'Vẽ tranh nền');
-    await _tapText(tester, 'Ảnh mẫu');
-    expect(_drawEnabled(tester, 'Chọn một phong cách'), isFalse);
+    await _openStyles(tester);
+    expect(_navEnabled(tester, 'Tiếp'), isFalse);
 
-    await _tapText(tester, 'Tải ảnh mẫu');
+    await _tapText(tester, 'Style từ Ảnh');
+    await _next(tester);
     expect(
-      _drawEnabled(tester, 'Vẽ bằng ảnh mẫu của bạn'),
+      _navEnabled(tester, 'Vẽ'),
       isFalse,
       reason: 'ảnh mẫu cũng gửi cho Gemini nên phải đồng ý trước',
     );
-    await _consentAndDraw(tester, 'Vẽ bằng ảnh mẫu của bạn');
+    await _consentAndSend(tester, 'Vẽ');
     expect(picker.uploads, ['r1 style.jpg image/png ${_png.length}']);
     // Backend tự lấy style.jpg của thẻ, nên lệnh vẽ chỉ mang tên phong cách.
     expect(backend.artBodies, [
@@ -985,20 +1149,21 @@ void main() {
     ]);
   });
 
-  testWidgets('a refused draw keeps the sheet open with the reason', (
+  testWidgets('a refused draw stays on the confirm step with the reason', (
     tester,
   ) async {
     final backend = _Backend()..artError = 'art_fixed';
     await _pumpPanel(tester, backend, initial: _card());
-    await _tapText(tester, 'Vẽ tranh nền');
+    await _openStyles(tester);
     await _tapText(tester, 'Sơn dầu');
-    await _confirmDraw(tester, 'Vẽ bằng Sơn dầu');
+    await _next(tester);
+    await _tapTip(tester, 'Vẽ');
 
     expect(backend.artBodies, [
       {'style': 'oil'},
     ]);
     expect(find.text('Thẻ này đã có tranh, không vẽ lại được.'), findsOne);
-    expect(find.text('Chọn phong cách'), findsOne);
+    expect(find.byTooltip('Vẽ'), findsOne);
   });
 
   testWidgets('a failed draw says why and reopens with the old choice', (
@@ -1023,9 +1188,34 @@ void main() {
       findsOne,
     );
     await _tapText(tester, 'Vẽ lại');
-    expect(find.text('Vẽ bằng Anime cel'), findsOne);
+    await _next(tester);
+    expect(find.text('Anime cel'), findsNWidgets(2));
+    await _next(tester);
     final note = await _noteField(tester);
     expect(tester.widget<TextField>(note).controller!.text, 'áo đỏ');
+  });
+
+  testWidgets('an unreadable photo is dropped when the draw reopens', (
+    tester,
+  ) async {
+    final backend = _Backend()..styles = {..._styles, 'plain': true};
+    await _pumpPanel(
+      tester,
+      backend,
+      initial: _card(
+        art: {
+          'status': 'failed',
+          'style': 'plain',
+          'attempt': 1,
+          'reason': 'photo_invalid',
+          'photoPath': _srcPath,
+        },
+      ),
+    );
+    expect(find.text('Ảnh này không dùng được. Chọn ảnh khác.'), findsOne);
+    await _openRedraw(tester);
+    expect(find.text('Không style'), findsNothing);
+    expect(_navEnabled(tester, 'Tiếp'), isFalse);
   });
 
   testWidgets('a lost style image asks for a new one before redrawing', (
@@ -1050,11 +1240,12 @@ void main() {
       find.text('Không tìm thấy ảnh mẫu. Tải lại ảnh mẫu rồi vẽ.'),
       findsOne,
     );
-    await _tapText(tester, 'Vẽ lại');
-    expect(_drawEnabled(tester, 'Chọn ảnh mẫu'), isFalse);
+    await _openRedraw(tester);
+    expect(_navEnabled(tester, 'Tiếp'), isFalse);
 
-    await _tapText(tester, 'Tải ảnh mẫu');
-    await _consentAndDraw(tester, 'Vẽ bằng ảnh mẫu của bạn');
+    await _tapText(tester, 'Style từ Ảnh');
+    await _next(tester);
+    await _consentAndSend(tester, 'Vẽ');
     expect(picker.uploads, ['r1 style.jpg image/png ${_png.length}']);
     expect(backend.artBodies, [
       {'style': 'custom'},
@@ -1079,14 +1270,79 @@ void main() {
         },
       ),
     );
-    await _tapText(tester, 'Vẽ lại');
-    expect(find.text('Ảnh mẫu lần trước'), findsOne);
-    await _noteField(tester);
-    await _consentAndDraw(tester, 'Vẽ bằng ảnh mẫu của bạn');
+    await _openRedraw(tester);
+    await _next(tester);
+    await _consentAndSend(tester, 'Vẽ');
     expect(picker.uploads, isEmpty, reason: 'style.jpg cũ vẫn còn');
     expect(backend.artBodies, [
       {'style': 'custom'},
     ]);
+  });
+
+  group('cropToCard', () {
+    // Ảnh 40x20, nửa trái đỏ, nửa phải xanh.
+    Future<Uint8List> halves() async {
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder)
+        ..drawRect(
+          const Rect.fromLTWH(0, 0, 20, 20),
+          Paint()..color = const Color(0xFFFF0000),
+        )
+        ..drawRect(
+          const Rect.fromLTWH(20, 0, 20, 20),
+          Paint()..color = const Color(0xFF0000FF),
+        );
+      final image = await recorder.endRecording().toImage(40, 20);
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      return data!.buffer.asUint8List();
+    }
+
+    Future<ui.Image> decode(Uint8List bytes) async =>
+        (await (await ui.instantiateImageCodec(bytes)).getNextFrame()).image;
+
+    Future<List<int>> centerRgb(ui.Image image) async {
+      final data = (await image.toByteData())!;
+      final i = (image.height ~/ 2 * image.width + image.width ~/ 2) * 4;
+      return [data.getUint8(i), data.getUint8(i + 1), data.getUint8(i + 2)];
+    }
+
+    testWidgets('keeps the part of a wide photo the user framed', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        const photos = RunCardPhotos();
+        final source = await halves();
+        final right = await decode(
+          await photos.cropToCard(source, Alignment.centerRight),
+        );
+        final left = await decode(
+          await photos.cropToCard(source, Alignment.centerLeft),
+        );
+        // Cao 20, tỉ lệ 5:7 nên ngang 14,3, làm tròn 14; cao 14 / (5/7) = 19,6.
+        expect(right.width, 14);
+        expect(right.height, 20);
+        expect(await centerRgb(right), [0, 0, 255]);
+        expect(await centerRgb(left), [255, 0, 0]);
+      });
+    });
+
+    testWidgets('shrinks a big photo to 1080 wide', (tester) async {
+      await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        Canvas(recorder).drawColor(const Color(0xFF00FF00), BlendMode.src);
+        final big = await recorder.endRecording().toImage(2000, 2000);
+        final data = await big.toByteData(format: ui.ImageByteFormat.png);
+        final out = await decode(
+          await const RunCardPhotos().cropToCard(
+            data!.buffer.asUint8List(),
+            Alignment.center,
+          ),
+        );
+        // 1080 / (5/7) = 1512.
+        expect(out.width, 1080);
+        expect(out.height, 1512);
+      });
+    });
   });
 
   testWidgets('a stuck draw offers to send the same choice again', (
@@ -1110,7 +1366,7 @@ void main() {
         },
       ),
     );
-    expect(find.text('Lâu quá chưa xong, có thể lần vẽ bị kẹt.'), findsOne);
+    expect(find.text('Lâu quá chưa xong'), findsOne);
     await _tapText(tester, 'Vẽ lại');
     // Thiếu note thì backend coi là lựa chọn khác và báo đang vẽ.
     expect(backend.artBodies, [

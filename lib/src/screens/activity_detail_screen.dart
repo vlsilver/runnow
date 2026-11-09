@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card.dart';
+import 'package:myrun/src/achievements/run_card_flow.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/activity_eligibility.dart';
@@ -202,15 +203,8 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
     );
   }
 
-  Future<void> _openShareComposer(ActivityDetail detail) {
-    return showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _ShareComposer(detail: detail),
-    );
-  }
+  Future<void> _openShareComposer(ActivityDetail detail) =>
+      showRunCardFlow(context, detail.summary);
 
   Future<void> _openPhoto(ActivityPhoto photo) =>
       showActivityPhotoViewer(context, photo);
@@ -1522,78 +1516,6 @@ class _RunCardSection extends StatelessWidget {
             child: Text(hint, style: TextStyle(color: muted, fontSize: 12)),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Sheet Khoe chỉ mở trên buổi chạy của chính mình: thẻ chỉ chủ buổi đọc được
-/// (rule Firestore), và ngoài thẻ ra không còn gì để chia sẻ.
-class _ShareComposer extends ConsumerWidget {
-  const _ShareComposer({required this.detail});
-
-  final ActivityDetail detail;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final palette = context.runNowPalette;
-    final owner =
-        ref.watch(userProfileProvider).asData?.value?.displayName ??
-        '3i member';
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.92,
-      minChildSize: 0.64,
-      maxChildSize: 0.96,
-      builder: (context, scrollController) => GlassPanel(
-        borderRadius: 18,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            palette.backgroundDeep,
-            palette.glassStart,
-            palette.backgroundMid,
-          ],
-        ),
-        child: ListView(
-          controller: scrollController,
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          children: [
-            Center(
-              child: Container(
-                width: 48,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withValues(alpha: 0.38),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'SHARE // ACTIVITY',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: palette.secondary,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.4,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Mỗi buổi lật một thẻ, độ hiếm do server quay.',
-              style: TextStyle(
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurface.withValues(alpha: 0.6),
-              ),
-            ),
-            const SizedBox(height: 16),
-            RunCardPanel(activity: detail.summary, owner: owner),
-          ],
-        ),
       ),
     );
   }

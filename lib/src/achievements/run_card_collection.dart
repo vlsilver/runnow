@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card.dart';
+import 'package:myrun/src/achievements/run_card_flow.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
@@ -10,6 +12,7 @@ import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/journey/journey_card.dart';
+import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rank/rank_card.dart';
 import 'package:myrun/src/run_contracts/contract_card_models.dart';
@@ -283,7 +286,8 @@ class CollectedCardThumb extends StatelessWidget {
   }
 }
 
-/// Mọi thẻ đã có, mới nhất trước, lọc theo bậc.
+/// Mọi thẻ đã có, mới nhất trước, lọc theo bậc; filter Chưa lật gom các buổi
+/// còn lật được.
 class RunCardCollectionScreen extends ConsumerStatefulWidget {
   const RunCardCollectionScreen({super.key});
 
@@ -297,16 +301,18 @@ class _RunCardCollectionScreenState
   /// null là mọi bậc.
   GameCardTier? _tier;
 
+  bool _unflippedOnly = false;
+
   @override
   Widget build(BuildContext context) {
     final cards = ref.watch(collectedCardsProvider);
     final owner = runCardOwnerName(ref);
+    final unflipped = ref.watch(unflippedRunsProvider);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Bộ thẻ'),
         actions: [
-          IconButton(
-            tooltip: 'Bộ màu thẻ',
+          RunCardSkinButton(
             onPressed: () => showRunCardSkinSheet(
               context,
               // Thẻ Ẩn không theo bộ màu, nên mẫu là thẻ thường đầu tiên.
@@ -315,65 +321,106 @@ class _RunCardCollectionScreenState
                   .where((data) => data.secret == null)
                   .firstOrNull,
             ),
-            icon: const Icon(Icons.palette_outlined),
           ),
         ],
       ),
       body: cards.when(
         loading: () => const Center(child: RunNowLoading()),
         error: (error, _) => _Note('Không tải được bộ thẻ: $error'),
-        data: (cards) => cards.isEmpty
+        data: (cards) =>
+            cards.isEmpty &&
+                !unflipped.hasError &&
+                (unflipped.value?.isEmpty ?? true)
             ? const RunNowEmpty(
                 message: collectedCardsEmpty,
                 hint: collectedCardsEmptyHint,
               )
-            : _grid(cards, owner),
+            : _grid(cards, owner, unflipped),
       ),
     );
   }
 
-  Widget _grid(List<CollectedCard> cards, String owner) {
-    final muted = Theme.of(
-      context,
-    ).colorScheme.onSurface.withValues(alpha: 0.6);
+  void _selectTier(GameCardTier? tier) => setState(() {
+    _tier = tier;
+    _unflippedOnly = false;
+  });
+
+  Future<void> _flip(ActivitySummary run) async {
+    await showRunCardFlow(context, run);
+    // Lật trượt không sinh doc thẻ nên không có stream nào báo, phải tải lại.
+    if (mounted) ref.invalidate(unflippedRunsProvider);
+  }
+
+  Widget _grid(
+    List<CollectedCard> cards,
+    String owner,
+    AsyncValue<List<ActivitySummary>> unflipped,
+  ) {
     final shown = [
       for (final card in cards)
         if (_tier == null || card.tier == _tier) card,
     ];
     int count(GameCardTier tier) => cards.where((c) => c.tier == tier).length;
+    final waiting = unflipped.value;
     const gap = 12.0;
+    const side = 16.0;
     final header = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 4,
-          children: [
-            ChoiceChip(
-              label: Text('Tất cả · ${cards.length}'),
-              selected: _tier == null,
-              onSelected: (_) => setState(() => _tier = null),
-            ),
-            // Bậc cao trước; bậc chưa có thẻ vẫn hiện để biết còn thiếu gì.
-            for (final tier in GameCardTier.values.reversed)
-              ChoiceChip(
-                label: Text('${gameCardTiers[tier]!.label} · ${count(tier)}'),
-                selected: _tier == tier,
-                onSelected: count(tier) == 0
-                    ? null
-                    : (_) => setState(() => _tier = tier),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: side),
+          child: Row(
+            children: [
+              _SourceTab(
+                label: 'Đã có',
+                count: cards.length,
+                selected: !_unflippedOnly,
+                onTap: () => _selectTier(null),
               ),
-          ],
+              const SizedBox(width: 22),
+              _SourceTab(
+                label: 'Chưa lật',
+                count: waiting?.length,
+                selected: _unflippedOnly,
+                onTap: waiting?.isEmpty ?? false
+                    ? null
+                    : () => setState(() {
+                        _tier = null;
+                        _unflippedOnly = true;
+                      }),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          'Mới nhất trước. Chạm thẻ để xem 3D.',
-          style: TextStyle(color: muted, fontSize: 12),
-        ),
-        const SizedBox(height: 12),
+        if (!_unflippedOnly) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 34,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: side),
+              children: [
+                _TierPill(
+                  label: 'Tất cả',
+                  selected: _tier == null,
+                  onTap: () => _selectTier(null),
+                ),
+                // Bậc cao trước; bậc chưa có thẻ vẫn hiện để biết còn thiếu gì.
+                for (final tier in GameCardTier.values.reversed)
+                  _TierPill(
+                    label: gameCardTiers[tier]!.label,
+                    count: count(tier),
+                    dot: runCardGlow(tier),
+                    selected: _tier == tier,
+                    onTap: count(tier) == 0 ? null : () => _selectTier(tier),
+                  ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
       ],
     );
-    const side = 16.0;
     // Lưới lazy: bộ thẻ dài thì chỉ dựng thẻ gần màn hình, thẻ Thần thoại ở xa
     // cũng không chạy hiệu ứng. Số cột tính theo bề ngang hộp chứ không theo
     // SliverLayoutBuilder: sliver constraints đổi theo từng khung cuộn, dựng
@@ -383,12 +430,7 @@ class _RunCardCollectionScreenState
         final extent = constraints.maxWidth - side * 2;
         final columns = (extent / 170).floor().clamp(2, 5);
         final width = (extent - gap * (columns - 1)) / columns;
-        return CustomScrollView(
-          slivers: [
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(side, 8, side, 0),
-              sliver: SliverToBoxAdapter(child: header),
-            ),
+        Widget grid(int count, Widget Function(int i, double width) item) =>
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(side, 0, side, 32),
               sliver: SliverGrid.builder(
@@ -399,17 +441,245 @@ class _RunCardCollectionScreenState
                   childAspectRatio:
                       achievementCardSize.width / achievementCardSize.height,
                 ),
-                itemCount: shown.length,
-                itemBuilder: (context, i) => CollectedCardThumb(
+                itemCount: count,
+                itemBuilder: (context, i) => item(i, width),
+              ),
+            );
+        return CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.only(top: 8),
+              sliver: SliverToBoxAdapter(child: header),
+            ),
+            if (!_unflippedOnly)
+              grid(
+                shown.length,
+                (i, width) => CollectedCardThumb(
                   card: shown[i],
                   owner: owner,
                   width: width,
                 ),
+              )
+            else if (waiting != null && waiting.isNotEmpty)
+              grid(
+                waiting.length,
+                (i, width) => _UnflippedRunThumb(
+                  run: waiting[i],
+                  width: width,
+                  onTap: () => _flip(waiting[i]),
+                ),
+              )
+            else
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _unflippedStatus(unflipped),
               ),
-            ),
           ],
         );
       },
+    );
+  }
+
+  Widget _unflippedStatus(AsyncValue<List<ActivitySummary>> unflipped) {
+    if (unflipped.hasValue) return const _Note('Đã lật hết thẻ');
+    if (unflipped.error case final error?) {
+      debugPrint('Không tải được buổi chưa lật: $error');
+      return Center(
+        child: TextButton(
+          onPressed: () => ref.invalidate(unflippedRunsProvider),
+          child: const Text('Không tải được. Chạm để thử lại.'),
+        ),
+      );
+    }
+    return const Center(child: RunNowLoading());
+  }
+}
+
+/// Hai nguồn của lưới: thẻ đã có và buổi chưa lật. Chữ đậm và gạch chân để
+/// khác hẳn hàng lọc bậc bên dưới.
+class _SourceTab extends StatelessWidget {
+  const _SourceTab({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.count,
+  });
+
+  final String label;
+  final int? count;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ink = scheme.onSurface.withValues(
+      alpha: onTap == null
+          ? 0.3
+          : selected
+          ? 1
+          : 0.5,
+    );
+    return Semantics(
+      button: true,
+      selected: selected,
+      enabled: onTap != null,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text.rich(
+              TextSpan(
+                text: label,
+                children: [
+                  if (count case final count?)
+                    TextSpan(
+                      text: ' $count',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: ink.withValues(alpha: ink.a * 0.6),
+                      ),
+                    ),
+                ],
+              ),
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: ink,
+              ),
+            ),
+            const SizedBox(height: 5),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              height: 3,
+              width: selected ? 26 : 0,
+              decoration: BoxDecoration(
+                color: scheme.primary,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Lọc theo bậc: chấm màu bậc, tên, số thẻ.
+class _TierPill extends StatelessWidget {
+  const _TierPill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.count,
+    this.dot,
+  });
+
+  final String label;
+  final int? count;
+  final Color? dot;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ink = selected ? scheme.surface : scheme.onSurface;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: Semantics(
+        button: true,
+        selected: selected,
+        enabled: onTap != null,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Opacity(
+            opacity: onTap == null ? 0.38 : 1,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected
+                    ? scheme.onSurface
+                    : scheme.onSurface.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(17),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (dot case final dot?) ...[
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: dot,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Text.rich(
+                    TextSpan(
+                      text: label,
+                      children: [
+                        if (count case final count?)
+                          TextSpan(
+                            text: ' $count',
+                            style: TextStyle(
+                              color: ink.withValues(alpha: 0.55),
+                            ),
+                          ),
+                      ],
+                    ),
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: ink,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Mặt úp của một buổi chưa lật; chạm để lật.
+class _UnflippedRunThumb extends StatelessWidget {
+  const _UnflippedRunThumb({
+    required this.run,
+    required this.width,
+    required this.onTap,
+  });
+
+  final ActivitySummary run;
+  final double width;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final date = DateFormat('dd/MM').format(run.startedAt);
+    return Semantics(
+      button: true,
+      label: 'Lật thẻ buổi ${run.name}, $date',
+      child: GestureDetector(
+        onTap: onTap,
+        child: GameCardScaled(
+          width: width,
+          size: achievementCardSize,
+          child: RunCardFaceDown(
+            km: (run.distanceMeters / 100).round() / 10,
+            title: '${run.name} · $date',
+          ),
+        ),
+      ),
     );
   }
 }

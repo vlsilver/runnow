@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
+import 'package:myrun/src/achievements/run_card_flow.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
@@ -73,7 +74,7 @@ void main() {
     await tester.tap(find.byTooltip('Chia sẻ hoạt động'));
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
-    expect(find.text('SHARE // ACTIVITY'), findsOneWidget);
+    expect(find.byType(RunCardFlowScreen), findsOneWidget);
     expect(find.text('Poster'), findsNothing);
     expect(find.text('Chia sẻ poster'), findsNothing);
   });
@@ -88,7 +89,7 @@ void main() {
     await tester.tap(find.byType(RunCardFaceDown));
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
-    expect(find.text('SHARE // ACTIVITY'), findsOneWidget);
+    expect(find.byType(RunCardFlowScreen), findsOneWidget);
   });
 
   // Lật trượt thì không có doc thẻ; ngoài màn phải báo trượt chứ không còn
@@ -153,7 +154,7 @@ void main() {
     await tester.tap(find.byTooltip('Khoe thẻ'));
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
-    expect(find.text('SHARE // ACTIVITY'), findsOneWidget);
+    expect(find.byType(RunCardFlowScreen), findsOneWidget);
   });
 
   // Ngoài thẻ không còn gì để chia sẻ, nên buổi không có thẻ thì không có nút.

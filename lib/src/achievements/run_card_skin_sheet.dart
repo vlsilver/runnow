@@ -28,6 +28,45 @@ Future<void> showRunCardSkinSheet(
       _AppTheme(child: RunCardSkinSheet(sample: sample ?? _sample())),
 );
 
+/// Nút mở bộ màu thẻ: chấm tròn hai màu của bộ đang dùng.
+class RunCardSkinButton extends StatelessWidget {
+  const RunCardSkinButton({super.key, required this.onPressed, this.ring});
+
+  final VoidCallback onPressed;
+
+  /// Màu viền; null thì theo chữ của theme.
+  final Color? ring;
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = RunCardSkin.of(context);
+    final tone = skin.accent(GameCardTier.legendary);
+    return IconButton(
+      tooltip: 'Bộ màu thẻ',
+      onPressed: onPressed,
+      icon: Container(
+        width: 24,
+        height: 24,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [skin.backTop, skin.backTop, tone, tone],
+            stops: const [0, 0.5, 0.5, 1],
+          ),
+          border: Border.all(
+            color:
+                ring ??
+                Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3),
+            width: 1.5,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Sheet là cài đặt của app nên luôn mặc theme app, kể cả khi mở từ màn có
 /// theme riêng: kính của theme đêm Ma Sói gần trong suốt, sheet đè lên màn
 /// ván sẽ không đọc được.

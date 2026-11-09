@@ -10,6 +10,7 @@ class StorageImage extends StatefulWidget {
   const StorageImage({
     required this.path,
     this.fit = BoxFit.cover,
+    this.alignment = Alignment.center,
     this.cacheWidth,
     this.cacheHeight,
     this.placeholder,
@@ -18,6 +19,7 @@ class StorageImage extends StatefulWidget {
 
   final String path;
   final BoxFit fit;
+  final Alignment alignment;
 
   /// Giới hạn kích thước giải mã (physical pixels) — truyền vào khi hiển thị
   /// ảnh ở khung nhỏ (vd marker trên bản đồ) để tránh giải mã ảnh gốc full
@@ -100,6 +102,7 @@ class _StorageImageState extends State<StorageImage> {
         return CachedNetworkImage(
           imageUrl: url,
           fit: widget.fit,
+          alignment: widget.alignment,
           width: double.infinity,
           height: double.infinity,
           // Chỉ dùng 1 chiều để decode giữ đúng tỉ lệ (không bóp méo).

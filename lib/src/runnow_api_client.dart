@@ -727,6 +727,15 @@ class RunNowApiClient {
     return RunCardView.fromJson(_jsonObject(response));
   }
 
+  /// Các buổi gần đây còn lật được thẻ, mới trước.
+  Future<List<Map<String, dynamic>>> getUnflippedRuns() async {
+    final response = await _send('GET', '/v1/cards/unflipped');
+    return [
+      for (final item in _jsonObject(response)['activities'] as List<dynamic>)
+        item as Map<String, dynamic>,
+    ];
+  }
+
   /// Lật thẻ: server quay bậc một lần rồi giữ, gọi lại trả đúng thẻ đó.
   Future<RunCard> rollRunCard(String activityId) async {
     final response = await _send('POST', _runCardPath(activityId));

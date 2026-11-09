@@ -235,19 +235,21 @@ void main() {
     expect(fetches.runs, 2);
   });
 
-  testWidgets('chỉ đếm tim các thẻ còn có thể lọt 10 thẻ đầu', (tester) async {
+  testWidgets('Thẻ nổi bật theo thứ tự khoe mới trước, không đếm tim', (
+    tester,
+  ) async {
     final hearts = _FakeHearts();
     await _pumpHome(
       tester,
       hearts: hearts,
-      cards: [
-        for (var i = 0; i < 10; i++) _card('legend$i', 'legendary'),
-        for (var i = 0; i < 5; i++) _card('rare$i', 'rare'),
-      ],
+      cards: [_card('newest', 'common'), _card('older', 'mythic')],
     );
 
-    expect(hearts.counted, hasLength(10));
-    expect(hearts.counted.where((target) => target.contains('rare')), isEmpty);
+    final thumbs = tester.widgetList<ClubCardThumb>(
+      find.byType(ClubCardThumb, skipOffstage: false),
+    );
+    expect([for (final t in thumbs) t.item.key], ['newest', 'older']);
+    expect(hearts.counted, isEmpty);
   });
 
   testWidgets('kèo về sau không đẩy các mục dưới xuống', (tester) async {

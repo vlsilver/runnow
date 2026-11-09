@@ -1339,7 +1339,7 @@ class _RunsSection extends ConsumerWidget {
   }
 }
 
-/// Thẻ club đang khoe, xếp ngang: bậc hiếm cao trước, rồi nhiều tim.
+/// Thẻ club vừa khoe, xếp ngang, mới nhất trước.
 class _CardsSection extends ConsumerWidget {
   const _CardsSection({required this.motion, super.key});
 
@@ -1351,7 +1351,7 @@ class _CardsSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final cards = ref.watch(topClubCardsProvider(_shown));
+    final cards = ref.watch(latestClubCardsProvider(_shown));
     if (cards.error case final error?) {
       debugPrint('Không tải được thẻ của club: $error');
       return _RetryRow(

@@ -35,58 +35,34 @@ ClubCard _card(String id, String tier) =>
 
 void main() {
   test(
-    'top thẻ: bậc trước, tim sau; thẻ bậc thấp nhiều tim không chen vào',
+    'Thẻ nổi bật: lấy đúng thứ tự khoe mới trước, bậc và tim không chen vào',
     () async {
-      final repository = _CountingHearts({
-        'card_u1_a': 1,
-        'card_u1_b': 5,
-        'card_u1_r': 99,
-      });
+      final repository = _CountingHearts({'card_u1_m': 99});
       final container = ProviderContainer(
         overrides: [
+          // clubCardsProvider trả theo sharedAt giảm dần: r là thẻ mới nhất,
+          // m là Thần thoại nhiều tim nhưng khoe sau cùng trong lô.
           clubCardsProvider.overrideWith(
             (ref) => Stream.value([
               _card('r', 'rare'),
               _card('a', 'legendary'),
               _card('m', 'mythic'),
-              _card('b', 'legendary'),
             ]),
           ),
           heartRepositoryProvider.overrideWithValue(repository),
         ],
       );
       addTearDown(container.dispose);
-      final provider = topClubCardsProvider(2);
+      final provider = latestClubCardsProvider(2);
       final subscription = container.listen(provider, (_, _) {});
       addTearDown(subscription.close);
 
-      final top = await container.read(provider.future);
+      final latest = await container.read(provider.future);
 
-      expect([for (final item in top) item.key], ['m', 'b']);
-      expect(repository.counted, isNot(contains('card_u1_r')));
+      expect([for (final item in latest) item.key], ['r', 'a']);
+      expect(repository.counted, isEmpty);
     },
   );
-
-  group('clubCardsDecidingTop', () {
-    final mythic = _card('m', 'mythic');
-    final legendA = _card('a', 'legendary');
-    final legendB = _card('b', 'legendary');
-    final rare = _card('r', 'rare');
-    final all = [rare, legendA, mythic, legendB];
-
-    test('bỏ thẻ dưới bậc của thẻ cuối top', () {
-      expect(clubCardsDecidingTop(all, 2), [legendA, mythic, legendB]);
-    });
-
-    test('top chỉ gồm bậc cao nhất thì bỏ các bậc còn lại', () {
-      expect(clubCardsDecidingTop(all, 1), [mythic]);
-    });
-
-    test('ít thẻ hơn hay vừa đủ top thì giữ hết', () {
-      expect(clubCardsDecidingTop(all, 4), all);
-      expect(clubCardsDecidingTop(all, 10), all);
-    });
-  });
 
   test(
     'thẻ khoe: id là activityId, có chủ thẻ, tranh và không có đường chạy',
