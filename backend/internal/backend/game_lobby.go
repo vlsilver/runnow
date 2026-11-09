@@ -33,6 +33,9 @@ func gameLobbyFor(cfg werewolf.Config, players int) (*GameLobby, error) {
 		return nil, err
 	}
 	out := &GameLobby{Facts: []GameLobbyFact{}, Roles: []GameLobbyRole{}}
+	if n := len(cfg.RoundStarts()); n > 1 {
+		out.Facts = append(out.Facts, GameLobbyFact{Value: fmt.Sprintf("%d vòng", n), Label: "mỗi ngày"})
+	}
 	if !cfg.KmOff {
 		out.Facts = append(out.Facts, GameLobbyFact{Value: formatKm(kmPerUnit(cfg)) + " km", Label: "mốc mỗi ngày"})
 	}

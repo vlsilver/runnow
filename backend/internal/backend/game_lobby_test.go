@@ -42,3 +42,20 @@ func TestLobbyBelowMinimumUsesSmallestDeck(t *testing.T) {
 		t.Fatalf("tắt km và không có vai mở rộng mà có facts: %+v", got.Facts)
 	}
 }
+
+// Ván nhiều vòng báo số vòng mỗi ngày ngay ở sảnh; ván một vòng không thêm ô.
+func TestLobbyShowsRoundsPerDay(t *testing.T) {
+	two := ww.Config{KmPerUnit: 2, Schedule: &ww.Schedule{StartHour: 10, RoundHours: 12, Rounds: 2}}
+	got, err := gameLobbyFor(two, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []GameLobbyFact{{Value: "2 vòng", Label: "mỗi ngày"}, {Value: "2 km", Label: "mốc mỗi ngày"}}
+	if !reflect.DeepEqual(got.Facts, want) {
+		t.Fatalf("facts = %+v", got.Facts)
+	}
+	one := ww.Config{KmOff: true, Schedule: &ww.Schedule{StartHour: 6, RoundHours: 24, Rounds: 1}}
+	if got, err = gameLobbyFor(one, 10); err != nil || len(got.Facts) != 0 {
+		t.Fatalf("một vòng: %+v, %v", got, err)
+	}
+}
