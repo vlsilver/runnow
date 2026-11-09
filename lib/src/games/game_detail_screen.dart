@@ -57,6 +57,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   final _theme = gameMoonlitTheme();
   bool _registering = false;
   bool _starting = false;
+  bool _cancelling = false;
   bool _faking = false;
   bool? _linked;
 
@@ -370,6 +371,26 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     }
   }
 
+  Future<void> _cancel() async {
+    final confirmed = await showGameConfirm(
+      context,
+      title: 'Huỷ ván này?',
+      body: const Text('Huỷ rồi không lấy lại được.'),
+      confirmLabel: 'Huỷ ván',
+      cancelLabel: 'Thôi',
+    );
+    if (!confirmed || !mounted) return;
+    setState(() => _cancelling = true);
+    try {
+      await ref.read(runNowApiClientProvider).cancelGame(widget.gameId);
+      await _controller.refresh();
+    } catch (error) {
+      _showError(error);
+    } finally {
+      if (mounted) setState(() => _cancelling = false);
+    }
+  }
+
   /// Ván thử: thêm người giả cho đủ số tối thiểu để Start.
   Future<void> _fillFakes(GameDetail detail) async {
     final real = detail.players.where((p) => !p.fake).length;
@@ -529,6 +550,15 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                         icon: Icons.info_outline_rounded,
                         onPressed: () => GameRulesPage.open(context, detail),
                       ),
+                    ),
+                  if (detail != null &&
+                      detail.canManage &&
+                      detail.status != 'ended' &&
+                      detail.status != 'cancelled')
+                    _HeaderButton(
+                      tooltip: 'Huỷ ván',
+                      icon: Icons.cancel_outlined,
+                      onPressed: _cancelling ? null : _cancel,
                     ),
                   const SizedBox(width: 16),
                 ],
@@ -812,7 +842,7 @@ class _HeaderButton extends StatelessWidget {
 
   final String tooltip;
   final IconData icon;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final bool dot;
 
   @override

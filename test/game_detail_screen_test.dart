@@ -749,6 +749,86 @@ void main() {
       await close(tester);
     });
   });
+
+  group('cancel game', () {
+    Map<String, dynamic> game(String status, {bool canManage = true}) => {
+      'id': 'g1',
+      'title': 'Ma Sói',
+      'status': status,
+      'statusLabel': status,
+      'refreshAfterSeconds': 300,
+      'playerCount': 9,
+      'minPlayers': 8,
+      'maxPlayers': 16,
+      'canManage': canManage,
+    };
+
+    int cancels() => backend.requests
+        .where((r) => r.url.path == '/v1/games/g1/admin/cancel')
+        .length;
+
+    Finder cancelButton() => find.descendant(
+      of: find.byType(AppBar),
+      matching: find.byTooltip('Huỷ ván'),
+    );
+
+    Future<void> tapCancel(WidgetTester tester) async {
+      await tester.tap(cancelButton());
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    for (final status in ['registering', 'running', 'paused']) {
+      testWidgets('the host cancels a $status game after confirming', (
+        tester,
+      ) async {
+        backend.game = game(status);
+        await pumpScreen(tester);
+
+        await tapCancel(tester);
+        await tester.tap(find.text('Thôi'));
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(cancels(), 0);
+
+        await tapCancel(tester);
+        await tester.tap(find.text('Huỷ ván').last);
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(cancels(), 1);
+        await close(tester);
+      });
+    }
+
+    testWidgets('the cancel button is the rightmost header action', (
+      tester,
+    ) async {
+      backend.game = game('running');
+      await pumpScreen(tester);
+
+      expect(
+        tester.getCenter(cancelButton()).dx,
+        greaterThan(tester.getCenter(find.byTooltip('Chia sẻ ván')).dx),
+      );
+      await close(tester);
+    });
+
+    for (final status in ['ended', 'cancelled']) {
+      testWidgets('has no button once the game is $status', (tester) async {
+        backend.game = game(status);
+        await pumpScreen(tester);
+
+        expect(cancelButton(), findsNothing);
+        await close(tester);
+      });
+    }
+
+    testWidgets('someone who cannot manage has no button', (tester) async {
+      backend.game = game('running', canManage: false);
+      await pumpScreen(tester);
+
+      expect(cancelButton(), findsNothing);
+      await close(tester);
+    });
+  });
+
   group('admin start', () {
     Map<String, dynamic> registering({required bool admin}) => {
       'id': 'g1',
