@@ -308,21 +308,44 @@ void main() {
     }
 
     await open();
-    expect(find.text('Đang là Thủy · Sáng'), findsOneWidget);
-    // Đang theo app thì chưa chọn hành được.
-    await tapVisible(find.text('Hỏa'));
+    // Theo app thì sáng tối cũng theo app, không có nút để chỉnh.
+    expect(find.byTooltip('Tối'), findsNothing);
     await tapVisible(find.text('Áp dụng'));
     expect(skins.choice, isNull);
 
+    // Rời "App" thì bắt đầu từ đúng sáng tối của app.
     await open();
-    await tapVisible(find.text('Theo theme app'));
-    await tapVisible(find.text('Tối'));
+    await tapVisible(find.text('Mộc'));
+    await tapVisible(find.text('Áp dụng'));
+    expect(skins.choice, (_light, RunNowElement.wood));
+
+    await open();
+    await tapVisible(find.byTooltip('Tối'));
     await tapVisible(find.text('Hỏa'));
     await tapVisible(find.text('Áp dụng'));
     expect(skins.choice, (_dark, RunNowElement.fire));
 
     await open();
-    await tapVisible(find.text('Theo theme app'));
+    bool showsBack() =>
+        tester
+            .widget<Opacity>(
+              find
+                  .ancestor(
+                    of: find.byWidgetPredicate(
+                      (w) => w is AchievementCard && w.back,
+                    ),
+                    matching: find.byType(Opacity),
+                  )
+                  .first,
+            )
+            .opacity ==
+        1;
+    expect(showsBack(), isFalse);
+    await tapVisible(find.text('Chạm để lật'));
+    expect(showsBack(), isTrue);
+
+    await tapVisible(find.text('App'));
+    expect(find.byTooltip('Tối'), findsNothing);
     await tapVisible(find.text('Áp dụng'));
     expect(skins.choice, isNull);
   });

@@ -381,7 +381,6 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
   final _stageKey = GlobalKey();
   CardShareFiles? _files;
   Object? _error;
-  bool _recording = false;
   bool _sharing = false;
   int _step = 0;
   int _steps = 0;
@@ -421,15 +420,12 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
         return;
       }
       if (!mounted) return;
-      setState(() => _recording = true);
       final files = await _record();
       await store.save(widget.subject.id, _key, files);
       if (mounted) setState(() => _files = files);
     } catch (error, stack) {
       debugPrint('Tạo ảnh khoe thẻ lỗi: $error\n$stack');
       if (mounted) setState(() => _error = error);
-    } finally {
-      if (mounted) setState(() => _recording = false);
     }
   }
 
@@ -662,25 +658,31 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
                 if (widget.data.secret == null)
                   _SkinPicker(skin: _skin, onPick: _pickSkin),
               ],
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: Builder(
-                  builder: (origin) => FilledButton.icon(
-                    onPressed: files == null || _sharing
-                        ? null
-                        : () => _share(origin),
-                    icon: const Icon(Icons.ios_share_rounded),
-                    label: Text(
-                      files == null
-                          ? 'Đang tạo...'
-                          : _sharing
-                          ? 'Đang mở chia sẻ...'
-                          : 'Khoe ${_choice.label.toLowerCase()}',
-                    ),
-                  ),
+              if (files != null || _error == null) ...[
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: files == null
+                      ? CardShareMakingBar(
+                          progress: cardShareProgress(
+                            step: _step,
+                            steps: _steps,
+                          ),
+                          pulsing: _step == 0 || _step > _steps,
+                        )
+                      : Builder(
+                          builder: (origin) => FilledButton.icon(
+                            onPressed: _sharing ? null : () => _share(origin),
+                            icon: const Icon(Icons.ios_share_rounded),
+                            label: Text(
+                              _sharing
+                                  ? 'Đang mở chia sẻ...'
+                                  : 'Khoe ${_choice.label.toLowerCase()}',
+                            ),
+                          ),
+                        ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -708,26 +710,128 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
     ],
   );
 
-  Widget _recordingStage() {
-    final done = _steps > 0 && _step > _steps;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Flexible(
-          child: _CardStage(boundaryKey: _stageKey, data: widget.data, at: _at),
+  Widget _recordingStage() =>
+      _CardStage(boundaryKey: _stageKey, data: widget.data, at: _at);
+}
+
+/// Phần đã xong của lượt ghi, từ 0 tới 0,9. Bước lưu video hoặc ghép GIF sau
+/// khung cuối không đo được, nên giữ lại 10%: thanh đầy mà còn phải chờ thì
+/// trông như treo.
+double cardShareProgress({required int step, required int steps}) {
+  if (steps <= 0) return 0;
+  return math.min(step, steps) / steps * 0.9;
+}
+
+/// Nút đang tạo, tự đầy màu theo [progress]. [pulsing] là lúc chưa đo được
+/// tiến độ: chuẩn bị thẻ, hoặc đang lưu file.
+class CardShareMakingBar extends StatefulWidget {
+  const CardShareMakingBar({
+    super.key,
+    required this.progress,
+    required this.pulsing,
+  });
+
+  final double progress;
+  final bool pulsing;
+
+  @override
+  State<CardShareMakingBar> createState() => CardShareMakingBarState();
+}
+
+class CardShareMakingBarState extends State<CardShareMakingBar>
+    with SingleTickerProviderStateMixin {
+  static const _height = 52.0;
+  static const _pulse = Duration(milliseconds: 900);
+
+  late final _controller = AnimationController(vsync: this, duration: _pulse);
+  late final _opacity = Tween<double>(
+    begin: 1,
+    end: 0.6,
+  ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.pulsing) _controller.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(CardShareMakingBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.pulsing == oldWidget.pulsing) return;
+    if (widget.pulsing) {
+      _controller.repeat(reverse: true);
+    } else {
+      _controller.animateBack(0, duration: const Duration(milliseconds: 150));
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Widget _label(Color color) => Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Icon(Icons.ios_share_rounded, size: 18, color: color),
+      const SizedBox(width: 8),
+      Text(
+        'Đang tạo',
+        style: TextStyle(color: color, fontWeight: FontWeight.w700),
+      ),
+    ],
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          height: _height,
+          child: LayoutBuilder(
+            builder: (context, constraints) => Stack(
+              fit: StackFit.expand,
+              children: [
+                ColoredBox(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  child: _label(gameNightMuted),
+                ),
+                // Lớp vàng cắt theo tiến độ để chữ đổi màu đúng ở mép thanh.
+                ExcludeSemantics(
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(end: widget.progress),
+                    duration: const Duration(milliseconds: 180),
+                    // Align ngoài nới ràng buộc chặt của Stack, không thì
+                    // widthFactor bị bỏ qua và thanh luôn đầy.
+                    builder: (context, value, child) => Align(
+                      alignment: Alignment.centerLeft,
+                      child: ClipRect(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: value,
+                          child: child,
+                        ),
+                      ),
+                    ),
+                    child: SizedBox(
+                      width: constraints.maxWidth,
+                      height: _height,
+                      child: ColoredBox(
+                        color: RunNowAchievementTokens.titleGold2,
+                        child: _label(RunNowAchievementTokens.shade),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-        const SizedBox(height: 16),
-        Text(
-          !_recording
-              ? 'Đang mở...'
-              : _step == 0
-              ? 'Đang chuẩn bị thẻ...'
-              : done
-              ? (_videoMotion ? 'Đang lưu video...' : 'Đang ghép GIF...')
-              : 'Đang ghi khung $_step/$_steps',
-          style: const TextStyle(color: gameNightMuted),
-        ),
-      ],
+      ),
     );
   }
 }

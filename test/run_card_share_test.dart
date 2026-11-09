@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:flutter/painting.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:myrun/src/achievements/card_share.dart';
@@ -62,5 +62,38 @@ void main() {
     expect(decoded.frames[1].frameDuration, 80);
     final mid = decoded.frames[1].getPixel(4, 6);
     expect([mid.r, mid.g, mid.b], [0, 255, 0]);
+  });
+
+  test('share progress fills to 90% with the frames and waits there', () {
+    expect(cardShareProgress(step: 0, steps: 0), 0);
+    expect(cardShareProgress(step: 0, steps: 108), 0);
+    expect(cardShareProgress(step: 54, steps: 108), closeTo(0.45, 1e-9));
+    expect(cardShareProgress(step: 108, steps: 108), closeTo(0.9, 1e-9));
+    expect(cardShareProgress(step: 109, steps: 108), closeTo(0.9, 1e-9));
+  });
+
+  testWidgets('the making bar fills only its share of the button', (
+    tester,
+  ) async {
+    Future<double> filled(double progress) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 400,
+                child: CardShareMakingBar(progress: progress, pulsing: false),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return tester.getSize(find.byType(ClipRect)).width;
+    }
+
+    expect(await filled(0), 0);
+    expect(await filled(0.45), closeTo(180, 0.01));
+    expect(await filled(0.9), closeTo(360, 0.01));
   });
 }

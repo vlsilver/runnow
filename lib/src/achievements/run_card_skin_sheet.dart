@@ -119,15 +119,20 @@ class _RunCardSkinSheetState extends ConsumerState<RunCardSkinSheet> {
     _element = choice?.$2 ?? app.element;
   }
 
+  /// Chọn một hành thì thôi theo app; đang theo app thì sáng tối bắt đầu từ
+  /// đúng màu đang thấy.
+  void _pickElement(RunNowElement element) => setState(() {
+    if (_follow) _appearance = ref.read(themeControllerProvider).appearance;
+    _follow = false;
+    _element = element;
+  });
+
   @override
   Widget build(BuildContext context) {
     final app = ref.watch(themeControllerProvider);
     final appearance = _follow ? app.appearance : _appearance;
     final element = _follow ? app.element : _element;
-    final heading = Theme.of(context).textTheme.labelMedium?.copyWith(
-      fontWeight: FontWeight.w900,
-      letterSpacing: 1.4,
-    );
+    final theme = Theme.of(context);
     return Padding(
       padding: EdgeInsets.fromLTRB(
         14,
@@ -137,7 +142,7 @@ class _RunCardSkinSheetState extends ConsumerState<RunCardSkinSheet> {
       ),
       child: GlassPanel(
         borderRadius: 22,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxHeight: MediaQuery.sizeOf(context).height * 0.88,
@@ -147,63 +152,56 @@ class _RunCardSkinSheetState extends ConsumerState<RunCardSkinSheet> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('BỘ MÀU THẺ', style: heading),
-                const SizedBox(height: 12),
+                SizedBox(
+                  height: 38,
+                  child: Row(
+                    children: [
+                      Text(
+                        'Bộ màu',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (!_follow)
+                        _AppearanceToggle(
+                          value: _appearance,
+                          onChanged: (value) =>
+                              setState(() => _appearance = value),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
                 RunCardSkinScope(
                   skin: RunCardSkin.forTheme(appearance, element),
-                  child: _Preview(sample: widget.sample),
+                  child: _FlipPreview(sample: widget.sample),
                 ),
-                const SizedBox(height: 8),
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Theo theme app'),
-                  subtitle: Text(
-                    'Đang là ${app.element.label} · ${app.appearance.label}',
-                  ),
-                  value: _follow,
-                  onChanged: (value) => setState(() {
-                    _follow = value;
-                    // Tắt theo app thì bắt đầu từ đúng màu đang thấy.
-                    if (!value) {
-                      _appearance = app.appearance;
-                      _element = app.element;
-                    }
-                  }),
-                ),
-                const SizedBox(height: 4),
-                SegmentedButton<RunNowAppearance>(
-                  showSelectedIcon: false,
-                  segments: const [
-                    ButtonSegment(
-                      value: RunNowAppearance.light,
-                      icon: Icon(Icons.light_mode_outlined),
-                      label: Text('Sáng'),
-                    ),
-                    ButtonSegment(
-                      value: RunNowAppearance.dark,
-                      icon: Icon(Icons.dark_mode_outlined),
-                      label: Text('Tối'),
-                    ),
-                  ],
-                  selected: {appearance},
-                  onSelectionChanged: _follow
-                      ? null
-                      : (values) => setState(() => _appearance = values.single),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.center,
+                const SizedBox(height: 14),
+                Row(
                   children: [
+                    Expanded(
+                      child: _Swatch(
+                        label: 'App',
+                        icon: Icons.smartphone_rounded,
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.08,
+                        ),
+                        iconColor: theme.colorScheme.onSurface,
+                        selected: _follow,
+                        onTap: () => setState(() => _follow = true),
+                      ),
+                    ),
                     for (final e in RunNowElement.values)
-                      ChoiceChip(
-                        avatar: Icon(e.icon, color: e.ramp[2]),
-                        label: Text(e.label),
-                        selected: element == e,
-                        onSelected: _follow
-                            ? null
-                            : (_) => setState(() => _element = e),
+                      Expanded(
+                        child: _Swatch(
+                          label: e.label,
+                          icon: e.icon,
+                          color: e.ramp[2],
+                          iconColor: Colors.white,
+                          selected: !_follow && _element == e,
+                          onTap: () => _pickElement(e),
+                        ),
                       ),
                   ],
                 ),
@@ -225,29 +223,203 @@ class _RunCardSkinSheetState extends ConsumerState<RunCardSkinSheet> {
   }
 }
 
-/// Hai mặt thẻ cạnh nhau, thu vừa bề ngang sheet.
-class _Preview extends StatelessWidget {
-  const _Preview({required this.sample});
+/// Hai icon sáng và tối ở góc sheet.
+class _AppearanceToggle extends StatelessWidget {
+  const _AppearanceToggle({required this.value, required this.onChanged});
+
+  final RunNowAppearance value;
+  final ValueChanged<RunNowAppearance> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    Widget option(RunNowAppearance item, IconData icon) {
+      final selected = item == value;
+      return Tooltip(
+        message: item.label,
+        child: Semantics(
+          button: true,
+          selected: selected,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => onChanged(item),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: 40,
+              height: 32,
+              decoration: BoxDecoration(
+                color: selected ? scheme.onSurface : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                icon,
+                size: 18,
+                color: selected
+                    ? scheme.surface
+                    : scheme.onSurface.withValues(alpha: 0.55),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: scheme.onSurface.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(19),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          option(RunNowAppearance.light, Icons.light_mode_outlined),
+          option(RunNowAppearance.dark, Icons.dark_mode_outlined),
+        ],
+      ),
+    );
+  }
+}
+
+/// Một chấm trong hàng màu.
+class _Swatch extends StatelessWidget {
+  const _Swatch({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.iconColor,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final Color iconColor;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final ink = theme.colorScheme.onSurface;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Column(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: selected ? ink : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+                child: Icon(icon, size: 18, color: iconColor),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              maxLines: 1,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: selected ? ink : ink.withValues(alpha: 0.55),
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Một thẻ lớn, chạm để lật. Hai mặt luôn được dựng: dựng mặt sau lúc lật thì
+/// bản đồ phải tải tile lại từ đầu.
+class _FlipPreview extends StatefulWidget {
+  const _FlipPreview({required this.sample});
 
   final AchievementCardData sample;
 
   @override
+  State<_FlipPreview> createState() => _FlipPreviewState();
+}
+
+class _FlipPreviewState extends State<_FlipPreview> {
+  static const _maxWidth = 204.0;
+
+  bool _back = false;
+
+  @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = math.min(150.0, (constraints.maxWidth - 12) / 2);
+        final width = math.min(_maxWidth, constraints.maxWidth);
         Widget face({required bool back}) => GameCardScaled(
           width: width,
           size: achievementCardSize,
-          child: AchievementCard(data: sample, back: back, animate: false),
+          child: AchievementCard(
+            data: widget.sample,
+            back: back,
+            animate: false,
+          ),
         );
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            face(back: false),
-            const SizedBox(width: 12),
-            face(back: true),
-          ],
+        final front = face(back: false);
+        final back = face(back: true);
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _back = !_back),
+          child: Column(
+            children: [
+              IgnorePointer(
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: _back ? 1 : 0),
+                  duration: const Duration(milliseconds: 420),
+                  curve: Curves.easeInOut,
+                  builder: (context, turn, _) {
+                    final showBack = turn >= 0.5;
+                    return Transform(
+                      alignment: Alignment.center,
+                      transform: Matrix4.identity()
+                        ..setEntry(3, 2, 0.0012)
+                        ..rotateY(turn * math.pi),
+                      child: Stack(
+                        children: [
+                          Opacity(opacity: showBack ? 0 : 1, child: front),
+                          Opacity(
+                            opacity: showBack ? 1 : 0,
+                            child: Transform(
+                              alignment: Alignment.center,
+                              transform: Matrix4.rotationY(math.pi),
+                              child: back,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Chạm để lật',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
