@@ -76,7 +76,7 @@ func TestEmulatorBotWerewolfShowsOnlyPublicGame(t *testing.T) {
 	if v.Game == nil || v.Game.Phase != "Đêm 1, sói đang chọn" || v.Game.Deadline != "00:00 16/10" || v.Game.Now != "23:00 15/10" {
 		t.Fatalf("game = %s", raw)
 	}
-	if len(v.Game.Alive) != 10 || len(v.Game.Dead) != 0 || v.Game.LastKm["V1"] != "5 km" || v.Game.KmSinceLast22h["V1"] != "5 km" || v.Game.KmFrameEnd != "22:00 16/10" {
+	if len(v.Game.Alive) != 10 || len(v.Game.Dead) != 0 || v.Game.LastKm["V1"] != "5 km" || v.Game.KmToNextClose["V1"] != "5 km" || v.Game.KmFrameEnd != "22:00 16/10" {
 		t.Fatalf("game = %s", raw)
 	}
 	// Bảng 1.2: 10 người là 2 sói, 2 vai đặc biệt đầu (Tiên tri, Bảo vệ).
@@ -195,7 +195,7 @@ func TestEmulatorBotMyWerewolfIsTheAskersOwn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if seer.NotPlaying != "" || seer.Role != "Tiên tri" || !seer.Alive || !reflect.DeepEqual(seer.Todo, []string{"Soi"}) || seer.KmSinceLast22h != "5 km" || seer.KmPerUnit != "1 km" {
+	if seer.NotPlaying != "" || seer.Role != "Tiên tri" || !seer.Alive || !reflect.DeepEqual(seer.Todo, []string{"Soi"}) || seer.KmToNextClose != "5 km" || seer.KmPerUnit != "1 km" {
 		t.Fatalf("seer = %+v", seer)
 	}
 

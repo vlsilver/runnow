@@ -164,7 +164,7 @@ func TestRenderReminderLiveKm(t *testing.T) {
 		return strings.Join(out.parts, "|"), err
 	}
 
-	nudge := "<b>Nhắc đề cử</b>\nĐề cử đóng lúc 20h. Ai chưa đề cử thì vào app RunNow để chọn."
+	nudge := "<b>Nhắc đề cử</b>\nĐề cử sắp đóng. Ai chưa đề cử thì vào app RunNow để chọn."
 	want := nudge + "\n\n<b>Km tới 18:00, chốt lúc 22h</b>\n" +
 		"Có vai đêm thì cần đủ 2.5 km mới dùng được kỹ năng. Sói tính chung cả phe: tổng km sói còn sống phải đủ 2.5 km cho mỗi sói. Cupid không cần km.\n" +
 		"Đủ km: Bình &amp; Co 3.1 · Chi 2.6\n" +

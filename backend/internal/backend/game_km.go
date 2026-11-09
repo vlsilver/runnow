@@ -73,11 +73,14 @@ func computeFrameKm(start, end time.Time, activities []ActivityFact, yesterday, 
 	}
 	from, to := out.FrameStart.Hour(), out.FrameEnd.Hour()
 	if sameDate(start, end) {
-		out.HealthMeters, out.HourlyToday, out.ScaleToday = frameDayMeters(today, from, to)
+		out.HealthMeters, out.HourlyToday, out.ScaleToday = frameDayMeters(today, from, to, true)
 	} else {
 		var early, late float64
-		early, out.HourlyYesterday, out.ScaleYesterday = frameDayMeters(yesterday, from, 24)
-		late, out.HourlyToday, out.ScaleToday = frameDayMeters(today, 0, to)
+		// Ngày thiếu hourly chỉ có một tổng, không biết chạy giờ nào: tổng thuộc về
+		// ngày chiếm nhiều giờ hơn trong khung, bằng nhau thì lấy ngày chốt.
+		todayOwnsTotal := to >= 24-from
+		early, out.HourlyYesterday, out.ScaleYesterday = frameDayMeters(yesterday, from, 24, !todayOwnsTotal)
+		late, out.HourlyToday, out.ScaleToday = frameDayMeters(today, 0, to, todayOwnsTotal)
 		out.HealthMeters = early + late
 	}
 	switch {
@@ -91,18 +94,15 @@ func computeFrameKm(start, end time.Time, activities []ActivityFact, yesterday, 
 	return out, nil
 }
 
-// dayTotalHour: ngày thiếu hourly thì tổng cả ngày thuộc về khung chứa giờ này,
-// nếu không hai vòng trong ngày cùng tính một số. Giờ cuối của khung 22h gốc.
-const dayTotalHour = 21
-
-// frameDayMeters là km của các giờ [from, to) trong ngày d.
-func frameDayMeters(d *stepDayKm, from, to int) (meters float64, hourly bool, scale float64) {
+// frameDayMeters là km của các giờ [from, to) trong ngày d. Ngày thiếu hourly
+// thì chỉ lấy tổng cả ngày khi ownsTotal.
+func frameDayMeters(d *stepDayKm, from, to int, ownsTotal bool) (meters float64, hourly bool, scale float64) {
 	if d == nil {
 		return 0, false, 0
 	}
 	scale, hourly = hourlyScale(d)
 	if !hourly {
-		if from <= dayTotalHour && dayTotalHour < to {
+		if ownsTotal {
 			meters = d.DistanceMeters
 		}
 		return meters, false, 0

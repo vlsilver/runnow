@@ -214,7 +214,7 @@ func phaseSetting(i int, key, label, desc string) gameSettingDef {
 		GameSetting: GameSetting{Key: key, Label: label, Type: settingPhase, Group: groupRound, Unit: "phút",
 			Default: float64(defaultPhases[i]), Min: f64(werewolf.MinPhaseMinutes), Step: f64(werewolf.PhaseStepMinutes),
 			Max:         f64(24*60 - 3*werewolf.MinPhaseMinutes),
-			Description: desc + " Pha nào cũng ít nhất 1 tiếng. Ván dùng km thì bốn pha cộng lại phải đúng 24 tiếng, vì km chốt lúc 22h."},
+			Description: desc + " Pha nào cũng ít nhất 1 tiếng. Ván dùng km thì bốn pha cộng lại phải đúng 24 tiếng, để mỗi lần chốt km cách nhau một ngày."},
 		apply: func(c *werewolf.Config, v any) {
 			if c.Schedule == nil {
 				def := werewolf.DefaultSchedule()

@@ -131,8 +131,8 @@ func TestReminderShowsRoundClose(t *testing.T) {
 	for _, c := range []struct{ reason, deadline, want string }{
 		{ww.ReminderNominate, "2026-10-15T10:30:00Z", "Đề cử đóng lúc 17h30."},
 		{ww.ReminderVote, "2026-10-15T11:00:00Z", "Biểu quyết Treo hay Tha đóng lúc 18h."},
-		{ww.ReminderNominate, "", "Đề cử đóng lúc 20h."},
-		{ww.ReminderVote, "", "Biểu quyết Treo hay Tha đóng lúc 22h."},
+		{ww.ReminderNominate, "", "Đề cử sắp đóng."},
+		{ww.ReminderVote, "", "Biểu quyết Treo hay Tha sắp đóng."},
 	} {
 		data := map[string]any{"reason": c.reason}
 		if c.deadline != "" {

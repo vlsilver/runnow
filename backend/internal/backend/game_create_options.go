@@ -85,7 +85,7 @@ var gamePresets = []GamePreset{
 		Summary: "Ván tuần quen thuộc, chạy đủ thì giữ phiếu",
 		Details: []string{
 			"Sói, Dân và 5 vai: Tiên tri, Bảo vệ, Phù thuỷ, Thợ săn, Cupid.",
-			"Mỗi ngày một vòng, mở lúc 22h.",
+			"Mỗi ngày một vòng.",
 			"Km theo nhóm: cộng km cả nhóm chia ra số lượt, thiếu thì người chạy ít nhất mất lượt trước.",
 			"Mỗi phiếu và mỗi lượt kỹ năng cần 1 km. Sói nào cũng có phiếu bầu cắn.",
 		},
@@ -94,7 +94,7 @@ var gamePresets = []GamePreset{
 		Summary: "Chạy nhiều được nói nặng, kỹ năng cần nhiều km hơn",
 		Details: []string{
 			"Thêm Già làng vào 5 vai của ván chuẩn.",
-			"Mỗi ngày một vòng, mở lúc 22h.",
+			"Mỗi ngày một vòng.",
 			"Km riêng: ai tự chạy đủ km thì người đó được bỏ phiếu, dùng kỹ năng.",
 			"Người chạy nhiều nhất được tính 2 phiếu.",
 			"Tiên tri, Bảo vệ, Phù thuỷ, Thợ săn mỗi lượt cần 2 km. Sói nào cũng có phiếu bầu cắn.",

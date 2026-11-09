@@ -197,16 +197,9 @@ func TestOfficialRunBelongsToFrameItStartedIn(t *testing.T) {
 	}
 }
 
-// Thiếu hourly thì tổng cả ngày chỉ vào khung chứa giờ 21, để hai vòng trong
-// một ngày không cùng tính một số.
+// Khung 24 tiếng chạm hai ngày thiếu hourly: chỉ một tổng được tính.
 func TestDayTotalWithoutHourlyGoesToOneFrameOnly(t *testing.T) {
 	day := &stepDayKm{DistanceMeters: 6000}
-	morning, _ := computeFrameKm(vn(14, 22, 0), vn(15, 10, 0), nil, nil, day)
-	evening, _ := computeFrameKm(vn(15, 10, 0), vn(15, 22, 0), nil, nil, day)
-	if !near(morning.Meters, 0) || !near(evening.Meters, 6000) {
-		t.Fatalf("sáng %v, tối %v; muốn 0 và 6000", morning.Meters, evening.Meters)
-	}
-	// Mở 6h: khung 6h ngày 15 tới 6h ngày 16 chứa giờ 21 của ngày 15.
 	open6, _ := computeFrameKm(vn(15, 6, 0), vn(16, 6, 0), nil, day, day)
 	if !near(open6.Meters, 6000) {
 		t.Fatalf("khung mở 6h = %v; muốn 6000, không cộng hai lần", open6.Meters)

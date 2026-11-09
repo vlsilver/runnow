@@ -36,7 +36,7 @@ func reminderAt(t *testing.T, cfg ww.Config, phase ww.Phase, nominee string, liv
 	}
 }
 
-const voteNudge = "<b>Nhắc biểu quyết</b>\nBiểu quyết Treo hay Tha đóng lúc 22h. Ai chưa bỏ phiếu thì vào app RunNow."
+const voteNudge = "<b>Nhắc biểu quyết</b>\nBiểu quyết Treo hay Tha sắp đóng. Ai chưa bỏ phiếu thì vào app RunNow."
 
 // Ván tắt km: bản tin 22h không có bảng km, tin nhắc không đọc km, không có
 // nút "Xem km của tôi".

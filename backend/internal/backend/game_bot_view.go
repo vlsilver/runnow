@@ -23,7 +23,7 @@ import (
 
 var botWerewolfDecl = &genai.FunctionDeclaration{
 	Name:        "get_werewolf_game",
-	Description: "Luật Ma Sói của club (luật RIÊNG chạy theo km, khác Ma Sói thông thường) cộng diễn biến công khai của ván hiện tại: giai đoạn, hạn giờ, bộ vai lúc chia bài (deck: mỗi vai mấy lá, số sói đầu ván lấy ở đây), ai còn sống, ai đã chết kèm lá bài, ai lên giàn (tối đa 3 người, mỗi người một phiên trong trials), ai đang đề cử ai, phiếu Treo/Tha đang bấm của từng phiên, ai chưa bấm, km ở lần chốt gần nhất (lastKm, quyết định ai dùng được kỹ năng đêm kế tiếp), km trong 24 tiếng tính tới lần chốt kế tiếp của từng người, đọc tới giờ (kmSinceLast22h, tên trường giữ từ trước, giờ chốt theo lịch của ván là kmFrameEnd), dự báo nếu chốt từng phiên với km hiện tại thì bao nhiêu phiếu được tính và ai mất phiếu (trials[].voteForecast), các bản tin của ván. Dùng cho MỌI câu hỏi về Ma Sói. Không có vai của người còn sống.",
+	Description: "Luật Ma Sói của club (luật RIÊNG chạy theo km, khác Ma Sói thông thường) cộng diễn biến công khai của ván hiện tại: giai đoạn, hạn giờ, bộ vai lúc chia bài (deck: mỗi vai mấy lá, số sói đầu ván lấy ở đây), ai còn sống, ai đã chết kèm lá bài, ai lên giàn (tối đa 3 người, mỗi người một phiên trong trials), ai đang đề cử ai, phiếu Treo/Tha đang bấm của từng phiên, ai chưa bấm, km ở lần chốt gần nhất (lastKm, quyết định ai dùng được kỹ năng đêm kế tiếp), km trong 24 tiếng tính tới lần chốt kế tiếp của từng người, đọc tới giờ (kmToNextClose, giờ chốt theo lịch của ván là kmFrameEnd), dự báo nếu chốt từng phiên với km hiện tại thì bao nhiêu phiếu được tính và ai mất phiếu (trials[].voteForecast), các bản tin của ván. Dùng cho MỌI câu hỏi về Ma Sói. Không có vai của người còn sống.",
 	Parameters:  &genai.Schema{Type: genai.TypeObject, Properties: map[string]*genai.Schema{}},
 }
 
@@ -53,18 +53,18 @@ type BotWerewolfGame struct {
 	Players              []string `json:"players"`
 	// Deck là bộ vai lúc chia bài (vai → số lá). Suy ra được từ số người và
 	// config nên công khai; không nói ai cầm lá nào.
-	Deck           map[string]int      `json:"deck,omitempty"`
-	Alive          []string            `json:"alive,omitempty"`
-	Dead           []string            `json:"dead,omitempty"`
-	OnTrial        []string            `json:"onTrial,omitempty"`
-	Nominations    map[string][]string `json:"nominations,omitempty"`
-	Trials         []BotTrial          `json:"trials,omitempty"`
-	NotChosenYet   []string            `json:"notChosenYet,omitempty"`
-	LastKm         map[string]string   `json:"lastKm,omitempty"`
-	KmSinceLast22h map[string]string   `json:"kmSinceLast22h,omitempty"`
-	KmFrameEnd     string              `json:"kmFrameEnd,omitempty"`
-	News           []BotWerewolfNews   `json:"news,omitempty"`
-	Winner         string              `json:"winner,omitempty"`
+	Deck          map[string]int      `json:"deck,omitempty"`
+	Alive         []string            `json:"alive,omitempty"`
+	Dead          []string            `json:"dead,omitempty"`
+	OnTrial       []string            `json:"onTrial,omitempty"`
+	Nominations   map[string][]string `json:"nominations,omitempty"`
+	Trials        []BotTrial          `json:"trials,omitempty"`
+	NotChosenYet  []string            `json:"notChosenYet,omitempty"`
+	LastKm        map[string]string   `json:"lastKm,omitempty"`
+	KmToNextClose map[string]string   `json:"kmToNextClose,omitempty"`
+	KmFrameEnd    string              `json:"kmFrameEnd,omitempty"`
+	News          []BotWerewolfNews   `json:"news,omitempty"`
+	Winner        string              `json:"winner,omitempty"`
 }
 
 // BotTrial là một phiên biểu quyết: người lên giàn, phiếu Treo/Tha đang bấm,
@@ -256,14 +256,14 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 			frame := cfg.KmFrameAt(wall)
 			game.KmFrameEnd = vnTime(frame.End)
 			live := map[string]float64{}
-			game.KmSinceLast22h = map[string]string{}
+			game.KmToNextClose = map[string]string{}
 			for _, uid := range aliveUIDs {
 				fk, err := s.frameKm(ctx, uid, frame.Start, frame.End)
 				if err != nil {
 					return nil, &cfg, err
 				}
 				live[uid] = fk.Meters
-				game.KmSinceLast22h[name(uid)] = formatKm(fk.Meters/1000) + " km"
+				game.KmToNextClose[name(uid)] = formatKm(fk.Meters/1000) + " km"
 			}
 			for i := range game.Trials {
 				nominee := nominees[i]
@@ -391,19 +391,19 @@ func (s *GameStore) botTally(ctx context.Context, game *firestore.DocumentRef, r
 // ---- Phần riêng của người đang nhắn ----
 
 type BotMyWerewolf struct {
-	NotPlaying     string        `json:"notPlaying,omitempty"`
-	Role           string        `json:"role,omitempty"`
-	RoleRules      string        `json:"roleRules,omitempty"`
-	Alive          bool          `json:"alive"`
-	Potions        *GamePotions  `json:"potions,omitempty"`
-	Notes          []string      `json:"notes,omitempty"`
-	TeamChats      []string      `json:"teamChats,omitempty"`
-	Actions        []BotMyAction `json:"actions,omitempty"`
-	Todo           []string      `json:"todo,omitempty"`
-	KmSinceLast22h string        `json:"kmSinceLast22h,omitempty"`
-	KmPerUnit      string        `json:"kmPerUnit,omitempty"`
-	KmFrameEnd     string        `json:"kmFrameEnd,omitempty"`
-	AllRoles       []string      `json:"allRoles,omitempty"`
+	NotPlaying    string        `json:"notPlaying,omitempty"`
+	Role          string        `json:"role,omitempty"`
+	RoleRules     string        `json:"roleRules,omitempty"`
+	Alive         bool          `json:"alive"`
+	Potions       *GamePotions  `json:"potions,omitempty"`
+	Notes         []string      `json:"notes,omitempty"`
+	TeamChats     []string      `json:"teamChats,omitempty"`
+	Actions       []BotMyAction `json:"actions,omitempty"`
+	Todo          []string      `json:"todo,omitempty"`
+	KmToNextClose string        `json:"kmToNextClose,omitempty"`
+	KmPerUnit     string        `json:"kmPerUnit,omitempty"`
+	KmFrameEnd    string        `json:"kmFrameEnd,omitempty"`
+	AllRoles      []string      `json:"allRoles,omitempty"`
 }
 
 type BotMyAction struct {
@@ -512,7 +512,7 @@ func (s *GameStore) BotMyWerewolf(ctx context.Context, tg string, wall time.Time
 		if err != nil {
 			return BotMyWerewolf{}, err
 		}
-		out.KmSinceLast22h, out.KmPerUnit, out.KmFrameEnd = formatKm(fk.Meters/1000)+" km", formatKm(kmPerUnit(cfg))+" km", vnTime(frame.End)
+		out.KmToNextClose, out.KmPerUnit, out.KmFrameEnd = formatKm(fk.Meters/1000)+" km", formatKm(kmPerUnit(cfg))+" km", vnTime(frame.End)
 	}
 	return out, nil
 }

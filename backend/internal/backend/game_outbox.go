@@ -1101,18 +1101,18 @@ func aliveWolves(st *werewolf.State) int {
 func reminderText(reason string, deadline time.Time) (string, error) {
 	switch reason {
 	case werewolf.ReminderNominate:
-		return "<b>Nhắc đề cử</b>\nĐề cử đóng lúc " + closeAt(deadline, "20h") + ". Ai chưa đề cử thì vào app RunNow để chọn.", nil
+		return "<b>Nhắc đề cử</b>\nĐề cử " + closing(deadline) + ". Ai chưa đề cử thì vào app RunNow để chọn.", nil
 	case werewolf.ReminderVote:
-		return "<b>Nhắc biểu quyết</b>\nBiểu quyết Treo hay Tha đóng lúc " + closeAt(deadline, "22h") + ". Ai chưa bỏ phiếu thì vào app RunNow.", nil
+		return "<b>Nhắc biểu quyết</b>\nBiểu quyết Treo hay Tha " + closing(deadline) + ". Ai chưa bỏ phiếu thì vào app RunNow.", nil
 	}
 	return "", fmt.Errorf("lý do nhắc lạ %q", reason)
 }
 
-func closeAt(deadline time.Time, old string) string {
+func closing(deadline time.Time) string {
 	if deadline.IsZero() {
-		return old
+		return "sắp đóng"
 	}
-	return hm(deadline)
+	return "đóng lúc " + hm(deadline)
 }
 
 var voidTexts = map[string]string{
