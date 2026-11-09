@@ -282,7 +282,7 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
           context,
           card,
           data,
-          onDraw: () => setState(() => _drawing = true),
+          onDraw: _openDraw,
         ),
         child: RunCardFrame(
           child: Stack(
@@ -458,24 +458,42 @@ void showRunCardViewer(
   AchievementCardData data, {
   Widget? reaction,
   VoidCallback? onDraw,
-}) => showCardViewer(
-  context,
-  front: (pose) => AchievementCard(data: data, pose: pose),
-  back: (pose) => AchievementCard(data: data, pose: pose, back: true),
-  chips: [gameCardTiers[card.tier]!.label, '${runCardKm(card.km)} km'],
-  cardSize: achievementCardSize,
-  reaction: reaction,
-  action: switch ((runCardDrawLabel(card), onDraw)) {
-    (final label?, final onDraw?) => (
-      label: label,
-      icon: Icons.brush_outlined,
-      onPressed: onDraw,
+}) {
+  // Tranh có thể vẽ xong lúc đang xem nên thẻ đọc theo doc, không giữ bản lúc mở.
+  AchievementCardData dataOf(RunCard? doc) =>
+      doc == null ? data : runCardData(doc, owner: data.owner);
+  Widget face(Offset pose, {bool back = false}) => Consumer(
+    builder: (context, ref, _) => AchievementCard(
+      data: dataOf(ref.watch(runCardProvider(card.id)).asData?.value),
+      pose: pose,
+      back: back,
     ),
-    _ => null,
-  },
-  // Mở màn khoe từ trong màn xem để nó nằm trên màn xem.
-  onShare: (_, origin) => showRunCardShare(origin, card: card, data: data),
-);
+  );
+  showCardViewer(
+    context,
+    front: face,
+    back: (pose) => face(pose, back: true),
+    chips: [gameCardTiers[card.tier]!.label, '${runCardKm(card.km)} km'],
+    cardSize: achievementCardSize,
+    reaction: reaction,
+    action: switch ((runCardDrawLabel(card), onDraw)) {
+      (final label?, final onDraw?) => (
+        label: label,
+        icon: Icons.brush_outlined,
+        onPressed: onDraw,
+      ),
+      _ => null,
+    },
+    // Mở màn khoe từ trong màn xem để nó nằm trên màn xem.
+    onShare: (_, origin) {
+      final doc = ProviderScope.containerOf(
+        origin,
+        listen: false,
+      ).read(runCardProvider(card.id)).asData?.value;
+      return showRunCardShare(origin, card: doc ?? card, data: dataOf(doc));
+    },
+  );
+}
 
 /// Câu cho người dùng ứng với lý do lần vẽ tranh hỏng.
 String runCardArtFailText(String? reason) => switch (reason) {

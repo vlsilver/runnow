@@ -14,6 +14,7 @@ class StorageImage extends StatefulWidget {
     this.cacheWidth,
     this.cacheHeight,
     this.placeholder,
+    this.loading,
     super.key,
   });
 
@@ -32,6 +33,9 @@ class StorageImage extends StatefulWidget {
 
   /// Thay ô xám có vòng quay hay icon ảnh hỏng, lúc đang lấy link hoặc lỗi.
   final Widget? placeholder;
+
+  /// Hiện trong lúc tải ảnh về sau khi đã có link. Null thì để trống.
+  final Widget? loading;
 
   /// Cho test đặt sẵn link tải của [path] như đã lấy xong trong phiên.
   @visibleForTesting
@@ -111,6 +115,10 @@ class _StorageImageState extends State<StorageImage> {
           // Ảnh hiện thẳng như Image.network trước đây, không mờ dần.
           fadeInDuration: Duration.zero,
           fadeOutDuration: Duration.zero,
+          placeholder: switch (widget.loading) {
+            final loading? => (_, _) => loading,
+            null => null,
+          },
           errorWidget: (context, url, error) =>
               widget.placeholder ??
               ColoredBox(

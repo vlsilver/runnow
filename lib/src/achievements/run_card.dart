@@ -73,7 +73,12 @@ AchievementCardData runCardData(
         previewArt ??
         (artPath == null
             ? RunRouteArt(points: snap.route, tier: card.tier)
-            : StoragePhoto(path: artPath, cacheWidth: 960)),
+            : StoragePhoto(
+                path: artPath,
+                cacheWidth: 960,
+                // Tranh nặng cả MB, giữ đường chạy tới lúc tải xong.
+                placeholder: RunRouteArt(points: snap.route, tier: card.tier),
+              )),
     stamp: hasArt && snap.route.length > 1
         ? RunRouteStamp(points: snap.route)
         : null,

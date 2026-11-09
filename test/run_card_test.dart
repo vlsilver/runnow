@@ -542,6 +542,7 @@ void main() {
 
     final drawn = runCardData(_card(art: _done), owner: 'An');
     expect(drawn.art, isA<StoragePhoto>());
+    expect((drawn.art as StoragePhoto).placeholder, isA<RunRouteArt>());
     expect(drawn.stamp, isA<RunRouteStamp>());
 
     final noGps = runCardData(
@@ -1156,6 +1157,75 @@ void main() {
 
     expect(find.byType(GameCardViewer), findsNothing);
     expect(find.byType(RunCardArtSteps), findsOneWidget);
+  });
+
+  testWidgets('art finished while the card is open appears in the viewer', (
+    tester,
+  ) async {
+    StorageImage.debugPutDownloadUrl('u/a/r1.png', 'https://x.test/a.png');
+    final backend = _Backend();
+    await _pumpPanel(
+      tester,
+      backend,
+      initial: _card(
+        art: const {'status': 'drawing', 'style': 'oil', 'attempt': 1},
+      ),
+    );
+    await tester.tap(find.byType(AchievementCard));
+    await _settle(tester);
+    final art = find.descendant(
+      of: find.byType(GameCardViewer),
+      matching: find.byWidgetPredicate(
+        (w) => w is StorageImage && w.path == 'u/a/r1.png',
+      ),
+    );
+    expect(art, findsNothing);
+
+    backend.cards.add(
+      _card(
+        art: const {
+          'status': 'done',
+          'style': 'oil',
+          'attempt': 1,
+          'path': 'u/a/r1.png',
+        },
+      ),
+    );
+    await _settle(tester);
+
+    expect(art, findsWidgets);
+  });
+
+  testWidgets('an image still downloading shows its loading widget', (
+    tester,
+  ) async {
+    StorageImage.debugPutDownloadUrl('u/a/slow.png', 'https://x.test/s.png');
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: StorageImage(path: 'u/a/slow.png', loading: Text('chờ')),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('chờ'), findsOneWidget);
+  });
+
+  testWidgets('drawing from the viewer does not replay the flip', (
+    tester,
+  ) async {
+    await _pumpPanel(tester, _Backend());
+    await tester.tap(find.text('Lật thẻ'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.tap(find.byType(AchievementCard));
+    await _settle(tester);
+    await tester.tap(find.text('Vẽ nền'));
+    await _settle(tester);
+
+    await tester.tap(find.byTooltip('Quay lại'));
+    await tester.pump();
+
+    expect(find.byType(CardFlipReveal), findsNothing);
   });
 
   testWidgets('a photo goes on the card as is when no style is chosen', (

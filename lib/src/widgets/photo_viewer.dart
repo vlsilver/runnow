@@ -10,6 +10,7 @@ class StoragePhoto extends StatelessWidget {
     this.interactive = false,
     this.cacheWidth,
     this.cacheHeight,
+    this.placeholder,
     super.key,
   });
 
@@ -18,6 +19,7 @@ class StoragePhoto extends StatelessWidget {
   final bool interactive;
   final int? cacheWidth;
   final int? cacheHeight;
+  final Widget? placeholder;
 
   @override
   Widget build(BuildContext context) {
@@ -26,6 +28,8 @@ class StoragePhoto extends StatelessWidget {
       fit: fit,
       cacheWidth: cacheWidth,
       cacheHeight: cacheHeight,
+      placeholder: placeholder,
+      loading: placeholder,
     );
     if (!interactive) return image;
     return InteractiveViewer(minScale: 1, maxScale: 4, child: image);
