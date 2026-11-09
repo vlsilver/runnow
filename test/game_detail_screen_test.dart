@@ -709,6 +709,46 @@ void main() {
     await close(tester);
   });
 
+  group('lobby recent km', () {
+    Map<String, dynamic> lobby(List<Map<String, dynamic>> players) => {
+      'id': 'g1',
+      'title': 'Ma Sói',
+      'status': 'registering',
+      'statusLabel': 'Đang mở đăng ký',
+      'refreshAfterSeconds': 300,
+      'playerCount': players.length,
+      'minPlayers': 8,
+      'maxPlayers': 16,
+      'players': players,
+    };
+
+    testWidgets('shows each player km of the last 24 hours', (tester) async {
+      backend.game = lobby([
+        {'uid': 'u1', 'name': 'An', 'alive': true, 'recentKm': 12.54},
+        {'uid': 'u2', 'name': 'Bình', 'alive': true, 'recentKm': 0},
+        {'uid': 'u3', 'name': 'Giả', 'alive': true, 'fake': true},
+      ]);
+      await pumpScreen(tester);
+
+      expect(find.text('12.5 km'), findsOneWidget);
+      expect(find.text('0 km'), findsOneWidget);
+      expect(find.text('3 người · km 24h'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('an older backend without the number shows names only', (
+      tester,
+    ) async {
+      backend.game = lobby([
+        {'uid': 'u1', 'name': 'An', 'alive': true},
+      ]);
+      await pumpScreen(tester);
+
+      expect(find.text('1 người'), findsOneWidget);
+      expect(find.textContaining(' km'), findsNothing);
+      await close(tester);
+    });
+  });
   group('admin start', () {
     Map<String, dynamic> registering({required bool admin}) => {
       'id': 'g1',

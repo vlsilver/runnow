@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_card_art.dart';
 import 'package:myrun/src/games/game_hero.dart';
+import 'package:myrun/src/games/game_tally_view.dart';
 import 'package:myrun/src/games/game_village.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
@@ -492,7 +493,12 @@ class GameLobbyPlayers extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Head('ĐÃ VÀO SẢNH', trailing: '${players.length} người'),
+        _Head(
+          'ĐÃ VÀO SẢNH',
+          trailing: players.any((p) => p.recentKm != null)
+              ? '${players.length} người · km 24h'
+              : '${players.length} người',
+        ),
         const SizedBox(height: 10),
         LayoutBuilder(
           builder: (context, constraints) {
@@ -512,6 +518,7 @@ class GameLobbyPlayers extends StatelessWidget {
                         size: 52,
                       ),
                       name: player.uid == myUid ? 'Bạn' : player.name,
+                      recentKm: player.recentKm,
                     ),
                   ),
                 if (showJoinSlot)
@@ -540,11 +547,13 @@ class _PlayerTile extends StatelessWidget {
     required this.avatar,
     required this.name,
     this.accent = false,
+    this.recentKm,
   });
 
   final Widget avatar;
   final String name;
   final bool accent;
+  final double? recentKm;
 
   @override
   Widget build(BuildContext context) {
@@ -562,6 +571,12 @@ class _PlayerTile extends StatelessWidget {
             color: accent ? _M.amberSoft : _M.ink,
           ),
         ),
+        if (recentKm case final km?)
+          Text(
+            '${gameTallyKm(km)} km',
+            maxLines: 1,
+            style: const TextStyle(fontSize: 11, color: _M.muted),
+          ),
       ],
     );
   }

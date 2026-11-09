@@ -806,6 +806,7 @@ class GamePlayer {
     required this.fake,
     this.todayKm,
     this.voteTag,
+    this.recentKm,
   });
 
   factory GamePlayer.fromJson(Map<String, dynamic> json) {
@@ -823,6 +824,7 @@ class GamePlayer {
       fake: json['fake'] == true,
       todayKm: (json['todayKm'] as num?)?.toDouble(),
       voteTag: _optString(json['voteTag']),
+      recentKm: (json['recentKm'] as num?)?.toDouble(),
     );
   }
 
@@ -844,6 +846,9 @@ class GamePlayer {
 
   /// Nhãn số phiếu của người đang trong suất Top ("x2").
   final String? voteTag;
+
+  /// Km 24 tiếng tới lúc này, chỉ có ở sảnh; null với người giả hay ván tắt km.
+  final double? recentKm;
 }
 
 class GameRequirement {
