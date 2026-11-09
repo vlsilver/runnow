@@ -192,8 +192,10 @@ class _RuleTimeline extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 10),
+                          // Ván nhiều vòng: mỗi vòng một dòng giờ.
                           Text(
                             step.label,
+                            textAlign: TextAlign.end,
                             style: const TextStyle(
                               fontWeight: FontWeight.w800,
                               color: _M.amberBright,

@@ -677,7 +677,7 @@ class _TeamKmState extends State<_TeamKm> {
             if (missing != null) ...[
               const SizedBox(height: 8),
               Text(
-                'Phe cần thêm $missing km trước 22h thì đêm nay mới cắn được.',
+                'Phe cần thêm $missing km trước lần chốt tới thì đêm sau mới cắn được.',
                 style: TextStyle(fontSize: 13, color: palette.ink),
               ),
             ],

@@ -1004,6 +1004,128 @@ void main() {
       ]);
     });
 
+    // Các vòng nối tiếp nhau: dời giờ mở của vòng 2 là dời cả lịch trong ngày.
+    testWidgets('moving a later round turns the whole day', (tester) async {
+      final list = _roundPhasesList();
+      final options = list['createOptions'] as Map<String, dynamic>;
+      for (final s in options['settings'] as List) {
+        if ((s as Map<String, dynamic>)['key'] == 'startHour') {
+          s.remove('enabledIf');
+        }
+      }
+      backend.list = list;
+      await pumpScreen(tester);
+
+      await tester.tap(find.bySemanticsLabel('2 vòng'));
+      await tester.pump();
+      await tester.tap(find.text('Vòng chơi'));
+      await tester.pump();
+      await tester.tap(find.text('V2'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Thêm Mở vòng'));
+      await tester.pump();
+      expect(find.textContaining('11h – 12h', findRichText: true), findsOne);
+
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+      expect((_createBody(backend)['settings'] as Map)['startHour'], 23);
+    });
+
+    // Vòng 8 tiếng của ván cổ điển 3 vòng có Đêm 1h và không dài thêm được,
+    // nên giờ mở dời cả lịch trong ngày, độ dài từng pha giữ nguyên.
+    testWidgets('a classic game with several rounds moves its opening hour', (
+      tester,
+    ) async {
+      backend.list = _roundPhasesList();
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('CỔ ĐIỂN'));
+      await tester.pump();
+      await tester.tap(find.bySemanticsLabel('3 vòng'));
+      await tester.pump();
+      await tester.tap(find.text('Vòng chơi'));
+      await tester.pump();
+      expect(find.text('22h–6h'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Thêm Mở vòng'));
+      await tester.pump();
+      expect(find.text('23h–7h'), findsOneWidget);
+      expect(find.text('15h–23h'), findsOneWidget);
+
+      await tester.tap(find.text('V2'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Thêm Mở vòng'));
+      await tester.pump();
+      expect(find.text('0h–8h'), findsOneWidget);
+
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+      expect(_createBody(backend)['settings'], {
+        'kmOff': true,
+        'startHour': 0,
+        'roundsPerDay': 3,
+        'nightMin': 60,
+        'dawnMin': 180,
+        'dayMin': 180,
+        'trialMin': 60,
+      });
+    });
+
+    // Mọi kiểu ván, 1–4 vòng: form gửi đủ bốn pha co từ 2h/10h/10h/2h về độ
+    // dài một vòng (24, 12, 8, 6 tiếng, tính tay) và giữ luật của kiểu ván.
+    for (final (tile, extra) in const <(String, Map<String, Object>)>[
+      ('CHUẨN', {}),
+      ('CHẠY BUNG', {'vote': 'solo', 'topOn': true, 'seerKm': 2}),
+      ('CỔ ĐIỂN', {'kmOff': true}),
+    ]) {
+      for (final (rounds, phases) in const [
+        (1, [120, 600, 600, 120]),
+        (2, [60, 300, 300, 60]),
+        (3, [60, 180, 180, 60]),
+        (4, [60, 120, 120, 60]),
+      ]) {
+        testWidgets('$tile, $rounds rounds sends the phases it shows', (
+          tester,
+        ) async {
+          final list = _roundPhasesList();
+          final options = list['createOptions'] as Map<String, dynamic>;
+          (options['presets'] as List).add({
+            'key': 'hard',
+            'label': 'Chạy bung',
+            'icon': 'bolt',
+            'summary': 'Kỹ năng cần nhiều km hơn',
+            'details': ['Km riêng.'],
+            'settings': {'vote': 'solo', 'topOn': true, 'seerKm': 2},
+          });
+          backend.list = list;
+          await pumpScreen(tester);
+
+          await tester.tap(find.textContaining(tile));
+          await tester.pump();
+          await tester.tap(find.bySemanticsLabel('$rounds vòng'));
+          await tester.pump();
+          await tester.tap(find.text('MỞ VÁN'));
+          await tester.pumpAndSettle();
+
+          final sent = _createBody(backend)['settings'] as Map;
+          expect(
+            [
+              for (final k in const [
+                'nightMin',
+                'dawnMin',
+                'dayMin',
+                'trialMin',
+              ])
+                sent[k],
+            ],
+            phases,
+          );
+          extra.forEach((k, v) => expect(sent[k], v, reason: k));
+          if (rounds > 1) expect(sent['roundsPerDay'], rounds);
+        });
+      }
+    }
+
     // Backend chưa có lịch từng vòng thì không có chip, không gửi roundPhases.
     testWidgets('an older backend keeps one schedule for every round', (
       tester,
@@ -1387,6 +1509,43 @@ void main() {
         'dayMin': 600,
         'trialMin': 60,
       });
+    });
+
+    // Backend mới cho ván km đổi giờ mở: cả vòng dời theo, độ dài giữ nguyên.
+    testWidgets('a km game moves the whole round when the backend allows it', (
+      tester,
+    ) async {
+      final list = _phaseList();
+      final options = list['createOptions'] as Map<String, dynamic>;
+      for (final s in options['settings'] as List) {
+        if ((s as Map<String, dynamic>)['key'] == 'startHour') {
+          s.remove('enabledIf');
+        }
+      }
+      backend.list = list;
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Vòng chơi'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Thêm Mở vòng'));
+      await tester.pump();
+      expect(find.textContaining('23h – 1h', findRichText: true), findsOne);
+      // Chốt vòng đi theo giờ mở: + ở đây dời cả vòng thêm một tiếng nữa.
+      await tester.tap(find.byTooltip('Thêm Chốt vòng'));
+      await tester.pump();
+      expect(find.textContaining('0h – 2h', findRichText: true), findsOne);
+      await tester.tap(find.text('MỞ VÁN'));
+      await tester.pumpAndSettle();
+
+      final settings = _createBody(backend)['settings'] as Map;
+      expect(settings['startHour'], 0);
+      expect(
+        [
+          for (final k in const ['nightMin', 'dawnMin', 'dayMin', 'trialMin'])
+            settings[k],
+        ],
+        [120, 600, 600, 120],
+      );
     });
 
     // Ván km khoá giờ mở: "Là gì?" của tab Vòng chơi nói vì sao; ván cổ điển

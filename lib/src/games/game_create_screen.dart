@@ -184,8 +184,8 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   }
 
   /// Lịch một vòng khi backend cho chỉnh độ dài pha (pha có `settingKey`);
-  /// null là backend cũ. Ván km mở theo giờ gốc và vòng dài đúng 24 tiếng
-  /// chia số vòng, nên mốc cuối khoá.
+  /// null là backend cũ. Ván km có vòng dài đúng 24 tiếng chia số vòng, nên
+  /// mốc cuối khoá; backend cũ không cho gửi giờ mở thì giữ giờ gốc.
   _RoundShape? _roundShape(GameList list, Map<String, Object?> values) {
     final round = list.round;
     if (round == null || round.phases.isEmpty) return null;
@@ -208,7 +208,15 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         keys: keys,
         phases: phases,
         rounds: rounds,
-        start: (_number(byKey['startHour']?.defaultValue, 22) * 60).round(),
+        start:
+            (_number(
+                      byKey['startHour']?.enabledBy(values) == true
+                          ? values['startHour']
+                          : byKey['startHour']?.defaultValue,
+                      22,
+                    ) *
+                    60)
+                .round(),
         lockEnd: true,
         maxTotal: total,
       );
@@ -801,7 +809,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         ..add(const SizedBox(height: 8))
         ..add(GameCreateLabel('Kéo mốc để chia giờ', trailing: why));
       if (_perRound(list, shape)) {
-        out.addAll(_perRoundDial(round, shape));
+        out.addAll(_perRoundDial(round, shape, startHour));
       } else {
         out.add(
           GameRoundDial(
@@ -811,7 +819,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
             lockEnd: shape.lockEnd,
             maxTotal: shape.maxTotal,
             onChanged: _working ? null : (p) => _setPhases(shape.keys, p),
-            onStart: _working || shape.lockEnd || startHour == null
+            onStart: _working || startHour == null
                 ? null
                 : (start, phases) => setState(() {
                     _settings[startHour.key] = (start ~/ 60).toDouble();
@@ -884,9 +892,13 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   }
 
   /// Chip V1, V2… trên đồng hồ, đồng hồ của vòng đang chọn, các vòng khác vẽ
-  /// mờ. Vòng nối tiếp nhau và dài như V1 nên chỉ V1 dời được giờ mở và (ván
-  /// cổ điển) độ dài; từ V2 chỉ chia lại giờ bên trong vòng.
-  List<Widget> _perRoundDial(GameRoundPlan round, _RoundShape shape) {
+  /// mờ. Vòng nối tiếp nhau và dài như V1 nên dời giờ mở vòng nào cũng là dời
+  /// cả lịch trong ngày; ván cổ điển chỉ V1 đổi được độ dài, ở mốc cuối.
+  List<Widget> _perRoundDial(
+    GameRoundPlan round,
+    _RoundShape shape,
+    GameSetting? startHour,
+  ) {
     final total = shape.phases.fold<int>(0, (a, p) => a + p);
     final selected = _round.clamp(0, shape.rounds - 1);
     int startOf(int i) => (shape.start + i * total) % (24 * 60);
@@ -923,6 +935,13 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
             : selected == 0
             ? (p) => _setPhases(shape.keys, p)
             : (p) => setState(() => _roundPhases[selected] = p),
+        startMovesRound: true,
+        onStart: _working || startHour == null
+            ? null
+            : (start, _) => setState(
+                () => _settings[startHour.key] =
+                    ((start - selected * total) % (24 * 60) ~/ 60).toDouble(),
+              ),
       ),
     ];
   }

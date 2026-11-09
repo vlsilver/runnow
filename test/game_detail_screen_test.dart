@@ -2552,7 +2552,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Km phe Sói'), findsOneWidget);
       expect(find.text('Thiếu 0.8'), findsOneWidget);
-      const detail = 'Phe cần thêm 0.8 km trước 22h thì đêm nay mới cắn được.';
+      const detail =
+          'Phe cần thêm 0.8 km trước lần chốt tới thì đêm sau mới cắn được.';
       expect(find.text(detail), findsNothing);
       expect(find.text('Cần 2 km để cắn'), findsNothing);
 

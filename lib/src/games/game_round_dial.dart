@@ -150,16 +150,47 @@ IconData gamePhaseIcon(String key) => switch (key) {
 /// Dời giờ mở vòng [dir] tiếng ([dir] là -1 hoặc 1), giữ mốc cuối Đêm: mở muộn
 /// thì Đêm ngắn đi, mở sớm thì Đêm dài ra nhưng vòng không quá [maxTotal]. Trả
 /// (giờ mở mới tính bằng phút trong ngày, các pha), null khi không dời được.
+/// Vòng khoá độ dài ([lockEnd], ván km) thì cả vòng dời theo, không pha nào đổi.
 ({int start, List<int> phases})? gameMoveStart(
   int start,
   List<int> phases,
   int dir, {
+  required bool lockEnd,
   required int maxTotal,
 }) {
+  if (lockEnd) return (start: (start + dir * 60) % 1440, phases: phases);
   final night = phases.first - dir * 60;
   final total = phases.fold<int>(0, (a, p) => a + p) - dir * 60;
   if (night < gameMinPhase || total > maxTotal) return null;
   return (start: (start + dir * 60) % 1440, phases: [night, ...phases.skip(1)]);
+}
+
+/// Kéo mốc giờ mở tới phút [toMinute] trong ngày: làm tròn giờ, đi đường ngắn
+/// hơn trên mặt đồng hồ theo từng bước của [gameMoveStart] và dừng ở bước đầu
+/// tiên không dời được. Trả null khi giờ mở không đổi.
+({int start, List<int> phases})? gameDragStart(
+  int start,
+  List<int> phases,
+  int toMinute, {
+  required bool lockEnd,
+  required int maxTotal,
+}) {
+  final target = (toMinute / 60).round() * 60;
+  final hours = ((target - start + 720) % 1440 - 720) ~/ 60;
+  final dir = hours.sign;
+  var now = (start: start, phases: phases);
+  for (var i = 0; i < hours.abs(); i++) {
+    final out = gameMoveStart(
+      now.start,
+      now.phases,
+      dir,
+      lockEnd: lockEnd,
+      maxTotal: maxTotal,
+    );
+    if (out == null) break;
+    now = out;
+  }
+  return now.start == start ? null : now;
 }
 
 /// Một vòng trên mặt đồng hồ 24 tiếng: bốn cung pha bắt đầu ở giờ mở đêm, kéo
@@ -176,6 +207,7 @@ class GameRoundDial extends StatefulWidget {
     required this.maxTotal,
     required this.onChanged,
     this.onStart,
+    this.startMovesRound = false,
     this.title = 'MỘT VÒNG',
     this.others = const [],
   });
@@ -206,12 +238,16 @@ class GameRoundDial extends StatefulWidget {
   /// Dời giờ mở vòng (phút trong ngày) cùng các pha; null thì giờ mở khoá.
   final void Function(int start, List<int> phases)? onStart;
 
+  /// Dời giờ mở thì cả vòng dời theo, độ dài giữ nguyên, kể cả khi mốc cuối
+  /// còn kéo riêng được.
+  final bool startMovesRound;
+
   @override
   State<GameRoundDial> createState() => _GameRoundDialState();
 }
 
 class _GameRoundDialState extends State<GameRoundDial> {
-  /// Mốc đang kéo (1 là cuối pha đầu); null khi không kéo.
+  /// Mốc đang kéo (0 là giờ mở, 1 là cuối pha đầu); null khi không kéo.
   int? _dragging;
 
   List<int> get _bounds {
@@ -241,7 +277,7 @@ class _GameRoundDialState extends State<GameRoundDial> {
   /// Mốc kéo được có tay nắm gần điểm chạm nhất, trong tầm một ngón tay.
   int? _markAt(Offset p, Size size) {
     final n = widget.phases.length;
-    final last = widget.lockEnd ? n - 1 : n;
+    final last = widget.lockEnd && widget.onStart == null ? n - 1 : n;
     final bounds = _bounds;
     int? best;
     var bestGap = 28.0;
@@ -254,11 +290,36 @@ class _GameRoundDialState extends State<GameRoundDial> {
         best = m;
       }
     }
+    // Xét sau cùng: mốc cuối trùng mốc đầu thì vẫn kéo mốc cuối như trước.
+    if (widget.onStart != null &&
+        (_DialPainter.handle(size, widget.startMinute) - p).distance <
+            bestGap) {
+      best = 0;
+    }
     return best;
+  }
+
+  /// Mốc đang kéo nằm sau giờ mở [offset] phút: giờ mở mới lùi lại từng ấy.
+  void _moveStart(Offset p, Size size, int offset) {
+    final onStart = widget.onStart;
+    if (onStart == null) return;
+    final out = gameDragStart(
+      widget.startMinute,
+      widget.phases,
+      _minuteAt(p, size).round() - offset,
+      lockEnd: widget.lockEnd || widget.startMovesRound,
+      maxTotal: widget.maxTotal,
+    );
+    if (out != null) onStart(out.start, out.phases);
   }
 
   void _move(Offset p, Size size) {
     final mark = _dragging;
+    final end = widget.phases.length;
+    if (mark == 0 || (mark == end && widget.lockEnd)) {
+      _moveStart(p, size, mark == 0 ? 0 : _bounds.last);
+      return;
+    }
     final change = widget.onChanged;
     if (mark == null || change == null) return;
     final out = gameMoveMark(
@@ -323,6 +384,7 @@ class _GameRoundDialState extends State<GameRoundDial> {
                         phases: phases,
                         start: start,
                         lockEnd: widget.lockEnd,
+                        lockStart: widget.onStart == null,
                         active: _dragging,
                         others: widget.others,
                       ),
@@ -426,7 +488,10 @@ class _GameRoundDialState extends State<GameRoundDial> {
             from: gameClock((start + bounds[i]).toDouble()),
             to: gameClock((start + bounds[i + 1]).toDouble()),
             length: phases[i],
-            lockedEnd: widget.lockEnd && i == phases.length - 1,
+            lockedEnd:
+                widget.lockEnd &&
+                widget.onStart == null &&
+                i == phases.length - 1,
             onStep: change == null
                 ? null
                 : (dir) {
@@ -446,7 +511,7 @@ class _GameRoundDialState extends State<GameRoundDial> {
         _EdgeRow(
           label: 'Chốt vòng',
           value: gameClock((start + total).toDouble()),
-          locked: widget.lockEnd || change == null,
+          locked: widget.lockEnd ? widget.onStart == null : change == null,
           onStep: _endStep,
         ),
       ],
@@ -461,6 +526,7 @@ class _GameRoundDialState extends State<GameRoundDial> {
       widget.startMinute,
       widget.phases,
       dir,
+      lockEnd: widget.lockEnd || widget.startMovesRound,
       maxTotal: widget.maxTotal,
     );
     if (out == null) return false;
@@ -468,10 +534,12 @@ class _GameRoundDialState extends State<GameRoundDial> {
     return true;
   }
 
-  /// Nút −/+ của dòng Chốt vòng: dời mốc cuối một tiếng.
+  /// Nút −/+ của dòng Chốt vòng: dời mốc cuối một tiếng. Vòng khoá độ dài thì
+  /// mốc cuối đi theo giờ mở, nên dời cả vòng.
   bool _endStep(int dir, {bool dryRun = false}) {
+    if (widget.lockEnd) return _startStep(dir, dryRun: dryRun);
     final change = widget.onChanged;
-    if (change == null || widget.lockEnd) return false;
+    if (change == null) return false;
     final out = gameMoveMark(
       widget.phases,
       widget.phases.length,
@@ -530,11 +598,14 @@ class _EdgeRow extends StatelessWidget {
               ),
             ),
           ),
-          if (locked)
-            const Padding(
-              padding: EdgeInsets.only(right: 6),
-              child: Icon(Icons.lock_rounded, size: 14, color: _M.faint),
+          Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: Icon(
+              locked ? Icons.lock_rounded : Icons.lock_open_rounded,
+              size: 14,
+              color: _M.faint,
             ),
+          ),
           GameStepBox(
             label: label,
             value: value,
@@ -680,7 +751,7 @@ class _PhaseRow extends StatelessWidget {
           ),
           if (lockedEnd)
             const Tooltip(
-              message: 'Ván km chốt lúc 22h',
+              message: 'Ván km chia đều 24 tiếng',
               child: Icon(Icons.lock_rounded, size: 14, color: _M.faint),
             ),
           const SizedBox(width: 6),
@@ -704,6 +775,7 @@ class _DialPainter extends CustomPainter {
     required this.phases,
     required this.start,
     required this.lockEnd,
+    required this.lockStart,
     required this.active,
     required this.others,
   });
@@ -712,6 +784,7 @@ class _DialPainter extends CustomPainter {
   final List<int> phases;
   final int start;
   final bool lockEnd;
+  final bool lockStart;
   final int? active;
   final List<({int start, List<int> phases, String label})> others;
 
@@ -826,13 +899,15 @@ class _DialPainter extends CustomPainter {
       }
     }
 
-    // Mốc: mốc đầu khoá, các mốc giữa kéo được, mốc cuối kéo được khi không khoá.
+    // Mốc đầu và cuối vòng có ổ khoá: mở là kéo được, đóng là không. Vòng khoá
+    // độ dài thì mốc cuối đi theo giờ mở. Các mốc giữa luôn kéo được.
     var bound = 0;
     for (var m = 0; m <= phases.length; m++) {
       if (m > 0) bound += phases[m - 1];
       if (m == phases.length && bound == 1440) break; // trùng mốc đầu
       final p = handle(size, start + bound);
-      final locked = m == 0 || (m == phases.length && lockEnd);
+      final edge = m == 0 || m == phases.length;
+      final locked = edge && lockStart && (m == 0 || lockEnd);
       final color = gamePhaseColor(keys[math.max(0, m - 1)]);
       canvas.drawCircle(
         p,
@@ -847,8 +922,8 @@ class _DialPainter extends CustomPainter {
           ..strokeWidth = 2.5
           ..color = locked ? _M.borderStrong : color,
       );
-      if (locked) {
-        final icon = Icons.lock_rounded;
+      if (edge) {
+        final icon = locked ? Icons.lock_rounded : Icons.lock_open_rounded;
         final tp = TextPainter(
           text: TextSpan(
             text: String.fromCharCode(icon.codePoint),
@@ -856,7 +931,7 @@ class _DialPainter extends CustomPainter {
               fontSize: 12,
               fontFamily: icon.fontFamily,
               package: icon.fontPackage,
-              color: _M.faint,
+              color: locked ? _M.faint : _M.lifted,
             ),
           ),
           textDirection: TextDirection.ltr,
@@ -870,6 +945,7 @@ class _DialPainter extends CustomPainter {
   bool shouldRepaint(_DialPainter old) =>
       old.start != start ||
       old.lockEnd != lockEnd ||
+      old.lockStart != lockStart ||
       old.active != active ||
       old.others != others ||
       !_same(old.phases, phases) ||

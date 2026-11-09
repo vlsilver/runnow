@@ -1,4 +1,6 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:myrun/src/games/game_models.dart';
 import 'package:myrun/src/games/game_round_dial.dart';
 
 void main() {
@@ -67,6 +69,27 @@ void main() {
     expect(gameMarkAt(baseHours, fitted, 23), 450);
   });
 
+  test('a km round keeps its length when the start moves', () {
+    // Ván km: cả vòng dời theo giờ mở, không pha nào đổi độ dài.
+    final later = gameMoveStart(
+      22 * 60,
+      base,
+      1,
+      lockEnd: true,
+      maxTotal: 1440,
+    );
+    expect(later?.start, 23 * 60);
+    expect(later?.phases, base);
+    expect(
+      gameMoveStart(23 * 60, base, 1, lockEnd: true, maxTotal: 1440)?.start,
+      0,
+    );
+    expect(
+      gameMoveStart(0, base, -1, lockEnd: true, maxTotal: 1440)?.start,
+      23 * 60,
+    );
+  });
+
   test('the +/- of a phase row moves its end, or its start when locked', () {
     // Pha giữa: + nửa tiếng lấy từ pha sau.
     expect(gameStepPhase(base, 1, 1, lockEnd: true, maxTotal: 1440), [
@@ -100,5 +123,154 @@ void main() {
       ),
       isNull,
     );
+  });
+
+  group('dragging the start handle on the dial', () {
+    const plan = GameRoundPlan(
+      phases: [
+        GameRoundPhase(
+          key: 'night',
+          label: 'Đêm',
+          description: '',
+          from: 0,
+          to: 0,
+        ),
+        GameRoundPhase(
+          key: 'dawn',
+          label: 'Rạng sáng',
+          description: '',
+          from: 0,
+          to: 0,
+        ),
+        GameRoundPhase(
+          key: 'day',
+          label: 'Ngày',
+          description: '',
+          from: 0,
+          to: 0,
+        ),
+        GameRoundPhase(
+          key: 'trial',
+          label: 'Biểu quyết',
+          description: '',
+          from: 0,
+          to: 0,
+        ),
+      ],
+    );
+
+    // Bán kính vòng trong khung 280: 140 - 18/2 - 22 = 109.
+    const at22h = Offset(-54.5, -94.4); // 240 độ
+    const at6h = Offset(109, 0);
+
+    Future<({int start, List<int> phases})> drag(
+      WidgetTester tester, {
+      required List<int> phases,
+      required bool lockEnd,
+      required bool canMoveStart,
+      Offset from = at22h,
+      Offset to = at6h,
+    }) async {
+      var now = (start: 22 * 60, phases: phases);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: StatefulBuilder(
+                builder: (context, setState) => GameRoundDial(
+                  plan: plan,
+                  phases: now.phases,
+                  startMinute: now.start,
+                  lockEnd: lockEnd,
+                  maxTotal: 1440,
+                  onChanged: (_) {},
+                  onStart: canMoveStart
+                      ? (start, phases) =>
+                            setState(() => now = (start: start, phases: phases))
+                      : null,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      final centre = tester.getCenter(
+        find
+            .descendant(
+              of: find.byType(GameRoundDial),
+              matching: find.byType(AspectRatio),
+            )
+            .first,
+      );
+      final finger = await tester.startGesture(centre + from);
+      await tester.pump();
+      await finger.moveTo(centre + to);
+      await tester.pump();
+      await finger.up();
+      await tester.pump();
+      return now;
+    }
+
+    testWidgets('a km round turns as a whole, keeping every phase', (
+      tester,
+    ) async {
+      final out = await drag(
+        tester,
+        phases: base,
+        lockEnd: true,
+        canMoveStart: true,
+      );
+      expect(out.start, 6 * 60);
+      expect(out.phases, base);
+    });
+
+    testWidgets('the end handle of a km round turns the whole round too', (
+      tester,
+    ) async {
+      // Vòng 12 tiếng mở 22h chốt 10h. Kéo mốc chốt từ 10h tới 12h: dời 2 tiếng.
+      final out = await drag(
+        tester,
+        phases: const [60, 300, 300, 60],
+        lockEnd: true,
+        canMoveStart: true,
+        from: const Offset(54.5, 94.4), // 10h, 60 độ
+        to: const Offset(0, 109), // 12h, 90 độ
+      );
+      expect(out.start, 0);
+      expect(out.phases, const [60, 300, 300, 60]);
+    });
+
+    testWidgets('open and closed locks follow what can move', (tester) async {
+      await drag(tester, phases: base, lockEnd: true, canMoveStart: true);
+      expect(find.byIcon(Icons.lock_open_rounded), findsNWidgets(2));
+      expect(find.byIcon(Icons.lock_rounded), findsNothing);
+      await drag(tester, phases: base, lockEnd: true, canMoveStart: false);
+      expect(find.byIcon(Icons.lock_open_rounded), findsNothing);
+    });
+
+    testWidgets('a free round stops once Night is down to one hour', (
+      tester,
+    ) async {
+      final out = await drag(
+        tester,
+        phases: const [120, 600, 600, 60],
+        lockEnd: false,
+        canMoveStart: true,
+      );
+      expect(out.start, 23 * 60);
+      expect(out.phases, const [60, 600, 600, 60]);
+    });
+
+    testWidgets('the handle stays put when the start cannot move', (
+      tester,
+    ) async {
+      final out = await drag(
+        tester,
+        phases: base,
+        lockEnd: true,
+        canMoveStart: false,
+      );
+      expect(out.start, 22 * 60);
+    });
   });
 }
