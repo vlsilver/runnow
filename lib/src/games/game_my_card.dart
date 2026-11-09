@@ -659,7 +659,7 @@ class _TeamKmState extends State<_TeamKm> {
             ),
             const SizedBox(height: 6),
             GameKmColumns(
-              lastLabel: widget.table?.lastLabel ?? 'Chốt 22h',
+              lastLabel: widget.table?.lastLabel ?? 'Chốt trước',
               todayLabel: widget.table?.todayLabel ?? 'Tới giờ',
               rows: [
                 GameKmRow(
