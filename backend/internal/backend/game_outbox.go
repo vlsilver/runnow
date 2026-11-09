@@ -905,7 +905,7 @@ func (r *outboxRenderer) digestText(raw string) (string, error) {
 		lines = append(lines, "", fmt.Sprintf("Tiếp theo: %s, tới %s.", phaseLabel(d.Round, d.Phase, d.Deadline), vnTime(d.Deadline)))
 	}
 	if d.Km != nil && !r.cfg.KmOff {
-		lines = append(lines, "", fmt.Sprintf("<b>Km chốt 22h, dùng cho đêm %d</b>", d.Round))
+		lines = append(lines, "", fmt.Sprintf("<b>Km vừa chốt, dùng cho đêm %d</b>", d.Round))
 		lines = append(lines, r.kmBoard(d.Km)...)
 	}
 	return strings.Join(lines, "\n"), nil
@@ -956,7 +956,7 @@ func (r *outboxRenderer) kmButton() (any, error) {
 	return inlineKeyboard([][]map[string]any{{{"text": "Xem km của tôi", "callback_data": data}}}), nil
 }
 
-// renderReminder là tin nhắc kèm km đang gom cho mốc 22h tới, để ai còn thiếu
+// renderReminder là tin nhắc kèm km đang gom cho mốc chốt tới, để ai còn thiếu
 // km biết mà chạy trước khi chốt.
 func (r *outboxRenderer) renderReminder(ctx context.Context, key, raw string) (outboxText, error) {
 	out, err := r.render(key, tplReminder, raw)
@@ -973,7 +973,7 @@ func (r *outboxRenderer) renderReminder(ctx context.Context, key, raw string) (o
 	return out, nil
 }
 
-// liveKmLines tính km khung 22h tới của người còn sống lúc gửi. Rỗng khi khung
+// liveKmLines tính km khung đang gom của người còn sống lúc gửi. Rỗng khi khung
 // đã chốt (tin nhắc gửi trễ, ván đã sang đêm) hoặc ván thử, vì ván thử không
 // đọc buổi chạy thật (snapshotKmIfDue).
 func (r *outboxRenderer) liveKmLines(ctx context.Context) ([]string, error) {
@@ -988,19 +988,19 @@ func (r *outboxRenderer) liveKmLines(ctx context.Context) ([]string, error) {
 		return nil, nil
 	}
 	now := gameNow(r.gameData, r.now())
-	end := nextKmFrameEnd(now)
+	frame := r.cfg.KmFrameAt(now)
 	km := map[string]float64{}
 	for _, uid := range sortedPlayers(st) {
 		if !st.Players[uid].Alive {
 			continue
 		}
-		fk, err := r.store.frameKm(ctx, uid, end)
+		fk, err := r.store.frameKm(ctx, uid, frame.Start, frame.End)
 		if err != nil {
 			return nil, fmt.Errorf("km của %s: %w", uid, err)
 		}
 		km[uid] = fk.Meters
 	}
-	lines := append([]string{"<b>Km tới " + now.In(vietnam).Format("15:04") + ", chốt lúc 22h</b>"}, r.kmBoard(km)...)
+	lines := append([]string{"<b>Km tới " + now.In(vietnam).Format("15:04") + ", chốt lúc " + hm(frame.End) + "</b>"}, r.kmBoard(km)...)
 	mode := r.cfg.VoteMode()
 	if st.Phase == werewolf.PhaseTrial && mode != werewolf.VoteFlat {
 		nominees := st.TrialNominees()
@@ -1011,16 +1011,17 @@ func (r *outboxRenderer) liveKmLines(ctx context.Context) ([]string, error) {
 		}
 	}
 	if mode == werewolf.VoteFlat {
-		return append(lines, "Km chốt 22h dùng cho kỹ năng đêm nay. Chạy xong mở app cho km kịp đồng bộ."), nil
+		return append(lines, "Km chốt "+hm(frame.End)+" dùng cho kỹ năng đêm kế tiếp. Chạy xong mở app cho km kịp đồng bộ."), nil
 	}
-	return append(lines, "Km chốt 22h dùng cho biểu quyết tối nay và kỹ năng đêm nay. Chạy xong mở app cho km kịp đồng bộ."), nil
+	return append(lines, "Km chốt "+hm(frame.End)+" dùng cho biểu quyết lúc đó và kỹ năng đêm kế tiếp. Chạy xong mở app cho km kịp đồng bộ."), nil
 }
 
 // voteForecast là R30 áp lên km tới giờ (km của người còn sống): nếu chốt bây
-// giờ thì bao nhiêu phiếu được tính, ai mất phiếu. Km còn tăng tới 22h nên chỉ
-// là dự báo; lúc chốt engine tính lại bằng km 22h.
+// giờ thì bao nhiêu phiếu được tính, ai mất phiếu. Km còn tăng tới lúc chốt nên chỉ
+// là dự báo; lúc chốt engine tính lại bằng km của khung.
 // Nhiều người lên giàn thì mỗi phiên một dòng, gọi theo tên (named).
 func (r *outboxRenderer) voteForecast(st *werewolf.State, km map[string]float64, nominee string, named bool) string {
+	closing, _ := st.DueKmFrame()
 	var voters []string
 	var total float64
 	for _, uid := range sortedPlayers(st) {
@@ -1042,7 +1043,7 @@ func (r *outboxRenderer) voteForecast(st *werewolf.State, km map[string]float64,
 		if len(plan.Sure) == 0 {
 			return text
 		}
-		return text + " Chưa đủ km: " + r.names(plan.Sure) + ". Chạy đủ trước 22h thì phiếu được tính."
+		return text + " Chưa đủ km: " + r.names(plan.Sure) + ". Chạy đủ trước " + hm(closing.End) + " thì phiếu được tính."
 	}
 	text := fmt.Sprintf("%s nếu chốt bây giờ: %d người bỏ phiếu có tổng %s km, ", title, len(voters), formatKm(math.Floor(total/100)/10))
 	if plan.Allowed == len(voters) {
@@ -1059,7 +1060,7 @@ func (r *outboxRenderer) voteForecast(st *werewolf.State, km map[string]float64,
 	if len(tied) > 0 {
 		text += fmt.Sprintf(" Bốc thăm %d người mất phiếu trong: %s.", plan.Need, r.names(tied))
 	}
-	return text + " Ai chạy thêm trước 22h thì làng thêm phiếu."
+	return text + " Ai chạy thêm trước " + hm(closing.End) + " thì làng thêm phiếu."
 }
 
 // voteTopForecast là dự báo của luật top: ai được tính 2 phiếu nếu chốt bây giờ.
@@ -1165,7 +1166,7 @@ func (r *outboxRenderer) privateText(evs []werewolf.Event, wolfShort string) str
 			case e.UID != "":
 				lines = append(lines, fmt.Sprintf("Phe Sói chốt cắn %s.", r.names(biteTargets(e))))
 			case e.Reason == werewolf.VoidNoKm && wolfShort != "":
-				lines = append(lines, "Phe Sói chưa đủ km nên đêm nay không cắn được ai: "+wolfShort+". Muốn cắn đêm sau thì cả phe chạy thêm trước 22h.")
+				lines = append(lines, "Phe Sói chưa đủ km nên đêm nay không cắn được ai: "+wolfShort+". Muốn cắn đêm sau thì cả phe chạy thêm trước lần chốt tới.")
 			case e.Reason == werewolf.VoidNoKm:
 				lines = append(lines, "Phe Sói chưa đủ km nên đêm nay không cắn được ai.")
 			default:

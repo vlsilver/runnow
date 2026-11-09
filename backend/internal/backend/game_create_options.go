@@ -68,8 +68,7 @@ const (
 )
 
 var gameSettingGroups = []GameSettingGroup{
-	{Key: groupTime, Label: "Lịch", Icon: "clock",
-		OffNote: "Ván đua km mở vòng đầu lúc 22h, vì km tính theo ngày chạy từ 22h hôm trước tới 22h. Muốn tự đặt giờ thì chọn kiểu Cổ điển."},
+	{Key: groupTime, Label: "Lịch", Icon: "clock"},
 	// Tab Vòng chơi không cần OffNote: số vòng mỗi ngày và giờ từng pha chỉnh
 	// được cả ở ván km.
 	{Key: groupRound, Label: "Vòng chơi", Icon: "moon"},

@@ -19,7 +19,7 @@ import (
 // một bản tính và chỉ tính lại sau mốc này.
 const liveKmMaxAge = 5 * time.Minute
 
-// liveKm là km khung 22h tới của người còn sống, theo mét, tính lúc AsOf (giờ
+// liveKm là km khung đang gom của người còn sống, theo mét, tính lúc AsOf (giờ
 // của ván).
 type liveKm struct {
 	AsOf     time.Time          `firestore:"asOf"`
@@ -49,7 +49,8 @@ func (s *GameStore) liveKm(ctx context.Context, game *firestore.DocumentRef, dat
 		return nil, nil
 	}
 	now := gameNow(data, wall)
-	end := nextKmFrameEnd(now)
+	frame := st.Config.KmFrameAt(now)
+	end := frame.End
 	var alive []string
 	for _, uid := range sortedPlayers(st) {
 		if st.Players[uid].Alive {
@@ -77,7 +78,7 @@ func (s *GameStore) liveKm(ctx context.Context, game *firestore.DocumentRef, dat
 	group.SetLimit(8)
 	for _, uid := range alive {
 		group.Go(func() error {
-			fk, err := s.frameKm(gctx, uid, end)
+			fk, err := s.frameKm(gctx, uid, frame.Start, frame.End)
 			if err != nil {
 				return fmt.Errorf("km của %s: %w", uid, err)
 			}
@@ -112,15 +113,17 @@ func kmTable(data map[string]any, st *werewolf.State, live *liveKm, wall time.Ti
 		return nil
 	}
 	now := gameNow(data, wall).In(vietnam)
-	end := nextKmFrameEnd(now)
+	frame := st.Config.KmFrameAt(now)
+	closes := hm(frame.End)
+	lastClose := st.Config.LastKmClose(frame)
 	t := &GameKmTable{
-		LastLabel: "Hôm qua · chốt 22h",
+		LastLabel: "Hôm qua · chốt " + hm(lastClose),
 		UnitKm:    kmPerUnit(st.Config),
-		Note:      "Km chốt lúc 22h, dùng cho biểu quyết và kỹ năng đêm ngay sau đó. Chạy xong mở app để km kịp đồng bộ.",
+		Note:      "Km chốt lúc " + closes + ", dùng cho biểu quyết và kỹ năng đêm ngay sau đó. Chạy xong mở app để km kịp đồng bộ.",
 	}
 	switch st.Config.VoteMode() {
 	case werewolf.VoteFlat:
-		t.Note = "Km chốt lúc 22h, dùng cho kỹ năng đêm ngay sau đó. Chạy xong mở app để km kịp đồng bộ."
+		t.Note = "Km chốt lúc " + closes + ", dùng cho kỹ năng đêm ngay sau đó. Chạy xong mở app để km kịp đồng bộ."
 	case werewolf.VoteTop:
 		t.UnitLabel = "tranh x2 phiếu"
 	case werewolf.VoteCut:
@@ -132,8 +135,8 @@ func kmTable(data map[string]any, st *werewolf.State, live *liveKm, wall time.Ti
 		t.UnitLabel = "giữ phiếu"
 		t.CutLabel = "Dưới " + formatKm(t.UnitKm) + " km · mất phiếu"
 	}
-	if sameDate(end.AddDate(0, 0, -1), now) {
-		t.LastLabel = "Hôm nay · chốt 22h"
+	if sameDate(lastClose, now) {
+		t.LastLabel = "Hôm nay · chốt " + hm(lastClose)
 	}
 	if live == nil {
 		t.TodayLabel, t.Note = "Hôm nay", "Ván thử không đọc km chạy thật."
@@ -142,8 +145,12 @@ func kmTable(data map[string]any, st *werewolf.State, live *liveKm, wall time.Ti
 	at := live.AsOf.In(vietnam)
 	t.AsOf = &at
 	t.TodayLabel = "Hôm nay · tới " + at.Format("15:04")
-	if !sameDate(end, now) {
-		t.TodayLabel = "Từ 22h nay · tới " + at.Format("15:04")
+	if !sameDate(frame.End, now) || st.Config.RoundLen() < werewolf.KmFrameLen {
+		startDay := "qua"
+		if sameDate(frame.Start, now) {
+			startDay = "nay"
+		}
+		t.TodayLabel = "Từ " + hm(frame.Start) + " " + startDay + " · tới " + at.Format("15:04")
 	}
 	return t
 }

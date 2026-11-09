@@ -88,7 +88,7 @@ func TestVoteForecastSkipsRevealedIdiot(t *testing.T) {
 	st.Players["f1"].Revealed = true
 	live := map[string]float64{"w1": 2500, "s1": 2600, "w2": 9000}
 	r.st, r.now = st, func() time.Time { return time.Date(2026, 10, 24, 21, 0, 0, 0, vietnam) }
-	r.store = &GameStore{frameKm: func(_ context.Context, uid string, _ time.Time) (FrameKm, error) {
+	r.store = &GameStore{frameKm: func(_ context.Context, uid string, _, _ time.Time) (FrameKm, error) {
 		return FrameKm{Meters: live[uid]}, nil
 	}}
 	out, err := r.renderReminder(context.Background(), chatGroup, `{"reason":"vote"}`)

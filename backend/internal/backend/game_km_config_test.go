@@ -18,7 +18,7 @@ func reminderAt(t *testing.T, cfg ww.Config, phase ww.Phase, nominee string, liv
 	st := ww.NewState(ww.Seed{1}, cfg, map[string]ww.Role{"w1": ww.Wolf, "w2": ww.Villager, "s1": ww.Seer, "f1": ww.Villager}, msgStart)
 	st.Phase, st.Nominee = phase, nominee
 	r.st, r.now = st, func() time.Time { return time.Date(2026, 10, 24, 21, 0, 0, 0, vietnam) }
-	r.store = &GameStore{frameKm: func(_ context.Context, uid string, _ time.Time) (FrameKm, error) {
+	r.store = &GameStore{frameKm: func(_ context.Context, uid string, _, _ time.Time) (FrameKm, error) {
 		if live == nil {
 			return FrameKm{}, errors.New("ván tắt km mà vẫn đọc km")
 		}
@@ -94,7 +94,7 @@ func TestKmAlertFollowsConfig(t *testing.T) {
 	roles := map[string]ww.Role{"w1": ww.Wolf, "s1": ww.Seer, "v1": ww.Villager}
 	wall := time.Date(2026, 10, 24, 15, 7, 0, 0, vietnam)
 	reads := 0
-	s := &GameStore{frameKm: func(context.Context, string, time.Time) (FrameKm, error) {
+	s := &GameStore{frameKm: func(context.Context, string, time.Time, time.Time) (FrameKm, error) {
 		reads++
 		return FrameKm{Meters: 1250}, nil
 	}}
@@ -160,7 +160,7 @@ func TestVoteBonusIsPublic(t *testing.T) {
 // nói km dùng cho kỹ năng.
 func TestReminderVoteFlatNoForecast(t *testing.T) {
 	got := reminderAt(t, ww.Config{KmPerUnit: 2.5, Vote: ww.VoteFlat}, ww.PhaseTrial, "f1", map[string]float64{"w1": 900})()
-	if strings.Contains(got, "Biểu quyết nếu chốt") || !strings.HasSuffix(got, "\nKm chốt 22h dùng cho kỹ năng đêm nay. Chạy xong mở app cho km kịp đồng bộ.") {
+	if strings.Contains(got, "Biểu quyết nếu chốt") || !strings.HasSuffix(got, "\nKm chốt 22h dùng cho kỹ năng đêm kế tiếp. Chạy xong mở app cho km kịp đồng bộ.") {
 		t.Fatalf("flat = %q", got)
 	}
 }

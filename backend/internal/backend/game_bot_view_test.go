@@ -4,7 +4,6 @@ import (
 	"context"
 	"reflect"
 	"testing"
-	"time"
 
 	ww "github.com/vlsilver/runnow/backend/internal/werewolf"
 )
@@ -42,19 +41,5 @@ func TestMyWerewolfOnlyInPrivateChat(t *testing.T) {
 	}
 	if _, err := s.dispatch(context.Background(), botMyWerewolfDecl.Name, nil, false); err == nil {
 		t.Fatal("gọi get_my_werewolf từ group phải lỗi")
-	}
-}
-
-func TestNextKmFrameEnd(t *testing.T) {
-	cases := map[time.Time]time.Time{
-		time.Date(2026, 10, 23, 21, 59, 59, 0, vietnam): time.Date(2026, 10, 23, 22, 0, 0, 0, vietnam),
-		time.Date(2026, 10, 23, 22, 0, 0, 0, vietnam):   time.Date(2026, 10, 24, 22, 0, 0, 0, vietnam),
-		time.Date(2026, 10, 23, 15, 30, 0, 0, time.UTC): time.Date(2026, 10, 24, 22, 0, 0, 0, vietnam), // 22:30 VN
-		time.Date(2026, 10, 23, 2, 0, 0, 0, vietnam):    time.Date(2026, 10, 23, 22, 0, 0, 0, vietnam),
-	}
-	for wall, want := range cases {
-		if got := nextKmFrameEnd(wall); !got.Equal(want) {
-			t.Errorf("nextKmFrameEnd(%s) = %s, muốn %s", wall, got, want)
-		}
 	}
 }

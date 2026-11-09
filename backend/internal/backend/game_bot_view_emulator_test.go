@@ -119,7 +119,7 @@ func TestEmulatorBotWerewolfShowsOnlyPublicGame(t *testing.T) {
 	// 8 người bỏ phiếu, tổng 6 km với X = 1 km: được tính 6 phiếu, mất 2. V1
 	// ít nhất nên chắc mất; W1 và SEER bằng km ở ngưỡng nên bốc thăm một người.
 	km := map[string]float64{"v1": 0, "w1": 500, "seer": 500}
-	g.store.frameKm = func(_ context.Context, uid string, end time.Time) (FrameKm, error) {
+	g.store.frameKm = func(_ context.Context, uid string, _, end time.Time) (FrameKm, error) {
 		m, ok := km[uid]
 		if !ok {
 			m = 1000

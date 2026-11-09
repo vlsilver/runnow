@@ -32,18 +32,31 @@ func gameRulesCardFor(cfg werewolf.Config) []GameSetupSection {
 		GameSetupSection{Title: "Thắng khi", Layout: setupLayoutTiles, Items: win})
 }
 
+// cardRound là các mốc của một vòng. Ván nhiều vòng mỗi vòng có thể có giờ pha
+// riêng: mỗi mốc liệt kê giờ của từng vòng, mỗi vòng một dòng, theo thứ tự mở.
 func cardRound(cfg werewolf.Config) []GameSetupItem {
-	k := ruleClock(cfg)
+	starts := cfg.RoundStarts()
+	clocks := make([]werewolf.RoundClock, len(starts))
+	for i, hour := range starts {
+		clocks[i] = cfg.Clock(time.Date(2026, 1, 1, hour, 0, 0, 0, vietnam))
+	}
+	lines := func(line func(werewolf.RoundClock) string) string {
+		out := make([]string, len(clocks))
+		for i, k := range clocks {
+			out[i] = line(k)
+		}
+		return strings.Join(out, "\n")
+	}
 	span := func(from, to time.Time) string { return hm(from) + "–" + hm(to) }
 	closing := "Chốt phiếu và km"
 	if cfg.KmOff {
 		closing = "Chốt phiếu"
 	}
 	items := []GameSetupItem{
-		{Key: "night", Icon: "night", Label: span(k.Night, k.Dawn), Value: "Dùng kỹ năng"},
-		{Key: "nominate", Icon: "day", Label: span(k.Dawn, k.NominateClose), Value: fmt.Sprintf("Đề cử, tối đa %d người lên giàn", cfg.NomineeSeats())},
-		{Key: "trial", Icon: "trial", Label: span(k.NominateClose, k.Close), Value: "Biểu quyết Treo hay Tha"},
-		{Key: "close", Icon: "close", Label: hm(k.Close), Value: closing},
+		{Key: "night", Icon: "night", Label: lines(func(k werewolf.RoundClock) string { return span(k.Night, k.Dawn) }), Value: "Dùng kỹ năng"},
+		{Key: "nominate", Icon: "day", Label: lines(func(k werewolf.RoundClock) string { return span(k.Dawn, k.NominateClose) }), Value: fmt.Sprintf("Đề cử, tối đa %d người lên giàn", cfg.NomineeSeats())},
+		{Key: "trial", Icon: "trial", Label: lines(func(k werewolf.RoundClock) string { return span(k.NominateClose, k.Close) }), Value: "Biểu quyết Treo hay Tha"},
+		{Key: "close", Icon: "close", Label: lines(func(k werewolf.RoundClock) string { return hm(k.Close) }), Value: closing},
 	}
 	if line := cardSchedule(cfg); line != "" {
 		items = append([]GameSetupItem{{Key: "schedule", Value: line}}, items...)
@@ -65,8 +78,8 @@ func cardSchedule(cfg werewolf.Config) string {
 	if s.Rounds == 1 {
 		return fmt.Sprintf("Mỗi ngày một vòng %d tiếng, mở lúc %s.", s.RoundHours, hours[0])
 	}
-	return fmt.Sprintf("Mỗi ngày %d vòng, mỗi vòng %d tiếng, mở lúc %s. Giờ dưới đây là của vòng %s.",
-		s.Rounds, s.RoundHours, strings.Join(hours, ", "), hours[0])
+	return fmt.Sprintf("Mỗi ngày %d vòng, mỗi vòng %d tiếng, mở lúc %s.",
+		s.Rounds, s.RoundHours, strings.Join(hours, ", "))
 }
 
 // cardKm rỗng khi ván tắt km: lúc đó bằng phiếu cũng không có km để xét.
@@ -79,7 +92,7 @@ func cardKm(cfg werewolf.Config) []GameSetupItem {
 		decides = "Dùng kỹ năng và bỏ phiếu"
 	}
 	items := []GameSetupItem{
-		{Key: "kmWindow", Icon: "km", Label: "Tính km", Value: "22h hôm trước – 22h hôm nay"},
+		{Key: "kmWindow", Icon: "km", Label: "Tính km", Value: kmWindowText},
 		{Key: "kmDecides", Icon: "skill", Label: "Km quyết định", Value: decides},
 	}
 	switch cfg.VoteMode() {
@@ -91,9 +104,6 @@ func cardKm(cfg werewolf.Config) []GameSetupItem {
 	if weight := cardTopWeight(cfg); weight > 0 {
 		items = append(items, GameSetupItem{Key: "topWeight", Icon: "vote", Label: fmt.Sprintf("%d phiếu", weight),
 			Value: fmt.Sprintf("%s chạy nhiều nhất, đủ %s km", topVotersText(cfg), formatKm(kmPerUnit(cfg)))})
-	}
-	if cfg.Schedule != nil && cfg.Schedule.Rounds > 1 {
-		items = append(items, GameSetupItem{Key: "sharedKm", Icon: "shared", Label: "Nhiều vòng", Value: "Dùng chung km trong ngày"})
 	}
 	if cfg.KmTie() {
 		items = append(items, GameSetupItem{Key: "tie", Icon: "tie", Label: "Bằng phiếu", Value: "Tổng km cao hơn thắng, rồi bốc thăm"})

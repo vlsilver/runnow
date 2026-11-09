@@ -39,7 +39,7 @@ func TestRenderNightDigestKmBoard(t *testing.T) {
 	want := "<b>Đêm 1 buông xuống, cả làng đi ngủ.</b>\nQuản trò gọi lần lượt:\n" +
 		"1. Sói thức dậy, cả phe chọn một người để cắn, chốt lúc 0h.\n" +
 		"Ai có vai thì bấm trong tin quản trò nhắn riêng hoặc trong app 3i Run.\n\n" +
-		"<b>Km chốt 22h, dùng cho đêm 1</b>\n" +
+		"<b>Km vừa chốt, dùng cho đêm 1</b>\n" +
 		"Có vai đêm thì cần đủ 2.5 km mới dùng được kỹ năng. Sói tính chung cả phe: tổng km sói còn sống phải đủ 2.5 km cho mỗi sói. Cupid không cần km.\n" +
 		"Đủ km: Chi 7.3 · An &lt;Sói&gt; 2.5\n" +
 		"Chưa đủ: Bình &amp; Co 2.4 · Giả 0"
@@ -98,7 +98,7 @@ func TestWolfBiteDisabledReasonNamesTeamKm(t *testing.T) {
 		t.Fatalf("w1 = %+v", acts)
 	}
 	want := "Phe Sói chưa đủ km: cả phe có 1.2 km, cần 2 km (1 km cho mỗi sói còn sống). " +
-		"Sói tính chung cả phe nên km riêng của bạn đủ thì vẫn chưa cắn được. Km đã chốt lúc 22h, muốn cắn đêm sau thì cả phe chạy thêm trước 22h."
+		"Sói tính chung cả phe nên km riêng của bạn đủ thì vẫn chưa cắn được. Km đã chốt, muốn cắn đêm sau thì cả phe chạy thêm trước lần chốt tới."
 	if acts[0].DisabledReason != want {
 		t.Fatalf("lý do = %q", acts[0].DisabledReason)
 	}
@@ -138,7 +138,7 @@ func TestWolvesShortOfKmPrivateDMNamesNumbers(t *testing.T) {
 	out := renderOne(t, r, dmChat("w1"), tplPrivate, map[string]any{
 		"events": []ww.Event{{Kind: ww.EventWolvesTarget, Reason: ww.VoidNoKm}}, "wolfKm": map[string]float64{"have": 2499, "need": 5000},
 	})
-	if out.parts[0] != dmText("Phe Sói chưa đủ km nên đêm nay không cắn được ai: cả phe có 2.4 km, cần 5 km (2.5 km cho mỗi sói còn sống). Muốn cắn đêm sau thì cả phe chạy thêm trước 22h.") {
+	if out.parts[0] != dmText("Phe Sói chưa đủ km nên đêm nay không cắn được ai: cả phe có 2.4 km, cần 5 km (2.5 km cho mỗi sói còn sống). Muốn cắn đêm sau thì cả phe chạy thêm trước lần chốt tới.") {
 		t.Fatalf("0h = %q", out.parts[0])
 	}
 }
@@ -155,7 +155,7 @@ func TestRenderReminderLiveKm(t *testing.T) {
 	var ends []time.Time
 	var readErr error
 	r.st, r.now = st, func() time.Time { return time.Date(2026, 10, 16, 18, 0, 30, 0, vietnam) }
-	r.store = &GameStore{frameKm: func(_ context.Context, uid string, end time.Time) (FrameKm, error) {
+	r.store = &GameStore{frameKm: func(_ context.Context, uid string, _, end time.Time) (FrameKm, error) {
 		ends = append(ends, end)
 		return FrameKm{Meters: live[uid]}, readErr
 	}}
@@ -169,7 +169,7 @@ func TestRenderReminderLiveKm(t *testing.T) {
 		"Có vai đêm thì cần đủ 2.5 km mới dùng được kỹ năng. Sói tính chung cả phe: tổng km sói còn sống phải đủ 2.5 km cho mỗi sói. Cupid không cần km.\n" +
 		"Đủ km: Bình &amp; Co 3.1 · Chi 2.6\n" +
 		"Chưa đủ: An &lt;Sói&gt; 0.9\n" +
-		"Km chốt 22h dùng cho biểu quyết tối nay và kỹ năng đêm nay. Chạy xong mở app cho km kịp đồng bộ."
+		"Km chốt 22h dùng cho biểu quyết lúc đó và kỹ năng đêm kế tiếp. Chạy xong mở app cho km kịp đồng bộ."
 	if got, err := render(); err != nil || got != want {
 		t.Fatalf("18h = %q, %v", got, err)
 	}
@@ -202,7 +202,7 @@ func TestRenderReminderVoteForecast(t *testing.T) {
 	st.Phase, st.Nominee = ww.PhaseTrial, "f1"
 	var live map[string]float64
 	r.st, r.now = st, func() time.Time { return time.Date(2026, 10, 24, 21, 0, 0, 0, vietnam) }
-	r.store = &GameStore{frameKm: func(_ context.Context, uid string, _ time.Time) (FrameKm, error) {
+	r.store = &GameStore{frameKm: func(_ context.Context, uid string, _, _ time.Time) (FrameKm, error) {
 		return FrameKm{Meters: live[uid]}, nil
 	}}
 	forecast := func() string {
@@ -259,7 +259,7 @@ func TestKmAlert(t *testing.T) {
 	live := map[string]float64{"w1": 1250, "w2": 2499, "w3": 9000, "v1": 2600}
 	var readErr error
 	var ends []time.Time
-	s := &GameStore{frameKm: func(_ context.Context, uid string, end time.Time) (FrameKm, error) {
+	s := &GameStore{frameKm: func(_ context.Context, uid string, _, end time.Time) (FrameKm, error) {
 		ends = append(ends, end)
 		return FrameKm{Meters: live[uid]}, readErr
 	}}

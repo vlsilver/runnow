@@ -231,13 +231,13 @@ func TestTaskKeyChangesWithDeadlineAndHunterTurn(t *testing.T) {
 	}
 }
 
-func TestKmFrameEndOnlyAt22h(t *testing.T) {
+func TestDueKmFrameOnlyAtSetupAndClose(t *testing.T) {
 	g := newGame(t, baseRoles())
 	want := map[Phase]time.Time{PhaseSetup: at(15, 22, 0), PhaseTrial: at(16, 22, 0)}
 	for i := 0; i < 5; i++ {
-		end, ok := g.st.KmFrameEnd()
-		if w, need := want[g.st.Phase]; ok != need || !end.Equal(w) {
-			t.Fatalf("%s: KmFrameEnd = %s %v", g.st.Phase, end, ok)
+		f, ok := g.st.DueKmFrame()
+		if w, need := want[g.st.Phase]; ok != need || !f.End.Equal(w) {
+			t.Fatalf("%s: DueKmFrame = %s %v", g.st.Phase, f.End, ok)
 		}
 		g.next()
 	}

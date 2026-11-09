@@ -18,7 +18,7 @@ func TestEmulatorDetailLiveKmCached(t *testing.T) {
 	g.advance(time.Date(2026, 10, 15, 22, 0, 0, 0, vietnam)) // chốt 5 km mỗi người
 	var calls atomic.Int32
 	live := map[string]float64{"w1": 1200, "w2": 300, "v1": 2500}
-	g.store.frameKm = func(_ context.Context, uid string, end time.Time) (FrameKm, error) {
+	g.store.frameKm = func(_ context.Context, uid string, _, end time.Time) (FrameKm, error) {
 		calls.Add(1)
 		if !end.Equal(time.Date(2026, 10, 16, 22, 0, 0, 0, vietnam)) {
 			return FrameKm{}, fmt.Errorf("khung %v", end)

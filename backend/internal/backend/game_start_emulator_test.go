@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -665,4 +666,29 @@ func TestEmulatorGameWithoutTelegram(t *testing.T) {
 			t.Fatalf("outbox %s = %v", doc.Ref.ID, doc.Data())
 		}
 	}
+}
+
+// presetCases là mọi tổ hợp kiểu ván và số vòng, với đúng bốn pha form gửi lên
+// (co từ 2h/10h/10h/2h về độ dài vòng, tính tay). Giờ mở 22h.
+var presetRounds = []struct {
+	rounds int
+	phases [4]float64
+	days   string
+	open   int
+}{
+	{1, [4]float64{120, 600, 600, 120}, "10h–20h", 12},
+	{2, [4]float64{60, 300, 300, 60}, "4h–9h, 16h–21h", 5},
+	{3, [4]float64{60, 180, 180, 60}, "2h–5h, 10h–13h, 18h–21h", 3},
+	{4, [4]float64{60, 120, 120, 60}, "1h–3h, 7h–9h, 13h–15h, 19h–21h", 2},
+}
+
+// formSettings là settings form gửi cho một kiểu ván ở một số vòng.
+func formSettings(preset string, rounds int, phases [4]float64) map[string]any {
+	out := map[string]any{"roundsPerDay": float64(rounds), "nightMin": phases[0], "dawnMin": phases[1], "dayMin": phases[2], "trialMin": phases[3]}
+	for _, p := range gamePresets {
+		if p.Key == preset {
+			maps.Copy(out, p.Settings)
+		}
+	}
+	return out
 }

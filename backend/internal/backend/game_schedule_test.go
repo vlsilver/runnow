@@ -145,7 +145,7 @@ func TestReminderShowsRoundClose(t *testing.T) {
 }
 
 // Tuỳ chọn lịch: ô nào không gửi thì lấy của lịch gốc (22h, 24 tiếng, 1 vòng);
-// ván còn dùng km thì lịch không tác dụng nên bị bỏ qua, không thành lỗi.
+// ván còn dùng km thì đổi được giờ mở, còn độ dài vòng đi theo số vòng mỗi ngày.
 func TestScheduleSettingsApplied(t *testing.T) {
 	for _, c := range []struct {
 		in   map[string]any
@@ -154,7 +154,9 @@ func TestScheduleSettingsApplied(t *testing.T) {
 		{map[string]any{"kmOff": true, "startHour": 6.0, "roundHours": 6.0, "roundsPerDay": 3.0}, &ww.Schedule{StartHour: 6, RoundHours: 6, Rounds: 3}},
 		{map[string]any{"kmOff": true, "roundHours": 8.0}, &ww.Schedule{StartHour: 22, RoundHours: 8, Rounds: 1}},
 		{map[string]any{"kmOff": true}, nil},
-		{map[string]any{"startHour": 6.0, "roundHours": 6.0}, nil},
+		{map[string]any{"startHour": 6.0, "roundHours": 6.0}, &ww.Schedule{StartHour: 6, RoundHours: 24, Rounds: 1}},
+		{map[string]any{"startHour": 6.0, "roundsPerDay": 2.0}, &ww.Schedule{StartHour: 6, RoundHours: 12, Rounds: 2}},
+		{map[string]any{"startHour": 22.0}, nil},
 	} {
 		var gc ww.Config
 		if err := applyGameSettings(&gc, c.in); err != nil {

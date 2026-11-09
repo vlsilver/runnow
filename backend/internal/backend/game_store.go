@@ -29,7 +29,7 @@ type GameStore struct {
 	// pscChatID là TELEGRAM_CHAT_ID; ván thử không được tạo trong chat này (X1).
 	pscChatID string
 	// frameKm tính km khung của một người; mặc định LoadFrameKm.
-	frameKm func(ctx context.Context, uid string, frameEnd time.Time) (FrameKm, error)
+	frameKm func(ctx context.Context, uid string, start, end time.Time) (FrameKm, error)
 	// beforeSubmit chỉ test đặt: chen một bước chốt vào giữa lúc PressButton đọc
 	// state và lúc transaction ghi action.
 	beforeSubmit func()
@@ -42,8 +42,8 @@ type GameStore struct {
 }
 
 func NewGameStore(db *firestore.Client, pscChatID string) *GameStore {
-	return &GameStore{db: db, pscChatID: pscChatID, frameKm: func(ctx context.Context, uid string, frameEnd time.Time) (FrameKm, error) {
-		return LoadFrameKm(ctx, db, uid, frameEnd)
+	return &GameStore{db: db, pscChatID: pscChatID, frameKm: func(ctx context.Context, uid string, start, end time.Time) (FrameKm, error) {
+		return LoadFrameKm(ctx, db, uid, start, end)
 	}}
 }
 
@@ -410,7 +410,7 @@ func (s *GameStore) HasPendingOutbox(ctx context.Context, gameID string) (bool, 
 	return len(docs) > 0, err
 }
 
-// snapshotKmIfDue: tới mốc 22h thì tính km của mọi người chơi và ghi bằng
+// snapshotKmIfDue: tới mốc chốt thì tính km của mọi người chơi và ghi bằng
 // Create, bản ghi đầu tiên thắng (R29: không chốt lại). Chạy ngoài transaction vì
 // mỗi người tốn vài query; transaction của bước chỉ đọc các doc này. Ván thử
 // không đọc buổi chạy: giờ ván đã bị đẩy nên khung không khớp buổi chạy thật,
@@ -433,8 +433,8 @@ func (s *GameStore) snapshotKmIfDue(ctx context.Context, gameID string, wall tim
 	if err != nil {
 		return err
 	}
-	end, ok := st.KmFrameEnd()
-	if !ok || st.Paused || now.Before(end) {
+	frame, ok := st.DueKmFrame()
+	if !ok || st.Paused || now.Before(frame.End) {
 		return nil
 	}
 	refs := kmRefs(game, st)
@@ -447,11 +447,11 @@ func (s *GameStore) snapshotKmIfDue(ctx context.Context, gameID string, wall tim
 			continue
 		}
 		uid := refs[i].ID
-		doc := map[string]any{"frameEnd": end, "meters": 0.0, "source": "test", "createdAt": wall}
+		doc := map[string]any{"frameEnd": frame.End, "meters": 0.0, "source": "test", "createdAt": wall}
 		if st.Config.KmOff {
 			doc["source"] = "off" // ván tắt km: không đọc buổi chạy, mốc vẫn cần để chốt
 		} else if !testMode {
-			fk, err := s.frameKm(ctx, uid, end)
+			fk, err := s.frameKm(ctx, uid, frame.Start, frame.End)
 			if err != nil {
 				return fmt.Errorf("km của %s: %w", uid, err)
 			}
@@ -576,7 +576,7 @@ func (s *GameStore) readInputs(tx *firestore.Transaction, game *firestore.Docume
 		return a.Actor+string(a.Kind) < b.Actor+string(b.Kind)
 	})
 
-	if end, ok := st.KmFrameEnd(); ok && !now.Before(end) {
+	if frame, ok := st.DueKmFrame(); ok && !now.Before(frame.End) {
 		kms, err := tx.GetAll(kmRefs(game, st))
 		if err != nil {
 			return in, err

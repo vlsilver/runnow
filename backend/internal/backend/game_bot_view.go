@@ -23,13 +23,13 @@ import (
 
 var botWerewolfDecl = &genai.FunctionDeclaration{
 	Name:        "get_werewolf_game",
-	Description: "Luật Ma Sói của club (luật RIÊNG chạy theo km, khác Ma Sói thông thường) cộng diễn biến công khai của ván hiện tại: giai đoạn, hạn giờ, bộ vai lúc chia bài (deck: mỗi vai mấy lá, số sói đầu ván lấy ở đây), ai còn sống, ai đã chết kèm lá bài, ai lên giàn (tối đa 3 người, mỗi người một phiên trong trials), ai đang đề cử ai, phiếu Treo/Tha đang bấm của từng phiên, ai chưa bấm, km chốt lúc 22h gần nhất (lastKm, quyết định ai dùng được kỹ năng đêm nay), km từ 22h gần nhất tới giờ của từng người (kmSinceLast22h, sẽ chốt lúc kmFrameEnd), dự báo nếu chốt từng phiên với km hiện tại thì bao nhiêu phiếu được tính và ai mất phiếu (trials[].voteForecast), các bản tin của ván. Dùng cho MỌI câu hỏi về Ma Sói. Không có vai của người còn sống.",
+	Description: "Luật Ma Sói của club (luật RIÊNG chạy theo km, khác Ma Sói thông thường) cộng diễn biến công khai của ván hiện tại: giai đoạn, hạn giờ, bộ vai lúc chia bài (deck: mỗi vai mấy lá, số sói đầu ván lấy ở đây), ai còn sống, ai đã chết kèm lá bài, ai lên giàn (tối đa 3 người, mỗi người một phiên trong trials), ai đang đề cử ai, phiếu Treo/Tha đang bấm của từng phiên, ai chưa bấm, km ở lần chốt gần nhất (lastKm, quyết định ai dùng được kỹ năng đêm kế tiếp), km trong 24 tiếng tính tới lần chốt kế tiếp của từng người, đọc tới giờ (kmSinceLast22h, tên trường giữ từ trước, giờ chốt theo lịch của ván là kmFrameEnd), dự báo nếu chốt từng phiên với km hiện tại thì bao nhiêu phiếu được tính và ai mất phiếu (trials[].voteForecast), các bản tin của ván. Dùng cho MỌI câu hỏi về Ma Sói. Không có vai của người còn sống.",
 	Parameters:  &genai.Schema{Type: genai.TypeObject, Properties: map[string]*genai.Schema{}},
 }
 
 var botMyWerewolfDecl = &genai.FunctionDeclaration{
 	Name:        "get_my_werewolf",
-	Description: "Phần Ma Sói RIÊNG của CHÍNH người đang nhắn riêng với bạn: vai và luật vai, còn sống không, bình của Phù thuỷ, ghi chú chỉ họ biết (đồng đội sói, người yêu, kết quả soi, người bị cắn), các việc đang mở kèm đã chọn gì, giờ mở, hạn, làm được không và vì sao, việc còn phải làm, km của họ từ 22h gần nhất. Dùng khi người này hỏi về vai, việc, lựa chọn, km của chính họ trong Ma Sói.",
+	Description: "Phần Ma Sói RIÊNG của CHÍNH người đang nhắn riêng với bạn: vai và luật vai, còn sống không, bình của Phù thuỷ, ghi chú chỉ họ biết (đồng đội sói, người yêu, kết quả soi, người bị cắn), các việc đang mở kèm đã chọn gì, giờ mở, hạn, làm được không và vì sao, việc còn phải làm, km của họ trong 24 tiếng tính tới lần chốt kế tiếp, đọc tới giờ (giờ chốt là kmFrameEnd). Dùng khi người này hỏi về vai, việc, lựa chọn, km của chính họ trong Ma Sói.",
 	Parameters:  &genai.Schema{Type: genai.TypeObject, Properties: map[string]*genai.Schema{}},
 }
 
@@ -253,12 +253,12 @@ func (s *GameStore) botGame(ctx context.Context, wall time.Time) (*BotWerewolfGa
 		}
 
 		if running {
-			frameEnd := nextKmFrameEnd(wall)
-			game.KmFrameEnd = vnTime(frameEnd)
+			frame := cfg.KmFrameAt(wall)
+			game.KmFrameEnd = vnTime(frame.End)
 			live := map[string]float64{}
 			game.KmSinceLast22h = map[string]string{}
 			for _, uid := range aliveUIDs {
-				fk, err := s.frameKm(ctx, uid, frameEnd)
+				fk, err := s.frameKm(ctx, uid, frame.Start, frame.End)
 				if err != nil {
 					return nil, &cfg, err
 				}
@@ -353,16 +353,6 @@ func botDeck(n int, cfg werewolf.Config) map[string]int {
 		deck[roleLabels[r]]++
 	}
 	return deck
-}
-
-// nextKmFrameEnd là mốc chốt km 22:00 VN kế tiếp sau wall.
-func nextKmFrameEnd(wall time.Time) time.Time {
-	local := wall.In(vietnam)
-	end := time.Date(local.Year(), local.Month(), local.Day(), 22, 0, 0, 0, vietnam)
-	if !local.Before(end) {
-		end = end.AddDate(0, 0, 1)
-	}
-	return end
 }
 
 // botTally đếm lựa chọn đề cử hay biểu quyết đang lưu của vòng, theo đúng cách
@@ -517,12 +507,12 @@ func (s *GameStore) BotMyWerewolf(ctx context.Context, tg string, wall time.Time
 		if cfg.KmOff {
 			return out, nil
 		}
-		frameEnd := nextKmFrameEnd(wall)
-		fk, err := s.frameKm(ctx, uid, frameEnd)
+		frame := cfg.KmFrameAt(wall)
+		fk, err := s.frameKm(ctx, uid, frame.Start, frame.End)
 		if err != nil {
 			return BotMyWerewolf{}, err
 		}
-		out.KmSinceLast22h, out.KmPerUnit, out.KmFrameEnd = formatKm(fk.Meters/1000)+" km", formatKm(kmPerUnit(cfg))+" km", vnTime(frameEnd)
+		out.KmSinceLast22h, out.KmPerUnit, out.KmFrameEnd = formatKm(fk.Meters/1000)+" km", formatKm(kmPerUnit(cfg))+" km", vnTime(frame.End)
 	}
 	return out, nil
 }

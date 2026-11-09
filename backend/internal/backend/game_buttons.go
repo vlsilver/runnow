@@ -533,8 +533,8 @@ func (s *GameStore) cardAlert(ctx context.Context, game *firestore.DocumentRef, 
 	return truncateUTF16(text, answerTextSize), nil
 }
 
-// kmAlert là km của người bấm "Xem km của tôi": km đang gom tới mốc 22h kế tiếp
-// (đọc lúc bấm) và km chốt 22h gần nhất. Sói thấy thêm km đang gom của cả phe,
+// kmAlert là km của người bấm "Xem km của tôi": km đang gom tới mốc chốt kế tiếp
+// (đọc lúc bấm) và km chốt gần nhất. Sói thấy thêm km đang gom của cả phe,
 // vì sói cắn được hay không là theo tổng của phe chứ không theo km riêng.
 func (s *GameStore) kmAlert(ctx context.Context, gameData map[string]any, st *werewolf.State, uid string, wall time.Time) (string, error) {
 	me := st.Players[uid]
@@ -544,14 +544,14 @@ func (s *GameStore) kmAlert(ctx context.Context, gameData map[string]any, st *we
 	if st.Config.KmOff {
 		return "Ván này không dùng km.", nil
 	}
-	last := "Km chốt 22h gần nhất: " + formatKm(math.Floor(st.Km[uid]/100)/10) + " km."
+	now := gameNow(gameData, wall)
+	frame := st.Config.KmFrameAt(now)
+	last := "Km chốt " + hm(st.Config.LastKmClose(frame)) + " gần nhất: " + formatKm(math.Floor(st.Km[uid]/100)/10) + " km."
 	if gameData["testMode"] == true { // ván thử không đọc buổi chạy thật (snapshotKmIfDue)
 		return "Ván thử không tính km chạy thật. " + last, nil
 	}
-	now := gameNow(gameData, wall)
-	end := nextKmFrameEnd(now)
 	live := func(uid string) (float64, error) {
-		fk, err := s.frameKm(ctx, uid, end)
+		fk, err := s.frameKm(ctx, uid, frame.Start, frame.End)
 		if err != nil {
 			return 0, fmt.Errorf("km của %s: %w", uid, err)
 		}
@@ -563,7 +563,7 @@ func (s *GameStore) kmAlert(ctx context.Context, gameData map[string]any, st *we
 	}
 	unit := kmPerUnit(st.Config)
 	lines := []string{
-		fmt.Sprintf("Tới %s bạn có %s km, chốt lúc 22h.", now.In(vietnam).Format("15:04"), formatKm(math.Floor(mine/100)/10)) + mySkillKm(st.Config, me.Role),
+		fmt.Sprintf("Tới %s bạn có %s km, chốt lúc %s.", now.In(vietnam).Format("15:04"), formatKm(math.Floor(mine/100)/10), hm(frame.End)) + mySkillKm(st.Config, me.Role),
 		last,
 	}
 	if me.Role == werewolf.Wolf && st.Config.SkillMeters(werewolf.Wolf) == 0 {

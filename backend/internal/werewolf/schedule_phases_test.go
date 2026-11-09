@@ -46,7 +46,6 @@ func TestPhasesValidate(t *testing.T) {
 		"pha dưới 1 tiếng":  {KmOff: true, Schedule: &Schedule{StartHour: 22, RoundHours: 24, Rounds: 1, Phases: []int{30, 690, 600, 120}}},
 		"lệch bước 30 phút": {KmOff: true, Schedule: &Schedule{StartHour: 22, RoundHours: 24, Rounds: 1, Phases: []int{75, 645, 600, 120}}},
 		"tổng lệch vòng":    {KmOff: true, Schedule: &Schedule{StartHour: 22, RoundHours: 24, Rounds: 1, Phases: []int{120, 600, 600, 60}}},
-		"km mở 6h":          {Schedule: &Schedule{StartHour: 6, RoundHours: 24, Rounds: 1, Phases: []int{120, 600, 600, 120}}},
 		"km vòng 12 tiếng":  {Schedule: &Schedule{StartHour: 22, RoundHours: 12, Rounds: 1}},
 		"không pha thì lẻ":  {KmOff: true, Schedule: &Schedule{StartHour: 6, RoundHours: 7, Rounds: 1}},
 		"lịch riêng thiếu vòng": {Schedule: &Schedule{StartHour: 22, RoundHours: 12, Rounds: 2,

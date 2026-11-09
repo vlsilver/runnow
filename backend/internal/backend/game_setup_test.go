@@ -42,6 +42,8 @@ Già làng = Bật []
 # Phe Sói · Đặc quyền hắc ám
 Phiếu Đôi = Bật [vote]
 Km để mở = 1.5 km []
+# Lịch
+Giờ mở vòng đầu = 22h []
 # Vòng chơi
 Số vòng mỗi ngày = 1 vòng []
 Độ dài pha Đêm = 2h []

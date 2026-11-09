@@ -54,7 +54,7 @@ func newSimEnv(t *testing.T) *simEnv {
 	e := &simEnv{startEnv: newStartEnv(t)}
 	e.update.Store(1000)
 	e.deliver = true // task chạy ngay như Cloud Tasks; task hẹn giờ thì test tự chạy
-	e.store.frameKm = func(_ context.Context, _ string, end time.Time) (FrameKm, error) {
+	e.store.frameKm = func(_ context.Context, _ string, _, end time.Time) (FrameKm, error) {
 		return FrameKm{FrameEnd: end, OfficialMeters: 5000, Meters: 5000, Source: "official"}, nil
 	}
 	e.srv = &Server{config: e.cfg, deps: e.deps}

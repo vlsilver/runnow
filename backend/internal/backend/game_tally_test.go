@@ -98,6 +98,19 @@ func TestTallyViewVote(t *testing.T) {
 	}
 }
 
+// Dòng km đi theo hạn của phiên: ván nhiều vòng có lần chốt không phải 22h.
+func TestTallyViewVoteKmLineUsesClose(t *testing.T) {
+	v := tallyFixture(ww.KindVote, ww.PhaseTrial)
+	v.closes = time.Date(2026, 10, 13, 3, 0, 0, 0, time.UTC) // 10:00 giờ Việt Nam
+	text, _, err := v.render()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "Số phiếu được tính chốt lúc 10h theo km của mỗi bên.") {
+		t.Fatalf("text = %q", text)
+	}
+}
+
 // Nút Treo/Tha đọc lại đúng thành vị trí trong voteChoices.
 // Phiếu không theo km (tắt km, hoặc mỗi người một phiếu) thì không nhắc km.
 func TestTallyViewVoteFlatNoKmLine(t *testing.T) {

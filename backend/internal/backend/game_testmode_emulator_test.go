@@ -64,7 +64,7 @@ func newTestModeGame(t *testing.T) *testModeGame {
 	db := emulatorDB(t)
 	ctx := context.Background()
 	g := &testModeGame{storeGame: &storeGame{t: t, db: db, store: NewGameStore(db, testPscChat), tg: map[string]string{}}, wall: msgStart}
-	g.store.frameKm = func(context.Context, string, time.Time) (FrameKm, error) {
+	g.store.frameKm = func(context.Context, string, time.Time, time.Time) (FrameKm, error) {
 		t.Fatal("ván thử không được đọc buổi chạy")
 		return FrameKm{}, nil
 	}

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"sync"
 	"testing"
@@ -47,7 +48,7 @@ func newStoreGameWith(t *testing.T, cfg ww.Config) *storeGame {
 	t.Helper()
 	db := emulatorDB(t)
 	g := &storeGame{t: t, db: db, store: NewGameStore(db, testPscChat), tg: map[string]string{}}
-	g.store.frameKm = func(_ context.Context, _ string, end time.Time) (FrameKm, error) {
+	g.store.frameKm = func(_ context.Context, _ string, _, end time.Time) (FrameKm, error) {
 		return FrameKm{FrameEnd: end, OfficialMeters: 5000, Meters: 5000, Source: "official"}, nil
 	}
 	ctx := context.Background()
@@ -325,7 +326,7 @@ func replayMatches(t *testing.T, g *storeGame) {
 // Không tính được km thì không chốt và trả lỗi; mất km là mất phiếu.
 func TestEmulatorAdvanceStopsWhenKmFails(t *testing.T) {
 	g := newStoreGame(t)
-	g.store.frameKm = func(context.Context, string, time.Time) (FrameKm, error) {
+	g.store.frameKm = func(context.Context, string, time.Time, time.Time) (FrameKm, error) {
 		return FrameKm{}, errors.New("firestore unavailable")
 	}
 	if _, err := g.store.AdvanceGame(context.Background(), g.id, g.start.NightAt.Add(time.Minute)); err == nil {
@@ -343,7 +344,7 @@ func TestEmulatorAdvanceStopsWhenKmFails(t *testing.T) {
 // với nguồn "off".
 func TestEmulatorKmOffSnapshotSkipsRuns(t *testing.T) {
 	g := newStoreGameWith(t, ww.Config{KmOff: true})
-	g.store.frameKm = func(context.Context, string, time.Time) (FrameKm, error) {
+	g.store.frameKm = func(context.Context, string, time.Time, time.Time) (FrameKm, error) {
 		return FrameKm{}, errors.New("ván tắt km mà vẫn đọc buổi chạy")
 	}
 	g.advance(g.start.NightAt.Add(time.Minute))
@@ -407,5 +408,161 @@ func TestEmulatorStartGameNeedsRegisteredPlayers(t *testing.T) {
 	g := newStoreGame(t) // đủ người: Start lần hai thì 409
 	if err := g.store.StartGame(ctx, g.id, g.start, msgStart); err == nil {
 		t.Fatal("Start hai lần mà không lỗi")
+	}
+}
+
+// Ván km hai vòng: mỗi lần chốt đọc đúng 24 tiếng trước giờ chốt, các khung
+// chồng nửa ngày lên nhau.
+func TestEmulatorMultiRoundKmFramesAre24Hours(t *testing.T) {
+	g := newStoreGameWith(t, ww.Config{Schedule: &ww.Schedule{StartHour: 22, RoundHours: 12, Rounds: 2}})
+	type frame struct{ start, end time.Time }
+	var seen []frame
+	g.store.frameKm = func(_ context.Context, uid string, start, end time.Time) (FrameKm, error) {
+		if uid == "seer" {
+			seen = append(seen, frame{start, end})
+		}
+		return FrameKm{FrameEnd: end, OfficialMeters: 5000, Meters: 5000, Source: "official"}, nil
+	}
+	night := g.start.NightAt
+	for _, at := range []time.Duration{0, 12 * time.Hour, 24 * time.Hour} {
+		g.advance(night.Add(at + time.Minute))
+	}
+	want := []frame{
+		{night.Add(-24 * time.Hour), night},
+		{night.Add(-12 * time.Hour), night.Add(12 * time.Hour)},
+		{night, night.Add(24 * time.Hour)},
+	}
+	if len(seen) != len(want) {
+		t.Fatalf("%d lần đọc km, muốn %d: %v", len(seen), len(want), seen)
+	}
+	for i := range want {
+		if !seen[i].start.Equal(want[i].start) || !seen[i].end.Equal(want[i].end) {
+			t.Fatalf("lần chốt %d: %v, muốn %v", i, seen[i], want[i])
+		}
+	}
+}
+
+// Ván không km nhiều vòng: lần chốt nào cũng tới hạn, không đọc buổi chạy.
+func TestEmulatorNoKmRoundsCloseWithoutReadingRuns(t *testing.T) {
+	g := newStoreGameWith(t, ww.Config{KmOff: true, Schedule: &ww.Schedule{StartHour: 6, RoundHours: 6, Rounds: 3}})
+	g.store.frameKm = func(context.Context, string, time.Time, time.Time) (FrameKm, error) {
+		return FrameKm{}, errors.New("ván tắt km mà vẫn đọc buổi chạy")
+	}
+	night := g.start.NightAt
+	g.advance(night.Add(time.Minute))
+	g.advance(night.Add(6*time.Hour + time.Minute))
+	for _, round := range []string{"0", "1"} {
+		snap, err := g.ref("rounds/" + round + "/km/seer").Get(context.Background())
+		if err != nil {
+			t.Fatalf("vòng %s: %v", round, err)
+		}
+		if d := snap.Data(); d["source"] != "off" {
+			t.Fatalf("vòng %s: mốc km = %v", round, d)
+		}
+	}
+	if st := g.state(); st.Round != 2 || st.Phase != ww.PhaseNight {
+		t.Fatalf("round %d phase %s, muốn vòng 2 pha Đêm", st.Round, st.Phase)
+	}
+}
+
+// Mọi kiểu ván, 1–4 vòng: ván km đọc đúng 24 tiếng trước mỗi lần chốt, ván
+// không km không đọc buổi chạy; lần chốt nào cũng có mốc và ván sang vòng sau.
+func TestEmulatorEveryPresetCloseFrames(t *testing.T) {
+	for _, preset := range []string{"std", "hard", "classic"} {
+		for _, c := range presetRounds {
+			t.Run(fmt.Sprintf("%s/%d vòng", preset, c.rounds), func(t *testing.T) {
+				var cfg ww.Config
+				if err := applyGameSettings(&cfg, formSettings(preset, c.rounds, c.phases)); err != nil {
+					t.Fatal(err)
+				}
+				g := newStoreGameWith(t, cfg)
+				var seen [][2]time.Time
+				g.store.frameKm = func(_ context.Context, uid string, start, end time.Time) (FrameKm, error) {
+					if uid == "seer" {
+						seen = append(seen, [2]time.Time{start, end})
+					}
+					return FrameKm{FrameEnd: end, OfficialMeters: 5000, Meters: 5000, Source: "official"}, nil
+				}
+				round := 24 * time.Hour / time.Duration(c.rounds)
+				night := g.start.NightAt
+				var want [][2]time.Time
+				for k := range c.rounds + 1 {
+					closeAt := night.Add(time.Duration(k) * round)
+					g.advance(closeAt.Add(time.Minute))
+					want = append(want, [2]time.Time{closeAt.Add(-24 * time.Hour), closeAt})
+				}
+				if preset == "classic" {
+					want = nil
+				}
+				if len(seen) != len(want) {
+					t.Fatalf("đọc km %d lần, muốn %d: %v", len(seen), len(want), seen)
+				}
+				for i := range want {
+					if !seen[i][0].Equal(want[i][0]) || !seen[i][1].Equal(want[i][1]) {
+						t.Fatalf("lần chốt %d: %v, muốn %v", i, seen[i], want[i])
+					}
+				}
+				for k := range c.rounds + 1 {
+					snap, err := g.ref(fmt.Sprintf("rounds/%d/km/seer", k)).Get(context.Background())
+					if err != nil {
+						t.Fatalf("mốc km vòng %d: %v", k, err)
+					}
+					if off := snap.Data()["source"] == "off"; off != (preset == "classic") {
+						t.Fatalf("mốc km vòng %d = %v", k, snap.Data())
+					}
+				}
+				if st := g.state(); st.Round != c.rounds+1 || st.Phase != ww.PhaseNight {
+					t.Fatalf("round %d phase %s, muốn vòng %d pha Đêm", st.Round, st.Phase, c.rounds+1)
+				}
+			})
+		}
+	}
+}
+
+// Chạy bung 2 vòng: km Riêng lấy đúng buổi chạy nằm trong 24 tiếng trước mỗi
+// lần chốt. Khung chồng nên một buổi có thể tính ở hai lần chốt liên tiếp, và
+// ai hụt 2 km thì lần đó không đủ kỹ năng. Số mong đợi cộng tay từ các buổi.
+func TestEmulatorHardGameKmFromOverlappingFrames(t *testing.T) {
+	var cfg ww.Config
+	if err := applyGameSettings(&cfg, formSettings("hard", 2, [4]float64{60, 300, 300, 60})); err != nil {
+		t.Fatal(err)
+	}
+	g := newStoreGameWith(t, cfg)
+	night := g.start.NightAt
+	h := func(n int) time.Time { return night.Add(time.Duration(n) * time.Hour) }
+	runs := map[string][]struct {
+		at     time.Time
+		meters float64
+	}{
+		"seer": {{h(-13), 1000}, {h(1), 1500}, {h(13), 1000}},
+		"v1":   {{h(-1), 1500}},
+	}
+	g.store.frameKm = func(_ context.Context, uid string, start, end time.Time) (FrameKm, error) {
+		sum := 0.0
+		for _, r := range runs[uid] {
+			if !r.at.Before(start) && r.at.Before(end) {
+				sum += r.meters
+			}
+		}
+		return FrameKm{FrameEnd: end, OfficialMeters: sum, Meters: sum, Source: "official"}, nil
+	}
+	for k, want := range []struct{ seer, v1 float64 }{
+		{1000, 1500}, // [-24h, 0): seer buổi -13h, v1 buổi -1h
+		{1500, 1500}, // [-12h, 12h): seer buổi 1h, v1 buổi -1h lần nữa
+		{2500, 0},    // [0, 24h): seer buổi 1h và 13h, v1 không còn buổi nào
+	} {
+		g.advance(h(12 * k).Add(time.Minute))
+		for uid, meters := range map[string]float64{"seer": want.seer, "v1": want.v1} {
+			snap, err := g.ref(fmt.Sprintf("rounds/%d/km/%s", k, uid)).Get(context.Background())
+			if err != nil {
+				t.Fatalf("lần chốt %d, %s: %v", k, uid, err)
+			}
+			if got := snap.Data()["meters"]; got != meters {
+				t.Fatalf("lần chốt %d, %s: %v m, muốn %v", k, uid, got, meters)
+			}
+		}
+		if got := g.state().Km["seer"]; got != want.seer {
+			t.Fatalf("lần chốt %d: Km seer trong ván = %v, muốn %v", k, got, want.seer)
+		}
 	}
 }

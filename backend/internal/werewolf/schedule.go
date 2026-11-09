@@ -337,25 +337,49 @@ func (st *State) TaskKey() string {
 	return fmt.Sprintf("%s@%d", st.PhaseKey(), st.NextAt().Unix())
 }
 
-// KmFrameEnd: lần chốt kế tiếp có cần snapshot km không, và khung kết thúc lúc
-// nào. Chỉ mở đêm 1 và chốt vòng cần. Ván km chốt km lúc 22h, nên vòng chốt
-// giữa ngày lấy khung kết thúc 22h gần nhất trước đó: các vòng trong ngày dùng
-// chung km của ngày chạy trước. Ván không dùng km thì khung là hạn chốt.
-func (st *State) KmFrameEnd() (time.Time, bool) {
+// KmFrameLen là độ dài khung km của mọi lần chốt. Ván nhiều vòng thì các khung
+// chồng nhau, một buổi chạy được tính cho nhiều lần chốt.
+const KmFrameLen = 24 * time.Hour
+
+// KmFrame là một khung km [Start, End): 24 tiếng trước một lần chốt, mốc rơi vào
+// giờ chẵn VN vì StartHour và RoundHours là số giờ nguyên.
+type KmFrame struct {
+	Start, End time.Time
+}
+
+// KmFrameAt là khung của lần chốt kế tiếp sau at. Ván km các vòng nối kín 24 tiếng
+// (Validate), nên chia từ giờ mở vòng đầu gần nhất là ra đúng mốc chốt.
+func (c Config) KmFrameAt(at time.Time) KmFrame {
+	local := at.In(vietnam)
+	length := c.RoundLen()
+	anchor := time.Date(local.Year(), local.Month(), local.Day(), c.schedule().StartHour, 0, 0, 0, vietnam)
+	if anchor.After(local) {
+		anchor = anchor.AddDate(0, 0, -1)
+	}
+	end := anchor.Add(local.Sub(anchor).Truncate(length)).Add(length)
+	return KmFrame{Start: end.Add(-KmFrameLen), End: end}
+}
+
+// LastKmClose là lần chốt liền trước khung f, cũng là lúc vòng đang chơi mở.
+func (c Config) LastKmClose(f KmFrame) time.Time {
+	return f.End.Add(-c.RoundLen())
+}
+
+// DueKmFrame: lần chốt kế tiếp có cần snapshot km không, và của khung nào. Chỉ
+// mở đêm 1 và chốt vòng cần. Khung là 24 tiếng trước giờ chốt, phiếu lúc chốt và
+// kỹ năng đêm kế tiếp dùng chung km đó. Admin dời hạn thì khung vẫn theo
+// lịch: lấy mốc gần nhất không sau hạn. Ván không dùng km thì khung kết thúc ở
+// hạn chốt, không đọc km nên chỉ cần mốc để biết tới giờ.
+func (st *State) DueKmFrame() (KmFrame, bool) {
 	// Lượt thợ săn chỉ mở trong day và night, nên không chen vào hai mốc này.
 	if st.Phase != PhaseSetup && st.Phase != PhaseTrial {
-		return time.Time{}, false
+		return KmFrame{}, false
 	}
 	end := st.Deadline()
-	if st.Config.KmOff {
-		return end, true
+	if !st.Config.KmOff {
+		end = st.Config.LastKmClose(st.Config.KmFrameAt(end))
 	}
-	local := end.In(vietnam)
-	day22 := time.Date(local.Year(), local.Month(), local.Day(), 22, 0, 0, 0, vietnam)
-	if day22.After(local) {
-		day22 = day22.AddDate(0, 0, -1)
-	}
-	return day22, true
+	return KmFrame{Start: end.Add(-KmFrameLen), End: end}, true
 }
 
 var ErrNotDue = errors.New("chưa tới hạn")

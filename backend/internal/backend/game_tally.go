@@ -109,7 +109,7 @@ func (v tallyView) render() (string, map[string]any, error) {
 	} else {
 		lines = append(lines, "Bấm Treo hoặc Tha, đổi được tới hạn. Chọn trong app RunNow cũng được.")
 		if v.st.Config.VoteMode() != werewolf.VoteFlat {
-			lines = append(lines, "Số phiếu được tính chốt lúc 22h theo km của mỗi bên.")
+			lines = append(lines, "Số phiếu được tính chốt lúc "+hm(v.closes)+" theo km của mỗi bên.")
 		}
 	}
 

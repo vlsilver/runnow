@@ -448,7 +448,7 @@ func cupidGame(t *testing.T) (*storeGame, *apiHarness) {
 	db := emulatorDB(t)
 	ctx := context.Background()
 	g := &storeGame{t: t, db: db, store: NewGameStore(db, testPscChat), tg: map[string]string{}}
-	g.store.frameKm = func(_ context.Context, _ string, end time.Time) (FrameKm, error) {
+	g.store.frameKm = func(_ context.Context, _ string, _, end time.Time) (FrameKm, error) {
 		return FrameKm{FrameEnd: end, OfficialMeters: 5000, Meters: 5000, Source: "official"}, nil
 	}
 	id, err := g.store.CreateGame(ctx, NewGameInput{CreatedBy: "admin", ChatID: "-100"}, msgStart)

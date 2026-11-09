@@ -60,13 +60,13 @@ const botVoteRulesText = "Đề cử: {nominate} tối đa 3 người nhiều đ
 // Các câu về km trong luật đổi theo cấu hình của ván (werewolf.Config): km từng
 // vai, tắt km, luật phiếu. x là km một phiếu đã định dạng, "X" khi chưa có ván.
 const (
-	gameKmLineCut  = "km trong khung 22h hôm qua tới 22h hôm nay quyết định có được dùng kỹ năng và có được bỏ phiếu không.\n"
-	gameKmLineTop  = "km trong khung 22h hôm qua tới 22h hôm nay quyết định có được dùng kỹ năng không. Không ai mất phiếu; %s chạy nhiều nhất, mỗi người đủ %s km, được tính 2 phiếu.\n"
-	gameKmLineFlat = "km trong khung 22h hôm qua tới 22h hôm nay chỉ quyết định có được dùng kỹ năng không; phiếu nào cũng tính.\n"
-	botVoteKmCut   = "Phiếu theo km, tính riêng từng phiên: 22h cộng km (22h hôm qua tới 22h hôm nay) của mọi người còn sống trừ người lên giàn của phiên đó. Số phiếu được tính bằng tổng km chia X km, làm tròn xuống, không quá số người. Thiếu thì người ít km nhất mất phiếu trước, kể cả người không bấm; bằng km thì bốc thăm."
-	botVoteKmTop   = "Phiếu theo km, tính riêng từng phiên: không ai mất phiếu. 22h lấy km (22h hôm qua tới 22h hôm nay) của mọi người còn sống trừ người lên giàn của phiên đó; %s nhiều km nhất, mỗi người đủ X km, được tính 2 phiếu; bằng km ở suất cuối thì bốc thăm."
+	gameKmLineCut  = "km trong khung {kmWindow} quyết định có được dùng kỹ năng và có được bỏ phiếu không.\n"
+	gameKmLineTop  = "km trong khung {kmWindow} quyết định có được dùng kỹ năng không. Không ai mất phiếu; %s chạy nhiều nhất, mỗi người đủ %s km, được tính 2 phiếu.\n"
+	gameKmLineFlat = "km trong khung {kmWindow} chỉ quyết định có được dùng kỹ năng không; phiếu nào cũng tính.\n"
+	botVoteKmCut   = "Phiếu theo km, tính riêng từng phiên: {close} cộng km ({kmWindow}) của mọi người còn sống trừ người lên giàn của phiên đó. Số phiếu được tính bằng tổng km chia X km, làm tròn xuống, không quá số người. Thiếu thì người ít km nhất mất phiếu trước, kể cả người không bấm; bằng km thì bốc thăm."
+	botVoteKmTop   = "Phiếu theo km, tính riêng từng phiên: không ai mất phiếu. {close} lấy km ({kmWindow}) của mọi người còn sống trừ người lên giàn của phiên đó; %s nhiều km nhất, mỗi người đủ X km, được tính 2 phiếu; bằng km ở suất cuối thì bốc thăm."
 	botVoteKmFlat  = "Mỗi người một phiếu, km không tác động lên phiếu."
-	botVoteKmSolo  = "Phiếu theo km, tính riêng từng người: 22h lấy km (22h hôm qua tới 22h hôm nay) của từng người; ai đủ X km thì phiếu được tính, chưa đủ thì phiếu không tính."
+	botVoteKmSolo  = "Phiếu theo km, tính riêng từng người: {close} lấy km ({kmWindow}) của từng người; ai đủ X km thì phiếu được tính, chưa đủ thì phiếu không tính."
 	// topWeightText nối sau câu km phiếu khi bật Top N được x phiếu.
 	topWeightText = " %s chạy nhiều nhất, mỗi người đủ X km, được tính %d phiếu; bằng km ở suất cuối thì bốc thăm."
 	maxHangOld    = "tối đa 3 người nhiều đề cử nhất lên giàn"
@@ -157,7 +157,7 @@ func gameRulesFor(cfg werewolf.Config) string {
 		text = strings.Replace(text, "{close} chốt phiếu.", "{close} chốt phiếu. "+tieRuleText, 1)
 	}
 	text = strings.Replace(text, scheduleDefaultText, scheduleText(cfg), 1)
-	return clockText(text, ruleClock(cfg))
+	return clockText(strings.ReplaceAll(text, "{kmWindow}", kmWindowText), ruleClock(cfg))
 }
 
 const scheduleDefaultText = "Mỗi vòng dài một ngày."
@@ -176,7 +176,7 @@ func scheduleText(cfg werewolf.Config) string {
 		hours[i] = itoa(h) + "h"
 	}
 	if !cfg.KmOff {
-		return fmt.Sprintf("Mỗi ngày %d vòng, mỗi vòng dài %d tiếng, mở lúc %s. Km chốt lúc 22h nên các vòng trong ngày dùng chung km của ngày chạy trước. Giờ bên dưới là của vòng mở lúc %s, vòng khác lệch giờ tương ứng.",
+		return fmt.Sprintf("Mỗi ngày %d vòng, mỗi vòng dài %d tiếng, mở lúc %s. Km tính 24 tiếng trước mỗi lần chốt. Giờ bên dưới là của vòng mở lúc %s, vòng khác lệch giờ tương ứng.",
 			s.Rounds, s.RoundHours, strings.Join(hours, ", "), hours[0])
 	}
 	if s.Rounds == 1 {
@@ -206,6 +206,9 @@ func clockText(s string, k werewolf.RoundClock) string {
 		"{nominate}", hm(k.NominateClose), "{close}", hm(k.Close)).Replace(s)
 }
 
+// kmWindowText là khung km in trong luật và thẻ luật, giống nhau ở mọi ván.
+const kmWindowText = "24 tiếng trước giờ chốt"
+
 // ruleClock là các mốc của vòng mở đầu tiên trong ngày, cho luật in sẵn.
 func ruleClock(cfg werewolf.Config) werewolf.RoundClock {
 	return cfg.Clock(time.Date(2026, 1, 1, cfg.RoundStarts()[0], 0, 0, 0, vietnam))
@@ -227,7 +230,7 @@ func botVoteRulesFor(cfg werewolf.Config, x string) string {
 	if cfg.KmTie() {
 		text = strings.NewReplacer(nomineeTieOld, nomineeTieKm, trialTieOld, trialTieKm).Replace(text)
 	}
-	return clockText(strings.ReplaceAll(text, "X km", x+" km"), ruleClock(cfg))
+	return clockText(strings.NewReplacer("X km", x+" km", "{kmWindow}", kmWindowText).Replace(text), ruleClock(cfg))
 }
 
 func topVotersText(cfg werewolf.Config) string {
@@ -442,7 +445,7 @@ func disabledReason(st *werewolf.State, kind werewolf.Kind, err error) string {
 	}
 	have, need := werewolf.WolfKm(st)
 	return "Phe Sói chưa đủ km: " + wolfNeedText(st.Config, have, need, kmPerUnit(st.Config)) + ". " +
-		"Sói tính chung cả phe nên km riêng của bạn đủ thì vẫn chưa cắn được. Km đã chốt lúc 22h, muốn cắn đêm sau thì cả phe chạy thêm trước 22h."
+		"Sói tính chung cả phe nên km riêng của bạn đủ thì vẫn chưa cắn được. Km đã chốt, muốn cắn đêm sau thì cả phe chạy thêm trước lần chốt tới."
 }
 
 // rejectHTTP: lỗi luật trả 409/422, không bao giờ 5xx, để app không retry (3.8).
