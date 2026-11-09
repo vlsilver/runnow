@@ -1022,16 +1022,20 @@ func suggestBotUsername(name, uid string) string {
 	return out
 }
 
-var foldMarks = transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+// stripMarks bỏ dấu tiếng Việt. Chain giữ state nên mỗi lần gọi dựng một cái mới.
+func stripMarks(s string) string {
+	s = strings.NewReplacer("đ", "d", "Đ", "d").Replace(s)
+	folded, _, err := transform.String(transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC), s)
+	if err != nil {
+		return s
+	}
+	return folded
+}
 
 // asciiSlug: bỏ dấu, chữ thường, ký tự khác [a-z0-9] thành "_", gộp "_", và
 // bỏ phần đầu cho tới chữ cái đầu tiên.
 func asciiSlug(s string) string {
-	s = strings.NewReplacer("đ", "d", "Đ", "d").Replace(s)
-	folded, _, err := transform.String(foldMarks, s)
-	if err != nil {
-		folded = s
-	}
+	folded := stripMarks(s)
 	var b strings.Builder
 	underscore := false
 	for _, r := range strings.ToLower(folded) {

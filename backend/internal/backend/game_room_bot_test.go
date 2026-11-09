@@ -21,6 +21,12 @@ func TestMentionsName(t *testing.T) {
 		{"bé bi", "Bi", true},
 		{"bibi", "Bi", false},
 		{"bi", "", false},
+		{"quan tro oi, may gio chot?", "Quản trò", true},
+		{"Hoi QUAN TRO di", "Quản trò", true},
+		{"hoi cu dem di", "Cú Đêm", true},
+		{"quản trọ ở đâu", "Quản trò", false},
+		{"củ khoai", "Cú", false},
+		{"quan troi oi", "Quản trò", false},
 	} {
 		if got := mentionsName(c.text, c.name); got != c.want {
 			t.Errorf("mentionsName(%q, %q) = %v, muốn %v", c.text, c.name, got, c.want)

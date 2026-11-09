@@ -85,12 +85,19 @@ func roomBotTaskFor(gameID string, seq int64) PublishTask {
 }
 
 // mentionsName: text có gọi name như một từ riêng, không phân biệt hoa thường.
+// Gõ không dấu cả tên cũng tính. Gõ khác dấu thì không, vì đó thường là từ khác
+// và mỗi lần gọi nhầm tốn một lượt model ("củ" không phải gọi "Cú").
 func mentionsName(text, name string) bool {
 	name = strings.ToLower(strings.TrimSpace(name))
 	if name == "" {
 		return false
 	}
 	t := strings.ToLower(text)
+	return containsWord(t, name) || containsWord(t, stripMarks(name))
+}
+
+// containsWord: t có name đứng thành một từ riêng.
+func containsWord(t, name string) bool {
 	for from := 0; from < len(t); {
 		i := strings.Index(t[from:], name)
 		if i < 0 {
