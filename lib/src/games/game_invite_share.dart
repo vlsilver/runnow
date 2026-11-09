@@ -289,6 +289,9 @@ class GameInviteCard extends StatelessWidget {
   }
 }
 
+/// Tên ván khi không đặt riêng: thẻ đã có chữ MA SÓI ở đầu nên không in lại.
+const _defaultTitle = 'Ma Sói';
+
 /// Thẻ khoe ván đang chơi để rủ người khác. Chỉ có tin công khai: pha, ai còn
 /// sống và tổng km cả làng, không có vai hay km từng người. Cỡ cố định như
 /// thiệp mời.
@@ -415,14 +418,16 @@ class GameLiveCard extends StatelessWidget {
                         color: _M.amberBright,
                       ),
                     ),
-                  const SizedBox(height: 2),
-                  Text(
-                    game.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 14, color: _M.muted),
-                  ),
+                  if (game.title != _defaultTitle) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      game.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 14, color: _M.muted),
+                    ),
+                  ],
                   const Spacer(),
                   Wrap(
                     alignment: WrapAlignment.center,

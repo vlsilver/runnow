@@ -39,9 +39,10 @@ GameDetail _running({
   List<String?> deadRoles = const [],
   String? phase = 'Đêm 2, sói đang chọn',
   bool km = true,
+  String title = 'Đêm trăng PSC',
 }) => GameDetail.fromJson({
   'id': 'g1',
-  'title': 'Đêm trăng PSC',
+  'title': title,
   'status': 'running',
   'statusLabel': 'Đang chơi',
   'refreshAfterSeconds': 30,
@@ -142,6 +143,14 @@ void main() {
       expect(find.text('còn sống'), findsOneWidget);
       expect(find.text('43'), findsOneWidget); // 8 × 5,4 km = 43,2
       expect(find.text('km cả làng'), findsOneWidget);
+    });
+
+    testWidgets('leaves out the title when it is just the game name', (
+      tester,
+    ) async {
+      await pump(tester, _running(title: 'Ma Sói'));
+
+      expect(find.text('Ma Sói'), findsNothing);
     });
 
     testWidgets('a phase with no detail is just the headline', (tester) async {
