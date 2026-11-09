@@ -1755,6 +1755,7 @@ class GameStartPreview {
     required this.maxPlayers,
     required this.canStart,
     required this.balanceScore,
+    this.startClosed,
   });
 
   factory GameStartPreview.fromJson(Map<String, dynamic> json) {
@@ -1766,6 +1767,7 @@ class GameStartPreview {
       maxPlayers: _int(json['maxPlayers']),
       canStart: json['canStart'] == true,
       balanceScore: (json['balanceScore'] as num?)?.toInt(),
+      startClosed: json['startClosed'] as String?,
     );
   }
 
@@ -1776,6 +1778,11 @@ class GameStartPreview {
   final int maxPlayers;
   final bool canStart;
   final int? balanceScore;
+
+  /// Chữ backend gửi khi chưa tới giờ được bắt đầu ván; null là được.
+  final String? startClosed;
+
+  bool get startable => canStart && startClosed == null;
 }
 
 class GameStartExcluded {

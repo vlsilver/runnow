@@ -355,10 +355,10 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
       if (!mounted) return;
       final confirmed = await showGameConfirm(
         context,
-        title: preview.canStart ? 'Bắt đầu ván?' : 'Chưa bắt đầu được',
+        title: preview.startable ? 'Bắt đầu ván?' : 'Chưa bắt đầu được',
         body: _StartPreviewBody(preview: preview),
-        confirmLabel: preview.canStart ? 'Bắt đầu' : null,
-        cancelLabel: preview.canStart ? 'Thôi' : 'Đóng',
+        confirmLabel: preview.startable ? 'Bắt đầu' : null,
+        cancelLabel: preview.startable ? 'Thôi' : 'Đóng',
       );
       if (!confirmed) return;
       await api.startGame(widget.gameId);
@@ -1047,8 +1047,20 @@ class _StartPreviewBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final closed = preview.startClosed;
     return Column(
       children: [
+        if (closed != null) ...[
+          Text(
+            closed,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 14,
+              color: RunNowMoonlitTokens.danger,
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
         Text(
           '${preview.count}',
           style: TextStyle(

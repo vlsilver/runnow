@@ -792,6 +792,36 @@ void main() {
       await close(tester);
     });
 
+    testWidgets('outside the day phase it shows why and cannot start', (
+      tester,
+    ) async {
+      backend.game = registering(admin: true);
+      backend.startPreview = {
+        'willExclude': [],
+        'players': [],
+        'count': 8,
+        'minPlayers': 8,
+        'maxPlayers': 16,
+        'canStart': true,
+        'startClosed': 'Ván này chỉ bắt đầu được trong pha Ngày: 10h–20h.',
+      };
+      await pumpScreen(tester);
+
+      await tester.tap(find.text('Bắt đầu ván'));
+      await tester.pumpAndSettle();
+      expect(find.text('Chưa bắt đầu được'), findsOneWidget);
+      expect(
+        find.text('Ván này chỉ bắt đầu được trong pha Ngày: 10h–20h.'),
+        findsOneWidget,
+      );
+      expect(find.text('Bắt đầu'), findsNothing);
+
+      await tester.tap(find.text('Đóng'));
+      await tester.pumpAndSettle();
+      expect(starts(), ['dryRun=true']);
+      await close(tester);
+    });
+
     // Ván thử thiếu người: admin thêm người giả bù đúng phần thiếu so với
     // người thật; đủ rồi thì nút biến mất.
     testWidgets('a test game fills up with fake players', (tester) async {
