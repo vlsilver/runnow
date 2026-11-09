@@ -737,6 +737,32 @@ void main() {
     expect(find.text('MỞ VÁN'), findsOneWidget);
   });
 
+  testWidgets('shows the backend reason next to the pinned open button', (
+    tester,
+  ) async {
+    backend.list = _tabbedList();
+    backend.failures['POST /v1/games'] = (
+      409,
+      {'error': 'game_running', 'message': 'Đang có ván chưa kết thúc.'},
+    );
+    await pumpScreen(tester);
+
+    await tester.tap(find.text('MỞ VÁN'));
+    await tester.pumpAndSettle();
+
+    final pinned = find.ancestor(
+      of: find.text('MỞ VÁN'),
+      matching: find.byType(SafeArea),
+    );
+    expect(
+      find.descendant(
+        of: pinned.first,
+        matching: find.text('Đang có ván chưa kết thúc.'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('rejects a topic id that is not a number before sending', (
     tester,
   ) async {

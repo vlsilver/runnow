@@ -405,6 +405,19 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
                             mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
+                              if (_error != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: Text(
+                                    _error!,
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.error,
+                                    ),
+                                  ),
+                                ),
                               if (why != null)
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 8),
@@ -480,7 +493,6 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Column(children: [_deadlineTile(), ..._postFields()]),
         ),
-        ..._submitError(),
       ],
     );
   }
@@ -609,17 +621,6 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     ];
   }
 
-  /// Lỗi lúc mở ván, ngay trên nút mở ván ghim dưới màn.
-  List<Widget> _submitError() => [
-    if (_error != null) ...[
-      const SizedBox(height: 12),
-      Text(
-        _error!,
-        style: TextStyle(color: Theme.of(context).colorScheme.error),
-      ),
-    ],
-  ];
-
   // ---- Form theo tab ----
 
   Widget _tabbedForm(GameList list) {
@@ -692,7 +693,6 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
             onTap: _working ? null : _editPost,
           ),
         ],
-        ..._submitError(),
       ],
     );
   }
