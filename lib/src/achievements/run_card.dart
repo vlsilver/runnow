@@ -4,14 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:myrun/src/achievements/achievement_card.dart';
+import 'package:myrun/src/achievements/run_card_paths.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
+import 'package:myrun/src/achievements/run_card_style.dart';
+import 'package:myrun/src/achievements/run_faces/face_map.dart';
+import 'package:myrun/src/achievements/run_faces/run_face_kit.dart';
+import 'package:myrun/src/achievements/run_faces/run_faces.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/models.dart';
-import 'package:myrun/src/widgets/map_tiles.dart';
 import 'package:myrun/src/widgets/photo_viewer.dart';
-import 'package:myrun/src/widgets/route_map.dart' show routeBounds;
 
 const _condensed = 'Barlow Condensed';
 
@@ -61,12 +64,13 @@ AchievementCardData runCardData(
   required String owner,
   Widget? previewArt,
 }) {
+  late final AchievementCardData data;
   final snap = card.snapshot;
   final start = (snap.startedAt ?? card.rolledAt ?? DateTime.now()).toLocal();
   final climb = snap.elevationGainMeters?.round() ?? 0;
   final artPath = card.artPath;
   final hasArt = artPath != null || previewArt != null;
-  return AchievementCardData(
+  data = AchievementCardData(
     tier: card.tier,
     secret: card.secret,
     art:
@@ -82,7 +86,17 @@ AchievementCardData runCardData(
     stamp: hasArt && snap.route.length > 1
         ? RunRouteStamp(points: snap.route)
         : null,
-    backFace: RunCardBack(card: card),
+    frontFace: _remembered(
+      card,
+      (style) => runFrontFace(style, RunFace(card, data)),
+    ),
+    backFace: _StyledBack(
+      card: card,
+      face: _remembered(
+        card,
+        (style) => runBackFace(style, RunFace(card, data)),
+      ),
+    ),
     artFollowsSkin: !hasArt,
     kind: 'BUỔI CHẠY',
     hero: runCardKm(card.km),
@@ -97,6 +111,36 @@ AchievementCardData runCardData(
     meta: '${_weekdays[start.weekday - 1]} · ${_dayPart(start.hour)}',
     date: '${_two(start.day)}.${_two(start.month)}.${start.year}',
   );
+  return data;
+}
+
+/// Thẻ dựng lại mỗi khung hình khi nghiêng: cùng kiểu thì giữ nguyên ruột đã
+/// dựng, không tính lại mốc km trên cả đường chạy.
+Widget? Function(BuildContext) _remembered(
+  RunCard card,
+  Widget? Function(RunCardStyle style) make,
+) {
+  RunCardStyle? built;
+  Widget? face;
+  return (context) {
+    final style = RunCardStyleScope.of(context, card);
+    if (style != built) {
+      built = style;
+      face = make(style);
+    }
+    return face;
+  };
+}
+
+class _StyledBack extends StatelessWidget {
+  const _StyledBack({required this.card, required this.face});
+
+  final RunCard card;
+  final Widget? Function(BuildContext) face;
+
+  @override
+  Widget build(BuildContext context) =>
+      face(context) ?? RunCardBack(card: card);
 }
 
 double? _paceOf(int movingSeconds, double km) =>
@@ -104,31 +148,6 @@ double? _paceOf(int movingSeconds, double km) =>
 
 /// Màu phát sáng của bậc ở ngoài thẻ (bảng tỉ lệ), không theo bộ màu thẻ.
 Color runCardGlow(GameCardTier tier) => RunCardSkin.classic.glow(tier);
-
-/// Chiếu kinh/vĩ độ lên mặt phẳng rồi đặt giữa [box], giữ đúng tỉ lệ hình
-/// đường chạy. Đường chỉ có một điểm hay đứng yên thì trả rỗng.
-List<Offset> _fitRoute(List<LatLng> points, Rect box) {
-  if (points.length < 2) return const [];
-  final lat0 =
-      points.map((p) => p.latitude).reduce((a, b) => a + b) / points.length;
-  final k = math.cos(lat0 * math.pi / 180);
-  final xs = [for (final p in points) p.longitude * k];
-  final ys = [for (final p in points) -p.latitude];
-  final minX = xs.reduce(math.min), maxX = xs.reduce(math.max);
-  final minY = ys.reduce(math.min), maxY = ys.reduce(math.max);
-  final spanX = maxX - minX, spanY = maxY - minY;
-  if (spanX == 0 && spanY == 0) return const [];
-  final scale = math.min(
-    spanX == 0 ? double.infinity : box.width / spanX,
-    spanY == 0 ? double.infinity : box.height / spanY,
-  );
-  final dx = box.left + (box.width - spanX * scale) / 2;
-  final dy = box.top + (box.height - spanY * scale) / 2;
-  return [
-    for (var i = 0; i < xs.length; i++)
-      Offset(dx + (xs[i] - minX) * scale, dy + (ys[i] - minY) * scale),
-  ];
-}
 
 Path _pathOf(List<Offset> route) {
   final path = Path()..moveTo(route.first.dx, route.first.dy);
@@ -155,13 +174,16 @@ class RunRouteArt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _RouteArtPainter(
-        points: points,
-        tier: tier,
-        skin: RunCardSkin.of(context),
+    return LayoutBuilder(
+      builder: (context, constraints) => CustomPaint(
+        painter: _RouteArtPainter(
+          points: points,
+          tier: tier,
+          skin: RunCardSkin.of(context),
+          box: RunRouteBand.boxIn(context, constraints.biggest),
+        ),
+        child: const SizedBox.expand(),
       ),
-      child: const SizedBox.expand(),
     );
   }
 }
@@ -171,11 +193,13 @@ class _RouteArtPainter extends CustomPainter {
     required this.points,
     required this.tier,
     required this.skin,
+    required this.box,
   });
 
   final List<LatLng> points;
   final GameCardTier tier;
   final RunCardSkin skin;
+  final Rect box;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -212,16 +236,7 @@ class _RouteArtPainter extends CustomPainter {
       );
     }
 
-    // Đặt đường chạy vào khoảng trống giữa nhãn trên và khối chữ dưới.
-    final route = _fitRoute(
-      points,
-      Rect.fromLTRB(
-        size.width * 0.16,
-        size.height * 0.2,
-        size.width * 0.84,
-        size.height * 0.56,
-      ),
-    );
+    final route = fitRunRoute(points, box);
     if (route.isEmpty) return;
     final path = _pathOf(route);
     canvas.drawPath(path, _stroke(skin.routeLine, 2.6));
@@ -238,7 +253,8 @@ class _RouteArtPainter extends CustomPainter {
   bool shouldRepaint(_RouteArtPainter old) =>
       old.tier != tier ||
       !identical(old.skin, skin) ||
-      !identical(old.points, points);
+      !identical(old.points, points) ||
+      old.box != box;
 }
 
 /// Con dấu tròn: đường chạy thu nhỏ, đặt trên tranh để thẻ vẫn là của buổi
@@ -266,7 +282,7 @@ class _StampPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final route = _fitRoute(points, (Offset.zero & size).deflate(13));
+    final route = fitRunRoute(points, (Offset.zero & size).deflate(13));
     if (route.isEmpty) return;
     final path = _pathOf(route);
     canvas.drawPath(path, _stroke(line, 2.2));
@@ -277,14 +293,10 @@ class _StampPainter extends CustomPainter {
       old.line != line || !identical(old.points, points);
 }
 
-/// Đoạn lẻ cuối ngắn hơn thế này thì bỏ khỏi biểu đồ: pace của vài chục mét
-/// cuối nhiễu, kéo cả biểu đồ lệch.
-const _minSplitMeters = 300.0;
-
 /// Pace từng km để vẽ biểu đồ mặt sau.
 List<double> runCardSplitPaces(List<RunCardSplit> splits) => [
   for (final s in splits)
-    if (s.distanceMeters >= _minSplitMeters) s.paceSecondsPerKm,
+    if (s.distanceMeters >= runCardMinSplitMeters) s.paceSecondsPerKm,
 ];
 
 int _fastest(List<double> paces, int from, int to) {
@@ -461,9 +473,6 @@ class _BackMap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final credit = mapTileCredits(
-      currentMapTileTemplate(),
-    ).map((c) => c.label).join(' · ');
     return Container(
       foregroundDecoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
@@ -473,44 +482,21 @@ class _BackMap extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         child: Stack(
           children: [
-            IgnorePointer(
-              child: FlutterMap(
-                options: MapOptions(
-                  initialCameraFit: CameraFit.bounds(
-                    bounds: routeBounds(points),
-                    padding: const EdgeInsets.all(20),
-                    maxZoom: 16,
-                  ),
-                  backgroundColor: skin.dataBack,
-                  interactionOptions: const InteractionOptions(
-                    flags: InteractiveFlag.none,
-                  ),
-                ),
-                children: [
-                  mapTileLayer(context, dark: skin.darkMap),
-                  PolylineLayer(
-                    polylines: [
-                      Polyline(
-                        points: points,
-                        color: skin.routeLine,
-                        strokeWidth: 3,
-                      ),
-                    ],
-                  ),
-                  MarkerLayer(
-                    markers: [
-                      _dot(points.first, skin.routeStart, 10),
-                      _dot(points.last, glow, 12),
-                    ],
-                  ),
-                ],
-              ),
+            StillRouteMap(
+              points: points,
+              dark: skin.darkMap,
+              background: skin.dataBack,
+              route: skin.routeLine,
+              markers: [
+                _dot(points.first, skin.routeStart, 10),
+                _dot(points.last, glow, 12),
+              ],
             ),
             Positioned(
               right: 6,
               bottom: 4,
               child: Text(
-                '© $credit',
+                mapCreditLine(),
                 style: TextStyle(
                   fontSize: 7,
                   color: skin.dataCredit,
@@ -581,27 +567,6 @@ class _PaceHeader extends StatelessWidget {
   }
 }
 
-/// Đường cong đi qua đúng từng điểm (Catmull-Rom). Điểm điều khiển bị kẹp trong
-/// khoảng cao thấp của đoạn để đường không vọt quá giá trị thật.
-void _curveThrough(Path path, List<Offset> points) {
-  double within(double y, Offset a, Offset b) =>
-      y.clamp(math.min(a.dy, b.dy), math.max(a.dy, b.dy));
-  for (var i = 0; i + 1 < points.length; i++) {
-    final before = points[math.max(i - 1, 0)];
-    final from = points[i];
-    final to = points[i + 1];
-    final after = points[math.min(i + 2, points.length - 1)];
-    path.cubicTo(
-      from.dx + (to.dx - before.dx) / 6,
-      within(from.dy + (to.dy - before.dy) / 6, from, to),
-      to.dx - (after.dx - from.dx) / 6,
-      within(to.dy - (after.dy - from.dy) / 6, from, to),
-      to.dx,
-      to.dy,
-    );
-  }
-}
-
 /// Pace dọc buổi chạy: đoạn nhanh hơn thì cao hơn, chấm sáng ở điểm [mark].
 class _PaceChartPainter extends CustomPainter {
   _PaceChartPainter({
@@ -632,7 +597,7 @@ class _PaceChartPainter extends CustomPainter {
       area.top + (paces[i] - lo) / (hi - lo) * area.height,
     );
     final line = Path()..moveTo(at(0).dx, at(0).dy);
-    _curveThrough(line, [for (var i = 0; i < paces.length; i++) at(i)]);
+    curveThroughPoints(line, [for (var i = 0; i < paces.length; i++) at(i)]);
     final fill = Path.from(line)
       ..lineTo(area.right, area.bottom)
       ..lineTo(area.left, area.bottom)

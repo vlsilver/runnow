@@ -6,9 +6,10 @@ import 'package:myrun/src/achievements/run_card_art_steps.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/achievements/run_card_stage.dart';
-import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
+import 'package:myrun/src/achievements/run_card_style_sheet.dart';
 import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
+import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
@@ -326,12 +327,12 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
           height: 54,
           child: Row(
             children: [
-              // Thẻ Ẩn luôn mặc màu hành của nó, bộ màu chọn ở đây không đổi
-              // được thẻ này.
+              // Thẻ Ẩn luôn mặc đúng kiểu và màu hành của nó, không đổi được.
               if (card.secret == null) ...[
-                RunCardSkinButton(
+                RunCardStyleButton(
                   ring: stageLine,
-                  onPressed: () => showRunCardSkinSheet(context, sample: data),
+                  onPressed: () =>
+                      showRunCardStyleSheet(context, card: card, data: data),
                 ),
                 const SizedBox(width: 10),
               ],
@@ -484,6 +485,25 @@ void showRunCardViewer(
       ),
       _ => null,
     },
+    // Thẻ Ẩn luôn mặc đúng kiểu và màu hành của nó, không đổi được.
+    leading: card.secret != null
+        ? null
+        : Builder(
+            builder: (origin) => RunCardStyleButton(
+              ring: gameNightInk,
+              onPressed: () {
+                final doc = ProviderScope.containerOf(
+                  origin,
+                  listen: false,
+                ).read(runCardProvider(card.id)).asData?.value;
+                showRunCardStyleSheet(
+                  origin,
+                  card: doc ?? card,
+                  data: dataOf(doc),
+                );
+              },
+            ),
+          ),
     // Mở màn khoe từ trong màn xem để nó nằm trên màn xem.
     onShare: (_, origin) {
       final doc = ProviderScope.containerOf(

@@ -848,7 +848,24 @@ void main() {
       expect(find.text(label), findsOneWidget);
     }
 
-    await tester.tap(find.text('Khoe video 3d'));
+    // Đổi kiểu nằm cạnh nút Khoe, không còn trên thanh tiêu đề.
+    final styleButton = find.byTooltip('Kiểu thẻ');
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: styleButton),
+      findsNothing,
+    );
+    expect(
+      tester.getCenter(styleButton).dx,
+      lessThan(tester.getCenter(find.text('Khoe')).dx),
+    );
+    expect(
+      (tester.getCenter(styleButton).dy -
+              tester.getCenter(find.text('Khoe')).dy)
+          .abs(),
+      lessThan(4),
+    );
+
+    await tester.tap(find.text('Khoe'));
     await tester.pump();
     final first = share.shared.last;
     expect(first.fileNameOverrides, ['3i-r1-motion.mp4']);
@@ -858,7 +875,7 @@ void main() {
 
     await tester.tap(find.text('Mặt sau'));
     await tester.pump();
-    await tester.tap(find.text('Khoe mặt sau'));
+    await tester.tap(find.text('Khoe'));
     await tester.pump();
     final second = share.shared.last;
     expect(second.fileNameOverrides, ['3i-r1-back.png']);
@@ -892,7 +909,7 @@ void main() {
     await _settle(tester);
     expect(store.saves, 0, reason: 'bộ màu đã có file thì không ghi lại');
 
-    await tester.tap(find.text('Khoe video 3d'));
+    await tester.tap(find.text('Khoe'));
     await tester.pump();
     expect(
       await share.shared.last.files!.single.readAsBytes(),
@@ -915,7 +932,7 @@ void main() {
             motionType: 'video/mp4',
           );
     await _pumpPanel(tester, _Backend(), initial: card, shareStore: store);
-    expect(find.byTooltip('Bộ màu thẻ'), findsNothing);
+    expect(find.byTooltip('Kiểu thẻ'), findsNothing);
 
     await _tapTip(tester, 'Khoe thẻ');
     await _settle(tester);

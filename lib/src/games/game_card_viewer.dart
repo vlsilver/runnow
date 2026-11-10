@@ -61,6 +61,7 @@ Future<void> showCardViewer(
   bool startBack = false,
   Widget? reaction,
   CardViewerAction? action,
+  Widget? leading,
 }) {
   return Navigator.of(context).push(
     PageRouteBuilder<void>(
@@ -79,6 +80,7 @@ Future<void> showCardViewer(
           startBack: startBack,
           reaction: reaction,
           action: action,
+          leading: leading,
         ),
       ),
       transitionsBuilder: (_, animation, _, child) =>
@@ -107,6 +109,7 @@ class GameCardViewer extends StatefulWidget {
     this.startBack = false,
     this.reaction,
     this.action,
+    this.leading,
   });
 
   final CardFaceBuilder front;
@@ -129,6 +132,9 @@ class GameCardViewer extends StatefulWidget {
   /// Hàng tim của thẻ đã khoe lên club, ngay dưới lá. Null thì không có.
   final Widget? reaction;
   final CardViewerAction? action;
+
+  /// Nút tròn đầu hàng nút dưới lá. Khác [action], bấm không đóng màn xem.
+  final Widget? leading;
 
   @override
   State<GameCardViewer> createState() => _GameCardViewerState();
@@ -275,22 +281,29 @@ class _GameCardViewerState extends State<GameCardViewer>
         ? _shareButton()
         : widget.locked ?? const SizedBox.shrink();
     final action = widget.action;
-    if (action == null) return primary;
+    final leading = widget.leading;
+    if (action == null && leading == null) return primary;
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: () {
-                Navigator.of(context).pop();
-                action.onPressed();
-              },
-              icon: Icon(action.icon),
-              label: Text(action.label),
+          if (leading != null) ...[
+            Center(child: leading),
+            const SizedBox(width: 10),
+          ],
+          if (action != null) ...[
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  action.onPressed();
+                },
+                icon: Icon(action.icon),
+                label: Text(action.label),
+              ),
             ),
-          ),
-          const SizedBox(width: 10),
+            const SizedBox(width: 10),
+          ],
           Expanded(child: primary),
         ],
       ),

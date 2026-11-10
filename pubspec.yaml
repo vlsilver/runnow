@@ -92,6 +92,7 @@ flutter:
     - "features/Icon 3I Export/runow-3i-1024.png"
     - assets/journey/map-xuyen-viet.svg
     - assets/journey/images/
+    - assets/run_card/
   fonts:
     - family: Exo 2
       fonts:

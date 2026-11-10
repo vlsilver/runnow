@@ -1964,7 +1964,7 @@ void main() {
         expect(find.text(label), findsOneWidget);
       }
 
-      await tester.tap(find.text('Khoe video 3d'));
+      await tester.tap(find.text('Khoe'));
       await tester.pump();
       final sent = share.shared.last;
       expect(sent.fileNameOverrides, ['3i-masoi-g1-motion.mp4']);

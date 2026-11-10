@@ -840,3 +840,149 @@ class RunNowContractCardTokens {
   static const chip = Color(0x8C000000);
   static const chipLine = Color(0x38FFFFFF);
 }
+
+/// Màu riêng của 12 bộ thẻ chạy (`achievements/run_faces`). Mỗi bộ giữ đúng
+/// chất liệu của nó (giấy, băng, huy chương) nên không theo bộ màu của app.
+class RunFaceTokens {
+  static const mapLandDark = Color(0xFF1B1E26);
+  static const mapLandLight = Color(0xFFEFEAE0);
+  static const mapCreditOnLight = Color(0xB8101218);
+  const RunFaceTokens._();
+
+  // Dùng chung giữa các bộ.
+  static const white = Color(0xFFFFFFFF);
+  static const night = Color(0xFF0D0E14);
+  static const nightBlue = Color(0xFF0D0F15);
+  static const nightDeep = Color(0xFF08090E);
+  static const shade00 = Color(0x0008090E);
+  static const shade50 = Color(0x8008090E);
+  static const shade55 = Color(0x8C08090E);
+  static const shade60 = Color(0x9908090E);
+  static const paperBright = Color(0xFFF7F5EF);
+  static const paper62 = Color(0x9EF4F2EC);
+  static const paper60 = Color(0x99F4F2EC);
+  static const paper68 = Color(0xADF4F2EC);
+  static const paper76 = Color(0xC2F4F2EC);
+  static const paper80 = Color(0xCCF4F2EC);
+  static const cream72 = Color(0xB8F3EAD6);
+  static const silver = Color(0xFFE3E8EE);
+  static const steel = Color(0xFFAEB5C0);
+  static const ash = Color(0xFF7E8690);
+  static const dashGray = Color(0xFF6A6F7A);
+  static const labelGray = Color(0xFF454955);
+  static const pinGray = Color(0xFF5A5F6A);
+  static const pinEdge = Color(0xFF9AA0AC);
+  static const charcoal = Color(0xFF1F222B);
+  static const graphite = Color(0xFF2A2D36);
+  static const white28 = Color(0x47FFFFFF);
+  static const flapTop = Color(0xFF2C303C);
+  static const flapBottom = Color(0xFF191C25);
+  static const dialTop = Color(0xFF20242F);
+  static const plaqueTop = Color(0xFF2C313A);
+  static const plaqueShade = Color(0x8C101218);
+  static const brick = Color(0xFFA83E29);
+  static const mapPaper = Color(0xFFEDE6D3);
+  static const mapShadow = Color(0x572A2418);
+  static const mapHighlight = Color(0xB8F4E2A0);
+  static const skyFade00 = Color(0x0005070F);
+  static const skyFade96 = Color(0xF505070F);
+  static const skyTop = Color(0xFF16224F);
+  static const reelCore = Color(0xFF3B2A20);
+  static const deepTeal = Color(0xFF233D4D);
+  static const duskNight = Color(0xFF0B1130);
+  static const duskNight90 = Color(0xE60B1130);
+  static const duskNight00 = Color(0x000B1130);
+  static const duskMid = Color(0xFF2B2558);
+  static const duskLow = Color(0xFF7A4266);
+  static const bronzeGlow = Color(0x388A5A3C);
+  static const bronze = Color(0xFF8A5A3C);
+  static const sunCream = Color(0xFFF4EBD0);
+  static const sunGlow = Color(0x73F4EBD0);
+  static const gaugeLight = Color(0xFFF4F6F8);
+  static const medalMid = Color(0xFFD3D9E0);
+  static const gaugeDark = Color(0xFFAEB6C0);
+  static const medalEdge = Color(0xFF8E96A2);
+
+  // bib
+  static const bibInk = Color(0xFFF7F5EF);
+  static const bibPaper = Color(0xFFF4F2EC);
+  static const bibCoal = Color(0xFF101218);
+
+  // blocks
+  static const blocksCream = Color(0xFFF4F2EC);
+  static const blocksCoal = Color(0xFF101218);
+  static const blocksBlue = Color(0xFF2340D9);
+  static const blocksWhite = Color(0xFFFFFFFF);
+
+  // blueprint
+  static const blueprintInk = Color(0xFFEAF2FF);
+  static const blueprintBlue = Color(0xFF123A73);
+  static const blueprintWhite = Color(0xFFFFFFFF);
+
+  // cassette
+  static const cassettePaper = Color(0xFFF3EAD6);
+  static const cassetteShell = Color(0xFF15171E);
+  static const cassetteInk = Color(0xFF1C1E26);
+  static const cassetteRed = Color(0xFFE4572E);
+  static const cassetteAmber = Color(0xFFF2B134);
+  static const cassetteTeal = Color(0xFF2A9D8F);
+  static const cassetteDeck = Color(0xFF22242B);
+  static const cassetteDeckLine = Color(0xFF3A3D47);
+  static const cassetteTag = Color(0xFFC8421F);
+  static const cassetteRule = Color(0x6BF3EAD6);
+
+  // city
+  static const cityDark = Color(0xFF141833);
+  static const cityGold = Color(0xFFFFD66B);
+  static const cityDim = Color(0x6BF2C14E);
+  static const cityInk = Color(0xFFF7F5EF);
+  static const cityMuted = Color(0xC2F4F2EC);
+  static const cityLine = Color(0x6BE3E8EE);
+  static const cityStreet = Color(0xFF08090E);
+
+  // constellation
+  static const constellationGold = Color(0xFFE9D8A6);
+  static const constellationBright = Color(0xFFFFF6DC);
+  static const constellationNight = Color(0xFF05070F);
+
+  // finish
+  static const finishPaper = Color(0xFFF4F2EC);
+  static const finishCoal = Color(0xFF101218);
+  static const finishWhite = Color(0xFFFFFFFF);
+
+  // flipboard
+  static const flipboardInk = Color(0xFFF7F5EF);
+  static const flipboardHinge = Color(0xFF08090E);
+  static const flipboardLabel = Color(0xB8F4F2EC);
+  static const flipboardSoft = Color(0xFFE3E8EE);
+  static const flipboardFade = Color(0xF008090E);
+
+  // medal
+  static const medalBg = Color(0xFF0D0E14);
+  static const medalPaper = Color(0xFFF4F2EC);
+  static const medalCoal = Color(0xFF101218);
+  static const medalLight = Color(0xFFC9D0D8);
+  static const medalDark = Color(0xFF7E8690);
+  static const medalRib = Color(0xFFE3E8EE);
+  static const medalWhite = Color(0xFFFFFFFF);
+  static const medalMuted = Color(0xB8F4F2EC);
+
+  // paper
+  static const paperInk = Color(0xFF2A2418);
+  static const paperRed = Color(0xFFC8321F);
+  static const paperSheet = Color(0xFFF4EFE0);
+
+  // receipt
+  static const receiptCoal = Color(0xFF101218);
+  static const receiptPaper = Color(0xFFF4F2EC);
+  static const receiptGrey = Color(0xFF454955);
+  static const receiptRowLabel = Color(0xFF33363F);
+
+  // stopwatch
+  static const stopwatchInk = Color(0xFFF7F5EF);
+  static const stopwatchSteel = Color(0xFFC9D0D8);
+  static const stopwatchSoft = Color(0xFFE3E8EE);
+  static const stopwatchMuted = Color(0xB8F4F2EC);
+  static const stopwatchDisc = Color(0xFF08090E);
+  static const stopwatchWhite = Color(0xFFFFFFFF);
+}

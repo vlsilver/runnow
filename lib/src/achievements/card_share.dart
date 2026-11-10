@@ -11,6 +11,8 @@ import 'package:image/image.dart' as img;
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
+import 'package:myrun/src/achievements/run_card_style.dart';
+import 'package:myrun/src/achievements/run_card_style_sheet.dart';
 import 'package:myrun/src/achievements/run_card_skin_choice.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
@@ -104,22 +106,31 @@ class CardShareFiles {
   final String motionType;
 }
 
-/// Khoá cache dạng `<nội dung>.<bộ màu>`. Phần nội dung đổi khi những gì in
-/// trên thẻ đổi; mỗi bộ màu của cùng nội dung giữ file riêng.
-String cardShareKey(CardShareSubject subject, {required RunCardSkin skin}) {
+/// Khoá cache dạng `<nội dung>.<bộ màu>`, thêm `.<kiểu thẻ>` khi khác kiểu gốc.
+/// Phần nội dung đổi khi những gì in trên thẻ đổi; mỗi bộ màu và kiểu thẻ của
+/// cùng nội dung giữ file riêng.
+String cardShareKey(
+  CardShareSubject subject, {
+  required RunCardSkin skin,
+  RunCardStyle? style,
+}) {
   // FNV-1a 32 bit: ổn định giữa các lần mở app, khác String.hashCode.
   var hash = 0x811c9dc5;
   for (final unit in '${subject.printed}|$_shareVersion'.codeUnits) {
     hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
   }
-  return '${hash.toRadixString(16)}.${skin.id}';
+  final key = '${hash.toRadixString(16)}.${skin.id}';
+  return style == null || style == RunCardStyle.current
+      ? key
+      : '$key.${style.id}';
 }
 
 String runCardShareKey(
   RunCard card,
   String owner, {
   required RunCardSkin skin,
-}) => cardShareKey(runCardShareSubject(card, owner), skin: skin);
+  RunCardStyle? style,
+}) => cardShareKey(runCardShareSubject(card, owner), skin: skin, style: style);
 
 /// Phần nội dung của khoá, bỏ bộ màu.
 String _shareContent(String key) => key.split('.').first;
@@ -333,6 +344,7 @@ Future<void> showCardShare(
   BuildContext context, {
   required CardShareSubject subject,
   required AchievementCardData data,
+  RunCard? runCard,
 }) {
   final skin = switch (data.secret) {
     final element? => RunCardSkin.secret(element),
@@ -342,7 +354,12 @@ Future<void> showCardShare(
     MaterialPageRoute<void>(
       builder: (_) => Theme(
         data: gameNightTheme(),
-        child: CardShareScreen(subject: subject, data: data, skin: skin),
+        child: CardShareScreen(
+          subject: subject,
+          data: data,
+          skin: skin,
+          runCard: runCard,
+        ),
       ),
     ),
   );
@@ -356,6 +373,7 @@ Future<void> showRunCardShare(
   context,
   subject: runCardShareSubject(card, data.owner),
   data: data,
+  runCard: card,
 );
 
 class CardShareScreen extends ConsumerStatefulWidget {
@@ -364,10 +382,14 @@ class CardShareScreen extends ConsumerStatefulWidget {
     required this.subject,
     required this.data,
     required this.skin,
+    this.runCard,
   });
 
   final CardShareSubject subject;
   final AchievementCardData data;
+
+  /// Có thì màn khoe đổi được kiểu thẻ; chỉ thẻ chạy thường mới có.
+  final RunCard? runCard;
 
   /// Bộ màu lúc mở. Chọn màu khác trên màn khoe chỉ đổi file khoe lần này,
   /// không đổi bộ màu chung của máy.
@@ -388,11 +410,26 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
   _Choice _choice = _Choice.motion;
   late RunCardSkin _skin = widget.skin;
 
-  String get _key => cardShareKey(widget.subject, skin: _skin);
+  /// Kiểu của riêng lần khoe này; null là thẻ không đổi được kiểu.
+  RunCardStyle? _style;
+
+  String get _key => cardShareKey(widget.subject, skin: _skin, style: _style);
 
   @override
   void initState() {
     super.initState();
+    final card = widget.runCard;
+    if (card != null && card.secret == null) {
+      _style = ref
+          .read(runCardStyleControllerProvider)
+          .styleOf(card.id, card.rolledAt);
+    }
+    _start();
+  }
+
+  void _pickStyle(RunCardStyle style) {
+    if (style == _style) return;
+    setState(() => _style = style);
     _start();
   }
 
@@ -601,7 +638,14 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
   @override
   Widget build(BuildContext context) {
     final files = _files;
-    return RunCardSkinScope(skin: _skin, child: _screen(files));
+    final style = _style;
+    final screen = _screen(files);
+    return RunCardSkinScope(
+      skin: _skin,
+      child: style == null
+          ? screen
+          : RunCardStyleScope.fixed(style: style, child: screen),
+    );
   }
 
   Widget _screen(CardShareFiles? files) {
@@ -655,32 +699,50 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
                 ),
                 const SizedBox(height: 12),
                 // Đang ghi thì ẩn: hai lượt ghi cùng chụp một sân khấu.
-                if (widget.data.secret == null)
+                if (widget.data.secret == null && !(_style?.set.ownColors ?? false))
                   _SkinPicker(skin: _skin, onPick: _pickSkin),
               ],
               if (files != null || _error == null) ...[
                 const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: files == null
-                      ? CardShareMakingBar(
-                          progress: cardShareProgress(
-                            step: _step,
-                            steps: _steps,
-                          ),
-                          pulsing: _step == 0 || _step > _steps,
-                        )
-                      : Builder(
-                          builder: (origin) => FilledButton.icon(
-                            onPressed: _sharing ? null : () => _share(origin),
-                            icon: const Icon(Icons.ios_share_rounded),
-                            label: Text(
-                              _sharing
-                                  ? 'Đang mở chia sẻ...'
-                                  : 'Khoe ${_choice.label.toLowerCase()}',
-                            ),
-                          ),
+                Row(
+                  children: [
+                    // Đang ghi thì ẩn: hai lượt ghi cùng chụp một sân khấu.
+                    if (files != null && _style != null) ...[
+                      RunCardStyleButton(
+                        ring: gameNightInk,
+                        onPressed: () => showRunCardStyleSheet(
+                          context,
+                          card: widget.runCard,
+                          data: widget.data,
+                          initial: _style,
+                          skin: _skin,
+                          onUse: _pickStyle,
                         ),
+                      ),
+                      const SizedBox(width: 10),
+                    ],
+                    Expanded(
+                      child: files == null
+                          ? CardShareMakingBar(
+                              progress: cardShareProgress(
+                                step: _step,
+                                steps: _steps,
+                              ),
+                              pulsing: _step == 0 || _step > _steps,
+                            )
+                          : Builder(
+                              builder: (origin) => FilledButton.icon(
+                                onPressed: _sharing
+                                    ? null
+                                    : () => _share(origin),
+                                icon: const Icon(Icons.ios_share_rounded),
+                                label: Text(
+                                  _sharing ? 'Đang mở chia sẻ...' : 'Khoe',
+                                ),
+                              ),
+                            ),
+                    ),
+                  ],
                 ),
               ],
             ],

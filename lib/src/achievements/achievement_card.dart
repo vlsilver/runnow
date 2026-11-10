@@ -32,6 +32,7 @@ class AchievementCardData {
     this.heroUnit = 'KM',
     this.stamp,
     this.backFace,
+    this.frontFace,
     this.secret,
     this.stats,
     this.quote,
@@ -69,6 +70,10 @@ class AchievementCardData {
 
   /// Ruột mặt sau thay cho huy hiệu 3I RUN; khung và vệt sáng vẫn do thẻ vẽ.
   final Widget? backFace;
+
+  /// Ruột mặt trước thay cho bố cục mặc định; khung và vệt sáng của bậc vẫn
+  /// do thẻ vẽ. Trả null thì giữ bố cục mặc định.
+  final Widget? Function(BuildContext context)? frontFace;
 
   /// Có số liệu thì khối chữ là tên ngắn và hàng số liệu thay cho [desc].
   final List<AchievementStat>? stats;
@@ -364,6 +369,34 @@ class _Front extends StatelessWidget {
     final halo = _halo(skin.shade);
     TextStyle label(Color color, double size) =>
         _label(color, size, skin.textShadow).copyWith(shadows: halo);
+    if (data.frontFace?.call(context) case final face?) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          ColoredBox(color: skin.field),
+          face,
+          if (sheen != null) _Sheen(light: light, color: sheen),
+          IgnorePointer(
+            child: CustomPaint(
+              painter: _TrimPainter(
+                tier: tier,
+                metal: metal,
+                tilt: pose.dx,
+                seconds: seconds,
+                front: true,
+              ),
+            ),
+          ),
+          if (tier == GameCardTier.mythic)
+            IgnorePointer(
+              child: CustomPaint(
+                painter: _StarPainter(seconds, _T.starDiamond),
+              ),
+            ),
+          GameCardGlare(at: light, strength: 0.38),
+        ],
+      );
+    }
     final stats = data.stats;
     // Ảnh tràn ra 10px mỗi bên và lệch nhẹ theo độ nghiêng, tạo chiều sâu.
     final art = Positioned(
@@ -729,6 +762,19 @@ class _TrimPainter extends CustomPainter {
 
 /// Ô dọc góc trái trên, số đá bằng số bậc. Từ bậc Bạc viền ô có thêm nét
 /// trong. Thẻ Ẩn có thêm ô chữ Hán của hành ở đầu, ngăn với đá bằng một nét.
+/// Ô đá của bậc, để bố cục thẻ khác đặt ở chỗ riêng của nó.
+class AchievementTierBadge extends StatelessWidget {
+  const AchievementTierBadge({super.key, required this.tier});
+
+  final GameCardTier tier;
+
+  @override
+  Widget build(BuildContext context) {
+    final metal = _metals[tier]!;
+    return _Cartouche(tier: tier, metal: metal, gems: metal, tilt: 0);
+  }
+}
+
 class _Cartouche extends StatelessWidget {
   const _Cartouche({
     required this.tier,

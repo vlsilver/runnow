@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/achievements/run_card_collection.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
+import 'package:myrun/src/achievements/run_card_style.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/admin/admin_screen.dart';
 import 'package:myrun/src/agents/agent_blocks_screen.dart';
@@ -371,6 +372,7 @@ class RunNowApp extends ConsumerWidget {
       darkTone: themeController.darkTone,
     );
     final cardSkin = ref.watch(runCardSkinProvider);
+    final cardStyles = ref.watch(runCardStyleControllerProvider);
     return MaterialApp.router(
       title: '3i Run',
       debugShowCheckedModeBanner: false,
@@ -388,7 +390,11 @@ class RunNowApp extends ConsumerWidget {
         // riêng khi rộng, các màn nội dung tự gò cột giữa).
         return RunCardSkinScope(
           skin: cardSkin,
-          child: RunNowBackdrop(child: content),
+          child: RunCardStyleScope(
+            resolve: (card) => cardStyles.styleOf(card.id, card.rolledAt),
+            revision: cardStyles.revision,
+            child: RunNowBackdrop(child: content),
+          ),
         );
       },
     );

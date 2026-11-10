@@ -6,7 +6,7 @@ import 'package:myrun/src/achievements/run_card.dart';
 import 'package:myrun/src/achievements/run_card_flow.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
-import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
+import 'package:myrun/src/achievements/run_card_style_sheet.dart';
 import 'package:myrun/src/club_ranking.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_player_card.dart';
@@ -318,15 +318,22 @@ class _RunCardCollectionScreenState
       appBar: AppBar(
         title: const Text('Bộ thẻ'),
         actions: [
-          RunCardSkinButton(
-            onPressed: () => showRunCardSkinSheet(
-              context,
-              // Thẻ Ẩn không theo bộ màu, nên mẫu là thẻ thường đầu tiên.
-              sample: cards.value
-                  ?.map((card) => card.data(owner))
-                  .where((data) => data.secret == null)
-                  .firstOrNull,
-            ),
+          RunCardStyleButton(
+            onPressed: () {
+              // Thẻ Ẩn không đổi được kiểu, nên mẫu là thẻ thường đầu tiên.
+              final sample = cards.value
+                  ?.whereType<CollectedRunCard>()
+                  .map((item) => item.card)
+                  .where((card) => card.secret == null)
+                  .firstOrNull;
+              showRunCardStyleSheet(
+                context,
+                card: sample,
+                data: sample == null
+                    ? null
+                    : runCardData(sample, owner: owner),
+              );
+            },
           ),
         ],
       ),

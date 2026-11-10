@@ -25,7 +25,7 @@ Future<void> showRunCardSkinSheet(
   isScrollControlled: true,
   backgroundColor: Colors.transparent,
   builder: (_) =>
-      _AppTheme(child: RunCardSkinSheet(sample: sample ?? _sample())),
+      RunCardSheetTheme(child: RunCardSkinSheet(sample: sample ?? _sample())),
 );
 
 /// Nút mở bộ màu thẻ: chấm tròn hai màu của bộ đang dùng.
@@ -70,8 +70,8 @@ class RunCardSkinButton extends StatelessWidget {
 /// Sheet là cài đặt của app nên luôn mặc theme app, kể cả khi mở từ màn có
 /// theme riêng: kính của theme đêm Ma Sói gần trong suốt, sheet đè lên màn
 /// ván sẽ không đọc được.
-class _AppTheme extends ConsumerWidget {
-  const _AppTheme({required this.child});
+class RunCardSheetTheme extends ConsumerWidget {
+  const RunCardSheetTheme({super.key, required this.child});
 
   final Widget child;
 
@@ -164,7 +164,7 @@ class _RunCardSkinSheetState extends ConsumerState<RunCardSkinSheet> {
                       ),
                       const Spacer(),
                       if (!_follow)
-                        _AppearanceToggle(
+                        RunCardAppearanceToggle(
                           value: _appearance,
                           onChanged: (value) =>
                               setState(() => _appearance = value),
@@ -181,7 +181,7 @@ class _RunCardSkinSheetState extends ConsumerState<RunCardSkinSheet> {
                 Row(
                   children: [
                     Expanded(
-                      child: _Swatch(
+                      child: RunCardSwatch(
                         label: 'App',
                         icon: Icons.smartphone_rounded,
                         color: theme.colorScheme.onSurface.withValues(
@@ -194,7 +194,7 @@ class _RunCardSkinSheetState extends ConsumerState<RunCardSkinSheet> {
                     ),
                     for (final e in RunNowElement.values)
                       Expanded(
-                        child: _Swatch(
+                        child: RunCardSwatch(
                           label: e.label,
                           icon: e.icon,
                           color: e.ramp[2],
@@ -224,8 +224,12 @@ class _RunCardSkinSheetState extends ConsumerState<RunCardSkinSheet> {
 }
 
 /// Hai icon sáng và tối ở góc sheet.
-class _AppearanceToggle extends StatelessWidget {
-  const _AppearanceToggle({required this.value, required this.onChanged});
+class RunCardAppearanceToggle extends StatelessWidget {
+  const RunCardAppearanceToggle({
+    super.key,
+    required this.value,
+    required this.onChanged,
+  });
 
   final RunNowAppearance value;
   final ValueChanged<RunNowAppearance> onChanged;
@@ -282,16 +286,19 @@ class _AppearanceToggle extends StatelessWidget {
 }
 
 /// Một chấm trong hàng màu.
-class _Swatch extends StatelessWidget {
-  const _Swatch({
+class RunCardSwatch extends StatelessWidget {
+  const RunCardSwatch({
+    super.key,
     required this.label,
     required this.icon,
     required this.color,
     required this.iconColor,
     required this.selected,
     required this.onTap,
+    this.size = 36,
   });
 
+  final double size;
   final String label;
   final IconData icon;
   final Color color;
@@ -322,8 +329,8 @@ class _Swatch extends StatelessWidget {
                 ),
               ),
               child: Container(
-                width: 36,
-                height: 36,
+                width: size,
+                height: size,
                 decoration: BoxDecoration(shape: BoxShape.circle, color: color),
                 child: Icon(icon, size: 18, color: iconColor),
               ),
@@ -426,40 +433,39 @@ class _FlipPreviewState extends State<_FlipPreview> {
   }
 }
 
+AchievementCardData _sample() => runCardData(runCardSample(), owner: 'Bạn');
+
 /// Thẻ mẫu khi chưa có thẻ thật để xem trước: một vòng quanh hồ Tây.
-AchievementCardData _sample() => runCardData(
-  RunCard(
-    id: 'sample',
-    tier: GameCardTier.rare,
-    km: 6.4,
-    odds: const [],
-    snapshot: RunCardSnapshot(
-      name: 'Một vòng hồ Tây',
-      sportType: 'Run',
-      distanceMeters: 6400,
-      movingTimeSeconds: 2150,
-      elapsedTimeSeconds: 2200,
-      startedAt: DateTime(2026, 10, 25, 6, 5),
-      route: const [
-        LatLng(21.0578, 105.8125),
-        LatLng(21.0641, 105.8152),
-        LatLng(21.0669, 105.8233),
-        LatLng(21.0637, 105.8311),
-        LatLng(21.0566, 105.8336),
-        LatLng(21.0497, 105.8302),
-        LatLng(21.0474, 105.8221),
-        LatLng(21.0512, 105.8147),
-        LatLng(21.0578, 105.8125),
-      ],
-      splits: const [
-        RunCardSplit(distanceMeters: 1000, movingTimeSeconds: 342),
-        RunCardSplit(distanceMeters: 1000, movingTimeSeconds: 336),
-        RunCardSplit(distanceMeters: 1000, movingTimeSeconds: 331),
-        RunCardSplit(distanceMeters: 1000, movingTimeSeconds: 338),
-        RunCardSplit(distanceMeters: 1000, movingTimeSeconds: 327),
-        RunCardSplit(distanceMeters: 1000, movingTimeSeconds: 319),
-      ],
-    ),
+RunCard runCardSample() => RunCard(
+  id: 'sample',
+  tier: GameCardTier.rare,
+  km: 6.4,
+  odds: const [],
+  snapshot: RunCardSnapshot(
+    name: 'Một vòng hồ Tây',
+    sportType: 'Run',
+    distanceMeters: 6400,
+    movingTimeSeconds: 2150,
+    elapsedTimeSeconds: 2200,
+    startedAt: DateTime(2026, 10, 25, 6, 5),
+    route: const [
+      LatLng(21.0578, 105.8125),
+      LatLng(21.0641, 105.8152),
+      LatLng(21.0669, 105.8233),
+      LatLng(21.0637, 105.8311),
+      LatLng(21.0566, 105.8336),
+      LatLng(21.0497, 105.8302),
+      LatLng(21.0474, 105.8221),
+      LatLng(21.0512, 105.8147),
+      LatLng(21.0578, 105.8125),
+    ],
+    splits: const [
+      RunCardSplit(distanceMeters: 1000, movingTimeSeconds: 342),
+      RunCardSplit(distanceMeters: 1000, movingTimeSeconds: 336),
+      RunCardSplit(distanceMeters: 1000, movingTimeSeconds: 331),
+      RunCardSplit(distanceMeters: 1000, movingTimeSeconds: 338),
+      RunCardSplit(distanceMeters: 1000, movingTimeSeconds: 327),
+      RunCardSplit(distanceMeters: 1000, movingTimeSeconds: 319),
+    ],
   ),
-  owner: 'Bạn',
 );
