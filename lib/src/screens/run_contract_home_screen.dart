@@ -177,18 +177,7 @@ class _RunContractHomeScreenState extends ConsumerState<RunContractHomeScreen> {
     final currentUid = ref.watch(firebaseUserProvider).value?.uid;
     final myActive = ref.watch(myActiveContractsProvider);
 
-    // Giáo án AI Coach giờ nằm chung feed Kèo: giáo án mình sở hữu (kể cả riêng
-    // tư) + các giáo án công khai của người khác. Dedup theo id, của mình trước.
-    final ownedCoach = ref.watch(coachPlanProvider).value;
-    final publicCoaches =
-        ref.watch(publicCoachPlansProvider).value ?? const <TrainingPlan>[];
-    final coachPlans = <TrainingPlan>[
-      ?ownedCoach,
-      ...(publicCoaches.where((p) => p.id != ownedCoach?.id).toList()..sort(
-        (a, b) =>
-            (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)),
-      )),
-    ];
+    final coachPlans = ref.watch(feedCoachPlansProvider);
 
     // Ván Ma Sói chỉ đọc value: API lỗi hay đang chờ thì không có card, list
     // kèo vẫn hiện như cũ.

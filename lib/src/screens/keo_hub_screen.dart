@@ -596,7 +596,12 @@ class _KeoSection extends ConsumerWidget {
     final club = ref.watch(hubClubContractsProvider);
     final games =
         ref.watch(gameListProvider).value?.items ?? const <GameListItem>[];
-    final coach = ref.watch(coachPlanProvider).value;
+    // Giáo án nháp chưa chạy, giáo án mình đã xong hết buổi thì không còn
+    // "đang chạy".
+    final coaches = [
+      for (final plan in ref.watch(feedCoachPlansProvider))
+        if (!plan.isDraft && !plan.completed) plan,
+    ];
     final error = mine.error ?? club.error;
     if (error != null) debugPrint('hub contracts: $error');
     final contracts = _mergeActive(
@@ -604,7 +609,6 @@ class _KeoSection extends ConsumerWidget {
       mine.value ?? const [],
       uid,
     );
-    final showCoach = coach != null && !coach.isDraft && !coach.completed;
     final board = ref.watch(liveBoardProvider).value;
     // Phòng của kèo "Hẹn chạy cùng" đã có thẻ kèo, không hiện lần nữa.
     final linkedRooms = {for (final c in contracts) ?c.roomId};
@@ -637,10 +641,10 @@ class _KeoSection extends ConsumerWidget {
             ref.invalidate(gameListProvider);
           },
         ),
-      if (showCoach)
+      for (final plan in coaches)
         _CoachMiniCard(
-          plan: coach,
-          onTap: () => context.push('/coach/${coach.id}'),
+          plan: plan,
+          onTap: () => context.push('/coach/${plan.id}'),
         ),
       for (final contract in contracts)
         _ContractMiniCard(contract: contract, currentUid: uid),

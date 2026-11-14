@@ -100,6 +100,21 @@ RunContract _contract() {
   );
 }
 
+TrainingPlan _plan(String id, String goal, {bool isDraft = false}) =>
+    TrainingPlan(
+      id: id,
+      goal: goal,
+      goalDistanceKm: 10,
+      weeks: 8,
+      startDate: DateTime(2026, 11, 2),
+      targetDate: DateTime(2026, 12, 27),
+      summary: '',
+      days: const [],
+      isDraft: isDraft,
+      ownerUid: id,
+      visibility: CoachVisibility.club,
+    );
+
 ClubCard _card(String id, String tier) =>
     ClubCard.fromJson({'ownerUid': 'u1', 'activityId': id, 'tier': tier})!;
 
@@ -121,6 +136,8 @@ Future<_Fetches> _pumpHome(
   double height = 100,
   Stream<List<RunRoom>>? publicRooms,
   Future<RunContractPage>? clubContracts,
+  TrainingPlan? ownedCoach,
+  List<TrainingPlan> publicCoaches = const [],
 }) async {
   tester.view.physicalSize = Size(400, height);
   tester.view.devicePixelRatio = 1;
@@ -147,7 +164,10 @@ Future<_Fetches> _pumpHome(
           (ref) => Stream.value(const <RunRoomMembership>[]),
         ),
         coachPlanProvider.overrideWith(
-          (ref) => Stream<TrainingPlan?>.value(null),
+          (ref) => Stream<TrainingPlan?>.value(ownedCoach),
+        ),
+        publicCoachPlansProvider.overrideWith(
+          (ref) => Stream.value(publicCoaches),
         ),
         gameListProvider.overrideWith((ref) async => null),
         totalKmLeaderboardProvider.overrideWith(
@@ -250,6 +270,24 @@ void main() {
     );
     expect([for (final t in thumbs) t.item.key], ['newest', 'older']);
     expect(hearts.counted, isEmpty);
+  });
+
+  testWidgets('mục Kèo có cả giáo án công khai của người khác', (tester) async {
+    await _pumpHome(
+      tester,
+      uid: 'me',
+      height: 900,
+      ownedCoach: _plan('me', 'Half Marathon trong 6 tuần'),
+      publicCoaches: [
+        _plan('me', 'Half Marathon trong 6 tuần'),
+        _plan('steve', 'Chạy 10km pace 7'),
+        _plan('nhap', 'Giáo án nháp', isDraft: true),
+      ],
+    );
+
+    expect(find.text('Half Marathon trong 6 tuần'), findsOneWidget);
+    expect(find.text('Chạy 10km pace 7'), findsOneWidget);
+    expect(find.text('Giáo án nháp'), findsNothing);
   });
 
   testWidgets('kèo về sau không đẩy các mục dưới xuống', (tester) async {

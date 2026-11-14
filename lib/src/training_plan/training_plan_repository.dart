@@ -238,3 +238,18 @@ class CoachController {
     });
   }
 }
+
+/// Giáo án lên feed Kèo (trang chủ và màn Tất cả kèo): giáo án của mình, kể cả
+/// riêng tư, đứng trước; rồi giáo án công khai của người khác, mới tạo trước.
+final feedCoachPlansProvider = Provider<List<TrainingPlan>>((ref) {
+  final owned = ref.watch(coachPlanProvider).value;
+  final public =
+      ref.watch(publicCoachPlansProvider).value ?? const <TrainingPlan>[];
+  return [
+    ?owned,
+    ...(public.where((plan) => plan.id != owned?.id).toList()..sort(
+      (a, b) =>
+          (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)),
+    )),
+  ];
+});
