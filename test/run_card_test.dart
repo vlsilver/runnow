@@ -161,8 +161,15 @@ class _Photos extends RunCardPhotos {
   final downloads = <String>[];
   final focuses = <Alignment>[];
 
+  /// Đặt thì lệnh chọn ảnh treo tới khi complete, như lúc máy đang xử lý ảnh.
+  Completer<Uint8List?>? pickGate;
+  int picks = 0;
+
   @override
-  Future<Uint8List?> pick() async => bytes;
+  Future<Uint8List?> pick() async {
+    picks++;
+    return pickGate != null ? pickGate!.future : bytes;
+  }
 
   @override
   Future<Uint8List> download(String path) async {
@@ -1213,6 +1220,68 @@ void main() {
     expect(art, findsWidgets);
   });
 
+  testWidgets('art finished after sending appears on the flip screen', (
+    tester,
+  ) async {
+    StorageImage.debugPutDownloadUrl('u/a/r1.png', 'https://x.test/a.png');
+    final backend = _Backend();
+    await _pumpPanel(tester, backend, initial: _card());
+    await _openStyles(tester);
+    await _tapText(tester, 'Sơn dầu');
+    await _next(tester);
+    await _tapTip(tester, 'Vẽ');
+    expect(find.byTooltip('Vẽ'), findsNothing, reason: 'đã về màn thẻ');
+    final art = find.byWidgetPredicate(
+      (w) => w is StorageImage && w.path == 'u/a/r1.png',
+    );
+    expect(art, findsNothing);
+
+    backend.cards.add(
+      _card(art: const {'status': 'drawing', 'style': 'oil', 'attempt': 1}),
+    );
+    await _settle(tester);
+    backend.cards.add(
+      _card(
+        art: const {
+          'status': 'done',
+          'style': 'oil',
+          'attempt': 1,
+          'path': 'u/a/r1.png',
+        },
+      ),
+    );
+    await _settle(tester);
+
+    expect(art, findsWidgets);
+  });
+
+  testWidgets('a card being drawn shows its source photo and progress', (
+    tester,
+  ) async {
+    StorageImage.debugPutDownloadUrl(_srcPath, 'https://x.test/s.jpg');
+    final backend = _Backend();
+    await _pumpPanel(
+      tester,
+      backend,
+      initial: _card(
+        art: {
+          'status': 'drawing',
+          'style': 'custom',
+          'attempt': 1,
+          'photoPath': _srcPath,
+          'requestedAt': DateTime.now(),
+        },
+      ),
+    );
+    await _settle(tester);
+
+    expect(
+      find.byWidgetPredicate((w) => w is StorageImage && w.path == _srcPath),
+      findsWidgets,
+    );
+    expect(find.text('Đang vẽ'), findsOne);
+  });
+
   testWidgets('an image still downloading shows its loading widget', (
     tester,
   ) async {
@@ -1421,6 +1490,31 @@ void main() {
     expect(backend.artBodies, [
       {'style': 'custom'},
     ]);
+  });
+
+  testWidgets('the style image tile shows progress while the photo loads', (
+    tester,
+  ) async {
+    final backend = _Backend()..styles = {..._styles, 'custom': true};
+    final gate = Completer<Uint8List?>();
+    final picker = _Photos()..pickGate = gate;
+    await _pumpPanel(tester, backend, initial: _card(), picker: picker);
+    await _openStyles(tester);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    await tester.tap(find.text('Style từ Ảnh'));
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOne);
+
+    await tester.tap(find.text('Style từ Ảnh'));
+    await tester.pump();
+    expect(picker.picks, 1, reason: 'đang xử lý ảnh thì không mở picker lần 2');
+
+    gate.complete(_png);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(_navEnabled(tester, 'Tiếp'), isTrue);
   });
 
   testWidgets('a refused draw stays on the confirm step with the reason', (

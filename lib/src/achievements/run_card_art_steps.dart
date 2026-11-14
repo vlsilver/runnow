@@ -128,6 +128,9 @@ class _RunCardArtStepsState extends ConsumerState<RunCardArtSteps> {
   bool _styleKept = false;
   bool _consent = false;
   bool _sending = false;
+
+  /// Đang đợi thư viện ảnh trả ảnh; ảnh lớn hay nằm trên iCloud thì đợi lâu.
+  bool _picking = false;
   String? _error;
   final _note = TextEditingController();
 
@@ -395,13 +398,15 @@ class _RunCardArtStepsState extends ConsumerState<RunCardArtSteps> {
                 label: 'Tải ảnh',
                 selected: _upload != null,
                 onTap: _pick,
-                child: switch (_upload) {
-                  final bytes? => Image.memory(bytes, fit: BoxFit.cover),
-                  null => const Icon(
-                    Icons.add_photo_alternate_outlined,
-                    color: _T.titleGold2,
-                  ),
-                },
+                child: _picking
+                    ? _pickingMark
+                    : switch (_upload) {
+                        final bytes? => Image.memory(bytes, fit: BoxFit.cover),
+                        null => const Icon(
+                          Icons.add_photo_alternate_outlined,
+                          color: _T.titleGold2,
+                        ),
+                      },
               ),
               _PhotoTile(
                 label: 'Không ảnh',
@@ -508,17 +513,23 @@ class _RunCardArtStepsState extends ConsumerState<RunCardArtSteps> {
                   onTap: () => _hasStyleRef && selected != _customStyle
                       ? _chooseStyle(_customStyle.key, family)
                       : _pickStyleRef(family),
-                  child: switch (_styleUpload) {
-                    final bytes? => Image.memory(bytes, fit: BoxFit.cover),
-                    null when _styleKept => const Icon(
-                      Icons.image_outlined,
-                      color: _T.titleGold2,
-                    ),
-                    null => const Icon(
-                      Icons.add_photo_alternate_outlined,
-                      color: _T.titleGold2,
-                    ),
-                  },
+                  child: _picking
+                      ? _pickingMark
+                      : switch (_styleUpload) {
+                          final bytes? => Image.memory(
+                            bytes,
+                            fit: BoxFit.cover,
+                            cacheWidth: 240,
+                          ),
+                          null when _styleKept => const Icon(
+                            Icons.image_outlined,
+                            color: _T.titleGold2,
+                          ),
+                          null => const Icon(
+                            Icons.add_photo_alternate_outlined,
+                            color: _T.titleGold2,
+                          ),
+                        },
                 ),
               if (canPlain)
                 _StripItem(
@@ -594,7 +605,7 @@ class _RunCardArtStepsState extends ConsumerState<RunCardArtSteps> {
     if (style == null) return null;
     if (style == _customStyle) {
       return switch (_styleUpload) {
-        final bytes? => Image.memory(bytes, fit: BoxFit.cover),
+        final bytes? => Image.memory(bytes, fit: BoxFit.cover, cacheWidth: 480),
         null => null,
       };
     }
@@ -727,16 +738,22 @@ class _RunCardArtStepsState extends ConsumerState<RunCardArtSteps> {
   /// Ảnh chọn trong thư viện, đã kiểm loại và cỡ; null khi huỷ hay ảnh không
   /// dùng được (lý do nằm ở [_error]).
   Future<({Uint8List bytes, String type})?> _pickImage() async {
-    if (_sending) return null;
+    if (_sending || _picking) return null;
+    setState(() => _picking = true);
     final Uint8List? bytes;
     try {
       bytes = await ref.read(runCardPhotosProvider).pick();
     } catch (error) {
       if (!mounted) return null;
-      setState(() => _error = 'Không mở được thư viện ảnh: $error');
+      setState(() {
+        _picking = false;
+        _error = 'Không mở được thư viện ảnh: $error';
+      });
       return null;
     }
-    if (bytes == null || !mounted) return null;
+    if (!mounted) return null;
+    setState(() => _picking = false);
+    if (bytes == null) return null;
     final type = runCardPhotoType(bytes);
     final error = type == null
         ? 'Chỉ dùng được ảnh JPEG hoặc PNG.'
@@ -846,6 +863,11 @@ class _RuneLimit extends TextInputFormatter {
     );
   }
 }
+
+const _pickingMark = SizedBox.square(
+  dimension: 22,
+  child: CircularProgressIndicator(strokeWidth: 2.5, color: _T.titleGold2),
+);
 
 /// Chiều cao hàng ví dụ: ô 2:3 ngang 76 cộng tên.
 const _stripHeight = 138.0;

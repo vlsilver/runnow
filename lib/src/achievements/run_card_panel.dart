@@ -15,6 +15,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/photo_viewer.dart';
 
 export 'package:myrun/src/achievements/run_card_stage.dart' show RunCardFrame;
 
@@ -269,22 +270,30 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
         onClose: () => setState(() => _drawing = false),
       );
     }
-    final data = runCardData(card, owner: widget.owner);
     final km = card.km;
     final glow = runCardGlow(card.tier);
     final art = card.art;
     final drawLabel = runCardDrawLabel(card, fresh: 'Vẽ tranh nền');
     final drawing = art?.status == RunCardArtStatus.drawing && !_stuck(art!);
+    // Model vẽ mất vài chục giây: giữ ảnh vừa chọn trên thẻ cho tới lúc có
+    // tranh, thay vì quay về đường chạy như chưa làm gì.
+    final data = runCardData(
+      card,
+      owner: widget.owner,
+      previewArt: switch (art?.photoPath) {
+        final path? when drawing => StoragePhoto(
+          path: path,
+          cacheWidth: 960,
+          placeholder: RunDefaultArt(card: card),
+        ),
+        _ => null,
+      },
+    );
     final shown = Semantics(
       button: true,
       label: 'Xem thẻ 3D',
       child: GestureDetector(
-        onTap: () => showRunCardViewer(
-          context,
-          card,
-          data,
-          onDraw: _openDraw,
-        ),
+        onTap: () => showRunCardViewer(context, card, data, onDraw: _openDraw),
         child: RunCardFrame(
           child: Stack(
             children: [
@@ -336,6 +345,7 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
                 ),
                 const SizedBox(width: 10),
               ],
+              if (drawing) const Expanded(child: _DrawingLabel()),
               if (drawLabel case final label?)
                 Expanded(
                   child: FilledButton.icon(
@@ -769,6 +779,28 @@ class _StageSpinner extends StatelessWidget {
 }
 
 /// Vệt sáng lướt qua thẻ trong lúc đang làm tranh nền.
+class _DrawingLabel extends StatelessWidget {
+  const _DrawingLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        SizedBox.square(
+          dimension: 18,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.2,
+            color: _T.titleGold2,
+          ),
+        ),
+        SizedBox(width: 10),
+        Text('Đang vẽ', style: TextStyle(color: _T.hero, fontSize: 15)),
+      ],
+    );
+  }
+}
+
 class _DrawingSheen extends StatefulWidget {
   const _DrawingSheen();
 
