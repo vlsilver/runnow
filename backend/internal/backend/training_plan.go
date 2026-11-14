@@ -70,6 +70,7 @@ type genPlanDay struct {
 	Detail     string   `json:"detail"`
 	PaceHint   string   `json:"paceHint"`
 	Note       string   `json:"note"`
+	Purpose    string   `json:"purpose"`
 }
 
 type genPlan struct {
@@ -80,6 +81,7 @@ type genPlan struct {
 	TargetPaceSec  int          `json:"targetPaceSec"`
 	Feasibility    string       `json:"feasibility"`
 	Warnings       []string     `json:"warnings"`
+	WeekThemes     []string     `json:"weekThemes"`
 	Days           []genPlanDay `json:"days"`
 }
 
@@ -104,6 +106,10 @@ func trainingPlanSchema() *genai.Schema {
 				Enum: []string{"vừa sức", "thử thách", "quá sức"},
 			},
 			"warnings": {Type: genai.TypeArray, Items: str()},
+			// weekThemes và purpose trả lời "tuần này, buổi này để làm gì". App cũ
+			// không đọc hai field này; app mới thiếu thì tự rơi về câu chung theo
+			// loại bài, nên không bắt buộc.
+			"weekThemes": {Type: genai.TypeArray, Items: str()},
 			"days": {
 				Type: genai.TypeArray,
 				Items: &genai.Schema{
@@ -119,6 +125,7 @@ func trainingPlanSchema() *genai.Schema {
 						"detail":     str(),
 						"paceHint":   str(),
 						"note":       str(),
+						"purpose":    str(),
 					},
 					Required: []string{"week", "type", "title"},
 				},
@@ -182,6 +189,12 @@ RÀNG BUỘC ĐẦU RA:
 - distanceKm: km buổi (số thực). paceHint dạng "6:15" (phút:giây/km). detail chỉ cho
   interval (vd "5×400m nghỉ 90s"). note: lời khuyên NGẮN, chuyên môn mà dễ hiểu
   (kỹ thuật/cảm giác/nhắc nhở cho ĐÚNG buổi đó) — không sáo rỗng, không cần mọi buổi.
+- purpose: MỌI buổi chạy đều có (ngày rest thì bỏ). MỘT câu, tối đa 14 từ, trả lời
+  "buổi này để làm gì" cho người mới tập: nói cái cơ thể được gì và nó giúp gì cho
+  mục tiêu (vd "Dạy chân giữ pace đua khi đã mỏi"). Không thuật ngữ (VO2max,
+  lactate, ngưỡng), không lặp lại title hay số km, khác note (note là cách chạy).
+- weekThemes: ĐÚNG weeks phần tử, phần tử i là chủ đề tuần i+1, 2–4 từ
+  (vd "Xây nền", "Thêm tốc độ", "Đỉnh tải", "Giảm tải, về đích").
 - summary: 1 câu nêu định hướng giáo án.
 
 GIẢI THÍCH CHO USER (user đọc phần này rồi mới bấm xác nhận — viết cho người tập,
@@ -363,6 +376,9 @@ func buildTrainingPlanDoc(uid, goal string, spec goalSpec, plan genPlan, now tim
 		if s := strings.TrimSpace(d.Note); s != "" {
 			entry["note"] = s
 		}
+		if s := strings.TrimSpace(d.Purpose); s != "" && typ != "rest" {
+			entry["purpose"] = s
+		}
 		days = append(days, entry)
 	}
 	target := start.AddDate(0, 0, len(days)-1)
@@ -413,6 +429,15 @@ func buildTrainingPlanDoc(uid, goal string, spec goalSpec, plan genPlan, now tim
 	}
 	if len(warnings) > 0 {
 		doc["warnings"] = warnings
+	}
+	// Chủ đề tuần chỉ ghi khi đủ cho mọi tuần: thiếu hay thừa thì không biết
+	// phần tử nào của tuần nào, app tự suy chủ đề từ lịch.
+	if len(plan.WeekThemes) == weeks {
+		themes := make([]string, weeks)
+		for i, t := range plan.WeekThemes {
+			themes[i] = strings.TrimSpace(t)
+		}
+		doc["weekThemes"] = themes
 	}
 	return doc
 }
