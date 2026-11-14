@@ -60,7 +60,22 @@ class ClubCard {
   final String key;
   final CollectedCard card;
   final DateTime? sharedAt;
+
+  /// Thẻ buổi chạy chưa vẽ nền thì chỉ có khuôn trơn. Các loại thẻ khác không
+  /// có bước vẽ nền, lúc nào cũng đủ hình.
+  bool get hasBackground => switch (card) {
+    CollectedRunCard(:final card) => card.artPath != null,
+    _ => true,
+  };
 }
+
+/// Các thẻ khoe app hiện ra từ lô doc clubCards, giữ thứ tự của lô. Bỏ doc app
+/// chưa đọc được và thẻ buổi chạy chưa vẽ nền: thẻ khoe là để khoe tranh, thẻ
+/// trơn chỉ nằm trong Bộ thẻ của chủ thẻ.
+List<ClubCard> shownClubCards(Iterable<Map<String, dynamic>> docs) => [
+  for (final doc in docs)
+    if (ClubCard.fromJson(doc) case final card? when card.hasBackground) card,
+];
 
 /// Thẻ gốc trong bộ thẻ của mình ứng với thẻ khoe [item], để mở bằng màn xem
 /// của chủ thẻ (có nút khoe, đủ đường chạy). Id thẻ khoe và thẻ trong bộ giống

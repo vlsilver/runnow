@@ -64,6 +64,28 @@ void main() {
     },
   );
 
+  test('danh sách thẻ khoe: bỏ thẻ buổi chạy chưa vẽ nền, giữ thẻ loại khác', () {
+    final shown = shownClubCards([
+      {'ownerUid': 'u1', 'activityId': 'plain', 'tier': 'mythic'},
+      {
+        'ownerUid': 'u1',
+        'activityId': 'drawn',
+        'tier': 'rare',
+        'art': {'status': 'done', 'path': 'users/u1/runCards/drawn/art-1.png'},
+      },
+      {
+        'ownerUid': 'u1',
+        'activityId': 'pending',
+        'tier': 'epic',
+        'art': {'status': 'pending'},
+      },
+      {'ownerUid': 'u1', 'kind': 'game', 'gameId': 'g1', 'tier': 'rare'},
+      {'ownerUid': 'u1', 'kind': 'chưa-biết'},
+    ]);
+
+    expect([for (final item in shown) item.key], ['drawn', 'game_g1']);
+  });
+
   test(
     'thẻ khoe: id là activityId, có chủ thẻ, tranh và không có đường chạy',
     () {

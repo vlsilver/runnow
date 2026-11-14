@@ -67,7 +67,8 @@ CollectionReference<Map<String, dynamic>> get _clubCards =>
 /// trang Thẻ của club.
 const _clubCardLimit = 60;
 
-/// Thẻ cả club đang khoe, khoe mới trước.
+/// Thẻ cả club đang khoe, khoe mới trước. Không gồm thẻ buổi chạy chưa vẽ nền:
+/// xem [shownClubCards].
 final clubCardsProvider = StreamProvider.autoDispose<List<ClubCard>>((ref) {
   final uid = ref.watch(firebaseUserProvider.select((user) => user.value?.uid));
   if (uid == null) return Stream.value(const []);
@@ -76,10 +77,10 @@ final clubCardsProvider = StreamProvider.autoDispose<List<ClubCard>>((ref) {
       .limit(_clubCardLimit)
       .snapshots()
       .map(
-        (snap) => [
+        (snap) => shownClubCards([
           for (final doc in snap.docs)
-            ?ClubCard.fromJson(_plain(doc.data()) as Map<String, dynamic>),
-        ],
+            _plain(doc.data()) as Map<String, dynamic>,
+        ]),
       );
 });
 
