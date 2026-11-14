@@ -124,14 +124,14 @@ void main() {
     expect(find.text('Đạp xe hồ'), findsNothing);
     expect(find.byType(StepTimelineRow), findsNothing);
 
-    await tester.tap(find.text('Đi bộ'));
+    await tester.tap(find.byTooltip('Đi bộ'));
     await tester.pumpAndSettle();
     expect(find.text('Đi dạo'), findsOneWidget);
     expect(find.text('Leo núi'), findsOneWidget);
     expect(find.byType(StepTimelineRow), findsOneWidget);
     expect(find.text('Chạy sáng'), findsNothing);
 
-    await tester.tap(find.text('Đạp xe'));
+    await tester.tap(find.byTooltip('Đạp xe'));
     await tester.pumpAndSettle();
     expect(find.text('Đạp xe hồ'), findsOneWidget);
     expect(find.text('Đi dạo'), findsNothing);
@@ -147,7 +147,7 @@ void main() {
     ]);
     expect(repository.pageReads, 1);
 
-    await tester.tap(find.text('Đạp xe'));
+    await tester.tap(find.byTooltip('Đạp xe'));
     await tester.pumpAndSettle();
     expect(find.text('Đạp xe xa'), findsOneWidget);
     expect(find.byType(RunNowEmpty), findsNothing);
@@ -166,7 +166,7 @@ void main() {
     repository.gates.single.complete();
     await tester.pump();
 
-    await tester.tap(find.text('Đạp xe'));
+    await tester.tap(find.byTooltip('Đạp xe'));
     for (var i = 0; i < 10 && repository.gates.length < 2; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
@@ -183,12 +183,12 @@ void main() {
   ) async {
     await _pumpJournal(tester, [_activity('Chạy sáng', ActivityKind.run, 1)]);
 
-    await tester.tap(find.text('Đạp xe'));
+    await tester.tap(find.byTooltip('Đạp xe'));
     await tester.pumpAndSettle();
     expect(find.byType(RunNowEmpty), findsOneWidget);
     expect(find.text('Chưa có buổi đạp xe nào'), findsOneWidget);
 
-    await tester.tap(find.text('Đi bộ'));
+    await tester.tap(find.byTooltip('Đi bộ'));
     await tester.pumpAndSettle();
     expect(find.text('Chưa có buổi đi bộ nào'), findsOneWidget);
   });

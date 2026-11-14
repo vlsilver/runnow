@@ -50,13 +50,12 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Nhật ký'),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Chạy'),
-              Tab(text: 'Đi bộ'),
-              Tab(text: 'Đạp xe'),
-            ],
-          ),
+          actions: const [
+            Padding(
+              padding: EdgeInsets.only(right: 12),
+              child: Center(child: _JournalTabPicker()),
+            ),
+          ],
         ),
         body: TabBarView(
           children: [
@@ -113,6 +112,77 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
     );
   }
 }
+
+/// Bộ chọn môn trên thanh tiêu đề: ba ô icon, ô đang xem được tô. Đi theo
+/// [DefaultTabController] nên vuốt ngang danh sách thì ô tô đổi theo.
+class _JournalTabPicker extends StatelessWidget {
+  const _JournalTabPicker();
+
+  @override
+  Widget build(BuildContext context) {
+    final tabs = DefaultTabController.of(context);
+    final palette = context.runNowPalette;
+    final theme = Theme.of(context);
+    final selectedInk = theme.brightness == Brightness.light
+        ? palette.accentDeep
+        : palette.accent;
+    return ListenableBuilder(
+      listenable: tabs,
+      builder: (context, _) => Container(
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final tab in JournalTab.values)
+              Tooltip(
+                message: _journalTabLabel(tab),
+                child: Semantics(
+                  button: true,
+                  selected: tab.index == tabs.index,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => tabs.animateTo(tab.index),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      width: 44,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: tab.index == tabs.index
+                            ? palette.tint
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                      child: Icon(
+                        switch (tab) {
+                          JournalTab.run => Icons.directions_run_rounded,
+                          JournalTab.walk => Icons.directions_walk_rounded,
+                          JournalTab.ride => Icons.directions_bike_rounded,
+                        },
+                        size: 20,
+                        color: tab.index == tabs.index
+                            ? selectedInk
+                            : palette.textMuted,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _journalTabLabel(JournalTab tab) => switch (tab) {
+  JournalTab.run => 'Chạy',
+  JournalTab.walk => 'Đi bộ',
+  JournalTab.ride => 'Đạp xe',
+};
 
 /// Một dòng trong timeline nhật ký: hoặc buổi CHẠY, hoặc TỔNG BƯỚC của một ngày.
 sealed class _JournalRow {
