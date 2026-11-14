@@ -338,23 +338,34 @@ class _SetupRow extends StatelessWidget {
               const SizedBox(width: 28),
             const SizedBox(width: 12),
           ],
+          // Giá trị do backend gửi, có khi là cả lời dặn Quản trò: không vừa một
+          // hàng với nhãn thì Wrap đẩy nó xuống hàng riêng, không ép nhãn về 0.
           Expanded(
-            child: Text(
-              item.label,
-              style: TextStyle(
-                fontSize: sub ? 13 : 14.5,
-                fontWeight: sub ? FontWeight.w600 : FontWeight.w700,
-                color: sub ? _M.muted : _M.ink,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            item.value,
-            style: TextStyle(
-              fontSize: sub ? 13 : 14.5,
-              fontWeight: FontWeight.w800,
-              color: _M.amberBright,
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
+              runSpacing: 2,
+              children: [
+                Text(
+                  item.label,
+                  style: TextStyle(
+                    fontSize: sub ? 13 : 14.5,
+                    fontWeight: sub ? FontWeight.w600 : FontWeight.w700,
+                    color: sub ? _M.muted : _M.ink,
+                  ),
+                ),
+                Text(
+                  item.value,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: sub ? 13 : 14.5,
+                    fontWeight: FontWeight.w800,
+                    color: _M.amberBright,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

@@ -35,6 +35,42 @@ void main() {
     expect(tester.getTopLeft(find.text('Giờ mở vòng đầu')).dx, 13);
   });
 
+  testWidgets('giá trị dài xuống hàng dưới nhãn, không tràn', (tester) async {
+    const value =
+        'Bạn là thám tử Conan, phong thái điềm tĩnh, lối lập luận sắc bén, '
+        'hay chốt câu bằng một suy luận bất ngờ.';
+    await _pump(tester, const [
+      GameSetupItem(
+        key: 'persona',
+        icon: '',
+        label: 'Tính cách Quản trò',
+        value: value,
+      ),
+    ]);
+
+    expect(tester.takeException(), isNull);
+    final label = tester.getRect(find.text('Tính cách Quản trò'));
+    final body = tester.getRect(find.text(value));
+    // Nhãn nằm trọn một dòng (cỡ chữ 14.5), giá trị bắt đầu bên dưới nhãn.
+    expect(label.height, lessThan(30));
+    expect(body.top, greaterThanOrEqualTo(label.bottom));
+    expect(body.right, lessThanOrEqualTo(800 - 13));
+  });
+
+  testWidgets('giá trị ngắn vẫn nằm sát mép phải cùng hàng với nhãn', (
+    tester,
+  ) async {
+    await _pump(tester, const [
+      GameSetupItem(key: 'shot', icon: '', label: 'Bắn khi ngã', value: '1 km'),
+    ]);
+
+    final label = tester.getRect(find.text('Bắn khi ngã'));
+    final value = tester.getRect(find.text('1 km'));
+    expect(value.center.dy, closeTo(label.center.dy, 0.5));
+    // Màn test rộng 800: trừ viền 1 + padding 12.
+    expect(value.right, 800 - 13);
+  });
+
   testWidgets('khối có icon thì dòng không icon vẫn thẳng hàng', (
     tester,
   ) async {
