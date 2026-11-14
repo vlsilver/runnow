@@ -188,7 +188,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   bool get _showRunTogether =>
       _canHostRunTogether && (!_hasSession || _roomKind == RunRoomKind.solo);
 
-
   @override
   void initState() {
     super.initState();
@@ -245,7 +244,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     if (uids.isEmpty) return;
     final members = ref.read(membersProvider).value ?? const <MemberProfile>[];
     final first =
-        members.where((member) => member.uid == uids.first).firstOrNull
+        members
+            .where((member) => member.uid == uids.first)
+            .firstOrNull
             ?.displayName ??
         'Một người';
     final text = uids.length == 1
@@ -286,7 +287,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     final latest = fresh.first;
     final members = ref.read(membersProvider).value ?? const <MemberProfile>[];
     final name =
-        members.where((member) => member.uid == latest.uid).firstOrNull
+        members
+            .where((member) => member.uid == latest.uid)
+            .firstOrNull
             ?.displayName ??
         'Một người';
     HapticFeedback.lightImpact();
@@ -373,7 +376,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                       height: c.maxHeight,
                     ),
                   )
-                : Center(
+                : Align(
+                    // Bảng số che nửa dưới, nên đặt vào giữa phần còn trống.
+                    alignment: const Alignment(0, -0.45),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -505,14 +510,17 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            const _MetricGap(),
                             Expanded(
                               child: SizedBox(
                                 height: 74,
-                                child: _MetricCard(label: 'PACE TB', value: pace),
+                                child: _MetricCard(
+                                  label: 'PACE TB',
+                                  value: pace,
+                                ),
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            const _MetricGap(),
                             Expanded(
                               child: SizedBox(
                                 height: 74,
@@ -565,6 +573,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                             'Chạy cùng: '
                                                 '${_joinPolicy.label.toLowerCase()}',
                                         ].join(' · '),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           fontSize: 11,
                                           color: onSurface.withValues(
@@ -579,7 +589,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                               if (_liveEnabled || _canHostRunTogether)
                                 IconButton(
                                   visualDensity: VisualDensity.compact,
-                                  icon: const Icon(Icons.tune_rounded, size: 20),
+                                  icon: const Icon(
+                                    Icons.tune_rounded,
+                                    size: 20,
+                                  ),
                                   tooltip: 'Cài đặt Live',
                                   onPressed: _openLiveSettings,
                                 ),
@@ -605,8 +618,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                           _selectedKind = kind;
                           // Đạp/xe máy: Live mặc định TẮT. Chạy: bật lại nếu công
                           // khai (đúng mặc định của chạy bộ).
-                          _liveEnabled =
-                              kind == ActivityKind.run ? isPublic : false;
+                          _liveEnabled = kind == ActivityKind.run
+                              ? isPublic
+                              : false;
                         });
                       },
                     ),
@@ -1150,7 +1164,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     await _resetSession(message: 'Đã bỏ phiên tracking.');
   }
 
-
   Future<void> _resetSession({required String? message}) async {
     await _positionSubscription?.cancel();
     _ticker?.cancel();
@@ -1458,7 +1471,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _liveAnnouncedKm = milestoneKm;
       _liveAnnounceQueue = _liveAnnounceQueue
           .then(
-            (_) => _announceLive(session, 'milestone', milestoneKm: milestoneKm),
+            (_) =>
+                _announceLive(session, 'milestone', milestoneKm: milestoneKm),
           )
           .catchError((_) {});
     }
@@ -1905,7 +1919,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     }
     return true;
   }
-
 }
 
 /// Chọn môn trước khi bắt đầu: Đi bộ / Chạy bộ / Đạp xe. Đi bộ chung BXH với
@@ -2027,15 +2040,26 @@ class _Controls extends StatelessWidget {
         (false, true) => Icons.play_arrow_rounded,
         (false, false) => Icons.gps_not_fixed_rounded,
       };
-      final enabledColor = gpsReady ? palette.accent : palette.accentDeep;
+      // Kiểu Thép: khối phẳng, đỏ khi sẵn sàng, đen khi còn quét GPS, và giữ
+      // nguyên màu lúc bận để nút không nhạt đi.
+      final iron = palette.isIron;
+      final enabledColor = gpsReady
+          ? palette.accent
+          : (iron ? palette.ink : palette.accentDeep);
+      final onColor = iron
+          ? (gpsReady
+                ? palette.onAccent
+                : Theme.of(context).colorScheme.surface)
+          : (gpsReady ? Colors.black : Colors.white);
       return DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: palette.radius(18),
           boxShadow: [
-            BoxShadow(
-              color: enabledColor.withValues(alpha: 0.25),
-              blurRadius: 24,
-            ),
+            if (!iron)
+              BoxShadow(
+                color: enabledColor.withValues(alpha: 0.25),
+                blurRadius: 24,
+              ),
           ],
         ),
         child: SizedBox(
@@ -2045,27 +2069,29 @@ class _Controls extends StatelessWidget {
             onPressed: busy ? null : (gpsReady ? onStart : onLockGps),
             style: FilledButton.styleFrom(
               backgroundColor: enabledColor,
-              foregroundColor: gpsReady ? Colors.black : Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: palette.radius(18),
-              ),
+              foregroundColor: onColor,
+              disabledBackgroundColor: iron ? enabledColor : null,
+              disabledForegroundColor: iron ? onColor : null,
+              shape: RoundedRectangleBorder(borderRadius: palette.radius(18)),
             ),
             icon: busy
                 ? SizedBox.square(
                     dimension: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: gpsReady ? Colors.black : Colors.white,
+                      color: onColor,
                     ),
                   )
                 : Icon(icon, size: 30),
             label: Text(
               label,
-              style: palette.heading(const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.2,
-              )),
+              style: palette.heading(
+                const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.2,
+                ),
+              ),
             ),
           ),
         ),
@@ -2093,12 +2119,14 @@ class _Controls extends StatelessWidget {
                   ),
                 ),
                 icon: const Icon(Icons.pause_rounded, size: 28),
-                label: const Text(
+                label: Text(
                   'TẠM DỪNG',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.1,
+                  style: palette.heading(
+                    const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.1,
+                    ),
                   ),
                 ),
               ),
@@ -2198,13 +2226,15 @@ class _MetricCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final iron = palette.isIron;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: palette.glassStart,
+        // Kiểu Thép: ô không nền, các ô ngăn nhau bằng vạch đứng.
+        color: iron ? null : palette.glassStart,
         borderRadius: palette.radius(12),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        padding: EdgeInsets.symmetric(horizontal: iron ? 2 : 10, vertical: 9),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2225,20 +2255,57 @@ class _MetricCard extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: onSurface,
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
+            SizedBox(height: iron ? 0 : 4),
+            if (iron)
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.bottomLeft,
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    style: palette.heading(
+                      TextStyle(
+                        color: onSurface,
+                        fontSize: 34,
+                        height: 1,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            else
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: onSurface,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
-            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Khoảng giữa hai ô số liệu; kiểu Thép là một vạch đứng.
+class _MetricGap extends StatelessWidget {
+  const _MetricGap();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    if (!palette.isIron) return const SizedBox(width: 8);
+    return Container(
+      width: 2,
+      height: 74,
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      color: palette.border,
     );
   }
 }
@@ -2254,31 +2321,46 @@ class _DistanceReadout extends StatelessWidget {
     final value = split < 0 ? distance : distance.substring(0, split);
     final unit = split < 0 ? '' : distance.substring(split + 1);
     final textColor = Theme.of(context).colorScheme.onSurface;
-    return Text.rich(
+    final iron = context.runNowPalette.isIron;
+    final text = Text.rich(
       TextSpan(
         children: [
           TextSpan(
             text: value,
-            style: context.runNowPalette.heading(TextStyle(
-              color: textColor,
-              fontSize: 64,
-              height: 1,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -2,
-            )),
+            style: context.runNowPalette.heading(
+              TextStyle(
+                color: textColor,
+                fontSize: iron ? 104 : 64,
+                height: iron ? 0.86 : 1,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -2,
+              ),
+            ),
           ),
           if (unit.isNotEmpty)
             TextSpan(
               text: ' $unit',
-              style: context.runNowPalette.heading(TextStyle(
-                color: context.runNowPalette.accent,
-                fontSize: 25,
-                fontWeight: FontWeight.w900,
-              )),
+              style: context.runNowPalette.heading(
+                TextStyle(
+                  color: context.runNowPalette.accent,
+                  fontSize: iron ? 30 : 25,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ),
         ],
       ),
+      maxLines: 1,
       textAlign: TextAlign.center,
+    );
+    if (!iron) return text;
+    return SizedBox(
+      width: double.infinity,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: text,
+      ),
     );
   }
 }
