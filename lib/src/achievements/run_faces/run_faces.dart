@@ -17,6 +17,8 @@ import 'package:myrun/src/achievements/run_faces/run_face_kit.dart';
 import 'package:myrun/src/achievements/run_faces/splits_faces.dart';
 import 'package:myrun/src/achievements/run_faces/stopwatch_faces.dart';
 
+export 'package:myrun/src/achievements/run_faces/default_art.dart'
+    show paintRunBrand, runSetArt;
 export 'package:myrun/src/achievements/run_faces/run_face_kit.dart'
     show RunFace;
 

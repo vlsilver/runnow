@@ -531,18 +531,18 @@ void main() {
 
   test('the drawn art replaces the route, which moves into a stamp', () {
     final plain = runCardData(_card(), owner: 'An');
-    expect(plain.art, isA<RunRouteArt>());
+    expect(plain.art, isA<RunDefaultArt>());
     expect(plain.stamp, isNull);
 
     final drawing = runCardData(
       _card(art: {'status': 'drawing', 'style': 'linocut', 'attempt': 1}),
       owner: 'An',
     );
-    expect(drawing.art, isA<RunRouteArt>());
+    expect(drawing.art, isA<RunDefaultArt>());
 
     final drawn = runCardData(_card(art: _done), owner: 'An');
     expect(drawn.art, isA<StoragePhoto>());
-    expect((drawn.art as StoragePhoto).placeholder, isA<RunRouteArt>());
+    expect((drawn.art as StoragePhoto).placeholder, isA<RunDefaultArt>());
     expect(drawn.stamp, isA<RunRouteStamp>());
 
     final noGps = runCardData(

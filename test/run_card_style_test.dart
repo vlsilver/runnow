@@ -549,6 +549,29 @@ void main() {
       });
     });
 
+    testWidgets('thẻ chưa vẽ tranh: bộ có màu riêng vẽ nền của bộ, bộ theo bộ '
+        'màu thẻ giữ nền đường chạy; thẻ không GPS vẫn vẽ được', (tester) async {
+      await tester.runAsync(_loadCardFont);
+      const followSkin = {
+        RunCardSet.current,
+        RunCardSet.basic,
+        RunCardSet.splits,
+      };
+      for (final set in RunCardSet.values) {
+        for (final gps in [true, false]) {
+          await tester.pumpWidget(
+            _face(_card(gps: gps), RunCardStyle(set), routeArt: true),
+          );
+          expect(tester.takeException(), isNull, reason: '$set gps=$gps');
+          expect(
+            find.byType(RunRouteArt),
+            followSkin.contains(set) ? findsOneWidget : findsNothing,
+            reason: '$set gps=$gps',
+          );
+        }
+      }
+    });
+
     testWidgets('khung đường chạy không nằm dưới chữ ở mọi bộ, mọi kiểu chữ', (
       tester,
     ) async {
@@ -562,7 +585,7 @@ void main() {
           await tester.pumpWidget(
             _face(_card(), RunCardStyle(set, layout), routeArt: true),
           );
-          final art = find.byType(RunRouteArt);
+          final art = find.byType(RunDefaultArt);
           final artBox = tester.renderObject<RenderBox>(art);
           final route = onScreen(
             artBox,

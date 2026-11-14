@@ -881,6 +881,8 @@ class RunFaceTokens {
   static const plaqueTop = Color(0xFF2C313A);
   static const plaqueShade = Color(0x8C101218);
   static const brick = Color(0xFFA83E29);
+  static const brickLight = Color(0xFFC4573C);
+  static const brickDeep = Color(0xFF6E2415);
   static const mapPaper = Color(0xFFEDE6D3);
   static const mapShadow = Color(0x572A2418);
   static const mapHighlight = Color(0xB8F4E2A0);
@@ -912,11 +914,13 @@ class RunFaceTokens {
   static const blocksCream = Color(0xFFF4F2EC);
   static const blocksCoal = Color(0xFF101218);
   static const blocksBlue = Color(0xFF2340D9);
+  static const blocksBlueDeep = Color(0xFF1A2FA8);
   static const blocksWhite = Color(0xFFFFFFFF);
 
   // blueprint
   static const blueprintInk = Color(0xFFEAF2FF);
   static const blueprintBlue = Color(0xFF123A73);
+  static const blueprintGlow = Color(0xFF1D5199);
   static const blueprintWhite = Color(0xFFFFFFFF);
 
   // cassette
@@ -956,6 +960,7 @@ class RunFaceTokens {
   static const flipboardLabel = Color(0xB8F4F2EC);
   static const flipboardSoft = Color(0xFFE3E8EE);
   static const flipboardFade = Color(0xF008090E);
+  static const flipboardAmber = Color(0xFFF2B134);
 
   // medal
   static const medalBg = Color(0xFF0D0E14);
@@ -966,17 +971,20 @@ class RunFaceTokens {
   static const medalRib = Color(0xFFE3E8EE);
   static const medalWhite = Color(0xFFFFFFFF);
   static const medalMuted = Color(0xB8F4F2EC);
+  static const medalInk = Color(0xFF4A515C);
 
   // paper
   static const paperInk = Color(0xFF2A2418);
   static const paperRed = Color(0xFFC8321F);
   static const paperSheet = Color(0xFFF4EFE0);
+  static const paperRiver = Color(0xFFA9C9D6);
 
   // receipt
   static const receiptCoal = Color(0xFF101218);
   static const receiptPaper = Color(0xFFF4F2EC);
   static const receiptGrey = Color(0xFF454955);
   static const receiptRowLabel = Color(0xFF33363F);
+  static const receiptTint = Color(0xFFE6E3DA);
 
   // stopwatch
   static const stopwatchInk = Color(0xFFF7F5EF);
@@ -985,4 +993,5 @@ class RunFaceTokens {
   static const stopwatchMuted = Color(0xB8F4F2EC);
   static const stopwatchDisc = Color(0xFF08090E);
   static const stopwatchWhite = Color(0xFFFFFFFF);
+  static const stopwatchAlert = Color(0xFFE4572E);
 }

@@ -76,12 +76,12 @@ AchievementCardData runCardData(
     art:
         previewArt ??
         (artPath == null
-            ? RunRouteArt(points: snap.route, tier: card.tier)
+            ? RunDefaultArt(card: card)
             : StoragePhoto(
                 path: artPath,
                 cacheWidth: 960,
-                // Tranh nặng cả MB, giữ đường chạy tới lúc tải xong.
-                placeholder: RunRouteArt(points: snap.route, tier: card.tier),
+                // Tranh nặng cả MB, giữ nền mặc định tới lúc tải xong.
+                placeholder: RunDefaultArt(card: card),
               )),
     stamp: hasArt && snap.route.length > 1
         ? RunRouteStamp(points: snap.route)
@@ -236,6 +236,8 @@ class _RouteArtPainter extends CustomPainter {
       );
     }
 
+    paintRunBrand(canvas, box, skin.routeLine);
+
     final route = fitRunRoute(points, box);
     if (route.isEmpty) return;
     final path = _pathOf(route);
@@ -255,6 +257,21 @@ class _RouteArtPainter extends CustomPainter {
       !identical(old.skin, skin) ||
       !identical(old.points, points) ||
       old.box != box;
+}
+
+/// Nền của thẻ chưa vẽ tranh: nền riêng của bộ thẻ đang mặc, bộ theo bộ màu
+/// thẻ thì là [RunRouteArt].
+class RunDefaultArt extends StatelessWidget {
+  const RunDefaultArt({super.key, required this.card});
+
+  final RunCard card;
+
+  @override
+  Widget build(BuildContext context) {
+    final points = card.snapshot.route;
+    return runSetArt(RunCardStyleScope.of(context, card).set, points) ??
+        RunRouteArt(points: points, tier: card.tier);
+  }
 }
 
 /// Con dấu tròn: đường chạy thu nhỏ, đặt trên tranh để thẻ vẫn là của buổi
