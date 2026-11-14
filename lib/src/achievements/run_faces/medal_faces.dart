@@ -144,6 +144,76 @@ Widget medalFront(RunFace f, RunCardTextLayout t) {
   );
 }
 
+/// Cành nguyệt quế khắc hai bên đĩa, gốc gặp nhau ở đáy, để đĩa không có bản
+/// đồ vẫn đọc ra là huy chương.
+void _laurel(Canvas canvas, Offset center) {
+  const radius = 83.0;
+  const degree = math.pi / 180;
+  const leafLength = 14.0;
+  const leafWidth = 5.0;
+  final leaf = Path()
+    ..moveTo(0, 0)
+    ..quadraticBezierTo(leafLength / 2, -leafWidth, leafLength, 0)
+    ..quadraticBezierTo(leafLength / 2, leafWidth, 0, 0)
+    ..close();
+  final shade = Paint()..color = _dark.withValues(alpha: 0.85);
+  final shine = Paint()..color = _white.withValues(alpha: 0.75);
+  final stem = Paint()
+    ..color = _dark.withValues(alpha: 0.85)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.2
+    ..strokeCap = StrokeCap.round;
+
+  void drawLeaf(Offset at, double angle) {
+    for (final (offset, paint) in [
+      (const Offset(0.7, 0.7), shine),
+      (Offset.zero, shade),
+    ]) {
+      canvas
+        ..save()
+        ..translate(at.dx + offset.dx, at.dy + offset.dy)
+        ..rotate(angle)
+        ..drawPath(leaf, paint)
+        ..restore();
+    }
+  }
+
+  for (final side in const [-1.0, 1.0]) {
+    // Góc đo từ đáy đĩa đi lên.
+    Offset at(double a) =>
+        center + Offset(side * math.sin(a) * radius, math.cos(a) * radius);
+    canvas.drawPath(
+      polyline([for (var d = 7; d <= 140; d += 7) at(d * degree)]),
+      stem,
+    );
+    for (var i = 0; i < 8; i++) {
+      final a = (33 + i * 15) * degree;
+      final along = math.atan2(-math.sin(a), side * math.cos(a));
+      drawLeaf(at(a), along - 0.5);
+      drawLeaf(at(a), along + 0.5);
+    }
+  }
+  const tip = 6.0;
+  final knot = center + const Offset(0, 86);
+  final star = Path()
+    ..moveTo(knot.dx, knot.dy - tip)
+    ..quadraticBezierTo(knot.dx, knot.dy, knot.dx + tip, knot.dy)
+    ..quadraticBezierTo(knot.dx, knot.dy, knot.dx, knot.dy + tip)
+    ..quadraticBezierTo(knot.dx, knot.dy, knot.dx - tip, knot.dy)
+    ..quadraticBezierTo(knot.dx, knot.dy, knot.dx, knot.dy - tip)
+    ..close();
+  canvas
+    ..drawPath(star, Paint()..color = _coal)
+    ..drawCircle(
+      center,
+      92,
+      Paint()
+        ..color = _dark.withValues(alpha: 0.6)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8,
+    );
+}
+
 /// Mặt sau huy chương: vòng ngoài chia theo từng km, đoạn trắng là km nhanh
 /// nhất; có GPS thì đường chạy khắc trong đĩa.
 class _MedalBack extends CustomPainter {
@@ -228,6 +298,7 @@ class _MedalBack extends CustomPainter {
         at += sweep;
       }
     }
+    if (engrave) _laurel(canvas, center);
     final points = engrave
         ? fitRunRoute(f.route, const Rect.fromLTRB(112, 112, 188, 198))
         : const <Offset>[];
@@ -251,7 +322,9 @@ Widget medalBack(RunFace f, {bool map = false}) {
     ),
     ink: _paper,
     children: [
-      if (gps && !map)
+      // Bật bản đồ thì đĩa có map rõ, nền này vẫn giữ để phần ngoài đĩa không
+      // trống và là nơi in ghi công.
+      if (gps)
         FaceMap(
           f,
           dark: true,
@@ -283,8 +356,7 @@ Widget medalBack(RunFace f, {bool map = false}) {
             route: _coal,
             padding: const EdgeInsets.fromLTRB(20, 30, 20, 54),
             circle: true,
-            creditAt: Alignment.topCenter,
-            creditPadding: const EdgeInsets.fromLTRB(44, 16, 44, 0),
+            showCredit: false,
           ),
         ),
         pin(

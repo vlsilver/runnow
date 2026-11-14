@@ -119,6 +119,7 @@ class FaceMap extends StatelessWidget {
     this.creditAt = Alignment.bottomRight,
     this.creditPadding = const EdgeInsets.fromLTRB(5, 3, 5, 3),
     this.overlay,
+    this.showCredit = true,
   });
 
   final RunFace f;
@@ -143,6 +144,9 @@ class FaceMap extends StatelessWidget {
   /// Nét vẽ riêng của mặt thẻ, nằm trên bản đồ và dưới ghi công để không che
   /// mất dòng ghi công.
   final Widget? overlay;
+
+  /// Tắt chỉ khi mặt thẻ đã có bản đồ khác in dòng ghi công.
+  final bool showCredit;
 
   @override
   Widget build(BuildContext context) {
@@ -178,37 +182,38 @@ class FaceMap extends StatelessWidget {
           ],
         ),
         ?overlay,
-        Padding(
-          padding: creditPadding,
-          child: Align(
-            alignment: creditAt,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              // Nền mờ giữ ghi công đọc được khi đè lên tên địa danh của tile.
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: land.withValues(alpha: 0.72),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: Text(
-                    mapCreditLine(),
-                    maxLines: 1,
-                    softWrap: false,
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.w500,
-                      color: dark
-                          ? RunFaceTokens.paper76
-                          : RunFaceTokens.mapCreditOnLight,
+        if (showCredit)
+          Padding(
+            padding: creditPadding,
+            child: Align(
+              alignment: creditAt,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                // Nền mờ giữ ghi công đọc được khi đè lên tên địa danh của tile.
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: land.withValues(alpha: 0.72),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: Text(
+                      mapCreditLine(),
+                      maxLines: 1,
+                      softWrap: false,
+                      style: TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.w500,
+                        color: dark
+                            ? RunFaceTokens.paper76
+                            : RunFaceTokens.mapCreditOnLight,
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
       ],
     );
     return circle

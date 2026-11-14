@@ -16,6 +16,7 @@ import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/achievements/run_card_skin_choice.dart';
 import 'package:myrun/src/achievements/run_card_style.dart';
 import 'package:myrun/src/achievements/run_card_style_sheet.dart';
+import 'package:myrun/src/achievements/run_faces/face_map.dart';
 import 'package:myrun/src/achievements/run_faces/run_face_kit.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/providers.dart';
@@ -402,11 +403,12 @@ void main() {
         RunCardSet.splits,
         RunCardSet.cassette,
         RunCardSet.city,
+        RunCardSet.constellation,
+        RunCardSet.blueprint,
+        RunCardSet.paperMap,
       };
 
-      testWidgets('tắt công tắc vẫn có bản đồ mờ, đủ ghi công', (
-        tester,
-      ) async {
+      testWidgets('tắt công tắc vẫn có bản đồ mờ, đủ ghi công', (tester) async {
         await tester.runAsync(_loadCardFont);
         for (final set in washedWhenOff) {
           await tester.pumpWidget(
@@ -478,6 +480,39 @@ void main() {
           }
         },
       );
+
+      testWidgets('Chòm sao tắt thì map mờ, bật thì map rõ', (tester) async {
+        await tester.runAsync(_loadCardFont);
+        ColorFilter? filterOf(RunCardStyle style) =>
+            tester.widget<StillRouteMap>(find.byType(StillRouteMap)).tileFilter;
+
+        const off = RunCardStyle(RunCardSet.constellation);
+        await tester.pumpWidget(_face(_card(), off, back: true));
+        expect(filterOf(off), isNotNull);
+
+        const on = RunCardStyle.withMap(RunCardSet.constellation);
+        await tester.pumpWidget(_face(_card(), on, back: true));
+        expect(filterOf(on), isNull);
+      });
+
+      testWidgets('Huy chương bật bản đồ vẫn có nền map mờ ngoài đĩa', (
+        tester,
+      ) async {
+        await tester.runAsync(_loadCardFont);
+        await tester.pumpWidget(
+          _face(
+            _card(),
+            const RunCardStyle.withMap(RunCardSet.medal),
+            back: true,
+          ),
+        );
+        final maps = tester
+            .widgetList<StillRouteMap>(find.byType(StillRouteMap))
+            .toList();
+        expect(maps, hasLength(2));
+        expect(maps.where((m) => m.tileFilter == null), hasLength(1));
+        expect(find.textContaining('OpenStreetMap'), findsOneWidget);
+      });
 
       testWidgets('thẻ không GPS bật bản đồ vẫn ra mặt sau thường', (
         tester,

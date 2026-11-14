@@ -252,8 +252,8 @@ Widget paperMapBack(RunFace f, {bool map = false}) {
     bg: RunFaceTokens.mapPaper,
     ink: _ink,
     children: [
-      _paper(plain: map),
-      if (map)
+      _paper(plain: f.hasRoute),
+      if (f.hasRoute)
         FaceMap(
           f,
           dark: false,
@@ -261,7 +261,7 @@ Widget paperMapBack(RunFace f, {bool map = false}) {
           // Khớp ô fitRunRoute của _PaperRoute trên khổ 300x420.
           padding: const EdgeInsets.fromLTRB(36, 72, 36, 136),
           maxZoom: 22,
-          tileFilter: faceMapWash(_ink, dark: false, strength: 0.6),
+          tileFilter: faceMapWash(_ink, dark: false, strength: map ? 0.6 : 0.3),
           creditAt: Alignment.bottomLeft,
           creditPadding: const EdgeInsets.fromLTRB(16, 0, 5, 115),
         ),

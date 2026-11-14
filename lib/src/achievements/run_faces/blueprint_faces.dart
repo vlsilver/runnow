@@ -191,7 +191,7 @@ Widget blueprintBack(RunFace f, {bool map = false}) => faceBox(
   bg: _blue,
   ink: _ink,
   children: [
-    if (map)
+    if (f.hasRoute)
       pin(
         l: 12,
         t: 12,
@@ -204,7 +204,7 @@ Widget blueprintBack(RunFace f, {bool map = false}) => faceBox(
           // Khớp ô fitRunRoute của _RoutePlan, tính trong khung cách mép 12.
           padding: const EdgeInsets.fromLTRB(41, 60, 57, 110),
           maxZoom: 22,
-          tileFilter: faceMapWash(_ink, dark: true, strength: 0.55),
+          tileFilter: faceMapWash(_ink, dark: true, strength: map ? 0.55 : 0.3),
           creditAt: Alignment.topRight,
           creditPadding: const EdgeInsets.fromLTRB(5, 5, 6, 3),
         ),

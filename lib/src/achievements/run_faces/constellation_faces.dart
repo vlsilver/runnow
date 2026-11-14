@@ -147,9 +147,12 @@ Path _star(Offset at, double scale) {
 
 /// Mỗi km là một ngôi sao, chạy càng nhanh sao càng to.
 class _Chart extends CustomPainter {
-  const _Chart(this.f);
+  const _Chart(this.f, {required this.onClearMap});
 
   final RunFace f;
+
+  /// Bản đồ rõ nhiều nét nên chòm sao cần nét đậm và viền tối mới nổi.
+  final bool onClearMap;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -168,10 +171,22 @@ class _Chart extends CustomPainter {
       ..drawLine(const Offset(246, 89), const Offset(54, 281), grid);
     _ticks(canvas, center, 0.5);
     final link = Paint()
-      ..color = _gold.withValues(alpha: 0.72)
+      ..color = _gold.withValues(alpha: onClearMap ? 1 : 0.72)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
+      ..strokeWidth = onClearMap ? 2 : 1;
     final fill = Paint()..color = _bright;
+    final halo = Paint()
+      ..color = _night.withValues(alpha: 0.75)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round;
+    void drawStar(Offset at, double scale) {
+      final star = _star(at, scale);
+      if (onClearMap) canvas.drawPath(star, halo);
+      canvas.drawPath(star, fill);
+    }
+
     double scaleOf(FaceRow? row) =>
         row == null ? 0.75 : (row.best ? 1.25 : row.share);
 
@@ -183,14 +198,12 @@ class _Chart extends CustomPainter {
       final marks = routeKmMarks(f.route, points, max: 10);
       final rows = f.rows(marks.length);
       final nodes = [points.first, ...marks.map((m) => m.at), points.last];
-      canvas
-        ..drawPath(polyline(nodes), link)
-        ..drawPath(_star(nodes.first, 0.5), fill);
+      final line = polyline(nodes);
+      if (onClearMap) canvas.drawPath(line, halo);
+      canvas.drawPath(line, link);
+      drawStar(nodes.first, 0.5);
       for (final (i, m) in marks.indexed) {
-        canvas.drawPath(
-          _star(m.at, scaleOf(rows.length == marks.length ? rows[i] : null)),
-          fill,
-        );
+        drawStar(m.at, scaleOf(rows.length == marks.length ? rows[i] : null));
       }
       canvas.drawCircle(nodes.last, 2.4, fill);
       return;
@@ -209,7 +222,8 @@ class _Chart extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_Chart old) => !identical(old.f.card, f.card);
+  bool shouldRepaint(_Chart old) =>
+      !identical(old.f.card, f.card) || old.onClearMap != onClearMap;
 }
 
 Widget constellationBack(RunFace f, {bool map = false}) => faceBox(
@@ -223,7 +237,7 @@ Widget constellationBack(RunFace f, {bool map = false}) => faceBox(
   children: [
     // Khung tròn trùng vòng ngoài của tinh đồ, padding khớp ô vẽ chòm sao để
     // từng ngôi sao nằm đúng chỗ trên bản đồ.
-    if (map)
+    if (f.hasRoute)
       pin(
         l: 14,
         r: 14,
@@ -236,13 +250,15 @@ Widget constellationBack(RunFace f, {bool map = false}) => faceBox(
           circle: true,
           padding: const EdgeInsets.fromLTRB(52, 23, 52, 31),
           maxZoom: 22,
-          tileFilter: faceMapWash(_gold, dark: true, strength: 0.45),
+          tileFilter: map
+              ? null
+              : faceMapWash(_gold, dark: true, strength: 0.45),
           creditAt: Alignment.bottomCenter,
           creditPadding: const EdgeInsets.only(bottom: 12),
         ),
       ),
     const CustomPaint(painter: StarField(_stars, 1)),
-    CustomPaint(painter: _Chart(f)),
+    CustomPaint(painter: _Chart(f, onClearMap: map)),
     pin(l: 0, r: 0, t: 16, c: txt('3I RUN', 11, ls: 4, a: TextAlign.center)),
     pin(
       l: 18,
