@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card_paths.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
+import 'package:myrun/src/achievements/run_card_skin_choice.dart';
 import 'package:myrun/src/achievements/run_card_style.dart';
 import 'package:myrun/src/achievements/run_faces/face_map.dart';
 import 'package:myrun/src/achievements/run_faces/run_face_kit.dart';
@@ -73,6 +74,17 @@ AchievementCardData runCardData(
   data = AchievementCardData(
     tier: card.tier,
     secret: card.secret,
+    // Thẻ người khác khoe mặc bộ màu chủ thẻ chọn; thẻ của mình theo bộ màu
+    // máy này đang chọn.
+    skin: card.ownerUid == null
+        ? null
+        : switch (parseRunCardSkinChoice(card.lookSkin)) {
+            (final appearance, final element) => RunCardSkin.forTheme(
+              appearance,
+              element,
+            ),
+            null => null,
+          },
     art:
         previewArt ??
         (artPath == null

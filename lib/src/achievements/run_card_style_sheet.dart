@@ -49,9 +49,10 @@ Future<void> showRunCardStyleSheet(
             initial ??
             (card == null
                 ? null
-                : ProviderScope.containerOf(context, listen: false)
-                      .read(runCardStyleControllerProvider)
-                      .styleOf(card.id, card.rolledAt)),
+                : ProviderScope.containerOf(
+                    context,
+                    listen: false,
+                  ).read(runCardStyleControllerProvider).styleFor(card)),
         skin: skin,
         onUse: onUse,
       ),

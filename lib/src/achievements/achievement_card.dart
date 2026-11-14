@@ -34,6 +34,7 @@ class AchievementCardData {
     this.backFace,
     this.frontFace,
     this.secret,
+    this.skin,
     this.stats,
     this.quote,
     this.period,
@@ -45,6 +46,9 @@ class AchievementCardData {
 
   /// Hành của thẻ Ẩn: cả thẻ một màu theo hành đó, bỏ qua bộ màu đang chọn.
   final RunNowElement? secret;
+
+  /// Bộ màu chủ thẻ chọn cho thẻ này; null thì theo bộ màu của người xem.
+  final RunCardSkin? skin;
 
   /// Nền phủ cả thẻ: ảnh, hay hình vẽ như đường chạy. Thẻ tự cho nó tràn
   /// viền và lệch theo độ nghiêng.
@@ -283,7 +287,7 @@ class _AchievementCardState extends State<AchievementCard>
     final secret = data.secret;
     final look = secret == null ? null : _SecretLook.of(secret);
     final skin = secret == null
-        ? RunCardSkin.of(context)
+        ? data.skin ?? RunCardSkin.of(context)
         : RunCardSkin.secret(secret);
     final pose = widget.pose;
     final card = SizedBox.fromSize(
@@ -321,8 +325,10 @@ class _AchievementCardState extends State<AchievementCard>
       ),
     );
     // Tranh, con dấu và mặt sau do nơi gọi dựng, đọc bộ màu từ context: thẻ
-    // Ẩn đặt bộ màu của hành cho cả cây bên dưới.
-    return secret == null ? card : RunCardSkinScope(skin: skin, child: card);
+    // Ẩn và thẻ có bộ màu riêng đặt bộ màu đó cho cả cây bên dưới.
+    return secret == null && data.skin == null
+        ? card
+        : RunCardSkinScope(skin: skin, child: card);
   }
 }
 

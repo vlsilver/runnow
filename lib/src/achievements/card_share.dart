@@ -420,9 +420,7 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
     super.initState();
     final card = widget.runCard;
     if (card != null && card.secret == null) {
-      _style = ref
-          .read(runCardStyleControllerProvider)
-          .styleOf(card.id, card.rolledAt);
+      _style = ref.read(runCardStyleControllerProvider).styleFor(card);
     }
     _start();
   }
@@ -699,7 +697,8 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
                 ),
                 const SizedBox(height: 12),
                 // Đang ghi thì ẩn: hai lượt ghi cùng chụp một sân khấu.
-                if (widget.data.secret == null && !(_style?.set.ownColors ?? false))
+                if (widget.data.secret == null &&
+                    !(_style?.set.ownColors ?? false))
                   _SkinPicker(skin: _skin, onPick: _pickSkin),
               ],
               if (files != null || _error == null) ...[

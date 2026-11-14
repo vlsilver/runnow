@@ -391,7 +391,7 @@ class RunNowApp extends ConsumerWidget {
         return RunCardSkinScope(
           skin: cardSkin,
           child: RunCardStyleScope(
-            resolve: (card) => cardStyles.styleOf(card.id, card.rolledAt),
+            resolve: cardStyles.styleFor,
             revision: cardStyles.revision,
             child: RunNowBackdrop(child: content),
           ),

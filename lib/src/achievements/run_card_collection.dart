@@ -221,6 +221,8 @@ class CollectedContractCard extends CollectedCard {
 /// thiếu.
 final collectedCardsProvider =
     Provider.autoDispose<AsyncValue<List<CollectedCard>>>((ref) {
+      // Mở Bộ thẻ thì điền bù kiểu thẻ, bộ màu backend còn thiếu.
+      ref.watch(runCardLookFillProvider);
       final runs = ref.watch(runCardsProvider);
       final games = ref.watch(gameCardsProvider);
       final journeys = ref.watch(journeyCardsProvider);

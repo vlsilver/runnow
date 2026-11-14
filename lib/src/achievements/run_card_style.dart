@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:myrun/src/achievements/run_card_look_sync.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 
 /// Bộ thẻ: một cặp mặt trước, mặt sau cùng phong cách. Tên enum vào file lưu
@@ -98,12 +99,20 @@ class RunCardStyle {
   int get hashCode => Object.hash(set, text, map);
 }
 
+/// Kiểu chủ thẻ đã lưu trên backend; null khi chưa lưu hoặc là bộ app này
+/// chưa biết.
+RunCardStyle? savedRunCardStyle(RunCard card) => switch (card.lookStyle) {
+  final raw? => RunCardStyle.parse(raw),
+  null => null,
+};
+
 /// Kiểu thẻ máy này chọn. Chỉ lưu trong máy như bộ màu: kiểu chỉ là lớp bọc
 /// ngoài, không đụng số liệu thẻ, đổi máy thì về [RunCardStyle.current].
 class RunCardStyleController extends ChangeNotifier {
   RunCardStyleController({
     FlutterSecureStorage? storage,
     bool loadFromStorage = true,
+    this.onCardStyle,
   }) : _storage = storage ?? const FlutterSecureStorage() {
     if (loadFromStorage) _load();
   }
@@ -115,8 +124,15 @@ class RunCardStyleController extends ChangeNotifier {
   static const _maxDefaults = 40;
 
   final FlutterSecureStorage _storage;
+
+  /// Gọi khi người dùng đặt kiểu cho một thẻ, để gửi lên backend.
+  final void Function(String cardId, RunCardStyle style)? onCardStyle;
+
   var _defaults = <({int at, RunCardStyle style})>[];
   var _cards = <String, RunCardStyle>{};
+
+  /// Thẻ vừa đặt kiểu trong phiên này: tin máy cho tới khi backend lưu xong.
+  final _session = <String>{};
 
   /// Người dùng đã chọn trong phiên thì giá trị đọc muộn từ máy không được đè.
   bool _chosen = false;
@@ -124,23 +140,47 @@ class RunCardStyleController extends ChangeNotifier {
   /// Đổi mỗi lần lựa chọn đổi, để scope báo các thẻ vẽ lại.
   int revision = 0;
 
-  /// Kiểu riêng của thẻ nếu có; không thì mặc định còn hiệu lực lúc lật thẻ
-  /// đó, nên đổi mặc định không làm thẻ cũ đổi theo.
-  RunCardStyle styleOf(String cardId, DateTime? rolledAt) {
+  /// Kiểu của [card]. Thẻ người khác khoe mặc đúng kiểu chủ thẻ đã lưu, chưa
+  /// lưu thì kiểu gốc. Thẻ của mình theo [styleOf].
+  RunCardStyle styleFor(RunCard card) {
+    final saved = savedRunCardStyle(card);
+    if (card.ownerUid != null) return saved ?? RunCardStyle.current;
+    return styleOf(card.id, card.rolledAt, saved: saved);
+  }
+
+  /// Kiểu của thẻ của mình: kiểu vừa đặt trong phiên, rồi [saved] là kiểu đã
+  /// lưu trên backend (đặt từ máy nào cũng thấy), rồi tới lựa chọn máy này giữ.
+  RunCardStyle styleOf(
+    String cardId,
+    DateTime? rolledAt, {
+    RunCardStyle? saved,
+  }) {
+    if (_session.contains(cardId)) return _cards[cardId]!;
+    return saved ?? localStyleOf(cardId, rolledAt) ?? RunCardStyle.current;
+  }
+
+  /// Lựa chọn máy này giữ cho thẻ: kiểu riêng của thẻ nếu có; không thì mặc
+  /// định còn hiệu lực lúc lật thẻ đó, nên đổi mặc định không làm thẻ cũ đổi
+  /// theo. Null là máy này chưa chọn gì cho thẻ.
+  RunCardStyle? localStyleOf(String cardId, DateTime? rolledAt) {
     final own = _cards[cardId];
     if (own != null) return own;
     final at = rolledAt?.millisecondsSinceEpoch;
-    if (at == null) return RunCardStyle.current;
+    if (at == null) return null;
     for (final item in _defaults.reversed) {
       if (item.at <= at) return item.style;
     }
-    return RunCardStyle.current;
+    return null;
   }
 
   /// Áp [style] cho thẻ đang xem và làm mặc định cho thẻ lật từ giờ.
   Future<void> apply(RunCardStyle style, {String? cardId, DateTime? now}) {
     _chosen = true;
-    if (cardId != null) _cards[cardId] = style;
+    if (cardId != null) {
+      _cards[cardId] = style;
+      _session.add(cardId);
+      onCardStyle?.call(cardId, style);
+    }
     if (_defaults.isEmpty || _defaults.last.style != style) {
       _defaults = [
         ..._defaults,
@@ -201,7 +241,10 @@ class RunCardStyleController extends ChangeNotifier {
 
 final runCardStyleControllerProvider =
     ChangeNotifierProvider<RunCardStyleController>(
-      (ref) => RunCardStyleController(),
+      (ref) => RunCardStyleController(
+        onCardStyle: (cardId, style) =>
+            ref.read(runCardLookSyncProvider).cardStyle(cardId, style.id),
+      ),
     );
 
 /// Đặt kiểu cho mọi thẻ buổi chạy bên dưới, cùng cách với bộ màu.
@@ -241,10 +284,7 @@ class RunCardStyleScope extends InheritedWidget {
 /// rỗng thì đủ mọi bộ theo thứ tự gốc.
 List<RunCardSet> parseRunCardSets(String raw) {
   final known = RunCardSet.values.asNameMap();
-  final picked = [
-    for (final name in raw.split(','))
-      ?known[name.trim()],
-  ];
+  final picked = [for (final name in raw.split(',')) ?known[name.trim()]];
   return picked.isEmpty ? RunCardSet.values : picked.toSet().toList();
 }
 

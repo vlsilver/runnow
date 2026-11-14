@@ -421,9 +421,7 @@ class RunNowApiClient {
   /// Vé vào phòng thoại của phòng chạy: url server LiveKit và token ngắn hạn.
   /// Chỉ người đã vào phòng còn mở mới lấy được.
   Future<({String url, String token})> runRoomVoice(String roomId) async {
-    final body = _jsonObject(
-      await _send('POST', '${_roomPath(roomId)}/voice'),
-    );
+    final body = _jsonObject(await _send('POST', '${_roomPath(roomId)}/voice'));
     return (url: body['url'] as String, token: body['token'] as String);
   }
 
@@ -765,6 +763,14 @@ class RunNowApiClient {
     return ArtStyleList.fromJson(_jsonObject(response));
   }
 
+  /// Lưu kiểu thẻ, bộ màu chủ thẻ chọn, tối đa 100 thẻ một lần. Mỗi phần tử:
+  /// `activityId`, `style` và `skin` (vắng là giữ nguyên, `skin` rỗng là bỏ bộ
+  /// màu riêng). [fill] chỉ điền chỗ thẻ chưa có, không đè.
+  Future<void> setRunCardLooks(
+    List<Map<String, String>> looks, {
+    bool fill = false,
+  }) => _send('PUT', '/v1/cards/looks', body: {'looks': looks, 'fill': fill});
+
   String _runCardPath(String activityId) =>
       '/v1/activities/${Uri.encodeComponent(activityId)}/card';
 
@@ -899,11 +905,7 @@ class RunNowApiClient {
   /// Nhập số bước theo NGÀY từ Apple Health (bảng xếp hạng bước riêng). Backend
   /// upsert theo ngày + dựng lại BXH bước.
   Future<void> importHealthSteps(List<Map<String, dynamic>> days) async {
-    await _send(
-      'POST',
-      '/v1/health/steps-import',
-      body: {'days': days},
-    );
+    await _send('POST', '/v1/health/steps-import', body: {'days': days});
   }
 
   /// AI Coach: nhờ backend sinh ĐỀ XUẤT giáo án theo mục tiêu + lịch sử chạy

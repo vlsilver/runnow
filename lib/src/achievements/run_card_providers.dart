@@ -11,9 +11,11 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/club_card.dart';
+import 'package:myrun/src/achievements/run_card_look_sync.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/achievements/run_card_skin_choice.dart';
+import 'package:myrun/src/achievements/run_card_style.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/hearts.dart';
 import 'package:myrun/src/journey/journey_card.dart';
@@ -366,8 +368,37 @@ final runCardPhotosProvider = Provider((ref) => const RunCardPhotos());
 /// Lựa chọn bộ màu thẻ của máy này.
 final runCardSkinControllerProvider =
     ChangeNotifierProvider<RunCardSkinController>(
-      (ref) => RunCardSkinController(),
+      (ref) => RunCardSkinController(
+        onChoice: (choice) async {
+          final cards = await ref.read(runCardsProvider.future);
+          await ref
+              .read(runCardLookSyncProvider)
+              .skin(
+                cards.map((card) => card.id),
+                choice == null ? '' : runCardSkinChoiceId(choice),
+              );
+        },
+      ),
     );
+
+/// Điền kiểu thẻ, bộ màu máy này đã chọn vào những thẻ của mình mà backend
+/// chưa có. Màn Bộ thẻ nghe provider này, nên mở Bộ thẻ là thẻ được điền bù.
+final runCardLookFillProvider = Provider.autoDispose<void>((ref) {
+  final cards = ref.watch(runCardsProvider).value;
+  if (cards == null) return;
+  final styles = ref.watch(runCardStyleControllerProvider);
+  final skin = ref.watch(runCardSkinControllerProvider).choice;
+  final looks = missingRunCardLooks(
+    cards,
+    localStyleId: (card) =>
+        switch (styles.localStyleOf(card.id, card.rolledAt)) {
+          null || RunCardStyle.current => null,
+          final style => style.id,
+        },
+    skinId: skin == null ? null : runCardSkinChoiceId(skin),
+  );
+  if (looks.isNotEmpty) ref.read(runCardLookSyncProvider).fill(looks);
+});
 
 /// Bộ màu thẻ đang dùng: lựa chọn riêng nếu có, không thì theo theme app.
 final runCardSkinProvider = Provider<RunCardSkin>((ref) {

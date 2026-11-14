@@ -15,12 +15,13 @@ RunCardSkin resolveRunCardSkin({
     RunCardSkin.forTheme(choice?.$1 ?? appAppearance, choice?.$2 ?? appElement);
 
 /// Giữ lựa chọn bộ màu thẻ của máy này. Chưa chọn (null) thì thẻ theo theme
-/// app. Chỉ lưu trong máy, không gửi lên backend: người khác xem thẻ của mình
-/// vẫn thấy theo theme của họ.
+/// app. Lựa chọn cũng được gửi lên backend theo từng thẻ, để người khác xem
+/// thẻ của mình thấy đúng bộ màu mình chọn.
 class RunCardSkinController extends ChangeNotifier {
   RunCardSkinController({
     FlutterSecureStorage? storage,
     bool loadFromStorage = true,
+    this.onChoice,
   }) : _storage = storage ?? const FlutterSecureStorage() {
     if (loadFromStorage) _load();
   }
@@ -28,6 +29,10 @@ class RunCardSkinController extends ChangeNotifier {
   static const _key = 'runnow_card_skin';
 
   final FlutterSecureStorage _storage;
+
+  /// Gọi khi người dùng đổi bộ màu, để gửi lên backend cho mọi thẻ của mình.
+  final void Function(RunCardSkinChoice? choice)? onChoice;
+
   RunCardSkinChoice? _choice;
 
   /// Người dùng đã chọn trong phiên này thì giá trị đọc muộn từ máy không
@@ -41,13 +46,11 @@ class RunCardSkinController extends ChangeNotifier {
     if (_choice == choice) return;
     _choice = choice;
     notifyListeners();
+    onChoice?.call(choice);
     if (choice == null) {
       await _storage.delete(key: _key);
     } else {
-      await _storage.write(
-        key: _key,
-        value: '${choice.$1.name}.${choice.$2.name}',
-      );
+      await _storage.write(key: _key, value: runCardSkinChoiceId(choice));
     }
   }
 
@@ -59,8 +62,11 @@ class RunCardSkinController extends ChangeNotifier {
   }
 }
 
+/// Dạng lưu của [choice], cả trong máy lẫn trên backend: "dark.fire".
+String runCardSkinChoiceId(RunCardSkinChoice choice) =>
+    '${choice.$1.name}.${choice.$2.name}';
+
 /// Đọc giá trị đã lưu dạng "dark.fire"; sai dạng thì coi như chưa chọn.
-@visibleForTesting
 RunCardSkinChoice? parseRunCardSkinChoice(String? raw) {
   final parts = raw?.split('.');
   if (parts == null || parts.length != 2) return null;

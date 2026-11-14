@@ -210,6 +210,9 @@ class RunCard {
     this.rolledAt,
     this.art,
     this.secret,
+    this.ownerUid,
+    this.lookStyle,
+    this.lookSkin,
   });
 
   factory RunCard.fromJson(Map<String, dynamic> json) => RunCard(
@@ -224,6 +227,9 @@ class RunCard {
       null => null,
     },
     secret: runCardSecretFromKey(_optString(json['variant'])),
+    ownerUid: _optString(json['ownerUid']),
+    lookStyle: _optString(_map(json['look'])?['style']),
+    lookSkin: _optString(_map(json['look'])?['skin']),
   );
 
   /// Trùng id buổi chạy.
@@ -241,6 +247,15 @@ class RunCard {
 
   /// Hành của bản Ẩn, null là thẻ thường.
   final RunNowElement? secret;
+
+  /// Chủ của thẻ khoe (doc clubCards); null là thẻ đọc từ bộ thẻ của mình.
+  final String? ownerUid;
+
+  /// Kiểu thẻ và bộ màu chủ thẻ đã chọn, dạng lưu trên backend ("city.top",
+  /// "dark.fire"); null là chưa chọn. Giữ chuỗi thô: bản app mới hơn có thể
+  /// ghi tên bộ app này chưa biết, lúc vẽ mới đọc.
+  final String? lookStyle;
+  final String? lookSkin;
 
   /// Tranh đã vẽ xong, null khi chưa có.
   String? get artPath =>
