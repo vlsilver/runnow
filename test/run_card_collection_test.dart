@@ -111,7 +111,7 @@ void main() {
         unflipped: [_run('a', 10.2), _run('b', 5)],
       );
 
-      await tester.tap(find.text('Chưa lật 2', findRichText: true));
+      await tester.tap(find.text('Lật 2 buổi'));
       await tester.pump();
 
       expect(find.byType(RunCardFaceDown), findsNWidgets(2));
@@ -125,13 +125,23 @@ void main() {
       await _pump(tester, const [], unflipped: [_run('a', 10)]);
 
       expect(find.text(collectedCardsEmpty), findsNothing);
-      expect(find.text('Chưa lật 1', findRichText: true), findsOneWidget);
+      expect(find.text('Lật 1 buổi'), findsOneWidget);
     });
 
-    testWidgets('hết buổi chưa lật thì filter không chọn được', (tester) async {
+    testWidgets('hết buổi chưa lật thì không có nút lật', (tester) async {
       await _pump(tester, [_card('c', 'common', 0)]);
 
-      await tester.tap(find.text('Chưa lật 0', findRichText: true));
+      expect(find.textContaining(RegExp(r'^Lật \d')), findsNothing);
+      expect(_shown(tester), ['c']);
+    });
+
+    testWidgets('từ buổi chưa lật quay về thẻ đã có', (tester) async {
+      await _pump(tester, [_card('c', 'common', 0)], unflipped: [_run('a', 5)]);
+      await tester.tap(find.text('Lật 1 buổi'));
+      await tester.pump();
+      expect(find.byType(AchievementCard), findsNothing);
+
+      await tester.tap(find.text('Xem 1 thẻ'));
       await tester.pump();
       expect(_shown(tester), ['c']);
     });
@@ -144,7 +154,7 @@ void main() {
       ], unflippedError: Exception('mạng'));
 
       expect(find.byType(AchievementCard), findsOneWidget);
-      await tester.tap(find.text('Chưa lật'));
+      await tester.tap(find.text('Buổi chưa lật'));
       await tester.pump();
       expect(find.text('Không tải được. Chạm để thử lại.'), findsOneWidget);
     });
@@ -159,7 +169,7 @@ void main() {
         unflipped: [_run('a', 10)],
         onFetchUnflipped: () => fetches++,
       );
-      await tester.tap(find.text('Chưa lật 1', findRichText: true));
+      await tester.tap(find.text('Lật 1 buổi'));
       await tester.pump();
       expect(fetches, 1);
 
@@ -188,7 +198,7 @@ void main() {
       _card('c', 'rare', 3),
     ]);
     expect(_shown(tester), ['a', 'b', 'c']);
-    expect(find.text('Đã có 3', findRichText: true), findsOneWidget);
+    expect(find.text('3 thẻ', findRichText: true), findsOneWidget);
     expect(_pill('Thần thoại', 1), findsOneWidget);
     expect(_pill('Hiếm', 2), findsOneWidget);
 
@@ -215,7 +225,7 @@ void main() {
     final built = find.byType(CollectedCardThumb, skipOffstage: false);
     expect(built, findsWidgets);
     expect(tester.widgetList(built).length, lessThan(30));
-    expect(find.text('Đã có 60', findRichText: true), findsOneWidget);
+    expect(find.text('60 thẻ', findRichText: true), findsOneWidget);
   });
 
   testWidgets('cuộn bộ thẻ không dựng lại các thẻ đang hiện', (tester) async {
@@ -243,7 +253,7 @@ void main() {
       games: [_game('g', 'epic', 2)],
     );
     expect(_shown(tester), ['a', 'masoi-g', 'c']);
-    expect(find.text('Đã có 3', findRichText: true), findsOneWidget);
+    expect(find.text('3 thẻ', findRichText: true), findsOneWidget);
     expect(_pill('Siêu hiếm', 1), findsOneWidget);
 
     await tester.tap(

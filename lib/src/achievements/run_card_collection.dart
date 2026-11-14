@@ -329,9 +329,7 @@ class _RunCardCollectionScreenState
               showRunCardStyleSheet(
                 context,
                 card: sample,
-                data: sample == null
-                    ? null
-                    : runCardData(sample, owner: owner),
+                data: sample == null ? null : runCardData(sample, owner: owner),
               );
             },
           ),
@@ -382,28 +380,30 @@ class _RunCardCollectionScreenState
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: side),
-          child: Row(
-            children: [
-              _SourceTab(
-                label: 'Đã có',
-                count: cards.length,
-                selected: !_unflippedOnly,
-                onTap: () => _selectTier(null),
-              ),
-              const SizedBox(width: 22),
-              _SourceTab(
-                label: 'Chưa lật',
-                count: waiting?.length,
-                selected: _unflippedOnly,
-                onTap: waiting?.isEmpty ?? false
-                    ? null
-                    : () => setState(() {
-                        _tier = null;
-                        _unflippedOnly = true;
-                      }),
-              ),
-            ],
-          ),
+          child: _unflippedOnly
+              ? _Summary(
+                  count: waiting?.length,
+                  unit: 'buổi chưa lật',
+                  action: 'Xem ${cards.length} thẻ',
+                  onAction: () => _selectTier(null),
+                )
+              : _Summary(
+                  count: cards.length,
+                  unit: 'thẻ',
+                  tiers: {
+                    for (final tier in GameCardTier.values) tier: count(tier),
+                  },
+                  // Đang tải hay tải lỗi vẫn cho vào, màn dưới tự báo.
+                  action: switch (waiting?.length) {
+                    0 => null,
+                    null => 'Buổi chưa lật',
+                    final n => 'Lật $n buổi',
+                  },
+                  onAction: () => setState(() {
+                    _tier = null;
+                    _unflippedOnly = true;
+                  }),
+                ),
         ),
         if (!_unflippedOnly) ...[
           const SizedBox(height: 12),
@@ -508,74 +508,127 @@ class _RunCardCollectionScreenState
   }
 }
 
-/// Hai nguồn của lưới: thẻ đã có và buổi chưa lật. Chữ đậm và gạch chân để
-/// khác hẳn hàng lọc bậc bên dưới.
-class _SourceTab extends StatelessWidget {
-  const _SourceTab({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    this.count,
+/// Đầu lưới: tổng của nguồn đang xem, tỉ lệ các bậc, và nút sang nguồn kia.
+/// Gom vào một khối tối để màn có một điểm nhìn, hàng lọc bậc nằm dưới.
+class _Summary extends StatelessWidget {
+  const _Summary({
+    required this.count,
+    required this.unit,
+    this.action,
+    this.onAction,
+    this.tiers = const {},
   });
 
-  final String label;
+  /// Null khi chưa tải xong.
   final int? count;
-  final bool selected;
-  final VoidCallback? onTap;
+  final String unit;
+  final String? action;
+  final VoidCallback? onAction;
+
+  /// Số thẻ từng bậc, vẽ thành thanh tỉ lệ; rỗng thì không vẽ.
+  final Map<GameCardTier, int> tiers;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final ink = scheme.onSurface.withValues(
-      alpha: onTap == null
-          ? 0.3
-          : selected
-          ? 1
-          : 0.5,
-    );
-    return Semantics(
-      button: true,
-      selected: selected,
-      enabled: onTap != null,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text.rich(
-              TextSpan(
-                text: label,
-                children: [
-                  if (count case final count?)
-                    TextSpan(
-                      text: ' $count',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: ink.withValues(alpha: ink.a * 0.6),
+    final paper = scheme.surface;
+    final bars = [
+      for (final tier in GameCardTier.values.reversed)
+        if ((tiers[tier] ?? 0) > 0) (tier, tiers[tier]!),
+    ];
+    final action = this.action;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+      decoration: BoxDecoration(
+        color: scheme.onSurface,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    text: count == null ? '–' : '$count',
+                    children: [
+                      TextSpan(
+                        text: ' $unit',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: paper.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                  style: TextStyle(
+                    fontSize: 32,
+                    height: 1,
+                    fontWeight: FontWeight.w800,
+                    color: paper,
+                  ),
+                ),
+              ),
+              if (action != null)
+                Semantics(
+                  button: true,
+                  child: GestureDetector(
+                    onTap: onAction,
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(12, 7, 10, 7),
+                      decoration: BoxDecoration(
+                        color: scheme.primary,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            action,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: scheme.onPrimary,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.arrow_forward_rounded,
+                            size: 15,
+                            color: scheme.onPrimary,
+                          ),
+                        ],
                       ),
                     ),
-                ],
-              ),
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: ink,
-              ),
-            ),
-            const SizedBox(height: 5),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              height: 3,
-              width: selected ? 26 : 0,
-              decoration: BoxDecoration(
-                color: scheme.primary,
-                borderRadius: BorderRadius.circular(2),
-              ),
+                  ),
+                ),
+            ],
+          ),
+          if (bars.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                for (final (i, (tier, n)) in bars.indexed)
+                  Expanded(
+                    flex: n,
+                    child: Container(
+                      height: 6,
+                      margin: EdgeInsets.only(
+                        right: i == bars.length - 1 ? 0 : 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: runCardGlow(tier),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ],
-        ),
+        ],
       ),
     );
   }
