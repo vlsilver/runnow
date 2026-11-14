@@ -81,4 +81,17 @@ void main() {
     expect(find.text('SẮP DIỄN RA'), findsNothing);
     expect(find.text('Minh Anh'), findsOneWidget);
   });
+
+  testWidgets('chưa có pace thì dòng chạy riêng chỉ hiện thời gian', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildRunNowTheme(RunNowElement.water),
+        home: Scaffold(body: SoloLiveTile(solo: solo, now: now)),
+      ),
+    );
+
+    expect(find.text('30:00'), findsOneWidget);
+  });
 }
