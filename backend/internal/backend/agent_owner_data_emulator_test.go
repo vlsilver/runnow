@@ -103,15 +103,26 @@ func TestEmulatorAgentOwnerContractsIncludeCoachPlans(t *testing.T) {
 	}
 	seed(t, e.store.db, "coachPlans/an", map[string]any{
 		"ownerUid": "an", "status": "active", "visibility": "private", "goal": "Sub 30 5K",
-		"goalDistanceKm": 5.0, "weeks": 1, "startDate": "2026-10-19", "targetDate": "2026-10-25", "days": days,
+		"goalDistanceKm": 5.0, "weeks": 1, "startDate": "2026-10-19", "targetDate": "2099-10-25", "days": days,
 		"participantUids": []any{"an"},
 		"participants":    map[string]any{"an": map[string]any{"doneIndices": []any{0}}},
 	})
 	seed(t, e.store.db, "coachPlans/binh", map[string]any{
 		"ownerUid": "binh", "status": "active", "visibility": "club", "goal": "HM đầu tiên",
-		"goalDistanceKm": 21.1, "weeks": 1, "startDate": "2026-10-12", "targetDate": "2026-12-20", "days": days,
+		"goalDistanceKm": 21.1, "weeks": 1, "startDate": "2026-10-12", "targetDate": "2099-12-20", "days": days,
 		"participantUids": []any{"binh", "an"},
 		"participants":    map[string]any{"binh": map[string]any{"doneIndices": []any{0, 2}}, "an": map[string]any{"doneIndices": []any{}}},
+	})
+	// Chủ đã kết thúc, hoặc đã qua ngày đích: không còn là giáo án đang theo.
+	seed(t, e.store.db, "coachPlans/dung", map[string]any{
+		"ownerUid": "dung", "status": "active", "visibility": "club", "goal": "Đã dừng",
+		"startDate": "2026-10-12", "targetDate": "2099-12-20", "endedAt": time.Now(), "days": days,
+		"participantUids": []any{"dung", "an"},
+	})
+	seed(t, e.store.db, "coachPlans/giang", map[string]any{
+		"ownerUid": "giang", "status": "active", "visibility": "club", "goal": "Đã qua đích",
+		"startDate": "2026-01-05", "targetDate": "2026-02-01", "days": days,
+		"participantUids": []any{"giang", "an"},
 	})
 	seed(t, e.store.db, "coachPlans/cuong", map[string]any{
 		"ownerUid": "cuong", "status": "active", "visibility": "club", "goal": "10K",
@@ -126,8 +137,8 @@ func TestEmulatorAgentOwnerContractsIncludeCoachPlans(t *testing.T) {
 	if got := fmt.Sprint(out["contractCount"]); got != "1" {
 		t.Fatalf("contractCount = %s, muốn 1 (giáo án không phải kèo)", got)
 	}
-	want := "[map[doneSessions:1 goal:Sub 30 5K goalKm:5 mine:true sessions:2 startDate:2026-10-19 targetDate:2026-10-25] " +
-		"map[doneSessions:0 goal:HM đầu tiên goalKm:21.1 mine:false sessions:2 startDate:2026-10-12 targetDate:2026-12-20]]"
+	want := "[map[doneSessions:1 goal:Sub 30 5K goalKm:5 mine:true sessions:2 startDate:2026-10-19 targetDate:2099-10-25] " +
+		"map[doneSessions:0 goal:HM đầu tiên goalKm:21.1 mine:false sessions:2 startDate:2026-10-12 targetDate:2099-12-20]]"
 	if got := fmt.Sprint(out["coachPlans"]); got != want {
 		t.Fatalf("coachPlans = %s\nmuốn %s", got, want)
 	}

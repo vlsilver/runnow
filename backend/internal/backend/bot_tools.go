@@ -936,7 +936,7 @@ func (t *BotTools) memberCoachPlans(ctx context.Context, uid string) ([]map[stri
 	plans := []map[string]any{}
 	for _, doc := range docs {
 		d := doc.Data()
-		if stringValue(d["status"]) != "active" {
+		if stringValue(d["status"]) != "active" || coachPlanOver(d, time.Now()) {
 			continue
 		}
 		sessions := 0
@@ -962,6 +962,17 @@ func (t *BotTools) memberCoachPlans(ctx context.Context, uid string) ([]map[stri
 		})
 	}
 	return plans, nil
+}
+
+// coachPlanOver báo giáo án đã thôi chạy: chủ đã bấm kết thúc (endedAt), hoặc
+// đã qua ngày đích theo giờ Việt Nam. Ngày đích vẫn tính là đang chạy. App
+// dùng cùng luật này để đưa giáo án ra khỏi mục đang chạy.
+func coachPlanOver(plan map[string]any, now time.Time) bool {
+	if plan["endedAt"] != nil {
+		return true
+	}
+	target := stringValue(plan["targetDate"])
+	return target != "" && dateKey(now) > target
 }
 
 func toAnySlice(v any) []any {
