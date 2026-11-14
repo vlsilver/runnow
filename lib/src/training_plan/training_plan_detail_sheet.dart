@@ -21,7 +21,7 @@ class TrainingDaySheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final tColor = workoutTypeColor(day.type, dark: dark);
+    final tColor = workoutLoadColor(day.type, palette);
     final onAccent = dark ? RunNowDataColors.coachOnAccentDark : Colors.white;
     final bg = dark ? RunNowDataColors.coachSheetDark : Colors.white;
 
@@ -90,6 +90,13 @@ class TrainingDaySheet extends StatelessWidget {
             const SizedBox(height: 16),
             _StatsGrid(day: day, palette: palette),
           ],
+          const SizedBox(height: 16),
+          _SectionLabel('ĐỂ LÀM GÌ', palette: palette),
+          const SizedBox(height: 6),
+          Text(
+            day.purposeText,
+            style: TextStyle(fontSize: 14.5, height: 1.45, color: palette.ink),
+          ),
           if (day.detail != null) ...[
             const SizedBox(height: 16),
             _SectionLabel('CHI TIẾT BÀI', palette: palette),
@@ -172,7 +179,7 @@ class _TypePill extends StatelessWidget {
           WorkoutGlyph(type: type, color: color, size: 18),
           const SizedBox(width: 8),
           Text(
-            '${type.label} · ${type.element}',
+            type.label.toUpperCase(),
             style: TextStyle(
               fontSize: 10.5,
               fontWeight: FontWeight.w700,

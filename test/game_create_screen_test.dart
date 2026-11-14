@@ -2188,14 +2188,45 @@ void main() {
     testWidgets('offer a game to admins', (tester) async {
       backend.list = _list(canCreate: true);
       await pumpTemplates(tester);
-      expect(find.text('Ván Ma Sói'), findsOneWidget);
+      expect(find.text('Ma Sói'), findsOneWidget);
     });
 
     testWidgets('hide the game from players', (tester) async {
       backend.list = _list(canCreate: false);
       await pumpTemplates(tester);
-      expect(find.text('Giáo án AI Coach'), findsOneWidget);
-      expect(find.text('Ván Ma Sói'), findsNothing);
+      expect(find.text('Giáo án AI'), findsOneWidget);
+      expect(find.text('Ma Sói'), findsNothing);
+    });
+
+    testWidgets('the whole menu fits a phone screen without scrolling', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      backend.list = _list(canCreate: true);
+      await pumpTemplates(tester);
+
+      expect(find.text('Tạo mới'), findsOneWidget);
+      for (final label in ['Ma Sói', 'Live hẹn giờ', 'HÔM NAY', 'Tự tạo']) {
+        final rect = tester.getRect(find.text(label));
+        expect(rect.bottom, lessThanOrEqualTo(844), reason: label);
+      }
+    });
+
+    testWidgets('a quick bib picks that contract and moves to step two', (
+      tester,
+    ) async {
+      backend.list = _list(canCreate: false);
+      await pumpTemplates(tester);
+
+      await tester.tap(find.text('BUỔI'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Chốt kèo'), findsOneWidget);
+      expect(find.text('Tạo mới'), findsNothing);
+      final title = tester.widget<TextField>(find.byType(TextField).first);
+      expect(title.controller?.text, 'Kèo 3 buổi tuần này');
     });
   });
 }

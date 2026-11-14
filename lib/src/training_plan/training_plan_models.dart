@@ -1,9 +1,9 @@
 import 'package:flutter/widgets.dart';
 
-import '../theme_tokens.dart';
+import '../theme.dart';
 
-/// Loại bài trong giáo án. Mỗi loại có 1 màu (ngũ hành) + glyph riêng để liếc
-/// là biết cường độ — xem [workoutTypeColor] / [WorkoutGlyph].
+/// Loại bài trong giáo án. Trang giáo án tô loại bài theo độ nặng, xem
+/// [workoutLoadColor].
 enum WorkoutType { easy, long, tempo, interval, rest, race }
 
 WorkoutType workoutTypeFromValue(String? v) => switch (v) {
@@ -19,7 +19,7 @@ WorkoutType workoutTypeFromValue(String? v) => switch (v) {
 extension WorkoutTypeInfo on WorkoutType {
   String get value => name;
 
-  /// Tên tiếng Việt + hành ngũ hành (dùng ở pill sheet chi tiết).
+  /// Tên tiếng Việt của loại bài.
   String get label => switch (this) {
     WorkoutType.easy => 'Chạy nhẹ',
     WorkoutType.long => 'Chạy dài',
@@ -29,16 +29,38 @@ extension WorkoutTypeInfo on WorkoutType {
     WorkoutType.race => 'Về đích',
   };
 
-  String get element => switch (this) {
-    WorkoutType.easy => 'Mộc',
-    WorkoutType.long => 'Thuỷ',
-    WorkoutType.tempo => 'Thổ',
-    WorkoutType.interval => 'Hoả',
-    WorkoutType.rest => 'Kim',
-    WorkoutType.race => 'Hoả',
+  bool get isRest => this == WorkoutType.rest;
+
+  /// Buổi này để làm gì, viết cho người mới tập. Dùng khi coach không ghi
+  /// mục đích riêng cho buổi (giáo án sinh trước khi có field purpose).
+  String get purpose => switch (this) {
+    WorkoutType.easy => 'Xây nền sức bền, chân vẫn kịp hồi phục.',
+    WorkoutType.long => 'Tập cho cơ thể quen chạy lâu như ngày đua.',
+    WorkoutType.tempo => 'Tập giữ nhịp nhanh mà không đuối.',
+    WorkoutType.interval => 'Tăng tốc độ và sức tim phổi.',
+    WorkoutType.rest => 'Cơ thể khoẻ lên trong lúc nghỉ, không phải lúc chạy.',
+    WorkoutType.race => 'Ngày về đích. Chạy đúng nhịp đã tập.',
   };
 
-  bool get isRest => this == WorkoutType.rest;
+  /// Mục đích gói trong hai chữ, cho nhãn trên thẻ Hôm nay.
+  String get purposeTag => switch (this) {
+    WorkoutType.easy => 'Xây nền',
+    WorkoutType.long => 'Sức bền',
+    WorkoutType.tempo => 'Giữ nhịp',
+    WorkoutType.interval => 'Tốc độ',
+    WorkoutType.rest => 'Hồi phục',
+    WorkoutType.race => 'Về đích',
+  };
+
+  /// Độ nặng 0–5, vẽ thành số vạch bên cạnh buổi tập.
+  int get intensity => switch (this) {
+    WorkoutType.rest => 0,
+    WorkoutType.easy => 2,
+    WorkoutType.long => 3,
+    WorkoutType.tempo => 4,
+    WorkoutType.interval => 5,
+    WorkoutType.race => 5,
+  };
 
   /// Card "nặng" (interval/long/race) có wash gradient + viền màu type; nhẹ
   /// (easy/tempo) nền đặc mảnh; rest viền dashed.
@@ -48,8 +70,8 @@ extension WorkoutTypeInfo on WorkoutType {
       this == WorkoutType.race;
 }
 
-/// Màu loại bài theo bảng ngũ hành trong design handoff (cố định, KHÔNG theo
-/// accent người dùng chọn — nó mã hoá cường độ bài tập).
+/// Ba màu cố định xanh, vàng, đỏ cho nhãn độ khó và cảnh báo ở màn đề xuất
+/// giáo án. Buổi tập trên lịch thì dùng [workoutLoadColor].
 Color workoutTypeColor(WorkoutType type, {required bool dark}) {
   switch (type) {
     case WorkoutType.easy:
@@ -69,6 +91,27 @@ Color workoutTypeColor(WorkoutType type, {required bool dark}) {
   }
 }
 
+/// Màu buổi tập trên trang giáo án: càng nặng càng đậm, cùng một họ với
+/// accent người dùng chọn. Chỉ ngày đua mang màu cam, nghỉ thì xám.
+Color workoutLoadColor(WorkoutType type, RunNowPalette palette) {
+  final dark = palette.appearance == RunNowAppearance.dark;
+  // Nền tối thì "đậm" là sáng lên, nền sáng thì "đậm" là tối đi.
+  final far = dark
+      ? RunNowDataColors.coachLoadFarDark
+      : RunNowDataColors.coachLoadFarLight;
+  return switch (type) {
+    WorkoutType.rest => palette.textMuted,
+    WorkoutType.easy => Color.lerp(palette.accent, palette.background, 0.52)!,
+    WorkoutType.long => palette.accent,
+    WorkoutType.tempo => Color.lerp(palette.accent, far, 0.28)!,
+    WorkoutType.interval => Color.lerp(palette.accent, far, 0.55)!,
+    WorkoutType.race =>
+      dark
+          ? RunNowDataColors.coachIntervalDark
+          : RunNowDataColors.coachIntervalLight,
+  };
+}
+
 /// Một ngày trong giáo án. `date` suy ra từ [TrainingPlan.startDate] + vị trí
 /// trong danh sách, không lưu riêng.
 class TrainingDay {
@@ -82,6 +125,7 @@ class TrainingDay {
     this.detail,
     this.paceHint,
     this.note,
+    this.purpose,
     this.done = false,
     this.matchedActivityId,
   });
@@ -95,6 +139,12 @@ class TrainingDay {
   final String? detail; // "5×400m nghỉ 90s"
   final String? paceHint; // "6:15"
   final String? note; // lời khuyên HLV
+
+  /// Buổi này để làm gì, coach viết riêng cho buổi. null với giáo án cũ.
+  final String? purpose;
+
+  /// Mục đích để hiện: của coach nếu có, không thì câu chung của loại bài.
+  String get purposeText => purpose ?? type.purpose;
   final bool done;
   final String? matchedActivityId;
 
@@ -113,6 +163,7 @@ class TrainingDay {
     detail: map['detail'] as String?,
     paceHint: map['paceHint'] as String?,
     note: map['note'] as String?,
+    purpose: _nonEmpty(map['purpose']),
     done: map['done'] as bool? ?? false,
     matchedActivityId: map['matchedActivityId'] as String?,
   );
@@ -126,6 +177,7 @@ class TrainingDay {
     if (detail != null) 'detail': detail,
     if (paceHint != null) 'paceHint': paceHint,
     if (note != null) 'note': note,
+    if (purpose != null) 'purpose': purpose,
     'done': done,
     if (matchedActivityId != null) 'matchedActivityId': matchedActivityId,
   };
@@ -140,6 +192,7 @@ class TrainingDay {
     detail: detail,
     paceHint: paceHint,
     note: note,
+    purpose: purpose,
     done: done ?? this.done,
     matchedActivityId: matchedActivityId ?? this.matchedActivityId,
   );
@@ -232,6 +285,7 @@ class TrainingPlan {
     this.baselineKm,
     this.createdAt,
     this.rationale,
+    this.weekThemes = const [],
     this.feasibility = PlanFeasibility.unknown,
     this.warnings = const [],
     this.targetPaceSec,
@@ -256,6 +310,10 @@ class TrainingPlan {
 
   /// Vì sao coach dựng lịch như thế này — 2–4 câu, user đọc trước khi xác nhận.
   final String? rationale;
+
+  /// Chủ đề từng tuần do coach đặt ("Xây nền", "Đỉnh tải"), phần tử i là
+  /// tuần i+1. Rỗng với giáo án cũ.
+  final List<String> weekThemes;
   final PlanFeasibility feasibility;
 
   /// Những điều cần biết trước khi bắt đầu: mục tiêu đã bị hạ, khối lượng nhảy
@@ -361,6 +419,29 @@ class TrainingPlan {
   List<TrainingDay> daysOfWeek(int week) =>
       days.where((d) => d.week == week).toList();
 
+  /// Tuần có tổng km lớn nhất; nhiều tuần bằng nhau thì lấy tuần sớm nhất.
+  int get peakWeek {
+    var best = 1;
+    for (var w = 2; w <= weeks; w++) {
+      if (weekKm(w) > weekKm(best)) best = w;
+    }
+    return best;
+  }
+
+  /// Chủ đề của tuần: coach đặt thì dùng, không thì suy từ vị trí tuần
+  /// (tuần có buổi về đích, tuần nặng nhất). Tuần thường thì không có.
+  String? weekTheme(int week) {
+    if (week >= 1 && week <= weekThemes.length) {
+      final t = weekThemes[week - 1].trim();
+      if (t.isNotEmpty) return t;
+    }
+    if (days.any((d) => d.week == week && d.type == WorkoutType.race)) {
+      return 'Giảm tải, về đích';
+    }
+    if (weeks > 2 && week == peakWeek) return 'Đỉnh tải';
+    return null;
+  }
+
   factory TrainingPlan.fromMap(
     String id,
     Map<String, dynamic> map, {
@@ -399,6 +480,9 @@ class TrainingPlan {
       rationale: (map['rationale'] as String?)?.trim().isEmpty ?? true
           ? null
           : (map['rationale'] as String).trim(),
+      weekThemes:
+          (map['weekThemes'] as List?)?.whereType<String>().toList() ??
+          const [],
       feasibility: feasibilityFromValue(map['feasibility'] as String?),
       warnings:
           (map['warnings'] as List?)?.whereType<String>().toList() ?? const [],
@@ -432,6 +516,12 @@ Map<String, CoachParticipant> _parseParticipants(dynamic raw) {
     }
   });
   return out;
+}
+
+String? _nonEmpty(dynamic v) {
+  if (v is! String) return null;
+  final t = v.trim();
+  return t.isEmpty ? null : t;
 }
 
 bool _sameDay(DateTime a, DateTime b) =>

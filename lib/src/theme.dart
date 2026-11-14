@@ -282,6 +282,18 @@ class RunNowPalette extends ThemeExtension<RunNowPalette> {
   }
 }
 
+/// Hai màu dẫn xuất dùng ở trang Tạo mới và trang giáo án.
+extension RunNowPaletteMarks on RunNowPalette {
+  /// Màu "đêm" của bộ accent đang chọn, làm nền các ô tối.
+  Color get accentNight =>
+      Color.lerp(accentDeep, RunNowDataColors.coachLoadFarLight, 0.66)!;
+
+  /// Màu cam ấm duy nhất: chấm live, hôm nay, streak, ngày đua.
+  Color get warmMark => appearance == RunNowAppearance.dark
+      ? RunNowDataColors.coachIntervalDark
+      : RunNowDataColors.coachIntervalLight;
+}
+
 extension RunNowThemeContext on BuildContext {
   RunNowPalette get runNowPalette =>
       Theme.of(this).extension<RunNowPalette>() ?? RunNowPalette.water;

@@ -163,6 +163,9 @@ abstract final class RunNowDataColors {
   // Chữ trên nền accent (dark) + nền sheet Coach (dark).
   static const coachOnAccentDark = Color(0xff04201d);
   static const coachSheetDark = Color(0xff0e1a18);
+  // Hai đầu thang độ nặng của buổi tập: accent pha về phía này thì đậm lên.
+  static const coachLoadFarLight = Color(0xff05080c);
+  static const coachLoadFarDark = Color(0xffffffff);
 }
 
 /// Vàng, bạc, đồng của hạng 1–3 trên BXH Club. Không theo hành của app vì nó
