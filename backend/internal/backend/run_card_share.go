@@ -43,7 +43,7 @@ func clubCardArt(art map[string]any) map[string]any {
 
 func clubCardDoc(uid, activityID string, card map[string]any, sharedAt time.Time) map[string]any {
 	doc := map[string]any{"ownerUid": uid, "activityId": activityID, "sharedAt": sharedAt}
-	for _, k := range []string{"tier", "km", "odds", "startedAt", "rolledAt", "variant"} {
+	for _, k := range []string{"tier", "km", "odds", "startedAt", "rolledAt", "variant", "look"} {
 		if v, ok := card[k]; ok {
 			doc[k] = v
 		}

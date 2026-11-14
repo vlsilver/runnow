@@ -931,6 +931,17 @@ func (s *Server) apiRoutes() {
 		w.WriteHeader(204)
 		return nil
 	}))
+	s.route("PUT /v1/cards/looks", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		var body RunCardLooksRequest
+		if decodeJSON(r, &body) != nil {
+			return invalidRequest()
+		}
+		if err := s.deps.RunCards.SetLooks(r.Context(), uid, body); err != nil {
+			return err
+		}
+		w.WriteHeader(204)
+		return nil
+	}))
 	s.route("POST /v1/cards/{kind}/{id}/share", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		id, err := pathDocID(r, "id")
 		if err != nil {
