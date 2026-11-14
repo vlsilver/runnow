@@ -28,6 +28,7 @@ var (
 	errGameNotFound      = &HTTPError{Status: http.StatusNotFound, Code: "not_found", Message: "Không tìm thấy ván."}
 	errNotGamePlayer     = &HTTPError{Status: http.StatusNotFound, Code: "not_player", Message: "Bạn không chơi ván này."}
 	errNotAdmin          = &HTTPError{Status: http.StatusForbidden, Code: "not_admin", Message: "Chỉ admin làm được việc này."}
+	errNotOwner          = &HTTPError{Status: http.StatusForbidden, Code: "not_owner", Message: "Chỉ chủ ván bắt đầu được ván này."}
 	errRegistrationShut  = &HTTPError{Status: http.StatusConflict, Code: "phase_closed", Message: "Ván đã hết hạn đăng ký hoặc đã bắt đầu."}
 	errGameFull          = &HTTPError{Status: http.StatusConflict, Code: "game_full", Message: fmt.Sprintf("Ván đã đủ %d người.", werewolf.MaxPlayers)}
 	errInvalidDeadline   = &HTTPError{Status: http.StatusUnprocessableEntity, Code: "invalid_deadline", Message: "Hạn đăng ký phải ở sau lúc này."}
@@ -895,9 +896,11 @@ type GameDetail struct {
 	Requirements         []GameRequirement `json:"requirements"`
 	IsRegistered         bool              `json:"isRegistered"`
 	IsAdmin              bool              `json:"isAdmin"`
-	// CanManage: người gọi là admin hoặc chủ ván, được Start, tạm dừng, chạy
-	// tiếp, gia hạn và huỷ ván này.
+	// CanManage: người gọi là admin hoặc chủ ván, được tạm dừng, chạy tiếp, gia
+	// hạn và huỷ ván này.
 	CanManage            bool              `json:"canManage"`
+	// CanStart: chỉ chủ ván (người tạo) bắt đầu được ván, admin cũng không.
+	CanStart             bool              `json:"canStart"`
 	MinAppVersion        string            `json:"minAppVersion"`
 	Winner               string            `json:"winner,omitempty"`
 	WinnerLabel          string            `json:"winnerLabel,omitempty"`
@@ -1048,7 +1051,8 @@ func (s *GameStore) Detail(ctx context.Context, gameID string, v GameViewer, wal
 	if out.IsAdmin && out.TestMode && stringValue(data["status"]) == gameRunning {
 		out.TaskKey = stringValue(data["taskKey"])
 	}
-	out.CanManage = out.IsAdmin || stringValue(data["createdBy"]) == v.UID
+	out.CanStart = stringValue(data["createdBy"]) == v.UID
+	out.CanManage = out.IsAdmin || out.CanStart
 	if out.CanManage {
 		out.StartError = startErrorOf(data)
 	}
@@ -1901,6 +1905,36 @@ func (s *GameStore) RequireHost(ctx context.Context, gameID, uid string) error {
 	}
 	if stringValue(g.Data()["createdBy"]) != uid {
 		return errNotAdmin
+	}
+	return nil
+}
+
+// RequireOwner chỉ cho người tạo ván gameID đi tiếp. Người thường không phải
+// chủ ván nhận 403 not_admin như RequireHost, kể cả khi ván không có. Admin
+// không phải chủ ván nhận 403 not_owner; ván không có thì 404, vì admin vốn
+// xem được mọi ván.
+func (s *GameStore) RequireOwner(ctx context.Context, gameID, uid string) error {
+	cfg, err := s.loadConfig(ctx)
+	if err != nil {
+		return err
+	}
+	admin := cfg.isAdmin(uid)
+	missing, denied := error(errNotAdmin), error(errNotAdmin)
+	if admin {
+		missing, denied = errGameNotFound, errNotOwner
+	}
+	if gameID == "" || len(gameID) > 64 || strings.Contains(gameID, "/") {
+		return missing
+	}
+	g, err := s.gameRef(gameID).Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return missing
+	}
+	if err != nil {
+		return err
+	}
+	if stringValue(g.Data()["createdBy"]) != uid {
+		return denied
 	}
 	return nil
 }

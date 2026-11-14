@@ -139,7 +139,7 @@ func (s *Server) gameRoutes() {
 	}))
 
 	// Start (2.4): dryRun trả ai sẽ bị loại; Start thật đặt starting rồi giao bot.
-	s.route("POST /v1/games/{id}/start", s.gameHost(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+	s.route("POST /v1/games/{id}/start", s.gameOwner(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
 		id := r.PathValue("id")
 		if r.URL.Query().Get("dryRun") == "true" {
 			preview, err := s.deps.Games.StartPreview(r.Context(), id, s.now())
@@ -505,6 +505,16 @@ func (s *Server) gameAdmin(next func(http.ResponseWriter, *http.Request, GameVie
 func (s *Server) gameHost(next func(http.ResponseWriter, *http.Request, GameViewer) error) handler {
 	return s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
 		if err := s.deps.Games.RequireHost(r.Context(), r.PathValue("id"), v.UID); err != nil {
+			return err
+		}
+		return next(w, r, v)
+	})
+}
+
+// gameOwner chỉ cho chủ ván {id} đi tiếp, admin cũng không: xem RequireOwner.
+func (s *Server) gameOwner(next func(http.ResponseWriter, *http.Request, GameViewer) error) handler {
+	return s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+		if err := s.deps.Games.RequireOwner(r.Context(), r.PathValue("id"), v.UID); err != nil {
 			return err
 		}
 		return next(w, r, v)

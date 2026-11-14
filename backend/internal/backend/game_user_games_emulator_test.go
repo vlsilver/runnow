@@ -74,7 +74,7 @@ func openUserGame(t *testing.T, h *apiHarness) string {
 	return r.body["id"].(string)
 }
 
-// Chủ ván điều khiển ván của mình như admin (Start, tạm dừng, chạy tiếp, gia
+// Chủ ván điều khiển ván của mình (Start chỉ chủ ván; tạm dừng, chạy tiếp, gia
 // hạn, huỷ); người khác thì không; lệnh chỉnh ván vẫn chỉ admin.
 func TestEmulatorHostManagesOwnGame(t *testing.T) {
 	db := emulatorDB(t)
@@ -89,6 +89,13 @@ func TestEmulatorHostManagesOwnGame(t *testing.T) {
 		h.want(h.call("an", "POST", base+path, map[string]any{}, "1.13.0"), 403, "not_admin")
 	}
 	h.want(h.call("an", "POST", base+"/start?dryRun=true", nil, "1.13.0"), 200, "")
+	// Bắt đầu ván là việc riêng của chủ ván: admin cũng bị chặn.
+	h.want(h.call("boss", "POST", base+"/start?dryRun=true", nil, "1.13.0"), 403, "not_owner")
+	h.want(h.call("boss", "POST", base+"/start", nil, "1.13.0"), 403, "not_owner")
+	h.want(h.call("boss", "POST", "/v1/games/nope/start", nil, "1.13.0"), 404, "not_found")
+	if own, adm := h.call("an", "GET", base, nil, "1.13.0").body, h.call("boss", "GET", base, nil, "1.13.0").body; own["canStart"] != true || adm["canStart"] != false || adm["canManage"] != true {
+		t.Fatalf("canStart chủ ván = %v, admin = %v; canManage admin = %v", own["canStart"], adm["canStart"], adm["canManage"])
+	}
 	if r := h.call("an", "POST", base+"/admin/pause", nil, "1.13.0"); r.status == 403 {
 		t.Fatalf("chủ ván bị chặn pause: %s", r.raw)
 	}
