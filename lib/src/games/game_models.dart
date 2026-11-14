@@ -541,6 +541,7 @@ class GameDetail {
     required this.isRegistered,
     required this.isAdmin,
     this.canManage = false,
+    this.canStart = false,
     required this.minAppVersion,
     required this.winner,
     required this.winnerLabel,
@@ -576,6 +577,9 @@ class GameDetail {
       isAdmin: json['isAdmin'] == true,
       // Backend cũ không gửi canManage, lúc đó chỉ admin điều khiển ván.
       canManage: (json['canManage'] ?? json['isAdmin']) == true,
+      // Backend cũ không gửi canStart, lúc đó ai điều khiển ván thì bắt đầu được.
+      canStart:
+          (json['canStart'] ?? json['canManage'] ?? json['isAdmin']) == true,
       minAppVersion: _string(json['minAppVersion']),
       winner: _optString(json['winner']),
       winnerLabel: _optString(json['winnerLabel']),
@@ -616,8 +620,11 @@ class GameDetail {
   final bool isRegistered;
   final bool isAdmin;
 
-  /// Bắt đầu ván được: admin hoặc chủ ván.
+  /// Tạm dừng, chạy tiếp, gia hạn, huỷ ván được: admin hoặc chủ ván.
   final bool canManage;
+
+  /// Bắt đầu ván được: chỉ chủ ván, admin cũng không.
+  final bool canStart;
   final String minAppVersion;
   final String? winner;
   final String? winnerLabel;

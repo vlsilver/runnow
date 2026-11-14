@@ -1034,6 +1034,20 @@ void main() {
       await close(tester);
     });
 
+    // Admin không phải chủ ván: vẫn huỷ ván được nhưng không bắt đầu được.
+    testWidgets('canStart false hides it from an admin who can manage', (
+      tester,
+    ) async {
+      backend.game = registering(admin: true)
+        ..['canManage'] = true
+        ..['canStart'] = false;
+      await pumpScreen(tester);
+
+      expect(find.textContaining('Bắt đầu ván'), findsNothing);
+      expect(find.byTooltip('Huỷ ván'), findsOneWidget);
+      await close(tester);
+    });
+
     testWidgets('anyone can share the game link while it is open', (
       tester,
     ) async {

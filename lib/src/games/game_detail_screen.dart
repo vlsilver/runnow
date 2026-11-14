@@ -666,7 +666,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                                       _toggleRegistration(detail.isRegistered),
                                 ),
                               ],
-                              if (detail.canManage &&
+                              if (detail.canStart &&
                                   detail.status == 'registering') ...[
                                 const SizedBox(height: 12),
                                 FilledButton.tonal(
