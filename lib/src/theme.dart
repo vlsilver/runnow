@@ -289,6 +289,11 @@ extension RunNowPaletteMarks on RunNowPalette {
       Color.lerp(accentDeep, RunNowDataColors.coachLoadFarLight, 0.66)!;
 
   /// Màu cam ấm duy nhất: chấm live, hôm nay, streak, ngày đua.
+  /// Chữ và icon đặt trên nền [accent].
+  Color get onAccent => appearance == RunNowAppearance.dark
+      ? RunNowDataColors.coachOnAccentDark
+      : Colors.white;
+
   Color get warmMark => appearance == RunNowAppearance.dark
       ? RunNowDataColors.coachIntervalDark
       : RunNowDataColors.coachIntervalLight;

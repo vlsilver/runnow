@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -68,7 +67,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('hẹn giờ: mở sẵn sáng mai, chip 18:00 đổi giờ gửi lên', (
+  testWidgets('hẹn giờ: mở sẵn sáng mai, chọn Chiều mai 18h thì gửi giờ đó', (
     tester,
   ) async {
     await openSheet(tester, scheduled: true);
@@ -86,7 +85,11 @@ void main() {
     final day = names[tomorrow.weekday]!;
     expect(find.text('Mở phòng · 05:30 $day'), findsOneWidget);
 
-    await tester.tap(find.text('18:00'));
+    await tester.tap(find.byKey(const ValueKey('room-start-card')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Chiều mai 18h'));
+    await tester.pump();
+    await tester.tap(find.text('Xong'));
     await tester.pumpAndSettle();
     await tapSubmit(tester, 'Mở phòng · 18:00 $day');
 
@@ -98,33 +101,38 @@ void main() {
     expect(opened, 'room-new');
   });
 
-  testWidgets('giờ đã qua trong hôm nay thì chặn, không gửi', (tester) async {
-    await openSheet(tester);
-    await tester.tap(find.text('Hôm nay'));
+  testWidgets('sheet giờ chỉ cho chọn trong 7 ngày backend nhận', (
+    tester,
+  ) async {
+    await openSheet(tester, scheduled: true);
+    await tester.tap(find.byKey(const ValueKey('room-start-card')));
     await tester.pumpAndSettle();
-    // Bánh xe đang ở 05:30, mỗi nấc 34px: kéo xuống về 00:00.
-    final wheels = find.byType(CupertinoPicker);
-    await tester.drag(wheels.at(0), const Offset(0, 5 * 34 + 10));
-    await tester.pumpAndSettle();
-    await tester.drag(wheels.at(1), const Offset(0, 6 * 34 + 10));
-    await tester.pumpAndSettle();
-    await tapSubmit(tester, 'Mở phòng · 00:00 hôm nay');
 
-    expect(
-      find.text('Giờ này đã qua, chọn giờ khác hoặc chạy ngay.'),
-      findsOneWidget,
-    );
-    expect(sent, isEmpty);
+    // Ngày thứ 8 trùng thứ với hôm nay; hôm nay hiện là NAY nên nhãn thứ đó
+    // chỉ xuất hiện khi sheet cho chọn quá 7 ngày.
+    const weekdays = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+    expect(find.text('NAY'), findsOneWidget);
+    expect(find.text(weekdays[DateTime.now().weekday % 7]), findsNothing);
   });
 
   testWidgets('chạy ngay thì không gửi giờ hẹn', (tester) async {
     await openSheet(tester, scheduled: true);
-    await tester.tap(find.text('Bây giờ'));
+    await tester.tap(find.text('Chạy ngay'));
     await tester.pumpAndSettle();
-    expect(find.byType(CupertinoPicker), findsNothing);
+    expect(find.byKey(const ValueKey('room-start-card')), findsNothing);
     await tapSubmit(tester, 'Mở phòng ngay');
 
     expect(sent.single.containsKey('startsAt'), isFalse);
     expect(sent.single['title'], 'Hồ Tây sáng');
+  });
+
+  testWidgets('bấm Hẹn giờ thì hẹn sẵn 05:30 sáng mai', (tester) async {
+    await openSheet(tester);
+    expect(find.text('Mở phòng ngay'), findsOneWidget);
+    await tester.tap(find.text('Hẹn giờ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('05:30'), findsOneWidget);
+    expect(find.byKey(const ValueKey('room-start-card')), findsOneWidget);
   });
 }

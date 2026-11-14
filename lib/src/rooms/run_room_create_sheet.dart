@@ -1,7 +1,7 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/games/game_time_picker.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rooms/run_room_actions.dart';
 import 'package:myrun/src/rooms/run_room_models.dart';
@@ -24,12 +24,11 @@ const runRoomPasswordMax = 24;
 /// 7 ngày của backend dù chọn giờ muộn nhất.
 const runRoomScheduleDays = 7;
 
-/// Giờ hay chạy, bấm một lần thay vì lăn bánh xe.
-const runRoomQuickTimes = [
-  TimeOfDay(hour: 5, minute: 30),
-  TimeOfDay(hour: 6, minute: 0),
-  TimeOfDay(hour: 18, minute: 0),
-  TimeOfDay(hour: 19, minute: 0),
+/// Giờ hay chạy, bấm một lần thay vì chọn ngày rồi giờ.
+const List<GameTimeQuick> runRoomQuickTimes = [
+  (label: 'Sáng mai 5h30', day: 1, hour: 5, minute: 30),
+  (label: 'Chiều nay 18h', day: 0, hour: 18, minute: 0),
+  (label: 'Chiều mai 18h', day: 1, hour: 18, minute: 0),
 ];
 
 const _weekdayLong = [
@@ -42,7 +41,7 @@ const _weekdayLong = [
   'Chủ nhật',
 ];
 
-String _hhmm(TimeOfDay t) =>
+String _hhmm(DateTime t) =>
     '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
 /// Mở sheet tạo phòng; tạo xong thì vào màn phòng. [scheduled] chọn sẵn
@@ -77,9 +76,8 @@ class _CreateRunRoomSheetState extends ConsumerState<CreateRunRoomSheet> {
   RunRoomPrivacy _privacy = RunRoomPrivacy.public;
   int _maxRunners = 8;
 
-  /// null là chạy ngay; 0 là hôm nay, 1 là mai…
-  late int? _day = widget.scheduled ? 1 : null;
-  TimeOfDay _time = runRoomQuickTimes.first;
+  /// null là chạy ngay.
+  late DateTime? _startsAt = widget.scheduled ? _defaultStart() : null;
   RunContractRoute? _route;
   bool _busy = false;
   String? _error;
@@ -91,22 +89,28 @@ class _CreateRunRoomSheetState extends ConsumerState<CreateRunRoomSheet> {
     super.dispose();
   }
 
-  DateTime _today() {
+  /// 05:30 sáng mai, mốc mở sẵn khi chuyển sang hẹn giờ.
+  DateTime _defaultStart() {
     final now = DateTime.now();
-    return DateTime(now.year, now.month, now.day);
+    return DateTime(now.year, now.month, now.day + 1, 5, 30);
   }
 
-  DateTime? _startsAt() {
-    final day = _day;
-    if (day == null) return null;
-    final today = _today();
-    return DateTime(
-      today.year,
-      today.month,
-      today.day + day,
-      _time.hour,
-      _time.minute,
+  Future<void> _pickStart() async {
+    final pick = await showGameDeadlineSheet(
+      context,
+      initial: _startsAt,
+      title: 'Giờ xuất phát',
+      noneLabel: null,
+      days: runRoomScheduleDays,
+      quick: runRoomQuickTimes,
+      colors: GameTimeColors.of(context),
     );
+    final at = pick?.at;
+    if (at == null || !mounted) return;
+    setState(() {
+      _startsAt = at;
+      _error = null;
+    });
   }
 
   /// Lỗi nhập liệu đầu tiên, null khi gửi được.
@@ -122,7 +126,7 @@ class _CreateRunRoomSheetState extends ConsumerState<CreateRunRoomSheet> {
         return 'Mật khẩu từ $runRoomPasswordMin đến $runRoomPasswordMax ký tự.';
       }
     }
-    final starts = _startsAt();
+    final starts = _startsAt;
     if (starts != null && !starts.isAfter(DateTime.now())) {
       return 'Giờ này đã qua, chọn giờ khác hoặc chạy ngay.';
     }
@@ -161,7 +165,7 @@ class _CreateRunRoomSheetState extends ConsumerState<CreateRunRoomSheet> {
             password: _privacy == RunRoomPrivacy.password
                 ? _password.text
                 : null,
-            startsAt: _startsAt(),
+            startsAt: _startsAt,
             route: _route,
           );
       askRoomPushPermission(ref);
@@ -174,12 +178,13 @@ class _CreateRunRoomSheetState extends ConsumerState<CreateRunRoomSheet> {
   }
 
   String _submitLabel() {
-    final day = _day;
-    if (day == null) return 'Mở phòng ngay';
-    final when = day == 0
-        ? 'hôm nay'
-        : _weekdayLong[_today().add(Duration(days: day)).weekday - 1];
-    return 'Mở phòng · ${_hhmm(_time)} $when';
+    final at = _startsAt;
+    if (at == null) return 'Mở phòng ngay';
+    final now = DateTime.now();
+    final sameDay =
+        at.year == now.year && at.month == now.month && at.day == now.day;
+    final when = sameDay ? 'hôm nay' : _weekdayLong[at.weekday - 1];
+    return 'Mở phòng · ${_hhmm(at)} $when';
   }
 
   @override
@@ -189,11 +194,11 @@ class _CreateRunRoomSheetState extends ConsumerState<CreateRunRoomSheet> {
     final onSurface = theme.colorScheme.onSurface;
     final sectionLabel = TextStyle(
       color: palette.textMuted,
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: FontWeight.w800,
-      letterSpacing: 0.8,
+      letterSpacing: 1.0,
     );
-    final today = _today();
+    final startsAt = _startsAt;
     return Padding(
       padding: EdgeInsets.only(
         left: 14,
@@ -226,8 +231,8 @@ class _CreateRunRoomSheetState extends ConsumerState<CreateRunRoomSheet> {
               const SizedBox(height: 14),
               Text(
                 'Mở phòng chạy',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
                 ),
               ),
               const SizedBox(height: 12),
@@ -238,85 +243,64 @@ class _CreateRunRoomSheetState extends ConsumerState<CreateRunRoomSheet> {
                 decoration: const InputDecoration(
                   labelText: 'Tên phòng',
                   hintText: 'VD: Chạy hồ Tây sáng thứ 7',
+                  counterText: '',
                 ),
               ),
-              const SizedBox(height: 4),
-              Text('TUYẾN CHẠY · TUỲ CHỌN', style: sectionLabel),
+              const SizedBox(height: 14),
+              Text('XUẤT PHÁT', style: sectionLabel),
               const SizedBox(height: 8),
-              if (_route case final route?) ...[
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: palette.tint,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 72,
-                        height: 56,
-                        child: RunRoomRouteSketch(
-                          route: route,
-                          color: palette.accent,
-                          padding: const EdgeInsets.all(6),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Tuyến ${runRoomRouteKm(route)}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            Text(
-                              'Cả phòng thấy tuyến này trên map.',
-                              style: TextStyle(color: palette.textMuted),
-                            ),
-                          ],
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () => setState(() => _route = null),
-                        child: const Text('Bỏ'),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-              ],
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _busy ? null : () => _pickRoute(gpx: false),
-                      icon: const Icon(Icons.edit_rounded, size: 18),
-                      label: Text(_route == null ? 'Vẽ tuyến' : 'Vẽ lại'),
+                    child: _ChoiceTile(
+                      icon: Icons.bolt_rounded,
+                      label: 'Chạy ngay',
+                      selected: startsAt == null,
+                      onTap: () => setState(() {
+                        _startsAt = null;
+                        _error = null;
+                      }),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _busy ? null : () => _pickRoute(gpx: true),
-                      icon: const Icon(Icons.file_download_rounded, size: 18),
-                      label: const Text('Nhập GPX'),
+                    child: _ChoiceTile(
+                      icon: Icons.alarm_rounded,
+                      label: 'Hẹn giờ',
+                      selected: startsAt != null,
+                      onTap: () =>
+                          setState(() => _startsAt ??= _defaultStart()),
                     ),
                   ),
                 ],
               ),
+              if (startsAt != null) ...[
+                const SizedBox(height: 8),
+                _StartCard(at: startsAt, onTap: _busy ? null : _pickStart),
+              ],
               const SizedBox(height: 14),
-              SegmentedButton<RunRoomPrivacy>(
-                segments: [
-                  for (final p in RunRoomPrivacy.values)
-                    ButtonSegment(value: p, label: Text(p.label)),
+              Text('AI VÀO ĐƯỢC', style: sectionLabel),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  for (final p in RunRoomPrivacy.values) ...[
+                    if (p != RunRoomPrivacy.values.first)
+                      const SizedBox(width: 8),
+                    Expanded(
+                      child: _ChoiceTile(
+                        icon: switch (p) {
+                          RunRoomPrivacy.public => Icons.public_rounded,
+                          RunRoomPrivacy.private => Icons.how_to_reg_rounded,
+                          RunRoomPrivacy.password => Icons.key_rounded,
+                        },
+                        label: p.label,
+                        selected: _privacy == p,
+                        stacked: true,
+                        onTap: () => setState(() => _privacy = p),
+                      ),
+                    ),
+                  ],
                 ],
-                selected: {_privacy},
-                showSelectedIcon: false,
-                onSelectionChanged: (value) =>
-                    setState(() => _privacy = value.single),
               ),
               const SizedBox(height: 6),
               Text(switch (_privacy) {
@@ -326,27 +310,27 @@ class _CreateRunRoomSheetState extends ConsumerState<CreateRunRoomSheet> {
                   'Chỉ người có link mới thấy; bạn duyệt từng người.',
                 RunRoomPrivacy.password =>
                   'Chỉ người có link và mật khẩu mới vào được.',
-              }, style: TextStyle(color: onSurface.withValues(alpha: 0.65))),
+              }, style: TextStyle(color: palette.textMuted, fontSize: 12.5)),
               if (_privacy == RunRoomPrivacy.password) ...[
                 const SizedBox(height: 8),
                 TextField(
                   controller: _password,
                   maxLength: runRoomPasswordMax,
                   obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Mật khẩu'),
+                  decoration: const InputDecoration(
+                    labelText: 'Mật khẩu',
+                    counterText: '',
+                  ),
                 ),
               ],
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Tối đa',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
+              const SizedBox(height: 12),
+              _Row(
+                icon: Icons.groups_rounded,
+                label: 'Tối đa',
+                trailing: [
                   IconButton(
                     tooltip: 'Bớt',
+                    visualDensity: VisualDensity.compact,
                     onPressed: _maxRunners > runRoomMinRunners
                         ? () => setState(() => _maxRunners--)
                         : null,
@@ -358,6 +342,7 @@ class _CreateRunRoomSheetState extends ConsumerState<CreateRunRoomSheet> {
                   ),
                   IconButton(
                     tooltip: 'Thêm',
+                    visualDensity: VisualDensity.compact,
                     onPressed: _maxRunners < runRoomMaxRunners
                         ? () => setState(() => _maxRunners++)
                         : null,
@@ -365,70 +350,47 @@ class _CreateRunRoomSheetState extends ConsumerState<CreateRunRoomSheet> {
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text('GIỜ XUẤT PHÁT', style: sectionLabel),
               const SizedBox(height: 8),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  spacing: 8,
-                  children: [
-                    _DayChip(
-                      top: 'Bây giờ',
-                      bottom: 'Ngay',
-                      selected: _day == null,
-                      onTap: () => setState(() => _day = null),
+              if (_route case final route?)
+                _Row(
+                  leading: SizedBox(
+                    width: 56,
+                    height: 40,
+                    child: RunRoomRouteSketch(
+                      route: route,
+                      color: palette.accent,
+                      padding: const EdgeInsets.all(4),
                     ),
-                    for (var d = 0; d < runRoomScheduleDays; d++)
-                      _DayChip(
-                        top: runRoomDayLabel(
-                          today.add(Duration(days: d)),
-                          today,
-                        ),
-                        bottom: _dayMonth(today.add(Duration(days: d))),
-                        selected: _day == d,
-                        onTap: () => setState(() => _day = d),
-                      ),
+                  ),
+                  label: 'Tuyến ${runRoomRouteKm(route)}',
+                  trailing: [
+                    TextButton(
+                      onPressed: _busy ? null : () => _pickRoute(gpx: false),
+                      child: const Text('Vẽ lại'),
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() => _route = null),
+                      child: const Text('Bỏ'),
+                    ),
+                  ],
+                )
+              else
+                _Row(
+                  icon: Icons.route_rounded,
+                  label: 'Tuyến chạy',
+                  trailing: [
+                    TextButton.icon(
+                      onPressed: _busy ? null : () => _pickRoute(gpx: false),
+                      icon: const Icon(Icons.edit_rounded, size: 17),
+                      label: const Text('Vẽ'),
+                    ),
+                    TextButton.icon(
+                      onPressed: _busy ? null : () => _pickRoute(gpx: true),
+                      icon: const Icon(Icons.file_download_rounded, size: 17),
+                      label: const Text('GPX'),
+                    ),
                   ],
                 ),
-              ),
-              if (_day != null) ...[
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: palette.tint,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Row(
-                    children: [
-                      _TimeWheel(
-                        time: _time,
-                        onChanged: (t) => setState(() => _time = t),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            for (final t in runRoomQuickTimes)
-                              ChoiceChip(
-                                label: Text(_hhmm(t)),
-                                selected: t == _time,
-                                showCheckmark: false,
-                                onSelected: (_) => setState(() => _time = t),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
               if (_error case final error?) ...[
                 const SizedBox(height: 8),
                 Text(error, style: TextStyle(color: theme.colorScheme.error)),
@@ -446,48 +408,140 @@ class _CreateRunRoomSheetState extends ConsumerState<CreateRunRoomSheet> {
   }
 }
 
-String _dayMonth(DateTime d) => '${d.day}/${d.month}';
-
-class _DayChip extends StatelessWidget {
-  const _DayChip({
-    required this.top,
-    required this.bottom,
+/// Ô chọn một trong vài lựa chọn: ô đang chọn tô nền accent.
+class _ChoiceTile extends StatelessWidget {
+  const _ChoiceTile({
+    required this.icon,
+    required this.label,
     required this.selected,
     required this.onTap,
+    this.stacked = false,
   });
 
-  final String top;
-  final String bottom;
+  final IconData icon;
+  final String label;
   final bool selected;
   final VoidCallback onTap;
+
+  /// Icon nằm trên chữ, cho hàng ba ô hẹp.
+  final bool stacked;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final fg = selected ? palette.accent : palette.ink;
+    final fg = selected ? palette.onAccent : palette.ink;
+    final text = Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: fg,
+        fontSize: stacked ? 13 : 15,
+        fontWeight: FontWeight.w800,
+      ),
+    );
+    final mark = Icon(icon, size: stacked ? 20 : 20, color: fg);
     return Semantics(
       button: true,
       selected: selected,
+      label: label,
       child: Material(
-        color: selected ? palette.ink : palette.tint,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
+        color: selected ? palette.accent : palette.glassStart,
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: selected ? palette.accent : palette.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: ExcludeSemantics(
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: stacked ? 9 : 13,
+              ),
+              child: stacked
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [mark, const SizedBox(height: 3), text],
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        mark,
+                        const SizedBox(width: 6),
+                        Flexible(child: text),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Thẻ giờ xuất phát đã hẹn: giờ to, ngày, còn bao lâu; chạm để đổi.
+class _StartCard extends StatelessWidget {
+  const _StartCard({required this.at, required this.onTap});
+
+  final DateTime at;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    const fg = Colors.white;
+    return Semantics(
+      button: true,
+      label: 'Đổi giờ xuất phát',
+      child: Material(
+        color: palette.accentNight,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          key: const ValueKey('room-start-card'),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            child: Column(
+            padding: const EdgeInsets.fromLTRB(16, 12, 10, 12),
+            child: Row(
               children: [
                 Text(
-                  top,
-                  style: TextStyle(color: fg, fontWeight: FontWeight.w800),
-                ),
-                Text(
-                  bottom,
-                  style: TextStyle(
-                    color: fg.withValues(alpha: 0.7),
-                    fontSize: 12,
+                  _hhmm(at),
+                  style: const TextStyle(
+                    color: fg,
+                    fontSize: 34,
+                    height: 1.0,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
                   ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        gameDayLabel(at),
+                        style: const TextStyle(
+                          color: fg,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        gameUntil(at, DateTime.now()),
+                        style: TextStyle(
+                          color: palette.warmMark,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: fg.withValues(alpha: 0.7),
                 ),
               ],
             ),
@@ -498,97 +552,46 @@ class _DayChip extends StatelessWidget {
   }
 }
 
-/// Bánh xe giờ và phút (bước 5 phút). Bấm chip giờ nhanh thì bánh xe lăn
-/// theo, nên [time] từ ngoài vào là nguồn đúng.
-class _TimeWheel extends StatefulWidget {
-  const _TimeWheel({required this.time, required this.onChanged});
+/// Một hàng cài đặt: icon hoặc hình, nhãn, phần điều khiển bên phải.
+class _Row extends StatelessWidget {
+  const _Row({
+    required this.label,
+    required this.trailing,
+    this.icon,
+    this.leading,
+  });
 
-  final TimeOfDay time;
-  final ValueChanged<TimeOfDay> onChanged;
-
-  @override
-  State<_TimeWheel> createState() => _TimeWheelState();
-}
-
-class _TimeWheelState extends State<_TimeWheel> {
-  late final _hours = FixedExtentScrollController(
-    initialItem: widget.time.hour,
-  );
-  late final _minutes = FixedExtentScrollController(
-    initialItem: widget.time.minute ~/ 5,
-  );
+  final IconData? icon;
+  final Widget? leading;
+  final String label;
+  final List<Widget> trailing;
 
   @override
-  void didUpdateWidget(_TimeWheel old) {
-    super.didUpdateWidget(old);
-    // Lăn sau frame: jumpToItem bắn onSelectedItemChanged, mà gọi setState
-    // của sheet trong lúc đang build là lỗi.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final t = widget.time;
-      if (_hours.hasClients && _hours.selectedItem != t.hour) {
-        _hours.jumpToItem(t.hour);
-      }
-      if (_minutes.hasClients && _minutes.selectedItem != t.minute ~/ 5) {
-        _minutes.jumpToItem(t.minute ~/ 5);
-      }
-    });
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return Container(
+      padding: const EdgeInsets.only(left: 12, right: 4),
+      constraints: const BoxConstraints(minHeight: 52),
+      decoration: BoxDecoration(
+        color: palette.glassStart,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: palette.border),
+      ),
+      child: Row(
+        children: [
+          leading ?? Icon(icon, size: 20, color: palette.accentDeep),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          ...trailing,
+        ],
+      ),
+    );
   }
-
-  @override
-  void dispose() {
-    _hours.dispose();
-    _minutes.dispose();
-    super.dispose();
-  }
-
-  Widget _wheel(
-    FixedExtentScrollController controller,
-    int count,
-    String Function(int) label,
-    ValueChanged<int> onSelected,
-  ) => SizedBox(
-    width: 52,
-    height: 120,
-    child: CupertinoPicker.builder(
-      scrollController: controller,
-      itemExtent: 34,
-      childCount: count,
-      selectionOverlay: const CupertinoPickerDefaultSelectionOverlay(
-        capStartEdge: false,
-        capEndEdge: false,
-      ),
-      onSelectedItemChanged: onSelected,
-      itemBuilder: (context, i) => Center(
-        child: Text(
-          label(i),
-          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-        ),
-      ),
-    ),
-  );
-
-  @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      _wheel(
-        _hours,
-        24,
-        (i) => i.toString().padLeft(2, '0'),
-        (i) => widget.onChanged(TimeOfDay(hour: i, minute: widget.time.minute)),
-      ),
-      const Text(
-        ':',
-        style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-      ),
-      _wheel(
-        _minutes,
-        12,
-        (i) => (i * 5).toString().padLeft(2, '0'),
-        (i) =>
-            widget.onChanged(TimeOfDay(hour: widget.time.hour, minute: i * 5)),
-      ),
-    ],
-  );
 }

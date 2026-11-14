@@ -289,8 +289,7 @@ class _AskCoachButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final fg = dark ? RunNowDataColors.coachOnAccentDark : Colors.white;
+    final fg = palette.onAccent;
     return Material(
       color: palette.accent,
       borderRadius: BorderRadius.circular(13),

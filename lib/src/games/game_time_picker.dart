@@ -1,10 +1,71 @@
 import 'package:flutter/material.dart';
-import 'package:myrun/src/theme_tokens.dart';
+import 'package:myrun/src/theme.dart';
 
 // Chọn giờ cho màn tạo ván: hạn đóng đăng ký và giờ chia bài (ngày, giờ,
-// phút), cùng thẻ và ô chọn số vòng.
+// phút), cùng thẻ và ô chọn số vòng. Phòng chạy hẹn giờ dùng lại sheet này
+// với bộ màu theo theme.
 
 typedef _M = RunNowMoonlitTokens;
+
+/// Màu của sheet chọn giờ. Ván Ma Sói dùng bộ đêm [moonlit]; màn khác lấy
+/// bộ theo theme bằng [GameTimeColors.of].
+class GameTimeColors {
+  const GameTimeColors({
+    required this.panel,
+    required this.ink,
+    required this.faint,
+    required this.danger,
+    required this.on,
+    required this.onInk,
+    required this.cell,
+    required this.cellNight,
+    required this.border,
+  });
+
+  factory GameTimeColors.of(BuildContext context) {
+    final palette = context.runNowPalette;
+    return GameTimeColors(
+      panel: palette.background,
+      ink: palette.ink,
+      faint: palette.textMuted,
+      danger: Theme.of(context).colorScheme.error,
+      on: palette.accent,
+      onInk: palette.onAccent,
+      cell: palette.glassStart,
+      cellNight: palette.tint,
+      border: palette.border,
+    );
+  }
+
+  static const moonlit = GameTimeColors(
+    panel: _M.panel,
+    ink: _M.ink,
+    faint: _M.faint,
+    danger: _M.danger,
+    on: _M.amber,
+    onInk: _M.onAmber,
+    cell: _M.raised,
+    cellNight: _M.lifted,
+    border: _M.border,
+  );
+
+  final Color panel;
+  final Color ink;
+  final Color faint;
+  final Color danger;
+
+  /// Nền ô đang chọn và chữ trên nền đó.
+  final Color on;
+  final Color onInk;
+  final Color cell;
+
+  /// Nền ô giờ tối (18h–6h).
+  final Color cellNight;
+  final Color border;
+}
+
+/// Một lựa chọn nhanh: [day] ngày tính từ hôm nay, lúc [hour]:[minute].
+typedef GameTimeQuick = ({String label, int day, int hour, int minute});
 
 /// Thời gian còn lại tới [at], kiểu "còn 1 ngày 3 tiếng"; dưới một tiếng thì
 /// tính phút.
@@ -37,9 +98,10 @@ String _two(int v) => v.toString().padLeft(2, '0');
 /// chọn thì trả null.
 typedef GameDeadlinePick = ({DateTime? at});
 
-/// Sheet chọn ngày giờ (hạn đóng đăng ký, giờ chia bài): chọn nhanh, 14 ngày
-/// tới, giờ, phút. Giờ không sau [after] (mặc định lúc này) thì mờ và không
+/// Sheet chọn ngày giờ (hạn đóng đăng ký, giờ chia bài): chọn nhanh, [days]
+/// ngày tới, giờ, phút. Giờ không sau [after] (mặc định lúc này) thì mờ và không
 /// bấm Xong được. [noneLabel] null thì nút trái là Huỷ, đóng sheet trả null.
+/// [quick] null thì dùng ba mốc buổi tối của ván Ma Sói.
 Future<GameDeadlinePick?> showGameDeadlineSheet(
   BuildContext context, {
   DateTime? initial,
@@ -47,11 +109,14 @@ Future<GameDeadlinePick?> showGameDeadlineSheet(
   String title = 'Đóng đăng ký',
   DateTime? after,
   String? noneLabel = 'Không đặt hạn',
+  int days = 14,
+  List<GameTimeQuick>? quick,
+  GameTimeColors colors = GameTimeColors.moonlit,
 }) {
   return showModalBottomSheet<GameDeadlinePick>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: _M.panel,
+    backgroundColor: colors.panel,
     showDragHandle: true,
     builder: (context) => _DeadlineSheet(
       initial: initial,
@@ -59,6 +124,9 @@ Future<GameDeadlinePick?> showGameDeadlineSheet(
       title: title,
       after: after,
       noneLabel: noneLabel,
+      days: days,
+      quick: quick,
+      colors: colors,
     ),
   );
 }
@@ -70,6 +138,9 @@ class _DeadlineSheet extends StatefulWidget {
     required this.title,
     required this.after,
     required this.noneLabel,
+    required this.days,
+    required this.quick,
+    required this.colors,
   });
 
   final DateTime? initial;
@@ -77,13 +148,16 @@ class _DeadlineSheet extends StatefulWidget {
   final String title;
   final DateTime? after;
   final String? noneLabel;
+  final int days;
+  final List<GameTimeQuick>? quick;
+  final GameTimeColors colors;
 
   @override
   State<_DeadlineSheet> createState() => _DeadlineSheetState();
 }
 
 class _DeadlineSheetState extends State<_DeadlineSheet> {
-  static const _days = 14;
+  int get _days => widget.days;
   late int _day;
   late int _hour;
   late int _minute;
@@ -127,12 +201,20 @@ class _DeadlineSheetState extends State<_DeadlineSheet> {
   Widget build(BuildContext context) {
     final at = _at(_day, _hour, _minute);
     final past = _early(at);
+    final c = widget.colors;
     final weekend = (6 - widget.now.weekday % 7 + 7) % 7;
-    final quick = [
-      ('Tối nay 21h', 0, 21),
-      ('Mai 21h', 1, 21),
-      ('Cuối tuần 20h', weekend == 0 ? 7 : weekend, 20),
-    ];
+    final List<GameTimeQuick> quick =
+        widget.quick ??
+        [
+          (label: 'Tối nay 21h', day: 0, hour: 21, minute: 0),
+          (label: 'Mai 21h', day: 1, hour: 21, minute: 0),
+          (
+            label: 'Cuối tuần 20h',
+            day: weekend == 0 ? 7 : weekend,
+            hour: 20,
+            minute: 0,
+          ),
+        ];
     return SafeArea(
       child: ConstrainedBox(
         constraints: BoxConstraints(
@@ -142,16 +224,16 @@ class _DeadlineSheetState extends State<_DeadlineSheet> {
           shrinkWrap: true,
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
           children: [
-            _SheetTitle(widget.title),
+            _SheetTitle(widget.title, c),
             const SizedBox(height: 12),
             Row(
               children: [
                 Text(
                   '${_two(_hour)}:${_two(_minute)}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 36,
                     fontWeight: FontWeight.w900,
-                    color: _M.ink,
+                    color: c.ink,
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -161,9 +243,9 @@ class _DeadlineSheetState extends State<_DeadlineSheet> {
                     children: [
                       Text(
                         gameDayLabel(at),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w800,
-                          color: _M.ink,
+                          color: c.ink,
                         ),
                       ),
                       Text(
@@ -174,7 +256,7 @@ class _DeadlineSheetState extends State<_DeadlineSheet> {
                             : 'Phải sau giờ đóng đăng ký',
                         style: TextStyle(
                           fontSize: 12.5,
-                          color: past ? _M.danger : _M.faint,
+                          color: past ? c.danger : c.faint,
                         ),
                       ),
                     ],
@@ -187,17 +269,18 @@ class _DeadlineSheetState extends State<_DeadlineSheet> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final (label, day, hour) in quick)
+                for (final q in quick)
                   _Pill(
-                    label: label,
-                    on: _day == day && _hour == hour && _minute == 0,
-                    onTap: _past(_at(day, hour, 0))
+                    colors: c,
+                    label: q.label,
+                    on: _day == q.day && _hour == q.hour && _minute == q.minute,
+                    onTap: _past(_at(q.day, q.hour, q.minute))
                         ? null
-                        : () => setState(() => _set(day, hour, 0)),
+                        : () => setState(() => _set(q.day, q.hour, q.minute)),
                   ),
               ],
             ),
-            const _Label('NGÀY'),
+            _Label('NGÀY', c),
             SizedBox(
               height: 56,
               child: ListView.separated(
@@ -209,6 +292,7 @@ class _DeadlineSheetState extends State<_DeadlineSheet> {
                   return SizedBox(
                     width: 46,
                     child: _Pill(
+                      colors: c,
                       dense: true,
                       label: '${d.day}',
                       top: i == 0
@@ -223,19 +307,21 @@ class _DeadlineSheetState extends State<_DeadlineSheet> {
                 },
               ),
             ),
-            const _Label('GIỜ'),
+            _Label('GIỜ', c),
             GameHourGrid(
+              colors: c,
               selected: _hour,
               disabled: (h) => _past(_at(_day, h, 45)),
               onSelect: (h) => setState(() => _hour = h),
             ),
-            const _Label('PHÚT'),
+            _Label('PHÚT', c),
             Row(
               children: [
                 for (final m in const [0, 15, 30, 45]) ...[
                   if (m > 0) const SizedBox(width: 6),
                   Expanded(
                     child: _Pill(
+                      colors: c,
                       label: ':${_two(m)}',
                       on: _minute == m,
                       onTap: () => setState(() => _minute = m),
@@ -282,8 +368,10 @@ class GameHourGrid extends StatelessWidget {
     required this.selected,
     required this.disabled,
     required this.onSelect,
+    this.colors = GameTimeColors.moonlit,
   });
 
+  final GameTimeColors colors;
   final int selected;
   final bool Function(int hour) disabled;
   final ValueChanged<int> onSelect;
@@ -300,6 +388,7 @@ class GameHourGrid extends StatelessWidget {
       children: [
         for (var h = 0; h < 24; h++)
           _Pill(
+            colors: colors,
             dense: true,
             label: '${h}h',
             on: h == selected,
@@ -467,7 +556,10 @@ class _Pill extends StatelessWidget {
     this.bottom,
     this.night = false,
     this.dense = false,
+    this.colors = GameTimeColors.moonlit,
   });
+
+  final GameTimeColors colors;
 
   final String label;
   final String? top;
@@ -482,22 +574,23 @@ class _Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
+    final c = colors;
     final fg = on
-        ? _M.onAmber
+        ? c.onInk
         : enabled
-        ? _M.ink
-        : _M.faint;
+        ? c.ink
+        : c.faint;
     return Opacity(
       opacity: enabled || on ? 1 : 0.4,
       child: Material(
         color: on
-            ? _M.amber
+            ? c.on
             : night
-            ? _M.lifted
-            : _M.raised,
+            ? c.cellNight
+            : c.cell,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: on ? _M.amber : _M.border),
+          side: BorderSide(color: on ? c.on : c.border),
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -545,27 +638,29 @@ class _Pill extends StatelessWidget {
 }
 
 class _SheetTitle extends StatelessWidget {
-  const _SheetTitle(this.text);
+  const _SheetTitle(this.text, this.colors);
 
   final String text;
+  final GameTimeColors colors;
 
   @override
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 20,
         fontWeight: FontWeight.w900,
-        color: _M.ink,
+        color: colors.ink,
       ),
     );
   }
 }
 
 class _Label extends StatelessWidget {
-  const _Label(this.text);
+  const _Label(this.text, this.colors);
 
   final String text;
+  final GameTimeColors colors;
 
   @override
   Widget build(BuildContext context) {
@@ -573,11 +668,11 @@ class _Label extends StatelessWidget {
       padding: const EdgeInsets.only(top: 14, bottom: 6),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 10.5,
           letterSpacing: 1.2,
           fontWeight: FontWeight.w800,
-          color: _M.faint,
+          color: colors.faint,
         ),
       ),
     );
