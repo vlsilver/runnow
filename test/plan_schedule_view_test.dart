@@ -112,6 +112,32 @@ void main() {
     });
   });
 
+  group('TrainingPlan.isOver', () {
+    test('runs through its target day and is over the day after', () {
+      final plan = _plan(); // đích 15/11/2026
+      expect(plan.isOver(DateTime(2026, 11, 15, 23, 59)), isFalse);
+      expect(plan.isRunning(DateTime(2026, 11, 15, 23, 59)), isTrue);
+      expect(plan.isOver(DateTime(2026, 11, 16)), isTrue);
+      expect(plan.isRunning(DateTime(2026, 11, 16)), isFalse);
+    });
+
+    test('is over as soon as the owner ends it', () {
+      final running = TrainingPlan.fromMap('p1', {
+        'startDate': '2026-11-02',
+        'targetDate': '2026-11-15',
+        'days': const [],
+      });
+      final ended = TrainingPlan.fromMap('p1', {
+        'startDate': '2026-11-02',
+        'targetDate': '2026-11-15',
+        'days': const [],
+        'endedAt': DateTime(2026, 11, 5),
+      });
+      expect(running.isOver(DateTime(2026, 11, 5)), isFalse);
+      expect(ended.isOver(DateTime(2026, 11, 5)), isTrue);
+    });
+  });
+
   testWidgets('today card says what the session is for', (tester) async {
     await _pump(tester, _plan(), today: DateTime(2026, 11, 4));
 

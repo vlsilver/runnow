@@ -90,6 +90,7 @@ class CoachDetailScreen extends ConsumerWidget {
                       ref,
                       plan,
                     ),
+                    _OwnerAction.end => _confirmEnd(context, ref, plan),
                     _OwnerAction.delete => confirmDeleteCoachPlan(
                       context,
                       ref,
@@ -113,6 +114,15 @@ class CoachDetailScreen extends ConsumerWidget {
                         ),
                       ),
                     ),
+                    if (!plan.isOver(DateTime.now()))
+                      const PopupMenuItem(
+                        value: _OwnerAction.end,
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.flag_rounded),
+                          title: Text('Kết thúc giáo án'),
+                        ),
+                      ),
                     const PopupMenuItem(
                       value: _OwnerAction.delete,
                       child: ListTile(
@@ -135,7 +145,45 @@ class CoachDetailScreen extends ConsumerWidget {
   }
 }
 
-enum _OwnerAction { visibility, delete }
+enum _OwnerAction { visibility, end, delete }
+
+/// Hỏi lại rồi kết thúc giáo án của mình. Khác xoá: lịch và tiến độ của mọi
+/// người vẫn còn, giáo án chỉ rời "Kèo đang chạy".
+void _confirmEnd(BuildContext context, WidgetRef ref, TrainingPlan plan) {
+  final messenger = ScaffoldMessenger.of(context);
+  final others = (plan.participantCount - 1).clamp(0, 9999);
+  showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Kết thúc giáo án?'),
+      content: Text(
+        others > 0
+            ? 'Giáo án rời Kèo đang chạy của bạn và $others người đang theo. '
+                  'Lịch và tiến độ vẫn giữ.'
+            : 'Giáo án rời Kèo đang chạy. Lịch và tiến độ vẫn giữ.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('Huỷ'),
+        ),
+        FilledButton(
+          onPressed: () async {
+            Navigator.pop(dialogContext);
+            try {
+              await ref.read(coachControllerProvider).end(plan.id);
+            } catch (e) {
+              messenger.showSnackBar(
+                SnackBar(content: Text('Không kết thúc được: $e')),
+              );
+            }
+          },
+          child: const Text('Kết thúc'),
+        ),
+      ],
+    ),
+  );
+}
 
 Future<void> _toggleVisibility(
   BuildContext context,
@@ -231,6 +279,7 @@ class _PublicCoachDetailState extends ConsumerState<_PublicCoachDetail> {
     final plan = widget.plan;
     final uid = widget.currentUid;
     final joined = plan.hasJoined(uid);
+    final over = plan.isOver(DateTime.now());
     final members = ref.watch(membersProvider).value ?? const <MemberProfile>[];
     final ownerName =
         members
@@ -272,7 +321,9 @@ class _PublicCoachDetailState extends ConsumerState<_PublicCoachDetail> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
           child: FilledButton(
-            onPressed: _busy ? null : () => _toggleJoin(joined),
+            onPressed: _busy || (over && !joined)
+                ? null
+                : () => _toggleJoin(joined),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(50),
               backgroundColor: joined ? palette.glassStart : palette.accent,
@@ -288,7 +339,11 @@ class _PublicCoachDetailState extends ConsumerState<_PublicCoachDetail> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : Text(
-                    joined ? 'Rời giáo án' : 'Tham gia giáo án',
+                    joined
+                        ? 'Rời giáo án'
+                        : over
+                        ? 'Giáo án đã kết thúc'
+                        : 'Tham gia giáo án',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,

@@ -216,6 +216,15 @@ class CoachController {
     });
   }
 
+  /// Chủ giáo án kết thúc giáo án: rời "Kèo đang chạy" của mọi người, lịch và
+  /// tiến độ từng người giữ nguyên. Luật Firestore cho owner sửa (branch A).
+  Future<void> end(String planId) async {
+    await _db.collection('coachPlans').doc(planId).update({
+      'endedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
   /// Xoá giáo án mình sở hữu (coachPlans/{uid}). Chỉ owner mới gọi được (luật
   /// Firestore chặn người khác).
   Future<void> delete() async {

@@ -493,10 +493,22 @@ class _ContractFeed extends StatelessWidget {
               final profiles = {
                 for (final member in members) member.uid: member,
               };
-              // Coach card chỉ xuất hiện ở filter "đang chạy", nằm đầu feed.
-              final coachCards = filter == _ContractFilter.active
-                  ? coachPlans
-                  : const <TrainingPlan>[];
+              // Giáo án còn chạy nằm đầu feed "đang chạy". Giáo án mình theo
+              // mà đã xong hết buổi, đã kết thúc hay quá ngày đích thì sang
+              // Hoàn thành.
+              final now = DateTime.now();
+              final coachCards = [
+                for (final plan in coachPlans)
+                  if (switch (filter) {
+                    _ContractFilter.active => plan.isRunning(now),
+                    _ContractFilter.completed =>
+                      !plan.isDraft &&
+                          !plan.isRunning(now) &&
+                          plan.hasJoined(currentUid),
+                    _ContractFilter.failed => false,
+                  })
+                    plan,
+              ];
               // Ván Ma Sói đã chia theo filter ở trên, đứng trước coach card.
               final gameCards = games;
               final roomCards = rooms;

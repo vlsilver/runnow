@@ -502,6 +502,9 @@ class CompletedPlanState extends StatelessWidget {
     final onAccent = dark ? RunNowDataColors.coachOnAccentDark : Colors.white;
     final totalKm = plan.days.fold<double>(
         0, (s, d) => s + (d.done ? (d.distanceKm ?? 0) : 0));
+    final share = plan.totalSessions == 0
+        ? 0.0
+        : (plan.doneSessions / plan.totalSessions).clamp(0.0, 1.0);
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 30, 24, 24),
       child: Column(
@@ -517,7 +520,7 @@ class CompletedPlanState extends StatelessWidget {
                   width: 132,
                   height: 132,
                   child: CircularProgressIndicator(
-                    value: 1,
+                    value: share,
                     strokeWidth: 11,
                     backgroundColor: palette.border,
                     color: palette.accent,
@@ -526,12 +529,12 @@ class CompletedPlanState extends StatelessWidget {
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('100%',
+                    Text('${(share * 100).round()}%',
                         style: TextStyle(
                             fontSize: 34,
                             fontWeight: FontWeight.w800,
                             color: palette.ink)),
-                    Text('Trọn giáo án',
+                    Text(plan.completed ? 'Trọn giáo án' : 'Số buổi đã tập',
                         style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
@@ -543,7 +546,9 @@ class CompletedPlanState extends StatelessWidget {
           ),
           const SizedBox(height: 22),
           Text(
-            '${_trim(plan.goalDistanceKm)} km, đúng hẹn.',
+            plan.completed
+                ? '${_trim(plan.goalDistanceKm)} km, đúng hẹn.'
+                : 'Giáo án đã kết thúc',
             style: TextStyle(
               fontSize: 27,
               fontWeight: FontWeight.w800,
@@ -553,7 +558,10 @@ class CompletedPlanState extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Bạn hoàn thành trọn vẹn giáo án. Chân đã sẵn cho mục tiêu mới.',
+            plan.completed
+                ? 'Bạn hoàn thành trọn vẹn giáo án. Chân đã sẵn cho mục tiêu mới.'
+                : 'Bạn tập ${plan.doneSessions} trên ${plan.totalSessions} buổi. '
+                      'Đặt mục tiêu mới khi sẵn sàng.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 13.5, height: 1.5, color: palette.textMuted),
           ),

@@ -100,17 +100,25 @@ RunContract _contract() {
   );
 }
 
-TrainingPlan _plan(String id, String goal, {bool isDraft = false}) =>
+/// Giáo án còn 30 ngày nữa tới đích, trừ khi [daysToTarget] nói khác.
+TrainingPlan _plan(
+  String id,
+  String goal, {
+  bool isDraft = false,
+  bool ended = false,
+  int daysToTarget = 30,
+}) =>
     TrainingPlan(
       id: id,
       goal: goal,
       goalDistanceKm: 10,
       weeks: 8,
-      startDate: DateTime(2026, 11, 2),
-      targetDate: DateTime(2026, 12, 27),
+      startDate: DateTime.now().subtract(const Duration(days: 26)),
+      targetDate: DateTime.now().add(Duration(days: daysToTarget)),
       summary: '',
       days: const [],
       isDraft: isDraft,
+      ended: ended,
       ownerUid: id,
       visibility: CoachVisibility.club,
     );
@@ -288,6 +296,27 @@ void main() {
     expect(find.text('Half Marathon trong 6 tuần'), findsOneWidget);
     expect(find.text('Chạy 10km pace 7'), findsOneWidget);
     expect(find.text('Giáo án nháp'), findsNothing);
+  });
+
+  testWidgets('giáo án chủ đã kết thúc hay quá ngày đích rời mục Kèo', (
+    tester,
+  ) async {
+    await _pumpHome(
+      tester,
+      uid: 'me',
+      height: 900,
+      publicCoaches: [
+        _plan('steve', 'Chạy 10km pace 7'),
+        _plan('an', 'Giáo án chủ đã dừng', ended: true),
+        _plan('binh', 'Giáo án quá hạn', daysToTarget: -1),
+        _plan('chi', 'Giáo án tới đích hôm nay', daysToTarget: 0),
+      ],
+    );
+
+    expect(find.text('Chạy 10km pace 7'), findsOneWidget);
+    expect(find.text('Giáo án tới đích hôm nay'), findsOneWidget);
+    expect(find.text('Giáo án chủ đã dừng'), findsNothing);
+    expect(find.text('Giáo án quá hạn'), findsNothing);
   });
 
   testWidgets('kèo về sau không đẩy các mục dưới xuống', (tester) async {

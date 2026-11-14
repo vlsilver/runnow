@@ -596,11 +596,12 @@ class _KeoSection extends ConsumerWidget {
     final club = ref.watch(hubClubContractsProvider);
     final games =
         ref.watch(gameListProvider).value?.items ?? const <GameListItem>[];
-    // Giáo án nháp chưa chạy, giáo án mình đã xong hết buổi thì không còn
-    // "đang chạy".
+    // Giáo án nháp, giáo án mình đã xong hết buổi, giáo án đã kết thúc hay
+    // quá ngày đích thì không còn "đang chạy".
+    final now = DateTime.now();
     final coaches = [
       for (final plan in ref.watch(feedCoachPlansProvider))
-        if (!plan.isDraft && !plan.completed) plan,
+        if (plan.isRunning(now)) plan,
     ];
     final error = mine.error ?? club.error;
     if (error != null) debugPrint('hub contracts: $error');

@@ -180,7 +180,7 @@ class _TrainingPlanViewState extends ConsumerState<TrainingPlanView> {
             ),
           );
         }
-        if (plan.completed && !_dismissedCompleted) {
+        if ((plan.completed || plan.isOver(_today)) && !_dismissedCompleted) {
           return SingleChildScrollView(
             child: CompletedPlanState(
               plan: plan,

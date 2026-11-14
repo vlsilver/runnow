@@ -292,6 +292,7 @@ class TrainingPlan {
     this.goalTimeSec,
     this.totalKm,
     this.isDraft = false,
+    this.ended = false,
     this.ownerUid,
     this.visibility = CoachVisibility.private,
     this.participants = const {},
@@ -329,6 +330,10 @@ class TrainingPlan {
   /// true = bản nháp chờ xác nhận (coach/draft), chưa phải giáo án đang chạy.
   final bool isDraft;
 
+  /// Chủ giáo án đã bấm kết thúc (field endedAt). Lịch và tiến độ từng người
+  /// vẫn giữ nguyên.
+  final bool ended;
+
   /// Chủ giáo án (trưởng nhóm) — chỉ người này sửa được lịch. null với bản nháp.
   final String? ownerUid;
 
@@ -362,6 +367,16 @@ class TrainingPlan {
   int get totalSessions => days.where((d) => !d.isRest).length;
   int get doneSessions => days.where((d) => d.done).length;
   bool get completed => totalSessions > 0 && doneSessions >= totalSessions;
+
+  /// Giáo án hết hạn: chủ đã kết thúc, hoặc đã qua ngày đích.
+  bool isOver(DateTime today) =>
+      ended ||
+      DateTime(today.year, today.month, today.day).isAfter(
+        DateTime(targetDate.year, targetDate.month, targetDate.day),
+      );
+
+  /// Còn nằm ở "Kèo đang chạy" của người đang xem.
+  bool isRunning(DateTime today) => !isDraft && !completed && !isOver(today);
 
   int daysLeft(DateTime today) {
     final t = DateTime(today.year, today.month, today.day);
@@ -490,6 +505,7 @@ class TrainingPlan {
       goalTimeSec: (map['goalTimeSec'] as num?)?.toInt(),
       totalKm: (map['totalKm'] as num?)?.toDouble(),
       isDraft: map['status'] == 'draft',
+      ended: map['endedAt'] != null,
     );
   }
 
