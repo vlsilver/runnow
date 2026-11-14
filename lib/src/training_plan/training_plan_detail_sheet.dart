@@ -22,13 +22,17 @@ class TrainingDaySheet extends StatelessWidget {
     final palette = context.runNowPalette;
     final dark = Theme.of(context).brightness == Brightness.dark;
     final tColor = workoutLoadColor(day.type, palette);
-    final onAccent = dark ? RunNowDataColors.coachOnAccentDark : Colors.white;
-    final bg = dark ? RunNowDataColors.coachSheetDark : Colors.white;
+    final onAccent = context.runNowPalette.onAccent;
+    final bg = palette.isIron
+        ? palette.glassStart
+        : dark
+        ? RunNowDataColors.coachSheetDark
+        : Colors.white;
 
     return Container(
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(34)),
+        borderRadius: BorderRadius.vertical(top: context.runNowPalette.cornerRadius(34)),
       ),
       padding: EdgeInsets.fromLTRB(
         20,
@@ -47,7 +51,7 @@ class TrainingDaySheet extends StatelessWidget {
               margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
                 color: palette.border,
-                borderRadius: BorderRadius.circular(3),
+                borderRadius: context.runNowPalette.radius(3),
               ),
             ),
           ),
@@ -72,12 +76,12 @@ class TrainingDaySheet extends StatelessWidget {
               Flexible(
                 child: Text(
                   day.title,
-                  style: TextStyle(
+                  style: palette.heading(TextStyle(
                     fontSize: 27,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.5,
                     color: palette.ink,
-                  ),
+                  )),
                 ),
               ),
               if (day.done) ...[
@@ -124,7 +128,7 @@ class TrainingDaySheet extends StatelessWidget {
                         backgroundColor: palette.accent,
                         foregroundColor: onAccent,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: palette.radius(16),
                         ),
                       ),
                       icon: const Icon(Icons.play_arrow_rounded, size: 20),
@@ -143,7 +147,7 @@ class TrainingDaySheet extends StatelessWidget {
                         foregroundColor: palette.ink,
                         side: BorderSide(color: palette.border),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: palette.radius(16),
                         ),
                       ),
                       child: const Text('Đánh dấu xong',
@@ -171,7 +175,7 @@ class _TypePill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
       decoration: BoxDecoration(
         color: color.withValues(alpha: dark ? 0.16 : 0.12),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: context.runNowPalette.radius(10),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -215,7 +219,7 @@ class _StatsGrid extends StatelessWidget {
               padding: const EdgeInsets.all(13),
               decoration: BoxDecoration(
                 color: palette.glassStart,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: palette.radius(18),
                 border: Border.all(color: palette.border),
               ),
               child: Column(
@@ -284,7 +288,7 @@ class _DetailBox extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
         decoration: BoxDecoration(
           color: color.withValues(alpha: dark ? 0.10 : 0.09),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: palette.radius(14),
         ),
         child: Text(
           text,
@@ -308,9 +312,9 @@ class _CoachTip extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
-          color: palette.accent.withValues(alpha: dark ? 0.09 : 0.08),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: palette.accent.withValues(alpha: dark ? 0.20 : 0.18)),
+          color: context.runNowPalette.wash(palette.accent, dark ? 0.09 : 0.08),
+          borderRadius: palette.radius(20),
+          border: Border.all(color: context.runNowPalette.wash(palette.accent, dark ? 0.20 : 0.18)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -350,8 +354,8 @@ class _MatchedCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: palette.accent.withValues(alpha: dark ? 0.10 : 0.08),
-          borderRadius: BorderRadius.circular(16),
+          color: context.runNowPalette.wash(palette.accent, dark ? 0.10 : 0.08),
+          borderRadius: palette.radius(16),
         ),
         child: Row(
           children: [
@@ -361,11 +365,11 @@ class _MatchedCard extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: palette.accent,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: palette.radius(12),
               ),
               child: Icon(
                 Icons.check_rounded,
-                color: dark ? RunNowDataColors.coachOnAccentDark : Colors.white,
+                color: context.runNowPalette.onAccent,
               ),
             ),
             const SizedBox(width: 12),

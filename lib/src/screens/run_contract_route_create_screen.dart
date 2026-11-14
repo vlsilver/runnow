@@ -588,7 +588,7 @@ class _RunContractRouteCreateScreenState
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
       children: [
         ClipRRect(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: palette.radius(20),
           child: RouteMap.fromRoutePoints(points: routePoints, height: 220),
         ),
         const SizedBox(height: 18),
@@ -695,7 +695,7 @@ class _RunContractRouteCreateScreenState
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: palette.tint,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: palette.radius(14),
         border: Border.all(color: palette.accent.withValues(alpha: 0.35)),
       ),
       child: Row(
@@ -841,7 +841,7 @@ class _RunContractRouteCreateScreenState
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: palette.tint,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: palette.radius(14),
           border: Border.all(color: palette.accent.withValues(alpha: 0.35)),
         ),
         child: Row(
@@ -990,7 +990,7 @@ class _RouteDrawingMap extends StatelessWidget {
                     onLongPress: () => onLongPressPoint(index),
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
+                        shape: context.runNowPalette.round,
                         color: palette.secondary,
                         border: Border.all(color: Colors.white, width: 2),
                         boxShadow: [
@@ -1017,7 +1017,7 @@ class _RouteDrawingMap extends StatelessWidget {
                     onLongPress: () => onLongPressPoint(index),
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
+                        shape: context.runNowPalette.round,
                         color: palette.secondary,
                         border: Border.all(color: Colors.white, width: 1),
                       ),
@@ -1044,7 +1044,7 @@ class _RouteStat extends StatelessWidget {
       children: [
         Text(
           value,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+          style: palette.heading(const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
         ),
         const SizedBox(height: 2),
         Text(
@@ -1084,7 +1084,7 @@ class _TargetChip extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? palette.accent : palette.glassStart,
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: palette.radius(11),
           border: Border.all(color: selected ? palette.accent : palette.border),
         ),
         child: Text(
@@ -1260,7 +1260,7 @@ class _PlaceSearchFieldState extends State<_PlaceSearchField> {
         Container(
           decoration: BoxDecoration(
             color: surface,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: palette.radius(14),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.14),
@@ -1317,7 +1317,7 @@ class _PlaceSearchFieldState extends State<_PlaceSearchField> {
                       width: 20,
                       height: 20,
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
+                        shape: context.runNowPalette.round,
                         color: palette.textMuted.withValues(alpha: 0.16),
                       ),
                       child: Icon(
@@ -1360,7 +1360,7 @@ class _PlaceSearchFieldState extends State<_PlaceSearchField> {
     return Container(
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: context.runNowPalette.radius(14),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.16),
@@ -1475,7 +1475,7 @@ class _SearchResultTile extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
-        color: active ? palette.secondary.withValues(alpha: 0.08) : null,
+        color: active ? palette.wash(palette.secondary, 0.08) : null,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         child: Row(
           children: [
@@ -1485,8 +1485,8 @@ class _SearchResultTile extends StatelessWidget {
               decoration: BoxDecoration(
                 color: muted
                     ? palette.textMuted.withValues(alpha: 0.14)
-                    : palette.secondary.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(9),
+                    : palette.wash(palette.secondary, 0.14),
+                borderRadius: palette.radius(9),
               ),
               child: Icon(
                 icon,
@@ -1672,14 +1672,14 @@ class _ModeButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: InkWell(
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: context.runNowPalette.radius(999),
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: selected ? palette.accent : Colors.transparent,
-            shape: BoxShape.circle,
+            shape: context.runNowPalette.round,
           ),
           child: Icon(
             icon,

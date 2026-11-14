@@ -66,6 +66,47 @@ abstract final class RunNowThemeTokens {
     Color(0xffeceae3), // text
   ];
 
+  // ── Style Thép: giấy trắng ngà, mực đen, một màu đỏ duy nhất ────────────
+  static const ironRamp = <Color>[
+    Color(0xfff4a08c),
+    Color(0xffec6a4c),
+    Color(0xffe63b1f), // brand
+    Color(0xffb82a12), // brand-strong
+    Color(0xff6e180a),
+  ];
+  static const ironLight = <Color>[
+    Color(0xfff2f1ed), // bg
+    Color(0xfffbfaf7), // surface
+    Color(0xffd6d3cb), // border
+    Color(0xff111111), // text
+  ];
+  static const ironDark = <Color>[
+    Color(0xff121212), // bg
+    Color(0xff1c1c1c), // surface
+    Color(0xff303030), // border
+    Color(0xfff2f1ed), // text
+  ];
+
+  /// Dải màu cho tranh nền (cảnh kèo, núi BXH) ở kiểu Thép: xám giấy, đỏ,
+  /// mực đen, cùng thứ tự nhạt tới đậm như dải của một hành.
+  static const ironSceneRamp = <Color>[
+    Color(0xffdedbd4),
+    Color(0xffa9a69f),
+    Color(0xffe63b1f),
+    Color(0xffb82a12),
+    Color(0xff1c1c1c),
+  ];
+
+  /// Nền các ô phụ: xám giấy, không nhuốm đỏ.
+  static const ironTintLight = Color(0xffe5e3dd);
+  static const ironTintDark = Color(0xff262626);
+
+  /// Mực đen: khối tối trên nền sáng, và chữ đặt trên nền đỏ.
+  static const ironInk = Color(0xff111111);
+
+  /// Khối tối trên nền tối, nhỉnh hơn surface một bậc.
+  static const ironNightDark = Color(0xff2a2a2a);
+
   static const lightInk = Color(0xff16160f); // mực (10) — nút chính/tiêu đề
   static const darkInk = Color(0xfff4f2ec);
   static const lightMuted = Color(0xff6f6a61);
@@ -348,6 +389,237 @@ class RunNowMoonlitTokens {
   static const wolf = Color(0xFFF08A84);
   static const wolfSoft = Color(0x29C2413B);
   static const wolfLine = Color(0x8CC2413B);
+}
+
+/// Bộ màu của bàn chơi Ma Sói mà widget đọc qua `context.moonlit`: tông ánh
+/// trăng ở kiểu thường, đen trắng đỏ ở kiểu Thép. Thẻ và tranh giữ màu riêng
+/// thì dùng thẳng [RunNowMoonlitTokens].
+class RunNowMoonlit {
+  const RunNowMoonlit._({
+    required this.pageTop,
+    required this.pageMid,
+    required this.page,
+    required this.panel,
+    required this.panelTop,
+    required this.panelBottom,
+    required this.raised,
+    required this.lifted,
+    required this.heroTop,
+    required this.heroMid,
+    required this.heroBottom,
+    required this.tabBar,
+    required this.list,
+    required this.well,
+    required this.border,
+    required this.borderStrong,
+    required this.divider,
+    required this.ink,
+    required this.inkSoft,
+    required this.muted,
+    required this.faint,
+    required this.track,
+    required this.barLow,
+    required this.amber,
+    required this.amberBright,
+    required this.amberStrong,
+    required this.amberDeep,
+    required this.amberSoft,
+    required this.amberLight,
+    required this.amberPale,
+    required this.amberCream,
+    required this.amberTint,
+    required this.amberLine,
+    required this.amberGlow,
+    required this.onAmber,
+    required this.danger,
+    required this.phaseNight,
+    required this.moon,
+    required this.moonTint,
+    required this.onMoon,
+    required this.phaseDawn,
+    required this.phaseDay,
+    required this.phaseTrial,
+    required this.emblemCore,
+    required this.emblemRim,
+    required this.emblemGlow,
+    required this.emblemDark,
+    required this.emblemFoil,
+    required this.ctaGlow,
+    required this.telegram,
+    required this.onTelegram,
+    required this.wolf,
+    required this.wolfSoft,
+    required this.wolfLine,
+  });
+
+  final Color pageTop;
+  final Color pageMid;
+  final Color page;
+  final Color panel;
+  final Color panelTop;
+  final Color panelBottom;
+  final Color raised;
+  final Color lifted;
+  final Color heroTop;
+  final Color heroMid;
+  final Color heroBottom;
+  final Color tabBar;
+  final Color list;
+  final Color well;
+  final Color border;
+  final Color borderStrong;
+  final Color divider;
+  final Color ink;
+  final Color inkSoft;
+  final Color muted;
+  final Color faint;
+  final Color track;
+  final Color barLow;
+  final Color amber;
+  final Color amberBright;
+  final Color amberStrong;
+  final Color amberDeep;
+  final Color amberSoft;
+  final Color amberLight;
+  final Color amberPale;
+  final Color amberCream;
+  final Color amberTint;
+  final Color amberLine;
+  final Color amberGlow;
+  final Color onAmber;
+  final Color danger;
+  final Color phaseNight;
+  final Color moon;
+  final Color moonTint;
+  final Color onMoon;
+  final Color phaseDawn;
+  final Color phaseDay;
+  final Color phaseTrial;
+  final Color emblemCore;
+  final Color emblemRim;
+  final Color emblemGlow;
+  final Color emblemDark;
+  final Color emblemFoil;
+  final Color ctaGlow;
+  final Color telegram;
+  final Color onTelegram;
+  final Color wolf;
+  final Color wolfSoft;
+  final Color wolfLine;
+
+  static const night = RunNowMoonlit._(
+    pageTop: RunNowMoonlitTokens.pageTop,
+    pageMid: RunNowMoonlitTokens.pageMid,
+    page: RunNowMoonlitTokens.page,
+    panel: RunNowMoonlitTokens.panel,
+    panelTop: RunNowMoonlitTokens.panelTop,
+    panelBottom: RunNowMoonlitTokens.panelBottom,
+    raised: RunNowMoonlitTokens.raised,
+    lifted: RunNowMoonlitTokens.lifted,
+    heroTop: RunNowMoonlitTokens.heroTop,
+    heroMid: RunNowMoonlitTokens.heroMid,
+    heroBottom: RunNowMoonlitTokens.heroBottom,
+    tabBar: RunNowMoonlitTokens.tabBar,
+    list: RunNowMoonlitTokens.list,
+    well: RunNowMoonlitTokens.well,
+    border: RunNowMoonlitTokens.border,
+    borderStrong: RunNowMoonlitTokens.borderStrong,
+    divider: RunNowMoonlitTokens.divider,
+    ink: RunNowMoonlitTokens.ink,
+    inkSoft: RunNowMoonlitTokens.inkSoft,
+    muted: RunNowMoonlitTokens.muted,
+    faint: RunNowMoonlitTokens.faint,
+    track: RunNowMoonlitTokens.track,
+    barLow: RunNowMoonlitTokens.barLow,
+    amber: RunNowMoonlitTokens.amber,
+    amberBright: RunNowMoonlitTokens.amberBright,
+    amberStrong: RunNowMoonlitTokens.amberStrong,
+    amberDeep: RunNowMoonlitTokens.amberDeep,
+    amberSoft: RunNowMoonlitTokens.amberSoft,
+    amberLight: RunNowMoonlitTokens.amberLight,
+    amberPale: RunNowMoonlitTokens.amberPale,
+    amberCream: RunNowMoonlitTokens.amberCream,
+    amberTint: RunNowMoonlitTokens.amberTint,
+    amberLine: RunNowMoonlitTokens.amberLine,
+    amberGlow: RunNowMoonlitTokens.amberGlow,
+    onAmber: RunNowMoonlitTokens.onAmber,
+    danger: RunNowMoonlitTokens.danger,
+    phaseNight: RunNowMoonlitTokens.phaseNight,
+    moon: RunNowMoonlitTokens.moon,
+    moonTint: RunNowMoonlitTokens.moonTint,
+    onMoon: RunNowMoonlitTokens.onMoon,
+    phaseDawn: RunNowMoonlitTokens.phaseDawn,
+    phaseDay: RunNowMoonlitTokens.phaseDay,
+    phaseTrial: RunNowMoonlitTokens.phaseTrial,
+    emblemCore: RunNowMoonlitTokens.emblemCore,
+    emblemRim: RunNowMoonlitTokens.emblemRim,
+    emblemGlow: RunNowMoonlitTokens.emblemGlow,
+    emblemDark: RunNowMoonlitTokens.emblemDark,
+    emblemFoil: RunNowMoonlitTokens.emblemFoil,
+    ctaGlow: RunNowMoonlitTokens.ctaGlow,
+    telegram: RunNowMoonlitTokens.telegram,
+    onTelegram: RunNowMoonlitTokens.onTelegram,
+    wolf: RunNowMoonlitTokens.wolf,
+    wolfSoft: RunNowMoonlitTokens.wolfSoft,
+    wolfLine: RunNowMoonlitTokens.wolfLine,
+  );
+
+  static const iron = RunNowMoonlit._(
+    pageTop: Color(0xFF121212),
+    pageMid: Color(0xFF121212),
+    page: Color(0xFF121212),
+    panel: Color(0xFF1C1C1C),
+    panelTop: Color(0xFF1C1C1C),
+    panelBottom: Color(0xFF1C1C1C),
+    raised: Color(0xFF262626),
+    lifted: Color(0xFF2A2A2A),
+    heroTop: Color(0xFF1C1C1C),
+    heroMid: Color(0xFF1C1C1C),
+    heroBottom: Color(0xFF1C1C1C),
+    tabBar: Color(0xF51C1C1C),
+    list: Color(0xD91C1C1C),
+    well: Color(0x8C121212),
+    border: Color(0xFF303030),
+    borderStrong: Color(0xFF4A4A4A),
+    divider: Color(0xFF262626),
+    ink: Color(0xFFF2F1ED),
+    inkSoft: Color(0xFFDEDBD4),
+    muted: Color(0xFFA9A69F),
+    faint: Color(0xFF8A877F),
+    track: Color(0x1AF2F1ED),
+    barLow: Color(0xFF3A3A3A),
+    amber: Color(0xFFE63B1F),
+    amberBright: Color(0xFFEC6A4C),
+    amberStrong: Color(0xFFE63B1F),
+    amberDeep: Color(0xFFB82A12),
+    amberSoft: Color(0xFFEC6A4C),
+    amberLight: Color(0xFFF2F1ED),
+    amberPale: Color(0xFFF2F1ED),
+    amberCream: Color(0xFFF2F1ED),
+    amberTint: Color(0x38E63B1F),
+    amberLine: Color(0x59E63B1F),
+    amberGlow: Color(0x00000000),
+    onAmber: Color(0xFF111111),
+    danger: Color(0xFFEC6A4C),
+    phaseNight: Color(0xFFA9A69F),
+    moon: Color(0xFFDEDBD4),
+    moonTint: Color(0x2EDEDBD4),
+    onMoon: Color(0xFF111111),
+    phaseDawn: Color(0xFF6F6C66),
+    phaseDay: Color(0xFFE63B1F),
+    phaseTrial: Color(0xFFB82A12),
+    emblemCore: Color(0xFFF2F1ED),
+    emblemRim: Color(0xFFB82A12),
+    emblemGlow: Color(0x00000000),
+    emblemDark: Color(0xFF121212),
+    emblemFoil: Color(0xFFE63B1F),
+    ctaGlow: Color(0x00000000),
+    telegram: Color(0xFFF2F1ED),
+    onTelegram: Color(0xFF111111),
+    wolf: Color(0xFFEC6A4C),
+    wolfSoft: Color(0x29E63B1F),
+    wolfLine: Color(0x8CE63B1F),
+  );
 }
 
 /// Robot trên thẻ MyBot. Thân và kính giữ một màu ở mọi hành để nhìn ra cùng
@@ -919,6 +1191,14 @@ class RunFaceTokens {
   static const blocksBlue = Color(0xFF2340D9);
   static const blocksBlueDeep = Color(0xFF1A2FA8);
   static const blocksWhite = Color(0xFFFFFFFF);
+
+  // iron
+  static const ironCoal = Color(0xFF121212);
+  static const ironPaper = Color(0xFFF2F1ED);
+  static const ironRed = Color(0xFFE63B1F);
+  static const ironRedDeep = Color(0xFFB82A12);
+  static const ironMuted = Color(0xFFA9A69F);
+  static const ironLine = Color(0xFF303030);
 
   // blueprint
   static const blueprintInk = Color(0xFFEAF2FF);

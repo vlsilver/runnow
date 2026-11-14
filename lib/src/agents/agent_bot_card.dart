@@ -755,7 +755,7 @@ class _ScenePill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: context.runNowPalette.radius(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -839,7 +839,7 @@ class _MascotPainter extends CustomPainter {
         final leg = fill(ghost ? RunNowBotTokens.ghost : RunNowBotTokens.leg);
         for (final x in [44.0, 68.0]) {
           canvas.drawRRect(
-            RRect.fromLTRBR(x, 128, x + 16, 148, const Radius.circular(5)),
+            RRect.fromLTRBR(x, 128, x + 16, 148, Radius.circular(5)),
             leg,
           );
         }
@@ -851,7 +851,7 @@ class _MascotPainter extends CustomPainter {
       canvas.drawLine(const Offset(86, 108), const Offset(102, 126), arm);
       const chest = Rect.fromLTWH(38, 100, 52, 34);
       canvas.drawRRect(
-        RRect.fromRectAndRadius(chest, const Radius.circular(14)),
+        RRect.fromRectAndRadius(chest, Radius.circular(14)),
         fill(ghost ? RunNowBotTokens.ghost : accent),
       );
       if (!ghost && ink == null) _letter(canvas, chest.center);
@@ -876,7 +876,7 @@ class _MascotPainter extends CustomPainter {
     }
     const head = Rect.fromLTWH(18, 24, 92, 74);
     canvas.drawRRect(
-      RRect.fromRectAndRadius(head, const Radius.circular(30)),
+      RRect.fromRectAndRadius(head, Radius.circular(30)),
       ink != null || ghost
           ? fill(RunNowBotTokens.ghost)
           : (Paint()
@@ -887,7 +887,7 @@ class _MascotPainter extends CustomPainter {
               ).createShader(head)),
     );
     canvas.drawRRect(
-      RRect.fromLTRBR(28, 38, 100, 80, const Radius.circular(20)),
+      RRect.fromLTRBR(28, 38, 100, 80, Radius.circular(20)),
       ink != null
           ? _hole
           : (Paint()
@@ -976,7 +976,7 @@ class _MascotPainter extends CustomPainter {
           canvas.drawRRect(
             RRect.fromRectAndRadius(
               Rect.fromCenter(center: Offset(x, 61), width: 14, height: 7),
-              const Radius.circular(4),
+              Radius.circular(4),
             ),
             Paint()..color = eye,
           );
@@ -1072,7 +1072,7 @@ class _MascotPainter extends CustomPainter {
       _piece(
         canvas,
         Path()..addRRect(
-          RRect.fromLTRBR(left, 46, left + 16, 78, const Radius.circular(7)),
+          RRect.fromLTRBR(left, 46, left + 16, 78, Radius.circular(7)),
         ),
         fill(accent),
       );
@@ -1113,7 +1113,7 @@ class _MascotPainter extends CustomPainter {
         ..strokeWidth = 2,
     );
     canvas.drawRRect(
-      RRect.fromLTRBR(30, 112, 46, 122, const Radius.circular(3)),
+      RRect.fromLTRBR(30, 112, 46, 122, Radius.circular(3)),
       fill(RunNowBotTokens.whistle),
     );
   }
@@ -1526,7 +1526,7 @@ class _TierRevealState extends State<_TierReveal> {
                           ),
                           decoration: BoxDecoration(
                             color: t.gem.withValues(alpha: 0.18),
-                            borderRadius: BorderRadius.circular(999),
+                            borderRadius: context.runNowPalette.radius(999),
                             border: Border.all(
                               color: t.gem.withValues(alpha: 0.45),
                             ),
@@ -1568,7 +1568,7 @@ class _TierRevealState extends State<_TierReveal> {
                         fontWeight: FontWeight.w900,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
+                        borderRadius: context.runNowPalette.radius(15),
                       ),
                     ),
                     child: Text(
@@ -1589,7 +1589,7 @@ class _TierRevealState extends State<_TierReveal> {
                         fontWeight: FontWeight.w800,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
+                        borderRadius: context.runNowPalette.radius(15),
                       ),
                     ),
                     icon: const Icon(Icons.ios_share_rounded, size: 19),

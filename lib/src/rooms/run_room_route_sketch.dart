@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
+import 'package:myrun/src/theme.dart';
 
 List<LatLng> runRoomRouteLatLngs(RunContractRoute route) => [
   for (final p in route.points) LatLng(p.latitude, p.longitude),
@@ -38,6 +39,7 @@ class RunRoomRouteSketch extends StatelessWidget {
       dashed: dashed,
       strokeWidth: strokeWidth,
       padding: padding,
+      square: context.runNowPalette.isIron,
     ),
     child: const SizedBox.expand(),
   );
@@ -50,8 +52,10 @@ class _SketchPainter extends CustomPainter {
     required this.dashed,
     required this.strokeWidth,
     required this.padding,
+    required this.square,
   });
 
+  final bool square;
   final List<LatLng> points;
   final Color color;
   final bool dashed;
@@ -86,8 +90,8 @@ class _SketchPainter extends CustomPainter {
       ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
+      ..strokeCap = (square ? StrokeCap.butt : StrokeCap.round)
+      ..strokeJoin = (square ? StrokeJoin.miter : StrokeJoin.round);
     canvas.drawPath(dashed ? _dash(path, strokeWidth * 2.4) : path, paint);
   }
 

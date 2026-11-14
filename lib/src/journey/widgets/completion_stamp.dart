@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:myrun/src/theme.dart';
 
 /// Con dấu "đóng dấu pass" khi hoàn thành 1 hành trình — 2 vòng tròn lệch
 /// nhẹ như dấu mộc thật, kèm dấu check. Dùng chung ở nút góc bản đồ (nhỏ)
@@ -20,12 +21,12 @@ class CompletionStamp extends StatelessWidget {
         height: size,
         padding: EdgeInsets.all(4 * scale),
         decoration: BoxDecoration(
-          shape: BoxShape.circle,
+          shape: context.runNowPalette.round,
           border: Border.all(color: accent, width: 2.5 * scale),
         ),
         child: Container(
           decoration: BoxDecoration(
-            shape: BoxShape.circle,
+            shape: context.runNowPalette.round,
             border: Border.all(color: accent, width: 1 * scale),
           ),
           child: Column(

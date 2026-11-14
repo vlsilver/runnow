@@ -6,6 +6,7 @@ import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:myrun/src/widgets/run_now_switch.dart';
 
 /// Mở màn xin phép gửi dữ liệu cho AI. true khi người dùng đồng ý và backend
 /// đã ghi; "Để sau" hay quay lại là false.
@@ -168,7 +169,7 @@ class _AgentConsentScreenState extends ConsumerState<AgentConsentScreen> {
                   const SizedBox(height: 18),
                   Material(
                     color: palette.glassStart,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: palette.radius(16),
                     child: const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16),
                       child: Column(
@@ -206,9 +207,9 @@ class _AgentConsentScreenState extends ConsumerState<AgentConsentScreen> {
                   const SizedBox(height: 12),
                   Material(
                     color: palette.glassStart,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: palette.radius(16),
                     clipBehavior: Clip.antiAlias,
-                    child: SwitchListTile(
+                    child: RunNowSwitchListTile(
                       value: _learn,
                       onChanged: _busy
                           ? null
@@ -290,7 +291,7 @@ class _Point extends StatelessWidget {
             height: 34,
             decoration: BoxDecoration(
               color: palette.tint,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: palette.radius(10),
             ),
             child: Icon(icon, size: 18, color: palette.accentDeep),
           ),

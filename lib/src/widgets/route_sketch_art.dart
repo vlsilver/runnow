@@ -35,7 +35,7 @@ class RouteArtColors {
   });
 
   factory RouteArtColors.of(RunNowPalette palette, {required bool walk}) {
-    final ramp = palette.element.ramp;
+    final ramp = palette.ramp;
     final surface = palette.glassStart;
     if (palette.appearance == RunNowAppearance.light) {
       final art = palette.tint;
@@ -75,17 +75,22 @@ class RouteSketchArt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: _RouteSketchPainter(sketch, colors),
+      painter: _RouteSketchPainter(
+        sketch,
+        colors,
+        square: context.runNowPalette.isIron,
+      ),
       child: const SizedBox.expand(),
     );
   }
 }
 
 class _RouteSketchPainter extends CustomPainter {
-  _RouteSketchPainter(this.sketch, this.colors);
+  _RouteSketchPainter(this.sketch, this.colors, {required this.square});
 
   final List<int> sketch;
   final RouteArtColors colors;
+  final bool square;
 
   // Phần bên trái khung bị dải mờ của thẻ che, nên tuyến nằm lệch phải.
   static const _fadeInset = 60.0;
@@ -108,8 +113,8 @@ class _RouteSketchPainter extends CustomPainter {
       ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = width
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
+      ..strokeCap = (square ? StrokeCap.butt : StrokeCap.round)
+      ..strokeJoin = (square ? StrokeJoin.miter : StrokeJoin.round);
     canvas
       ..drawPath(path, line(colors.halo, 9))
       ..drawPath(path, line(colors.stroke, 3.2))

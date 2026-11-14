@@ -138,15 +138,18 @@ class _Hero extends StatelessWidget {
                   ratio: total == 0 ? 0 : (done / total).clamp(0.0, 1.0),
                   lane: palette.border,
                   fill: palette.accent,
+                  square: palette.isIron,
                 ),
                 child: Center(
                   child: Text.rich(
                     TextSpan(
                       text: '$done',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: palette.ink,
+                      style: palette.heading(
+                        TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          color: palette.ink,
+                        ),
                       ),
                       children: [
                         TextSpan(
@@ -171,15 +174,17 @@ class _Hero extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                plan.goal,
+                palette.title(plan.goal),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 19,
-                  height: 1.2,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.3,
-                  color: palette.ink,
+                style: palette.heading(
+                  TextStyle(
+                    fontSize: 19,
+                    height: 1.2,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                    color: palette.ink,
+                  ),
                 ),
               ),
               const SizedBox(height: 5),
@@ -231,7 +236,10 @@ class _TrackRingPainter extends CustomPainter {
     required this.ratio,
     required this.lane,
     required this.fill,
+    required this.square,
   });
+
+  final bool square;
 
   final double ratio;
   final Color lane;
@@ -248,7 +256,7 @@ class _TrackRingPainter extends CustomPainter {
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round
+      ..strokeCap = (square ? StrokeCap.butt : StrokeCap.round)
       ..color = lane;
     canvas.drawPath(track, paint);
     if (ratio <= 0) return;
@@ -302,7 +310,7 @@ class _WeekVolume extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
       decoration: BoxDecoration(
         color: palette.glassStart,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: palette.radius(18),
         border: Border.all(color: palette.border),
       ),
       child: Row(
@@ -345,7 +353,7 @@ class _WeekVolume extends StatelessWidget {
       child: InkWell(
         key: ValueKey('plan-week-$week'),
         onTap: () => onSelect(week),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: palette.radius(10),
         child: ExcludeSemantics(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -368,7 +376,7 @@ class _WeekVolume extends StatelessWidget {
                   child: Opacity(
                     opacity: on ? 1 : 0.42,
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: palette.radius(6),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -400,7 +408,7 @@ class _WeekVolume extends StatelessWidget {
                 height: 5,
                 margin: const EdgeInsets.only(top: 3),
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
+                  shape: context.runNowPalette.round,
                   color: week == current ? warm : Colors.transparent,
                 ),
               ),
@@ -439,7 +447,7 @@ class _TodayCard extends StatelessWidget {
 
     return Material(
       color: night,
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: palette.radius(22),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onOpen == null ? null : () => onOpen!(day),
@@ -471,13 +479,15 @@ class _TodayCard extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                day.title,
-                style: const TextStyle(
-                  fontSize: 25,
-                  height: 1.1,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.5,
-                  color: fg,
+                palette.title(day.title),
+                style: palette.heading(
+                  TextStyle(
+                    fontSize: 25,
+                    height: 1.1,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
+                    color: fg,
+                  ),
                 ),
               ),
               if (stats.isNotEmpty) ...[
@@ -497,7 +507,7 @@ class _TodayCard extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                 decoration: BoxDecoration(
                   color: fg.withValues(alpha: 0.09),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: palette.radius(12),
                 ),
                 child: Text.rich(
                   TextSpan(
@@ -532,7 +542,7 @@ class _TodayCard extends StatelessWidget {
                             // Padding dọc của theme ăn hết 48 pt, cắt chân chữ.
                             padding: const EdgeInsets.symmetric(horizontal: 12),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(15),
+                              borderRadius: palette.radius(15),
                             ),
                           ),
                           icon: Icon(
@@ -557,7 +567,7 @@ class _TodayCard extends StatelessWidget {
                       label: day.done ? 'Bỏ đánh dấu xong' : 'Đánh dấu xong',
                       child: Material(
                         color: day.done ? fg : fg.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(15),
+                        borderRadius: palette.radius(15),
                         clipBehavior: Clip.antiAlias,
                         child: InkWell(
                           key: const ValueKey('plan-today-done'),
@@ -606,7 +616,7 @@ class _SessionRow extends StatelessWidget {
     return Material(
       color: palette.glassStart,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: palette.radius(14),
         side: BorderSide(color: isToday ? warm : palette.border),
       ),
       clipBehavior: Clip.antiAlias,
@@ -746,7 +756,7 @@ class IntensityBars extends StatelessWidget {
             margin: const EdgeInsets.only(left: 2.5),
             decoration: BoxDecoration(
               color: i <= level ? color : idle,
-              borderRadius: BorderRadius.circular(2),
+              borderRadius: context.runNowPalette.radius(2),
             ),
           ),
       ],

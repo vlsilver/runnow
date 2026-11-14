@@ -4,9 +4,7 @@ import 'package:myrun/src/games/game_models.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_round_dial.dart';
 import 'package:myrun/src/games/game_skill_cards.dart';
-import 'package:myrun/src/theme_tokens.dart';
-
-typedef _M = RunNowMoonlitTokens;
+import 'package:myrun/src/theme.dart';
 
 /// Một trang cho cả luật chơi lẫn thiết lập của ván, mở được ở mọi trạng thái
 /// của ván. Luật không đổi giữa ván nên trang đọc [detail] lúc mở.
@@ -49,7 +47,7 @@ class GameRulesPage extends StatelessWidget {
             if (card.isEmpty && text.isNotEmpty) SelectableText(text),
             for (final (i, section) in card.indexed) ...[
               if (i > 0) const SizedBox(height: 18),
-              Text(section.title.toUpperCase(), style: _sectionStyle),
+              Text(section.title.toUpperCase(), style: _sectionStyle(context)),
               const SizedBox(height: 8),
               switch (section.layout) {
                 'timeline' => _RuleTimeline(section.items),
@@ -59,12 +57,12 @@ class GameRulesPage extends StatelessWidget {
             ],
             if (setup.isNotEmpty) ...[
               const SizedBox(height: 28),
-              const Text(
+              Text(
                 'Thiết lập ván',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
-                  color: _M.ink,
+                  color: context.moonlit.ink,
                 ),
               ),
               GameSetupSections(setup),
@@ -76,28 +74,28 @@ class GameRulesPage extends StatelessWidget {
   }
 }
 
-const _sectionStyle = TextStyle(
+TextStyle _sectionStyle(BuildContext context) => TextStyle(
   fontSize: 11,
   letterSpacing: 1.4,
   fontWeight: FontWeight.w800,
-  color: _M.faint,
+  color: context.moonlit.faint,
 );
 
-BoxDecoration get _panel => BoxDecoration(
-  color: _M.raised,
-  borderRadius: BorderRadius.circular(14),
-  border: Border.all(color: _M.border),
+BoxDecoration _panel(BuildContext context) => BoxDecoration(
+  color: context.moonlit.raised,
+  borderRadius: context.runNowPalette.radius(14),
+  border: Border.all(color: context.moonlit.border),
 );
 
-Color _ruleColor(String key) => switch (key) {
-  'night' => _M.phaseNight,
-  'trial' || 'teamWolf' => _M.phaseTrial,
-  'lovers' => _M.danger,
-  _ => _M.amber,
+Color _ruleColor(RunNowMoonlit m, String key) => switch (key) {
+  'night' => m.phaseNight,
+  'trial' || 'teamWolf' => m.phaseTrial,
+  'lovers' => m.danger,
+  _ => m.amber,
 };
 
-Widget _ruleIcon(String key, {required double size}) {
-  final color = _ruleColor(key);
+Widget _ruleIcon(RunNowMoonlit m, String key, {required double size}) {
+  final color = _ruleColor(m, key);
   if (key == 'teamWolf') return gameKeyIcon('wolf', color: color, size: size);
   final icon = switch (key) {
     'km' => Icons.directions_run_rounded,
@@ -127,10 +125,10 @@ class _RuleBadge extends StatelessWidget {
       height: 32,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: _ruleColor(icon).withValues(alpha: 0.16),
+        shape: context.runNowPalette.round,
+        color: _ruleColor(context.moonlit, icon).withValues(alpha: 0.16),
       ),
-      child: _ruleIcon(icon, size: 16),
+      child: _ruleIcon(context.moonlit, icon, size: 16),
     );
   }
 }
@@ -146,7 +144,7 @@ class _RuleTimeline extends StatelessWidget {
     final notes = items.where((it) => it.icon.isEmpty);
     final steps = items.where((it) => it.icon.isNotEmpty).toList();
     return Container(
-      decoration: _panel,
+      decoration: _panel(context),
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -156,7 +154,7 @@ class _RuleTimeline extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 12),
               child: Text(
                 note.value,
-                style: const TextStyle(fontSize: 13, color: _M.muted),
+                style: TextStyle(fontSize: 13, color: context.moonlit.muted),
               ),
             ),
           for (final (i, step) in steps.indexed)
@@ -168,7 +166,12 @@ class _RuleTimeline extends StatelessWidget {
                     children: [
                       _RuleBadge(step.icon),
                       if (i < steps.length - 1)
-                        Expanded(child: Container(width: 2, color: _M.border)),
+                        Expanded(
+                          child: Container(
+                            width: 2,
+                            color: context.moonlit.border,
+                          ),
+                        ),
                     ],
                   ),
                   const SizedBox(width: 12),
@@ -184,10 +187,10 @@ class _RuleTimeline extends StatelessWidget {
                           Expanded(
                             child: Text(
                               step.value,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 14.5,
                                 fontWeight: FontWeight.w700,
-                                color: _M.ink,
+                                color: context.moonlit.ink,
                               ),
                             ),
                           ),
@@ -196,9 +199,9 @@ class _RuleTimeline extends StatelessWidget {
                           Text(
                             step.label,
                             textAlign: TextAlign.end,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w800,
-                              color: _M.amberBright,
+                              color: context.moonlit.amberBright,
                             ),
                           ),
                         ],
@@ -230,27 +233,30 @@ class _RuleTiles extends StatelessWidget {
             if (i > 0) const SizedBox(width: 8),
             Expanded(
               child: Container(
-                decoration: _panel,
+                decoration: _panel(context),
                 padding: const EdgeInsets.all(12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (item.icon.isNotEmpty) ...[
-                      _ruleIcon(item.icon, size: 22),
+                      _ruleIcon(context.moonlit, item.icon, size: 22),
                       const SizedBox(height: 8),
                     ],
                     Text(
                       item.label,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w800,
-                        color: _M.ink,
+                        color: context.moonlit.ink,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       item.value,
-                      style: const TextStyle(fontSize: 12.5, color: _M.muted),
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: context.moonlit.muted,
+                      ),
                     ),
                   ],
                 ),
@@ -272,12 +278,12 @@ class _RuleRows extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: _panel,
+      decoration: _panel(context),
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Column(
         children: [
           for (final (i, item) in items.indexed) ...[
-            if (i > 0) const Divider(height: 1, color: _M.divider),
+            if (i > 0) Divider(height: 1, color: context.moonlit.divider),
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: Row(
@@ -293,17 +299,17 @@ class _RuleRows extends StatelessWidget {
                         if (item.label.isNotEmpty)
                           Text(
                             item.label,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: _M.faint,
+                              color: context.moonlit.faint,
                             ),
                           ),
                         Text(
                           item.value,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14.5,
                             fontWeight: FontWeight.w700,
-                            color: _M.ink,
+                            color: context.moonlit.ink,
                           ),
                         ),
                       ],

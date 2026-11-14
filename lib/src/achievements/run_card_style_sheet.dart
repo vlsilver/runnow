@@ -389,7 +389,7 @@ class _Thumb extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(1),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(7),
+                borderRadius: context.runNowPalette.radius(7),
                 border: Border.all(
                   color: selected ? ink : Colors.transparent,
                   width: 2,
@@ -453,11 +453,11 @@ class _MapSwitch extends StatelessWidget {
               alignment: value ? Alignment.centerRight : Alignment.centerLeft,
               decoration: BoxDecoration(
                 color: value ? ink : ink.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: context.runNowPalette.radius(14),
               ),
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
+                  shape: context.runNowPalette.round,
                   color: value ? theme.colorScheme.surface : ink,
                 ),
                 child: const SizedBox.square(dimension: 22),
@@ -484,7 +484,7 @@ class _TextLayoutPicker extends StatelessWidget {
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: scheme.onSurface.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(19),
+        borderRadius: context.runNowPalette.radius(19),
       ),
       child: Row(
         children: [
@@ -504,7 +504,7 @@ class _TextLayoutPicker extends StatelessWidget {
                       color: item == value
                           ? scheme.onSurface
                           : Colors.transparent,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: context.runNowPalette.radius(16),
                     ),
                     child: Text(
                       item.label,

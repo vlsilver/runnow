@@ -18,6 +18,7 @@ import 'package:myrun/src/widgets/map_attribution.dart';
 import 'package:myrun/src/widgets/map_tiles.dart';
 import 'package:myrun/src/widgets/photo_pin_marker.dart';
 import 'package:myrun/src/widgets/route_map.dart' show routeBounds;
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 /// Xem một người trong club đang chạy: bản đồ full màn, đường đã chạy phát
 /// sáng, chấm vị trí nhấp nháy, và một tấm số liệu ở dưới. Chỉ xem, không
@@ -209,7 +210,7 @@ class _LiveViewState extends State<_LiveView> {
           polylines: [
             Polyline(
               points: points,
-              color: palette.accent.withValues(alpha: 0.28),
+              color: palette.wash(palette.accent, 0.28),
               strokeWidth: 14,
             ),
             Polyline(
@@ -271,7 +272,7 @@ class _LiveSheet extends ConsumerWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: palette.background.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(32),
+        borderRadius: palette.radius(32),
         border: Border.all(color: palette.border.withValues(alpha: 0.6)),
       ),
       child: Padding(
@@ -417,7 +418,7 @@ class _ContractChip extends ConsumerWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: palette.tint,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: palette.radius(16),
         ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -477,7 +478,7 @@ class _TwoPartBar extends StatelessWidget {
       context,
     ).colorScheme.onSurface.withValues(alpha: 0.08);
     return ClipRRect(
-      borderRadius: BorderRadius.circular(99),
+      borderRadius: context.runNowPalette.radius(99),
       child: SizedBox(
         height: 8,
         child: Stack(
@@ -552,7 +553,7 @@ class _WhoPill extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: palette.background.withValues(alpha: 0.88),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: context.runNowPalette.radius(999),
         border: Border.all(color: palette.border.withValues(alpha: 0.6)),
       ),
       child: Padding(
@@ -560,7 +561,7 @@ class _WhoPill extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircleAvatar(
+            RunNowAvatar(
               radius: 15,
               backgroundColor: palette.accent,
               backgroundImage: hasUrl
@@ -588,7 +589,7 @@ class _WhoPill extends StatelessWidget {
             ),
             if (session.status == LiveTrackingStatus.running) ...[
               const SizedBox(width: 8),
-              const LiveDot(color: RunNowSemanticColors.danger),
+              LiveDot(color: context.runNowPalette.danger),
             ],
           ],
         ),
@@ -613,7 +614,7 @@ class _CircleButton extends StatelessWidget {
     final palette = context.runNowPalette;
     return Material(
       color: palette.background.withValues(alpha: 0.88),
-      shape: CircleBorder(
+      shape: palette.roundBorder.copyWith(
         side: BorderSide(color: palette.border.withValues(alpha: 0.6)),
       ),
       child: IconButton(tooltip: tooltip, onPressed: onTap, icon: Icon(icon)),
@@ -632,7 +633,7 @@ class _KmMark extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: palette.background,
-        shape: BoxShape.circle,
+        shape: context.runNowPalette.round,
         border: Border.all(color: palette.accent, width: 2),
       ),
       child: Center(
@@ -661,7 +662,7 @@ class _StillDot extends StatelessWidget {
       height: 18,
       decoration: BoxDecoration(
         color: color,
-        shape: BoxShape.circle,
+        shape: context.runNowPalette.round,
         border: Border.all(color: Colors.white, width: 3),
       ),
     );

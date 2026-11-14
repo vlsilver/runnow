@@ -73,7 +73,7 @@ class _NavSegment extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? accent : Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: context.runNowPalette.radius(999),
         ),
         child: Text(
           label,
@@ -171,8 +171,8 @@ class _MenuRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: selected ? accent.withValues(alpha: 0.16) : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
+        color: selected ? context.runNowPalette.wash(accent, 0.16) : Colors.transparent,
+        borderRadius: context.runNowPalette.radius(12),
       ),
       child: Row(
         children: [
@@ -234,8 +234,8 @@ Future<T?> showNavSelectMenu<T>({
     menuPadding: const EdgeInsets.symmetric(vertical: 6),
     color: palette.background,
     shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(18),
-      side: BorderSide(color: scheme.primary.withValues(alpha: 0.2)),
+      borderRadius: palette.radius(18),
+      side: BorderSide(color: context.runNowPalette.wash(scheme.primary, 0.2)),
     ),
     items: [
       for (final entry in items.entries)

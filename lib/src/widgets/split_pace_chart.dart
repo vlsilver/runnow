@@ -62,7 +62,7 @@ class SplitPaceChart extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       decoration: BoxDecoration(
         color: palette.glassStart,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: palette.radius(20),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -123,7 +123,7 @@ class _SplitBar extends StatelessWidget {
         ),
         Expanded(
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(99),
+            borderRadius: context.runNowPalette.radius(99),
             child: ColoredBox(
               color: onSurface.withValues(alpha: 0.07),
               child: FractionallySizedBox(
@@ -132,7 +132,7 @@ class _SplitBar extends StatelessWidget {
                 child: Container(
                   height: 10,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(99),
+                    borderRadius: context.runNowPalette.radius(99),
                     color: row.fastest
                         ? palette.accent
                         : palette.accent.withValues(alpha: 0.45),

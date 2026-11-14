@@ -89,7 +89,7 @@ class _LiveMapPreviewState extends State<LiveMapPreview> {
                   polylines: [
                     Polyline(
                       points: points,
-                      color: palette.accent.withValues(alpha: 0.28),
+                      color: palette.wash(palette.accent, 0.28),
                       strokeWidth: 12,
                     ),
                     Polyline(

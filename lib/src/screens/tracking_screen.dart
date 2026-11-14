@@ -31,6 +31,7 @@ import 'package:myrun/src/tracking_session.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/route_map.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:myrun/src/widgets/run_now_switch.dart';
 
 class TrackingScreen extends ConsumerStatefulWidget {
   const TrackingScreen({
@@ -259,7 +260,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
           duration: const Duration(seconds: 3),
           content: Row(
             children: [
-              const Icon(Icons.favorite_rounded, color: RunNowDataColors.heart),
+              Icon(Icons.favorite_rounded, color: context.runNowPalette.heart),
               const SizedBox(width: 8),
               Expanded(child: Text(text)),
             ],
@@ -406,7 +407,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                     ).colorScheme.surface.withValues(alpha: 0.92),
                     elevation: 3,
                     shadowColor: Colors.black.withValues(alpha: 0.3),
-                    shape: const CircleBorder(),
+                    shape: context.runNowPalette.roundBorder,
                     clipBehavior: Clip.antiAlias,
                     child: InkWell(
                       onTap: () => context.go('/'),
@@ -539,7 +540,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                     : Icons.sensors_off,
                                 size: 19,
                                 color: _liveEnabled
-                                    ? RunNowSemanticColors.danger
+                                    ? context.runNowPalette.danger
                                     : onSurface.withValues(alpha: 0.5),
                               ),
                               const SizedBox(width: 10),
@@ -582,7 +583,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                   tooltip: 'Cài đặt Live',
                                   onPressed: _openLiveSettings,
                                 ),
-                              Switch(
+                              RunNowSwitch(
                                 value: _liveEnabled,
                                 onChanged: (value) =>
                                     setState(() => _liveEnabled = value),
@@ -860,7 +861,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         clipBehavior: Clip.antiAlias,
         insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: context.runNowPalette.radius(24),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -899,10 +900,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.sensors,
                           size: 16,
-                          color: RunNowSemanticColors.danger,
+                          color: context.runNowPalette.danger,
                         ),
                         const SizedBox(width: 6),
                         Expanded(
@@ -1560,7 +1561,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                       letterSpacing: 1.4,
                     ),
                   ),
-                  SwitchListTile(
+                  RunNowSwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     value: _liveEnabled,
                     onChanged: (v) => update(() => _liveEnabled = v),
@@ -1604,7 +1605,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                           ).colorScheme.onSurface.withValues(alpha: 0.6),
                         ),
                       ),
-                    SwitchListTile(
+                    RunNowSwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       value: _livePhotoEnabled,
                       onChanged: (v) => update(() => _livePhotoEnabled = v),
@@ -1919,8 +1920,7 @@ class _SportPicker extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final onAccent = dark ? RunNowDataColors.coachOnAccentDark : Colors.white;
+    final onAccent = context.runNowPalette.onAccent;
 
     Widget seg(ActivityKind kind, IconData icon, String label) {
       final on = selected == kind;
@@ -1932,7 +1932,7 @@ class _SportPicker extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 8),
             decoration: BoxDecoration(
               color: on ? palette.accent : Colors.transparent,
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: palette.radius(9),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1962,7 +1962,7 @@ class _SportPicker extends StatelessWidget {
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: palette.glassStart,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: palette.radius(12),
         border: Border.all(color: palette.border),
       ),
       child: Row(
@@ -2030,7 +2030,7 @@ class _Controls extends StatelessWidget {
       final enabledColor = gpsReady ? palette.accent : palette.accentDeep;
       return DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: palette.radius(18),
           boxShadow: [
             BoxShadow(
               color: enabledColor.withValues(alpha: 0.25),
@@ -2047,7 +2047,7 @@ class _Controls extends StatelessWidget {
               backgroundColor: enabledColor,
               foregroundColor: gpsReady ? Colors.black : Colors.white,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: palette.radius(18),
               ),
             ),
             icon: busy
@@ -2061,11 +2061,11 @@ class _Controls extends StatelessWidget {
                 : Icon(icon, size: 30),
             label: Text(
               label,
-              style: const TextStyle(
+              style: palette.heading(const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 1.2,
-              ),
+              )),
             ),
           ),
         ),
@@ -2086,10 +2086,10 @@ class _Controls extends StatelessWidget {
               child: FilledButton.icon(
                 onPressed: busy ? null : onPause,
                 style: FilledButton.styleFrom(
-                  backgroundColor: RunNowSemanticColors.danger,
+                  backgroundColor: context.runNowPalette.danger,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: palette.radius(18),
                   ),
                 ),
                 icon: const Icon(Icons.pause_rounded, size: 28),
@@ -2135,9 +2135,9 @@ class _Controls extends StatelessWidget {
             child: OutlinedButton(
               onPressed: busy ? null : onStop,
               style: OutlinedButton.styleFrom(
-                foregroundColor: RunNowSemanticColors.danger,
+                foregroundColor: context.runNowPalette.danger,
                 minimumSize: const Size.fromHeight(58),
-                side: const BorderSide(color: RunNowSemanticColors.danger),
+                side: BorderSide(color: context.runNowPalette.danger),
                 padding: const EdgeInsets.symmetric(horizontal: 10),
               ),
               child: const Text('KẾT THÚC'),
@@ -2201,7 +2201,7 @@ class _MetricCard extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: palette.glassStart,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: palette.radius(12),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
@@ -2259,22 +2259,22 @@ class _DistanceReadout extends StatelessWidget {
         children: [
           TextSpan(
             text: value,
-            style: TextStyle(
+            style: context.runNowPalette.heading(TextStyle(
               color: textColor,
               fontSize: 64,
               height: 1,
               fontWeight: FontWeight.w900,
               letterSpacing: -2,
-            ),
+            )),
           ),
           if (unit.isNotEmpty)
             TextSpan(
               text: ' $unit',
-              style: TextStyle(
+              style: context.runNowPalette.heading(TextStyle(
                 color: context.runNowPalette.accent,
                 fontSize: 25,
                 fontWeight: FontWeight.w900,
-              ),
+              )),
             ),
         ],
       ),
@@ -2298,9 +2298,9 @@ class _LiveNearbyPill extends ConsumerWidget {
     final palette = context.runNowPalette;
     return Material(
       color: palette.ink,
-      shape: const StadiumBorder(),
+      shape: context.runNowPalette.pillBorder,
       child: InkWell(
-        customBorder: const StadiumBorder(),
+        customBorder: context.runNowPalette.pillBorder,
         onTap: () => context.push('/live'),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),

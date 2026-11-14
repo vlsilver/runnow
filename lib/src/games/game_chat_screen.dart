@@ -333,7 +333,7 @@ class _MessageRow extends StatelessWidget {
               color: mine
                   ? palette.accent.withValues(alpha: 0.38)
                   : palette.tint,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: palette.radius(14),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -390,10 +390,12 @@ class _TermsGate extends StatelessWidget {
       children: [
         Text(
           'Quy tắc chat',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-            color: palette.ink,
+          style: palette.heading(
+            TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: palette.ink,
+            ),
           ),
         ),
         const SizedBox(height: 12),

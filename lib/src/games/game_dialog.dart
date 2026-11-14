@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:myrun/src/games/game_hero.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
-import 'package:myrun/src/theme_tokens.dart';
-
-typedef _M = RunNowMoonlitTokens;
+import 'package:myrun/src/theme.dart';
 
 /// Popup hỏi lại của màn Ma Sói, trả true khi người chơi đồng ý. Không truyền
 /// [confirmLabel] thì popup chỉ để báo, có mỗi nút [cancelLabel].
@@ -19,9 +17,9 @@ Future<bool> showGameConfirm(
 }) async {
   final answer = await showDialog<bool>(
     context: context,
-    barrierColor: _M.page.withValues(alpha: 0.8),
-    builder: (_) => Theme(
-      data: gameMoonlitTheme(),
+    barrierColor: context.moonlit.page.withValues(alpha: 0.8),
+    builder: (_) => GameThemed(
+      moonlit: true,
       child: _GameConfirm(
         title: title,
         body: body,
@@ -58,12 +56,12 @@ class _GameConfirm extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 360),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: _M.borderStrong),
-            gradient: const LinearGradient(
+            borderRadius: context.runNowPalette.radius(24),
+            border: Border.all(color: context.moonlit.borderStrong),
+            gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [_M.heroTop, _M.panelBottom],
+              colors: [context.moonlit.heroTop, context.moonlit.panelBottom],
             ),
           ),
           child: Padding(
@@ -75,12 +73,12 @@ class _GameConfirm extends StatelessWidget {
                 Text(
                   title,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: gameTitleFont,
                     fontSize: 26,
                     height: 1.1,
                     fontWeight: FontWeight.w800,
-                    color: _M.ink,
+                    color: context.moonlit.ink,
                   ),
                 ),
                 const SizedBox(height: 14),

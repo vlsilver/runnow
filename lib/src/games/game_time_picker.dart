@@ -5,8 +5,6 @@ import 'package:myrun/src/theme.dart';
 // phút), cùng thẻ và ô chọn số vòng. Phòng chạy hẹn giờ dùng lại sheet này
 // với bộ màu theo theme.
 
-typedef _M = RunNowMoonlitTokens;
-
 /// Màu của sheet chọn giờ. Ván Ma Sói dùng bộ đêm [moonlit]; màn khác lấy
 /// bộ theo theme bằng [GameTimeColors.of].
 class GameTimeColors {
@@ -37,16 +35,17 @@ class GameTimeColors {
     );
   }
 
-  static const moonlit = GameTimeColors(
-    panel: _M.panel,
-    ink: _M.ink,
-    faint: _M.faint,
-    danger: _M.danger,
-    on: _M.amber,
-    onInk: _M.onAmber,
-    cell: _M.raised,
-    cellNight: _M.lifted,
-    border: _M.border,
+  /// Màu của bàn chơi Ma Sói.
+  factory GameTimeColors.table(RunNowMoonlit m) => GameTimeColors(
+    panel: m.panel,
+    ink: m.ink,
+    faint: m.faint,
+    danger: m.danger,
+    on: m.amber,
+    onInk: m.onAmber,
+    cell: m.raised,
+    cellNight: m.lifted,
+    border: m.border,
   );
 
   final Color panel;
@@ -111,12 +110,14 @@ Future<GameDeadlinePick?> showGameDeadlineSheet(
   String? noneLabel = 'Không đặt hạn',
   int days = 14,
   List<GameTimeQuick>? quick,
-  GameTimeColors colors = GameTimeColors.moonlit,
+  GameTimeColors? colors,
 }) {
+  colors ??= GameTimeColors.table(context.moonlit);
+  final c = colors;
   return showModalBottomSheet<GameDeadlinePick>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: colors.panel,
+    backgroundColor: c.panel,
     showDragHandle: true,
     builder: (context) => _DeadlineSheet(
       initial: initial,
@@ -126,7 +127,7 @@ Future<GameDeadlinePick?> showGameDeadlineSheet(
       noneLabel: noneLabel,
       days: days,
       quick: quick,
-      colors: colors,
+      colors: c,
     ),
   );
 }
@@ -230,10 +231,12 @@ class _DeadlineSheetState extends State<_DeadlineSheet> {
               children: [
                 Text(
                   '${_two(_hour)}:${_two(_minute)}',
-                  style: TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.w900,
-                    color: c.ink,
+                  style: context.runNowPalette.heading(
+                    TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.w900,
+                      color: c.ink,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -368,16 +371,17 @@ class GameHourGrid extends StatelessWidget {
     required this.selected,
     required this.disabled,
     required this.onSelect,
-    this.colors = GameTimeColors.moonlit,
+    this.colors,
   });
 
-  final GameTimeColors colors;
+  final GameTimeColors? colors;
   final int selected;
   final bool Function(int hour) disabled;
   final ValueChanged<int> onSelect;
 
   @override
   Widget build(BuildContext context) {
+    final colors = this.colors ?? GameTimeColors.table(context.moonlit);
     return GridView.count(
       crossAxisCount: 6,
       shrinkWrap: true,
@@ -423,17 +427,19 @@ class GameScheduleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(16),
-      side: BorderSide(color: active ? _M.amberLine : _M.border),
+      borderRadius: context.runNowPalette.radius(16),
+      side: BorderSide(
+        color: active ? context.moonlit.amberLine : context.moonlit.border,
+      ),
     );
     return DecoratedBox(
       decoration: ShapeDecoration(
         shape: shape,
         gradient: active
-            ? const LinearGradient(
+            ? LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [_M.amberGlow, _M.panel],
+                colors: [context.moonlit.amberGlow, context.moonlit.panel],
               )
             : null,
       ),
@@ -451,13 +457,17 @@ class GameScheduleCard extends StatelessWidget {
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
-                    color: active ? _M.amber : _M.raised,
-                    borderRadius: BorderRadius.circular(12),
+                    color: active
+                        ? context.moonlit.amber
+                        : context.moonlit.raised,
+                    borderRadius: context.runNowPalette.radius(12),
                   ),
                   child: Icon(
                     icon,
                     size: 22,
-                    color: active ? _M.onAmber : _M.muted,
+                    color: active
+                        ? context.moonlit.onAmber
+                        : context.moonlit.muted,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -467,32 +477,35 @@ class GameScheduleCard extends StatelessWidget {
                     children: [
                       Text(
                         caption,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           letterSpacing: 1.3,
                           fontWeight: FontWeight.w700,
-                          color: _M.faint,
+                          color: context.moonlit.faint,
                         ),
                       ),
                       Text(
                         title,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFamily: 'Barlow Condensed',
                           fontSize: 22,
                           height: 1.1,
                           letterSpacing: 0.4,
                           fontWeight: FontWeight.w800,
-                          color: _M.ink,
+                          color: context.moonlit.ink,
                         ),
                       ),
                       Text(
                         subtitle,
-                        style: const TextStyle(fontSize: 12, color: _M.faint),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: context.moonlit.faint,
+                        ),
                       ),
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right_rounded, color: _M.muted),
+                Icon(Icons.chevron_right_rounded, color: context.moonlit.muted),
               ],
             ),
           ),
@@ -556,10 +569,10 @@ class _Pill extends StatelessWidget {
     this.bottom,
     this.night = false,
     this.dense = false,
-    this.colors = GameTimeColors.moonlit,
+    this.colors,
   });
 
-  final GameTimeColors colors;
+  final GameTimeColors? colors;
 
   final String label;
   final String? top;
@@ -574,7 +587,7 @@ class _Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
-    final c = colors;
+    final c = colors ?? GameTimeColors.table(context.moonlit);
     final fg = on
         ? c.onInk
         : enabled
@@ -589,11 +602,11 @@ class _Pill extends StatelessWidget {
             ? c.cellNight
             : c.cell,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: context.runNowPalette.radius(12),
           side: BorderSide(color: on ? c.on : c.border),
         ),
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: context.runNowPalette.radius(12),
           onTap: onTap,
           child: Padding(
             padding: dense
@@ -647,10 +660,8 @@ class _SheetTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: TextStyle(
-        fontSize: 20,
-        fontWeight: FontWeight.w900,
-        color: colors.ink,
+      style: context.runNowPalette.heading(
+        TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: colors.ink),
       ),
     );
   }

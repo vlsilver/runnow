@@ -67,12 +67,12 @@ class DisciplineCard extends StatelessWidget {
             children: [
               Text(
                 '${stats.activeDays}',
-                style: TextStyle(
+                style: palette.heading(TextStyle(
                   color: onSurface,
                   fontSize: 44,
                   fontWeight: FontWeight.w800,
                   height: 0.95,
-                ),
+                )),
               ),
               const SizedBox(width: 8),
               Padding(
@@ -208,7 +208,7 @@ class _DisciplineCell extends StatelessWidget {
         height: day.active ? 28 : 12,
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: context.runNowPalette.radius(999),
           boxShadow: day.active
               ? [
                   BoxShadow(
@@ -250,7 +250,7 @@ class _DisciplineMetric extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: context.runNowPalette.radius(14),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

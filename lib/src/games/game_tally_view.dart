@@ -22,7 +22,7 @@ class GameTallyView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final accent = _wolf ? RunNowSemanticColors.danger : palette.accentDeep;
+    final accent = _wolf ? context.runNowPalette.danger : palette.accentDeep;
     final most = tally.rows.fold<int>(1, (m, r) => r.votes > m ? r.votes : m);
     final reason = tally.reason;
     final note = tally.note;
@@ -49,13 +49,13 @@ class GameTallyView extends StatelessWidget {
             ],
             const Spacer(),
             if (_wolf)
-              const Text(
+              Text(
                 'CHỈ PHE SÓI',
                 style: TextStyle(
                   fontSize: 10.5,
                   letterSpacing: 1.2,
                   fontWeight: FontWeight.w800,
-                  color: RunNowSemanticColors.danger,
+                  color: context.runNowPalette.danger,
                 ),
               ),
           ],
@@ -117,7 +117,7 @@ class _Row extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: palette.tint.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: palette.radius(14),
         border: Border.all(color: tag != null ? accent : palette.border),
       ),
       clipBehavior: Clip.antiAlias,
@@ -127,7 +127,9 @@ class _Row extends StatelessWidget {
             child: FractionallySizedBox(
               alignment: Alignment.centerLeft,
               widthFactor: share.clamp(0, 1),
-              child: ColoredBox(color: accent.withValues(alpha: 0.12)),
+              child: ColoredBox(
+                color: context.runNowPalette.wash(accent, 0.12),
+              ),
             ),
           ),
           Padding(
@@ -158,7 +160,7 @@ class _Row extends StatelessWidget {
                         ),
                         decoration: BoxDecoration(
                           color: accent,
-                          borderRadius: BorderRadius.circular(6),
+                          borderRadius: palette.radius(6),
                         ),
                         child: Text(
                           tag,
@@ -175,10 +177,12 @@ class _Row extends StatelessWidget {
                     Text.rich(
                       TextSpan(
                         text: '${row.votes}',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: palette.ink,
+                        style: palette.heading(
+                          TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: palette.ink,
+                          ),
                         ),
                         children: [
                           TextSpan(
@@ -231,7 +235,7 @@ class _VoterChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
         decoration: BoxDecoration(
           color: palette.background.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: context.runNowPalette.radius(999),
         ),
         child: Text(
           '${v.name} · ${gameTallyKm(v.km)}$weight',

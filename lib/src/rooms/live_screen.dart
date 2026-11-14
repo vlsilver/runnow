@@ -12,6 +12,7 @@ import 'package:myrun/src/rooms/run_room_route_sketch.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/live_bits.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 enum _LiveFilter { all, rooms, solo }
 
@@ -156,7 +157,7 @@ class _FilterBar extends StatelessWidget {
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: palette.glassStart,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: palette.radius(16),
         border: Border.all(color: palette.border),
       ),
       child: Row(
@@ -170,7 +171,7 @@ class _FilterBar extends StatelessWidget {
                   color: filter == selected
                       ? palette.accent
                       : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: palette.radius(12),
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(
                     onTap: () => onSelected(filter),
@@ -218,14 +219,16 @@ class _EmptyLive extends StatelessWidget {
             height: 76,
             decoration: BoxDecoration(
               color: palette.tint,
-              shape: BoxShape.circle,
+              shape: context.runNowPalette.round,
             ),
             child: Icon(Icons.sensors_rounded, size: 34, color: palette.accent),
           ),
           const SizedBox(height: 16),
-          const Text(
-            'Chưa ai đang live',
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+          Text(
+            palette.title('Chưa ai đang live'),
+            style: palette.heading(
+              const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+            ),
           ),
           const SizedBox(height: 6),
           Text(
@@ -252,7 +255,7 @@ class _Pill extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
     decoration: BoxDecoration(
       color: background,
-      borderRadius: BorderRadius.circular(99),
+      borderRadius: context.runNowPalette.radius(99),
     ),
     child: Text(
       text,
@@ -293,13 +296,15 @@ class LiveRoomTile extends StatelessWidget {
     };
     const onNight = Colors.white;
     final title = Text(
-      room.title,
+      palette.title(room.title),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        color: upcoming ? null : onNight,
-        fontSize: upcoming ? 15 : 18,
-        fontWeight: FontWeight.w900,
+      style: palette.heading(
+        TextStyle(
+          color: upcoming ? null : onNight,
+          fontSize: upcoming ? 15 : 18,
+          fontWeight: FontWeight.w900,
+        ),
       ),
     );
     final detailText = Text(
@@ -316,7 +321,7 @@ class LiveRoomTile extends StatelessWidget {
       child: Material(
         color: upcoming ? palette.glassStart : palette.accentNight,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: palette.radius(18),
           side: upcoming ? BorderSide(color: palette.border) : BorderSide.none,
         ),
         clipBehavior: Clip.antiAlias,
@@ -332,7 +337,7 @@ class LiveRoomTile extends StatelessWidget {
                         height: 58,
                         decoration: BoxDecoration(
                           color: palette.tint,
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: palette.radius(14),
                         ),
                         padding: const EdgeInsets.all(4),
                         child: FittedBox(
@@ -373,7 +378,7 @@ class LiveRoomTile extends StatelessWidget {
                       const SizedBox(width: 8),
                       _Pill(
                         badge,
-                        background: palette.accent.withValues(alpha: 0.16),
+                        background: palette.wash(palette.accent, 0.16),
                         foreground: palette.ink,
                       ),
                     ],
@@ -428,7 +433,7 @@ class LiveRoomTile extends StatelessWidget {
                             : DecoratedBox(
                                 decoration: BoxDecoration(
                                   color: onNight.withValues(alpha: 0.1),
-                                  shape: BoxShape.circle,
+                                  shape: context.runNowPalette.round,
                                 ),
                                 child: const Icon(
                                   Icons.groups_rounded,
@@ -467,7 +472,7 @@ class SoloLiveTile extends StatelessWidget {
       child: Material(
         color: palette.glassStart,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: palette.radius(18),
           side: BorderSide(color: palette.border),
         ),
         clipBehavior: Clip.antiAlias,
@@ -480,7 +485,7 @@ class SoloLiveTile extends StatelessWidget {
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    CircleAvatar(
+                    RunNowAvatar(
                       radius: 23,
                       backgroundColor: palette.accent,
                       backgroundImage: hasAvatar
@@ -505,10 +510,10 @@ class SoloLiveTile extends StatelessWidget {
                         padding: const EdgeInsets.all(3),
                         decoration: BoxDecoration(
                           color: palette.glassStart,
-                          shape: BoxShape.circle,
+                          shape: context.runNowPalette.round,
                         ),
-                        child: const LiveDot(
-                          color: RunNowSemanticColors.danger,
+                        child: LiveDot(
+                          color: context.runNowPalette.danger,
                           size: 8,
                         ),
                       ),
@@ -560,10 +565,12 @@ class SoloLiveTile extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   formatDistance(session.distanceMeters),
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.3,
+                  style: palette.heading(
+                    TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.3,
+                    ),
                   ),
                 ),
               ],

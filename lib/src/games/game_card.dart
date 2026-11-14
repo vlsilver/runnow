@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/keo_scene.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 /// Card một ván Ma Sói trên feed Kèo, cùng kiểu với CoachCard. Chữ trạng thái
 /// do backend gửi. Badge việc cần làm không nói là việc gì, vì màn hình người
@@ -36,9 +37,9 @@ class GameCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(
+              RunNowAvatar(
                 radius: 18,
-                backgroundColor: accent.withValues(alpha: 0.18),
+                backgroundColor: context.runNowPalette.wash(accent, 0.18),
                 child: Icon(Icons.nightlight_round, size: 20, color: accent),
               ),
               const SizedBox(width: 10),
@@ -129,7 +130,7 @@ class _Badge extends StatelessWidget {
           color.withValues(alpha: 0.22),
           Theme.of(context).colorScheme.surface,
         ),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: context.runNowPalette.radius(999),
       ),
       child: Text(
         label,

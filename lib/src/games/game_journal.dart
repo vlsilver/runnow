@@ -5,8 +5,6 @@ import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/run_now_empty.dart';
 
-typedef _M = RunNowMoonlitTokens;
-
 /// Icon của một câu nhật ký hay diễn lại theo khoá backend gửi
 /// (`GameSummaryLine.Icon`); khoá lạ thì chấm.
 IconData gameLineIcon(String key) => switch (key) {
@@ -48,20 +46,26 @@ class GameLineRow extends StatelessWidget {
             height: 32,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: night ? _M.track : _M.amberTint,
+              shape: context.runNowPalette.round,
+              color: night ? context.moonlit.track : context.moonlit.amberTint,
             ),
             child: Icon(
               icon,
               size: icon == Icons.circle ? 6 : 17,
-              color: night ? _M.amberStrong : _M.amberPale,
+              color: night
+                  ? context.moonlit.amberStrong
+                  : context.moonlit.amberPale,
             ),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               line.text,
-              style: const TextStyle(fontSize: 14, height: 1.35, color: _M.ink),
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.35,
+                color: context.moonlit.ink,
+              ),
             ),
           ),
           if (tag != null) ...[
@@ -69,17 +73,17 @@ class GameLineRow extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: _M.amberTint,
-                borderRadius: BorderRadius.circular(6),
+                color: context.moonlit.amberTint,
+                borderRadius: context.runNowPalette.radius(6),
               ),
               child: Text(
                 tag,
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: gameTitleFont,
                   fontWeight: FontWeight.w800,
                   fontSize: 13,
                   letterSpacing: 0.8,
-                  color: _M.amberPale,
+                  color: context.moonlit.amberPale,
                 ),
               ),
             ),
@@ -155,9 +159,9 @@ class _GameJournalState extends State<GameJournal> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
       decoration: BoxDecoration(
-        color: _M.list,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _M.border),
+        color: context.moonlit.list,
+        borderRadius: context.runNowPalette.radius(16),
+        border: Border.all(color: context.moonlit.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -169,17 +173,17 @@ class _GameJournalState extends State<GameJournal> {
               Expanded(
                 child: Text(
                   item.title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
-                    color: _M.ink,
+                    color: context.moonlit.ink,
                   ),
                 ),
               ),
               if (item.at != null)
                 Text(
                   _timeFormat.format(item.at!.toLocal()),
-                  style: const TextStyle(fontSize: 11, color: _M.muted),
+                  style: TextStyle(fontSize: 11, color: context.moonlit.muted),
                 ),
             ],
           ),

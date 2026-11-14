@@ -8,6 +8,7 @@ import 'package:myrun/src/widgets/live_bits.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
 import 'package:myrun/src/widgets/map_tiles.dart';
 import 'package:myrun/src/widgets/route_map.dart' show routeBounds;
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 /// Màu từng người trong phòng, theo thứ tự vào map. Chính mình luôn là
 /// accent của app.
@@ -23,7 +24,9 @@ const runRoomRunnerColors = [
 Color runRoomRunnerColor(BuildContext context, int index, {required bool me}) =>
     me
     ? context.runNowPalette.accent
-    : runRoomRunnerColors[index % runRoomRunnerColors.length];
+    : context.runNowPalette.series(
+        runRoomRunnerColors,
+      )[index % runRoomRunnerColors.length];
 
 /// Map của phòng: tuyến chủ phòng vẽ (nét đứt), đường đã chạy và vị trí mới
 /// nhất của từng người. Tự canh khung cho thấy hết mọi người khi có người mới
@@ -172,11 +175,11 @@ class _RunnerDot extends StatelessWidget {
       message: session.ownerName,
       child: Container(
         decoration: BoxDecoration(
-          shape: BoxShape.circle,
+          shape: context.runNowPalette.round,
           border: Border.all(color: color, width: 3),
           color: Theme.of(context).colorScheme.surface,
         ),
-        child: CircleAvatar(
+        child: RunNowAvatar(
           backgroundColor: color.withValues(alpha: 0.25),
           foregroundImage: url == null || url.isEmpty
               ? null

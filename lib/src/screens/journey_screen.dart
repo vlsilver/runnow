@@ -203,7 +203,7 @@ class _RouteOptionCard extends ConsumerWidget {
       padding: const EdgeInsets.all(16),
       child: routeState.when(
         data: (route) => InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: palette.radius(12),
           onTap: () => _choose(context, ref),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -462,7 +462,7 @@ class _JourneyInfoSheet extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             ClipRRect(
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: context.runNowPalette.radius(999),
               child: LinearProgressIndicator(
                 value: ratio,
                 minHeight: 6,
@@ -691,7 +691,7 @@ class _MilestoneDetailSheetState extends State<_MilestoneDetailSheet> {
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: context.runNowPalette.radius(999),
                     ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -754,7 +754,7 @@ class _MilestoneDetailSheetState extends State<_MilestoneDetailSheet> {
                   ),
                   const SizedBox(height: 6),
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: context.runNowPalette.radius(999),
                     child: LinearProgressIndicator(
                       value: ratio,
                       minHeight: 4,
@@ -829,7 +829,7 @@ class _MilestoneImage extends StatelessWidget {
       ),
     );
     return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+      borderRadius: BorderRadius.vertical(top: context.runNowPalette.cornerRadius(18)),
       child: SizedBox(
         height: _height,
         width: double.infinity,

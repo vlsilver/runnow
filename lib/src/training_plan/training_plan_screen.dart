@@ -292,7 +292,7 @@ class _AskCoachButton extends StatelessWidget {
     final fg = palette.onAccent;
     return Material(
       color: palette.accent,
-      borderRadius: BorderRadius.circular(13),
+      borderRadius: palette.radius(13),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,

@@ -51,6 +51,7 @@ const _painters = <RunCardSet, _Paint>{
   RunCardSet.paperMap: _paperMap,
   RunCardSet.receipt: _receipt,
   RunCardSet.medal: _medal,
+  RunCardSet.iron: _iron,
 };
 
 class _SetArt extends CustomPainter {
@@ -397,6 +398,28 @@ void _constellation(
 }
 
 /// Khối chữ: mảng màu phẳng, đường chạy nét kem dày.
+/// Nền đen, một khối đỏ vuông góc trên, đường chạy trắng.
+void _iron(
+  Canvas canvas,
+  Size size,
+  List<Offset> route,
+  void Function(Color) brand,
+) {
+  canvas.drawRect(Offset.zero & size, _fill(_T.ironRed));
+  brand(_T.ironRedDeep);
+  if (route.isEmpty) return;
+  _line(canvas, route, _T.ironCoal, 6);
+  canvas
+    ..drawRect(
+      Rect.fromCenter(center: route.first, width: 12, height: 12),
+      _fill(_T.ironCoal),
+    )
+    ..drawRect(
+      Rect.fromCenter(center: route.last, width: 14, height: 14),
+      _fill(_T.ironPaper),
+    );
+}
+
 void _blocks(
   Canvas canvas,
   Size size,

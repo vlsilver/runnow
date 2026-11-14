@@ -121,7 +121,7 @@ class AgentImageTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: context.runNowPalette.radius(12),
       child: Material(
         color: context.runNowPalette.ink.withValues(alpha: 0.06),
         child: InkWell(onTap: onTap, child: child),

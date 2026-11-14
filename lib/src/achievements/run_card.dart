@@ -16,6 +16,7 @@ import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/widgets/photo_viewer.dart';
+import 'package:myrun/src/theme.dart';
 
 const _condensed = 'Barlow Condensed';
 
@@ -504,11 +505,11 @@ class _BackMap extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       foregroundDecoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: context.runNowPalette.radius(10),
         border: Border.all(color: skin.dataMapEdge),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: context.runNowPalette.radius(10),
         child: Stack(
           children: [
             StillRouteMap(

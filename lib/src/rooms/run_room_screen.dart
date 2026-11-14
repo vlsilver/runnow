@@ -81,7 +81,7 @@ class RunRoomScreen extends ConsumerWidget {
                     height: 160,
                     decoration: BoxDecoration(
                       color: context.runNowPalette.tint,
-                      borderRadius: BorderRadius.circular(22),
+                      borderRadius: context.runNowPalette.radius(22),
                     ),
                     child: RunRoomRouteSketch(
                       route: route,
@@ -182,14 +182,14 @@ class _RoomHeader extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: palette.glassStart,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: palette.radius(22),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             room.title,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            style: palette.heading(const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
           ),
           const SizedBox(height: 4),
           Text(
@@ -243,7 +243,7 @@ class _Chip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: onSurface.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(99),
+        borderRadius: context.runNowPalette.radius(99),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -402,7 +402,7 @@ class _JoinedBody extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         ClipRRect(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: palette.radius(22),
           child: SizedBox(
             height: 280,
             child: Stack(
@@ -426,7 +426,7 @@ class _JoinedBody extends ConsumerWidget {
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: palette.glassStart,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: palette.radius(14),
                       ),
                       child: Text(
                         room.route == null
@@ -528,7 +528,7 @@ class RunRoomPhotoStrip extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: context.runNowPalette.radius(12),
                         child: SizedBox.square(
                           dimension: 104,
                           child: StoragePhoto(
@@ -630,7 +630,7 @@ class _RunnerTile extends ConsumerWidget {
         width: 12,
         height: 12,
         decoration: BoxDecoration(
-          shape: BoxShape.circle,
+          shape: context.runNowPalette.round,
           color: live == null ? muted.withValues(alpha: 0.3) : color,
         ),
       ),

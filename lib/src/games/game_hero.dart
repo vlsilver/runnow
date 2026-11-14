@@ -8,8 +8,6 @@ import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 
-typedef _M = RunNowMoonlitTokens;
-
 const gameTitleFont = 'Barlow Condensed';
 
 /// Các bước trong một ngày của ván, theo phase của backend
@@ -87,16 +85,24 @@ class GameHero extends StatelessWidget {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _M.amberLine),
-        gradient: const LinearGradient(
+        borderRadius: context.runNowPalette.radius(20),
+        border: Border.all(color: context.moonlit.amberLine),
+        gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [_M.heroTop, _M.heroMid, _M.heroBottom],
+          colors: [
+            context.moonlit.heroTop,
+            context.moonlit.heroMid,
+            context.moonlit.heroBottom,
+          ],
           stops: [0, 0.45, 1],
         ),
-        boxShadow: const [
-          BoxShadow(color: _M.amberGlow, blurRadius: 50, offset: Offset(0, 20)),
+        boxShadow: [
+          BoxShadow(
+            color: context.moonlit.amberGlow,
+            blurRadius: 50,
+            offset: Offset(0, 20),
+          ),
         ],
       ),
       child: Stack(
@@ -116,7 +122,10 @@ class GameHero extends StatelessWidget {
                     if (phase != null && step >= 0 && !closing)
                       Text(
                         phase.label,
-                        style: const TextStyle(fontSize: 12, color: _M.inkSoft),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: context.moonlit.inkSoft,
+                        ),
                       ),
                   ],
                 ),
@@ -130,13 +139,13 @@ class GameHero extends StatelessWidget {
                   child: Text(
                     title,
                     maxLines: 1,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: gameTitleFont,
                       fontWeight: FontWeight.w800,
                       fontSize: 42,
                       height: 1,
                       letterSpacing: 0.5,
-                      color: _M.ink,
+                      color: context.moonlit.ink,
                     ),
                   ),
                 ),
@@ -155,10 +164,10 @@ class GameHero extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                   child: Text(
                     detail.winnerLabel!,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
-                      color: _M.amberSoft,
+                      color: context.moonlit.amberSoft,
                     ),
                   ),
                 ),
@@ -167,7 +176,7 @@ class GameHero extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                   child: Text(
                     startError.message,
-                    style: const TextStyle(color: _M.danger),
+                    style: TextStyle(color: context.moonlit.danger),
                   ),
                 ),
               if (step >= 0 || preparing) ...[
@@ -214,9 +223,9 @@ class GameHero extends StatelessWidget {
                   ),
                 ),
               ],
-              const SizedBox(
+              SizedBox(
                 height: 54,
-                child: CustomPaint(painter: _HillsPainter()),
+                child: CustomPaint(painter: _HillsPainter(context.moonlit)),
               ),
             ],
           ),
@@ -244,16 +253,24 @@ class _EndedHero extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 22, 16, 18),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: _M.amberLine),
-        gradient: const LinearGradient(
+        borderRadius: context.runNowPalette.radius(22),
+        border: Border.all(color: context.moonlit.amberLine),
+        gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [_M.heroTop, _M.heroMid, _M.heroBottom],
+          colors: [
+            context.moonlit.heroTop,
+            context.moonlit.heroMid,
+            context.moonlit.heroBottom,
+          ],
           stops: [0, 0.55, 1],
         ),
-        boxShadow: const [
-          BoxShadow(color: _M.amberGlow, blurRadius: 50, offset: Offset(0, 20)),
+        boxShadow: [
+          BoxShadow(
+            color: context.moonlit.amberGlow,
+            blurRadius: 50,
+            offset: Offset(0, 20),
+          ),
         ],
       ),
       child: Column(
@@ -264,11 +281,11 @@ class _EndedHero extends StatelessWidget {
             Text(
               'KẾT THÚC SAU $rounds VÒNG',
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 3,
-                color: _M.amber,
+                color: context.moonlit.amber,
               ),
             ),
           ],
@@ -277,22 +294,26 @@ class _EndedHero extends StatelessWidget {
             fit: BoxFit.scaleDown,
             child: ShaderMask(
               blendMode: BlendMode.srcIn,
-              shaderCallback: (bounds) => const LinearGradient(
+              shaderCallback: (bounds) => LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [_M.amberBright, _M.amber, _M.amberDeep],
+                colors: [
+                  context.moonlit.amberBright,
+                  context.moonlit.amber,
+                  context.moonlit.amberDeep,
+                ],
                 stops: [0, 0.7, 1],
               ).createShader(bounds),
               child: Text(
                 title,
                 maxLines: 1,
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: gameTitleFont,
                   fontWeight: FontWeight.w800,
                   fontSize: 44,
                   height: 0.95,
                   letterSpacing: 0.5,
-                  color: _M.ink,
+                  color: context.moonlit.ink,
                 ),
               ),
             ),
@@ -302,7 +323,7 @@ class _EndedHero extends StatelessWidget {
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: _M.inkSoft),
+              style: TextStyle(fontSize: 13, color: context.moonlit.inkSoft),
             ),
           ],
         ],
@@ -340,10 +361,14 @@ class GameHeroBar extends StatelessWidget {
       height: height,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _M.amberLine),
-        gradient: const LinearGradient(
-          colors: [_M.heroTop, _M.heroMid, _M.heroBottom],
+        borderRadius: context.runNowPalette.radius(16),
+        border: Border.all(color: context.moonlit.amberLine),
+        gradient: LinearGradient(
+          colors: [
+            context.moonlit.heroTop,
+            context.moonlit.heroMid,
+            context.moonlit.heroBottom,
+          ],
           stops: [0, 0.6, 1],
         ),
       ),
@@ -366,13 +391,18 @@ class GameHeroBar extends StatelessWidget {
                     fontSize: 20,
                     height: 1,
                     letterSpacing: 0.5,
-                    color: ended ? _M.amberSoft : _M.ink,
+                    color: ended
+                        ? context.moonlit.amberSoft
+                        : context.moonlit.ink,
                   ),
                 ),
                 if (detailLine != null)
                   Text(
                     detailLine,
-                    style: const TextStyle(fontSize: 11, color: _M.inkSoft),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: context.moonlit.inkSoft,
+                    ),
                   ),
               ],
             ),
@@ -399,9 +429,9 @@ class _Chip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
       decoration: BoxDecoration(
-        color: _M.amberTint,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: _M.amberLine),
+        color: context.moonlit.amberTint,
+        borderRadius: context.runNowPalette.radius(999),
+        border: Border.all(color: context.moonlit.amberLine),
       ),
       child: Text(
         label,
@@ -409,7 +439,7 @@ class _Chip extends StatelessWidget {
           fontSize: 13,
           fontWeight: FontWeight.w700,
           letterSpacing: 1.6,
-          color: _M.amberPale,
+          color: context.moonlit.amberPale,
         ),
       ),
     );
@@ -467,12 +497,12 @@ class _GameCountdownState extends State<GameCountdown> {
     if (widget.clockOnly) {
       return Text(
         clock,
-        style: const TextStyle(
+        style: TextStyle(
           fontFamily: gameTitleFont,
           fontWeight: FontWeight.w700,
           fontSize: 22,
           height: 1,
-          color: _M.amberCream,
+          color: context.moonlit.amberCream,
           fontFeatures: [FontFeature.tabularFigures()],
         ),
       );
@@ -483,12 +513,12 @@ class _GameCountdownState extends State<GameCountdown> {
       children: [
         Text(
           clock,
-          style: const TextStyle(
+          style: TextStyle(
             fontFamily: gameTitleFont,
             fontWeight: FontWeight.w700,
             fontSize: 26,
             height: 1,
-            color: _M.amberCream,
+            color: context.moonlit.amberCream,
             fontFeatures: [FontFeature.tabularFigures()],
           ),
         ),
@@ -496,7 +526,7 @@ class _GameCountdownState extends State<GameCountdown> {
         Flexible(
           child: Text(
             'tới $at ${widget.ending}',
-            style: const TextStyle(fontSize: 12, color: _M.inkSoft),
+            style: TextStyle(fontSize: 12, color: context.moonlit.inkSoft),
           ),
         ),
       ],
@@ -523,17 +553,22 @@ class _Steps extends StatelessWidget {
                 Icon(
                   _steps[i].$3,
                   size: 22,
-                  color: i == current ? _M.amberPale : _M.faint,
+                  color: i == current
+                      ? context.moonlit.amberPale
+                      : context.moonlit.faint,
                 ),
                 const SizedBox(height: 4),
                 Container(
                   height: 3,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(3),
-                    color: i == current ? null : _M.track,
+                    borderRadius: context.runNowPalette.radius(3),
+                    color: i == current ? null : context.moonlit.track,
                     gradient: i == current
-                        ? const LinearGradient(
-                            colors: [_M.amberDeep, _M.amberSoft],
+                        ? LinearGradient(
+                            colors: [
+                              context.moonlit.amberDeep,
+                              context.moonlit.amberSoft,
+                            ],
                           )
                         : null,
                   ),
@@ -548,7 +583,9 @@ class _Steps extends StatelessWidget {
                     fontWeight: i == current
                         ? FontWeight.w800
                         : FontWeight.w400,
-                    color: i == current ? _M.amberPale : _M.faint,
+                    color: i == current
+                        ? context.moonlit.amberPale
+                        : context.moonlit.faint,
                   ),
                 ),
               ],
@@ -578,8 +615,8 @@ class _Stat extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: _M.well,
-        borderRadius: BorderRadius.circular(12),
+        color: context.moonlit.well,
+        borderRadius: context.runNowPalette.radius(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -591,7 +628,10 @@ class _Stat extends StatelessWidget {
                 if (unit != null)
                   TextSpan(
                     text: unit,
-                    style: const TextStyle(fontSize: 14, color: _M.muted),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: context.moonlit.muted,
+                    ),
                   ),
               ],
             ),
@@ -600,7 +640,7 @@ class _Stat extends StatelessWidget {
               fontWeight: FontWeight.w700,
               fontSize: 22,
               height: 1,
-              color: accent ? _M.amberPale : _M.ink,
+              color: accent ? context.moonlit.amberPale : context.moonlit.ink,
             ),
           ),
           const SizedBox(height: 2),
@@ -608,7 +648,7 @@ class _Stat extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11, color: _M.inkSoft),
+            style: TextStyle(fontSize: 11, color: context.moonlit.inkSoft),
           ),
         ],
       ),
@@ -618,7 +658,9 @@ class _Stat extends StatelessWidget {
 
 /// Dải đồi mực ở đáy header, vài cặp mắt sói hổ phách.
 class _HillsPainter extends CustomPainter {
-  const _HillsPainter();
+  const _HillsPainter(this.tokens);
+
+  final RunNowMoonlit tokens;
 
   // Đỉnh đồi theo khung 390 × 54 của thiết kế: (x, y) nối nhau từ trái sang.
   static const _ridge = [
@@ -666,15 +708,15 @@ class _HillsPainter extends CustomPainter {
     path
       ..lineTo(size.width, size.height)
       ..close();
-    canvas.drawPath(path, Paint()..color = _M.page);
-    final eye = Paint()..color = _M.amberBright;
+    canvas.drawPath(path, Paint()..color = tokens.page);
+    final eye = Paint()..color = tokens.amberBright;
     for (final (x, y) in const [(122.0, 36.0), (131.0, 36.0)]) {
       canvas.drawOval(
         Rect.fromCenter(center: Offset(x * sx, y * sy), width: 5, height: 3),
         eye,
       );
     }
-    final far = Paint()..color = _M.amberStrong.withValues(alpha: 0.8);
+    final far = Paint()..color = tokens.amberStrong.withValues(alpha: 0.8);
     for (final (x, y) in const [(286.0, 30.0), (294.0, 30.0)]) {
       canvas.drawOval(
         Rect.fromCenter(center: Offset(x * sx, y * sy), width: 4, height: 3),
@@ -684,5 +726,5 @@ class _HillsPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_HillsPainter old) => false;
+  bool shouldRepaint(_HillsPainter old) => old.tokens != tokens;
 }

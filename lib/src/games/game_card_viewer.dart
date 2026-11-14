@@ -67,8 +67,7 @@ Future<void> showCardViewer(
     PageRouteBuilder<void>(
       opaque: false,
       transitionDuration: const Duration(milliseconds: 250),
-      pageBuilder: (_, _, _) => Theme(
-        data: gameNightTheme(),
+      pageBuilder: (_, _, _) => GameThemed(
         child: GameCardViewer(
           front: front,
           back: back,
@@ -226,7 +225,7 @@ class _GameCardViewerState extends State<GameCardViewer>
                       ),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius: context.runNowPalette.radius(999),
                       ),
                       child: Text(
                         chip,
@@ -373,7 +372,7 @@ class _CardTapHintState extends State<CardTapHint>
                         width: 40 + 70 * ripple,
                         height: 40 + 70 * ripple,
                         decoration: BoxDecoration(
-                          shape: BoxShape.circle,
+                          shape: context.runNowPalette.round,
                           border: Border.all(
                             color: RunNowAchievementTokens.hero.withValues(alpha: 1 - ripple),
                             width: 2,
@@ -618,7 +617,7 @@ class _LockedNote extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: context.runNowPalette.radius(12),
         border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
       ),
       child: Row(

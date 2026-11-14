@@ -45,7 +45,7 @@ class ContractCardStamp extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.all(5),
         decoration: BoxDecoration(
-          shape: BoxShape.circle,
+          shape: context.runNowPalette.round,
           border: Border.all(color: gem, width: 0.8),
         ),
         alignment: Alignment.center,
@@ -163,7 +163,7 @@ class ContractCardFaceDown extends StatelessWidget {
       size: achievementCardSize,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: context.runNowPalette.radius(18),
           gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -190,7 +190,7 @@ class ContractCardFaceDown extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(6),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: context.runNowPalette.radius(15),
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: RadialGradient(
@@ -279,7 +279,7 @@ class _Chip extends StatelessWidget {
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
       color: RunNowContractCardTokens.chip,
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: context.runNowPalette.radius(999),
       border: Border.all(color: line),
     ),
     child: Padding(

@@ -84,11 +84,11 @@ class _ActivityHubScreenState extends ConsumerState<ActivityHubScreen> {
                   children: [
                     Text(
                       'Hoạt động',
-                      style: TextStyle(
+                      style: context.runNowPalette.heading(TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.w900,
                         color: context.runNowPalette.foreground,
-                      ),
+                      )),
                     ),
                     const SizedBox(height: 12),
                     const _DailyQuoteCard(),
@@ -342,7 +342,7 @@ class _PeriodTabs extends StatelessWidget {
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: p == value ? palette.accent : null,
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: palette.radius(10),
                     ),
                     child: Text(
                       _labels[p]!,
@@ -448,7 +448,7 @@ class _DayGrid extends StatelessWidget {
                               color: c.future
                                   ? palette.foreground.withValues(alpha: 0.03)
                                   : _cellColor(palette, c.distanceMeters),
-                              borderRadius: BorderRadius.circular(7),
+                              borderRadius: palette.radius(7),
                               border: c.today
                                   ? Border.all(
                                       color: palette.foreground,
@@ -487,7 +487,7 @@ class _GridLegend extends StatelessWidget {
             margin: const EdgeInsets.only(left: 5),
             decoration: BoxDecoration(
               color: _cellColor(palette, m),
-              borderRadius: BorderRadius.circular(3),
+              borderRadius: context.runNowPalette.radius(3),
             ),
           ),
         const SizedBox(width: 5),
@@ -589,9 +589,9 @@ class _GoalBars extends StatelessWidget {
                                                 ? 0.6
                                                 : 0.28,
                                           ),
-                                    borderRadius: const BorderRadius.vertical(
-                                      top: Radius.circular(5),
-                                      bottom: Radius.circular(2),
+                                    borderRadius: BorderRadius.vertical(
+                                      top: context.runNowPalette.cornerRadius(5),
+                                      bottom: context.runNowPalette.cornerRadius(2),
                                     ),
                                   ),
                                 ),
@@ -695,9 +695,9 @@ class _ProgressCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     decoration: BoxDecoration(
                       color: m == metric
-                          ? palette.accent.withValues(alpha: 0.2)
+                          ? palette.wash(palette.accent, 0.2)
                           : null,
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: context.runNowPalette.radius(999),
                       border: Border.all(
                         color: m == metric ? palette.accent : palette.border,
                       ),
@@ -735,8 +735,8 @@ class _ProgressCard extends StatelessWidget {
                     fontSize: 13,
                     fontWeight: FontWeight.w800,
                     color: delta.better
-                        ? RunNowSemanticColors.success
-                        : RunNowSemanticColors.warning,
+                        ? context.runNowPalette.success
+                        : context.runNowPalette.warning,
                   ),
                 ),
               ),
@@ -806,9 +806,9 @@ class _ValueBars extends StatelessWidget {
                         color: current[i]
                             ? palette.accent
                             : palette.accent.withValues(alpha: 0.38),
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(5),
-                          bottom: Radius.circular(2),
+                        borderRadius: BorderRadius.vertical(
+                          top: context.runNowPalette.cornerRadius(5),
+                          bottom: context.runNowPalette.cornerRadius(2),
                         ),
                       ),
                     ),
@@ -841,6 +841,7 @@ class _PaceLine extends StatelessWidget {
               line: palette.accent,
               axis: palette.border,
               background: palette.background,
+              square: palette.isIron,
             ),
           ),
         ),
@@ -864,8 +865,10 @@ class _PacePainter extends CustomPainter {
     required this.line,
     required this.axis,
     required this.background,
+    required this.square,
   });
 
+  final bool square;
   final List<double?> values;
   final Color line;
   final Color axis;
@@ -898,8 +901,8 @@ class _PacePainter extends CustomPainter {
       ..color = line
       ..strokeWidth = 2.5
       ..style = PaintingStyle.stroke
-      ..strokeJoin = StrokeJoin.round
-      ..strokeCap = StrokeCap.round;
+      ..strokeJoin = (square ? StrokeJoin.miter : StrokeJoin.round)
+      ..strokeCap = (square ? StrokeCap.butt : StrokeCap.round);
     canvas.drawPath(Path()..addPolygon(points, false), paint);
     if (values.last != null) {
       canvas.drawCircle(points.last, 6, Paint()..color = background);
@@ -1210,8 +1213,8 @@ class _DailyQuoteCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
       decoration: BoxDecoration(
-        color: palette.accent.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(14),
+        color: palette.wash(palette.accent, 0.14),
+        borderRadius: palette.radius(14),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

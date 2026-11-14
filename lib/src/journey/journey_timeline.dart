@@ -202,7 +202,7 @@ class _Connector extends StatelessWidget {
         width: 2.5,
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(2),
+          borderRadius: context.runNowPalette.radius(2),
         ),
       ),
     );
@@ -263,7 +263,7 @@ class _LevelNodeState extends State<_LevelNode>
         width: 24,
         height: 24,
         decoration: BoxDecoration(
-          shape: BoxShape.circle,
+          shape: context.runNowPalette.round,
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -300,7 +300,7 @@ class _LevelNodeState extends State<_LevelNode>
                       width: 24,
                       height: 24,
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
+                        shape: context.runNowPalette.round,
                         border: Border.all(color: palette.accent, width: 1.5),
                       ),
                     ),
@@ -316,7 +316,7 @@ class _LevelNodeState extends State<_LevelNode>
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: palette.ink,
-              shape: BoxShape.circle,
+              shape: context.runNowPalette.round,
               border: Border.all(color: palette.accent, width: 1.5),
             ),
             child: Text(
@@ -335,7 +335,7 @@ class _LevelNodeState extends State<_LevelNode>
     return Container(
       width: 24,
       height: 24,
-      decoration: BoxDecoration(color: palette.border, shape: BoxShape.circle),
+      decoration: BoxDecoration(color: palette.border, shape: context.runNowPalette.round),
       child: Icon(
         Icons.lock_outline_rounded,
         color: palette.textMuted,
@@ -357,7 +357,7 @@ class _LevelCard extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: context.runNowPalette.radius(18),
         onTap: locked
             ? () => _showLockedMessage(context)
             : () => _open(context),
@@ -380,7 +380,7 @@ class _LevelCard extends StatelessWidget {
     return switch (state.status) {
       _JourneyLevelStatus.done => BoxDecoration(
         color: palette.glassStart,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: palette.radius(18),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.08),
@@ -391,14 +391,14 @@ class _LevelCard extends StatelessWidget {
       ),
       _JourneyLevelStatus.current => BoxDecoration(
         color: palette.glassStart,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: palette.radius(18),
         border: Border.all(
           color: palette.accent.withValues(alpha: 0.55),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: palette.accent.withValues(alpha: 0.24),
+            color: palette.wash(palette.accent, 0.24),
             blurRadius: 28,
             offset: const Offset(0, 12),
           ),
@@ -409,7 +409,7 @@ class _LevelCard extends StatelessWidget {
           palette.border.withValues(alpha: 0.5),
           palette.glassStart,
         ),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: palette.radius(18),
       ),
     };
   }
@@ -450,7 +450,7 @@ class _LevelCardShell extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: context.runNowPalette.radius(14),
             child: SizedBox(
               width: 104,
               child: _CampaignThumbnail(state: state),
@@ -634,7 +634,7 @@ class _CompletionStampLabel extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
           border: Border.all(color: palette.accentDeep, width: 2),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: palette.radius(8),
         ),
         child: Text(
           'HOÀN THÀNH',
@@ -696,7 +696,7 @@ class _CampaignThumbnail extends StatelessWidget {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: palette.glassStart,
-                shape: BoxShape.circle,
+                shape: context.runNowPalette.round,
               ),
               child: Padding(
                 padding: const EdgeInsets.all(5),
@@ -734,8 +734,8 @@ class _StatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
-        color: palette.accent.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(999),
+        color: palette.wash(palette.accent, 0.18),
+        borderRadius: context.runNowPalette.radius(999),
       ),
       child: Text(
         label,
@@ -759,7 +759,7 @@ class _LockedChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
         color: palette.border,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: context.runNowPalette.radius(999),
       ),
       child: Text(
         'Bí mật',
@@ -788,7 +788,7 @@ class _InfoPill extends StatelessWidget {
           palette.border.withValues(alpha: 0.5),
           palette.glassStart,
         ),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: context.runNowPalette.radius(999),
       ),
       child: Text(
         label,
@@ -812,7 +812,7 @@ class _LevelProgressBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: context.runNowPalette.radius(999),
       child: Stack(
         children: [
           Container(height: 7, color: palette.border),

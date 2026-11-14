@@ -36,6 +36,7 @@ import 'package:myrun/src/widgets/live_bits.dart';
 import 'package:myrun/src/widgets/live_map_preview.dart';
 import 'package:myrun/src/widgets/rank_mountain.dart';
 import 'package:myrun/src/widgets/keo_scene.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 /// Trang đầu của app: ai trong club đang chạy, các kèo đang diễn ra, ai dẫn
 /// BXH tuần, thẻ vừa khoe, rồi các buổi chạy gần đây. Mục nào rỗng thì ẩn, riêng Kèo và Thẻ rỗng
@@ -205,11 +206,13 @@ class HubSectionHeader extends StatelessWidget {
         child: Row(
           children: [
             Text(
-              title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.2,
+              context.runNowPalette.title(title),
+              style: context.runNowPalette.heading(
+                TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.2,
+                ),
               ),
             ),
             const Spacer(),
@@ -359,7 +362,7 @@ class LiveRoomCard extends StatelessWidget {
       height: LiveSessionCard.height,
       child: Material(
         clipBehavior: Clip.antiAlias,
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: palette.radius(26),
         color: palette.tint,
         child: InkWell(
           onTap: () => context.push('/rooms/${room.id}'),
@@ -479,7 +482,7 @@ class LiveSessionCard extends StatelessWidget {
       height: height,
       child: Material(
         clipBehavior: Clip.antiAlias,
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: palette.radius(26),
         color: palette.tint,
         child: InkWell(
           onTap: () => context.push('/live/${session.id}'),
@@ -849,9 +852,7 @@ class _RoomMiniCard extends StatelessWidget {
               fontWeight: FontWeight.w800,
             ),
           ),
-          _MutedLine(
-            (day == weekday ? day : '$day · $weekday').toUpperCase(),
-          ),
+          _MutedLine((day == weekday ? day : '$day · $weekday').toUpperCase()),
           const Spacer(),
           Text(
             room.title,
@@ -872,13 +873,10 @@ class _RoomMiniCard extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 3,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: registered ? palette.tint : palette.ink,
-                  borderRadius: BorderRadius.circular(99),
+                  borderRadius: context.runNowPalette.radius(99),
                 ),
                 child: Text(
                   switch (myState) {
@@ -980,7 +978,7 @@ class _GameMiniCard extends StatelessWidget {
                   height: 9,
                   decoration: BoxDecoration(
                     color: accent,
-                    shape: BoxShape.circle,
+                    shape: context.runNowPalette.round,
                   ),
                 ),
             ],
@@ -1066,7 +1064,7 @@ class _InviteRow extends StatelessWidget {
     final palette = context.runNowPalette;
     return Material(
       color: palette.glassStart,
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: palette.radius(22),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -1090,7 +1088,7 @@ class _InviteRow extends StatelessWidget {
                   ],
                 ),
               ),
-              CircleAvatar(
+              RunNowAvatar(
                 radius: 19,
                 backgroundColor: palette.accent,
                 child: Icon(icon, color: _onColor(palette.accent)),
@@ -1185,7 +1183,7 @@ class _RankSectionState extends ConsumerState<_RankSection> {
                 key: _mountainKey,
                 child: Material(
                   color: context.runNowPalette.tint,
-                  borderRadius: BorderRadius.circular(26),
+                  borderRadius: context.runNowPalette.radius(26),
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(
                     onTap: open,
@@ -1449,7 +1447,9 @@ class _Ring extends StatelessWidget {
           CircularProgressIndicator(
             value: ratio.clamp(0.0, 1.0),
             strokeWidth: 7,
-            strokeCap: StrokeCap.round,
+            strokeCap: context.runNowPalette.isIron
+                ? StrokeCap.butt
+                : StrokeCap.round,
             color: color,
             backgroundColor: onSurface.withValues(alpha: 0.2),
           ),
@@ -1507,7 +1507,7 @@ class _Joiners extends ConsumerWidget {
                   child: DecoratedBox(
                     // Viền màu nền hình tách các avatar chồng lên nhau.
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
+                      shape: context.runNowPalette.round,
                       color: Theme.of(context).colorScheme.surface,
                     ),
                     child: Padding(
@@ -1564,7 +1564,7 @@ class _GlassPill extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: palette.background.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(radius),
+        borderRadius: context.runNowPalette.radius(radius),
         border: Border.all(color: palette.border.withValues(alpha: 0.5)),
       ),
       child: Padding(padding: padding, child: child),
@@ -1616,7 +1616,7 @@ class _Avatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasUrl = url != null && url!.isNotEmpty;
-    return CircleAvatar(
+    return RunNowAvatar(
       radius: size / 2,
       backgroundColor: context.runNowPalette.accent,
       backgroundImage: hasUrl ? cachedAvatarImage(context, url!, size) : null,

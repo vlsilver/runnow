@@ -165,7 +165,7 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
         details: [_Message('Không tải được tỉ lệ: $error')],
         actions: [
           FilledButton(
-            style: stagePrimaryButton,
+            style: stagePrimaryButton(context),
             onPressed: () => ref.invalidate(runCardViewProvider(_id)),
             child: const Text('Thử lại'),
           ),
@@ -215,7 +215,7 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
           ],
           actions: [
             FilledButton.icon(
-              style: stagePrimaryButton,
+              style: stagePrimaryButton(context),
               onPressed: _busy ? null : _roll,
               icon: _busy
                   ? const SizedBox.square(
@@ -349,7 +349,7 @@ class _RunCardPanelState extends ConsumerState<RunCardPanel> {
               if (drawLabel case final label?)
                 Expanded(
                   child: FilledButton.icon(
-                    style: stagePrimaryButton,
+                    style: stagePrimaryButton(context),
                     onPressed: _openDraw,
                     icon: const Icon(Icons.auto_awesome_rounded),
                     label: Text(label),
@@ -571,7 +571,7 @@ class RunCardFaceDown extends StatelessWidget {
       size: achievementCardSize,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: context.runNowPalette.radius(18),
           gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -585,7 +585,7 @@ class RunCardFaceDown extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(6),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: context.runNowPalette.radius(15),
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: RadialGradient(
@@ -736,7 +736,7 @@ class RunCardOddsTable extends StatelessWidget {
                     width: 10,
                     height: 10,
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
+                      shape: context.runNowPalette.round,
                       color: runCardGlow(odd.tier),
                     ),
                   ),
@@ -835,7 +835,7 @@ class _DrawingSheenState extends State<_DrawingSheen>
   Widget build(BuildContext context) {
     return IgnorePointer(
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: context.runNowPalette.radius(18),
         child: AnimatedBuilder(
           animation: _controller,
           builder: (context, _) {
@@ -905,7 +905,7 @@ class _OddsStrip extends StatelessWidget {
     return Column(
       children: [
         ClipRRect(
-          borderRadius: BorderRadius.circular(3),
+          borderRadius: context.runNowPalette.radius(3),
           child: SizedBox(
             height: 6,
             child: Row(

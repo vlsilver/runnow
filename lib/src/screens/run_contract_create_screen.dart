@@ -107,7 +107,7 @@ class _RunContractCreateScreenState
                                   ? Theme.of(context).colorScheme.primary
                                   : Theme.of(context).colorScheme.onSurface
                                         .withValues(alpha: 0.14),
-                              borderRadius: BorderRadius.circular(999),
+                              borderRadius: context.runNowPalette.radius(999),
                             ),
                           ),
                         ),
@@ -476,7 +476,7 @@ class _RunContractCreateScreenState
                     height: 5,
                     decoration: BoxDecoration(
                       color: palette.border,
-                      borderRadius: BorderRadius.circular(3),
+                      borderRadius: context.runNowPalette.radius(3),
                     ),
                   ),
                 ),
@@ -663,7 +663,7 @@ class _RunContractCreateScreenState
                     height: 5,
                     decoration: BoxDecoration(
                       color: palette.border,
-                      borderRadius: BorderRadius.circular(3),
+                      borderRadius: context.runNowPalette.radius(3),
                     ),
                   ),
                 ),
@@ -1037,14 +1037,14 @@ class _DateTimeTile extends StatelessWidget {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return Material(
       color: palette.tint,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: palette.radius(14),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: palette.radius(14),
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: palette.radius(14),
             border: Border.all(color: palette.border),
           ),
           child: Row(
@@ -1104,7 +1104,7 @@ class _GoalStepper extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: palette.tint,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: palette.radius(16),
         border: Border.all(color: palette.border),
       ),
       child: Row(
@@ -1118,13 +1118,13 @@ class _GoalStepper extends StatelessWidget {
               children: [
                 Text(
                   display,
-                  style: TextStyle(
+                  style: palette.heading(TextStyle(
                     fontSize: 34,
                     height: 0.95,
                     fontWeight: FontWeight.w900,
                     letterSpacing: -1,
                     color: onSurface,
-                  ),
+                  )),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -1157,11 +1157,11 @@ class _StepBtn extends StatelessWidget {
     return Material(
       color: palette.glassStart,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(13),
+        borderRadius: palette.radius(13),
         side: BorderSide(color: palette.border),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(13),
+        borderRadius: palette.radius(13),
         onTap: onTap,
         child: SizedBox(
           width: 46,
@@ -1188,7 +1188,7 @@ class _GoalSummary extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: palette.tint,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: palette.radius(14),
         border: Border.all(color: palette.accent.withValues(alpha: 0.35)),
       ),
       child: Row(
@@ -1229,7 +1229,7 @@ class _QuickTargetChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         decoration: BoxDecoration(
           color: selected ? palette.accent : palette.glassStart,
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: palette.radius(11),
           border: Border.all(color: selected ? palette.accent : palette.border),
         ),
         child: Text(

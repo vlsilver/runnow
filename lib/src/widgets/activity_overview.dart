@@ -6,6 +6,7 @@ import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 /// "Hôm nay 04:10", "Hôm qua 18:20", hoặc "25/10 06:00" theo giờ máy.
 String sessionWhenLabel(DateTime startedAt, DateTime now) {
@@ -100,12 +101,12 @@ class ActivityOverview extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               summary.name,
-              style: const TextStyle(
+              style: context.runNowPalette.heading(const TextStyle(
                 fontSize: 24,
                 height: 1.15,
                 fontWeight: FontWeight.w900,
                 letterSpacing: -0.4,
-              ),
+              )),
             ),
           ],
           const SizedBox(height: 14),
@@ -233,7 +234,7 @@ class _Grid extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
                 decoration: BoxDecoration(
                   color: palette.glassStart,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: palette.radius(16),
                 ),
                 child: _CellBody(cell: cell),
               ),
@@ -346,7 +347,7 @@ class _Avatar extends StatelessWidget {
     final url = member.avatarUrl;
     final hasUrl = url != null && url.isNotEmpty;
     final name = member.displayName;
-    return CircleAvatar(
+    return RunNowAvatar(
       radius: 20,
       backgroundColor: context.runNowPalette.accent,
       backgroundImage: hasUrl ? cachedAvatarImage(context, url, 40) : null,

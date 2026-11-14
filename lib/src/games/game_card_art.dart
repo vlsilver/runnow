@@ -475,23 +475,16 @@ void _paintWolfMoon(
     );
 }
 
-typedef _M = RunNowMoonlitTokens;
-
-const _moonlit = (
-  top: _M.raised,
-  bottom: _M.page,
-  core: _M.emblemCore,
-  rim: _M.emblemRim,
-  glow: _M.emblemGlow,
-  dark: _M.emblemDark,
-);
-
 /// Biểu tượng Ma Sói không theo phe: sói hú trong trăng hổ phách, nền trong
 /// suốt. Dùng ở header trang ván và mặt úp của lá bài, nên không lộ vai.
 class GameMoonEmblem extends StatelessWidget {
-  const GameMoonEmblem({super.key, required this.size});
+  const GameMoonEmblem({super.key, required this.size, this.tokens});
 
   final double size;
+
+  /// Bỏ trống thì theo màu bàn chơi; lá bài truyền [RunNowMoonlit.night] để
+  /// giữ màu gốc ở mọi kiểu giao diện.
+  final RunNowMoonlit? tokens;
 
   @override
   Widget build(BuildContext context) {
@@ -500,7 +493,7 @@ class GameMoonEmblem extends StatelessWidget {
       child: RepaintBoundary(
         child: CustomPaint(
           size: Size.square(size),
-          painter: const _MoonEmblemPainter(),
+          painter: _MoonEmblemPainter(tokens ?? context.moonlit),
         ),
       ),
     );
@@ -508,7 +501,9 @@ class GameMoonEmblem extends StatelessWidget {
 }
 
 class _MoonEmblemPainter extends CustomPainter {
-  const _MoonEmblemPainter();
+  const _MoonEmblemPainter(this.tokens);
+
+  final RunNowMoonlit tokens;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -519,10 +514,17 @@ class _MoonEmblemPainter extends CustomPainter {
       ..save()
       ..translate(size.width / 2, size.height / 2)
       ..scale(scale);
-    _paintWolfMoon(canvas, Offset.zero, 70, _moonlit, _M.emblemFoil);
+    _paintWolfMoon(canvas, Offset.zero, 70, (
+      top: tokens.raised,
+      bottom: tokens.page,
+      core: tokens.emblemCore,
+      rim: tokens.emblemRim,
+      glow: tokens.emblemGlow,
+      dark: tokens.emblemDark,
+    ), tokens.emblemFoil);
     canvas.restore();
   }
 
   @override
-  bool shouldRepaint(_MoonEmblemPainter old) => false;
+  bool shouldRepaint(_MoonEmblemPainter old) => old.tokens != tokens;
 }

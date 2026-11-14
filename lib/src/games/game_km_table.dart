@@ -155,25 +155,25 @@ class GameKmStatusLabel extends StatelessWidget {
     }
     final missing = gameKmMissing(km, unitKm);
     if (missing == null) {
-      return const Text(
+      return Text(
         'Đủ',
         style: TextStyle(
           fontWeight: FontWeight.w800,
-          color: RunNowSemanticColors.success,
+          color: context.runNowPalette.success,
         ),
       );
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: RunNowSemanticColors.danger.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
+        color: context.runNowPalette.wash(context.runNowPalette.danger, 0.14),
+        borderRadius: context.runNowPalette.radius(999),
       ),
       child: Text(
         'Thiếu $missing',
-        style: const TextStyle(
+        style: TextStyle(
           fontWeight: FontWeight.w800,
-          color: RunNowSemanticColors.danger,
+          color: context.runNowPalette.danger,
         ),
       ),
     );

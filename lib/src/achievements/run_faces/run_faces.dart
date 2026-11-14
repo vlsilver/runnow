@@ -10,6 +10,7 @@ import 'package:myrun/src/achievements/run_faces/city_faces.dart';
 import 'package:myrun/src/achievements/run_faces/constellation_faces.dart';
 import 'package:myrun/src/achievements/run_faces/finish_faces.dart';
 import 'package:myrun/src/achievements/run_faces/flipboard_faces.dart';
+import 'package:myrun/src/achievements/run_faces/iron_faces.dart';
 import 'package:myrun/src/achievements/run_faces/medal_faces.dart';
 import 'package:myrun/src/achievements/run_faces/paper_map_faces.dart';
 import 'package:myrun/src/achievements/run_faces/receipt_faces.dart';
@@ -45,6 +46,7 @@ Widget? runFrontFace(RunCardStyle style, RunFace f) {
     RunCardSet.paperMap => _ownColors(paperMapFront(f, t)),
     RunCardSet.receipt => _ownColors(receiptFront(f, t)),
     RunCardSet.medal => _ownColors(medalFront(f, t)),
+    RunCardSet.iron => _ownColors(ironFront(f, t)),
   };
 }
 
@@ -68,5 +70,6 @@ Widget? runBackFace(RunCardStyle style, RunFace f) {
     RunCardSet.paperMap => _ownColors(paperMapBack(f, map: map)),
     RunCardSet.receipt => _ownColors(receiptBack(f, map: map)),
     RunCardSet.medal => _ownColors(medalBack(f, map: map)),
+    RunCardSet.iron => _ownColors(ironBack(f, map: map)),
   };
 }

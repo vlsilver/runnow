@@ -127,9 +127,9 @@ class _SeriesTabs extends StatelessWidget {
               padding: const EdgeInsets.only(right: 6),
               child: Material(
                 color: i == selected ? palette.accent : palette.glassStart,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: context.runNowPalette.radius(999),
                 child: InkWell(
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: context.runNowPalette.radius(999),
                   onTap: () => onSelected(i),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
@@ -201,7 +201,7 @@ class _HeartRateZoneChartState extends State<HeartRateZoneChart> {
           children: [
             InkWell(
               onTap: () => setState(() => _expanded = !_expanded),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: palette.radius(8),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Row(
@@ -334,6 +334,9 @@ class _HeartRateZoneRow extends StatelessWidget {
     final widthFactor = maxSeconds <= 0 ? 0 : zone.seconds / maxSeconds;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final palette = context.runNowPalette;
+    final zoneColor = palette.series([
+      for (final z in _heartRateZones) z.color,
+    ])[_heartRateZones.indexWhere((z) => z.label == zone.label)];
     return Row(
       children: [
         SizedBox(
@@ -344,7 +347,7 @@ class _HeartRateZoneRow extends StatelessWidget {
               Text(
                 zone.label,
                 style: TextStyle(
-                  color: zone.color,
+                  color: zoneColor,
                   fontSize: 12,
                   fontWeight: FontWeight.w900,
                 ),
@@ -361,13 +364,13 @@ class _HeartRateZoneRow extends StatelessWidget {
         ),
         Expanded(
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: context.runNowPalette.radius(999),
             child: SizedBox(
               height: 14,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  ColoredBox(color: palette.secondary.withValues(alpha: 0.14)),
+                  ColoredBox(color: palette.wash(palette.secondary, 0.14)),
                   FractionallySizedBox(
                     alignment: Alignment.centerLeft,
                     widthFactor: widthFactor.clamp(0, 1).toDouble(),
@@ -375,8 +378,8 @@ class _HeartRateZoneRow extends StatelessWidget {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
-                            zone.color.withValues(alpha: 0.52),
-                            zone.color,
+                            zoneColor.withValues(alpha: 0.52),
+                            zoneColor,
                           ],
                         ),
                       ),
@@ -464,7 +467,7 @@ class _TrainingChartCardState extends State<_TrainingChartCard> {
         children: [
           InkWell(
             onTap: () => setState(() => _expanded = !_expanded),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: palette.radius(8),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: Row(
@@ -768,8 +771,8 @@ class _BarTrainingChart extends StatelessWidget {
                   fromY: chartMin,
                   toY: points[index].y,
                   width: math.max(4, math.min(12, 160 / points.length)),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(4),
+                  borderRadius: BorderRadius.vertical(
+                    top: context.runNowPalette.cornerRadius(4),
                   ),
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,

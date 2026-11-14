@@ -6,6 +6,7 @@ import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/keo_scene.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 class RunContractCard extends StatelessWidget {
   const RunContractCard({
@@ -126,7 +127,7 @@ class RunContractCard extends StatelessWidget {
           LinearProgressIndicator(
             value: ratio.clamp(0.0, 1.0),
             minHeight: 7,
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: context.runNowPalette.radius(999),
             backgroundColor: onSurface.withValues(alpha: 0.09),
             color: stateColor,
           ),
@@ -202,7 +203,7 @@ class _Header extends StatelessWidget {
     final name = ownerName ?? '3i member';
     return Row(
       children: [
-        CircleAvatar(
+        RunNowAvatar(
           radius: 19,
           backgroundImage: ownerAvatarUrl == null || ownerAvatarUrl!.isEmpty
               ? null
@@ -245,7 +246,7 @@ class _Header extends StatelessWidget {
               context,
               state,
             ).withValues(alpha: 0.13),
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: context.runNowPalette.radius(999),
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
@@ -257,7 +258,7 @@ class _Header extends StatelessWidget {
                   height: 6,
                   decoration: BoxDecoration(
                     color: runContractStateColor(context, state),
-                    shape: BoxShape.circle,
+                    shape: context.runNowPalette.round,
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -290,8 +291,8 @@ class _LiveTag extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: RunNowSemanticColors.danger.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(999),
+        color: context.runNowPalette.wash(context.runNowPalette.danger, 0.16),
+        borderRadius: context.runNowPalette.radius(999),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
@@ -301,16 +302,16 @@ class _LiveTag extends StatelessWidget {
             Container(
               width: 6,
               height: 6,
-              decoration: const BoxDecoration(
-                color: RunNowSemanticColors.danger,
-                shape: BoxShape.circle,
+              decoration: BoxDecoration(
+                color: context.runNowPalette.danger,
+                shape: context.runNowPalette.round,
               ),
             ),
             const SizedBox(width: 5),
             Text(
               'LIVE',
               style: TextStyle(
-                color: RunNowSemanticColors.danger,
+                color: context.runNowPalette.danger,
                 fontSize: 10,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 0.7,
@@ -349,7 +350,7 @@ class _AvatarStack extends StatelessWidget {
           for (var index = 0; index < shown.length; index++)
             Positioned(
               left: index * 17,
-              child: CircleAvatar(
+              child: RunNowAvatar(
                 radius: 14,
                 backgroundColor: context.runNowPalette.accent,
                 backgroundImage: shown[index] == null || shown[index]!.isEmpty

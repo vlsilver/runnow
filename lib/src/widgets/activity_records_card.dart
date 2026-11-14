@@ -4,6 +4,7 @@ import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 class ActivityRecordEntry {
   const ActivityRecordEntry({
@@ -109,7 +110,7 @@ class _EmptyRecordsState extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: palette.radius(22),
       ),
       child: Row(
         children: [
@@ -321,12 +322,12 @@ class _RecordTile extends StatelessWidget {
                   data.value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+                  style: context.runNowPalette.heading(TextStyle(
                     color: data.color,
                     fontSize: 21,
                     fontWeight: FontWeight.w900,
                     height: 1,
-                  ),
+                  )),
                 ),
                 const SizedBox(height: 5),
                 if (showOwner && ownerName != null)
@@ -374,9 +375,9 @@ class _OwnerLine extends StatelessWidget {
     final palette = context.runNowPalette;
     return Row(
       children: [
-        CircleAvatar(
+        RunNowAvatar(
           radius: 8,
-          backgroundColor: palette.secondary.withValues(alpha: 0.18),
+          backgroundColor: palette.wash(palette.secondary, 0.18),
           backgroundImage: avatarUrl == null
               ? null
               : cachedAvatarImage(context, avatarUrl, 16),

@@ -7,11 +7,9 @@ import 'package:myrun/src/games/game_links.dart';
 import 'package:myrun/src/games/game_models.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/share.dart';
-import 'package:myrun/src/theme_tokens.dart';
+import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:share_plus/share_plus.dart';
-
-typedef _M = RunNowMoonlitTokens;
 
 /// Câu gửi kèm thiệp, có link vì ảnh thì không bấm được.
 String gameInviteCaption(GameDetail game) {
@@ -84,7 +82,7 @@ Future<void> _showShareSheet(
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: _M.panel,
+    backgroundColor: context.moonlit.panel,
     builder: (_) => Theme(
       data: theme,
       child: _GameShareSheet(card: card, caption: caption, button: button),
@@ -152,7 +150,7 @@ class _GameShareSheetState extends State<_GameShareSheet> {
               constraints: BoxConstraints(maxHeight: maxCardHeight),
               child: FittedBox(
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: context.runNowPalette.radius(14),
                   child: RepaintBoundary(key: _cardKey, child: widget.card),
                 ),
               ),
@@ -161,8 +159,8 @@ class _GameShareSheetState extends State<_GameShareSheet> {
             Builder(
               builder: (buttonContext) => FilledButton(
                 style: FilledButton.styleFrom(
-                  backgroundColor: _M.amber,
-                  foregroundColor: _M.onAmber,
+                  backgroundColor: context.moonlit.amber,
+                  foregroundColor: context.moonlit.onAmber,
                 ),
                 onPressed: _sending ? null : () => _send(buttonContext),
                 child: Text(widget.button),
@@ -202,7 +200,7 @@ class GameInviteCard extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
               child: Column(
                 children: [
-                  const Row(
+                  Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
@@ -211,7 +209,7 @@ class GameInviteCard extends StatelessWidget {
                           fontSize: 13,
                           letterSpacing: 2,
                           fontWeight: FontWeight.w800,
-                          color: _M.amberBright,
+                          color: context.moonlit.amberBright,
                         ),
                       ),
                       Text(
@@ -219,7 +217,7 @@ class GameInviteCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w800,
-                          color: _M.faint,
+                          color: context.moonlit.faint,
                         ),
                       ),
                     ],
@@ -232,18 +230,21 @@ class GameInviteCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 24,
                       height: 1.2,
                       fontWeight: FontWeight.w900,
-                      color: _M.ink,
+                      color: context.moonlit.ink,
                     ),
                   ),
                   if (hasKm) ...[
                     const SizedBox(height: 4),
-                    const Text(
+                    Text(
                       'Chạy thật, sống sót thật',
-                      style: TextStyle(fontSize: 14, color: _M.muted),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: context.moonlit.muted,
+                      ),
                     ),
                   ],
                   const Spacer(),
@@ -253,9 +254,9 @@ class GameInviteCard extends StatelessWidget {
                   ],
                   Container(
                     decoration: BoxDecoration(
-                      color: _M.raised,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: _M.border),
+                      color: context.moonlit.raised,
+                      borderRadius: context.runNowPalette.radius(10),
+                      border: Border.all(color: context.moonlit.border),
                     ),
                     child: IntrinsicHeight(
                       child: Row(
@@ -265,10 +266,10 @@ class GameInviteCard extends StatelessWidget {
                             label: 'người đã vào',
                           ),
                           if (deadline != null) ...[
-                            const VerticalDivider(
+                            VerticalDivider(
                               width: 1,
                               thickness: 1,
-                              color: _M.border,
+                              color: context.moonlit.border,
                             ),
                             _Stat(
                               value: _hour.format(deadline),
@@ -350,21 +351,21 @@ class GameLiveCard extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text.rich(
+                      Text.rich(
                         TextSpan(
                           text: 'MA SÓI',
                           style: TextStyle(
                             fontSize: 13,
                             letterSpacing: 2,
                             fontWeight: FontWeight.w800,
-                            color: _M.amberBright,
+                            color: context.moonlit.amberBright,
                           ),
                           children: [
                             TextSpan(
                               text: '  3i',
                               style: TextStyle(
                                 letterSpacing: 0,
-                                color: _M.faint,
+                                color: context.moonlit.faint,
                               ),
                             ),
                           ],
@@ -376,16 +377,16 @@ class GameLiveCard extends StatelessWidget {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: _M.amber,
-                          borderRadius: BorderRadius.circular(999),
+                          color: context.moonlit.amber,
+                          borderRadius: context.runNowPalette.radius(999),
                         ),
-                        child: const Text(
+                        child: Text(
                           'ĐANG CHƠI',
                           style: TextStyle(
                             fontSize: 11,
                             letterSpacing: 1,
                             fontWeight: FontWeight.w900,
-                            color: _M.onAmber,
+                            color: context.moonlit.onAmber,
                           ),
                         ),
                       ),
@@ -399,11 +400,11 @@ class GameLiveCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 34,
                       height: 1.15,
                       fontWeight: FontWeight.w900,
-                      color: _M.ink,
+                      color: context.moonlit.ink,
                     ),
                   ),
                   if (detail != null)
@@ -412,10 +413,10 @@ class GameLiveCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: _M.amberBright,
+                        color: context.moonlit.amberBright,
                       ),
                     ),
                   if (game.title != _defaultTitle) ...[
@@ -425,7 +426,10 @@ class GameLiveCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 14, color: _M.muted),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: context.moonlit.muted,
+                      ),
                     ),
                   ],
                   const Spacer(),
@@ -449,9 +453,9 @@ class GameLiveCard extends StatelessWidget {
                   const Spacer(),
                   Container(
                     decoration: BoxDecoration(
-                      color: _M.raised,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: _M.border),
+                      color: context.moonlit.raised,
+                      borderRadius: context.runNowPalette.radius(10),
+                      border: Border.all(color: context.moonlit.border),
                     ),
                     child: SizedBox(
                       height: 60,
@@ -459,10 +463,10 @@ class GameLiveCard extends StatelessWidget {
                         children: [
                           for (final (i, stat) in stats.indexed) ...[
                             if (i > 0)
-                              const VerticalDivider(
+                              VerticalDivider(
                                 width: 1,
                                 thickness: 1,
-                                color: _M.border,
+                                color: context.moonlit.border,
                               ),
                             stat,
                           ],
@@ -497,15 +501,15 @@ class _Stat extends StatelessWidget {
             children: [
               Text(
                 value,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 19,
                   fontWeight: FontWeight.w900,
-                  color: _M.amberBright,
+                  color: context.moonlit.amberBright,
                 ),
               ),
               Text(
                 label,
-                style: const TextStyle(fontSize: 12, color: _M.faint),
+                style: TextStyle(fontSize: 12, color: context.moonlit.faint),
               ),
             ],
           ),
@@ -568,9 +572,9 @@ Widget _face(
     height: size,
     alignment: Alignment.center,
     decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      color: _M.lifted,
-      border: Border.all(color: _M.page, width: 2),
+      shape: context.runNowPalette.round,
+      color: context.moonlit.lifted,
+      border: Border.all(color: context.moonlit.page, width: 2),
       image: avatar == null
           ? null
           : DecorationImage(
@@ -585,7 +589,9 @@ Widget _face(
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w800,
-              color: player == null ? _M.amberBright : _M.ink,
+              color: player == null
+                  ? context.moonlit.amberBright
+                  : context.moonlit.ink,
             ),
           ),
   );

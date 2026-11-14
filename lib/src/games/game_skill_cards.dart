@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:myrun/src/games/game_create_tabs.dart';
 import 'package:myrun/src/games/game_models.dart';
-import 'package:myrun/src/theme_tokens.dart';
+import 'package:myrun/src/theme.dart';
 
 // Thẻ của tab Kỹ năng: chế độ dùng kỹ năng (lựa chọn có Chi tiết) và thẻ km
 // mỗi lượt (icon, tên, nhãn ngắn, nút −/+ hoặc công tắc, dòng con). Vẽ theo
 // icon, hint, parent backend gửi.
-
-typedef _M = RunNowMoonlitTokens;
 
 /// Ký tự thay icon cho các khoá là con số hay phép tính.
 String? _glyph(String key) => switch (key) {
@@ -17,6 +15,7 @@ String? _glyph(String key) => switch (key) {
 };
 
 Widget _iconBox(
+  BuildContext context,
   String key, {
   required Color color,
   required Color background,
@@ -29,7 +28,7 @@ Widget _iconBox(
     alignment: Alignment.center,
     decoration: BoxDecoration(
       color: background,
-      borderRadius: BorderRadius.circular(box * 0.3),
+      borderRadius: context.runNowPalette.radius(box * 0.3),
     ),
     child: glyph != null
         ? Text(
@@ -57,15 +56,15 @@ class _DetailLink extends StatelessWidget {
       label: 'Chi tiết $label',
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: const Padding(
+        borderRadius: context.runNowPalette.radius(8),
+        child: Padding(
           padding: EdgeInsets.symmetric(vertical: 6, horizontal: 4),
           child: Text(
             'Chi tiết',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
-              color: _M.amber,
+              color: context.moonlit.amber,
             ),
           ),
         ),
@@ -83,7 +82,7 @@ Future<void> showGameDetailSheet(
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: _M.panel,
+    backgroundColor: context.moonlit.panel,
     showDragHandle: true,
     builder: (context) => SafeArea(
       child: ConstrainedBox(
@@ -96,10 +95,10 @@ Future<void> showGameDetailSheet(
           children: [
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w900,
-                color: _M.ink,
+                color: context.moonlit.ink,
               ),
             ),
             const SizedBox(height: 14),
@@ -110,9 +109,12 @@ Future<void> showGameDetailSheet(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _iconBox(
+                      context,
                       d.icon,
-                      color: d.icon == 'wolf' ? _M.phaseTrial : _M.amber,
-                      background: _M.well,
+                      color: d.icon == 'wolf'
+                          ? context.moonlit.phaseTrial
+                          : context.moonlit.amber,
+                      background: context.moonlit.well,
                       box: 32,
                     ),
                     const SizedBox(width: 12),
@@ -122,19 +124,19 @@ Future<void> showGameDetailSheet(
                         children: [
                           Text(
                             d.title,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 14.5,
                               fontWeight: FontWeight.w800,
-                              color: _M.ink,
+                              color: context.moonlit.ink,
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             d.text,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               height: 1.5,
-                              color: _M.muted,
+                              color: context.moonlit.muted,
                             ),
                           ),
                         ],
@@ -183,10 +185,12 @@ class GameModeCards extends StatelessWidget {
     return Semantics(
       selected: on,
       child: Material(
-        color: on ? _M.amberTint : _M.raised,
+        color: on ? context.moonlit.amberTint : context.moonlit.raised,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: on ? _M.amber : _M.border),
+          borderRadius: context.runNowPalette.radius(16),
+          side: BorderSide(
+            color: on ? context.moonlit.amber : context.moonlit.border,
+          ),
         ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(4, 4, 10, 4),
@@ -194,16 +198,21 @@ class GameModeCards extends StatelessWidget {
             children: [
               Expanded(
                 child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: context.runNowPalette.radius(12),
                   onTap: change == null ? null : () => change(c.value),
                   child: Padding(
                     padding: const EdgeInsets.all(8),
                     child: Row(
                       children: [
                         _iconBox(
+                          context,
                           glyph,
-                          color: on ? _M.onAmber : _M.muted,
-                          background: on ? _M.amber : _M.well,
+                          color: on
+                              ? context.moonlit.onAmber
+                              : context.moonlit.muted,
+                          background: on
+                              ? context.moonlit.amber
+                              : context.moonlit.well,
                           box: 40,
                         ),
                         const SizedBox(width: 12),
@@ -213,19 +222,19 @@ class GameModeCards extends StatelessWidget {
                             children: [
                               Text(
                                 c.label,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 14.5,
                                   fontWeight: FontWeight.w800,
-                                  color: _M.ink,
+                                  color: context.moonlit.ink,
                                 ),
                               ),
                               Text(
                                 c.hint ?? c.description,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 12,
-                                  color: _M.faint,
+                                  color: context.moonlit.faint,
                                 ),
                               ),
                             ],
@@ -276,26 +285,26 @@ class GameSetupSections extends StatelessWidget {
           const SizedBox(height: 18),
           Text(
             section.title.toUpperCase(),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               letterSpacing: 1.4,
               fontWeight: FontWeight.w800,
-              color: _M.faint,
+              color: context.moonlit.faint,
             ),
           ),
           const SizedBox(height: 8),
           Container(
             decoration: BoxDecoration(
-              color: _M.raised,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _M.border),
+              color: context.moonlit.raised,
+              borderRadius: context.runNowPalette.radius(14),
+              border: Border.all(color: context.moonlit.border),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Column(
               children: [
                 for (final (i, item) in section.items.indexed) ...[
                   if (i > 0 && !item.sub)
-                    const Divider(height: 1, color: _M.divider),
+                    Divider(height: 1, color: context.moonlit.divider),
                   _SetupRow(
                     item,
                     reserveIcon: section.items.any((e) => e.icon.isNotEmpty),
@@ -329,9 +338,12 @@ class _SetupRow extends StatelessWidget {
           if (!sub && reserveIcon) ...[
             if (item.icon.isNotEmpty)
               _iconBox(
+                context,
                 item.icon,
-                color: item.icon == 'wolf' ? _M.phaseTrial : _M.amber,
-                background: _M.well,
+                color: item.icon == 'wolf'
+                    ? context.moonlit.phaseTrial
+                    : context.moonlit.amber,
+                background: context.moonlit.well,
                 box: 28,
               )
             else
@@ -352,7 +364,7 @@ class _SetupRow extends StatelessWidget {
                   style: TextStyle(
                     fontSize: sub ? 13 : 14.5,
                     fontWeight: sub ? FontWeight.w600 : FontWeight.w700,
-                    color: sub ? _M.muted : _M.ink,
+                    color: sub ? context.moonlit.muted : context.moonlit.ink,
                   ),
                 ),
                 Text(
@@ -362,7 +374,7 @@ class _SetupRow extends StatelessWidget {
                   style: TextStyle(
                     fontSize: sub ? 13 : 14.5,
                     fontWeight: FontWeight.w800,
-                    color: _M.amberBright,
+                    color: context.moonlit.amberBright,
                   ),
                 ),
               ],
@@ -409,8 +421,8 @@ class GameSkillStepper extends StatelessWidget {
             padding: EdgeInsets.zero,
             iconSize: small ? 16 : 18,
             icon: Icon(icon),
-            color: _M.amberBright,
-            disabledColor: _M.faint.withValues(alpha: 0.4),
+            color: context.moonlit.amberBright,
+            disabledColor: context.moonlit.faint.withValues(alpha: 0.4),
             onPressed: change != null && ok
                 ? () => change(gameSnap(next))
                 : null,
@@ -418,9 +430,9 @@ class GameSkillStepper extends StatelessWidget {
         );
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: _M.raised,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _M.border),
+        color: context.moonlit.raised,
+        borderRadius: context.runNowPalette.radius(12),
+        border: Border.all(color: context.moonlit.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -439,16 +451,16 @@ class GameSkillStepper extends StatelessWidget {
                 style: TextStyle(
                   fontSize: small ? 16 : 18,
                   fontWeight: FontWeight.w800,
-                  color: _M.ink,
+                  color: context.moonlit.ink,
                 ),
                 children: [
                   if (unit case final unit?)
                     TextSpan(
                       text: ' $unit',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
-                        color: _M.faint,
+                        color: context.moonlit.faint,
                       ),
                     ),
                 ],
@@ -495,9 +507,9 @@ class GameSkillCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
         decoration: BoxDecoration(
-          color: _M.raised,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _M.border),
+          color: context.moonlit.raised,
+          borderRadius: context.runNowPalette.radius(16),
+          border: Border.all(color: context.moonlit.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -505,9 +517,12 @@ class GameSkillCard extends StatelessWidget {
             Row(
               children: [
                 _iconBox(
+                  context,
                   icon,
-                  color: icon == 'wolf' ? _M.phaseTrial : _M.amber,
-                  background: _M.well,
+                  color: icon == 'wolf'
+                      ? context.moonlit.phaseTrial
+                      : context.moonlit.amber,
+                  background: context.moonlit.well,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -516,16 +531,19 @@ class GameSkillCard extends StatelessWidget {
                     children: [
                       Text(
                         s.label,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14.5,
                           fontWeight: FontWeight.w800,
-                          color: _M.ink,
+                          color: context.moonlit.ink,
                         ),
                       ),
                       // Hint dài xuống dòng, "Chi tiết" chạy liền sau.
                       Text.rich(
                         TextSpan(
-                          style: const TextStyle(fontSize: 12, color: _M.faint),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: context.moonlit.faint,
+                          ),
                           children: [
                             if (hint != null && hint.isNotEmpty)
                               TextSpan(text: '$hint '),
@@ -565,10 +583,10 @@ class GameSkillCard extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 '⚠ $w',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
-                  color: _M.phaseTrial,
+                  color: context.moonlit.phaseTrial,
                 ),
               ),
             ],
@@ -605,12 +623,15 @@ class GameSkillSubLine extends StatelessWidget {
               children: [
                 Text(
                   s.label,
-                  style: const TextStyle(fontSize: 13, color: _M.muted),
+                  style: TextStyle(fontSize: 13, color: context.moonlit.muted),
                 ),
                 if (s.hint case final h? when h.isNotEmpty)
                   Text(
                     h,
-                    style: const TextStyle(fontSize: 11.5, color: _M.faint),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: context.moonlit.faint,
+                    ),
                   ),
               ],
             ),

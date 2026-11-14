@@ -31,7 +31,21 @@ LinearGradient gameAccentFoil(RunNowPalette palette) => LinearGradient(
   colors: [palette.accentDeep, palette.accent],
 );
 
-ThemeData gameNightTheme() {
+/// Kiểu Thép: bàn chơi và màn xem thẻ dùng nền đen, mực trắng, nhấn đỏ của
+/// app thay cho tông vàng và ánh trăng.
+final _ironGameTheme = buildRunNowTheme(
+  RunNowElement.fire,
+  appearance: RunNowAppearance.dark,
+  style: RunNowStyle.iron,
+);
+
+final _nightTheme = _buildNightTheme();
+final _moonlitTheme = _buildMoonlitTheme();
+
+ThemeData gameNightTheme({RunNowStyle style = RunNowStyle.elemental}) =>
+    style == RunNowStyle.iron ? _ironGameTheme : _nightTheme;
+
+ThemeData _buildNightTheme() {
   final base = buildRunNowTheme(RunNowElement.fire);
   final palette = base.extension<RunNowPalette>()!.copyWith(
     accent: gameNightGold,
@@ -93,7 +107,7 @@ ThemeData gameNightTheme() {
           fontWeight: FontWeight.w800,
         ),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: palette.radius(12)),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
@@ -101,7 +115,7 @@ ThemeData gameNightTheme() {
         foregroundColor: gameNightInk,
         side: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: palette.radius(12)),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
@@ -124,7 +138,10 @@ typedef _M = RunNowMoonlitTokens;
 
 /// Theme của trang ván Ma Sói: luôn tối, tông ánh trăng, không theo sáng/tối
 /// hay hành của app, vì trang ván là một bàn chơi riêng.
-ThemeData gameMoonlitTheme() {
+ThemeData gameMoonlitTheme({RunNowStyle style = RunNowStyle.elemental}) =>
+    style == RunNowStyle.iron ? _ironGameTheme : _moonlitTheme;
+
+ThemeData _buildMoonlitTheme() {
   final base = buildRunNowTheme(
     RunNowElement.fire,
     appearance: RunNowAppearance.dark,
@@ -192,7 +209,7 @@ ThemeData gameMoonlitTheme() {
         foregroundColor: _M.onAmber,
         textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(borderRadius: palette.radius(14)),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
@@ -200,7 +217,7 @@ ThemeData gameMoonlitTheme() {
         foregroundColor: _M.ink,
         side: const BorderSide(color: _M.borderStrong, width: 1.5),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(borderRadius: palette.radius(14)),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
@@ -229,13 +246,14 @@ class GameMoonlitBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final m = context.moonlit;
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: RadialGradient(
           center: Alignment.topCenter,
           radius: 1.4,
-          colors: [_M.pageTop, _M.pageMid, _M.page],
-          stops: [0, 0.45, 1],
+          colors: [m.pageTop, m.pageMid, m.page],
+          stops: const [0, 0.45, 1],
         ),
       ),
       child: child,
@@ -263,6 +281,26 @@ class GameNightBackdrop extends StatelessWidget {
           stops: const [0, 0.6],
         ),
       ),
+      child: child,
+    );
+  }
+}
+
+/// Bọc một màn Ma Sói trong theme của bàn chơi.
+class GameThemed extends StatelessWidget {
+  const GameThemed({super.key, this.moonlit = false, required this.child});
+
+  /// Trang ván dùng tông ánh trăng; màn xem thẻ dùng tông đêm.
+  final bool moonlit;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = context.runNowPalette.style;
+    return Theme(
+      data: moonlit
+          ? gameMoonlitTheme(style: style)
+          : gameNightTheme(style: style),
       child: child,
     );
   }

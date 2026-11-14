@@ -54,10 +54,10 @@ class KeoSceneColors {
   });
 
   factory KeoSceneColors.resolve(RunNowPalette palette, KeoScene scene) {
-    final ramp = palette.element.ramp;
+    final ramp = palette.ramp;
     final night = scene == KeoScene.werewolf;
     if (palette.appearance == RunNowAppearance.light && !night) {
-      final tint = palette.element.tint;
+      final tint = palette.tint;
       return KeoSceneColors._(
         sky: tint,
         far: _mix(tint, ramp[0], 0.38),
@@ -182,7 +182,7 @@ class KeoSceneCard extends StatelessWidget {
     final colors = KeoSceneColors.resolve(context.runNowPalette, scene);
     return Material(
       clipBehavior: Clip.antiAlias,
-      borderRadius: BorderRadius.circular(radius),
+      borderRadius: context.runNowPalette.radius(radius),
       color: colors.sky,
       // passthrough: thẻ đứng có cỡ cố định thì con nhận cỡ đó; thẻ ngang thì
       // con quyết định chiều cao, hình phủ theo.
@@ -196,6 +196,7 @@ class KeoSceneCard extends StatelessWidget {
                   scene: scene,
                   variant: keoSceneVariant(seed),
                   colors: colors,
+                  square: context.runNowPalette.isIron,
                 ),
               ),
             ),
@@ -234,6 +235,7 @@ class KeoScenePainter extends CustomPainter {
     required this.scene,
     required this.variant,
     required this.colors,
+    this.square = false,
   });
 
   static const _width = 164.0;
@@ -242,6 +244,7 @@ class KeoScenePainter extends CustomPainter {
   final KeoScene scene;
   final int variant;
   final KeoSceneColors colors;
+  final bool square;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -259,6 +262,7 @@ class KeoScenePainter extends CustomPainter {
       wide ? colors.quiet : colors,
       variant.clamp(0, 2),
       -dx / scale,
+      square,
     );
     switch (scene) {
       case KeoScene.distance:
@@ -283,13 +287,17 @@ class KeoScenePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(KeoScenePainter old) =>
-      old.scene != scene || old.variant != variant || old.colors != colors;
+      old.scene != scene || old.variant != variant ||
+      old.colors != colors ||
+      old.square != square;
 }
 
 /// Vẽ trong toạ độ khung 164×208. [left] là mép trái thật của thẻ trong toạ
 /// độ đó (âm khi thẻ rộng hơn khung), để dải đất kéo hết chiều ngang thẻ.
 class _SceneDraw {
-  _SceneDraw(this.canvas, this.c, this.v, this.left);
+  _SceneDraw(this.canvas, this.c, this.v, this.left, this.square);
+
+  final bool square;
 
   final Canvas canvas;
   final KeoSceneColors c;
@@ -304,8 +312,8 @@ class _SceneDraw {
     ..color = color
     ..style = PaintingStyle.stroke
     ..strokeWidth = width
-    ..strokeCap = StrokeCap.round
-    ..strokeJoin = StrokeJoin.round;
+    ..strokeCap = (square ? StrokeCap.butt : StrokeCap.round)
+    ..strokeJoin = (square ? StrokeJoin.miter : StrokeJoin.round);
 
   void dashed(Path path, Paint paint, double on, double off) {
     for (final metric in path.computeMetrics()) {

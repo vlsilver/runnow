@@ -320,7 +320,7 @@ class _ActivityPhotoGallery extends StatelessWidget {
             child: GestureDetector(
               onTap: () => onPhotoTap(photo),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: context.runNowPalette.radius(12),
                 child: SizedBox(
                   width: 148,
                   child: Stack(
@@ -337,7 +337,7 @@ class _ActivityPhotoGallery extends StatelessWidget {
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.62),
-                            borderRadius: BorderRadius.circular(999),
+                            borderRadius: context.runNowPalette.radius(999),
                           ),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
@@ -612,7 +612,7 @@ class _SyncIconButton extends StatelessWidget {
               color: synced
                   ? palette.tertiary
                   : Colors.black.withValues(alpha: 0.75),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: palette.radius(14),
               border: synced
                   ? null
                   : Border.all(
@@ -643,8 +643,8 @@ class _SyncIconButton extends StatelessWidget {
                 width: 15,
                 height: 15,
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: RunNowSemanticColors.success,
+                  shape: context.runNowPalette.round,
+                  color: context.runNowPalette.success,
                   border: Border.all(color: Colors.white, width: 2),
                 ),
               ),
@@ -695,7 +695,7 @@ class _SyncPopup extends StatelessWidget {
         // giống quy ước Colors.black.withValues(...) đã dùng ở _RoutePill
         // trong route_map.dart — không dùng Color(0x...) hex thô mới.
         color: Colors.black.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: context.runNowPalette.radius(18),
         border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
         boxShadow: const [
           BoxShadow(
@@ -725,8 +725,8 @@ class _SyncPopup extends StatelessWidget {
               width: 26,
               height: 26,
               decoration: BoxDecoration(
-                color: palette.tertiary.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
+                color: palette.wash(palette.tertiary, 0.15),
+                borderRadius: palette.radius(8),
               ),
               child: Icon(
                 Icons.link_rounded,
@@ -812,13 +812,13 @@ class _SyncPopup extends StatelessWidget {
               width: 26,
               height: 26,
               decoration: BoxDecoration(
-                color: RunNowSemanticColors.success.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
+                color: context.runNowPalette.wash(context.runNowPalette.success, 0.15),
+                borderRadius: palette.radius(8),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.check_rounded,
                 size: 16,
-                color: RunNowSemanticColors.success,
+                color: context.runNowPalette.success,
               ),
             ),
             const SizedBox(width: 8),
@@ -860,8 +860,8 @@ class _SyncPopup extends StatelessWidget {
               width: 28,
               height: 28,
               decoration: BoxDecoration(
-                color: palette.tertiary.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
+                color: palette.wash(palette.tertiary, 0.15),
+                borderRadius: palette.radius(8),
               ),
               child: Icon(
                 Icons.flag_rounded,
@@ -973,8 +973,8 @@ class _ApplyErrorBanner extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colorScheme.error.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
+        color: context.runNowPalette.wash(colorScheme.error, 0.12),
+        borderRadius: context.runNowPalette.radius(12),
       ),
       child: Padding(
         padding: const EdgeInsets.all(10),
@@ -1108,7 +1108,7 @@ class _ApplyToContractPickerSheetState
                   color: Theme.of(
                     context,
                   ).colorScheme.onSurface.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: context.runNowPalette.radius(999),
                 ),
               ),
             ),
@@ -1208,23 +1208,23 @@ class _ContractApplyOptionTile extends StatelessWidget {
     final eligible = option.eligible;
     final muted = onSurface.withValues(alpha: 0.5);
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: palette.radius(14),
       onTap: onSelected,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: eligible && selected
-              ? palette.accent.withValues(alpha: 0.12)
+              ? palette.wash(palette.accent, 0.12)
               : eligible
               ? Colors.transparent
               : Color.alphaBlend(
-                  palette.accent.withValues(alpha: 0.05),
+                  palette.wash(palette.accent, 0.05),
                   palette.glassStart,
                 ),
           border: Border.all(
             color: eligible && selected ? palette.accent : palette.border,
           ),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: palette.radius(14),
         ),
         child: Row(
           children: [
@@ -1232,7 +1232,7 @@ class _ContractApplyOptionTile extends StatelessWidget {
               width: 20,
               height: 20,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
+                shape: context.runNowPalette.round,
                 border: Border.all(
                   color: eligible && selected
                       ? palette.accent
@@ -1248,7 +1248,7 @@ class _ContractApplyOptionTile extends StatelessWidget {
                         width: 10,
                         height: 10,
                         decoration: BoxDecoration(
-                          shape: BoxShape.circle,
+                          shape: context.runNowPalette.round,
                           color: palette.accent,
                         ),
                       ),

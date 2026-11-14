@@ -16,6 +16,7 @@ import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:myrun/src/widgets/run_now_switch.dart';
 
 /// Trang danh sách đầy đủ, mở từ "Xem tất cả" của tab MyBot.
 enum AgentListView { memories, learned }
@@ -478,7 +479,7 @@ class _Header extends StatelessWidget {
             message: 'Sửa bot',
             child: Material(
               color: palette.glassStart,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: palette.radius(14),
               clipBehavior: Clip.antiAlias,
               child: InkWell(
                 onTap: onEdit,
@@ -518,7 +519,7 @@ class _BotCardSection extends StatelessWidget {
                     width: width * 1.3,
                     height: width * 1.3,
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
+                      shape: context.runNowPalette.round,
                       gradient: RadialGradient(
                         colors: [
                           palette.accent.withValues(alpha: 0.3),
@@ -597,7 +598,7 @@ class _BotActions extends StatelessWidget {
               minimumSize: const Size.fromHeight(52),
               textStyle: buttonText,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: palette.radius(14),
               ),
             ),
             icon: const Icon(Icons.chat_bubble_rounded, size: 19),
@@ -615,7 +616,7 @@ class _BotActions extends StatelessWidget {
               textStyle: buttonText,
               side: BorderSide(color: palette.border),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: palette.radius(14),
               ),
             ),
             icon: const Icon(Icons.forum_outlined, size: 19),
@@ -800,7 +801,7 @@ class _TierTrack extends StatelessWidget {
                     child: DecoratedBox(
                       decoration: BoxDecoration(
                         color: palette.ink.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius: context.runNowPalette.radius(999),
                       ),
                     ),
                   ),
@@ -811,7 +812,7 @@ class _TierTrack extends StatelessWidget {
                     height: 6,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius: context.runNowPalette.radius(999),
                         gradient: LinearGradient(
                           colors: [palette.tertiary, palette.accent],
                         ),
@@ -920,7 +921,7 @@ class _TrackNode extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
+        shape: context.runNowPalette.round,
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -966,7 +967,7 @@ class _KmRuler extends StatelessWidget {
           height: 10,
           child: LayoutBuilder(
             builder: (context, box) => ClipRRect(
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: context.runNowPalette.radius(999),
               child: Stack(
                 children: [
                   Positioned.fill(
@@ -1041,8 +1042,8 @@ class _KmHint extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: palette.accent.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(12),
+        color: palette.wash(palette.accent, 0.14),
+        borderRadius: palette.radius(12),
       ),
       child: Row(
         children: [
@@ -1191,8 +1192,8 @@ class _TelegramRow extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: palette.accent.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(12),
+                color: palette.wash(palette.accent, 0.18),
+                borderRadius: palette.radius(12),
               ),
               child: Icon(icon, size: 20, color: palette.accentDeep),
             ),
@@ -1259,7 +1260,7 @@ class _LoadingSkeleton extends StatelessWidget {
             height: height,
             decoration: BoxDecoration(
               color: color,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: palette.radius(6),
             ),
           ),
         );
@@ -1283,7 +1284,7 @@ class _LoadingSkeleton extends StatelessWidget {
                     height: 64,
                     decoration: BoxDecoration(
                       color: heroBlock,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: palette.radius(20),
                     ),
                   ),
                   const SizedBox(width: 14),
@@ -1344,11 +1345,11 @@ class _CreateBotCard extends StatelessWidget {
         const SizedBox(height: 14),
         Text(
           'Tạo bot của riêng bạn',
-          style: TextStyle(
+          style: context.runNowPalette.heading(TextStyle(
             color: dark.ink,
             fontSize: 22,
             fontWeight: FontWeight.w900,
-          ),
+          )),
         ),
         const SizedBox(height: 6),
         Text(
@@ -1381,7 +1382,7 @@ class _HeroShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: palette.radius(24),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -1413,10 +1414,10 @@ class _HeroShell extends StatelessWidget {
                 width: 240,
                 height: 240,
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
+                  shape: context.runNowPalette.round,
                   gradient: RadialGradient(
                     colors: [
-                      palette.accent.withValues(alpha: 0.26),
+                      palette.wash(palette.accent, 0.26),
                       palette.accent.withValues(alpha: 0),
                     ],
                   ),
@@ -1452,11 +1453,11 @@ class _BotOrb extends StatelessWidget {
       height: size,
       padding: EdgeInsets.all(ring),
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
+        shape: context.runNowPalette.round,
         gradient: SweepGradient(
           colors: [
             palette.accent,
-            palette.tertiary.withValues(alpha: 0.2),
+            palette.wash(palette.tertiary, 0.2),
             palette.accent,
           ],
         ),
@@ -1470,7 +1471,7 @@ class _BotOrb extends StatelessWidget {
       child: Container(
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          shape: BoxShape.circle,
+          shape: context.runNowPalette.round,
           gradient: LinearGradient(
             colors: [palette.tertiary, palette.accentDeep],
             begin: Alignment.topLeft,
@@ -1555,14 +1556,14 @@ class _RoomPreviewCard extends ConsumerWidget {
               onPressed: onOpen,
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(44),
-                backgroundColor: palette.accent.withValues(alpha: 0.14),
+                backgroundColor: palette.wash(palette.accent, 0.14),
                 foregroundColor: palette.accentDeep,
                 textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: palette.radius(12),
                 ),
               ),
               child: const Row(
@@ -1607,7 +1608,7 @@ class _AvatarStack extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: tones[i % tones.length],
-                  shape: BoxShape.circle,
+                  shape: context.runNowPalette.round,
                   border: Border.all(color: palette.glassStart, width: 2),
                 ),
                 child: Text(
@@ -1654,7 +1655,7 @@ class _ImagesPreview extends ConsumerWidget {
               height: 200,
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: palette.radius(14),
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -1718,10 +1719,10 @@ class _RoomPreviewLine extends StatelessWidget {
       decoration: BoxDecoration(
         color: mine ? palette.tint : palette.ink.withValues(alpha: 0.05),
         borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(mine ? 14 : 4),
-          topRight: Radius.circular(mine ? 4 : 14),
-          bottomLeft: const Radius.circular(14),
-          bottomRight: const Radius.circular(14),
+          topLeft: context.runNowPalette.cornerRadius(mine ? 14 : 4),
+          topRight: context.runNowPalette.cornerRadius(mine ? 4 : 14),
+          bottomLeft: context.runNowPalette.cornerRadius(14),
+          bottomRight: context.runNowPalette.cornerRadius(14),
         ),
       ),
       child: Column(
@@ -1762,7 +1763,7 @@ class _RoomPreviewLine extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: message.fromAgent ? palette.ink : palette.accentDeep,
-            borderRadius: BorderRadius.circular(message.fromAgent ? 10 : 16),
+            borderRadius: context.runNowPalette.radius(message.fromAgent ? 10 : 16),
           ),
           child: Text(
             name.isEmpty ? '?' : name.characters.first.toUpperCase(),
@@ -1829,7 +1830,7 @@ class _MemoryPreviewCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             ClipRRect(
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: context.runNowPalette.radius(999),
               child: LinearProgressIndicator(
                 value: limit <= 0 ? 0 : (memories.length / limit).clamp(0, 1),
                 minHeight: 5,
@@ -1912,7 +1913,7 @@ class _Chip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dashed = this.dashed;
-    final radius = BorderRadius.circular(12);
+    final radius = context.runNowPalette.radius(12);
     final chip = Material(
       color: color ?? Colors.transparent,
       borderRadius: radius,
@@ -1927,7 +1928,10 @@ class _Chip extends StatelessWidget {
     );
     if (dashed == null) return chip;
     return CustomPaint(
-      foregroundPainter: _DashedBorderPainter(color: dashed, radius: 12),
+      foregroundPainter: _DashedBorderPainter(
+        color: dashed,
+        radius: context.runNowPalette.corner(12),
+      ),
       child: chip,
     );
   }
@@ -2061,7 +2065,7 @@ class _LearnedCard extends StatelessWidget {
       child: Column(
         children: [
           if (onLearning != null) ...[
-            SwitchListTile(
+            RunNowSwitchListTile(
               value: learning,
               onChanged: busy ? null : onLearning,
               contentPadding: const EdgeInsets.only(left: 14, right: 12),
@@ -2143,7 +2147,7 @@ class _Card extends StatelessWidget {
     return Material(
       color: palette.glassStart,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: palette.radius(18),
         side: BorderSide(color: palette.border.withValues(alpha: 0.55)),
       ),
       clipBehavior: Clip.antiAlias,
@@ -2276,8 +2280,8 @@ class _RowIcon extends StatelessWidget {
       width: 34,
       height: 34,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.13),
-        borderRadius: BorderRadius.circular(11),
+        color: context.runNowPalette.wash(color, 0.13),
+        borderRadius: palette.radius(11),
       ),
       child: Icon(icon, size: 18, color: color),
     );

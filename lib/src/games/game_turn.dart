@@ -146,7 +146,10 @@ class _GameTurnBannerState extends State<GameTurnBanner> {
               Container(
                 width: 8,
                 height: 8,
-                decoration: BoxDecoration(shape: BoxShape.circle, color: tone),
+                decoration: BoxDecoration(
+                  shape: context.runNowPalette.round,
+                  color: tone,
+                ),
               ),
               const SizedBox(width: 6),
               Flexible(

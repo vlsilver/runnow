@@ -171,10 +171,10 @@ class _Bubble extends StatelessWidget {
         decoration: BoxDecoration(
           color: fromCoach ? palette.glassStart : palette.accent,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(14),
-            topRight: const Radius.circular(14),
-            bottomLeft: Radius.circular(fromCoach ? 4 : 14),
-            bottomRight: Radius.circular(fromCoach ? 14 : 4),
+            topLeft: context.runNowPalette.cornerRadius(14),
+            topRight: context.runNowPalette.cornerRadius(14),
+            bottomLeft: context.runNowPalette.cornerRadius(fromCoach ? 4 : 14),
+            bottomRight: context.runNowPalette.cornerRadius(fromCoach ? 14 : 4),
           ),
           border: fromCoach ? Border.all(color: palette.border) : null,
         ),
@@ -222,11 +222,11 @@ class _EmptyChat extends StatelessWidget {
       children: [
         Text(
           'Hỏi gì cũng được',
-          style: TextStyle(
+          style: palette.heading(TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w800,
             color: palette.ink,
-          ),
+          )),
         ),
         const SizedBox(height: 8),
         Text(
@@ -243,11 +243,11 @@ class _EmptyChat extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 10),
             child: InkWell(
               onTap: () => onPick(s),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: palette.radius(12),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: palette.radius(12),
                   border: Border.all(color: palette.border),
                 ),
                 child: Row(
@@ -307,11 +307,11 @@ class _Composer extends StatelessWidget {
                   contentPadding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(22),
+                    borderRadius: palette.radius(22),
                     borderSide: BorderSide(color: palette.border),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(22),
+                    borderRadius: palette.radius(22),
                     borderSide: BorderSide(color: palette.border),
                   ),
                 ),

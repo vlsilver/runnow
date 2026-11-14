@@ -386,7 +386,7 @@ class _ContractSyncActionState extends State<ContractSyncAction>
     return GlassPanel(
       borderRadius: 999,
       child: InkWell(
-        customBorder: const StadiumBorder(),
+        customBorder: context.runNowPalette.pillBorder,
         onTap: widget.syncing ? null : widget.onPressed,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
@@ -411,9 +411,9 @@ class _ContractSyncActionState extends State<ContractSyncAction>
                 width: 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
+                  shape: context.runNowPalette.round,
                   color: widget.synced
-                      ? RunNowSemanticColors.success
+                      ? context.runNowPalette.success
                       : onSurface.withValues(alpha: 0.24),
                 ),
               ),
@@ -790,7 +790,7 @@ class _ContractFilterBar extends StatelessWidget {
                 fontWeight: FontWeight.w900,
               ),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              shape: const StadiumBorder(),
+              shape: context.runNowPalette.pillBorder,
               side: BorderSide(
                 color: value == filter
                     ? Colors.transparent

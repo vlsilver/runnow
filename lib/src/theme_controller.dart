@@ -8,11 +8,13 @@ class ThemeController extends ChangeNotifier {
     RunNowElement initialElement = RunNowElement.water,
     RunNowAppearance initialAppearance = RunNowAppearance.light,
     RunNowDarkTone initialDarkTone = RunNowDarkTone.elemental,
+    RunNowStyle initialStyle = RunNowStyle.elemental,
     bool loadFromStorage = true,
   }) : _storage = storage ?? const FlutterSecureStorage() {
     _element = initialElement;
     _appearance = initialAppearance;
     _darkTone = initialDarkTone;
+    _style = initialStyle;
     loaded = loadFromStorage ? _load() : Future<void>.value();
   }
 
@@ -23,6 +25,7 @@ class ThemeController extends ChangeNotifier {
   static const _elementKey = 'runnow_theme_element';
   static const _appearanceKey = 'runnow_theme_appearance';
   static const _darkToneKey = 'runnow_theme_dark_tone';
+  static const _styleKey = 'runnow_theme_style';
   static const _paletteVersionKey = 'runnow_theme_palette_version';
   static const _paletteVersion = '3';
 
@@ -30,10 +33,12 @@ class ThemeController extends ChangeNotifier {
   late RunNowElement _element;
   late RunNowAppearance _appearance;
   late RunNowDarkTone _darkTone;
+  late RunNowStyle _style;
 
   RunNowElement get element => _element;
   RunNowAppearance get appearance => _appearance;
   RunNowDarkTone get darkTone => _darkTone;
+  RunNowStyle get style => _style;
 
   Future<void> setElement(RunNowElement element) async {
     if (_element == element) return;
@@ -63,20 +68,24 @@ class ThemeController extends ChangeNotifier {
     required RunNowElement element,
     required RunNowAppearance appearance,
     required RunNowDarkTone darkTone,
+    required RunNowStyle style,
   }) async {
     if (_element == element &&
         _appearance == appearance &&
-        _darkTone == darkTone) {
+        _darkTone == darkTone &&
+        _style == style) {
       return;
     }
     _element = element;
     _appearance = appearance;
     _darkTone = darkTone;
+    _style = style;
     notifyListeners();
     await Future.wait([
       _storage.write(key: _elementKey, value: element.name),
       _storage.write(key: _appearanceKey, value: appearance.name),
       _storage.write(key: _darkToneKey, value: darkTone.name),
+      _storage.write(key: _styleKey, value: style.name),
       _storage.write(key: _paletteVersionKey, value: _paletteVersion),
     ]);
   }
@@ -89,6 +98,7 @@ class ThemeController extends ChangeNotifier {
         _storage.read(key: _appearanceKey),
         _storage.read(key: _darkToneKey),
         _storage.read(key: _paletteVersionKey),
+        _storage.read(key: _styleKey),
       ]);
     } catch (error, stack) {
       // App chờ bước này trước khi vẽ, nên keychain lỗi thì mở bằng theme mặc
@@ -109,11 +119,16 @@ class ThemeController extends ChangeNotifier {
         : RunNowAppearance.light;
     // Palette v3 follows the design source exactly: dark surfaces are neutral.
     final loadedDarkTone = RunNowDarkTone.elemental;
+    final loadedStyle = values[4] == 'iron'
+        ? RunNowStyle.iron
+        : RunNowStyle.elemental;
     if (_element == loadedElement &&
         _appearance == loadedAppearance &&
-        _darkTone == loadedDarkTone) {
+        _darkTone == loadedDarkTone &&
+        _style == loadedStyle) {
       return;
     }
+    _style = loadedStyle;
     _element = loadedElement;
     _appearance = loadedAppearance;
     _darkTone = loadedDarkTone;

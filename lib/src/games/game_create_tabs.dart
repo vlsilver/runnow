@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:myrun/src/games/game_card_art.dart';
 import 'package:myrun/src/games/game_models.dart';
 import 'package:myrun/src/games/game_role_card.dart';
-import 'package:myrun/src/theme_tokens.dart';
+import 'package:myrun/src/theme.dart';
 
 // Mảnh giao diện của màn tạo ván theo tab. State và việc gửi lên nằm ở
 // GameCreateScreen; ở đây chỉ vẽ theo createOptions backend gửi.
-
-typedef _M = RunNowMoonlitTokens;
 
 /// Icon theo khoá backend gửi cho tab và kiểu ván; khoá lạ thì icon chỉnh.
 IconData gameCreateIcon(String key) => switch (key) {
@@ -45,7 +43,7 @@ class GameCreateHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    return Row(
       children: [
         GameMoonEmblem(size: 72),
         SizedBox(width: 14),
@@ -61,13 +59,13 @@ class GameCreateHeader extends StatelessWidget {
                   fontSize: 32,
                   height: .95,
                   letterSpacing: .6,
-                  color: _M.ink,
+                  color: context.moonlit.ink,
                 ),
               ),
               SizedBox(height: 4),
               Text(
                 'Chọn kiểu ván, hẹn giờ, mở.',
-                style: TextStyle(fontSize: 13, color: _M.muted),
+                style: TextStyle(fontSize: 13, color: context.moonlit.muted),
               ),
             ],
           ),
@@ -92,36 +90,44 @@ class GameCreateOpenButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        gradient: const LinearGradient(
+        borderRadius: context.runNowPalette.radius(18),
+        gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [_M.amberBright, _M.amber],
+          colors: [context.moonlit.amberBright, context.moonlit.amber],
         ),
-        boxShadow: const [
-          BoxShadow(color: _M.ctaGlow, blurRadius: 30, offset: Offset(0, 10)),
+        boxShadow: [
+          BoxShadow(
+            color: context.moonlit.ctaGlow,
+            blurRadius: 30,
+            offset: Offset(0, 10),
+          ),
         ],
       ),
       child: Material(
         type: MaterialType.transparency,
         child: InkWell(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: context.runNowPalette.radius(18),
           onTap: onPressed,
           child: SizedBox(
             height: 56,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.nightlight_round, size: 20, color: _M.onAmber),
+                Icon(
+                  Icons.nightlight_round,
+                  size: 20,
+                  color: context.moonlit.onAmber,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   working ? 'ĐANG MỞ…' : 'MỞ VÁN',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'Barlow Condensed',
                     fontWeight: FontWeight.w800,
                     fontSize: 22,
                     letterSpacing: 3,
-                    color: _M.onAmber,
+                    color: context.moonlit.onAmber,
                   ),
                 ),
               ],
@@ -151,10 +157,10 @@ class GameCreateRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: _M.panel,
+      color: context.moonlit.panel,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: _M.border),
+        borderRadius: context.runNowPalette.radius(18),
+        side: BorderSide(color: context.moonlit.border),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -167,35 +173,35 @@ class GameCreateRow extends StatelessWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: _M.amberTint,
-                  borderRadius: BorderRadius.circular(10),
+                  color: context.moonlit.amberTint,
+                  borderRadius: context.runNowPalette.radius(10),
                 ),
-                child: Icon(icon, size: 18, color: _M.amberBright),
+                child: Icon(icon, size: 18, color: context.moonlit.amberBright),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: _M.ink,
+                    color: context.moonlit.ink,
                   ),
                 ),
               ),
               Text(
                 value,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w700,
-                  color: _M.amberBright,
+                  color: context.moonlit.amberBright,
                 ),
               ),
               const SizedBox(width: 4),
-              const Icon(
+              Icon(
                 Icons.chevron_right_rounded,
                 size: 18,
-                color: _M.faint,
+                color: context.moonlit.faint,
               ),
             ],
           ),
@@ -212,13 +218,15 @@ class GameCreateLabel extends StatelessWidget {
     super.key,
     this.trailing,
     this.leading,
-    this.color = _M.faint,
+    this.color,
   });
 
   final String text;
   final Widget? trailing;
   final Widget? leading;
-  final Color color;
+
+  /// Bỏ trống thì lấy màu chữ mờ của bàn chơi.
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -232,7 +240,7 @@ class GameCreateLabel extends StatelessWidget {
               fontSize: 12,
               fontWeight: FontWeight.w800,
               letterSpacing: 1.4,
-              color: color,
+              color: color ?? context.moonlit.faint,
             ),
           ),
         ),
@@ -254,7 +262,7 @@ class GameCreateLink extends StatelessWidget {
     return TextButton(
       onPressed: onTap,
       style: TextButton.styleFrom(
-        foregroundColor: _M.amberBright,
+        foregroundColor: context.moonlit.amberBright,
         padding: const EdgeInsets.symmetric(horizontal: 8),
         minimumSize: const Size(44, 36),
         textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
@@ -275,10 +283,10 @@ class GameCreatePanel extends StatelessWidget {
     // Material chứ không phải DecoratedBox để ListTile bên trong vẽ được
     // hiệu ứng chạm.
     return Material(
-      color: _M.panel,
+      color: context.moonlit.panel,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: _M.border),
+        borderRadius: context.runNowPalette.radius(20),
+        side: BorderSide(color: context.moonlit.border),
       ),
       clipBehavior: Clip.antiAlias,
       child: Padding(
@@ -306,21 +314,23 @@ class GamePresetTile extends StatelessWidget {
   Widget build(BuildContext context) {
     // Kiểu ván không chạy (icon trăng) sáng bạc lam, còn lại hổ phách.
     final moon = preset.icon == 'moon';
-    final accent = moon ? _M.moon : _M.amber;
+    final accent = moon ? context.moonlit.moon : context.moonlit.amber;
     final tile = Semantics(
       selected: selected,
       button: true,
       child: Material(
-        color: selected ? (moon ? _M.moonTint : _M.amberTint) : _M.panel,
+        color: selected
+            ? (moon ? context.moonlit.moonTint : context.moonlit.amberTint)
+            : context.moonlit.panel,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: context.runNowPalette.radius(16),
           side: BorderSide(
-            color: selected ? accent : _M.border,
+            color: selected ? accent : context.moonlit.border,
             width: selected ? 2 : 1,
           ),
         ),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: context.runNowPalette.radius(16),
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(6, 14, 6, 12),
@@ -330,15 +340,17 @@ class GamePresetTile extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: selected ? accent : _M.raised,
-                    borderRadius: BorderRadius.circular(14),
+                    color: selected ? accent : context.moonlit.raised,
+                    borderRadius: context.runNowPalette.radius(14),
                   ),
                   child: Icon(
                     gameCreateIcon(preset.icon),
                     size: 24,
                     color: selected
-                        ? (moon ? _M.onMoon : _M.onAmber)
-                        : _M.muted,
+                        ? (moon
+                              ? context.moonlit.onMoon
+                              : context.moonlit.onAmber)
+                        : context.moonlit.muted,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -352,7 +364,9 @@ class GamePresetTile extends StatelessWidget {
                     height: 1,
                     letterSpacing: 0.6,
                     fontWeight: FontWeight.w800,
-                    color: selected ? _M.ink : _M.inkSoft,
+                    color: selected
+                        ? context.moonlit.ink
+                        : context.moonlit.inkSoft,
                   ),
                 ),
               ],
@@ -374,16 +388,16 @@ class GamePresetTile extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
             decoration: BoxDecoration(
-              color: _M.amber,
-              borderRadius: BorderRadius.circular(6),
+              color: context.moonlit.amber,
+              borderRadius: context.runNowPalette.radius(6),
             ),
-            child: const Text(
+            child: Text(
               'MẶC ĐỊNH',
               style: TextStyle(
                 fontSize: 9,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1,
-                color: _M.onAmber,
+                color: context.moonlit.onAmber,
               ),
             ),
           ),
@@ -411,9 +425,9 @@ class GameCreateTabBar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: _M.raised,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _M.border),
+        color: context.moonlit.raised,
+        borderRadius: context.runNowPalette.radius(14),
+        border: Border.all(color: context.moonlit.border),
       ),
       child: Row(
         children: [
@@ -423,10 +437,12 @@ class GameCreateTabBar extends StatelessWidget {
                 selected: i == selected,
                 button: true,
                 child: Material(
-                  color: i == selected ? _M.amberTint : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
+                  color: i == selected
+                      ? context.moonlit.amberTint
+                      : Colors.transparent,
+                  borderRadius: context.runNowPalette.radius(10),
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: context.runNowPalette.radius(10),
                     onTap: () => onSelect(i),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -435,7 +451,9 @@ class GameCreateTabBar extends StatelessWidget {
                           Icon(
                             gameCreateIcon(groups[i].icon),
                             size: 18,
-                            color: i == selected ? _M.amberBright : _M.faint,
+                            color: i == selected
+                                ? context.moonlit.amberBright
+                                : context.moonlit.faint,
                           ),
                           const SizedBox(height: 3),
                           Text(
@@ -445,7 +463,9 @@ class GameCreateTabBar extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w700,
-                              color: i == selected ? _M.amberBright : _M.faint,
+                              color: i == selected
+                                  ? context.moonlit.amberBright
+                                  : context.moonlit.faint,
                             ),
                           ),
                         ],
@@ -473,22 +493,22 @@ class GameCreateNote extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: _M.raised,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _M.border),
+        color: context.moonlit.raised,
+        borderRadius: context.runNowPalette.radius(14),
+        border: Border.all(color: context.moonlit.border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: _M.amberBright),
+          Icon(icon, size: 20, color: context.moonlit.amberBright),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 height: 1.45,
-                color: _M.muted,
+                color: context.moonlit.muted,
               ),
             ),
           ),
@@ -508,7 +528,10 @@ class GameCreateManual extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: const _DashedBorder(color: _M.border, radius: 14),
+      painter: _DashedBorder(
+        color: context.moonlit.border,
+        radius: context.runNowPalette.corner(14),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
@@ -517,16 +540,16 @@ class GameCreateManual extends StatelessWidget {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: _M.raised,
-                borderRadius: BorderRadius.circular(11),
+                color: context.moonlit.raised,
+                borderRadius: context.runNowPalette.radius(11),
               ),
-              child: Icon(icon, size: 20, color: _M.muted),
+              child: Icon(icon, size: 20, color: context.moonlit.muted),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 text,
-                style: const TextStyle(fontSize: 13, color: _M.muted),
+                style: TextStyle(fontSize: 13, color: context.moonlit.muted),
               ),
             ),
           ],
@@ -603,16 +626,16 @@ class GameCreateStepper extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14.5,
                   fontWeight: FontWeight.w700,
-                  color: _M.ink,
+                  color: context.moonlit.ink,
                 ),
               ),
               if (hint case final hint?)
                 Text(
                   hint,
-                  style: const TextStyle(fontSize: 12, color: _M.faint),
+                  style: TextStyle(fontSize: 12, color: context.moonlit.faint),
                 ),
             ],
           ),
@@ -620,7 +643,7 @@ class GameCreateStepper extends StatelessWidget {
         IconButton(
           tooltip: 'Giảm $label',
           icon: const Icon(Icons.remove_rounded),
-          color: _M.amberBright,
+          color: context.moonlit.amberBright,
           onPressed: change != null && value - step >= min - 1e-9
               ? () => change(gameSnap(value - step))
               : null,
@@ -632,17 +655,17 @@ class GameCreateStepper extends StatelessWidget {
                 ? gameFormatNumber(value)
                 : '${gameFormatNumber(value)} $unit',
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w800,
-              color: _M.ink,
+              color: context.moonlit.ink,
             ),
           ),
         ),
         IconButton(
           tooltip: 'Tăng $label',
           icon: const Icon(Icons.add_rounded),
-          color: _M.amberBright,
+          color: context.moonlit.amberBright,
           onPressed: change != null && value + step <= max + 1e-9
               ? () => change(gameSnap(value + step))
               : null,
@@ -674,15 +697,19 @@ class GameCreateChoices extends StatelessWidget {
             selected: choice.value == value,
             button: true,
             child: Material(
-              color: choice.value == value ? _M.amberTint : _M.raised,
+              color: choice.value == value
+                  ? context.moonlit.amberTint
+                  : context.moonlit.raised,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: context.runNowPalette.radius(14),
                 side: BorderSide(
-                  color: choice.value == value ? _M.amber : _M.border,
+                  color: choice.value == value
+                      ? context.moonlit.amber
+                      : context.moonlit.border,
                 ),
               ),
               child: InkWell(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: context.runNowPalette.radius(14),
                 onTap: onChanged == null
                     ? null
                     : () => onChanged!(choice.value),
@@ -696,29 +723,29 @@ class GameCreateChoices extends StatelessWidget {
                           children: [
                             Text(
                               choice.label,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w800,
-                                color: _M.ink,
+                                color: context.moonlit.ink,
                               ),
                             ),
                             const SizedBox(height: 2),
                             Text(
                               choice.description,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
                                 height: 1.4,
-                                color: _M.faint,
+                                color: context.moonlit.faint,
                               ),
                             ),
                           ],
                         ),
                       ),
                       if (choice.value == value)
-                        const Icon(
+                        Icon(
                           Icons.check_circle_rounded,
                           size: 20,
-                          color: _M.amber,
+                          color: context.moonlit.amber,
                         ),
                     ],
                   ),
@@ -820,10 +847,12 @@ class _GamePowerCardState extends State<GamePowerCard> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: on ? _M.wolfSoft : _M.raised,
+        color: on ? context.moonlit.wolfSoft : context.moonlit.raised,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(color: on ? _M.wolfLine : _M.border),
+          borderRadius: context.runNowPalette.radius(14),
+          side: BorderSide(
+            color: on ? context.moonlit.wolfLine : context.moonlit.border,
+          ),
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(
@@ -842,12 +871,14 @@ class _GamePowerCardState extends State<GamePowerCard> {
                         height: 32,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: _M.well,
-                          borderRadius: BorderRadius.circular(10),
+                          color: context.moonlit.well,
+                          borderRadius: context.runNowPalette.radius(10),
                         ),
                         child: gameKeyIcon(
                           s.icon ?? 'wolf',
-                          color: on ? _M.wolf : _M.faint,
+                          color: on
+                              ? context.moonlit.wolf
+                              : context.moonlit.faint,
                           size: 18,
                         ),
                       ),
@@ -863,7 +894,9 @@ class _GamePowerCardState extends State<GamePowerCard> {
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w700,
-                                color: on ? _M.ink : _M.muted,
+                                color: on
+                                    ? context.moonlit.ink
+                                    : context.moonlit.muted,
                               ),
                             ),
                             if (hasHint || exposes)
@@ -875,17 +908,19 @@ class _GamePowerCardState extends State<GamePowerCard> {
                                     if (hasHint && exposes)
                                       const TextSpan(text: ' · '),
                                     if (exposes)
-                                      const TextSpan(
+                                      TextSpan(
                                         text: '⚠ ĐỂ LỘ',
-                                        style: TextStyle(color: _M.phaseTrial),
+                                        style: TextStyle(
+                                          color: context.moonlit.phaseTrial,
+                                        ),
                                       ),
                                   ],
                                 ),
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
                                   letterSpacing: 0.55,
                                   fontWeight: FontWeight.w700,
-                                  color: _M.faint,
+                                  color: context.moonlit.faint,
                                 ),
                               ),
                           ],
@@ -896,18 +931,20 @@ class _GamePowerCardState extends State<GamePowerCard> {
                         width: 22,
                         height: 22,
                         decoration: BoxDecoration(
-                          color: on ? _M.wolf : null,
-                          borderRadius: BorderRadius.circular(7),
+                          color: on ? context.moonlit.wolf : null,
+                          borderRadius: context.runNowPalette.radius(7),
                           border: Border.all(
-                            color: on ? _M.wolf : _M.border,
+                            color: on
+                                ? context.moonlit.wolf
+                                : context.moonlit.border,
                             width: 1.5,
                           ),
                         ),
                         child: on
-                            ? const Icon(
+                            ? Icon(
                                 Icons.check_rounded,
                                 size: 16,
-                                color: _M.ink,
+                                color: context.moonlit.ink,
                               )
                             : null,
                       ),
@@ -920,7 +957,7 @@ class _GamePowerCardState extends State<GamePowerCard> {
                               ? Icons.expand_less_rounded
                               : Icons.expand_more_rounded,
                         ),
-                        color: _M.faint,
+                        color: context.moonlit.faint,
                         onPressed: () => setState(() => _open = !_open),
                       ),
                     ],
@@ -936,20 +973,20 @@ class _GamePowerCardState extends State<GamePowerCard> {
                   children: [
                     Text(
                       s.description,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12.5,
                         height: 1.45,
-                        color: _M.muted,
+                        color: context.moonlit.muted,
                       ),
                     ),
                     if (warn != null && warn.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       Text(
                         warn,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12.5,
                           height: 1.45,
-                          color: _M.danger,
+                          color: context.moonlit.danger,
                         ),
                       ),
                     ],
@@ -981,18 +1018,20 @@ class GameRoleChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = on ? _M.amberBright : _M.faint;
+    final color = on ? context.moonlit.amberBright : context.moonlit.faint;
     return Semantics(
       toggled: on,
       button: onTap != null,
       child: Material(
-        color: on ? _M.amberTint : _M.raised,
+        color: on ? context.moonlit.amberTint : context.moonlit.raised,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(color: on ? _M.amberLine : _M.border),
+          borderRadius: context.runNowPalette.radius(14),
+          side: BorderSide(
+            color: on ? context.moonlit.amberLine : context.moonlit.border,
+          ),
         ),
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: context.runNowPalette.radius(14),
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
@@ -1012,7 +1051,7 @@ class GameRoleChip extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: on ? _M.ink : _M.faint,
+                    color: on ? context.moonlit.ink : context.moonlit.faint,
                   ),
                 ),
               ],
@@ -1056,9 +1095,9 @@ class GameCreateSegment extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: _M.raised,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _M.border),
+        color: context.moonlit.raised,
+        borderRadius: context.runNowPalette.radius(14),
+        border: Border.all(color: context.moonlit.border),
       ),
       child: Row(
         children: [
@@ -1068,10 +1107,12 @@ class GameCreateSegment extends StatelessWidget {
                 selected: i == selected,
                 button: true,
                 child: Material(
-                  color: i == selected ? _M.amber : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
+                  color: i == selected
+                      ? context.moonlit.amber
+                      : Colors.transparent,
+                  borderRadius: context.runNowPalette.radius(10),
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: context.runNowPalette.radius(10),
                     onTap: select == null || i == selected
                         ? null
                         : () => select(i),
@@ -1088,7 +1129,9 @@ class GameCreateSegment extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
-                              color: i == selected ? _M.onAmber : _M.muted,
+                              color: i == selected
+                                  ? context.moonlit.onAmber
+                                  : context.moonlit.muted,
                             ),
                           ),
                           if (subs case final subs?)
@@ -1097,7 +1140,9 @@ class GameCreateSegment extends StatelessWidget {
                               maxLines: 1,
                               style: TextStyle(
                                 fontSize: 11.5,
-                                color: i == selected ? _M.onAmber : _M.faint,
+                                color: i == selected
+                                    ? context.moonlit.onAmber
+                                    : context.moonlit.faint,
                               ),
                             ),
                         ],
@@ -1133,7 +1178,7 @@ class GameDeckTiers extends StatelessWidget {
             for (final t in plan.tiers)
               SizedBox(
                 width: width,
-                child: _tier(t, players >= t.from && players <= t.to),
+                child: _tier(context, t, players >= t.from && players <= t.to),
               ),
           ],
         );
@@ -1141,13 +1186,19 @@ class GameDeckTiers extends StatelessWidget {
     );
   }
 
-  Widget _tier(({int from, int to, int wolves, int specials}) t, bool on) {
+  Widget _tier(
+    BuildContext context,
+    ({int from, int to, int wolves, int specials}) t,
+    bool on,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: on ? _M.amberTint : _M.raised,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: on ? _M.amberLine : _M.border),
+        color: on ? context.moonlit.amberTint : context.moonlit.raised,
+        borderRadius: context.runNowPalette.radius(10),
+        border: Border.all(
+          color: on ? context.moonlit.amberLine : context.moonlit.border,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1157,12 +1208,12 @@ class GameDeckTiers extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: on ? _M.amberBright : _M.ink,
+              color: on ? context.moonlit.amberBright : context.moonlit.ink,
             ),
           ),
           Text(
             '${t.wolves} sói · ${t.specials} vai',
-            style: const TextStyle(fontSize: 11.5, color: _M.faint),
+            style: TextStyle(fontSize: 11.5, color: context.moonlit.faint),
           ),
         ],
       ),
@@ -1197,10 +1248,10 @@ class GameDeckTile extends StatelessWidget {
     final on = count > 0;
     final wolf = role == 'wolf';
     final color = !on
-        ? _M.faint.withValues(alpha: 0.5)
+        ? context.moonlit.faint.withValues(alpha: 0.5)
         : wolf
-        ? _M.wolf
-        : _M.amberBright;
+        ? context.moonlit.wolf
+        : context.moonlit.amberBright;
     Widget button(String tip, IconData icon, VoidCallback? tap) => SizedBox(
       width: 22,
       height: 22,
@@ -1209,8 +1260,8 @@ class GameDeckTile extends StatelessWidget {
         padding: EdgeInsets.zero,
         iconSize: 14,
         icon: Icon(icon),
-        color: _M.amberBright,
-        disabledColor: _M.faint.withValues(alpha: 0.4),
+        color: context.moonlit.amberBright,
+        disabledColor: context.moonlit.faint.withValues(alpha: 0.4),
         onPressed: tap,
       ),
     );
@@ -1219,7 +1270,7 @@ class GameDeckTile extends StatelessWidget {
       style: TextStyle(
         fontSize: 17,
         fontWeight: FontWeight.w800,
-        color: on ? _M.ink : _M.faint,
+        color: on ? context.moonlit.ink : context.moonlit.faint,
       ),
     );
     return Container(
@@ -1228,15 +1279,15 @@ class GameDeckTile extends StatelessWidget {
         color: !on
             ? Colors.transparent
             : wolf
-            ? _M.wolfSoft
-            : _M.amberTint,
-        borderRadius: BorderRadius.circular(14),
+            ? context.moonlit.wolfSoft
+            : context.moonlit.amberTint,
+        borderRadius: context.runNowPalette.radius(14),
         border: Border.all(
           color: !on
-              ? _M.border
+              ? context.moonlit.border
               : wolf
-              ? _M.wolfLine
-              : _M.amberLine,
+              ? context.moonlit.wolfLine
+              : context.moonlit.amberLine,
         ),
       ),
       child: Column(
@@ -1246,8 +1297,8 @@ class GameDeckTile extends StatelessWidget {
             height: 34,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: on ? _M.well : Colors.transparent,
-              shape: BoxShape.circle,
+              color: on ? context.moonlit.well : Colors.transparent,
+              shape: context.runNowPalette.round,
             ),
             child: SizedBox.square(
               dimension: 20,
@@ -1264,7 +1315,7 @@ class GameDeckTile extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: on ? _M.ink : _M.faint,
+              color: on ? context.moonlit.ink : context.moonlit.faint,
             ),
           ),
           const SizedBox(height: 2),
@@ -1310,7 +1361,7 @@ class GameRoundTimeline extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         ClipRRect(
-          borderRadius: BorderRadius.circular(99),
+          borderRadius: context.runNowPalette.radius(99),
           child: SizedBox(
             height: 8,
             child: Row(
@@ -1320,7 +1371,7 @@ class GameRoundTimeline extends StatelessWidget {
                     flex: ((p.to - p.from) * 10).round().clamp(1, 1000),
                     child: Container(
                       margin: const EdgeInsets.symmetric(horizontal: 1),
-                      color: gamePhaseColor(p.key),
+                      color: gamePhaseColor(context.moonlit, p.key),
                     ),
                   ),
               ],
@@ -1337,8 +1388,8 @@ class GameRoundTimeline extends StatelessWidget {
                 height: 10,
                 margin: const EdgeInsets.only(top: 5, right: 10),
                 decoration: BoxDecoration(
-                  color: gamePhaseColor(p.key),
-                  shape: BoxShape.circle,
+                  color: gamePhaseColor(context.moonlit, p.key),
+                  shape: context.runNowPalette.round,
                 ),
               ),
               Expanded(
@@ -1350,16 +1401,16 @@ class GameRoundTimeline extends StatelessWidget {
                         children: [
                           TextSpan(
                             text: p.label,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w800,
-                              color: _M.ink,
+                              color: context.moonlit.ink,
                             ),
                           ),
                           TextSpan(
                             text: '  ${_at(p.from)} – ${_at(p.to)}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              color: _M.amberBright,
+                              color: context.moonlit.amberBright,
                             ),
                           ),
                         ],
@@ -1368,10 +1419,10 @@ class GameRoundTimeline extends StatelessWidget {
                     ),
                     Text(
                       p.description,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         height: 1.4,
-                        color: _M.faint,
+                        color: context.moonlit.faint,
                       ),
                     ),
                   ],
@@ -1386,7 +1437,7 @@ class GameRoundTimeline extends StatelessWidget {
             plan.reminders
                 .map((m) => '${m.label} lúc ${_at(m.at)}')
                 .join(' · '),
-            style: const TextStyle(fontSize: 12, color: _M.muted),
+            style: TextStyle(fontSize: 12, color: context.moonlit.muted),
           ),
       ],
     );
@@ -1394,12 +1445,12 @@ class GameRoundTimeline extends StatelessWidget {
 }
 
 /// Màu của pha theo khoá backend gửi; khoá lạ thì màu thanh thấp.
-Color gamePhaseColor(String key) => switch (key) {
-  'night' => _M.phaseNight,
-  'dawn' => _M.phaseDawn,
-  'day' => _M.phaseDay,
-  'trial' => _M.phaseTrial,
-  _ => _M.barLow,
+Color gamePhaseColor(RunNowMoonlit m, String key) => switch (key) {
+  'night' => m.phaseNight,
+  'dawn' => m.phaseDawn,
+  'day' => m.phaseDay,
+  'trial' => m.phaseTrial,
+  _ => m.barLow,
 };
 
 /// Sheet giải thích: tiêu đề và các mục (tên, mô tả).
@@ -1411,7 +1462,7 @@ Future<void> showGameCreateSheet(
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: _M.panel,
+    backgroundColor: context.moonlit.panel,
     showDragHandle: true,
     builder: (context) => SafeArea(
       child: ConstrainedBox(
@@ -1424,10 +1475,10 @@ Future<void> showGameCreateSheet(
           children: [
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w900,
-                color: _M.ink,
+                color: context.moonlit.ink,
               ),
             ),
             const SizedBox(height: 12),
@@ -1435,18 +1486,18 @@ Future<void> showGameCreateSheet(
               if (name.isNotEmpty)
                 Text(
                   name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14.5,
                     fontWeight: FontWeight.w800,
-                    color: _M.amberLight,
+                    color: context.moonlit.amberLight,
                   ),
                 ),
               Text(
                 text,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13.5,
                   height: 1.5,
-                  color: _M.muted,
+                  color: context.moonlit.muted,
                 ),
               ),
               const SizedBox(height: 12),

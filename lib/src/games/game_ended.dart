@@ -6,8 +6,6 @@ import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:share_plus/share_plus.dart';
 
-typedef _M = RunNowMoonlitTokens;
-
 /// Chia sẻ tóm tắt ván dạng chữ.
 Future<void> shareGameSummary(
   BuildContext context,
@@ -125,9 +123,9 @@ class _StatTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
       decoration: BoxDecoration(
-        color: _M.panel,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _M.border),
+        color: context.moonlit.panel,
+        borderRadius: context.runNowPalette.radius(12),
+        border: Border.all(color: context.moonlit.border),
       ),
       child: Column(
         children: [
@@ -136,12 +134,12 @@ class _StatTile extends StatelessWidget {
             child: Text(
               stat.value,
               maxLines: 1,
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: gameTitleFont,
                 fontWeight: FontWeight.w800,
                 fontSize: 26,
                 height: 1,
-                color: _M.amberLight,
+                color: context.moonlit.amberLight,
               ),
             ),
           ),
@@ -149,7 +147,7 @@ class _StatTile extends StatelessWidget {
           Text(
             stat.label,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 11, color: _M.muted),
+            style: TextStyle(fontSize: 11, color: context.moonlit.muted),
           ),
         ],
       ),
@@ -190,9 +188,9 @@ class _TitleCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: _M.list,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _M.border),
+        color: context.moonlit.list,
+        borderRadius: context.runNowPalette.radius(14),
+        border: Border.all(color: context.moonlit.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -202,27 +200,31 @@ class _TitleCard extends StatelessWidget {
             height: 40,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: _M.amberTint,
-              borderRadius: BorderRadius.circular(10),
+              color: context.moonlit.amberTint,
+              borderRadius: context.runNowPalette.radius(10),
             ),
-            child: Icon(_titleIcon(title.key), size: 20, color: _M.amberPale),
+            child: Icon(
+              _titleIcon(title.key),
+              size: 20,
+              color: context.moonlit.amberPale,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
             title.label,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12, color: _M.muted),
+            style: TextStyle(fontSize: 12, color: context.moonlit.muted),
           ),
           const SizedBox(height: 2),
           Text(
             title.name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w800,
-              color: _M.ink,
+              color: context.moonlit.ink,
             ),
           ),
           const Spacer(),
@@ -230,11 +232,11 @@ class _TitleCard extends StatelessWidget {
             title.value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: gameTitleFont,
               fontWeight: FontWeight.w700,
               fontSize: 16,
-              color: _M.amberLight,
+              color: context.moonlit.amberLight,
             ),
           ),
         ],
@@ -274,9 +276,11 @@ class _TeamBlock extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       decoration: BoxDecoration(
-        color: _M.list,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: team.won ? _M.amberLine : _M.border),
+        color: context.moonlit.list,
+        borderRadius: context.runNowPalette.radius(16),
+        border: Border.all(
+          color: team.won ? context.moonlit.amberLine : context.moonlit.border,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -292,7 +296,9 @@ class _TeamBlock extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                   fontSize: 18,
                   letterSpacing: 1,
-                  color: team.won ? _M.amberLight : _M.ink,
+                  color: team.won
+                      ? context.moonlit.amberLight
+                      : context.moonlit.ink,
                 ),
               ),
               if (team.won) ...[
@@ -302,7 +308,7 @@ class _TeamBlock extends StatelessWidget {
               const Spacer(),
               Text(
                 '$alive/${team.players.length} sống',
-                style: const TextStyle(fontSize: 12, color: _M.muted),
+                style: TextStyle(fontSize: 12, color: context.moonlit.muted),
               ),
             ],
           ),
@@ -327,7 +333,7 @@ class _RevealTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = player.role.isEmpty
-        ? _M.amberStrong
+        ? context.moonlit.amberStrong
         : gameRoleAccent(player.role);
     return Opacity(
       opacity: player.alive ? 1 : 0.75,
@@ -344,16 +350,16 @@ class _RevealTile extends StatelessWidget {
                   height: 52,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _M.raised,
+                    shape: context.runNowPalette.round,
+                    color: context.moonlit.raised,
                     border: Border.all(color: accent, width: 2),
                   ),
                   child: Text(
                     player.name.isEmpty ? '?' : player.name[0].toUpperCase(),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 19,
                       fontWeight: FontWeight.w800,
-                      color: _M.ink,
+                      color: context.moonlit.ink,
                     ),
                   ),
                 ),
@@ -366,16 +372,20 @@ class _RevealTile extends StatelessWidget {
                       vertical: 1,
                     ),
                     decoration: BoxDecoration(
-                      color: player.alive ? _M.panel : _M.lifted,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: _M.list, width: 2),
+                      color: player.alive
+                          ? context.moonlit.panel
+                          : context.moonlit.lifted,
+                      borderRadius: context.runNowPalette.radius(6),
+                      border: Border.all(color: context.moonlit.list, width: 2),
                     ),
                     child: Text(
                       player.fate.toUpperCase(),
                       style: TextStyle(
                         fontSize: 9,
                         fontWeight: FontWeight.w800,
-                        color: player.alive ? _M.amberPale : _M.inkSoft,
+                        color: player.alive
+                            ? context.moonlit.amberPale
+                            : context.moonlit.inkSoft,
                       ),
                     ),
                   ),
@@ -388,10 +398,10 @@ class _RevealTile extends StatelessWidget {
             player.name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
-              color: _M.ink,
+              color: context.moonlit.ink,
             ),
           ),
           Text(
@@ -479,11 +489,11 @@ class GameReplay extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
                     section.title.toUpperCase(),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 1.2,
-                      color: _M.muted,
+                      color: context.moonlit.muted,
                     ),
                   ),
                 ),
@@ -513,9 +523,9 @@ class _ReplayBlock extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
       decoration: BoxDecoration(
-        color: _M.list,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _M.border),
+        color: context.moonlit.list,
+        borderRadius: context.runNowPalette.radius(16),
+        border: Border.all(color: context.moonlit.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -527,7 +537,9 @@ class _ReplayBlock extends StatelessWidget {
               fontWeight: FontWeight.w800,
               fontSize: 16,
               letterSpacing: 1,
-              color: highlight ? _M.amberLight : _M.inkSoft,
+              color: highlight
+                  ? context.moonlit.amberLight
+                  : context.moonlit.inkSoft,
             ),
           ),
           const SizedBox(height: 2),
@@ -573,7 +585,7 @@ class _VoteBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(3),
+            borderRadius: context.runNowPalette.radius(3),
             child: SizedBox(
               height: 6,
               child: Row(
@@ -582,12 +594,12 @@ class _VoteBar extends StatelessWidget {
                   if (hang > 0)
                     Expanded(
                       flex: hang,
-                      child: const ColoredBox(color: _M.amber),
+                      child: ColoredBox(color: context.moonlit.amber),
                     ),
                   if (spare > 0)
                     Expanded(
                       flex: spare,
-                      child: const ColoredBox(color: _M.track),
+                      child: ColoredBox(color: context.moonlit.track),
                     ),
                 ],
               ),
@@ -599,11 +611,14 @@ class _VoteBar extends StatelessWidget {
             children: [
               Text(
                 'Treo $hang',
-                style: const TextStyle(fontSize: 11, color: _M.amberSoft),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: context.moonlit.amberSoft,
+                ),
               ),
               Text(
                 'Tha $spare',
-                style: const TextStyle(fontSize: 11, color: _M.muted),
+                style: TextStyle(fontSize: 11, color: context.moonlit.muted),
               ),
             ],
           ),
@@ -622,11 +637,11 @@ class _Head extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 13,
         fontWeight: FontWeight.w700,
         letterSpacing: 1.4,
-        color: _M.inkSoft,
+        color: context.moonlit.inkSoft,
       ),
     );
   }
@@ -643,8 +658,8 @@ class _Pill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: strong ? _M.amberTint : _M.track,
-        borderRadius: BorderRadius.circular(999),
+        color: strong ? context.moonlit.amberTint : context.moonlit.track,
+        borderRadius: context.runNowPalette.radius(999),
       ),
       child: Text(
         text,
@@ -652,7 +667,7 @@ class _Pill extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w800,
           letterSpacing: 0.8,
-          color: strong ? _M.amberPale : _M.inkSoft,
+          color: strong ? context.moonlit.amberPale : context.moonlit.inkSoft,
         ),
       ),
     );

@@ -8,6 +8,7 @@ import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/screens/settings_screen.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 /// Tab Hồ sơ: danh tính, lối vào MyBot (`/me/mybot`), rồi các mục cài đặt.
 /// Châm ngôn, bộ thẻ, số liệu, nhật ký và hành trình nằm ở tab Hoạt động.
@@ -63,11 +64,11 @@ class _Header extends StatelessWidget {
         Expanded(
           child: Text(
             'Hồ sơ',
-            style: TextStyle(
+            style: palette.heading(TextStyle(
               fontSize: 26,
               fontWeight: FontWeight.w900,
               color: palette.foreground,
-            ),
+            )),
           ),
         ),
         if (onMyBot != null)
@@ -78,7 +79,7 @@ class _Header extends StatelessWidget {
               minimumSize: const Size(44, 44),
               side: BorderSide(color: palette.border),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: palette.radius(14),
               ),
             ),
             icon: const Icon(Icons.smart_toy_outlined, size: 20),
@@ -101,9 +102,9 @@ class _Identity extends StatelessWidget {
     final avatarUrl = profile?.avatarUrl;
     return Row(
       children: [
-        CircleAvatar(
+        RunNowAvatar(
           radius: 32,
-          backgroundColor: palette.accent.withValues(alpha: 0.22),
+          backgroundColor: palette.wash(palette.accent, 0.22),
           backgroundImage: avatarUrl == null
               ? null
               : cachedAvatarImage(context, avatarUrl, 64),
@@ -111,11 +112,11 @@ class _Identity extends StatelessWidget {
               ? null
               : Text(
                   name.isEmpty ? '' : name.characters.first.toUpperCase(),
-                  style: TextStyle(
+                  style: palette.heading(TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.w900,
                     color: palette.accent,
-                  ),
+                  )),
                 ),
         ),
         const SizedBox(width: 14),
@@ -127,11 +128,11 @@ class _Identity extends StatelessWidget {
                 name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
+                style: palette.heading(TextStyle(
                   fontSize: 21,
                   fontWeight: FontWeight.w900,
                   color: palette.foreground,
-                ),
+                )),
               ),
               const SizedBox(height: 3),
               Text(

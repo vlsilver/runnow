@@ -294,7 +294,9 @@ class _AchievementCardState extends State<AchievementCard>
       size: achievementCardSize,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: const BorderRadius.all(Radius.circular(_radius)),
+          borderRadius: BorderRadius.all(
+            context.runNowPalette.cornerRadius(_radius),
+          ),
           boxShadow: [
             const BoxShadow(
               color: _T.drop,
@@ -305,7 +307,7 @@ class _AchievementCardState extends State<AchievementCard>
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(_radius),
+          borderRadius: context.runNowPalette.radius(_radius),
           child: widget.back
               ? _Back(
                   data: data,
@@ -382,17 +384,18 @@ class _Front extends StatelessWidget {
           ColoredBox(color: skin.field),
           face,
           if (sheen != null) _Sheen(light: light, color: sheen),
-          IgnorePointer(
-            child: CustomPaint(
-              painter: _TrimPainter(
-                tier: tier,
-                metal: metal,
-                tilt: pose.dx,
-                seconds: seconds,
-                front: true,
+          if (!context.runNowPalette.isIron)
+            IgnorePointer(
+              child: CustomPaint(
+                painter: _TrimPainter(
+                  tier: tier,
+                  metal: metal,
+                  tilt: pose.dx,
+                  seconds: seconds,
+                  front: true,
+                ),
               ),
             ),
-          ),
           if (tier == GameCardTier.mythic)
             IgnorePointer(
               child: CustomPaint(
@@ -567,17 +570,18 @@ class _Front extends StatelessWidget {
           height: _footTop,
           child: Align(alignment: Alignment.bottomCenter, child: lines),
         ),
-        IgnorePointer(
-          child: CustomPaint(
-            painter: _TrimPainter(
-              tier: tier,
-              metal: metal,
-              tilt: pose.dx,
-              seconds: seconds,
-              front: true,
+        if (!context.runNowPalette.isIron)
+          IgnorePointer(
+            child: CustomPaint(
+              painter: _TrimPainter(
+                tier: tier,
+                metal: metal,
+                tilt: pose.dx,
+                seconds: seconds,
+                front: true,
+              ),
             ),
           ),
-        ),
         Positioned(
           left: _inset,
           right: _inset,
@@ -657,7 +661,7 @@ class _Front extends StatelessWidget {
             height: 64,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
+                shape: context.runNowPalette.round,
                 color: skin.stamp,
                 border: Border.all(
                   color: accent,
@@ -689,7 +693,7 @@ class _Front extends StatelessWidget {
 
 /// Nét kim loại của bậc. Mặt trước không có nét ngăn tranh với chân thẻ; từ
 /// Vàng có viền trong, Kim cương thêm vệt sáng chạy dọc viền.
-/// Mặt sau luôn có viền trong.
+/// Mặt sau luôn có viền trong. Kiểu Thép không vẽ nét này: thẻ vuông, không viền.
 class _TrimPainter extends CustomPainter {
   const _TrimPainter({
     required this.tier,
@@ -723,7 +727,7 @@ class _TrimPainter extends CustomPainter {
       ..addRRect(
         RRect.fromRectAndRadius(
           card.deflate(4.8),
-          const Radius.circular(_radius - 4.8),
+          Radius.circular(_radius - 4.8),
         ),
       );
     final traced = <Path>[];
@@ -863,7 +867,7 @@ class _CartouchePainter extends CustomPainter {
     final shader = _metalShader(metal, box, tilt);
     final outer = RRect.fromRectAndRadius(
       box.deflate(0.65),
-      const Radius.circular(7.2),
+      Radius.circular(7.2),
     );
     canvas
       ..drawRRect(outer, Paint()..color = _T.cartouche)
@@ -876,7 +880,7 @@ class _CartouchePainter extends CustomPainter {
       );
     if (tier.index >= 2) {
       canvas.drawRRect(
-        RRect.fromRectAndRadius(box.deflate(2.9), const Radius.circular(4.8)),
+        RRect.fromRectAndRadius(box.deflate(2.9), Radius.circular(4.8)),
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 0.54
@@ -983,7 +987,7 @@ class _Period extends StatelessWidget {
           const SizedBox(width: 6),
           DecoratedBox(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: context.runNowPalette.radius(999),
               border: Border.all(color: accent),
             ),
             child: Padding(
@@ -1271,16 +1275,18 @@ class _Back extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final trim = IgnorePointer(
-      child: CustomPaint(
-        painter: _TrimPainter(
-          tier: data.tier,
-          metal: look?.metal ?? _metals[data.tier]!,
-          tilt: pose.dx,
-          seconds: seconds,
-        ),
-      ),
-    );
+    final trim = context.runNowPalette.isIron
+        ? const SizedBox.shrink()
+        : IgnorePointer(
+            child: CustomPaint(
+              painter: _TrimPainter(
+                tier: data.tier,
+                metal: look?.metal ?? _metals[data.tier]!,
+                tilt: pose.dx,
+                seconds: seconds,
+              ),
+            ),
+          );
     if (data.backFace case final face?) {
       return Stack(
         fit: StackFit.expand,
@@ -1324,11 +1330,11 @@ class _Back extends StatelessWidget {
               width: 122,
               height: 122,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
+                shape: context.runNowPalette.round,
                 border: Border.all(color: accent, width: 1.5),
                 boxShadow: [
                   BoxShadow(
-                    color: accent.withValues(alpha: 0.25),
+                    color: context.runNowPalette.wash(accent, 0.25),
                     blurRadius: 40,
                   ),
                   BoxShadow(

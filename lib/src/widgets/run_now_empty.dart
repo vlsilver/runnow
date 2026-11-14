@@ -90,7 +90,7 @@ class RunNowEmptyIcon extends StatelessWidget {
         width: width,
         height: height,
         child: CustomPaint(
-          painter: _EmptyTrackPainter(line),
+          painter: _EmptyTrackPainter(line, square: palette.isIron),
           child: Center(
             child: Icon(
               palette.element.icon,
@@ -105,7 +105,9 @@ class RunNowEmptyIcon extends StatelessWidget {
 }
 
 class _EmptyTrackPainter extends CustomPainter {
-  const _EmptyTrackPainter(this.color);
+  const _EmptyTrackPainter(this.color, {required this.square});
+
+  final bool square;
 
   final Color color;
 
@@ -131,7 +133,7 @@ class _EmptyTrackPainter extends CustomPainter {
     final edge = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round
+      ..strokeCap = (square ? StrokeCap.butt : StrokeCap.round)
       ..color = color.withValues(alpha: 0.55);
     canvas
       ..drawRRect(stadium(outer), edge)
@@ -140,7 +142,7 @@ class _EmptyTrackPainter extends CustomPainter {
     final dash = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke * 0.8
-      ..strokeCap = StrokeCap.round
+      ..strokeCap = (square ? StrokeCap.butt : StrokeCap.round)
       ..color = color.withValues(alpha: 0.35);
     final laneLine = Path()..addRRect(stadium(middle));
     for (final PathMetric metric in laneLine.computeMetrics()) {
@@ -157,7 +159,7 @@ class _EmptyTrackPainter extends CustomPainter {
       Offset(finishX, outer.bottom),
       Paint()
         ..strokeWidth = stroke * 1.4
-        ..strokeCap = StrokeCap.round
+        ..strokeCap = (square ? StrokeCap.butt : StrokeCap.round)
         ..color = color,
     );
   }

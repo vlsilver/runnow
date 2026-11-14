@@ -353,7 +353,7 @@ Future<void> showCardShare(
   return Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => Theme(
-        data: gameNightTheme(),
+        data: gameNightTheme(style: context.runNowPalette.style),
         child: CardShareScreen(
           subject: subject,
           data: data,
@@ -850,7 +850,7 @@ class CardShareMakingBarState extends State<CardShareMakingBar>
     return FadeTransition(
       opacity: _opacity,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: context.runNowPalette.radius(12),
         child: SizedBox(
           height: _height,
           child: LayoutBuilder(
@@ -1024,7 +1024,7 @@ class _ChoiceTile extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: context.runNowPalette.radius(12),
             border: Border.all(
               color: selected ? accent : Colors.white.withValues(alpha: 0.12),
               width: selected ? 2 : 1,

@@ -19,6 +19,7 @@ import 'package:myrun/src/widgets/discipline_card.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/personal_power_card.dart';
 import 'package:myrun/src/widgets/training_volume_chart.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 class MemberProfileScreen extends ConsumerWidget {
   const MemberProfileScreen({required this.uid, super.key});
@@ -400,19 +401,19 @@ class _MemberHeader extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          CircleAvatar(
+          RunNowAvatar(
             radius: 30,
-            backgroundColor: palette.secondary.withValues(alpha: 0.18),
+            backgroundColor: palette.wash(palette.secondary, 0.18),
             backgroundImage: avatarUrl == null
                 ? null
                 : cachedAvatarImage(context, avatarUrl, 60),
             child: avatarUrl == null
                 ? Text(
                     member.displayName.characters.first.toUpperCase(),
-                    style: const TextStyle(
+                    style: palette.heading(const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w900,
-                    ),
+                    )),
                   )
                 : null,
           ),
@@ -615,14 +616,14 @@ class _SevenDayMiniBar extends StatelessWidget {
               heightFactor: ratio.clamp(0.06, 1.0),
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: context.runNowPalette.radius(999),
                   color: active
                       ? palette.accent
                       : onSurface.withValues(alpha: 0.08),
                   boxShadow: active
                       ? [
                           BoxShadow(
-                            color: palette.accent.withValues(alpha: 0.28),
+                            color: palette.wash(palette.accent, 0.28),
                             blurRadius: 12,
                             offset: Offset(0, 6),
                           ),
@@ -697,11 +698,11 @@ class _MonthMetric extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           value,
-          style: TextStyle(
+          style: context.runNowPalette.heading(TextStyle(
             color: onSurface,
             fontSize: 20,
             fontWeight: FontWeight.w900,
-          ),
+          )),
         ),
       ],
     );

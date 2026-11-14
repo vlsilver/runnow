@@ -196,7 +196,7 @@ class _RunCardArtStepsState extends ConsumerState<RunCardArtSteps> {
               ),
               const SizedBox(height: 12),
               FilledButton(
-                style: stagePrimaryButton,
+                style: stagePrimaryButton(context),
                 onPressed: () => ref.invalidate(runCardStylesProvider),
                 child: const Text('Thử lại'),
               ),
@@ -344,7 +344,7 @@ class _RunCardArtStepsState extends ConsumerState<RunCardArtSteps> {
                       margin: const EdgeInsets.symmetric(horizontal: 2),
                       decoration: BoxDecoration(
                         color: i == _page ? _T.titleGold2 : stageLine,
-                        borderRadius: BorderRadius.circular(2),
+                        borderRadius: context.runNowPalette.radius(2),
                       ),
                     ),
                 ],
@@ -483,7 +483,7 @@ class _RunCardArtStepsState extends ConsumerState<RunCardArtSteps> {
                       onSelected: (_) => setState(() => _family = f.key),
                       visualDensity: VisualDensity.compact,
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      shape: const StadiumBorder(),
+                      shape: context.runNowPalette.pillBorder,
                       backgroundColor: Colors.transparent,
                       selectedColor: _T.titleGold2,
                       side: BorderSide(
@@ -591,7 +591,7 @@ class _RunCardArtStepsState extends ConsumerState<RunCardArtSteps> {
           child: Container(
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: context.runNowPalette.radius(8),
               border: Border.all(color: _T.hero, width: 2),
             ),
             child: sample,
@@ -892,7 +892,7 @@ class _StripItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(10);
+    final radius = context.runNowPalette.radius(10);
     return Padding(
       padding: const EdgeInsets.only(right: 10),
       child: Semantics(
@@ -931,7 +931,7 @@ class _StripItem extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(horizontal: 5),
                             decoration: BoxDecoration(
                               color: _T.shade.withValues(alpha: 0.8),
-                              borderRadius: BorderRadius.circular(6),
+                              borderRadius: context.runNowPalette.radius(6),
                             ),
                             child: Text(
                               '$uses',
@@ -991,7 +991,7 @@ class _RecipeTile extends StatelessWidget {
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: _T.field,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: context.runNowPalette.radius(12),
               border: Border.all(color: stageLine),
             ),
             child: child,
@@ -1068,7 +1068,7 @@ class _PhotoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(10);
+    final radius = context.runNowPalette.radius(10);
     return Padding(
       padding: const EdgeInsets.only(right: 10),
       child: Semantics(

@@ -230,10 +230,10 @@ class _AgentSetupScreenState extends ConsumerState<AgentSetupScreen> {
                         controller: _name,
                         maxLength: 40,
                         textInputAction: TextInputAction.next,
-                        style: const TextStyle(
+                        style: palette.heading(const TextStyle(
                           fontSize: 21,
                           fontWeight: FontWeight.w900,
-                        ),
+                        )),
                         decoration: const InputDecoration(
                           hintText: 'Vd: Bò Sữa',
                         ),
@@ -332,7 +332,7 @@ class _CardPreview extends StatelessWidget {
               gradient: RadialGradient(
                 radius: 0.62,
                 colors: [
-                  accent.withValues(alpha: 0.26),
+                  context.runNowPalette.wash(accent, 0.26),
                   accent.withValues(alpha: 0),
                 ],
               ),
@@ -410,7 +410,7 @@ class _LookTile extends StatelessWidget {
         child: Material(
           color: selected ? palette.tint : palette.glassStart,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: palette.radius(16),
             side: selected
                 ? BorderSide(color: palette.accent, width: 2)
                 : BorderSide(color: palette.border),
@@ -461,7 +461,7 @@ class _LookTile extends StatelessWidget {
                         height: 20,
                         decoration: BoxDecoration(
                           color: palette.accent,
-                          shape: BoxShape.circle,
+                          shape: context.runNowPalette.round,
                         ),
                         child: Icon(
                           Icons.check_rounded,
@@ -499,7 +499,7 @@ class _VoiceChip extends StatelessWidget {
       selected: on,
       child: Material(
         color: on ? palette.tint : palette.glassStart,
-        shape: StadiumBorder(
+        shape: palette.pillBorder.copyWith(
           side: BorderSide(color: on ? palette.accent : palette.border),
         ),
         clipBehavior: Clip.antiAlias,
@@ -548,7 +548,7 @@ class _ForgeButton extends StatelessWidget {
       button: true,
       enabled: on,
       child: Material(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: palette.radius(18),
         clipBehavior: Clip.antiAlias,
         color: on ? null : palette.glassStart,
         child: Ink(

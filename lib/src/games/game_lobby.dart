@@ -8,8 +8,6 @@ import 'package:myrun/src/games/game_village.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 
-typedef _M = RunNowMoonlitTokens;
-
 final _clockFormat = DateFormat('HH:mm');
 const _weekdays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 
@@ -28,12 +26,16 @@ class GameLobbyHero extends StatelessWidget {
     final startError = detail.startError;
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: _M.amberLine),
-        gradient: const LinearGradient(
+        borderRadius: context.runNowPalette.radius(22),
+        border: Border.all(color: context.moonlit.amberLine),
+        gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [_M.heroTop, _M.heroMid, _M.heroBottom],
+          colors: [
+            context.moonlit.heroTop,
+            context.moonlit.heroMid,
+            context.moonlit.heroBottom,
+          ],
         ),
       ),
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
@@ -56,18 +58,21 @@ class GameLobbyHero extends StatelessWidget {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    gradient: const LinearGradient(
-                      colors: [_M.amber, _M.amberBright],
+                    borderRadius: context.runNowPalette.radius(999),
+                    gradient: LinearGradient(
+                      colors: [
+                        context.moonlit.amber,
+                        context.moonlit.amberBright,
+                      ],
                     ),
                   ),
-                  child: const Text(
+                  child: Text(
                     'MỞ ĐĂNG KÝ',
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 1.6,
-                      color: _M.onAmber,
+                      color: context.moonlit.onAmber,
                     ),
                   ),
                 ),
@@ -78,12 +83,12 @@ class GameLobbyHero extends StatelessWidget {
                 children: [
                   Text(
                     '$count',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: gameTitleFont,
                       fontWeight: FontWeight.w800,
                       fontSize: 56,
                       height: 0.85,
-                      color: _M.ink,
+                      color: context.moonlit.ink,
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -93,18 +98,21 @@ class GameLobbyHero extends StatelessWidget {
                       children: [
                         Text(
                           '/ ${detail.maxPlayers} chỗ',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontFamily: gameTitleFont,
                             fontWeight: FontWeight.w700,
                             fontSize: 18,
-                            color: _M.inkSoft,
+                            color: context.moonlit.inkSoft,
                           ),
                         ),
                         Text(
                           count >= detail.minPlayers
                               ? 'đủ người để mở ván'
                               : 'cần ít nhất ${detail.minPlayers} để mở ván',
-                          style: const TextStyle(fontSize: 12, color: _M.muted),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: context.moonlit.muted,
+                          ),
                         ),
                       ],
                     ),
@@ -139,7 +147,7 @@ class GameLobbyHero extends StatelessWidget {
                 const SizedBox(height: 10),
                 Text(
                   startError.message,
-                  style: const TextStyle(color: _M.danger),
+                  style: TextStyle(color: context.moonlit.danger),
                 ),
               ],
             ],
@@ -162,20 +170,20 @@ class _Fact extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: _M.well,
-          borderRadius: BorderRadius.circular(12),
+          color: context.moonlit.well,
+          borderRadius: context.runNowPalette.radius(12),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: gameTitleFont,
                 fontWeight: FontWeight.w700,
                 fontSize: 20,
                 height: 1,
-                color: _M.ink,
+                color: context.moonlit.ink,
               ),
             ),
             const SizedBox(height: 2),
@@ -185,7 +193,7 @@ class _Fact extends StatelessWidget {
               child: Text(
                 label,
                 maxLines: 1,
-                style: const TextStyle(fontSize: 11, color: _M.inkSoft),
+                style: TextStyle(fontSize: 11, color: context.moonlit.inkSoft),
               ),
             ),
           ],
@@ -215,14 +223,19 @@ class _Slots extends StatelessWidget {
             child: Container(
               height: 8,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(3),
+                borderRadius: context.runNowPalette.radius(3),
                 color: i < count
                     ? null
                     : i < min
-                    ? _M.amberLine
-                    : _M.track,
+                    ? context.moonlit.amberLine
+                    : context.moonlit.track,
                 gradient: i < count
-                    ? const LinearGradient(colors: [_M.amber, _M.amberBright])
+                    ? LinearGradient(
+                        colors: [
+                          context.moonlit.amber,
+                          context.moonlit.amberBright,
+                        ],
+                      )
                     : null,
               ),
             ),
@@ -249,17 +262,20 @@ class _Head extends StatelessWidget {
         Expanded(
           child: Text(
             text,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: gameTitleFont,
               fontWeight: FontWeight.w800,
               fontSize: 18,
               letterSpacing: 1.4,
-              color: _M.ink,
+              color: context.moonlit.ink,
             ),
           ),
         ),
         if (trailing != null)
-          Text(trailing, style: const TextStyle(fontSize: 12, color: _M.muted)),
+          Text(
+            trailing,
+            style: TextStyle(fontSize: 12, color: context.moonlit.muted),
+          ),
       ],
     );
   }
@@ -289,10 +305,14 @@ class GameLobbyRoles extends StatelessWidget {
                   vertical: 7,
                 ),
                 decoration: BoxDecoration(
-                  color: role.extended ? _M.amberTint : _M.panel,
-                  borderRadius: BorderRadius.circular(999),
+                  color: role.extended
+                      ? context.moonlit.amberTint
+                      : context.moonlit.panel,
+                  borderRadius: context.runNowPalette.radius(999),
                   border: Border.all(
-                    color: role.extended ? _M.amberLine : _M.border,
+                    color: role.extended
+                        ? context.moonlit.amberLine
+                        : context.moonlit.border,
                   ),
                 ),
                 child: Text(
@@ -300,7 +320,9 @@ class GameLobbyRoles extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
-                    color: role.extended ? _M.amberSoft : _M.inkSoft,
+                    color: role.extended
+                        ? context.moonlit.amberSoft
+                        : context.moonlit.inkSoft,
                   ),
                 ),
               ),
@@ -333,21 +355,21 @@ class GameLobbyRequirements extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
-        color: _M.panel,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _M.border),
+        color: context.moonlit.panel,
+        borderRadius: context.runNowPalette.radius(18),
+        border: Border.all(color: context.moonlit.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
             'ĐỦ ĐIỀU KIỆN $met/${requirements.length}',
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: gameTitleFont,
               fontWeight: FontWeight.w800,
               fontSize: 14,
               letterSpacing: 1.4,
-              color: _M.inkSoft,
+              color: context.moonlit.inkSoft,
             ),
           ),
           for (final requirement in requirements)
@@ -359,11 +381,11 @@ class GameLobbyRequirements extends StatelessWidget {
                   : null,
             ),
           if (waitingTelegram)
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(top: 8),
               child: Text(
                 'Bấm Start trong Telegram rồi quay lại đây.',
-                style: TextStyle(fontSize: 12, color: _M.muted),
+                style: TextStyle(fontSize: 12, color: context.moonlit.muted),
               ),
             ),
         ],
@@ -395,13 +417,13 @@ class _RequirementRow extends StatelessWidget {
         ? FilledButton(
             onPressed: link,
             style: FilledButton.styleFrom(
-              backgroundColor: _M.telegram,
-              foregroundColor: _M.onTelegram,
+              backgroundColor: context.moonlit.telegram,
+              foregroundColor: context.moonlit.onTelegram,
               minimumSize: const Size(0, 36),
               padding: const EdgeInsets.symmetric(horizontal: 12),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: context.runNowPalette.radius(10),
               ),
               textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
                 fontSize: 13,
@@ -433,7 +455,9 @@ class _RequirementRow extends StatelessWidget {
                 ? Icons.check_circle_rounded
                 : Icons.radio_button_unchecked_rounded,
             size: 24,
-            color: requirement.ok ? _M.amberSoft : _M.borderStrong,
+            color: requirement.ok
+                ? context.moonlit.amberSoft
+                : context.moonlit.borderStrong,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -442,12 +466,15 @@ class _RequirementRow extends StatelessWidget {
               children: [
                 Text(
                   requirement.label,
-                  style: const TextStyle(fontSize: 14, color: _M.ink),
+                  style: TextStyle(fontSize: 14, color: context.moonlit.ink),
                 ),
                 if (hint != null)
                   Text(
                     hint,
-                    style: const TextStyle(fontSize: 12, color: _M.muted),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.moonlit.muted,
+                    ),
                   ),
               ],
             ),
@@ -568,14 +595,14 @@ class _PlayerTile extends StatelessWidget {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: accent ? _M.amberSoft : _M.ink,
+            color: accent ? context.moonlit.amberSoft : context.moonlit.ink,
           ),
         ),
         if (recentKm case final km?)
           Text(
             '${gameTallyKm(km)} km',
             maxLines: 1,
-            style: const TextStyle(fontSize: 11, color: _M.muted),
+            style: TextStyle(fontSize: 11, color: context.moonlit.muted),
           ),
       ],
     );
@@ -591,10 +618,14 @@ class _JoinSlot extends StatelessWidget {
       width: 52,
       height: 52,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: _M.amberSoft, width: 1.5),
+        shape: context.runNowPalette.round,
+        border: Border.all(color: context.moonlit.amberSoft, width: 1.5),
       ),
-      child: const Icon(Icons.add_rounded, size: 22, color: _M.amberSoft),
+      child: Icon(
+        Icons.add_rounded,
+        size: 22,
+        color: context.moonlit.amberSoft,
+      ),
     );
   }
 }
@@ -629,9 +660,9 @@ class GameLobbyJoin extends StatelessWidget {
           opacity: enabled ? 1 : 0.45,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: const LinearGradient(
-                colors: [_M.amber, _M.amberBright],
+              borderRadius: context.runNowPalette.radius(16),
+              gradient: LinearGradient(
+                colors: [context.moonlit.amber, context.moonlit.amberBright],
               ),
             ),
             child: FilledButton(
@@ -639,11 +670,11 @@ class GameLobbyJoin extends StatelessWidget {
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.transparent,
                 disabledBackgroundColor: Colors.transparent,
-                foregroundColor: _M.onAmber,
-                disabledForegroundColor: _M.onAmber,
+                foregroundColor: context.moonlit.onAmber,
+                disabledForegroundColor: context.moonlit.onAmber,
                 minimumSize: const Size.fromHeight(58),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: context.runNowPalette.radius(16),
                 ),
                 textStyle: const TextStyle(
                   fontFamily: gameTitleFont,
@@ -661,7 +692,7 @@ class GameLobbyJoin extends StatelessWidget {
           Text(
             '${missing.label} xong là vào được',
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, color: _M.muted),
+            style: TextStyle(fontSize: 12, color: context.moonlit.muted),
           ),
         ],
       ],

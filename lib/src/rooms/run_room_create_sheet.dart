@@ -224,7 +224,7 @@ class _CreateRunRoomSheetState extends ConsumerState<CreateRunRoomSheet> {
                   height: 4,
                   decoration: BoxDecoration(
                     color: onSurface.withValues(alpha: 0.24),
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: context.runNowPalette.radius(999),
                   ),
                 ),
               ),
@@ -448,7 +448,7 @@ class _ChoiceTile extends StatelessWidget {
       child: Material(
         color: selected ? palette.accent : palette.glassStart,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: palette.radius(14),
           side: BorderSide(color: selected ? palette.accent : palette.border),
         ),
         clipBehavior: Clip.antiAlias,
@@ -497,7 +497,7 @@ class _StartCard extends StatelessWidget {
       label: 'Đổi giờ xuất phát',
       child: Material(
         color: palette.accentNight,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: palette.radius(16),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           key: const ValueKey('room-start-card'),
@@ -508,12 +508,14 @@ class _StartCard extends StatelessWidget {
               children: [
                 Text(
                   _hhmm(at),
-                  style: const TextStyle(
-                    color: fg,
-                    fontSize: 34,
-                    height: 1.0,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.5,
+                  style: palette.heading(
+                    TextStyle(
+                      color: fg,
+                      fontSize: 34,
+                      height: 1.0,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -574,7 +576,7 @@ class _Row extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 52),
       decoration: BoxDecoration(
         color: palette.glassStart,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: palette.radius(14),
         border: Border.all(color: palette.border),
       ),
       child: Row(

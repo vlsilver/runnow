@@ -429,4 +429,38 @@ void main() {
     );
     expect(tester.getSize(find.byKey(stamp)), const Size(64, 64));
   });
+
+  testWidgets('kiểu Thép: thẻ không vẽ viền bo trong, kiểu thường vẫn vẽ', (
+    tester,
+  ) async {
+    final trim = find.byWidgetPredicate(
+      (w) => w is CustomPaint && '${w.painter.runtimeType}' == '_TrimPainter',
+    );
+    for (final back in [false, true]) {
+      for (final (style, matcher) in [
+        (RunNowStyle.elemental, findsOneWidget),
+        (RunNowStyle.iron, findsNothing),
+      ]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            // Khoá theo kiểu để theme không chuyển dần từ lần pump trước.
+            key: ValueKey(style),
+            theme: buildRunNowTheme(
+              RunNowElement.water,
+              appearance: RunNowAppearance.light,
+              style: style,
+            ),
+            home: Center(
+              child: AchievementCard(
+                data: _data(GameCardTier.legendary),
+                back: back,
+                animate: false,
+              ),
+            ),
+          ),
+        );
+        expect(trim, matcher, reason: '${style.name}, back: $back');
+      }
+    }
+  });
 }

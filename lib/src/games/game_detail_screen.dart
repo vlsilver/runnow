@@ -54,7 +54,6 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     with WidgetsBindingObserver {
   late final GameDetailController _controller;
   late final TelegramLinkController _telegram;
-  final _theme = gameMoonlitTheme();
   bool _registering = false;
   bool _starting = false;
   bool _cancelling = false;
@@ -479,8 +478,8 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
       firebaseUserProvider.select((user) => user.value?.uid),
     );
     // Trang ván luôn tông ánh trăng, không theo sáng/tối của app.
-    return Theme(
-      data: _theme,
+    return GameThemed(
+      moonlit: true,
       child: ListenableBuilder(
         listenable: Listenable.merge([_controller, _telegram]),
         builder: (context, _) {
@@ -742,10 +741,10 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                                       padding: const EdgeInsets.only(top: 10),
                                       child: Text(
                                         kmTable.note,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 13,
                                           height: 1.45,
-                                          color: RunNowMoonlitTokens.muted,
+                                          color: context.moonlit.muted,
                                         ),
                                       ),
                                     ),
@@ -815,7 +814,7 @@ class _StickyHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: _M.page.withValues(alpha: 0.92),
+      color: context.moonlit.page.withValues(alpha: 0.92),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
         child: Column(
@@ -859,13 +858,11 @@ class _HeaderButton extends StatelessWidget {
               fixedSize: const Size.square(44),
               minimumSize: const Size.square(44),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              foregroundColor: RunNowMoonlitTokens.ink,
-              backgroundColor: RunNowMoonlitTokens.heroMid.withValues(
-                alpha: 0.8,
-              ),
+              foregroundColor: context.moonlit.ink,
+              backgroundColor: context.moonlit.heroMid.withValues(alpha: 0.8),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: const BorderSide(color: RunNowMoonlitTokens.border),
+                borderRadius: context.runNowPalette.radius(12),
+                side: BorderSide(color: context.moonlit.border),
               ),
             ),
             icon: Icon(icon),
@@ -879,9 +876,9 @@ class _HeaderButton extends StatelessWidget {
                 child: Container(
                   width: 8,
                   height: 8,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _M.amberStrong,
+                  decoration: BoxDecoration(
+                    shape: context.runNowPalette.round,
+                    color: context.moonlit.amberStrong,
                   ),
                 ),
               ),
@@ -920,15 +917,18 @@ class _Tabs extends StatelessWidget {
               height: 40,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: context.runNowPalette.radius(10),
                 border: Border.all(
-                  color: on ? _M.amberLine : Colors.transparent,
+                  color: on ? context.moonlit.amberLine : Colors.transparent,
                 ),
                 gradient: on
-                    ? const LinearGradient(
+                    ? LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: [_M.heroTop, _M.heroMid],
+                        colors: [
+                          context.moonlit.heroTop,
+                          context.moonlit.heroMid,
+                        ],
                       )
                     : null,
               ),
@@ -942,7 +942,9 @@ class _Tabs extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                       fontSize: 15,
                       letterSpacing: 1.2,
-                      color: on ? _M.amberCream : _M.muted,
+                      color: on
+                          ? context.moonlit.amberCream
+                          : context.moonlit.muted,
                     ),
                   ),
                   if (badge != null) ...[
@@ -952,15 +954,19 @@ class _Tabs extends StatelessWidget {
                       height: 18,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: on ? _M.amberStrong : _M.track,
-                        borderRadius: BorderRadius.circular(999),
+                        color: on
+                            ? context.moonlit.amberStrong
+                            : context.moonlit.track,
+                        borderRadius: context.runNowPalette.radius(999),
                       ),
                       child: Text(
                         badge,
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
-                          color: on ? _M.onAmber : _M.inkSoft,
+                          color: on
+                              ? context.moonlit.onAmber
+                              : context.moonlit.inkSoft,
                         ),
                       ),
                     ),
@@ -976,9 +982,9 @@ class _Tabs extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: _M.tabBar,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _M.border),
+        color: context.moonlit.tabBar,
+        borderRadius: context.runNowPalette.radius(14),
+        border: Border.all(color: context.moonlit.border),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.45),
@@ -998,8 +1004,6 @@ class _Tabs extends StatelessWidget {
     );
   }
 }
-
-typedef _M = RunNowMoonlitTokens;
 
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle(this.text, {this.trailing});
@@ -1094,10 +1098,7 @@ class _StartPreviewBody extends StatelessWidget {
           Text(
             closed,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 14,
-              color: RunNowMoonlitTokens.danger,
-            ),
+            style: TextStyle(fontSize: 14, color: context.moonlit.danger),
           ),
           const SizedBox(height: 14),
         ],
@@ -1109,8 +1110,8 @@ class _StartPreviewBody extends StatelessWidget {
             height: 1,
             fontWeight: FontWeight.w800,
             color: preview.canStart
-                ? RunNowMoonlitTokens.amberBright
-                : RunNowMoonlitTokens.danger,
+                ? context.moonlit.amberBright
+                : context.moonlit.danger,
           ),
         ),
         const SizedBox(height: 2),
@@ -1118,30 +1119,27 @@ class _StartPreviewBody extends StatelessWidget {
           preview.canStart
               ? 'người chơi'
               : 'người · cần ${preview.minPlayers}–${preview.maxPlayers}',
-          style: const TextStyle(
-            fontSize: 13.5,
-            color: RunNowMoonlitTokens.faint,
-          ),
+          style: TextStyle(fontSize: 13.5, color: context.moonlit.faint),
         ),
         if (preview.willExclude.isNotEmpty) ...[
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: RunNowMoonlitTokens.well,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: RunNowMoonlitTokens.border),
+              color: context.moonlit.well,
+              borderRadius: context.runNowPalette.radius(14),
+              border: Border.all(color: context.moonlit.border),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'SẼ BỊ LOẠI',
                   style: TextStyle(
                     fontSize: 11,
                     letterSpacing: 1.4,
                     fontWeight: FontWeight.w800,
-                    color: RunNowMoonlitTokens.faint,
+                    color: context.moonlit.faint,
                   ),
                 ),
                 for (final excluded in preview.willExclude)
@@ -1154,9 +1152,9 @@ class _StartPreviewBody extends StatelessWidget {
                             excluded.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              color: RunNowMoonlitTokens.ink,
+                              color: context.moonlit.ink,
                             ),
                           ),
                         ),
@@ -1165,9 +1163,9 @@ class _StartPreviewBody extends StatelessWidget {
                           child: Text(
                             excluded.reasonLabel,
                             textAlign: TextAlign.end,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12.5,
-                              color: RunNowMoonlitTokens.danger,
+                              color: context.moonlit.danger,
                             ),
                           ),
                         ),

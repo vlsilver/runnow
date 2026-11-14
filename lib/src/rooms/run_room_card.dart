@@ -4,6 +4,7 @@ import 'package:myrun/src/rooms/run_room_models.dart';
 import 'package:myrun/src/rooms/run_room_route_sketch.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/keo_scene.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 /// Card một phòng chạy chung đã xong trên feed Kèo, cùng khung với GameCard.
 class RunRoomDoneCard extends StatelessWidget {
@@ -33,9 +34,9 @@ class RunRoomDoneCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(
+              RunNowAvatar(
                 radius: 18,
-                backgroundColor: accent.withValues(alpha: 0.18),
+                backgroundColor: context.runNowPalette.wash(accent, 0.18),
                 child: Icon(Icons.groups_rounded, size: 20, color: accent),
               ),
               const SizedBox(width: 10),
@@ -122,7 +123,7 @@ class _Badge extends StatelessWidget {
           color.withValues(alpha: 0.22),
           Theme.of(context).colorScheme.surface,
         ),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: context.runNowPalette.radius(999),
       ),
       child: Text(
         label,

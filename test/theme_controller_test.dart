@@ -141,6 +141,7 @@ void main() {
       element: RunNowElement.earth,
       appearance: RunNowAppearance.light,
       darkTone: RunNowDarkTone.warm,
+      style: RunNowStyle.elemental,
     );
 
     expect(controller.element, RunNowElement.earth);
@@ -178,6 +179,69 @@ void main() {
       expect(controller.darkTone, RunNowDarkTone.elemental);
     },
   );
+
+  test('kiểu Thép: giấy trắng ngà, mực đen, một màu đỏ, giữ nguyên hành', () {
+    final palette = RunNowPalette.forSelection(
+      RunNowElement.water,
+      appearance: RunNowAppearance.light,
+      style: RunNowStyle.iron,
+    );
+
+    expect(palette.accent, const Color(0xffe63b1f));
+    expect(palette.background, const Color(0xfff2f1ed));
+    expect(palette.ink, const Color(0xff111111));
+    expect(palette.accentNight, const Color(0xff111111));
+    expect(palette.onAccent, const Color(0xff111111));
+    expect(palette.warmMark, palette.accent);
+    // Thẻ chạy tô theo hành, nên đổi kiểu không được đổi hành.
+    expect(palette.element, RunNowElement.water);
+  });
+
+  test('kiểu Thép: nút chính là khối đỏ góc vuông, tiêu đề chữ hẹp', () {
+    final theme = buildRunNowTheme(
+      RunNowElement.water,
+      appearance: RunNowAppearance.light,
+      style: RunNowStyle.iron,
+    );
+    final filled = theme.filledButtonTheme.style!;
+
+    expect(filled.backgroundColor!.resolve({}), const Color(0xffe63b1f));
+    expect(filled.foregroundColor!.resolve({}), const Color(0xff111111));
+    expect(
+      filled.shape!.resolve({}),
+      const RoundedRectangleBorder(),
+    );
+    expect(theme.appBarTheme.titleTextStyle!.fontFamily, 'Barlow Condensed');
+    expect(theme.textTheme.titleLarge!.fontFamily, 'Barlow Condensed');
+  });
+
+  test('kiểu Thép được lưu và đọc lại, hành đã chọn vẫn còn', () async {
+    FlutterSecureStorage.setMockInitialValues({});
+    const storage = FlutterSecureStorage();
+    final first = ThemeController(storage: storage, loadFromStorage: false);
+    await first.setSelection(
+      element: RunNowElement.wood,
+      appearance: RunNowAppearance.dark,
+      darkTone: RunNowDarkTone.elemental,
+      style: RunNowStyle.iron,
+    );
+
+    final restarted = ThemeController(storage: storage);
+    await restarted.loaded;
+
+    expect(restarted.style, RunNowStyle.iron);
+    expect(restarted.element, RunNowElement.wood);
+    expect(restarted.appearance, RunNowAppearance.dark);
+  });
+
+  test('chưa từng chọn kiểu thì app mở bằng kiểu ngũ hành', () async {
+    FlutterSecureStorage.setMockInitialValues({'runnow_theme_element': 'fire'});
+    final controller = ThemeController();
+
+    await controller.loaded;
+
+    expect(controller.style, RunNowStyle.elemental);
+  });
 
   test('loaded xong thì đã có lựa chọn đã lưu', () async {
     FlutterSecureStorage.setMockInitialValues({

@@ -8,6 +8,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 /// Nút tim kèm số người đã thả. Bấm thì tim bay lên; đã thả mà bấm lại thì gỡ,
 /// trừ khi [canUnlike] tắt (tim live, rules không cho gỡ) thì bấm bao nhiêu
@@ -60,7 +61,7 @@ class _HeartButtonState extends ConsumerState<HeartButton> {
     final hearts = async.value ?? Hearts.empty;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final color = hearts.mine
-        ? RunNowDataColors.heart
+        ? context.runNowPalette.heart
         : onSurface.withValues(alpha: 0.6);
     return Semantics(
       button: true,
@@ -100,7 +101,7 @@ class _HeartButtonState extends ConsumerState<HeartButton> {
                 Text(
                   '${hearts.count}',
                   style: TextStyle(
-                    color: hearts.mine ? RunNowDataColors.heart : onSurface,
+                    color: hearts.mine ? context.runNowPalette.heart : onSurface,
                     fontSize: widget.size * 0.72,
                     fontWeight: FontWeight.w800,
                     fontFeatures: const [FontFeature.tabularFigures()],
@@ -168,7 +169,7 @@ class _FloatingHeartState extends State<_FloatingHeart>
         child: Icon(
           Icons.favorite_rounded,
           size: widget.size,
-          color: RunNowDataColors.heart,
+          color: context.runNowPalette.heart,
         ),
       ),
     );
@@ -244,10 +245,10 @@ class _MiniAvatar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(1.5),
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
+        shape: context.runNowPalette.round,
         color: palette.background,
       ),
-      child: CircleAvatar(
+      child: RunNowAvatar(
         radius: HeartCheerers._diameter / 2 - 1.5,
         backgroundColor: palette.accent,
         backgroundImage: hasUrl

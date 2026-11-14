@@ -69,8 +69,8 @@ class LiveBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: RunNowSemanticColors.danger,
-        borderRadius: BorderRadius.circular(999),
+        color: context.runNowPalette.danger,
+        borderRadius: context.runNowPalette.radius(999),
       ),
       child: const Padding(
         padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -135,7 +135,7 @@ class _LiveDotState extends State<LiveDot> with SingleTickerProviderStateMixin {
       child: Container(
         width: widget.size,
         height: widget.size,
-        decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle),
+        decoration: BoxDecoration(color: widget.color, shape: context.runNowPalette.round),
       ),
     );
   }

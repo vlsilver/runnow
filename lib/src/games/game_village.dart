@@ -5,8 +5,6 @@ import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 
-typedef _M = RunNowMoonlitTokens;
-
 /// Khối "km hôm nay" của người xem: mỗi mốc đang nhắm tới một thanh. Mốc của
 /// vai lộ vai nên chỉ hiện khi lá ngửa; không còn mốc nào thì không vẽ.
 class GameKmGoals extends StatelessWidget {
@@ -36,9 +34,9 @@ class GameKmGoals extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: _M.panel,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _M.border),
+        color: context.moonlit.panel,
+        borderRadius: context.runNowPalette.radius(16),
+        border: Border.all(color: context.moonlit.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -50,23 +48,23 @@ class GameKmGoals extends StatelessWidget {
               Expanded(
                 child: Text(
                   'KM ${(table?.todayLabel ?? 'Hôm nay').toUpperCase()}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.4,
-                    color: _M.inkSoft,
+                    color: context.moonlit.inkSoft,
                   ),
                 ),
               ),
               if (km != null)
                 Text(
                   '${gameKmText(km)} km',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: gameTitleFont,
                     fontWeight: FontWeight.w700,
                     fontSize: 22,
                     height: 1,
-                    color: _M.ink,
+                    color: context.moonlit.ink,
                   ),
                 ),
             ],
@@ -102,10 +100,10 @@ class _GoalRow extends StatelessWidget {
             Expanded(
               child: Text(
                 '${goal.label} · ${gameKmUnitText(goal.needKm)} km',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: _M.ink,
+                  color: context.moonlit.ink,
                 ),
               ),
             ),
@@ -120,7 +118,7 @@ class _GoalRow extends StatelessWidget {
                 fontFamily: gameTitleFont,
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
-                color: done ? _M.ink : _M.amberSoft,
+                color: done ? context.moonlit.ink : context.moonlit.amberSoft,
               ),
             ),
           ],
@@ -131,8 +129,8 @@ class _GoalRow extends StatelessWidget {
           height: 6,
           gradient: LinearGradient(
             colors: done
-                ? const [_M.emblemRim, _M.ink]
-                : const [_M.amberDeep, _M.amberSoft],
+                ? [context.moonlit.emblemRim, context.moonlit.ink]
+                : [context.moonlit.amberDeep, context.moonlit.amberSoft],
           ),
         ),
       ],
@@ -156,13 +154,13 @@ class _Bar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(height),
+      borderRadius: context.runNowPalette.radius(height),
       child: SizedBox(
         height: height,
         child: Stack(
           fit: StackFit.expand,
           children: [
-            const ColoredBox(color: _M.track),
+            ColoredBox(color: context.moonlit.track),
             FractionallySizedBox(
               alignment: Alignment.centerLeft,
               widthFactor: share,
@@ -170,7 +168,7 @@ class _Bar extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: color,
                   gradient: gradient,
-                  borderRadius: BorderRadius.circular(height),
+                  borderRadius: context.runNowPalette.radius(height),
                 ),
               ),
             ),
@@ -263,9 +261,9 @@ class GameVillage extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: _M.list,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _M.border),
+        color: context.moonlit.list,
+        borderRadius: context.runNowPalette.radius(18),
+        border: Border.all(color: context.moonlit.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -292,11 +290,11 @@ class _CutLine extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Text(
               label.toUpperCase(),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 1,
-                color: _M.amberSoft,
+                color: context.moonlit.amberSoft,
               ),
             ),
           ),
@@ -322,7 +320,7 @@ class _Dashes extends StatelessWidget {
               Container(
                 width: 4,
                 height: 1.5,
-                color: _M.amberSoft.withValues(alpha: 0.6),
+                color: context.moonlit.amberSoft.withValues(alpha: 0.6),
               ),
           ],
         );
@@ -338,16 +336,16 @@ class _DeadHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(0, 10, 0, 2),
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: _M.divider)),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: context.moonlit.divider)),
       ),
-      child: const Text(
+      child: Text(
         'ĐÃ NGÃ · LẬT BÀI',
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w700,
           letterSpacing: 1.2,
-          color: _M.faint,
+          color: context.moonlit.faint,
         ),
       ),
     );
@@ -416,33 +414,42 @@ class _VillagerRow extends StatelessWidget {
                     isMe ? 'Bạn' : player.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
-                      color: _M.ink,
+                      color: context.moonlit.ink,
                     ),
                   ),
                   if (!alive && player.deathRound != null)
                     Text(
                       'Chết vòng ${player.deathRound}',
-                      style: const TextStyle(fontSize: 12, color: _M.muted),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.moonlit.muted,
+                      ),
                     ),
                   // Kẻ ngốc đã lật mà còn sống: làng đã biết lá của họ.
                   if (alive && roleLabel != null)
                     Text(
                       roleLabel,
-                      style: const TextStyle(fontSize: 12, color: _M.amberSoft),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.moonlit.amberSoft,
+                      ),
                     ),
                   if (alive && table != null) ...[
                     const SizedBox(height: 5),
                     _Bar(
                       share: top <= 0 ? 0 : (km / top).clamp(0.0, 1.0),
                       height: 4,
-                      color: below ? _M.barLow : null,
+                      color: below ? context.moonlit.barLow : null,
                       gradient: below
                           ? null
-                          : const LinearGradient(
-                              colors: [_M.amberDeep, _M.amberBright],
+                          : LinearGradient(
+                              colors: [
+                                context.moonlit.amberDeep,
+                                context.moonlit.amberBright,
+                              ],
                             ),
                     ),
                   ],
@@ -453,7 +460,7 @@ class _VillagerRow extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(left: 8),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
+                  borderRadius: context.runNowPalette.radius(3),
                   child: Image.network(
                     cardUrl,
                     width: 28,
@@ -468,15 +475,15 @@ class _VillagerRow extends StatelessWidget {
                 margin: const EdgeInsets.only(left: 8),
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(
-                  color: _M.amber,
-                  borderRadius: BorderRadius.circular(6),
+                  color: context.moonlit.amber,
+                  borderRadius: context.runNowPalette.radius(6),
                 ),
                 child: Text(
                   tag,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: _M.onAmber,
+                    color: context.moonlit.onAmber,
                   ),
                 ),
               ),
@@ -492,10 +499,10 @@ class _VillagerRow extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
                     color: !alive
-                        ? _M.muted
+                        ? context.moonlit.muted
                         : below
-                        ? _M.faint
-                        : _M.amberLight,
+                        ? context.moonlit.faint
+                        : context.moonlit.amberLight,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
@@ -523,18 +530,18 @@ class GameVillagerAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final avatar = player.avatarUrl;
     final border = !player.alive
-        ? _M.divider
+        ? context.moonlit.divider
         : isMe
-        ? _M.amber
+        ? context.moonlit.amber
         : player.onTrial
-        ? _M.amberStrong
-        : _M.border;
+        ? context.moonlit.amberStrong
+        : context.moonlit.border;
     final circle = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: isMe ? _M.lifted : _M.raised,
+        shape: context.runNowPalette.round,
+        color: isMe ? context.moonlit.lifted : context.moonlit.raised,
         border: Border.all(color: border, width: 2),
         image: avatar == null
             ? null
@@ -543,7 +550,10 @@ class GameVillagerAvatar extends StatelessWidget {
                 fit: BoxFit.cover,
                 colorFilter: player.alive
                     ? null
-                    : const ColorFilter.mode(_M.page, BlendMode.saturation),
+                    : ColorFilter.mode(
+                        context.moonlit.page,
+                        BlendMode.saturation,
+                      ),
               ),
       ),
       alignment: Alignment.center,
@@ -553,7 +563,7 @@ class GameVillagerAvatar extends StatelessWidget {
               style: TextStyle(
                 fontSize: size * 0.375,
                 fontWeight: FontWeight.w800,
-                color: isMe ? _M.amber : _M.ink,
+                color: isMe ? context.moonlit.amber : context.moonlit.ink,
               ),
             )
           : null,
@@ -571,17 +581,17 @@ class GameVillagerAvatar extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 5),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: _M.amberStrong,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: _M.panel, width: 2),
+              color: context.moonlit.amberStrong,
+              borderRadius: context.runNowPalette.radius(999),
+              border: Border.all(color: context.moonlit.panel, width: 2),
             ),
-            child: const Text(
+            child: Text(
               'GIÀN',
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.6,
-                color: _M.onAmber,
+                color: context.moonlit.onAmber,
               ),
             ),
           ),

@@ -12,8 +12,6 @@ import 'package:myrun/src/games/game_turn.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 
-typedef _M = RunNowMoonlitTokens;
-
 const _cardWidth = 88.0;
 
 /// Kết quả soi của Tiên tri: backend gửi `Đêm 1: An là Dân.`
@@ -75,12 +73,12 @@ class GameMyCard extends StatelessWidget {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _M.border),
-        gradient: const LinearGradient(
+        borderRadius: context.runNowPalette.radius(20),
+        border: Border.all(color: context.moonlit.border),
+        gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [_M.panelTop, _M.panelBottom],
+          colors: [context.moonlit.panelTop, context.moonlit.panelBottom],
         ),
       ),
       child: Material(
@@ -132,14 +130,14 @@ class _Back extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'LÁ BÀI CỦA BẠN',
                 style: TextStyle(
                   fontFamily: gameTitleFont,
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1.4,
-                  color: _M.amberSoft,
+                  color: context.moonlit.amberSoft,
                 ),
               ),
               const SizedBox(height: 8),
@@ -301,9 +299,9 @@ class _Face extends StatelessWidget {
                         const SizedBox(height: 6),
                         Text(
                           me.alive ? 'Thắng · sống tới cuối' : 'Thắng · đã ngã',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: _M.amberSoft,
+                            color: context.moonlit.amberSoft,
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -315,10 +313,10 @@ class _Face extends StatelessWidget {
                           roleLine,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             height: 1.35,
-                            color: _M.inkSoft,
+                            color: context.moonlit.inkSoft,
                           ),
                         ),
                       ],
@@ -348,11 +346,11 @@ class _Face extends StatelessWidget {
                     right: -8,
                     child: PopupMenuButton<VoidCallback>(
                       tooltip: 'Thêm',
-                      color: _M.raised,
+                      color: context.moonlit.raised,
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(minWidth: 140),
                       iconSize: 20,
-                      iconColor: _M.muted,
+                      iconColor: context.moonlit.muted,
                       icon: const Icon(Icons.more_horiz_rounded),
                       onSelected: (run) => run(),
                       itemBuilder: (_) => [
@@ -447,7 +445,7 @@ class _Face extends StatelessWidget {
               // Nút chat phe tô theo màu vai, như nút Chat Phe Sói ở artboard.
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
-                backgroundColor: accent.withValues(alpha: 0.16),
+                backgroundColor: context.runNowPalette.wash(accent, 0.16),
                 foregroundColor: Color.lerp(accent, palette.ink, 0.55),
                 side: BorderSide(color: accent.withValues(alpha: 0.45)),
                 textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -474,7 +472,9 @@ class _PeekChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wolf = side == 'Sói';
-    final color = wolf ? _M.amberPale : _M.amberBright;
+    final color = wolf
+        ? context.moonlit.amberPale
+        : context.moonlit.amberBright;
     final style = TextStyle(
       fontSize: 12,
       fontWeight: wolf ? FontWeight.w700 : FontWeight.w400,
@@ -483,8 +483,8 @@ class _PeekChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: wolf ? _M.amberTint : _M.track,
-        borderRadius: BorderRadius.circular(999),
+        color: wolf ? context.moonlit.amberTint : context.moonlit.track,
+        borderRadius: context.runNowPalette.radius(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -513,7 +513,7 @@ Future<void> _showRoleRules(BuildContext context, String role, String rules) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: RunNowMoonlitTokens.panel,
+    backgroundColor: context.moonlit.panel,
     showDragHandle: true,
     builder: (context) => SafeArea(
       child: ListView(
@@ -543,7 +543,7 @@ Future<void> _showRoleRules(BuildContext context, String role, String rules) {
                       width: 6,
                       height: 6,
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
+                        shape: context.runNowPalette.round,
                         color: palette.accent,
                       ),
                     ),
@@ -578,19 +578,21 @@ class _ClaimButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        gradient: const LinearGradient(colors: [_M.amber, _M.amberBright]),
+        borderRadius: context.runNowPalette.radius(12),
+        gradient: LinearGradient(
+          colors: [context.moonlit.amber, context.moonlit.amberBright],
+        ),
       ),
       child: FilledButton(
         onPressed: onPressed,
         style: FilledButton.styleFrom(
           backgroundColor: Colors.transparent,
-          foregroundColor: _M.onAmber,
+          foregroundColor: context.moonlit.onAmber,
           minimumSize: const Size(0, 44),
           padding: const EdgeInsets.symmetric(horizontal: 14),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: context.runNowPalette.radius(12),
           ),
           textStyle: const TextStyle(
             fontFamily: gameTitleFont,

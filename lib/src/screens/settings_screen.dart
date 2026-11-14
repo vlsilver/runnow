@@ -15,6 +15,8 @@ import 'package:myrun/src/theme_controller.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
+import 'package:myrun/src/widgets/run_now_switch.dart';
 
 /// Trạng thái liên kết Telegram cho dòng Telegram. Sheet liên kết có controller
 /// riêng (poll lúc chờ Start), nên đóng sheet thì đọc lại dòng này.
@@ -184,7 +186,7 @@ class SettingsScreen extends ConsumerWidget {
                     icon: Icons.auto_awesome_outlined,
                     title: 'Ngũ hành',
                     value:
-                        '${themeController.element.label} · '
+                        '${themeController.style == RunNowStyle.iron ? RunNowStyle.iron.label : themeController.element.label} · '
                         '${themeController.appearance.label}',
                     onTap: () => _editElement(context, ref, themeController),
                   ),
@@ -482,6 +484,7 @@ Future<void> _editElement(
   ThemeController controller,
 ) async {
   var selectedElement = controller.element;
+  var selectedStyle = controller.style;
   var selectedAppearance = controller.appearance;
   final result = await showModalBottomSheet<_ThemeSelection>(
     context: context,
@@ -550,13 +553,26 @@ Future<void> _editElement(
                       appearance: selectedAppearance,
                       darkTone: RunNowDarkTone.elemental,
                       icon: element.icon,
-                      selected: selectedElement == element,
-                      onTap: () =>
-                          setModalState(() => selectedElement = element),
+                      selected:
+                          selectedStyle == RunNowStyle.elemental &&
+                          selectedElement == element,
+                      onTap: () => setModalState(() {
+                        selectedElement = element;
+                        selectedStyle = RunNowStyle.elemental;
+                      }),
                     ),
-                    if (element != RunNowElement.values.last)
-                      _SettingsDivider(),
+                    _SettingsDivider(),
                   ],
+                  _SettingsRow(
+                    key: const ValueKey('theme-style-iron'),
+                    icon: Icons.fitness_center_rounded,
+                    title: RunNowStyle.iron.label,
+                    subtitle: 'Trắng đỏ · Cứng cỏi',
+                    value: selectedStyle == RunNowStyle.iron ? '✓' : null,
+                    accent: RunNowThemeTokens.ironRamp[2],
+                    onTap: () =>
+                        setModalState(() => selectedStyle = RunNowStyle.iron),
+                  ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
                     child: SizedBox(
@@ -567,6 +583,7 @@ Future<void> _editElement(
                             element: selectedElement,
                             appearance: selectedAppearance,
                             darkTone: RunNowDarkTone.elemental,
+                            style: selectedStyle,
                           ),
                         ),
                         child: const Text('Áp dụng'),
@@ -588,6 +605,7 @@ Future<void> _editElement(
         element: result.element,
         appearance: result.appearance,
         darkTone: result.darkTone,
+        style: result.style,
       );
 }
 
@@ -785,9 +803,9 @@ class _AccountSectionState extends ConsumerState<_AccountSection> {
             horizontal: 14,
             vertical: 2,
           ),
-          leading: CircleAvatar(
+          leading: RunNowAvatar(
             radius: 15,
-            backgroundColor: palette.secondary.withValues(alpha: 0.18),
+            backgroundColor: palette.wash(palette.secondary, 0.18),
             backgroundImage: avatarUrl == null
                 ? null
                 : cachedAvatarImage(context, avatarUrl, 30),
@@ -809,7 +827,7 @@ class _AccountSectionState extends ConsumerState<_AccountSection> {
           ),
           onTap: _uploadingAvatar ? null : _pickAvatar,
         ),
-        SwitchListTile(
+        RunNowSwitchListTile(
           dense: true,
           visualDensity: const VisualDensity(horizontal: -1, vertical: -1),
           contentPadding: const EdgeInsets.symmetric(
@@ -997,6 +1015,7 @@ class _SettingsSection extends StatelessWidget {
 
 class _SettingsRow extends StatelessWidget {
   const _SettingsRow({
+    super.key,
     required this.icon,
     required this.title,
     this.subtitle,
@@ -1059,8 +1078,8 @@ class _SettingsIcon extends StatelessWidget {
       width: 30,
       height: 30,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(8),
+        color: context.runNowPalette.wash(color, 0.16),
+        borderRadius: context.runNowPalette.radius(8),
       ),
       child: Icon(icon, color: color, size: 18),
     );
@@ -1131,11 +1150,13 @@ class _ThemeSelection {
     required this.element,
     required this.appearance,
     required this.darkTone,
+    required this.style,
   });
 
   final RunNowElement element;
   final RunNowAppearance appearance;
   final RunNowDarkTone darkTone;
+  final RunNowStyle style;
 }
 
 /// Logo "Powered by Strava" chính thức, lấy nguyên từ bộ brand asset của
@@ -1180,7 +1201,7 @@ class _ConnectWithStravaButton extends StatelessWidget {
           opacity: onTap == null ? 0.5 : 1,
           child: InkWell(
             onTap: onTap,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: context.runNowPalette.radius(4),
             child: Image.asset(
               'assets/strava/btn_strava_connect_with_orange.png',
               height: 48,

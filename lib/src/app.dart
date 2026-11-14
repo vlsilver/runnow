@@ -370,6 +370,7 @@ class RunNowApp extends ConsumerWidget {
       themeController.element,
       appearance: themeController.appearance,
       darkTone: themeController.darkTone,
+      style: themeController.style,
     );
     final cardSkin = ref.watch(runCardSkinProvider);
     final cardStyles = ref.watch(runCardStyleControllerProvider);
@@ -546,7 +547,7 @@ class _SyncedActivitiesSheetState extends State<_SyncedActivitiesSheet> {
                 margin: const EdgeInsets.only(bottom: 14),
                 decoration: BoxDecoration(
                   color: onSurface.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: context.runNowPalette.radius(999),
                 ),
               ),
             ),
@@ -595,7 +596,7 @@ class _SyncedActivitiesSheetState extends State<_SyncedActivitiesSheet> {
                   style: IconButton.styleFrom(
                     backgroundColor: onSurface.withValues(alpha: 0.08),
                     foregroundColor: onSurface,
-                    shape: const CircleBorder(),
+                    shape: context.runNowPalette.roundBorder,
                     minimumSize: const Size(36, 36),
                   ),
                 ),
@@ -719,7 +720,7 @@ class _SyncHeaderIcon extends StatelessWidget {
       height: 44,
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: context.runNowPalette.radius(14),
       ),
       child: const Icon(Icons.sync_rounded, color: Colors.white, size: 22),
     );
@@ -744,7 +745,7 @@ class _SyncedActivityRow extends StatelessWidget {
     final time = TimeOfDay.fromDateTime(activity.startedAt).format(context);
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: palette.radius(14),
       onTap: () {
         Navigator.of(context).pop();
         context.push('/activity/${activity.id}');
@@ -757,8 +758,8 @@ class _SyncedActivityRow extends StatelessWidget {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: palette.accent.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(11),
+                color: palette.wash(palette.accent, 0.14),
+                borderRadius: palette.radius(11),
               ),
               child: Icon(
                 activityKindIcon(activity.kind),
@@ -778,7 +779,7 @@ class _SyncedActivityRow extends StatelessWidget {
                         height: 6,
                         decoration: BoxDecoration(
                           color: sourceColor,
-                          shape: BoxShape.circle,
+                          shape: context.runNowPalette.round,
                         ),
                       ),
                       const SizedBox(width: 5),
@@ -1105,7 +1106,7 @@ class _DesktopNavRail extends StatelessWidget {
             groupAlignment: -0.85,
             selectedIndex: selected,
             onDestinationSelected: (index) => shell.goBranch(branches[index]),
-            indicatorColor: scheme.primary.withValues(alpha: 0.16),
+            indicatorColor: context.runNowPalette.wash(scheme.primary, 0.16),
             leading: const Padding(
               padding: EdgeInsets.only(top: 10, bottom: 20),
               child: _RailBrand(),
@@ -1144,7 +1145,7 @@ class _RailBrand extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            shape: BoxShape.circle,
+            shape: context.runNowPalette.round,
             gradient: LinearGradient(
               colors: [palette.accent, palette.accentDeep],
               begin: Alignment.topLeft,
@@ -1193,7 +1194,7 @@ class _NavItem extends StatelessWidget {
         ? Theme.of(context).colorScheme.primary
         : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72);
     return InkWell(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: context.runNowPalette.radius(16),
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
@@ -1236,7 +1237,7 @@ class _OrbNavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     return InkWell(
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: palette.radius(22),
       onTap: onTap,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1245,23 +1246,29 @@ class _OrbNavItem extends StatelessWidget {
             width: 54,
             height: 54,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: selected
-                    ? [palette.tertiary, palette.secondary, palette.accent]
-                    : [
-                        palette.accent,
-                        palette.accentDeep,
-                        palette.backgroundDeep,
-                      ],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: (selected ? palette.secondary : palette.accent)
-                      .withValues(alpha: 0.26),
-                  blurRadius: 16,
-                ),
-              ],
+              shape: palette.round,
+              // Kiểu Thép: khối đỏ phẳng, không chuyển màu, không quầng sáng.
+              color: palette.isIron ? palette.accent : null,
+              gradient: palette.isIron
+                  ? null
+                  : RadialGradient(
+                      colors: selected
+                          ? [palette.tertiary, palette.secondary, palette.accent]
+                          : [
+                              palette.accent,
+                              palette.accentDeep,
+                              palette.backgroundDeep,
+                            ],
+                    ),
+              boxShadow: palette.isIron
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: (selected ? palette.secondary : palette.accent)
+                            .withValues(alpha: 0.26),
+                        blurRadius: 16,
+                      ),
+                    ],
               border: Border.all(
                 color: palette.glassStart.withValues(
                   alpha: selected ? 0.65 : 0.28,

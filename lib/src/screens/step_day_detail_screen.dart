@@ -149,13 +149,13 @@ class _Hero extends StatelessWidget {
             children: [
               Text(
                 stepThousands(total),
-                style: TextStyle(
+                style: palette.heading(TextStyle(
                   fontSize: 40,
                   fontWeight: FontWeight.w800,
                   height: 1,
                   color: palette.ink,
                   fontFeatures: const [FontFeature.tabularFigures()],
-                ),
+                )),
               ),
               const SizedBox(width: 8),
               Padding(
@@ -169,11 +169,11 @@ class _Hero extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           ClipRRect(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: palette.radius(6),
             child: LinearProgressIndicator(
               value: (total / stepDailyGoal).clamp(0.0, 1.0),
               minHeight: 8,
-              backgroundColor: palette.accent.withValues(alpha: 0.12),
+              backgroundColor: palette.wash(palette.accent, 0.12),
               valueColor: AlwaysStoppedAnimation(palette.accent),
             ),
           ),
@@ -516,8 +516,7 @@ class _MetricToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final onAccent = dark ? RunNowDataColors.coachOnAccentDark : Colors.white;
+    final onAccent = context.runNowPalette.onAccent;
     Widget seg(bool km, String label) {
       final selected = showKm == km;
       return GestureDetector(
@@ -527,7 +526,7 @@ class _MetricToggle extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
             color: selected ? palette.accent : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: palette.radius(8),
           ),
           child: Text(
             label,
@@ -545,7 +544,7 @@ class _MetricToggle extends StatelessWidget {
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: palette.glassStart,
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: palette.radius(11),
         border: Border.all(color: palette.border),
       ),
       child: Row(
@@ -597,9 +596,9 @@ class _HourBars extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: h == peak
                             ? palette.accent
-                            : palette.accent.withValues(alpha: 0.28),
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(3),
+                            : palette.wash(palette.accent, 0.28),
+                        borderRadius: BorderRadius.vertical(
+                          top: context.runNowPalette.cornerRadius(3),
                         ),
                       ),
                     ),

@@ -4,6 +4,7 @@ import '../theme.dart';
 import '../widgets/cached_avatar.dart';
 import '../widgets/keo_scene.dart';
 import 'training_plan_models.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 /// Card giáo án AI Coach trên feed Kèo — ngang hàng card kèo. Bấm mở chi tiết.
 ///
@@ -50,7 +51,7 @@ class CoachCard extends StatelessWidget {
           // ── người tạo (HLV): avatar + tên + trạng thái, badge AI bên phải
           Row(
             children: [
-              CircleAvatar(
+              RunNowAvatar(
                 radius: 18,
                 backgroundImage:
                     ownerAvatarUrl == null || ownerAvatarUrl!.isEmpty
@@ -114,8 +115,8 @@ class CoachCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                 decoration: BoxDecoration(
-                  color: accent.withValues(alpha: dark ? 0.22 : 0.14),
-                  borderRadius: BorderRadius.circular(999),
+                  color: context.runNowPalette.wash(accent, dark ? 0.22 : 0.14),
+                  borderRadius: context.runNowPalette.radius(999),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -158,7 +159,7 @@ class CoachCard extends StatelessWidget {
           // ── tiến độ hoặc lời mời tham gia
           if (following) ...[
             ClipRRect(
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: context.runNowPalette.radius(999),
               child: LinearProgressIndicator(
                 value: ratio,
                 minHeight: 7,
@@ -192,8 +193,8 @@ class CoachCard extends StatelessWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: accent.withValues(alpha: dark ? 0.22 : 0.14),
-                    borderRadius: BorderRadius.circular(999),
+                    color: context.runNowPalette.wash(accent, dark ? 0.22 : 0.14),
+                    borderRadius: context.runNowPalette.radius(999),
                   ),
                   child: Text(
                     'Tham gia',

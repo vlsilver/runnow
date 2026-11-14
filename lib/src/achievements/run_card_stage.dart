@@ -13,23 +13,27 @@ final stageHint = TextStyle(
   color: _T.hero.withValues(alpha: 0.66),
   fontSize: 13,
 );
-final stagePrimaryButton = FilledButton.styleFrom(
+ButtonStyle stagePrimaryButton(BuildContext context) => FilledButton.styleFrom(
   backgroundColor: _T.titleGold2,
   foregroundColor: _T.shade,
   disabledBackgroundColor: _T.titleGold2.withValues(alpha: 0.35),
   disabledForegroundColor: _T.shade.withValues(alpha: 0.7),
   minimumSize: const Size.fromHeight(54),
   textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+  shape: RoundedRectangleBorder(
+    borderRadius: context.runNowPalette.radius(14),
+  ),
 );
-final stageQuietButton = OutlinedButton.styleFrom(
+ButtonStyle stageQuietButton(BuildContext context) => OutlinedButton.styleFrom(
   foregroundColor: _T.hero,
   disabledForegroundColor: _T.hero.withValues(alpha: 0.4),
   side: BorderSide(color: stageLine),
   minimumSize: const Size(96, 54),
   padding: const EdgeInsets.symmetric(horizontal: 10),
   textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+  shape: RoundedRectangleBorder(
+    borderRadius: context.runNowPalette.radius(14),
+  ),
 );
 
 /// Thẻ vẽ ở kích thước gốc rồi thu cho vừa chỗ đặt, ngang tối đa 300.

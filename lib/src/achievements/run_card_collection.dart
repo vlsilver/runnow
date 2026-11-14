@@ -20,6 +20,7 @@ import 'package:myrun/src/run_contracts/widgets/contract_card_panel.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:myrun/src/widgets/run_now_empty.dart';
+import 'package:myrun/src/theme.dart';
 
 /// Tên in trên thẻ của chính mình.
 String runCardOwnerName(WidgetRef ref) =>
@@ -543,7 +544,7 @@ class _Summary extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
       decoration: BoxDecoration(
         color: scheme.onSurface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: context.runNowPalette.radius(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -583,7 +584,7 @@ class _Summary extends StatelessWidget {
                       padding: const EdgeInsets.fromLTRB(12, 7, 10, 7),
                       decoration: BoxDecoration(
                         color: scheme.primary,
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: context.runNowPalette.radius(18),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -623,7 +624,7 @@ class _Summary extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: runCardGlow(tier),
-                        borderRadius: BorderRadius.circular(3),
+                        borderRadius: context.runNowPalette.radius(3),
                       ),
                     ),
                   ),
@@ -674,7 +675,7 @@ class _TierPill extends StatelessWidget {
                 color: selected
                     ? scheme.onSurface
                     : scheme.onSurface.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(17),
+                borderRadius: context.runNowPalette.radius(17),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -685,7 +686,7 @@ class _TierPill extends StatelessWidget {
                       height: 8,
                       decoration: BoxDecoration(
                         color: dot,
-                        shape: BoxShape.circle,
+                        shape: context.runNowPalette.round,
                       ),
                     ),
                     const SizedBox(width: 6),

@@ -48,7 +48,7 @@ class RunCardSkinButton extends StatelessWidget {
         width: 24,
         height: 24,
         decoration: BoxDecoration(
-          shape: BoxShape.circle,
+          shape: context.runNowPalette.round,
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -253,7 +253,7 @@ class RunCardAppearanceToggle extends StatelessWidget {
               height: 32,
               decoration: BoxDecoration(
                 color: selected ? scheme.onSurface : Colors.transparent,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: context.runNowPalette.radius(16),
               ),
               child: Icon(
                 icon,
@@ -272,7 +272,7 @@ class RunCardAppearanceToggle extends StatelessWidget {
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: scheme.onSurface.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(19),
+        borderRadius: context.runNowPalette.radius(19),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -322,7 +322,7 @@ class RunCardSwatch extends StatelessWidget {
               duration: const Duration(milliseconds: 160),
               padding: const EdgeInsets.all(2),
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
+                shape: context.runNowPalette.round,
                 border: Border.all(
                   color: selected ? ink : Colors.transparent,
                   width: 2,
@@ -331,7 +331,7 @@ class RunCardSwatch extends StatelessWidget {
               child: Container(
                 width: size,
                 height: size,
-                decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+                decoration: BoxDecoration(shape: context.runNowPalette.round, color: color),
                 child: Icon(icon, size: 18, color: iconColor),
               ),
             ),

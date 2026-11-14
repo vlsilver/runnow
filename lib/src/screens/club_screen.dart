@@ -18,6 +18,7 @@ import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:myrun/src/widgets/run_now_empty.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 class ClubScreen extends ConsumerWidget {
   const ClubScreen({super.key});
@@ -258,7 +259,7 @@ class _SegmentTrack extends StatelessWidget {
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: onSurface.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(radius),
+        borderRadius: context.runNowPalette.radius(radius),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: children),
     );
@@ -300,7 +301,7 @@ class _SegmentButton extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: selected ? palette.tint : Colors.transparent,
-            borderRadius: BorderRadius.circular(radius),
+            borderRadius: context.runNowPalette.radius(radius),
           ),
           child: IconTheme.merge(
             data: IconThemeData(color: foreground),
@@ -490,7 +491,7 @@ class _RankingRow extends StatelessWidget {
     final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final light = Theme.of(context).brightness == Brightness.light;
-    final medals = light ? RunNowRankColors.light : RunNowRankColors.dark;
+    final medals = context.runNowPalette.medals;
     final rank = member.rank;
     final (value, unit) = _splitValueLabel(
       clubRankingValueLabel(member.score, sport),
@@ -500,12 +501,12 @@ class _RankingRow extends StatelessWidget {
       margin: isMe ? const EdgeInsets.symmetric(horizontal: 6) : null,
       decoration: isMe
           ? BoxDecoration(
-              color: palette.accent.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(16),
+              color: palette.wash(palette.accent, 0.12),
+              borderRadius: palette.radius(16),
             )
           : null,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: palette.radius(16),
         onTap: () =>
             context.push(isMe ? '/journal' : '/club/${entry.uid}/journal'),
         child: ConstrainedBox(
@@ -614,8 +615,8 @@ class _FlatMemberAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final avatarUrl = member.avatarUrl;
-    final color = _flatMemberColor(member.uid);
-    return CircleAvatar(
+    final color = _flatMemberColor(context.runNowPalette, member.uid);
+    return RunNowAvatar(
       radius: size / 2,
       backgroundColor: color,
       backgroundImage: avatarUrl == null
@@ -645,8 +646,9 @@ const _flatMemberPalette = [
   RunNowDataColors.heart,
 ];
 
-Color _flatMemberColor(String uid) =>
-    _flatMemberPalette[uid.hashCode.abs() % _flatMemberPalette.length];
+Color _flatMemberColor(RunNowPalette palette, String uid) => palette.series(
+  _flatMemberPalette,
+)[uid.hashCode.abs() % _flatMemberPalette.length];
 
 /// "19.41 km" -> ("19.41", "km") để số đậm, đơn vị nhạt.
 (String, String) _splitValueLabel(String label) {
@@ -1238,8 +1240,8 @@ class _MiniChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(999),
+        color: context.runNowPalette.wash(color, 0.16),
+        borderRadius: context.runNowPalette.radius(999),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),

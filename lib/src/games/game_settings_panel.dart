@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:myrun/src/games/game_models.dart';
+import 'package:myrun/src/widgets/run_now_switch.dart';
 
 /// Các tuỳ chọn luật trên màn tạo ván, vẽ theo `createOptions.settings`. Mỗi
 /// tuỳ chọn hiện tên và mô tả để người tạo ván biết nó làm gì. Tuỳ chọn có
@@ -38,7 +39,7 @@ class GameSettingsPanel extends StatelessWidget {
     final subtitle = Text(setting.description);
     switch (setting.type) {
       case GameSetting.toggle:
-        return SwitchListTile(
+        return RunNowSwitchListTile(
           title: title,
           subtitle: subtitle,
           value: value == true,

@@ -123,7 +123,7 @@ class _SharingSpinner extends StatelessWidget {
       height: 48,
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.55),
-        shape: BoxShape.circle,
+        shape: context.runNowPalette.round,
         border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
       ),
       padding: const EdgeInsets.all(14),
@@ -150,7 +150,7 @@ class _ShareCard extends StatelessWidget {
       child: AspectRatio(
         aspectRatio: _cardAspectRatio,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: context.runNowPalette.radius(24),
           child: ColoredBox(
             color: Colors.black,
             child: Stack(
@@ -265,7 +265,7 @@ class _AchievementBadge extends StatelessWidget {
               children: [
                 Container(
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
+                    shape: context.runNowPalette.round,
                     boxShadow: [
                       BoxShadow(
                         color: accent.withValues(alpha: 0.55),
@@ -277,13 +277,16 @@ class _AchievementBadge extends StatelessWidget {
                 ),
                 CustomPaint(
                   size: Size.square(size),
-                  painter: _SunburstPainter(color: rayColor),
+                  painter: _SunburstPainter(
+                    color: rayColor,
+                    square: context.runNowPalette.isIron,
+                  ),
                 ),
                 Container(
                   width: size * 0.72,
                   height: size * 0.72,
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
+                    shape: context.runNowPalette.round,
                     gradient: SweepGradient(
                       colors: [
                         accent,
@@ -302,7 +305,7 @@ class _AchievementBadge extends StatelessWidget {
                   padding: const EdgeInsets.all(4),
                   child: Container(
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
+                      shape: context.runNowPalette.round,
                       gradient: RadialGradient(
                         colors: [
                           Color.lerp(accent, Colors.white, 0.25)!,
@@ -325,7 +328,7 @@ class _AchievementBadge extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
             decoration: BoxDecoration(
               color: accent,
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: context.runNowPalette.radius(999),
               boxShadow: [
                 BoxShadow(
                   color: accent.withValues(alpha: 0.5),
@@ -353,7 +356,9 @@ class _AchievementBadge extends StatelessWidget {
 /// Vẽ các tia sáng toả tròn phía sau vòng huy hiệu bằng `dart:math` để chia
 /// đều góc quanh tâm — tạo cảm giác "sống động" thay vì một khối tĩnh.
 class _SunburstPainter extends CustomPainter {
-  const _SunburstPainter({required this.color});
+  const _SunburstPainter({required this.color, required this.square});
+
+  final bool square;
 
   final Color color;
 
@@ -365,7 +370,7 @@ class _SunburstPainter extends CustomPainter {
     final outerRadiusShort = size.width * 0.42;
     const rayCount = 16;
     final paint = Paint()
-      ..strokeCap = StrokeCap.round
+      ..strokeCap = (square ? StrokeCap.butt : StrokeCap.round)
       ..strokeWidth = 2.2;
 
     for (var i = 0; i < rayCount; i++) {

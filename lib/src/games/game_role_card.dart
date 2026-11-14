@@ -253,7 +253,7 @@ class GameCardBack extends StatelessWidget {
           Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const GameMoonEmblem(size: 132),
+              const GameMoonEmblem(size: 132, tokens: RunNowMoonlit.night),
               const SizedBox(height: 4),
               const Text(
                 'MA SÓI',
@@ -307,7 +307,7 @@ class GameCardFrame extends StatelessWidget {
       size: gameCardSize,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: context.runNowPalette.radius(16),
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -325,7 +325,7 @@ class GameCardFrame extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(6),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(11),
+            borderRadius: context.runNowPalette.radius(11),
             child: child,
           ),
         ),
@@ -582,14 +582,14 @@ class _BackOrnamentPainter extends CustomPainter {
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromLTWH(10, 10, size.width - 20, size.height - 20),
-        const Radius.circular(8),
+        Radius.circular(8),
       ),
       gold..color = RunNowGameTokens.backLine,
     );
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromLTWH(16, 16, size.width - 32, size.height - 32),
-        const Radius.circular(6),
+        Radius.circular(6),
       ),
       gold..color = RunNowGameTokens.backLineSoft,
     );

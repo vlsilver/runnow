@@ -12,6 +12,7 @@ import 'package:myrun/src/widgets/activity_overview.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/heart_button.dart';
 import 'package:myrun/src/widgets/route_sketch_art.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 const _runKinds = {
   ActivityKind.run,
@@ -73,10 +74,10 @@ class ClubRunPost extends ConsumerWidget {
     ].join(' · ');
     final ownSource = activity.source == ActivitySource.runnow;
     final isLight = palette.appearance == RunNowAppearance.light;
-    final ramp = palette.element.ramp;
+    final ramp = palette.ramp;
     return Material(
       color: palette.glassStart,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: palette.radius(20),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => context.push(who.path),
@@ -128,7 +129,7 @@ class ClubRunPost extends ConsumerWidget {
                               height: 20,
                               decoration: BoxDecoration(
                                 color: palette.glassStart,
-                                shape: BoxShape.circle,
+                                shape: context.runNowPalette.round,
                                 border: Border.all(color: palette.border),
                               ),
                               child: Icon(
@@ -169,7 +170,7 @@ class ClubRunPost extends ConsumerWidget {
                           color: isLight
                               ? palette.glassStart.withValues(alpha: 0.85)
                               : palette.background.withValues(alpha: 0.55),
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: palette.radius(16),
                         ),
                         child: HeartButton(
                           target: runHeartTarget(item.ownerUid, activity.id),
@@ -266,7 +267,7 @@ class _Chip extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: context.runNowPalette.radius(10),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -329,7 +330,7 @@ class ClubAvatar extends StatelessWidget {
     final url = member?.avatarUrl;
     final hasUrl = url != null && url.isNotEmpty;
     final name = member?.displayName ?? '';
-    return CircleAvatar(
+    return RunNowAvatar(
       radius: size / 2,
       backgroundColor: context.runNowPalette.accent,
       backgroundImage: hasUrl ? cachedAvatarImage(context, url, size) : null,

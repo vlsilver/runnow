@@ -4,9 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:myrun/src/games/game_create_tabs.dart';
 import 'package:myrun/src/games/game_models.dart';
-import 'package:myrun/src/theme_tokens.dart';
-
-typedef _M = RunNowMoonlitTokens;
+import 'package:myrun/src/theme.dart';
 
 /// Giới hạn của độ dài pha, khớp backend (werewolf.MinPhaseMinutes,
 /// PhaseStepMinutes): pha nào cũng ít nhất 1 tiếng, dời theo bước 30 phút.
@@ -380,6 +378,7 @@ class _GameRoundDialState extends State<GameRoundDial> {
                     },
                     child: CustomPaint(
                       painter: _DialPainter(
+                        tokens: context.moonlit,
                         keys: keys,
                         phases: phases,
                         start: start,
@@ -394,11 +393,11 @@ class _GameRoundDialState extends State<GameRoundDial> {
                           children: [
                             Text(
                               widget.title,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 10.5,
                                 letterSpacing: 1.4,
                                 fontWeight: FontWeight.w800,
-                                color: _M.faint,
+                                color: context.moonlit.faint,
                               ),
                             ),
                             Row(
@@ -410,21 +409,21 @@ class _GameRoundDialState extends State<GameRoundDial> {
                                   total % 60 == 0
                                       ? '${total ~/ 60}'
                                       : gameHours(total),
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontFamily: 'Barlow Condensed',
                                     fontSize: 38,
                                     height: 1.1,
                                     fontWeight: FontWeight.w800,
-                                    color: _M.ink,
+                                    color: context.moonlit.ink,
                                   ),
                                 ),
                                 if (total % 60 == 0)
-                                  const Text(
+                                  Text(
                                     ' tiếng',
                                     style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w700,
-                                      color: _M.muted,
+                                      color: context.moonlit.muted,
                                     ),
                                   ),
                               ],
@@ -432,9 +431,9 @@ class _GameRoundDialState extends State<GameRoundDial> {
                             Text(
                               '${gameClock(start.toDouble())} → '
                               '${gameClock((start + total).toDouble())}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
-                                color: _M.faint,
+                                color: context.moonlit.faint,
                               ),
                             ),
                           ],
@@ -461,14 +460,17 @@ class _GameRoundDialState extends State<GameRoundDial> {
                     width: 8,
                     height: 8,
                     decoration: BoxDecoration(
-                      color: gamePhaseColor(p.key),
-                      shape: BoxShape.circle,
+                      color: gamePhaseColor(context.moonlit, p.key),
+                      shape: context.runNowPalette.round,
                     ),
                   ),
                   const SizedBox(width: 5),
                   Text(
                     p.label,
-                    style: const TextStyle(fontSize: 11.5, color: _M.muted),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: context.moonlit.muted,
+                    ),
                   ),
                 ],
               ),
@@ -481,7 +483,7 @@ class _GameRoundDialState extends State<GameRoundDial> {
           locked: widget.onStart == null,
           onStep: _startStep,
         ),
-        const Divider(height: 14, color: _M.border),
+        Divider(height: 14, color: context.moonlit.border),
         for (var i = 0; i < phases.length; i++)
           _PhaseRow(
             phase: plan.phases[i],
@@ -507,7 +509,7 @@ class _GameRoundDialState extends State<GameRoundDial> {
                     return true;
                   },
           ),
-        const Divider(height: 14, color: _M.border),
+        Divider(height: 14, color: context.moonlit.border),
         _EdgeRow(
           label: 'Chốt vòng',
           value: gameClock((start + total).toDouble()),
@@ -578,23 +580,23 @@ class _EdgeRow extends StatelessWidget {
             width: 28,
             height: 28,
             decoration: BoxDecoration(
-              border: Border.all(color: _M.border),
-              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: context.moonlit.border),
+              borderRadius: context.runNowPalette.radius(9),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.schedule_rounded,
               size: 16,
-              color: _M.amberBright,
+              color: context.moonlit.amberBright,
             ),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: _M.ink,
+                color: context.moonlit.ink,
               ),
             ),
           ),
@@ -603,7 +605,7 @@ class _EdgeRow extends StatelessWidget {
             child: Icon(
               locked ? Icons.lock_rounded : Icons.lock_open_rounded,
               size: 14,
-              color: _M.faint,
+              color: context.moonlit.faint,
             ),
           ),
           GameStepBox(
@@ -642,14 +644,14 @@ class GameStepBox extends StatelessWidget {
       constraints: const BoxConstraints.tightFor(width: 34, height: 34),
       padding: EdgeInsets.zero,
       icon: Icon(icon, size: 16),
-      color: _M.amberBright,
+      color: context.moonlit.amberBright,
       onPressed: onTap,
     );
     return Container(
       decoration: BoxDecoration(
-        color: _M.raised,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _M.border),
+        color: context.moonlit.raised,
+        borderRadius: context.runNowPalette.radius(10),
+        border: Border.all(color: context.moonlit.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -660,11 +662,11 @@ class GameStepBox extends StatelessWidget {
             child: Text(
               value,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: 'Barlow Condensed',
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
-                color: _M.amberBright,
+                color: context.moonlit.amberBright,
               ),
             ),
           ),
@@ -711,7 +713,7 @@ class _PhaseRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final step = onStep;
-    final color = gamePhaseColor(phase.key);
+    final color = gamePhaseColor(context.moonlit, phase.key);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
@@ -721,9 +723,13 @@ class _PhaseRow extends StatelessWidget {
             height: 28,
             decoration: BoxDecoration(
               color: color,
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: context.runNowPalette.radius(9),
             ),
-            child: Icon(gamePhaseIcon(phase.key), size: 16, color: _M.onMoon),
+            child: Icon(
+              gamePhaseIcon(phase.key),
+              size: 16,
+              color: context.moonlit.onMoon,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -732,27 +738,31 @@ class _PhaseRow extends StatelessWidget {
               children: [
                 Text(
                   phase.label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: _M.ink,
+                    color: context.moonlit.ink,
                   ),
                 ),
                 Text(
                   '$from – $to',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: _M.amberBright,
+                    color: context.moonlit.amberBright,
                   ),
                 ),
               ],
             ),
           ),
           if (lockedEnd)
-            const Tooltip(
+            Tooltip(
               message: 'Ván km chia đều 24 tiếng',
-              child: Icon(Icons.lock_rounded, size: 14, color: _M.faint),
+              child: Icon(
+                Icons.lock_rounded,
+                size: 14,
+                color: context.moonlit.faint,
+              ),
             ),
           const SizedBox(width: 6),
           GameStepBox(
@@ -771,6 +781,7 @@ class _PhaseRow extends StatelessWidget {
 
 class _DialPainter extends CustomPainter {
   _DialPainter({
+    required this.tokens,
     required this.keys,
     required this.phases,
     required this.start,
@@ -780,6 +791,7 @@ class _DialPainter extends CustomPainter {
     required this.others,
   });
 
+  final RunNowMoonlit tokens;
   final List<String> keys;
   final List<int> phases;
   final int start;
@@ -810,7 +822,7 @@ class _DialPainter extends CustomPainter {
     final stroke = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = _ring;
-    canvas.drawCircle(c, r, stroke..color = _M.track);
+    canvas.drawCircle(c, r, stroke..color = tokens.track);
 
     // Các vòng khác trong ngày: cung mờ và nhãn vòng bên trong vòng tròn.
     var covered = 0;
@@ -822,7 +834,8 @@ class _DialPainter extends CustomPainter {
           _angle(from) + 0.012,
           o.phases[i] / 1440 * 2 * math.pi - 0.024,
           false,
-          stroke..color = gamePhaseColor(keys[i]).withValues(alpha: 0.28),
+          stroke
+            ..color = gamePhaseColor(tokens, keys[i]).withValues(alpha: 0.28),
         );
         from += o.phases[i];
       }
@@ -832,10 +845,10 @@ class _DialPainter extends CustomPainter {
       final tp = TextPainter(
         text: TextSpan(
           text: o.label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w800,
-            color: _M.faint,
+            color: tokens.faint,
           ),
         ),
         textDirection: TextDirection.ltr,
@@ -855,7 +868,7 @@ class _DialPainter extends CustomPainter {
         _angle(start + at) + 0.012,
         phases[i] / 1440 * 2 * math.pi - 0.024,
         false,
-        stroke..color = gamePhaseColor(keys[i]),
+        stroke..color = gamePhaseColor(tokens, keys[i]),
       );
       at += phases[i];
     }
@@ -863,7 +876,7 @@ class _DialPainter extends CustomPainter {
     final dash = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3
-      ..color = _M.faint;
+      ..color = tokens.faint;
     for (var m = at + covered + 15; m < 1440 - 10; m += 30) {
       canvas.drawArc(
         rect,
@@ -877,7 +890,7 @@ class _DialPainter extends CustomPainter {
     // Vạch giờ và nhãn 0h, 6h, 12h, 18h.
     final tick = Paint()
       ..strokeWidth = 1.5
-      ..color = _M.faint;
+      ..color = tokens.faint;
     final inner = r - _ring / 2 - 4;
     for (var h = 0; h < 24; h++) {
       final a = _angle(h * 60);
@@ -888,7 +901,7 @@ class _DialPainter extends CustomPainter {
         final tp = TextPainter(
           text: TextSpan(
             text: '${h}h',
-            style: const TextStyle(fontSize: 10, color: _M.faint),
+            style: TextStyle(fontSize: 10, color: tokens.faint),
           ),
           textDirection: TextDirection.ltr,
         )..layout();
@@ -908,11 +921,11 @@ class _DialPainter extends CustomPainter {
       final p = handle(size, start + bound);
       final edge = m == 0 || m == phases.length;
       final locked = edge && lockStart && (m == 0 || lockEnd);
-      final color = gamePhaseColor(keys[math.max(0, m - 1)]);
+      final color = gamePhaseColor(tokens, keys[math.max(0, m - 1)]);
       canvas.drawCircle(
         p,
         m == active ? 13 : 11,
-        Paint()..color = locked ? _M.lifted : _M.ink,
+        Paint()..color = locked ? tokens.lifted : tokens.ink,
       );
       canvas.drawCircle(
         p,
@@ -920,7 +933,7 @@ class _DialPainter extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.5
-          ..color = locked ? _M.borderStrong : color,
+          ..color = locked ? tokens.borderStrong : color,
       );
       if (edge) {
         final icon = locked ? Icons.lock_rounded : Icons.lock_open_rounded;
@@ -931,7 +944,7 @@ class _DialPainter extends CustomPainter {
               fontSize: 12,
               fontFamily: icon.fontFamily,
               package: icon.fontPackage,
-              color: locked ? _M.faint : _M.lifted,
+              color: locked ? tokens.faint : tokens.lifted,
             ),
           ),
           textDirection: TextDirection.ltr,
@@ -943,6 +956,7 @@ class _DialPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_DialPainter old) =>
+      old.tokens != tokens ||
       old.start != start ||
       old.lockEnd != lockEnd ||
       old.lockStart != lockStart ||

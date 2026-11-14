@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/map_tiles.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:myrun/src/theme.dart';
 
 /// Ghi công nguồn bản đồ — bắt buộc, không phải trang trí.
 ///
@@ -42,7 +43,7 @@ class MapAttribution extends StatelessWidget {
             color: scheme.surface.withValues(alpha: 0.92),
             elevation: 3,
             shadowColor: Colors.black.withValues(alpha: 0.3),
-            shape: const CircleBorder(),
+            shape: context.runNowPalette.roundBorder,
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: () => _showSources(context),

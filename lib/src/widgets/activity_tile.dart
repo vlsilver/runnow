@@ -4,6 +4,7 @@ import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 class ActivityTile extends StatelessWidget {
   const ActivityTile({
@@ -44,7 +45,7 @@ class ActivityTile extends StatelessWidget {
                       ? '/activity/${activity.id}'
                       : '/club/$ownerUid/activity/${activity.id}',
                 ),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: palette.radius(8),
                 child: Stack(
                   children: [
                     Positioned.fill(
@@ -108,12 +109,12 @@ class ActivityTile extends StatelessWidget {
                                 children: [
                                   Text(
                                     formatDistance(activity.distanceMeters),
-                                    style: TextStyle(
+                                    style: palette.heading(TextStyle(
                                       color: palette.accent,
                                       fontSize: 21,
                                       fontWeight: FontWeight.w900,
                                       height: 1,
-                                    ),
+                                    )),
                                   ),
                                 ],
                               ),
@@ -179,12 +180,12 @@ class _StravaOverlapFlag extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     return InkWell(
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: context.runNowPalette.radius(999),
       onTap: () => context.push('/activity/$activityId'),
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: palette.tint,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: context.runNowPalette.radius(999),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -222,9 +223,9 @@ class _MemberStamp extends StatelessWidget {
     final palette = context.runNowPalette;
     return Row(
       children: [
-        CircleAvatar(
+        RunNowAvatar(
           radius: 13,
-          backgroundColor: palette.secondary.withValues(alpha: 0.16),
+          backgroundColor: palette.wash(palette.secondary, 0.16),
           backgroundImage: avatarUrl == null
               ? null
               : cachedAvatarImage(context, avatarUrl!, 26),
@@ -298,7 +299,7 @@ class _TimelineRail extends StatelessWidget {
             height: 12,
             decoration: BoxDecoration(
               color: palette.accent,
-              shape: BoxShape.circle,
+              shape: context.runNowPalette.round,
               boxShadow: [
                 BoxShadow(
                   color: palette.accent.withValues(alpha: 0.32),
@@ -312,8 +313,8 @@ class _TimelineRail extends StatelessWidget {
             child: Container(
               width: 2,
               decoration: BoxDecoration(
-                color: palette.accent.withValues(alpha: 0.24),
-                borderRadius: BorderRadius.circular(99),
+                color: palette.wash(palette.accent, 0.24),
+                borderRadius: context.runNowPalette.radius(99),
               ),
             ),
           ),
@@ -342,8 +343,8 @@ class _SourceBadge extends StatelessWidget {
     if (source == ActivitySource.strava) {
       return DecoratedBox(
         decoration: BoxDecoration(
-          color: RunNowBrandColors.strava.withValues(alpha: 0.14),
-          borderRadius: BorderRadius.circular(999),
+          color: context.runNowPalette.wash(RunNowBrandColors.strava, 0.14),
+          borderRadius: context.runNowPalette.radius(999),
         ),
         child: const Padding(
           padding: EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -363,8 +364,8 @@ class _SourceBadge extends StatelessWidget {
       final color = Theme.of(context).colorScheme.onSurface;
       return DecoratedBox(
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(999),
+          color: context.runNowPalette.wash(color, 0.1),
+          borderRadius: context.runNowPalette.radius(999),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -381,7 +382,7 @@ class _SourceBadge extends StatelessWidget {
       );
     }
     return ClipRRect(
-      borderRadius: BorderRadius.circular(5),
+      borderRadius: context.runNowPalette.radius(5),
       child: Image.asset(
         'assets/brand/3i-mark.png',
         width: 16,
@@ -402,8 +403,8 @@ class _KindTag extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: visual.color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(999),
+        color: context.runNowPalette.wash(visual.color, 0.16),
+        borderRadius: context.runNowPalette.radius(999),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),

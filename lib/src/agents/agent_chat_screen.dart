@@ -516,7 +516,7 @@ class _Bubble extends StatelessWidget {
               color: mine
                   ? palette.accent.withValues(alpha: 0.38)
                   : palette.tint,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: palette.radius(14),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -681,8 +681,8 @@ class _QuotaChip extends StatelessWidget {
         margin: const EdgeInsets.only(right: 12),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: palette.accent.withValues(alpha: 0.16),
-          borderRadius: BorderRadius.circular(999),
+          color: palette.wash(palette.accent, 0.16),
+          borderRadius: context.runNowPalette.radius(999),
         ),
         child: Text(
           text,
@@ -718,7 +718,7 @@ class _RestNotice extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: palette.glassStart,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: palette.radius(16),
       ),
       child: Row(
         children: [
@@ -726,8 +726,8 @@ class _RestNotice extends StatelessWidget {
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: palette.accent.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(12),
+              color: palette.wash(palette.accent, 0.18),
+              borderRadius: palette.radius(12),
             ),
             child: Icon(icon, size: 20, color: palette.accentDeep),
           ),

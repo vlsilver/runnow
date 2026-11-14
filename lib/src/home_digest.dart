@@ -107,9 +107,9 @@ class _DigestPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: palette.radius(22),
         gradient: LinearGradient(
-          colors: [palette.accent.withValues(alpha: 0.18), palette.glassStart],
+          colors: [palette.wash(palette.accent, 0.18), palette.glassStart],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),

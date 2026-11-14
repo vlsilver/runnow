@@ -3,10 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/games/game_create_tabs.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
-import 'package:myrun/src/theme_tokens.dart';
 import 'package:url_launcher/url_launcher.dart';
-
-typedef _M = RunNowMoonlitTokens;
+import 'package:myrun/src/theme.dart';
 
 /// Bot ván và chỗ đã xác nhận. Lỗi thì [GameTelegramPicker] chỉ còn group
 /// PSC; 404 là backend chưa có bot ván.
@@ -392,10 +390,13 @@ class _Step extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (dotBg, dotFg) = switch (state) {
-      _StepState.done => (_M.amber, _M.onAmber),
-      _StepState.now => (_M.amberTint, _M.amberBright),
-      _StepState.warn => (_M.danger, _M.onAmber),
-      _StepState.later => (_M.raised, _M.faint),
+      _StepState.done => (context.moonlit.amber, context.moonlit.onAmber),
+      _StepState.now => (
+        context.moonlit.amberTint,
+        context.moonlit.amberBright,
+      ),
+      _StepState.warn => (context.moonlit.danger, context.moonlit.onAmber),
+      _StepState.later => (context.moonlit.raised, context.moonlit.faint),
     };
     return Opacity(
       opacity: state == _StepState.later ? 0.5 : 1,
@@ -410,9 +411,11 @@ class _Step extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: dotBg,
-                shape: BoxShape.circle,
+                shape: context.runNowPalette.round,
                 border: Border.all(
-                  color: state == _StepState.later ? _M.border : dotBg,
+                  color: state == _StepState.later
+                      ? context.moonlit.border
+                      : dotBg,
                 ),
               ),
               child: state == _StepState.done
@@ -440,8 +443,8 @@ class _Step extends StatelessWidget {
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
                             color: state == _StepState.warn
-                                ? _M.danger
-                                : _M.ink,
+                                ? context.moonlit.danger
+                                : context.moonlit.ink,
                           ),
                         ),
                       ),
@@ -455,7 +458,10 @@ class _Step extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       s,
-                      style: const TextStyle(fontSize: 12.5, color: _M.muted),
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: context.moonlit.muted,
+                      ),
                     ),
                   ],
                   if (action case final a?) ...[const SizedBox(height: 8), a],
@@ -485,8 +491,8 @@ class _StepButton extends StatelessWidget {
         icon: const Icon(Icons.send_rounded, size: 16),
         label: Text(label),
         style: FilledButton.styleFrom(
-          backgroundColor: _M.amber,
-          foregroundColor: _M.onAmber,
+          backgroundColor: context.moonlit.amber,
+          foregroundColor: context.moonlit.onAmber,
           textStyle: const TextStyle(fontWeight: FontWeight.w800),
         ),
       ),
@@ -507,10 +513,10 @@ class _GroupLine extends StatelessWidget {
         Flexible(
           child: Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w800,
-              color: _M.ink,
+              color: context.moonlit.ink,
             ),
           ),
         ),
@@ -532,16 +538,18 @@ class _Chip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: muted ? _M.raised : _M.amberTint,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: muted ? _M.border : _M.amberLine),
+        color: muted ? context.moonlit.raised : context.moonlit.amberTint,
+        borderRadius: context.runNowPalette.radius(999),
+        border: Border.all(
+          color: muted ? context.moonlit.border : context.moonlit.amberLine,
+        ),
       ),
       child: Text(
         text,
         style: TextStyle(
           fontSize: 11.5,
           fontWeight: FontWeight.w700,
-          color: muted ? _M.muted : _M.amberBright,
+          color: muted ? context.moonlit.muted : context.moonlit.amberBright,
         ),
       ),
     );
@@ -559,7 +567,11 @@ class _Hint extends StatelessWidget {
       padding: const EdgeInsets.only(top: 2, bottom: 4),
       child: Text(
         text,
-        style: const TextStyle(fontSize: 12.5, height: 1.4, color: _M.muted),
+        style: TextStyle(
+          fontSize: 12.5,
+          height: 1.4,
+          color: context.moonlit.muted,
+        ),
       ),
     );
   }
@@ -594,25 +606,31 @@ class _Option extends StatelessWidget {
           selected: selected,
           button: true,
           child: Material(
-            color: selected ? _M.amberTint : _M.raised,
+            color: selected
+                ? context.moonlit.amberTint
+                : context.moonlit.raised,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: BorderSide(color: selected ? _M.amber : _M.border),
+              borderRadius: context.runNowPalette.radius(14),
+              side: BorderSide(
+                color: selected
+                    ? context.moonlit.amber
+                    : context.moonlit.border,
+              ),
             ),
             child: InkWell(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: context.runNowPalette.radius(14),
               onTap: onTap,
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
                     if (hash) ...[
-                      const Text(
+                      Text(
                         '#',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w900,
-                          color: _M.faint,
+                          color: context.moonlit.faint,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -620,27 +638,27 @@ class _Option extends StatelessWidget {
                     Expanded(
                       child: Text(
                         label,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
-                          color: _M.ink,
+                          color: context.moonlit.ink,
                         ),
                       ),
                     ),
                     if (tag case final t?)
                       Text(
                         t,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: _M.faint,
+                          color: context.moonlit.faint,
                         ),
                       ),
                     if (selected)
-                      const Icon(
+                      Icon(
                         Icons.check_circle_rounded,
                         size: 20,
-                        color: _M.amber,
+                        color: context.moonlit.amber,
                       ),
                   ],
                 ),

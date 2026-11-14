@@ -96,7 +96,7 @@ class _GameActionCardState extends State<GameActionCard> {
         body: Text(
           confirmText,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: RunNowMoonlitTokens.muted),
+          style: TextStyle(color: context.moonlit.muted),
         ),
         confirmLabel: 'Chắc',
         cancelLabel: 'Thôi',
@@ -188,10 +188,10 @@ class _GameActionCardState extends State<GameActionCard> {
             Row(
               children: [
                 if (summary != null) ...[
-                  const Icon(
+                  Icon(
                     Icons.check_circle_rounded,
                     size: 16,
-                    color: RunNowSemanticColors.success,
+                    color: context.runNowPalette.success,
                   ),
                   const SizedBox(width: 6),
                   Expanded(
@@ -388,12 +388,12 @@ class _DarkPower extends StatelessWidget {
         child: Material(
           type: MaterialType.transparency,
           child: InkWell(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: palette.radius(12),
             onTap: onTap,
             child: Ink(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: palette.radius(12),
                 border: Border.all(
                   color: selected || open
                       ? palette.accent
@@ -534,7 +534,7 @@ class GameOptionButton extends StatelessWidget {
         color: color,
       ),
     );
-    final radius = BorderRadius.circular(big ? 14 : 12);
+    final radius = context.runNowPalette.radius(big ? 14 : 12);
     return Semantics(
       button: true,
       selected: selected,
@@ -546,21 +546,19 @@ class GameOptionButton extends StatelessWidget {
             gradient: !foil
                 ? null
                 : big
-                ? const LinearGradient(
+                ? LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      RunNowMoonlitTokens.amberStrong,
-                      RunNowMoonlitTokens.amberDeep,
+                      context.moonlit.amberStrong,
+                      context.moonlit.amberDeep,
                     ],
                   )
                 : gameAccentFoil(palette),
             boxShadow: foil && big
                 ? [
                     BoxShadow(
-                      color: RunNowMoonlitTokens.amberStrong.withValues(
-                        alpha: 0.4,
-                      ),
+                      color: context.moonlit.amberStrong.withValues(alpha: 0.4),
                       blurRadius: 22,
                       offset: const Offset(0, 6),
                     ),
@@ -570,10 +568,7 @@ class GameOptionButton extends StatelessWidget {
             border: foil
                 ? null
                 : big
-                ? Border.all(
-                    color: RunNowMoonlitTokens.borderStrong,
-                    width: 1.5,
-                  )
+                ? Border.all(color: context.moonlit.borderStrong, width: 1.5)
                 : Border.all(
                     color: Theme.of(
                       context,
@@ -643,9 +638,9 @@ class _Window extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: live
-            ? palette.accent.withValues(alpha: 0.14)
+            ? palette.wash(palette.accent, 0.14)
             : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: context.runNowPalette.radius(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -696,7 +691,7 @@ class _TimeLeft extends StatelessWidget {
     final left = closesAt.difference(now).inSeconds;
     final fraction = total <= 0 ? 0.0 : (left / total).clamp(0.0, 1.0);
     return ClipRRect(
-      borderRadius: BorderRadius.circular(2),
+      borderRadius: context.runNowPalette.radius(2),
       child: SizedBox(
         height: 4,
         width: double.infinity,
@@ -739,7 +734,7 @@ class _Locked extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: palette.radius(10),
         border: Border.all(
           color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
         ),

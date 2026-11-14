@@ -25,7 +25,8 @@ enum RunCardSet {
   finish('Băng đích', hasMapOption: true),
   paperMap('Bản đồ', hasMapOption: true),
   receipt('Biên lai', hasMapOption: true),
-  medal('Huy chương', hasMapOption: true);
+  medal('Huy chương', hasMapOption: true),
+  iron('Thép', hasMapOption: true);
 
   const RunCardSet(
     this.label, {
@@ -43,7 +44,7 @@ enum RunCardSet {
   final bool hasMapOption;
 }
 
-/// Cách đặt chữ ở mặt trước của 12 bộ có màu riêng.
+/// Cách đặt chữ ở mặt trước của các bộ có màu riêng.
 enum RunCardTextLayout {
   full('Đầy đủ'),
   top('Số trên'),

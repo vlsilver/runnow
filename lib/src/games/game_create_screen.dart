@@ -21,6 +21,7 @@ import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
+import 'package:myrun/src/widgets/run_now_switch.dart';
 
 /// Admin mở ván Ma Sói. Vai bật tắt được, tuỳ chọn luật, tab và kiểu ván dựng
 /// sẵn lấy từ `createOptions` của `GET /v1/games`, nên thêm vai, tuỳ chọn hay
@@ -54,7 +55,6 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
 
   /// Số người đang xem trước bộ bài; null là số backend gợi ý.
   int? _deckPlayers;
-  final _theme = gameMoonlitTheme();
   DateTime? _deadline;
 
   /// Tab Lịch: đóng đăng ký theo giờ (mặc định) hay chủ phòng đóng; bắt đầu
@@ -354,8 +354,8 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   Widget build(BuildContext context) {
     final list = ref.watch(gameListProvider);
     // Màn tạo ván cùng tông ánh trăng với trang ván.
-    return Theme(
-      data: _theme,
+    return GameThemed(
+      moonlit: true,
       child: Builder(
         builder: (context) {
           final palette = context.runNowPalette;
@@ -424,10 +424,10 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
                                   child: Text(
                                     why,
                                     textAlign: TextAlign.center,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12.5,
                                       fontWeight: FontWeight.w700,
-                                      color: _M.amberLight,
+                                      color: context.moonlit.amberLight,
                                     ),
                                   ),
                                 ),
@@ -466,7 +466,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
           child: Column(
             children: [
               for (final option in list.roleOptions)
-                SwitchListTile(
+                RunNowSwitchListTile(
                   title: Text(option.label),
                   value: _roleOn(list, option),
                   onChanged: _working || !list.canPickRoles
@@ -586,7 +586,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   List<Widget> _postFields({void Function(VoidCallback)? onChanged}) {
     final update = onChanged ?? setState;
     return [
-      SwitchListTile(
+      RunNowSwitchListTile(
         title: const Text('Ván thử'),
         subtitle: const Text('Chạy ở group test, chỉ admin và người test thấy'),
         value: _testMode,
@@ -701,7 +701,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
   Future<void> _editPost() => showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: _M.panel,
+    backgroundColor: context.moonlit.panel,
     showDragHandle: true,
     builder: (sheet) => StatefulBuilder(
       builder: (sheet, setSheet) => Padding(
@@ -1034,7 +1034,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         setting: s,
         warn: on ? s.warn : null,
         trailing: s.type == GameSetting.toggle
-            ? Switch(
+            ? RunNowSwitch(
                 value: value == true,
                 onChanged: _working ? null : (v) => set(s.key, v),
               )
@@ -1077,8 +1077,12 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         if (items.any(power))
           GameCreateLabel(
             label,
-            color: _M.phaseTrial,
-            leading: gameKeyIcon('wolf', color: _M.phaseTrial, size: 16),
+            color: context.moonlit.phaseTrial,
+            leading: gameKeyIcon(
+              'wolf',
+              color: context.moonlit.phaseTrial,
+              size: 16,
+            ),
             trailing: GameCreateLink(
               'Là gì?',
               onTap: () => showGameCreateSheet(
@@ -1232,7 +1236,11 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
       const SizedBox(height: 10),
       Text(
         fixed ? deck.fixedNote : deck.note,
-        style: const TextStyle(fontSize: 12.5, height: 1.45, color: _M.muted),
+        style: TextStyle(
+          fontSize: 12.5,
+          height: 1.45,
+          color: context.moonlit.muted,
+        ),
       ),
       const SizedBox(height: 10),
       if (!fixed) ...[
@@ -1339,7 +1347,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
               : (v) => setState(() => _settings[s.key] = v),
         ),
       ),
-      GameSetting.toggle => SwitchListTile(
+      GameSetting.toggle => RunNowSwitchListTile(
         contentPadding: EdgeInsets.zero,
         dense: true,
         title: Text(
@@ -1349,7 +1357,7 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
         subtitle: switch (s.hint) {
           final h? when h.isNotEmpty => Text(
             h,
-            style: const TextStyle(fontSize: 12, color: _M.muted),
+            style: TextStyle(fontSize: 12, color: context.moonlit.muted),
           ),
           _ => null,
         },
@@ -1421,8 +1429,6 @@ class _GameCreateScreenState extends ConsumerState<GameCreateScreen> {
     ];
   }
 }
-
-typedef _M = RunNowMoonlitTokens;
 
 /// Lịch một vòng khi có vòng đồng hồ: khoá của bốn ô pha, độ dài từng pha
 /// (phút), số vòng mỗi ngày đã khớp luật, giờ mở đêm (phút trong ngày), mốc

@@ -132,7 +132,7 @@ class _JournalTabPicker extends StatelessWidget {
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
           color: theme.colorScheme.onSurface.withValues(alpha: 0.07),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: palette.radius(14),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -154,7 +154,7 @@ class _JournalTabPicker extends StatelessWidget {
                         color: tab.index == tabs.index
                             ? palette.tint
                             : Colors.transparent,
-                        borderRadius: BorderRadius.circular(11),
+                        borderRadius: palette.radius(11),
                       ),
                       child: Icon(
                         switch (tab) {
@@ -256,8 +256,7 @@ class StepTimelineRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final onAccent = dark ? RunNowDataColors.coachOnAccentDark : Colors.white;
+    final onAccent = context.runNowPalette.onAccent;
     final date = DateTime.tryParse(day.date);
     final pct = ((day.steps / stepDailyGoal) * 100).round();
     final reached = day.steps >= stepDailyGoal;
@@ -299,7 +298,7 @@ class StepTimelineRow extends StatelessWidget {
                   height: 22,
                   decoration: BoxDecoration(
                     color: palette.accent,
-                    shape: BoxShape.circle,
+                    shape: context.runNowPalette.round,
                     boxShadow: [
                       BoxShadow(
                         color: palette.accent.withValues(alpha: 0.32),
@@ -325,7 +324,7 @@ class StepTimelineRow extends StatelessWidget {
                 type: MaterialType.transparency,
                 child: InkWell(
                   onTap: onTap,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: palette.radius(8),
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                     child: Column(
@@ -371,13 +370,11 @@ class StepTimelineRow extends StatelessWidget {
                         ),
                         const SizedBox(height: 11),
                         ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: context.runNowPalette.radius(4),
                           child: LinearProgressIndicator(
                             value: (day.steps / stepDailyGoal).clamp(0.0, 1.0),
                             minHeight: 6,
-                            backgroundColor: palette.accent.withValues(
-                              alpha: 0.12,
-                            ),
+                            backgroundColor: palette.wash(palette.accent, 0.12),
                             valueColor: AlwaysStoppedAnimation(palette.accent),
                           ),
                         ),
@@ -643,7 +640,7 @@ class _JournalSkeletonTile extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: palette.glassStart.withValues(alpha: 0.72),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: palette.radius(12),
         ),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -656,8 +653,8 @@ class _JournalSkeletonTile extends StatelessWidget {
                     width: 46,
                     height: 46,
                     decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.16),
-                      shape: BoxShape.circle,
+                      color: context.runNowPalette.wash(accent, 0.16),
+                      shape: context.runNowPalette.round,
                     ),
                   ),
                   const SizedBox(width: 14),
@@ -702,7 +699,7 @@ class _SkeletonMetric extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.38),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: context.runNowPalette.radius(10),
       ),
       child: const SizedBox(height: 58),
     );
@@ -727,7 +724,7 @@ class _SkeletonLine extends StatelessWidget {
       height: height,
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: context.runNowPalette.radius(999),
       ),
     );
   }

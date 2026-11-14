@@ -5,6 +5,7 @@ import 'package:myrun/src/club_ranking.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 /// Màu cảnh núi, pha từ palette nên đổi hành hay sáng tối là núi đổi theo.
 class MountainColors {
@@ -25,14 +26,21 @@ class MountainColors {
   });
 
   factory MountainColors.of(RunNowPalette palette) {
-    final ramp = palette.element.ramp;
+    final ramp = palette.ramp;
     final sky = palette.tint;
     final ink = palette.ink;
     if (palette.appearance == RunNowAppearance.light) {
-      final face = Color.lerp(ramp[3], palette.textMuted, 0.55)!;
+      // Kiểu Thép: núi là khối mực đen, không pha đỏ ra nâu.
+      final face = palette.isIron
+          ? Color.lerp(ink, palette.textMuted, 0.18)!
+          : Color.lerp(ramp[3], palette.textMuted, 0.55)!;
       return MountainColors(
         sky: sky,
-        glow: Color.lerp(sky, RunNowRankColors.light[0], 0.4)!,
+        glow: Color.lerp(
+          sky,
+          palette.isIron ? ramp[1] : RunNowRankColors.light[0],
+          0.4,
+        )!,
         far: Color.lerp(sky, ramp[1], 0.3)!,
         mid: Color.lerp(sky, ramp[2], 0.45)!,
         face: face,
@@ -133,7 +141,7 @@ class RankMountain extends StatelessWidget {
     final palette = context.runNowPalette;
     final colors = MountainColors.of(palette);
     final light = palette.appearance == RunNowAppearance.light;
-    final medals = light ? RunNowRankColors.light : RunNowRankColors.dark;
+    final medals = context.runNowPalette.medals;
     final me = light ? palette.accentDeep : palette.accent;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return Semantics(
@@ -210,6 +218,7 @@ class RankMountain extends StatelessWidget {
                       painter: _MountainPainter(
                         colors: colors,
                         scaleX: sx,
+                        square: palette.isIron,
                         contours: [
                           for (final row in rows)
                             (
@@ -287,7 +296,10 @@ class _MountainPainter extends CustomPainter {
     required this.colors,
     required this.scaleX,
     required this.contours,
+    required this.square,
   });
+
+  final bool square;
 
   final MountainColors colors;
   final double scaleX;
@@ -411,7 +423,7 @@ class _MountainPainter extends CustomPainter {
       Paint()
         ..color = colors.pole
         ..strokeWidth = 2
-        ..strokeCap = StrokeCap.round,
+        ..strokeCap = (square ? StrokeCap.butt : StrokeCap.round),
     );
     canvas.drawPath(
       Path()
@@ -453,7 +465,7 @@ class _MountainPainter extends CustomPainter {
   }
 
   /// Chấm tròn đều dọc [path].
-  static void _dots(
+  void _dots(
     Canvas canvas,
     Path path,
     Color color, {
@@ -463,7 +475,7 @@ class _MountainPainter extends CustomPainter {
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = width
-      ..strokeCap = StrokeCap.round
+      ..strokeCap = (square ? StrokeCap.square : StrokeCap.round)
       ..color = color;
     for (final PathMetric metric in path.computeMetrics()) {
       for (var d = 0.0; d <= metric.length; d += gap) {
@@ -501,7 +513,7 @@ class _Avatar extends StatelessWidget {
       height: size,
       padding: const EdgeInsets.all(2.5),
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
+        shape: context.runNowPalette.round,
         color: ring,
         boxShadow: [
           BoxShadow(
@@ -511,7 +523,7 @@ class _Avatar extends StatelessWidget {
           ),
         ],
       ),
-      child: CircleAvatar(
+      child: RunNowAvatar(
         radius: size / 2 - 2.5,
         backgroundColor: palette.accent,
         backgroundImage: hasUrl ? cachedAvatarImage(context, url, size) : null,

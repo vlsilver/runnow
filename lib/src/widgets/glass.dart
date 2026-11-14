@@ -54,17 +54,17 @@ class GlassPanel extends StatelessWidget {
     final palette = context.runNowPalette;
     final effectiveRadius = borderRadius >= 900
         ? borderRadius
-        : math.min(borderRadius, 12).toDouble();
+        : palette.corner(math.min(borderRadius, 12).toDouble());
     return Container(
       margin: margin,
       decoration: border == null
           ? null
           : BoxDecoration(
               border: border,
-              borderRadius: BorderRadius.circular(effectiveRadius),
+              borderRadius: context.runNowPalette.radius(effectiveRadius),
             ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(effectiveRadius),
+        borderRadius: context.runNowPalette.radius(effectiveRadius),
         clipBehavior: Clip.antiAlias,
         child: DecoratedBox(
           decoration: BoxDecoration(
@@ -75,7 +75,7 @@ class GlassPanel extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-            borderRadius: BorderRadius.circular(effectiveRadius),
+            borderRadius: context.runNowPalette.radius(effectiveRadius),
           ),
           child: Padding(padding: padding ?? EdgeInsets.zero, child: child),
         ),

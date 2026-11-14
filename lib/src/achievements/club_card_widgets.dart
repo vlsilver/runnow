@@ -188,8 +188,8 @@ class _CardFace extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               DecoratedBox(
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
+                decoration: BoxDecoration(
+                  shape: context.runNowPalette.round,
                   color: RunNowGameTokens.nightInk,
                 ),
                 child: Padding(
@@ -200,7 +200,7 @@ class _CardFace extends StatelessWidget {
               const SizedBox(height: 4),
               DecoratedBox(
                 decoration: ShapeDecoration(
-                  shape: const StadiumBorder(),
+                  shape: context.runNowPalette.pillBorder,
                   color: RunNowGameTokens.nightBackground.withValues(
                     alpha: 0.72,
                   ),
@@ -268,7 +268,7 @@ class _CheerPill extends ConsumerWidget {
       padding: const EdgeInsets.only(top: 4),
       child: DecoratedBox(
         decoration: ShapeDecoration(
-          shape: const StadiumBorder(),
+          shape: context.runNowPalette.pillBorder,
           color: RunNowGameTokens.nightBackground.withValues(alpha: 0.72),
         ),
         child: Padding(

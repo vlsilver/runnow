@@ -105,10 +105,7 @@ Color workoutLoadColor(WorkoutType type, RunNowPalette palette) {
     WorkoutType.long => palette.accent,
     WorkoutType.tempo => Color.lerp(palette.accent, far, 0.28)!,
     WorkoutType.interval => Color.lerp(palette.accent, far, 0.55)!,
-    WorkoutType.race =>
-      dark
-          ? RunNowDataColors.coachIntervalDark
-          : RunNowDataColors.coachIntervalLight,
+    WorkoutType.race => palette.warmMark,
   };
 }
 

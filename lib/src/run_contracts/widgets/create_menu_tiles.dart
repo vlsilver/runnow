@@ -44,7 +44,7 @@ class CreatePosterTile extends StatelessWidget {
       label: title,
       child: Material(
         color: bg,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: palette.radius(22),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
@@ -62,6 +62,7 @@ class CreatePosterTile extends StatelessWidget {
                           : Colors.white,
                       warm: palette.warmMark,
                       ground: Color.lerp(bg, Colors.black, 0.35)!,
+                      square: palette.isIron,
                     ),
                   ),
                 ),
@@ -71,14 +72,16 @@ class CreatePosterTile extends StatelessWidget {
                   bottom: 13,
                   child: ExcludeSemantics(
                     child: Text(
-                      title,
+                      palette.title(title),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.3,
-                        color: fg,
+                      style: palette.heading(
+                        TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.3,
+                          color: fg,
+                        ),
                       ),
                     ),
                   ),
@@ -98,7 +101,10 @@ class _PosterPainter extends CustomPainter {
     required this.line,
     required this.warm,
     required this.ground,
+    required this.square,
   });
+
+  final bool square;
 
   final CreatePosterKind kind;
   final Color line;
@@ -176,7 +182,7 @@ class _PosterPainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.4
-        ..strokeCap = StrokeCap.round
+        ..strokeCap = (square ? StrokeCap.butt : StrokeCap.round)
         ..color = line.withValues(alpha: 0.42),
     );
     final metric = route.computeMetrics().first;
@@ -192,7 +198,7 @@ class _PosterPainter extends CustomPainter {
   void _coach(Canvas canvas, Size s) {
     final track = RRect.fromRectAndRadius(
       Rect.fromLTWH(s.width - 96, 14, 82, 50),
-      const Radius.circular(25),
+      Radius.circular(25),
     );
     final lane = Paint()
       ..style = PaintingStyle.stroke
@@ -207,7 +213,7 @@ class _PosterPainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 3.4
-        ..strokeCap = StrokeCap.round
+        ..strokeCap = (square ? StrokeCap.butt : StrokeCap.round)
         ..color = line,
     );
     _sparkle(canvas, Offset(22, 26), 8, line);
@@ -260,7 +266,7 @@ class CreateBibTile extends StatelessWidget {
       height: 7,
       decoration: BoxDecoration(
         color: palette.background,
-        shape: BoxShape.circle,
+        shape: context.runNowPalette.round,
         border: Border.all(color: palette.border),
       ),
     );
@@ -270,7 +276,7 @@ class CreateBibTile extends StatelessWidget {
       child: Material(
         color: palette.glassStart,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: palette.radius(14),
           side: BorderSide(color: palette.border),
         ),
         clipBehavior: Clip.antiAlias,
@@ -293,12 +299,14 @@ class CreateBibTile extends StatelessWidget {
                     children: [
                       Text(
                         value,
-                        style: TextStyle(
-                          fontSize: 34,
-                          height: 1.0,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -1,
-                          color: palette.ink,
+                        style: palette.heading(
+                          TextStyle(
+                            fontSize: 34,
+                            height: 1.0,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -1,
+                            color: palette.ink,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 5),
@@ -319,7 +327,7 @@ class CreateBibTile extends StatelessWidget {
                     margin: const EdgeInsets.only(top: 5, bottom: 5),
                     decoration: BoxDecoration(
                       color: mark,
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: context.runNowPalette.radius(2),
                     ),
                   ),
                   Text(
@@ -362,7 +370,7 @@ class CreateRoundAction extends StatelessWidget {
       label: label,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: palette.radius(16),
         child: ExcludeSemantics(
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
@@ -374,7 +382,7 @@ class CreateRoundAction extends StatelessWidget {
                   height: 52,
                   decoration: BoxDecoration(
                     color: palette.glassStart,
-                    shape: BoxShape.circle,
+                    shape: context.runNowPalette.round,
                     border: Border.all(color: palette.border),
                   ),
                   child: Icon(icon, size: 23, color: palette.accentDeep),

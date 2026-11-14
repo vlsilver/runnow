@@ -12,6 +12,7 @@ import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/live_route_view.dart';
 import 'package:myrun/src/widgets/photo_pin_marker.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 const _photoClusterThresholdMeters = 15.0;
 const _photoClusterDistance = Distance();
@@ -215,7 +216,7 @@ class _MapExpandButton extends StatelessWidget {
       label: 'Phóng to bản đồ toàn màn hình',
       child: Material(
         color: Colors.transparent,
-        shape: const CircleBorder(),
+        shape: context.runNowPalette.roundBorder,
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
@@ -224,7 +225,7 @@ class _MapExpandButton extends StatelessWidget {
             height: 36,
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.55),
-              shape: BoxShape.circle,
+              shape: context.runNowPalette.round,
               border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
             ),
             child: const Icon(
@@ -274,14 +275,14 @@ class _ViewLiveButtonState extends State<_ViewLiveButton>
       child: RepaintBoundary(
         child: Material(
           color: Colors.transparent,
-          shape: const StadiumBorder(),
+          shape: context.runNowPalette.pillBorder,
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: widget.onTap,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: RunNowSemanticColors.danger,
-                borderRadius: BorderRadius.circular(999),
+                color: context.runNowPalette.danger,
+                borderRadius: context.runNowPalette.radius(999),
                 border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
               ),
               child: Padding(
@@ -300,9 +301,9 @@ class _ViewLiveButtonState extends State<_ViewLiveButton>
                       child: Container(
                         width: 7,
                         height: 7,
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           color: Colors.white,
-                          shape: BoxShape.circle,
+                          shape: context.runNowPalette.round,
                         ),
                       ),
                     ),
@@ -599,22 +600,24 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
         MarkerLayer(
           markers: [
             _routeMarker(
+              corner: context.runNowPalette.corner(10),
               point: points.first,
               // Xanh lá/đỏ tương phản mạnh, không phụ thuộc ramp màu theme —
               // trước đó dùng secondary/accent (2 bậc liền kề trong ramp)
               // nhìn gần như cùng màu, khó phân biệt bắt đầu/kết thúc.
-              color: RunNowSemanticColors.success,
+              color: context.runNowPalette.success,
               icon: Icons.play_arrow_rounded,
               semanticLabel: 'Điểm bắt đầu',
             ),
             // Đang chạy (follow): điểm cuối là VỊ TRÍ HIỆN TẠI → chấm định vị,
             // KHÔNG phải cờ đích. Cờ đích chỉ cho buổi đã xong.
             if (widget.follow)
-              _currentPositionMarker(points.last)
+              _currentPositionMarker(points.last, context.runNowPalette)
             else
               _routeMarker(
+                corner: context.runNowPalette.corner(10),
                 point: points.last,
-                color: RunNowSemanticColors.danger,
+                color: context.runNowPalette.danger,
                 icon: Icons.sports_score_rounded,
                 semanticLabel: 'Điểm kết thúc',
               ),
@@ -701,7 +704,7 @@ class _MapCircleButton extends StatelessWidget {
       color: scheme.surface.withValues(alpha: 0.92),
       elevation: 3,
       shadowColor: Colors.black.withValues(alpha: 0.3),
-      shape: const CircleBorder(),
+      shape: context.runNowPalette.roundBorder,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -730,7 +733,7 @@ class _TelemetryMapMarker extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.2),
-          shape: BoxShape.circle,
+          shape: context.runNowPalette.round,
           border: Border.all(color: Colors.white, width: 2),
           boxShadow: [
             BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 12),
@@ -740,7 +743,7 @@ class _TelemetryMapMarker extends StatelessWidget {
           child: Container(
             width: 13,
             height: 13,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            decoration: BoxDecoration(color: color, shape: context.runNowPalette.round),
           ),
         ),
       ),
@@ -782,19 +785,19 @@ class _LiveRunnerMarkerState extends State<_LiveRunnerMarker>
         children: [
           DecoratedBox(
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: RunNowSemanticColors.info, width: 2.5),
+              shape: context.runNowPalette.round,
+              border: Border.all(color: context.runNowPalette.info, width: 2.5),
               boxShadow: [
                 BoxShadow(
-                  color: RunNowSemanticColors.info.withValues(alpha: 0.45),
+                  color: context.runNowPalette.info.withValues(alpha: 0.45),
                   blurRadius: 10,
                 ),
               ],
             ),
-            child: ClipOval(
+            child: RunNowRoundClip(
               child: avatarUrl == null || avatarUrl.isEmpty
                   ? ColoredBox(
-                      color: RunNowSemanticColors.info,
+                      color: context.runNowPalette.info,
                       child: SizedBox(
                         width: 38,
                         height: 38,
@@ -832,8 +835,8 @@ class _LiveRunnerMarkerState extends State<_LiveRunnerMarker>
                   width: 12,
                   height: 12,
                   decoration: BoxDecoration(
-                    color: RunNowSemanticColors.info,
-                    shape: BoxShape.circle,
+                    color: context.runNowPalette.info,
+                    shape: context.runNowPalette.round,
                     border: Border.all(color: Colors.white, width: 2),
                   ),
                 ),
@@ -848,8 +851,8 @@ class _LiveRunnerMarkerState extends State<_LiveRunnerMarker>
 
 // "Vị trí hiện tại" cho map đang chạy (follow): icon người chạy 🏃, không phải
 // cờ đích. rotate:true để icon luôn thẳng đứng dù map xoay theo hướng chạy.
-Marker _currentPositionMarker(LatLng point) {
-  const color = RunNowSemanticColors.info;
+Marker _currentPositionMarker(LatLng point, RunNowPalette palette) {
+  final color = palette.info;
   return Marker(
     point: point,
     width: 36,
@@ -860,7 +863,7 @@ Marker _currentPositionMarker(LatLng point) {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: color,
-          shape: BoxShape.circle,
+          shape: palette.round,
           border: Border.all(color: Colors.white, width: 2.5),
           boxShadow: [
             BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 10),
@@ -877,6 +880,7 @@ Marker _currentPositionMarker(LatLng point) {
 }
 
 Marker _routeMarker({
+  required double corner,
   required LatLng point,
   required Color color,
   required IconData icon,
@@ -894,7 +898,7 @@ Marker _routeMarker({
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(corner),
           border: Border.all(color: Colors.white, width: 2),
           boxShadow: [
             BoxShadow(color: color.withValues(alpha: 0.42), blurRadius: 10),

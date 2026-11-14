@@ -322,7 +322,7 @@ class _UsageCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               [_usd(usage.costUsd), ?budgetText].join(' · '),
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+              style: palette.heading(const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
             ),
             Text(
               '${usage.calls} lượt gọi · ${usage.searchCalls} lượt tìm kiếm',
@@ -472,7 +472,7 @@ class _UnpricedWarning extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: scheme.errorContainer,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: context.runNowPalette.radius(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

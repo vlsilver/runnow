@@ -4,6 +4,7 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets/cached_avatar.dart';
 import 'training_plan_models.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 /// Bảng "đang theo giáo án" — mỗi người một dòng với tiến độ riêng. Dùng chung
 /// cho màn chi tiết coach (người tham gia xem) lẫn hub của chủ giáo án (theo dõi
@@ -44,7 +45,7 @@ class CoachRoster extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: palette.radius(16),
         border: Border.all(color: palette.border),
       ),
       child: Column(
@@ -116,8 +117,8 @@ class CoachRoster extends StatelessWidget {
                       vertical: 1,
                     ),
                     decoration: BoxDecoration(
-                      color: palette.accent.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(999),
+                      color: palette.wash(palette.accent, 0.14),
+                      borderRadius: palette.radius(999),
                     ),
                     child: Text(
                       'HLV',
@@ -136,7 +137,7 @@ class CoachRoster extends StatelessWidget {
           Expanded(
             flex: 5,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: palette.radius(999),
               child: LinearProgressIndicator(
                 value: ratio,
                 minHeight: 6,
@@ -190,7 +191,7 @@ class CoachFollowersButton extends StatelessWidget {
       button: true,
       label: '$count người đang theo',
       child: InkWell(
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: context.runNowPalette.radius(999),
         onTap: () => showModalBottomSheet<void>(
           context: context,
           backgroundColor: palette.background,
@@ -256,10 +257,10 @@ class CoachFollowersButton extends StatelessWidget {
       width: _size,
       height: _size,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
+        shape: context.runNowPalette.round,
         border: Border.all(color: palette.background, width: 2),
       ),
-      child: CircleAvatar(
+      child: RunNowAvatar(
         backgroundColor: palette.tint,
         backgroundImage: url == null || url.isEmpty
             ? null

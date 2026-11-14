@@ -181,7 +181,7 @@ void main() {
       expect(RunCardStyle.parse('city.top.lạ'), isNull);
     });
 
-    test('đúng 14 bộ có công tắc bản đồ', () {
+    test('đúng 15 bộ có công tắc bản đồ', () {
       expect(
         [
           for (final set in RunCardSet.values)
@@ -202,6 +202,7 @@ void main() {
           'paperMap',
           'receipt',
           'medal',
+          'iron',
         ],
       );
     });

@@ -22,6 +22,7 @@ import 'package:myrun/src/widgets/photo_viewer.dart';
 import 'package:myrun/src/widgets/route_map.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:myrun/src/widgets/run_now_empty.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 class RunContractDetailScreen extends ConsumerStatefulWidget {
   const RunContractDetailScreen({required this.contractId, super.key});
@@ -427,8 +428,8 @@ class _RunContractDetailScreenState
       backgroundColor: palette.glassStart,
       barrierColor: Colors.black.withValues(alpha: 0.72),
       clipBehavior: Clip.antiAlias,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: context.runNowPalette.cornerRadius(24)),
       ),
       builder: (context) => _ActivityAssignmentSheet(
         contract: contract,
@@ -597,7 +598,7 @@ class _ActivityAssignmentSheetState extends State<_ActivityAssignmentSheet> {
                   height: 4,
                   decoration: BoxDecoration(
                     color: Theme.of(context).dividerColor,
-                    borderRadius: BorderRadius.circular(2),
+                    borderRadius: context.runNowPalette.radius(2),
                   ),
                 ),
               ),
@@ -760,11 +761,11 @@ class _AssignedActivityTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Color.alphaBlend(
-          palette.accent.withValues(alpha: 0.07),
+          palette.wash(palette.accent, 0.07),
           palette.glassStart,
         ),
         border: Border.all(color: palette.border),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: palette.radius(12),
       ),
       child: Row(
         children: [
@@ -805,7 +806,7 @@ class _AssignedActivityTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
             decoration: BoxDecoration(
               color: palette.accent,
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: context.runNowPalette.radius(999),
             ),
             child: Text(
               'ĐÃ GÁN',
@@ -855,7 +856,7 @@ class _ContractDetailHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(
+              RunNowAvatar(
                 radius: 22,
                 backgroundImage:
                     ownerAvatarUrl == null || ownerAvatarUrl!.isEmpty
@@ -891,8 +892,8 @@ class _ContractDetailHeader extends StatelessWidget {
               ),
               DecoratedBox(
                 decoration: BoxDecoration(
-                  color: stateColor.withValues(alpha: 0.13),
-                  borderRadius: BorderRadius.circular(999),
+                  color: context.runNowPalette.wash(stateColor, 0.13),
+                  borderRadius: context.runNowPalette.radius(999),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
@@ -988,12 +989,12 @@ class _MyProgressCard extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 _contractValue(contract.metric, participant.progressValue),
-                style: TextStyle(
+                style: palette.heading(TextStyle(
                   color: foreground,
                   fontSize: 22,
                   height: 1,
                   fontWeight: FontWeight.w900,
-                ),
+                )),
               ),
               Text(
                 '/${_contractValue(contract.metric, contract.targetValue)}',
@@ -1035,7 +1036,7 @@ class _MyProgressCard extends StatelessWidget {
           LinearProgressIndicator(
             value: rawRatio.clamp(0.0, 1.0),
             minHeight: 9,
-            borderRadius: BorderRadius.circular(2),
+            borderRadius: context.runNowPalette.radius(2),
             backgroundColor: foreground.withValues(alpha: 0.2),
             color: foreground,
           ),
@@ -1123,12 +1124,12 @@ class _TeamConquestCard extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 _contractValue(contract.metric, teamTotal),
-                style: TextStyle(
+                style: palette.heading(TextStyle(
                   color: foreground,
                   fontSize: 22,
                   height: 1,
                   fontWeight: FontWeight.w900,
-                ),
+                )),
               ),
               Text(
                 '/${_contractValue(contract.metric, contract.targetValue)}',
@@ -1146,7 +1147,7 @@ class _TeamConquestCard extends StatelessWidget {
           LinearProgressIndicator(
             value: ratio.clamp(0.0, 1.0),
             minHeight: 9,
-            borderRadius: BorderRadius.circular(2),
+            borderRadius: context.runNowPalette.radius(2),
             backgroundColor: foreground.withValues(alpha: 0.2),
             color: foreground,
           ),
@@ -1200,14 +1201,14 @@ class _LazyContractSection extends StatelessWidget {
         children: [
           Material(
             color: Colors.transparent,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: palette.radius(18),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: onToggle,
               child: Ink(
                 decoration: BoxDecoration(
                   color: palette.glassStart,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: palette.radius(18),
                 ),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -1336,7 +1337,7 @@ class _LazyRouteMapSection extends ConsumerWidget {
       onToggle: onToggle,
       child: RepaintBoundary(
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: context.runNowPalette.radius(18),
           child: RouteMap.fromRoutePoints(
             points: [
               for (final point in routePoints)
@@ -1476,7 +1477,7 @@ class _GoLiveButtonState extends State<_GoLiveButton>
 
   @override
   Widget build(BuildContext context) {
-    const danger = RunNowSemanticColors.danger;
+    final danger = context.runNowPalette.danger;
     final palette = context.runNowPalette;
     final activeColor = widget.enabled ? danger : palette.textMuted;
     // Bọc RepaintBoundary — pulse chạy vô thời hạn (`repeat(reverse: true)`)
@@ -1491,7 +1492,7 @@ class _GoLiveButtonState extends State<_GoLiveButton>
               : 0.0;
           return DecoratedBox(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: context.runNowPalette.radius(999),
               boxShadow: [
                 BoxShadow(
                   color: activeColor.withValues(alpha: glowAlpha),
@@ -1505,7 +1506,7 @@ class _GoLiveButtonState extends State<_GoLiveButton>
         },
         child: Material(
           color: Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: context.runNowPalette.radius(999),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: widget.enabled ? widget.onPressed : null,
@@ -1538,7 +1539,7 @@ class _GoLiveButtonState extends State<_GoLiveButton>
                         height: 10,
                         decoration: BoxDecoration(
                           color: widget.enabled ? Colors.white : activeColor,
-                          shape: BoxShape.circle,
+                          shape: context.runNowPalette.round,
                         ),
                       ),
                     ),
@@ -1596,7 +1597,7 @@ class _ContractPhotoAlbum extends StatelessWidget {
           itemBuilder: (context, index) {
             final photo = sorted[index];
             return ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: context.runNowPalette.radius(12),
               child: GestureDetector(
                 onTap: () => showActivityPhotoViewer(context, photo),
                 child: StoragePhoto(
@@ -1737,7 +1738,7 @@ class _ParticipantRow extends StatelessWidget {
         : (participant.progressValue / denom).clamp(0.0, 1.0);
     return Row(
       children: [
-        CircleAvatar(
+        RunNowAvatar(
           radius: 20,
           backgroundImage: avatarUrl == null || avatarUrl!.isEmpty
               ? null
@@ -1763,9 +1764,9 @@ class _ParticipantRow extends StatelessWidget {
                   ),
                   if (completed) ...[
                     const SizedBox(width: 6),
-                    const Icon(
+                    Icon(
                       Icons.check_circle,
-                      color: RunNowSemanticColors.success,
+                      color: context.runNowPalette.success,
                       size: 17,
                     ),
                   ],
@@ -1775,10 +1776,10 @@ class _ParticipantRow extends StatelessWidget {
               LinearProgressIndicator(
                 value: ratio,
                 minHeight: 5,
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: context.runNowPalette.radius(2),
                 backgroundColor: palette.border,
                 color: completed
-                    ? RunNowSemanticColors.success
+                    ? context.runNowPalette.success
                     : palette.accent,
               ),
             ],
@@ -1791,7 +1792,7 @@ class _ParticipantRow extends StatelessWidget {
             Text(
               _contractValue(contract.metric, participant.progressValue),
               style: TextStyle(
-                color: completed ? RunNowSemanticColors.success : null,
+                color: completed ? context.runNowPalette.success : null,
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -1800,7 +1801,7 @@ class _ParticipantRow extends StatelessWidget {
               completed ? 'Xong' : '${(ratio * 100).toStringAsFixed(0)}%',
               style: TextStyle(
                 color: completed
-                    ? RunNowSemanticColors.success
+                    ? context.runNowPalette.success
                     : Theme.of(
                         context,
                       ).colorScheme.onSurface.withValues(alpha: 0.5),

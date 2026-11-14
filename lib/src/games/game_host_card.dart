@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:myrun/src/games/game_models.dart';
-import 'package:myrun/src/theme_tokens.dart';
-
-typedef _M = RunNowMoonlitTokens;
+import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/run_now_switch.dart';
 
 /// Thẻ Quản trò của tab Giao tiếp. Ván nào cũng có Quản trò; chủ ván chọn tính
 /// cách và có đưa Quản trò lên Telegram không. [telegramBody] là chỗ chọn
@@ -53,7 +52,7 @@ class _GameHostCardState extends State<GameHostCard> {
             button: true,
             expanded: _open,
             child: InkWell(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: context.runNowPalette.radius(12),
               onTap: () => setState(() => _open = !_open),
               child: Row(
                 children: [
@@ -62,14 +61,14 @@ class _GameHostCardState extends State<GameHostCard> {
                     height: 40,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: _M.amber,
-                      borderRadius: BorderRadius.circular(12),
+                      color: context.moonlit.amber,
+                      borderRadius: context.runNowPalette.radius(12),
                     ),
-                    child: const Text(
+                    child: Text(
                       'QT',
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
-                        color: _M.onAmber,
+                        color: context.moonlit.onAmber,
                       ),
                     ),
                   ),
@@ -78,23 +77,23 @@ class _GameHostCardState extends State<GameHostCard> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Quản trò',
                           style: TextStyle(
                             fontFamily: 'Barlow Condensed',
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 0.6,
-                            color: _M.ink,
+                            color: context.moonlit.ink,
                           ),
                         ),
                         Text(
                           widget.summary,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12.5,
-                            color: _M.muted,
+                            color: context.moonlit.muted,
                           ),
                         ),
                       ],
@@ -103,9 +102,9 @@ class _GameHostCardState extends State<GameHostCard> {
                   AnimatedRotation(
                     turns: _open ? 0.5 : 0,
                     duration: const Duration(milliseconds: 150),
-                    child: const Icon(
+                    child: Icon(
                       Icons.expand_more_rounded,
-                      color: _M.muted,
+                      color: context.moonlit.muted,
                     ),
                   ),
                 ],
@@ -129,7 +128,7 @@ class _GameHostCardState extends State<GameHostCard> {
                 sub: widget.telegramOn
                     ? 'Người chơi cần liên kết Telegram'
                     : 'Quản trò chỉ nói trong app',
-                trailing: Switch(
+                trailing: RunNowSwitch(
                   value: widget.telegramOn,
                   onChanged: widget.onTelegram,
                 ),
@@ -139,8 +138,10 @@ class _GameHostCardState extends State<GameHostCard> {
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.only(left: 12),
-                decoration: const BoxDecoration(
-                  border: Border(left: BorderSide(color: _M.border, width: 2)),
+                decoration: BoxDecoration(
+                  border: Border(
+                    left: BorderSide(color: context.moonlit.border, width: 2),
+                  ),
                 ),
                 child: widget.telegramBody,
               ),
@@ -219,12 +220,14 @@ class GamePersonaChips extends StatelessWidget {
       labelStyle: TextStyle(
         fontSize: 12.5,
         fontWeight: FontWeight.w700,
-        color: selected ? _M.amberBright : _M.muted,
+        color: selected ? context.moonlit.amberBright : context.moonlit.muted,
       ),
-      backgroundColor: _M.panel,
-      selectedColor: _M.amberTint,
-      side: BorderSide(color: selected ? _M.amber : _M.border),
-      shape: const StadiumBorder(),
+      backgroundColor: context.moonlit.panel,
+      selectedColor: context.moonlit.amberTint,
+      side: BorderSide(
+        color: selected ? context.moonlit.amber : context.moonlit.border,
+      ),
+      shape: context.runNowPalette.pillBorder,
     );
     return Wrap(
       spacing: 6,
@@ -247,7 +250,7 @@ Future<void> _editPersona(
   final saved = await showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: _M.panel,
+    backgroundColor: context.moonlit.panel,
     showDragHandle: true,
     builder: (context) => _PersonaSheet(setting: setting, initial: value),
   );
@@ -290,10 +293,10 @@ class _PersonaSheetState extends State<_PersonaSheet> {
           children: [
             Text(
               s.label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w900,
-                color: _M.ink,
+                color: context.moonlit.ink,
               ),
             ),
             if (s.presets.isNotEmpty) ...[
@@ -348,7 +351,7 @@ class GameTalkChannels extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(height: 12),
@@ -373,7 +376,7 @@ class GameTalkChannels extends StatelessWidget {
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1.2,
-                  color: _M.faint,
+                  color: context.moonlit.faint,
                 ),
               ),
             ),
@@ -394,9 +397,9 @@ class _Panel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _M.raised,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _M.border),
+        color: context.moonlit.raised,
+        borderRadius: context.runNowPalette.radius(18),
+        border: Border.all(color: context.moonlit.border),
       ),
       child: child,
     );
@@ -426,10 +429,10 @@ class _Row extends StatelessWidget {
           width: 32,
           height: 32,
           decoration: BoxDecoration(
-            color: _M.amberTint,
-            borderRadius: BorderRadius.circular(10),
+            color: context.moonlit.amberTint,
+            borderRadius: context.runNowPalette.radius(10),
           ),
-          child: Icon(icon, size: 17, color: _M.amberBright),
+          child: Icon(icon, size: 17, color: context.moonlit.amberBright),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -438,17 +441,17 @@ class _Row extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14.5,
                   fontWeight: FontWeight.w800,
-                  color: _M.ink,
+                  color: context.moonlit.ink,
                 ),
               ),
               Text(
                 sub,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12, color: _M.muted),
+                style: TextStyle(fontSize: 12, color: context.moonlit.muted),
               ),
             ],
           ),
