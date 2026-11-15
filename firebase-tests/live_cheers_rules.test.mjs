@@ -7,6 +7,7 @@ import {
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import {
+  arrayUnion,
   collection,
   deleteDoc,
   doc,
@@ -115,6 +116,67 @@ test('mỗi lần bấm chỉ tăng 1 ở đúng emoji vừa bấm', async () =>
   await assertSucceeds(tap('fan', '🔥'));
   const [only] = (await getDocs(collection(fan, 'liveCheers', 'sess9', 'by'))).docs;
   deepStrictEqual(only.data().n, { '🔥': 4, '👏': 2 });
+});
+
+// Đúng cách app mới ghi: thêm quãng đường người chạy đã đi lúc bấm.
+function tapAt(uid, emoji, mark) {
+  return setDoc(
+    cheer(db(uid), uid),
+    {
+      uid,
+      emoji,
+      n: { [emoji]: increment(1) },
+      at: serverTimestamp(),
+      marks: arrayUnion(mark),
+    },
+    { merge: true },
+  );
+}
+
+test('mỗi lần bấm nối một chỗ cùng emoji; app cũ không gửi vẫn bấm được', async () => {
+  await assertSucceeds(tapAt('fan', '🔥', { e: '🔥', d: 1200.5, t: 1 }));
+  await assertFails(tapAt('liar', '🔥', { e: '👏', d: 1200, t: 1 }));
+  await assertFails(tapAt('neg', '🔥', { e: '🔥', d: -1, t: 1 }));
+  await assertFails(tapAt('text', '🔥', { e: '🔥', d: 'xa', t: 1 }));
+  await assertFails(tapAt('junk', '🔥', { e: '🔥', d: 1, t: 1, note: 'hi' }));
+
+  const old = [{ e: '👏', d: 800, t: 1 }];
+  await environment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(cheer(context.firestore(), 'back'), {
+      uid: 'back',
+      emoji: '👏',
+      n: { '👏': 1 },
+      at: longAgo(),
+      marks: old,
+    });
+  });
+  const back = db('back');
+  const base = { uid: 'back', emoji: '🔥', n: { '👏': 1, '🔥': 1 } };
+  // Không viết lại chỗ cũ, không nối hai chỗ một lần.
+  await assertFails(
+    setDoc(cheer(back, 'back'), {
+      ...base,
+      at: serverTimestamp(),
+      marks: [{ e: '👏', d: 9000, t: 1 }, { e: '🔥', d: 900, t: 2 }],
+    }),
+  );
+  await assertFails(
+    setDoc(cheer(back, 'back'), {
+      ...base,
+      at: serverTimestamp(),
+      marks: [...old, { e: '🔥', d: 900, t: 2 }, { e: '🔥', d: 950, t: 3 }],
+    }),
+  );
+  await assertSucceeds(tapAt('back', '🔥', { e: '🔥', d: 900, t: 2 }));
+  const saved = (await getDocs(collection(back, 'liveCheers', 'sess9', 'by')))
+    .docs.find((d) => d.id === 'back');
+  deepStrictEqual(saved.data().marks, [...old, { e: '🔥', d: 900, t: 2 }]);
+
+  // App cũ bấm tiếp lên document đã có marks.
+  await environment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(cheer(context.firestore(), 'back'), { at: longAgo() }, { merge: true });
+  });
+  await assertSucceeds(tap('back', '💪'));
 });
 
 test('không xoá được để đếm lại từ đầu', async () => {

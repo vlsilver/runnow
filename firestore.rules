@@ -454,16 +454,33 @@ service cloud.firestore {
         let data = request.resource.data;
         let cheers = ['👏', '🔥', '💪', '🐢', '🏁'];
         return owns(uid)
-          && data.keys().hasOnly(['uid', 'emoji', 'n', 'at'])
+          && data.keys().hasOnly(['uid', 'emoji', 'n', 'at', 'marks'])
           && data.uid == uid
           && data.emoji in cheers
           && data.at == request.time
           && data.n.diff(before).affectedKeys().hasOnly([data.emoji])
           && data.n[data.emoji] == before.get(data.emoji, 0) + 1;
       }
+      // marks ghi quãng đường người chạy đã đi lúc được cổ vũ, để màn xem lại
+      // hiện đúng chỗ. App cũ không gửi marks nên được giữ nguyên; app mới mỗi
+      // lần bấm nối đúng một mục cùng emoji vào cuối.
+      function validMarks(before) {
+        let data = request.resource.data;
+        let marks = data.get('marks', []);
+        let last = marks[marks.size() - 1];
+        return marks == before
+          || (marks.size() == before.size() + 1
+            && marks.size() <= 2000
+            && (before.size() == 0 || marks[0:before.size()] == before)
+            && last.keys().hasOnly(['e', 'd', 't'])
+            && last.e == data.emoji
+            && last.d is number && last.d >= 0
+            && last.t is int);
+      }
       allow read: if signedIn();
-      allow create: if validCheer({});
+      allow create: if validCheer({}) && validMarks([]);
       allow update: if validCheer(resource.data.n)
+        && validMarks(resource.data.get('marks', []))
         && request.time > resource.data.at + duration.value(3, 's');
     }
 
