@@ -107,37 +107,7 @@ abstract final class RunNowThemeTokens {
   /// Khối tối trên nền tối, nhỉnh hơn surface một bậc.
   static const ironNightDark = Color(0xff2a2a2a);
 
-  // ── Style Pixel: giấy kem, mực chàm, xanh lá máy chơi game cầm tay ───────
-  static const pixelRamp = <Color>[
-    Color(0xffb8ecc0),
-    Color(0xff7ddc91),
-    Color(0xff3fb85c), // brand
-    Color(0xff1f7a3a), // brand-strong
-    Color(0xff0f4a22),
-  ];
-  static const pixelLight = <Color>[
-    Color(0xffe8e4d0), // bg
-    Color(0xfff6f3e4), // surface
-    Color(0xff8a84a0), // border
-    Color(0xff1d1b33), // text
-  ];
-  static const pixelDark = <Color>[
-    Color(0xff16152b), // bg
-    Color(0xff201f3d), // surface
-    Color(0xff55537f), // border
-    Color(0xfff0ecd8), // text
-  ];
-
-  /// Nền các ô phụ ở kiểu Pixel.
-  static const pixelTintLight = Color(0xffd9d4bc);
-  static const pixelTintDark = Color(0xff2b2a52);
-
-  /// Mực chàm: viền khối, khối tối, và chữ đặt trên nền xanh.
-  static const pixelInk = Color(0xff1d1b33);
-
-  /// Vàng đồng xu: chấm live, hôm nay, streak.
-  static const pixelCoin = Color(0xfff2a30f);
-
+  // ── Style Pixel: màu theo ngũ hành, chỉ hình khối và chữ là riêng ───────
   /// Cạnh một ô vuông của lưới pixel, tính bằng điểm ảnh logic. Góc khối và
   /// bậc thang của viền đều ăn theo số này.
   static const pixelStep = 3.0;
@@ -654,63 +624,6 @@ class RunNowMoonlit {
     wolf: Color(0xFFEC6A4C),
     wolfSoft: Color(0x29E63B1F),
     wolfLine: Color(0x8CE63B1F),
-  );
-
-  static const pixel = RunNowMoonlit._(
-    pageTop: Color(0xFF16152B),
-    pageMid: Color(0xFF16152B),
-    page: Color(0xFF16152B),
-    panel: Color(0xFF201F3D),
-    panelTop: Color(0xFF201F3D),
-    panelBottom: Color(0xFF201F3D),
-    raised: Color(0xFF2B2A52),
-    lifted: Color(0xFF34336A),
-    heroTop: Color(0xFF201F3D),
-    heroMid: Color(0xFF201F3D),
-    heroBottom: Color(0xFF201F3D),
-    tabBar: Color(0xF5201F3D),
-    list: Color(0xD9201F3D),
-    well: Color(0x8C16152B),
-    border: Color(0xFF55537F),
-    borderStrong: Color(0xFF8A84A0),
-    divider: Color(0xFF2B2A52),
-    ink: Color(0xFFF0ECD8),
-    inkSoft: Color(0xFFD9D4BC),
-    muted: Color(0xFFA9A5C4),
-    faint: Color(0xFF8A84A0),
-    track: Color(0x1AF0ECD8),
-    barLow: Color(0xFF34336A),
-    amber: Color(0xFF3FB85C),
-    amberBright: Color(0xFF7DDC91),
-    amberStrong: Color(0xFF3FB85C),
-    amberDeep: Color(0xFF1F7A3A),
-    amberSoft: Color(0xFF7DDC91),
-    amberLight: Color(0xFFF0ECD8),
-    amberPale: Color(0xFFF0ECD8),
-    amberCream: Color(0xFFF0ECD8),
-    amberTint: Color(0x383FB85C),
-    amberLine: Color(0x593FB85C),
-    amberGlow: Color(0x00000000),
-    onAmber: Color(0xFF1D1B33),
-    danger: Color(0xFFFF6B6B),
-    phaseNight: Color(0xFFA9A5C4),
-    moon: Color(0xFFD9D4BC),
-    moonTint: Color(0x2ED9D4BC),
-    onMoon: Color(0xFF1D1B33),
-    phaseDawn: Color(0xFF8A84A0),
-    phaseDay: Color(0xFFF2A30F),
-    phaseTrial: Color(0xFFFF6B6B),
-    emblemCore: Color(0xFFF0ECD8),
-    emblemRim: Color(0xFF1F7A3A),
-    emblemGlow: Color(0x00000000),
-    emblemDark: Color(0xFF16152B),
-    emblemFoil: Color(0xFF3FB85C),
-    ctaGlow: Color(0x00000000),
-    telegram: Color(0xFFF0ECD8),
-    onTelegram: Color(0xFF1D1B33),
-    wolf: Color(0xFFFF6B6B),
-    wolfSoft: Color(0x29FF6B6B),
-    wolfLine: Color(0x8CFF6B6B),
   );
 }
 

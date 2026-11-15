@@ -384,7 +384,7 @@ class _Front extends StatelessWidget {
           ColoredBox(color: skin.field),
           face,
           if (sheen != null) _Sheen(light: light, color: sheen),
-          if (!context.runNowPalette.isIron)
+          if (!context.runNowPalette.squared)
             IgnorePointer(
               child: CustomPaint(
                 painter: _TrimPainter(
@@ -570,7 +570,7 @@ class _Front extends StatelessWidget {
           height: _footTop,
           child: Align(alignment: Alignment.bottomCenter, child: lines),
         ),
-        if (!context.runNowPalette.isIron)
+        if (!context.runNowPalette.squared)
           IgnorePointer(
             child: CustomPaint(
               painter: _TrimPainter(
@@ -693,7 +693,7 @@ class _Front extends StatelessWidget {
 
 /// Nét kim loại của bậc. Mặt trước không có nét ngăn tranh với chân thẻ; từ
 /// Vàng có viền trong, Kim cương thêm vệt sáng chạy dọc viền.
-/// Mặt sau luôn có viền trong. Kiểu Thép không vẽ nét này: thẻ vuông, không viền.
+/// Mặt sau luôn có viền trong. Kiểu Thép và Pixel không vẽ nét này: thẻ vuông, không viền.
 class _TrimPainter extends CustomPainter {
   const _TrimPainter({
     required this.tier,
@@ -1275,7 +1275,7 @@ class _Back extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final trim = context.runNowPalette.isIron
+    final trim = context.runNowPalette.squared
         ? const SizedBox.shrink()
         : IgnorePointer(
             child: CustomPaint(

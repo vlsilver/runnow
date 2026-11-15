@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/theme.dart';
 
@@ -180,51 +181,55 @@ class KeoSceneCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = KeoSceneColors.resolve(context.runNowPalette, scene);
-    return Material(
-      clipBehavior: Clip.antiAlias,
-      borderRadius: context.runNowPalette.radius(radius),
-      color: colors.sky,
-      // passthrough: thẻ đứng có cỡ cố định thì con nhận cỡ đó; thẻ ngang thì
-      // con quyết định chiều cao, hình phủ theo.
-      child: Stack(
-        fit: StackFit.passthrough,
-        children: [
-          Positioned.fill(
-            child: RepaintBoundary(
-              child: CustomPaint(
-                painter: KeoScenePainter(
-                  scene: scene,
-                  variant: keoSceneVariant(seed),
-                  colors: colors,
-                  square: context.runNowPalette.squared,
-                ),
-              ),
-            ),
-          ),
-          Theme(
-            data: theme.copyWith(
-              colorScheme: theme.colorScheme.copyWith(
-                onSurface: colors.ink,
-                surface: colors.sky,
-              ),
-            ),
-            // Vệt chạm vẽ trên Material này, nằm trên hình. Material đặt lại
-            // kiểu chữ theo theme gốc, nên màu chữ phải đặt bên trong nó.
-            child: Material(
-              type: MaterialType.transparency,
-              child: InkWell(
-                onTap: onTap,
-                child: DefaultTextStyle.merge(
-                  style: TextStyle(color: colors.ink),
-                  child: IconTheme.merge(
-                    data: IconThemeData(color: colors.ink),
-                    child: Padding(padding: padding, child: child),
+    return PixelFrame(
+      child: Material(
+        clipBehavior: Clip.antiAlias,
+        borderRadius: context.runNowPalette.radius(radius),
+        color: colors.sky,
+        // passthrough: thẻ đứng có cỡ cố định thì con nhận cỡ đó; thẻ ngang thì
+        // con quyết định chiều cao, hình phủ theo.
+        child: Stack(
+          fit: StackFit.passthrough,
+          children: [
+            Positioned.fill(
+              child: RepaintBoundary(
+                child: PixelArt(
+                  child: CustomPaint(
+                    painter: KeoScenePainter(
+                      scene: scene,
+                      variant: keoSceneVariant(seed),
+                      colors: colors,
+                      square: context.runNowPalette.squared,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+            Theme(
+              data: theme.copyWith(
+                colorScheme: theme.colorScheme.copyWith(
+                  onSurface: colors.ink,
+                  surface: colors.sky,
+                ),
+              ),
+              // Vệt chạm vẽ trên Material này, nằm trên hình. Material đặt lại
+              // kiểu chữ theo theme gốc, nên màu chữ phải đặt bên trong nó.
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  onTap: onTap,
+                  child: DefaultTextStyle.merge(
+                    style: TextStyle(color: colors.ink),
+                    child: IconTheme.merge(
+                      data: IconThemeData(color: colors.ink),
+                      child: Padding(padding: padding, child: child),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -287,7 +292,8 @@ class KeoScenePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(KeoScenePainter old) =>
-      old.scene != scene || old.variant != variant ||
+      old.scene != scene ||
+      old.variant != variant ||
       old.colors != colors ||
       old.square != square;
 }

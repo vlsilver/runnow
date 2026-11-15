@@ -938,7 +938,7 @@ class _Tabs extends StatelessWidget {
                   Text(
                     label,
                     style: TextStyle(
-                      fontFamily: gameTitleFont,
+                      fontFamily: context.runNowPalette.narrowFont,
                       fontWeight: FontWeight.w800,
                       fontSize: 15,
                       letterSpacing: 1.2,
@@ -984,7 +984,7 @@ class _Tabs extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.moonlit.tabBar,
         borderRadius: context.runNowPalette.radius(14),
-        border: Border.all(color: context.moonlit.border),
+        border: context.runNowPalette.frameBorder(context.moonlit.border),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.45),
@@ -1105,7 +1105,7 @@ class _StartPreviewBody extends StatelessWidget {
         Text(
           '${preview.count}',
           style: TextStyle(
-            fontFamily: gameTitleFont,
+            fontFamily: context.runNowPalette.narrowFont,
             fontSize: 64,
             height: 1,
             fontWeight: FontWeight.w800,
@@ -1128,7 +1128,7 @@ class _StartPreviewBody extends StatelessWidget {
             decoration: BoxDecoration(
               color: context.moonlit.well,
               borderRadius: context.runNowPalette.radius(14),
-              border: Border.all(color: context.moonlit.border),
+              border: context.runNowPalette.frameBorder(context.moonlit.border),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

@@ -203,8 +203,8 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(
-        fontFamily: 'Barlow Condensed',
+      style: TextStyle(
+        fontFamily: context.runNowPalette.narrowFont,
         fontSize: 22,
         fontWeight: FontWeight.w800,
         letterSpacing: 0.9,
@@ -292,6 +292,7 @@ class _SegmentTrack extends StatelessWidget {
       decoration: BoxDecoration(
         color: onSurface.withValues(alpha: 0.07),
         borderRadius: context.runNowPalette.radius(radius),
+        border: context.runNowPalette.inkBorder,
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: children),
     );
@@ -318,7 +319,9 @@ class _SegmentButton extends StatelessWidget {
     final palette = context.runNowPalette;
     final light = Theme.of(context).brightness == Brightness.light;
     final foreground = selected
-        ? (light ? palette.accentDeep : palette.accent)
+        ? (palette.isPixel
+              ? palette.onAccent
+              : (light ? palette.accentDeep : palette.accent))
         : palette.textMuted;
     return Semantics(
       button: true,
@@ -332,7 +335,10 @@ class _SegmentButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: selected ? palette.tint : Colors.transparent,
+            // Kiểu Pixel: ô đang chọn là khối màu nhấn đặc.
+            color: selected
+                ? (palette.isPixel ? palette.accent : palette.tint)
+                : Colors.transparent,
             borderRadius: context.runNowPalette.radius(radius),
           ),
           child: IconTheme.merge(
@@ -633,7 +639,7 @@ class _RankingRow extends StatelessWidget {
                     '$rank',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontFamily: 'Barlow Condensed',
+                      fontFamily: context.runNowPalette.narrowFont,
                       fontSize: 24,
                       fontWeight: FontWeight.w800,
                       color: rank <= medals.length
@@ -692,7 +698,7 @@ class _RankingRow extends StatelessWidget {
                         text: value,
                         style: TextStyle(
                           color: onSurface,
-                          fontFamily: 'Barlow Condensed',
+                          fontFamily: context.runNowPalette.narrowFont,
                           fontSize: 20,
                           fontWeight: FontWeight.w800,
                         ),

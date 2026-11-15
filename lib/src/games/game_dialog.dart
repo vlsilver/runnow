@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:myrun/src/games/game_hero.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/theme.dart';
 
@@ -57,7 +56,9 @@ class _GameConfirm extends StatelessWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: context.runNowPalette.radius(24),
-            border: Border.all(color: context.moonlit.borderStrong),
+            border: context.runNowPalette.frameBorder(
+              context.moonlit.borderStrong,
+            ),
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
@@ -74,7 +75,7 @@ class _GameConfirm extends StatelessWidget {
                   title,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontFamily: gameTitleFont,
+                    fontFamily: context.runNowPalette.narrowFont,
                     fontSize: 26,
                     height: 1.1,
                     fontWeight: FontWeight.w800,

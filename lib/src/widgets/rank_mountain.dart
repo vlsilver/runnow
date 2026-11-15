@@ -1,6 +1,7 @@
 import 'dart:ui' show PathMetric;
 
 import 'package:flutter/material.dart';
+import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/club_ranking.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
@@ -214,19 +215,21 @@ class RankMountain extends StatelessWidget {
               return Stack(
                 children: [
                   Positioned.fill(
-                    child: CustomPaint(
-                      painter: _MountainPainter(
-                        colors: colors,
-                        scaleX: sx,
-                        square: palette.squared,
-                        contours: [
-                          for (final row in rows)
-                            (
-                              y: row.y,
-                              from: lineStart,
-                              to: row.x - row.size / 2 - 6,
-                            ),
-                        ],
+                    child: PixelArt(
+                      child: CustomPaint(
+                        painter: _MountainPainter(
+                          colors: colors,
+                          scaleX: sx,
+                          square: palette.squared,
+                          contours: [
+                            for (final row in rows)
+                              (
+                                y: row.y,
+                                from: lineStart,
+                                to: row.x - row.size / 2 - 6,
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -318,10 +321,9 @@ class _MountainPainter extends CustomPainter {
       final moon = Path.combine(
         PathOperation.difference,
         Path()..addOval(Rect.fromCircle(center: glowAt, radius: 18)),
-        Path()
-          ..addOval(
-            Rect.fromCircle(center: glowAt + const Offset(8, -6), radius: 16),
-          ),
+        Path()..addOval(
+          Rect.fromCircle(center: glowAt + const Offset(8, -6), radius: 16),
+        ),
       );
       canvas.drawPath(moon, Paint()..color = colors.glow);
       final star = Paint()..color = colors.glow.withValues(alpha: 0.7);
@@ -570,7 +572,7 @@ class _Label extends StatelessWidget {
             rank,
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontFamily: 'Barlow Condensed',
+              fontFamily: context.runNowPalette.narrowFont,
               fontSize: 20,
               height: 1,
               fontWeight: FontWeight.w800,
@@ -618,8 +620,8 @@ class _Label extends StatelessWidget {
                       ),
                     ],
                   ),
-                  style: const TextStyle(
-                    fontFamily: 'Barlow Condensed',
+                  style: TextStyle(
+                    fontFamily: context.runNowPalette.narrowFont,
                     fontSize: 15,
                     height: 1.1,
                     fontWeight: FontWeight.w800,

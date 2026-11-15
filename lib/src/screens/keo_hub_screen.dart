@@ -30,6 +30,7 @@ import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/training_plan/training_plan_models.dart';
 import 'package:myrun/src/training_plan/training_plan_repository.dart';
+import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/club_run_row.dart';
 import 'package:myrun/src/widgets/live_bits.dart';
@@ -360,106 +361,108 @@ class LiveRoomCard extends StatelessWidget {
     ].join(' · ');
     return SizedBox(
       height: LiveSessionCard.height,
-      child: Material(
-        clipBehavior: Clip.antiAlias,
-        borderRadius: palette.radius(26),
-        color: palette.tint,
-        child: InkWell(
-          onTap: () => context.push('/rooms/${room.id}'),
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [palette.tint, palette.glassStart],
+      child: PixelFrame(
+        child: Material(
+          clipBehavior: Clip.antiAlias,
+          borderRadius: palette.radius(26),
+          color: palette.tint,
+          child: InkWell(
+            onTap: () => context.push('/rooms/${room.id}'),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [palette.tint, palette.glassStart],
+                      ),
                     ),
                   ),
                 ),
-              ),
-              Positioned.fill(
-                child: route != null
-                    ? RunRoomRouteSketch(
-                        route: route,
-                        color: palette.accent,
-                        strokeWidth: 4,
-                        padding: const EdgeInsets.fromLTRB(28, 56, 28, 76),
-                      )
-                    : Padding(
-                        padding: const EdgeInsets.only(bottom: 40),
-                        child: Icon(
-                          Icons.groups_rounded,
-                          size: 72,
-                          color: palette.accent.withValues(alpha: 0.35),
+                Positioned.fill(
+                  child: route != null
+                      ? RunRoomRouteSketch(
+                          route: route,
+                          color: palette.accent,
+                          strokeWidth: 4,
+                          padding: const EdgeInsets.fromLTRB(28, 56, 28, 76),
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.only(bottom: 40),
+                          child: Icon(
+                            Icons.groups_rounded,
+                            size: 72,
+                            color: palette.accent.withValues(alpha: 0.35),
+                          ),
                         ),
-                      ),
-              ),
-              const Positioned(
-                left: 14,
-                top: 14,
-                child: Row(
-                  children: [
-                    LiveBadge(),
-                    SizedBox(width: 6),
-                    _GlassPill(
-                      child: Text(
-                        'PHÒNG',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.6,
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
-              ),
-              Positioned(
-                left: 10,
-                right: 10,
-                bottom: 10,
-                child: _GlassPill(
-                  radius: 18,
-                  padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
+                const Positioned(
+                  left: 14,
+                  top: 14,
                   child: Row(
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              room.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            Text(
-                              detail,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: onSurface.withValues(alpha: 0.55),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
+                      LiveBadge(),
+                      SizedBox(width: 6),
+                      _GlassPill(
+                        child: Text(
+                          'PHÒNG',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.6,
+                          ),
                         ),
-                      ),
-                      _BigNumber(
-                        value: '${room.runnerCount}',
-                        unit: '/${room.maxRunners}',
-                        size: 34,
                       ),
                     ],
                   ),
                 ),
-              ),
-            ],
+                Positioned(
+                  left: 10,
+                  right: 10,
+                  bottom: 10,
+                  child: _GlassPill(
+                    radius: 18,
+                    padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                room.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              Text(
+                                detail,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: onSurface.withValues(alpha: 0.55),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        _BigNumber(
+                          value: '${room.runnerCount}',
+                          unit: '/${room.maxRunners}',
+                          size: 34,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -480,106 +483,107 @@ class LiveSessionCard extends StatelessWidget {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return SizedBox(
       height: height,
-      child: Material(
-        clipBehavior: Clip.antiAlias,
-        borderRadius: palette.radius(26),
-        color: palette.tint,
-        child: InkWell(
-          onTap: () => context.push('/live/${session.id}'),
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [palette.tint, palette.glassStart],
+      child: PixelFrame(
+        child: Material(
+          clipBehavior: Clip.antiAlias,
+          borderRadius: palette.radius(26),
+          color: palette.tint,
+          child: InkWell(
+            onTap: () => context.push('/live/${session.id}'),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [palette.tint, palette.glassStart],
+                      ),
                     ),
                   ),
                 ),
-              ),
-              Positioned.fill(
-                child: LiveMapPreview(
-                  session: session,
-                  // Chừa hàng nhãn LIVE ở trên và tấm tên, số km ở dưới.
-                  padding: const EdgeInsets.fromLTRB(28, 56, 28, 76),
+                Positioned.fill(
+                  child: LiveMapPreview(
+                    session: session,
+                    // Chừa hàng nhãn LIVE ở trên và tấm tên, số km ở dưới.
+                    padding: const EdgeInsets.fromLTRB(28, 56, 28, 76),
+                  ),
                 ),
-              ),
-              Positioned(
-                left: 14,
-                right: 14,
-                top: 14,
-                child: Row(
-                  children: [
-                    const LiveBadge(),
-                    const Spacer(),
-                    _GlassPill(
-                      child: EverySecond(
-                        builder: (context, now) => Text(
-                          formatDuration(liveElapsedSeconds(session, now)),
-                          style: const TextStyle(
-                            fontFamily: 'Barlow Condensed',
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            fontFeatures: [FontFeature.tabularFigures()],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Positioned(
-                left: 10,
-                right: 10,
-                bottom: 10,
-                child: _GlassPill(
-                  radius: 18,
-                  padding: const EdgeInsets.fromLTRB(10, 9, 14, 9),
+                Positioned(
+                  left: 14,
+                  right: 14,
+                  top: 14,
                   child: Row(
                     children: [
-                      _Avatar(
-                        url: session.ownerAvatarUrl,
-                        name: session.ownerName,
-                        size: 34,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              session.ownerName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                              ),
+                      const LiveBadge(),
+                      const Spacer(),
+                      _GlassPill(
+                        child: EverySecond(
+                          builder: (context, now) => Text(
+                            formatDuration(liveElapsedSeconds(session, now)),
+                            style: TextStyle(
+                              fontFamily: context.runNowPalette.narrowFont,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              fontFeatures: [FontFeature.tabularFigures()],
                             ),
-                            Text(
-                              formatPace(session.averagePaceSecondsPerKm),
-                              style: TextStyle(
-                                color: onSurface.withValues(alpha: 0.55),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                      _BigNumber(
-                        value: (session.distanceMeters / 1000).toStringAsFixed(
-                          2,
-                        ),
-                        unit: 'km',
-                        size: 34,
                       ),
                     ],
                   ),
                 ),
-              ),
-            ],
+                Positioned(
+                  left: 10,
+                  right: 10,
+                  bottom: 10,
+                  child: _GlassPill(
+                    radius: 18,
+                    padding: const EdgeInsets.fromLTRB(10, 9, 14, 9),
+                    child: Row(
+                      children: [
+                        _Avatar(
+                          url: session.ownerAvatarUrl,
+                          name: session.ownerName,
+                          size: 34,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                session.ownerName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              Text(
+                                formatPace(session.averagePaceSecondsPerKm),
+                                style: TextStyle(
+                                  color: onSurface.withValues(alpha: 0.55),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        _BigNumber(
+                          value: (session.distanceMeters / 1000)
+                              .toStringAsFixed(2),
+                          unit: 'km',
+                          size: 34,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -845,8 +849,8 @@ class _RoomMiniCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             DateFormat('HH:mm').format(starts),
-            style: const TextStyle(
-              fontFamily: 'Barlow Condensed',
+            style: TextStyle(
+              fontFamily: context.runNowPalette.narrowFont,
               fontSize: 34,
               height: 1,
               fontWeight: FontWeight.w800,
@@ -1062,38 +1066,40 @@ class _InviteRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    return Material(
-      color: palette.glassStart,
-      borderRadius: palette.radius(22),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
+    return PixelFrame(
+      child: Material(
+        color: palette.glassStart,
+        borderRadius: palette.radius(22),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    _MutedLine(subtitle),
-                  ],
+                      const SizedBox(height: 2),
+                      _MutedLine(subtitle),
+                    ],
+                  ),
                 ),
-              ),
-              RunNowAvatar(
-                radius: 19,
-                backgroundColor: palette.accent,
-                child: Icon(icon, color: _onColor(palette.accent)),
-              ),
-            ],
+                RunNowAvatar(
+                  radius: 19,
+                  backgroundColor: palette.accent,
+                  child: Icon(icon, color: _onColor(palette.accent)),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1277,7 +1283,7 @@ class _MyRankLine extends StatelessWidget {
           Text(
             '#${me.rank}',
             style: TextStyle(
-              fontFamily: 'Barlow Condensed',
+              fontFamily: context.runNowPalette.narrowFont,
               fontSize: 22,
               fontWeight: FontWeight.w800,
               color: palette.accent,
@@ -1444,20 +1450,22 @@ class _Ring extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          CircularProgressIndicator(
-            value: ratio.clamp(0.0, 1.0),
-            strokeWidth: 7,
-            strokeCap: context.runNowPalette.squared
-                ? StrokeCap.butt
-                : StrokeCap.round,
-            color: color,
-            backgroundColor: onSurface.withValues(alpha: 0.2),
+          PixelArt(
+            child: CircularProgressIndicator(
+              value: ratio.clamp(0.0, 1.0),
+              strokeWidth: 7,
+              strokeCap: context.runNowPalette.squared
+                  ? StrokeCap.butt
+                  : StrokeCap.round,
+              color: color,
+              backgroundColor: onSurface.withValues(alpha: 0.2),
+            ),
           ),
           Center(
             child: Text(
               label,
-              style: const TextStyle(
-                fontFamily: 'Barlow Condensed',
+              style: TextStyle(
+                fontFamily: context.runNowPalette.narrowFont,
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
               ),
@@ -1538,7 +1546,7 @@ class _MutedLine extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
         color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
-        fontFamily: 'Barlow Condensed',
+        fontFamily: context.runNowPalette.narrowFont,
         fontSize: 13,
         fontWeight: FontWeight.w600,
         letterSpacing: 0.3,
@@ -1596,7 +1604,7 @@ class _BigNumber extends StatelessWidget {
         ],
       ),
       style: TextStyle(
-        fontFamily: 'Barlow Condensed',
+        fontFamily: context.runNowPalette.narrowFont,
         fontSize: size,
         height: 0.95,
         fontWeight: FontWeight.w800,

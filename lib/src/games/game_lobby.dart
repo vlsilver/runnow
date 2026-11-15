@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_card_art.dart';
-import 'package:myrun/src/games/game_hero.dart';
 import 'package:myrun/src/games/game_tally_view.dart';
 import 'package:myrun/src/games/game_village.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -27,7 +26,7 @@ class GameLobbyHero extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         borderRadius: context.runNowPalette.radius(22),
-        border: Border.all(color: context.moonlit.amberLine),
+        border: context.runNowPalette.tintedBorder(context.moonlit.amberLine),
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
@@ -84,7 +83,7 @@ class GameLobbyHero extends StatelessWidget {
                   Text(
                     '$count',
                     style: TextStyle(
-                      fontFamily: gameTitleFont,
+                      fontFamily: context.runNowPalette.narrowFont,
                       fontWeight: FontWeight.w800,
                       fontSize: 56,
                       height: 0.85,
@@ -99,7 +98,7 @@ class GameLobbyHero extends StatelessWidget {
                         Text(
                           '/ ${detail.maxPlayers} chỗ',
                           style: TextStyle(
-                            fontFamily: gameTitleFont,
+                            fontFamily: context.runNowPalette.narrowFont,
                             fontWeight: FontWeight.w700,
                             fontSize: 18,
                             color: context.moonlit.inkSoft,
@@ -179,7 +178,7 @@ class _Fact extends StatelessWidget {
             Text(
               value,
               style: TextStyle(
-                fontFamily: gameTitleFont,
+                fontFamily: context.runNowPalette.narrowFont,
                 fontWeight: FontWeight.w700,
                 fontSize: 20,
                 height: 1,
@@ -263,7 +262,7 @@ class _Head extends StatelessWidget {
           child: Text(
             text,
             style: TextStyle(
-              fontFamily: gameTitleFont,
+              fontFamily: context.runNowPalette.narrowFont,
               fontWeight: FontWeight.w800,
               fontSize: 18,
               letterSpacing: 1.4,
@@ -357,7 +356,7 @@ class GameLobbyRequirements extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.moonlit.panel,
         borderRadius: context.runNowPalette.radius(18),
-        border: Border.all(color: context.moonlit.border),
+        border: context.runNowPalette.frameBorder(context.moonlit.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -365,7 +364,7 @@ class GameLobbyRequirements extends StatelessWidget {
           Text(
             'ĐỦ ĐIỀU KIỆN $met/${requirements.length}',
             style: TextStyle(
-              fontFamily: gameTitleFont,
+              fontFamily: context.runNowPalette.narrowFont,
               fontWeight: FontWeight.w800,
               fontSize: 14,
               letterSpacing: 1.4,
@@ -676,8 +675,8 @@ class GameLobbyJoin extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                   borderRadius: context.runNowPalette.radius(16),
                 ),
-                textStyle: const TextStyle(
-                  fontFamily: gameTitleFont,
+                textStyle: TextStyle(
+                  fontFamily: context.runNowPalette.narrowFont,
                   fontWeight: FontWeight.w800,
                   fontSize: 22,
                   letterSpacing: 2,

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:myrun/src/games/game_hero.dart';
 import 'package:myrun/src/games/game_km_table.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
@@ -36,7 +35,7 @@ class GameKmGoals extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.moonlit.panel,
         borderRadius: context.runNowPalette.radius(16),
-        border: Border.all(color: context.moonlit.border),
+        border: context.runNowPalette.frameBorder(context.moonlit.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -60,7 +59,7 @@ class GameKmGoals extends StatelessWidget {
                 Text(
                   '${gameKmText(km)} km',
                   style: TextStyle(
-                    fontFamily: gameTitleFont,
+                    fontFamily: context.runNowPalette.narrowFont,
                     fontWeight: FontWeight.w700,
                     fontSize: 22,
                     height: 1,
@@ -115,7 +114,7 @@ class _GoalRow extends StatelessWidget {
                   ? 'ĐỦ'
                   : 'còn $missing km',
               style: TextStyle(
-                fontFamily: gameTitleFont,
+                fontFamily: context.runNowPalette.narrowFont,
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
                 color: done ? context.moonlit.ink : context.moonlit.amberSoft,
@@ -263,7 +262,7 @@ class GameVillage extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.moonlit.list,
         borderRadius: context.runNowPalette.radius(18),
-        border: Border.all(color: context.moonlit.border),
+        border: context.runNowPalette.frameBorder(context.moonlit.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -495,7 +494,7 @@ class _VillagerRow extends StatelessWidget {
                   right,
                   textAlign: TextAlign.right,
                   style: TextStyle(
-                    fontFamily: gameTitleFont,
+                    fontFamily: context.runNowPalette.narrowFont,
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
                     color: !alive

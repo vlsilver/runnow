@@ -487,7 +487,7 @@ class GameScheduleCard extends StatelessWidget {
                       Text(
                         title,
                         style: TextStyle(
-                          fontFamily: 'Barlow Condensed',
+                          fontFamily: context.runNowPalette.narrowFont,
                           fontSize: 22,
                           height: 1.1,
                           letterSpacing: 0.4,

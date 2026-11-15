@@ -297,7 +297,7 @@ class GameSetupSections extends StatelessWidget {
             decoration: BoxDecoration(
               color: context.moonlit.raised,
               borderRadius: context.runNowPalette.radius(14),
-              border: Border.all(color: context.moonlit.border),
+              border: context.runNowPalette.frameBorder(context.moonlit.border),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Column(
@@ -432,7 +432,7 @@ class GameSkillStepper extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.moonlit.raised,
         borderRadius: context.runNowPalette.radius(12),
-        border: Border.all(color: context.moonlit.border),
+        border: context.runNowPalette.frameBorder(context.moonlit.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -509,7 +509,7 @@ class GameSkillCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: context.moonlit.raised,
           borderRadius: context.runNowPalette.radius(16),
-          border: Border.all(color: context.moonlit.border),
+          border: context.runNowPalette.frameBorder(context.moonlit.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

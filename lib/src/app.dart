@@ -381,13 +381,25 @@ class RunNowApp extends ConsumerWidget {
             : child!;
         // Nền phủ toàn màn; ràng buộc bề rộng do từng màn xử lý (shell có rail
         // riêng khi rộng, các màn nội dung tự gò cột giữa).
-        return RunCardSkinScope(
+        final scoped = RunCardSkinScope(
           skin: cardSkin,
           child: RunCardStyleScope(
             resolve: cardStyles.styleFor,
             revision: cardStyles.revision,
             child: RunNowBackdrop(child: content),
           ),
+        );
+        if (themeController.style != RunNowStyle.pixel) return scoped;
+        // Chữ pixel thấp hơn Exo 2 ở cùng cỡ; phóng ở gốc để mọi Text ghi cỡ
+        // chữ riêng cũng to lên, vẫn nhân với cỡ chữ người dùng đặt ở máy.
+        final media = MediaQuery.of(context);
+        return MediaQuery(
+          data: media.copyWith(
+            textScaler: TextScaler.linear(
+              media.textScaler.scale(1) * pixelTextScale,
+            ),
+          ),
+          child: scoped,
         );
       },
     );
@@ -1263,11 +1275,13 @@ class _OrbNavItem extends StatelessWidget {
                         blurRadius: 16,
                       ),
                     ],
-              border: Border.all(
-                color: palette.glassStart.withValues(
-                  alpha: selected ? 0.65 : 0.28,
-                ),
-              ),
+              border:
+                  palette.inkBorder ??
+                  Border.all(
+                    color: palette.glassStart.withValues(
+                      alpha: selected ? 0.65 : 0.28,
+                    ),
+                  ),
             ),
             child: Icon(icon, color: palette.glassStart, size: 30),
           ),

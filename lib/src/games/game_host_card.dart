@@ -80,7 +80,7 @@ class _GameHostCardState extends State<GameHostCard> {
                         Text(
                           'Quản trò',
                           style: TextStyle(
-                            fontFamily: 'Barlow Condensed',
+                            fontFamily: context.runNowPalette.narrowFont,
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 0.6,
@@ -399,7 +399,7 @@ class _Panel extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.moonlit.raised,
         borderRadius: context.runNowPalette.radius(18),
-        border: Border.all(color: context.moonlit.border),
+        border: context.runNowPalette.frameBorder(context.moonlit.border),
       ),
       child: child,
     );

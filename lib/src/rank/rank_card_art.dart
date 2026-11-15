@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/achievements/card_scene.dart';
 import 'package:myrun/src/club_ranking.dart';
 import 'package:myrun/src/games/game_role_card.dart';
@@ -355,8 +356,11 @@ class RankMedalArt extends StatelessWidget {
   final GameCardTier tier;
 
   @override
-  Widget build(BuildContext context) =>
-      CustomPaint(painter: _RankArtPainter(rank, month, period, sport, tier));
+  Widget build(BuildContext context) => PixelArt(
+    child: CustomPaint(
+      painter: _RankArtPainter(rank, month, period, sport, tier),
+    ),
+  );
 }
 
 /// Mặt sau thẻ BXH: huy chương lớn khắc biểu tượng bộ môn, tên bộ môn và kỳ.
@@ -377,8 +381,11 @@ class RankBackArt extends StatelessWidget {
   final GameCardTier tier;
 
   @override
-  Widget build(BuildContext context) =>
-      CustomPaint(painter: _RankBackPainter(rank, month, period, sport, tier));
+  Widget build(BuildContext context) => PixelArt(
+    child: CustomPaint(
+      painter: _RankBackPainter(rank, month, period, sport, tier),
+    ),
+  );
 }
 
 class _RankArtPainter extends CustomPainter {

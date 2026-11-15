@@ -106,8 +106,8 @@ class _SplitBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    const number = TextStyle(
-      fontFamily: 'Barlow Condensed',
+    final number = TextStyle(
+      fontFamily: context.runNowPalette.narrowFont,
       fontSize: 15,
       fontWeight: FontWeight.w700,
       fontFeatures: [FontFeature.tabularFigures()],

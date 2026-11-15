@@ -395,11 +395,12 @@ class _DarkPower extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: palette.radius(12),
                 border: Border.all(
+                  width: palette.isPixel ? 2 : 1,
                   color: selected || open
                       ? palette.accent
-                      : Theme.of(
-                          context,
-                        ).colorScheme.onSurface.withValues(alpha: 0.18),
+                      : Theme.of(context).colorScheme.onSurface.withValues(
+                          alpha: palette.isPixel ? 0.6 : 0.18,
+                        ),
                 ),
               ),
               child: Column(

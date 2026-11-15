@@ -5,7 +5,6 @@ import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
 import 'package:myrun/src/games/game_action_card.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
-import 'package:myrun/src/games/game_hero.dart';
 import 'package:myrun/src/games/game_km_table.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/games/game_turn.dart';
@@ -74,7 +73,7 @@ class GameMyCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         borderRadius: context.runNowPalette.radius(20),
-        border: Border.all(color: context.moonlit.border),
+        border: context.runNowPalette.frameBorder(context.moonlit.border),
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
@@ -133,7 +132,7 @@ class _Back extends StatelessWidget {
               Text(
                 'LÁ BÀI CỦA BẠN',
                 style: TextStyle(
-                  fontFamily: gameTitleFont,
+                  fontFamily: context.runNowPalette.narrowFont,
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1.4,
@@ -286,7 +285,7 @@ class _Face extends StatelessWidget {
                         Text(
                           (me.roleLabel ?? '').toUpperCase(),
                           style: TextStyle(
-                            fontFamily: gameTitleFont,
+                            fontFamily: context.runNowPalette.narrowFont,
                             fontSize: 28,
                             height: 1,
                             fontWeight: FontWeight.w800,
@@ -523,7 +522,7 @@ Future<void> _showRoleRules(BuildContext context, String role, String rules) {
           Text(
             role.toUpperCase(),
             style: TextStyle(
-              fontFamily: gameTitleFont,
+              fontFamily: context.runNowPalette.narrowFont,
               fontSize: 26,
               fontWeight: FontWeight.w800,
               letterSpacing: 1.2,
@@ -594,8 +593,8 @@ class _ClaimButton extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: context.runNowPalette.radius(12),
           ),
-          textStyle: const TextStyle(
-            fontFamily: gameTitleFont,
+          textStyle: TextStyle(
+            fontFamily: context.runNowPalette.narrowFont,
             fontWeight: FontWeight.w800,
             fontSize: 15,
             letterSpacing: 1,

@@ -54,7 +54,7 @@ class GameCreateHeader extends StatelessWidget {
               Text(
                 'MỞ VÁN\nMA SÓI',
                 style: TextStyle(
-                  fontFamily: 'Barlow Condensed',
+                  fontFamily: context.runNowPalette.narrowFont,
                   fontWeight: FontWeight.w800,
                   fontSize: 32,
                   height: .95,
@@ -123,7 +123,7 @@ class GameCreateOpenButton extends StatelessWidget {
                 Text(
                   working ? 'ĐANG MỞ…' : 'MỞ VÁN',
                   style: TextStyle(
-                    fontFamily: 'Barlow Condensed',
+                    fontFamily: context.runNowPalette.narrowFont,
                     fontWeight: FontWeight.w800,
                     fontSize: 22,
                     letterSpacing: 3,
@@ -359,7 +359,7 @@ class GamePresetTile extends StatelessWidget {
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   style: TextStyle(
-                    fontFamily: 'Barlow Condensed',
+                    fontFamily: context.runNowPalette.narrowFont,
                     fontSize: 16,
                     height: 1,
                     letterSpacing: 0.6,
@@ -427,7 +427,7 @@ class GameCreateTabBar extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.moonlit.raised,
         borderRadius: context.runNowPalette.radius(14),
-        border: Border.all(color: context.moonlit.border),
+        border: context.runNowPalette.frameBorder(context.moonlit.border),
       ),
       child: Row(
         children: [
@@ -495,7 +495,7 @@ class GameCreateNote extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.moonlit.raised,
         borderRadius: context.runNowPalette.radius(14),
-        border: Border.all(color: context.moonlit.border),
+        border: context.runNowPalette.frameBorder(context.moonlit.border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1097,7 +1097,7 @@ class GameCreateSegment extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.moonlit.raised,
         borderRadius: context.runNowPalette.radius(14),
-        border: Border.all(color: context.moonlit.border),
+        border: context.runNowPalette.frameBorder(context.moonlit.border),
       ),
       child: Row(
         children: [

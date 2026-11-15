@@ -39,20 +39,18 @@ final _ironGameTheme = buildRunNowTheme(
   style: RunNowStyle.iron,
 );
 
-final _pixelGameTheme = buildRunNowTheme(
-  RunNowElement.fire,
-  appearance: RunNowAppearance.dark,
-  style: RunNowStyle.pixel,
-);
-
 final _nightTheme = _buildNightTheme();
 final _moonlitTheme = _buildMoonlitTheme();
+
+/// Kiểu Pixel giữ màu đêm của bàn chơi, chỉ đổi chữ và hình khối.
+final _pixelNightTheme = pixelRunNowTheme(_nightTheme);
+final _pixelMoonlitTheme = pixelRunNowTheme(_moonlitTheme);
 
 ThemeData gameNightTheme({RunNowStyle style = RunNowStyle.elemental}) =>
     switch (style) {
       RunNowStyle.elemental => _nightTheme,
       RunNowStyle.iron => _ironGameTheme,
-      RunNowStyle.pixel => _pixelGameTheme,
+      RunNowStyle.pixel => _pixelNightTheme,
     };
 
 ThemeData _buildNightTheme() {
@@ -152,7 +150,7 @@ ThemeData gameMoonlitTheme({RunNowStyle style = RunNowStyle.elemental}) =>
     switch (style) {
       RunNowStyle.elemental => _moonlitTheme,
       RunNowStyle.iron => _ironGameTheme,
-      RunNowStyle.pixel => _pixelGameTheme,
+      RunNowStyle.pixel => _pixelMoonlitTheme,
     };
 
 ThemeData _buildMoonlitTheme() {

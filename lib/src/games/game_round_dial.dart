@@ -410,7 +410,8 @@ class _GameRoundDialState extends State<GameRoundDial> {
                                       ? '${total ~/ 60}'
                                       : gameHours(total),
                                   style: TextStyle(
-                                    fontFamily: 'Barlow Condensed',
+                                    fontFamily:
+                                        context.runNowPalette.narrowFont,
                                     fontSize: 38,
                                     height: 1.1,
                                     fontWeight: FontWeight.w800,
@@ -580,7 +581,7 @@ class _EdgeRow extends StatelessWidget {
             width: 28,
             height: 28,
             decoration: BoxDecoration(
-              border: Border.all(color: context.moonlit.border),
+              border: context.runNowPalette.frameBorder(context.moonlit.border),
               borderRadius: context.runNowPalette.radius(9),
             ),
             child: Icon(
@@ -651,7 +652,7 @@ class GameStepBox extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.moonlit.raised,
         borderRadius: context.runNowPalette.radius(10),
-        border: Border.all(color: context.moonlit.border),
+        border: context.runNowPalette.frameBorder(context.moonlit.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -663,7 +664,7 @@ class GameStepBox extends StatelessWidget {
               value,
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontFamily: 'Barlow Condensed',
+                fontFamily: context.runNowPalette.narrowFont,
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
                 color: context.moonlit.amberBright,

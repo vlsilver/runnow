@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:myrun/src/games/game_hero.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/run_now_empty.dart';
@@ -79,7 +78,7 @@ class GameLineRow extends StatelessWidget {
               child: Text(
                 tag,
                 style: TextStyle(
-                  fontFamily: gameTitleFont,
+                  fontFamily: context.runNowPalette.narrowFont,
                   fontWeight: FontWeight.w800,
                   fontSize: 13,
                   letterSpacing: 0.8,
@@ -161,7 +160,7 @@ class _GameJournalState extends State<GameJournal> {
       decoration: BoxDecoration(
         color: context.moonlit.list,
         borderRadius: context.runNowPalette.radius(16),
-        border: Border.all(color: context.moonlit.border),
+        border: context.runNowPalette.frameBorder(context.moonlit.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

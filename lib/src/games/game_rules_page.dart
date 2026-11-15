@@ -84,7 +84,7 @@ TextStyle _sectionStyle(BuildContext context) => TextStyle(
 BoxDecoration _panel(BuildContext context) => BoxDecoration(
   color: context.moonlit.raised,
   borderRadius: context.runNowPalette.radius(14),
-  border: Border.all(color: context.moonlit.border),
+  border: context.runNowPalette.frameBorder(context.moonlit.border),
 );
 
 Color _ruleColor(RunNowMoonlit m, String key) => switch (key) {

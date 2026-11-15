@@ -187,7 +187,11 @@ class SettingsScreen extends ConsumerWidget {
                     icon: Icons.auto_awesome_outlined,
                     title: 'Ngũ hành',
                     value:
-                        '${themeController.style == RunNowStyle.elemental ? themeController.element.label : themeController.style.label} · '
+                        '${switch (themeController.style) {
+                          RunNowStyle.elemental => themeController.element.label,
+                          RunNowStyle.iron => RunNowStyle.iron.label,
+                          RunNowStyle.pixel => '${themeController.element.label} · ${RunNowStyle.pixel.label}',
+                        }} · '
                         '${themeController.appearance.label}',
                     onTap: () => _editElement(context, ref, themeController),
                   ),
@@ -565,11 +569,14 @@ Future<void> _editElement(
                       darkTone: RunNowDarkTone.elemental,
                       icon: element.icon,
                       selected:
-                          selectedStyle == RunNowStyle.elemental &&
+                          selectedStyle != RunNowStyle.iron &&
                           selectedElement == element,
+                      // Pixel chỉ đổi chữ và khối nên chọn hành vẫn giữ Pixel.
                       onTap: () => setModalState(() {
                         selectedElement = element;
-                        selectedStyle = RunNowStyle.elemental;
+                        if (selectedStyle == RunNowStyle.iron) {
+                          selectedStyle = RunNowStyle.elemental;
+                        }
                       }),
                     ),
                     _SettingsDivider(),
@@ -589,11 +596,15 @@ Future<void> _editElement(
                     key: const ValueKey('theme-style-pixel'),
                     icon: Icons.videogame_asset_outlined,
                     title: RunNowStyle.pixel.label,
-                    subtitle: 'Kem xanh · 8-bit',
+                    subtitle: 'Chữ và khối 8-bit · Màu theo ngũ hành',
                     value: selectedStyle == RunNowStyle.pixel ? '✓' : null,
-                    accent: RunNowThemeTokens.pixelRamp[3],
-                    onTap: () =>
-                        setModalState(() => selectedStyle = RunNowStyle.pixel),
+                    accent: selectedElement.ramp[2],
+                    // Bấm lần nữa thì về kiểu thường của hành đang chọn.
+                    onTap: () => setModalState(
+                      () => selectedStyle = selectedStyle == RunNowStyle.pixel
+                          ? RunNowStyle.elemental
+                          : RunNowStyle.pixel,
+                    ),
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),

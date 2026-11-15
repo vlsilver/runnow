@@ -10,8 +10,9 @@ enum RunNowAppearance { light, dark }
 /// Kiểu giao diện cả app. [elemental] tô theo ngũ hành đang chọn. [iron] là
 /// kiểu Thép: giấy trắng ngà, mực đen, một màu đỏ, tiêu đề chữ hẹp đậm. Kiểu
 /// là trục riêng, không phải một hành, nên thẻ chạy vẫn giữ hành của nó.
-/// [pixel] là kiểu máy chơi game 8-bit: giấy kem, mực chàm, xanh lá, mọi khối
-/// vuông có góc bậc thang và viền mực dày.
+/// [pixel] là kiểu máy chơi game 8-bit: màu vẫn theo ngũ hành đang chọn, còn
+/// mọi chữ là chữ lưới điểm ảnh, mọi khối có góc bậc thang, viền mực dày và
+/// bóng cứng.
 enum RunNowStyle { elemental, iron, pixel }
 
 extension RunNowStyleLabel on RunNowStyle {
@@ -186,19 +187,10 @@ class RunNowPalette extends ThemeExtension<RunNowPalette> {
   }) {
     final iron = style == RunNowStyle.iron;
     final isLight = appearance == RunNowAppearance.light;
-    final primary = switch (style) {
-      RunNowStyle.elemental => element.ramp,
-      RunNowStyle.iron => RunNowThemeTokens.ironRamp,
-      RunNowStyle.pixel => RunNowThemeTokens.pixelRamp,
-    };
-    final material = switch (style) {
-      RunNowStyle.elemental =>
-        isLight ? element.lightMaterial : darkTone.materialFor(element),
-      RunNowStyle.iron =>
-        isLight ? RunNowThemeTokens.ironLight : RunNowThemeTokens.ironDark,
-      RunNowStyle.pixel =>
-        isLight ? RunNowThemeTokens.pixelLight : RunNowThemeTokens.pixelDark,
-    };
+    final primary = iron ? RunNowThemeTokens.ironRamp : element.ramp;
+    final material = iron
+        ? (isLight ? RunNowThemeTokens.ironLight : RunNowThemeTokens.ironDark)
+        : (isLight ? element.lightMaterial : darkTone.materialFor(element));
     final background = material[0];
     final surface = material[1];
     final border = material[2];
@@ -213,7 +205,7 @@ class RunNowPalette extends ThemeExtension<RunNowPalette> {
       // of that same brand, not colors from the supporting element.
       secondary: primary[3],
       tertiary: primary[1],
-      ink: style != RunNowStyle.elemental
+      ink: iron
           ? foreground
           : isLight
           ? RunNowThemeTokens.lightInk
@@ -224,10 +216,6 @@ class RunNowPalette extends ThemeExtension<RunNowPalette> {
           ? (isLight
                 ? RunNowThemeTokens.ironTintLight
                 : RunNowThemeTokens.ironTintDark)
-          : style == RunNowStyle.pixel
-          ? (isLight
-                ? RunNowThemeTokens.pixelTintLight
-                : RunNowThemeTokens.pixelTintDark)
           : isLight
           ? element.tint
           : Color.alphaBlend(primary[2].withValues(alpha: 0.16), surface),
@@ -336,18 +324,12 @@ extension RunNowPaletteMarks on RunNowPalette {
           ? RunNowThemeTokens.ironNightDark
           : RunNowThemeTokens.ironInk;
     }
-    if (style == RunNowStyle.pixel) {
-      return appearance == RunNowAppearance.dark
-          ? RunNowThemeTokens.pixelTintDark
-          : RunNowThemeTokens.pixelInk;
-    }
     return Color.lerp(accentDeep, RunNowDataColors.coachLoadFarLight, 0.66)!;
   }
 
   /// Chữ và icon đặt trên nền [accent]. Kiểu Thép đặt mực đen trên đỏ.
   Color get onAccent {
     if (style == RunNowStyle.iron) return RunNowThemeTokens.ironInk;
-    if (style == RunNowStyle.pixel) return RunNowThemeTokens.pixelInk;
     return appearance == RunNowAppearance.dark
         ? RunNowDataColors.coachOnAccentDark
         : Colors.white;
@@ -357,7 +339,6 @@ extension RunNowPaletteMarks on RunNowPalette {
   /// chỉ có một màu nên dùng luôn [accent].
   Color get warmMark {
     if (style == RunNowStyle.iron) return accent;
-    if (style == RunNowStyle.pixel) return RunNowThemeTokens.pixelCoin;
     return appearance == RunNowAppearance.dark
         ? RunNowDataColors.coachIntervalDark
         : RunNowDataColors.coachIntervalLight;
@@ -368,11 +349,8 @@ extension RunNowPaletteMarks on RunNowPalette {
 /// có đỏ, đen, trắng nên mọi màu ở đây quy về ba màu đó.
 extension RunNowPaletteMeaning on RunNowPalette {
   /// Dải năm bậc nhạt tới đậm để vẽ tranh nền.
-  List<Color> get ramp => switch (style) {
-    RunNowStyle.elemental => element.ramp,
-    RunNowStyle.iron => RunNowThemeTokens.ironSceneRamp,
-    RunNowStyle.pixel => RunNowThemeTokens.pixelRamp,
-  };
+  List<Color> get ramp =>
+      isIron ? RunNowThemeTokens.ironSceneRamp : element.ramp;
 
   Color get danger => isIron ? accent : RunNowSemanticColors.danger;
   Color get success => isIron ? foreground : RunNowSemanticColors.success;
@@ -454,10 +432,25 @@ extension RunNowPaletteShape on RunNowPalette {
       fontWeight: FontWeight.w400,
       fontSize: style.fontSize == null
           ? null
-          : style.fontSize! * _pixelFontScale,
+          : style.fontSize! * _pixelHeadingScale,
       letterSpacing: 0.5,
     ),
   };
+
+  /// Viền mực quanh khối ở kiểu Pixel; kiểu khác không viền.
+  BoxBorder? get inkBorder =>
+      isPixel ? Border.all(color: foreground, width: 2) : null;
+
+  /// Viền của một khối: kiểu Pixel là viền mực dày, kiểu khác là viền mảnh
+  /// màu [color].
+  BoxBorder frameBorder(Color color) => inkBorder ?? Border.all(color: color);
+
+  /// Viền giữ màu riêng [color] (viền vàng của bàn chơi), kiểu Pixel dày lên.
+  BoxBorder tintedBorder(Color color) =>
+      Border.all(color: color, width: isPixel ? 2 : 1);
+
+  /// Font số và nhãn hẹp ngoài thẻ. Kiểu Pixel không trộn font thứ hai.
+  String get narrowFont => isPixel ? _pixelFont : 'Barlow Condensed';
 
   /// Tiêu đề in hoa ở kiểu Thép và Pixel.
   String title(String text) => squared ? text.toUpperCase() : text;
@@ -554,7 +547,7 @@ extension RunNowThemeContext on BuildContext {
   RunNowMoonlit get moonlit => switch (runNowPalette.style) {
     RunNowStyle.elemental => RunNowMoonlit.night,
     RunNowStyle.iron => RunNowMoonlit.iron,
-    RunNowStyle.pixel => RunNowMoonlit.pixel,
+    RunNowStyle.pixel => RunNowMoonlit.night,
   };
 }
 
@@ -831,23 +824,37 @@ ThemeData _ironTheme(ThemeData base, RunNowPalette palette) {
 
 const _pixelFont = 'VT323';
 
-/// VT323 thấp hơn Exo 2 ở cùng cỡ chữ, phóng chừng này thì cao ngang nhau.
-const _pixelFontScale = 1.3;
+/// VT323 thấp hơn Exo 2 ở cùng cỡ chữ. Ở kiểu Pixel cả app phóng chữ
+/// [pixelTextScale] lần (đặt ở gốc app), tiêu đề phóng thêm cho đủ 1.3 lần.
+const pixelTextScale = 1.15;
+const _pixelHeadingScale = 1.3 / pixelTextScale;
 
-/// Phần kiểu Pixel khác bản ngũ hành ngoài màu: mọi khối có góc bậc thang và
-/// viền mực dày, nút chính là khối xanh chữ mực, không bóng mờ.
+/// Độ lệch bóng cứng của khối kiểu Pixel.
+const pixelShadow = Offset(3, 3);
+
+/// Đặt hình khối và chữ kiểu Pixel lên một theme đã có bảng màu riêng, như
+/// bàn chơi Ma Sói.
+ThemeData pixelRunNowTheme(ThemeData base) {
+  final palette = base.extension<RunNowPalette>()!.copyWith(
+    style: RunNowStyle.pixel,
+  );
+  return _pixelTheme(base.copyWith(extensions: [palette]), palette);
+}
+
+/// Phần kiểu Pixel khác bản ngũ hành: mọi chữ là chữ lưới điểm ảnh, mọi khối
+/// có góc bậc thang và viền mực dày, không bóng mờ. Màu giữ nguyên của [base].
 ThemeData _pixelTheme(ThemeData base, RunNowPalette palette) {
   final ink = BorderSide(color: palette.foreground, width: 2);
   const block = PixelBorder();
   final framed = PixelBorder(side: ink);
   TextStyle? heading(TextStyle? s) => s?.copyWith(
-    fontFamily: _pixelFont,
     fontWeight: FontWeight.w400,
-    fontSize: s.fontSize == null ? null : s.fontSize! * _pixelFontScale,
+    fontSize: s.fontSize == null ? null : s.fontSize! * _pixelHeadingScale,
     letterSpacing: 0.5,
     height: 1,
   );
-  final text = base.textTheme;
+  // Text không ghi font riêng lấy font từ đây qua DefaultTextStyle.
+  final text = base.textTheme.apply(fontFamily: _pixelFont);
   return base.copyWith(
     textTheme: text.copyWith(
       displaySmall: heading(text.displaySmall),
@@ -859,78 +866,57 @@ ThemeData _pixelTheme(ThemeData base, RunNowPalette palette) {
       // textStyle riêng ở từng theme nút.
       labelLarge: text.labelLarge?.merge(
         const TextStyle(
-          fontFamily: _pixelFont,
-          fontSize: 22,
+          fontSize: 19,
           fontWeight: FontWeight.w400,
           letterSpacing: 1,
         ),
       ),
     ),
+    primaryTextTheme: base.primaryTextTheme.apply(fontFamily: _pixelFont),
     appBarTheme: base.appBarTheme.copyWith(
       titleTextStyle: base.appBarTheme.titleTextStyle?.copyWith(
         fontFamily: _pixelFont,
-        fontSize: 34,
+        fontSize: 29,
         fontWeight: FontWeight.w400,
         letterSpacing: 0.5,
       ),
     ),
     cardTheme: base.cardTheme.copyWith(shape: framed),
     filledButtonTheme: FilledButtonThemeData(
+      // Màu nút giữ của theme gốc, chỉ đổi dáng.
       style: FilledButton.styleFrom(
-        backgroundColor: palette.accent,
-        foregroundColor: palette.onAccent,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         shape: framed,
-      ),
+      ).merge(base.filledButtonTheme.style),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        foregroundColor: palette.ink,
         side: ink,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         shape: block,
-      ),
-    ),
-    textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: palette.accentDeep),
+      ).merge(base.outlinedButtonTheme.style),
     ),
     floatingActionButtonTheme: base.floatingActionButtonTheme.copyWith(
-      foregroundColor: palette.onAccent,
       shape: framed,
     ),
-    chipTheme: base.chipTheme.copyWith(
-      labelStyle: TextStyle(color: palette.ink),
-      secondaryLabelStyle: TextStyle(color: palette.onAccent),
-      shape: block,
-    ),
-    navigationBarTheme: base.navigationBarTheme.copyWith(
-      indicatorShape: block,
-      indicatorColor: palette.accent,
-      iconTheme: WidgetStateProperty.resolveWith(
-        (states) => IconThemeData(
-          color: states.contains(WidgetState.selected)
-              ? palette.onAccent
-              : palette.textMuted,
-        ),
-      ),
-    ),
+    chipTheme: base.chipTheme.copyWith(shape: framed),
+    navigationBarTheme: base.navigationBarTheme.copyWith(indicatorShape: block),
     inputDecorationTheme: base.inputDecorationTheme.copyWith(
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.zero,
-        borderSide: BorderSide(color: palette.border, width: 2),
+        borderSide: ink,
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.zero,
         borderSide: BorderSide(color: palette.accentDeep, width: 3),
       ),
     ),
-    listTileTheme: base.listTileTheme.copyWith(iconColor: palette.ink),
-    snackBarTheme: base.snackBarTheme.copyWith(shape: block),
+    snackBarTheme: base.snackBarTheme.copyWith(shape: framed),
     iconButtonTheme: IconButtonThemeData(
       style: IconButton.styleFrom(shape: block),
     ),
     segmentedButtonTheme: SegmentedButtonThemeData(
-      style: SegmentedButton.styleFrom(shape: block),
+      style: SegmentedButton.styleFrom(shape: block, side: ink),
     ),
     dialogTheme: base.dialogTheme.copyWith(shape: framed),
     bottomSheetTheme: base.bottomSheetTheme.copyWith(

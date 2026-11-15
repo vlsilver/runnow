@@ -1976,7 +1976,7 @@ class _SportPicker extends StatelessWidget {
       decoration: BoxDecoration(
         color: palette.glassStart,
         borderRadius: palette.radius(12),
-        border: Border.all(color: palette.border),
+        border: palette.inkBorder ?? Border.all(color: palette.border),
       ),
       child: Row(
         children: [

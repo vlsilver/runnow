@@ -83,6 +83,7 @@ class RunCardSheetTheme extends ConsumerWidget {
         app.element,
         appearance: app.appearance,
         darkTone: app.darkTone,
+        style: app.style,
       ),
       child: child,
     );
@@ -331,7 +332,10 @@ class RunCardSwatch extends StatelessWidget {
               child: Container(
                 width: size,
                 height: size,
-                decoration: BoxDecoration(shape: context.runNowPalette.round, color: color),
+                decoration: BoxDecoration(
+                  shape: context.runNowPalette.round,
+                  color: color,
+                ),
                 child: Icon(icon, size: 18, color: iconColor),
               ),
             ),

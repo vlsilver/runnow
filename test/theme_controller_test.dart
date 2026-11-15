@@ -231,42 +231,59 @@ void main() {
     expect(restarted.appearance, RunNowAppearance.dark);
   });
 
-  test('kiểu Pixel: giấy kem, mực chàm, xanh lá, giữ nguyên hành', () {
-    final palette = RunNowPalette.forSelection(
-      RunNowElement.water,
-      appearance: RunNowAppearance.light,
-      style: RunNowStyle.pixel,
-    );
+  test('kiểu Pixel lấy màu của hành đang chọn, chỉ đổi hình khối', () {
+    for (final element in RunNowElement.values) {
+      for (final appearance in RunNowAppearance.values) {
+        final plain = RunNowPalette.forSelection(
+          element,
+          appearance: appearance,
+        );
+        final pixel = RunNowPalette.forSelection(
+          element,
+          appearance: appearance,
+          style: RunNowStyle.pixel,
+        );
+        final reason = '${element.name} ${appearance.name}';
 
-    expect(palette.accent, const Color(0xff3fb85c));
-    expect(palette.background, const Color(0xffe8e4d0));
-    expect(palette.ink, const Color(0xff1d1b33));
-    expect(palette.accentNight, const Color(0xff1d1b33));
-    expect(palette.onAccent, const Color(0xff1d1b33));
-    expect(palette.warmMark, const Color(0xfff2a30f));
-    // Kiểu Pixel vẫn nhiều màu: báo lỗi là đỏ, không quy về màu nhấn.
-    expect(palette.danger, RunNowSemanticColors.danger);
-    expect(palette.corner(18), 0);
-    expect(palette.element, RunNowElement.water);
+        expect(pixel.accent, plain.accent, reason: reason);
+        expect(pixel.background, plain.background, reason: reason);
+        expect(pixel.foreground, plain.foreground, reason: reason);
+        expect(pixel.ink, plain.ink, reason: reason);
+        expect(pixel.accentNight, plain.accentNight, reason: reason);
+        expect(pixel.onAccent, plain.onAccent, reason: reason);
+        expect(pixel.warmMark, plain.warmMark, reason: reason);
+        expect(pixel.corner(18), 0, reason: reason);
+      }
+    }
   });
 
-  test('kiểu Pixel: nút chính là khối xanh viền mực, góc bậc thang', () {
+  test('kiểu Pixel: mọi chữ là VT323, nút giữ màu hành và có viền mực', () {
+    final plain = buildRunNowTheme(RunNowElement.water);
     final theme = buildRunNowTheme(
       RunNowElement.water,
-      appearance: RunNowAppearance.light,
       style: RunNowStyle.pixel,
     );
     final filled = theme.filledButtonTheme.style!;
-    const ink = Color(0xff1d1b33);
+    final ink = theme.extension<RunNowPalette>()!.foreground;
 
-    expect(filled.backgroundColor!.resolve({}), const Color(0xff3fb85c));
-    expect(filled.foregroundColor!.resolve({}), ink);
+    expect(
+      filled.backgroundColor!.resolve({}),
+      plain.filledButtonTheme.style!.backgroundColor!.resolve({}),
+    );
     expect(
       filled.shape!.resolve({}),
-      const PixelBorder(side: BorderSide(color: ink, width: 2)),
+      PixelBorder(side: BorderSide(color: ink, width: 2)),
     );
-    expect(theme.appBarTheme.titleTextStyle!.fontFamily, 'VT323');
-    expect(theme.textTheme.titleLarge!.fontFamily, 'VT323');
+    for (final style in [
+      theme.textTheme.bodySmall,
+      theme.textTheme.bodyMedium,
+      theme.textTheme.bodyLarge,
+      theme.textTheme.labelSmall,
+      theme.textTheme.titleLarge,
+      theme.appBarTheme.titleTextStyle,
+    ]) {
+      expect(style!.fontFamily, 'VT323');
+    }
     // VT323 chỉ có một độ đậm; ép đậm thì máy tự tô dày, nhoè ô vuông.
     expect(theme.textTheme.titleLarge!.fontWeight, FontWeight.w400);
   });

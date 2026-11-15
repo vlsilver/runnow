@@ -306,8 +306,8 @@ class _LiveSheet extends ConsumerWidget {
                         ),
                       ],
                     ),
-                    style: const TextStyle(
-                      fontFamily: 'Barlow Condensed',
+                    style: TextStyle(
+                      fontFamily: context.runNowPalette.narrowFont,
                       fontSize: 68,
                       height: 0.95,
                       fontWeight: FontWeight.w800,
@@ -450,7 +450,7 @@ class _ContractChip extends ConsumerWidget {
                   '${withLive.toStringAsFixed(1)}/${target.toStringAsFixed(0)}',
                   style: TextStyle(
                     color: muted,
-                    fontFamily: 'Barlow Condensed',
+                    fontFamily: context.runNowPalette.narrowFont,
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                   ),
@@ -518,8 +518,8 @@ class _Stat extends StatelessWidget {
       children: [
         Text(
           value,
-          style: const TextStyle(
-            fontFamily: 'Barlow Condensed',
+          style: TextStyle(
+            fontFamily: context.runNowPalette.narrowFont,
             fontSize: 26,
             height: 1,
             fontWeight: FontWeight.w800,
@@ -642,8 +642,8 @@ class _KmMark extends StatelessWidget {
       child: Center(
         child: Text(
           '$km',
-          style: const TextStyle(
-            fontFamily: 'Barlow Condensed',
+          style: TextStyle(
+            fontFamily: context.runNowPalette.narrowFont,
             fontSize: 13,
             fontWeight: FontWeight.w800,
           ),

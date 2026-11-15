@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:myrun/src/widgets/glass.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_card_art.dart';
 import 'package:myrun/src/games/game_km_table.dart';
@@ -86,7 +87,7 @@ class GameHero extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         borderRadius: context.runNowPalette.radius(20),
-        border: Border.all(color: context.moonlit.amberLine),
+        border: context.runNowPalette.tintedBorder(context.moonlit.amberLine),
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
@@ -140,7 +141,7 @@ class GameHero extends StatelessWidget {
                     title,
                     maxLines: 1,
                     style: TextStyle(
-                      fontFamily: gameTitleFont,
+                      fontFamily: context.runNowPalette.narrowFont,
                       fontWeight: FontWeight.w800,
                       fontSize: 42,
                       height: 1,
@@ -225,7 +226,9 @@ class GameHero extends StatelessWidget {
               ],
               SizedBox(
                 height: 54,
-                child: CustomPaint(painter: _HillsPainter(context.moonlit)),
+                child: PixelArt(
+                  child: CustomPaint(painter: _HillsPainter(context.moonlit)),
+                ),
               ),
             ],
           ),
@@ -254,7 +257,7 @@ class _EndedHero extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 22, 16, 18),
       decoration: BoxDecoration(
         borderRadius: context.runNowPalette.radius(22),
-        border: Border.all(color: context.moonlit.amberLine),
+        border: context.runNowPalette.tintedBorder(context.moonlit.amberLine),
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
@@ -308,7 +311,7 @@ class _EndedHero extends StatelessWidget {
                 title,
                 maxLines: 1,
                 style: TextStyle(
-                  fontFamily: gameTitleFont,
+                  fontFamily: context.runNowPalette.narrowFont,
                   fontWeight: FontWeight.w800,
                   fontSize: 44,
                   height: 0.95,
@@ -362,7 +365,7 @@ class GameHeroBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         borderRadius: context.runNowPalette.radius(16),
-        border: Border.all(color: context.moonlit.amberLine),
+        border: context.runNowPalette.tintedBorder(context.moonlit.amberLine),
         gradient: LinearGradient(
           colors: [
             context.moonlit.heroTop,
@@ -386,7 +389,7 @@ class GameHeroBar extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontFamily: gameTitleFont,
+                    fontFamily: context.runNowPalette.narrowFont,
                     fontWeight: FontWeight.w800,
                     fontSize: 20,
                     height: 1,
@@ -431,7 +434,7 @@ class _Chip extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.moonlit.amberTint,
         borderRadius: context.runNowPalette.radius(999),
-        border: Border.all(color: context.moonlit.amberLine),
+        border: context.runNowPalette.tintedBorder(context.moonlit.amberLine),
       ),
       child: Text(
         label,
@@ -498,7 +501,7 @@ class _GameCountdownState extends State<GameCountdown> {
       return Text(
         clock,
         style: TextStyle(
-          fontFamily: gameTitleFont,
+          fontFamily: context.runNowPalette.narrowFont,
           fontWeight: FontWeight.w700,
           fontSize: 22,
           height: 1,
@@ -514,7 +517,7 @@ class _GameCountdownState extends State<GameCountdown> {
         Text(
           clock,
           style: TextStyle(
-            fontFamily: gameTitleFont,
+            fontFamily: context.runNowPalette.narrowFont,
             fontWeight: FontWeight.w700,
             fontSize: 26,
             height: 1,
@@ -636,7 +639,7 @@ class _Stat extends StatelessWidget {
               ],
             ),
             style: TextStyle(
-              fontFamily: gameTitleFont,
+              fontFamily: context.runNowPalette.narrowFont,
               fontWeight: FontWeight.w700,
               fontSize: 22,
               height: 1,

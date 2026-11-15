@@ -1248,6 +1248,7 @@ class _DailyQuoteCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: palette.wash(palette.accent, 0.14),
         borderRadius: palette.radius(14),
+        border: palette.inkBorder,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

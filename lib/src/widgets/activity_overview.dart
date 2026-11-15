@@ -101,12 +101,14 @@ class ActivityOverview extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               summary.name,
-              style: context.runNowPalette.heading(const TextStyle(
-                fontSize: 24,
-                height: 1.15,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.4,
-              )),
+              style: context.runNowPalette.heading(
+                const TextStyle(
+                  fontSize: 24,
+                  height: 1.15,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.4,
+                ),
+              ),
             ),
           ],
           const SizedBox(height: 14),
@@ -288,8 +290,8 @@ class _CellBody extends StatelessWidget {
                 ),
             ],
           ),
-          style: const TextStyle(
-            fontFamily: 'Barlow Condensed',
+          style: TextStyle(
+            fontFamily: context.runNowPalette.narrowFont,
             fontSize: 22,
             height: 1,
             fontWeight: FontWeight.w800,
@@ -313,8 +315,8 @@ class _Big extends StatelessWidget {
       children: [
         Text(
           value,
-          style: const TextStyle(
-            fontFamily: 'Barlow Condensed',
+          style: TextStyle(
+            fontFamily: context.runNowPalette.narrowFont,
             fontSize: 34,
             height: 1,
             fontWeight: FontWeight.w800,

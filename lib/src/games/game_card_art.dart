@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/achievements/card_scene.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/games/game_role_card.dart';
@@ -18,8 +19,10 @@ class GameTeamArt extends StatelessWidget {
   Widget build(BuildContext context) {
     // Thẻ vẽ lại mỗi khung hình khi nghiêng; tranh đứng yên nên tách lớp.
     return RepaintBoundary(
-      child: CustomPaint(
-        painter: _TeamScenePainter(team, RunCardSkin.of(context)),
+      child: PixelArt(
+        child: CustomPaint(
+          painter: _TeamScenePainter(team, RunCardSkin.of(context)),
+        ),
       ),
     );
   }
@@ -379,7 +382,9 @@ class GameCardEmblem extends StatelessWidget {
     final skin = RunCardSkin.of(context);
     final foil = (skin.darkMap ? skin : RunCardSkin.classic).accent(tier);
     return RepaintBoundary(
-      child: CustomPaint(painter: _EmblemPainter(team, foil, skin)),
+      child: PixelArt(
+        child: CustomPaint(painter: _EmblemPainter(team, foil, skin)),
+      ),
     );
   }
 }

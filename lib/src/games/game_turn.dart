@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:myrun/src/games/game_hero.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
 
@@ -156,7 +155,7 @@ class _GameTurnBannerState extends State<GameTurnBanner> {
                 child: Text(
                   title,
                   style: TextStyle(
-                    fontFamily: gameTitleFont,
+                    fontFamily: context.runNowPalette.narrowFont,
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1.4,

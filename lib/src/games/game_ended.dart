@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:myrun/src/games/game_hero.dart';
 import 'package:myrun/src/games/game_journal.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -125,7 +124,7 @@ class _StatTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.moonlit.panel,
         borderRadius: context.runNowPalette.radius(12),
-        border: Border.all(color: context.moonlit.border),
+        border: context.runNowPalette.frameBorder(context.moonlit.border),
       ),
       child: Column(
         children: [
@@ -135,7 +134,7 @@ class _StatTile extends StatelessWidget {
               stat.value,
               maxLines: 1,
               style: TextStyle(
-                fontFamily: gameTitleFont,
+                fontFamily: context.runNowPalette.narrowFont,
                 fontWeight: FontWeight.w800,
                 fontSize: 26,
                 height: 1,
@@ -190,7 +189,7 @@ class _TitleCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.moonlit.list,
         borderRadius: context.runNowPalette.radius(14),
-        border: Border.all(color: context.moonlit.border),
+        border: context.runNowPalette.frameBorder(context.moonlit.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -233,7 +232,7 @@ class _TitleCard extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontFamily: gameTitleFont,
+              fontFamily: context.runNowPalette.narrowFont,
               fontWeight: FontWeight.w700,
               fontSize: 16,
               color: context.moonlit.amberLight,
@@ -292,7 +291,7 @@ class _TeamBlock extends StatelessWidget {
               Text(
                 team.label.toUpperCase(),
                 style: TextStyle(
-                  fontFamily: gameTitleFont,
+                  fontFamily: context.runNowPalette.narrowFont,
                   fontWeight: FontWeight.w800,
                   fontSize: 18,
                   letterSpacing: 1,
@@ -525,7 +524,7 @@ class _ReplayBlock extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.moonlit.list,
         borderRadius: context.runNowPalette.radius(16),
-        border: Border.all(color: context.moonlit.border),
+        border: context.runNowPalette.frameBorder(context.moonlit.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -533,7 +532,7 @@ class _ReplayBlock extends StatelessWidget {
           Text(
             title,
             style: TextStyle(
-              fontFamily: gameTitleFont,
+              fontFamily: context.runNowPalette.narrowFont,
               fontWeight: FontWeight.w800,
               fontSize: 16,
               letterSpacing: 1,
