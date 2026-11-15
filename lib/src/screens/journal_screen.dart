@@ -53,7 +53,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
           actions: const [
             Padding(
               padding: EdgeInsets.only(right: 12),
-              child: Center(child: _JournalTabPicker()),
+              child: Center(child: JournalTabPicker()),
             ),
           ],
         ),
@@ -66,11 +66,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
                     ? const _JournalLoadingList()
                     : _JournalPagedList(
                         key: PageStorageKey(tab),
-                        emptyMessage: switch (tab) {
-                          JournalTab.run => 'Chưa có buổi chạy nào',
-                          JournalTab.walk => 'Chưa có buổi đi bộ nào',
-                          JournalTab.ride => 'Chưa có buổi đạp xe nào',
-                        },
+                        emptyMessage: journalEmptyMessage(tab),
                         rows: _mergeJournalRows(
                           tab: tab,
                           items: journal.items,
@@ -115,8 +111,8 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
 
 /// Bộ chọn môn trên thanh tiêu đề: ba ô icon, ô đang xem được tô. Đi theo
 /// [DefaultTabController] nên vuốt ngang danh sách thì ô tô đổi theo.
-class _JournalTabPicker extends StatelessWidget {
-  const _JournalTabPicker();
+class JournalTabPicker extends StatelessWidget {
+  const JournalTabPicker({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -177,6 +173,14 @@ class _JournalTabPicker extends StatelessWidget {
     );
   }
 }
+
+/// Dòng báo tab chưa có buổi nào, dùng chung cho nhật ký của mình và của
+/// thành viên khác.
+String journalEmptyMessage(JournalTab tab) => switch (tab) {
+  JournalTab.run => 'Chưa có buổi chạy nào',
+  JournalTab.walk => 'Chưa có buổi đi bộ nào',
+  JournalTab.ride => 'Chưa có buổi đạp xe nào',
+};
 
 String _journalTabLabel(JournalTab tab) => switch (tab) {
   JournalTab.run => 'Chạy',
