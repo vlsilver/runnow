@@ -144,6 +144,18 @@ void main() {
     return repository;
   }
 
+  testWidgets('Nút khoe ở thẻ Đều đặn mở ảnh của thẻ đó', (tester) async {
+    await pumpHub(tester);
+    await tester.tap(find.byTooltip('Khoe Đều đặn'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.widgetWithText(FilledButton, 'Khoe đều đặn'), findsOneWidget);
+    // Thẻ trên màn và thẻ trong ảnh; thẻ trong ảnh không có nút khoe.
+    expect(find.text('ĐỀU ĐẶN'), findsNWidgets(2));
+    expect(find.byTooltip('Khoe Đều đặn'), findsOneWidget);
+  });
+
   testWidgets(
     'Hoạt động shows the five newest runs, the icon opens the journal',
     (tester) async {

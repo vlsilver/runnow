@@ -12,6 +12,7 @@ import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/journey/journey_timeline.dart';
 import 'package:myrun/src/profile_stats.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/glass.dart';
@@ -265,10 +266,13 @@ class _Headline extends StatelessWidget {
 }
 
 class _CardTitle extends StatelessWidget {
-  const _CardTitle(this.title, this.range);
+  const _CardTitle(this.title, this.range, {this.onShare});
 
   final String title;
   final String range;
+
+  /// null thì không có nút khoe.
+  final VoidCallback? onShare;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -278,6 +282,17 @@ class _CardTitle extends StatelessWidget {
         range,
         style: TextStyle(fontSize: 12, color: context.runNowPalette.textMuted),
       ),
+      if (onShare != null) ...[
+        const SizedBox(width: 4),
+        IconButton(
+          tooltip: 'Khoe $title',
+          visualDensity: VisualDensity.compact,
+          constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+          padding: EdgeInsets.zero,
+          icon: const Icon(Icons.ios_share_rounded, size: 18),
+          onPressed: onShare,
+        ),
+      ],
     ],
   );
 }
@@ -365,14 +380,32 @@ class _PeriodTabs extends StatelessWidget {
 }
 
 class _ConsistencyCard extends StatelessWidget {
-  const _ConsistencyCard({required this.view});
+  const _ConsistencyCard({required this.view, this.shareable = true});
 
   final ConsistencyView view;
+
+  /// Bản nằm trong ảnh khoe thì không có nút khoe. Web không gửi được file.
+  final bool shareable;
 
   @override
   Widget build(BuildContext context) => SectionCard(
     children: [
-      _CardTitle('Đều đặn', view.range),
+      _CardTitle(
+        'Đều đặn',
+        view.range,
+        onShare: !shareable || kIsWeb
+            ? null
+            : () => showShareCardSheet(
+                context,
+                caption: 'Đều đặn ${view.range}: ${view.headline}',
+                fileName: '3i-deu-dan.png',
+                label: 'Khoe đều đặn',
+                card: SizedBox(
+                  width: 360,
+                  child: _ConsistencyCard(view: view, shareable: false),
+                ),
+              ),
+      ),
       const SizedBox(height: 8),
       _Headline(view.headline),
       const SizedBox(height: 2),
