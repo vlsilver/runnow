@@ -39,17 +39,20 @@ enum ShareFormat {
 /// Chỗ [content] nằm trong khung [format]: thu phóng vừa vùng an toàn, giữ
 /// tỉ lệ. Còn dư ít nhất [stampBand] px chiều dọc thì nội dung dịch lên, nhường
 /// dải dưới cho tem 3I RUN; không thì nằm giữa và không có tem.
+///
+/// [bleed] là viền trống quanh [content] (px của content, mỗi cạnh) cùng màu
+/// nền khung: phần đó được tràn ra ngoài vùng an toàn, để hình bên trong mới
+/// là thứ lấp vùng an toàn.
 ({Rect content, Rect? stamp}) shareFrameLayout(
   Size content,
   ShareFormat format, {
   double stampBand = 150,
+  double bleed = 0,
 }) {
   final safe = format.safe;
-  final scale = math.min(
-    safe.width / content.width,
-    safe.height / content.height,
-  );
-  final size = content * scale;
+  final inner = Size(content.width - bleed * 2, content.height - bleed * 2);
+  final scale = math.min(safe.width / inner.width, safe.height / inner.height);
+  final size = inner * scale;
   final free = safe.height - size.height;
   if (free < stampBand) {
     return (
@@ -57,7 +60,7 @@ enum ShareFormat {
         center: safe.center,
         width: size.width,
         height: size.height,
-      ),
+      ).inflate(bleed * scale),
       stamp: null,
     );
   }
@@ -69,23 +72,26 @@ enum ShareFormat {
     size.height,
   );
   return (
-    content: placed,
+    content: placed.inflate(bleed * scale),
     stamp: Rect.fromLTWH(safe.left, placed.bottom, safe.width, stampBand),
   );
 }
 
 /// Đặt [content] lên nền [background] trong khung [format] rồi xuất PNG. Có
 /// [stamp] và còn chỗ thì in tem 3I RUN theo bảng màu đó dưới nội dung.
+/// [bleed] như ở [shareFrameLayout].
 Future<Uint8List> frameShareImage(
   ui.Image content,
   ShareFormat format, {
   required Color background,
   RunNowPalette? stamp,
+  double bleed = 0,
 }) async {
   final layout = shareFrameLayout(
     Size(content.width.toDouble(), content.height.toDouble()),
     format,
     stampBand: stamp == null ? double.infinity : 150,
+    bleed: bleed,
   );
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder)

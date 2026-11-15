@@ -31,7 +31,7 @@ import 'package:path_provider/path_provider.dart';
 /// ghi video nên vẫn ghi GIF.
 
 /// Đổi số này khi cách vẽ thẻ hay cách ghi đổi, để cache cũ không dùng nữa.
-const _shareVersion = 11;
+const _shareVersion = 12;
 
 /// Một vòng lá xoay: đứng mặt trước, lật sang sau, đứng, lật về.
 const _motionDuration = Duration(milliseconds: 3600);
@@ -46,6 +46,9 @@ const _gifFrameCount = 36;
 /// ảnh gốc, file thẻ thật khoảng 2,5 MB.
 const _gifWidth = 540;
 const _stillPixelRatio = 3.0;
+
+/// Viền nền quanh lá trên sân khấu, tính theo bề ngang lá.
+const _stageMargin = 0.08;
 
 /// Chờ tranh nền và tile bản đồ mặt sau tải xong trước khi chụp. Mạng chậm
 /// mà vẫn thiếu thì người dùng bấm Tạo lại.
@@ -532,6 +535,9 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
           image,
           _format,
           background: RunNowGameTokens.nightBackground,
+          // Sân khấu là lá cộng viền 8% mỗi bên; bỏ viền ra ngoài để lá lấp
+          // vùng an toàn, không thì lá chỉ còn 3/4 bề ngang ảnh.
+          bleed: image.width * _stageMargin / (1 + _stageMargin * 2),
         );
       } finally {
         image.dispose();
@@ -944,10 +950,10 @@ class _CardStageState extends State<_CardStage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final base = achievementCardSize;
-        // Lá cộng viền 8% mỗi bên.
+        // Lá cộng viền mỗi bên.
         final width = math.min(
-          constraints.maxWidth / 1.16,
-          constraints.maxHeight / (base.height / base.width + 0.16),
+          constraints.maxWidth / (1 + _stageMargin * 2),
+          constraints.maxHeight / (base.height / base.width + _stageMargin * 2),
         );
         Widget back(Offset pose) => KeyedSubtree(
           key: _backKey,
@@ -970,7 +976,7 @@ class _CardStageState extends State<_CardStage> {
               child: ColoredBox(
                 color: RunNowGameTokens.nightBackground,
                 child: Padding(
-                  padding: EdgeInsets.all(width * 0.08),
+                  padding: EdgeInsets.all(width * _stageMargin),
                   child: tiltFlipFace(
                     front: (pose) =>
                         AchievementCard(data: widget.data, pose: pose),

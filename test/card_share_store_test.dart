@@ -54,11 +54,11 @@ void main() {
     RunNowElement.water,
   );
 
-  // Khoá tính tay bằng FNV-1a 32 bit trên chuỗi 'rare||An|11' (bậc, tranh
+  // Khoá tính tay bằng FNV-1a 32 bit trên chuỗi 'rare||An|12' (bậc, tranh
   // nền, chủ, phiên bản). Đổi số này là file khoe đã lưu của mọi người phải
   // ghi lại.
   test('a run card keeps the cache key its saved files were made with', () {
-    expect(runCardShareKey(_card, 'An', skin: dark), startsWith('c58cb05c.'));
+    expect(runCardShareKey(_card, 'An', skin: dark), startsWith('c88cb515.'));
   });
 
   test('Story và Feed của cùng một thẻ giữ file riêng, cùng phần nội dung', () {

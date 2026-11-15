@@ -62,6 +62,23 @@ void main() {
       expect(layout.content.height, closeTo(1420, 0.001));
       expect(layout.stamp, isNull);
     });
+
+    test('viền trống quanh lá tràn ra ngoài, lá rộng hết vùng an toàn', () {
+      // Lá 1000×1400 có viền 80 px mỗi cạnh. 952 / 1000 = 0,952; lá thành
+      // 952×1332,8 nằm giữa vùng an toàn (tâm 540, 960). Cả ảnh kèm viền
+      // rộng 1160 × 0,952 = 1104,32, cao 1560 × 0,952 = 1485,12.
+      final layout = shareFrameLayout(
+        const Size(1160, 1560),
+        ShareFormat.story,
+        stampBand: double.infinity,
+        bleed: 80,
+      );
+      expect(layout.content.left, closeTo(-12.16, 0.001));
+      expect(layout.content.top, closeTo(217.44, 0.001));
+      expect(layout.content.width, closeTo(1104.32, 0.001));
+      expect(layout.content.height, closeTo(1485.12, 0.001));
+      expect(layout.stamp, isNull);
+    });
   });
 
   testWidgets('frameShareImage ra file đúng cỡ của khổ, nền phủ kín', (
