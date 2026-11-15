@@ -196,7 +196,7 @@ class KeoSceneCard extends StatelessWidget {
                   scene: scene,
                   variant: keoSceneVariant(seed),
                   colors: colors,
-                  square: context.runNowPalette.isIron,
+                  square: context.runNowPalette.squared,
                 ),
               ),
             ),

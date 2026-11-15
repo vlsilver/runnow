@@ -62,7 +62,7 @@ class CreatePosterTile extends StatelessWidget {
                           : Colors.white,
                       warm: palette.warmMark,
                       ground: Color.lerp(bg, Colors.black, 0.35)!,
-                      square: palette.isIron,
+                      square: palette.squared,
                     ),
                   ),
                 ),

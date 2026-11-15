@@ -138,7 +138,7 @@ class _Hero extends StatelessWidget {
                   ratio: total == 0 ? 0 : (done / total).clamp(0.0, 1.0),
                   lane: palette.border,
                   fill: palette.accent,
-                  square: palette.isIron,
+                  square: palette.squared,
                 ),
                 child: Center(
                   child: Text.rich(

@@ -39,7 +39,7 @@ class RunRoomRouteSketch extends StatelessWidget {
       dashed: dashed,
       strokeWidth: strokeWidth,
       padding: padding,
-      square: context.runNowPalette.isIron,
+      square: context.runNowPalette.squared,
     ),
     child: const SizedBox.expand(),
   );

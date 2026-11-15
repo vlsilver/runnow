@@ -218,7 +218,7 @@ class RankMountain extends StatelessWidget {
                       painter: _MountainPainter(
                         colors: colors,
                         scaleX: sx,
-                        square: palette.isIron,
+                        square: palette.squared,
                         contours: [
                           for (final row in rows)
                             (

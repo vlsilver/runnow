@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:myrun/src/theme.dart';
 
-/// Avatar của app: tròn như [CircleAvatar], riêng kiểu Thép thì vuông.
+/// Avatar của app: tròn như [CircleAvatar], riêng kiểu Thép và Pixel thì vuông.
 class RunNowAvatar extends StatelessWidget {
   const RunNowAvatar({
     super.key,
@@ -20,7 +20,7 @@ class RunNowAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!context.runNowPalette.isIron) {
+    if (!context.runNowPalette.squared) {
       return CircleAvatar(
         radius: radius,
         backgroundColor: backgroundColor,
@@ -51,14 +51,14 @@ class RunNowAvatar extends StatelessWidget {
   }
 }
 
-/// Khung cắt ảnh đại diện: tròn như [ClipOval], kiểu Thép thì vuông.
+/// Khung cắt ảnh đại diện: tròn như [ClipOval], kiểu Thép và Pixel thì vuông.
 class RunNowRoundClip extends StatelessWidget {
   const RunNowRoundClip({super.key, required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => context.runNowPalette.isIron
+  Widget build(BuildContext context) => context.runNowPalette.squared
       ? ClipRect(child: child)
       : ClipOval(child: child);
 }

@@ -2041,8 +2041,9 @@ class _Controls extends StatelessWidget {
         (false, false) => Icons.gps_not_fixed_rounded,
       };
       // Kiểu Thép: khối phẳng, đỏ khi sẵn sàng, đen khi còn quét GPS, và giữ
-      // nguyên màu lúc bận để nút không nhạt đi.
-      final iron = palette.isIron;
+      // nguyên màu lúc bận để nút không nhạt đi. Kiểu Pixel cũng vậy với
+      // xanh và mực chàm.
+      final iron = palette.squared;
       final enabledColor = gpsReady
           ? palette.accent
           : (iron ? palette.ink : palette.accentDeep);

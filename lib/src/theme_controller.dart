@@ -119,9 +119,11 @@ class ThemeController extends ChangeNotifier {
         : RunNowAppearance.light;
     // Palette v3 follows the design source exactly: dark surfaces are neutral.
     final loadedDarkTone = RunNowDarkTone.elemental;
-    final loadedStyle = values[4] == 'iron'
-        ? RunNowStyle.iron
-        : RunNowStyle.elemental;
+    final loadedStyle = switch (values[4]) {
+      'iron' => RunNowStyle.iron,
+      'pixel' => RunNowStyle.pixel,
+      _ => RunNowStyle.elemental,
+    };
     if (_element == loadedElement &&
         _appearance == loadedAppearance &&
         _darkTone == loadedDarkTone &&

@@ -90,7 +90,7 @@ class RunNowEmptyIcon extends StatelessWidget {
         width: width,
         height: height,
         child: CustomPaint(
-          painter: _EmptyTrackPainter(line, square: palette.isIron),
+          painter: _EmptyTrackPainter(line, square: palette.squared),
           child: Center(
             child: Icon(
               palette.element.icon,

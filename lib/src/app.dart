@@ -62,9 +62,7 @@ final _router = GoRouter(
   routes: [
     StatefulShellRoute.indexedStack(
       builder: (context, state, shell) => _HealthSyncTrigger(
-        child: AppUpdatePrompt(
-          child: _Scaffold(shell: shell),
-        ),
+        child: AppUpdatePrompt(child: _Scaffold(shell: shell)),
       ),
       branches: [
         StatefulShellBranch(
@@ -126,10 +124,7 @@ final _router = GoRouter(
               builder: (context, state) => const ProfileScreen(),
               routes: [
                 // Cài đặt từng là màn riêng, giờ nằm ngay trong tab Hồ sơ.
-                GoRoute(
-                  path: 'settings',
-                  redirect: (context, state) => '/me',
-                ),
+                GoRoute(path: 'settings', redirect: (context, state) => '/me'),
                 GoRoute(
                   path: 'cards',
                   builder: (context, state) => const RunCardCollectionScreen(),
@@ -267,10 +262,7 @@ final _router = GoRouter(
             JourneyCampaignId.marathon,
       ),
     ),
-    GoRoute(
-      path: '/oauth',
-      builder: (context, state) => const KeoHubScreen(),
-    ),
+    GoRoute(path: '/oauth', builder: (context, state) => const KeoHubScreen()),
     GoRoute(
       path: '/contracts',
       builder: (context, state) => const RunContractHomeScreen(),
@@ -944,84 +936,89 @@ class _Scaffold extends ConsumerWidget {
       bottomNavigationBar: hideNav
           ? null
           : SafeArea(
-        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        child: GlassPanel(
-          borderRadius: 22,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: _NavItem(
-                      selected: shell.currentIndex == 0,
-                      icon: Icons.home_outlined,
-                      selectedIcon: Icons.home_rounded,
-                      label: 'Trang chủ',
-                      onTap: () => shell.goBranch(0),
+              minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: GlassPanel(
+                borderRadius: 22,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _NavItem(
+                            selected: shell.currentIndex == 0,
+                            icon: Icons.home_outlined,
+                            selectedIcon: Icons.home_rounded,
+                            label: 'Trang chủ',
+                            onTap: () => shell.goBranch(0),
+                          ),
+                        ),
+                        Expanded(
+                          child: _NavItem(
+                            selected: shell.currentIndex == 1,
+                            icon: Icons.groups_2_outlined,
+                            selectedIcon: Icons.groups_2,
+                            label: 'Club',
+                            onTap: () => shell.goBranch(1),
+                          ),
+                        ),
+                        if (!kIsWeb)
+                          Expanded(
+                            child: _OrbNavItem(
+                              selected: shell.currentIndex == 2,
+                              icon: Icons.directions_run_rounded,
+                              label: 'Chạy',
+                              onTap: () => shell.goBranch(2),
+                            ),
+                          ),
+                        Expanded(
+                          child: _NavItem(
+                            selected: shell.currentIndex == 3,
+                            icon: Icons.insights_outlined,
+                            selectedIcon: Icons.insights_rounded,
+                            label: 'Hoạt động',
+                            // Tab sống trong IndexedStack nên đọc lại số liệu và
+                            // nhật ký mỗi lần mở: chạy xong mở tab là thấy buổi mới.
+                            onTap: () {
+                              ref.invalidate(profileStatsProvider);
+                              unawaited(
+                                ref
+                                    .read(journalControllerProvider)
+                                    .ensureLoaded(),
+                              );
+                              shell.goBranch(3);
+                            },
+                          ),
+                        ),
+                        Expanded(
+                          child: _NavItem(
+                            selected: shell.currentIndex == 4,
+                            icon: Icons.person_outline,
+                            selectedIcon: Icons.person,
+                            label: 'Hồ sơ',
+                            onTap: () => shell.goBranch(4),
+                          ),
+                        ),
+                        if (admin)
+                          Expanded(
+                            child: _NavItem(
+                              selected: shell.currentIndex == 5,
+                              icon: Icons.admin_panel_settings_outlined,
+                              selectedIcon: Icons.admin_panel_settings,
+                              label: 'Admin',
+                              onTap: () => shell.goBranch(5),
+                            ),
+                          ),
+                      ],
                     ),
-                  ),
-                  Expanded(
-                    child: _NavItem(
-                      selected: shell.currentIndex == 1,
-                      icon: Icons.groups_2_outlined,
-                      selectedIcon: Icons.groups_2,
-                      label: 'Club',
-                      onTap: () => shell.goBranch(1),
-                    ),
-                  ),
-                  if (!kIsWeb)
-                    Expanded(
-                      child: _OrbNavItem(
-                        selected: shell.currentIndex == 2,
-                        icon: Icons.directions_run_rounded,
-                        label: 'Chạy',
-                        onTap: () => shell.goBranch(2),
-                      ),
-                    ),
-                  Expanded(
-                    child: _NavItem(
-                      selected: shell.currentIndex == 3,
-                      icon: Icons.insights_outlined,
-                      selectedIcon: Icons.insights_rounded,
-                      label: 'Hoạt động',
-                      // Tab sống trong IndexedStack nên đọc lại số liệu và
-                      // nhật ký mỗi lần mở: chạy xong mở tab là thấy buổi mới.
-                      onTap: () {
-                        ref.invalidate(profileStatsProvider);
-                        unawaited(
-                          ref.read(journalControllerProvider).ensureLoaded(),
-                        );
-                        shell.goBranch(3);
-                      },
-                    ),
-                  ),
-                  Expanded(
-                    child: _NavItem(
-                      selected: shell.currentIndex == 4,
-                      icon: Icons.person_outline,
-                      selectedIcon: Icons.person,
-                      label: 'Hồ sơ',
-                      onTap: () => shell.goBranch(4),
-                    ),
-                  ),
-                  if (admin)
-                    Expanded(
-                      child: _NavItem(
-                        selected: shell.currentIndex == 5,
-                        icon: Icons.admin_panel_settings_outlined,
-                        selectedIcon: Icons.admin_panel_settings,
-                        label: 'Admin',
-                        onTap: () => shell.goBranch(5),
-                      ),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 }
@@ -1038,14 +1035,7 @@ class _DesktopNavRail extends StatelessWidget {
     final extended = width >= 1240;
     final scheme = Theme.of(context).colorScheme;
     final onSurface = scheme.onSurface;
-    final branches = <int>[
-      0,
-      1,
-      if (!kIsWeb) 2,
-      3,
-      4,
-      if (admin) 5,
-    ];
+    final branches = <int>[0, 1, if (!kIsWeb) 2, 3, 4, if (admin) 5];
     final destinations = <NavigationRailDestination>[
       const NavigationRailDestination(
         icon: Icon(Icons.home_outlined),
@@ -1248,19 +1238,23 @@ class _OrbNavItem extends StatelessWidget {
             decoration: BoxDecoration(
               shape: palette.round,
               // Kiểu Thép: khối đỏ phẳng, không chuyển màu, không quầng sáng.
-              color: palette.isIron ? palette.accent : null,
-              gradient: palette.isIron
+              color: palette.squared ? palette.accent : null,
+              gradient: palette.squared
                   ? null
                   : RadialGradient(
                       colors: selected
-                          ? [palette.tertiary, palette.secondary, palette.accent]
+                          ? [
+                              palette.tertiary,
+                              palette.secondary,
+                              palette.accent,
+                            ]
                           : [
                               palette.accent,
                               palette.accentDeep,
                               palette.backgroundDeep,
                             ],
                     ),
-              boxShadow: palette.isIron
+              boxShadow: palette.squared
                   ? null
                   : [
                       BoxShadow(

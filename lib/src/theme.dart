@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:myrun/src/theme_tokens.dart';
 
@@ -11,10 +10,16 @@ enum RunNowAppearance { light, dark }
 /// Kiểu giao diện cả app. [elemental] tô theo ngũ hành đang chọn. [iron] là
 /// kiểu Thép: giấy trắng ngà, mực đen, một màu đỏ, tiêu đề chữ hẹp đậm. Kiểu
 /// là trục riêng, không phải một hành, nên thẻ chạy vẫn giữ hành của nó.
-enum RunNowStyle { elemental, iron }
+/// [pixel] là kiểu máy chơi game 8-bit: giấy kem, mực chàm, xanh lá, mọi khối
+/// vuông có góc bậc thang và viền mực dày.
+enum RunNowStyle { elemental, iron, pixel }
 
 extension RunNowStyleLabel on RunNowStyle {
-  String get label => this == RunNowStyle.iron ? 'Thép' : 'Ngũ hành';
+  String get label => switch (this) {
+    RunNowStyle.elemental => 'Ngũ hành',
+    RunNowStyle.iron => 'Thép',
+    RunNowStyle.pixel => 'Pixel',
+  };
 }
 
 enum RunNowDarkTone { elemental, slate, dim, cloud, warm, cool }
@@ -180,13 +185,20 @@ class RunNowPalette extends ThemeExtension<RunNowPalette> {
     RunNowStyle style = RunNowStyle.elemental,
   }) {
     final iron = style == RunNowStyle.iron;
-    final primary = iron ? RunNowThemeTokens.ironRamp : element.ramp;
     final isLight = appearance == RunNowAppearance.light;
-    final material = iron
-        ? (isLight ? RunNowThemeTokens.ironLight : RunNowThemeTokens.ironDark)
-        : isLight
-        ? element.lightMaterial
-        : darkTone.materialFor(element);
+    final primary = switch (style) {
+      RunNowStyle.elemental => element.ramp,
+      RunNowStyle.iron => RunNowThemeTokens.ironRamp,
+      RunNowStyle.pixel => RunNowThemeTokens.pixelRamp,
+    };
+    final material = switch (style) {
+      RunNowStyle.elemental =>
+        isLight ? element.lightMaterial : darkTone.materialFor(element),
+      RunNowStyle.iron =>
+        isLight ? RunNowThemeTokens.ironLight : RunNowThemeTokens.ironDark,
+      RunNowStyle.pixel =>
+        isLight ? RunNowThemeTokens.pixelLight : RunNowThemeTokens.pixelDark,
+    };
     final background = material[0];
     final surface = material[1];
     final border = material[2];
@@ -201,7 +213,7 @@ class RunNowPalette extends ThemeExtension<RunNowPalette> {
       // of that same brand, not colors from the supporting element.
       secondary: primary[3],
       tertiary: primary[1],
-      ink: iron
+      ink: style != RunNowStyle.elemental
           ? foreground
           : isLight
           ? RunNowThemeTokens.lightInk
@@ -212,6 +224,10 @@ class RunNowPalette extends ThemeExtension<RunNowPalette> {
           ? (isLight
                 ? RunNowThemeTokens.ironTintLight
                 : RunNowThemeTokens.ironTintDark)
+          : style == RunNowStyle.pixel
+          ? (isLight
+                ? RunNowThemeTokens.pixelTintLight
+                : RunNowThemeTokens.pixelTintDark)
           : isLight
           ? element.tint
           : Color.alphaBlend(primary[2].withValues(alpha: 0.16), surface),
@@ -320,12 +336,18 @@ extension RunNowPaletteMarks on RunNowPalette {
           ? RunNowThemeTokens.ironNightDark
           : RunNowThemeTokens.ironInk;
     }
+    if (style == RunNowStyle.pixel) {
+      return appearance == RunNowAppearance.dark
+          ? RunNowThemeTokens.pixelTintDark
+          : RunNowThemeTokens.pixelInk;
+    }
     return Color.lerp(accentDeep, RunNowDataColors.coachLoadFarLight, 0.66)!;
   }
 
   /// Chữ và icon đặt trên nền [accent]. Kiểu Thép đặt mực đen trên đỏ.
   Color get onAccent {
     if (style == RunNowStyle.iron) return RunNowThemeTokens.ironInk;
+    if (style == RunNowStyle.pixel) return RunNowThemeTokens.pixelInk;
     return appearance == RunNowAppearance.dark
         ? RunNowDataColors.coachOnAccentDark
         : Colors.white;
@@ -335,6 +357,7 @@ extension RunNowPaletteMarks on RunNowPalette {
   /// chỉ có một màu nên dùng luôn [accent].
   Color get warmMark {
     if (style == RunNowStyle.iron) return accent;
+    if (style == RunNowStyle.pixel) return RunNowThemeTokens.pixelCoin;
     return appearance == RunNowAppearance.dark
         ? RunNowDataColors.coachIntervalDark
         : RunNowDataColors.coachIntervalLight;
@@ -345,8 +368,11 @@ extension RunNowPaletteMarks on RunNowPalette {
 /// có đỏ, đen, trắng nên mọi màu ở đây quy về ba màu đó.
 extension RunNowPaletteMeaning on RunNowPalette {
   /// Dải năm bậc nhạt tới đậm để vẽ tranh nền.
-  List<Color> get ramp =>
-      isIron ? RunNowThemeTokens.ironSceneRamp : element.ramp;
+  List<Color> get ramp => switch (style) {
+    RunNowStyle.elemental => element.ramp,
+    RunNowStyle.iron => RunNowThemeTokens.ironSceneRamp,
+    RunNowStyle.pixel => RunNowThemeTokens.pixelRamp,
+  };
 
   Color get danger => isIron ? accent : RunNowSemanticColors.danger;
   Color get success => isIron ? foreground : RunNowSemanticColors.success;
@@ -379,39 +405,145 @@ extension RunNowPaletteMeaning on RunNowPalette {
   }
 }
 
-/// Hình khối và chữ đổi theo kiểu giao diện. Màn nào muốn theo kiểu Thép thì
-/// lấy góc và chữ tiêu đề qua đây thay vì ghi số cứng.
+/// Hình khối và chữ đổi theo kiểu giao diện. Màn nào muốn theo kiểu Thép hay
+/// Pixel thì lấy góc và chữ tiêu đề qua đây thay vì ghi số cứng.
 extension RunNowPaletteShape on RunNowPalette {
   bool get isIron => style == RunNowStyle.iron;
 
-  /// Bán kính góc: kiểu Thép vuông hẳn, kể cả viên thuốc và hình tròn.
-  double corner(double radius) => isIron ? 0 : radius;
+  bool get isPixel => style == RunNowStyle.pixel;
+
+  /// Kiểu Thép và Pixel dựng mọi thứ bằng khối vuông: không bo góc, không
+  /// hình tròn, không viên thuốc.
+  bool get squared => style != RunNowStyle.elemental;
+
+  /// Bán kính góc: kiểu vuông thì vuông hẳn, kể cả viên thuốc và hình tròn.
+  double corner(double radius) => squared ? 0 : radius;
 
   BorderRadius radius(double radius) => BorderRadius.circular(corner(radius));
 
   Radius cornerRadius(double radius) => Radius.circular(corner(radius));
 
-  /// Hình tròn của nút, chấm, avatar: kiểu Thép thành ô vuông.
-  BoxShape get round => isIron ? BoxShape.rectangle : BoxShape.circle;
+  /// Hình tròn của nút, chấm, avatar: kiểu vuông thành ô vuông.
+  BoxShape get round => squared ? BoxShape.rectangle : BoxShape.circle;
 
-  OutlinedBorder get roundBorder =>
-      isIron ? const RoundedRectangleBorder() : const CircleBorder();
+  OutlinedBorder get roundBorder => switch (style) {
+    RunNowStyle.elemental => const CircleBorder(),
+    RunNowStyle.iron => const RoundedRectangleBorder(),
+    RunNowStyle.pixel => const PixelBorder(),
+  };
 
-  OutlinedBorder get pillBorder =>
-      isIron ? const RoundedRectangleBorder() : const StadiumBorder();
+  OutlinedBorder get pillBorder => switch (style) {
+    RunNowStyle.elemental => const StadiumBorder(),
+    RunNowStyle.iron => const RoundedRectangleBorder(),
+    RunNowStyle.pixel => const PixelBorder(),
+  };
 
   /// Chữ tiêu đề: kiểu Thép dùng chữ hẹp đậm, to hơn một chút vì chữ hẹp.
-  TextStyle heading(TextStyle style) => isIron
-      ? style.copyWith(
-          fontFamily: _ironFont,
-          fontWeight: FontWeight.w800,
-          fontSize: style.fontSize == null ? null : style.fontSize! * 1.18,
-          letterSpacing: 0.3,
-        )
-      : style;
+  /// Kiểu Pixel dùng chữ lưới điểm ảnh; mặt chữ đó nhỏ và chỉ có một độ đậm
+  /// nên phóng to lên, không ép đậm (ép đậm làm nhoè ô vuông).
+  TextStyle heading(TextStyle style) => switch (this.style) {
+    RunNowStyle.elemental => style,
+    RunNowStyle.iron => style.copyWith(
+      fontFamily: _ironFont,
+      fontWeight: FontWeight.w800,
+      fontSize: style.fontSize == null ? null : style.fontSize! * 1.18,
+      letterSpacing: 0.3,
+    ),
+    RunNowStyle.pixel => style.copyWith(
+      fontFamily: _pixelFont,
+      fontWeight: FontWeight.w400,
+      fontSize: style.fontSize == null
+          ? null
+          : style.fontSize! * _pixelFontScale,
+      letterSpacing: 0.5,
+    ),
+  };
 
-  /// Tiêu đề in hoa ở kiểu Thép.
-  String title(String text) => isIron ? text.toUpperCase() : text;
+  /// Tiêu đề in hoa ở kiểu Thép và Pixel.
+  String title(String text) => squared ? text.toUpperCase() : text;
+}
+
+/// Viền kiểu Pixel: hình chữ nhật có bốn góc khuyết một ô vuông cạnh [step],
+/// tức góc "bo" một bậc của tranh pixel.
+class PixelBorder extends OutlinedBorder {
+  const PixelBorder({super.side, this.step = RunNowThemeTokens.pixelStep});
+
+  final double step;
+
+  @override
+  EdgeInsetsGeometry get dimensions => EdgeInsets.all(side.strokeInset);
+
+  @override
+  PixelBorder copyWith({BorderSide? side, double? step}) =>
+      PixelBorder(side: side ?? this.side, step: step ?? this.step);
+
+  @override
+  ShapeBorder scale(double t) =>
+      PixelBorder(side: side.scale(t), step: step * t);
+
+  @override
+  ShapeBorder? lerpFrom(ShapeBorder? a, double t) => a is PixelBorder
+      ? PixelBorder(
+          side: BorderSide.lerp(a.side, side, t),
+          step: a.step + (step - a.step) * t,
+        )
+      : super.lerpFrom(a, t);
+
+  @override
+  ShapeBorder? lerpTo(ShapeBorder? b, double t) => b is PixelBorder
+      ? PixelBorder(
+          side: BorderSide.lerp(side, b.side, t),
+          step: step + (b.step - step) * t,
+        )
+      : super.lerpTo(b, t);
+
+  Path _stepped(Rect r) {
+    // Ô quá nhỏ thì bậc co lại, không để hai góc đè lên nhau.
+    final s = [step, r.width / 2, r.height / 2].reduce((a, b) => a < b ? a : b);
+    if (s <= 0) return Path()..addRect(r);
+    return Path()
+      ..moveTo(r.left + s, r.top)
+      ..lineTo(r.right - s, r.top)
+      ..lineTo(r.right - s, r.top + s)
+      ..lineTo(r.right, r.top + s)
+      ..lineTo(r.right, r.bottom - s)
+      ..lineTo(r.right - s, r.bottom - s)
+      ..lineTo(r.right - s, r.bottom)
+      ..lineTo(r.left + s, r.bottom)
+      ..lineTo(r.left + s, r.bottom - s)
+      ..lineTo(r.left, r.bottom - s)
+      ..lineTo(r.left, r.top + s)
+      ..lineTo(r.left + s, r.top + s)
+      ..close();
+  }
+
+  @override
+  Path getOuterPath(Rect rect, {TextDirection? textDirection}) =>
+      _stepped(rect);
+
+  @override
+  Path getInnerPath(Rect rect, {TextDirection? textDirection}) =>
+      _stepped(rect.deflate(side.strokeInset));
+
+  @override
+  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
+    if (side.style == BorderStyle.none || side.width <= 0) return;
+    canvas.drawPath(
+      Path.combine(
+        PathOperation.difference,
+        _stepped(rect),
+        _stepped(rect.deflate(side.width)),
+      ),
+      Paint()..color = side.color,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is PixelBorder && other.side == side && other.step == step;
+
+  @override
+  int get hashCode => Object.hash(side, step);
 }
 
 extension RunNowThemeContext on BuildContext {
@@ -419,8 +551,11 @@ extension RunNowThemeContext on BuildContext {
       Theme.of(this).extension<RunNowPalette>() ?? RunNowPalette.water;
 
   /// Màu bàn chơi Ma Sói theo kiểu giao diện đang chọn.
-  RunNowMoonlit get moonlit =>
-      runNowPalette.isIron ? RunNowMoonlit.iron : RunNowMoonlit.night;
+  RunNowMoonlit get moonlit => switch (runNowPalette.style) {
+    RunNowStyle.elemental => RunNowMoonlit.night,
+    RunNowStyle.iron => RunNowMoonlit.iron,
+    RunNowStyle.pixel => RunNowMoonlit.pixel,
+  };
 }
 
 ThemeData buildRunNowTheme(
@@ -576,7 +711,11 @@ ThemeData buildRunNowTheme(
     dividerColor: palette.border,
     progressIndicatorTheme: ProgressIndicatorThemeData(color: palette.accent),
   );
-  return style == RunNowStyle.iron ? _ironTheme(theme, palette) : theme;
+  return switch (style) {
+    RunNowStyle.elemental => theme,
+    RunNowStyle.iron => _ironTheme(theme, palette),
+    RunNowStyle.pixel => _pixelTheme(theme, palette),
+  };
 }
 
 const _ironFont = 'Barlow Condensed';
@@ -687,6 +826,117 @@ ThemeData _ironTheme(ThemeData base, RunNowPalette palette) {
     dialogTheme: base.dialogTheme.copyWith(shape: square),
     bottomSheetTheme: base.bottomSheetTheme.copyWith(shape: square),
     popupMenuTheme: base.popupMenuTheme.copyWith(shape: square),
+  );
+}
+
+const _pixelFont = 'VT323';
+
+/// VT323 thấp hơn Exo 2 ở cùng cỡ chữ, phóng chừng này thì cao ngang nhau.
+const _pixelFontScale = 1.3;
+
+/// Phần kiểu Pixel khác bản ngũ hành ngoài màu: mọi khối có góc bậc thang và
+/// viền mực dày, nút chính là khối xanh chữ mực, không bóng mờ.
+ThemeData _pixelTheme(ThemeData base, RunNowPalette palette) {
+  final ink = BorderSide(color: palette.foreground, width: 2);
+  const block = PixelBorder();
+  final framed = PixelBorder(side: ink);
+  TextStyle? heading(TextStyle? s) => s?.copyWith(
+    fontFamily: _pixelFont,
+    fontWeight: FontWeight.w400,
+    fontSize: s.fontSize == null ? null : s.fontSize! * _pixelFontScale,
+    letterSpacing: 0.5,
+    height: 1,
+  );
+  final text = base.textTheme;
+  return base.copyWith(
+    textTheme: text.copyWith(
+      displaySmall: heading(text.displaySmall),
+      headlineMedium: heading(text.headlineMedium),
+      headlineSmall: heading(text.headlineSmall),
+      titleLarge: heading(text.titleLarge),
+      titleMedium: heading(text.titleMedium),
+      // Xem ghi chú ở _ironTheme: nhãn nút đổi qua labelLarge, không đặt
+      // textStyle riêng ở từng theme nút.
+      labelLarge: text.labelLarge?.merge(
+        const TextStyle(
+          fontFamily: _pixelFont,
+          fontSize: 22,
+          fontWeight: FontWeight.w400,
+          letterSpacing: 1,
+        ),
+      ),
+    ),
+    appBarTheme: base.appBarTheme.copyWith(
+      titleTextStyle: base.appBarTheme.titleTextStyle?.copyWith(
+        fontFamily: _pixelFont,
+        fontSize: 34,
+        fontWeight: FontWeight.w400,
+        letterSpacing: 0.5,
+      ),
+    ),
+    cardTheme: base.cardTheme.copyWith(shape: framed),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: palette.accent,
+        foregroundColor: palette.onAccent,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        shape: framed,
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: palette.ink,
+        side: ink,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        shape: block,
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(foregroundColor: palette.accentDeep),
+    ),
+    floatingActionButtonTheme: base.floatingActionButtonTheme.copyWith(
+      foregroundColor: palette.onAccent,
+      shape: framed,
+    ),
+    chipTheme: base.chipTheme.copyWith(
+      labelStyle: TextStyle(color: palette.ink),
+      secondaryLabelStyle: TextStyle(color: palette.onAccent),
+      shape: block,
+    ),
+    navigationBarTheme: base.navigationBarTheme.copyWith(
+      indicatorShape: block,
+      indicatorColor: palette.accent,
+      iconTheme: WidgetStateProperty.resolveWith(
+        (states) => IconThemeData(
+          color: states.contains(WidgetState.selected)
+              ? palette.onAccent
+              : palette.textMuted,
+        ),
+      ),
+    ),
+    inputDecorationTheme: base.inputDecorationTheme.copyWith(
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.zero,
+        borderSide: BorderSide(color: palette.border, width: 2),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.zero,
+        borderSide: BorderSide(color: palette.accentDeep, width: 3),
+      ),
+    ),
+    listTileTheme: base.listTileTheme.copyWith(iconColor: palette.ink),
+    snackBarTheme: base.snackBarTheme.copyWith(shape: block),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(shape: block),
+    ),
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: SegmentedButton.styleFrom(shape: block),
+    ),
+    dialogTheme: base.dialogTheme.copyWith(shape: framed),
+    bottomSheetTheme: base.bottomSheetTheme.copyWith(
+      shape: const RoundedRectangleBorder(),
+    ),
+    popupMenuTheme: base.popupMenuTheme.copyWith(shape: framed),
   );
 }
 

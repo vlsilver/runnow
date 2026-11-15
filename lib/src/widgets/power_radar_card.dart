@@ -121,7 +121,7 @@ class _PowerRadar extends StatelessWidget {
               metrics: metrics,
               lineColor: palette.secondary,
               gridColor: palette.gridMajor,
-              square: palette.isIron,
+              square: palette.squared,
             ),
           ),
         ),

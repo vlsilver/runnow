@@ -207,10 +207,7 @@ void main() {
 
     expect(filled.backgroundColor!.resolve({}), const Color(0xffe63b1f));
     expect(filled.foregroundColor!.resolve({}), const Color(0xff111111));
-    expect(
-      filled.shape!.resolve({}),
-      const RoundedRectangleBorder(),
-    );
+    expect(filled.shape!.resolve({}), const RoundedRectangleBorder());
     expect(theme.appBarTheme.titleTextStyle!.fontFamily, 'Barlow Condensed');
     expect(theme.textTheme.titleLarge!.fontFamily, 'Barlow Condensed');
   });
@@ -232,6 +229,88 @@ void main() {
     expect(restarted.style, RunNowStyle.iron);
     expect(restarted.element, RunNowElement.wood);
     expect(restarted.appearance, RunNowAppearance.dark);
+  });
+
+  test('kiểu Pixel: giấy kem, mực chàm, xanh lá, giữ nguyên hành', () {
+    final palette = RunNowPalette.forSelection(
+      RunNowElement.water,
+      appearance: RunNowAppearance.light,
+      style: RunNowStyle.pixel,
+    );
+
+    expect(palette.accent, const Color(0xff3fb85c));
+    expect(palette.background, const Color(0xffe8e4d0));
+    expect(palette.ink, const Color(0xff1d1b33));
+    expect(palette.accentNight, const Color(0xff1d1b33));
+    expect(palette.onAccent, const Color(0xff1d1b33));
+    expect(palette.warmMark, const Color(0xfff2a30f));
+    // Kiểu Pixel vẫn nhiều màu: báo lỗi là đỏ, không quy về màu nhấn.
+    expect(palette.danger, RunNowSemanticColors.danger);
+    expect(palette.corner(18), 0);
+    expect(palette.element, RunNowElement.water);
+  });
+
+  test('kiểu Pixel: nút chính là khối xanh viền mực, góc bậc thang', () {
+    final theme = buildRunNowTheme(
+      RunNowElement.water,
+      appearance: RunNowAppearance.light,
+      style: RunNowStyle.pixel,
+    );
+    final filled = theme.filledButtonTheme.style!;
+    const ink = Color(0xff1d1b33);
+
+    expect(filled.backgroundColor!.resolve({}), const Color(0xff3fb85c));
+    expect(filled.foregroundColor!.resolve({}), ink);
+    expect(
+      filled.shape!.resolve({}),
+      const PixelBorder(side: BorderSide(color: ink, width: 2)),
+    );
+    expect(theme.appBarTheme.titleTextStyle!.fontFamily, 'VT323');
+    expect(theme.textTheme.titleLarge!.fontFamily, 'VT323');
+    // VT323 chỉ có một độ đậm; ép đậm thì máy tự tô dày, nhoè ô vuông.
+    expect(theme.textTheme.titleLarge!.fontWeight, FontWeight.w400);
+  });
+
+  test('PixelBorder khuyết đúng một ô vuông ở mỗi góc', () {
+    // Ô 30×20, bậc 3: góc (0..3, 0..3) nằm ngoài, sát trong nó thì nằm trong.
+    final path = const PixelBorder(
+      step: 3,
+    ).getOuterPath(const Rect.fromLTWH(0, 0, 30, 20));
+
+    for (final corner in const [
+      Offset(1.5, 1.5),
+      Offset(28.5, 1.5),
+      Offset(1.5, 18.5),
+      Offset(28.5, 18.5),
+    ]) {
+      expect(path.contains(corner), isFalse, reason: '$corner');
+    }
+    for (final inside in const [
+      Offset(4.5, 1.5),
+      Offset(1.5, 4.5),
+      Offset(25.5, 18.5),
+      Offset(15, 10),
+    ]) {
+      expect(path.contains(inside), isTrue, reason: '$inside');
+    }
+  });
+
+  test('kiểu Pixel được lưu và đọc lại', () async {
+    FlutterSecureStorage.setMockInitialValues({});
+    const storage = FlutterSecureStorage();
+    final first = ThemeController(storage: storage, loadFromStorage: false);
+    await first.setSelection(
+      element: RunNowElement.wood,
+      appearance: RunNowAppearance.dark,
+      darkTone: RunNowDarkTone.elemental,
+      style: RunNowStyle.pixel,
+    );
+
+    final restarted = ThemeController(storage: storage);
+    await restarted.loaded;
+
+    expect(restarted.style, RunNowStyle.pixel);
+    expect(restarted.element, RunNowElement.wood);
   });
 
   test('chưa từng chọn kiểu thì app mở bằng kiểu ngũ hành', () async {

@@ -841,7 +841,7 @@ class _PaceLine extends StatelessWidget {
               line: palette.accent,
               axis: palette.border,
               background: palette.background,
-              square: palette.isIron,
+              square: palette.squared,
             ),
           ),
         ),

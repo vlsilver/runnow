@@ -186,7 +186,7 @@ class SettingsScreen extends ConsumerWidget {
                     icon: Icons.auto_awesome_outlined,
                     title: 'Ngũ hành',
                     value:
-                        '${themeController.style == RunNowStyle.iron ? RunNowStyle.iron.label : themeController.element.label} · '
+                        '${themeController.style == RunNowStyle.elemental ? themeController.element.label : themeController.style.label} · '
                         '${themeController.appearance.label}',
                     onTap: () => _editElement(context, ref, themeController),
                   ),
@@ -572,6 +572,17 @@ Future<void> _editElement(
                     accent: RunNowThemeTokens.ironRamp[2],
                     onTap: () =>
                         setModalState(() => selectedStyle = RunNowStyle.iron),
+                  ),
+                  _SettingsDivider(),
+                  _SettingsRow(
+                    key: const ValueKey('theme-style-pixel'),
+                    icon: Icons.videogame_asset_outlined,
+                    title: RunNowStyle.pixel.label,
+                    subtitle: 'Kem xanh · 8-bit',
+                    value: selectedStyle == RunNowStyle.pixel ? '✓' : null,
+                    accent: RunNowThemeTokens.pixelRamp[3],
+                    onTap: () =>
+                        setModalState(() => selectedStyle = RunNowStyle.pixel),
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),

@@ -9,6 +9,10 @@ void main() {
   for (final (from, to) in [
     (RunNowStyle.elemental, RunNowStyle.iron),
     (RunNowStyle.iron, RunNowStyle.elemental),
+    (RunNowStyle.elemental, RunNowStyle.pixel),
+    (RunNowStyle.pixel, RunNowStyle.elemental),
+    (RunNowStyle.iron, RunNowStyle.pixel),
+    (RunNowStyle.pixel, RunNowStyle.iron),
   ]) {
     testWidgets('đổi kiểu ${from.name} sang ${to.name} lúc đang có nút', (
       tester,

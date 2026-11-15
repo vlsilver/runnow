@@ -21,7 +21,7 @@ class WorkoutGlyph extends StatelessWidget {
       child: CustomPaint(painter: _GlyphPainter(
           type,
           color,
-          square: context.runNowPalette.isIron,
+          square: context.runNowPalette.squared,
         )),
     );
   }

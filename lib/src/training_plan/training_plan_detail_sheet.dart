@@ -23,7 +23,7 @@ class TrainingDaySheet extends StatelessWidget {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final tColor = workoutLoadColor(day.type, palette);
     final onAccent = context.runNowPalette.onAccent;
-    final bg = palette.isIron
+    final bg = palette.squared
         ? palette.glassStart
         : dark
         ? RunNowDataColors.coachSheetDark

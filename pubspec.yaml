@@ -106,3 +106,7 @@ flutter:
           weight: 700
         - asset: assets/fonts/barlow_condensed/BarlowCondensed-ExtraBold.ttf
           weight: 800
+    # Tiêu đề, số và nhãn nút của kiểu Pixel: chữ lưới điểm ảnh, có đủ dấu Việt.
+    - family: VT323
+      fonts:
+        - asset: assets/fonts/vt323/VT323-Regular.ttf

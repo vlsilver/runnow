@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:myrun/src/theme.dart';
 
 /// Công tắc của app. [Switch] của Material không đổi được hình, nên kiểu Thép
-/// vẽ riêng một công tắc vuông; các kiểu khác vẫn là [Switch].
+/// và Pixel vẽ riêng một công tắc vuông; các kiểu khác vẫn là [Switch].
 class RunNowSwitch extends StatelessWidget {
   const RunNowSwitch({super.key, required this.value, required this.onChanged});
 
@@ -12,7 +12,7 @@ class RunNowSwitch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    if (!palette.isIron) return Switch(value: value, onChanged: onChanged);
+    if (!palette.squared) return Switch(value: value, onChanged: onChanged);
     final enabled = onChanged != null;
     return Semantics(
       toggled: value,
@@ -73,7 +73,7 @@ class RunNowSwitchListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!context.runNowPalette.isIron) {
+    if (!context.runNowPalette.squared) {
       return SwitchListTile(
         value: value,
         onChanged: onChanged,

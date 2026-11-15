@@ -31,19 +31,29 @@ LinearGradient gameAccentFoil(RunNowPalette palette) => LinearGradient(
   colors: [palette.accentDeep, palette.accent],
 );
 
-/// Kiểu Thép: bàn chơi và màn xem thẻ dùng nền đen, mực trắng, nhấn đỏ của
-/// app thay cho tông vàng và ánh trăng.
+/// Kiểu Thép và Pixel: bàn chơi và màn xem thẻ dùng nền tối, mực và màu nhấn
+/// của chính kiểu đó thay cho tông vàng và ánh trăng.
 final _ironGameTheme = buildRunNowTheme(
   RunNowElement.fire,
   appearance: RunNowAppearance.dark,
   style: RunNowStyle.iron,
 );
 
+final _pixelGameTheme = buildRunNowTheme(
+  RunNowElement.fire,
+  appearance: RunNowAppearance.dark,
+  style: RunNowStyle.pixel,
+);
+
 final _nightTheme = _buildNightTheme();
 final _moonlitTheme = _buildMoonlitTheme();
 
 ThemeData gameNightTheme({RunNowStyle style = RunNowStyle.elemental}) =>
-    style == RunNowStyle.iron ? _ironGameTheme : _nightTheme;
+    switch (style) {
+      RunNowStyle.elemental => _nightTheme,
+      RunNowStyle.iron => _ironGameTheme,
+      RunNowStyle.pixel => _pixelGameTheme,
+    };
 
 ThemeData _buildNightTheme() {
   final base = buildRunNowTheme(RunNowElement.fire);
@@ -139,7 +149,11 @@ typedef _M = RunNowMoonlitTokens;
 /// Theme của trang ván Ma Sói: luôn tối, tông ánh trăng, không theo sáng/tối
 /// hay hành của app, vì trang ván là một bàn chơi riêng.
 ThemeData gameMoonlitTheme({RunNowStyle style = RunNowStyle.elemental}) =>
-    style == RunNowStyle.iron ? _ironGameTheme : _moonlitTheme;
+    switch (style) {
+      RunNowStyle.elemental => _moonlitTheme,
+      RunNowStyle.iron => _ironGameTheme,
+      RunNowStyle.pixel => _pixelGameTheme,
+    };
 
 ThemeData _buildMoonlitTheme() {
   final base = buildRunNowTheme(

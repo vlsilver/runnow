@@ -1447,7 +1447,7 @@ class _Ring extends StatelessWidget {
           CircularProgressIndicator(
             value: ratio.clamp(0.0, 1.0),
             strokeWidth: 7,
-            strokeCap: context.runNowPalette.isIron
+            strokeCap: context.runNowPalette.squared
                 ? StrokeCap.butt
                 : StrokeCap.round,
             color: color,

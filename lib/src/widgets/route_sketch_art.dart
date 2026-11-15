@@ -78,7 +78,7 @@ class RouteSketchArt extends StatelessWidget {
       painter: _RouteSketchPainter(
         sketch,
         colors,
-        square: context.runNowPalette.isIron,
+        square: context.runNowPalette.squared,
       ),
       child: const SizedBox.expand(),
     );

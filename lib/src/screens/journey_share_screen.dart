@@ -279,7 +279,7 @@ class _AchievementBadge extends StatelessWidget {
                   size: Size.square(size),
                   painter: _SunburstPainter(
                     color: rayColor,
-                    square: context.runNowPalette.isIron,
+                    square: context.runNowPalette.squared,
                   ),
                 ),
                 Container(
