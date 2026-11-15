@@ -49,8 +49,10 @@ func NewGarminService(db *firestore.Client, g *GarminGateway, activities *Activi
 // garminBackfillWindow là khoảng Garmin cho xin lại mỗi lần (tối đa 30 ngày).
 const garminBackfillWindow = 30 * 24 * time.Hour
 
-// garminPushLimit: Garmin bắt nhận được push tới 10 MB khi duyệt production.
-const garminPushLimit = 16 << 20
+// garminPushLimit: Garmin bắt nhận được push tới 10 MB khi duyệt production,
+// nhưng lần đẩy gộp chi tiết nhiều buổi lên tới 17,5 MB. 32 MB là trần request
+// HTTP/1 của Cloud Run, lớn hơn nữa cũng không tới được đây.
+const garminPushLimit = 32 << 20
 
 func errGarminNotConfigured() error {
 	return &HTTPError{Status: 503, Code: "garmin_not_configured", Message: "Garmin is not configured"}

@@ -204,6 +204,19 @@ func TestDecodeGarminPushKeepsNumericActivityID(t *testing.T) {
 	}
 }
 
+// Garmin gộp chi tiết nhiều buổi vào một lần đẩy; prod đã nhận lần đẩy 17,5 MB.
+// Cắt giữa chừng thì cả lần đẩy bị trả 400 và Garmin gửi lại mãi.
+func TestDecodeGarminPushReadsBatchedDetailsPush(t *testing.T) {
+	body := `{"padding":"` + strings.Repeat("a", 17_555_500) + `","activities":[{"userId":"g-1","activityId":7}]}`
+	push, err := decodeGarminPush(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(push.Activities) != 1 {
+		t.Fatalf("activities = %d", len(push.Activities))
+	}
+}
+
 func TestGarminPushTokenCheck(t *testing.T) {
 	on := NewGarminService(nil, nil, nil, Config{GarminClientID: "c", GarminClientSecret: "s", GarminWebhookToken: "tok-1"})
 	off := NewGarminService(nil, nil, nil, Config{GarminWebhookToken: "tok-1"})
