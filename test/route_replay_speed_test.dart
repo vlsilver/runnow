@@ -196,6 +196,15 @@ void main() {
       expect(clip.height, closeTo(693.33, 0.01));
     });
 
+    test('khổ Feed 4:5 trên màn 390×844 thì khung cao 487,5, nằm giữa', () {
+      // 390 × 5 / 4 = 487,5; lề trên (844 - 487,5) / 2 = 178,25.
+      final clip = replayClipRect(const Size(390, 844), aspect: 4 / 5);
+      expect(clip.left, 0);
+      expect(clip.width, 390);
+      expect(clip.top, 178.25);
+      expect(clip.height, 487.5);
+    });
+
     test(
       'màn ngang hơn 9:16 thì khung video cao hết màn, hẹp lại, nằm giữa',
       () {

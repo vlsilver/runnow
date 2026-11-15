@@ -56,15 +56,15 @@ double replayFitZoom(
   return zoom.clamp(min, max);
 }
 
-/// Vùng màn hình mà video chia sẻ quay: khung 9:16 (khổ Reels, Story) lớn
-/// nhất nằm giữa màn cỡ [screen]. Người chạy đứng giữa màn nên cũng đứng
-/// giữa video.
-Rect replayClipRect(Size screen) {
-  final width = math.min(screen.width, screen.height * 9 / 16);
+/// Vùng màn hình mà video chia sẻ quay: khung tỉ lệ rộng/cao [aspect] (mặc
+/// định 9:16, khổ Reels và Story) lớn nhất nằm giữa màn cỡ [screen]. Người
+/// chạy đứng giữa màn nên cũng đứng giữa video.
+Rect replayClipRect(Size screen, {double aspect = 9 / 16}) {
+  final width = math.min(screen.width, screen.height * aspect);
   return Rect.fromCenter(
     center: screen.center(Offset.zero),
     width: width,
-    height: width * 16 / 9,
+    height: width / aspect,
   );
 }
 

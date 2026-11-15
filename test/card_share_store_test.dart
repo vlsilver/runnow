@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:myrun/src/share.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
@@ -58,6 +59,26 @@ void main() {
   // ghi lại.
   test('a run card keeps the cache key its saved files were made with', () {
     expect(runCardShareKey(_card, 'An', skin: dark), startsWith('c58cb05c.'));
+  });
+
+  test('Story và Feed của cùng một thẻ giữ file riêng, cùng phần nội dung', () {
+    final story = runCardShareKey(_card, 'An', skin: dark);
+    final feed = runCardShareKey(
+      _card,
+      'An',
+      skin: dark,
+      format: ShareFormat.feed,
+    );
+    expect(story, endsWith('.story'));
+    expect(feed, endsWith('.feed'));
+    expect(feed.split('.').first, story.split('.').first);
+  });
+
+  test('video thẻ rộng 1080: Story cao 1920, Feed cao 1344 (bội của 16)', () {
+    // 1080 × 16 / 9 = 1920; 1080 × 5 / 4 = 1350, bội 16 gần nhất phía dưới
+    // là 84 × 16 = 1344.
+    expect(cardVideoHeight(ShareFormat.story), 1920);
+    expect(cardVideoHeight(ShareFormat.feed), 1344);
   });
 
   test('each skin keeps its own files across app restarts', () async {

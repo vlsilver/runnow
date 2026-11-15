@@ -10,6 +10,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/screens/avatar_crop_screen.dart';
+import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/theme_controller.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
@@ -197,6 +198,16 @@ class SettingsScreen extends ConsumerWidget {
                       ref.watch(runCardSkinControllerProvider).choice,
                     ),
                     onTap: () => showRunCardSkinSheet(context),
+                  ),
+                  _SettingsRow(
+                    icon: Icons.crop_portrait_rounded,
+                    title: 'Khổ chia sẻ',
+                    value: switch (ref
+                        .watch(shareFormatControllerProvider)
+                        .format) {
+                      final format => '${format.label} ${format.ratio}',
+                    },
+                    onTap: () => showShareFormatSheet(context),
                   ),
                 ],
               ),

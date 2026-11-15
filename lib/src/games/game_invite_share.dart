@@ -116,7 +116,11 @@ class _GameShareSheetState extends State<_GameShareSheet> {
     try {
       final boundary =
           _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-      final png = await captureRecapPng(boundary);
+      final png = await captureShareFrame(
+        buttonContext,
+        boundary,
+        background: context.moonlit.panel,
+      );
       if (!buttonContext.mounted) return;
       await shareCardFile(
         bytes: png,

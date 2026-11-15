@@ -106,12 +106,13 @@ class CardShareFiles {
   final String motionType;
 }
 
-/// Khoá cache dạng `<nội dung>.<bộ màu>`, thêm `.<kiểu thẻ>` khi khác kiểu gốc.
-/// Phần nội dung đổi khi những gì in trên thẻ đổi; mỗi bộ màu và kiểu thẻ của
-/// cùng nội dung giữ file riêng.
+/// Khoá cache dạng `<nội dung>.<bộ màu>.<khổ>`, thêm `.<kiểu thẻ>` khi khác
+/// kiểu gốc. Phần nội dung đổi khi những gì in trên thẻ đổi; mỗi bộ màu, khổ
+/// chia sẻ và kiểu thẻ của cùng nội dung giữ file riêng.
 String cardShareKey(
   CardShareSubject subject, {
   required RunCardSkin skin,
+  ShareFormat format = ShareFormat.story,
   RunCardStyle? style,
 }) {
   // FNV-1a 32 bit: ổn định giữa các lần mở app, khác String.hashCode.
@@ -119,7 +120,7 @@ String cardShareKey(
   for (final unit in '${subject.printed}|$_shareVersion'.codeUnits) {
     hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
   }
-  final key = '${hash.toRadixString(16)}.${skin.id}';
+  final key = '${hash.toRadixString(16)}.${skin.id}.${format.name}';
   return style == null || style == RunCardStyle.current
       ? key
       : '$key.${style.id}';
@@ -129,8 +130,14 @@ String runCardShareKey(
   RunCard card,
   String owner, {
   required RunCardSkin skin,
+  ShareFormat format = ShareFormat.story,
   RunCardStyle? style,
-}) => cardShareKey(runCardShareSubject(card, owner), skin: skin, style: style);
+}) => cardShareKey(
+  runCardShareSubject(card, owner),
+  skin: skin,
+  format: format,
+  style: style,
+);
 
 /// Phần nội dung của khoá, bỏ bộ màu.
 String _shareContent(String key) => key.split('.').first;
@@ -327,6 +334,11 @@ Uint8List fitRgbaFrame(
   );
 }
 
+/// Chiều cao video rộng 1080 px ở [format], làm tròn xuống bội của 16 cho bộ
+/// mã hoá Android.
+int cardVideoHeight(ShareFormat format) =>
+    (_videoWidth / format.aspect).floor() ~/ 16 * 16;
+
 enum _Choice { front, back, motion }
 
 extension on _Choice {
@@ -413,7 +425,11 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
   /// Kiểu của riêng lần khoe này; null là thẻ không đổi được kiểu.
   RunCardStyle? _style;
 
-  String get _key => cardShareKey(widget.subject, skin: _skin, style: _style);
+  /// Khổ của ba file, theo Cài đặt: Story 9:16 hay Feed 4:5.
+  ShareFormat get _format => ref.read(shareFormatControllerProvider).format;
+
+  String get _key =>
+      cardShareKey(widget.subject, skin: _skin, format: _format, style: _style);
 
   @override
   void initState() {
@@ -512,8 +528,11 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
         pose: Offset.zero,
       ), _stillPixelRatio);
       try {
-        final data = await image.toByteData(format: ui.ImageByteFormat.png);
-        return data!.buffer.asUint8List();
+        return await frameShareImage(
+          image,
+          _format,
+          background: RunNowGameTokens.nightBackground,
+        );
       } finally {
         image.dispose();
       }
@@ -541,7 +560,12 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
   /// bộ nhớ: 108 khung 1080 px thô là khoảng 680 MB.
   Future<Uint8List> _recordVideo() async {
     final size = _stageKey.currentContext!.size!;
-    final height = (_videoWidth * size.height / size.width / 16).round() * 16;
+    final height = cardVideoHeight(_format);
+    // Sân khấu cao hơn khổ video thì chụp hẹp lại cho lá nằm trọn trong khung.
+    final shot = math.min(
+      _videoWidth,
+      (height * size.width / size.height).floor(),
+    );
     final frames = _motionDuration.inMilliseconds * _videoFps ~/ 1000;
     final dir = await getTemporaryDirectory();
     final path = '${dir.path}/card-${widget.subject.id}.mp4';
@@ -550,7 +574,7 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
     try {
       for (var i = 0; i < frames; i++) {
         _progress(i + 1, frames);
-        final f = await _frame(i / frames, _videoWidth);
+        final f = await _frame(i / frames, shot);
         await writer.add(
           fitRgbaFrame(
             f.rgba,

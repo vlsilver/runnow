@@ -481,6 +481,9 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
   /// Đang quay video để share: ẩn các nút cho khỏi lọt vào hình.
   bool _recording = false;
 
+  /// Khổ của video đang quay; vùng quay và chỗ đặt nhãn cùng theo khổ này.
+  ShareFormat _clipFormat = ShareFormat.story;
+
   ml.CameraPosition _camera(double progress) {
     if (_view.overview) {
       return ml.CameraPosition(
@@ -687,9 +690,16 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
   /// lấy vùng [replayClipRect]; lúc quay nhãn và bảng số dời vào trong vùng đó.
   Future<void> _shareClip() async {
     if (_recording) return;
-    final clip = replayClipRect(MediaQuery.sizeOf(context));
+    final format = shareFormatOf(context);
+    final clip = replayClipRect(
+      MediaQuery.sizeOf(context),
+      aspect: format.aspect,
+    );
     _progress.stop();
-    setState(() => _recording = true);
+    setState(() {
+      _clipFormat = format;
+      _recording = true;
+    });
     final path = '${(await getTemporaryDirectory()).path}/replay-3d.mp4';
     try {
       await _showStatusBar(false);
@@ -748,7 +758,7 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final screen = MediaQuery.sizeOf(context);
-    final clip = replayClipRect(screen);
+    final clip = replayClipRect(screen, aspect: _clipFormat.aspect);
     // Lúc quay, nhãn và bảng số bám mép khung video thay cho vùng an toàn.
     final inset = _recording
         ? EdgeInsets.fromLTRB(

@@ -1062,6 +1062,7 @@ void main() {
     testWidgets('the invite goes out as a picture with the link in the text', (
       tester,
     ) async {
+      FlutterSecureStorage.setMockInitialValues({});
       backend.game = registering(admin: false);
       await pumpScreen(tester);
       expect(find.byTooltip('Chia sẻ ván'), findsNothing);
@@ -1088,6 +1089,7 @@ void main() {
   });
 
   testWidgets('a running game can be shared as a picture', (tester) async {
+    FlutterSecureStorage.setMockInitialValues({});
     backend.game = {
       'id': 'g1',
       'title': 'Ma Sói tuần 42',
