@@ -84,7 +84,7 @@ class RunContractCard extends StatelessWidget {
                     Text(
                       participant == null
                           ? '${contract.participantCount} người · TB ${contract.overallProgressPercent.toStringAsFixed(0)}%'
-                          : _valueOverTarget(
+                          : runContractValueOverTarget(
                               contract.metric,
                               progressValue,
                               contract.targetValue,
@@ -179,6 +179,161 @@ class RunContractCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Ảnh khoe kèo: thẻ đứng 3:4, vừa khít khung Story 9:16 và nằm gọn trong
+/// khung Feed 4:5 (xem `shareFrameLayout`). Cỡ cố định để ảnh giống nhau trên
+/// mọi máy; không có vùng chạm.
+class RunContractPoster extends StatelessWidget {
+  const RunContractPoster({
+    required this.contract,
+    this.ownerName,
+    this.ownerAvatarUrl,
+    this.currentUid,
+    this.participantAvatarUrls = const [],
+    super.key,
+  });
+
+  static const size = Size(360, 480);
+
+  final RunContract contract;
+  final String? ownerName;
+  final String? ownerAvatarUrl;
+  final String? currentUid;
+  final List<String?> participantAvatarUrls;
+
+  @override
+  Widget build(BuildContext context) {
+    final participant = contract.participantFor(currentUid);
+    final state = contractUiStateFor(contract, DateTime.now(), currentUid);
+    final completedCount = contract.participants.values
+        .where((item) => item.progressValue >= contract.targetValue)
+        .length;
+    final ratio = contractPercentFor(contract, currentUid) / 100;
+    return SizedBox.fromSize(
+      size: size,
+      child: KeoSceneCard(
+        scene: KeoScene.forContract(contract),
+        seed: contract.id,
+        onTap: null,
+        radius: 20,
+        padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
+        // Builder: màu chữ của thẻ nằm trong theme mà KeoSceneCard đặt.
+        child: Builder(
+          builder: (context) {
+            final onSurface = Theme.of(context).colorScheme.onSurface;
+            final stateColor = runContractStateColor(context, state);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Header(
+                  contract: contract,
+                  state: state,
+                  ownerName: ownerName,
+                  ownerAvatarUrl: ownerAvatarUrl,
+                ),
+                const Spacer(),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      (ratio * 100).toStringAsFixed(0),
+                      style: TextStyle(
+                        color: stateColor,
+                        fontSize: 104,
+                        height: 0.86,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -4,
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4, bottom: 6),
+                      child: Text(
+                        '%',
+                        style: TextStyle(
+                          color: onSurface.withValues(alpha: 0.38),
+                          fontSize: 34,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  contract.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 30,
+                    height: 1.05,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.6,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  participant == null
+                      ? '${contract.participantCount} người · TB ${contract.overallProgressPercent.toStringAsFixed(0)}%'
+                      : runContractValueOverTarget(
+                          contract.metric,
+                          participant.progressValue,
+                          contract.targetValue,
+                        ),
+                  style: TextStyle(
+                    color: onSurface.withValues(alpha: 0.6),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                LinearProgressIndicator(
+                  value: ratio.clamp(0.0, 1.0),
+                  minHeight: 10,
+                  borderRadius: context.runNowPalette.radius(999),
+                  backgroundColor: onSurface.withValues(alpha: 0.09),
+                  color: stateColor,
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    _AvatarStack(urls: participantAvatarUrls),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        '$completedCount/${contract.participantCount} hoàn thành',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: onSurface.withValues(alpha: 0.6),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      contract.openEnded
+                          ? 'Không giới hạn'
+                          : DateFormat('dd/MM · HH:mm').format(
+                              contract.endAtExclusive.subtract(
+                                const Duration(seconds: 1),
+                              ),
+                            ),
+                      style: TextStyle(
+                        color: onSurface.withValues(alpha: 0.5),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -383,7 +538,12 @@ String _value(RunContractMetric metric, double value) => switch (metric) {
   RunContractMetric.routeCompletion => '${value.toInt()} lần',
 };
 
-String _valueOverTarget(RunContractMetric metric, double value, double target) {
+/// Tiến độ trên mục tiêu kèm đơn vị: `12 / 50 km`, `3 / 5 buổi`.
+String runContractValueOverTarget(
+  RunContractMetric metric,
+  double value,
+  double target,
+) {
   String n(double v) => v.toStringAsFixed(v % 1 == 0 ? 0 : 1);
   return switch (metric) {
     RunContractMetric.distance ||

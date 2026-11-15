@@ -10,6 +10,7 @@ import 'package:myrun/src/run_contracts/run_contract_insights.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 import 'package:myrun/src/run_contracts/widgets/contract_card_panel.dart';
+import 'package:myrun/src/run_contracts/widgets/contract_share.dart';
 import 'package:myrun/src/run_contracts/widgets/run_contract_card.dart'
     show runContractStateColor, runContractStateLabel;
 import 'package:myrun/src/run_contracts/widgets/run_contract_meetup_panel.dart';
@@ -61,6 +62,12 @@ class _RunContractDetailScreenState
       appBar: AppBar(
         title: const Text('Chi tiết kèo'),
         actions: [
+          if (contract != null)
+            IconButton(
+              onPressed: () => _share(contract, uid),
+              icon: const Icon(Icons.ios_share_rounded),
+              tooltip: 'Khoe kèo',
+            ),
           if (canDelete)
             IconButton(
               onPressed: _working ? null : () => _confirmDelete(contract),
@@ -88,6 +95,32 @@ class _RunContractDetailScreenState
           ),
         ),
       ),
+    );
+  }
+
+  Future<void> _share(RunContract contract, String? uid) {
+    final me = ref.read(userProfileProvider).value;
+    final members = {
+      for (final member
+          in ref.read(membersProvider).value ?? const <MemberProfile>[])
+        member.uid: member,
+    };
+    final mine = contract.creatorUid == uid;
+    final owner = members[contract.creatorUid];
+    return showContractShare(
+      context,
+      contract: contract,
+      currentUid: uid,
+      ownerName: mine
+          ? me?.displayName ?? 'Bạn'
+          : owner?.displayName ?? '3i member',
+      ownerAvatarUrl: mine ? me?.avatarUrl : owner?.avatarUrl,
+      participantAvatarUrls: [
+        for (final participant in contract.participants.values)
+          participant.uid == uid
+              ? me?.avatarUrl
+              : members[participant.uid]?.avatarUrl,
+      ],
     );
   }
 
@@ -429,7 +462,9 @@ class _RunContractDetailScreenState
       barrierColor: Colors.black.withValues(alpha: 0.72),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: context.runNowPalette.cornerRadius(24)),
+        borderRadius: BorderRadius.vertical(
+          top: context.runNowPalette.cornerRadius(24),
+        ),
       ),
       builder: (context) => _ActivityAssignmentSheet(
         contract: contract,
@@ -989,12 +1024,14 @@ class _MyProgressCard extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 _contractValue(contract.metric, participant.progressValue),
-                style: palette.heading(TextStyle(
-                  color: foreground,
-                  fontSize: 22,
-                  height: 1,
-                  fontWeight: FontWeight.w900,
-                )),
+                style: palette.heading(
+                  TextStyle(
+                    color: foreground,
+                    fontSize: 22,
+                    height: 1,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ),
               Text(
                 '/${_contractValue(contract.metric, contract.targetValue)}',
@@ -1124,12 +1161,14 @@ class _TeamConquestCard extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 _contractValue(contract.metric, teamTotal),
-                style: palette.heading(TextStyle(
-                  color: foreground,
-                  fontSize: 22,
-                  height: 1,
-                  fontWeight: FontWeight.w900,
-                )),
+                style: palette.heading(
+                  TextStyle(
+                    color: foreground,
+                    fontSize: 22,
+                    height: 1,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ),
               Text(
                 '/${_contractValue(contract.metric, contract.targetValue)}',
