@@ -26,7 +26,8 @@ enum RunCardSet {
   paperMap('Bản đồ', hasMapOption: true),
   receipt('Biên lai', hasMapOption: true),
   medal('Huy chương', hasMapOption: true),
-  iron('Thép', hasMapOption: true);
+  iron('Thép', hasMapOption: true),
+  pixel('Pixel', ownColors: false, hasMapOption: true);
 
   const RunCardSet(
     this.label, {

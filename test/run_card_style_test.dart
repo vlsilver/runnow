@@ -177,11 +177,22 @@ void main() {
       );
     });
 
+    test('bộ Pixel lưu dưới tên pixel, đọc lại ra đúng bộ', () {
+      const on = RunCardStyle.withMap(RunCardSet.pixel);
+
+      expect(on.id, 'pixel.full.map');
+      expect(RunCardStyle.parse('pixel.full.map'), on);
+      expect(
+        RunCardStyle.parse('pixel.full'),
+        const RunCardStyle(RunCardSet.pixel),
+      );
+    });
+
     test('hậu tố lạ thì bỏ, thẻ vẽ kiểu gốc', () {
       expect(RunCardStyle.parse('city.top.lạ'), isNull);
     });
 
-    test('đúng 15 bộ có công tắc bản đồ', () {
+    test('đúng 16 bộ có công tắc bản đồ', () {
       expect(
         [
           for (final set in RunCardSet.values)
@@ -203,6 +214,7 @@ void main() {
           'receipt',
           'medal',
           'iron',
+          'pixel',
         ],
       );
     });
@@ -551,7 +563,9 @@ void main() {
     });
 
     testWidgets('thẻ chưa vẽ tranh: bộ có màu riêng vẽ nền của bộ, bộ theo bộ '
-        'màu thẻ giữ nền đường chạy; thẻ không GPS vẫn vẽ được', (tester) async {
+        'màu thẻ giữ nền đường chạy; thẻ không GPS vẫn vẽ được', (
+      tester,
+    ) async {
       await tester.runAsync(_loadCardFont);
       const followSkin = {
         RunCardSet.current,
@@ -582,6 +596,8 @@ void main() {
 
       final covered = <String>[];
       for (final set in RunCardSet.values) {
+        // Pixel tự vẽ cảnh ở mặt trước, không có tranh đường chạy.
+        if (set == RunCardSet.pixel) continue;
         for (final layout in RunCardTextLayout.values) {
           await tester.pumpWidget(
             _face(_card(), RunCardStyle(set, layout), routeArt: true),
