@@ -436,14 +436,8 @@ class _TodayCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final warm = palette.warmMark;
     final night = palette.accentNight;
     const fg = Colors.white;
-    final soft = fg.withValues(alpha: 0.68);
-    final stats = [
-      if (day.distanceKm != null) '${_num(day.distanceKm!)} km',
-      if (day.paceHint != null) 'pace ${day.paceHint}',
-    ].join(' · ');
 
     return Material(
       color: night,
@@ -456,51 +450,7 @@ class _TodayCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'HÔM NAY · ${day.type.purposeTag.toUpperCase()}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.4,
-                        color: warm,
-                      ),
-                    ),
-                  ),
-                  if (!day.isRest)
-                    IntensityBars(
-                      level: day.type.intensity,
-                      color: fg,
-                      idle: fg.withValues(alpha: 0.22),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                palette.title(day.title),
-                style: palette.heading(
-                  TextStyle(
-                    fontSize: 25,
-                    height: 1.1,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                    color: fg,
-                  ),
-                ),
-              ),
-              if (stats.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  stats,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: soft,
-                  ),
-                ),
-              ],
+              SessionHeadline(day: day, when: 'HÔM NAY'),
               const SizedBox(height: 12),
               Container(
                 width: double.infinity,
@@ -590,6 +540,79 @@ class _TodayCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Đầu thẻ một buổi trên nền đêm: nhãn ngày và mục đích, độ nặng, tên bài, km
+/// và pace. Màn giáo án và ảnh khoe dùng chung.
+class SessionHeadline extends StatelessWidget {
+  const SessionHeadline({super.key, required this.day, required this.when});
+
+  final TrainingDay day;
+
+  /// "HÔM NAY", hoặc ngày của buổi khi chưa tới.
+  final String when;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    const fg = Colors.white;
+    final stats = [
+      if (day.distanceKm != null) '${_num(day.distanceKm!)} km',
+      if (day.paceHint != null) 'pace ${day.paceHint}',
+    ].join(' · ');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '$when · ${day.type.purposeTag.toUpperCase()}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.4,
+                  color: palette.warmMark,
+                ),
+              ),
+            ),
+            if (!day.isRest)
+              IntensityBars(
+                level: day.type.intensity,
+                color: fg,
+                idle: fg.withValues(alpha: 0.22),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Text(
+          palette.title(day.title),
+          style: palette.heading(
+            const TextStyle(
+              fontSize: 25,
+              height: 1.1,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+              color: fg,
+            ),
+          ),
+        ),
+        if (stats.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            stats,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: fg.withValues(alpha: 0.68),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

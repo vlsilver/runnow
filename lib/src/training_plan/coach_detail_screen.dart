@@ -7,6 +7,7 @@ import '../theme.dart';
 import 'coach_chat_screen.dart';
 import 'coach_roster.dart';
 import 'plan_schedule_view.dart';
+import 'plan_share.dart';
 import 'training_plan_detail_sheet.dart';
 import 'training_plan_models.dart';
 import 'training_plan_repository.dart';
@@ -81,6 +82,16 @@ class CoachDetailScreen extends ConsumerWidget {
                         const <MemberProfile>[],
                     currentUid: uid,
                   ),
+                IconButton(
+                  tooltip: 'Khoe giáo án',
+                  icon: const Icon(Icons.ios_share_rounded),
+                  onPressed: () => showPlanShare(
+                    context,
+                    plan: plan,
+                    currentUid: uid,
+                    today: DateTime.now(),
+                  ),
+                ),
                 PopupMenuButton<_OwnerAction>(
                   tooltip: 'Thêm',
                   icon: const Icon(Icons.more_horiz_rounded),
@@ -295,6 +306,17 @@ class _PublicCoachDetailState extends ConsumerState<_PublicCoachDetail> {
         elevation: 0,
         actions: [
           CoachFollowersButton(plan: plan, members: members, currentUid: uid),
+          IconButton(
+            tooltip: 'Khoe giáo án',
+            icon: const Icon(Icons.ios_share_rounded),
+            onPressed: () => showPlanShare(
+              context,
+              plan: plan,
+              currentUid: uid,
+              today: DateTime.now(),
+              coachName: ownerName,
+            ),
+          ),
           if (joined)
             IconButton(
               tooltip: 'Hỏi Coach',

@@ -372,6 +372,16 @@ class TrainingPlan {
         DateTime(targetDate.year, targetDate.month, targetDate.day),
       );
 
+  /// Buổi chạy chưa xong gần nhất tính từ [today] (kể cả hôm nay). Buổi đã
+  /// qua ngày mà chưa xong thì bỏ qua, vì nó không còn là buổi sắp tới.
+  TrainingDay? nextSession(DateTime today) {
+    final t = DateTime(today.year, today.month, today.day);
+    for (final d in days) {
+      if (!d.isRest && !d.done && !d.date.isBefore(t)) return d;
+    }
+    return null;
+  }
+
   /// Còn nằm ở "Kèo đang chạy" của người đang xem.
   bool isRunning(DateTime today) => !isDraft && !completed && !isOver(today);
 
