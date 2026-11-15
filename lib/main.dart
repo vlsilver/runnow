@@ -86,6 +86,8 @@ Future<void> _initRemoteConfig() async {
       // Ẩn Strava ở Settings khi app Strava đang Inactive. false = ẩn; bật true
       // trên console khi kết nối lại được (áp realtime, không cần build lại).
       'strava_enabled': false,
+      // Nguồn tile vector của bản đồ nền; trống thì vẽ tile ảnh.
+      'map_vector_url': '',
     });
     unawaited(rc.fetchAndActivate());
   } catch (error, stack) {

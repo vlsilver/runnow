@@ -14,9 +14,11 @@ import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/hearts.dart';
+import 'package:myrun/src/live_cheers.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
+import 'package:myrun/src/screens/route_replay_screen.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_overview.dart';
@@ -70,10 +72,29 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
               .value
               ?.where((member) => member.uid == ownerUid)
               .firstOrNull;
+    final runnerAvatarUrl = ownerUid == null
+        ? ref.watch(userProfileProvider).value?.avatarUrl
+        : owner?.avatarUrl;
     final heartOwner = ownerUid ?? ref.watch(firebaseUserProvider).value?.uid;
     final heart = heartOwner == null
         ? null
         : runHeartTarget(heartOwner, widget.activityId);
+    // Buổi ghi bằng 3i có phòng live cùng id, cổ vũ nằm ở đó.
+    final members = ref.watch(membersProvider).value ?? const [];
+    final cheerMoments = [
+      for (final cheer
+          in ref.watch(liveCheersProvider(widget.activityId)).value ??
+              const <LiveCheer>[])
+        for (final mark in cheer.marks)
+          ReplayMoment.cheer(
+            distanceMeters: mark.distanceMeters,
+            emoji: mark.emoji,
+            avatarUrl: members
+                .where((member) => member.uid == cheer.uid)
+                .firstOrNull
+                ?.avatarUrl,
+          ),
+    ];
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chi tiết hoạt động'),
@@ -104,6 +125,8 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                       selectedDistanceMeters: _selectedDistanceMeters,
                       onPhotoTap: _openPhoto,
                       showSyncBadge: widget.ownerUid == null,
+                      runnerAvatarUrl: runnerAvatarUrl,
+                      cheerMoments: cheerMoments,
                     ),
                   ),
                 SliverToBoxAdapter(
@@ -216,12 +239,16 @@ class _ActivityRouteHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.selectedDistanceMeters,
     required this.onPhotoTap,
     required this.showSyncBadge,
+    required this.runnerAvatarUrl,
+    required this.cheerMoments,
   });
 
   final ActivityDetail detail;
   final ValueListenable<double?> selectedDistanceMeters;
   final ValueChanged<ActivityPhoto> onPhotoTap;
   final bool showSyncBadge;
+  final String? runnerAvatarUrl;
+  final List<ReplayMoment> cheerMoments;
 
   @override
   double get minExtent => 176;
@@ -248,6 +275,10 @@ class _ActivityRouteHeaderDelegate extends SliverPersistentHeaderDelegate {
             onPhotoTap: onPhotoTap,
             highlightedDistanceMeters: selectedDistance,
             totalDistanceMeters: detail.summary.distanceMeters,
+            movingTimeSeconds: detail.summary.movingTimeSeconds,
+            runnerAvatarUrl: runnerAvatarUrl,
+            streams: detail.streams,
+            cheerMoments: cheerMoments,
             height: height,
           ),
           activity: showSyncBadge ? detail.summary : null,
@@ -260,7 +291,9 @@ class _ActivityRouteHeaderDelegate extends SliverPersistentHeaderDelegate {
   bool shouldRebuild(covariant _ActivityRouteHeaderDelegate oldDelegate) {
     return oldDelegate.detail != detail ||
         oldDelegate.selectedDistanceMeters != selectedDistanceMeters ||
-        oldDelegate.showSyncBadge != showSyncBadge;
+        oldDelegate.showSyncBadge != showSyncBadge ||
+        oldDelegate.runnerAvatarUrl != runnerAvatarUrl ||
+        !listEquals(oldDelegate.cheerMoments, cheerMoments);
   }
 }
 
@@ -812,7 +845,10 @@ class _SyncPopup extends StatelessWidget {
               width: 26,
               height: 26,
               decoration: BoxDecoration(
-                color: context.runNowPalette.wash(context.runNowPalette.success, 0.15),
+                color: context.runNowPalette.wash(
+                  context.runNowPalette.success,
+                  0.15,
+                ),
                 borderRadius: palette.radius(8),
               ),
               child: Icon(

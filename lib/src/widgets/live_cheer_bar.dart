@@ -43,9 +43,16 @@ class LiveCheerTotals extends ConsumerWidget {
 /// Hàng emoji cổ vũ ở màn xem live, cho người không ở trong phòng. Bấm xong
 /// thì cả hàng mờ đi tới hết [liveCheerCooldown].
 class LiveCheerBar extends ConsumerStatefulWidget {
-  const LiveCheerBar({required this.sessionId, super.key});
+  const LiveCheerBar({
+    required this.sessionId,
+    required this.distanceMeters,
+    super.key,
+  });
 
   final String sessionId;
+
+  /// Quãng đường người chạy đang ở, ghi kèm mỗi lần bấm.
+  final double distanceMeters;
 
   @override
   ConsumerState<LiveCheerBar> createState() => _LiveCheerBarState();
@@ -67,7 +74,9 @@ class _LiveCheerBarState extends ConsumerState<LiveCheerBar> {
       });
     });
     try {
-      await ref.read(liveCheerRepositoryProvider).send(widget.sessionId, emoji);
+      await ref
+          .read(liveCheerRepositoryProvider)
+          .send(widget.sessionId, emoji, widget.distanceMeters);
     } catch (error) {
       debugPrint('live cheer ${widget.sessionId}: $error');
       if (!mounted) return;

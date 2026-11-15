@@ -4,9 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
-import 'package:myrun/src/widgets/map_tiles.dart';
+import 'package:myrun/src/widgets/map_vector.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:myrun/src/models.dart';
+import 'package:myrun/src/screens/route_replay_screen.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/glass.dart';
@@ -57,6 +58,10 @@ class RouteMap extends StatelessWidget {
     this.onPhotoTap,
     this.highlightedDistanceMeters,
     this.totalDistanceMeters,
+    this.movingTimeSeconds,
+    this.runnerAvatarUrl,
+    this.streams = const {},
+    this.cheerMoments = const [],
     this.liveRunners = const [],
     this.liveRunnersStream,
     this.liveRoutePhotos = const [],
@@ -72,6 +77,10 @@ class RouteMap extends StatelessWidget {
     this.onPhotoTap,
     this.highlightedDistanceMeters,
     this.totalDistanceMeters,
+    this.movingTimeSeconds,
+    this.runnerAvatarUrl,
+    this.streams = const {},
+    this.cheerMoments = const [],
     this.liveRunners = const [],
     this.liveRunnersStream,
     this.liveRoutePhotos = const [],
@@ -82,6 +91,14 @@ class RouteMap extends StatelessWidget {
 
   final String? encodedPolyline;
   final List<RoutePoint>? routePoints;
+
+  /// Chuỗi số đo theo quãng đường (nhịp tim, độ cao...) cho biểu đồ của màn
+  /// xem lại 3D.
+  final Map<String, List<double>> streams;
+
+  /// Những lần buổi chạy được cổ vũ kèm quãng đường lúc đó, màn xem lại 3D
+  /// hiện đúng chỗ.
+  final List<ReplayMoment> cheerMoments;
   final double height;
 
   /// Chế độ theo dõi live: camera bám vị trí hiện tại (điểm cuối) + xoay theo
@@ -92,6 +109,12 @@ class RouteMap extends StatelessWidget {
   final ValueChanged<ActivityPhoto>? onPhotoTap;
   final double? highlightedDistanceMeters;
   final double? totalDistanceMeters;
+
+  /// Thời gian chạy của buổi, màn replay 3D dùng để hiện đồng hồ.
+  final int? movingTimeSeconds;
+
+  /// Ảnh người chạy, màn replay 3D dùng làm hình di chuyển trên tuyến.
+  final String? runnerAvatarUrl;
   final List<LiveTrackingSession> liveRunners;
 
   /// Nguồn live tiếp tục cập nhật vị trí/ảnh trong lúc màn full màn hình
@@ -151,6 +174,41 @@ class RouteMap extends StatelessWidget {
                         onTap: () => _openFullscreen(context, points),
                       ),
               ),
+            if (!follow &&
+                liveRunnersStream == null &&
+                hasVectorMap &&
+                points.length > 1)
+              Positioned(
+                top: 54,
+                right: 10,
+                child: _MapExpandButton(
+                  icon: Icons.view_in_ar_rounded,
+                  label: 'Xem lại buổi chạy dạng 3D',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      fullscreenDialog: true,
+                      builder: (_) => RouteReplayScreen(
+                        points: points,
+                        distanceMeters: totalDistanceMeters,
+                        movingTimeSeconds: movingTimeSeconds,
+                        avatarUrl: runnerAvatarUrl,
+                        series: replaySeries(
+                          routePoints: routePoints,
+                          streams: streams,
+                        ),
+                        moments: [
+                          for (final photo in photos)
+                            ReplayMoment.photo(
+                              distanceMeters: photo.distanceMeters,
+                              photoPath: photo.storagePath,
+                            ),
+                          ...cheerMoments,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -205,15 +263,21 @@ class RouteMap extends StatelessWidget {
 }
 
 class _MapExpandButton extends StatelessWidget {
-  const _MapExpandButton({required this.onTap});
+  const _MapExpandButton({
+    required this.onTap,
+    this.icon = Icons.open_in_full_rounded,
+    this.label = 'Phóng to bản đồ toàn màn hình',
+  });
 
   final VoidCallback onTap;
+  final IconData icon;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: 'Phóng to bản đồ toàn màn hình',
+      label: label,
       child: Material(
         color: Colors.transparent,
         shape: context.runNowPalette.roundBorder,
@@ -228,11 +292,7 @@ class _MapExpandButton extends StatelessWidget {
               shape: context.runNowPalette.round,
               border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
             ),
-            child: const Icon(
-              Icons.open_in_full_rounded,
-              color: Colors.white,
-              size: 18,
-            ),
+            child: Icon(icon, color: Colors.white, size: 18),
           ),
         ),
       ),
@@ -578,7 +638,7 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
         ),
       ),
       children: [
-        mapTileLayer(context, dark: isDark),
+        mapBaseLayer(context, dark: isDark),
         MapAttribution(top: widget.follow),
         PolylineLayer(
           polylines: [
@@ -743,7 +803,10 @@ class _TelemetryMapMarker extends StatelessWidget {
           child: Container(
             width: 13,
             height: 13,
-            decoration: BoxDecoration(color: color, shape: context.runNowPalette.round),
+            decoration: BoxDecoration(
+              color: color,
+              shape: context.runNowPalette.round,
+            ),
           ),
         ),
       ),

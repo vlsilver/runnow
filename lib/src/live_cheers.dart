@@ -15,6 +15,7 @@ class LiveCheer {
     required this.emoji,
     required this.at,
     required this.counts,
+    this.marks = const [],
   });
 
   final String uid;
@@ -23,6 +24,27 @@ class LiveCheer {
   /// Null khi lần ghi trên máy chưa có giờ server.
   final DateTime? at;
   final Map<String, int> counts;
+
+  /// Từng lần bấm kèm quãng đường của người chạy lúc đó. Lần bấm từ bản app
+  /// cũ không có mặt ở đây, nên tổng lấy từ [counts] chứ không đếm list này.
+  final List<LiveCheerMark> marks;
+}
+
+/// Một lần bấm cổ vũ: emoji và quãng đường người chạy đã đi lúc bấm.
+class LiveCheerMark {
+  const LiveCheerMark({required this.emoji, required this.distanceMeters});
+
+  final String emoji;
+  final double distanceMeters;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LiveCheerMark &&
+      other.emoji == emoji &&
+      other.distanceMeters == distanceMeters;
+
+  @override
+  int get hashCode => Object.hash(emoji, distanceMeters);
 }
 
 /// Tổng số lần bấm từng emoji của mọi người xem, nhiều nhất đứng đầu; bằng
@@ -81,11 +103,22 @@ LiveCheer liveCheerFrom(String uid, Map<String, dynamic> data) => LiveCheer(
     },
     _ => const {},
   },
+  marks: switch (data['marks']) {
+    final List<dynamic> marks => [
+      for (final mark in marks)
+        if (mark case {'e': final String emoji, 'd': final num meters})
+          LiveCheerMark(emoji: emoji, distanceMeters: meters.toDouble()),
+    ],
+    _ => const [],
+  },
 );
 
 abstract interface class LiveCheerRepository {
   Stream<List<LiveCheer>> watch(String sessionId);
-  Future<void> send(String sessionId, String emoji);
+
+  /// [distanceMeters] là quãng đường người chạy đã đi lúc bấm, để xem lại
+  /// buổi chạy hiện cổ vũ đúng chỗ.
+  Future<void> send(String sessionId, String emoji, double distanceMeters);
 }
 
 class FirestoreLiveCheerRepository implements LiveCheerRepository {
@@ -108,7 +141,7 @@ class FirestoreLiveCheerRepository implements LiveCheerRepository {
       );
 
   @override
-  Future<void> send(String sessionId, String emoji) {
+  Future<void> send(String sessionId, String emoji, double distanceMeters) {
     final uid = _auth.currentUser?.uid;
     if (uid == null) throw StateError('Bạn chưa đăng nhập Firebase.');
     return _by(sessionId).doc(uid).set({
@@ -116,6 +149,15 @@ class FirestoreLiveCheerRepository implements LiveCheerRepository {
       'emoji': emoji,
       'n': {emoji: FieldValue.increment(1)},
       'at': FieldValue.serverTimestamp(),
+      // t để hai lần bấm cùng emoji, cùng quãng đường (người chạy đang đứng)
+      // không bị arrayUnion gộp làm một.
+      'marks': FieldValue.arrayUnion([
+        {
+          'e': emoji,
+          'd': distanceMeters,
+          't': DateTime.now().millisecondsSinceEpoch,
+        },
+      ]),
     }, SetOptions(merge: true));
   }
 }

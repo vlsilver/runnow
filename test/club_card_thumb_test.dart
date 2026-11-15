@@ -26,7 +26,11 @@ class _FakeCheers implements LiveCheerRepository {
   Stream<List<LiveCheer>> watch(String sessionId) => Stream.value(const []);
 
   @override
-  Future<void> send(String sessionId, String emoji) async {}
+  Future<void> send(
+    String sessionId,
+    String emoji,
+    double distanceMeters,
+  ) async {}
 }
 
 void main() {

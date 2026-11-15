@@ -18,9 +18,13 @@ class _FakeCheers implements LiveCheerRepository {
   Stream<List<LiveCheer>> watch(String sessionId) => Stream.value(cheers);
 
   @override
-  Future<void> send(String sessionId, String emoji) async {
+  Future<void> send(
+    String sessionId,
+    String emoji,
+    double distanceMeters,
+  ) async {
     if (failWith case final error?) throw error;
-    sent.add('$sessionId $emoji');
+    sent.add('$sessionId $emoji ${distanceMeters.round()}');
   }
 }
 
@@ -45,7 +49,11 @@ void main() {
     tester,
   ) async {
     final fake = _FakeCheers();
-    await _pump(tester, fake, const LiveCheerBar(sessionId: 's1'));
+    await _pump(
+      tester,
+      fake,
+      const LiveCheerBar(sessionId: 's1', distanceMeters: 3200),
+    );
 
     await tester.tap(find.text('🔥'));
     await tester.pump();
@@ -56,13 +64,17 @@ void main() {
     await tester.tap(find.text('💪'));
     await tester.pump();
 
-    expect(fake.sent, ['s1 🔥', 's1 💪']);
+    expect(fake.sent, ['s1 🔥 3200', 's1 💪 3200']);
     await tester.pump(const Duration(seconds: 4));
   });
 
   testWidgets('gửi lỗi thì báo người xem', (tester) async {
     final fake = _FakeCheers()..failWith = StateError('permission-denied');
-    await _pump(tester, fake, const LiveCheerBar(sessionId: 's1'));
+    await _pump(
+      tester,
+      fake,
+      const LiveCheerBar(sessionId: 's1', distanceMeters: 3200),
+    );
 
     await tester.tap(find.text('🔥'));
     await tester.pump();

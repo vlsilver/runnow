@@ -44,6 +44,11 @@ class StorageImage extends StatefulWidget {
     _StorageImageState._resolvedUrls[path] = url;
   }
 
+  /// Link tải của [path], dùng chung bộ nhớ đệm với widget, cho chỗ cần tự vẽ
+  /// ảnh thay vì dựng widget.
+  static Future<String> downloadUrl(String path) =>
+      _StorageImageState._urlOf(path);
+
   @override
   State<StorageImage> createState() => _StorageImageState();
 }
@@ -70,16 +75,16 @@ class _StorageImageState extends State<StorageImage> {
     if (oldWidget.path != widget.path) _downloadUrl = _loadDownloadUrl();
   }
 
-  Future<String> _loadDownloadUrl() async {
-    return _downloadUrlCache.putIfAbsent(widget.path, () async {
+  Future<String> _loadDownloadUrl() => _urlOf(widget.path);
+
+  static Future<String> _urlOf(String path) {
+    return _downloadUrlCache.putIfAbsent(path, () async {
       try {
-        final url = await FirebaseStorage.instance
-            .ref(widget.path)
-            .getDownloadURL();
-        _resolvedUrls[widget.path] = url;
+        final url = await FirebaseStorage.instance.ref(path).getDownloadURL();
+        _resolvedUrls[path] = url;
         return url;
       } catch (error) {
-        _downloadUrlCache.remove(widget.path);
+        _downloadUrlCache.remove(path);
         rethrow;
       }
     });

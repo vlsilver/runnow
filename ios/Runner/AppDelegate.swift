@@ -1,6 +1,7 @@
 import Accelerate
 import AVFoundation
 import Flutter
+import ReplayKit
 import UIKit
 
 @main
@@ -9,6 +10,9 @@ import UIKit
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "CardVideoWriter") {
       CardVideoWriter.register(with: registrar)
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "ScreenClipRecorder") {
+      ScreenClipRecorder.register(with: registrar)
     }
   }
 }
@@ -166,4 +170,245 @@ final class CardVideoWriter: NSObject, FlutterPlugin {
 struct CardVideoError: Error, CustomStringConvertible {
   let description: String
   init(_ description: String) { self.description = description }
+}
+
+/// Quay màn hình app thành MP4 cho màn xem lại buổi chạy 3D
+/// (route_replay_screen.dart). Map 3D là view native nên Flutter không chụp
+/// được từng khung như lá thẻ. ReplayKit lấy khung từ bộ dựng hình của hệ
+/// thống nên không chặn main thread, map vẫn chạy mượt trong lúc quay; đổi lại
+/// iOS hỏi quyền quay màn hình ở mỗi lượt. Khung ReplayKit giao là cả màn
+/// hình, ở đây cắt lấy vùng 9:16 mà màn replay yêu cầu, không phóng thu.
+final class ScreenClipRecorder: NSObject, FlutterPlugin {
+  private struct Crop {
+    let x: Int, y: Int, width: Int, height: Int
+  }
+
+  /// ReplayKit giao khung trên luồng của nó; mọi trạng thái dưới đây chỉ đụng
+  /// tới trong hàng đợi này.
+  private let queue = DispatchQueue(label: "runnow.screen-clip")
+  private var url: URL?
+  /// Vùng cần quay theo tỉ lệ so với cả màn hình (0...1).
+  private var region = CGRect.zero
+  private var crop: Crop?
+  private var writer: AVAssetWriter?
+  private var input: AVAssetWriterInput?
+  private var adaptor: AVAssetWriterInputPixelBufferAdaptor?
+  private var failure: String?
+
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(
+      name: "runnow/screen_clip", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(ScreenClipRecorder(), channel: channel)
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    func reply(_ failure: String?) {
+      result(failure.map { FlutterError(code: "screen_clip", message: $0, details: nil) })
+    }
+    switch call.method {
+    case "start":
+      guard let args = call.arguments as? [String: Any],
+        let path = args["path"] as? String,
+        let left = args["left"] as? Double, let top = args["top"] as? Double,
+        let width = args["width"] as? Double, let height = args["height"] as? Double,
+        width > 0, height > 0
+      else { return reply("start cần path và vùng quay left, top, width, height") }
+      start(
+        URL(fileURLWithPath: path),
+        region: CGRect(x: left, y: top, width: width, height: height), reply)
+    case "stop":
+      stop(reply)
+    case "cancel":
+      cancel()
+      result(nil)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  /// [region] tính bằng điểm trong cửa sổ app. [done] chạy trên main sau khi
+  /// người dùng trả lời hộp hỏi quyền: nil là đang quay, ngược lại là lý do.
+  private func start(_ url: URL, region: CGRect, _ done: @escaping (String?) -> Void) {
+    let recorder = RPScreenRecorder.shared()
+    guard recorder.isAvailable else { return done("máy đang không cho quay màn hình") }
+    let window = UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .flatMap(\.windows)
+      .first(where: \.isKeyWindow)
+    guard let screen = window?.bounds.size, screen.width > 0, screen.height > 0 else {
+      return done("không tìm thấy cửa sổ app")
+    }
+    let unit = CGRect(
+      x: region.minX / screen.width, y: region.minY / screen.height,
+      width: region.width / screen.width, height: region.height / screen.height
+    ).intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+    let begin = {
+      self.queue.sync {
+        self.discard()
+        try? FileManager.default.removeItem(at: url)
+        (self.url, self.region) = (url, unit)
+      }
+      recorder.isMicrophoneEnabled = false
+      recorder.startCapture(
+        handler: { [weak self] sample, type, error in
+          guard let self, type == .video else { return }
+          self.queue.async {
+            if let error {
+              self.failure = self.failure ?? error.localizedDescription
+            } else {
+              self.append(sample)
+            }
+          }
+        },
+        completionHandler: { error in
+          DispatchQueue.main.async { done(error?.localizedDescription) }
+        })
+    }
+    // Lượt trước bị bỏ dở mà hệ thống chưa dừng xong thì chờ nó dừng đã.
+    if recorder.isRecording {
+      recorder.stopCapture { _ in DispatchQueue.main.async(execute: begin) }
+    } else {
+      begin()
+    }
+  }
+
+  /// Chỉ gọi trong [queue].
+  private func append(_ sample: CMSampleBuffer) {
+    guard failure == nil, let url, CMSampleBufferDataIsReady(sample),
+      let frame = CMSampleBufferGetImageBuffer(sample)
+    else { return }
+    if writer == nil {
+      // Cỡ và định dạng khung chỉ biết khi khung đầu tới.
+      do {
+        try open(url, frame, at: CMSampleBufferGetPresentationTimeStamp(sample))
+      } catch {
+        failure = "\(error)"
+        return
+      }
+    }
+    // Bộ mã hoá chưa kịp thì bỏ khung này, video vẫn đúng thời gian thật.
+    guard let input, let adaptor, let crop, input.isReadyForMoreMediaData else { return }
+    guard let pool = adaptor.pixelBufferPool else { return }
+    var made: CVPixelBuffer?
+    CVPixelBufferPoolCreatePixelBuffer(nil, pool, &made)
+    guard let cut = made else {
+      failure = "không cấp được pixel buffer"
+      return
+    }
+    Self.copy(frame, crop, into: cut)
+    if !adaptor.append(cut, withPresentationTime: CMSampleBufferGetPresentationTimeStamp(sample)) {
+      failure = "không ghi được khung: \(String(describing: writer?.error))"
+    }
+  }
+
+  private func open(_ url: URL, _ frame: CVPixelBuffer, at time: CMTime) throws {
+    // ReplayKit giao khung YCbCr hai mặt phẳng (Y, rồi CbCr nửa độ phân giải).
+    // Cắt theo cách của định dạng đó, gặp định dạng khác thì báo chứ không đoán.
+    let format = CVPixelBufferGetPixelFormatType(frame)
+    guard
+      format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+        || format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+    else { throw CardVideoError("khung quay có định dạng lạ \(format)") }
+    let full = (width: CVPixelBufferGetWidth(frame), height: CVPixelBufferGetHeight(frame))
+    // CbCr dùng chung cho từng ô 2×2 nên mép cắt và cỡ cắt phải chẵn.
+    let x = Int(region.minX * CGFloat(full.width)) & ~1
+    let y = Int(region.minY * CGFloat(full.height)) & ~1
+    let crop = Crop(
+      x: x, y: y,
+      width: min(Int(region.width * CGFloat(full.width)), full.width - x) & ~1,
+      height: min(Int(region.height * CGFloat(full.height)), full.height - y) & ~1)
+    guard crop.width > 0, crop.height > 0 else { throw CardVideoError("vùng quay rỗng") }
+    let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+    let input = AVAssetWriterInput(
+      mediaType: .video,
+      outputSettings: [
+        AVVideoCodecKey: AVVideoCodecType.h264,
+        AVVideoWidthKey: crop.width,
+        AVVideoHeightKey: crop.height,
+        AVVideoCompressionPropertiesKey: [
+          AVVideoAverageBitRateKey: 8_000_000,
+          AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
+        ],
+      ])
+    input.expectsMediaDataInRealTime = true
+    let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+      assetWriterInput: input,
+      sourcePixelBufferAttributes: [
+        kCVPixelBufferPixelFormatTypeKey as String: format,
+        kCVPixelBufferWidthKey as String: crop.width,
+        kCVPixelBufferHeightKey as String: crop.height,
+      ])
+    guard writer.canAdd(input) else { throw CardVideoError("không thêm được luồng video") }
+    writer.add(input)
+    guard writer.startWriting() else {
+      throw CardVideoError("không mở được file: \(String(describing: writer.error))")
+    }
+    writer.startSession(atSourceTime: time)
+    (self.writer, self.input, self.adaptor, self.crop) = (writer, input, adaptor, crop)
+  }
+
+  /// Chép vùng [crop] của [frame] sang [cut], cả hai là YCbCr hai mặt phẳng.
+  private static func copy(_ frame: CVPixelBuffer, _ crop: Crop, into cut: CVPixelBuffer) {
+    CVPixelBufferLockBaseAddress(frame, .readOnly)
+    CVPixelBufferLockBaseAddress(cut, [])
+    defer {
+      CVPixelBufferUnlockBaseAddress(cut, [])
+      CVPixelBufferUnlockBaseAddress(frame, .readOnly)
+    }
+    for plane in 0..<2 {
+      // Mặt CbCr thưa một nửa theo chiều dọc; theo chiều ngang mỗi cặp Cb, Cr
+      // chiếm 2 byte cho 2 điểm ảnh, nên độ lệch và độ dài tính bằng byte vẫn
+      // bằng của mặt Y.
+      let step = plane == 0 ? 1 : 2
+      guard let from = CVPixelBufferGetBaseAddressOfPlane(frame, plane),
+        let to = CVPixelBufferGetBaseAddressOfPlane(cut, plane)
+      else { continue }
+      let fromRow = CVPixelBufferGetBytesPerRowOfPlane(frame, plane)
+      let toRow = CVPixelBufferGetBytesPerRowOfPlane(cut, plane)
+      for row in 0..<(crop.height / step) {
+        memcpy(
+          to + row * toRow, from + (crop.y / step + row) * fromRow + crop.x, crop.width)
+      }
+    }
+    CVBufferPropagateAttachments(frame, cut)
+  }
+
+  /// Dừng quay và đóng file; [done] chạy trên main, nhận nil khi video dùng
+  /// được, ngược lại là lý do.
+  private func stop(_ done: @escaping (String?) -> Void) {
+    RPScreenRecorder.shared().stopCapture { error in
+      self.queue.async {
+        func finish(_ failure: String?) { DispatchQueue.main.async { done(failure) } }
+        if let failure = self.failure ?? error?.localizedDescription {
+          self.discard()
+          return finish(failure)
+        }
+        guard let writer = self.writer, let input = self.input else {
+          self.discard()
+          return finish("ReplayKit không giao khung hình nào")
+        }
+        (self.url, self.writer, self.input, self.adaptor, self.crop) = (nil, nil, nil, nil, nil)
+        input.markAsFinished()
+        writer.finishWriting {
+          finish(
+            writer.status == .completed
+              ? nil : "không đóng được video: \(String(describing: writer.error))")
+        }
+      }
+    }
+  }
+
+  /// Bỏ video đang quay dở và xoá file.
+  private func cancel() {
+    let recorder = RPScreenRecorder.shared()
+    if recorder.isRecording { recorder.stopCapture { _ in } }
+    queue.async { self.discard() }
+  }
+
+  /// Chỉ gọi trong [queue].
+  private func discard() {
+    writer?.cancelWriting()
+    if let url { try? FileManager.default.removeItem(at: url) }
+    (url, writer, input, adaptor, crop, failure) = (nil, nil, nil, nil, nil, nil)
+  }
 }

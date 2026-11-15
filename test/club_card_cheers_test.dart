@@ -38,7 +38,11 @@ class _FakeCheers implements LiveCheerRepository {
   }
 
   @override
-  Future<void> send(String sessionId, String emoji) async {}
+  Future<void> send(
+    String sessionId,
+    String emoji,
+    double distanceMeters,
+  ) async {}
 }
 
 Future<_FakeCheers> _pumpThumb(WidgetTester tester, ClubCard item) async {

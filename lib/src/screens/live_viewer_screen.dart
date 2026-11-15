@@ -352,7 +352,10 @@ class _LiveSheet extends ConsumerWidget {
             // còn mở.
             if (note == null && !mine) ...[
               const SizedBox(height: 12),
-              LiveCheerBar(sessionId: session.id),
+              LiveCheerBar(
+                sessionId: session.id,
+                distanceMeters: session.distanceMeters,
+              ),
             ],
             Padding(
               padding: const EdgeInsets.only(top: 8),

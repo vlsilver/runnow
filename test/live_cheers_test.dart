@@ -35,6 +35,24 @@ void main() {
     expect(broken.counts, isEmpty);
   });
 
+  test('liveCheerFrom đọc chỗ được cổ vũ, bỏ mục hỏng, bản cũ thì rỗng', () {
+    final cheer = liveCheerFrom('a', {
+      'emoji': '🔥',
+      'n': {'🔥': 2},
+      'marks': [
+        {'e': '🔥', 'd': 1200, 't': 1},
+        {'e': '👏', 'd': 3400.5, 't': 2},
+        {'e': '💪'},
+        'hỏng',
+      ],
+    });
+    expect(cheer.marks, const [
+      LiveCheerMark(emoji: '🔥', distanceMeters: 1200),
+      LiveCheerMark(emoji: '👏', distanceMeters: 3400.5),
+    ]);
+    expect(liveCheerFrom('b', {'emoji': '🔥'}).marks, isEmpty);
+  });
+
   group('newLiveCheers', () {
     test('báo lần bấm mới hoặc bấm lại của người khác, không báo mình', () {
       final before = [
