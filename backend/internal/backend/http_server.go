@@ -1166,6 +1166,10 @@ func (s *Server) workerRoutes() {
 		if err := RebuildStepLeaderboardFor(r.Context(), s.deps.Firestore, task.UID, now); err != nil {
 			slog.Error("rebuild step leaderboard on derived failed", "uid", task.UID, "error", err)
 		}
+		// Vừa có buổi chạy mới thì tick luôn buổi giáo án của hôm đó.
+		if _, err := MarkPlanSessionsForUser(r.Context(), s.deps.Firestore, task.UID, now); err != nil {
+			return err
+		}
 		return writeJSON(w, 200, map[string]any{"ok": true, "cause": task.Cause})
 	})
 	s.route("POST /tasks/rebuild-period-stats", func(w http.ResponseWriter, r *http.Request) error {
@@ -1273,7 +1277,12 @@ func (s *Server) workerRoutes() {
 		if err != nil {
 			return err
 		}
-		return writeJSON(w, 200, map[string]any{"ok": true, "dry": dry, "contracts": len(results), "linked": linked, "results": results, "finalized": finalized})
+		// Cùng lượt: buổi giáo án nào đã chạy đủ thì tick giúp người theo.
+		planMarks, err := MarkPlanSessions(r.Context(), s.deps.Firestore, time.Now(), dry)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true, "dry": dry, "contracts": len(results), "linked": linked, "results": results, "finalized": finalized, "planSessions": planMarks})
 	})
 	s.route("POST /tasks/reconcile-connections", func(w http.ResponseWriter, r *http.Request) error {
 		var task struct {
