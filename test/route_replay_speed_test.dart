@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:myrun/src/screens/route_replay_pins.dart';
 import 'package:myrun/src/screens/route_replay_screen.dart';
 import 'package:myrun/src/screens/route_replay_sound.dart';
+import 'package:myrun/src/share.dart';
 
 void main() {
   // 0,0009° vĩ độ gần xích đạo dài khoảng 99,5 m.
@@ -216,6 +217,35 @@ void main() {
         expect(clip.width, 562.5);
       },
     );
+  });
+
+  group('replayClipSafeRect', () {
+    test('khổ Story: tem và bảng số né dải tên tài khoản và ô trả lời', () {
+      // Khung quay 390×693,33 ứng với 1080×1920, tức 1 px = 0,3611 điểm.
+      // Vùng an toàn Story là (64, 250)–(1016, 1670) px:
+      // trái 64 × 0,3611 = 23,11; trên 75,33 + 250 × 0,3611 = 165,61;
+      // phải 1016 × 0,3611 = 366,89; dưới 75,33 + 1670 × 0,3611 = 678,39.
+      final safe = replayClipSafeRect(
+        const Rect.fromLTWH(0, 75.33, 390, 693.33),
+        ShareFormat.story,
+      );
+      expect(safe.left, closeTo(23.11, 0.01));
+      expect(safe.top, closeTo(165.61, 0.01));
+      expect(safe.right, closeTo(366.89, 0.01));
+      expect(safe.bottom, closeTo(678.39, 0.01));
+    });
+
+    test('khổ Feed: chỉ chừa lề 64 px mỗi cạnh', () {
+      // Khung quay 390×487,5 ứng với 1080×1350; 64 px = 23,11 điểm.
+      final safe = replayClipSafeRect(
+        const Rect.fromLTWH(0, 178.25, 390, 487.5),
+        ShareFormat.feed,
+      );
+      expect(safe.left, closeTo(23.11, 0.01));
+      expect(safe.top, closeTo(201.36, 0.01));
+      expect(safe.right, closeTo(366.89, 0.01));
+      expect(safe.bottom, closeTo(642.64, 0.01));
+    });
   });
 
   test('replayCenter là tâm khung bao của tuyến', () {

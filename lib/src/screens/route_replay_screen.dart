@@ -758,14 +758,18 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final screen = MediaQuery.sizeOf(context);
-    final clip = replayClipRect(screen, aspect: _clipFormat.aspect);
-    // Lúc quay, nhãn và bảng số bám mép khung video thay cho vùng an toàn.
+    // Lúc quay, tem và bảng số nằm trong vùng an toàn của khổ chia sẻ: Story
+    // bị app đè tên tài khoản ở trên và ô trả lời ở dưới.
+    final safe = replayClipSafeRect(
+      replayClipRect(screen, aspect: _clipFormat.aspect),
+      _clipFormat,
+    );
     final inset = _recording
         ? EdgeInsets.fromLTRB(
-            clip.left,
-            clip.top,
-            screen.width - clip.right,
-            screen.height - clip.bottom,
+            safe.left,
+            safe.top,
+            screen.width - safe.right,
+            screen.height - safe.bottom,
           )
         : MediaQuery.paddingOf(context);
     return Scaffold(
@@ -840,9 +844,9 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
               ),
             ),
           Positioned(
-            left: inset.left + 12,
-            right: inset.right + 12,
-            bottom: inset.bottom + 12,
+            left: inset.left + (_recording ? 0 : 12),
+            right: inset.right + (_recording ? 0 : 12),
+            bottom: inset.bottom + (_recording ? 0 : 12),
             child: IgnorePointer(
               child: AnimatedBuilder(
                 animation: _progress,
@@ -864,8 +868,8 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
           ),
           if (_recording)
             Positioned(
-              top: inset.top + 12,
-              left: inset.left + 12,
+              top: inset.top,
+              left: inset.left,
               child: const ReplayStamp(),
             ),
           if (!_recording) ...[

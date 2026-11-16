@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart' hide Path;
+import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/storage_image.dart';
 
@@ -65,6 +66,20 @@ Rect replayClipRect(Size screen, {double aspect = 9 / 16}) {
     center: screen.center(Offset.zero),
     width: width,
     height: width / aspect,
+  );
+}
+
+/// Phần của khung quay [clip] mà Instagram, Facebook không đè giao diện lên:
+/// vùng an toàn của [format] thu theo cỡ khung quay. Tem và bảng số của video
+/// nằm trong vùng này.
+Rect replayClipSafeRect(Rect clip, ShareFormat format) {
+  final scale = clip.width / format.pixels.width;
+  final safe = format.safe;
+  return Rect.fromLTRB(
+    clip.left + safe.left * scale,
+    clip.top + safe.top * scale,
+    clip.left + safe.right * scale,
+    clip.top + safe.bottom * scale,
   );
 }
 
