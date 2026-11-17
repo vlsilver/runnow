@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -17,7 +19,9 @@ import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/map_vector.dart';
+import 'package:myrun/src/widgets/photo_viewer.dart';
 import 'package:myrun/src/widgets/run_now_avatar.dart';
+import 'package:myrun/src/widgets/storage_image.dart';
 
 const _zoomRange = (10.0, 18.0);
 // MapLibre không nghiêng quá 60°.
@@ -27,8 +31,8 @@ const _maxTilt = 60.0;
 const _skyBand = 0.34;
 const _avatarSize = 44.0;
 
-/// Hình người chạy cao chừng này tính từ chân cọc lên.
-const _pinLift = 76.0;
+/// Hình người chạy cao chừng này tính từ chỗ nó đứng lên.
+const _runnerLift = 64.0;
 const _distance = Distance(roundResult: false);
 
 /// Kênh quay màn hình bằng ReplayKit (ScreenClipRecorder trong AppDelegate).
@@ -145,8 +149,9 @@ class ReplaySeries {
 /// Nhãn của biểu đồ pace; [ReplaySeries.values] của nó là tốc độ (m/s).
 const replayPaceLabel = 'PACE';
 
-/// Các biểu đồ dựng được từ số liệu buổi chạy đang có: pace, nhịp tim, độ
-/// cao. Loại nào thiếu số liệu thì không có mặt.
+/// Các biểu đồ dựng được từ số liệu buổi chạy đang có, theo thứ tự lớp từ
+/// trên xuống: pace, nhịp tim, guồng chân, độ cao. Loại nào thiếu số liệu thì
+/// không có mặt.
 List<ReplaySeries> replaySeries({
   List<RoutePoint>? routePoints,
   Map<String, List<double>> streams = const {},
@@ -157,6 +162,7 @@ List<ReplaySeries> replaySeries({
       speedProfile(timed) ??
       streamProfile(streams['velocity_smooth'], distances);
   final heartRates = streamProfile(streams['heartrate'], distances);
+  final cadences = streamProfile(streams['cadence'], distances);
 
   final high = [
     for (final point in timed)
@@ -191,6 +197,12 @@ List<ReplaySeries> replaySeries({
         label: 'NHỊP TIM',
         values: heartRates,
         format: (bpm) => '${bpm.round()} bpm',
+      ),
+    if (cadences != null)
+      ReplaySeries(
+        label: 'GUỒNG',
+        values: cadences,
+        format: (rpm) => '${rpm.round()} rpm',
       ),
     if (altitudes != null)
       ReplaySeries(
@@ -326,11 +338,13 @@ class ReplayMoment {
     required this.distanceMeters,
     required String this.photoPath,
   }) : emoji = null,
+       name = null,
        avatarUrl = null;
 
   const ReplayMoment.cheer({
     required this.distanceMeters,
     required String this.emoji,
+    this.name,
     this.avatarUrl,
   }) : photoPath = null;
 
@@ -339,7 +353,8 @@ class ReplayMoment {
   final String? photoPath;
   final String? emoji;
 
-  /// Ảnh của người cổ vũ.
+  /// Tên và ảnh của người cổ vũ.
+  final String? name;
   final String? avatarUrl;
 
   @override
@@ -348,10 +363,12 @@ class ReplayMoment {
       other.distanceMeters == distanceMeters &&
       other.photoPath == photoPath &&
       other.emoji == emoji &&
+      other.name == name &&
       other.avatarUrl == avatarUrl;
 
   @override
-  int get hashCode => Object.hash(distanceMeters, photoPath, emoji, avatarUrl);
+  int get hashCode =>
+      Object.hash(distanceMeters, photoPath, emoji, name, avatarUrl);
 
   /// Vị trí trên buổi chạy dài [totalMeters], từ 0 tới 1. Cổ vũ lúc live có
   /// thể ghi quãng đường nhỉnh hơn số chốt của buổi chạy, nên kẹp về đích.
@@ -359,22 +376,133 @@ class ReplayMoment {
       totalMeters <= 0 ? 0 : (distanceMeters / totalMeters).clamp(0.0, 1.0);
 }
 
-/// Những [moments] đang hiện khi replay ở [progress]: người chạy vừa đi qua
-/// và chưa đi quá [linger] (cùng thang 0 tới 1), theo thứ tự dọc đường.
-List<ReplayMoment> replayMomentsAt(
-  List<ReplayMoment> moments,
-  double progress, {
-  required double totalMeters,
-  double linger = 0.07,
-}) {
-  final shown = [
+/// Bỏ lần bấm lặp: một người bấm dồn cùng emoji quanh một chỗ (cùng quãng
+/// 200 m) thì chỉ giữ lần đầu. Ảnh giữ hết.
+List<ReplayMoment> replayDistinctMoments(List<ReplayMoment> moments) {
+  final seen = <String>{};
+  return [
     for (final moment in moments)
-      if (moment.fraction(totalMeters) <= progress &&
-          progress - moment.fraction(totalMeters) < linger)
+      if (moment.emoji == null ||
+          seen.add(
+            '${moment.avatarUrl}|${moment.emoji}|'
+            '${(moment.distanceMeters / 200).floor()}',
+          ))
         moment,
   ];
-  return shown..sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
 }
+
+/// Chia buổi chạy dài [totalMeters] thành [limit] đoạn bằng nhau, mỗi đoạn giữ
+/// khoảnh khắc đầu tiên trong [moments] rơi vào đó. Nhiều cái dồn một chỗ thì
+/// chỗ đó vẫn chỉ có một, chỗ thưa không bị mất phần.
+List<ReplayMoment> replayOnePerStretch(
+  List<ReplayMoment> moments, {
+  required double totalMeters,
+  required int limit,
+}) {
+  final taken = <int>{};
+  return [
+    for (final moment in moments)
+      if (taken.add(
+        math.min((moment.fraction(totalMeters) * limit).floor(), limit - 1),
+      ))
+        moment,
+  ];
+}
+
+/// Một đoạn tuyến được cổ vũ nhiều: [at] là giữa đoạn (0 tới 1), [emoji] là
+/// emoji được bấm nhiều nhất ở đó, [count] là số lần cổ vũ của cả đoạn.
+typedef ReplayCheerPeak = ({double at, String emoji, int count});
+
+/// [limit] đoạn được cổ vũ nhiều nhất của buổi chạy dài [totalMeters], theo
+/// thứ tự dọc đường. Tuyến chia [bins] đoạn bằng nhau; hai đỉnh phải cách nhau
+/// ít nhất một đoạn để nhãn không đè nhau. Bằng số lần thì lấy đoạn tới trước.
+List<ReplayCheerPeak> replayCheerPeaks(
+  List<ReplayMoment> moments, {
+  required double totalMeters,
+  int bins = 10,
+  int limit = 3,
+}) {
+  final emojis = List.generate(bins, (_) => <String, int>{});
+  for (final moment in moments) {
+    final emoji = moment.emoji;
+    if (emoji == null) continue;
+    final bin = math.min(
+      (moment.fraction(totalMeters) * bins).floor(),
+      bins - 1,
+    );
+    emojis[bin][emoji] = (emojis[bin][emoji] ?? 0) + 1;
+  }
+  int count(int bin) => emojis[bin].values.fold(0, (a, b) => a + b);
+  final byCount = [
+    for (var bin = 0; bin < bins; bin++)
+      if (emojis[bin].isNotEmpty) bin,
+  ]..sort((a, b) => count(b) != count(a) ? count(b) - count(a) : a - b);
+  final taken = <int>[];
+  for (final bin in byCount) {
+    if (taken.length == limit) break;
+    if (taken.every((other) => (other - bin).abs() > 1)) taken.add(bin);
+  }
+  return [
+    for (final bin in taken..sort())
+      (
+        at: (bin + 0.5) / bins,
+        // Map giữ thứ tự chèn, nên bằng nhau thì lấy emoji xuất hiện trước.
+        emoji: emojis[bin].entries
+            .reduce((a, b) => b.value > a.value ? b : a)
+            .key,
+        count: count(bin),
+      ),
+  ];
+}
+
+/// Đi dọc các khoảnh khắc theo người chạy, để khung tin biết cái nào vừa tới.
+/// Sắp xếp một lần lúc tạo, mỗi khung hình chỉ dò tiếp từ chỗ đang đứng.
+class ReplayFeedCursor {
+  ReplayFeedCursor(List<ReplayMoment> moments, {required this.totalMeters})
+    : _sorted = replayDistinctMoments(moments)
+        ..sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
+
+  final double totalMeters;
+  final List<ReplayMoment> _sorted;
+  int _next = 0;
+  double _reach = 0;
+
+  /// Người chạy tới [reach] (0 tới 1): trả các khoảnh khắc đi qua kể từ lần
+  /// gọi trước, theo thứ tự dọc đường. [reach] lùi lại (phát lại) thì bắt đầu
+  /// lại từ đầu tuyến.
+  List<ReplayMoment> advance(double reach) {
+    if (reach < _reach) _next = 0;
+    _reach = reach;
+    final from = _next;
+    while (_next < _sorted.length &&
+        _sorted[_next].fraction(totalMeters) <= reach) {
+      _next++;
+    }
+    return _sorted.sublist(from, _next);
+  }
+}
+
+enum _PinKind { km, cheer, photo }
+
+/// Một ghim trên map: hình thường [icon], hình nở to [bloom] (cột mốc km
+/// không có). [point] là chỗ trên tuyến, tuyến ở đó đi theo hướng [bearing];
+/// [moment] là khoảnh khắc ghim này chỉ.
+typedef _Pin = ({
+  double fraction,
+  _PinKind kind,
+  String icon,
+  String? bloom,
+  LatLng point,
+  double bearing,
+  ReplayMoment? moment,
+});
+
+/// Nhiều cổ vũ tới mấy cũng chỉ cắm chừng này hạt, mỗi đoạn tuyến một hạt:
+/// mỗi hạt là một hình phải vẽ và một avatar phải tải.
+const _maxCheerPins = 40;
+
+/// Tâm ghim cách tim tuyến chừng này điểm ảnh, đủ để ghim không đè lên nét.
+const _pinBeside = 22.0;
 
 /// BẢN THỬ: xem lại buổi chạy với camera nghiêng bay theo tuyến, nhà dựng khối.
 class RouteReplayScreen extends StatefulWidget {
@@ -435,12 +563,51 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
   /// chạy, thiếu thì lấy độ dài tuyến.
   late final double _momentMeters = widget.distanceMeters ?? _path.meters;
 
-  /// Vị trí trên tuyến (0 tới 1) của các khoảnh khắc có ghim: ảnh, cổ vũ.
+  /// Vị trí trên tuyến (0 tới 1) của các ảnh. Camera chỉ dừng ở ảnh; cổ vũ
+  /// có thể rất nhiều nên chỉ trôi qua khung tin, không giữ camera lại.
   late final List<double> _momentFractions = [
     for (final moment in widget.moments)
-      if (moment.photoPath != null || moment.emoji != null)
-        moment.fraction(_momentMeters),
+      if (moment.photoPath != null) moment.fraction(_momentMeters),
   ];
+
+  /// Các lần cổ vũ đã bỏ lần bấm lặp, theo thứ tự dọc đường.
+  late final List<ReplayMoment> _cheers = [
+    for (final moment in replayDistinctMoments(widget.moments))
+      if (moment.emoji != null) moment,
+  ]..sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
+
+  late final _feed = ReplayFeedCursor(
+    widget.moments,
+    totalMeters: _momentMeters,
+  );
+
+  /// Những đoạn được cổ vũ nhiều nhất, hiện trên biểu đồ ở bảng số.
+  late final List<ReplayCheerPeak> _cheerPeaks = replayCheerPeaks(
+    _cheers,
+    totalMeters: _momentMeters,
+  );
+
+  /// Những chỗ camera kiểu phim dừng lại, và các khoảnh khắc hiện ở mỗi chỗ.
+  late final List<double> _stops = filmStops(_momentFractions);
+
+  /// Khoảnh khắc xa nhất gộp vào mỗi chỗ dừng.
+  late final List<double> _stopReach = [
+    for (final (i, stop) in _stops.indexed)
+      _momentFractions
+          .where((at) => filmStopIndex(at, _stops) == i)
+          .fold(stop, math.max),
+  ];
+
+  /// Camera dừng ở chỗ nào thì mọi khoảnh khắc gộp vào chỗ đó coi như đã qua,
+  /// dù người chạy chưa tới hẳn. Về 0 khi phát lại.
+  double _reachFloor = 0;
+
+  /// Người chạy coi như đã đi qua tới đâu (0 tới 1): ghim và khung tin hiện
+  /// tới đây.
+  double get _reach => math.max(_progress.value, _reachFloor);
+
+  /// Chỗ dừng đang diễn ra khi [_part] là [FilmPart.moment].
+  int _stopNow = 0;
 
   /// Buổi trong ngày của buổi chạy; null là không biết giờ chạy, map theo
   /// theme và không có trời.
@@ -463,13 +630,22 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
   bool _styleReady = false;
   bool _sending = false;
 
-  /// Cột mốc km và ảnh cắm trên tuyến, đã có hình trên map. Người chạy đi tới
-  /// cái nào thì cái đó hiện ra và ở lại.
-  final List<({double fraction, String icon, LatLng point, int layer})> _pins =
-      [];
+  /// Cột mốc km, cổ vũ và ảnh cắm trên tuyến, đã có hình trên map. Người
+  /// chạy đi tới cái nào thì cái đó hiện ra và ở lại.
+  final List<_Pin> _pins = [];
 
   /// Số ghim đang hiện trên map; null là layer ghim chưa dựng xong.
   int? _pinsShown;
+
+  /// Mức zoom (làm tròn tới 1/4) đã dùng để đặt ghim cạnh tuyến; zoom đổi
+  /// thì phải đặt lại, vì khoảng lệch tính theo điểm ảnh.
+  int _pinZoomShown = 0;
+
+  /// Các ghim đang nở to trên map, kèm layer đang vẽ nó.
+  Map<int, String> _bloomShown = const {};
+
+  /// Ghim người xem bấm cho nở to.
+  int? _picked;
 
   /// Có thay đổi tới lúc [_sending] nên chưa sang được map.
   bool _stale = false;
@@ -650,14 +826,24 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
               outline: _colors.night,
               glow: _colors.paper,
             );
+      final reach = _reach;
       final reached = [
-        for (final pin in _pins)
-          if (pin.fraction <= progress) pin,
+        for (final (i, pin) in _pins.indexed)
+          if (pin.fraction <= reach) (i, pin),
       ];
+      final blooming = _blooming();
+      final camera = _camera(progress);
+      final pinZoom = (camera.zoom * 4).round();
       await Future.wait([
-        if (_pinsShown != null && _pinsShown != reached.length)
-          map.setGeoJsonSource(_pinSource, _pinFeatures(reached)),
-        map.moveCamera(ml.CameraUpdate.newCameraPosition(_camera(progress))),
+        if (_pinsShown != null &&
+            (_pinsShown != reached.length ||
+                _pinZoomShown != pinZoom ||
+                !mapEquals(blooming, _bloomShown)))
+          map.setGeoJsonSource(
+            _pinSource,
+            _pinFeatures(reached, blooming, zoom: pinZoom / 4),
+          ),
+        map.moveCamera(ml.CameraUpdate.newCameraPosition(camera)),
         for (var i = 0; i < replayDoneLayers.length; i++)
           map.setLayerProperties(
             replayDoneLayers[i],
@@ -670,7 +856,11 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
             ),
           ),
       ]);
-      if (_pinsShown != null) _pinsShown = reached.length;
+      if (_pinsShown != null) {
+        _pinsShown = reached.length;
+        _pinZoomShown = pinZoom;
+        _bloomShown = blooming;
+      }
       // Hỏi map người chạy đang ở đâu trên màn, kể cả lúc camera bám theo:
       // camera bám thì người chạy được đẩy lên trên bảng số, không nằm đúng
       // tâm.
@@ -700,6 +890,8 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
   /// Gọi lần nữa giữa chừng thì lượt cũ ném [TickerCanceled] và dừng.
   Future<void> _play() async {
     _stopPlayback();
+    _reachFloor = 0;
+    _picked = null;
     if (_view != ReplayView.film) {
       _part = FilmPart.run;
       return _progress.forward(from: 0).orCancel;
@@ -709,9 +901,11 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
     // Báo cho tem tổng kết và trời của đoạn kết lượt trước tắt đi.
     _outro.value = 0;
     await _intro.forward(from: 0).orCancel;
-    for (final stop in filmStops(_momentFractions)) {
+    for (final (i, stop) in _stops.indexed) {
       _part = FilmPart.run;
       await _progress.animateTo(stop).orCancel;
+      _stopNow = i;
+      _reachFloor = _stopReach[i];
       _part = FilmPart.moment;
       await _moment.forward(from: 0).orCancel;
     }
@@ -734,82 +928,209 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
   }
 
   static const _pinSource = 'replay-pins';
+  static const _kmLayer = 'replay-km-pins';
+  static const _dotLayer = 'replay-dots';
+  static const _bloomLayer = 'replay-blooms';
+  static const _liftLayer = 'replay-lifted-blooms';
 
+  /// [pins] là các ghim đang hiện kèm chỉ số trong [_pins]; chỉ số làm id của
+  /// feature để biết người xem bấm vào ghim nào. Ghim trong [blooming] thì
+  /// dùng hình nở to, vẽ ở layer ghi kèm. Ghim nằm cạnh tuyến, lệch theo
+  /// [zoom]; riêng ghim nở trên đầu người chạy thì ở đúng chỗ trên tuyến.
   static Map<String, dynamic> _pinFeatures(
-    List<({double fraction, String icon, LatLng point, int layer})> pins,
-  ) => {
+    List<(int, _Pin)> pins,
+    Map<int, String> blooming, {
+    required double zoom,
+  }) => {
     'type': 'FeatureCollection',
     'features': [
-      for (final pin in pins)
+      for (final (i, pin) in pins)
         {
           'type': 'Feature',
-          'properties': {'icon': pin.icon, 'layer': pin.layer},
+          'id': i,
+          'properties': {
+            'icon': blooming.containsKey(i) ? pin.bloom : pin.icon,
+            'kind': blooming[i] ?? pin.kind.name,
+            // Hai hạt chạm nhau thì giữ ảnh, ẩn cổ vũ.
+            'rank': pin.kind == _PinKind.photo ? 0 : 1,
+          },
           'geometry': {
             'type': 'Point',
-            'coordinates': [pin.point.longitude, pin.point.latitude],
+            'coordinates': switch (blooming[i] == _liftLayer
+                ? pin.point
+                : replayPinBeside(
+                    pin.point,
+                    pin.bearing,
+                    pixels: _pinBeside,
+                    zoom: zoom,
+                  )) {
+              final at => [at.longitude, at.latitude],
+            },
           },
         },
     ],
   };
 
-  /// Dựng layer ghim rồi nạp hình từng cột mốc km và từng ảnh. Ảnh tải chậm
-  /// thì ghim của nó có mặt muộn hơn, replay không chờ.
+  /// Ghim đang nở và layer vẽ nó: ghim người xem vừa bấm nở tại chỗ; một
+  /// ghim ở chỗ camera đang dừng (ảnh trước, cổ vũ sau) nở trên đầu người
+  /// chạy, vì người chạy đang đứng đúng chỗ đó.
+  Map<int, String> _blooming() {
+    final blooming = {?_picked: _bloomLayer};
+    if (_view != ReplayView.film || _part != FilmPart.moment) return blooming;
+    (int, _Pin)? best;
+    for (final (i, pin) in _pins.indexed) {
+      if (pin.bloom == null ||
+          filmStopIndex(pin.fraction, _stops) != _stopNow) {
+        continue;
+      }
+      if (best == null || pin.kind.index > best.$2.kind.index) best = (i, pin);
+    }
+    return {...blooming, ?best?.$1: _liftLayer};
+  }
+
+  /// Bấm vào hạt ảnh thì mở ảnh to. Bấm vào hạt cổ vũ thì hạt nở to, bấm lần
+  /// nữa hoặc bấm ra ngoài thì thu lại.
+  Future<void> _onTap(TapUpDetails details) async {
+    final map = _map;
+    if (map == null || _pinsShown == null) return;
+    // Hạt nhỏ, nên tìm trong một ô quanh chỗ bấm cho dễ trúng.
+    final hits = await map.queryRenderedFeaturesInRect(
+      Rect.fromCenter(center: details.localPosition, width: 36, height: 36),
+      [_liftLayer, _bloomLayer, _dotLayer],
+      null,
+    );
+    if (!mounted) return;
+    final picked = [for (final hit in hits) ?_featureId(hit)].firstOrNull;
+    final moment = picked == null ? null : _pins[picked].moment;
+    if (moment?.photoPath case final path?) {
+      await showStoragePhotoViewer(
+        context,
+        path,
+        caption: formatDistance(moment!.distanceMeters),
+      );
+      return;
+    }
+    _picked = picked == _picked ? null : picked;
+    _syncMap();
+  }
+
+  /// Plugin trả feature dạng map hoặc chuỗi JSON tuỳ nền tảng.
+  static int? _featureId(Object? hit) {
+    final feature = hit is String ? jsonDecode(hit) : hit;
+    return feature is Map ? int.tryParse('${feature['id']}') : null;
+  }
+
+  /// Dựng layer ghim rồi nạp hình từng cột mốc km, từng cổ vũ và từng ảnh. Ảnh
+  /// tải chậm thì ghim của nó có mặt muộn hơn, replay không chờ.
   Future<void> _addPins() async {
     final map = _map!;
     final pixelRatio = MediaQuery.devicePixelRatioOf(context);
-    await map.addGeoJsonSource(_pinSource, _pinFeatures(const []));
-    // Cột mốc km nằm layer riêng, đè nhau thì map tự ẩn bớt: lùi ra xa hay
-    // chạy nhiều vòng quanh một chỗ thì chúng không dồn thành đống.
+    await map.addGeoJsonSource(
+      _pinSource,
+      _pinFeatures(const [], const {}, zoom: 0),
+    );
+    // Ghim nào đè ghim khác thì map tự ẩn bớt, lùi ra xa hay chạy nhiều vòng
+    // quanh một chỗ thì chúng không dồn thành đống. Layer trên được giữ
+    // trước: hạt nở to, rồi hạt ảnh và cổ vũ, cuối cùng cột mốc km.
     await map.addSymbolLayer(
       _pinSource,
-      'replay-km-pins',
+      _kmLayer,
       const ml.SymbolLayerProperties(
         iconImage: ['get', 'icon'],
-        iconAnchor: 'bottom',
-        iconOffset: [0, replayPinPad],
         iconAllowOverlap: false,
         iconIgnorePlacement: false,
       ),
       filter: [
         '==',
-        ['get', 'layer'],
-        0,
+        ['get', 'kind'],
+        'km',
       ],
+      enableInteraction: false,
     );
     await map.addSymbolLayer(
       _pinSource,
-      'replay-pins',
+      _dotLayer,
+      const ml.SymbolLayerProperties(
+        iconImage: ['get', 'icon'],
+        iconAllowOverlap: false,
+        iconIgnorePlacement: false,
+        symbolSortKey: ['get', 'rank'],
+      ),
+      filter: [
+        'any',
+        [
+          '==',
+          ['get', 'kind'],
+          'photo',
+        ],
+        [
+          '==',
+          ['get', 'kind'],
+          'cheer',
+        ],
+      ],
+      enableInteraction: false,
+    );
+    await map.addSymbolLayer(
+      _pinSource,
+      _bloomLayer,
       const ml.SymbolLayerProperties(
         iconImage: ['get', 'icon'],
         iconAnchor: 'bottom',
         iconOffset: [0, replayPinPad],
+        // Luôn hiện, và chiếm chỗ để hạt bên dưới tránh ra.
         iconAllowOverlap: true,
-        iconIgnorePlacement: true,
-        // Ảnh đè lên người cổ vũ.
-        symbolSortKey: ['get', 'layer'],
+        iconIgnorePlacement: false,
       ),
       filter: [
-        '!=',
-        ['get', 'layer'],
-        0,
+        '==',
+        ['get', 'kind'],
+        _bloomLayer,
       ],
+      enableInteraction: false,
+    );
+    await map.addSymbolLayer(
+      _pinSource,
+      _liftLayer,
+      const ml.SymbolLayerProperties(
+        iconImage: ['get', 'icon'],
+        iconAnchor: 'bottom',
+        iconOffset: [0, replayPinPad - _runnerLift],
+        iconAllowOverlap: true,
+        iconIgnorePlacement: true,
+      ),
+      filter: [
+        '==',
+        ['get', 'kind'],
+        _liftLayer,
+      ],
+      enableInteraction: false,
     );
     if (!mounted) return;
     _pinsShown = 0;
 
     Future<void> add(
       double fraction,
+      _PinKind kind,
       String icon,
-      Uint8List png,
-      int layer,
-    ) async {
+      Uint8List png, {
+      Uint8List? bloom,
+      ReplayMoment? moment,
+    }) async {
       await map.addImage(icon, png, false, pixelRatio);
+      if (bloom != null) {
+        await map.addImage('$icon-bloom', bloom, false, pixelRatio);
+      }
       if (!mounted) return;
+      final at = _path.at(fraction);
       _pins.add((
         fraction: fraction,
+        kind: kind,
         icon: icon,
-        point: _path.at(fraction).point,
-        layer: layer,
+        bloom: bloom == null ? null : '$icon-bloom',
+        point: at.point,
+        bearing: at.bearing,
+        moment: moment,
       ));
       _syncMap();
     }
@@ -817,15 +1138,14 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
     for (final km in replayKmMarks(_momentMeters)) {
       final png = await kmPinPng(km, pixelRatio, _colors);
       if (!mounted) return;
-      await add(km * 1000 / _momentMeters, 'km-$km', png, 0);
+      await add(km * 1000 / _momentMeters, _PinKind.km, 'km-$km', png);
     }
-    // Một người bấm dồn nhiều lần quanh một chỗ thì cắm một ghim thôi.
-    final cheered = <String>{};
-    for (final (i, moment) in widget.moments.indexed) {
-      final emoji = moment.emoji;
-      if (emoji == null) continue;
-      final spot = (moment.distanceMeters / 200).floor();
-      if (!cheered.add('${moment.avatarUrl}|$emoji|$spot')) continue;
+    for (final (i, moment) in replayOnePerStretch(
+      _cheers,
+      totalMeters: _momentMeters,
+      limit: _maxCheerPins,
+    ).indexed) {
+      final emoji = moment.emoji!;
       ui.Image? avatar;
       if (moment.avatarUrl case final url?) {
         try {
@@ -842,18 +1162,34 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
           );
         }
       }
-      final png = await cheerPinPng(avatar, emoji, pixelRatio, _colors);
+      final dot = await cheerDotPng(emoji, pixelRatio);
+      final bloom = await cheerBloomPng(avatar, emoji, pixelRatio, _colors);
       if (!mounted) return;
-      await add(moment.fraction(_momentMeters), 'cheer-$i', png, 1);
+      await add(
+        moment.fraction(_momentMeters),
+        _PinKind.cheer,
+        'cheer-$i',
+        dot,
+        bloom: bloom,
+        moment: moment,
+      );
     }
     for (final (i, moment) in widget.moments.indexed) {
       final path = moment.photoPath;
       if (path == null) continue;
       try {
         final photo = await loadReplayPhoto(path, pixelRatio);
-        final png = await photoPinPng(photo, pixelRatio, _colors);
+        final dot = await photoDotPng(photo, pixelRatio, _colors);
+        final bloom = await photoBloomPng(photo, pixelRatio, _colors);
         if (!mounted) return;
-        await add(moment.fraction(_momentMeters), 'photo-$i', png, 2);
+        await add(
+          moment.fraction(_momentMeters),
+          _PinKind.photo,
+          'photo-$i',
+          dot,
+          bloom: bloom,
+          moment: moment,
+        );
       } catch (error, stack) {
         // Một ảnh hỏng không được làm mất cả replay; báo ra để điều tra.
         FlutterError.reportError(
@@ -886,7 +1222,7 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
   Duration get _playLength {
     final run = _progress.duration!;
     if (_view != ReplayView.film) return run;
-    final stops = filmStops(_momentFractions).length;
+    final stops = _stops.length;
     return _intro.duration! +
         run +
         _moment.duration! * stops +
@@ -1051,6 +1387,7 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
+              onTapUp: _onTap,
               onScaleStart: (_) => _zoomAtPinchStart = _zoom,
               onScaleUpdate: _onViewGesture,
             ),
@@ -1068,32 +1405,6 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
               ),
             ),
           ),
-          if (widget.moments.isNotEmpty)
-            // Đáy hàng này nằm ngay trên hình người chạy.
-            Center(
-              child: ValueListenableBuilder(
-                valueListenable: _runnerShift,
-                builder: (context, shift, child) => Transform.translate(
-                  offset: shift + const Offset(0, -_pinLift),
-                  child: child,
-                ),
-                child: FractionalTranslation(
-                  translation: const Offset(0, -0.5),
-                  child: IgnorePointer(
-                    child: AnimatedBuilder(
-                      animation: _progress,
-                      builder: (context, _) => _MomentRow(
-                        shown: replayMomentsAt(
-                          widget.moments,
-                          _progress.value,
-                          totalMeters: _momentMeters,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
           if (_view == ReplayView.film)
             Positioned(
               left: 0,
@@ -1129,24 +1440,36 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
             left: inset.left + (_recording ? 0 : 12),
             right: inset.right + (_recording ? 0 : 12),
             bottom: inset.bottom + (_recording ? 0 : 12),
-            child: IgnorePointer(
-              key: _hudKey,
-              child: AnimatedBuilder(
-                animation: _progress,
-                builder: (context, _) => _ReplayHud(
-                  distanceMeters: widget.distanceMeters ?? _path.meters,
-                  movingTimeSeconds: widget.movingTimeSeconds,
-                  series: widget.series,
-                  progress: _progress.value,
-                  marks: [
-                    for (final moment in widget.moments)
-                      (
-                        moment.fraction(_momentMeters),
-                        moment.photoPath != null,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.moments.isNotEmpty)
+                  IgnorePointer(
+                    child: AnimatedBuilder(
+                      animation: Listenable.merge([_progress, _moment]),
+                      builder: (context, _) => _MomentFeed(
+                        cursor: _feed,
+                        reach: _reach,
+                        movingTimeSeconds: widget.movingTimeSeconds,
                       ),
-                  ],
+                    ),
+                  ),
+                IgnorePointer(
+                  key: _hudKey,
+                  child: AnimatedBuilder(
+                    animation: _progress,
+                    builder: (context, _) => _ReplayHud(
+                      distanceMeters: widget.distanceMeters ?? _path.meters,
+                      movingTimeSeconds: widget.movingTimeSeconds,
+                      series: widget.series,
+                      progress: _progress.value,
+                      peaks: _cheerPeaks,
+                      photos: _momentFractions,
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
           if (_recording)
@@ -1322,7 +1645,7 @@ class _OutsidePainter extends CustomPainter {
         Path()..addRect(Offset.zero & size),
         Path()..addRect(clip),
       ),
-      Paint()..color = const Color(0xB3000000),
+      Paint()..color = Colors.black.withValues(alpha: 0.7),
     );
   }
 
@@ -1463,16 +1786,17 @@ class _RunnerPin extends StatelessWidget {
   }
 }
 
-/// Bảng ở đáy màn: số km tới lúc này thật to canh trái, giờ chạy và pace
-/// trung bình bên phải, dưới là các biểu đồ dọc buổi chạy, mỗi loại số liệu
-/// một hàng, phần đã qua tô đỏ.
+/// Bảng ở đáy màn: số km tới lúc này thật to canh trái, giờ chạy bên phải,
+/// dưới là các loại số liệu vẽ chồng lớp trong một vùng, rồi hàng số của
+/// từng loại tại chỗ người chạy đang đứng.
 class _ReplayHud extends StatelessWidget {
   const _ReplayHud({
     required this.distanceMeters,
     required this.movingTimeSeconds,
     required this.series,
     required this.progress,
-    this.marks = const [],
+    this.peaks = const [],
+    this.photos = const [],
   });
 
   final double distanceMeters;
@@ -1480,8 +1804,11 @@ class _ReplayHud extends StatelessWidget {
   final List<ReplaySeries> series;
   final double progress;
 
-  /// Vị trí (0 tới 1) của ảnh và cổ vũ dọc đường; true là ảnh.
-  final List<(double, bool)> marks;
+  /// Những đoạn được cổ vũ nhiều nhất, theo thứ tự dọc đường.
+  final List<ReplayCheerPeak> peaks;
+
+  /// Vị trí (0 tới 1) của các ảnh dọc đường.
+  final List<double> photos;
 
   @override
   Widget build(BuildContext context) {
@@ -1489,13 +1816,15 @@ class _ReplayHud extends StatelessWidget {
     final seconds = movingTimeSeconds;
     final colors = ReplayColors.of(context.runNowPalette);
     const figures = [FontFeature.tabularFigures()];
+    // Số liệu nhiều hơn số màu lớp thì bỏ bớt phần sau.
+    final shown = series.take(colors.layers.length).toList();
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.night.withValues(alpha: 0.9),
         boxShadow: kElevationToShadow[4],
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
@@ -1505,7 +1834,7 @@ class _ReplayHud extends StatelessWidget {
               children: [
                 Text(
                   (distanceMeters * progress / 1000).toStringAsFixed(2),
-                  style: text.displaySmall?.copyWith(
+                  style: text.headlineMedium?.copyWith(
                     color: colors.paper,
                     fontFeatures: figures,
                     height: 1,
@@ -1513,83 +1842,59 @@ class _ReplayHud extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 3),
+                  padding: const EdgeInsets.only(bottom: 2),
                   child: Text(
                     'km',
-                    style: text.titleMedium?.copyWith(color: colors.line),
+                    style: text.titleSmall?.copyWith(color: colors.line),
                   ),
                 ),
                 const Spacer(),
                 if (seconds != null)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        formatDuration((seconds * progress).round()),
-                        style: text.titleLarge?.copyWith(
-                          color: colors.paper,
-                          fontFeatures: figures,
-                          height: 1,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        formatPace(
-                          distanceMeters <= 0
-                              ? null
-                              : seconds / (distanceMeters / 1000),
-                        ),
-                        style: text.labelMedium?.copyWith(
-                          color: colors.muted,
-                          fontFeatures: figures,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    formatDuration((seconds * progress).round()),
+                    style: text.titleMedium?.copyWith(
+                      color: colors.paper,
+                      fontFeatures: figures,
+                      height: 1,
+                    ),
                   ),
               ],
             ),
-            if (marks.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 6,
-                child: CustomPaint(painter: _MarkPainter(marks, colors)),
-              ),
-            ],
-            for (final shown in series) ...[
+            if (shown.isNotEmpty) ...[
               const SizedBox(height: 6),
-              Row(
-                children: [
-                  Text(
-                    shown.label,
-                    style: text.labelSmall?.copyWith(
-                      color: colors.muted,
-                      letterSpacing: 1.6,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    shown.format(
-                      shown.values[(progress * (shown.values.length - 1))
-                          .round()],
-                    ),
-                    style: text.labelLarge?.copyWith(
+              SizedBox(
+                height: _LayersPainter.heightFor(
+                  shown.length,
+                  peaks: peaks.isNotEmpty,
+                ),
+                child: CustomPaint(
+                  painter: _LayersPainter(
+                    layers: [for (final one in shown) one.values],
+                    progress: progress,
+                    colors: colors,
+                    peaks: peaks,
+                    photos: photos,
+                    peakStyle: text.labelSmall?.copyWith(
                       color: colors.paper,
                       fontFeatures: figures,
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              SizedBox(
-                height: series.length > 1 ? 18 : 30,
-                child: CustomPaint(
-                  painter: _WavePainter(
-                    values: shown.values,
-                    progress: progress,
-                    colors: colors,
-                  ),
                 ),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  for (final one in shown)
+                    Expanded(
+                      child: _HudFigure(
+                        value: one.format(
+                          one.values[(progress * (one.values.length - 1))
+                              .round()],
+                        ),
+                        colors: colors,
+                      ),
+                    ),
+                ],
               ),
             ],
           ],
@@ -1599,171 +1904,463 @@ class _ReplayHud extends StatelessWidget {
   }
 }
 
-/// Vạch đánh dấu ảnh (trắng) và cổ vũ (đỏ) dọc buổi chạy, cùng thang ngang
-/// với các biểu đồ bên dưới.
-class _MarkPainter extends CustomPainter {
-  _MarkPainter(this.marks, this.colors);
+/// Một ô số dưới biểu đồ: số lớn kèm đơn vị nhỏ. Các ô xếp theo thứ tự lớp
+/// từ trên xuống, đơn vị đủ cho biết ô nào là số gì.
+class _HudFigure extends StatelessWidget {
+  const _HudFigure({required this.value, required this.colors});
 
-  final List<(double, bool)> marks;
+  /// Số kèm đơn vị, cách nhau một dấu cách, ví dụ "152 bpm".
+  final String value;
   final ReplayColors colors;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    for (final (at, isPhoto) in marks) {
-      canvas.drawRect(
-        Rect.fromCenter(
-          center: Offset(at * size.width, size.height / 2),
-          width: isPhoto ? 6 : 3,
-          height: size.height,
-        ),
-        Paint()..color = isPhoto ? colors.paper : colors.line,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_MarkPainter old) =>
-      old.marks != marks || old.colors != colors;
-}
-
-/// Emoji cổ vũ bung ra khi người chạy tới đúng chỗ. Ảnh thì cắm thẳng trên
-/// tuyến, xem `_addPins`.
-class _MomentRow extends StatelessWidget {
-  const _MomentRow({required this.shown});
-
-  final List<ReplayMoment> shown;
-
-  @override
   Widget build(BuildContext context) {
-    // Nhiều người bấm dồn một chỗ thì chỉ giữ mấy lần mới nhất.
-    final cheers = [
-      for (final moment in shown)
-        if (moment.emoji != null) moment,
-    ];
-    final recent = cheers.length > 6
-        ? cheers.sublist(cheers.length - 6)
-        : cheers;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          spacing: 6,
-          children: [for (final cheer in recent) _CheerChip(cheer)],
+    final text = Theme.of(context).textTheme;
+    final cut = value.indexOf(' ');
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Text.rich(
+        TextSpan(
+          text: cut < 0 ? value : value.substring(0, cut),
+          children: [
+            if (cut >= 0)
+              TextSpan(
+                text: value.substring(cut),
+                style: text.labelSmall?.copyWith(color: colors.muted),
+              ),
+          ],
         ),
-      ],
+        maxLines: 1,
+        style: text.labelLarge?.copyWith(
+          color: colors.paper,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
     );
   }
 }
 
-/// Ảnh người cổ vũ kèm emoji họ bấm.
-class _CheerChip extends StatelessWidget {
-  const _CheerChip(this.cheer);
+/// Khung tin ở góc dưới: khoảnh khắc người chạy vừa đi qua bay từ dưới lên,
+/// mờ dần rồi mất. Mỗi [_gap] chỉ thả một dòng; tới dồn dập thì dòng đó đứng
+/// thay cả lượt và ghi còn bao nhiêu cái nữa.
+class _MomentFeed extends StatefulWidget {
+  const _MomentFeed({
+    required this.cursor,
+    required this.reach,
+    required this.movingTimeSeconds,
+  });
 
-  final ReplayMoment cheer;
+  final ReplayFeedCursor cursor;
+
+  /// Người chạy đã tới đâu (0 tới 1).
+  final double reach;
+  final int? movingTimeSeconds;
+
+  @override
+  State<_MomentFeed> createState() => _MomentFeedState();
+}
+
+class _MomentFeedState extends State<_MomentFeed> {
+  /// Đủ để dòng trước bay lên khỏi chỗ của dòng sau.
+  static const _gap = Duration(milliseconds: 500);
+
+  final _lines = <({int id, ReplayMoment moment, int more})>[];
+  int _lineId = 0;
+
+  /// Đang chờ tới lượt: một khoảnh khắc đứng thay và tổng số đang chờ.
+  ReplayMoment? _waiting;
+  int _waitingCount = 0;
+  Timer? _cooldown;
+
+  @override
+  void initState() {
+    super.initState();
+    _take();
+  }
+
+  @override
+  void didUpdateWidget(_MomentFeed old) {
+    super.didUpdateWidget(old);
+    if (widget.reach < old.reach) {
+      // Phát lại từ đầu: bỏ những dòng của lượt trước.
+      _cooldown?.cancel();
+      _cooldown = null;
+      _lines.clear();
+      _waiting = null;
+      _waitingCount = 0;
+    }
+    _take();
+  }
+
+  @override
+  void dispose() {
+    _cooldown?.cancel();
+    super.dispose();
+  }
+
+  void _take() {
+    final passed = widget.cursor.advance(widget.reach);
+    if (passed.isEmpty) return;
+    _waitingCount += passed.length;
+    // Ảnh ít và là của chủ buổi chạy nên được đứng thay trước cổ vũ.
+    final photo = passed.where((m) => m.photoPath != null).lastOrNull;
+    _waiting = photo ?? (_waiting?.photoPath != null ? _waiting : passed.last);
+    _release();
+  }
+
+  /// Thả dòng đang chờ nếu đã hết [_gap] từ dòng trước.
+  void _release() {
+    final moment = _waiting;
+    if (moment == null || _cooldown != null) return;
+    _lines.add((id: _lineId++, moment: moment, more: _waitingCount - 1));
+    _waiting = null;
+    _waitingCount = 0;
+    _cooldown = Timer(_gap, () {
+      _cooldown = null;
+      if (mounted) setState(_release);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final url = cheer.avatarUrl;
-    final colors = ReplayColors.of(context.runNowPalette);
+    final total = widget.cursor.totalMeters;
     return SizedBox(
-      width: 62,
-      height: 58,
+      height: _FeedLine.rise + 44,
       child: Stack(
+        alignment: Alignment.bottomLeft,
+        clipBehavior: Clip.none,
         children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.line,
-              shape: context.runNowPalette.round,
-              boxShadow: kElevationToShadow[4],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(3),
-              child: RunNowAvatar(
-                radius: 24,
-                backgroundColor: colors.line,
-                backgroundImage: url == null
-                    ? null
-                    : cachedAvatarImage(context, url, 48),
-                child: url == null
-                    ? Icon(Icons.person_rounded, size: 20, color: colors.onLine)
-                    : null,
+          for (final line in _lines)
+            _FeedLine(
+              key: ValueKey(line.id),
+              moment: line.moment,
+              more: line.more,
+              // Giờ chạy lúc đó, tính theo quãng đường đã đi.
+              time: switch (widget.movingTimeSeconds) {
+                final seconds? => formatDuration(
+                  (seconds * line.moment.fraction(total)).round(),
+                ),
+                null => null,
+              },
+              onGone: () => setState(
+                () => _lines.removeWhere((other) => other.id == line.id),
               ),
             ),
-          ),
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: Text(cheer.emoji!, style: const TextStyle(fontSize: 26)),
-          ),
         ],
       ),
     );
   }
 }
 
-class _WavePainter extends CustomPainter {
-  _WavePainter({
-    required this.values,
-    required this.progress,
-    required this.colors,
+/// Một dòng của khung tin: bay lên [rise] điểm ảnh, hiện nhanh lúc đầu rồi
+/// mờ dần từ nửa đường, hết thì gọi [onGone].
+class _FeedLine extends StatefulWidget {
+  const _FeedLine({
+    super.key,
+    required this.moment,
+    required this.more,
+    required this.time,
+    required this.onGone,
   });
 
-  final List<double> values;
+  static const rise = 160.0;
+
+  final ReplayMoment moment;
+
+  /// Còn bao nhiêu khoảnh khắc tới cùng lúc mà dòng này đứng thay.
+  final int more;
+
+  /// Giờ chạy lúc khoảnh khắc xảy ra; null là buổi chạy không có thời gian.
+  final String? time;
+  final VoidCallback onGone;
+
+  @override
+  State<_FeedLine> createState() => _FeedLineState();
+}
+
+class _FeedLineState extends State<_FeedLine>
+    with SingleTickerProviderStateMixin {
+  late final _life = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  );
+  late final _fade = TweenSequence<double>([
+    TweenSequenceItem(tween: Tween(begin: 0, end: 1), weight: 10),
+    TweenSequenceItem(tween: ConstantTween(1), weight: 40),
+    TweenSequenceItem(tween: Tween(begin: 1, end: 0), weight: 50),
+  ]).animate(_life);
+
+  @override
+  void initState() {
+    super.initState();
+    _life.forward().whenComplete(() {
+      if (mounted) widget.onGone();
+    });
+  }
+
+  @override
+  void dispose() {
+    _life.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final colors = ReplayColors.of(palette);
+    final moment = widget.moment;
+    final text = Theme.of(context).textTheme.labelMedium?.copyWith(
+      color: colors.paper,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    final Widget lead;
+    final Widget label;
+    if (moment.photoPath case final path?) {
+      lead = ClipRRect(
+        borderRadius: BorderRadius.all(palette.cornerRadius(8)),
+        child: SizedBox.square(
+          dimension: 34,
+          child: StorageImage(
+            path: path,
+            cacheWidth: (34 * MediaQuery.devicePixelRatioOf(context)).round(),
+            placeholder: ColoredBox(color: colors.muted),
+          ),
+        ),
+      );
+      label = Text(
+        [formatDistance(moment.distanceMeters), ?widget.time].join(' · '),
+        style: text,
+      );
+    } else {
+      final url = moment.avatarUrl;
+      lead = RunNowAvatar(
+        radius: 13,
+        backgroundColor: colors.line,
+        backgroundImage: url == null
+            ? null
+            : cachedAvatarImage(context, url, 26),
+        child: url == null
+            ? Icon(Icons.person_rounded, size: 14, color: colors.onLine)
+            : null,
+      );
+      label = Row(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 6,
+        children: [
+          if (moment.name case final name?)
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 120),
+              child: Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: text?.copyWith(fontWeight: FontWeight.w800),
+              ),
+            ),
+          Text(moment.emoji!, style: const TextStyle(fontSize: 18)),
+          if (widget.time case final time?)
+            Text(time, style: text?.copyWith(color: colors.muted)),
+        ],
+      );
+    }
+    final pill = DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.night.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.all(palette.cornerRadius(20)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          spacing: 8,
+          children: [
+            lead,
+            label,
+            if (widget.more > 0)
+              Text(
+                '+${widget.more}',
+                style: text?.copyWith(color: colors.muted),
+              ),
+          ],
+        ),
+      ),
+    );
+    return AnimatedBuilder(
+      animation: _life,
+      builder: (context, child) => Transform.translate(
+        offset: Offset(0, -_FeedLine.rise * _life.value),
+        child: child,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: FadeTransition(opacity: _fade, child: pill),
+      ),
+    );
+  }
+}
+
+/// Các loại số liệu vẽ chồng lớp trong một vùng: lớp đầu nằm trên cùng, mỗi
+/// lớp sau lùi xuống [_step] và che phần chân của lớp trước. Phần đã chạy
+/// qua lên màu, phần chưa tới thì chìm.
+class _LayersPainter extends CustomPainter {
+  _LayersPainter({
+    required this.layers,
+    required this.progress,
+    required this.colors,
+    this.peaks = const [],
+    this.photos = const [],
+    this.peakStyle,
+  });
+
+  /// Có đỉnh cổ vũ thì phần trên cùng cao chừng này để dành cho nhãn.
+  static const _peakRoom = 20.0;
+
+  /// Mép trên khi không có nhãn, đủ cho chấm của lớp đầu khỏi bị cắt.
+  static const _headRoom = 6.0;
+
+  /// Mỗi lớp dao động trong khoảng cao này.
+  static const _amp = 18.0;
+
+  /// Lớp sau lùi xuống so với lớp trước.
+  static const _step = 9.0;
+
+  /// Phần nền dưới lớp cuối.
+  static const _foot = 6.0;
+
+  static double heightFor(int layers, {required bool peaks}) =>
+      (peaks ? _peakRoom : _headRoom) + _amp + _step * (layers - 1) + _foot;
+
+  /// Mỗi phần tử là một loại số liệu rải đều theo quãng đường.
+  final List<List<double>> layers;
   final double progress;
   final ReplayColors colors;
 
+  /// Đỉnh cổ vũ: emoji và số lần đứng trên lớp đầu, nối xuống bằng nét đứt.
+  /// Người chạy tới nơi thì mới hiện.
+  final List<ReplayCheerPeak> peaks;
+
+  /// Ảnh dọc đường (0 tới 1): ô sáng nằm trên lớp đầu, tới nơi mới hiện.
+  final List<double> photos;
+  final TextStyle? peakStyle;
+
   @override
   void paint(Canvas canvas, Size size) {
-    final low = values.reduce(math.min), high = values.reduce(math.max);
-    final range = high - low;
-    // Chừa mép trên dưới cho nét và chấm không bị cắt.
-    double y(double value) =>
-        size.height * (0.9 - 0.8 * (range <= 0 ? 0.5 : (value - low) / range));
-    double x(int i) => size.width * i / (values.length - 1);
+    final head = peaks.isEmpty ? _headRoom : _peakRoom;
+    final doneX = size.width * progress;
+    final done = Rect.fromLTRB(0, 0, doneX, size.height);
 
-    // Nối qua trung điểm bằng đường cong bậc hai cho ra dáng sóng.
-    final wave = Path()..moveTo(0, y(values.first));
-    for (var i = 1; i < values.length; i++) {
-      final midX = (x(i - 1) + x(i)) / 2;
-      final midY = (y(values[i - 1]) + y(values[i])) / 2;
-      wave.quadraticBezierTo(x(i - 1), y(values[i - 1]), midX, midY);
+    // Giá trị thấp nhất và cao nhất của từng lớp, tính một lần cho cả lượt vẽ.
+    final bounds = [
+      for (final values in layers)
+        (low: values.reduce(math.min), high: values.reduce(math.max)),
+    ];
+
+    // Điểm trên lớp [layer] ở vị trí [fraction] (0 tới 1) của buổi chạy.
+    Offset on(int layer, double fraction) {
+      final values = layers[layer];
+      final low = bounds[layer].low;
+      final range = bounds[layer].high - low;
+      final at = fraction * (values.length - 1);
+      final i = at.floor().clamp(0, values.length - 2);
+      final value = values[i] + (values[i + 1] - values[i]) * (at - i);
+      // Chừa 3 px trên dưới cho nét khỏi chạm lớp kế bên.
+      return Offset(
+        size.width * fraction,
+        head +
+            layer * _step +
+            3 +
+            (_amp - 6) * (1 - (range <= 0 ? 0.5 : (value - low) / range)),
+      );
     }
-    wave.lineTo(size.width, y(values.last));
-    final area = Path.from(wave)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
 
-    Paint line(Color color, double width) => Paint()
+    Paint stroke(Color color, double width) => Paint()
       ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = width
       ..strokeJoin = StrokeJoin.round;
 
-    canvas.drawPath(wave, line(colors.muted, 1.5));
-    final doneX = size.width * progress;
-    canvas
-      ..save()
-      ..clipRect(Rect.fromLTRB(0, 0, doneX, size.height))
-      ..drawPath(area, Paint()..color = colors.line.withValues(alpha: 0.3))
-      ..drawPath(wave, line(colors.line, 2.5))
-      ..restore();
+    for (var layer = 0; layer < layers.length; layer++) {
+      final count = layers[layer].length;
+      Offset point(int i) => on(layer, i / (count - 1));
+      // Nối qua trung điểm bằng đường cong bậc hai cho ra dáng sóng.
+      final wave = Path()..moveTo(0, point(0).dy);
+      for (var i = 1; i < count; i++) {
+        final from = point(i - 1), to = point(i);
+        wave.quadraticBezierTo(
+          from.dx,
+          from.dy,
+          (from.dx + to.dx) / 2,
+          (from.dy + to.dy) / 2,
+        );
+      }
+      wave.lineTo(size.width, point(count - 1).dy);
+      final area = Path.from(wave)
+        ..lineTo(size.width, size.height)
+        ..lineTo(0, size.height)
+        ..close();
 
-    final at = progress * (values.length - 1);
-    final i = at.floor().clamp(0, values.length - 2);
-    final here = Offset(
-      doneX,
-      y(values[i] + (values[i + 1] - values[i]) * (at - i)),
-    );
-    canvas
-      ..drawCircle(here, 5, Paint()..color = colors.paper)
-      ..drawCircle(here, 3, Paint()..color = colors.line);
+      final color = colors.layers[layer];
+      // Nền lớp tô đặc để che chân lớp phía sau.
+      final fill = Color.lerp(color, colors.night, 0.62)!;
+      canvas
+        ..drawPath(area, Paint()..color = Color.lerp(fill, colors.night, 0.6)!)
+        ..drawPath(wave, stroke(colors.muted.withValues(alpha: 0.45), 1))
+        ..save()
+        ..clipRect(done)
+        ..drawPath(area, Paint()..color = fill)
+        ..drawPath(wave, stroke(color, layer == 0 ? 2.5 : 1.8))
+        ..restore();
+    }
+
+    for (final photo in photos) {
+      if (photo > progress) continue;
+      canvas.drawRect(
+        Rect.fromCenter(center: on(0, photo), width: 7, height: 7),
+        Paint()..color = colors.paper,
+      );
+    }
+    for (final peak in peaks) {
+      if (peak.at > progress) continue;
+      final label = TextPainter(
+        text: TextSpan(text: '${peak.emoji} ${peak.count}', style: peakStyle),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final foot = on(0, peak.at);
+      // Nhãn sát mép thì dịch vào cho khỏi bị cắt.
+      final left = (foot.dx - label.width / 2)
+          .clamp(0.0, math.max(0.0, size.width - label.width))
+          .toDouble();
+      label.paint(canvas, Offset(left, (head - 4 - label.height) / 2));
+      final stem = stroke(colors.line, 1);
+      for (var dash = head - 4; dash < foot.dy - 4; dash += 4) {
+        canvas.drawLine(
+          Offset(foot.dx, dash),
+          Offset(foot.dx, math.min(dash + 2, foot.dy - 4)),
+          stem,
+        );
+      }
+      label.dispose();
+    }
+
+    // Chấm vẽ sau cùng để lớp phía trước không che mất.
+    for (var layer = 0; layer < layers.length; layer++) {
+      final here = on(layer, progress);
+      final radius = layer == 0 ? 4.5 : 3.0;
+      canvas
+        ..drawCircle(here, radius, Paint()..color = colors.layers[layer])
+        ..drawCircle(here, radius, stroke(colors.paper, layer == 0 ? 2 : 1.2));
+    }
   }
 
   @override
-  bool shouldRepaint(_WavePainter old) =>
-      old.progress != progress || old.values != values || old.colors != colors;
+  bool shouldRepaint(_LayersPainter old) =>
+      old.progress != progress ||
+      old.layers != layers ||
+      old.colors != colors ||
+      old.peaks != peaks ||
+      old.photos != photos ||
+      old.peakStyle != peakStyle;
 }
 
 class _PinTailPainter extends CustomPainter {

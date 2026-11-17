@@ -85,15 +85,15 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
       for (final cheer
           in ref.watch(liveCheersProvider(widget.activityId)).value ??
               const <LiveCheer>[])
-        for (final mark in cheer.marks)
-          ReplayMoment.cheer(
-            distanceMeters: mark.distanceMeters,
-            emoji: mark.emoji,
-            avatarUrl: members
-                .where((member) => member.uid == cheer.uid)
-                .firstOrNull
-                ?.avatarUrl,
-          ),
+        if (members.where((member) => member.uid == cheer.uid).firstOrNull
+            case final sender)
+          for (final mark in cheer.marks)
+            ReplayMoment.cheer(
+              distanceMeters: mark.distanceMeters,
+              emoji: mark.emoji,
+              name: sender?.displayName,
+              avatarUrl: sender?.avatarUrl,
+            ),
     ];
     return Scaffold(
       appBar: AppBar(

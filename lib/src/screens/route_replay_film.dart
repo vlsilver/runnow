@@ -173,15 +173,36 @@ FilmCamera _between(FilmCamera a, FilmCamera b, double t) {
 
 /// Những chỗ camera dừng lại, lấy từ vị trí các khoảnh khắc [fractions] (0 tới
 /// 1 trên tuyến): theo thứ tự trên tuyến, bỏ chỗ sát đầu hay sát cuối, và gần
-/// chỗ trước dưới [minGap] thì gộp làm một.
-List<double> filmStops(Iterable<double> fractions, {double minGap = 0.03}) {
+/// chỗ trước dưới [minGap] thì gộp làm một. Nhiều hơn [limit] chỗ thì chỉ giữ
+/// [limit] chỗ rải đều, để buổi chạy nhiều khoảnh khắc không kéo replay dài ra.
+List<double> filmStops(
+  Iterable<double> fractions, {
+  double minGap = 0.03,
+  int limit = 5,
+}) {
   final stops = <double>[];
   for (final at in fractions.toList()..sort()) {
     if (at < minGap || at > 1 - minGap) continue;
     if (stops.isNotEmpty && at - stops.last < minGap) continue;
     stops.add(at);
   }
-  return stops;
+  return spreadEvenly(stops, limit);
+}
+
+/// [limit] phần tử rải đều trong [items], giữ thứ tự; không đủ thì giữ hết.
+List<T> spreadEvenly<T>(List<T> items, int limit) {
+  if (items.length <= limit) return items;
+  return [for (var i = 0; i < limit; i++) items[i * items.length ~/ limit]];
+}
+
+/// Khoảnh khắc ở [at] (0 tới 1 trên tuyến) được hiện ở chỗ dừng thứ mấy
+/// trong [stops] (kết quả của [filmStops] với cùng [minGap]); null là camera
+/// không dừng vì nó.
+int? filmStopIndex(double at, List<double> stops, {double minGap = 0.03}) {
+  for (final (i, stop) in stops.indexed) {
+    if (at >= stop && at - stop < minGap) return i;
+  }
+  return null;
 }
 
 /// Ở thời điểm [t] của đoạn kết, vệt sáng chạy dọc tuyến tới đâu (0 tới 1).

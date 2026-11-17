@@ -1283,3 +1283,23 @@ class RunFaceTokens {
   static const stopwatchWhite = Color(0xFFFFFFFF);
   static const stopwatchAlert = Color(0xFFE4572E);
 }
+
+/// Màu dải trời trên màn replay kiểu phim, theo giờ chạy.
+abstract final class RunNowReplaySkyTokens {
+  // Mỗi buổi: màu đỉnh trời rồi màu chân trời.
+  static const morningTop = Color(0xFF8CC2EE);
+  static const morningHorizon = Color(0xFFFDE6C8);
+  static const afternoonTop = Color(0xFF7DB4E6);
+  static const afternoonHorizon = Color(0xFFFFF2DA);
+  static const duskTop = Color(0xFF4A3F7A);
+  static const duskHorizon = Color(0xFFFF8A4C);
+  static const nightTop = Color(0xFF070C22);
+  static const nightHorizon = Color(0xFF26315C);
+
+  static const sunHigh = Color(0xFFFFF4C2);
+  static const sunLow = Color(0xFFFF7A30);
+  static const moonGlow = Color(0xFFDDE4FF);
+  static const moonGlowFade = Color(0x00DDE4FF);
+  static const moon = Color(0xFFF4F1E1);
+  static const star = Color(0xCCFFFFFF);
+}

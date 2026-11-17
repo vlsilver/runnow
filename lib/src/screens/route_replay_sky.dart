@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 import 'package:myrun/src/screens/route_replay_film.dart';
+import 'package:myrun/src/theme_tokens.dart';
 import 'package:myrun/src/widgets/map_vector.dart';
 
 /// Dải trời ở mép trên màn replay kiểu phim, có mặt trời hoặc trăng.
@@ -90,23 +91,37 @@ class _SkyPainter extends CustomPainter {
   (Color, Color) _colors() {
     switch (daylight) {
       case ReplayDaylight.morning:
-        return (const Color(0xFF8CC2EE), const Color(0xFFFDE6C8));
+        return (
+          RunNowReplaySkyTokens.morningTop,
+          RunNowReplaySkyTokens.morningHorizon,
+        );
       case ReplayDaylight.afternoon:
         final dusk = (1 - sky.rise / 0.6).clamp(0.0, 1.0);
         return (
-          Color.lerp(const Color(0xFF7DB4E6), const Color(0xFF4A3F7A), dusk)!,
-          Color.lerp(const Color(0xFFFFF2DA), const Color(0xFFFF8A4C), dusk)!,
+          Color.lerp(
+            RunNowReplaySkyTokens.afternoonTop,
+            RunNowReplaySkyTokens.duskTop,
+            dusk,
+          )!,
+          Color.lerp(
+            RunNowReplaySkyTokens.afternoonHorizon,
+            RunNowReplaySkyTokens.duskHorizon,
+            dusk,
+          )!,
         );
       case ReplayDaylight.night:
-        return (const Color(0xFF070C22), const Color(0xFF26315C));
+        return (
+          RunNowReplaySkyTokens.nightTop,
+          RunNowReplaySkyTokens.nightHorizon,
+        );
     }
   }
 
   void _sun(Canvas canvas, Offset center) {
     final low = (1 - sky.rise / 0.5).clamp(0.0, 1.0);
     final core = Color.lerp(
-      const Color(0xFFFFF4C2),
-      const Color(0xFFFF7A30),
+      RunNowReplaySkyTokens.sunHigh,
+      RunNowReplaySkyTokens.sunLow,
       low,
     )!;
     canvas.drawCircle(
@@ -127,12 +142,12 @@ class _SkyPainter extends CustomPainter {
       Paint()
         ..shader = RadialGradient(
           colors: [
-            const Color(0xFFDDE4FF).withValues(alpha: 0.35),
-            const Color(0x00DDE4FF),
+            RunNowReplaySkyTokens.moonGlow.withValues(alpha: 0.35),
+            RunNowReplaySkyTokens.moonGlowFade,
           ],
         ).createShader(Rect.fromCircle(center: center, radius: 60)),
     );
-    canvas.drawCircle(center, 18, Paint()..color = const Color(0xFFF4F1E1));
+    canvas.drawCircle(center, 18, Paint()..color = RunNowReplaySkyTokens.moon);
     // Trăng khuyết: một vòng màu trời che lệch một bên.
     canvas.drawCircle(
       center + const Offset(8, -5),
@@ -143,7 +158,7 @@ class _SkyPainter extends CustomPainter {
 
   void _stars(Canvas canvas, Size size, double horizon) {
     final random = math.Random(7);
-    final paint = Paint()..color = const Color(0xCCFFFFFF);
+    final paint = Paint()..color = RunNowReplaySkyTokens.star;
     for (var i = 0; i < 40; i++) {
       final at = Offset(
         random.nextDouble() * size.width,

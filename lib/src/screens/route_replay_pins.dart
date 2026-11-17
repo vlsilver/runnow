@@ -132,14 +132,41 @@ enum ReplayView {
   };
 }
 
-/// Lề quanh mỗi ghim để chứa bóng đổ. Layer phải đẩy icon xuống đúng chừng
-/// này thì chân ghim mới chạm chỗ nó chỉ.
+/// Chỗ đặt ghim nằm cạnh tuyến: từ [point] trên tuyến, nơi tuyến đi theo
+/// hướng [bearing] (độ), lệch sang phải hướng chạy [pixels] điểm ảnh khi map
+/// ở mức [zoom]. Ghim nằm đó thì không đè lên nét tuyến.
+LatLng replayPinBeside(
+  LatLng point,
+  double bearing, {
+  required double pixels,
+  required double zoom,
+}) {
+  // MapLibre dùng ô 512 điểm ảnh: ở zoom 0 cả vòng xích đạo dài 512 điểm.
+  final metersPerPixel =
+      40075016.686 *
+      math.cos(point.latitude * math.pi / 180) /
+      (512 * math.pow(2, zoom));
+  return const Distance(
+    roundResult: false,
+  ).offset(point, pixels * metersPerPixel, bearing + 90);
+}
+
+/// Lề quanh mỗi ghim để chứa bóng đổ. Ghim neo ở đáy (hạt nở to) thì layer
+/// phải đẩy icon xuống đúng chừng này để đầu đuôi chạm chỗ nó chỉ; ghim neo ở
+/// tâm thì lề đều bốn phía, không phải đẩy.
 const replayPinPad = 8.0;
 
-const _stem = 10.0;
-const _photoSide = 32.0;
-const _cheerSide = 46.0;
-const _cheerRing = 3.0;
+/// Hạt ảnh và hạt cổ vũ nằm trên tuyến.
+const _dotSide = 20.0;
+const _dotEmoji = 18.0;
+
+/// Hạt nở to ở chỗ camera dừng hoặc chỗ người xem bấm.
+const _bloomSide = 48.0;
+const _bloomAvatar = 40.0;
+const _tail = 8.0;
+
+/// Viền sáng quanh ghim, mảnh hơn hẳn tuyến.
+const _rim = 1.5;
 
 /// Màu của màn replay lấy theo theme đang chọn: tuyến, bảng số, nút và ghim
 /// dùng chung bộ này cho cả màn một tông.
@@ -150,11 +177,13 @@ class ReplayColors {
     required this.night,
     required this.paper,
     required this.muted,
+    required this.layers,
   });
 
   factory ReplayColors.of(RunNowPalette palette) {
     final iron = palette.style == RunNowStyle.iron;
     final night = palette.accentNight;
+    final ramp = iron ? RunNowThemeTokens.ironRamp : palette.element.ramp;
     final paper = iron
         ? RunFaceTokens.ironPaper
         : Color.lerp(palette.accent, Colors.white, 0.9)!;
@@ -164,6 +193,7 @@ class ReplayColors {
       night: night,
       paper: paper,
       muted: iron ? RunFaceTokens.ironMuted : Color.lerp(paper, night, 0.4)!,
+      layers: [ramp[2], ramp[0], ramp[1], ramp[3]],
     );
   }
 
@@ -181,6 +211,10 @@ class ReplayColors {
 
   /// Nhãn phụ trên nền [night].
   final Color muted;
+
+  /// Màu từng lớp số liệu trên bảng số, lớp trên cùng trước: màu chính rồi
+  /// các bậc nhạt và đậm cùng dải, để các lớp cùng tông mà vẫn tách nhau.
+  final List<Color> layers;
 }
 
 final _shadow = Paint()
@@ -209,99 +243,111 @@ Future<Uint8List> _png(
   return bytes!.buffer.asUint8List();
 }
 
-/// Cột mốc [km] cắm trên tuyến: bảng số trên một cọc, chân cọc là đúng chỗ.
+/// Cột mốc [km] nằm ngay trên tuyến: bảng số nhỏ, tâm bảng là đúng chỗ.
 Future<Uint8List> kmPinPng(int km, double pixelRatio, ReplayColors colors) {
   final label = TextPainter(
     text: TextSpan(
       text: '$km',
       style: TextStyle(
         color: colors.paper,
-        fontSize: 13,
+        fontSize: 12,
         fontWeight: FontWeight.w900,
         height: 1,
       ),
       children: const [
         TextSpan(
           text: ' km',
-          style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700),
+          style: TextStyle(fontSize: 8, fontWeight: FontWeight.w700),
         ),
       ],
     ),
     textDirection: TextDirection.ltr,
   )..layout();
-  final plate = Size(label.width + 12, label.height + 10);
-  return _png(Size(plate.width, plate.height + _stem), pixelRatio, (canvas) {
-    final coal = Paint()..color = colors.night;
+  final plate = Size(label.width + 10, label.height + 6);
+  return _png(plate, pixelRatio, (canvas) {
     canvas
       ..drawRect(Offset.zero & plate, Paint()..color = colors.paper)
-      ..drawRect((Offset.zero & plate).deflate(1.5), coal)
       ..drawRect(
-        Rect.fromLTWH(plate.width / 2 - 1.5, plate.height, 3, _stem),
-        coal,
+        (Offset.zero & plate).deflate(_rim),
+        Paint()..color = colors.night,
       );
-    label.paint(canvas, const Offset(6, 5));
+    label.paint(canvas, const Offset(5, 3));
     label.dispose();
   });
 }
 
-/// Ảnh chụp dọc đường thành ô ảnh nhỏ không viền trên một cọc như cột mốc
-/// km, chân cọc là đúng chỗ chụp.
-Future<Uint8List> photoPinPng(
+/// Ảnh chụp dọc đường thành hạt vuông nhỏ trên tuyến, tâm hạt là chỗ chụp.
+Future<Uint8List> photoDotPng(
+  ui.Image photo,
+  double pixelRatio,
+  ReplayColors colors,
+) => _png(const Size.square(_dotSide), pixelRatio, (canvas) {
+  const frame = Rect.fromLTWH(0, 0, _dotSide, _dotSide);
+  canvas.drawRect(frame, Paint()..color = colors.paper);
+  _drawCropped(canvas, photo, frame.deflate(_rim));
+});
+
+/// Cổ vũ thành hạt là emoji họ bấm, tâm emoji là chỗ bấm.
+Future<Uint8List> cheerDotPng(String emoji, double pixelRatio) {
+  final face = TextPainter(
+    text: TextSpan(
+      text: emoji,
+      style: const TextStyle(fontSize: _dotEmoji, height: 1),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
+  return _png(face.size, pixelRatio, (canvas) {
+    face.paint(canvas, Offset.zero);
+    face.dispose();
+  });
+}
+
+/// Hạt ảnh nở to: ô ảnh viền mảnh, đuôi nhọn chỉ xuống đúng chỗ chụp.
+Future<Uint8List> photoBloomPng(
   ui.Image photo,
   double pixelRatio,
   ReplayColors colors,
 ) {
-  const size = Size(_photoSide, _photoSide + _stem);
+  const size = Size(_bloomSide, _bloomSide + _tail);
   return _png(size, pixelRatio, (canvas) {
-    const frame = Rect.fromLTWH(0, 0, _photoSide, _photoSide);
-    canvas.drawRect(
-      const Rect.fromLTWH(_photoSide / 2 - 1.5, _photoSide, 3, _stem),
-      Paint()..color = colors.night,
-    );
-    // Cắt giữa ảnh thành ô vuông.
-    final side = math.min(photo.width, photo.height).toDouble();
-    canvas.drawImageRect(
-      photo,
-      Rect.fromCenter(
-        center: Offset(photo.width / 2, photo.height / 2),
-        width: side,
-        height: side,
-      ),
-      frame,
-      Paint()..filterQuality = FilterQuality.medium,
-    );
+    const frame = Rect.fromLTWH(0, 0, _bloomSide, _bloomSide);
+    final rim = Paint()..color = colors.paper;
+    canvas
+      ..drawRect(frame.shift(const Offset(0, 2)), _shadow)
+      ..drawRect(frame, rim)
+      ..drawPath(_tailPath(size), rim);
+    _drawCropped(canvas, photo, frame.deflate(_rim));
   });
 }
 
-/// Người cổ vũ cắm tại chỗ họ bấm: avatar tròn viền đỏ trên cọc, emoji to ở
-/// góc. Không có [avatar] thì vẽ hình người.
-Future<Uint8List> cheerPinPng(
+/// Hạt cổ vũ nở to: avatar người cổ vũ tròn viền mảnh, emoji ở góc, đuôi
+/// nhọn chỉ xuống chỗ họ bấm. Không có [avatar] thì vẽ hình người.
+Future<Uint8List> cheerBloomPng(
   ui.Image? avatar,
   String emoji,
   double pixelRatio,
   ReplayColors colors,
 ) {
   final badge = TextPainter(
-    text: TextSpan(text: emoji, style: const TextStyle(fontSize: 24)),
+    text: TextSpan(
+      text: emoji,
+      style: const TextStyle(fontSize: 20, height: 1),
+    ),
     textDirection: TextDirection.ltr,
   )..layout();
-  // Emoji lấn ra ngoài vòng avatar về bên phải.
-  const overhang = 14.0;
-  const size = Size(_cheerSide + overhang, _cheerSide + _stem);
+  // Emoji lấn ra ngoài vòng avatar về bên phải. Chừa cả hai bên cho avatar
+  // và đuôi nằm giữa hình: layer neo giữa đáy hình vào chỗ bấm.
+  final overhang = badge.width / 2;
+  final size = Size(_bloomAvatar + overhang * 2, _bloomAvatar + _tail);
   return _png(size, pixelRatio, (canvas) {
-    const center = Offset(_cheerSide / 2, _cheerSide / 2);
-    final red = Paint()..color = colors.line;
+    const radius = _bloomAvatar / 2;
+    final center = Offset(size.width / 2, radius);
+    final rim = Paint()..color = colors.paper;
     canvas
-      ..drawCircle(center + const Offset(0, 2), _cheerSide / 2, _shadow)
-      ..drawRect(
-        Rect.fromLTWH(_cheerSide / 2 - 1.5, _cheerSide - 2, 3, _stem + 2),
-        red,
-      )
-      ..drawCircle(center, _cheerSide / 2, red);
-    final face = Rect.fromCircle(
-      center: center,
-      radius: _cheerSide / 2 - _cheerRing,
-    );
+      ..drawCircle(center + const Offset(0, 2), radius, _shadow)
+      ..drawCircle(center, radius, rim)
+      ..drawPath(_tailPath(size), rim);
+    final face = Rect.fromCircle(center: center, radius: radius - _rim);
     canvas
       ..save()
       ..clipPath(Path()..addOval(face));
@@ -312,7 +358,7 @@ Future<Uint8List> cheerPinPng(
           text: String.fromCharCode(Icons.person_rounded.codePoint),
           style: TextStyle(
             fontFamily: Icons.person_rounded.fontFamily,
-            fontSize: 28,
+            fontSize: 24,
             color: colors.paper,
           ),
         ),
@@ -321,25 +367,40 @@ Future<Uint8List> cheerPinPng(
       icon.paint(canvas, center - Offset(icon.width / 2, icon.height / 2));
       icon.dispose();
     } else {
-      final side = math.min(avatar.width, avatar.height).toDouble();
-      canvas.drawImageRect(
-        avatar,
-        Rect.fromCenter(
-          center: Offset(avatar.width / 2, avatar.height / 2),
-          width: side,
-          height: side,
-        ),
-        face,
-        Paint()..filterQuality = FilterQuality.medium,
-      );
+      _drawCropped(canvas, avatar, face);
     }
     canvas.restore();
     badge.paint(
       canvas,
-      Offset(size.width - badge.width, _cheerSide - badge.height + 4),
+      Offset(center.dx + radius - overhang, _bloomAvatar - badge.height + 2),
     );
     badge.dispose();
   });
+}
+
+/// Đuôi tam giác ở đáy hình cỡ [size], đỉnh chạm giữa mép đáy.
+Path _tailPath(Size size) {
+  final x = size.width / 2, top = size.height - _tail;
+  return Path()
+    ..moveTo(x - _tail * 0.75, top - 1)
+    ..lineTo(x + _tail * 0.75, top - 1)
+    ..lineTo(x, size.height)
+    ..close();
+}
+
+/// Cắt giữa [image] thành ô vuông rồi vẽ vào [frame].
+void _drawCropped(Canvas canvas, ui.Image image, Rect frame) {
+  final side = math.min(image.width, image.height).toDouble();
+  canvas.drawImageRect(
+    image,
+    Rect.fromCenter(
+      center: Offset(image.width / 2, image.height / 2),
+      width: side,
+      height: side,
+    ),
+    frame,
+    Paint()..filterQuality = FilterQuality.medium,
+  );
 }
 
 /// Tải ảnh ở [url] về, giải mã nhỏ còn [side] điểm ảnh logic.
@@ -367,9 +428,9 @@ Future<ui.Image> loadReplayImage(String url, double side, double pixelRatio) {
 /// Ảnh chụp dọc đường ở [storagePath], nhỏ vừa đủ cho ô ảnh trên map.
 Future<ui.Image> loadReplayPhoto(String storagePath, double pixelRatio) async {
   final url = await StorageImage.downloadUrl(storagePath);
-  return loadReplayImage(url, _photoSide, pixelRatio);
+  return loadReplayImage(url, _bloomSide, pixelRatio);
 }
 
 /// Avatar người cổ vũ ở [url], nhỏ vừa đủ cho ghim trên map.
 Future<ui.Image> loadReplayAvatar(String url, double pixelRatio) =>
-    loadReplayImage(url, _cheerSide, pixelRatio);
+    loadReplayImage(url, _bloomAvatar, pixelRatio);

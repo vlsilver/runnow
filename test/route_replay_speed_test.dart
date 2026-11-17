@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/models.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:myrun/src/screens/route_replay_film.dart';
 import 'package:myrun/src/screens/route_replay_pins.dart';
 import 'package:myrun/src/screens/route_replay_screen.dart';
 import 'package:myrun/src/screens/route_replay_sound.dart';
@@ -41,38 +42,183 @@ void main() {
     expect(streamProfile([100, 120, 140], [0, 1000]), isNull);
   });
 
-  group('replayMomentsAt', () {
-    // Buổi 10 km: ảnh ở km 2, cổ vũ ở km 5 và ở 10,4 km (số live nhỉnh hơn
-    // số chốt, phải rơi về đích).
+  test('replaySeries có guồng chân, nằm giữa nhịp tim và độ cao', () {
+    final series = replaySeries(
+      streams: {
+        'distance': [0, 1000],
+        'heartrate': [100, 200],
+        'cadence': [80, 90],
+        'altitude': [5, 15],
+      },
+    );
+    expect(
+      [for (final one in series) one.label],
+      ['NHỊP TIM', 'GUỒNG', 'ĐỘ CAO'],
+    );
+    // Guồng chân 80 ở mét 0 và 90 ở mét 1000; chưa làm mượt thì điểm lấy mẫu
+    // cuối cùng (mét 750) là 87,5, in tròn thành 88.
+    final cadence = streamProfile([80, 90], [0, 1000], bins: 2, smooth: 0)!;
+    expect(series[1].format(cadence.last), '88 rpm');
+  });
+
+  group('replayPinBeside', () {
+    // Ở zoom 0 cả vòng xích đạo (360°) dài 512 điểm ảnh, nên 1 điểm ảnh là
+    // 360 / 512 = 0,703125°; zoom 1 thì bằng nửa.
+    test('tuyến chạy lên bắc thì ghim lệch sang đông đúng số điểm ảnh', () {
+      final at = replayPinBeside(const LatLng(0, 0), 0, pixels: 1, zoom: 0);
+      expect(at.longitude, closeTo(0.703125, 0.003));
+      expect(at.latitude, closeTo(0, 1e-6));
+    });
+
+    test('zoom gần hơn thì cùng số điểm ảnh ứng với quãng ngắn hơn', () {
+      final at = replayPinBeside(const LatLng(0, 0), 90, pixels: 2, zoom: 1);
+      // Tuyến chạy sang đông thì bên phải là phía nam.
+      expect(at.latitude, closeTo(-0.703125, 0.006));
+      expect(at.longitude, closeTo(0, 1e-6));
+    });
+  });
+
+  group('ReplayFeedCursor', () {
+    // Buổi 10 km: ảnh ở km 2, cổ vũ ở km 5, 6, 7 và ở 10,4 km (số live nhỉnh
+    // hơn số chốt, phải rơi về đích).
     const photo = ReplayMoment.photo(distanceMeters: 2000, photoPath: 'p');
-    const mid = ReplayMoment.cheer(distanceMeters: 5000, emoji: '🔥');
+    const km5 = ReplayMoment.cheer(distanceMeters: 5000, emoji: '🔥');
+    const km6 = ReplayMoment.cheer(distanceMeters: 6000, emoji: '👏');
+    const km7 = ReplayMoment.cheer(distanceMeters: 7000, emoji: '💪');
     const late = ReplayMoment.cheer(distanceMeters: 10400, emoji: '🏁');
-    const all = [late, mid, photo];
+    const all = [late, km7, km6, km5, photo];
 
-    List<ReplayMoment> at(double progress) =>
-        replayMomentsAt(all, progress, totalMeters: 10000, linger: 0.1);
-
-    test('chưa tới chỗ thì chưa hiện, tới rồi thì hiện, đi quá thì tắt', () {
-      expect(at(0.19), isEmpty);
-      expect(at(0.2), [photo]);
-      expect(at(0.29), [photo]);
-      expect(at(0.31), isEmpty);
-      expect(at(0.5), [mid]);
+    test('mỗi khoảnh khắc ra đúng một lần, lúc người chạy vừa tới', () {
+      final cursor = ReplayFeedCursor(all, totalMeters: 10000);
+      expect(cursor.advance(0.19), isEmpty);
+      expect(cursor.advance(0.2), [photo]);
+      expect(cursor.advance(0.45), isEmpty);
+      expect(cursor.advance(0.7), [km5, km6, km7]);
+      expect(cursor.advance(0.99), isEmpty);
+      expect(cursor.advance(1), [late]);
     });
 
-    test('quãng đường vượt số chốt thì hiện ở đích', () {
-      expect(late.fraction(10000), 1.0);
-      expect(at(0.99), isEmpty);
-      expect(at(1), [late]);
+    test('phát lại từ đầu thì ra lại từ đầu', () {
+      final cursor = ReplayFeedCursor(all, totalMeters: 10000);
+      cursor.advance(1);
+      expect(cursor.advance(0), isEmpty);
+      expect(cursor.advance(0.5), [photo, km5]);
     });
 
-    test('nhiều thứ cùng lúc xếp theo thứ tự dọc đường', () {
-      const near = ReplayMoment.cheer(distanceMeters: 2300, emoji: '👏');
+    test('một người bấm dồn cùng emoji quanh một chỗ chỉ ra một lần', () {
+      const a1 = ReplayMoment.cheer(
+        distanceMeters: 3010,
+        emoji: '🔥',
+        avatarUrl: 'a',
+      );
+      const a2 = ReplayMoment.cheer(
+        distanceMeters: 3150,
+        emoji: '🔥',
+        avatarUrl: 'a',
+      );
+      const b = ReplayMoment.cheer(
+        distanceMeters: 3100,
+        emoji: '🔥',
+        avatarUrl: 'b',
+      );
+      final cursor = ReplayFeedCursor([a1, a2, b], totalMeters: 10000);
+      expect(cursor.advance(1), [a1, b]);
+    });
+  });
+
+  test('cổ vũ dồn một chỗ thì mỗi đoạn tuyến chỉ giữ cái đầu tiên', () {
+    // Buổi 10 km chia 4 đoạn 2,5 km: ba cái dồn ở km 1 chỉ giữ cái đầu, cái
+    // ở km 6 và cái ở đích (10,4 km kẹp về đoạn cuối) vẫn còn.
+    const a = ReplayMoment.cheer(distanceMeters: 1000, emoji: '🔥');
+    const b = ReplayMoment.cheer(distanceMeters: 1010, emoji: '👏');
+    const c = ReplayMoment.cheer(distanceMeters: 1020, emoji: '💪');
+    const d = ReplayMoment.cheer(distanceMeters: 6000, emoji: '🎉');
+    const e = ReplayMoment.cheer(distanceMeters: 10400, emoji: '🏁');
+    expect(replayOnePerStretch([a, b, c, d, e], totalMeters: 10000, limit: 4), [
+      a,
+      d,
+      e,
+    ]);
+  });
+
+  group('replayCheerPeaks', () {
+    ReplayMoment cheer(double meters, String emoji) =>
+        ReplayMoment.cheer(distanceMeters: meters, emoji: emoji);
+
+    test('lấy đoạn được cổ vũ nhiều nhất, kèm emoji nhiều nhất ở đó', () {
+      // Buổi 10 km chia 4 đoạn 2,5 km. Đoạn đầu: 🔥 hai lần, 👏 một lần.
+      // Đoạn thứ ba: một lần. Ảnh không tính. Hai đoạn cách nhau một đoạn
+      // nên cùng được giữ; giữa đoạn là 1/8 và 5/8.
+      final peaks = replayCheerPeaks(
+        [
+          cheer(1000, '👏'),
+          cheer(1100, '🔥'),
+          cheer(1200, '🔥'),
+          const ReplayMoment.photo(distanceMeters: 4000, photoPath: 'p'),
+          cheer(6000, '🎉'),
+        ],
+        totalMeters: 10000,
+        bins: 4,
+      );
+      expect(peaks, [
+        (at: 0.125, emoji: '🔥', count: 3),
+        (at: 0.625, emoji: '🎉', count: 1),
+      ]);
+    });
+
+    test('hai đoạn sát nhau chỉ giữ đoạn nhiều hơn', () {
+      // Đoạn 0 có 1 lần, đoạn 1 có 2 lần, đoạn 3 có 1 lần (10,4 km kẹp về
+      // đoạn cuối): bỏ đoạn 0 vì sát đoạn 1.
+      final peaks = replayCheerPeaks(
+        [
+          cheer(1000, '👏'),
+          cheer(3000, '🔥'),
+          cheer(3100, '🔥'),
+          cheer(10400, '🏁'),
+        ],
+        totalMeters: 10000,
+        bins: 4,
+      );
+      expect(peaks, [
+        (at: 0.375, emoji: '🔥', count: 2),
+        (at: 0.875, emoji: '🏁', count: 1),
+      ]);
+    });
+
+    test('không quá 3 đỉnh', () {
+      // 12 đoạn, mỗi đoạn chẵn một lần: giữ ba đoạn tới trước là 0, 2, 4.
+      final peaks = replayCheerPeaks(
+        [for (var bin = 0; bin < 12; bin += 2) cheer(bin * 1000 + 500, '🔥')],
+        totalMeters: 12000,
+        bins: 12,
+      );
       expect(
-        replayMomentsAt([near, photo], 0.25, totalMeters: 10000, linger: 0.1),
-        [photo, near],
+        [for (final peak in peaks) peak.at],
+        [0.5 / 12, 2.5 / 12, 4.5 / 12],
       );
     });
+
+    test('không ai cổ vũ thì không có đỉnh', () {
+      expect(replayCheerPeaks(const [], totalMeters: 10000), isEmpty);
+    });
+  });
+
+  group('spreadEvenly', () {
+    test('không quá trần thì giữ nguyên', () {
+      expect(spreadEvenly([1, 2, 3], 3), [1, 2, 3]);
+      expect(spreadEvenly(<int>[], 3), isEmpty);
+    });
+
+    test('quá trần thì lấy rải đều, giữ thứ tự', () {
+      expect(spreadEvenly([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], 5), [0, 2, 4, 6, 8]);
+      expect(spreadEvenly([0, 1, 2, 3, 4, 5, 6], 3), [0, 2, 4]);
+    });
+  });
+
+  test('camera dừng nhiều nhất 5 chỗ dù có bao nhiêu khoảnh khắc', () {
+    // 9 chỗ cách nhau 0,1: giữ chỗ thứ 0, 1, 3, 5, 7 (9·i/5 làm tròn xuống).
+    final stops = filmStops([for (var i = 1; i <= 9; i++) i / 10]);
+    expect(stops, [0.1, 0.2, 0.4, 0.6, 0.8]);
   });
 
   test('replay 2,5 giây mỗi km, ngắn nhất 12 giây, dài nhất 20 giây', () {
@@ -282,6 +428,26 @@ void main() {
       expect(ReplayView.nearer.overview, isFalse);
       expect(ReplayView.nearest.overview, isFalse);
       expect(ReplayView.custom.overview, isFalse);
+    });
+  });
+
+  group('khoảnh khắc ở chỗ dừng', () {
+    // Ảnh ở 20%, cổ vũ ở 21% (gộp vào chỗ dừng 20%), ảnh ở 50%, cổ vũ sát
+    // vạch xuất phát ở 2% (không dừng).
+    const fractions = [0.2, 0.21, 0.5, 0.02];
+
+    test('mỗi khoảnh khắc thuộc chỗ dừng đã gộp nó', () {
+      final stops = filmStops(fractions);
+      expect(stops, [0.2, 0.5]);
+      expect(filmStopIndex(0.2, stops), 0);
+      expect(filmStopIndex(0.21, stops), 0);
+      expect(filmStopIndex(0.5, stops), 1);
+    });
+
+    test('khoảnh khắc không được dừng thì không thuộc chỗ nào', () {
+      final stops = filmStops(fractions);
+      expect(filmStopIndex(0.02, stops), isNull);
+      expect(filmStopIndex(0.35, stops), isNull);
     });
   });
 }

@@ -39,7 +39,23 @@ class StoragePhoto extends StatelessWidget {
 Future<void> showActivityPhotoViewer(
   BuildContext context,
   ActivityPhoto photo,
-) {
+) => showStoragePhotoViewer(
+  context,
+  photo.storagePath,
+  caption:
+      '${formatDistance(photo.distanceMeters)} · '
+      '${photo.capturedAt.day.toString().padLeft(2, '0')}/'
+      '${photo.capturedAt.month.toString().padLeft(2, '0')} '
+      '${photo.capturedAt.hour.toString().padLeft(2, '0')}:'
+      '${photo.capturedAt.minute.toString().padLeft(2, '0')}',
+);
+
+/// Mở ảnh ở [path] kín màn hình, chụm để phóng to. [caption] ghi ở góc dưới.
+Future<void> showStoragePhotoViewer(
+  BuildContext context,
+  String path, {
+  String? caption,
+}) {
   return showDialog<void>(
     context: context,
     barrierColor: Colors.black87,
@@ -50,7 +66,7 @@ Future<void> showActivityPhotoViewer(
           children: [
             Positioned.fill(
               child: StoragePhoto(
-                path: photo.storagePath,
+                path: path,
                 fit: BoxFit.contain,
                 interactive: true,
               ),
@@ -63,21 +79,18 @@ Future<void> showActivityPhotoViewer(
                 icon: const Icon(Icons.close_rounded),
               ),
             ),
-            Positioned(
-              left: 20,
-              bottom: 20,
-              child: Text(
-                '${formatDistance(photo.distanceMeters)} · '
-                '${photo.capturedAt.day.toString().padLeft(2, '0')}/'
-                '${photo.capturedAt.month.toString().padLeft(2, '0')} '
-                '${photo.capturedAt.hour.toString().padLeft(2, '0')}:'
-                '${photo.capturedAt.minute.toString().padLeft(2, '0')}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
+            if (caption != null)
+              Positioned(
+                left: 20,
+                bottom: 20,
+                child: Text(
+                  caption,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
