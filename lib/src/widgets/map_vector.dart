@@ -18,12 +18,25 @@ const _buildVectorUrl = String.fromEnvironment('MAP_VECTOR_URL');
 /// Nguồn tile vector (schema Protomaps) cho bản đồ nền, lấy từ Remote Config
 /// `map_vector_url` để bật, tắt hay đổi host mà không cần ra bản app mới.
 /// Trống thì app vẽ tile ảnh như cũ.
-String get _vectorUrl {
-  if (_buildVectorUrl.isNotEmpty) return _buildVectorUrl;
+String get _vectorUrl => _buildVectorUrl.isNotEmpty
+    ? _buildVectorUrl
+    : _remoteString('map_vector_url');
+
+/// Chạy thử với glyph trên máy:
+/// `--dart-define=MAP_GLYPH_URL=http://localhost:8090/{fontstack}/{range}.pbf`.
+const _buildGlyphUrl = String.fromEnvironment('MAP_GLYPH_URL');
+
+/// Nguồn glyph của chữ trên màn replay 3D, mẫu `.../{fontstack}/{range}.pbf`,
+/// lấy từ Remote Config `map_glyph_url`. Trống thì màn 3D không vẽ chữ. Bộ
+/// glyph sinh bằng `tool/build_map_glyphs.dart`.
+String get _glyphUrl =>
+    _buildGlyphUrl.isNotEmpty ? _buildGlyphUrl : _remoteString('map_glyph_url');
+
+String _remoteString(String key) {
   try {
-    return FirebaseRemoteConfig.instance.getString('map_vector_url');
+    return FirebaseRemoteConfig.instance.getString(key);
   } on FirebaseException {
-    // Firebase chưa khởi tạo (widget test): coi như chưa bật tile vector.
+    // Firebase chưa khởi tạo (widget test): coi như chưa đặt giá trị.
     return '';
   }
 }
@@ -39,6 +52,9 @@ const _sovereignLabels = [
   (name: 'QUẦN ĐẢO TRƯỜNG SA\n(VIỆT NAM)', point: LatLng(10.0, 114.3)),
 ];
 const _font = ['Barlow Condensed'];
+
+/// Tên bộ glyph mà `tool/build_map_glyphs.dart` sinh ra cho MapLibre.
+const _glyphFont = ['BarlowCondensed-SemiBold'];
 
 /// Bảng màu một kiểu bản đồ, viết dạng chuỗi hex của style JSON.
 typedef _MapColors = ({
@@ -398,14 +414,18 @@ List<List<Object>> replayDoneGradients(
 
 /// Style JSON cho MapLibre ở màn replay 3D: cùng bảng màu với bản đồ nền, nhà
 /// dựng khối theo `height` của tile, tuyến [route] (mỗi điểm là [lng, lat]) nằm
-/// sẵn trong style. Bỏ lớp chữ vì MapLibre cần máy chủ glyph riêng, app chưa có.
+/// sẵn trong style. Chữ chỉ có tên đường, và chỉ khi có [glyphUrl] (mặc định
+/// lấy từ Remote Config `map_glyph_url`) vì MapLibre không dùng được font của
+/// Flutter.
 String replayMapStyle({
   required bool dark,
   required List<List<double>> route,
   required Color line,
   required Color outline,
+  String? glyphUrl,
 }) {
   final c = dark ? _dark : _light;
+  final glyphs = glyphUrl ?? _glyphUrl;
   const routeSource = 'replay-route';
   final gradients = replayDoneGradients(0, line: line, outline: outline);
   Map<String, dynamic> routeLine(
@@ -421,6 +441,7 @@ String replayMapStyle({
   };
   return jsonEncode({
     'version': 8,
+    if (glyphs.isNotEmpty) 'glyphs': glyphs,
     'sources': {
       _source: {
         'type': 'vector',
@@ -468,6 +489,14 @@ String replayMapStyle({
           'fill-extrusion-opacity': 0.92,
         },
       },
+      // Chỉ vẽ tên đường: tên phường, khu phố làm màn 3D rối.
+      if (glyphs.isNotEmpty)
+        for (final layer in _mapStyle('replay', c)['layers'] as List)
+          if (layer['id'] == 'roads-label')
+            {
+              ...layer as Map<String, dynamic>,
+              'layout': {...layer['layout'] as Map, 'text-font': _glyphFont},
+            },
     ],
   });
 }

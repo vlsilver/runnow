@@ -88,6 +88,8 @@ Future<void> _initRemoteConfig() async {
       'strava_enabled': false,
       // Nguồn tile vector của bản đồ nền; trống thì vẽ tile ảnh.
       'map_vector_url': '',
+      // Nguồn glyph cho chữ trên màn replay 3D; trống thì màn 3D không có chữ.
+      'map_glyph_url': '',
     });
     unawaited(rc.fetchAndActivate());
   } catch (error, stack) {
