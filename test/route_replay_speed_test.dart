@@ -264,13 +264,17 @@ void main() {
       expect(ReplayView.custom.zoom(13), isNull);
     });
 
-    test('bấm nút đi vòng vừa, gần 2, 3, 5; đang tự chỉnh thì về vừa', () {
-      expect(ReplayView.fit.next, ReplayView.near);
-      expect(ReplayView.near.next, ReplayView.nearer);
-      expect(ReplayView.nearer.next, ReplayView.nearest);
-      expect(ReplayView.nearest.next, ReplayView.fit);
-      expect(ReplayView.custom.next, ReplayView.fit);
-    });
+    test(
+      'bấm nút đi vòng vừa, gần 2, 3, 5, kiểu phim; đang tự chỉnh thì về vừa',
+      () {
+        expect(ReplayView.fit.next, ReplayView.near);
+        expect(ReplayView.near.next, ReplayView.nearer);
+        expect(ReplayView.nearer.next, ReplayView.nearest);
+        expect(ReplayView.nearest.next, ReplayView.film);
+        expect(ReplayView.film.next, ReplayView.fit);
+        expect(ReplayView.custom.next, ReplayView.fit);
+      },
+    );
 
     test('chỉ mức vừa thì camera đứng yên, còn lại bám người', () {
       expect(ReplayView.fit.overview, isTrue);

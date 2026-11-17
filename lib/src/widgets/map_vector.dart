@@ -412,6 +412,82 @@ List<List<Object>> replayDoneGradients(
   _doneGradient(_hex(line), progress),
 ];
 
+/// Buổi trong ngày của lúc buổi chạy bắt đầu: quyết định màu map, hướng nắng
+/// và trời ở đoạn mở, đoạn kết của màn replay.
+enum ReplayDaylight { morning, afternoon, night }
+
+/// [at] thuộc buổi nào. Mốc theo trời Việt Nam: sáng từ 5 giờ, tối từ 18 giờ.
+ReplayDaylight replayDaylightAt(DateTime at) => switch (at.hour) {
+  >= 5 && < 12 => ReplayDaylight.morning,
+  >= 12 && < 18 => ReplayDaylight.afternoon,
+  _ => ReplayDaylight.night,
+};
+
+const _MapColors _night = (
+  land: '#131A2B',
+  water: '#0A1A33',
+  green: '#152A2A',
+  building: '#222C44',
+  roadMinor: '#2A3352',
+  roadMajor: '#9A7430',
+  roadHighway: '#D1953A',
+  ink: '#E8ECF7',
+  muted: '#8C95AD',
+);
+
+/// Đèn chiếu lên khối nhà (thuộc tính `light` của style MapLibre): sáng nắng
+/// từ phía đông, chiều nắng xiên vàng từ phía tây, tối ánh trăng.
+Map<String, Object>? _replayLight(ReplayDaylight? daylight) =>
+    switch (daylight) {
+      ReplayDaylight.morning => {
+        'anchor': 'map',
+        'position': [1.5, 90, 50],
+        'color': '#FFFFFF',
+        'intensity': 0.4,
+      },
+      ReplayDaylight.afternoon => {
+        'anchor': 'map',
+        'position': [1.5, 270, 65],
+        'color': '#FFE2A8',
+        'intensity': 0.5,
+      },
+      ReplayDaylight.night => {
+        'anchor': 'map',
+        'position': [1.5, 120, 40],
+        'color': '#8EA0FF',
+        'intensity': 0.35,
+      },
+      null => null,
+    };
+
+/// Giá trị `line-gradient` của [replayDoneLayers] khi cả tuyến đã vẽ xong và
+/// một vệt sáng màu [glow] chạy dọc tuyến, đầu vệt ở [sweep] (0..1).
+List<List<Object>> replaySweepGradients(
+  double sweep, {
+  required Color line,
+  required Color outline,
+  required Color glow,
+}) {
+  const tail = 0.12;
+  final head = sweep.clamp(0.0, 1.0);
+  final stops = <(double, String)>[
+    (0, _hex(line)),
+    if (head - tail > 0) (head - tail, _hex(line)),
+    if (head > 0) (head, _hex(glow)),
+    if (head + 0.01 < 1) (head + 0.01, _hex(line)),
+    (1, head + 0.01 < 1 ? _hex(line) : _hex(glow)),
+  ];
+  return [
+    _doneGradient(_hex(outline), 1),
+    [
+      'interpolate',
+      ['linear'],
+      ['line-progress'],
+      for (final (at, color) in stops) ...[at, color],
+    ],
+  ];
+}
+
 /// Style JSON cho MapLibre ở màn replay 3D: cùng bảng màu với bản đồ nền, nhà
 /// dựng khối theo `height` của tile, tuyến [route] (mỗi điểm là [lng, lat]) nằm
 /// sẵn trong style. Chữ chỉ có tên đường, và chỉ khi có [glyphUrl] (mặc định
@@ -419,12 +495,18 @@ List<List<Object>> replayDoneGradients(
 /// Flutter.
 String replayMapStyle({
   required bool dark,
+  ReplayDaylight? daylight,
   required List<List<double>> route,
   required Color line,
   required Color outline,
   String? glyphUrl,
 }) {
-  final c = dark ? _dark : _light;
+  final c = switch (daylight) {
+    ReplayDaylight.morning || ReplayDaylight.afternoon => _light,
+    ReplayDaylight.night => _night,
+    null => dark ? _dark : _light,
+  };
+  final light = _replayLight(daylight);
   final glyphs = glyphUrl ?? _glyphUrl;
   const routeSource = 'replay-route';
   final gradients = replayDoneGradients(0, line: line, outline: outline);
@@ -442,6 +524,7 @@ String replayMapStyle({
   return jsonEncode({
     'version': 8,
     if (glyphs.isNotEmpty) 'glyphs': glyphs,
+    'light': ?light,
     'sources': {
       _source: {
         'type': 'vector',

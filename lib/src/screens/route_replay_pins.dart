@@ -85,6 +85,10 @@ Rect replayClipSafeRect(Rect clip, ShareFormat format) {
 
 /// Tầm nhìn của replay. Video chia sẻ quay đúng tầm đang chọn.
 enum ReplayView {
+  /// Kiểu phim: bay vào từ trên cao, bám sau lưng người chạy, lùi ra xoay một
+  /// vòng ở cuối.
+  film,
+
   /// Vừa thấy cả tuyến.
   fit,
 
@@ -106,15 +110,19 @@ enum ReplayView {
 
   /// Bấm nút đổi tầm nhìn thì sang mức nào. Đang tự chỉnh thì về [fit].
   ReplayView get next => switch (this) {
+    film => fit,
     fit => near,
     near => nearer,
     nearer => nearest,
-    nearest || custom => fit,
+    nearest => film,
+    custom => fit,
   };
 
   /// Mức zoom của tầm nhìn này khi [fitZoom] là mức vừa cả tuyến; [custom]
   /// không có mức cố định nên trả null.
   double? zoom(double fitZoom) => switch (this) {
+    // Bám người chạy ở khoảng giữa gần 2 lần và gần 3 lần.
+    film => fitZoom + 3,
     fit => fitZoom,
     near => fitZoom + 1,
     // Mỗi mức zoom là gấp đôi, nên gần gấp ba là tiến log2(3) mức.

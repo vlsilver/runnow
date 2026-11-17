@@ -10,7 +10,9 @@ import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 import 'package:path_provider/path_provider.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
+import 'package:myrun/src/screens/route_replay_film.dart';
 import 'package:myrun/src/screens/route_replay_pins.dart';
+import 'package:myrun/src/screens/route_replay_sky.dart';
 import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
@@ -20,6 +22,9 @@ import 'package:myrun/src/widgets/run_now_avatar.dart';
 const _zoomRange = (10.0, 18.0);
 // MapLibre không nghiêng quá 60°.
 const _maxTilt = 60.0;
+
+/// Dải trời của tầm nhìn kiểu phim cao chừng này phần màn hình.
+const _skyBand = 0.34;
 const _avatarSize = 44.0;
 
 /// Hình người chạy cao chừng này tính từ chân cọc lên.
@@ -378,6 +383,7 @@ class RouteReplayScreen extends StatefulWidget {
     required this.points,
     this.distanceMeters,
     this.movingTimeSeconds,
+    this.startedAt,
     this.avatarUrl,
     this.series = const [],
     this.moments = const [],
@@ -386,6 +392,9 @@ class RouteReplayScreen extends StatefulWidget {
   final List<LatLng> points;
   final double? distanceMeters;
   final int? movingTimeSeconds;
+
+  /// Lúc bắt đầu buổi chạy; map tô theo giờ trong ngày. Thiếu thì theo theme.
+  final DateTime? startedAt;
   final String? avatarUrl;
 
   /// Kết quả của [replaySeries]; rỗng thì không vẽ biểu đồ.
@@ -399,16 +408,46 @@ class RouteReplayScreen extends StatefulWidget {
 }
 
 class _RouteReplayScreenState extends State<RouteReplayScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final ReplayPath _path = ReplayPath(widget.points);
   late final AnimationController _progress = AnimationController(
     vsync: this,
     duration: replayDuration(_path.meters),
   )..addListener(_syncMap);
+  late final AnimationController _intro = AnimationController(
+    vsync: this,
+    duration: _daylight == null ? filmIntro : filmIntroSky,
+  )..addListener(_syncMap);
+  late final AnimationController _outro = AnimationController(
+    vsync: this,
+    duration: _daylight == null ? filmOutro : filmOutroSky,
+  )..addListener(_syncMap);
+  late final AnimationController _moment = AnimationController(
+    vsync: this,
+    duration: filmMoment,
+  )..addListener(_syncMap);
+
+  /// Đoạn đang phát của tầm nhìn kiểu phim. Bắt đầu ở đầu đoạn bay vào để
+  /// khung đầu tiên của map đã là góc cao, không chớp góc gần.
+  FilmPart _part = FilmPart.intro;
 
   /// Thang quãng đường của [RouteReplayScreen.moments]: số chốt của buổi
   /// chạy, thiếu thì lấy độ dài tuyến.
   late final double _momentMeters = widget.distanceMeters ?? _path.meters;
+
+  /// Vị trí trên tuyến (0 tới 1) của các khoảnh khắc có ghim: ảnh, cổ vũ.
+  late final List<double> _momentFractions = [
+    for (final moment in widget.moments)
+      if (moment.photoPath != null || moment.emoji != null)
+        moment.fraction(_momentMeters),
+  ];
+
+  /// Buổi trong ngày của buổi chạy; null là không biết giờ chạy, map theo
+  /// theme và không có trời.
+  late final ReplayDaylight? _daylight = switch (widget.startedAt) {
+    final at? => replayDaylightAt(at.toLocal()),
+    null => null,
+  };
 
   /// Màu theo theme, giữ lại để dùng được ở chỗ không có lượt build (đồng bộ
   /// map, vẽ ghim).
@@ -447,8 +486,8 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
   /// Người chạy lệch khỏi tâm màn hình bao nhiêu. Camera bám người chạy thì
   /// bằng 0; camera đứng yên thì hỏi map vị trí người chạy sau mỗi nhịp.
   final _runnerShift = ValueNotifier(Offset.zero);
-  late double _zoom = _fitZoom;
-  ReplayView _view = ReplayView.fit;
+  late double _zoom = _view.zoom(_fitZoom)!;
+  ReplayView _view = ReplayView.film;
 
   void _nextView() {
     setState(() {
@@ -481,10 +520,84 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
   /// Đang quay video để share: ẩn các nút cho khỏi lọt vào hình.
   bool _recording = false;
 
+  /// Người dùng bấm huỷ giữa lúc quay.
+  bool _clipCancelled = false;
+
   /// Khổ của video đang quay; vùng quay và chỗ đặt nhãn cùng theo khổ này.
   ShareFormat _clipFormat = ShareFormat.story;
 
+  final _hudKey = GlobalKey();
+
+  /// Khoảng từ tâm màn hình lên tâm phần map còn thấy (từ mép trên tới bảng
+  /// số): đẩy tâm toàn cảnh lên chừng này thì tuyến nằm giữa phần đó. Lúc quay
+  /// video thì mép trên là mép khung quay. [sky]: tính cả dải trời của tầm
+  /// nhìn kiểu phim là phần bị che. Chưa dựng xong thì 0.
+  double _hudLift({bool sky = false}) {
+    final hud = _hudKey.currentContext?.findRenderObject() as RenderBox?;
+    if (hud == null || !hud.hasSize) return 0;
+    final screen = MediaQuery.sizeOf(context);
+    var top = _recording
+        ? replayClipRect(screen, aspect: _clipFormat.aspect).top
+        : 0.0;
+    // Có dải trời thì tuyến nằm dưới dải trời.
+    if (sky && _daylight != null) {
+      top = math.max(top, _skyRect(screen).bottom);
+    }
+    final bottom = hud.localToGlobal(Offset.zero).dy;
+    return math.max(0, screen.height / 2 - (top + bottom) / 2);
+  }
+
+  /// Chỗ của dải trời: mép trên màn hình, lúc quay thì mép trên khung quay để
+  /// mặt trời, trăng không bị cắt khỏi video.
+  Rect _skyRect(Size screen) {
+    final frame = _recording
+        ? replayClipRect(screen, aspect: _clipFormat.aspect)
+        : Offset.zero & screen;
+    return Rect.fromLTWH(
+      frame.left,
+      frame.top,
+      frame.width,
+      frame.height * _skyBand,
+    );
+  }
+
   ml.CameraPosition _camera(double progress) {
+    if (_view == ReplayView.film) {
+      final at = switch (_part) {
+        FilmPart.intro => 0.0,
+        FilmPart.run || FilmPart.moment => progress,
+        FilmPart.outro => 1.0,
+      };
+      final now = _path.at(at);
+      final shot = filmCamera(
+        part: _part,
+        t: switch (_part) {
+          FilmPart.intro => _intro.value,
+          FilmPart.moment => _moment.value,
+          FilmPart.outro => _outro.value,
+          FilmPart.run => 0,
+        },
+        chase: (
+          target: now.point,
+          zoom: _zoom,
+          tilt: _tilt,
+          bearing: now.bearing + _spin,
+        ),
+        wide: (target: _center, zoom: _fitZoom, tilt: 45, bearing: 0),
+        lift: _hudLift(sky: true),
+        chaseLift: _hudLift(),
+        lookAt: switch (_daylight) {
+          final daylight? => filmSkyAzimuth(daylight),
+          null => null,
+        },
+      );
+      return ml.CameraPosition(
+        target: ml.LatLng(shot.target.latitude, shot.target.longitude),
+        zoom: shot.zoom,
+        tilt: shot.tilt,
+        bearing: shot.bearing,
+      );
+    }
     if (_view.overview) {
       return ml.CameraPosition(
         target: ml.LatLng(_center.latitude, _center.longitude),
@@ -494,11 +607,18 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
       );
     }
     final now = _path.at(progress);
-    return ml.CameraPosition(
-      target: ml.LatLng(now.point.latitude, now.point.longitude),
+    // Người chạy nằm giữa phần map trên bảng số, không bị bảng số che.
+    final shot = liftCamera((
+      target: now.point,
       zoom: _zoom,
       tilt: _tilt,
       bearing: now.bearing + _spin,
+    ), _hudLift());
+    return ml.CameraPosition(
+      target: ml.LatLng(shot.target.latitude, shot.target.longitude),
+      zoom: shot.zoom,
+      tilt: shot.tilt,
+      bearing: shot.bearing,
     );
   }
 
@@ -515,11 +635,21 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
     _stale = false;
     try {
       final progress = _progress.value;
-      final gradients = replayDoneGradients(
-        progress,
-        line: _colors.line,
-        outline: _colors.night,
-      );
+      final sweep = _view == ReplayView.film && _part == FilmPart.outro
+          ? filmSweep(_outro.value)
+          : null;
+      final gradients = sweep == null
+          ? replayDoneGradients(
+              progress,
+              line: _colors.line,
+              outline: _colors.night,
+            )
+          : replaySweepGradients(
+              sweep,
+              line: _colors.line,
+              outline: _colors.night,
+              glow: _colors.paper,
+            );
       final reached = [
         for (final pin in _pins)
           if (pin.fraction <= progress) pin,
@@ -541,19 +671,18 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
           ),
       ]);
       if (_pinsShown != null) _pinsShown = reached.length;
-      if (_view.overview) {
-        final runner = _path.at(progress).point;
-        final at = await map.toScreenLocation(
-          ml.LatLng(runner.latitude, runner.longitude),
-        );
-        if (!mounted || !_view.overview) return;
-        final size = context.size;
-        if (size == null) return;
-        _runnerShift.value =
-            Offset(at.x.toDouble(), at.y.toDouble()) - size.center(Offset.zero);
-      } else {
-        _runnerShift.value = Offset.zero;
-      }
+      // Hỏi map người chạy đang ở đâu trên màn, kể cả lúc camera bám theo:
+      // camera bám thì người chạy được đẩy lên trên bảng số, không nằm đúng
+      // tâm.
+      final runner = _path.at(progress).point;
+      final at = await map.toScreenLocation(
+        ml.LatLng(runner.latitude, runner.longitude),
+      );
+      if (!mounted) return;
+      final size = context.size;
+      if (size == null) return;
+      _runnerShift.value =
+          Offset(at.x.toDouble(), at.y.toDouble()) - size.center(Offset.zero);
     } finally {
       _sending = false;
     }
@@ -563,8 +692,45 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
 
   void _onStyleLoaded() {
     _styleReady = true;
-    _progress.forward(from: 0);
+    _replay();
     _addPins();
+  }
+
+  /// Phát lại từ đầu. Tầm nhìn kiểu phim có thêm đoạn bay vào và đoạn kết.
+  /// Gọi lần nữa giữa chừng thì lượt cũ ném [TickerCanceled] và dừng.
+  Future<void> _play() async {
+    _stopPlayback();
+    if (_view != ReplayView.film) {
+      _part = FilmPart.run;
+      return _progress.forward(from: 0).orCancel;
+    }
+    _part = FilmPart.intro;
+    _progress.value = 0;
+    // Báo cho tem tổng kết và trời của đoạn kết lượt trước tắt đi.
+    _outro.value = 0;
+    await _intro.forward(from: 0).orCancel;
+    for (final stop in filmStops(_momentFractions)) {
+      _part = FilmPart.run;
+      await _progress.animateTo(stop).orCancel;
+      _part = FilmPart.moment;
+      await _moment.forward(from: 0).orCancel;
+    }
+    _part = FilmPart.run;
+    await _progress.forward().orCancel;
+    _part = FilmPart.outro;
+    await _outro.forward(from: 0).orCancel;
+  }
+
+  void _replay() => _play().catchError(
+    (Object _) {},
+    test: (error) => error is TickerCanceled,
+  );
+
+  void _stopPlayback() {
+    _intro.stop();
+    _progress.stop();
+    _moment.stop();
+    _outro.stop();
   }
 
   static const _pinSource = 'replay-pins';
@@ -592,6 +758,24 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
     final map = _map!;
     final pixelRatio = MediaQuery.devicePixelRatioOf(context);
     await map.addGeoJsonSource(_pinSource, _pinFeatures(const []));
+    // Cột mốc km nằm layer riêng, đè nhau thì map tự ẩn bớt: lùi ra xa hay
+    // chạy nhiều vòng quanh một chỗ thì chúng không dồn thành đống.
+    await map.addSymbolLayer(
+      _pinSource,
+      'replay-km-pins',
+      const ml.SymbolLayerProperties(
+        iconImage: ['get', 'icon'],
+        iconAnchor: 'bottom',
+        iconOffset: [0, replayPinPad],
+        iconAllowOverlap: false,
+        iconIgnorePlacement: false,
+      ),
+      filter: [
+        '==',
+        ['get', 'layer'],
+        0,
+      ],
+    );
     await map.addSymbolLayer(
       _pinSource,
       'replay-pins',
@@ -601,9 +785,14 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
         iconOffset: [0, replayPinPad],
         iconAllowOverlap: true,
         iconIgnorePlacement: true,
-        // Ảnh đè lên người cổ vũ, người cổ vũ đè lên cột mốc km.
+        // Ảnh đè lên người cổ vũ.
         symbolSortKey: ['get', 'layer'],
       ),
+      filter: [
+        '!=',
+        ['get', 'layer'],
+        0,
+      ],
     );
     if (!mounted) return;
     _pinsShown = 0;
@@ -686,6 +875,24 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
         overlays: shown ? SystemUiOverlay.values : const [],
       );
 
+  /// Giữ khung cuối của video chừng này.
+  static const _clipHold = Duration(milliseconds: 500);
+
+  /// Đếm thời gian từ lúc bắt đầu quay, để hiện video đã dựng tới đâu.
+  final _clipWatch = Stopwatch();
+  Duration _clipLength = Duration.zero;
+
+  /// Một lượt [_play] dài bao lâu.
+  Duration get _playLength {
+    final run = _progress.duration!;
+    if (_view != ReplayView.film) return run;
+    final stops = filmStops(_momentFractions).length;
+    return _intro.duration! +
+        run +
+        _moment.duration! * stops +
+        _outro.duration!;
+  }
+
   /// Quay lại cả lượt replay từ đầu rồi mở bảng share với file MP4. Video chỉ
   /// lấy vùng [replayClipRect]; lúc quay nhãn và bảng số dời vào trong vùng đó.
   Future<void> _shareClip() async {
@@ -695,10 +902,11 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
       MediaQuery.sizeOf(context),
       aspect: format.aspect,
     );
-    _progress.stop();
+    _stopPlayback();
     setState(() {
       _clipFormat = format;
       _recording = true;
+      _clipCancelled = false;
     });
     final path = '${(await getTemporaryDirectory()).path}/replay-3d.mp4';
     try {
@@ -710,12 +918,24 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
         'width': clip.width,
         'height': clip.height,
       });
-      await _progress.forward(from: 0).orCancel;
+      if (_clipCancelled) throw const TickerCanceled();
+      _clipLength = _playLength + _clipHold;
+      _clipWatch
+        ..reset()
+        ..start();
+      await _play();
       // Giữ khung cuối một nhịp cho video không cụt.
-      await Future<void>.delayed(const Duration(milliseconds: 500));
+      await Future<void>.delayed(_clipHold);
+      if (_clipCancelled) throw const TickerCanceled();
       await _screenClip.invokeMethod<void>('stop');
     } on TickerCanceled {
-      // Người dùng rời màn giữa chừng; dispose đã huỷ lượt quay.
+      // Rời màn giữa chừng thì dispose đã huỷ lượt quay.
+      if (!mounted) return;
+      // Bấm huỷ: bỏ file đang quay, trả màn về như trước.
+      await _screenClip.invokeMethod<void>('cancel');
+      await _showStatusBar(true);
+      if (!mounted) return;
+      setState(() => _recording = false);
       return;
     } on PlatformException catch (error) {
       await _screenClip.invokeMethod<void>('cancel');
@@ -743,6 +963,12 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
     await file.delete();
   }
 
+  /// Dừng lượt quay đang chạy; [_shareClip] dọn phần còn lại.
+  void _cancelClip() {
+    _clipCancelled = true;
+    _stopPlayback();
+  }
+
   @override
   void dispose() {
     if (_recording) {
@@ -750,6 +976,9 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
       _showStatusBar(true);
     }
     _progress.dispose();
+    _intro.dispose();
+    _outro.dispose();
+    _moment.dispose();
     _runnerShift.dispose();
     super.dispose();
   }
@@ -779,6 +1008,7 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
             child: ml.MapLibreMap(
               styleString: replayMapStyle(
                 dark: dark,
+                daylight: _daylight,
                 route: [
                   for (final p in _path.points) [p.longitude, p.latitude],
                 ],
@@ -796,6 +1026,28 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
               dragEnabled: false,
             ),
           ),
+          if (_daylight case final daylight? when _view == ReplayView.film)
+            Positioned.fromRect(
+              rect: _skyRect(MediaQuery.sizeOf(context)),
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: Listenable.merge([_intro, _outro]),
+                  builder: (context, _) {
+                    final sky = filmSky(
+                      daylight,
+                      _part,
+                      _part == FilmPart.intro ? _intro.value : _outro.value,
+                    );
+                    if (sky == null) return const SizedBox.shrink();
+                    return ReplaySky(
+                      daylight: daylight,
+                      sky: sky,
+                      bearing: _camera(_progress.value).bearing,
+                    );
+                  },
+                ),
+              ),
+            ),
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -803,9 +1055,8 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
               onScaleUpdate: _onViewGesture,
             ),
           ),
-          // Camera bám người chạy thì hình người chạy đứng yên giữa map, chân
-          // cọc chạm đúng tâm. Camera đứng yên thì hình người chạy đi theo
-          // [_runnerShift].
+          // Hình người chạy đi theo [_runnerShift]: chân cọc chạm đúng chỗ
+          // người chạy trên map.
           Center(
             child: ValueListenableBuilder(
               valueListenable: _runnerShift,
@@ -843,11 +1094,43 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
                 ),
               ),
             ),
+          if (_view == ReplayView.film)
+            Positioned(
+              left: 0,
+              right: 0,
+              top: inset.top + 120,
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: _outro,
+                  builder: (context, child) {
+                    final shown = _part == FilmPart.outro
+                        ? filmStamp(_outro.value)
+                        : 0.0;
+                    if (shown == 0) return const SizedBox.shrink();
+                    // Đóng tem: từ to rơi xuống đúng cỡ.
+                    final scale =
+                        1 + 0.6 * (1 - Curves.easeOutBack.transform(shown));
+                    return Opacity(
+                      opacity: shown,
+                      child: Transform.scale(scale: scale, child: child),
+                    );
+                  },
+                  child: Center(
+                    child: _FinishStamp(
+                      distanceMeters: widget.distanceMeters ?? _path.meters,
+                      movingTimeSeconds: widget.movingTimeSeconds,
+                      startedAt: widget.startedAt,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           Positioned(
             left: inset.left + (_recording ? 0 : 12),
             right: inset.right + (_recording ? 0 : 12),
             bottom: inset.bottom + (_recording ? 0 : 12),
             child: IgnorePointer(
+              key: _hudKey,
               child: AnimatedBuilder(
                 animation: _progress,
                 builder: (context, _) => _ReplayHud(
@@ -871,6 +1154,27 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
               top: inset.top,
               left: inset.left,
               child: const ReplayStamp(),
+            ),
+          // Ngoài vùng quay thì làm tối và hiện video dựng tới đâu. Phần này
+          // nằm ngoài vùng cắt nên không vào video.
+          if (_recording)
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: Listenable.merge([
+                  _intro,
+                  _progress,
+                  _moment,
+                  _outro,
+                ]),
+                builder: (context, _) => _ClipFrame(
+                  clip: replayClipRect(screen, aspect: _clipFormat.aspect),
+                  onCancel: _cancelClip,
+                  done: _clipLength == Duration.zero
+                      ? 0
+                      : _clipWatch.elapsedMilliseconds /
+                            _clipLength.inMilliseconds,
+                ),
+              ),
             ),
           if (!_recording) ...[
             Positioned(
@@ -902,6 +1206,7 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
                     _RailButton(
                       onPressed: _nextView,
                       tooltip: switch (_view) {
+                        ReplayView.film => 'Tầm nhìn: kiểu phim',
                         ReplayView.fit => 'Tầm nhìn: vừa cả tuyến',
                         ReplayView.near => 'Tầm nhìn: gần 2 lần',
                         ReplayView.nearer => 'Tầm nhìn: gần 3 lần',
@@ -909,6 +1214,7 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
                         ReplayView.custom => 'Tầm nhìn: tự chỉnh',
                       },
                       icon: switch (_view) {
+                        ReplayView.film => Icons.movie_rounded,
                         ReplayView.fit => Icons.fit_screen_rounded,
                         ReplayView.near => Icons.zoom_in_rounded,
                         ReplayView.nearer => Icons.center_focus_strong_rounded,
@@ -917,7 +1223,7 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
                       },
                     ),
                     _RailButton(
-                      onPressed: () => _progress.forward(from: 0),
+                      onPressed: _replay,
                       tooltip: 'Chạy lại',
                       icon: Icons.replay_rounded,
                     ),
@@ -932,8 +1238,98 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
   }
 }
 
-/// Nút vuông phẳng nằm trên map. Nền than cho map vẫn là thứ nổi nhất; chỉ
-/// nút chính ([primary]) mới đỏ.
+/// Làm tối phần màn hình ngoài [clip] và hiện thanh video đã dựng được [done]
+/// (0 tới 1) ở dải tối rộng hơn.
+class _ClipFrame extends StatelessWidget {
+  const _ClipFrame({
+    required this.clip,
+    required this.done,
+    required this.onCancel,
+  });
+
+  final Rect clip;
+  final double done;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = done.clamp(0.0, 0.99);
+    final colors = ReplayColors.of(context.runNowPalette);
+    // Thanh trạng thái tắt lúc quay nhưng tai thỏ và thanh home vẫn còn.
+    final notch = MediaQuery.viewPaddingOf(context);
+    final label = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Đang tạo video ${(shown * 100).round()}%',
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(color: colors.paper),
+          ),
+          const SizedBox(height: 6),
+          LinearProgressIndicator(
+            value: shown,
+            minHeight: 3,
+            color: colors.line,
+            backgroundColor: colors.paper.withValues(alpha: 0.25),
+          ),
+        ],
+      ),
+    );
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: IgnorePointer(
+            child: CustomPaint(painter: _OutsidePainter(clip)),
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          top: clip.bottom,
+          bottom: notch.bottom,
+          child: IgnorePointer(child: Center(child: label)),
+        ),
+        // Nút huỷ ở góc trên bên trái, cạnh tai thỏ, trong dải tối trên
+        // khung quay.
+        Positioned(
+          left: 12,
+          top: math.max(4, (clip.top - 48) / 2),
+          child: IconButton(
+            onPressed: onCancel,
+            tooltip: 'Huỷ quay',
+            color: colors.paper,
+            icon: const Icon(Icons.close_rounded),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _OutsidePainter extends CustomPainter {
+  _OutsidePainter(this.clip);
+
+  final Rect clip;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawPath(
+      Path.combine(
+        PathOperation.difference,
+        Path()..addRect(Offset.zero & size),
+        Path()..addRect(clip),
+      ),
+      Paint()..color = const Color(0xB3000000),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_OutsidePainter old) => old.clip != clip;
+}
+
 /// Tem tên app trên video chia sẻ: khối màu nhấn của giao diện đang chọn,
 /// đặt nghiêng trên một bóng cứng cho nổi khỏi nền map.
 class ReplayStamp extends StatelessWidget {
@@ -971,6 +1367,8 @@ class ReplayStamp extends StatelessWidget {
   }
 }
 
+/// Nút vuông phẳng nằm trên map. Nền than cho map vẫn là thứ nổi nhất; chỉ
+/// nút chính ([primary]) mới đỏ.
 class _RailButton extends StatelessWidget {
   const _RailButton({
     required this.onPressed,
@@ -1159,7 +1557,7 @@ class _ReplayHud extends StatelessWidget {
               ),
             ],
             for (final shown in series) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 6),
               Row(
                 children: [
                   Text(
@@ -1182,9 +1580,9 @@ class _ReplayHud extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               SizedBox(
-                height: series.length > 1 ? 26 : 40,
+                height: series.length > 1 ? 18 : 30,
                 child: CustomPaint(
                   painter: _WavePainter(
                     values: shown.values,
@@ -1385,4 +1783,70 @@ class _PinTailPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_PinTailPainter old) => old.color != color;
+}
+
+/// Tem tổng kết hiện ở cuối đoạn kết của tầm nhìn kiểu phim.
+class _FinishStamp extends StatelessWidget {
+  const _FinishStamp({
+    required this.distanceMeters,
+    required this.movingTimeSeconds,
+    required this.startedAt,
+  });
+
+  final double distanceMeters;
+  final int? movingTimeSeconds;
+  final DateTime? startedAt;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final colors = ReplayColors.of(context.runNowPalette);
+    const figures = [FontFeature.tabularFigures()];
+    final seconds = movingTimeSeconds;
+    final at = startedAt?.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return Transform.rotate(
+      angle: -0.08,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.paper,
+          border: Border.all(color: colors.line, width: 3),
+          boxShadow: kElevationToShadow[6],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${(distanceMeters / 1000).toStringAsFixed(2)} KM',
+                style: text.displaySmall?.copyWith(
+                  color: colors.line,
+                  fontFeatures: figures,
+                  height: 1,
+                ),
+              ),
+              if (seconds != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  '${formatDuration(seconds)} · ${formatPace(distanceMeters <= 0 ? null : seconds / (distanceMeters / 1000))}',
+                  style: text.titleSmall?.copyWith(
+                    color: colors.night,
+                    fontFeatures: figures,
+                  ),
+                ),
+              ],
+              if (at != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '${two(at.day)}/${two(at.month)} · ${two(at.hour)}:${two(at.minute)} · 3i',
+                  style: text.labelSmall?.copyWith(color: colors.muted),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
