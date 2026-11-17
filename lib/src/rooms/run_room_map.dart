@@ -6,7 +6,7 @@ import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/live_bits.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
-import 'package:myrun/src/widgets/map_tiles.dart';
+import 'package:myrun/src/widgets/map_vector.dart';
 import 'package:myrun/src/widgets/route_map.dart' show routeBounds;
 import 'package:myrun/src/widgets/run_now_avatar.dart';
 
@@ -110,7 +110,7 @@ class _RunRoomMapState extends State<RunRoomMap> {
         },
       ),
       children: [
-        mapTileLayer(context, dark: dark),
+        mapBaseLayer(context, dark: dark, around: points),
         const MapAttribution(),
         PolylineLayer(
           polylines: [

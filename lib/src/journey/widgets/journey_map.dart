@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
-import 'package:myrun/src/widgets/map_tiles.dart';
+import 'package:myrun/src/widgets/map_vector.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/journey/widgets/completion_stamp.dart';
@@ -133,7 +133,7 @@ class _JourneyMapState extends State<JourneyMap> {
               ),
             ),
             children: [
-              mapTileLayer(context, dark: isDark),
+              mapBaseLayer(context, dark: isDark, around: points),
               const MapAttribution(),
               PolylineLayer(
                 polylines: [

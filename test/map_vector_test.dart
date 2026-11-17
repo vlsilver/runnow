@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:myrun/src/widgets/map_vector.dart';
 
 Map<String, dynamic> _style({required String glyphUrl}) =>
@@ -26,6 +27,36 @@ List<Map<String, dynamic>> _symbols(Map<String, dynamic> style) => [
 ];
 
 void main() {
+  group('vectorMapCovers', () {
+    // Toạ độ tra tay: Hà Nội, Côn Đảo, Phú Quốc trong Việt Nam; Athens ngoài.
+    test('tuyến nằm trọn trong Việt Nam thì có tile vector', () {
+      expect(
+        vectorMapCovers(const [
+          LatLng(21.03, 105.85),
+          LatLng(8.68, 106.60),
+          LatLng(10.22, 103.96),
+        ]),
+        isTrue,
+      );
+    });
+
+    test('tuyến ở nước ngoài thì không có', () {
+      expect(vectorMapCovers(const [LatLng(37.97, 23.74)]), isFalse);
+    });
+
+    test('một điểm ra ngoài Việt Nam là cả tuyến không được phủ', () {
+      // Hà Nội rồi Bangkok.
+      expect(
+        vectorMapCovers(const [LatLng(21.03, 105.85), LatLng(13.75, 100.50)]),
+        isFalse,
+      );
+    });
+
+    test('chưa có điểm nào thì coi như trong vùng phủ', () {
+      expect(vectorMapCovers(const []), isTrue);
+    });
+  });
+
   group('replayMapStyle', () {
     test('chưa có nguồn glyph thì không có lớp chữ nào', () {
       final style = _style(glyphUrl: '');

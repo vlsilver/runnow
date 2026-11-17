@@ -183,6 +183,7 @@ class RouteMap extends StatelessWidget {
             if (!follow &&
                 liveRunnersStream == null &&
                 hasVectorMap &&
+                vectorMapCovers(points) &&
                 points.length > 1)
               Positioned(
                 top: 54,
@@ -668,7 +669,12 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
         ),
       ),
       children: [
-        mapBaseLayer(context, dark: isDark, daylight: widget.daylight),
+        mapBaseLayer(
+          context,
+          dark: isDark,
+          around: points,
+          daylight: widget.daylight,
+        ),
         MapAttribution(top: widget.follow),
         PolylineLayer(
           polylines: [

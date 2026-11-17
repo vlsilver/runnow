@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
-import 'package:myrun/src/widgets/map_tiles.dart';
+import 'package:myrun/src/widgets/map_vector.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
@@ -673,7 +673,7 @@ class _LiveMap extends StatelessWidget {
         },
       ),
       children: [
-        mapTileLayer(context, dark: true),
+        mapBaseLayer(context, dark: true, around: points),
         const MapAttribution(),
         PolylineLayer(
           polylines: [

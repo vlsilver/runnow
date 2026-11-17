@@ -4,6 +4,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/live_bits.dart';
 import 'package:myrun/src/widgets/map_tiles.dart';
+import 'package:myrun/src/widgets/map_vector.dart';
 import 'package:myrun/src/widgets/route_map.dart' show routeBounds;
 
 /// Bản đồ thật của một phiên live trong ô nhỏ: đường đã chạy và chấm nhấp
@@ -84,7 +85,7 @@ class _LiveMapPreviewState extends State<LiveMapPreview> {
                 ),
               ),
               children: [
-                mapTileLayer(context, dark: dark),
+                mapBaseLayer(context, dark: dark, around: points),
                 PolylineLayer(
                   polylines: [
                     Polyline(

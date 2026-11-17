@@ -338,15 +338,34 @@ final vtr.Theme _nightTheme = vtr.ThemeReader().read(
   _mapStyle('natural-night', _night),
 );
 
-/// Lớp bản đồ nền: tile vector khi bản build có [MAP_VECTOR_URL], còn lại là
-/// tile ảnh của [mapTileLayer]. Có [daylight] thì màu theo giờ chạy, cùng
-/// bảng màu với màn replay.
+/// Bộ tile vector đang host chỉ có Việt Nam; khung này bao đất liền và các
+/// đảo gần bờ (Phú Quốc, Côn Đảo).
+const _vectorSouth = 8.2, _vectorNorth = 23.5;
+const _vectorWest = 102.1, _vectorEast = 109.6;
+
+/// [points] có nằm trọn trong vùng bộ tile vector phủ không. Chưa có điểm nào
+/// thì coi như có.
+bool vectorMapCovers(Iterable<LatLng> points) => points.every(
+  (point) =>
+      point.latitude >= _vectorSouth &&
+      point.latitude <= _vectorNorth &&
+      point.longitude >= _vectorWest &&
+      point.longitude <= _vectorEast,
+);
+
+/// Lớp bản đồ nền: tile vector khi có nguồn tile vector và [around] (tuyến
+/// hay vị trí bản đồ sẽ hiện) nằm trong vùng nó phủ, còn lại là tile ảnh của
+/// [mapTileLayer]. Có [daylight] thì màu theo giờ chạy, cùng bảng màu với màn
+/// replay.
 Widget mapBaseLayer(
   BuildContext context, {
   required bool dark,
+  required Iterable<LatLng> around,
   ReplayDaylight? daylight,
 }) {
-  if (_vectorUrl.isEmpty) return mapTileLayer(context, dark: dark);
+  if (_vectorUrl.isEmpty || !vectorMapCovers(around)) {
+    return mapTileLayer(context, dark: dark);
+  }
   return Stack(
     children: [
       VectorTileLayer(

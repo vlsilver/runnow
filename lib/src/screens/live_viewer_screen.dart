@@ -15,7 +15,7 @@ import 'package:myrun/src/widgets/heart_button.dart';
 import 'package:myrun/src/widgets/live_bits.dart';
 import 'package:myrun/src/widgets/live_cheer_bar.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
-import 'package:myrun/src/widgets/map_tiles.dart';
+import 'package:myrun/src/widgets/map_vector.dart';
 import 'package:myrun/src/widgets/photo_pin_marker.dart';
 import 'package:myrun/src/widgets/route_map.dart' show routeBounds;
 import 'package:myrun/src/widgets/run_now_avatar.dart';
@@ -203,7 +203,7 @@ class _LiveViewState extends State<_LiveView> {
         ),
       ),
       children: [
-        mapTileLayer(context, dark: dark),
+        mapBaseLayer(context, dark: dark, around: points),
         // Tấm số liệu che góc dưới, nên ghi nguồn bản đồ để ở trên.
         const MapAttribution(top: true),
         PolylineLayer(

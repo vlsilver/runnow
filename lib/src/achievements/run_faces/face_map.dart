@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:myrun/src/achievements/run_faces/run_face_kit.dart';
 import 'package:myrun/src/widgets/map_tiles.dart';
+import 'package:myrun/src/widgets/map_vector.dart';
 import 'package:myrun/src/widgets/route_map.dart' show routeBounds;
 import '../../theme_tokens.dart';
 
@@ -44,7 +45,7 @@ class StillRouteMap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tiles = mapTileLayer(context, dark: dark);
+    final tiles = mapBaseLayer(context, dark: dark, around: points);
     final filter = tileFilter;
     final route = this.route;
     return IgnorePointer(
