@@ -334,15 +334,27 @@ final vtr.Theme _lightTheme = vtr.ThemeReader().read(
 final vtr.Theme _darkTheme = vtr.ThemeReader().read(
   _mapStyle('natural-dark', _dark),
 );
+final vtr.Theme _nightTheme = vtr.ThemeReader().read(
+  _mapStyle('natural-night', _night),
+);
 
 /// Lớp bản đồ nền: tile vector khi bản build có [MAP_VECTOR_URL], còn lại là
-/// tile ảnh của [mapTileLayer].
-Widget mapBaseLayer(BuildContext context, {required bool dark}) {
+/// tile ảnh của [mapTileLayer]. Có [daylight] thì màu theo giờ chạy, cùng
+/// bảng màu với màn replay.
+Widget mapBaseLayer(
+  BuildContext context, {
+  required bool dark,
+  ReplayDaylight? daylight,
+}) {
   if (_vectorUrl.isEmpty) return mapTileLayer(context, dark: dark);
   return Stack(
     children: [
       VectorTileLayer(
-        theme: dark ? _darkTheme : _lightTheme,
+        theme: switch (daylight) {
+          ReplayDaylight.night => _nightTheme,
+          ReplayDaylight.morning || ReplayDaylight.afternoon => _lightTheme,
+          null => dark ? _darkTheme : _lightTheme,
+        },
         tileProviders: TileProviders({
           _source: NetworkVectorTileProvider(
             urlTemplate: _vectorUrl,

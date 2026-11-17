@@ -59,6 +59,7 @@ class RouteMap extends StatelessWidget {
     this.highlightedDistanceMeters,
     this.totalDistanceMeters,
     this.movingTimeSeconds,
+    this.startedAt,
     this.runnerAvatarUrl,
     this.streams = const {},
     this.cheerMoments = const [],
@@ -78,6 +79,7 @@ class RouteMap extends StatelessWidget {
     this.highlightedDistanceMeters,
     this.totalDistanceMeters,
     this.movingTimeSeconds,
+    this.startedAt,
     this.runnerAvatarUrl,
     this.streams = const {},
     this.cheerMoments = const [],
@@ -112,6 +114,9 @@ class RouteMap extends StatelessWidget {
 
   /// Thời gian chạy của buổi, màn replay 3D dùng để hiện đồng hồ.
   final int? movingTimeSeconds;
+
+  /// Lúc bắt đầu buổi chạy, màn replay 3D tô map theo giờ trong ngày.
+  final DateTime? startedAt;
 
   /// Ảnh người chạy, màn replay 3D dùng làm hình di chuyển trên tuyến.
   final String? runnerAvatarUrl;
@@ -158,6 +163,7 @@ class RouteMap extends StatelessWidget {
                 totalDistanceMeters: totalDistanceMeters,
                 liveRunners: liveRunners,
                 follow: follow,
+                daylight: _daylight,
               ),
             ),
             // Map tracking (follow) đã tràn viền toàn màn → không cần nút
@@ -191,6 +197,7 @@ class RouteMap extends StatelessWidget {
                         points: points,
                         distanceMeters: totalDistanceMeters,
                         movingTimeSeconds: movingTimeSeconds,
+                        startedAt: startedAt,
                         avatarUrl: runnerAvatarUrl,
                         series: replaySeries(
                           routePoints: routePoints,
@@ -244,10 +251,16 @@ class RouteMap extends StatelessWidget {
           totalDistanceMeters: totalDistanceMeters,
           liveRunners: liveRunners,
           liveRunnersStream: liveRunnersStream,
+          daylight: _daylight,
         ),
       ),
     );
   }
+
+  ReplayDaylight? get _daylight => switch (startedAt) {
+    final at? => replayDaylightAt(at.toLocal()),
+    null => null,
+  };
 
   List<LatLng> _mapPoints() {
     final directPoints = routePoints;
@@ -401,6 +414,7 @@ class _FullscreenRouteMap extends StatefulWidget {
     required this.totalDistanceMeters,
     required this.liveRunners,
     required this.liveRunnersStream,
+    this.daylight,
   });
 
   final List<LatLng> points;
@@ -410,6 +424,7 @@ class _FullscreenRouteMap extends StatefulWidget {
   final double? totalDistanceMeters;
   final List<LiveTrackingSession> liveRunners;
   final Stream<List<LiveTrackingSession>>? liveRunnersStream;
+  final ReplayDaylight? daylight;
 
   @override
   State<_FullscreenRouteMap> createState() => _FullscreenRouteMapState();
@@ -431,6 +446,7 @@ class _FullscreenRouteMapState extends State<_FullscreenRouteMap> {
                     highlightedDistanceMeters: widget.highlightedDistanceMeters,
                     totalDistanceMeters: widget.totalDistanceMeters,
                     liveRunners: widget.liveRunners,
+                    daylight: widget.daylight,
                   )
                 : StreamBuilder<List<LiveTrackingSession>>(
                     stream: widget.liveRunnersStream,
@@ -451,6 +467,7 @@ class _FullscreenRouteMapState extends State<_FullscreenRouteMap> {
                             widget.highlightedDistanceMeters,
                         totalDistanceMeters: widget.totalDistanceMeters,
                         liveRunners: sessions,
+                        daylight: widget.daylight,
                       );
                     },
                   ),
@@ -471,6 +488,15 @@ class _FullscreenRouteMapState extends State<_FullscreenRouteMap> {
   }
 }
 
+/// Bản đồ nền có tối không. Biết giờ chạy ([daylight]) thì theo giờ chạy như
+/// màn replay, không thì theo theme của app.
+bool _mapIsDark(BuildContext context, ReplayDaylight? daylight) =>
+    switch (daylight) {
+      ReplayDaylight.night => true,
+      ReplayDaylight.morning || ReplayDaylight.afternoon => false,
+      null => Theme.of(context).brightness == Brightness.dark,
+    };
+
 class _FlutterRouteMap extends StatefulWidget {
   const _FlutterRouteMap({
     required this.points,
@@ -480,6 +506,7 @@ class _FlutterRouteMap extends StatefulWidget {
     required this.totalDistanceMeters,
     required this.liveRunners,
     this.follow = false,
+    this.daylight,
   });
 
   final List<LatLng> points;
@@ -489,6 +516,9 @@ class _FlutterRouteMap extends StatefulWidget {
   final double? totalDistanceMeters;
   final List<LiveTrackingSession> liveRunners;
   final bool follow;
+
+  /// Buổi trong ngày lúc chạy; có thì nền map theo giờ chạy.
+  final ReplayDaylight? daylight;
 
   @override
   State<_FlutterRouteMap> createState() => _FlutterRouteMapState();
@@ -587,7 +617,7 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
     final totalDistanceMeters = widget.totalDistanceMeters;
     final liveRunners = widget.liveRunners;
     final palette = context.runNowPalette;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = _mapIsDark(context, widget.daylight);
     final routeOutline = isDark
         ? Colors.black.withValues(alpha: 0.5)
         : Colors.white.withValues(alpha: 0.88);
@@ -638,7 +668,7 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
         ),
       ),
       children: [
-        mapBaseLayer(context, dark: isDark),
+        mapBaseLayer(context, dark: isDark, daylight: widget.daylight),
         MapAttribution(top: widget.follow),
         PolylineLayer(
           polylines: [

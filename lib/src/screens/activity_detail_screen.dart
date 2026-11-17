@@ -276,6 +276,7 @@ class _ActivityRouteHeaderDelegate extends SliverPersistentHeaderDelegate {
             highlightedDistanceMeters: selectedDistance,
             totalDistanceMeters: detail.summary.distanceMeters,
             movingTimeSeconds: detail.summary.movingTimeSeconds,
+            startedAt: detail.summary.startedAt,
             runnerAvatarUrl: runnerAvatarUrl,
             streams: detail.streams,
             cheerMoments: cheerMoments,
