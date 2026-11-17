@@ -227,6 +227,7 @@ func (s *Server) gameUpdate(w http.ResponseWriter, r *http.Request) error {
 	if s.deps.Telegram == nil || !s.deps.Telegram.Enabled() || s.deps.TelegramLinks == nil {
 		return errors.New("game-update cần Telegram và TelegramLinks để ghi inPsc")
 	}
+	linked := linkedUserID(task.Raw)
 	for _, id := range users {
 		checkedAt := time.Now()
 		m, err := s.deps.Telegram.GetChatMember(r.Context(), s.deps.Telegram.ChatID(), id)
@@ -236,8 +237,62 @@ func (s *Server) gameUpdate(w http.ResponseWriter, r *http.Request) error {
 		if err := s.deps.TelegramLinks.RecordMembership(r.Context(), id, m, checkedAt); err != nil {
 			return err
 		}
+		if id == linked && !m.InChat() {
+			if err := s.sendPscInvite(r.Context(), id); err != nil {
+				return err
+			}
+		}
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+const pscInviteText = "Bạn chưa ở trong group PSC. Bấm link này để vào group:\n"
+
+// sendPscInvite DM link mời PSC (gameState/config.pscInviteUrl) cho người vừa
+// liên kết mà chưa ở PSC. Chưa đặt link thì bỏ qua. Telegram từ chối hẳn
+// (400/403, như người dùng chặn bot) thì bỏ tin, lỗi khác trả ra để task retry.
+func (s *Server) sendPscInvite(ctx context.Context, tgID int64) error {
+	if s.deps.Games == nil {
+		return errors.New("game-update cần Games để đọc pscInviteUrl")
+	}
+	cfg, err := s.deps.Games.loadConfig(ctx)
+	if err != nil {
+		return err
+	}
+	if cfg.pscInviteURL == "" {
+		slog.WarnContext(ctx, "game.psc_invite_unset", "tgId", tgID)
+		return nil
+	}
+	_, err = s.deps.Telegram.SendText(ctx, TelegramText{ChatID: strconv.FormatInt(tgID, 10), Text: pscInviteText + cfg.pscInviteURL})
+	var apiErr *TelegramAPIError
+	if errors.As(err, &apiErr) && (apiErr.Status == http.StatusBadRequest || apiErr.Status == http.StatusForbidden) {
+		slog.WarnContext(ctx, "game.psc_invite_rejected", "tgId", tgID, "err", err)
+		return nil
+	}
+	if err == nil {
+		slog.InfoContext(ctx, "game.psc_invite_sent", "tgId", tgID)
+	}
+	return err
+}
+
+// linkedUserID là người gửi tin DM trong update: game-update chỉ nhận tin DM từ
+// "/start <mã>" vừa liên kết xong. 0 nếu update không phải tin DM.
+func linkedUserID(raw []byte) int64 {
+	var u struct {
+		Message *struct {
+			Chat struct {
+				Type string `json:"type"`
+			} `json:"chat"`
+			From *struct {
+				ID    int64 `json:"id"`
+				IsBot bool  `json:"is_bot"`
+			} `json:"from"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(raw, &u) != nil || u.Message == nil || u.Message.Chat.Type != "private" || u.Message.From == nil || u.Message.From.IsBot {
+		return 0
+	}
+	return u.Message.From.ID
 }
 
 // membershipUserIDs lấy những người cần kiểm lại inPsc: người được đổi trạng

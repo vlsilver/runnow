@@ -462,6 +462,44 @@ func TestEmulatorGameUpdateWritesInPsc(t *testing.T) {
 	}
 }
 
+// Vừa liên kết qua /start mà chưa ở PSC thì bot DM link mời PSC; đã ở PSC hay
+// chưa đặt link thì không nhắn gì thêm.
+func TestEmulatorGameUpdateSendsPscInviteAfterLink(t *testing.T) {
+	const invite = "https://t.me/+pscMoi"
+	e := newLinkEnv(t)
+	e.start(100, 7, e.code("uA", time.Now()))
+	tg := newFakeTelegram(t)
+	srv := NewBotServer(testBotCfg, &Dependencies{Firestore: e.db, TelegramLinks: e.links, Telegram: tg.service("-100psc"), Games: NewGameStore(e.db, "-100psc")})
+	run := func(updateID int64, member string) {
+		t.Helper()
+		tg.Then("getChatMember", tgReply{200, `{"ok":true,"result":{"status":"` + member + `","user":{"id":7}}}`})
+		raw := fmt.Sprintf(`{"update_id":%d,"message":{"message_id":1,"text":"/start abc","chat":{"id":7,"type":"private"},"from":{"id":7}}}`, updateID)
+		body, _ := json.Marshal(gameUpdateTask{UpdateID: updateID, Raw: json.RawMessage(raw)})
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, httptest.NewRequest("POST", "/tasks/game-update", strings.NewReader(string(body))))
+		if rec.Code != 200 {
+			t.Fatalf("status=%d body=%s", rec.Code, rec.Body)
+		}
+	}
+
+	run(40, "left")
+	if n := len(tg.Calls("sendMessage")); n != 0 {
+		t.Fatalf("chưa đặt pscInviteUrl mà vẫn nhắn: %d tin", n)
+	}
+
+	seed(t, e.db, "gameState/config", map[string]any{"pscInviteUrl": invite})
+	run(41, "member")
+	if n := len(tg.Calls("sendMessage")); n != 0 {
+		t.Fatalf("đã ở PSC mà vẫn gửi link: %d tin", n)
+	}
+
+	run(42, "left")
+	calls := tg.Calls("sendMessage")
+	if len(calls) != 1 || calls[0].Params["chat_id"] != "7" || !strings.Contains(fmt.Sprint(calls[0].Params["text"]), invite) {
+		t.Fatalf("chưa ở PSC phải DM link mời: %v", calls)
+	}
+}
+
 func TestEmulatorAccountDeleteRemovesTelegramLinks(t *testing.T) {
 	e := newLinkEnv(t)
 	e.start(100, 7, e.code("uA", time.Now()))
