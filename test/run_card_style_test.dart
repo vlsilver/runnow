@@ -16,6 +16,7 @@ import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/achievements/run_card_skin_choice.dart';
 import 'package:myrun/src/achievements/run_card_style.dart';
 import 'package:myrun/src/achievements/run_card_style_sheet.dart';
+import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/achievements/run_faces/face_map.dart';
 import 'package:myrun/src/achievements/run_faces/run_face_kit.dart';
 import 'package:myrun/src/games/game_role_card.dart';
@@ -751,7 +752,8 @@ void main() {
 
       await tester.tap(find.text('Bản vẽ'));
       await tester.pump();
-      await tester.tap(find.text('Số trên'));
+      // Nút chữ đi từ Đầy đủ sang Số trên.
+      await tester.tap(find.byKey(runCardTextLayoutKey));
       await tester.pump();
       await tester.tap(find.text('Dùng'));
       await tester.pumpAndSettle();
@@ -827,8 +829,131 @@ void main() {
       await tester.pump(const Duration(seconds: 4));
     });
 
-    group('chọn cỡ đường chạy', () {
+    // Ảnh xem trước bấm được thì là một nút bật tắt.
+    Finder toggleIn(Key face) => find.descendant(
+      of: find.byKey(face),
+      matching: find.byWidgetPredicate(
+        (w) => w is Semantics && w.properties.toggled != null,
+      ),
+    );
+
+    group('gợi ý chạm vào ảnh thẻ', () {
+      final hint = find.byType(TapHintFinger);
+
+      // Thẻ không tranh, bộ Thành phố: đổi được bố cục chữ và bản đồ.
+      Future<void> openCity(WidgetTester tester) async {
+        await open(tester, card: _card());
+        await tester.tap(find.text('Thành phố'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      testWidgets('chờ sheet lên rồi chạy, mở lại sheet thì chạy lại', (
+        tester,
+      ) async {
+        await openCity(tester);
+        expect(hint, findsNothing);
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(hint, findsOneWidget);
+        // Hai nút một lượt chừng 5 giây: giây thứ 6 tay đang ở lượt hai.
+        await tester.pump(const Duration(seconds: 6));
+        expect(hint, findsOneWidget);
+        // Ba lượt xong thì thôi.
+        await tester.pump(const Duration(seconds: 9));
+        expect(hint, findsNothing);
+        await tester.pumpWidget(const SizedBox());
+
+        await openCity(tester);
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(hint, findsOneWidget);
+        await tester.pump(const Duration(seconds: 15));
+      });
+
+      testWidgets('tay ghé nút chữ rồi tới nút mặt sau', (tester) async {
+        await openCity(tester);
+        final text = tester.getRect(find.byKey(runCardTextLayoutKey));
+        final back = tester.getRect(toggleIn(runCardMapSwitchKey));
+
+        // Giữa lần ấn đầu ở chỗ thứ nhất, rồi giữa lần ấn đầu ở chỗ thứ hai.
+        await tester.pump(const Duration(milliseconds: 1500));
+        expect(text.contains(tester.getCenter(hint)), isTrue);
+        await tester.pump(const Duration(milliseconds: 1760));
+        expect(back.contains(tester.getCenter(hint)), isTrue);
+        expect(text.contains(tester.getCenter(hint)), isFalse);
+        await tester.pump(const Duration(seconds: 15));
+      });
+
+      testWidgets('bấm vào ảnh thì tắt gợi ý', (tester) async {
+        await openCity(tester);
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(hint, findsOneWidget);
+
+        await tester.tap(find.byKey(runCardMapSwitchKey));
+        await tester.pump();
+        expect(hint, findsNothing);
+        await tester.pump(const Duration(seconds: 15));
+      });
+
+      testWidgets('bấm nút chữ cũng tắt gợi ý', (tester) async {
+        await openCity(tester);
+        await tester.tap(find.byKey(runCardTextLayoutKey));
+        await tester.pump();
+        expect(hint, findsNothing);
+        await tester.pump(const Duration(seconds: 15));
+      });
+    });
+
+    group('nút chữ trên mặt trước', () {
+      final button = find.byKey(runCardTextLayoutKey);
+
+      testWidgets('bấm vòng qua ba bố cục rồi về Đầy đủ', (tester) async {
+        await open(tester, card: _card());
+        await tester.tap(find.text('Bản vẽ'));
+        await tester.pump();
+
+        final seen = <String?>[];
+        for (var i = 0; i < 4; i++) {
+          seen.add(tester.widget<Semantics>(button).properties.value);
+          await tester.tap(button);
+          await tester.pump();
+        }
+        expect(seen, [
+          'Đầy đủ, 1 trên 3',
+          'Số trên, 2 trên 3',
+          'Gọn, 3 trên 3',
+          'Đầy đủ, 1 trên 3',
+        ]);
+        await tester.pump(const Duration(seconds: 15));
+      });
+
+      testWidgets('bấm nút chữ trên thẻ có tranh không đổi cỡ đường chạy', (
+        tester,
+      ) async {
+        final card = _card(art: true);
+        final (styles, _) = await open(
+          tester,
+          card: card,
+          data: runCardData(
+            card,
+            owner: 'Bạn',
+            previewArt: const ColoredBox(color: Color(0xFF55708A)),
+          ),
+        );
+        await tester.tap(find.text('Bản vẽ'));
+        await tester.pump();
+
+        await tester.tap(button);
+        await tester.pump();
+        await tester.tap(find.text('Dùng'));
+        await tester.pumpAndSettle();
+
+        expect(styles.styleOf(card.id, card.rolledAt).id, 'blueprint.top');
+      });
+    });
+
+    group('bấm mặt trước đổi cỡ đường chạy', () {
       final picker = find.byKey(runCardRouteSizeKey);
+      final choice = toggleIn(runCardRouteSizeKey);
 
       // Tranh thật tải từ Storage, nên xem trước bằng một nền màu.
       Future<RunCardStyleController> openWithArt(WidgetTester tester) async {
@@ -850,10 +975,50 @@ void main() {
       ) async {
         final styles = await openWithArt(tester);
         final card = _card(art: true);
-        expect(picker, findsOneWidget);
+        expect(choice, findsOneWidget);
 
-        await tester.tap(find.text('Lớn'));
+        await tester.tap(picker);
         await tester.pump();
+        await tester.tap(find.text('Dùng'));
+        await tester.pumpAndSettle();
+
+        expect(styles.styleOf(card.id, card.rolledAt).id, 'current.full.route');
+      });
+
+      testWidgets('hai nút mặt trước đứng sát nhau ở góc dưới trái', (
+        tester,
+      ) async {
+        await openWithArt(tester);
+        await tester.tap(find.text('Bản vẽ'));
+        await tester.pump();
+        final preview = tester.getRect(picker);
+        final size = tester.getRect(choice);
+        final text = tester.getRect(find.byKey(runCardTextLayoutKey));
+
+        expect(size.center.dy, text.center.dy);
+        // Liền nhau: nút cỡ đường chạy ngay bên phải nút chữ.
+        expect(size.left, greaterThanOrEqualTo(text.right));
+        expect(size.left - text.right, lessThan(16));
+        expect(size.right, lessThan(preview.center.dx + 20));
+        expect(text.center.dy, greaterThan(preview.bottom - 30));
+      });
+
+      testWidgets('bấm nút icon cũng đổi, và nút đọc tên trạng thái', (
+        tester,
+      ) async {
+        final styles = await openWithArt(tester);
+        final card = _card(art: true);
+        expect(
+          tester.widget<Semantics>(choice).properties.value,
+          'Con dấu tròn',
+        );
+
+        await tester.tap(choice);
+        await tester.pump();
+        expect(
+          tester.widget<Semantics>(choice).properties.value,
+          'Đường chạy lớn',
+        );
         await tester.tap(find.text('Dùng'));
         await tester.pumpAndSettle();
 
@@ -865,7 +1030,7 @@ void main() {
       ) async {
         final styles = await openWithArt(tester);
         final card = _card(art: true);
-        await tester.tap(find.text('Lớn'));
+        await tester.tap(picker);
         await tester.pump();
 
         // Pixel nằm cuối dải, phải kéo tới mới dựng.
@@ -876,7 +1041,9 @@ void main() {
         );
         await tester.tap(find.text('Pixel'));
         await tester.pump();
-        expect(picker, findsNothing);
+        expect(choice, findsNothing);
+        await tester.tap(picker);
+        await tester.pump();
 
         await tester.tap(find.text('Dùng'));
         await tester.pumpAndSettle();
@@ -885,12 +1052,14 @@ void main() {
 
       testWidgets('thẻ chưa có tranh không có lựa chọn', (tester) async {
         await open(tester, card: _card());
-        expect(picker, findsNothing);
+        expect(picker, findsOneWidget);
+        expect(choice, findsNothing);
       });
     });
 
-    group('công tắc Bản đồ', () {
+    group('bấm mặt sau bật bản đồ', () {
       final toggle = find.byKey(runCardMapSwitchKey);
+      final choice = toggleIn(runCardMapSwitchKey);
 
       testWidgets('bật rồi Dùng thì thẻ có bản đồ, mặc định là tắt', (
         tester,
@@ -902,7 +1071,7 @@ void main() {
         await tester.pump();
         // Tắt là map mờ không có đường chạy, bật mới có đường chạy trên map.
         final mapRoute = find.byWidgetPredicate((w) => w is PolylineLayer);
-        expect(toggle, findsOneWidget);
+        expect(choice, findsOneWidget);
         expect(mapRoute, findsNothing);
 
         await tester.tap(toggle);
@@ -911,6 +1080,24 @@ void main() {
 
         await tester.tap(find.text('Dùng'));
         await tester.pumpAndSettle();
+        expect(
+          styles.styleOf(card.id, card.rolledAt),
+          const RunCardStyle.withMap(RunCardSet.city),
+        );
+      });
+
+      testWidgets('bấm nút icon dưới mặt sau cũng bật bản đồ', (tester) async {
+        final card = _card();
+        final (styles, _) = await open(tester, card: card);
+        await tester.tap(find.text('Thành phố'));
+        await tester.pump();
+
+        await tester.tap(choice);
+        await tester.pump();
+        expect(tester.widget<Semantics>(choice).properties.value, 'Bản đồ');
+        await tester.tap(find.text('Dùng'));
+        await tester.pumpAndSettle();
+
         expect(
           styles.styleOf(card.id, card.rolledAt),
           const RunCardStyle.withMap(RunCardSet.city),
@@ -930,7 +1117,7 @@ void main() {
 
         await tester.tap(find.text('Hiện tại'));
         await tester.pump();
-        expect(toggle, findsNothing);
+        expect(choice, findsNothing);
 
         await tester.tap(find.text('Dùng'));
         await tester.pumpAndSettle();
@@ -946,7 +1133,7 @@ void main() {
         await tester.tap(find.text('Thành phố'));
         await tester.pump();
 
-        expect(toggle, findsNothing);
+        expect(choice, findsNothing);
       });
     });
 
@@ -962,19 +1149,58 @@ void main() {
       expect(skins.choice, (RunNowAppearance.dark, RunNowElement.fire));
     });
 
+    testWidgets('nút bố cục chữ đứng cùng một chỗ ở mọi bộ', (tester) async {
+      await open(tester, card: _card());
+      final button = find.byKey(runCardTextLayoutKey);
+      Rect? first;
+      // Ba bộ để số km ở ba chỗ khác nhau.
+      for (final set in ['Bản vẽ', 'Thành phố', 'Cassette']) {
+        await tester.dragUntilVisible(
+          find.text(set),
+          find.byType(ListView),
+          const Offset(-120, 0),
+        );
+        await tester.tap(find.text(set));
+        await tester.pump();
+        final rect = tester.getRect(button);
+        first ??= rect;
+        expect(rect, first, reason: set);
+      }
+      final preview = tester.getRect(find.byKey(runCardRouteSizeKey));
+      expect(first!.center.dx, lessThan(preview.center.dx));
+      await tester.pump(const Duration(seconds: 15));
+    });
+
+    testWidgets('bấm nút bố cục chữ thì nút đứng yên dưới tay', (tester) async {
+      await open(tester, card: _card());
+      await tester.tap(find.text('Bản vẽ'));
+      await tester.pump();
+      await tester.pump();
+      final button = find.byKey(runCardTextLayoutKey);
+      final before = tester.getRect(button);
+
+      for (var i = 0; i < 3; i++) {
+        await tester.tap(button);
+        await tester.pump();
+        await tester.pump();
+        expect(tester.getRect(button), before);
+      }
+      await tester.pump(const Duration(seconds: 7));
+    });
+
     testWidgets('bộ theo màu thì hiện chấm màu thay cho kiểu chữ', (
       tester,
     ) async {
       await open(tester, card: _card());
 
       expect(find.text('Thủy'), findsOneWidget);
-      expect(find.text('Số trên'), findsNothing);
+      expect(find.byKey(runCardTextLayoutKey), findsNothing);
 
       await tester.tap(find.text('Bản vẽ'));
       await tester.pump();
 
       expect(find.text('Thủy'), findsNothing);
-      expect(find.text('Số trên'), findsOneWidget);
+      expect(find.byKey(runCardTextLayoutKey), findsOneWidget);
     });
   });
 }

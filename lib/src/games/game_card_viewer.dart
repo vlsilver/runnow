@@ -363,41 +363,63 @@ class _CardTapHintState extends State<CardTapHint>
             return Opacity(
               opacity: fade,
               child: Center(
-                child: SizedBox.square(
-                  dimension: 120,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Container(
-                        width: 40 + 70 * ripple,
-                        height: 40 + 70 * ripple,
-                        decoration: BoxDecoration(
-                          shape: context.runNowPalette.round,
-                          border: Border.all(
-                            color: RunNowAchievementTokens.hero.withValues(alpha: 1 - ripple),
-                            width: 2,
-                          ),
-                        ),
-                      ),
-                      Transform.translate(
-                        offset: Offset(8, 22 - 12 * press),
-                        child: Transform.scale(
-                          scale: 1.1 - 0.15 * press,
-                          child: const Icon(
-                            Icons.touch_app_rounded,
-                            size: 64,
-                            color: RunNowAchievementTokens.hero,
-                            shadows: [Shadow(color: RunNowAchievementTokens.drop, blurRadius: 12)],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                child: TapHintFinger(press: press, ripple: ripple),
               ),
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+/// Một ngón tay đang ấn, tâm ô 120 pt là chỗ chạm. [press] từ 0 (nhấc) tới 1
+/// (ấn hẳn); [ripple] từ 0 tới 1 là vòng sóng toả ra, null thì không có vòng.
+class TapHintFinger extends StatelessWidget {
+  const TapHintFinger({super.key, required this.press, this.ripple});
+
+  static const extent = 120.0;
+
+  final double press;
+  final double? ripple;
+
+  @override
+  Widget build(BuildContext context) {
+    final ripple = this.ripple;
+    return SizedBox.square(
+      dimension: extent,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          if (ripple != null)
+            Container(
+              width: 40 + 70 * ripple,
+              height: 40 + 70 * ripple,
+              decoration: BoxDecoration(
+                shape: context.runNowPalette.round,
+                border: Border.all(
+                  color: RunNowAchievementTokens.hero.withValues(
+                    alpha: 1 - ripple,
+                  ),
+                  width: 2,
+                ),
+              ),
+            ),
+          Transform.translate(
+            offset: Offset(8, 22 - 12 * press),
+            child: Transform.scale(
+              scale: 1.1 - 0.15 * press,
+              child: const Icon(
+                Icons.touch_app_rounded,
+                size: 64,
+                color: RunNowAchievementTokens.hero,
+                shadows: [
+                  Shadow(color: RunNowAchievementTokens.drop, blurRadius: 12),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
