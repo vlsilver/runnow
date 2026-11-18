@@ -9,18 +9,27 @@ const _ink = RunFaceTokens.blueprintInk;
 const _blue = RunFaceTokens.blueprintBlue;
 const _white = RunFaceTokens.blueprintWhite;
 
-Widget _cell(String label, Widget value, {bool first = false}) => Expanded(
+/// Ô số của dải chân; [slot] là khe của phần mà ô này chứa (nhãn đi cùng số).
+Widget _cell(
+  String label,
+  Widget value,
+  Widget Function(Widget, {Alignment a}) slot, {
+  bool first = false,
+}) => Expanded(
   child: Container(
     padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
     decoration: BoxDecoration(
       border: first ? null : const Border(left: BorderSide(color: _ink)),
     ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        txt(label, 9, w: w7, ls: 1.2),
-        Expanded(child: fit(value)),
-      ],
+    child: slot(
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          txt(label, 9, w: w7, ls: 1.2),
+          Expanded(child: fit(value)),
+        ],
+      ),
+      a: Alignment.topLeft,
     ),
   ),
 );
@@ -50,9 +59,22 @@ Widget _strip(RunFace f, String a, String b, String c) => Container(
         height: 51,
         child: Row(
           children: [
-            _cell('QUÃNG ĐƯỜNG', hero(f.km, 30, 13, h: 1, ls: 0), first: true),
-            _cell('THỜI GIAN', Text(f.time, style: faceStyle(30, h: 1))),
-            _cell('PACE /KM', Text(f.pace, style: faceStyle(30, h: 1))),
+            _cell(
+              'QUÃNG ĐƯỜNG',
+              hero(f.km, 30, 13, h: 1, ls: 0),
+              slotKm,
+              first: true,
+            ),
+            _cell(
+              'THỜI GIAN',
+              Text(f.time, style: faceStyle(30, h: 1)),
+              slotTime,
+            ),
+            _cell(
+              'PACE /KM',
+              Text(f.pace, style: faceStyle(30, h: 1)),
+              slotPace,
+            ),
           ],
         ),
       ),
@@ -123,8 +145,8 @@ Widget blueprintFront(RunFace f, RunCardTextLayout t) => faceBox(
                   width: 148,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(6, 8, 6, 0),
-                    child: fit(
-                      hero(f.km, 80, 16, h: 0.92),
+                    child: slotKm(
+                      fit(hero(f.km, 80, 16, h: 0.92), a: Alignment.center),
                       a: Alignment.center,
                     ),
                   ),
@@ -140,10 +162,12 @@ Widget blueprintFront(RunFace f, RunCardTextLayout t) => faceBox(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         txt(f.name, 22, h: 1),
-                        fit(
-                          Text(
-                            '${f.pace} /km · ${f.time}',
-                            style: faceStyle(14, w: w7),
+                        slotPace(
+                          fit(
+                            Text(
+                              '${f.pace} /km · ${f.time}',
+                              style: faceStyle(14, w: w7),
+                            ),
                           ),
                         ),
                         txt(f.rarity, 11, ls: 1.2),
@@ -176,7 +200,12 @@ Widget blueprintFront(RunFace f, RunCardTextLayout t) => faceBox(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: fit(hero(f.km, 34, 14, h: 1))),
+                Expanded(
+                  child: slotKm(
+                    fit(hero(f.km, 34, 14, h: 1)),
+                    a: Alignment.centerLeft,
+                  ),
+                ),
                 txt(f.rarity, 10, ls: 1.3),
               ],
             ),

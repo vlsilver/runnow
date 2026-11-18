@@ -390,11 +390,10 @@ final runCardLookFillProvider = Provider.autoDispose<void>((ref) {
   final skin = ref.watch(runCardSkinControllerProvider).choice;
   final looks = missingRunCardLooks(
     cards,
-    localStyleId: (card) =>
-        switch (styles.localStyleOf(card.id, card.rolledAt)) {
-          null || RunCardStyle.current => null,
-          final style => style.id,
-        },
+    localStyle: (card) => switch (styles.localStyleOf(card.id, card.rolledAt)) {
+      null || RunCardStyle.current => null,
+      final style => style.look,
+    },
     skinId: skin == null ? null : runCardSkinChoiceId(skin),
   );
   if (looks.isNotEmpty) ref.read(runCardLookSyncProvider).fill(looks);

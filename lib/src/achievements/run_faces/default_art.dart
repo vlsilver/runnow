@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:myrun/src/achievements/run_card_paths.dart';
 import 'package:myrun/src/achievements/run_card_style.dart';
+import 'package:myrun/src/achievements/run_faces/face_edit.dart';
 import 'package:myrun/src/achievements/run_faces/run_face_kit.dart';
 import '../../theme_tokens.dart';
 
@@ -17,14 +18,23 @@ Widget? runSetArt(RunCardSet set, List<LatLng> points) {
   final paint = _painters[set];
   if (paint == null) return null;
   return LayoutBuilder(
-    builder: (context, constraints) => CustomPaint(
-      painter: _SetArt(
-        paint,
-        points,
-        RunRouteBand.boxIn(context, constraints.biggest),
-      ),
-      child: const SizedBox.expand(),
-    ),
+    builder: (context, constraints) {
+      final box = RunRouteBand.boxIn(context, constraints.biggest);
+      final edit = RouteEdit.of(context);
+      return editableRouteArt(
+        context,
+        box,
+        CustomPaint(
+          painter: _SetArt(
+            paint,
+            edit?.hidden ?? false ? const [] : points,
+            box,
+            edit?.color,
+          ),
+          child: const SizedBox.expand(),
+        ),
+      );
+    },
   );
 }
 
@@ -36,6 +46,7 @@ typedef _Paint =
       Size size,
       List<Offset> route,
       void Function(Color color) brand,
+      Color? ink,
     );
 
 const _painters = <RunCardSet, _Paint>{
@@ -55,11 +66,14 @@ const _painters = <RunCardSet, _Paint>{
 };
 
 class _SetArt extends CustomPainter {
-  const _SetArt(this.draw, this.points, this.box);
+  const _SetArt(this.draw, this.points, this.box, this.ink);
 
   final _Paint draw;
   final List<LatLng> points;
   final Rect box;
+
+  /// Màu nét đường chạy chủ thẻ chọn; null là màu của bộ.
+  final Color? ink;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -69,12 +83,16 @@ class _SetArt extends CustomPainter {
       size,
       fitRunRoute(points, box),
       (color) => paintRunBrand(canvas, box, color),
+      ink,
     );
   }
 
   @override
   bool shouldRepaint(_SetArt old) =>
-      old.draw != draw || !identical(old.points, points) || old.box != box;
+      old.draw != draw ||
+      !identical(old.points, points) ||
+      old.box != box ||
+      old.ink != ink;
 }
 
 // ------------------------------------------------------------ dùng chung
@@ -246,6 +264,7 @@ void _blueprint(
   Size size,
   List<Offset> route,
   void Function(Color) brand,
+  Color? ink,
 ) {
   _wash(
     canvas,
@@ -272,8 +291,9 @@ void _blueprint(
   grid(100, 0.22);
   brand(_T.blueprintInk);
   if (route.isEmpty) return;
-  _line(canvas, route, _T.blueprintWhite, 2.2);
-  final thin = strokePaint(_T.blueprintWhite, 1.2);
+  final line = ink ?? _T.blueprintWhite;
+  _line(canvas, route, line, 2.2);
+  final thin = strokePaint(line, 1.2);
   for (final p in _along(route, 5).skip(1).take(3)) {
     canvas
       ..drawCircle(p, 3.2, _fill(_T.blueprintBlue))
@@ -281,7 +301,7 @@ void _blueprint(
   }
   final end = route.last;
   canvas
-    ..drawCircle(route.first, 4, _fill(_T.blueprintWhite))
+    ..drawCircle(route.first, 4, _fill(line))
     ..drawCircle(end, 7, _fill(_T.blueprintBlue))
     ..drawCircle(end, 7, thin)
     ..drawLine(end - const Offset(11, 0), end + const Offset(11, 0), thin)
@@ -294,6 +314,7 @@ void _city(
   Size size,
   List<Offset> route,
   void Function(Color) brand,
+  Color? ink,
 ) {
   _wash(
     canvas,
@@ -318,11 +339,12 @@ void _city(
     ..drawCircle(moon, r, _fill(_T.sunCream));
   brand(_T.sunCream);
   if (route.isEmpty) return;
-  _glow(canvas, route, _T.cityGold.withValues(alpha: 0.55), 7);
-  _line(canvas, route, _T.cityGold, 2.6);
+  final line = ink ?? _T.cityGold;
+  _glow(canvas, route, line.withValues(alpha: 0.55), 7);
+  _line(canvas, route, line, 2.6);
   canvas
     ..drawCircle(route.first, 4, _fill(_T.cityInk))
-    ..drawCircle(route.last, 5.5, _fill(_T.cityGold))
+    ..drawCircle(route.last, 5.5, _fill(line))
     ..drawCircle(route.last, 5.5, strokePaint(_T.cityInk, 1.6));
 }
 
@@ -332,6 +354,7 @@ void _cassette(
   Size size,
   List<Offset> route,
   void Function(Color) brand,
+  Color? ink,
 ) {
   canvas.drawRect(Offset.zero & size, _fill(_T.cassetteDeck));
   final slot = Paint()
@@ -356,12 +379,13 @@ void _cassette(
   canvas.restore();
   brand(_T.cassettePaper);
   if (route.isEmpty) return;
+  final line = ink ?? _T.cassettePaper;
   _line(canvas, route, _T.cassetteShell, 6.5);
-  _line(canvas, route, _T.cassettePaper, 3);
+  _line(canvas, route, line, 3);
   canvas
-    ..drawCircle(route.first, 4.5, _fill(_T.cassettePaper))
+    ..drawCircle(route.first, 4.5, _fill(line))
     ..drawCircle(route.last, 6, _fill(_T.cassetteRed))
-    ..drawCircle(route.last, 6, strokePaint(_T.cassettePaper, 2));
+    ..drawCircle(route.last, 6, strokePaint(line, 2));
 }
 
 /// Chòm sao: trời đêm, đường chạy nối các ngôi sao như một chòm.
@@ -370,6 +394,7 @@ void _constellation(
   Size size,
   List<Offset> route,
   void Function(Color) brand,
+  Color? ink,
 ) {
   _wash(
     canvas,
@@ -383,17 +408,19 @@ void _constellation(
   _starField(canvas, size, 11, 70, _T.constellationBright);
   brand(_T.constellationBright);
   if (route.isEmpty) return;
-  _line(canvas, route, _T.constellationGold.withValues(alpha: 0.5), 1.1);
+  final line = ink ?? _T.constellationGold;
+  final line2 = ink ?? _T.constellationBright;
+  _line(canvas, route, line.withValues(alpha: 0.5), 1.1);
   final stars = _along(route, 9);
   for (final (i, p) in stars.indexed) {
     final last = i == stars.length - 1;
     canvas.drawCircle(
       p,
       last ? 11 : 6,
-      _fill(_T.constellationGold.withValues(alpha: 0.22))
+      _fill(line.withValues(alpha: 0.22))
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
     );
-    _star4(canvas, p, last ? 9 : (i.isEven ? 6 : 4.5), _T.constellationBright);
+    _star4(canvas, p, last ? 9 : (i.isEven ? 6 : 4.5), line2);
   }
 }
 
@@ -404,15 +431,17 @@ void _iron(
   Size size,
   List<Offset> route,
   void Function(Color) brand,
+  Color? ink,
 ) {
   canvas.drawRect(Offset.zero & size, _fill(_T.ironRed));
   brand(_T.ironRedDeep);
   if (route.isEmpty) return;
-  _line(canvas, route, _T.ironCoal, 6);
+  final line = ink ?? _T.ironCoal;
+  _line(canvas, route, line, 6);
   canvas
     ..drawRect(
       Rect.fromCenter(center: route.first, width: 12, height: 12),
-      _fill(_T.ironCoal),
+      _fill(line),
     )
     ..drawRect(
       Rect.fromCenter(center: route.last, width: 14, height: 14),
@@ -425,6 +454,7 @@ void _blocks(
   Size size,
   List<Offset> route,
   void Function(Color) brand,
+  Color? ink,
 ) {
   canvas.drawRect(Offset.zero & size, _fill(_T.blocksBlue));
   final r = size.shortestSide * 0.62;
@@ -440,13 +470,14 @@ void _blocks(
     );
   brand(_T.blocksCream);
   if (route.isEmpty) return;
-  _line(canvas, route, _T.blocksCream, 5);
+  final line = ink ?? _T.blocksCream;
+  _line(canvas, route, line, 5);
   canvas
     ..drawCircle(route.first, 6, _fill(_T.blocksCoal))
-    ..drawCircle(route.first, 6, strokePaint(_T.blocksCream, 3))
+    ..drawCircle(route.first, 6, strokePaint(line, 3))
     ..drawRect(
       Rect.fromCenter(center: route.last, width: 13, height: 13),
-      _fill(_T.blocksCream),
+      _fill(line),
     );
 }
 
@@ -456,6 +487,7 @@ void _stopwatch(
   Size size,
   List<Offset> route,
   void Function(Color) brand,
+  Color? ink,
 ) {
   _wash(
     canvas,
@@ -473,11 +505,12 @@ void _stopwatch(
     ..drawLine(c - Offset(0, far), c + Offset(0, far), ring);
   brand(_T.stopwatchSteel);
   if (route.isEmpty) return;
+  final line = ink ?? _T.stopwatchWhite;
   _glow(canvas, route, _T.stopwatchSoft.withValues(alpha: 0.35), 6);
-  _line(canvas, route, _T.stopwatchWhite, 2.6);
+  _line(canvas, route, line, 2.6);
   canvas
     ..drawCircle(route.first, 4, _fill(_T.stopwatchDisc))
-    ..drawCircle(route.first, 4, strokePaint(_T.stopwatchWhite, 2))
+    ..drawCircle(route.first, 4, strokePaint(line, 2))
     ..drawCircle(route.last, 5.5, _fill(_T.stopwatchAlert));
 }
 
@@ -487,6 +520,7 @@ void _flipBoard(
   Size size,
   List<Offset> route,
   void Function(Color) brand,
+  Color? ink,
 ) {
   canvas.drawRect(Offset.zero & size, _fill(_T.flipboardHinge));
   const w = 27.0, h = 37.0, gap = 3.0;
@@ -516,6 +550,7 @@ void _flipBoard(
   }
   brand(_T.flipboardAmber);
   if (route.isEmpty) return;
+  final line = ink ?? _T.flipboardAmber;
   final length = polyline(route).computeMetrics().first.length;
   final dots = _along(route, math.max(12, (length / 9).round()));
   for (final (i, p) in dots.indexed) {
@@ -524,10 +559,10 @@ void _flipBoard(
       ..drawCircle(
         p,
         last ? 9 : 5,
-        _fill(_T.flipboardAmber.withValues(alpha: 0.28))
+        _fill(line.withValues(alpha: 0.28))
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
       )
-      ..drawCircle(p, last ? 5 : 2.4, _fill(_T.flipboardAmber));
+      ..drawCircle(p, last ? 5 : 2.4, _fill(line));
   }
 }
 
@@ -537,6 +572,7 @@ void _bib(
   Size size,
   List<Offset> route,
   void Function(Color) brand,
+  Color? ink,
 ) {
   _wash(
     canvas,
@@ -554,11 +590,12 @@ void _bib(
   }
   brand(_T.bibPaper);
   if (route.isEmpty) return;
-  _line(canvas, route, _T.bibPaper, 3);
+  final line = ink ?? _T.bibPaper;
+  _line(canvas, route, line, 3);
   canvas
     ..drawCircle(route.first, 5, _fill(_T.bibCoal))
-    ..drawCircle(route.first, 5, strokePaint(_T.bibPaper, 2.4))
-    ..drawCircle(route.last, 6, _fill(_T.bibPaper));
+    ..drawCircle(route.first, 5, strokePaint(line, 2.4))
+    ..drawCircle(route.last, 6, _fill(line));
 }
 
 /// Băng đích: mặt sân đỏ gạch kẻ làn, đường chạy trắng, đích ô cờ.
@@ -567,6 +604,7 @@ void _finish(
   Size size,
   List<Offset> route,
   void Function(Color) brand,
+  Color? ink,
 ) {
   _wash(
     canvas,
@@ -592,9 +630,10 @@ void _finish(
   canvas.restore();
   brand(_T.finishWhite);
   if (route.isEmpty) return;
+  final line = ink ?? _T.finishWhite;
   _line(canvas, route, _T.brickDeep.withValues(alpha: 0.55), 6.5);
-  _line(canvas, route, _T.finishWhite, 3);
-  canvas.drawCircle(route.first, 4.5, _fill(_T.finishWhite));
+  _line(canvas, route, line, 3);
+  canvas.drawCircle(route.first, 4.5, _fill(line));
   const cell = 4.0;
   final flag = Rect.fromCenter(center: route.last, width: 16, height: 16);
   canvas.drawRect(flag.inflate(1.5), _fill(_T.finishCoal));
@@ -614,6 +653,7 @@ void _paperMap(
   Size size,
   List<Offset> route,
   void Function(Color) brand,
+  Color? ink,
 ) {
   canvas.drawRect(Offset.zero & size, _fill(_T.mapPaper));
   final contour = strokePaint(_T.paperInk.withValues(alpha: 0.13), 1);
@@ -657,12 +697,13 @@ void _paperMap(
     );
   brand(_T.paperInk);
   if (route.isEmpty) return;
+  final line = ink ?? _T.paperRed;
   _line(canvas, route, _T.mapPaper, 6);
-  _line(canvas, route, _T.paperRed, 3);
+  _line(canvas, route, line, 3);
   canvas
     ..drawCircle(route.first, 4.5, _fill(_T.mapPaper))
-    ..drawCircle(route.first, 4.5, strokePaint(_T.paperRed, 2.2))
-    ..drawCircle(route.last, 6, _fill(_T.paperRed))
+    ..drawCircle(route.first, 4.5, strokePaint(line, 2.2))
+    ..drawCircle(route.last, 6, _fill(line))
     ..drawCircle(route.last, 2.2, _fill(_T.mapPaper));
 }
 
@@ -672,6 +713,7 @@ void _receipt(
   Size size,
   List<Offset> route,
   void Function(Color) brand,
+  Color? ink,
 ) {
   canvas.drawRect(Offset.zero & size, _fill(_T.receiptTint));
   final dot = _fill(_T.receiptCoal.withValues(alpha: 0.14));
@@ -684,12 +726,13 @@ void _receipt(
   }
   brand(_T.receiptCoal);
   if (route.isEmpty) return;
+  final line = ink ?? _T.receiptCoal;
   _line(canvas, route, _T.receiptTint, 7);
-  _line(canvas, route, _T.receiptCoal, 3);
+  _line(canvas, route, line, 3);
   canvas
     ..drawCircle(route.first, 4.5, _fill(_T.receiptTint))
-    ..drawCircle(route.first, 4.5, strokePaint(_T.receiptCoal, 2.2))
-    ..drawCircle(route.last, 6, _fill(_T.receiptCoal));
+    ..drawCircle(route.first, 4.5, strokePaint(line, 2.2))
+    ..drawCircle(route.last, 6, _fill(line));
 }
 
 /// Huy chương: mặt kim loại tiện tròn, đường chạy dập chìm.
@@ -698,6 +741,7 @@ void _medal(
   Size size,
   List<Offset> route,
   void Function(Color) brand,
+  Color? ink,
 ) {
   final whole = Offset.zero & size;
   canvas.drawRect(
@@ -724,13 +768,14 @@ void _medal(
   }
   brand(_T.medalInk);
   if (route.isEmpty) return;
+  final line = ink ?? _T.medalInk;
   canvas
     ..drawPath(
       polyline(route).shift(const Offset(0, 1.6)),
       strokePaint(_T.medalWhite.withValues(alpha: 0.85), 3.4),
     )
-    ..drawPath(polyline(route), strokePaint(_T.medalInk, 3.4))
-    ..drawCircle(route.first, 4.5, _fill(_T.medalInk))
-    ..drawCircle(route.last, 6.5, _fill(_T.medalInk))
+    ..drawPath(polyline(route), strokePaint(line, 3.4))
+    ..drawCircle(route.first, 4.5, _fill(line))
+    ..drawCircle(route.last, 6.5, _fill(line))
     ..drawCircle(route.last, 2.6, _fill(_T.gaugeLight));
 }

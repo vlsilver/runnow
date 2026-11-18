@@ -81,13 +81,17 @@ Widget _black(RunFace f, double degrees, String text) => Transform.rotate(
     color: RunFaceTokens.nightDeep,
     alignment: Alignment.centerLeft,
     padding: const EdgeInsets.only(left: 64, right: 60),
-    child: txt(text, 13, w: w7, ls: 1.2, c: RunFaceTokens.silver),
+    // Dòng pace · giờ in chung một dòng nên chỉnh chung là phần Pace.
+    child: slotPace(txt(text, 13, w: w7, ls: 1.2, c: RunFaceTokens.silver)),
   ),
 );
 
 Widget _number(RunFace f, double n, double k, double max) => ConstrainedBox(
   constraints: BoxConstraints(maxWidth: max),
-  child: fit(hero(f.km, n, k, h: 0.86, ls: -1)),
+  child: slotKm(
+    fit(hero(f.km, n, k, h: 0.86, ls: -1)),
+    a: Alignment.centerLeft,
+  ),
 );
 
 Widget _name(RunFace f) => Expanded(

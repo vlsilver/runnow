@@ -62,7 +62,10 @@ Widget _legendFull(RunFace f, String footLeft) => Column(
         children: [
           SizedBox(
             width: 92,
-            child: fit(hero(f.km, 58, 15, h: 0.92, ls: -0.5)),
+            child: slotKm(
+              fit(hero(f.km, 58, 15, h: 0.92, ls: -0.5)),
+              a: Alignment.centerLeft,
+            ),
           ),
           const SizedBox(width: 12),
           const SizedBox(width: 1, child: ColoredBox(color: _ink)),
@@ -71,9 +74,9 @@ Widget _legendFull(RunFace f, String footLeft) => Column(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _pair('THỜI GIAN', f.time),
+                slotTime(_pair('THỜI GIAN', f.time)),
                 const SizedBox(height: 2),
-                _pair('PACE /KM', f.pace),
+                slotPace(_pair('PACE /KM', f.pace)),
               ],
             ),
           ),
@@ -174,7 +177,12 @@ Widget paperMapFront(RunFace f, RunCardTextLayout t) {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(child: fit(hero(f.km, 30, 13, h: 1))),
+                  Expanded(
+                    child: slotKm(
+                      fit(hero(f.km, 30, 13, h: 1)),
+                      a: Alignment.centerLeft,
+                    ),
+                  ),
                   txt(f.rarity, 10, ls: 1.6, c: _red),
                 ],
               ),

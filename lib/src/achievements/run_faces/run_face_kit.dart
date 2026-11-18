@@ -3,7 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:myrun/src/achievements/achievement_card.dart';
+import 'package:myrun/src/achievements/run_card_layout.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
+import 'package:myrun/src/achievements/run_faces/face_edit.dart';
 import 'package:myrun/src/achievements/run_card_paths.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/formatters.dart';
@@ -223,6 +225,28 @@ Widget txt(
   style: faceStyle(size, w: w, c: c, ls: ls, h: h),
 );
 
+/// Khe chủ thẻ chỉnh được cho số km, thời gian, pace (cả nhãn đi kèm). [a] là
+/// góc mà bố cục của bộ bám vào: phần to ra từ góc đó và dời theo góc đó.
+///
+/// Khe ôm sát phần, kể cả khi bộ đặt phần trong ô rộng hơn (Expanded): ô vẫn
+/// giữ cỡ, phần đứng ở góc [a] của ô như cũ, còn khung chọn và chỗ lưu là của
+/// đúng con số chứ không phải cả ô.
+Widget slotKm(Widget child, {Alignment a = Alignment.bottomLeft}) =>
+    _slot(CardPart.km, a, child);
+
+Widget slotTime(Widget child, {Alignment a = Alignment.centerLeft}) =>
+    _slot(CardPart.time, a, child);
+
+Widget slotPace(Widget child, {Alignment a = Alignment.centerLeft}) =>
+    _slot(CardPart.pace, a, child);
+
+Widget _slot(CardPart part, Alignment a, Widget child) => Align(
+  alignment: a,
+  widthFactor: 1,
+  heightFactor: 1,
+  child: PartSlot(part, anchor: a, child: child),
+);
+
 /// Giữ cỡ thiết kế, chỉ thu nhỏ khi con số dài hơn chỗ có.
 Widget fit(Widget child, {Alignment a = Alignment.centerLeft}) =>
     FittedBox(fit: BoxFit.scaleDown, alignment: a, child: child);
@@ -308,15 +332,17 @@ class RunRouteBand extends InheritedWidget {
   final double top;
   final double bottom;
 
-  /// Khung vẽ đường chạy trong tranh cỡ [size].
+  /// Khung vẽ đường chạy trong tranh cỡ [size], đã theo chỗ và cỡ chủ thẻ
+  /// chỉnh.
   static Rect boxIn(BuildContext context, Size size) {
     final band = context.dependOnInheritedWidgetOfExactType<RunRouteBand>();
-    return Rect.fromLTRB(
+    final box = Rect.fromLTRB(
       size.width * 0.16,
       size.height * (band?.top ?? 0.2),
       size.width * 0.84,
       size.height * (band?.bottom ?? 0.56),
     );
+    return RouteEdit.of(context)?.boxIn(box, size) ?? box;
   }
 
   @override
@@ -366,13 +392,18 @@ class FaceStamp extends StatelessWidget {
     final stamp = face.data.stamp?.call(context);
     if (stamp == null) return const SizedBox.shrink();
     final skin = RunCardSkin.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: skin.stamp,
-        border: Border.all(color: skin.accent(face.tier), width: 1.5),
+    // Thẻ có tranh thì đường chạy là con dấu: dời, đổi cỡ, ẩn cả con dấu.
+    return PartSlot(
+      CardPart.route,
+      tint: false,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: skin.stamp,
+          border: Border.all(color: skin.accent(face.tier), width: 1.5),
+        ),
+        child: ClipOval(child: stamp),
       ),
-      child: ClipOval(child: stamp),
     );
   }
 }

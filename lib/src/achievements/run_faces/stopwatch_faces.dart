@@ -91,15 +91,18 @@ List<Widget> _dial(double cy, Widget inner) => [
   ),
 ];
 
-Widget _bigRow(RunFace f) => fit(
-  baseline([
-    hero(f.km, 60, 17, h: 0.9),
-    Text(
-      f.time,
-      maxLines: 1,
-      style: faceStyle(60, w: w6, h: 0.9, c: _soft),
-    ),
-  ], gap: 14),
+Widget _bigRow(RunFace f) => slotKm(
+  fit(
+    baseline([
+      hero(f.km, 60, 17, h: 0.9),
+      Text(
+        f.time,
+        maxLines: 1,
+        style: faceStyle(60, w: w6, h: 0.9, c: _soft),
+      ),
+    ], gap: 14),
+    a: Alignment.center,
+  ),
   a: Alignment.center,
 );
 
@@ -127,7 +130,10 @@ Widget stopwatchFront(RunFace f, RunCardTextLayout t) {
               children: [
                 _bigRow(f),
                 const SizedBox(height: 4),
-                txt('${f.name} · ${f.pace} /km', 16, w: w7),
+                slotPace(
+                  txt('${f.name} · ${f.pace} /km', 16, w: w7),
+                  a: Alignment.center,
+                ),
                 const SizedBox(height: 4),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -160,7 +166,10 @@ Widget stopwatchFront(RunFace f, RunCardTextLayout t) {
               children: [
                 _bigRow(f),
                 const SizedBox(height: 4),
-                txt('${f.name} · ${f.pace} /km', 16, w: w7),
+                slotPace(
+                  txt('${f.name} · ${f.pace} /km', 16, w: w7),
+                  a: Alignment.center,
+                ),
               ],
             ),
           ),
@@ -172,7 +181,10 @@ Widget stopwatchFront(RunFace f, RunCardTextLayout t) {
             l: 16,
             r: 16,
             b: 18,
-            c: fit(hero(f.km, 44, 14, h: 1), a: Alignment.center),
+            c: slotKm(
+              fit(hero(f.km, 44, 14, h: 1), a: Alignment.center),
+              a: Alignment.center,
+            ),
           ),
         ],
       },

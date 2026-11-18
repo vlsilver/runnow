@@ -9,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card.dart';
+import 'package:myrun/src/achievements/run_card_editor.dart';
+import 'package:myrun/src/achievements/run_card_layout.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
@@ -122,6 +124,29 @@ Widget _face(
     ),
   ),
 );
+
+/// Màu chủ thẻ phủ lên phần chứa [f]; null là phần giữ màu gốc.
+Color? _tint(WidgetTester tester, Finder f) {
+  final tinted = find.ancestor(of: f, matching: find.byType(ColorFiltered));
+  if (tinted.evaluate().isEmpty) return null;
+  final filter = tester.widget<ColorFiltered>(tinted.first).colorFilter;
+  for (final color in [
+    RunFaceTokens.ironCoal,
+    RunFaceTokens.ironPaper,
+    RunFaceTokens.ironRed,
+    const Color(0xFF3366CC),
+    const Color(0xFF18DC18),
+  ]) {
+    if (filter == ColorFilter.mode(color, BlendMode.srcIn)) return color;
+  }
+  fail('màu lạ: $filter');
+}
+
+/// Phần chứa [f] đang hiện (ẩn thì vẫn giữ chỗ trong bố cục).
+bool _shown(WidgetTester tester, Finder f) => find
+    .ancestor(of: f, matching: find.byType(Visibility))
+    .evaluate()
+    .every((e) => (e.widget as Visibility).visible);
 
 void main() {
   group('RunCardStyleController', () {
@@ -370,6 +395,103 @@ void main() {
   });
 
   group('mặt thẻ', () {
+    Rect inFace(WidgetTester tester, Finder f) {
+      final card = tester.getRect(find.byType(AchievementCard));
+      final at = tester.getRect(f);
+      final k = 300 / card.width;
+      return Rect.fromLTRB(
+        (at.left - card.left) * k,
+        (at.top - card.top) * k,
+        (at.right - card.left) * k,
+        (at.bottom - card.top) * k,
+      );
+    }
+
+    Finder ironKm() => find.byWidgetPredicate(
+      (w) => w is Text && (w.style?.fontSize ?? 0) > 100,
+    );
+    Finder ironTime() => find
+        .byWidgetPredicate((w) => w is Text && w.style?.fontSize == 40)
+        .first;
+    Finder ironPace() =>
+        find.ancestor(of: find.text('/KM'), matching: find.byType(Row)).first;
+
+    testWidgets('Thép có bố cục mà chưa dời phần nào thì trùng chỗ gốc', (
+      tester,
+    ) async {
+      await tester.runAsync(_loadCardFont);
+      // Số ngắn, số dài phải thu cho vừa, giờ có và không có phần giờ.
+      for (final (km, seconds) in [(5.0, 1776), (21.1, 7400), (42.2, 15000)]) {
+        final card = _card(km: km, seconds: seconds);
+        const plain = RunCardStyle(RunCardSet.iron);
+        await tester.pumpWidget(_face(card, plain));
+        final before = [
+          for (final f in [ironKm(), ironTime(), ironPace()]) inFace(tester, f),
+        ];
+
+        // Chỉ tô đường chạy: bố cục khác rỗng nhưng chữ không được xê dịch.
+        final edited = plain.withLayout(RunCardLayout.parse('route:,,2,1'));
+        await tester.pumpWidget(_face(card, edited));
+        final after = [
+          for (final f in [ironKm(), ironTime(), ironPace()]) inFace(tester, f),
+        ];
+        expect(after, before, reason: '$km');
+      }
+    });
+
+    testWidgets('Thép đã chỉnh vẽ đúng chỗ, cỡ, màu, ẩn của từng phần', (
+      tester,
+    ) async {
+      await tester.runAsync(_loadCardFont);
+      const plain = RunCardStyle(RunCardSet.iron);
+      await tester.pumpWidget(_face(_card(), plain));
+      final size = inFace(tester, ironKm()).size;
+
+      await tester.pumpWidget(
+        _face(
+          _card(),
+          plain.withLayout(RunCardLayout.parse('km:10,50,4,1;time:20,80,2,h')),
+        ),
+      );
+      final km = inFace(tester, ironKm());
+      // Neo đáy trái: 10% là 30 điểm, 50% là 210 điểm; bậc 4 là gấp 1,45.
+      expect(km.left, closeTo(30, 0.01));
+      expect(km.bottom, closeTo(210, 0.01));
+      expect(km.width, closeTo(size.width * 1.45, 0.01));
+      // Màu đặc trưng thứ hai của Thép là Đen.
+      expect(_tint(tester, ironKm()), RunFaceTokens.ironCoal);
+      expect(_tint(tester, ironPace()), isNull, reason: 'pace giữ màu gốc');
+      expect(_shown(tester, ironTime()), isFalse);
+      expect(_shown(tester, ironPace()), isTrue);
+    });
+
+    testWidgets('kiểu Số trên cũng dời theo bố cục, neo góc trên', (
+      tester,
+    ) async {
+      await tester.runAsync(_loadCardFont);
+      const top = RunCardStyle(RunCardSet.iron, RunCardTextLayout.top);
+      await tester.pumpWidget(
+        _face(_card(), top.withLayout(RunCardLayout.parse('km:10,50,2'))),
+      );
+      final km = inFace(tester, ironKm());
+      expect(km.left, closeTo(30, 0.01));
+      expect(km.top, closeTo(210, 0.01));
+    });
+
+    testWidgets('màu tự chọn phủ lên nét của phần', (tester) async {
+      await tester.runAsync(_loadCardFont);
+      await tester.pumpWidget(
+        _face(
+          _card(),
+          const RunCardStyle(
+            RunCardSet.iron,
+          ).withLayout(RunCardLayout.parse('pace:,,2,3366cc')),
+        ),
+      );
+      expect(_tint(tester, ironPace()), const Color(0xFF3366CC));
+      expect(_tint(tester, ironKm()), isNull);
+    });
+
     const blueprint = RunCardStyle(RunCardSet.blueprint);
 
     testWidgets('thẻ có tranh: Tròn có con dấu, Lớn vẽ đường trên tranh', (
@@ -769,6 +891,256 @@ void main() {
       );
     });
 
+    group('chỉnh Thép', () {
+      Future<RunCardStyleController> openEditor(
+        WidgetTester tester, {
+        bool fromThumb = false,
+      }) async {
+        await tester.runAsync(_loadCardFont);
+        final (styles, _) = await open(tester, card: _card());
+        await tester.dragUntilVisible(
+          find.text('Thép'),
+          find.byType(ListView),
+          const Offset(-200, 0),
+        );
+        if (fromThumb) {
+          await tester.tap(find.bySemanticsLabel('Chỉnh Thép'));
+        } else {
+          await tester.tap(find.text('Thép'));
+          await tester.pump();
+          await tester.tap(find.byKey(runCardEditKey));
+        }
+        await tester.pumpAndSettle();
+        return styles;
+      }
+
+      Finder inEditor(Finder f) =>
+          find.descendant(of: find.byType(RunCardEditor), matching: f);
+      Finder km() => inEditor(find.text('6,1'));
+      // Thời gian là chữ cỡ 40 đầu tiên; pace cũng cỡ 40 nhưng đứng sau.
+      Finder time() => inEditor(
+        find.byWidgetPredicate((w) => w is Text && w.style?.fontSize == 40),
+      ).first;
+
+      Rect cardRect(WidgetTester tester) =>
+          tester.getRect(inEditor(find.byType(AchievementCard)));
+
+      testWidgets('nút bút trên ô Thép mở thẳng màn chỉnh', (tester) async {
+        await openEditor(tester, fromThumb: true);
+        expect(find.byType(RunCardEditor), findsOneWidget);
+        expect(km(), findsOneWidget);
+      });
+
+      testWidgets('kéo số km đi đúng quãng tay kéo, Xong rồi Dùng thì lưu', (
+        tester,
+      ) async {
+        final card = _card();
+        final styles = await openEditor(tester);
+        // Thẻ trong màn chỉnh rộng 320, mỗi phần trăm ngang là 3,2 điểm.
+        expect(cardRect(tester).width, 320);
+
+        final gesture = await tester.startGesture(tester.getCenter(km()));
+        // Kéo quá ngưỡng nhận pan trước, rồi mới đo quãng. Số km Thép rộng
+        // gần hết thẻ nên chỉ kéo dọc được; 10% dọc là 44,8 điểm.
+        await gesture.moveBy(const Offset(0, -40));
+        await tester.pump();
+        final before = tester.getRect(km());
+        await gesture.moveBy(const Offset(0, -44.8));
+        await tester.pump();
+        await gesture.up();
+        await tester.pump();
+        final after = tester.getRect(km());
+        final c = cardRect(tester);
+        expect(after.top - before.top, closeTo(-44.8, 2.3));
+        expect(after.left, before.left);
+
+        await tester.tap(find.text('Xong'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Dùng'));
+        await tester.pumpAndSettle();
+
+        final saved = styles.styleOf(card.id, card.rolledAt);
+        expect(saved.id, 'iron.full');
+        // Chỗ lưu là góc đáy trái của số km, theo phần trăm thẻ trên màn.
+        final at = saved.layout.of(CardPart.km);
+        expect(at.x, ((after.left - c.left) / 3.2).round());
+        expect(at.y, ((after.bottom - c.top) / 4.48).round());
+      });
+
+      testWidgets('kéo quá mép thì cả khung phần vẫn nằm trong thẻ', (
+        tester,
+      ) async {
+        await openEditor(tester);
+        final gesture = await tester.startGesture(tester.getCenter(time()));
+        await gesture.moveBy(const Offset(-40, 0));
+        await tester.pump();
+        await gesture.moveBy(const Offset(-600, 900));
+        await tester.pump();
+        await gesture.up();
+        await tester.pump();
+
+        final card = cardRect(tester);
+        final part = tester.getRect(time());
+        // Mép 2% là 6,4 điểm; đáy không quá 98% của 448 điểm.
+        expect(part.left, greaterThanOrEqualTo(card.left + 6.4 - 1.6));
+        expect(part.left, lessThan(card.left + 6.4 + 3.2));
+        expect(part.bottom, lessThanOrEqualTo(card.top + 448 * 0.98 + 2.3));
+        expect(part.bottom, greaterThan(card.top + 448 * 0.98 - 4.5));
+      });
+
+      testWidgets('gần trục giữa thì tâm thật của phần hít vào giữa thẻ', (
+        tester,
+      ) async {
+        await openEditor(tester);
+        final card = cardRect(tester);
+        final gesture = await tester.startGesture(tester.getCenter(time()));
+        await gesture.moveBy(const Offset(40, 0));
+        await tester.pump();
+        // Kéo tâm phần thời gian tới cách trục giữa 4 điểm, tức 1,25%.
+        final at = tester.getRect(time()).center.dx;
+        await gesture.moveBy(Offset(card.center.dx - 4 - at, 0));
+        await tester.pump();
+        // Chỗ lưu làm tròn tới 1%, tức 3,2 điểm.
+        expect(tester.getRect(time()).center.dx, closeTo(card.center.dx, 1.6));
+        await gesture.up();
+      });
+
+      testWidgets('số km không ẩn được, thời gian ẩn được', (tester) async {
+        await openEditor(tester);
+        IconButton hide() => tester.widget<IconButton>(
+          find.widgetWithIcon(IconButton, Icons.visibility_off_outlined),
+        );
+
+        await tester.tap(km());
+        await tester.pump();
+        expect(hide().onPressed, isNull);
+        expect(find.widgetWithText(FilterChip, 'Số km'), findsNothing);
+
+        final text = tester.widget<Text>(time()).data!;
+        await tester.tap(time());
+        await tester.pump();
+        expect(hide().onPressed, isNotNull);
+        hide().onPressed!();
+        await tester.pump();
+        expect(_shown(tester, inEditor(find.text(text))), isFalse);
+        // Ẩn rồi thì bật lại bằng chip của phần đó.
+        await tester.tap(find.widgetWithText(FilterChip, 'Thời gian'));
+        await tester.pump();
+        expect(_shown(tester, inEditor(find.text(text))), isTrue);
+      });
+
+      testWidgets('màu tô cho phần đang chọn, phần khác giữ màu', (
+        tester,
+      ) async {
+        await openEditor(tester);
+        final black = find.bySemanticsLabel('Màu Đen');
+
+        // Chưa chọn phần nào thì ô màu không tô gì.
+        await tester.tap(black);
+        await tester.pump();
+        expect(_tint(tester, time()), isNull);
+
+        await tester.tap(time());
+        await tester.pump();
+        await tester.tap(black);
+        await tester.pump();
+
+        expect(_tint(tester, time()), RunFaceTokens.ironCoal);
+        expect(_tint(tester, km()), isNull);
+      });
+
+      Future<RunCardLayout> saveAndRead(
+        WidgetTester tester,
+        RunCardStyleController styles,
+      ) async {
+        await tester.tap(find.text('Xong'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Dùng'));
+        await tester.pumpAndSettle();
+        final card = _card();
+        return styles.styleOf(card.id, card.rolledAt).layout;
+      }
+
+      testWidgets('Màu khác: chọn sắc rồi tông thì phần mang đúng màu đó', (
+        tester,
+      ) async {
+        final styles = await openEditor(tester);
+        await tester.tap(time());
+        await tester.pump();
+        await tester.tap(find.bySemanticsLabel('Màu khác'));
+        await tester.pump();
+        tester.widget<Slider>(find.byType(Slider)).onChanged!(120);
+        await tester.pump();
+        await tester.tap(find.bySemanticsLabel('Tông 48'));
+        await tester.pump();
+
+        // HSL(120°, 80%, 48%): C = 0,96 × 0,8 = 0,768, m = 0,096, nên
+        // RGB = (0,096; 0,864; 0,096) × 255 = (24, 220, 24) = 18dc18.
+        expect(_tint(tester, time()), const Color(0xFF18DC18));
+        final layout = await saveAndRead(tester, styles);
+        expect(layout.code, 'time:,,2,18dc18');
+      });
+
+      testWidgets('kéo đường chạy thì đường chạy dời, chữ đứng yên', (
+        tester,
+      ) async {
+        final styles = await openEditor(tester);
+        final c = cardRect(tester);
+        final kmBefore = tester.getRect(km());
+        // Nửa trên thẻ Thép chỉ có đường chạy, chữ nằm cả ở nửa dưới.
+        final gesture = await tester.startGesture(
+          Offset(c.center.dx, c.top + c.height * 0.25),
+        );
+        await gesture.moveBy(const Offset(40, 0));
+        await tester.pump();
+        await gesture.moveBy(const Offset(32, 0));
+        await tester.pump();
+        await gesture.up();
+        await tester.pump();
+        expect(tester.getRect(km()), kmBefore);
+
+        final layout = await saveAndRead(tester, styles);
+        expect(layout.parts.keys, [CardPart.route]);
+        expect(layout.of(CardPart.route).moved, isTrue);
+      });
+
+      testWidgets('Đặt lại về chỗ mặc định, huỷ thì không đổi gì', (
+        tester,
+      ) async {
+        final card = _card();
+        final styles = await openEditor(tester);
+        final text = tester.widget<Text>(time()).data!;
+        await tester.tap(time());
+        await tester.pump();
+        tester
+            .widget<IconButton>(
+              find.widgetWithIcon(IconButton, Icons.visibility_off_outlined),
+            )
+            .onPressed!();
+        await tester.pump();
+        await tester.tap(find.text('Đặt lại'));
+        await tester.pump();
+        expect(_shown(tester, inEditor(find.text(text))), isTrue);
+
+        await tester.tap(time());
+        await tester.pump();
+        tester
+            .widget<IconButton>(
+              find.widgetWithIcon(IconButton, Icons.visibility_off_outlined),
+            )
+            .onPressed!();
+        await tester.pump();
+        await tester.tap(find.byType(CloseButton));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Dùng'));
+        await tester.pumpAndSettle();
+        expect(
+          styles.styleOf(card.id, card.rolledAt).layout,
+          RunCardLayout.initial,
+        );
+      });
+    });
+
     Future<void> openViewer(WidgetTester tester, RunCard card) async {
       FlutterSecureStorage.setMockInitialValues({});
       tester.view.physicalSize = const Size(1170, 2532);
@@ -855,11 +1227,12 @@ void main() {
         expect(hint, findsNothing);
         await tester.pump(const Duration(milliseconds: 400));
         expect(hint, findsOneWidget);
-        // Hai nút một lượt chừng 5 giây: giây thứ 6 tay đang ở lượt hai.
-        await tester.pump(const Duration(seconds: 6));
+        // Ba chỗ (Chỉnh, chữ, mặt sau) một lượt chừng 6,5 giây: giây thứ 7
+        // tay đang ở lượt hai.
+        await tester.pump(const Duration(milliseconds: 6500));
         expect(hint, findsOneWidget);
-        // Ba lượt xong thì thôi.
-        await tester.pump(const Duration(seconds: 9));
+        // Ba lượt (chừng 19,3 giây) xong thì thôi.
+        await tester.pump(const Duration(seconds: 13));
         expect(hint, findsNothing);
         await tester.pumpWidget(const SizedBox());
 
@@ -869,14 +1242,20 @@ void main() {
         await tester.pump(const Duration(seconds: 15));
       });
 
-      testWidgets('tay ghé nút chữ rồi tới nút mặt sau', (tester) async {
+      testWidgets('tay ghé nút Chỉnh, rồi nút chữ, rồi nút mặt sau', (
+        tester,
+      ) async {
         await openCity(tester);
+        final edit = tester.getRect(find.byKey(runCardEditKey));
         final text = tester.getRect(find.byKey(runCardTextLayoutKey));
         final back = tester.getRect(toggleIn(runCardMapSwitchKey));
 
-        // Giữa lần ấn đầu ở chỗ thứ nhất, rồi giữa lần ấn đầu ở chỗ thứ hai.
+        // Giữa lần ấn đầu ở từng chỗ, mỗi chỗ cách nhau 1,76 giây.
         await tester.pump(const Duration(milliseconds: 1500));
+        expect(edit.contains(tester.getCenter(hint)), isTrue);
+        await tester.pump(const Duration(milliseconds: 1760));
         expect(text.contains(tester.getCenter(hint)), isTrue);
+        expect(edit.contains(tester.getCenter(hint)), isFalse);
         await tester.pump(const Duration(milliseconds: 1760));
         expect(back.contains(tester.getCenter(hint)), isTrue);
         expect(text.contains(tester.getCenter(hint)), isFalse);
@@ -985,7 +1364,7 @@ void main() {
         expect(styles.styleOf(card.id, card.rolledAt).id, 'current.full.route');
       });
 
-      testWidgets('hai nút mặt trước đứng sát nhau ở góc dưới trái', (
+      testWidgets('ba nút mặt trước đứng sát nhau ở góc dưới trái', (
         tester,
       ) async {
         await openWithArt(tester);
@@ -994,12 +1373,17 @@ void main() {
         final preview = tester.getRect(picker);
         final size = tester.getRect(choice);
         final text = tester.getRect(find.byKey(runCardTextLayoutKey));
+        final edit = tester.getRect(find.byKey(runCardEditKey));
 
         expect(size.center.dy, text.center.dy);
-        // Liền nhau: nút cỡ đường chạy ngay bên phải nút chữ.
-        expect(size.left, greaterThanOrEqualTo(text.right));
-        expect(size.left - text.right, lessThan(16));
-        expect(size.right, lessThan(preview.center.dx + 20));
+        expect(edit.center.dy, text.center.dy);
+        // Liền nhau theo thứ tự chữ, Chỉnh, cỡ đường chạy.
+        expect(edit.left, greaterThanOrEqualTo(text.right));
+        expect(edit.left - text.right, lessThan(16));
+        expect(size.left, greaterThanOrEqualTo(edit.right));
+        expect(size.left - edit.right, lessThan(16));
+        // Ba nút vượt quá giữa ảnh nhưng vẫn nằm trong ảnh.
+        expect(size.right, lessThan(preview.right));
         expect(text.center.dy, greaterThan(preview.bottom - 30));
       });
 

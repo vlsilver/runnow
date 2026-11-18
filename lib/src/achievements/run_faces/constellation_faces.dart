@@ -86,9 +86,12 @@ class _Ring extends CustomPainter {
 
 Widget constellationFront(RunFace f, RunCardTextLayout t) {
   final stack = [
-    fit(hero(f.km, 66, 15, h: 0.9, c: _bright), a: Alignment.center),
+    slotKm(
+      fit(hero(f.km, 66, 15, h: 0.9, c: _bright), a: Alignment.center),
+      a: Alignment.center,
+    ),
     const SizedBox(height: 5),
-    txt('${f.time} · ${f.pace} /km', 18, w: w6),
+    slotPace(txt('${f.time} · ${f.pace} /km', 18, w: w6), a: Alignment.center),
   ];
   final cy = switch (t) {
     RunCardTextLayout.full => 168.0,
@@ -126,7 +129,10 @@ Widget constellationFront(RunFace f, RunCardTextLayout t) {
             l: 18,
             r: 18,
             b: 18,
-            c: fit(hero(f.km, 40, 13, h: 1, c: _bright), a: Alignment.center),
+            c: slotKm(
+              fit(hero(f.km, 40, 13, h: 1, c: _bright), a: Alignment.center),
+              a: Alignment.center,
+            ),
           ),
         ],
       },

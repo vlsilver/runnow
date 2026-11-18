@@ -213,6 +213,7 @@ class RunCard {
     this.ownerUid,
     this.lookStyle,
     this.lookSkin,
+    this.lookLayout,
   });
 
   factory RunCard.fromJson(Map<String, dynamic> json) => RunCard(
@@ -230,6 +231,7 @@ class RunCard {
     ownerUid: _optString(json['ownerUid']),
     lookStyle: _optString(_map(json['look'])?['style']),
     lookSkin: _optString(_map(json['look'])?['skin']),
+    lookLayout: _optString(_map(json['look'])?['layout']),
   );
 
   /// Trùng id buổi chạy.
@@ -256,6 +258,9 @@ class RunCard {
   /// ghi tên bộ app này chưa biết, lúc vẽ mới đọc.
   final String? lookStyle;
   final String? lookSkin;
+
+  /// Các phần chủ thẻ đã chỉnh ở mặt trước, dạng `RunCardLayout` đọc.
+  final String? lookLayout;
 
   /// Tranh đã vẽ xong, null khi chưa có.
   String? get artPath =>

@@ -76,13 +76,19 @@ Widget medalFront(RunFace f, RunCardTextLayout t) {
   };
   final outer = r + 14;
   final stack = [
-    fit(hero(f.km, 62, 16, h: 0.9), a: Alignment.center),
+    slotKm(
+      fit(hero(f.km, 62, 16, h: 0.9), a: Alignment.center),
+      a: Alignment.center,
+    ),
     const SizedBox(height: 4),
-    txt(
-      '${f.name} · ${f.pace} /km · ${f.time}',
-      16,
-      w: w7,
-      a: TextAlign.center,
+    slotPace(
+      txt(
+        '${f.name} · ${f.pace} /km · ${f.time}',
+        16,
+        w: w7,
+        a: TextAlign.center,
+      ),
+      a: Alignment.center,
     ),
   ];
   return faceBox(
@@ -136,7 +142,10 @@ Widget medalFront(RunFace f, RunCardTextLayout t) {
             l: 16,
             r: 16,
             b: 16,
-            c: fit(hero(f.km, 42, 14, h: 1), a: Alignment.center),
+            c: slotKm(
+              fit(hero(f.km, 42, 14, h: 1), a: Alignment.center),
+              a: Alignment.center,
+            ),
           ),
         ],
       },

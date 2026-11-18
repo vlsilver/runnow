@@ -78,8 +78,11 @@ Widget _bib(
                   ),
                 Expanded(
                   child: Center(
-                    child: fit(
-                      hero(f.km, number, unit, h: 0.9),
+                    child: slotKm(
+                      fit(
+                        hero(f.km, number, unit, h: 0.9),
+                        a: Alignment.center,
+                      ),
                       a: Alignment.center,
                     ),
                   ),
@@ -119,8 +122,14 @@ Widget bibFront(RunFace f, RunCardTextLayout t) => faceBox(
             children: [
               txt(f.name, 20, w: w7, h: 1.1),
               const SizedBox(height: 2),
-              fit(
-                Text('${f.pace} /km · ${f.time}', style: faceStyle(13, w: w6)),
+              slotPace(
+                fit(
+                  Text(
+                    '${f.pace} /km · ${f.time}',
+                    style: faceStyle(13, w: w6),
+                  ),
+                ),
+                a: Alignment.centerLeft,
               ),
               const SizedBox(height: 5),
               txt('${f.owner} · ${f.clock}', 11, w: w6, ls: 1.2),
@@ -146,10 +155,13 @@ Widget bibFront(RunFace f, RunCardTextLayout t) => faceBox(
             children: [
               txt(f.name, 20, w: w7, h: 1.1),
               const SizedBox(height: 4),
-              txt(
-                '${f.pace} /km · ${f.time} · ${f.owner} ${f.clock}',
-                14,
-                w: w6,
+              slotPace(
+                txt(
+                  '${f.pace} /km · ${f.time} · ${f.owner} ${f.clock}',
+                  14,
+                  w: w6,
+                ),
+                a: Alignment.bottomCenter,
               ),
             ],
           ),
@@ -184,11 +196,19 @@ Widget _mapStats(RunFace f) => Padding(
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
         children: [
-          Flexible(child: fit(Text(f.time, style: faceStyle(40, h: 1)))),
+          Flexible(
+            child: slotTime(
+              fit(Text(f.time, style: faceStyle(40, h: 1))),
+              a: Alignment.centerLeft,
+            ),
+          ),
           const SizedBox(width: 8),
           Flexible(
-            child: fit(
-              Text('${f.pace} /km', style: faceStyle(26, h: 1)),
+            child: slotPace(
+              fit(
+                Text('${f.pace} /km', style: faceStyle(26, h: 1)),
+                a: Alignment.centerRight,
+              ),
               a: Alignment.centerRight,
             ),
           ),

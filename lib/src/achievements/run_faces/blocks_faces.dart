@@ -37,7 +37,7 @@ Widget _creamBlock(RunFace f, double height, double size) => SizedBox(
       Stack(
         fit: StackFit.expand,
         children: [
-          pin(l: 12, b: 6, c: _big(f.km, size, 208)),
+          pin(l: 12, b: 6, c: slotKm(_big(f.km, size, 208))),
           pin(
             r: 16,
             t: 12,
@@ -67,12 +67,21 @@ Widget _band(RunFace f) => Container(
     Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Flexible(flex: 5, child: fit(Text(f.time, style: faceStyle(52, h: 1)))),
+        Flexible(
+          flex: 5,
+          child: slotTime(
+            fit(Text(f.time, style: faceStyle(52, h: 1))),
+            a: Alignment.centerLeft,
+          ),
+        ),
         const SizedBox(width: 8),
         Flexible(
           flex: 3,
-          child: fit(
-            Text(f.pace, style: faceStyle(52, h: 1)),
+          child: slotPace(
+            fit(
+              Text(f.pace, style: faceStyle(52, h: 1)),
+              a: Alignment.centerRight,
+            ),
             a: Alignment.centerRight,
           ),
         ),
@@ -107,7 +116,12 @@ Widget blocksFront(RunFace f, RunCardTextLayout t) {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Flexible(child: fit(hero(f.km, 62, 18, h: 1))),
+                    Flexible(
+                      child: slotKm(
+                        fit(hero(f.km, 62, 18, h: 1)),
+                        a: Alignment.centerLeft,
+                      ),
+                    ),
                     txt(f.rarity, 11, ls: 2),
                   ],
                 ),

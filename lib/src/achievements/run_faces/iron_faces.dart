@@ -67,7 +67,9 @@ Widget _strip(RunFace f) => Container(
     children: [
       Expanded(
         flex: 5,
-        child: fit(Text(f.time, maxLines: 1, style: faceStyle(40, h: 1))),
+        child: slotTime(
+          fit(Text(f.time, maxLines: 1, style: faceStyle(40, h: 1))),
+        ),
       ),
       const Padding(
         padding: EdgeInsets.symmetric(horizontal: 8),
@@ -75,8 +77,11 @@ Widget _strip(RunFace f) => Container(
       ),
       Expanded(
         flex: 4,
-        child: fit(
-          hero(f.pace, 40, 13, h: 1, label: '/KM'),
+        child: slotPace(
+          fit(
+            hero(f.pace, 40, 13, h: 1, label: '/KM'),
+            a: Alignment.centerRight,
+          ),
           a: Alignment.centerRight,
         ),
       ),
@@ -117,7 +122,7 @@ Widget ironFront(RunFace f, RunCardTextLayout t) {
                 badgeAt(f, l: 14, t: 14),
                 stampAt(f, r: 14, t: 14),
                 pin(l: 14, r: 14, b: 176, c: _labels(f)),
-                pin(l: 6, b: 2, c: _big(f.km, 220, 288, ls: -8)),
+                pin(l: 6, b: 2, c: slotKm(_big(f.km, 220, 288, ls: -8))),
               ],
             ),
             _strip(f),
@@ -127,7 +132,11 @@ Widget ironFront(RunFace f, RunCardTextLayout t) {
               (0.68, 0.95),
               [
                 pin(l: 14, r: 14, t: 14, c: _labels(f)),
-                pin(l: 6, t: 30, c: _big(f.km, 220, 288, ls: -8)),
+                pin(
+                  l: 6,
+                  t: 30,
+                  c: slotKm(_big(f.km, 220, 288, ls: -8), a: Alignment.topLeft),
+                ),
                 badgeAt(f, l: 14, b: 14),
                 stampAt(f, r: 14, b: 14),
               ],
@@ -146,7 +155,12 @@ Widget ironFront(RunFace f, RunCardTextLayout t) {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Flexible(child: fit(hero(f.km, 60, 18, h: 1))),
+                  Flexible(
+                    child: slotKm(
+                      fit(hero(f.km, 60, 18, h: 1)),
+                      a: Alignment.centerLeft,
+                    ),
+                  ),
                   txt(f.rarity, 11, ls: 2, c: _red),
                 ],
               ),

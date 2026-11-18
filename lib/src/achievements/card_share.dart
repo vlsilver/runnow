@@ -126,7 +126,7 @@ String cardShareKey(
   final key = '${hash.toRadixString(16)}.${skin.id}.${format.name}';
   return style == null || style == RunCardStyle.current
       ? key
-      : '$key.${style.id}';
+      : '$key.${style.shareKey}';
 }
 
 String runCardShareKey(

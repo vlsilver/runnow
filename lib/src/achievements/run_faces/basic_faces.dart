@@ -35,18 +35,28 @@ class BasicFront extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Flexible(flex: 3, child: fit(hero(f.km, 25, 11))),
-                const SizedBox(width: 6),
                 Flexible(
                   flex: 3,
-                  child: fit(
-                    Text('${f.pace} /km', style: faceStyle(15, w: w6)),
+                  child: slotKm(
+                    fit(hero(f.km, 25, 11)),
+                    a: Alignment.centerLeft,
                   ),
                 ),
                 const SizedBox(width: 6),
                 Flexible(
                   flex: 3,
-                  child: fit(Text(f.time, style: faceStyle(15, w: w6))),
+                  child: slotPace(
+                    fit(Text('${f.pace} /km', style: faceStyle(15, w: w6))),
+                    a: Alignment.centerLeft,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  flex: 3,
+                  child: slotTime(
+                    fit(Text(f.time, style: faceStyle(15, w: w6))),
+                    a: Alignment.centerLeft,
+                  ),
                 ),
                 const SizedBox(width: 6),
                 txt('3I', 11, w: w7, ls: 1.5, c: skin.accent(f.tier)),

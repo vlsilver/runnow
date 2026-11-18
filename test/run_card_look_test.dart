@@ -124,7 +124,8 @@ void main() {
         _card('may-chua-chon'),
         _card('the-an', variant: 'secret.fire'),
       ],
-      localStyleId: (card) => card.id == 'may-chua-chon' ? null : 'medal.full',
+      localStyle: (card) =>
+          card.id == 'may-chua-chon' ? null : {'style': 'medal.full'},
       skinId: 'dark.fire',
     );
     expect(looks, [
@@ -133,11 +134,7 @@ void main() {
       {'activityId': 'may-chua-chon', 'skin': 'dark.fire'},
     ]);
     expect(
-      missingRunCardLooks(
-        [_card('a1')],
-        localStyleId: (_) => null,
-        skinId: null,
-      ),
+      missingRunCardLooks([_card('a1')], localStyle: (_) => null, skinId: null),
       isEmpty,
     );
   });
@@ -184,7 +181,7 @@ void main() {
       final failing = RunCardLookSync(
         (looks, {fill = false}) async => throw Exception('503'),
       );
-      await failing.cardStyle('a1', 'city.top');
+      await failing.cardStyle('a1', {'style': 'city.top'});
     });
   });
 }

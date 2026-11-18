@@ -30,9 +30,15 @@ Widget _line(String s, double size, Color color, {double ls = 0}) => Text(
 );
 
 /// Một nửa hàng: chữ dài quá thì co lại chứ không tràn.
-Widget _fitted(Widget child, {bool end = false}) => Flexible(
-  child: fit(child, a: end ? Alignment.centerRight : Alignment.centerLeft),
-);
+Widget _fitted(
+  Widget child, {
+  bool end = false,
+  Widget Function(Widget, {Alignment a})? slot,
+}) {
+  final a = end ? Alignment.centerRight : Alignment.centerLeft;
+  final fitted = fit(child, a: a);
+  return Flexible(child: slot?.call(fitted, a: a) ?? fitted);
+}
 
 /// Pixel không có bảng màu riêng: cảnh và chữ lấy màu của bộ màu thẻ.
 class PixelFront extends StatelessWidget {
@@ -58,9 +64,16 @@ class PixelFront extends StatelessWidget {
           c: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _fitted(_line('PACE ${f.pace}', 24, skin.hero, ls: 1)),
+              _fitted(
+                _line('PACE ${f.pace}', 24, skin.hero, ls: 1),
+                slot: slotPace,
+              ),
               const SizedBox(width: 8),
-              _fitted(_line('TIME ${f.time}', 24, skin.hero, ls: 1), end: true),
+              _fitted(
+                _line('TIME ${f.time}', 24, skin.hero, ls: 1),
+                slot: slotTime,
+                end: true,
+              ),
             ],
           ),
         ),
@@ -69,18 +82,21 @@ class PixelFront extends StatelessWidget {
           r: 16,
           t: _groundBottom + 6,
           h: 74,
-          c: fit(
-            baseline([
-              Text(
-                f.km,
-                maxLines: 1,
-                softWrap: false,
-                style: _px(100, skin.hero, h: 0.74).copyWith(
-                  shadows: [Shadow(color: skin.routeLine, offset: _hard)],
+          c: slotKm(
+            fit(
+              baseline([
+                Text(
+                  f.km,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: _px(100, skin.hero, h: 0.74).copyWith(
+                    shadows: [Shadow(color: skin.routeLine, offset: _hard)],
+                  ),
                 ),
-              ),
-              Text('KM', style: _px(34, skin.routeLine)),
-            ], gap: 8),
+                Text('KM', style: _px(34, skin.routeLine)),
+              ], gap: 8),
+            ),
+            a: Alignment.centerLeft,
           ),
         ),
         pin(

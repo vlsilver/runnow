@@ -100,7 +100,13 @@ Widget cityFront(RunFace f, RunCardTextLayout t) {
               children: [
                 Row(
                   children: [
-                    Expanded(flex: 4, child: fit(hero(f.km, 46, 14, h: 0.95))),
+                    Expanded(
+                      flex: 4,
+                      child: slotKm(
+                        fit(hero(f.km, 46, 14, h: 0.95)),
+                        a: Alignment.centerLeft,
+                      ),
+                    ),
                     Expanded(
                       flex: 5,
                       child: Column(
@@ -108,10 +114,13 @@ Widget cityFront(RunFace f, RunCardTextLayout t) {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           txt(f.name, 19, w: w7, h: 1.1),
-                          fit(
-                            Text(
-                              '${f.pace} /km · ${f.time}',
-                              style: faceStyle(13, w: w6),
+                          slotPace(
+                            fit(
+                              Text(
+                                '${f.pace} /km · ${f.time}',
+                                style: faceStyle(13, w: w6),
+                              ),
+                              a: Alignment.centerRight,
                             ),
                             a: Alignment.centerRight,
                           ),
@@ -163,7 +172,10 @@ Widget cityFront(RunFace f, RunCardTextLayout t) {
             t: 12,
             r: 62,
             h: 100,
-            c: fit(hero(f.km, 104, 20, h: 0.88, ls: -1), a: Alignment.topLeft),
+            c: slotKm(
+              fit(hero(f.km, 104, 20, h: 0.88, ls: -1), a: Alignment.topLeft),
+              a: Alignment.topLeft,
+            ),
           ),
           badgeAt(f, r: 17, t: 17),
           stampAt(f, r: 14, t: 90),
@@ -175,7 +187,10 @@ Widget cityFront(RunFace f, RunCardTextLayout t) {
               children: [
                 Expanded(child: txt(f.name, 17, w: w7)),
                 const SizedBox(width: 8),
-                txt('${f.pace} /km · ${f.time}', 14, w: w7),
+                slotPace(
+                  txt('${f.pace} /km · ${f.time}', 14, w: w7),
+                  a: Alignment.centerRight,
+                ),
               ],
             ),
           ),
@@ -189,7 +204,12 @@ Widget cityFront(RunFace f, RunCardTextLayout t) {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Flexible(child: fit(hero(f.km, 30, 12, h: 1))),
+                Flexible(
+                  child: slotKm(
+                    fit(hero(f.km, 30, 12, h: 1)),
+                    a: Alignment.centerLeft,
+                  ),
+                ),
                 tag,
               ],
             ),

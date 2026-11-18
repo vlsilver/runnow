@@ -39,21 +39,30 @@ Widget _total(RunFace f) => Row(
     txt('TỔNG', 16, ls: 1),
     const SizedBox(width: 10),
     Flexible(
-      child: fit(
-        Text('${f.km} KM', maxLines: 1, style: faceStyle(44, h: 0.95)),
+      child: slotKm(
+        fit(
+          Text('${f.km} KM', maxLines: 1, style: faceStyle(44, h: 0.95)),
+          a: Alignment.centerRight,
+        ),
         a: Alignment.centerRight,
       ),
     ),
   ],
 );
 
-Widget _rows(List<(String, String)> items, {double gap = 3}) => Column(
+/// [slots] là khe của từng dòng, cùng thứ tự với [items]; thiếu thì dòng đó
+/// không chỉnh được.
+Widget _rows(
+  List<(String, String)> items, {
+  double gap = 3,
+  List<Widget Function(Widget, {Alignment a})> slots = const [],
+}) => Column(
   mainAxisSize: MainAxisSize.min,
   children: [
     for (final (i, (a, b)) in items.indexed)
       Padding(
         padding: EdgeInsets.only(top: i == 0 ? 0 : gap),
-        child: Row(
+        child: switch (Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
@@ -61,7 +70,10 @@ Widget _rows(List<(String, String)> items, {double gap = 3}) => Column(
             txt(a, 15, w: w6, c: _rowLabel),
             txt(b, 15, w: w7),
           ],
-        ),
+        )) {
+          final row when i < slots.length => slots[i](row),
+          final row => row,
+        },
       ),
   ],
 );
@@ -138,7 +150,10 @@ Widget receiptFront(RunFace f, RunCardTextLayout t) {
       ),
     ),
   );
-  final rows = _rows([('Thời gian', f.time), ('Pace', '${f.pace} /km')]);
+  final rows = _rows(
+    [('Thời gian', f.time), ('Pace', '${f.pace} /km')],
+    slots: [slotTime, slotPace],
+  );
   return _ticket(switch (t) {
     RunCardTextLayout.full => [
       _head(f),

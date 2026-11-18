@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card.dart';
+import 'package:myrun/src/achievements/run_card_editor.dart';
+import 'package:myrun/src/achievements/run_card_layout.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
@@ -28,6 +30,7 @@ const runCardRouteSizeKey = ValueKey('run-card-route-size');
 
 @visibleForTesting
 const runCardTextLayoutKey = ValueKey('run-card-text-layout');
+const runCardEditKey = ValueKey('run-card-edit');
 
 /// Chọn bộ thẻ, kiểu chữ và bộ màu ngay trên [card]. Không có thẻ thật thì xem
 /// trước thẻ mẫu và chỉ đổi mặc định.
@@ -130,6 +133,10 @@ class _RunCardStyleSheetState extends ConsumerState<RunCardStyleSheet> {
   late RunCardTextLayout _text;
   late bool _map;
   late bool _bigRoute;
+
+  /// Bố cục chỉnh riêng của từng bộ: toạ độ và thứ tự màu chỉ có nghĩa với
+  /// bộ đã chỉnh, nên đổi bộ thì bộ kia vẽ y như gốc.
+  late final Map<RunCardSet, RunCardLayout> _layouts;
   late bool _follow;
   late RunNowAppearance _appearance;
   late RunNowElement _element;
@@ -141,6 +148,7 @@ class _RunCardStyleSheetState extends ConsumerState<RunCardStyleSheet> {
   final _sizeSpot = GlobalKey();
   final _textSpot = GlobalKey();
   final _mapSpot = GlobalKey();
+  final _editSpot = GlobalKey();
 
   @override
   void initState() {
@@ -150,6 +158,7 @@ class _RunCardStyleSheetState extends ConsumerState<RunCardStyleSheet> {
     _text = start.text;
     _map = start.map;
     _bigRoute = start.bigRoute;
+    _layouts = {start.set: start.layout};
     final choice = ref.read(runCardSkinControllerProvider).choice;
     final app = ref.read(themeControllerProvider);
     _follow = choice == null;
@@ -182,7 +191,21 @@ class _RunCardStyleSheetState extends ConsumerState<RunCardStyleSheet> {
     final style = _map && set.hasMapOption
         ? RunCardStyle.withMap(set, text)
         : RunCardStyle(set, text);
-    return style.withBigRoute(_bigRoute && set.hasRouteSizeOption);
+    return style
+        .withBigRoute(_bigRoute && set.hasRouteSizeOption)
+        .withLayout(_layouts[set] ?? RunCardLayout.initial);
+  }
+
+  Future<void> _openEditor(RunCardSet set, RunCardSkin skin) async {
+    _toggle(() => _set = set);
+    final layout = await showRunCardEditor(
+      context,
+      data: widget.data,
+      style: _styleOf(set),
+      skin: skin,
+    );
+    if (!mounted || layout == null) return;
+    setState(() => _layouts[set] = layout);
   }
 
   void _toggle(VoidCallback change) {
@@ -308,6 +331,15 @@ class _RunCardStyleSheetState extends ConsumerState<RunCardStyleSheet> {
                                     spot: _textSpot,
                                     onTap: () => _toggle(_nextText),
                                   ),
+                                _Option(
+                                  label: 'Chỉnh',
+                                  value: 'Chỉnh',
+                                  icon: _Icon.edit,
+                                  left: true,
+                                  spot: _editSpot,
+                                  semanticsKey: runCardEditKey,
+                                  onTap: () => _openEditor(_set, skin),
+                                ),
                                 if (canBigRoute)
                                   _Option(
                                     label: 'Cỡ đường chạy',
@@ -354,6 +386,7 @@ class _RunCardStyleSheetState extends ConsumerState<RunCardStyleSheet> {
                         Positioned.fill(
                           child: _TourHint(
                             spots: [
+                              _editSpot,
                               if (canBigRoute) _sizeSpot,
                               if (_set.ownColors) _textSpot,
                               if (canMap) _mapSpot,
@@ -377,6 +410,7 @@ class _RunCardStyleSheetState extends ConsumerState<RunCardStyleSheet> {
                           style: _styleOf(set),
                           selected: set == _set,
                           onTap: () => setState(() => _set = set),
+                          onEdit: () => _openEditor(set, skin),
                         );
                       },
                     ),
@@ -613,9 +647,10 @@ class _PreviewState extends State<_Preview> {
   }
 }
 
-enum _Icon { expand, shrink, text, map }
+enum _Icon { expand, shrink, text, map, edit }
 
-/// Icon nét 24×24 của nút: mũi tên phóng to, thu vào, chữ Tt, tấm bản đồ gấp.
+/// Icon nét 24×24 của nút: mũi tên phóng to, thu vào, chữ Tt, tấm bản đồ gấp,
+/// cây bút.
 class _IconPainter extends CustomPainter {
   const _IconPainter(this.icon, this.ink);
 
@@ -652,6 +687,9 @@ class _IconPainter extends CustomPainter {
         line([(21, 17.5), (15, 20), (9, 17.5), (3, 20), (3, 6.5)]);
         line([(9, 4), (9, 17.5)]);
         line([(15, 6.5), (15, 20)]);
+      case _Icon.edit:
+        line([(4, 20), (5, 15), (16, 4), (20, 8), (9, 19), (4, 20)]);
+        line([(13.5, 6.5), (17.5, 10.5)]);
     }
     return p;
   }
@@ -932,12 +970,16 @@ class _Thumb extends StatelessWidget {
     required this.style,
     required this.selected,
     required this.onTap,
+    this.onEdit,
   });
 
   final AchievementCardData data;
   final RunCardStyle style;
   final bool selected;
   final VoidCallback onTap;
+
+  /// Bộ chỉnh được có nút bút ở góc ảnh, bấm là vào thẳng màn chỉnh.
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -952,16 +994,54 @@ class _Thumb extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.all(1),
-              decoration: BoxDecoration(
-                borderRadius: context.runNowPalette.radius(7),
-                border: Border.all(
-                  color: selected ? ink : Colors.transparent,
-                  width: 2,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(1),
+                  decoration: BoxDecoration(
+                    borderRadius: context.runNowPalette.radius(7),
+                    border: Border.all(
+                      color: selected ? ink : Colors.transparent,
+                      width: 2,
+                    ),
+                  ),
+                  child: _card(data, style, 58),
                 ),
-              ),
-              child: _card(data, style, 58),
+                if (onEdit case final onEdit?)
+                  Positioned(
+                    top: -4,
+                    right: -4,
+                    // Nút riêng trong ô bộ thẻ, không gộp vào nút chọn bộ.
+                    child: Semantics(
+                      container: true,
+                      button: true,
+                      label: 'Chỉnh ${style.set.label}',
+                      excludeSemantics: true,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onEdit,
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: ink,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Icon(
+                                Icons.edit_rounded,
+                                size: 14,
+                                color: theme.colorScheme.surface,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 5),
             SizedBox(

@@ -126,17 +126,20 @@ Widget heroTiles(
   );
 }
 
-Widget _heroBoard(RunFace f) => heroTiles(
-  f.km,
-  268,
-  digit: 84,
-  comma: 34,
-  unit: 54,
-  height: 112,
-  font: 104,
-  unitFont: 30,
-  hinge: 2,
-  shadow: true,
+Widget _heroBoard(RunFace f) => slotKm(
+  heroTiles(
+    f.km,
+    268,
+    digit: 84,
+    comma: 34,
+    unit: 54,
+    height: 112,
+    font: 104,
+    unitFont: 30,
+    hinge: 2,
+    shadow: true,
+  ),
+  a: Alignment.topLeft,
 );
 
 Widget _totals(RunFace f) {
@@ -153,9 +156,15 @@ Widget _totals(RunFace f) {
     mainAxisAlignment: MainAxisAlignment.spaceBetween,
     crossAxisAlignment: CrossAxisAlignment.end,
     children: [
-      Flexible(flex: 7, child: block('THỜI GIAN', f.time)),
+      Flexible(
+        flex: 7,
+        child: slotTime(block('THỜI GIAN', f.time), a: Alignment.bottomLeft),
+      ),
       const SizedBox(width: 6),
-      Flexible(flex: 4, child: block('PACE /KM', f.pace)),
+      Flexible(
+        flex: 4,
+        child: slotPace(block('PACE /KM', f.pace), a: Alignment.bottomLeft),
+      ),
     ],
   );
 }
@@ -252,16 +261,19 @@ Widget flipBoardFront(RunFace f, RunCardTextLayout t) => faceBox(
           c: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              heroTiles(
-                f.km,
-                190,
-                digit: 34,
-                comma: 16,
-                unit: 34,
-                height: 46,
-                font: 40,
-                unitFont: 18,
-                spread: false,
+              slotKm(
+                heroTiles(
+                  f.km,
+                  190,
+                  digit: 34,
+                  comma: 16,
+                  unit: 34,
+                  height: 46,
+                  font: 40,
+                  unitFont: 18,
+                  spread: false,
+                ),
+                a: Alignment.centerLeft,
               ),
               txt(f.rarity, 11, ls: 2, c: _soft),
             ],

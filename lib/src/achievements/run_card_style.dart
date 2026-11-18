@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:myrun/src/achievements/run_card_layout.dart';
 import 'package:myrun/src/achievements/run_card_look_sync.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 
@@ -70,17 +71,20 @@ enum RunCardTextLayout {
 class RunCardStyle {
   const RunCardStyle(this.set, [this.text = RunCardTextLayout.full])
     : map = false,
-      bigRoute = false;
+      bigRoute = false,
+      layout = RunCardLayout.initial;
 
   const RunCardStyle.withMap(this.set, [this.text = RunCardTextLayout.full])
     : map = true,
-      bigRoute = false;
+      bigRoute = false,
+      layout = RunCardLayout.initial;
 
   const RunCardStyle._(
     this.set,
     this.text, {
     required this.map,
     required this.bigRoute,
+    this.layout = RunCardLayout.initial,
   });
 
   static const current = RunCardStyle(RunCardSet.current);
@@ -95,8 +99,34 @@ class RunCardStyle {
   /// tắt để thẻ đã có giữ nguyên vẻ cũ.
   final bool bigRoute;
 
+  /// Phần chủ thẻ đã chỉnh; bộ không chỉnh được thì luôn là mặc định.
+  final RunCardLayout layout;
+
   RunCardStyle withBigRoute(bool on) =>
-      RunCardStyle._(set, text, map: map, bigRoute: on);
+      RunCardStyle._(set, text, map: map, bigRoute: on, layout: layout);
+
+  RunCardStyle withLayout(RunCardLayout value) => RunCardStyle._(
+    set,
+    text,
+    map: map,
+    bigRoute: bigRoute,
+    layout: value,
+  );
+
+  /// Các field `look` backend lưu cho kiểu này; layout rỗng là bỏ bố cục
+  /// đã chỉnh trước đó.
+  Map<String, String> get look => {'style': id, 'layout': layout.code};
+
+  /// Khoá cache ảnh khoe: [id] cộng bố cục đã chỉnh, để kéo lại một phần là
+  /// khoe ra ảnh mới.
+  String get shareKey {
+    if (layout == RunCardLayout.initial) return id;
+    var hash = 0x811c9dc5;
+    for (final unit in layout.code.codeUnits) {
+      hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
+    }
+    return '$id.${hash.toRadixString(16)}';
+  }
 
   /// Dạng lưu và vào khoá cache, ví dụ "blueprint.top", "city.top.map". Tắt
   /// cả hai cờ thì không có hậu tố, nên id và file khoe đã có trên máy vẫn
@@ -115,7 +145,7 @@ class RunCardStyle {
     'mapRoute': (true, true),
   };
 
-  static RunCardStyle? parse(String raw) {
+  static RunCardStyle? parse(String raw, {String? layout}) {
     final parts = raw.split('.');
     if (parts.length < 2 || parts.length > 3) return null;
     final flags = _flags[parts.length == 3 ? parts[2] : ''];
@@ -125,7 +155,12 @@ class RunCardStyle {
     final text = RunCardTextLayout.values.asNameMap()[parts[1]];
     if (set == null || text == null) return null;
     final (map, bigRoute) = flags;
-    return RunCardStyle._(set, text, map: map, bigRoute: bigRoute);
+    return RunCardStyle._(
+      set,
+      text,
+      map: map,
+      bigRoute: bigRoute,
+    ).withLayout(RunCardLayout.parse(layout));
   }
 
   @override
@@ -134,16 +169,17 @@ class RunCardStyle {
       other.set == set &&
       other.text == text &&
       other.map == map &&
-      other.bigRoute == bigRoute;
+      other.bigRoute == bigRoute &&
+      other.layout == layout;
 
   @override
-  int get hashCode => Object.hash(set, text, map, bigRoute);
+  int get hashCode => Object.hash(set, text, map, bigRoute, layout);
 }
 
 /// Kiểu chủ thẻ đã lưu trên backend; null khi chưa lưu hoặc là bộ app này
 /// chưa biết.
 RunCardStyle? savedRunCardStyle(RunCard card) => switch (card.lookStyle) {
-  final raw? => RunCardStyle.parse(raw),
+  final raw? => RunCardStyle.parse(raw, layout: card.lookLayout),
   null => null,
 };
 
@@ -239,10 +275,31 @@ class RunCardStyleController extends ChangeNotifier {
   @visibleForTesting
   String encode() => jsonEncode({
     'd': [
-      for (final item in _defaults) [item.at, item.style.id],
+      for (final item in _defaults) [item.at, ..._stored(item.style)],
     ],
-    'c': {for (final e in _cards.entries) e.key: e.value.id},
+    'c': {
+      for (final e in _cards.entries)
+        e.key: switch (_stored(e.value)) {
+          [final id] => id,
+          final full => full,
+        },
+    },
   });
+
+  /// Kiểu thường lưu mỗi id như cũ; kiểu đã chỉnh kèm bố cục.
+  static List<String> _stored(RunCardStyle style) =>
+      style.layout == RunCardLayout.initial
+      ? [style.id]
+      : [style.id, style.layout.code];
+
+  static RunCardStyle? _restored(Object? raw) => switch (raw) {
+    final String id => RunCardStyle.parse(id),
+    [final String id, final String layout] => RunCardStyle.parse(
+      id,
+      layout: layout,
+    ),
+    _ => null,
+  };
 
   /// Sai dạng thì coi như chưa chọn gì, thẻ vẫn vẽ được kiểu gốc.
   @visibleForTesting
@@ -259,15 +316,14 @@ class RunCardStyleController extends ChangeNotifier {
     _defaults = [
       if (json['d'] case final List items)
         for (final item in items)
-          if (item case [final int at, final String id])
-            if (RunCardStyle.parse(id) case final style?)
+          if (item case [final int at, ...final rest])
+            if (_restored(rest.length == 1 ? rest.single : rest)
+                case final style?)
               (at: at, style: style),
     ];
     _cards = {
       if (json['c'] case final Map cards)
-        for (final e in cards.entries)
-          if (e.value case final String id)
-            e.key.toString(): ?RunCardStyle.parse(id),
+        for (final e in cards.entries) e.key.toString(): ?_restored(e.value),
     };
   }
 
@@ -284,7 +340,7 @@ final runCardStyleControllerProvider =
     ChangeNotifierProvider<RunCardStyleController>(
       (ref) => RunCardStyleController(
         onCardStyle: (cardId, style) =>
-            ref.read(runCardLookSyncProvider).cardStyle(cardId, style.id),
+            ref.read(runCardLookSyncProvider).cardStyle(cardId, style.look),
       ),
     );
 

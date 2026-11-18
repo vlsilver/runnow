@@ -88,7 +88,10 @@ Widget _window({
 
 Widget _full(RunFace f) => Row(
   children: [
-    Expanded(flex: 4, child: fit(hero(f.km, 62, 16, h: 0.9))),
+    Expanded(
+      flex: 4,
+      child: slotKm(fit(hero(f.km, 62, 16, h: 0.9)), a: Alignment.centerLeft),
+    ),
     const SizedBox(width: 6),
     Expanded(
       flex: 5,
@@ -97,8 +100,11 @@ Widget _full(RunFace f) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           txt(f.name, 22, h: 1.05),
-          fit(
-            Text('${f.pace} /km · ${f.time}', style: faceStyle(14, w: w6)),
+          slotPace(
+            fit(
+              Text('${f.pace} /km · ${f.time}', style: faceStyle(14, w: w6)),
+              a: Alignment.centerRight,
+            ),
             a: Alignment.centerRight,
           ),
           txt(f.rarity, 11, ls: 1.5, c: _tag),
@@ -111,7 +117,9 @@ Widget _full(RunFace f) => Row(
 Widget _min(RunFace f) => Row(
   mainAxisAlignment: MainAxisAlignment.spaceBetween,
   children: [
-    Flexible(child: fit(hero(f.km, 28, 12, h: 1))),
+    Flexible(
+      child: slotKm(fit(hero(f.km, 28, 12, h: 1)), a: Alignment.centerLeft),
+    ),
     txt(f.rarity, 11, ls: 1.5, c: _tag),
   ],
 );

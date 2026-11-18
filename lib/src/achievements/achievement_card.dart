@@ -2,7 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:myrun/src/achievements/run_card_layout.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
+import 'package:myrun/src/achievements/run_faces/face_edit.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/theme.dart';
 
@@ -33,6 +35,7 @@ class AchievementCardData {
     this.stamp,
     this.backFace,
     this.frontFace,
+    this.wrapFront,
     this.secret,
     this.skin,
     this.stats,
@@ -80,6 +83,10 @@ class AchievementCardData {
   /// Ruột mặt trước thay cho bố cục mặc định; khung và vệt sáng của bậc vẫn
   /// do thẻ vẽ. Trả null thì giữ bố cục mặc định.
   final Widget? Function(BuildContext context)? frontFace;
+
+  /// Bọc ruột mặt trước, của [frontFace] hay bố cục mặc định, ví dụ để các
+  /// phần chủ thẻ đã chỉnh đọc được bố cục. Không có thì giữ nguyên.
+  final Widget Function(BuildContext context, Widget front)? wrapFront;
 
   /// Có số liệu thì khối chữ là tên ngắn và hàng số liệu thay cho [desc].
   final List<AchievementStat>? stats;
@@ -384,7 +391,7 @@ class _Front extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           ColoredBox(color: skin.field),
-          face,
+          data.wrapFront?.call(context, face) ?? face,
           if (sheen != null) _Sheen(light: light, color: sheen),
           if (!context.runNowPalette.squared)
             IgnorePointer(
@@ -429,6 +436,7 @@ class _Front extends StatelessWidget {
       style: label(accent, 11),
     );
     Widget hero(double size) => Row(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
       children: [
@@ -477,19 +485,22 @@ class _Front extends StatelessWidget {
                 children: [
                   kind,
                   const SizedBox(height: 3),
-                  hero(38),
+                  _slot(CardPart.km, hero(38)),
                   const SizedBox(height: 4),
                   _Title(text: data.title, tier: tier, skin: skin),
                   const SizedBox(height: 4),
-                  Text(
-                    data.desc,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      height: 1.38,
-                      fontStyle: FontStyle.italic,
-                      color: ink.withValues(alpha: 0.84),
+                  _slot(
+                    CardPart.pace,
+                    Text(
+                      data.desc,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        height: 1.38,
+                        fontStyle: FontStyle.italic,
+                        color: ink.withValues(alpha: 0.84),
+                      ),
                     ),
                   ),
                 ],
@@ -558,7 +569,7 @@ class _Front extends StatelessWidget {
               ),
             ),
           );
-    return Stack(
+    final front = Stack(
       fit: StackFit.expand,
       children: [
         ColoredBox(color: skin.field),
@@ -661,24 +672,29 @@ class _Front extends StatelessWidget {
             right: _inset,
             width: 64,
             height: 64,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                shape: context.runNowPalette.round,
-                color: skin.stamp,
-                border: Border.all(
-                  color: accent,
-                  width: 1.5,
-                  strokeAlign: BorderSide.strokeAlignOutside,
-                ),
-                boxShadow: const [
-                  BoxShadow(
-                    color: _T.stampDrop,
-                    blurRadius: 16,
-                    offset: Offset(0, 6),
+            // Thẻ có tranh thì đường chạy là con dấu: dời, đổi cỡ, ẩn cả dấu.
+            child: PartSlot(
+              CardPart.route,
+              tint: false,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: context.runNowPalette.round,
+                  color: skin.stamp,
+                  border: Border.all(
+                    color: accent,
+                    width: 1.5,
+                    strokeAlign: BorderSide.strokeAlignOutside,
                   ),
-                ],
+                  boxShadow: const [
+                    BoxShadow(
+                      color: _T.stampDrop,
+                      blurRadius: 16,
+                      offset: Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: ClipOval(child: stamp),
               ),
-              child: ClipOval(child: stamp),
             ),
           ),
         if (tier == GameCardTier.mythic)
@@ -690,6 +706,7 @@ class _Front extends StatelessWidget {
         GameCardGlare(at: light, strength: 0.38),
       ],
     );
+    return data.wrapFront?.call(context, front) ?? front;
   }
 }
 
@@ -1117,6 +1134,15 @@ class _Title extends StatelessWidget {
 }
 
 /// Một ô trong hàng số liệu: số to, nhãn nhỏ bên dưới.
+/// Khe chủ thẻ chỉnh được ở mặt trước mặc định (chỉ thẻ buổi chạy đặt bố
+/// cục, thẻ khác vẽ y như cũ). Khe ôm sát phần, đứng bên trái như cột chữ.
+Widget _slot(CardPart part, Widget child) => Align(
+  alignment: Alignment.centerLeft,
+  widthFactor: 1,
+  heightFactor: 1,
+  child: PartSlot(part, anchor: Alignment.centerLeft, child: child),
+);
+
 class _Stat extends StatelessWidget {
   const _Stat({required this.stat, required this.skin});
 

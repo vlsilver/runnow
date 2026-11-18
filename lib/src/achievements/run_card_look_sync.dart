@@ -10,17 +10,17 @@ typedef SendRunCardLooks =
 
 /// Phần kiểu thẻ, bộ màu mà doc thẻ của mình chưa có trong khi máy này đã
 /// chọn: thẻ đặt kiểu trước khi app biết gửi lên, và thẻ lật sau đó mặc kiểu
-/// mặc định. [localStyleId] trả kiểu máy này giữ cho thẻ, null là không có gì
-/// đáng gửi.
+/// mặc định. [localStyle] trả các field kiểu máy này giữ cho thẻ (style, và
+/// layout, caption của bộ Tự do), null là không có gì đáng gửi.
 List<Map<String, String>> missingRunCardLooks(
   List<RunCard> cards, {
-  required String? Function(RunCard card) localStyleId,
+  required Map<String, String>? Function(RunCard card) localStyle,
   required String? skinId,
 }) => [
   for (final card in cards)
     if (card.secret == null)
       if ({
-            if (card.lookStyle == null) 'style': ?localStyleId(card),
+            if (card.lookStyle == null) ...?localStyle(card),
             if (card.lookSkin == null) 'skin': ?skinId,
           }
           case final look when look.isNotEmpty)
@@ -42,9 +42,9 @@ class RunCardLookSync {
   /// lần danh sách thẻ đổi.
   final _filled = <String>{};
 
-  /// Chủ thẻ vừa đặt [styleId] cho thẻ [cardId].
-  Future<void> cardStyle(String cardId, String styleId) => _put([
-    {'activityId': cardId, 'style': styleId},
+  /// Chủ thẻ vừa đặt kiểu [style] (các field look của kiểu) cho thẻ [cardId].
+  Future<void> cardStyle(String cardId, Map<String, String> style) => _put([
+    {'activityId': cardId, ...style},
   ]);
 
   /// Chủ thẻ vừa đổi bộ màu: áp cho mọi thẻ [cardIds] của mình. [skinId] rỗng

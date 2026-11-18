@@ -8,6 +8,7 @@ import 'package:myrun/src/achievements/run_card_paths.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
 import 'package:myrun/src/achievements/run_card_skin_choice.dart';
 import 'package:myrun/src/achievements/run_card_style.dart';
+import 'package:myrun/src/achievements/run_faces/face_edit.dart';
 import 'package:myrun/src/achievements/run_faces/face_map.dart';
 import 'package:myrun/src/achievements/run_faces/run_face_kit.dart';
 import 'package:myrun/src/achievements/run_faces/run_faces.dart';
@@ -109,6 +110,14 @@ AchievementCardData runCardData(
       card,
       (style) => runFrontFace(style, RunFace(card, data)),
     ),
+    wrapFront: (context, front) {
+      final style = RunCardStyleScope.of(context, card);
+      return withCardParts(
+        layout: style.layout,
+        tones: faceTones(style.set),
+        face: front,
+      );
+    },
     backFace: _StyledBack(
       card: card,
       face: _remembered(
@@ -161,14 +170,25 @@ class RunBigRouteOverArt extends StatelessWidget {
       children: [
         child,
         LayoutBuilder(
-          builder: (context, constraints) => CustomPaint(
-            painter: _BigRoutePainter(
-              points: card.snapshot.route,
-              tier: card.tier,
-              skin: RunCardSkin.of(context),
-              box: RunRouteBand.boxIn(context, constraints.biggest),
-            ),
-          ),
+          builder: (context, constraints) {
+            final box = RunRouteBand.boxIn(context, constraints.biggest);
+            final edit = RouteEdit.of(context);
+            return editableRouteArt(
+              context,
+              box,
+              CustomPaint(
+                painter: _BigRoutePainter(
+                  points: edit?.hidden ?? false
+                      ? const []
+                      : card.snapshot.route,
+                  tier: card.tier,
+                  skin: RunCardSkin.of(context),
+                  box: box,
+                  line: edit?.color,
+                ),
+              ),
+            );
+          },
         ),
       ],
     );
@@ -184,12 +204,16 @@ class _BigRoutePainter extends CustomPainter {
     required this.tier,
     required this.skin,
     required this.box,
+    this.line,
   });
 
   final List<LatLng> points;
   final GameCardTier tier;
   final RunCardSkin skin;
   final Rect box;
+
+  /// Màu nét chủ thẻ chọn; null là màu nét của bộ màu thẻ.
+  final Color? line;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -198,10 +222,11 @@ class _BigRoutePainter extends CustomPainter {
     final path = _pathOf(route);
     final (_, _, glow) = skin.routes[tier]!;
     final outline = _stroke(skin.shade, 8);
-    final ring = _stroke(skin.routeLine, 2.4);
+    final line = this.line ?? skin.routeLine;
+    final ring = _stroke(line, 2.4);
     canvas
       ..drawPath(path, outline)
-      ..drawPath(path, _stroke(skin.routeLine, 3.6))
+      ..drawPath(path, _stroke(line, 3.6))
       ..drawCircle(route.first, 7.5, Paint()..color = skin.shade)
       ..drawCircle(route.first, 6, Paint()..color = skin.routeStart)
       ..drawCircle(route.first, 6, ring)
@@ -212,6 +237,7 @@ class _BigRoutePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_BigRoutePainter old) =>
+      old.line != line ||
       old.tier != tier ||
       !identical(old.skin, skin) ||
       !identical(old.points, points) ||
@@ -279,15 +305,24 @@ class RunRouteArt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
-      builder: (context, constraints) => CustomPaint(
-        painter: _RouteArtPainter(
-          points: points,
-          tier: tier,
-          skin: RunCardSkin.of(context),
-          box: RunRouteBand.boxIn(context, constraints.biggest),
-        ),
-        child: const SizedBox.expand(),
-      ),
+      builder: (context, constraints) {
+        final box = RunRouteBand.boxIn(context, constraints.biggest);
+        final edit = RouteEdit.of(context);
+        return editableRouteArt(
+          context,
+          box,
+          CustomPaint(
+            painter: _RouteArtPainter(
+              points: edit?.hidden ?? false ? const [] : points,
+              tier: tier,
+              skin: RunCardSkin.of(context),
+              box: box,
+              line: edit?.color,
+            ),
+            child: const SizedBox.expand(),
+          ),
+        );
+      },
     );
   }
 }
@@ -298,12 +333,16 @@ class _RouteArtPainter extends CustomPainter {
     required this.tier,
     required this.skin,
     required this.box,
+    this.line,
   });
 
   final List<LatLng> points;
   final GameCardTier tier;
   final RunCardSkin skin;
   final Rect box;
+
+  /// Màu nét chủ thẻ chọn; null là màu nét của bộ màu thẻ.
+  final Color? line;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -345,9 +384,10 @@ class _RouteArtPainter extends CustomPainter {
     final route = fitRunRoute(points, box);
     if (route.isEmpty) return;
     final path = _pathOf(route);
-    canvas.drawPath(path, _stroke(skin.routeLine, 2.6));
+    final line = this.line ?? skin.routeLine;
+    canvas.drawPath(path, _stroke(line, 2.6));
 
-    final ring = _stroke(skin.routeLine, 2.4);
+    final ring = _stroke(line, 2.4);
     canvas
       ..drawCircle(route.first, 6, Paint()..color = skin.routeStart)
       ..drawCircle(route.first, 6, ring)
@@ -357,6 +397,7 @@ class _RouteArtPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_RouteArtPainter old) =>
+      old.line != line ||
       old.tier != tier ||
       !identical(old.skin, skin) ||
       !identical(old.points, points) ||
@@ -389,7 +430,10 @@ class RunRouteStamp extends StatelessWidget {
   Widget build(BuildContext context) {
     final skin = RunCardSkin.of(context);
     return CustomPaint(
-      painter: _StampPainter(points: points, line: skin.routeLine),
+      painter: _StampPainter(
+        points: points,
+        line: RouteEdit.of(context)?.color ?? skin.routeLine,
+      ),
       child: const SizedBox.expand(),
     );
   }
