@@ -2,6 +2,7 @@ package backend
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -31,6 +32,11 @@ func TestRunCardLooksRequestValid(t *testing.T) {
 		{"style có khoảng trắng", one(RunCardLook{ActivityID: "a1", Style: s("city. top")}), false},
 		{"style xuống dòng cuối", one(RunCardLook{ActivityID: "a1", Style: s("city.top\n")}), false},
 		{"skin ba phần", one(RunCardLook{ActivityID: "a1", Skin: s("dark.fire.x")}), false},
+		{"layout", one(RunCardLook{ActivityID: "a1", Style: s("iron.full"), Layout: s("km:30,66,2,b;time:20,80,2,h")}), true},
+		{"chỉ bỏ layout", one(RunCardLook{ActivityID: "a1", Layout: s("")}), true},
+		{"layout chữ hoa", one(RunCardLook{ActivityID: "a1", Layout: s("KM:30,66,2")}), false},
+		{"layout có khoảng trắng", one(RunCardLook{ActivityID: "a1", Layout: s("km: 30,66,2")}), false},
+		{"layout 201 ký tự", one(RunCardLook{ActivityID: "a1", Layout: s(strings.Repeat("a", 201))}), false},
 		{"trùng id", RunCardLooksRequest{Looks: []RunCardLook{{ActivityID: "a1", Style: s("city.top")}, {ActivityID: "a1", Skin: s("dark.fire")}}}, false},
 	}
 	for _, c := range cases {

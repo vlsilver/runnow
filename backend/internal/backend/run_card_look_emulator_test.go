@@ -80,4 +80,15 @@ func TestEmulatorRunCardLooksReachClubCard(t *testing.T) {
 	if got := e.look("u1", "clubCards/u1_a1"); !reflect.DeepEqual(got, map[string]any{"style": "blueprint.top"}) {
 		t.Fatalf("skin rỗng không bỏ bộ màu: %v", got)
 	}
+
+	// Bộ chỉnh được: layout đi cùng look tới thẻ khoe; rỗng là bỏ.
+	e.want(put("u1", looks(map[string]any{"activityId": "a1", "style": "iron.full", "layout": "km:30,66,2,b"})), 204, "")
+	if got := e.look("u1", "clubCards/u1_a1"); !reflect.DeepEqual(got, map[string]any{"style": "iron.full", "layout": "km:30,66,2,b"}) {
+		t.Fatalf("thẻ khoe không mang layout: %v", got)
+	}
+	e.want(put("u1", looks(map[string]any{"activityId": "a1", "layout": ""})), 204, "")
+	if got := e.look("u1", "users/u1/runCards/a1"); !reflect.DeepEqual(got, map[string]any{"style": "iron.full"}) {
+		t.Fatalf("layout rỗng không bỏ layout: %v", got)
+	}
+	e.want(put("u1", looks(map[string]any{"activityId": "a1", "layout": "km: 30"})), 400, "")
 }

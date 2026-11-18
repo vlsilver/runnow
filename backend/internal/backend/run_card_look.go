@@ -11,7 +11,8 @@ import (
 
 // Vẻ ngoài chủ thẻ chọn cho thẻ buổi chạy nằm ở field look của doc thẻ:
 // style là kiểu thẻ ("blueprint.top", "city.top.map"), skin là bộ màu
-// ("dark.fire"). Thẻ khoe chép cả look để người khác thấy thẻ đúng như chủ
+// ("dark.fire"), layout là chỗ, cỡ, màu từng phần chủ thẻ đã chỉnh ở mặt
+// trước. Thẻ khoe chép cả look để người khác thấy thẻ đúng như chủ
 // thẻ chọn. Backend không biết tên bộ nào, chỉ giữ chuỗi đúng dạng: app thêm
 // bộ mới không cần deploy backend, app gặp tên lạ thì vẽ kiểu gốc.
 
@@ -20,14 +21,18 @@ const maxRunCardLooks = 100
 var (
 	runCardStylePattern = regexp.MustCompile(`^[A-Za-z0-9]{1,24}(\.[A-Za-z0-9]{1,24}){1,2}$`)
 	runCardSkinPattern  = regexp.MustCompile(`^[A-Za-z0-9]{1,24}\.[A-Za-z0-9]{1,24}$`)
+	// Backend không đọc layout, chỉ chặn chuỗi lạ và chuỗi phình to.
+	runCardLayoutPattern = regexp.MustCompile(`^[a-z0-9:,;]{1,200}$`)
 )
 
 // RunCardLook là vẻ ngoài của một thẻ. Field vắng thì giữ giá trị đang có;
-// skin rỗng là bỏ bộ màu riêng, thẻ về theo theme của người xem.
+// skin rỗng là bỏ bộ màu riêng, thẻ về theo theme của người xem; layout
+// rỗng là bỏ.
 type RunCardLook struct {
 	ActivityID string  `json:"activityId"`
 	Style      *string `json:"style"`
 	Skin       *string `json:"skin"`
+	Layout     *string `json:"layout"`
 }
 
 // RunCardLooksRequest đặt vẻ ngoài cho nhiều thẻ một lần. Fill thì chỉ điền
@@ -49,13 +54,16 @@ func (r RunCardLooksRequest) valid() bool {
 			return false
 		}
 		seen[id] = true
-		if l.Style == nil && l.Skin == nil {
+		if l.Style == nil && l.Skin == nil && l.Layout == nil {
 			return false
 		}
 		if l.Style != nil && !runCardStylePattern.MatchString(*l.Style) {
 			return false
 		}
 		if l.Skin != nil && *l.Skin != "" && !runCardSkinPattern.MatchString(*l.Skin) {
+			return false
+		}
+		if l.Layout != nil && *l.Layout != "" && !runCardLayoutPattern.MatchString(*l.Layout) {
 			return false
 		}
 	}
@@ -91,6 +99,7 @@ func mergeRunCardLook(cur map[string]any, set RunCardLook, fill bool) (map[strin
 	}
 	put("style", set.Style)
 	put("skin", set.Skin)
+	put("layout", set.Layout)
 	return next, changed
 }
 
