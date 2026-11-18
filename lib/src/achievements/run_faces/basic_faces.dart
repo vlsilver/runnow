@@ -19,6 +19,7 @@ class BasicFront extends StatelessWidget {
       children: [
         artOf(f),
         badgeAt(f, l: 17, t: 17),
+        stampAt(f, r: 14, t: 14),
         pin(
           l: 14,
           r: 14,

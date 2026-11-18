@@ -186,7 +186,7 @@ AchievementCardData contractCardData(ContractCard card, {DateTime? meetAt}) {
         ? null
         : (text: when, span: span == null ? '' : '${span.days} NGÀY'),
     stamp: snap.targetValue > 0
-        ? ContractCardStamp(
+        ? (_) => ContractCardStamp(
             tier: card.tier,
             pct: '${(snap.progressValue / snap.targetValue * 100).floor()}%',
           )

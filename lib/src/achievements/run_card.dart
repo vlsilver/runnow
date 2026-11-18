@@ -72,6 +72,7 @@ AchievementCardData runCardData(
   final climb = snap.elevationGainMeters?.round() ?? 0;
   final artPath = card.artPath;
   final hasArt = artPath != null || previewArt != null;
+  final hasRoute = snap.route.length > 1;
   data = AchievementCardData(
     tier: card.tier,
     secret: card.secret,
@@ -86,18 +87,23 @@ AchievementCardData runCardData(
             ),
             null => null,
           },
-    art:
-        previewArt ??
-        (artPath == null
-            ? RunDefaultArt(card: card)
-            : StoragePhoto(
-                path: artPath,
-                cacheWidth: 960,
-                // Tranh nặng cả MB, giữ nền mặc định tới lúc tải xong.
-                placeholder: RunDefaultArt(card: card),
-              )),
-    stamp: hasArt && snap.route.length > 1
-        ? RunRouteStamp(points: snap.route)
+    art: _withBigRoute(
+      card,
+      hasArt && hasRoute,
+      previewArt ??
+          (artPath == null
+              ? RunDefaultArt(card: card)
+              : StoragePhoto(
+                  path: artPath,
+                  cacheWidth: 960,
+                  // Tranh nặng cả MB, giữ nền mặc định tới lúc tải xong.
+                  placeholder: RunDefaultArt(card: card),
+                )),
+    ),
+    stamp: hasArt && hasRoute
+        ? (context) => runCardBigRoute(context, card)
+              ? null
+              : RunRouteStamp(points: snap.route)
         : null,
     frontFace: _remembered(
       card,
@@ -125,6 +131,91 @@ AchievementCardData runCardData(
     date: '${_two(start.day)}.${_two(start.month)}.${start.year}',
   );
   return data;
+}
+
+/// Kiểu đang mặc vẽ đường chạy lớn trên tranh thay cho con dấu tròn.
+bool runCardBigRoute(BuildContext context, RunCard card) {
+  final style = RunCardStyleScope.of(context, card);
+  return style.bigRoute && style.set.hasRouteSizeOption;
+}
+
+Widget _withBigRoute(RunCard card, bool over, Widget art) =>
+    over ? RunBigRouteOverArt(card: card, child: art) : art;
+
+/// Tranh kèm đường chạy lớn ở nửa trên khi kiểu thẻ chọn vậy.
+class RunBigRouteOverArt extends StatelessWidget {
+  const RunBigRouteOverArt({
+    super.key,
+    required this.card,
+    required this.child,
+  });
+
+  final RunCard card;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!runCardBigRoute(context, card)) return child;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        child,
+        LayoutBuilder(
+          builder: (context, constraints) => CustomPaint(
+            painter: _BigRoutePainter(
+              points: card.snapshot.route,
+              tier: card.tier,
+              skin: RunCardSkin.of(context),
+              box: RunRouteBand.boxIn(context, constraints.biggest),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Đường chạy trên tranh: viền tối dưới nét sáng để đọc được trên mọi tranh.
+/// [box] là dải mỗi bộ chừa cho đường chạy khi thẻ chưa có tranh, nên đường
+/// không đè chữ của bộ nào.
+class _BigRoutePainter extends CustomPainter {
+  _BigRoutePainter({
+    required this.points,
+    required this.tier,
+    required this.skin,
+    required this.box,
+  });
+
+  final List<LatLng> points;
+  final GameCardTier tier;
+  final RunCardSkin skin;
+  final Rect box;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final route = fitRunRoute(points, box);
+    if (route.isEmpty) return;
+    final path = _pathOf(route);
+    final (_, _, glow) = skin.routes[tier]!;
+    final outline = _stroke(skin.shade, 8);
+    final ring = _stroke(skin.routeLine, 2.4);
+    canvas
+      ..drawPath(path, outline)
+      ..drawPath(path, _stroke(skin.routeLine, 3.6))
+      ..drawCircle(route.first, 7.5, Paint()..color = skin.shade)
+      ..drawCircle(route.first, 6, Paint()..color = skin.routeStart)
+      ..drawCircle(route.first, 6, ring)
+      ..drawCircle(route.last, 8.5, Paint()..color = skin.shade)
+      ..drawCircle(route.last, 7, Paint()..color = glow)
+      ..drawCircle(route.last, 7, ring);
+  }
+
+  @override
+  bool shouldRepaint(_BigRoutePainter old) =>
+      old.tier != tier ||
+      !identical(old.skin, skin) ||
+      !identical(old.points, points) ||
+      old.box != box;
 }
 
 /// Thẻ dựng lại mỗi khung hình khi nghiêng: cùng kiểu thì giữ nguyên ruột đã

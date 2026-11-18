@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
+import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card_flow.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
@@ -146,15 +147,28 @@ void main() {
     expect(showsBack(), isFalse);
   });
 
-  testWidgets('the share icon on the card opens the card sheet', (
+  // Thẻ đã lật thì một lần bấm là tới màn khoe, không qua màn xem thẻ rồi
+  // bấm khoe lần nữa.
+  testWidgets('the share icon on a flipped card opens the share screen', (
     tester,
   ) async {
     await _pump(tester, _detail(ActivityKind.run), card: _card);
-    expect(find.text('Khoe thẻ'), findsNothing);
     await tester.tap(find.byTooltip('Khoe thẻ'));
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
-    expect(find.byType(RunCardFlowScreen), findsOneWidget);
+    expect(find.byType(CardShareScreen), findsOneWidget);
+    expect(find.byType(RunCardFlowScreen), findsNothing);
+  });
+
+  testWidgets('the app bar share on a flipped card opens the share screen', (
+    tester,
+  ) async {
+    await _pump(tester, _detail(ActivityKind.run), card: _card);
+    await tester.tap(find.byTooltip('Chia sẻ hoạt động'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(CardShareScreen), findsOneWidget);
+    expect(find.byType(RunCardFlowScreen), findsNothing);
   });
 
   // Ngoài thẻ không còn gì để chia sẻ, nên buổi không có thẻ thì không có nút.

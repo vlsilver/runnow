@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
+import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card.dart';
 import 'package:myrun/src/achievements/run_card_flow.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
@@ -102,7 +103,7 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
           if (detail.asData?.value case final item?
               when widget.ownerUid == null && hasRunCard(item.summary))
             IconButton(
-              onPressed: () => _openShareComposer(item),
+              onPressed: () => _share(item),
               tooltip: 'Chia sẻ hoạt động',
               icon: const Icon(Icons.ios_share),
             ),
@@ -228,6 +229,19 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
 
   Future<void> _openShareComposer(ActivityDetail detail) =>
       showRunCardFlow(context, detail.summary);
+
+  /// Thẻ đã lật thì vào thẳng màn khoe; chưa lật thì phải lật trước.
+  Future<void> _share(ActivityDetail detail) {
+    final card = ref.read(runCardProvider(detail.summary.id)).value;
+    if (card == null) return _openShareComposer(detail);
+    final owner =
+        ref.read(userProfileProvider).asData?.value?.displayName ?? '3i member';
+    return showRunCardShare(
+      context,
+      card: card,
+      data: runCardData(card, owner: owner),
+    );
+  }
 
   Future<void> _openPhoto(ActivityPhoto photo) =>
       showActivityPhotoViewer(context, photo);
@@ -1445,7 +1459,7 @@ class _RunCardEntry extends ConsumerWidget {
     return _RunCardSection(
       detail: '${gameCardTiers[card.tier]!.label} · ${runCardKm(card.km)} km',
       hint: 'Kéo để xoay · chạm để lật',
-      onShare: onOpen,
+      onShare: () => showRunCardShare(context, card: card, data: data),
       card: (width) => TiltFlipCard(
         front: (pose) => AchievementCard(data: data, pose: pose),
         back: (pose) => AchievementCard(data: data, pose: pose, back: true),

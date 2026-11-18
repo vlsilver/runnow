@@ -235,37 +235,50 @@ void main() {
     expect(data.owner, 'AN');
   });
 
-  test('kèo tháng đếm buổi: khung tháng, km tích luỹ, phần trăm trên dấu', () {
-    // 01.10 → 31.10.2026 giờ VN; 13 buổi trên mục tiêu 12, 61,2 km tích luỹ.
-    final data = contractCardData(
-      ContractCard.fromJson(
-        _cardJson(
-          metric: 'activity_count',
-          target: 12,
-          progress: 13,
-          km: 61.2,
-          title: '12 buổi tháng 10',
-          startAt: '2026-09-30T17:00:00Z',
-          endAtExclusive: '2026-10-31T17:00:00Z',
+  testWidgets(
+    'kèo tháng đếm buổi: khung tháng, km tích luỹ, phần trăm trên dấu',
+    (tester) async {
+      // 01.10 → 31.10.2026 giờ VN; 13 buổi trên mục tiêu 12, 61,2 km tích luỹ.
+      final data = contractCardData(
+        ContractCard.fromJson(
+          _cardJson(
+            metric: 'activity_count',
+            target: 12,
+            progress: 13,
+            km: 61.2,
+            title: '12 buổi tháng 10',
+            startAt: '2026-09-30T17:00:00Z',
+            endAtExclusive: '2026-10-31T17:00:00Z',
+          ),
         ),
-      ),
-    );
-    expect(data.kind, 'KÈO THÁNG · SỐ BUỔI');
-    expect((data.hero, data.heroUnit), ('13', 'BUỔI'));
-    expect(data.period, (text: '01.10 → 31.10.2026', span: '31 NGÀY'));
-    expect(data.stats, [
-      (value: '12 buổi', label: 'MỤC TIÊU'),
-      (value: '61,2', label: 'KM TÍCH LUỸ'),
-      (value: '2/3', label: 'NGƯỜI ĐẠT'),
-    ]);
-    // 13/12 = 108,3% → in 108%.
-    expect((data.stamp! as ContractCardStamp).pct, '108%');
-    expect(
-      (data.backFace! as ContractCardBack).period,
-      '01.10 → 31.10.2026 · 31 NGÀY',
-    );
-    expect((data.art as ContractCardArt).scene, ContractCardScene.count);
-  });
+      );
+      expect(data.kind, 'KÈO THÁNG · SỐ BUỔI');
+      expect((data.hero, data.heroUnit), ('13', 'BUỔI'));
+      expect(data.period, (text: '01.10 → 31.10.2026', span: '31 NGÀY'));
+      expect(data.stats, [
+        (value: '12 buổi', label: 'MỤC TIÊU'),
+        (value: '61,2', label: 'KM TÍCH LUỸ'),
+        (value: '2/3', label: 'NGƯỜI ĐẠT'),
+      ]);
+      // 13/12 = 108,3% → in 108%.
+      // Dấu dựng theo context, nên lấy một context thật để dựng.
+      late BuildContext context;
+      await tester.pumpWidget(
+        Builder(
+          builder: (c) {
+            context = c;
+            return const SizedBox();
+          },
+        ),
+      );
+      expect((data.stamp!(context)! as ContractCardStamp).pct, '108%');
+      expect(
+        (data.backFace! as ContractCardBack).period,
+        '01.10 → 31.10.2026 · 31 NGÀY',
+      );
+      expect((data.art as ContractCardArt).scene, ContractCardScene.count);
+    },
+  );
 
   test('kèo trong ngày in thứ và ngày, tờ lịch đúng ngày kèo', () {
     // Chủ nhật 01.11.2026 giờ VN; 3,1 km trên mục tiêu 2 km.

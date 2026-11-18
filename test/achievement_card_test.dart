@@ -423,7 +423,7 @@ void main() {
           desc: data.desc,
           meta: data.meta,
           date: data.date,
-          stamp: const SizedBox(key: stamp),
+          stamp: (_) => const SizedBox(key: stamp),
         ),
       ),
     );

@@ -27,12 +27,18 @@ enum RunCardSet {
   receipt('Biên lai', hasMapOption: true),
   medal('Huy chương', hasMapOption: true),
   iron('Thép', hasMapOption: true),
-  pixel('Pixel', ownColors: false, hasMapOption: true);
+  pixel(
+    'Pixel',
+    ownColors: false,
+    hasMapOption: true,
+    hasRouteSizeOption: false,
+  );
 
   const RunCardSet(
     this.label, {
     this.ownColors = true,
     this.hasMapOption = false,
+    this.hasRouteSizeOption = true,
   });
 
   final String label;
@@ -43,6 +49,10 @@ enum RunCardSet {
   /// Mặt sau bật được bản đồ thật. Bộ Hiện tại luôn có sẵn nên không cần
   /// công tắc.
   final bool hasMapOption;
+
+  /// Mặt trước có tranh, nên thẻ có tranh chọn được đường chạy lớn trên tranh
+  /// hay con dấu tròn. Pixel vẽ cảnh riêng, không dùng tranh.
+  final bool hasRouteSizeOption;
 }
 
 /// Cách đặt chữ ở mặt trước của các bộ có màu riêng.
@@ -59,10 +69,19 @@ enum RunCardTextLayout {
 @immutable
 class RunCardStyle {
   const RunCardStyle(this.set, [this.text = RunCardTextLayout.full])
-    : map = false;
+    : map = false,
+      bigRoute = false;
 
   const RunCardStyle.withMap(this.set, [this.text = RunCardTextLayout.full])
-    : map = true;
+    : map = true,
+      bigRoute = false;
+
+  const RunCardStyle._(
+    this.set,
+    this.text, {
+    required this.map,
+    required this.bigRoute,
+  });
 
   static const current = RunCardStyle(RunCardSet.current);
 
@@ -72,22 +91,41 @@ class RunCardStyle {
   /// Mặt sau có bản đồ thật. Mặc định tắt vì bản đồ lộ khu xuất phát khi khoe.
   final bool map;
 
-  /// Dạng lưu và vào khoá cache, ví dụ "blueprint.top", "city.top.map". Tắt
-  /// bản đồ thì không có hậu tố, nên id và file khoe đã có trên máy vẫn dùng.
-  String get id => '${set.name}.${text.name}${map ? '.$_mapSuffix' : ''}';
+  /// Thẻ có tranh vẽ đường chạy lớn trên tranh thay cho con dấu tròn. Mặc định
+  /// tắt để thẻ đã có giữ nguyên vẻ cũ.
+  final bool bigRoute;
 
-  static const _mapSuffix = 'map';
+  RunCardStyle withBigRoute(bool on) =>
+      RunCardStyle._(set, text, map: map, bigRoute: on);
+
+  /// Dạng lưu và vào khoá cache, ví dụ "blueprint.top", "city.top.map". Tắt
+  /// cả hai cờ thì không có hậu tố, nên id và file khoe đã có trên máy vẫn
+  /// dùng. Hai cờ gộp vào một đoạn vì backend chỉ nhận tối đa ba đoạn.
+  String get id {
+    final flags = _flags.entries
+        .firstWhere((e) => e.value == (map, bigRoute))
+        .key;
+    return '${set.name}.${text.name}${flags.isEmpty ? '' : '.$flags'}';
+  }
+
+  static const _flags = {
+    '': (false, false),
+    'map': (true, false),
+    'route': (false, true),
+    'mapRoute': (true, true),
+  };
 
   static RunCardStyle? parse(String raw) {
     final parts = raw.split('.');
     if (parts.length < 2 || parts.length > 3) return null;
-    if (parts.length == 3 && parts[2] != _mapSuffix) return null;
+    final flags = _flags[parts.length == 3 ? parts[2] : ''];
+    // Đoạn thứ ba rỗng ("city.top.") cũng là lạ.
+    if (flags == null || (parts.length == 3 && parts[2].isEmpty)) return null;
     final set = RunCardSet.values.asNameMap()[parts[0]];
     final text = RunCardTextLayout.values.asNameMap()[parts[1]];
     if (set == null || text == null) return null;
-    return parts.length == 3
-        ? RunCardStyle.withMap(set, text)
-        : RunCardStyle(set, text);
+    final (map, bigRoute) = flags;
+    return RunCardStyle._(set, text, map: map, bigRoute: bigRoute);
   }
 
   @override
@@ -95,10 +133,11 @@ class RunCardStyle {
       other is RunCardStyle &&
       other.set == set &&
       other.text == text &&
-      other.map == map;
+      other.map == map &&
+      other.bigRoute == bigRoute;
 
   @override
-  int get hashCode => Object.hash(set, text, map);
+  int get hashCode => Object.hash(set, text, map, bigRoute);
 }
 
 /// Kiểu chủ thẻ đã lưu trên backend; null khi chưa lưu hoặc là bộ app này

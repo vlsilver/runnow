@@ -38,6 +38,7 @@ RunCard _card({
   String name = 'Morning Run',
   bool gps = true,
   String? secret,
+  bool art = false,
   List<(double, int)> splits = const [
     (1000, 581),
     (1000, 598),
@@ -56,6 +57,13 @@ RunCard _card({
   'startedAt': '2026-11-10T13:52:00Z',
   'odds': const [],
   'variant': ?secret,
+  if (art)
+    'art': {
+      'status': 'done',
+      'style': 'linocut',
+      'attempt': 1,
+      'path': 'users/u1/runCards/r1/art.png',
+    },
   'snapshot': {
     'name': name,
     'sportType': 'Run',
@@ -154,6 +162,47 @@ void main() {
 
       expect(restored.styleOf('viewed', before), city);
       expect(restored.styleOf('new', after), city);
+    });
+  });
+
+  group('RunCardStyle đường chạy lớn', () {
+    // Mẫu backend chép từ run_card_look.go: tối đa ba đoạn, quá là 400.
+    final backend = RegExp(r'^[A-Za-z0-9]{1,24}(\.[A-Za-z0-9]{1,24}){1,2}$');
+
+    test('bật đường lớn lưu được lên backend và đọc lại đúng', () {
+      final big = const RunCardStyle(RunCardSet.current).withBigRoute(true);
+
+      expect(big.id, 'current.full.route');
+      expect(RunCardStyle.parse('current.full.route'), big);
+      expect(big, isNot(RunCardStyle.current));
+      expect(backend.hasMatch(big.id), isTrue);
+    });
+
+    test('vừa bản đồ vừa đường lớn vẫn chỉ ba đoạn', () {
+      final both = const RunCardStyle.withMap(
+        RunCardSet.splits,
+      ).withBigRoute(true);
+
+      expect(both.id, 'splits.full.mapRoute');
+      expect(RunCardStyle.parse('splits.full.mapRoute'), both);
+      expect(both.map, isTrue);
+      expect(both.bigRoute, isTrue);
+      expect(backend.hasMatch(both.id), isTrue);
+    });
+
+    test('id cũ đọc ra con dấu tròn', () {
+      expect(RunCardStyle.parse('splits.full.map')!.bigRoute, isFalse);
+      expect(RunCardStyle.parse('current.full')!.bigRoute, isFalse);
+    });
+
+    test('mọi bộ có lựa chọn đường chạy, trừ Pixel không dùng tranh', () {
+      expect(
+        [
+          for (final set in RunCardSet.values)
+            if (!set.hasRouteSizeOption) set.name,
+        ],
+        ['pixel'],
+      );
     });
   });
 
@@ -321,6 +370,39 @@ void main() {
 
   group('mặt thẻ', () {
     const blueprint = RunCardStyle(RunCardSet.blueprint);
+
+    testWidgets('thẻ có tranh: Tròn có con dấu, Lớn vẽ đường trên tranh', (
+      tester,
+    ) async {
+      const round = RunCardStyle(RunCardSet.current);
+      await tester.pumpWidget(_face(_card(), round));
+      expect(find.byType(RunRouteStamp), findsOneWidget);
+
+      await tester.pumpWidget(_face(_card(), round.withBigRoute(true)));
+      expect(find.byType(RunRouteStamp), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(RunBigRouteOverArt),
+          matching: find.byType(CustomPaint),
+        ),
+        findsWidgets,
+      );
+    });
+
+    testWidgets('bộ có mặt trước riêng cũng đổi được con dấu sang đường lớn', (
+      tester,
+    ) async {
+      await tester.runAsync(_loadCardFont);
+      for (final set in RunCardSet.values.where((s) => s.hasRouteSizeOption)) {
+        final round = RunCardStyle(set);
+        await tester.pumpWidget(_face(_card(), round));
+        expect(find.byType(RunRouteStamp), findsOneWidget, reason: set.name);
+
+        await tester.pumpWidget(_face(_card(), round.withBigRoute(true)));
+        expect(find.byType(RunRouteStamp), findsNothing, reason: set.name);
+        expect(find.byType(RunBigRouteOverArt), findsOneWidget);
+      }
+    });
 
     testWidgets('thẻ thường đổi theo kiểu', (tester) async {
       await tester.pumpWidget(_face(_card(), blueprint));
@@ -626,6 +708,7 @@ void main() {
     Future<(RunCardStyleController, RunCardSkinController)> open(
       WidgetTester tester, {
       required RunCard card,
+      AchievementCardData? data,
     }) async {
       FlutterSecureStorage.setMockInitialValues({});
       tester.view.physicalSize = const Size(1170, 2532);
@@ -646,7 +729,8 @@ void main() {
             home: Builder(
               builder: (context) => Scaffold(
                 body: TextButton(
-                  onPressed: () => showRunCardStyleSheet(context, card: card),
+                  onPressed: () =>
+                      showRunCardStyleSheet(context, card: card, data: data),
                   child: const Text('mở'),
                 ),
               ),
@@ -741,6 +825,68 @@ void main() {
       expect(find.text('Khoe thẻ'), findsOneWidget);
       expect(find.byTooltip('Kiểu thẻ'), findsNothing);
       await tester.pump(const Duration(seconds: 4));
+    });
+
+    group('chọn cỡ đường chạy', () {
+      final picker = find.byKey(runCardRouteSizeKey);
+
+      // Tranh thật tải từ Storage, nên xem trước bằng một nền màu.
+      Future<RunCardStyleController> openWithArt(WidgetTester tester) async {
+        final card = _card(art: true);
+        final (styles, _) = await open(
+          tester,
+          card: card,
+          data: runCardData(
+            card,
+            owner: 'Bạn',
+            previewArt: const ColoredBox(color: Color(0xFF55708A)),
+          ),
+        );
+        return styles;
+      }
+
+      testWidgets('thẻ có tranh chọn Lớn rồi Dùng thì lưu đường lớn', (
+        tester,
+      ) async {
+        final styles = await openWithArt(tester);
+        final card = _card(art: true);
+        expect(picker, findsOneWidget);
+
+        await tester.tap(find.text('Lớn'));
+        await tester.pump();
+        await tester.tap(find.text('Dùng'));
+        await tester.pumpAndSettle();
+
+        expect(styles.styleOf(card.id, card.rolledAt).id, 'current.full.route');
+      });
+
+      testWidgets('đổi sang bộ không có lựa chọn thì ẩn và không lưu cờ', (
+        tester,
+      ) async {
+        final styles = await openWithArt(tester);
+        final card = _card(art: true);
+        await tester.tap(find.text('Lớn'));
+        await tester.pump();
+
+        // Pixel nằm cuối dải, phải kéo tới mới dựng.
+        await tester.dragUntilVisible(
+          find.text('Pixel'),
+          find.byType(ListView),
+          const Offset(-200, 0),
+        );
+        await tester.tap(find.text('Pixel'));
+        await tester.pump();
+        expect(picker, findsNothing);
+
+        await tester.tap(find.text('Dùng'));
+        await tester.pumpAndSettle();
+        expect(styles.styleOf(card.id, card.rolledAt).id, 'pixel.full');
+      });
+
+      testWidgets('thẻ chưa có tranh không có lựa chọn', (tester) async {
+        await open(tester, card: _card());
+        expect(picker, findsNothing);
+      });
     });
 
     group('công tắc Bản đồ', () {

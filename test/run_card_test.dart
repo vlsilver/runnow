@@ -548,9 +548,11 @@ void main() {
     expect(drawing.art, isA<RunDefaultArt>());
 
     final drawn = runCardData(_card(art: _done), owner: 'An');
-    expect(drawn.art, isA<StoragePhoto>());
-    expect((drawn.art as StoragePhoto).placeholder, isA<RunDefaultArt>());
-    expect(drawn.stamp, isA<RunRouteStamp>());
+    expect(drawn.art, isA<RunBigRouteOverArt>());
+    final photo = (drawn.art as RunBigRouteOverArt).child;
+    expect(photo, isA<StoragePhoto>());
+    expect((photo as StoragePhoto).placeholder, isA<RunDefaultArt>());
+    expect(drawn.stamp, isNotNull);
 
     final noGps = runCardData(
       _card(art: _done, route: const []),

@@ -20,6 +20,9 @@ const _thumbExtent = 70.0;
 @visibleForTesting
 const runCardMapSwitchKey = ValueKey('run-card-map-switch');
 
+@visibleForTesting
+const runCardRouteSizeKey = ValueKey('run-card-route-size');
+
 /// Chọn bộ thẻ, kiểu chữ và bộ màu ngay trên [card]. Không có thẻ thật thì xem
 /// trước thẻ mẫu và chỉ đổi mặc định.
 ///
@@ -45,6 +48,7 @@ Future<void> showRunCardStyleSheet(
         cardId: card?.id,
         data: shown,
         hasRoute: RunFace(subject, shown).hasRoute,
+        hasArt: subject.artPath != null,
         initial:
             initial ??
             (card == null
@@ -91,6 +95,7 @@ class RunCardStyleSheet extends ConsumerStatefulWidget {
     super.key,
     required this.data,
     required this.hasRoute,
+    this.hasArt = false,
     this.cardId,
     this.initial,
     this.skin,
@@ -101,6 +106,9 @@ class RunCardStyleSheet extends ConsumerStatefulWidget {
 
   /// Thẻ có GPS mới có bản đồ để bật.
   final bool hasRoute;
+
+  /// Thẻ có tranh nền mới chọn được cỡ đường chạy ở mặt trước.
+  final bool hasArt;
   final String? cardId;
   final RunCardStyle? initial;
   final RunCardSkin? skin;
@@ -115,6 +123,7 @@ class _RunCardStyleSheetState extends ConsumerState<RunCardStyleSheet> {
   late RunCardSet _set;
   late RunCardTextLayout _text;
   late bool _map;
+  late bool _bigRoute;
   late bool _follow;
   late RunNowAppearance _appearance;
   late RunNowElement _element;
@@ -126,6 +135,7 @@ class _RunCardStyleSheetState extends ConsumerState<RunCardStyleSheet> {
     _set = start.set;
     _text = start.text;
     _map = start.map;
+    _bigRoute = start.bigRoute;
     final choice = ref.read(runCardSkinControllerProvider).choice;
     final app = ref.read(themeControllerProvider);
     _follow = choice == null;
@@ -155,9 +165,10 @@ class _RunCardStyleSheetState extends ConsumerState<RunCardStyleSheet> {
   /// Bộ đi theo bộ màu chỉ có một bố cục chữ.
   RunCardStyle _styleOf(RunCardSet set) {
     final text = set.ownColors ? _text : RunCardTextLayout.full;
-    return _map && set.hasMapOption
+    final style = _map && set.hasMapOption
         ? RunCardStyle.withMap(set, text)
         : RunCardStyle(set, text);
+    return style.withBigRoute(_bigRoute && set.hasRouteSizeOption);
   }
 
   void _pickElement(RunNowElement element) => setState(() {
@@ -277,15 +288,30 @@ class _RunCardStyleSheetState extends ConsumerState<RunCardStyleSheet> {
                   ConstrainedBox(
                     constraints: const BoxConstraints(minHeight: 62),
                     child: Center(
-                      child: _set.ownColors
-                          ? _TextLayoutPicker(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_set.hasRouteSizeOption &&
+                              widget.hasArt &&
+                              widget.hasRoute)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: _routeSize(theme),
+                            ),
+                          if (_set.ownColors)
+                            _Segments(
+                              items: [
+                                for (final item in RunCardTextLayout.values)
+                                  (item, item.label),
+                              ],
                               value: _text,
                               onChanged: (value) =>
                                   setState(() => _text = value),
                             )
-                          : choosesColor
-                          ? _colors(theme)
-                          : const SizedBox.shrink(),
+                          else if (choosesColor)
+                            _colors(theme),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -298,6 +324,27 @@ class _RunCardStyleSheetState extends ConsumerState<RunCardStyleSheet> {
       ),
     );
   }
+
+  /// Thẻ có tranh: đường chạy lớn trên tranh hay con dấu tròn góc phải.
+  Widget _routeSize(ThemeData theme) => Row(
+    children: [
+      Text(
+        'Đường chạy',
+        style: theme.textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: _Segments(
+          key: runCardRouteSizeKey,
+          items: const [(true, 'Lớn'), (false, 'Tròn')],
+          value: _bigRoute,
+          onChanged: (value) => setState(() => _bigRoute = value),
+        ),
+      ),
+    ],
+  );
 
   Widget _colors(ThemeData theme) => Row(
     children: [
@@ -470,11 +517,17 @@ class _MapSwitch extends StatelessWidget {
   }
 }
 
-class _TextLayoutPicker extends StatelessWidget {
-  const _TextLayoutPicker({required this.value, required this.onChanged});
+class _Segments<T> extends StatelessWidget {
+  const _Segments({
+    super.key,
+    required this.items,
+    required this.value,
+    required this.onChanged,
+  });
 
-  final RunCardTextLayout value;
-  final ValueChanged<RunCardTextLayout> onChanged;
+  final List<(T, String)> items;
+  final T value;
+  final ValueChanged<T> onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -488,7 +541,7 @@ class _TextLayoutPicker extends StatelessWidget {
       ),
       child: Row(
         children: [
-          for (final item in RunCardTextLayout.values)
+          for (final (item, label) in items)
             Expanded(
               child: Semantics(
                 button: true,
@@ -507,7 +560,7 @@ class _TextLayoutPicker extends StatelessWidget {
                       borderRadius: context.runNowPalette.radius(16),
                     ),
                     child: Text(
-                      item.label,
+                      label,
                       maxLines: 1,
                       style: theme.textTheme.labelLarge?.copyWith(
                         fontWeight: item == value

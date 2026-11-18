@@ -363,7 +363,7 @@ class FaceStamp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final stamp = face.data.stamp;
+    final stamp = face.data.stamp?.call(context);
     if (stamp == null) return const SizedBox.shrink();
     final skin = RunCardSkin.of(context);
     return DecoratedBox(

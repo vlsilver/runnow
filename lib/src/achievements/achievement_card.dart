@@ -70,7 +70,9 @@ class AchievementCardData {
   final String date;
 
   /// Huy hiệu tròn dưới số đá, ví dụ đường chạy thu nhỏ khi nền là tranh.
-  final Widget? stamp;
+  /// Dựng theo context vì kiểu thẻ đang mặc quyết định có dấu hay không; trả
+  /// null là không có dấu.
+  final Widget? Function(BuildContext context)? stamp;
 
   /// Ruột mặt sau thay cho huy hiệu 3I RUN; khung và vệt sáng vẫn do thẻ vẽ.
   final Widget? backFace;
@@ -653,7 +655,7 @@ class _Front extends StatelessWidget {
             glyph: look,
           ),
         ),
-        if (data.stamp case final stamp?)
+        if (data.stamp?.call(context) case final stamp?)
           Positioned(
             top: _inset,
             right: _inset,
