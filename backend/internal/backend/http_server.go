@@ -75,6 +75,7 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/agent-learn", s.agentLearn)
 	s.route("POST /tasks/home-digest", s.homeDigest)
 	s.route("POST /tasks/rank-close", s.rankClose)
+	s.route("POST "+rankRewardPushPath, s.rankRewardPush)
 	s.route("POST /tasks/managed-bot-sync", s.managedBotSync)
 	s.route("POST /tasks/managed-send", s.managedSend)
 	s.route("POST "+runCardArtQueuePath, s.runCardArt)
@@ -660,6 +661,7 @@ func (s *Server) apiRoutes() {
 	s.pushRoutes()
 	s.adminRoutes()
 	s.agentConfigRoutes()
+	s.rankRewardRoutes()
 	// Liên kết Telegram cho Ma Sói (L1). App lấy mã, mở t.me/<bot>?start=<mã>,
 	// rồi poll GET cho tới khi linked.
 	s.route("POST /v1/telegram/link-code", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {

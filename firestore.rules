@@ -338,6 +338,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Quà admin treo cho BXH, khoá trùng rankBoards. Chỉ ghi qua API admin,
+    // nơi kiểm luật "kỳ đang chạy chỉ thêm quà".
+    match /rankRewards/{boardId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
     // Dữ liệu tĩnh "Hành Trình" (route/milestone) — nội dung tham khảo
     // chung, không thuộc user nào, chỉ ghi qua Admin SDK (script migrate).
     match /journeyRoutes/{routeId} {

@@ -143,6 +143,8 @@ type RankCardService struct {
 	db *firestore.Client
 	// quoter nil thì mọi thẻ dùng câu mẫu.
 	quoter rankQuoter
+	// enqueue hẹn push báo người trúng quà; nil thì không báo (test).
+	enqueue taskPublishFunc
 }
 
 func NewRankCardService(db *firestore.Client, quoter rankQuoter) *RankCardService {
@@ -263,13 +265,24 @@ func (s *RankCardService) writeBoard(ctx context.Context, r rankRange, sport ran
 		}
 	}
 	boardID := rankBoardID(r, sport, period.Start)
+	rewards, err := loadRankRewards(ctx, s.db, boardID)
+	if err != nil {
+		return err
+	}
 	quotes := s.quotes(ctx, boardID, r, sport, period, ranked, len(top))
 	days := int(period.End.Sub(period.Start).Hours()/24 + 0.5)
 	entries := make([]map[string]any, 0, len(top))
 	b := s.db.Batch()
+	winners := 0
 	for i, rm := range top {
 		m := rm.member
-		entries = append(entries, map[string]any{"uid": m.uid, "rank": rm.rank, "displayName": m.name, "avatarUrl": m.avatar, "score": rm.score})
+		entry := map[string]any{"uid": m.uid, "rank": rm.rank, "displayName": m.name, "avatarUrl": m.avatar, "score": rm.score}
+		item := rewards.itemFor(rm.rank)
+		if item != nil {
+			entry["reward"] = map[string]any{"itemId": item.ID, "name": item.Name, "icon": item.Icon}
+			winners++
+		}
+		entries = append(entries, entry)
 		card := map[string]any{
 			"boardId":      boardID,
 			"range":        string(r),
@@ -286,9 +299,12 @@ func (s *RankCardService) writeBoard(ctx context.Context, r rankRange, sport ran
 			"awardedAt":    firestore.ServerTimestamp,
 			"revealedAt":   nil,
 		}
+		if item != nil {
+			card["reward"] = rewards.cardReward(item)
+		}
 		b.Create(s.db.Collection("users").Doc(m.uid).Collection("rankCards").Doc(boardID), card)
 	}
-	b.Create(s.db.Collection("rankBoards").Doc(boardID), map[string]any{
+	board := map[string]any{
 		"range":        string(r),
 		"sport":        string(sport),
 		"periodStart":  dateKey(period.Start),
@@ -296,16 +312,34 @@ func (s *RankCardService) writeBoard(ctx context.Context, r rankRange, sport ran
 		"participants": len(ranked),
 		"entries":      entries,
 		"closedAt":     firestore.ServerTimestamp,
-	})
-	_, err := b.Commit(ctx)
+	}
+	b.Create(s.db.Collection("rankBoards").Doc(boardID), board)
+	_, err = b.Commit(ctx)
 	if status.Code(err) == codes.AlreadyExists {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	slog.InfoContext(ctx, "rank_card.closed", "board", boardID, "cards", len(top), "participants", len(ranked))
+	slog.InfoContext(ctx, "rank_card.closed", "board", boardID, "cards", len(top), "participants", len(ranked), "winners", winners)
+	if winners > 0 {
+		s.notifyWinners(ctx, boardID)
+	}
 	return nil
+}
+
+// notifyWinners hẹn push quà sau khi bảng đã ghi. Hẹn hỏng (Publish đã tự thử
+// lại) thì log chứ không trả lỗi: bảng đã có nên chạy lại Close cũng không
+// hẹn lại, trả lỗi chỉ làm task chốt báo hỏng. Bỏ hủy của ctx vì bảng đã ghi
+// rồi: request chốt bị hủy ngay sau commit thì push vẫn phải được hẹn.
+func (s *RankCardService) notifyWinners(ctx context.Context, boardID string) {
+	if s.enqueue == nil {
+		return
+	}
+	task := PublishTask{Queue: QueueNotify, HandlerPath: rankRewardPushPath, Payload: rankRewardPushTask{BoardID: boardID}, TaskID: StableTaskID("rank-reward-push", boardID)}
+	if _, err := s.enqueue(context.WithoutCancel(ctx), task); err != nil {
+		slog.ErrorContext(ctx, "rank_reward.push_enqueue_failed", "board", boardID, "error", err)
+	}
 }
 
 // rankStats là hai số phụ dưới số chính của thẻ.
