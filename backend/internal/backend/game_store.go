@@ -346,8 +346,15 @@ type TickGame struct{ ID, Status string }
 
 // TickGames là các ván tick cần xem: mọi ván chưa kết thúc, ván gameState/current
 // dù đã kết thúc (như trước khi có nhiều ván), và ván đã kết thúc trong
-// tickGameWindow (outbox có thể còn tin chờ). Không trùng id.
+// tickGameWindow (outbox có thể còn tin chờ). Không trùng id. Đây là lần
+// đọc đầu của tick nên hay gặp kết nối vừa bị đóng: đọc lại một lần.
 func (s *GameStore) TickGames(ctx context.Context, wall time.Time) ([]TickGame, error) {
+	return readAgainOnUnavailable(ctx, func(ctx context.Context) ([]TickGame, error) {
+		return s.tickGames(ctx, wall)
+	})
+}
+
+func (s *GameStore) tickGames(ctx context.Context, wall time.Time) ([]TickGame, error) {
 	open, err := openGames(s.db).Documents(ctx).GetAll()
 	if err != nil {
 		return nil, err
