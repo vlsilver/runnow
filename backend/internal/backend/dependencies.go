@@ -46,6 +46,8 @@ type Dependencies struct {
 	RankCards *RankCardService
 	// RankRewards là quà admin treo cho BXH; luôn có trên api.
 	RankRewards *RankRewardService
+	// ContractGifts là quà chủ kèo treo cho kèo công khai; luôn có trên api.
+	ContractGifts *ContractGiftService
 	// Garmin luôn có; khi chưa cấu hình (Config.GarminEnabled) thì nối trả
 	// garmin_not_configured và push trả 404.
 	Garmin *GarminService
@@ -116,6 +118,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 	d.RankCards = NewRankCardService(db, nil)
 	d.RankCards.enqueue = tasks.Publish
 	d.RankRewards = NewRankRewardService(db, d.TelegramLinks)
+	d.ContractGifts = NewContractGiftService(db, d.TelegramLinks)
 	d.Profiles = NewProfileService(db, tasks)
 	d.Reconciliation = NewReconciliationService(db, tasks)
 	// Không có bucket thì xoá tài khoản vẫn chạy, chỉ bỏ qua phần ảnh —

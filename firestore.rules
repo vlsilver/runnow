@@ -180,8 +180,18 @@ service cloud.firestore {
           && request.resource.data.progressValue is number
           && request.resource.data.progressValue >= 0
           && request.resource.data.updatedAt == request.time
+          // Chủ kèo chỉ sửa phần của mình: rút hay sửa người khác sẽ đổi ai
+          // có phần quà và mở khoá "chỉ thêm quà" (contract_gift.go).
+          && request.resource.data.get('participants', {}).diff(resource.data.get('participants', {})).affectedKeys().hasOnly([request.auth.uid])
+          && request.resource.data.get('participantUids', null) == resource.data.get('participantUids', null)
           && resource.data.status == 'active'
           && request.resource.data.status in ['active', 'completed', 'failed']
+          // Kèo có quà chỉ job backend chốt, vì quà chia theo số backend tính
+          // trong cùng transaction chốt (contract_gift.go).
+          && (
+            request.resource.data.status == 'active'
+            || !exists(/databases/$(database)/documents/contractGifts/$(contractId))
+          )
         )
         || (
           resource.data.visibility == 'club'
@@ -341,6 +351,13 @@ service cloud.firestore {
     // Quà admin treo cho BXH, khoá trùng rankBoards. Chỉ ghi qua API admin,
     // nơi kiểm luật "kỳ đang chạy chỉ thêm quà".
     match /rankRewards/{boardId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Quà chủ kèo treo cho kèo công khai. Chỉ ghi qua API, nơi kiểm luật "có
+    // người tham gia thì chỉ thêm quà" và chia quà lúc chốt.
+    match /contractGifts/{contractId} {
       allow read: if signedIn();
       allow write: if false;
     }

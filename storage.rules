@@ -64,6 +64,19 @@ service firebase.storage {
       allow update, delete: if false;
     }
 
+    // Ảnh thật của quà kèo: chủ kèo tải vào thư mục của mình, API chỉ nhận
+    // đường dẫn contractGifts/{uid chủ kèo}/{contractId}/.
+    match /contractGifts/{uid}/{contractId}/{fileName} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && firestore.get(/databases/(default)/documents/runContracts/$(contractId)).data.creatorUid == uid
+        && fileName.matches('[A-Za-z0-9_-]{1,64}[.]jpg')
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/jpeg');
+      allow update, delete: if false;
+    }
+
     // Ảnh mẫu của các phong cách vẽ thẻ: nội dung tĩnh 3i tự upload, đường
     // dẫn khai trong art_styles.go. Client không ghi.
     match /artStyles/examples/{fileName} {

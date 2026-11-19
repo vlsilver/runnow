@@ -76,6 +76,7 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/home-digest", s.homeDigest)
 	s.route("POST /tasks/rank-close", s.rankClose)
 	s.route("POST "+rankRewardPushPath, s.rankRewardPush)
+	s.route("POST "+contractGiftPushPath, s.contractGiftPush)
 	s.route("POST /tasks/managed-bot-sync", s.managedBotSync)
 	s.route("POST /tasks/managed-send", s.managedSend)
 	s.route("POST "+runCardArtQueuePath, s.runCardArt)
@@ -662,6 +663,7 @@ func (s *Server) apiRoutes() {
 	s.adminRoutes()
 	s.agentConfigRoutes()
 	s.rankRewardRoutes()
+	s.contractGiftRoutes()
 	// Liên kết Telegram cho Ma Sói (L1). App lấy mã, mở t.me/<bot>?start=<mã>,
 	// rồi poll GET cho tới khi linked.
 	s.route("POST /v1/telegram/link-code", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
@@ -1330,13 +1332,23 @@ func (s *Server) workerRoutes() {
 			linked += rr.NewLinked
 		}
 		// Chốt kèo đã qua finalizeAt theo số vừa tính — chủ kèo không cần bấm.
-		finalized, err := FinalizeDueContracts(r.Context(), s.deps.Firestore, s.deps.Tasks, results, time.Now(), dry)
+		finalized, err := FinalizeDueContracts(r.Context(), s.deps.Firestore, s.enqueueTask(), results, s.now(), dry)
 		if err != nil {
 			return err
 		}
 		// Cùng lượt: buổi giáo án nào đã chạy đủ thì tick giúp người theo.
 		planMarks, err := MarkPlanSessions(r.Context(), s.deps.Firestore, time.Now(), dry)
 		if err != nil {
+			return err
+		}
+		// Push quà đi sau cùng để Cloud Tasks hỏng không chặn việc khác của
+		// lượt này. Kết quả trước vé: báo kết quả quan trọng hơn, vé hỏng không
+		// được hoãn nó. Kèo đã chia quà (resolvedAt) thì không báo vé nữa. Hỏng
+		// thì trả lỗi để job chạy lại; cả hai bước đều chạy lại được.
+		if err := SendContractGiftResults(r.Context(), s.deps.Firestore, s.enqueueTask(), dry); err != nil {
+			return err
+		}
+		if err := NotifyContractTickets(r.Context(), s.deps.Firestore, s.enqueueTask(), results, dry); err != nil {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true, "dry": dry, "contracts": len(results), "linked": linked, "results": results, "finalized": finalized, "planSessions": planMarks})

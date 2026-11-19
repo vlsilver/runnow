@@ -73,6 +73,9 @@ func (s *AccountService) Delete(ctx context.Context, uid string) error {
 	if err := s.leaveRunContracts(ctx, uid); err != nil {
 		return fmt.Errorf("leave run contracts: %w", err)
 	}
+	if err := s.deleteContractGifts(ctx, uid); err != nil {
+		return fmt.Errorf("delete contract gifts: %w", err)
+	}
 	if err := s.deleteGameData(ctx, uid); err != nil {
 		return fmt.Errorf("delete game data: %w", err)
 	}
@@ -179,25 +182,44 @@ func (s *AccountService) stravaAthleteID(ctx context.Context, uid string) string
 	return stringValue(snap.Data()["athleteId"])
 }
 
-// deleteStorage xoá ảnh buổi chạy và ảnh đại diện. Tất cả nằm dưới cùng một
-// prefix users/{uid}/ (xem storage.rules), nên một vòng quét prefix là đủ.
+// deleteStorage xoá file user tải lên: ảnh buổi chạy và ảnh đại diện dưới
+// users/{uid}/, ảnh quà kèo dưới contractGifts/{uid}/ (xem storage.rules).
 func (s *AccountService) deleteStorage(ctx context.Context, uid string) error {
 	if s.storage == nil {
 		return nil
 	}
-	it := s.storage.Objects(ctx, &gcs.Query{Prefix: "users/" + uid + "/"})
-	for {
-		attrs, err := it.Next()
-		if errors.Is(err, iterator.Done) {
-			return nil
+	for _, prefix := range []string{"users/" + uid + "/", "contractGifts/" + uid + "/"} {
+		it := s.storage.Objects(ctx, &gcs.Query{Prefix: prefix})
+		for {
+			attrs, err := it.Next()
+			if errors.Is(err, iterator.Done) {
+				break
+			}
+			if err != nil {
+				return err
+			}
+			if err := s.storage.Object(attrs.Name).Delete(ctx); err != nil && !errors.Is(err, gcs.ErrObjectNotExist) {
+				return err
+			}
 		}
-		if err != nil {
-			return err
-		}
-		if err := s.storage.Object(attrs.Name).Delete(ctx); err != nil && !errors.Is(err, gcs.ErrObjectNotExist) {
+	}
+	return nil
+}
+
+// deleteContractGifts xoá quà user treo ở các kèo: doc quà mang tên người trao,
+// và người trao đã đi thì quà không còn ai trao. Kèo còn chạy thì chốt như kèo
+// thường.
+func (s *AccountService) deleteContractGifts(ctx context.Context, uid string) error {
+	docs, err := s.db.Collection("contractGifts").Where("creatorUid", "==", uid).Documents(ctx).GetAll()
+	if err != nil {
+		return err
+	}
+	for _, doc := range docs {
+		if _, err := doc.Ref.Delete(ctx); err != nil {
 			return err
 		}
 	}
+	return nil
 }
 
 // leaveRunContracts gỡ user khỏi các kèo đã tham gia.

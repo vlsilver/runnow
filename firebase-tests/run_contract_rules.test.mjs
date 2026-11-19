@@ -225,3 +225,86 @@ test('only the creator can finalize a contract', async () => {
   const snapshot = await getDoc(ownerRef);
   assert.equal(snapshot.data().status, 'completed');
 });
+
+test('a contract with gifts can only be closed by the backend', async () => {
+  const ownerDb = environment.authenticatedContext('owner').firestore();
+  await createContract(ownerDb, 'owner', 'contract-g', 'club');
+  await environment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'contractGifts', 'contract-g'), {
+      contractId: 'contract-g',
+      creatorUid: 'owner',
+      kind: 'draw',
+      items: [],
+    });
+  });
+  const ownerRef = doc(ownerDb, 'runContracts', 'contract-g');
+  await assertFails(
+    updateDoc(ownerRef, {
+      status: 'completed',
+      progressValue: 10,
+      completedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  // Vẫn ghi tiến độ của mình được khi kèo còn chạy.
+  const before = await getDoc(ownerRef);
+  await assertSucceeds(
+    updateDoc(ownerRef, {
+      progressValue: 3,
+      'participants.owner': {
+        uid: 'owner',
+        progressValue: 3,
+        countedActivityIds: [],
+        joinedAt: before.data().participants.owner.joinedAt,
+        updatedAt: serverTimestamp(),
+      },
+      lastCalculatedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  const giftRef = doc(ownerDb, 'contractGifts', 'contract-g');
+  await assertSucceeds(getDoc(giftRef));
+  await assertFails(setDoc(giftRef, { kind: 'rank' }));
+});
+
+test('creator cannot remove or rewrite another participant', async () => {
+  const ownerDb = environment.authenticatedContext('owner').firestore();
+  const memberDb = environment.authenticatedContext('member').firestore();
+  await createContract(ownerDb, 'owner', 'contract-k', 'club');
+  await assertSucceeds(
+    updateDoc(doc(memberDb, 'runContracts', 'contract-k'), {
+      'participants.member': {
+        uid: 'member',
+        progressValue: 2,
+        countedActivityIds: [],
+        joinedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      participantUids: ['owner', 'member'],
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  const ownerRef = doc(ownerDb, 'runContracts', 'contract-k');
+  const before = await getDoc(ownerRef);
+  const { owner } = before.data().participants;
+  // Xoá người đạt khỏi kèo có quà thì chủ kèo khỏi phải trao.
+  await assertFails(
+    updateDoc(ownerRef, {
+      participants: { owner },
+      participantUids: ['owner'],
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    updateDoc(ownerRef, {
+      'participants.member.progressValue': 0,
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    updateDoc(ownerRef, {
+      participantUids: ['owner'],
+      updatedAt: serverTimestamp(),
+    }),
+  );
+});
