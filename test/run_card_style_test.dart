@@ -904,6 +904,10 @@ void main() {
           const Offset(-200, 0),
         );
         if (fromThumb) {
+          // Ô chưa chọn không có bút; chọn Thép rồi bút mới hiện.
+          expect(find.bySemanticsLabel('Chỉnh Thép'), findsNothing);
+          await tester.tap(find.text('Thép'));
+          await tester.pump();
           await tester.tap(find.bySemanticsLabel('Chỉnh Thép'));
         } else {
           await tester.tap(find.text('Thép'));
@@ -925,7 +929,7 @@ void main() {
       Rect cardRect(WidgetTester tester) =>
           tester.getRect(inEditor(find.byType(AchievementCard)));
 
-      testWidgets('nút bút trên ô Thép mở thẳng màn chỉnh', (tester) async {
+      testWidgets('bút chỉ hiện ở ô đang chọn, bấm mở thẳng màn chỉnh', (tester) async {
         await openEditor(tester, fromThumb: true);
         expect(find.byType(RunCardEditor), findsOneWidget);
         expect(km(), findsOneWidget);

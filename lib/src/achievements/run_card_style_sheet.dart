@@ -410,7 +410,10 @@ class _RunCardStyleSheetState extends ConsumerState<RunCardStyleSheet> {
                           style: _styleOf(set),
                           selected: set == _set,
                           onTap: () => setState(() => _set = set),
-                          onEdit: () => _openEditor(set, skin),
+                          // Chỉ ô đang chọn có bút: bút ở mọi ô làm dải thẻ rối.
+                          onEdit: set == _set
+                              ? () => _openEditor(set, skin)
+                              : null,
                         );
                       },
                     ),
@@ -978,7 +981,7 @@ class _Thumb extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  /// Bộ chỉnh được có nút bút ở góc ảnh, bấm là vào thẳng màn chỉnh.
+  /// Có thì ô hiện nút bút ở góc ảnh, bấm là vào thẳng màn chỉnh.
   final VoidCallback? onEdit;
 
   @override
