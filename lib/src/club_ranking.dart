@@ -149,6 +149,48 @@ PastRankingPeriod pastRankingPeriod(DateTime now, ClubRankingRange range) {
   );
 }
 
+/// Kỳ đang chạy, cùng dạng [pastRankingPeriod], để lấy khoá bảng treo quà.
+PastRankingPeriod currentRankingPeriod(DateTime now, ClubRankingRange range) {
+  final vn = now.toUtc().add(_vietnamOffset);
+  final (start, end) = switch (range) {
+    ClubRankingRange.currentWeek => (
+      DateTime.utc(vn.year, vn.month, vn.day - vn.weekday + 1),
+      DateTime.utc(vn.year, vn.month, vn.day - vn.weekday + 8),
+    ),
+    ClubRankingRange.currentMonth => (
+      DateTime.utc(vn.year, vn.month),
+      DateTime.utc(vn.year, vn.month + 1),
+    ),
+  };
+  return (range: range, start: start, end: end, closing: false);
+}
+
+/// Kỳ và bộ môn của khoá bảng [boardId] ("week_2026-10-26_run"); null khi
+/// khoá lạ hay ngày không phải đầu kỳ.
+({PastRankingPeriod period, ClubRankingSport sport})? rankBoardKey(
+  String boardId,
+) {
+  final parts = boardId.split('_');
+  if (parts.length != 3) return null;
+  final range = switch (parts[0]) {
+    'week' => ClubRankingRange.currentWeek,
+    'month' => ClubRankingRange.currentMonth,
+    _ => null,
+  };
+  final sport = ClubRankingSport.values
+      .where((s) => s.name == parts[2])
+      .firstOrNull;
+  final start = DateTime.tryParse('${parts[1]}T00:00:00Z');
+  if (range == null || sport == null || start == null) return null;
+  // Đầu ngày VN là 17:00 UTC hôm trước; lấy giữa ngày cho chắc.
+  final period = currentRankingPeriod(
+    start.add(const Duration(hours: 5)),
+    range,
+  );
+  if (period.start != start) return null;
+  return (period: period, sport: sport);
+}
+
 String _dateKey(DateTime day) => day.toIso8601String().substring(0, 10);
 
 /// Khoá doc rankBoards/{id} và users/{uid}/rankCards/{id} backend ghi.

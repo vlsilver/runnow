@@ -13,6 +13,8 @@ import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rank/rank_card.dart';
+import 'package:myrun/src/rank/rank_reward.dart';
+import 'package:myrun/src/rank/rank_reward_widgets.dart';
 import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
@@ -21,11 +23,51 @@ import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:myrun/src/widgets/run_now_empty.dart';
 import 'package:myrun/src/widgets/run_now_avatar.dart';
 
-class ClubScreen extends ConsumerWidget {
-  const ClubScreen({super.key});
+class ClubScreen extends ConsumerStatefulWidget {
+  const ClubScreen({this.board, super.key});
+
+  /// Bảng đã chốt cần mở ở mục Kỳ trước, từ push quà BXH.
+  final String? board;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ClubScreen> createState() => _ClubScreenState();
+}
+
+class _ClubScreenState extends ConsumerState<ClubScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _openBoard(widget.board);
+  }
+
+  @override
+  void didUpdateWidget(ClubScreen old) {
+    super.didUpdateWidget(old);
+    if (widget.board != old.board) _openBoard(widget.board);
+  }
+
+  /// Chuyển mục Kỳ trước sang đúng kỳ và bộ môn của [board], kể cả kỳ cũ hơn
+  /// kỳ vừa hết. Mở thường (không [board]) thì về kỳ vừa hết, để kỳ cũ của
+  /// lần mở từ push trước không bị giữ lại. Khoá lạ thì bỏ qua.
+  void _openBoard(String? board) {
+    if (board == null) {
+      Future.microtask(() {
+        if (mounted) ref.read(_pastStartProvider.notifier).state = null;
+      });
+      return;
+    }
+    final key = rankBoardKey(board);
+    if (key == null) return;
+    Future.microtask(() {
+      if (!mounted) return;
+      ref.read(_pastRangeProvider.notifier).state = key.period.range;
+      ref.read(_pastSportProvider.notifier).state = key.sport;
+      ref.read(_pastStartProvider.notifier).state = key.period.start;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Câu lạc bộ')),
       body: _RankingTab(currentUid: _currentUid(ref)),
@@ -66,6 +108,12 @@ class _RankingTab extends ConsumerWidget {
     final ranked = items == null
         ? const <ClubRankedMember>[]
         : rankClubMembers(items, sport, range);
+    final rewardBoard = rankBoardId(
+      currentRankingPeriod(DateTime.now(), range),
+      sport,
+    );
+    final rewards = ref.watch(rankRewardsProvider(rewardBoard)).asData?.value;
+    final hasRewards = rewards != null && rewards.items.isNotEmpty;
     return RefreshIndicator(
       onRefresh: () async {
         ref.invalidate(stepLeaderboardDocsProvider);
@@ -104,6 +152,10 @@ class _RankingTab extends ConsumerWidget {
                 ref.read(clubRankingSportProvider.notifier).state = option,
           ),
           const SizedBox(height: 12),
+          if (hasRewards) ...[
+            RankRewardStrip(rewards: rewards),
+            const SizedBox(height: 12),
+          ],
           board.when(
             data: (_) {
               return _ShareableClubCard(
@@ -114,6 +166,7 @@ class _RankingTab extends ConsumerWidget {
                   sport: sport,
                   range: range,
                   currentUid: currentUid,
+                  rewards: hasRewards ? rewards : null,
                 ),
               );
             },
@@ -472,15 +525,18 @@ class _RankingList extends StatelessWidget {
     required this.sport,
     required this.range,
     required this.currentUid,
+    this.rewards,
   });
 
   final List<ClubRankedMember> ranked;
   final ClubRankingSport sport;
   final ClubRankingRange range;
   final String? currentUid;
+  final RankRewards? rewards;
 
   @override
   Widget build(BuildContext context) {
+    final rewards = this.rewards;
     return GlassPanel(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       borderRadius: 22,
@@ -495,8 +551,17 @@ class _RankingList extends StatelessWidget {
                     sport: sport,
                     isMe: ranked[index].entry.uid == currentUid,
                     gapLabel: ranked[index].entry.uid == currentUid
-                        ? clubRankingGapLabel(ranked, index, sport)
+                        ? (rewards == null
+                                  ? null
+                                  : rankRewardGapLabel(
+                                      ranked,
+                                      index,
+                                      rewards,
+                                      sport,
+                                    )) ??
+                              clubRankingGapLabel(ranked, index, sport)
                         : null,
+                    reward: rewards?.itemFor(ranked[index].rank),
                   ),
                   // Backend trao thẻ cho hạng ≤ 10 (rank_card.go), bằng số ở
                   // hạng 10 thì cả nhóm cùng có thẻ.
@@ -597,12 +662,16 @@ class _RankingRow extends StatelessWidget {
     required this.sport,
     required this.isMe,
     required this.gapLabel,
+    this.reward,
   });
 
   final ClubRankedMember member;
   final ClubRankingSport sport;
   final bool isMe;
   final String? gapLabel;
+
+  /// Món quà hạng này sẽ nhận nếu kỳ chốt bây giờ.
+  final RankRewardItem? reward;
 
   @override
   Widget build(BuildContext context) {
@@ -691,6 +760,17 @@ class _RankingRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
+                if (reward != null) ...[
+                  Tooltip(
+                    message: reward!.name,
+                    child: Icon(
+                      rankRewardIcon(reward!.icon),
+                      size: 18,
+                      color: palette.accentDeep,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Text.rich(
                   TextSpan(
                     children: [
@@ -849,6 +929,10 @@ final _pastSportProvider = StateProvider<ClubRankingSport>(
   (ref) => ClubRankingSport.run,
 );
 
+/// Ngày đầu kỳ cũ mà push quà mở tới; null là kỳ vừa hết. Đổi tuần/tháng thì
+/// về lại kỳ vừa hết.
+final _pastStartProvider = StateProvider<DateTime?>((ref) => null);
+
 String _lowerFirst(String text) =>
     text.isEmpty ? text : text[0].toLowerCase() + text.substring(1);
 
@@ -864,7 +948,10 @@ class _PastPeriodSection extends ConsumerWidget {
     final palette = context.runNowPalette;
     final range = ref.watch(_pastRangeProvider);
     final sport = ref.watch(_pastSportProvider);
-    final period = pastRankingPeriod(DateTime.now(), range);
+    final start = ref.watch(_pastStartProvider);
+    final period = start == null
+        ? pastRankingPeriod(DateTime.now(), range)
+        : currentRankingPeriod(start.add(const Duration(hours: 5)), range);
     final boardId = rankBoardId(period, sport);
     final board = ref.watch(rankBoardProvider(boardId));
     final label = pastRankingPeriodLabel(period);
@@ -883,8 +970,10 @@ class _PastPeriodSection extends ConsumerWidget {
                   const Expanded(child: _SectionTitle('KỲ TRƯỚC')),
                   _RangeSwitch(
                     range: range,
-                    onSelect: (option) =>
-                        ref.read(_pastRangeProvider.notifier).state = option,
+                    onSelect: (option) {
+                      ref.read(_pastStartProvider.notifier).state = null;
+                      ref.read(_pastRangeProvider.notifier).state = option;
+                    },
                   ),
                 ],
               ),
@@ -1236,45 +1325,61 @@ class _MyPastCardRow extends ConsumerWidget {
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
       borderRadius: 22,
       padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  me.rank == 1
-                      ? 'Bạn là quán quân $period'
-                      : 'Bạn về hạng ${me.rank}',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      me.rank == 1
+                          ? 'Bạn là quán quân $period'
+                          : 'Bạn về hạng ${me.rank}',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      [
+                        clubRankingValueLabel(me.score, sport),
+                        ?gap,
+                      ].join(' · '),
+                      style: TextStyle(color: palette.textMuted, fontSize: 13),
+                    ),
+                    if (card != null && !card.revealed)
+                      Text(
+                        'Thẻ của bạn đang úp',
+                        style: TextStyle(
+                          color: palette.accentDeep,
+                          fontSize: 12,
+                        ),
+                      ),
+                  ],
                 ),
-                Text(
-                  [clubRankingValueLabel(me.score, sport), ?gap].join(' · '),
-                  style: TextStyle(color: palette.textMuted, fontSize: 13),
-                ),
-                if (card != null && !card.revealed)
-                  Text(
-                    'Thẻ của bạn đang úp',
-                    style: TextStyle(color: palette.accentDeep, fontSize: 12),
-                  ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 10),
+              if (card != null)
+                card.revealed
+                    ? OutlinedButton(
+                        onPressed: () =>
+                            showRankCardViewer(context, card, canShare: true),
+                        child: const Text('Xem thẻ'),
+                      )
+                    : FilledButton(
+                        onPressed: () => _flipRankCard(context, card),
+                        child: const Text('Lật thẻ'),
+                      ),
+            ],
           ),
-          const SizedBox(width: 10),
-          if (card != null)
-            card.revealed
-                ? OutlinedButton(
-                    onPressed: () =>
-                        showRankCardViewer(context, card, canShare: true),
-                    child: const Text('Xem thẻ'),
-                  )
-                : FilledButton(
-                    onPressed: () => _flipRankCard(context, card),
-                    child: const Text('Lật thẻ'),
-                  ),
+          // Quà hiện sau khi lật, để lật thẻ vẫn còn bất ngờ.
+          if (card != null && card.revealed && card.reward != null) ...[
+            const SizedBox(height: 8),
+            RankCardRewardLine(card: card),
+          ],
         ],
       ),
     );

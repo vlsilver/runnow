@@ -22,6 +22,7 @@ import 'package:myrun/src/journey/journey_card.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rank/rank_card.dart';
+import 'package:myrun/src/rank/rank_reward.dart';
 import 'package:myrun/src/run_contracts/contract_card_models.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 
@@ -226,6 +227,22 @@ final rankBoardProvider = StreamProvider.autoDispose.family<RankBoard?, String>(
         );
   },
 );
+
+/// Quà treo cho một bảng, kể cả kỳ đang chạy; null khi bảng không có quà.
+final rankRewardsProvider = StreamProvider.autoDispose
+    .family<RankRewards?, String>((ref, boardId) {
+      return FirebaseFirestore.instance
+          .collection('rankRewards')
+          .doc(boardId)
+          .snapshots()
+          .map(
+            (doc) => doc.exists
+                ? RankRewards.fromJson(
+                    _plain(doc.data()) as Map<String, dynamic>,
+                  )
+                : null,
+          );
+    });
 
 RankCard? _rankCardFrom(
   String uid,

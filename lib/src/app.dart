@@ -77,7 +77,8 @@ final _router = GoRouter(
           routes: [
             GoRoute(
               path: '/club',
-              builder: (context, state) => const ClubScreen(),
+              builder: (context, state) =>
+                  ClubScreen(board: state.uri.queryParameters['board']),
             ),
           ],
         ),

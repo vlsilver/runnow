@@ -9,6 +9,7 @@ import 'package:myrun/src/admin/admin_models.dart';
 import 'package:myrun/src/agents/agent_models.dart';
 import 'package:myrun/src/config.dart';
 import 'package:myrun/src/games/game_models.dart';
+import 'package:myrun/src/rank/rank_reward.dart';
 import 'package:myrun/src/run_contracts/contract_card_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -536,6 +537,63 @@ class RunNowApiClient {
 
   String _rolePath(String role, String uid) =>
       '/v1/admin/roles/${Uri.encodeComponent(role)}/${Uri.encodeComponent(uid)}';
+
+  /// Chỉ admin: quà treo cho bảng [boardId] và, khi đã chốt, người trúng.
+  Future<RankRewardView> getRankRewards(String boardId) async {
+    final response = await _send('GET', _rankRewardPath(boardId));
+    return RankRewardView.fromJson(_jsonObject(response));
+  }
+
+  /// Thay cả danh sách quà. Kỳ đang chạy chỉ được thêm (`reward_shrink`), kỳ
+  /// đã hết thì `reward_locked`. [items] rỗng là bỏ quà.
+  Future<RankRewardView> setRankRewards(
+    String boardId, {
+    required String giverUid,
+    required List<RankRewardItem> items,
+  }) async {
+    final response = await _send(
+      'PUT',
+      _rankRewardPath(boardId),
+      body: {
+        'giverUid': giverUid,
+        'items': [for (final item in items) item.toJson()],
+      },
+    );
+    return RankRewardView.fromJson(_jsonObject(response));
+  }
+
+  /// Đánh dấu đã trao hay bỏ đánh dấu; người nhận đã bấm nhận thì không bỏ
+  /// được (`reward_received`).
+  Future<RankRewardView> setRankRewardGiven(
+    String boardId,
+    String uid, {
+    required bool given,
+  }) async {
+    final response = await _send(
+      given ? 'POST' : 'DELETE',
+      '${_rankRewardPath(boardId)}/winners/${Uri.encodeComponent(uid)}/given',
+    );
+    return RankRewardView.fromJson(_jsonObject(response));
+  }
+
+  String _rankRewardPath(String boardId) =>
+      '/v1/admin/rank-rewards/${Uri.encodeComponent(boardId)}';
+
+  /// Telegram người trao quà trên thẻ hạng của mình (`no_reward` khi thẻ
+  /// không có quà). Rỗng khi người trao chưa liên kết Telegram.
+  Future<String> getRankRewardContact(String boardId) async {
+    final response = await _send(
+      'GET',
+      '/v1/rank-cards/${Uri.encodeComponent(boardId)}/reward/contact',
+    );
+    return _jsonObject(response)['giverTg'] as String? ?? '';
+  }
+
+  /// Người trúng báo đã nhận quà trên thẻ hạng của mình. Gọi lại vẫn 200.
+  Future<void> markRankRewardReceived(String boardId) => _send(
+    'POST',
+    '/v1/rank-cards/${Uri.encodeComponent(boardId)}/reward/received',
+  );
 
   /// Chỉ admin: trần, giá model và chi phí hôm nay của bot cá nhân.
   Future<AgentConfig> getAgentConfig() async {

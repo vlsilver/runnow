@@ -87,6 +87,10 @@ String? pushLocation(Map<String, dynamic> data) {
       gameId.isNotEmpty) {
     return '/games/${Uri.encodeComponent(gameId)}';
   }
+  final boardId = data['boardId'];
+  if (kind == 'rank_reward' && boardId is String && boardId.isNotEmpty) {
+    return Uri(path: '/club', queryParameters: {'board': boardId}).toString();
+  }
   final roomId = data['roomId'];
   if (kind is String &&
       kind.startsWith('room_') &&

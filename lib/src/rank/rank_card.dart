@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
@@ -6,6 +6,8 @@ import 'package:myrun/src/club_ranking.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/rank/rank_card_art.dart';
+import 'package:myrun/src/rank/rank_reward.dart';
+import 'package:myrun/src/rank/rank_reward_widgets.dart';
 import 'package:myrun/src/steps_format.dart';
 
 ClubRankingRange? _rangeFrom(Object? key) => switch (key) {
@@ -89,6 +91,7 @@ class RankCard {
     required this.quote,
     this.awardedAt,
     this.revealedAt,
+    this.reward,
   });
 
   /// Null khi kỳ hay bộ môn lạ (backend mới thêm): app cũ bỏ qua thẻ đó.
@@ -123,6 +126,7 @@ class RankCard {
       quote: json['quote'] as String? ?? '',
       awardedAt: awardedAt is DateTime ? awardedAt : null,
       revealedAt: revealedAt is DateTime ? revealedAt : null,
+      reward: RankCardReward.fromJson(json['reward']),
     );
   }
 
@@ -148,6 +152,9 @@ class RankCard {
   final String quote;
   final DateTime? awardedAt;
   final DateTime? revealedAt;
+
+  /// Quà gắn lúc chốt, null khi hạng không có quà.
+  final RankCardReward? reward;
 
   bool get revealed => revealedAt != null;
   bool get month => range == ClubRankingRange.currentMonth;
@@ -295,6 +302,18 @@ Future<void> showRankCardViewer(
     cardSize: achievementCardSize,
     startBack: faceDown,
     reaction: reaction,
+    // Chủ thẻ mở quà từ thẻ ở bất cứ đâu, kể cả khi kỳ đã trôi khỏi mục Kỳ
+    // trước, để còn nhắn người trao và báo đã nhận. Thẻ đang úp chờ lật thì
+    // giấu, để quà còn là bất ngờ.
+    leading: canShare && !faceDown && card.reward != null
+        ? Builder(
+            builder: (origin) => IconButton.filledTonal(
+              tooltip: 'Quà',
+              icon: const Icon(Icons.card_giftcard),
+              onPressed: () => showRankCardRewardSheet(origin, card),
+            ),
+          )
+        : null,
     onShare: canShare
         ? (_, origin) => showCardShare(
             origin,
