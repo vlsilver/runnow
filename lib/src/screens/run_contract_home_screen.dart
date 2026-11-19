@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/achievements/run_card_providers.dart'
+    show contractGiftProvider;
 import 'package:myrun/src/games/game_card.dart';
 import 'package:myrun/src/games/game_providers.dart';
 import 'package:myrun/src/rooms/run_room_card.dart';
@@ -10,6 +12,7 @@ import 'package:myrun/src/rooms/run_room_repository.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
+import 'package:myrun/src/run_contracts/contract_gift.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_repository.dart';
 import 'package:myrun/src/run_contracts/widgets/run_contract_card.dart';
@@ -649,8 +652,36 @@ class _ContractFeed extends StatelessWidget {
   ) {
     final isMine = contract.creatorUid == currentUid;
     final member = profiles[contract.creatorUid];
+    // Chỉ nghe quà ở kèo treo được quà, để kèo riêng không mở thêm listener.
+    if (!contractGiftAllowed(contract.visibility, contract.metric)) {
+      return _contractCardWith(context, contract, profiles, isMine, member);
+    }
+    return Consumer(
+      builder: (context, ref, _) {
+        final gift = ref.watch(contractGiftProvider(contract.id)).value;
+        return _contractCardWith(
+          context,
+          contract,
+          profiles,
+          isMine,
+          member,
+          giftBadge: gift == null || gift.items.isEmpty ? null : gift.badge,
+        );
+      },
+    );
+  }
+
+  Widget _contractCardWith(
+    BuildContext context,
+    RunContract contract,
+    Map<String, MemberProfile> profiles,
+    bool isMine,
+    MemberProfile? member, {
+    String? giftBadge,
+  }) {
     return RunContractCard(
       contract: contract,
+      giftBadge: giftBadge,
       ownerName: isMine
           ? currentProfile?.displayName ?? 'Bạn'
           : member?.displayName ?? '3i member',

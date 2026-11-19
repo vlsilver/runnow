@@ -595,6 +595,44 @@ class RunNowApiClient {
     '/v1/rank-cards/${Uri.encodeComponent(boardId)}/reward/received',
   );
 
+  /// Chủ kèo treo quà cho kèo [contractId]. [items] rỗng là bỏ quà; kèo có
+  /// người tham gia thì backend chỉ cho thêm món (`gift_shrink`).
+  Future<void> setContractGifts(
+    String contractId, {
+    required String kind,
+    required List<Map<String, dynamic>> items,
+  }) => _send(
+    'PUT',
+    '/v1/contracts/${Uri.encodeComponent(contractId)}/gifts',
+    body: {'kind': kind, 'items': items},
+  );
+
+  /// Chủ kèo đánh dấu đã trao (hay bỏ đánh dấu) quà cho người trúng [uid].
+  Future<void> setContractGiftGiven(
+    String contractId,
+    String uid, {
+    required bool given,
+  }) => _send(
+    given ? 'POST' : 'DELETE',
+    '/v1/contracts/${Uri.encodeComponent(contractId)}/gifts/winners/'
+    '${Uri.encodeComponent(uid)}/given',
+  );
+
+  Future<void> markContractGiftReceived(String contractId) => _send(
+    'POST',
+    '/v1/contracts/${Uri.encodeComponent(contractId)}/gifts/received',
+  );
+
+  /// Telegram của người trao, chỉ người trúng hỏi được (`no_gift` với người
+  /// khác). Rỗng khi người trao chưa liên kết Telegram.
+  Future<String> getContractGiftContact(String contractId) async {
+    final response = await _send(
+      'GET',
+      '/v1/contracts/${Uri.encodeComponent(contractId)}/gifts/contact',
+    );
+    return _jsonObject(response)['giverTg'] as String? ?? '';
+  }
+
   /// Chỉ admin: trần, giá model và chi phí hôm nay của bot cá nhân.
   Future<AgentConfig> getAgentConfig() async {
     final response = await _send('GET', '/v1/admin/agent-config');

@@ -91,6 +91,12 @@ String? pushLocation(Map<String, dynamic> data) {
   if (kind == 'rank_reward' && boardId is String && boardId.isNotEmpty) {
     return Uri(path: '/club', queryParameters: {'board': boardId}).toString();
   }
+  final contractId = data['contractId'];
+  if (kind == 'contract_gift' &&
+      contractId is String &&
+      contractId.isNotEmpty) {
+    return '/contracts/${Uri.encodeComponent(contractId)}';
+  }
   final roomId = data['roomId'];
   if (kind is String &&
       kind.startsWith('room_') &&

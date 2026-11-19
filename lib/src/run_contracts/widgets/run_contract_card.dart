@@ -19,10 +19,14 @@ class RunContractCard extends StatelessWidget {
     this.onJoin,
     this.compact = false,
     this.isMine = false,
+    this.giftBadge,
     super.key,
   });
 
   final RunContract contract;
+
+  /// "4 quà" khi chủ kèo treo quà.
+  final String? giftBadge;
   final String? ownerName;
   final String? ownerAvatarUrl;
   final String? currentUid;
@@ -60,6 +64,7 @@ class RunContractCard extends StatelessWidget {
             state: state,
             ownerName: ownerName,
             ownerAvatarUrl: ownerAvatarUrl,
+            giftBadge: giftBadge,
           ),
           const SizedBox(height: 12),
           Row(
@@ -345,12 +350,14 @@ class _Header extends StatelessWidget {
     required this.state,
     required this.ownerName,
     required this.ownerAvatarUrl,
+    this.giftBadge,
   });
 
   final RunContract contract;
   final RunContractUiState state;
   final String? ownerName;
   final String? ownerAvatarUrl;
+  final String? giftBadge;
 
   @override
   Widget build(BuildContext context) {
@@ -393,6 +400,10 @@ class _Header extends StatelessWidget {
         // cũng mang route nhưng không có.
         if (contract.route != null && !contract.isJourney) ...[
           const _LiveTag(),
+          const SizedBox(width: 6),
+        ],
+        if (giftBadge case final badge?) ...[
+          _GiftTag(label: badge),
           const SizedBox(width: 6),
         ],
         DecoratedBox(
@@ -439,6 +450,41 @@ class _Header extends StatelessWidget {
 /// realtime cho người tham gia khác xem) — tĩnh (không pulse) vì hiện lặp
 /// lại trên nhiều card trong 1 danh sách cuộn, khác với [_GoLiveButton] ở
 /// màn chi tiết kèo (chỉ 1 instance, có thể animate thoải mái).
+class _GiftTag extends StatelessWidget {
+  const _GiftTag({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: palette.wash(palette.accent, 0.16),
+        borderRadius: palette.radius(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.card_giftcard, size: 13, color: palette.accentDeep),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: palette.accentDeep,
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _LiveTag extends StatelessWidget {
   const _LiveTag();
 

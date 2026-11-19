@@ -24,6 +24,7 @@ import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rank/rank_card.dart';
 import 'package:myrun/src/rank/rank_reward.dart';
 import 'package:myrun/src/run_contracts/contract_card_models.dart';
+import 'package:myrun/src/run_contracts/contract_gift.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 
 /// Doc Firestore sang map thường: Timestamp thành DateTime, kể cả trong map
@@ -238,6 +239,23 @@ final rankRewardsProvider = StreamProvider.autoDispose
           .map(
             (doc) => doc.exists
                 ? RankRewards.fromJson(
+                    _plain(doc.data()) as Map<String, dynamic>,
+                  )
+                : null,
+          );
+    });
+
+/// Quà của một kèo; null khi kèo không treo quà.
+final contractGiftProvider = StreamProvider.autoDispose
+    .family<ContractGift?, String>((ref, contractId) {
+      return FirebaseFirestore.instance
+          .collection('contractGifts')
+          .doc(contractId)
+          .snapshots()
+          .map(
+            (doc) => doc.exists
+                ? ContractGift.fromJson(
+                    contractId,
                     _plain(doc.data()) as Map<String, dynamic>,
                   )
                 : null,

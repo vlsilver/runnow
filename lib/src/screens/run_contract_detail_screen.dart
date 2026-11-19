@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:myrun/src/achievements/run_card_providers.dart'
+    show contractGiftProvider;
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
@@ -10,6 +12,7 @@ import 'package:myrun/src/run_contracts/run_contract_insights.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 import 'package:myrun/src/run_contracts/widgets/contract_card_panel.dart';
+import 'package:myrun/src/run_contracts/widgets/contract_gift_section.dart';
 import 'package:myrun/src/run_contracts/widgets/contract_share.dart';
 import 'package:myrun/src/run_contracts/widgets/run_contract_card.dart'
     show runContractStateColor, runContractStateLabel;
@@ -266,6 +269,12 @@ class _RunContractDetailScreenState
           in ref.watch(membersProvider).value ?? const <MemberProfile>[])
         member.uid: member,
     };
+    final giftState = ref.watch(contractGiftProvider(contract.id));
+    final gift = giftState.value;
+    // Kèo có quà do job chốt và chia quà; chưa tải xong thì cũng ẩn nút chốt
+    // tay, vì rules chặn chủ kèo đóng kèo có quà.
+    final giftCloses =
+        giftState.isLoading || (gift != null && gift.items.isNotEmpty);
     return ListView(
       padding: const EdgeInsets.fromLTRB(0, 16, 0, 120),
       children: [
@@ -279,6 +288,17 @@ class _RunContractDetailScreenState
           const SizedBox(height: 12),
           RunContractMeetupPanel(contract: contract),
         ],
+        const SizedBox(height: 12),
+        ContractGiftSection(
+          contract: contract,
+          gift: gift,
+          uid: uid,
+          names: {
+            for (final p in profiles.values) p.uid: p.displayName,
+            if (uid != null && currentProfile != null)
+              uid: currentProfile.displayName,
+          },
+        ),
         if (contract.route != null) ...[
           const SizedBox(height: 16),
           _LazyRouteMapSection(
@@ -336,7 +356,7 @@ class _RunContractDetailScreenState
             lifecycle == RunContractLifecycle.awaitingFinalize)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: _primaryAction(contract, lifecycle),
+            child: _primaryAction(contract, lifecycle, giftCloses: giftCloses),
           )
         else if (owner &&
             contract.isActive &&
@@ -344,7 +364,7 @@ class _RunContractDetailScreenState
                 lifecycle == RunContractLifecycle.scheduled))
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: _primaryAction(contract, lifecycle),
+            child: _primaryAction(contract, lifecycle, giftCloses: giftCloses),
           ),
         if (owner && !contract.isActive)
           Padding(
@@ -377,29 +397,37 @@ class _RunContractDetailScreenState
     );
   }
 
-  Widget _primaryAction(RunContract contract, RunContractLifecycle lifecycle) =>
-      switch (lifecycle) {
-        RunContractLifecycle.awaitingFinalize => FilledButton.icon(
-          onPressed: _working ? null : () => _finalize(contract),
-          icon: const Icon(Icons.verified_outlined),
-          label: const Text('Chốt kết quả'),
-        ),
-        RunContractLifecycle.syncGrace => const Card(
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Text(
-              'Đang chờ đồng bộ cuối. Bạn có thể chốt kết quả từ 06:00.',
-            ),
-          ),
-        ),
-        RunContractLifecycle.scheduled => const Card(
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Text('Kèo đã chốt và sẽ tự bắt đầu đúng giờ.'),
-          ),
-        ),
-        _ => const SizedBox.shrink(),
-      };
+  Widget _primaryAction(
+    RunContract contract,
+    RunContractLifecycle lifecycle, {
+    required bool giftCloses,
+  }) => switch (lifecycle) {
+    RunContractLifecycle.awaitingFinalize ||
+    RunContractLifecycle.syncGrace when giftCloses => const Card(
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('Kèo có quà: hệ thống tự chốt và chia quà sau 06:00.'),
+      ),
+    ),
+    RunContractLifecycle.awaitingFinalize => FilledButton.icon(
+      onPressed: _working ? null : () => _finalize(contract),
+      icon: const Icon(Icons.verified_outlined),
+      label: const Text('Chốt kết quả'),
+    ),
+    RunContractLifecycle.syncGrace => const Card(
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('Đang chờ đồng bộ cuối. Bạn có thể chốt kết quả từ 06:00.'),
+      ),
+    ),
+    RunContractLifecycle.scheduled => const Card(
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('Kèo đã chốt và sẽ tự bắt đầu đúng giờ.'),
+      ),
+    ),
+    _ => const SizedBox.shrink(),
+  };
 
   Future<void> _finalize(RunContract contract) async {
     setState(() => _working = true);

@@ -9,6 +9,8 @@ import 'package:myrun/src/rooms/run_room_actions.dart'
 import 'package:myrun/src/rooms/run_room_create_sheet.dart'
     show runRoomMaxRunners, showCreateRunRoomSheet;
 import 'package:myrun/src/rooms/run_room_models.dart';
+import 'package:myrun/src/run_contracts/contract_gift.dart';
+import 'package:myrun/src/run_contracts/contract_gift_editor.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
 import 'package:myrun/src/run_contracts/run_contract_meetup.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
@@ -37,6 +39,15 @@ class _RunContractCreateScreenState
   bool _working = false;
   String? _error;
   RunContractPreview? _preview;
+
+  /// Quà treo kèm kèo; chỉ dùng khi [_giftAllowed].
+  ContractGiftDraft? _gift;
+
+  bool get _giftAllowed =>
+      contractGiftAllowed(_draft.visibility, _draft.metric);
+
+  ContractGiftDraft? get _giftToSave =>
+      _giftAllowed && (_gift?.items.isNotEmpty ?? false) ? _gift : null;
 
   @override
   void initState() {
@@ -315,6 +326,10 @@ class _RunContractCreateScreenState
             ],
           ),
         ),
+      if (_giftAllowed) ...[
+        const SizedBox(height: 22),
+        _GiftRow(gift: _giftToSave, onTap: _editGift),
+      ],
       const SizedBox(height: 20),
       Row(
         children: [
@@ -379,6 +394,12 @@ class _RunContractCreateScreenState
                     ? 'Public trong Club'
                     : 'Chỉ mình tôi',
               ),
+              if (_giftToSave case final gift?)
+                _ConfirmRow(
+                  'Quà',
+                  '${gift.summary}\n'
+                      '${gift.items.map((it) => '${it.name} ×${it.slots}').join(', ')}',
+                ),
               _ConfirmRow(
                 'Nguồn',
                 _draft.metric == RunContractMetric.activityCount ||
@@ -913,6 +934,11 @@ class _RunContractCreateScreenState
     }
   }
 
+  Future<void> _editGift() async {
+    final gift = await showContractGiftEditor(context, initial: _gift);
+    if (gift != null && mounted) setState(() => _gift = gift);
+  }
+
   Future<void> _create() async {
     setState(() {
       _working = true;
@@ -938,6 +964,28 @@ class _RunContractCreateScreenState
           .read(runContractAnalyticsProvider)
           .log('contract_created', draft: _draft)
           .ignore();
+      // Treo quà trước khi báo group để tin báo có dòng quà. Lỗi thì kèo vẫn
+      // tạo xong; chủ kèo treo lại ở màn chi tiết.
+      if (_giftToSave case final gift?) {
+        try {
+          await saveContractGifts(
+            api,
+            contractId: id,
+            creatorUid: ref.read(firebaseUserProvider).value?.uid ?? '',
+            draft: gift,
+          );
+        } catch (error) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Chưa treo được quà: $error. Vào kèo để treo lại.',
+                ),
+              ),
+            );
+          }
+        }
+      }
       // Kèo công khai → 3i bot báo group rủ tham gia (fire-and-forget).
       if (draft.visibility == RunContractVisibility.club) {
         ref
@@ -1241,6 +1289,72 @@ class _QuickTargetChip extends StatelessWidget {
                 ? palette.glassStart
                 : Theme.of(context).colorScheme.onSurface,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Hàng Quà ở bước 2: chưa có quà thì mời treo, có rồi thì tóm tắt và Sửa.
+class _GiftRow extends StatelessWidget {
+  const _GiftRow({required this.gift, required this.onTap});
+
+  final ContractGiftDraft? gift;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final gift = this.gift;
+    return GlassPanel(
+      borderRadius: 0,
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+      child: InkWell(
+        onTap: onTap,
+        child: Row(
+          children: [
+            Icon(Icons.card_giftcard, color: palette.accentDeep),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    gift == null ? 'Treo quà' : gift.summary,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  if (gift == null)
+                    Text(
+                      'Không bắt buộc',
+                      style: TextStyle(color: palette.textMuted, fontSize: 12),
+                    )
+                  else ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final it in gift.items)
+                          Chip(
+                            visualDensity: VisualDensity.compact,
+                            avatar: ContractGiftPhotoThumb(
+                              icon: it.icon,
+                              photo: it.photos.firstOrNull,
+                              size: 22,
+                            ),
+                            label: Text('${it.name} ×${it.slots}'),
+                          ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: onTap,
+              child: Text(gift == null ? 'Thêm' : 'Sửa'),
+            ),
+          ],
         ),
       ),
     );
