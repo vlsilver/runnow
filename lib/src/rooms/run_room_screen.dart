@@ -189,7 +189,9 @@ class _RoomHeader extends StatelessWidget {
         children: [
           Text(
             room.title,
-            style: palette.heading(const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+            style: palette.heading(
+              const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            ),
           ),
           const SizedBox(height: 4),
           Text(

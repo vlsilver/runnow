@@ -137,9 +137,7 @@ class _LoginPrompt extends ConsumerWidget {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.login),
-              label: Text(
-                controller.loading ? 'Đang đăng nhập…' : 'Đăng nhập',
-              ),
+              label: Text(controller.loading ? 'Đang đăng nhập…' : 'Đăng nhập'),
             ),
           ),
           if (controller.errorMessage != null) ...[

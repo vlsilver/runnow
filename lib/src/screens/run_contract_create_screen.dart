@@ -1166,13 +1166,15 @@ class _GoalStepper extends StatelessWidget {
               children: [
                 Text(
                   display,
-                  style: palette.heading(TextStyle(
-                    fontSize: 34,
-                    height: 0.95,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -1,
-                    color: onSurface,
-                  )),
+                  style: palette.heading(
+                    TextStyle(
+                      fontSize: 34,
+                      height: 0.95,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -1,
+                      color: onSurface,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(

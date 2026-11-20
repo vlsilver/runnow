@@ -109,14 +109,15 @@ class _TrainingPlanViewState extends ConsumerState<TrainingPlanView> {
       await (accept ? coach.confirmDraft() : coach.discardDraft());
       if (mounted) setState(() => _dismissedCompleted = false);
     } catch (e) {
-      if (mounted) _snack(accept ? 'Không xác nhận được: $e' : 'Không bỏ được: $e');
+      if (mounted)
+        _snack(accept ? 'Không xác nhận được: $e' : 'Không bỏ được: $e');
     } finally {
       if (mounted) setState(() => _decidingDraft = false);
     }
   }
 
-  void _snack(String msg) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(msg)));
+  void _snack(String msg) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 
   void _openDay(TrainingPlan plan, TrainingDay day) {
     final index = plan.days.indexOf(day);
@@ -128,7 +129,9 @@ class _TrainingPlanViewState extends ConsumerState<TrainingPlanView> {
         day: day,
         plan: plan,
         onToggleDone: () {
-          ref.read(coachControllerProvider).toggleDone(plan.id, index, !day.done);
+          ref
+              .read(coachControllerProvider)
+              .toggleDone(plan.id, index, !day.done);
           Navigator.of(sheetContext).pop();
         },
       ),
@@ -216,9 +219,9 @@ class _TrainingPlanViewState extends ConsumerState<TrainingPlanView> {
 
 /// Hỏi lại rồi xoá giáo án của mình. Giáo án công khai thì báo group trước.
 void confirmDeleteCoachPlan(
-BuildContext context,
-WidgetRef ref,
-TrainingPlan plan,
+  BuildContext context,
+  WidgetRef ref,
+  TrainingPlan plan,
 ) {
   // Số người khác đang theo (không tính chủ) — để cảnh báo hậu quả khi xoá.
   final others = (plan.participantCount - 1).clamp(0, 9999);
@@ -305,7 +308,11 @@ class _AskCoachButton extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 'Hỏi Coach về giáo án',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: fg),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: fg,
+                ),
               ),
             ],
           ),

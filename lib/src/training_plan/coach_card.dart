@@ -193,7 +193,10 @@ class CoachCard extends StatelessWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: context.runNowPalette.wash(accent, dark ? 0.22 : 0.14),
+                    color: context.runNowPalette.wash(
+                      accent,
+                      dark ? 0.22 : 0.14,
+                    ),
                     borderRadius: context.runNowPalette.radius(999),
                   ),
                   child: Text(

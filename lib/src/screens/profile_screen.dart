@@ -64,11 +64,13 @@ class _Header extends StatelessWidget {
         Expanded(
           child: Text(
             'Hồ sơ',
-            style: palette.heading(TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w900,
-              color: palette.foreground,
-            )),
+            style: palette.heading(
+              TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w900,
+                color: palette.foreground,
+              ),
+            ),
           ),
         ),
         if (onMyBot != null)
@@ -78,9 +80,7 @@ class _Header extends StatelessWidget {
             style: IconButton.styleFrom(
               minimumSize: const Size(44, 44),
               side: BorderSide(color: palette.border),
-              shape: RoundedRectangleBorder(
-                borderRadius: palette.radius(14),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: palette.radius(14)),
             ),
             icon: const Icon(Icons.smart_toy_outlined, size: 20),
           ),
@@ -112,11 +112,13 @@ class _Identity extends StatelessWidget {
               ? null
               : Text(
                   name.isEmpty ? '' : name.characters.first.toUpperCase(),
-                  style: palette.heading(TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w900,
-                    color: palette.accent,
-                  )),
+                  style: palette.heading(
+                    TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w900,
+                      color: palette.accent,
+                    ),
+                  ),
                 ),
         ),
         const SizedBox(width: 14),
@@ -128,11 +130,13 @@ class _Identity extends StatelessWidget {
                 name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: palette.heading(TextStyle(
-                  fontSize: 21,
-                  fontWeight: FontWeight.w900,
-                  color: palette.foreground,
-                )),
+                style: palette.heading(
+                  TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w900,
+                    color: palette.foreground,
+                  ),
+                ),
               ),
               const SizedBox(height: 3),
               Text(

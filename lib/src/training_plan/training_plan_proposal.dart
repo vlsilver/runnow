@@ -48,13 +48,15 @@ class PlanProposalView extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           draft.goal,
-          style: palette.heading(TextStyle(
-            fontSize: 25,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.4,
-            height: 1.2,
-            color: palette.ink,
-          )),
+          style: palette.heading(
+            TextStyle(
+              fontSize: 25,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.4,
+              height: 1.2,
+              color: palette.ink,
+            ),
+          ),
         ),
         if (draft.summary.isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -80,11 +82,7 @@ class PlanProposalView extends StatelessWidget {
             title: 'Vì sao lịch này',
             child: Text(
               draft.rationale!,
-              style: TextStyle(
-                fontSize: 15,
-                height: 1.55,
-                color: palette.ink,
-              ),
+              style: TextStyle(fontSize: 15, height: 1.55, color: palette.ink),
             ),
           ),
         ],
@@ -111,8 +109,7 @@ class PlanProposalView extends StatelessWidget {
           style: FilledButton.styleFrom(
             minimumSize: const Size.fromHeight(52),
             backgroundColor: palette.accent,
-            foregroundColor:
-                Theme.of(context).brightness == Brightness.dark
+            foregroundColor: Theme.of(context).brightness == Brightness.dark
                 ? RunNowDataColors.coachOnAccentDark
                 : Colors.white,
           ),
@@ -164,15 +161,18 @@ class _FeasibilityChip extends StatelessWidget {
     // Ba mức dùng ba màu loại bài sẵn có, không thêm màu mới vào hệ thống:
     // easy (nhẹ) → vừa sức, tempo → thử thách, race (nặng nhất) → quá sức.
     final color = switch (feasibility) {
-      PlanFeasibility.comfortable => (palette.isIron
-          ? palette.foreground
-          : workoutTypeColor(WorkoutType.easy, dark: dark)),
-      PlanFeasibility.challenging => (palette.isIron
-          ? palette.accentDeep
-          : workoutTypeColor(WorkoutType.tempo, dark: dark)),
-      PlanFeasibility.tooHard => (palette.isIron
-          ? palette.accent
-          : workoutTypeColor(WorkoutType.race, dark: dark)),
+      PlanFeasibility.comfortable =>
+        (palette.isIron
+            ? palette.foreground
+            : workoutTypeColor(WorkoutType.easy, dark: dark)),
+      PlanFeasibility.challenging =>
+        (palette.isIron
+            ? palette.accentDeep
+            : workoutTypeColor(WorkoutType.tempo, dark: dark)),
+      PlanFeasibility.tooHard =>
+        (palette.isIron
+            ? palette.accent
+            : workoutTypeColor(WorkoutType.race, dark: dark)),
       PlanFeasibility.unknown => palette.textMuted,
     };
     final note = switch (feasibility) {
@@ -194,7 +194,10 @@ class _FeasibilityChip extends StatelessWidget {
           Container(
             width: 8,
             height: 8,
-            decoration: BoxDecoration(color: color, shape: context.runNowPalette.round),
+            decoration: BoxDecoration(
+              color: color,
+              shape: context.runNowPalette.round,
+            ),
           ),
           const SizedBox(width: 10),
           Text(
@@ -233,7 +236,8 @@ class _NumbersGrid extends StatelessWidget {
       ('Bắt đầu', _dayMonth(draft.startDate)),
       ('Về đích', _dayMonth(draft.targetDate)),
       ('Số buổi chạy', '$sessions buổi'),
-      if (draft.totalKm != null) ('Tổng quãng đường', '${_trim(draft.totalKm!)} km'),
+      if (draft.totalKm != null)
+        ('Tổng quãng đường', '${_trim(draft.totalKm!)} km'),
       if (draft.targetPaceLabel != null) ('Pace đích', draft.targetPaceLabel!),
       if (draft.goalTimeLabel != null) ('Thời gian đích', draft.goalTimeLabel!),
     ];
@@ -287,8 +291,8 @@ class _Warnings extends StatelessWidget {
     final palette = context.runNowPalette;
     final dark = Theme.of(context).brightness == Brightness.dark;
     final color = (palette.isIron
-          ? palette.accentDeep
-          : workoutTypeColor(WorkoutType.tempo, dark: dark));
+        ? palette.accentDeep
+        : workoutTypeColor(WorkoutType.tempo, dark: dark));
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
@@ -345,9 +349,7 @@ class _WeeklyVolume extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final weeks = [
-      for (var w = 1; w <= draft.weeks; w++) (w, draft.weekKm(w)),
-    ];
+    final weeks = [for (var w = 1; w <= draft.weeks; w++) (w, draft.weekKm(w))];
     final maxKm = weeks.fold<double>(0, (m, e) => e.$2 > m ? e.$2 : m);
 
     return Column(

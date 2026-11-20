@@ -322,7 +322,9 @@ class _UsageCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               [_usd(usage.costUsd), ?budgetText].join(' · '),
-              style: palette.heading(const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+              style: palette.heading(
+                const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+              ),
             ),
             Text(
               '${usage.calls} lượt gọi · ${usage.searchCalls} lượt tìm kiếm',

@@ -72,10 +72,11 @@ class RunContractController {
       (contract.route == null || contract.route!.points.isEmpty);
 
   /// Progress "giữ nguyên" khi bỏ qua ghi (kết quả thường bị caller .ignore()).
-  RunContractProgress _keepProgress(RunContract contract) => RunContractProgress(
-    value: contract.progressValue,
-    eligibleActivities: const [],
-  );
+  RunContractProgress _keepProgress(RunContract contract) =>
+      RunContractProgress(
+        value: contract.progressValue,
+        eligibleActivities: const [],
+      );
 
   Future<RunContractPreview> preview(
     RunContractDraft draft, {
@@ -395,9 +396,7 @@ class RunContractController {
         activity,
         contract.metric,
       );
-      final (activities, assignments) = await _officialActivitiesFor(
-        contract,
-      );
+      final (activities, assignments) = await _officialActivitiesFor(contract);
       final assignedIds = {
         for (final entry in assignments.entries)
           if (entry.value == contract.id) entry.key,

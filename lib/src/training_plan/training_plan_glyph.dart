@@ -7,7 +7,12 @@ import 'training_plan_models.dart';
 /// easy 2 bar thấp dần · long 4 bar bằng · tempo 3 bar tăng · interval 5 bar
 /// cao–thấp xen kẽ · rest 1 thanh ngang · race cột cờ.
 class WorkoutGlyph extends StatelessWidget {
-  const WorkoutGlyph({super.key, required this.type, required this.color, this.size = 26});
+  const WorkoutGlyph({
+    super.key,
+    required this.type,
+    required this.color,
+    this.size = 26,
+  });
 
   final WorkoutType type;
   final Color color;
@@ -18,11 +23,13 @@ class WorkoutGlyph extends StatelessWidget {
     return SizedBox(
       width: size,
       height: size * 0.56,
-      child: CustomPaint(painter: _GlyphPainter(
+      child: CustomPaint(
+        painter: _GlyphPainter(
           type,
           color,
           square: context.runNowPalette.squared,
-        )),
+        ),
+      ),
     );
   }
 }
@@ -72,7 +79,12 @@ class _GlyphPainter extends CustomPainter {
         final y = h * 0.5;
         canvas.drawRRect(
           RRect.fromRectAndRadius(
-            Rect.fromLTWH(size.width * 0.1, y - h * 0.09, size.width * 0.8, h * 0.18),
+            Rect.fromLTWH(
+              size.width * 0.1,
+              y - h * 0.09,
+              size.width * 0.8,
+              h * 0.18,
+            ),
             _corner(h * 0.09),
           ),
           p,

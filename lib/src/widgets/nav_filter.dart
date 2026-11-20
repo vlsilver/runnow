@@ -171,7 +171,9 @@ class _MenuRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: selected ? context.runNowPalette.wash(accent, 0.16) : Colors.transparent,
+        color: selected
+            ? context.runNowPalette.wash(accent, 0.16)
+            : Colors.transparent,
         borderRadius: context.runNowPalette.radius(12),
       ),
       child: Row(

@@ -24,9 +24,8 @@ const runRoomRunnerColors = [
 Color runRoomRunnerColor(BuildContext context, int index, {required bool me}) =>
     me
     ? context.runNowPalette.accent
-    : context.runNowPalette.series(
-        runRoomRunnerColors,
-      )[index % runRoomRunnerColors.length];
+    : context.runNowPalette.series(runRoomRunnerColors)[index %
+          runRoomRunnerColors.length];
 
 /// Map của phòng: tuyến chủ phòng vẽ (nét đứt), đường đã chạy và vị trí mới
 /// nhất của từng người. Tự canh khung cho thấy hết mọi người khi có người mới

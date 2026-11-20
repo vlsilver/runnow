@@ -68,7 +68,8 @@ Future<void> main() async {
 /// đúng (Android giãn mẫu 15s, iOS 0). fetchAndActivate chạy NỀN — không chặn
 /// khởi động app; giá trị server áp khi fetch xong (hoặc realtime onConfigUpdated).
 Future<void> _initRemoteConfig() async {
-  if (kIsWeb) return; // RC realtime/native chủ yếu cho mobile — web bỏ qua an toàn.
+  if (kIsWeb)
+    return; // RC realtime/native chủ yếu cho mobile — web bỏ qua an toàn.
   try {
     final rc = FirebaseRemoteConfig.instance;
     await rc.setConfigSettings(

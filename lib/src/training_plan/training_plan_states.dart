@@ -30,18 +30,24 @@ class GeneratingState extends StatelessWidget {
           const SizedBox(height: 22),
           Text(
             'Đang phân tích lịch sử chạy của bạn',
-            style: palette.heading(TextStyle(
-              fontSize: 26,
-              height: 1.1,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-              color: palette.ink,
-            )),
+            style: palette.heading(
+              TextStyle(
+                fontSize: 26,
+                height: 1.1,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+                color: palette.ink,
+              ),
+            ),
           ),
           const SizedBox(height: 8),
           Text(
             'Khoảng 20 giây. Bạn cứ để máy đây, xong tôi báo.',
-            style: TextStyle(fontSize: 13.5, height: 1.5, color: palette.textMuted),
+            style: TextStyle(
+              fontSize: 13.5,
+              height: 1.5,
+              color: palette.textMuted,
+            ),
           ),
           const SizedBox(height: 26),
           for (var i = 0; i < trainingPlanSteps.length; i++) ...[
@@ -152,15 +158,24 @@ class _StepRow extends StatelessWidget {
           width: 20,
           height: 20,
           alignment: Alignment.center,
-          decoration: BoxDecoration(color: palette.accent, shape: context.runNowPalette.round),
-          child: Icon(Icons.check_rounded,
-              size: 13, color: context.runNowPalette.onAccent),
+          decoration: BoxDecoration(
+            color: palette.accent,
+            shape: context.runNowPalette.round,
+          ),
+          child: Icon(
+            Icons.check_rounded,
+            size: 13,
+            color: context.runNowPalette.onAccent,
+          ),
         );
       case _StepState.running:
         mark = SizedBox(
           width: 20,
           height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2.2, color: palette.accent),
+          child: CircularProgressIndicator(
+            strokeWidth: 2.2,
+            color: palette.accent,
+          ),
         );
       case _StepState.pending:
         mark = Container(
@@ -180,8 +195,12 @@ class _StepRow extends StatelessWidget {
           label,
           style: TextStyle(
             fontSize: 14,
-            fontWeight: state == _StepState.running ? FontWeight.w700 : FontWeight.w500,
-            color: state == _StepState.pending ? palette.textMuted : palette.ink,
+            fontWeight: state == _StepState.running
+                ? FontWeight.w700
+                : FontWeight.w500,
+            color: state == _StepState.pending
+                ? palette.textMuted
+                : palette.ink,
           ),
         ),
       ],
@@ -236,18 +255,24 @@ class _EmptyPlanStateState extends State<EmptyPlanState> {
           const SizedBox(height: 24),
           Text(
             'Đặt mục tiêu của bạn',
-            style: palette.heading(TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-              color: palette.ink,
-            )),
+            style: palette.heading(
+              TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+                color: palette.ink,
+              ),
+            ),
           ),
           const SizedBox(height: 8),
           Text(
             'Tả mục tiêu bằng lời của bạn — cự ly, thời gian, pace mong muốn, '
             'ngày rảnh trong tuần… AI dựng giáo án cá nhân theo đó + lịch sử chạy của bạn.',
-            style: TextStyle(fontSize: 13.5, height: 1.5, color: palette.textMuted),
+            style: TextStyle(
+              fontSize: 13.5,
+              height: 1.5,
+              color: palette.textMuted,
+            ),
           ),
           const SizedBox(height: 16),
           TextField(
@@ -300,8 +325,10 @@ class _EmptyPlanStateState extends State<EmptyPlanState> {
                 GestureDetector(
                   onTap: () => _fill(s),
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 9,
+                    ),
                     decoration: BoxDecoration(
                       color: palette.glassStart,
                       borderRadius: palette.radius(13),
@@ -362,12 +389,13 @@ class _EmptyPlanStateState extends State<EmptyPlanState> {
                 backgroundColor: palette.accent,
                 foregroundColor: onAccent,
                 disabledBackgroundColor: palette.border,
-                shape: RoundedRectangleBorder(
-                    borderRadius: palette.radius(17)),
+                shape: RoundedRectangleBorder(borderRadius: palette.radius(17)),
               ),
               icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-              label: const Text('Tạo giáo án cho tôi',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              label: const Text(
+                'Tạo giáo án cho tôi',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
             ),
           ),
         ],
@@ -468,8 +496,10 @@ class _PlanTeaser extends StatelessWidget {
               width: 22,
               height: b.$2,
               decoration: BoxDecoration(
-                color: workoutLoadColor(b.$1, context.runNowPalette)
-                    .withValues(alpha: b.$1.isRest ? 0.28 : 0.9),
+                color: workoutLoadColor(
+                  b.$1,
+                  context.runNowPalette,
+                ).withValues(alpha: b.$1.isRest ? 0.28 : 0.9),
                 borderRadius: context.runNowPalette.radius(7),
               ),
             ),
@@ -498,7 +528,9 @@ class CompletedPlanState extends StatelessWidget {
     final palette = context.runNowPalette;
     final onAccent = context.runNowPalette.onAccent;
     final totalKm = plan.days.fold<double>(
-        0, (s, d) => s + (d.done ? (d.distanceKm ?? 0) : 0));
+      0,
+      (s, d) => s + (d.done ? (d.distanceKm ?? 0) : 0),
+    );
     final share = plan.totalSessions == 0
         ? 0.0
         : (plan.doneSessions / plan.totalSessions).clamp(0.0, 1.0);
@@ -526,16 +558,24 @@ class CompletedPlanState extends StatelessWidget {
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('${(share * 100).round()}%',
-                        style: palette.heading(TextStyle(
-                            fontSize: 34,
-                            fontWeight: FontWeight.w800,
-                            color: palette.ink))),
-                    Text(plan.completed ? 'Trọn giáo án' : 'Số buổi đã tập',
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: palette.textMuted)),
+                    Text(
+                      '${(share * 100).round()}%',
+                      style: palette.heading(
+                        TextStyle(
+                          fontSize: 34,
+                          fontWeight: FontWeight.w800,
+                          color: palette.ink,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      plan.completed ? 'Trọn giáo án' : 'Số buổi đã tập',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: palette.textMuted,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -546,12 +586,14 @@ class CompletedPlanState extends StatelessWidget {
             plan.completed
                 ? '${_trim(plan.goalDistanceKm)} km, đúng hẹn.'
                 : 'Giáo án đã kết thúc',
-            style: palette.heading(TextStyle(
-              fontSize: 27,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-              color: palette.ink,
-            )),
+            style: palette.heading(
+              TextStyle(
+                fontSize: 27,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+                color: palette.ink,
+              ),
+            ),
           ),
           const SizedBox(height: 8),
           Text(
@@ -560,12 +602,20 @@ class CompletedPlanState extends StatelessWidget {
                 : 'Bạn tập ${plan.doneSessions} trên ${plan.totalSessions} buổi. '
                       'Đặt mục tiêu mới khi sẵn sàng.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13.5, height: 1.5, color: palette.textMuted),
+            style: TextStyle(
+              fontSize: 13.5,
+              height: 1.5,
+              color: palette.textMuted,
+            ),
           ),
           const SizedBox(height: 22),
           Row(
             children: [
-              _stat(palette, '${plan.doneSessions}/${plan.totalSessions}', 'buổi'),
+              _stat(
+                palette,
+                '${plan.doneSessions}/${plan.totalSessions}',
+                'buổi',
+              ),
               const SizedBox(width: 8),
               _stat(palette, _trim(totalKm), 'km tổng'),
               const SizedBox(width: 8),
@@ -583,15 +633,22 @@ class CompletedPlanState extends StatelessWidget {
                 foregroundColor: onAccent,
                 shape: RoundedRectangleBorder(borderRadius: palette.radius(17)),
               ),
-              child: const Text('Đặt mục tiêu tiếp theo',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              child: const Text(
+                'Đặt mục tiêu tiếp theo',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
             ),
           ),
           const SizedBox(height: 10),
           TextButton(
             onPressed: onReview,
-            child: Text('Xem lại giáo án',
-                style: TextStyle(color: palette.textMuted, fontWeight: FontWeight.w600)),
+            child: Text(
+              'Xem lại giáo án',
+              style: TextStyle(
+                color: palette.textMuted,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),
@@ -599,31 +656,37 @@ class CompletedPlanState extends StatelessWidget {
   }
 
   Widget _stat(RunNowPalette palette, String value, String label) => Expanded(
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: palette.glassStart,
-            borderRadius: palette.radius(16),
-            border: Border.all(color: palette.border),
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(
+        color: palette.glassStart,
+        borderRadius: palette.radius(16),
+        border: Border.all(color: palette.border),
+      ),
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: palette.ink,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
           ),
-          child: Column(
-            children: [
-              Text(value,
-                  style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: palette.ink,
-                      fontFeatures: const [FontFeature.tabularFigures()])),
-              const SizedBox(height: 2),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: palette.textMuted)),
-            ],
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: palette.textMuted,
+            ),
           ),
-        ),
-      );
+        ],
+      ),
+    ),
+  );
 }
 
 String _trim(double v) =>

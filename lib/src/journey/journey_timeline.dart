@@ -335,7 +335,10 @@ class _LevelNodeState extends State<_LevelNode>
     return Container(
       width: 24,
       height: 24,
-      decoration: BoxDecoration(color: palette.border, shape: context.runNowPalette.round),
+      decoration: BoxDecoration(
+        color: palette.border,
+        shape: context.runNowPalette.round,
+      ),
       child: Icon(
         Icons.lock_outline_rounded,
         color: palette.textMuted,

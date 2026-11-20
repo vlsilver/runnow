@@ -56,9 +56,9 @@ class _JourneyShareScreenState extends State<JourneyShareScreen> {
       );
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Không chia sẻ được: $error')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Không chia sẻ được: $error')));
       }
     } finally {
       if (mounted) setState(() => _sharing = false);

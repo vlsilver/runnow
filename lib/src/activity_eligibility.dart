@@ -104,7 +104,10 @@ List<ActivitySummary> selectOfficialActivities(
 ) {
   final all = activities.toList();
   // Strava luôn tính; run/trail/virtual của Strava là pool dedup cho nguồn phụ.
-  final stravaPool = [for (final a in all) if (isPotentialStravaRecording(a)) a];
+  final stravaPool = [
+    for (final a in all)
+      if (isPotentialStravaRecording(a)) a,
+  ];
   final selected = <ActivitySummary>[
     for (final a in all)
       if (a.source == ActivitySource.strava) a,
@@ -113,13 +116,16 @@ List<ActivitySummary> selectOfficialActivities(
   // rồi id → kết quả ỔN ĐỊNH. Loại nếu trùng một buổi Strava HOẶC trùng một buổi
   // nguồn-phụ ĐÃ giữ — chống đếm đôi cùng một lần chạy ở nhiều nguồn (vd Apple
   // Health + 3i native) hoặc bản Health bị sửa (2 doc trùng thời gian).
-  final nonStrava = [for (final a in all) if (isCountedNonStravaRun(a)) a]
-    ..sort((x, y) {
-      final byPrio = _nonStravaSourcePriority(
-        y.source,
-      ).compareTo(_nonStravaSourcePriority(x.source));
-      return byPrio != 0 ? byPrio : x.id.compareTo(y.id);
-    });
+  final nonStrava =
+      [
+        for (final a in all)
+          if (isCountedNonStravaRun(a)) a,
+      ]..sort((x, y) {
+        final byPrio = _nonStravaSourcePriority(
+          y.source,
+        ).compareTo(_nonStravaSourcePriority(x.source));
+        return byPrio != 0 ? byPrio : x.id.compareTo(y.id);
+      });
   final kept = <ActivitySummary>[];
   for (final a in nonStrava) {
     final isDup =

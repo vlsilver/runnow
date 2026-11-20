@@ -760,8 +760,7 @@ class _RunContractRouteCreateScreenState
             child: _TargetChip(
               label: 'Cá nhân',
               selected: _mode == RunContractMode.individual,
-              onTap: () =>
-                  setState(() => _mode = RunContractMode.individual),
+              onTap: () => setState(() => _mode = RunContractMode.individual),
             ),
           ),
           const SizedBox(width: 8),
@@ -846,14 +845,21 @@ class _RunContractRouteCreateScreenState
         ),
         child: Row(
           children: [
-            Icon(Icons.directions_run_rounded, size: 18, color: palette.accentDeep),
+            Icon(
+              Icons.directions_run_rounded,
+              size: 18,
+              color: palette.accentDeep,
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 _openEnded
                     ? 'Mỗi buổi chạy cộng dồn km, đi dần tới đích — không giới hạn thời gian.'
                     : 'Tích luỹ đủ km trước hạn để chinh phục trọn cung đường.',
-                style: const TextStyle(fontWeight: FontWeight.w700, height: 1.35),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  height: 1.35,
+                ),
               ),
             ),
           ],
@@ -1048,7 +1054,9 @@ class _RouteStat extends StatelessWidget {
       children: [
         Text(
           value,
-          style: palette.heading(const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+          style: palette.heading(
+            const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+          ),
         ),
         const SizedBox(height: 2),
         Text(

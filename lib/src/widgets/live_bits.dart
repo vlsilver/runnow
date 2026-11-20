@@ -135,7 +135,10 @@ class _LiveDotState extends State<LiveDot> with SingleTickerProviderStateMixin {
       child: Container(
         width: widget.size,
         height: widget.size,
-        decoration: BoxDecoration(color: widget.color, shape: context.runNowPalette.round),
+        decoration: BoxDecoration(
+          color: widget.color,
+          shape: context.runNowPalette.round,
+        ),
       ),
     );
   }

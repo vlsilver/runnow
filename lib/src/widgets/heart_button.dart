@@ -101,7 +101,9 @@ class _HeartButtonState extends ConsumerState<HeartButton> {
                 Text(
                   '${hearts.count}',
                   style: TextStyle(
-                    color: hearts.mine ? context.runNowPalette.heart : onSurface,
+                    color: hearts.mine
+                        ? context.runNowPalette.heart
+                        : onSurface,
                     fontSize: widget.size * 0.72,
                     fontWeight: FontWeight.w800,
                     fontFeatures: const [FontFeature.tabularFigures()],

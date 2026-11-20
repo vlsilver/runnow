@@ -597,9 +597,7 @@ class _BotActions extends StatelessWidget {
               foregroundColor: RunNowThemeTokens.lightInk,
               minimumSize: const Size.fromHeight(52),
               textStyle: buttonText,
-              shape: RoundedRectangleBorder(
-                borderRadius: palette.radius(14),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: palette.radius(14)),
             ),
             icon: const Icon(Icons.chat_bubble_rounded, size: 19),
             label: const Text('Chat riêng'),
@@ -615,9 +613,7 @@ class _BotActions extends StatelessWidget {
               minimumSize: const Size.fromHeight(52),
               textStyle: buttonText,
               side: BorderSide(color: palette.border),
-              shape: RoundedRectangleBorder(
-                borderRadius: palette.radius(14),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: palette.radius(14)),
             ),
             icon: const Icon(Icons.forum_outlined, size: 19),
             label: const Text('Phòng bot'),
@@ -1345,11 +1341,13 @@ class _CreateBotCard extends StatelessWidget {
         const SizedBox(height: 14),
         Text(
           'Tạo bot của riêng bạn',
-          style: context.runNowPalette.heading(TextStyle(
-            color: dark.ink,
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
-          )),
+          style: context.runNowPalette.heading(
+            TextStyle(
+              color: dark.ink,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
         ),
         const SizedBox(height: 6),
         Text(
@@ -1562,9 +1560,7 @@ class _RoomPreviewCard extends ConsumerWidget {
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
                 ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: palette.radius(12),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: palette.radius(12)),
               ),
               child: const Row(
                 children: [
@@ -1763,7 +1759,9 @@ class _RoomPreviewLine extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: message.fromAgent ? palette.ink : palette.accentDeep,
-            borderRadius: context.runNowPalette.radius(message.fromAgent ? 10 : 16),
+            borderRadius: context.runNowPalette.radius(
+              message.fromAgent ? 10 : 16,
+            ),
           ),
           child: Text(
             name.isEmpty ? '?' : name.characters.first.toUpperCase(),

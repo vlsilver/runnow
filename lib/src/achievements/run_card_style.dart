@@ -105,13 +105,8 @@ class RunCardStyle {
   RunCardStyle withBigRoute(bool on) =>
       RunCardStyle._(set, text, map: map, bigRoute: on, layout: layout);
 
-  RunCardStyle withLayout(RunCardLayout value) => RunCardStyle._(
-    set,
-    text,
-    map: map,
-    bigRoute: bigRoute,
-    layout: value,
-  );
+  RunCardStyle withLayout(RunCardLayout value) =>
+      RunCardStyle._(set, text, map: map, bigRoute: bigRoute, layout: value);
 
   /// Các field `look` backend lưu cho kiểu này; layout rỗng là bỏ bố cục
   /// đã chỉnh trước đó.

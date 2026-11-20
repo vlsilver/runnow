@@ -258,8 +258,7 @@ class RunContractDraft {
   /// Phòng chạy live mở đúng giờ hẹn.
   final String? roomId;
 
-  bool get isJourney =>
-      route != null && metric == RunContractMetric.distance;
+  bool get isJourney => route != null && metric == RunContractMetric.distance;
 
   RunContractDraft copyWith({
     RunContractTemplate? template,
@@ -573,8 +572,7 @@ class RunContract {
   /// Kèo HÀNH TRÌNH = có cung đường ([route]) + đếm theo quãng đường tích luỹ
   /// (km dồn dọc cung tới khi phủ hết chiều dài). Phân biệt với "Theo tuyến"
   /// (metric routeCompletion — phải chạy đúng tuyến).
-  bool get isJourney =>
-      route != null && metric == RunContractMetric.distance;
+  bool get isJourney => route != null && metric == RunContractMetric.distance;
 
   double get progressRatio =>
       targetValue <= 0 ? 0 : progressValue / targetValue;

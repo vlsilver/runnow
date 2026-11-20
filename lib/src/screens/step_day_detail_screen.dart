@@ -46,7 +46,9 @@ class _StepDayDetailScreenState extends State<StepDayDetailScreen> {
     _future = stored != null
         ? Future.value(stored)
         : controller == null
-        ? Future.value(const <int>[]) // user khác + chưa lưu → không có gì để đọc
+        ? Future.value(
+            const <int>[],
+          ) // user khác + chưa lưu → không có gì để đọc
         : controller.hourlySteps(parsed).timeout(const Duration(seconds: 15));
   }
 
@@ -149,13 +151,15 @@ class _Hero extends StatelessWidget {
             children: [
               Text(
                 stepThousands(total),
-                style: palette.heading(TextStyle(
-                  fontSize: 40,
-                  fontWeight: FontWeight.w800,
-                  height: 1,
-                  color: palette.ink,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                )),
+                style: palette.heading(
+                  TextStyle(
+                    fontSize: 40,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                    color: palette.ink,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
               Padding(
@@ -645,8 +649,6 @@ class _HourBars extends StatelessWidget {
     );
   }
 
-  Widget _axis(String label, RunNowPalette palette) => Text(
-    label,
-    style: TextStyle(fontSize: 10.5, color: palette.textMuted),
-  );
+  Widget _axis(String label, RunNowPalette palette) =>
+      Text(label, style: TextStyle(fontSize: 10.5, color: palette.textMuted));
 }

@@ -67,12 +67,14 @@ class DisciplineCard extends StatelessWidget {
             children: [
               Text(
                 '${stats.activeDays}',
-                style: palette.heading(TextStyle(
-                  color: onSurface,
-                  fontSize: 44,
-                  fontWeight: FontWeight.w800,
-                  height: 0.95,
-                )),
+                style: palette.heading(
+                  TextStyle(
+                    color: onSurface,
+                    fontSize: 44,
+                    fontWeight: FontWeight.w800,
+                    height: 0.95,
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
               Padding(

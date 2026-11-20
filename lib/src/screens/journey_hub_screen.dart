@@ -66,12 +66,14 @@ class _JourneyHeader extends StatelessWidget {
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: palette.heading(TextStyle(
-                  color: palette.ink,
-                  fontSize: 27,
-                  height: 1.1,
-                  fontWeight: FontWeight.w900,
-                )),
+                style: palette.heading(
+                  TextStyle(
+                    color: palette.ink,
+                    fontSize: 27,
+                    height: 1.1,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ),
               if (subtitle != null) ...[
                 const SizedBox(height: 4),

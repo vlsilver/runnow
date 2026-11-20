@@ -109,12 +109,14 @@ class ActivityTile extends StatelessWidget {
                                 children: [
                                   Text(
                                     formatDistance(activity.distanceMeters),
-                                    style: palette.heading(TextStyle(
-                                      color: palette.accent,
-                                      fontSize: 21,
-                                      fontWeight: FontWeight.w900,
-                                      height: 1,
-                                    )),
+                                    style: palette.heading(
+                                      TextStyle(
+                                        color: palette.accent,
+                                        fontSize: 21,
+                                        fontWeight: FontWeight.w900,
+                                        height: 1,
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),

@@ -575,7 +575,9 @@ class _ProgressRingButton extends StatelessWidget {
           : 'Xem thêm thông tin hành trình',
       child: Material(
         color: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: context.runNowPalette.radius(28)),
+        shape: RoundedRectangleBorder(
+          borderRadius: context.runNowPalette.radius(28),
+        ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,

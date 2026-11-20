@@ -103,26 +103,27 @@ final coachDraftProvider = StreamProvider<TrainingPlan?>((ref) {
 
 /// Lịch sử hỏi đáp với coach cho một giáo án cụ thể (cũ → mới). Mỗi thành viên
 /// có kênh RIÊNG theo từng giáo án: users/{uid}/coachChats/{planId}/messages.
-final coachChatProvider =
-    StreamProvider.family<List<CoachChatMessage>, String>((ref, planId) {
-  ref.watch(firebaseUserProvider);
-  final uid = FirebaseAuth.instance.currentUser?.uid;
-  if (uid == null) return Stream.value(const []);
-  return FirebaseFirestore.instance
-      .collection('users')
-      .doc(uid)
-      .collection('coachChats')
-      .doc(planId)
-      .collection('messages')
-      .orderBy('createdAt')
-      .limitToLast(100)
-      .snapshots()
-      .map(
-        (snap) => snap.docs
-            .map((d) => CoachChatMessage.fromMap(d.id, d.data()))
-            .toList(),
-      );
-});
+final coachChatProvider = StreamProvider.family<List<CoachChatMessage>, String>(
+  (ref, planId) {
+    ref.watch(firebaseUserProvider);
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return Stream.value(const []);
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('coachChats')
+        .doc(planId)
+        .collection('messages')
+        .orderBy('createdAt')
+        .limitToLast(100)
+        .snapshots()
+        .map(
+          (snap) => snap.docs
+              .map((d) => CoachChatMessage.fromMap(d.id, d.data()))
+              .toList(),
+        );
+  },
+);
 
 /// Một lượt trong hội thoại với coach.
 class CoachChatMessage {

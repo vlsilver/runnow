@@ -367,11 +367,8 @@ final runContractProvider = StreamProvider.family<RunContract?, String>((
 /// Tuyến ĐẦY ĐỦ (polyline) của kèo "Theo tuyến" — đọc lazy từ
 /// `runContractRoutes/{id}` khi màn chi tiết cần vẽ bản đồ. Trả `null` nếu kèo
 /// không tách tuyến (kèo cũ giữ points inline → dùng thẳng `contract.route`).
-final contractRouteProvider =
-    FutureProvider.autoDispose.family<RunContractRoute?, String>((
-      ref,
-      contractId,
-    ) {
+final contractRouteProvider = FutureProvider.autoDispose
+    .family<RunContractRoute?, String>((ref, contractId) {
       final uid = ref.watch(firebaseUserProvider).value?.uid;
       if (uid == null) return Future.value(null);
       return ref
@@ -414,11 +411,8 @@ final myStepDaysProvider = StreamProvider<List<StepDay>>((ref) {
       .limit(60)
       .snapshots()
       .map(
-        (snap) => snap.docs
-            .map(
-              (d) => _stepDayFromDoc(d.data(), d.id),
-            )
-            .toList(),
+        (snap) =>
+            snap.docs.map((d) => _stepDayFromDoc(d.data(), d.id)).toList(),
       );
 });
 
@@ -434,11 +428,8 @@ final memberStepDaysProvider = StreamProvider.autoDispose
           .limit(60)
           .snapshots()
           .map(
-            (snap) => snap.docs
-                .map(
-                  (d) => _stepDayFromDoc(d.data(), d.id),
-                )
-                .toList(),
+            (snap) =>
+                snap.docs.map((d) => _stepDayFromDoc(d.data(), d.id)).toList(),
           );
     });
 
@@ -487,7 +478,9 @@ final stepLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
       uid: m['uid'] as String? ?? d.id,
       displayName: (name?.isNotEmpty ?? false) ? name! : '3i member',
       avatarUrl: m['avatarUrl'] as String?,
-      visibility: ProfileVisibility.fromValue(m['profileVisibility'] as String?),
+      visibility: ProfileVisibility.fromValue(
+        m['profileVisibility'] as String?,
+      ),
       rollingSevenDays: stepStat(
         steps('rollingSevenDaysSteps'),
         dist('rollingSevenDaysDistance'),
@@ -531,7 +524,9 @@ final totalKmLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((
       uid: m['uid'] as String? ?? d.id,
       displayName: (name?.isNotEmpty ?? false) ? name! : '3i member',
       avatarUrl: m['avatarUrl'] as String?,
-      visibility: ProfileVisibility.fromValue(m['profileVisibility'] as String?),
+      visibility: ProfileVisibility.fromValue(
+        m['profileVisibility'] as String?,
+      ),
       rollingSevenDays: totalStat(dist('rollingSevenDaysTotalDistance')),
       currentWeek: totalStat(
         current.week ? dist('currentWeekTotalDistance') : 0,
@@ -833,4 +828,3 @@ final profileStatsProvider = FutureProvider<ProfileStatsData?>((ref) async {
     months: months,
   );
 });
-

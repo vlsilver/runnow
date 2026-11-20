@@ -322,12 +322,14 @@ class _RecordTile extends StatelessWidget {
                   data.value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: context.runNowPalette.heading(TextStyle(
-                    color: data.color,
-                    fontSize: 21,
-                    fontWeight: FontWeight.w900,
-                    height: 1,
-                  )),
+                  style: context.runNowPalette.heading(
+                    TextStyle(
+                      color: data.color,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w900,
+                      height: 1,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 5),
                 if (showOwner && ownerName != null)

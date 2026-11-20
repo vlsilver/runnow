@@ -75,19 +75,29 @@ extension WorkoutTypeInfo on WorkoutType {
 Color workoutTypeColor(WorkoutType type, {required bool dark}) {
   switch (type) {
     case WorkoutType.easy:
-      return dark ? RunNowDataColors.coachEasyDark : RunNowDataColors.coachEasyLight;
+      return dark
+          ? RunNowDataColors.coachEasyDark
+          : RunNowDataColors.coachEasyLight;
     case WorkoutType.long:
-      return dark ? RunNowDataColors.coachLongDark : RunNowDataColors.coachLongLight;
+      return dark
+          ? RunNowDataColors.coachLongDark
+          : RunNowDataColors.coachLongLight;
     case WorkoutType.tempo:
-      return dark ? RunNowDataColors.coachTempoDark : RunNowDataColors.coachTempoLight;
+      return dark
+          ? RunNowDataColors.coachTempoDark
+          : RunNowDataColors.coachTempoLight;
     case WorkoutType.interval:
       return dark
           ? RunNowDataColors.coachIntervalDark
           : RunNowDataColors.coachIntervalLight;
     case WorkoutType.rest:
-      return dark ? RunNowDataColors.coachRestDark : RunNowDataColors.coachRestLight;
+      return dark
+          ? RunNowDataColors.coachRestDark
+          : RunNowDataColors.coachRestLight;
     case WorkoutType.race:
-      return dark ? RunNowDataColors.coachRaceDark : RunNowDataColors.coachRaceLight;
+      return dark
+          ? RunNowDataColors.coachRaceDark
+          : RunNowDataColors.coachRaceLight;
   }
 }
 
@@ -368,9 +378,11 @@ class TrainingPlan {
   /// Giáo án hết hạn: chủ đã kết thúc, hoặc đã qua ngày đích.
   bool isOver(DateTime today) =>
       ended ||
-      DateTime(today.year, today.month, today.day).isAfter(
-        DateTime(targetDate.year, targetDate.month, targetDate.day),
-      );
+      DateTime(
+        today.year,
+        today.month,
+        today.day,
+      ).isAfter(DateTime(targetDate.year, targetDate.month, targetDate.day));
 
   /// Buổi chạy chưa xong gần nhất tính từ [today] (kể cả hôm nay). Buổi đã
   /// qua ngày mà chưa xong thì bỏ qua, vì nó không còn là buổi sắp tới.
@@ -481,7 +493,8 @@ class TrainingPlan {
       final m = rawDays[i];
       if (m is Map<String, dynamic>) {
         var day = TrainingDay.fromMap(m, date: start.add(Duration(days: i)));
-        if (mine != null) day = day.copyWith(done: mine.doneIndices.contains(i));
+        if (mine != null)
+          day = day.copyWith(done: mine.doneIndices.contains(i));
         days.add(day);
       }
     }

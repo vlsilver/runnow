@@ -230,10 +230,12 @@ class _AgentSetupScreenState extends ConsumerState<AgentSetupScreen> {
                         controller: _name,
                         maxLength: 40,
                         textInputAction: TextInputAction.next,
-                        style: palette.heading(const TextStyle(
-                          fontSize: 21,
-                          fontWeight: FontWeight.w900,
-                        )),
+                        style: palette.heading(
+                          const TextStyle(
+                            fontSize: 21,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
                         decoration: const InputDecoration(
                           hintText: 'Vd: Bò Sữa',
                         ),

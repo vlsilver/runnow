@@ -85,11 +85,13 @@ class _ActivityHubScreenState extends ConsumerState<ActivityHubScreen> {
                   children: [
                     Text(
                       'Hoạt động',
-                      style: context.runNowPalette.heading(TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                        color: context.runNowPalette.foreground,
-                      )),
+                      style: context.runNowPalette.heading(
+                        TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          color: context.runNowPalette.foreground,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     const _DailyQuoteCard(),
@@ -623,8 +625,11 @@ class _GoalBars extends StatelessWidget {
                                                 : 0.28,
                                           ),
                                     borderRadius: BorderRadius.vertical(
-                                      top: context.runNowPalette.cornerRadius(5),
-                                      bottom: context.runNowPalette.cornerRadius(2),
+                                      top: context.runNowPalette.cornerRadius(
+                                        5,
+                                      ),
+                                      bottom: context.runNowPalette
+                                          .cornerRadius(2),
                                     ),
                                   ),
                                 ),

@@ -829,7 +829,9 @@ class _MilestoneImage extends StatelessWidget {
       ),
     );
     return ClipRRect(
-      borderRadius: BorderRadius.vertical(top: context.runNowPalette.cornerRadius(18)),
+      borderRadius: BorderRadius.vertical(
+        top: context.runNowPalette.cornerRadius(18),
+      ),
       child: SizedBox(
         height: _height,
         width: double.infinity,

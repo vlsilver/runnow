@@ -293,12 +293,14 @@ class _SimpleStatsOverview extends StatelessWidget {
             children: [
               Text(
                 '${stability.score}',
-                style: palette.heading(TextStyle(
-                  color: onSurface,
-                  fontSize: 58,
-                  height: 0.9,
-                  fontWeight: FontWeight.w900,
-                )),
+                style: palette.heading(
+                  TextStyle(
+                    color: onSurface,
+                    fontSize: 58,
+                    height: 0.9,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
               Padding(
@@ -1699,11 +1701,13 @@ class _Metric extends StatelessWidget {
                   value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: context.runNowPalette.heading(TextStyle(
-                    color: color,
-                    fontSize: 21,
-                    fontWeight: FontWeight.w900,
-                  )),
+                  style: context.runNowPalette.heading(
+                    TextStyle(
+                      color: color,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
                 ),
               ],
             ),
