@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card.dart';
 import 'package:myrun/src/achievements/run_card_art_steps.dart';
@@ -461,14 +463,36 @@ String? runCardDrawLabel(RunCard card, {String fresh = 'Vẽ nền'}) =>
       _ => null,
     };
 
+/// Nút mở buổi chạy gốc của thẻ, ghi ngày chạy. [ownerUid] null là thẻ của
+/// mình.
+CardViewerLink runCardActivityLink(
+  BuildContext context,
+  RunCard card, {
+  String? ownerUid,
+}) {
+  final started = card.snapshot.startedAt;
+  return (
+    label: started == null
+        ? 'Buổi chạy'
+        : 'Buổi chạy ${DateFormat('dd/MM').format(started.toLocal())}',
+    onPressed: () => context.push(
+      ownerUid == null
+          ? '/activity/${card.id}'
+          : '/club/$ownerUid/activity/${card.id}',
+    ),
+  );
+}
+
 /// Xem thẻ 3D, lật hai mặt, khoe từ đó. Có [onDraw] thì thẻ chưa có nền hiện
-/// thêm nút vẽ.
+/// thêm nút vẽ. Có [link] thì có nút mở buổi chạy gốc; mở từ chính màn buổi
+/// chạy thì không truyền.
 void showRunCardViewer(
   BuildContext context,
   RunCard card,
   AchievementCardData data, {
   Widget? reaction,
   VoidCallback? onDraw,
+  CardViewerLink? link,
 }) {
   // Tranh có thể vẽ xong lúc đang xem nên thẻ đọc theo doc, không giữ bản lúc mở.
   AchievementCardData dataOf(RunCard? doc) =>
@@ -487,6 +511,7 @@ void showRunCardViewer(
     chips: [gameCardTiers[card.tier]!.label, '${runCardKm(card.km)} km'],
     cardSize: achievementCardSize,
     reaction: reaction,
+    link: link,
     action: switch ((runCardDrawLabel(card), onDraw)) {
       (final label?, final onDraw?) => (
         label: label,

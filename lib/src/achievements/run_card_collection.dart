@@ -86,6 +86,7 @@ class CollectedRunCard extends CollectedCard {
     data,
     reaction: reaction,
     onDraw: () => showRunCardDraw(context, card),
+    link: runCardActivityLink(context, card),
   );
 }
 

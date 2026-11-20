@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card.dart';
 import 'package:myrun/src/achievements/run_card_collection.dart';
+import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/club_card.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
@@ -65,8 +66,8 @@ VoidCallback _onOpen(
 String? _liveSessionOf(ClubCard item) =>
     item.card is CollectedRunCard ? item.key : null;
 
-/// Hàng tim ở màn xem thẻ: ai đã thả tim, nút tim để mình thả, và tổng emoji
-/// người xem cổ vũ lúc chạy.
+/// Hàng tim ở màn xem thẻ, trên một dòng: tổng emoji người xem cổ vũ lúc
+/// chạy, ai đã thả tim, và nút tim để mình thả.
 class _CardHearts extends StatelessWidget {
   const _CardHearts({required this.target, required this.liveSessionId});
 
@@ -74,19 +75,14 @@ class _CardHearts extends StatelessWidget {
   final String? liveSessionId;
 
   @override
-  Widget build(BuildContext context) => Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => Row(
     children: [
-      if (liveSessionId case final id?) LiveCheerTotals(sessionId: id),
-      Row(
-        children: [
-          Expanded(
-            child: HeartCheerers(target: target, label: 'đã thả tim'),
-          ),
-          HeartButton(target: target, size: 26),
-        ],
-      ),
+      if (liveSessionId case final id?) ...[
+        LiveCheerTotals(sessionId: id),
+        const SizedBox(width: 12),
+      ],
+      Expanded(child: HeartCheerers(target: target, label: 'đã thả tim')),
+      HeartButton(target: target, size: 26),
     ],
   );
 }
@@ -250,6 +246,14 @@ void showClubCardViewer(
   ],
   cardSize: achievementCardSize,
   reaction: reaction,
+  link: switch (item.card) {
+    CollectedRunCard(:final card) => runCardActivityLink(
+      context,
+      card,
+      ownerUid: item.ownerUid,
+    ),
+    _ => null,
+  },
 );
 
 /// Viên tổng cổ vũ dưới nút tim trên mặt thẻ. Chưa ai cổ vũ thì không hiện

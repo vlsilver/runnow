@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card_collection.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_panel.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
+import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/journey/journey_card.dart';
 import 'package:myrun/src/models.dart';
@@ -36,6 +39,7 @@ Future<void> _pump(
   List<ActivitySummary> unflipped = const [],
   Object? unflippedError,
   VoidCallback? onFetchUnflipped,
+  bool router = false,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -56,7 +60,23 @@ Future<void> _pump(
           (ref, id) async => const RunCardView(chance: 100),
         ),
       ],
-      child: const MaterialApp(home: RunCardCollectionScreen()),
+      child: router
+          ? MaterialApp.router(
+              routerConfig: GoRouter(
+                routes: [
+                  GoRoute(
+                    path: '/',
+                    builder: (_, _) => const RunCardCollectionScreen(),
+                  ),
+                  GoRoute(
+                    path: '/activity/:id',
+                    builder: (_, state) =>
+                        Text('activity ${state.pathParameters['id']}'),
+                  ),
+                ],
+              ),
+            )
+          : const MaterialApp(home: RunCardCollectionScreen()),
     ),
   );
   // Thẻ Thần thoại chạy hiệu ứng mãi, nên không chờ settle. Mỗi nguồn thẻ
@@ -183,6 +203,37 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(fetches, 2);
     });
+  });
+
+  testWidgets('màn xem thẻ có nút mở buổi chạy gốc', (tester) async {
+    final card = RunCard.fromJson({
+      'id': 'run-7',
+      'tier': 'common',
+      'km': 10.0,
+      'rolledAt': DateTime.utc(2026, 11, 2, 2),
+      'snapshot': {
+        'name': 'Buổi sáng',
+        'sportType': 'Run',
+        'startedAt': '2026-11-01T23:30:00Z',
+        'distanceMeters': 10000,
+        'movingTimeSeconds': 3000,
+      },
+    });
+    await _pump(tester, [card], router: true);
+    await tester.tap(find.byType(CollectedCardThumb));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // Ngày in theo giờ máy, không theo UTC: 23:30 UTC ngày 1 là sáng 2/11 ở VN.
+    final date = DateFormat(
+      'dd/MM',
+    ).format(DateTime.utc(2026, 11, 1, 23, 30).toLocal());
+    await tester.tap(find.byTooltip('Buổi chạy $date'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('activity run-7'), findsOneWidget);
+
+    expect(find.byType(GameCardViewer), findsNothing);
   });
 
   testWidgets('cards keep the newest-first order and filter by tier', (

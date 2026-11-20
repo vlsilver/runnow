@@ -1,6 +1,9 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:myrun/src/achievements/club_card.dart';
+import 'package:myrun/src/achievements/club_card_widgets.dart';
 import 'package:myrun/src/achievements/run_card_collection.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
@@ -64,27 +67,33 @@ void main() {
     },
   );
 
-  test('danh sách thẻ khoe: bỏ thẻ buổi chạy chưa vẽ nền, giữ thẻ loại khác', () {
-    final shown = shownClubCards([
-      {'ownerUid': 'u1', 'activityId': 'plain', 'tier': 'mythic'},
-      {
-        'ownerUid': 'u1',
-        'activityId': 'drawn',
-        'tier': 'rare',
-        'art': {'status': 'done', 'path': 'users/u1/runCards/drawn/art-1.png'},
-      },
-      {
-        'ownerUid': 'u1',
-        'activityId': 'pending',
-        'tier': 'epic',
-        'art': {'status': 'pending'},
-      },
-      {'ownerUid': 'u1', 'kind': 'game', 'gameId': 'g1', 'tier': 'rare'},
-      {'ownerUid': 'u1', 'kind': 'chưa-biết'},
-    ]);
+  test(
+    'danh sách thẻ khoe: bỏ thẻ buổi chạy chưa vẽ nền, giữ thẻ loại khác',
+    () {
+      final shown = shownClubCards([
+        {'ownerUid': 'u1', 'activityId': 'plain', 'tier': 'mythic'},
+        {
+          'ownerUid': 'u1',
+          'activityId': 'drawn',
+          'tier': 'rare',
+          'art': {
+            'status': 'done',
+            'path': 'users/u1/runCards/drawn/art-1.png',
+          },
+        },
+        {
+          'ownerUid': 'u1',
+          'activityId': 'pending',
+          'tier': 'epic',
+          'art': {'status': 'pending'},
+        },
+        {'ownerUid': 'u1', 'kind': 'game', 'gameId': 'g1', 'tier': 'rare'},
+        {'ownerUid': 'u1', 'kind': 'chưa-biết'},
+      ]);
 
-    expect([for (final item in shown) item.key], ['drawn', 'game_g1']);
-  });
+      expect([for (final item in shown) item.key], ['drawn', 'game_g1']);
+    },
+  );
 
   test(
     'thẻ khoe: id là activityId, có chủ thẻ, tranh và không có đường chạy',
@@ -298,4 +307,43 @@ void main() {
       );
     },
   );
+
+  testWidgets('thẻ khoe của người khác mở buổi chạy của chủ thẻ', (
+    tester,
+  ) async {
+    final item = ClubCard.fromJson({
+      'ownerUid': 'u2',
+      'activityId': 'run-9',
+      'tier': 'rare',
+      'snapshot': {'startedAt': '2026-11-02T00:00:00Z'},
+    })!;
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, _) => TextButton(
+            onPressed: () =>
+                showClubCardViewer(context, item, item.card.data('Minh')),
+            child: const Text('mở'),
+          ),
+        ),
+        GoRoute(
+          path: '/club/:uid/activity/:id',
+          builder: (_, state) => Text(
+            'club ${state.pathParameters['uid']} ${state.pathParameters['id']}',
+          ),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(child: MaterialApp.router(routerConfig: router)),
+    );
+    await tester.tap(find.text('mở'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byIcon(Icons.route_rounded));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('club u2 run-9'), findsOneWidget);
+  });
 }

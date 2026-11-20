@@ -62,6 +62,7 @@ Future<void> showCardViewer(
   Widget? reaction,
   CardViewerAction? action,
   Widget? leading,
+  CardViewerLink? link,
 }) {
   return Navigator.of(context).push(
     PageRouteBuilder<void>(
@@ -80,6 +81,7 @@ Future<void> showCardViewer(
           reaction: reaction,
           action: action,
           leading: leading,
+          link: link,
         ),
       ),
       transitionsBuilder: (_, animation, _, child) =>
@@ -95,6 +97,11 @@ typedef CardViewerAction = ({
   VoidCallback onPressed,
 });
 
+/// Đường dẫn tới thứ thẻ sinh ra từ đó, ví dụ buổi chạy gốc. Bấm thì đóng màn
+/// xem rồi chạy [onPressed]: màn xem là route không có page, route của
+/// go_router đẩy lên sau sẽ nằm dưới nó.
+typedef CardViewerLink = ({String label, VoidCallback onPressed});
+
 class GameCardViewer extends StatefulWidget {
   const GameCardViewer({
     super.key,
@@ -109,6 +116,7 @@ class GameCardViewer extends StatefulWidget {
     this.reaction,
     this.action,
     this.leading,
+    this.link,
   });
 
   final CardFaceBuilder front;
@@ -134,6 +142,9 @@ class GameCardViewer extends StatefulWidget {
 
   /// Nút tròn đầu hàng nút dưới lá. Khác [action], bấm không đóng màn xem.
   final Widget? leading;
+
+  /// Nút ngay dưới lá, mở nơi thẻ sinh ra. Null thì không có.
+  final CardViewerLink? link;
 
   @override
   State<GameCardViewer> createState() => _GameCardViewerState();
@@ -238,6 +249,7 @@ class _GameCardViewerState extends State<GameCardViewer>
                     ),
                 ],
               ),
+              const SizedBox(height: 12),
               Expanded(
                 child: Center(
                   child: _closed
@@ -258,10 +270,24 @@ class _GameCardViewerState extends State<GameCardViewer>
                         ),
                 ),
               ),
-              if (widget.reaction case final reaction?)
+              if (widget.reaction != null || widget.link != null)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
-                  child: reaction,
+                  padding: const EdgeInsets.fromLTRB(24, 0, 12, 10),
+                  child: Row(
+                    children: [
+                      Expanded(child: widget.reaction ?? const SizedBox()),
+                      if (widget.link case final link?)
+                        IconButton(
+                          tooltip: link.label,
+                          icon: const Icon(Icons.route_rounded),
+                          color: gameNightInk,
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            link.onPressed();
+                          },
+                        ),
+                    ],
+                  ),
                 ),
               const SizedBox(height: 16),
               Padding(
