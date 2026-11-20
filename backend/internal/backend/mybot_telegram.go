@@ -687,9 +687,15 @@ func (m *ManagedBotService) Deliver(ctx context.Context, botID, key string) erro
 			case managedOpLeave:
 				return tg.callAPI(ctx, "leaveChat", map[string]any{"chat_id": chatID}, nil)
 			case managedOpPhoto:
-				messageID, err = tg.SendImage(ctx, TelegramPhoto{ChatID: chatID, ThreadID: threadID, Image: image, Caption: stringValue(msg["text"])})
+				messageID, err = sendModelImage(ctx, tg, TelegramPhoto{ChatID: chatID, ThreadID: threadID, Image: image, Caption: stringValue(msg["text"])})
 			default:
-				messageID, err = tg.SendText(ctx, TelegramText{ChatID: chatID, ThreadID: threadID, Text: stringValue(msg["text"]), HTML: msg["html"] == true, ReplyTo: int64(number(msg["replyTo"]))})
+				text := TelegramText{ChatID: chatID, ThreadID: threadID, Text: stringValue(msg["text"]), HTML: msg["html"] == true, ReplyTo: int64(number(msg["replyTo"]))}
+				if text.HTML {
+					// Đã là HTML backend tự dựng và escape (vd nudge).
+					messageID, err = tg.SendText(ctx, text)
+				} else {
+					messageID, err = sendModelText(ctx, tg, text)
+				}
 			}
 			return err
 		})

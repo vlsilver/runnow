@@ -181,11 +181,9 @@ func (s *TelegramService) SendActivityAnnouncement(ctx context.Context, threadID
 	return nil
 }
 
-// SendChatMessage gửi một tin nhắn thuần văn bản tới một chat bất kỳ.
-//
-// Cố tình KHÔNG đặt parse_mode: nội dung do model sinh ra, chứa một dấu `<`
-// hay `&` lạc là Telegram từ chối cả tin nhắn. Bot im lặng vì lỗi cú pháp
-// khó lần ra hơn nhiều so với việc mất mấy chữ in đậm.
+// SendChatMessage gửi text model sinh tới một chat bất kỳ. Markdown của model
+// đổi sang HTML (modelTextHTML, đã escape); Telegram vẫn từ chối parse thì gửi
+// lại bản chữ thường, vì bot im lặng khó lần ra hơn mất mấy chữ in đậm.
 func (s *TelegramService) SendChatMessage(ctx context.Context, chatID, text string) error {
 	return s.SendChatMessageInThread(ctx, chatID, 0, text)
 }
@@ -203,13 +201,21 @@ func threadMissing(status int, body []byte) bool {
 // lần ra khung chat chính, để câu trả lời không mất; trả lỗi thì task retry và
 // gọi lại model mỗi lần mà vẫn hỏng y như cũ.
 func (s *TelegramService) SendChatMessageInThread(ctx context.Context, chatID string, threadID int64, text string) error {
+	return s.sendChatText(ctx, chatID, threadID, text, true)
+}
+
+func (s *TelegramService) sendChatText(ctx context.Context, chatID string, threadID int64, text string, asHTML bool) error {
 	if !s.Enabled() {
 		return nil
 	}
 	body := map[string]any{
 		"chat_id":              chatID,
-		"text":                 text,
+		"text":                 modelTextPlain(text),
 		"link_preview_options": map[string]any{"is_disabled": true},
+	}
+	if asHTML {
+		body["text"] = modelTextHTML(text)
+		body["parse_mode"] = "HTML"
 	}
 	if threadID != 0 {
 		body["message_thread_id"] = threadID
@@ -232,7 +238,11 @@ func (s *TelegramService) SendChatMessageInThread(ctx context.Context, chatID st
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		if threadID != 0 && threadMissing(resp.StatusCode, body) {
 			slog.WarnContext(ctx, "telegram.thread_missing", "method", "sendMessage", "threadId", threadID)
-			return s.SendChatMessageInThread(ctx, chatID, 0, text)
+			return s.sendChatText(ctx, chatID, 0, text, asHTML)
+		}
+		if asHTML && telegramParseRejected(resp.StatusCode, string(body)) {
+			slog.WarnContext(ctx, "telegram.html_rejected", "method", "sendMessage", "body", strings.TrimSpace(string(body)))
+			return s.sendChatText(ctx, chatID, threadID, text, false)
 		}
 		return fmt.Errorf("telegram sendMessage failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
@@ -240,7 +250,7 @@ func (s *TelegramService) SendChatMessageInThread(ctx context.Context, chatID st
 }
 
 // SendPhoto tải một ảnh (bytes) lên chat kèm caption, qua multipart/form-data.
-// Caption không đặt parse_mode (cùng lý do SendChatMessage): text do model sinh.
+// Caption do model sinh nên đổi Markdown như SendChatMessage.
 func (s *TelegramService) SendPhoto(ctx context.Context, chatID string, image []byte, caption string) error {
 	return s.SendPhotoInThread(ctx, chatID, 0, image, caption)
 }
@@ -248,6 +258,10 @@ func (s *TelegramService) SendPhoto(ctx context.Context, chatID string, image []
 // SendPhotoInThread như SendPhoto nhưng gửi vào một topic (0 = General). Topic
 // đã mất thì gửi lại ra khung chat chính, như SendChatMessageInThread.
 func (s *TelegramService) SendPhotoInThread(ctx context.Context, chatID string, threadID int64, image []byte, caption string) error {
+	return s.sendPhoto(ctx, chatID, threadID, image, caption, true)
+}
+
+func (s *TelegramService) sendPhoto(ctx context.Context, chatID string, threadID int64, image []byte, caption string, asHTML bool) error {
 	if !s.Enabled() {
 		return nil
 	}
@@ -258,7 +272,12 @@ func (s *TelegramService) SendPhotoInThread(ctx context.Context, chatID string, 
 		_ = w.WriteField("message_thread_id", strconv.FormatInt(threadID, 10))
 	}
 	if strings.TrimSpace(caption) != "" {
-		_ = w.WriteField("caption", caption)
+		if asHTML {
+			_ = w.WriteField("caption", modelTextHTML(caption))
+			_ = w.WriteField("parse_mode", "HTML")
+		} else {
+			_ = w.WriteField("caption", modelTextPlain(caption))
+		}
 	}
 	part, err := w.CreateFormFile("photo", "image.png")
 	if err != nil {
@@ -284,7 +303,11 @@ func (s *TelegramService) SendPhotoInThread(ctx context.Context, chatID string, 
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		if threadID != 0 && threadMissing(resp.StatusCode, body) {
 			slog.WarnContext(ctx, "telegram.thread_missing", "method", "sendPhoto", "threadId", threadID)
-			return s.SendPhotoInThread(ctx, chatID, 0, image, caption)
+			return s.sendPhoto(ctx, chatID, 0, image, caption, asHTML)
+		}
+		if asHTML && telegramParseRejected(resp.StatusCode, string(body)) {
+			slog.WarnContext(ctx, "telegram.html_rejected", "method", "sendPhoto", "body", strings.TrimSpace(string(body)))
+			return s.sendPhoto(ctx, chatID, threadID, image, caption, false)
 		}
 		return fmt.Errorf("telegram sendPhoto failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}

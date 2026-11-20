@@ -76,12 +76,14 @@ func (s *TelegramService) SendText(ctx context.Context, m TelegramText) (int64, 
 	return out.MessageID, nil
 }
 
-// TelegramPhoto là một tin ảnh PNG kèm chú thích chữ thường (không parse_mode).
+// TelegramPhoto là một tin ảnh PNG kèm chú thích. HTML bật parse_mode HTML cho
+// chú thích, như TelegramText.
 type TelegramPhoto struct {
 	ChatID   string
 	ThreadID int64 // 0 = General / chat không có Topics
 	Image    []byte
 	Caption  string
+	HTML     bool
 }
 
 // telegramCaptionMax là độ dài tối đa của caption theo Bot API.
@@ -101,6 +103,9 @@ func (s *TelegramService) SendImage(ctx context.Context, p TelegramPhoto) (int64
 	}
 	if caption := strings.TrimSpace(p.Caption); caption != "" {
 		fields["caption"] = truncateRunes(caption, telegramCaptionMax)
+		if p.HTML {
+			fields["parse_mode"] = "HTML"
+		}
 	}
 	for k, v := range fields {
 		if err := w.WriteField(k, v); err != nil {
