@@ -59,10 +59,10 @@ func TestStepMessagesGameMasterCalls(t *testing.T) {
 	}
 }
 
-// Người bị treo chỉ lộ phe; chết cách khác vẫn lật lá bài, thợ săn bị treo
-// được mở lượt bắn cũng lật vì còn việc phải làm. Event công khai là thứ vào
+// Người chết chỉ lộ phe, chết kiểu nào cũng vậy; chỉ thợ săn được mở lượt bắn
+// thì lật vì còn việc phải làm. Event công khai là thứ vào
 // feed, bản tin group và app, nên vai bị giấu không được nằm trong đó.
-func TestPublicEventHangShowsTeamOnly(t *testing.T) {
+func TestPublicEventDeathShowsTeamOnly(t *testing.T) {
 	cases := []struct {
 		in       ww.Event
 		dead     ww.Player
@@ -75,9 +75,13 @@ func TestPublicEventHangShowsTeamOnly(t *testing.T) {
 		{ww.Event{Kind: ww.EventDeath, UID: "w2", Role: ww.Wolf, Cause: ww.CauseHang}, ww.Player{Role: ww.Wolf, Cause: ww.CauseHang},
 			"", ww.TeamWolves, "Bình & Co đã chết, thuộc Phe Sói."},
 		{ww.Event{Kind: ww.EventDeath, UID: "s1", Role: ww.Seer, Cause: ww.CauseBite}, ww.Player{Role: ww.Seer, Cause: ww.CauseBite},
-			ww.Seer, "", "Chi đã chết. Lá bài: Tiên tri."},
+			"", ww.TeamVillage, "Chi đã chết, thuộc Phe Dân."},
 		{ww.Event{Kind: ww.EventDeath, UID: "s1", Role: ww.Seer, Cause: ww.CauseLover}, ww.Player{Role: ww.Seer, Cause: ww.CauseLover},
-			ww.Seer, "", "Chi đã chết. Lá bài: Tiên tri."},
+			"", ww.TeamVillage, "Chi đã chết, thuộc Phe Dân."},
+		{ww.Event{Kind: ww.EventDeath, UID: "w2", Role: ww.Wolf, Cause: ww.CausePoison}, ww.Player{Role: ww.Wolf, Cause: ww.CausePoison},
+			"", ww.TeamWolves, "Bình & Co đã chết, thuộc Phe Sói."},
+		{ww.Event{Kind: ww.EventDeath, UID: "s1", Role: ww.Hunter, Cause: ww.CauseBite}, ww.Player{Role: ww.Hunter, Cause: ww.CauseBite, ShotOpened: true},
+			ww.Hunter, "", "Chi đã chết. Lá bài: Thợ săn."},
 		{ww.Event{Kind: ww.EventDeath, UID: "s1", Role: ww.Hunter, Cause: ww.CauseHang}, ww.Player{Role: ww.Hunter, Cause: ww.CauseHang, ShotOpened: true},
 			ww.Hunter, "", "Chi đã chết. Lá bài: Thợ săn."},
 		{ww.Event{Kind: ww.EventDeath, UID: "s1", Role: ww.Hunter, Cause: ww.CauseHang}, ww.Player{Role: ww.Hunter, Cause: ww.CauseHang},
@@ -103,9 +107,9 @@ func TestPublicEventHangShowsTeamOnly(t *testing.T) {
 	}
 }
 
-// Doc game công khai giữ vai người chết cho app và 3i đọc: người bị treo chỉ
-// có phe, tới hết ván mới lật lá bài.
-func TestPublicGameHangShowsTeamOnly(t *testing.T) {
+// Doc game công khai giữ vai người chết cho app và 3i đọc: người chết chỉ có
+// phe, tới hết ván mới lật lá bài.
+func TestPublicGameDeathShowsTeamOnly(t *testing.T) {
 	st := ww.NewState(ww.Seed{1}, ww.Config{}, msgRoles(), msgStart)
 	st.Phase = ww.PhaseNight
 	st.Players["witch"].Alive, st.Players["witch"].Cause = false, ww.CauseHang
@@ -114,7 +118,7 @@ func TestPublicGameHangShowsTeamOnly(t *testing.T) {
 	st.Players["hunter"].Alive, st.Players["hunter"].Cause, st.Players["hunter"].ShotOpened = false, ww.CauseHang, true
 
 	data := (&stepWrite{after: st}).publicGame()
-	want := map[string][2]string{"witch": {"Phe Dân", ""}, "w1": {"Phe Sói", ""}, "seer": {"Tiên tri", "seer"}, "hunter": {"Thợ săn", "hunter"}, "v1": {"", ""}}
+	want := map[string][2]string{"witch": {"Phe Dân", ""}, "w1": {"Phe Sói", ""}, "seer": {"Phe Dân", ""}, "hunter": {"Thợ săn", "hunter"}, "v1": {"", ""}}
 	for uid, w := range want {
 		if label, role := revealedLabel(data, uid); label != w[0] || string(role) != w[1] {
 			t.Fatalf("đang chơi, %s lộ %q %q, muốn %q", uid, label, role, w)

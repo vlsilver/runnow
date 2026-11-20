@@ -26,8 +26,8 @@ func gameRulesCardFor(cfg werewolf.Config) []GameSetupSection {
 	}
 	return append(out,
 		GameSetupSection{Title: "Lộ bài", Layout: setupLayoutTiles, Items: []GameSetupItem{
-			{Key: "revealHang", Icon: "hang", Label: "Bị treo", Value: "Chỉ lộ phe"},
-			{Key: "revealOther", Icon: "reveal", Label: "Chết cách khác", Value: "Lật bài"},
+			{Key: "revealDeath", Icon: "teamWolf", Label: "Khi chết", Value: "Chỉ lộ phe"},
+			{Key: "revealEnd", Icon: "reveal", Label: "Hết ván", Value: "Lật bài tất cả"},
 		}},
 		GameSetupSection{Title: "Thắng khi", Layout: setupLayoutTiles, Items: win})
 }

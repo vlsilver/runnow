@@ -35,7 +35,7 @@ var roleRules = map[werewolf.Role]string{
 
 // Chữ giờ trong luật viết bằng {night}, {lock}…, clockText đổi theo lịch ván.
 const gameRulesText = scheduleDefaultText + " {night} tới {dawn} là đêm: các vai có kỹ năng chọn người. {dawn} bản tin đêm, đề cử tới {nominate}; tối đa 3 người nhiều đề cử nhất lên giàn. {nominate} tới {close} biểu quyết Treo hay Tha từng người. {close} chốt phiếu và km.\n" +
-	"Người bị treo chỉ lộ là phe Dân hay phe Sói, không lật lá bài, trừ khi còn được bắn một người thì lật. Chết cách khác thì lật lá bài. Hết ván lật bài tất cả.\n" +
+	"Người chết chỉ lộ là phe Dân hay phe Sói, không lật lá bài, dù chết vì bị treo, bị cắn, bị độc hay bị bắn. Thợ săn chết mà còn được bắn một người thì lật bài. Hết ván lật bài tất cả.\n" +
 	gameKmLineCut +
 	"Dân thắng khi hết sói. Sói thắng khi số sói bằng số người còn lại. Cặp đôi Sói và Dân thắng khi chỉ còn hai người họ. Ván chạy tới khi có phe thắng, không giới hạn số vòng."
 

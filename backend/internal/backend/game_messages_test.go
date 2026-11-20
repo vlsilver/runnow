@@ -105,7 +105,7 @@ func TestStepMessagesThroughANight(t *testing.T) {
 	msgs = stepMessages(dawn, day, evs)
 	sameMsgs(t, msgs, "group/digest", "dm:v2/private", "group/prompt/nominate")
 	pub := msgs[0].Data["events"].([]ww.Event)
-	if len(pub) != 1 || !reflect.DeepEqual(pub[0], ww.Event{Kind: ww.EventDeath, UID: "v2", Role: ww.Villager}) {
+	if len(pub) != 1 || !reflect.DeepEqual(pub[0], ww.Event{Kind: ww.EventDeath, UID: "v2", Team: ww.TeamVillage}) {
 		t.Fatalf("bản tin 10h = %+v", pub)
 	}
 	if got := msgs[0].Data["deadline"]; got != "2026-10-16T13:00:00Z" {

@@ -59,8 +59,8 @@ const (
 )
 
 // publicEvent trả bản công khai của e, hoặc false nếu e chỉ dành cho người
-// trong cuộc. Lý do chết không công khai (C3). Chết thì lật lá bài, trừ người
-// group chỉ được biết phe (roleHidden). st là state sau bước ra e.
+// trong cuộc. Lý do chết không công khai (C3). Chết thì chỉ lộ phe (roleHidden),
+// trừ khi vai đã lộ theo cách khác. st là state sau bước ra e.
 func publicEvent(st *werewolf.State, e werewolf.Event) (werewolf.Event, bool) {
 	switch e.Kind {
 	case werewolf.EventDeath:
@@ -76,12 +76,12 @@ func publicEvent(st *werewolf.State, e werewolf.Event) (werewolf.Event, bool) {
 }
 
 // roleHidden: group chỉ biết người chết uid là Sói hay Dân, chưa biết lá bài.
-// Đó là người bị dân làng treo mà không còn việc gì làm; thợ săn bị treo được
-// mở lượt bắn thì đã lộ vai qua lượt bắn, Kẻ ngốc bị treo lần hai thì đã lật
-// bài từ lần đầu. Hết ván thì lật hết.
+// Chết kiểu nào cũng vậy (bị treo, cắn, độc, bắn, chết theo người yêu); thợ săn
+// được mở lượt bắn thì đã lộ vai qua lượt bắn, Kẻ ngốc bị treo lần hai thì đã
+// lật bài từ lần đầu. Hết ván thì lật hết.
 func roleHidden(st *werewolf.State, uid string) bool {
 	p := st.Players[uid]
-	return p != nil && !p.Alive && p.Cause == werewolf.CauseHang && !p.ShotOpened && !p.Revealed && st.Phase != werewolf.PhaseEnded
+	return p != nil && !p.Alive && !p.ShotOpened && !p.Revealed && st.Phase != werewolf.PhaseEnded
 }
 
 // revealedLabel đọc từ doc game công khai (publicGame) cái group đã biết về
