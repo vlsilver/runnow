@@ -35,12 +35,16 @@ const _avatarSize = 44.0;
 const _runnerLift = 64.0;
 const _distance = Distance(roundResult: false);
 
-/// Kênh quay màn hình bằng ReplayKit (ScreenClipRecorder trong AppDelegate).
+/// Kênh quay màn hình: ReplayKit trên iOS (ScreenClipRecorder trong
+/// AppDelegate), MediaProjection trên Android (ScreenClipRecorder.kt).
 const _screenClip = MethodChannel('runnow/screen_clip');
 
-/// Quay cửa sổ app mới chỉ có trên iOS.
+/// Quay màn hình app có trên iOS và Android 10 trở lên; Android cũ hơn thì
+/// lệnh start báo lỗi.
 bool get _canShareClip =>
-    !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.android);
 
 /// Replay dài bao lâu: 2,5 giây cho mỗi km, kẹp trong 12 đến 20 giây. Buổi
 /// chạy trên 8 km thì phát nhanh dần lên để video không dài quá 20 giây.
@@ -1204,7 +1208,8 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
     }
   }
 
-  /// Thanh trạng thái (giờ, pin) không thuộc video nên ẩn trong lúc quay.
+  /// Thanh trạng thái (giờ, pin) không thuộc video nên ẩn trong lúc quay nếu
+  /// nó nằm trong khung quay.
   static Future<void> _showStatusBar(bool shown) =>
       SystemChrome.setEnabledSystemUIMode(
         SystemUiMode.manual,
@@ -1244,9 +1249,12 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
       _recording = true;
       _clipCancelled = false;
     });
+    // Chỉ ẩn thanh trạng thái khi nó lấn vào khung quay. Ẩn nó là vào chế độ
+    // toàn màn hình, và Android hiện bảng "Viewing full screen" đè lên video.
+    final hideStatusBar = clip.top < MediaQuery.viewPaddingOf(context).top;
     final path = '${(await getTemporaryDirectory()).path}/replay-3d.mp4';
     try {
-      await _showStatusBar(false);
+      if (hideStatusBar) await _showStatusBar(false);
       await _screenClip.invokeMethod<void>('start', {
         'path': path,
         'left': clip.left,
