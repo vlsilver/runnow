@@ -70,6 +70,9 @@ type Dependencies struct {
 	// Now thay time.Now ở game-advance và schedule-tick khi khác nil; test gài
 	// đồng hồ giả để chạy task hẹn giờ mà không phải chờ.
 	Now func() time.Time
+	// StravaOff: tích hợp Strava đang tắt (Config.StravaEnabled false). Giá trị
+	// rỗng là bật, để test dựng Dependencies không phải đặt cờ.
+	StravaOff bool
 }
 
 func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) {
@@ -97,10 +100,11 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 		return nil, err
 	}
 	gateway := NewStravaGateway(config.StravaClientID, config.StravaClientSecret)
+	gateway.off = !config.StravaEnabled
 	tasks := NewTaskPublisher(tasksClient, config)
 	tokens := NewTokenStore(db, gateway)
 	telegram := NewTelegramService(config.TelegramBotToken, config.TelegramChatID)
-	d := &Dependencies{Firestore: db, Auth: authClient, Tasks: tasks, Telegram: telegram}
+	d := &Dependencies{Firestore: db, Auth: authClient, Tasks: tasks, Telegram: telegram, StravaOff: !config.StravaEnabled}
 	d.TelegramLinks = NewTelegramLinkService(db, config.TelegramBotUsername)
 	d.Games = NewGameStore(db, config.TelegramChatID)
 	d.Agents = NewAgentStore(db)

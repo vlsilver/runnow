@@ -566,6 +566,11 @@ func (s *Server) apiRoutes() {
 		return writeJSON(w, 200, map[string]any{"ok": true, "service": "runnow-api"})
 	})
 	s.route("GET /v1/strava/status", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		// Strava tắt thì báo chưa nối, kể cả user còn liên kết cũ, để app (cả
+		// bản cũ) không hiện nút đồng bộ Strava.
+		if s.deps.StravaOff {
+			return writeJSON(w, 200, StravaConnectionStatus{Status: "disconnected"})
+		}
 		connection, err := s.deps.OAuth.Status(r.Context(), uid)
 		if err != nil {
 			return err
@@ -573,6 +578,9 @@ func (s *Server) apiRoutes() {
 		return writeJSON(w, 200, connection)
 	}))
 	s.route("POST /v1/strava/authorization", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		if s.deps.StravaOff {
+			return errStravaOff
+		}
 		var body struct {
 			ReturnTarget string `json:"returnTarget"`
 		}
@@ -1129,6 +1137,10 @@ func (s *Server) apiRoutes() {
 		if err := decodeJSON(r, &event); err != nil || !validWebhook(event) {
 			return invalidRequest()
 		}
+		// Strava tắt: trả 200 cho Strava khỏi gửi lại, nhưng không nhận event.
+		if s.deps.StravaOff {
+			return writeJSON(w, 200, map[string]any{"received": false})
+		}
 		if _, err := s.deps.Webhook.Receive(r.Context(), event); err != nil {
 			return err
 		}
@@ -1137,6 +1149,9 @@ func (s *Server) apiRoutes() {
 }
 
 func (s *Server) requireStravaConnection(r *http.Request, uid string) error {
+	if s.deps.StravaOff {
+		return errStravaOff
+	}
 	connection, err := s.deps.OAuth.Status(r.Context(), uid)
 	if err != nil {
 		return err
@@ -1151,6 +1166,17 @@ func (s *Server) requireStravaConnection(r *http.Request, uid string) error {
 	return nil
 }
 
+// unlessStravaOff bọc task Strava: Strava tắt thì trả 200 mà không làm gì,
+// để task còn trong queue chạy xong thay vì retry và gọi Strava.
+func (s *Server) unlessStravaOff(next func(http.ResponseWriter, *http.Request) error) func(http.ResponseWriter, *http.Request) error {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		if s.deps.StravaOff {
+			return writeJSON(w, 200, map[string]any{"ok": true, "skipped": "strava_disabled"})
+		}
+		return next(w, r)
+	}
+}
+
 func (s *Server) workerRoutes() {
 	s.route("GET /health", func(w http.ResponseWriter, r *http.Request) error {
 		return writeJSON(w, 200, map[string]any{"ok": true, "service": "runnow-worker"})
@@ -1158,7 +1184,7 @@ func (s *Server) workerRoutes() {
 	s.route("GET /healthz", func(w http.ResponseWriter, r *http.Request) error {
 		return writeJSON(w, 200, map[string]any{"ok": true, "service": "runnow-worker"})
 	})
-	s.route("POST /tasks/strava-event", func(w http.ResponseWriter, r *http.Request) error {
+	s.route("POST /tasks/strava-event", s.unlessStravaOff(func(w http.ResponseWriter, r *http.Request) error {
 		var task struct {
 			EventKey string             `json:"eventKey"`
 			Event    StravaWebhookEvent `json:"event"`
@@ -1171,8 +1197,8 @@ func (s *Server) workerRoutes() {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
-	})
-	s.route("POST /tasks/backfill-page", func(w http.ResponseWriter, r *http.Request) error {
+	}))
+	s.route("POST /tasks/backfill-page", s.unlessStravaOff(func(w http.ResponseWriter, r *http.Request) error {
 		var task struct {
 			UID   string `json:"uid"`
 			Page  int    `json:"page"`
@@ -1187,8 +1213,8 @@ func (s *Server) workerRoutes() {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
-	})
-	s.route("POST /tasks/hydrate-activity", func(w http.ResponseWriter, r *http.Request) error {
+	}))
+	s.route("POST /tasks/hydrate-activity", s.unlessStravaOff(func(w http.ResponseWriter, r *http.Request) error {
 		var task struct {
 			UID        string `json:"uid"`
 			ActivityID string `json:"activityId"`
@@ -1201,7 +1227,7 @@ func (s *Server) workerRoutes() {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
-	})
+	}))
 	s.route("POST /tasks/rebuild-derived-data", func(w http.ResponseWriter, r *http.Request) error {
 		var task struct{ UID, Cause string }
 		if decodeJSON(r, &task) != nil || task.UID == "" || task.Cause == "" {
@@ -1353,7 +1379,7 @@ func (s *Server) workerRoutes() {
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true, "dry": dry, "contracts": len(results), "linked": linked, "results": results, "finalized": finalized, "planSessions": planMarks})
 	})
-	s.route("POST /tasks/reconcile-connections", func(w http.ResponseWriter, r *http.Request) error {
+	s.route("POST /tasks/reconcile-connections", s.unlessStravaOff(func(w http.ResponseWriter, r *http.Request) error {
 		var task struct {
 			Cursor string `json:"cursor"`
 		}
@@ -1365,7 +1391,7 @@ func (s *Server) workerRoutes() {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
-	})
+	}))
 	// notify-telegram, bot-message, consolidate-memory đã dời sang runnow-bot
 	// (xem botRoutes) — worker không còn phần AI nào.
 }

@@ -24,6 +24,10 @@ type Config struct {
 	StravaClientSecret   string
 	WebhookVerifyToken   string
 	StravaSubscriptionID string
+	// StravaEnabled tắt bật cả tích hợp Strava (env STRAVA_ENABLED, mặc định
+	// tắt). Tắt thì không gọi API Strava, bỏ qua webhook và task Strava; code
+	// và dữ liệu giữ nguyên để bật lại chỉ cần đổi env.
+	StravaEnabled bool
 	// Garmin là nguồn tuỳ chọn: GarminClientID rỗng thì route Garmin trả
 	// garmin_not_configured, mọi thứ khác chạy như cũ. GarminWebhookToken là
 	// đoạn bí mật trong đường dẫn webhook, vì Garmin không ký các lần đẩy.
@@ -98,6 +102,7 @@ func LoadConfig() (Config, error) {
 		MobileReturnURI: required("MOBILE_RETURN_URI"), WebReturnURI: required("WEB_RETURN_URI"),
 		StravaClientID: required("STRAVA_CLIENT_ID"), StravaClientSecret: required("STRAVA_CLIENT_SECRET"),
 		WebhookVerifyToken: required("STRAVA_WEBHOOK_VERIFY_TOKEN"), StravaSubscriptionID: strings.TrimSpace(os.Getenv("STRAVA_SUBSCRIPTION_ID")),
+		StravaEnabled:      strings.TrimSpace(os.Getenv("STRAVA_ENABLED")) == "true",
 		TaskInvokerAccount: required("TASK_INVOKER_SERVICE_ACCOUNT"),
 		EventsQueue:        env("STRAVA_EVENTS_QUEUE", "strava-events"), BackfillQueue: env("STRAVA_BACKFILL_QUEUE", "strava-backfill"), DerivedQueue: env("DERIVED_DATA_QUEUE", "derived-data"),
 		NotifyQueue:      env("NOTIFY_QUEUE", "notifications"),

@@ -700,7 +700,7 @@ func (s *ActivityService) HydrateForCard(ctx context.Context, uid, activityID st
 	if err != nil {
 		return err
 	}
-	if !runCardNeedsStreams(snap.Data()) {
+	if !runCardNeedsStreams(snap.Data()) || s.gateway.isOff() {
 		return nil
 	}
 	if err := s.fetchAndUpsert(ctx, uid, activityID, time.Now().Unix(), true); err != nil {

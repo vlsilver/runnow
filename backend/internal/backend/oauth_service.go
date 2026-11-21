@@ -128,8 +128,9 @@ func (s *OAuthService) Disconnect(ctx context.Context, uid string) error {
 	wasActive := stringValue(snap.Data()["status"]) != "revoked"
 	if token != "" {
 		if revokeErr := s.gateway.Revoke(ctx, token); revokeErr != nil {
+			// Strava đang tắt thì không revoke được; vẫn xoá token ở mình.
 			var api *StravaAPIError
-			if !errors.As(revokeErr, &api) || api.Status >= 500 {
+			if !errors.Is(revokeErr, errStravaOff) && (!errors.As(revokeErr, &api) || api.Status >= 500) {
 				return revokeErr
 			}
 		}
