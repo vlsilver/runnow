@@ -399,23 +399,31 @@ gcloud run services add-iam-policy-binding "$BOT_SERVICE" \
   --role roles/run.invoker \
   --project "$PROJECT_ID" >/dev/null
 
+# Job reconcile chỉ để rà kết nối Strava, nên chỉ có khi Strava bật.
 if gcloud scheduler jobs describe "$SCHEDULER_JOB" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  scheduler_exists=true
   scheduler_action=update
   scheduler_header_flag=--update-headers
 else
+  scheduler_exists=false
   scheduler_action=create
   scheduler_header_flag=--headers
 fi
-gcloud scheduler jobs "${scheduler_action}" http "$SCHEDULER_JOB" \
-  --location "$REGION" \
-  --schedule '17 */6 * * *' \
-  --uri "${WORKER_URL}/tasks/reconcile-connections" \
-  --http-method POST \
-  "${scheduler_header_flag}" 'Content-Type=application/json' \
-  --message-body '{}' \
-  --oidc-service-account-email "$INVOKER_SA" \
-  --oidc-token-audience "$WORKER_URL" \
-  --project "$PROJECT_ID"
+if [[ "${STRAVA_ENABLED:-false}" == "true" ]]; then
+  gcloud scheduler jobs "${scheduler_action}" http "$SCHEDULER_JOB" \
+    --location "$REGION" \
+    --schedule '17 */6 * * *' \
+    --uri "${WORKER_URL}/tasks/reconcile-connections" \
+    --http-method POST \
+    "${scheduler_header_flag}" 'Content-Type=application/json' \
+    --message-body '{}' \
+    --oidc-service-account-email "$INVOKER_SA" \
+    --oidc-token-audience "$WORKER_URL" \
+    --project "$PROJECT_ID"
+elif [[ "$scheduler_exists" == "true" ]]; then
+  echo "Strava đang tắt: xoá scheduler job $SCHEDULER_JOB"
+  gcloud scheduler jobs delete "$SCHEDULER_JOB" --location "$REGION" --project "$PROJECT_ID" --quiet
+fi
 
 # Chưng cất trí nhớ bot mỗi đêm 20:00 giờ VN (13:00 UTC). Một lần/ngày là đủ
 # — trí nhớ dài hạn không cần cập nhật liên tục.
